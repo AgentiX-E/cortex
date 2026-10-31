@@ -1,0 +1,70 @@
+{
+  "about": "The disclosure rule table as shipped, frozen. The POC numbers quoted in docs/04 were computed from this table; changing it invalidates them until they are re-measured.",
+  "generatedFrom": "packages/cortex-core/dist/triage/rules.js",
+  "rules": [
+    {
+      "id": "credential",
+      "scope": "private",
+      "policy": "credentials are never stored, not even as a card",
+      "source": "\\b(password|passcode|api[ _-]?key|secret|token|private key|passphrase|ssn|social security|pin|ghp_|sk-|cvv|cvc|seed phrase)\\b|\\b(bitcoin|litecoin|ethereum|wallet)\\s+address\\b|\\b0x[0-9a-f]{40}\\b|\\bbc1[a-z0-9]{25,}\\b|\\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\\b",
+      "flags": "i",
+      "retention": "never"
+    },
+    {
+      "id": "strong-pii",
+      "scope": "private",
+      "policy": "identifiers that are regulated by form: email, phone, card, postal address, account",
+      "source": "[\\w.+-]+@[\\w-]+\\.[\\w.]+|\\+?\\d[\\d ()-]{7,}\\d|\\b\\d{4}[ -]?\\d{4}[ -]?\\d{4}[ -]?\\d{4}\\b|\\b\\d+\\s+[A-Z][a-z]+\\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd)\\b|\\b(account|acct|card)\\s*(number|no\\.?|#)\\s*[\\d*]{4,}|\\bapt\\.?\\s*\\d+|\\biban\\b|\\b[A-Z]{2}\\d{2}[ ]?(?:[A-Z0-9]{4}[ ]?){2,7}[A-Z0-9]{1,4}\\b",
+      "flags": "i",
+      "retention": null
+    },
+    {
+      "id": "money",
+      "scope": "private",
+      "policy": "amounts, income, budget, debt",
+      "source": "(\\$\\s?\\d|\\b\\d+\\s?(dollars|usd|eur|gbp)\\b|salary|income|mortgage|\\brent\\b|\\bdebt\\b|budget|\\bspent\\b|\\bpaid\\b|\\bafford|\\b(home|auto|personal|student|car|business)[\\s-]+loan\\b)",
+      "flags": "i",
+      "retention": null
+    },
+    {
+      "id": "health",
+      "scope": "private",
+      "policy": "body, diagnosis, medication, diet, exercise, measurements",
+      "source": "\\b(diagnos\\w*|doctor|dentist|therapy|therapist|medication|prescription|symptom|allerg\\w*|surgery|clinic|mental health|anxiety|depress\\w*)\\b|\\b(vegan|vegetarian|lacto|gluten[- ]free|diet)\\b|\\b(jog|walk(ing|s)?|workout|exercise|strength training|wake up at|weight|sugar|calorie|intake|tennis|volleyball|basketball|triathlon|marathon|cycling|biking|swimming|swim|hiking|hike|yoga|pilates|warm-?up|pacing)\\b|\\btraining (plan|schedule|routine|program)\\b|\\b(blood pressure|heart rate|cholesterol|liver function|liver enzyme|kidney function|mmhg|blood sugar|blood test|hours of sleep|sober|sobriety|resting at home|bed ?rest)\\b|\\btime off (work|from work)\\b|\\b(?:alt|ast|bmi)\\b(?=[^.;!?\\n]{0,20}\\d)",
+      "flags": "i",
+      "retention": null
+    },
+    {
+      "id": "family",
+      "scope": "private",
+      "policy": "family and relationship details",
+      "source": "\\b(my|our)\\s+(wife|husband|partner|girlfriend|boyfriend|son|daughter|kid|kids|child|children|mother|father|mom|dad|parents|family|sister|brother|siblings?)\\b|\\banniversary\\b",
+      "flags": "i",
+      "retention": null
+    },
+    {
+      "id": "career-status",
+      "scope": "private",
+      "policy": "employment status and its rewards are personal, even when they happen at work",
+      "source": "\\b(promotion|promoted|pay rise|pay raise|resigned|quit|fired|laid off|interview at|new job|career (growth|path|progression|advancement|move))\\b",
+      "flags": "i",
+      "retention": null
+    },
+    {
+      "id": "third-party",
+      "scope": "private",
+      "policy": "other people's information is not the user's to publish",
+      "source": "\\b(my|our|a|the)\\s+(colleague|colleagues|boss|manager|teammate|co-?worker|friend|friends|neighbou?r|landlord|team lead|mentor|buddy)\\b",
+      "flags": "i",
+      "retention": null
+    },
+    {
+      "id": "org-knowledge",
+      "scope": "shared",
+      "policy": "an organisational object a colleague could act on",
+      "source": "\\b(our team|our company|our org|the company i work|the project|project plan|the client|roadmap|sprint|onboarding|deliverable|team-building|we decided|the department|the board)\\b",
+      "flags": "i",
+      "retention": null
+    }
+  ]
+}

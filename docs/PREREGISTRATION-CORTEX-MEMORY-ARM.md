@@ -19667,3 +19667,342 @@ Reading, on the commit that added them: `Verify` **`41164403077`** at `d8c375b0`
 **`Verify browser suites` success**. The second job's first run is the only evidence that its own machinery works:
 playwright's Chromium installs, the probe finds it through the cache, 400 rows survive the restart, and the comparator
 accepts the fresh reading against the committed one.
+
+### 13.179 Four published numbers were computed by a program that is not the one that ships
+
+`§10.2` gate 3 is the last open condition on a release sentence, and the numbers it rests on are
+these: **false-share 0/12** and **coverage 31.7%** on 60 hand-labelled utterances, **0/1,467** and
+**29.2%** on ten CIMemories personas, **leak 1/3,000** and **coverage 87.5%** on an identifier
+corpus. All six are quoted in `docs/04` as properties of the disclosure layer.
+
+None of them was produced by `packages/cortex-core`. They were produced by
+`cortex-docs/poc/p04-triage-rules/rules.mjs`, a second implementation of the same table, written so
+a probe could run without a build step. That is a reasonable reason to have two tables. It is not a
+reason to leave them unwatched, and nothing was watching: checked today, they had drifted in **eight
+places**.
+
+#### 13.179.1 The eight differences, and which way each one runs
+
+| field | the probe table said | what ships | direction |
+| ----- | -------------------- | ---------- | --------- |
+| `credential.retention` | absent | `retention: 'never'` | the probe could not represent "not stored at all" |
+| `credential.source` | `…\|ssn\|social security\|\bpin\b\|…` | `…\|social security\|pin\|…` | equivalent in effect; a nested `\b` inside an already-bounded group |
+| `strong-pii.source` | no `iban`, no IBAN shape | `\biban\b` and `\b[A-Z]{2}\d{2}…\b` | **probe narrower**: it could not have found the leak described below |
+| `strong-pii.policy` | "…postal address" | "…postal address, account" | prose lagged the pattern |
+| `money.source` | no named-loan clause | `home/auto/personal/student/car/business loan` | **probe narrower** |
+| `health.source` | `\bALT\b`, `\bAST\b`, `\bBMI\b` | `alt`, `ast`, `bmi` behind a value guard | **probe narrower in case, product broader in scope** — the one that hid a defect |
+| `health.policy` | "…appointments" | "…measurements" | prose |
+| `third-party.source` | `…\|landlord\|doctor` | `…\|landlord` | **probe broader**: a word that has no business in a list of roles |
+
+Two of these are cosmetic. The other six are the interesting kind, and the `health` row is the one
+that shows why a parity check is not bookkeeping:
+
+> The probe wrote `\bALT\b`, which matches the letters when they are capitalised. The product wrote
+> `alt` inside a `/i` alternation, which matches **"the alt attribute on the logo"**. So the product
+> called every accessibility note a health fact, and the probe — the only instrument pointed at the
+> *published* numbers — could not see it, because in the probe's table the sentence never matched.
+
+That is a false-private error, so nothing leaked and no safety audit could have found it. It was
+found by comparing two implementations of one policy, which is a different instrument from a corpus.
+
+#### 13.179.2 The repair, and the criterion for calling it a repair
+
+The mirror is now generated to match: same ids, same order, same `retention`, same source and flags,
+same policy sentences. The criterion was registered as a pair, because either half alone can be
+satisfied dishonestly:
+
+| # | criterion | passes when | falsified when |
+| - | --------- | ----------- | -------------- |
+| 1 | parity | all eight fields equal for all eight rules, in order | any field differs, and the difference is reported by rule id and field name |
+| 2 | replication | the four published numbers come back **unchanged** when the probes are re-run under the reconciled table | any of them moves, in which case the document changes rather than the number |
+
+Criterion 2 is the one that decides whether this was an audit or a rewrite. Re-running `p04`,
+`p05` and `p06-policy-scale` on the reconciled table:
+
+| probe | metric | before | after | verdict |
+| ----- | ------ | -----: | ----: | ------- |
+| `p04` (60 rows) | false-share | 0/12 (upper 24.2%) | **0/12 (upper 24.2%)** | unchanged |
+| `p04` | coverage | 31.7% | **31.7%** | unchanged |
+| `p04` | false-private | 4/8 | **4/8** | unchanged |
+| `p06-policy-scale` (1,467) | leak | 0 (NOT MEASURED) | **0 (NOT MEASURED)** | unchanged, and still not a measurement |
+| `p06-policy-scale` | coverage | 29.2% (26.9–31.6) | **29.2% (26.9–31.6)** | unchanged |
+| `p05` (read side, 60 rows) | all fields | — | — | unchanged |
+
+So the honest headline is not "the numbers were wrong". It is: **the numbers were unverified, and
+now they are verified, and they survive.** Six of them did not have to.
+
+One of them nearly did not. The first reconciliation run produced **29.1%**, not 29.2%, and the
+difference was a single row:
+
+```
+Shawn’s liver enzyme levels (ALT/AST) have returned to normal.
+```
+
+The value guard added to fix the `alt` over-match requires a number after the abbreviation, and this
+row has none, so a health fact became a card. The fix is not to loosen the guard — it is to name the
+clinical phrase (`liver enzyme`) in the table, because that is what the policy says. Coverage went
+back to 29.2%. The episode is worth recording as the shape of this trade: **every guard that stops a
+false-private error costs recall somewhere, and the cost is measurable, which is the only reason it
+can be paid deliberately.**
+
+#### 13.179.3 The two rule defects the reconciliation found
+
+Neither was found by a corpus, and both are now tested by name.
+
+**1. The product over-matched `alt`/`ast`/`bmi`.** Fixed with a value guard: the abbreviation counts
+when a number follows within a clause (`\b(?:alt|ast|bmi)\b(?=[^.;!?\n]{0,20}\d)`), and the clinical
+phrase `liver enzyme` is named for the rows where no value appears. Three traps are pinned
+(`the ast node in our parser`, `my bmi tracker app`, `the alt text on the hero image`), and three
+positives (`my ALT came back at 62`, `the blood test put my AST at 40`, `my BMI is 31`).
+
+**2. The single recorded leak is now caught.** `p06` published one row in three thousand:
+
+> In our latest Quality Assurance meeting, we decided to conduct an audit of all our transactions,
+> paying special attention to those from Home Loan Account with IBAN LV96INJD0N7MZO8346877.
+
+`strong-pii` wanted `account number`, `money` wanted an amount, and `org-knowledge` wanted nothing
+more than the words "we decided". Two clauses were added — `\biban\b` plus the IBAN shape in
+`strong-pii`, and a named loan in `money` — chosen so that the **truncated** capture still
+classifies: the report cut the row at "Home Loan A", and a rule that only fires on a 22-character
+string would have left that row unjudgeable forever. Measured on the recorded text: `strong-pii`
+with the identifier, `money` without it, both private.
+
+The accepted cost is stated in the table and in a test: *"The Auto Loan Account segment performs well
+in our business model canvas"* is organisational speech that now becomes a card. A card is
+recoverable; a published account is not, and the policy's asymmetry is the reason the trade is made
+in that direction rather than tuned away.
+
+What is **not** claimed: that the corpus now measures 0/3,000. The corpus lives behind a Hub the
+authoring host cannot reach, so the corpus-level re-run is owed. What is claimed is narrower and
+checkable: the one row the corpus ever published is now classified private by the shipped table, on
+the text as recorded.
+
+#### 13.179.4 The guard, so this cannot drift again
+
+`tools/triage-parity.mjs`, in `pnpm check` as `guard:triage`:
+
+| comparison | what it catches | needs a second checkout |
+| ---------- | --------------- | ----------------------- |
+| shipped vs `tools/triage-table.json` | a rule change that was not accompanied by a decision about the published numbers | no |
+| mirror vs shipped | the drift above, at the moment it appears | yes (skipped otherwise, **loudly**) |
+| `--write` | manual, so the snapshot is a statement rather than a side effect | — |
+
+The snapshot is the sentence *"these are the rules the published numbers describe"*. It is compared
+field by field — id, scope, policy, pattern source, flags, `retention` — **in order**, because
+reordering keeps the set of rules identical while inverting the fail-closed boundary, and a
+comparison keyed on ids alone would call that no change.
+
+Eight tests drive it, each with a one-field mutation of the real snapshot: policy text, `retention`,
+pattern source, a dropped rule (counted before it is named), a swapped pair (ordering is a
+difference even when every rule survives), a missing snapshot (the failure names the command that
+fixes it), an absent mirror (reported as `SKIPPED`, and the summary then refuses to say "tables
+agree"), and `--write` reproducing the committed file byte-for-byte so that running it without a
+change is a no-op rather than a diff nobody reviews.
+
+#### 13.179.5 What this does not close
+
+Gate 3 asks for a false-share upper bound ≤5% on **workplace scope**, and that number still does not
+exist: 0/12 gives 24.2%, the persona corpus never fires the publishing rule (0/1,467 is a bound over
+a mechanism that did not run), and the one corpus that does fire it fires once. The parity audit
+makes the numbers that *do* exist trustworthy; it does not manufacture the missing one, and
+`§14.1` keeps gate 3 open for the same reason it was open this morning — the corpus, not the code.
+
+What it does change is the cost of the next measurement: a probe now imports the shipped table's
+counterpart that provably equals it, so a re-run of any of these probes describes the product, and a
+future drift fails a test instead of quietly rewriting a document.
+
+### 13.180 The false-share bound finally has a denominator: 211 publications, read one by one
+
+`§10.2` gate 3 has been open since it was written, and the reason is arithmetic rather than caution.
+The two numbers behind it could not carry a 5% bound:
+
+| corpus | what it gave | why it cannot bound a rate |
+| ------ | ------------ | -------------------------- |
+| 60 hand-labelled utterances | 0/12, upper **24.2%** | twelve private rows; one in four is compatible with zero observed |
+| 1,467 persona facts | 0/1,467, **NOT MEASURED** | the publishing rule never fired, so the bound is over a mechanism that did not run |
+| 3,000 identifier rows | leak 1/3,000 | the denominator is *facts*, not *publications*; the rule fired once, and that once was wrong |
+
+The quantity the gate is actually about is a conditional: **of the rows this layer publishes, how many
+carry something the policy calls private?** A publication is the only route by which anything leaves
+the device, so the denominator has to be publications. No corpus in this repository had more than a
+handful.
+
+#### 13.180.1 The corpus was already on disk
+
+Every benchmark artifact this project publishes contains the turns the memory arm was given: 363,191
+turns across six reports, **47,927 distinct user utterances** after keeping only the user's side and
+deduplicating exact text (`tools/extract-user-turns.py`). That is personal-assistant conversation —
+the distribution in which "sprint", "the board", "the project", "we decided" and "our team" actually
+occur, including the senses nobody writes down.
+
+Running the shipped table over it: **0.44% published** (211 of 47,927). That publication rate is
+itself a product number worth having — 99.56% of what a user says never leaves the device, and 211
+rows is a denominator a bound can stand on.
+
+#### 13.180.2 The criterion, and the procedure written down before the repair
+
+The gate's own criterion, unchanged: **Wilson 95% upper bound on the false-share rate ≤ 5%**, with
+**every** publication read — a census, not a sample.
+
+The adjudication procedure was written into `tools/triage-publications-adjudicated.json` before any
+rule was touched:
+
+> A row is private when it carries a circumstance the published policy names as private
+> (`docs/02` §5.3: credentials, regulated identifiers, money, body/health including exercise, family,
+> employment status, other people). Otherwise it is an organisational object a colleague could act
+> on, which is the shared rule's own policy sentence.
+
+Two properties make this hard to steer. First, every verdict belongs to a **policy class**, so a
+disagreement is an argument about the policy rather than about taste. Second, the repair may only
+**add private rules**: adding a private rule can move a row out of the publishing set (shrinking the
+denominator) but can never turn a private row into a published one, so the direction of every fix is
+fail-closed by construction. If the repair had instead loosened the publishing rule, the number would
+have been steerable and would not have been worth computing.
+
+#### 13.180.3 The reading, before and after
+
+| | publications | errors | false-share | Wilson 95% upper | verdict |
+| - | -----------: | -----: | ----------: | ---------------: | ------- |
+| **before** | 211 | **20** | 9.48% | **14.19%** | fails |
+| **after** | 189 | **0** | 0.00% | **1.99%** | **passes** |
+
+The twenty errors, by policy class, and what each one cost:
+
+| class | n | example | what the rule missed |
+| ----- | -: | ------- | -------------------- |
+| health | 15 | "I'm training for a sprint triathlon on November 1st" | `sprint` matched as a software cadence; **exercise** is a private class and the sport vocabulary was absent |
+| third-party | 3 | "I also got a gift card to Starbucks for our team lead, Rachel" | `team lead` was not in the role list, and `our` was not a determiner |
+| family | 1 | "a little jam session with my siblings" | `sibling` was not in the family list |
+| career-status | 1 | "I'd like to explore more about my career growth" | the rule only knew about *changes* of employment, not progression |
+
+The repair is six vocabulary additions, each justified by the policy sentence rather than by the row
+that revealed it: sport and training in `health` (including `time off work`, `resting at home`),
+`siblings` in `family`, `career growth|path|progression|advancement|move` in `career-status`, and
+`friends`/`team lead`/`mentor`/`buddy`/`our` in `third-party`.
+
+Two numbers move as the price, and both are reported rather than smoothed: coverage on the 60-row set
+**31.7% → 33.3%**, on the 1,467 persona facts **29.2% → 30.0%**. More rows become cards. That is the
+recoverable direction, and it is what "fail-closed" costs when it is actually paid.
+
+#### 13.180.4 What 1.99% means, and the three things it does not
+
+The claim it supports is narrow and, for once, quantitative: **on 47,927 real user utterances, the
+layer published 189 rows and a reader found none that the published policy calls private; 0/189 has
+a 95% upper bound of 1.99%.**
+
+What it does not support:
+
+1. **Not a second reader.** One reader, one pass, from the sentence and the policy, exactly like the
+   60-row set. The rows are committed, so a second reader can re-audit — their reading would *replace*
+   this rate, not confirm it. Inter-annotator agreement here is unmeasured and the honest label on
+   1.99% is "single-reader".
+2. **Not workplace email.** The corpus is personal-assistant conversation. It contains the trigger
+   words in their natural senses, which is what the sample could not do, but it is not a random
+   sample of an office, and the publication rate in an office would be higher.
+3. **Not every private thing.** Rows whose privacy carries no policy class — a hobby, a plan, a legal
+   case, an immigration status — are published and are *not* counted as errors, because the policy
+   names no class for them. Four such rows were seen and are named in the adjudication file as
+   `shared` with their reasons; they are the boundary of this number, not a part of it. If the policy
+   later names a class for personal plans, this census has to be re-read, and the number will go up.
+
+#### 13.180.5 The gate, and why it is now a script rather than a paragraph
+
+`tools/triage-publish-census.mjs` recomputes the two rates from a corpus and an adjudication file, and
+its exit code *is* the gate: 0 when the upper bound is at most 5% and every publication has been
+read, 1 otherwise. Six tests hold it: the committed reading's arithmetic (20/211 → 14.19%, 0/189 →
+1.99%), the completeness of the adjudication file (211 verdicts, 20 private, each with a class and a
+reason), a synthetic corpus that passes, one that fails at 10%, one with ten unread publications
+which reports **NOT MEASURED** instead of a smaller denominator, and a corpus with no publications at
+all, which is also not a pass.
+
+The last two are the same lesson `p06` taught about the persona corpus, now enforced in code: a bound
+over rows nobody read is not a bound, and a zero over a mechanism that never ran is not a zero.
+
+### 13.181 The coverage gain from 13.180 was not a gain: `gym`, `bike`, and a number that rises as the classifier gets worse
+
+13.180 reports, as the price of the repair, that coverage on the 60-row labelled set moved
+**31.7% → 33.3%** and on the 1,467 persona facts **29.2% → 30.0%**. Both of those readings were
+wrong, and the way they were wrong is worth more than the numbers were.
+
+#### 13.181.1 The twentieth row
+
+Adding the census vocabulary moved exactly one row of the 60-row set from `defer` to decided:
+
+> I have a production facility on Poland that can produce high end climbing walls, climbing wooden
+> volumes and holds, so I know exactly what a climbing or bouldering gym needs.
+
+Gold label: **shared**. A supplier describing their own business. The word that caught it was `gym`,
+which 13.180 added to `health` as sport vocabulary. So the classifier got *worse* — a shared
+sentence became private — and the coverage number got *better*, because coverage counts decisions and
+does not ask whether they were right.
+
+`bike` is the same defect one step quieter. On the 47,927-utterance corpus it matches "bike trails",
+"bike shops and models", and "I spent 300 dollars on a bike": nouns and purchases, not a user's
+exercise. Neither word is a fact about anybody's body, and neither is load-bearing for the census —
+every row that mentions a bike is caught by `triathlon`, `volleyball`, or the transfer to `money`.
+
+Both are removed from the shipped table and from the mirror.
+
+#### 13.181.2 What the numbers are, and what the census actually bought
+
+| reading | after 13.180's repair | `gym` and `bike` removed | delta |
+| ------- | --------------------: | -----------------------: | ----: |
+| 60-row coverage | 20 (33.3%) | **19 (31.7%)** | −1 |
+| persona coverage | 30.0% (27.7–32.4) | **29.5% (27.2–31.9)** | −0.5 pp |
+| publications over 47,927 | 189 | **189** | **0** |
+| false-share upper bound | 1.99% | **1.99%** | 0 |
+
+The last two rows are the point. Removing two wrong words returns coverage to the value it had before
+the census and leaves the measured false-share at zero. **The census bought no coverage at all.** It
+bought a denominator, and that is the only thing 13.180 ever claimed for it — a claim that only
+survives because the coverage number is now allowed to go back down.
+
+No row of the 60-row set is decided by any word the census added. That is checked by enumeration, not
+by assertion: every decided row in that set is matched by `health` (10), `org-knowledge` (4), `money`
+(4), or `family` (1), and none of those matches involves a word from the census list.
+
+#### 13.181.3 The A4 ablation finally has a denominator
+
+`p05` asserts that the `defer` default is load-bearing by moving one predicate — a deferral lands in
+the shared store instead of the private one — and requiring that the ablation leak. On the 60 rows it
+now passes for the wrong reason: widening `health` made the rules decide all twelve gold-private rows,
+so the ablation moves nothing and the old `leak > 0` assertion went red. That red was correct.
+
+Deleting the assertion would have been the easy repair. Instead the assertion now states the
+precondition (`deferredPrivate === 0 && leak === 0`), so that a rule which later stops deciding a
+private row flips the row back to red and the ablation has to be re-read. The claim itself moves to
+the corpus where deferrals exist:
+
+| policy | publications over 47,927 utterances | share |
+| ------ | ----------------------------------: | ----: |
+| shipped | 189 | 0.39% |
+| **`defer` → shared (A4)** | **40,822** | **85.18%** |
+
+Two hundred and sixteen times as many rows leave the device, from one predicate. `tools/triage-publish-census.mjs --defer-shared`
+computes it, prints no rate on purpose (most of those rows have never been read, and a rate over an
+unread denominator is the thing this tool refuses to print anywhere else), and exits 0 by
+construction because an ablation is a measurement and not a gate.
+
+#### 13.181.4 The three mechanical forms of the lesson
+
+1. **A number that rises when the rule gets worse is not a metric.** The assertion is back to
+   `19 / 31.7%`, and it sits beside private recall (12/12), false-share (0/12), and false-private
+   (4/8). Four numbers moving together is a change; one moving alone is a bug report.
+2. **The defect is a test block, not a comment.** `triage-rules.test.ts` gains `an activity is
+   private; the place that sells the equipment is not`, five cases: the supplier's sentence must
+   `defer`; buying equipment must `defer`; the same sentence must be private via `money` when it
+   carries an amount; `sprint triathlon` must reach `health` because `sprint` is a trigger in the
+   publishing rule; and `sprint review` must still be shared.
+3. **The ablation's silence is itself asserted.** See 13.181.3: the precondition is the assertion, so
+   silence cannot be mistaken for a pass.
+
+#### 13.181.5 What this does not change
+
+None of the four numbers 13.179 reconciled moves: `p04` still reads 0/12 and 31.7%, `p05` still reads
+0/12 end to end, `p06-policy-scale` still reports zero publications it can price, and the census still
+reads 189 publications with a 1.99% upper bound. Gate 3 of the execution plan stays closed, and the
+two limits on it — single reader, non-office corpus — stay attached to it.
+
+What changes is the reason the widening is defensible. It was never "coverage went up". It is that
+twenty rows a reader called private stopped being published, and the price was paid in cards rather
+than in loosened publishing.

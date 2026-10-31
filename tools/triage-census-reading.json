@@ -1,0 +1,62 @@
+{
+  "what": "The disclosure layer's false-share rate, censused on every publication it makes on real user speech.",
+  "why": "Gate 3 of the execution plan wants an upper bound of 5%. The hand-labelled sample gave 0/12 (upper 24.2%) and the persona corpus never fired the publishing rule, so neither could price the thing that actually leaks: a publication.",
+  "corpus": {
+    "source": "LongMemEval-S benchmark artifacts: user turns only, deduplicated by exact text (tools/extract-user-turns.py)",
+    "artifacts": [
+      "run-40751377644/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+      "run-40751394094/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+      "run-40792853362/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+      "run-40807829150/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+      "run-40824682542/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+      "run-40989420944/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json"
+    ],
+    "turnsScanned": 363191,
+    "utterances": 47927,
+    "sha256OfTurns": "42f78e374389c4986d33064a7299978f0e0327e2afc77c27ea3a91f6b162f8a3",
+    "regenerate": "python3 tools/extract-user-turns.py --glob '/workspace/run-*/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json' --out /tmp/turns.json"
+  },
+  "reading": {
+    "before": {
+      "published": 211,
+      "publicationRate": 0.0044,
+      "errors": 20,
+      "falseShare": 0.0948,
+      "falseShareUpper": 0.1419,
+      "byClass": {
+        "health": 15,
+        "family": 1,
+        "third-party": 3,
+        "career-status": 1
+      }
+    },
+    "after": {
+      "published": 189,
+      "publicationRate": 0.0039,
+      "errors": 0,
+      "falseShare": 0.0,
+      "falseShareUpper": 0.0199,
+      "byClass": {}
+    }
+  },
+  "whatChanged": [
+    "health: sport and training vocabulary (tennis, volleyball, basketball, triathlon, marathon, cycling, biking, swimming, hiking, hike, yoga, pilates, warm-up, pacing, training plan|schedule|routine|program), plus time off work / resting at home / bed rest",
+    "family: siblings",
+    "career-status: career growth|path|progression|advancement|move",
+    "third-party: friends in the plural, team lead, mentor, buddy, and `our` as a determiner",
+    "removed: `gym` and `bike`. Both were added by this census and both were wrong in the same way -- the noun, not the activity. `gym` caught a supplier's sentence about \"climbing walls ... a climbing or bouldering gym needs\" (labelled shared) and `bike` caught \"bike trails\", \"bike shops\" and \"I spent 300 dollars on a bike\". Removing them leaves this census at 189 publications and 0 private: no row here depended on either word, and the 60-row labelled corpus gains nothing from them either -- see docs/04 section 9.130 and the `an activity is private` block in triage-rules.test.ts"
+  ],
+  "criterion": "false-share upper bound (Wilson 95%) <= 5% over every publication, with every publication read. Met at 1.99%.",
+  "limits": [
+    "One reader (the agent), one pass, from the sentence and the published policy. No inter-annotator agreement; a second reader replaces this rate rather than confirming it.",
+    "The corpus is personal-assistant conversation, not workplace email: it contains the trigger words in a natural distribution but is not a random sample of an office.",
+    "Rows whose privacy comes from judgement with no policy class attached (a hobby, a plan, a legal case, immigration status) are not counted as errors here, because the published policy names no class for them. They are the boundary of this number, not a part of it."
+  ],
+  "reverifiedWithGymAndBikeRemoved": {
+    "published": 189,
+    "errors": 0,
+    "falseShare": 0.0,
+    "falseShareUpper": 0.0199,
+    "note": "Re-run after removing `gym` and `bike` from the health rule. The publication set is byte-identical to the `after` reading, so the adjudication above still stands: the two rows that left 191 -> 189 (indices 34599 and 43845) left earlier, when `hike` and `our` were added, not now."
+  }
+}

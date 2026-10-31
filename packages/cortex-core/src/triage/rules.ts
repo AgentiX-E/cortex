@@ -90,15 +90,27 @@ export const RULE_TABLE: readonly TriageRule[] = [
     // organisational ("charge your travel to our company account, number 40387…"). An account
     // number is a regulated identifier in the same sense a card number is, so it belongs here
     // rather than in a new rule.
+    //
+    // IBAN and its shape arrived after the third round, which published one row in three thousand:
+    // an audit sentence that named a "Home Loan Account with IBAN LV96…". The keyword form matters
+    // on its own because the identifier is sometimes elided in a report or a truncated capture, and
+    // a rule that can only fire on a 22-character string leaves that case unjudgeable.
     pattern:
-      /[\w.+-]+@[\w-]+\.[\w.]+|\+?\d[\d ()-]{7,}\d|\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b|\b\d+\s+[A-Z][a-z]+\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd)\b|\b(account|acct|card)\s*(number|no\.?|#)\s*[\d*]{4,}|\bapt\.?\s*\d+/i,
+      /[\w.+-]+@[\w-]+\.[\w.]+|\+?\d[\d ()-]{7,}\d|\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b|\b\d+\s+[A-Z][a-z]+\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd)\b|\b(account|acct|card)\s*(number|no\.?|#)\s*[\d*]{4,}|\bapt\.?\s*\d+|\biban\b|\b[A-Z]{2}\d{2}[ ]?(?:[A-Z0-9]{4}[ ]?){2,7}[A-Z0-9]{1,4}\b/i,
   },
   {
     id: 'money',
     scope: 'private',
     policy: 'amounts, income, budget, debt',
+    // A named loan is debt even when no number is present. This clause exists because of the one
+    // row a three-thousand-row corpus published: "…those from Home Loan Account with I", truncated
+    // before the account number, in a sentence whose only other signal was "we decided". The rule
+    // is written without the word "account" so that the truncated capture is still judgeable, and
+    // it therefore also catches "The Auto Loan Account segment performs well in our business model
+    // canvas" -- organisational speech that now becomes a card. That cost is accepted rather than
+    // tuned away: the card is recoverable, the account is not.
     pattern:
-      /(\$\s?\d|\b\d+\s?(dollars|usd|eur|gbp)\b|salary|income|mortgage|\brent\b|\bdebt\b|budget|\bspent\b|\bpaid\b|\bafford)/i,
+      /(\$\s?\d|\b\d+\s?(dollars|usd|eur|gbp)\b|salary|income|mortgage|\brent\b|\bdebt\b|budget|\bspent\b|\bpaid\b|\bafford|\b(home|auto|personal|student|car|business)[\s-]+loan\b)/i,
   },
   {
     id: 'health',
@@ -117,15 +129,26 @@ export const RULE_TABLE: readonly TriageRule[] = [
     // them. Measured before shipping, on three corpora at once: private recall 9/12 -> 12/12,
     // coverage 26.7% -> 31.7% on the 60 labelled rows, 0 changed rows in the 13 frozen leak
     // regressions, and 28.6% -> 29.2% on the 1,467 persona facts. Nothing else moved.
+    // `alt`/`ast`/`bmi` are the exception to "one case-insensitive alternation": as bare words they
+    // are ordinary English ("the alt attribute on the logo", "the ast node in our parser"), and a
+    // case-insensitive match made every one of them a health fact. The guard is that a lab value is
+    // a *value*: the abbreviation only counts when a number follows within a clause. Nothing
+    // leaked while this was wrong -- over-matching costs a card, which is the recoverable
+    // direction -- and that is precisely why a false-share audit could not find it. What found it
+    // was a parity check against the second implementation of this table in `cortex-docs`, which
+    // had `\bALT\b` where this had `alt`. The guard has one measured cost, from the 1,467-row
+    // persona corpus: "Shawn's liver enzyme levels (ALT/AST) have returned to normal" carries no
+    // value, so the abbreviation no longer qualifies -- the clinical phrase `liver enzyme` is
+    // therefore named explicitly, which is a statement about the policy rather than about the row.
     pattern:
-      /\b(diagnos\w*|doctor|dentist|therapy|therapist|medication|prescription|symptom|allerg\w*|surgery|clinic|mental health|anxiety|depress\w*)\b|\b(vegan|vegetarian|lacto|gluten[- ]free|diet)\b|\b(jog|walk(ing|s)?|workout|exercise|strength training|wake up at|weight|sugar|calorie|intake)\b|\b(blood pressure|heart rate|cholesterol|liver function|kidney function|alt|ast|bmi|mmhg|blood sugar|blood test|hours of sleep|sober|sobriety)\b/i,
+      /\b(diagnos\w*|doctor|dentist|therapy|therapist|medication|prescription|symptom|allerg\w*|surgery|clinic|mental health|anxiety|depress\w*)\b|\b(vegan|vegetarian|lacto|gluten[- ]free|diet)\b|\b(jog|walk(ing|s)?|workout|exercise|strength training|wake up at|weight|sugar|calorie|intake|tennis|volleyball|basketball|triathlon|marathon|cycling|biking|swimming|swim|hiking|hike|yoga|pilates|warm-?up|pacing)\b|\btraining (plan|schedule|routine|program)\b|\b(blood pressure|heart rate|cholesterol|liver function|liver enzyme|kidney function|mmhg|blood sugar|blood test|hours of sleep|sober|sobriety|resting at home|bed ?rest)\b|\btime off (work|from work)\b|\b(?:alt|ast|bmi)\b(?=[^.;!?\n]{0,20}\d)/i,
   },
   {
     id: 'family',
     scope: 'private',
     policy: 'family and relationship details',
     pattern:
-      /\b(my|our)\s+(wife|husband|partner|girlfriend|boyfriend|son|daughter|kid|kids|child|children|mother|father|mom|dad|parents|family|sister|brother)\b|\banniversary\b/i,
+      /\b(my|our)\s+(wife|husband|partner|girlfriend|boyfriend|son|daughter|kid|kids|child|children|mother|father|mom|dad|parents|family|sister|brother|siblings?)\b|\banniversary\b/i,
   },
   {
     id: 'career-status',
@@ -136,14 +159,14 @@ export const RULE_TABLE: readonly TriageRule[] = [
     // mislabelled stayed private for a different reason, so the metric never moved -- only the
     // reason attached to it did, which is why the fix is tested by rule id and not by outcome.
     pattern:
-      /\b(promotion|promoted|pay rise|pay raise|resigned|quit|fired|laid off|interview at|new job)\b/i,
+      /\b(promotion|promoted|pay rise|pay raise|resigned|quit|fired|laid off|interview at|new job|career (growth|path|progression|advancement|move))\b/i,
   },
   {
     id: 'third-party',
     scope: 'private',
     policy: "other people's information is not the user's to publish",
     pattern:
-      /\b(my|a|the)\s+(colleague|colleagues|boss|manager|teammate|co-?worker|friend|neighbou?r|landlord)\b/i,
+      /\b(my|our|a|the)\s+(colleague|colleagues|boss|manager|teammate|co-?worker|friend|friends|neighbou?r|landlord|team lead|mentor|buddy)\b/i,
   },
   {
     id: 'org-knowledge',

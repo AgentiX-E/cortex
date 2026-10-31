@@ -85,6 +85,11 @@ const TRAPS: { text: string; notRule: string; why: string }[] = [
     notRule: 'org-knowledge',
     why: 'a personal to-do that happens at work is not an organisational object',
   },
+  {
+    text: 'I updated the alt text on the hero image and set the alt attribute on the logo.',
+    notRule: 'health',
+    why: '`alt` is a liver enzyme only when a value follows it; case-insensitive matching alone made every alt attribute a health fact',
+  },
 ];
 
 describe('the table as a table', () => {
@@ -176,6 +181,124 @@ describe('each rule can fire', () => {
   });
 });
 
+describe('a lab value is a measurement, and the same letters are often not', () => {
+  // The defect: `alt`/`ast`/`bmi` sat inside a case-insensitive alternation with no requirement on
+  // what followed, so "the alt attribute on the logo" was a health fact. Nothing leaked -- the
+  // error is in the safe direction -- and that is exactly why it survived: a false-private row
+  // costs a card, and no false-share audit can see it. What found it was a **parity check against
+  // a second implementation of the same table**, which had `\bALT\b` where this had `alt`.
+  it.each(['my ALT came back at 62', 'the blood test put my AST at 40', 'my BMI is 31'])(
+    'keeps %s private',
+    (text) => {
+      expect(classify(text).rule).toBe('health');
+    },
+  );
+
+  it.each([
+    'the ast node in our parser is rewritten',
+    'my bmi tracker app finally shipped',
+    'I updated the alt text on the hero image',
+  ])('does not make %s a health fact', (text) => {
+    expect(classify(text).rule).not.toBe('health');
+  });
+
+  it('keeps a clinical phrase private when no value follows it', () => {
+    // The guard's one measured cost, from the persona corpus: the abbreviation has no number after
+    // it, so the phrase it belongs to is named in the table instead. This row is what turned
+    // coverage 29.2% into 29.1% before `liver enzyme` was added -- a real fact deferred to a card,
+    // which is the recoverable direction but not a free one.
+    expect(classify("Shawn's liver enzyme levels (ALT/AST) have returned to normal.").rule).toBe(
+      'health',
+    );
+  });
+});
+
+describe('the financial account a corpus published exactly once', () => {
+  // POC-6 published one row in three thousand: a meeting sentence about auditing transactions that
+  // mentioned a "Home Loan Account" and an IBAN. `strong-pii` wanted `account number`, the `money`
+  // rule wanted an amount, and `org-knowledge` wanted nothing more than the word "we decided".
+  const published =
+    'In our latest Quality Assurance meeting, we decided to conduct an audit of all our ' +
+    'transactions, paying special attention to those from Home Loan Account with IBAN ' +
+    'LV96INJD0N7MZO8346877.';
+
+  it('routes the sentence private, by the identifier it contains', () => {
+    const decision = classify(published);
+    expect(decision.scope).toBe('private');
+    expect(decision.rule).toBe('strong-pii');
+  });
+
+  it('routes it private even with the identifier cut off, which is how the report recorded it', () => {
+    // The report truncated at 160 characters, so the fixture in this repository ends at "Home Loan
+    // A". A rule that needed the IBAN would have left the recorded row unexplained, and the row
+    // would have stayed in the "cannot be judged" column forever.
+    const truncated =
+      'In our latest Quality Assurance meeting, we decided to conduct an audit of all our transactions, paying special attention to those from Home Loan A';
+    expect(classify(truncated)).toMatchObject({ scope: 'private', rule: 'money' });
+  });
+
+  it('accepts the false-private it costs on a business-model sentence', () => {
+    // "The Auto Loan Account segment performs well in our business model canvas" is organisational
+    // speech, and it now becomes a card. That is the trade this table makes everywhere: an
+    // unnecessary card is recoverable, a published account is not.
+    expect(
+      classify('The Auto Loan Account segment performs well in our business model canvas.'),
+    ).toMatchObject({ scope: 'private' });
+  });
+});
+
+describe('an activity is private; the place that sells the equipment is not', () => {
+  // The census added sport vocabulary to `health` and got this wrong twice, in the same way both
+  // times: it added the *noun* alongside the activity. `gym` caught a supplier's sentence about
+  // "climbing walls … a climbing or bouldering gym needs", labelled shared, and `bike` caught
+  // "bike trails" and "bike shops". Neither word is a fact about the user's body, and both raised
+  // the coverage count while making the classifier worse -- so this block is the disagreement
+  // written down, not a tidied example. See docs/04 section 9.130.
+  it('leaves a supplier describing their own business undecided rather than calling it health', () => {
+    const supplier =
+      'I have a production facility on Poland that can produce high end climbing walls, climbing ' +
+      'wooden volumes and holds, so I know exactly what a climbing or bouldering gym needs.';
+    expect(classify(supplier)).toMatchObject({ scope: 'defer', rule: null });
+  });
+
+  it('leaves shopping for equipment undecided, because a noun is not a workout', () => {
+    expect(
+      classify('I think I’ll check out TrailLink to find some bike trails near me.'),
+    ).toMatchObject({ scope: 'defer' });
+    expect(classify('I’ll definitely check out those bike shops and models.')).toMatchObject({
+      scope: 'defer',
+    });
+  });
+
+  it('still calls the same sentence private when the reason is the purchase, not the exercise', () => {
+    // The row above is not safe by being deferred -- it carries an amount and it is somebody's
+    // money. It must land private, and on the rule that is actually true of it.
+    expect(classify('I spent 300 dollars on a bike and I moved to Berlin in March.')).toMatchObject(
+      {
+        scope: 'private',
+        rule: 'money',
+      },
+    );
+  });
+
+  it('routes the activity itself private, and beats the shared rule that mentions it', () => {
+    // `sprint` is in `org-knowledge`, so a sprint triathlon is a sentence with a shared trigger and
+    // a private fact in it. That collision is what got 15 rows published in the census; ordering
+    // decides it, and this is the assertion that keeps the ordering real for these words.
+    expect(classify('I am training for a sprint triathlon on April 16th.')).toMatchObject({
+      scope: 'private',
+      rule: 'health',
+    });
+  });
+
+  it('keeps an ordinary sprint review organisational', () => {
+    expect(classify('Our sprint review moved to Thursday so the client can join.')).toMatchObject({
+      scope: 'shared',
+      rule: 'org-knowledge',
+    });
+  });
+});
+
 describe('ordering is the fail-closed argument, tested across the whole table', () => {
   // For every private rule: a sentence that fires it, with an organisational tail appended. The
   // tail must actually match the shared rule -- otherwise the test would pass on sentences where
@@ -223,9 +346,23 @@ describe('the sixty labelled utterances', () => {
 
   it('decides 19 of 60, which is 31.7% -- the rule layer is a minority path', () => {
     // Was 16 (26.7%) until the card queue's first measurement found three ordinary exercise and
-    // diet sentences that no rule caught. The widening is `walk|sugar|calorie|intake` in `health`,
-    // justified by the policy and measured on three corpora before it shipped -- see the comment in
-    // `rules.ts` and docs/04 section 9.9.
+    // diet sentences that no rule caught; 19 (31.7%) after `walk|sugar|calorie|intake`.
+    //
+    // It read 20 (33.3%) for one afternoon, and that twentieth row is the reason this comment is
+    // long. The publication census (docs/04 section 9.130) widened the health vocabulary by sport
+    // -- `tennis|triathlon|marathon|gym|…` -- and the count went up, which looked like the widening
+    // paying for itself on a corpus it had not been fitted to. It was not. The row that moved was
+    // "I have a production facility on Poland that can produce high end climbing walls … a climbing
+    // or bouldering gym needs", labelled *shared*: a supplier describing their own business. `gym`
+    // made it a health fact, the count rose, and nothing about the classifier had improved. `bike`
+    // was the same defect one step quieter -- "bike trails", "bike shops", "I spent 300 dollars on
+    // a bike" are purchases and nouns, not a user's exercise -- so both words are gone.
+    //
+    // With them gone the number is back to 19, and that is the honest finding: no row of this
+    // labelled set is decided by any word the census added. The widening was bought by the 47,927
+    // real utterances it was measured on (false share 9.48% -> 0 of 189), not by this set, and it
+    // bought zero coverage here. A count that rises when a rule gets worse is not a metric; it is
+    // why the assertion is paired with the private-recall and false-share assertions below.
     const decided = classified.filter(({ decision }) => decision.scope !== 'defer');
     expect(decided).toHaveLength(19);
     expect(((decided.length / rows.length) * 100).toFixed(1)).toBe('31.7');
