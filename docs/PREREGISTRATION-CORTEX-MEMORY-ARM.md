@@ -22024,3 +22024,103 @@ Because it is not one of the two states. `disabled` and `enabled` were measured;
 disabled base** was not, and it is the only state a product can ship: it is the one that keeps the four routes that lost
 nothing on the reader every archived number was produced with. A run of `enabled` again would be the third reading of the
 same state, and §13.198.4 refuses it for that reason.
+
+### 13.200 The composite arm ran at the registered budget, which is why it cannot be read
+
+`41203245999` completed `success` in **2h04m** and its artifact says:
+
+```
+Memory arm config: maxTurnChars=400, maxPromptChars=48000, turnCutMarker=none, …
+Evidence ask: operands+operand-gap
+Evidence ask reached: 4 route(s) — multi-session, flat, temporal, abstention
+```
+
+Its control, `41185512391`, says `maxPromptChars=96000`, `turnCutMarker=ellipsis`, `ask=operands`. **Two fields differ
+between the run and the control the prediction was pinned to**, so §13.194.4's six readings are **not read**. They are
+not falsified either: nothing here tests them.
+
+This is the `P1-budget-drift` defect (§13.192.7.3) materialising as a lost run rather than as a bookkeeping note. The
+dispatch table sends `48000` and a bare `400`, because that is what §10.3 registers; every arm run since `41144910162`
+has overridden both with `--set`. The composite dispatch did not, so it ran the configuration the document names — which
+is, by the document's own account, **not** the configuration the campaign has been reading.
+
+#### 13.200.1 The four arms, side by side, which is the reading this run does support
+
+Four 500-question, four-repetition artifacts now differ in exactly one of three fields each. Per repetition, feature
+side, from `tools/paired-flip.mjs`:
+
+| run | ask | room | marker | `ABS` | `IE` | `KU` | `MR` | `TR` | roster mean |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | ---: |
+| `41159983913` | `operands` | 96,000 | none | 29 ×4 | 141/143/144/144 (**143.00**) | 60/59/61/61 (**60.25**) | 84/86/87/92 (**87.25**) | 105/100/104/101 (**102.50**) | **422.00** |
+| `41185512391` | `operands` | 96,000 | `ellipsis` | 29 ×4 | 143/143/145/146 (**144.25**) | 61 ×4 (**61.00**) | 91/90/90/88 (**89.75**) | 102/106/103/106 (**104.25**) | **428.25** |
+| `41188431321` | `operand-gap` | 96,000 | `ellipsis` | **30 ×4** | 142/141/142/140 (**141.25**) | 61/61/62/62 (**61.50**) | 42/41/40/41 (**41.00**) | 91/93/93/93 (**92.50**) | **366.25** |
+| `41203245999` | `operands+operand-gap` | **48,000** | **none** | **30 ×4** | 143/140/142/143 (**142.00**) | 62/64/62/63 (**62.75**) | 92/82/86/88 (**87.00**) | 98/100/100/101 (**99.75**) | **421.50** |
+
+Three readings come out of this table and none of them is §13.194's.
+
+**1. The abstention gate is real at both budgets.** `ABS` reads **30/30/30/30** in the two runs whose ask carries
+`operand-gap` and **29/29/29/29** in the two whose ask does not. The marker differs across those pairs, the room
+differs across them, and the abstention count does not: the rule that converts fourteen of the fifteen declines into
+`30/30` is doing the work, not the room. This is the one prediction of §13.194.4 that the run supports, and it
+supports it against a changed budget rather than within one.
+
+**2. Naming `operand-gap` for every route costs 62 questions, and the composite recovers all but ~7 of them.** Rows 2
+and 3 are the same run configuration with one value changed: `428.25 → 366.25`. Row 4 is the composition, at a *smaller*
+room and *without* the marker, and it reads `421.50`. The gap to row 2 (`−6.75`) is the same order as the two effects
+that separate those rows and is not attributable without the re-run below.
+
+**3. The `ellipsis` marker is worth about six questions and has never been measured.** Rows 1 and 2 differ in nothing
+else, and read `422.00 → 428.25` (**+6.25**), with per-run rosters `419/417/425/427 → 426/429/428/430`. The two
+distributions overlap on one value, so this is a **candidate finding, not an established one** — §13.175.5 priced two
+dispatches of one payload at ±2.2 points, and this difference is 1.25. It is recorded because §13.188 adopted the
+marker on a mechanism argument and this is the first 500-question pair that could price it at all.
+
+#### 13.200.2 What the composite run does establish on its own
+
+- **The ask reaches the four routes it was designed for at 500 questions**, and `promptContract`,
+  `relevanceSignal`, `relevanceTopK`, `reviewPass` and the reader are byte-identical to the control's. The wiring half
+  of §13.193.5 is confirmed at full N, not only in the unit test.
+- **`bareRetry` reads 90 attempted, 90 answered, 100% converted**, against the control's **111 / 111 / 100%**. The
+  conversion rate is therefore not the quantity that moves — it is 100% whenever the retry fires — and the reading
+  that matters is the count of bare declines, which fell 111 → 90. That is consistent with §13.196 and is the first
+  500-question confirmation of it.
+- **Cost**: 5,624 calls, 31,326,218 prompt tokens, **80.40%** of them served from the prefix cache; the feature side
+  spends 28,404,559 prompt tokens across 2,090 calls. This is the number the next dispatch is compared against.
+
+#### 13.200.3 Registered: re-dispatch the composite at the control's configuration
+
+The prediction is not restated; it is the one §13.194.4 already fixed. What changes is that the run must carry the two
+overrides its control carried, and the record must say so before it runs:
+
+```
+python3 tools/dispatch-cortex-memory-ab.py \
+  --set cortex_memory_ask=operands+operand-gap \
+  --set cortex_memory_max_prompt_chars=96000 \
+  --set cortex_memory_max_turn_chars=400:ellipsis
+```
+
+| field | control `41185512391` | this dispatch |
+| --- | --- | --- |
+| `cortex_memory_ask` | `operands` | **`operands+operand-gap`** |
+| `cortex_memory_max_prompt_chars` | `96000` | `96000` |
+| `cortex_memory_max_turn_chars` | `400:ellipsis` | `400:ellipsis` |
+| `limit` / `ablation_runs` | 0 (= 500) / 4 | same |
+| everything else | dispatch table | identical |
+
+The six readings and their failure conditions are §13.194.4's, unchanged: `ABS` 30 in all four runs; `MR` in
+`[87, 92]`; `TR` in `[99, 108]` and `IE` in `[140, 148]`; `KU` in `{61, 62}`; roster per run = the control's plus one
+(`427, 430, 429, 431`, mean 429.25, band `[425, 433]`); and the mandatory `window-pair` digest check (`MR` 121/121,
+`IE` 150/150, `TR` 127/127, `KU` 72/72 equal; `ABS` 30/30 different).
+
+#### 13.200.4 The budget question this exposed, and the decision not taken here
+
+Two facts now sit side by side and neither is a reading: the registration says **48,000 with no marker**, and the last
+five arm runs say **96,000 with `ellipsis`**. §13.118.6 rejected 96,000 as a wash and §13.177.5 declined to adopt it
+after a six-criterion run in which accuracy and damage failed; §13.139 withdrew part of §13.118's mechanism. So the
+campaign is running a configuration its own document rejected, and every cross-run comparison it makes inherits that.
+
+**No adoption is recorded here.** What this section does is stop the drift from being invisible: a dispatch that omits
+the overrides is now known to produce a run that cannot be paired with anything, and §13.192.7.3's first consequence
+(*"an override should be recorded in §10.3's own list"*) is therefore not bookkeeping. Resolving it requires either
+adopting 96,000 + `ellipsis` by registration or re-baselining the arm at 48,000, and both are product decisions with a
+cost measured in runs. It is carried as an open item rather than decided in a section about the ask.
