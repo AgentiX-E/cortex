@@ -45,6 +45,7 @@ Usage:
     python3 tools/readout-arm-run.py --lists path/to/report.json
     python3 tools/readout-arm-run.py --reach path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
+    python3 tools/readout-arm-run.py --config control.json --treatment cortex_memory_ask run.json
 """
 
 from __future__ import annotations
@@ -2609,6 +2610,223 @@ def reach_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), len(by_capability)
 
 
+# The configuration block's fields that are not configuration.
+#
+# `voteCounts` is the run's own tally of how many times each verdict came back (§13.104). It lives in
+# `memoryArmConfig` because that is where the arm writes everything it wants an artifact to carry, and
+# it differs between any two runs that voted -- so comparing it would fail every legitimately paired
+# self-consistency run, which is the shape of check that teaches a reader to skip the output.
+RUNTIME_CONFIG_FIELDS = frozenset({'voteCounts'})
+
+# What the dispatch calls a field, and the artifact field or fields it writes.
+#
+# Most entries are one-to-one. The ones that are not are why the table exists:
+#
+#   * `cortex_memory_max_turn_chars=400:ellipsis` is ONE input the artifact records as `maxTurnChars`
+#     400 and `turnCutMarker` "ellipsis" (§13.188.3), so a registration naming the dispatch value has
+#     named both fields. A tool comparing artifact fields alone would call every marker run a
+#     two-field pair and refuse it.
+#   * `cortex_memory_ask` writes `ask` and `askRoutes`, because the second is what the arm computed
+#     the first to reach (§13.200.2). It has never had a dispatch input of its own, and requiring a
+#     writer to declare it separately would only teach them to paste it in. The artifact path `ask` is
+#     listed for the same reason and not out of symmetry: `askRoutes` is a *function* of `ask`, so
+#     there is no configuration in which one moved and the other did not.
+#   * `thinking` writes `reader.thinking` and, from §13.198, `reader.thinkingRoutes` — one dispatch
+#     value, two artifact fields, the same shape as the cut marker. Left one-to-one, every route-scoped
+#     reader run would read as an undeclared pair.
+#   * `turnCutMarker` is deliberately NOT reachable from the artifact path `maxTurnChars`. It rides the
+#     same input string, but it is a second switch rather than a value derived from the width, so a
+#     writer who declares only the width has declared only the width.
+#   * `model` lands at `reader.model` rather than at a top-level key (§13.192.6).
+DISPATCH_FIELD_ALIASES = {
+    'ask': ('ask', 'askRoutes'),
+    'cortex_memory_ask': ('ask', 'askRoutes'),
+    'cortex_memory_prompt_contract': ('promptContract',),
+    'cortex_memory_relevance': ('relevanceSignal',),
+    'cortex_memory_relevance_top_k': ('relevanceTopK',),
+    'cortex_memory_relevance_units': ('relevanceUnits',),
+    'cortex_memory_search_unit': ('relevanceUnits',),
+    'cortex_memory_max_prompt_chars': ('maxPromptChars',),
+    'cortex_memory_max_turn_chars': ('maxTurnChars', 'turnCutMarker'),
+    'cortex_memory_max_turn_chars_routes': ('maxTurnCharsRoutes',),
+    'cortex_memory_evidence_roles': ('evidenceRoles',),
+    'cortex_memory_evidence_roles_routes': ('evidenceRolesRoutes',),
+    'cortex_memory_review_pass': ('reviewPass',),
+    'cortex_memory_rerank': ('rerank',),
+    'cortex_memory_query_expansion': ('queryExpansion',),
+    'cortex_memory_self_consistency': ('selfConsistency',),
+    'cortex_memory_threshold': ('threshold',),
+    'cortex_memory_retrieval_threshold': ('retrievalThreshold',),
+    'cortex_memory_source_trust': ('sourceTrust',),
+    'model': ('reader.model',),
+    'thinking': ('reader.thinking', 'reader.thinkingRoutes'),
+    'cortex_memory_thinking': ('reader.thinking', 'reader.thinkingRoutes'),
+}
+
+ABSENT = '<-absent->'
+
+
+def _arm_config(report: dict, side: str) -> dict:
+    """The `memoryArmConfig` block, or a refusal.
+
+    A missing block is not an empty configuration: two artifacts that carry none agree about every
+    field they have, and printing that agreement is the one answer this tool must never give.
+    """
+    config = report.get('memoryArmConfig')
+    if not isinstance(config, dict) or not config:
+        raise SystemExit(
+            f'{side}: no memoryArmConfig block, so there is nothing to compare. '
+            f'Keys present: {sorted(report)}'
+        )
+    return config
+
+
+def _flatten_config(config: dict, prefix: str = '') -> tuple[dict, dict]:
+    """`config` as dotted paths, split into the configuration and the runtime census.
+
+    Nested dicts are paths rather than values so that a difference names `reader.model` instead of
+    printing two five-key dicts and leaving the reader to diff them by eye -- which is the work this
+    tool exists to do.
+    """
+    configuration: dict = {}
+    runtime: dict = {}
+    for key, value in config.items():
+        path = f'{prefix}{key}'
+        if key in RUNTIME_CONFIG_FIELDS and not prefix:
+            runtime[path] = value
+        elif isinstance(value, dict) and value:
+            nested_config, nested_runtime = _flatten_config(value, f'{path}.')
+            configuration.update(nested_config)
+            runtime.update(nested_runtime)
+        else:
+            configuration[path] = value
+    return configuration, runtime
+
+
+def _value_text(value: object) -> str:
+    return ABSENT if value is ABSENT else json.dumps(value)
+
+
+def _claimed_paths(treatment: list[str], known: set[str]) -> tuple[list[str], list[str]]:
+    """The artifact paths `--treatment` claims, and the names in it that claim nothing.
+
+    A treatment name that resolves to nothing would license a pair while naming no field, which is the
+    `--set` defect's shape applied to the declaration instead of the dispatch: the record would
+    describe an intention that never reached the comparison. So it is refused rather than ignored.
+    """
+    claimed: list[str] = []
+    unknown: list[str] = []
+    for name in treatment:
+        aliases = DISPATCH_FIELD_ALIASES.get(name)
+        if aliases is not None:
+            claimed.extend(aliases)
+        elif name in known or any(path.startswith(f'{name}.') for path in known):
+            claimed.append(name)
+        else:
+            unknown.append(name)
+    return claimed, unknown
+
+
+def _covers(claim: str, path: str) -> bool:
+    return path == claim or path.startswith(f'{claim}.')
+
+
+def diff_section(
+    control_report: dict, run_report: dict, treatment: list[str]
+) -> tuple[str, int]:
+    """The two artifacts' configurations side by side, and how many differences were not declared.
+
+    ## Why this is a gate rather than a report
+
+    `41203245999` ran the composite ask at the *registered* budget while its control ran at the one
+    the campaign had been using, so two fields differed and the six readings pinned to that control
+    were unreadable (§13.200). Nothing errored: the run was `success`, the artifact was complete, and
+    the difference was visible to exactly the reader who thought to look.
+
+    The gate makes looking mandatory. A pair is licensed when every differing field is one the caller
+    declared as the treatment; anything else is printed with `control -> run` and the pair is refused,
+    because a reading taken across an undeclared field measures that field and the treatment together
+    and cannot separate them after the fact.
+
+    ## What is deliberately not a difference
+
+    `voteCounts` is a census, reported under its own heading (§13.104). An **absent** field prints as
+    `<-absent->` and never equals `null` by silence, so a run that stopped sending a key is visible.
+    And a declared field that did not move is not a failure -- it is printed, because a registration
+    that names a field the run did not move describes an intention rather than what ran.
+    """
+    control = _arm_config(control_report, 'control')
+    run = _arm_config(run_report, 'run')
+    control_config, control_runtime = _flatten_config(control)
+    run_config, run_runtime = _flatten_config(run)
+
+    known = set(control_config) | set(run_config)
+    claimed, unknown = _claimed_paths(treatment, known)
+    if unknown:
+        raise SystemExit(
+            f'--treatment names {unknown}, which is neither a dispatch input this tool knows nor a '
+            f'field of either artifact. A treatment that resolves to nothing licenses the pair while '
+            f'naming no field, so it is refused. Known paths: {sorted(known)}'
+        )
+
+    differences = [
+        (path, control_config.get(path, ABSENT), run_config.get(path, ABSENT))
+        for path in sorted(known)
+        if _value_text(control_config.get(path, ABSENT)) != _value_text(run_config.get(path, ABSENT))
+    ]
+    runtime_paths = sorted(set(control_runtime) | set(run_runtime))
+
+    declared = [(path, left, right) for path, left, right in differences if any(_covers(c, path) for c in claimed)]
+    undeclared = [(path, left, right) for path, left, right in differences if not any(_covers(c, path) for c in claimed)]
+    idle = [name for name in claimed if not any(_covers(name, path) for path, _, _ in differences)]
+
+    lines: list[str] = []
+    lines.append(f'  same     {len(known) - len(differences)} field(s)')
+    lines.append(f'  differ   {len(differences)} field(s):')
+    for path, left, right in differences:
+        mark = 'declared  ' if any(_covers(c, path) for c in claimed) else 'UNDECLARED'
+        lines.append(f'    {mark}  {path}: {_value_text(left)} -> {_value_text(right)}')
+
+    for type_name, block in (('control', control_runtime), ('run', run_runtime)):
+        for path, value in sorted(block.items()):
+            lines.append(f'    runtime   {path} ({type_name}): {_value_text(value)}')
+    if runtime_paths:
+        lines.append(
+            f'  runtime: {len(runtime_paths)} field(s) differ or are carried here and they are not '
+            'configuration -- a census of the run\'s own answers, not a value that was dispatched'
+        )
+
+    if idle:
+        lines.append(
+            f'  declared but unchanged: {sorted(idle)} -- the registration names a field this pair '
+            'did not move, so what ran is not what the registration describes'
+        )
+
+    if not differences:
+        lines.append(
+            '  verdict: 0 field(s) differ — this pair is the same configuration twice, so any movement '
+            'between the two runs is the same-prompt noise floor (§13.175.5) rather than a treatment'
+        )
+        return '\n'.join(lines), 0
+
+    if undeclared:
+        lines.append(
+            f'  verdict: {len(differences)} field(s) differ, {len(declared)} declared by --treatment, '
+            f'{len(undeclared)} undeclared: {[path for path, _, _ in undeclared]}'
+        )
+        lines.append(
+            '  readings from this pair are not attributable: each undeclared field moved with the '
+            'treatment and no arithmetic over the two artifacts separates them afterwards'
+        )
+        return '\n'.join(lines), len(undeclared)
+
+    lines.append(
+        f'  verdict: {len(differences)} field(s) differ and every one of them is declared — the pair '
+        'is a reading, and what it measures is the declared set and nothing else'
+    )
+    return '\n'.join(lines), 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -2702,6 +2920,25 @@ def main(argv: list[str]) -> int:
         type=Path,
         metavar='BEFORE',
         help='print the state transitions from the BEFORE report to this one',
+    )
+    parser.add_argument(
+        '--config',
+        type=Path,
+        metavar='CONTROL',
+        help=(
+            'diff this report\'s memoryArmConfig against the CONTROL report\'s and exit non-zero '
+            'when any differing field is not named by --treatment'
+        ),
+    )
+    parser.add_argument(
+        '--treatment',
+        default='',
+        metavar='FIELDS',
+        help=(
+            'comma-separated fields --config may move without refusing the pair; accepts artifact '
+            f'paths (`reader.model`) and dispatch names (`model`), known names: '
+            f'{", ".join(sorted(DISPATCH_FIELD_ALIASES))}'
+        ),
     )
     parser.add_argument(
         '--audit',
@@ -2821,6 +3058,20 @@ def main(argv: list[str]) -> int:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2
         return 0
+
+    if args.config:
+        try:
+            control = json.loads(args.config.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f'{args.config}: {error}', file=sys.stderr)
+            return 2
+        treatment = [name.strip() for name in args.treatment.split(',') if name.strip()]
+        print(f'control: {args.config}')
+        print(f'run:     {args.report}')
+        print(f'treatment: {treatment if treatment else "none declared"}')
+        section, failures = diff_section(control, report, treatment)
+        print(section)
+        return 1 if failures else 0
 
     if args.paired:
         try:

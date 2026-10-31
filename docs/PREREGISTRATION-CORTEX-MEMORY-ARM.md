@@ -710,6 +710,14 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   another package's constant. At 48,000 the window holds **144 turns on MR and 151 on TR** against 68 and 74,
   delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403**; the run is `39260774611` and
   §13.82.3 states what its two failed predictions do to the step hypothesis.
+  **As-of record, added by §13.202.6 on §13.192.7.3's request:** the arm has **not** been running this value.
+  Every 500-question run from `41144910162` onwards sends `--set cortex_memory_max_prompt_chars=96000` and
+  `--set cortex_memory_max_turn_chars=400:ellipsis`, and neither override was ever registered as an adoption —
+  96,000 was **declined** on a one-variable pair by §13.118.6, and `ellipsis` was registered as a treatment by
+  §13.188 whose result has never been adopted. So this line is the *adopted* configuration and those runs are
+  experiments whose controls sit at 96,000; a run that intends 96,000 must name itself in its own registration and
+  carry `readout-arm-run.py --config --treatment cortex_memory_max_prompt_chars` as the check that it moved only
+  the field it meant to move.
 - `evidenceRoles: user` — **registered by §13.83 at the identity and adopted at `user` by §13.84, on mechanism
   and mean; §13.87 corrected the magnitude.** The filter exists because §13.82 measured the composition rather
   than the size of the 48,000-character room: 51.9% of multi-session's rendered characters were assistant turns,
@@ -22115,8 +22123,9 @@ The six readings and their failure conditions are §13.194.4's, unchanged: `ABS`
 #### 13.200.4 The budget question this exposed, and the decision not taken here
 
 Two facts now sit side by side and neither is a reading: the registration says **48,000 with no marker**, and the last
-five arm runs say **96,000 with `ellipsis`**. §13.118.6 rejected 96,000 as a wash and §13.177.5 declined to adopt it
-after a six-criterion run in which accuracy and damage failed; §13.139 withdrew part of §13.118's mechanism. So the
+five arm runs say **96,000 with `ellipsis`**. §13.118.6 rejected 96,000 as a wash — a citation this section got
+**wrong** on first writing, naming §13.177.5, which is `admission.ts`'s turn-id derivation and says nothing about the
+budget; §13.202.1 corrects it — and §13.139 withdrew part of §13.118's mechanism. So the
 campaign is running a configuration its own document rejected, and every cross-run comparison it makes inherits that.
 
 **No adoption is recorded here.** What this section does is stop the drift from being invisible: a dispatch that omits
@@ -22124,6 +22133,12 @@ the overrides is now known to produce a run that cannot be paired with anything,
 (*"an override should be recorded in §10.3's own list"*) is therefore not bookkeeping. Resolving it requires either
 adopting 96,000 + `ellipsis` by registration or re-baselining the arm at 48,000, and both are product decisions with a
 cost measured in runs. It is carried as an open item rather than decided in a section about the ask.
+
+**Resolved by §13.202, which spends no run.** The question was already answered: `40698867439` against
+`40722772896` is the one-variable room pair, §13.118.6 read it and declined 96,000, so 48,000 is and remains the
+adopted budget. What §13.200.4 found is not an open question but a drift from a decided value, and §13.202.6 records
+the drift in §10.3's own list, withdraws the re-run this section implied as already paid, and adds the instrument
+that makes the next one visible before it costs two hours.
 
 ### 13.201 The knob reads 199/220, and every flip it caused is on a route the map names
 
@@ -22210,3 +22225,181 @@ known in tokens.
 configuration, and it needs the budget question of §13.200.4 settled first — a 220-question, one-repetition run cannot
 distinguish a +3 from a +0. And §13.197.2's trade is now *priced* rather than removed: the knob converts "TR +4 for
 IE −16" into "TR +3 for IE −2", which is what a route-scoped switch is for, and it is still a trade.
+
+**The budget question is settled by §13.202, and it unblocks this dispatch without naming a new one.** 48,000 is the
+adopted budget (§13.118.6) and 96,000 is an experiment value, so the 500-question reader reading runs at **96,000 +
+`ellipsis` pinned to `41185512391`** — the room is identical on both sides, which is what a reader experiment needs, and
+under §13.202.6's rule it registers as an experiment that names its control rather than as a claim about the shipping
+configuration. The `--config --treatment thinking` check comes before the numbers.
+
+### 13.202 The room was decided before this section; what is new is an instrument, a bill decomposition, and a wrong citation
+
+**Registered 2026-10-31, as an instrument and a correction, not as a dispatch.** Instrument:
+`tools/readout-arm-run.py --config` (`diff_section`, `DISPATCH_FIELD_ALIASES`, `RUNTIME_CONFIG_FIELDS`),
+`tools/__tests__/test_config_diff.py` (17). The measurement reads two artifacts already on disk —
+`41203245999` (`maxPromptChars 48000`, `turnCutMarker none`, `ask operands+operand-gap`, mean **421.50**) and
+`41185512391` (`96000`, `ellipsis`, `operands`, mean **428.25**) — and spends no run.
+
+#### 13.202.1 §13.200.4 asked a question that was answered eighty sections earlier
+
+§13.200.4 closed with: *"Resolving it requires either adopting 96,000 + `ellipsis` by registration or
+re-baselining the arm at 48,000, and both are product decisions with a cost measured in runs."* The first half of
+that sentence is false, and the campaign paid for the answer already.
+
+`40698867439` (48,000) and `40722772896` (96,000) are a **one-variable pair**: §13.118 registered
+`cortex_memory_max_prompt_chars` as the only input it moved, at the same commit series. §13.118.2–.6 read it:
+
+| statistic | 48,000 (`40698867439`) | 96,000 (`40722772896`) |
+| --- | ---: | ---: |
+| roster (repetition 1 / mean of 4) | 417 | 418.00 |
+| questions with **complete** gold coverage | **256** / 500 | **371** / 500 |
+| mean gold coverage, `MR` / `TR` | 96.6% / 95.4% | **100.0% / 100.0%** |
+| evidence as a share of the room, `MR` / `TR` | 96.2% / 98.2% | 69.9% / 69.3% |
+| prompt-evidence chars, median | 46,851.5 | 92,078.5 |
+
+§13.118.6's decision is **"Not adopted."** 48,000 remained the adopted budget, §13.82 remains its justification,
+and the stated costs were 2× prompt tokens and 2.87× wall clock.
+
+So the value the last five runs have been using was **declined by registration**, on the cleanest pair this arm
+has ever produced, and §13.200.4 mistook the drift for an open question. What is genuinely open is the second
+half: why five consecutive runs carry a rejected value, and what reading is legitimate in the meantime.
+
+**One citation in §13.200.4 is wrong and is corrected here.** It reads *"§13.177.5 declined to adopt it after a
+six-criterion run in which accuracy and damage failed"*. §13.177.5 is `admission.ts`'s turn-id derivation — four
+FNV-1a streams, the version-8 nibble, the signed-int32 bug. The section that declined 96,000 is **§13.118.6**,
+and the correction matters because §13.177.5 makes no claim about the budget at all: a reader following that
+pointer would find a hash function and conclude the citation had been checked when it had not.
+
+#### 13.202.2 What §13.118 could not see: the room is an allocation, not a clamp
+
+§13.118 measured the median prompt length. The overlap between the two distributions is the quantity that says
+*how many questions the room leaves alone*, and it was not printed.
+
+| | 48,000 | 96,000 |
+| --- | ---: | ---: |
+| `promptChars` min | 37,735 | **58,917** |
+| `promptChars` median | 46,834 | 92,143 |
+| `promptChars` p90 | 47,299 | 95,317 |
+| `promptChars` max | 47,558 | 95,589 |
+| largest prompt, as a share of its ceiling | 99.1% | 99.6% |
+| questions at ≥ 97% of their own ceiling | 300 / 500 | 240 / 500 |
+
+Every one of the 500 questions carries a prompt **above 48,000** at the larger room, so the set of questions on
+which the two configurations build the same prompt is **empty**. `maxPromptChars` is not a cut that fires on the
+long tail; it is the **allocation**, and doubling it re-deals the evidence on all five hundred questions. That is
+consistent with §6.1.7's finding at 48,000 ("没有一道题把房间留空") and it is the stronger statement: not "the
+room is spent", but "no question is unaffected by the room".
+
+#### 13.202.3 The gold the room buys, cut by whether the delivery changed at all
+
+The 500 questions split by whether the extra room actually put more gold turns in front of the reader:
+
+| stratum | questions | correct at 48,000 | correct at 96,000 | delta |
+| --- | ---: | ---: | ---: | ---: |
+| **gold turns gained** | **225** | **188** (83.6%) | **188** (83.6%) | **+0** |
+| gold turns unchanged | 275 | 237 (86.2%) | 238 (86.5%) | +1 |
+
+Turn-level recall over all five hundred: **86.5%** (6,501/7,516) → **93.7%** (7,044/7,516), i.e. +7.2 points, and
+the complete-coverage count reproduces §13.118's **256 → 371** exactly — two independent pairs, different asks,
+different dates, the same two numbers. That replication is what makes the coverage column a property of the room
+rather than of a run.
+
+Two hundred and twenty-five questions received strictly more gold evidence and **not one changed its verdict in
+either direction**. §6.1.7's partition (by control-side coverage: 256 lost 8, 244 gained 9, net +1) and this one
+(by delivery: 225 +0, 275 +1) are different cuts of the same 500, and they agree on sign and size: **the room buys
+coverage, not answers.**
+
+**What this does not claim.** The two runs differ in `ask` as well, so the zero on that stratum is the joint
+effect of the room and of `operands` → `operands+operand-gap` on exactly the 225 questions where the room did
+something. It is offered as a replication of a **clean** pair, not as a substitute for one — and the clean pair is
+§13.202.1's.
+
+#### 13.202.4 The bill, decomposed — which revises one half of §13.118.6's cost sentence
+
+| | 48,000 (`41203245999`) | 96,000 (`41185512391`) | ratio |
+| --- | ---: | ---: | ---: |
+| calls | 5,624 | 5,566 | 0.99× |
+| prompt tokens | 31,326,218 | 50,581,538 | 1.615× |
+| of which served from the prefix cache | 25,186,661 (80.4%) | 44,488,008 (87.9%) | |
+| **of which fresh** | **6,139,557** | **6,093,530** | **0.993×** |
+| completion tokens | 317,614 | 339,501 | 1.07× |
+| **prompt tokens per call** | **5,570** | **9,088** | **1.63×** |
+
+The whole of the +19,255,320 lands in the cached column (+19,301,347, **100.2%** of it) while the fresh column
+*falls* by 46,027 (−0.75%).
+
+**That is a property of the harness before it is a property of the product**, and saying so is the difference
+between a measurement and a claim: 500 prompts × 4 repetitions share one prefix, so repetitions 2–4 replay
+repetition 1, and an aggregate cache share of 80.4% is what a mostly-fresh first pass plus three replayed ones
+looks like. A workload that sees each prompt once would pay the increment at the input rate. The number that
+survives both readings is the last row: **5,570 → 9,088 prompt tokens per call (+63%)**, which is what a request
+costs whether or not anything is cached.
+
+Where the bill goes is §13.189's instrument, and on `41188431321` it splits into exactly two sides plus a 0.50%
+residual: the feature arm **94.96%** (51,126,815 prompt tokens over 2,271 calls), the reference pipeline **4.54%**
+(2,443,943 over 2,633), and no judge line at all — the scorer is deterministic, so there is no third model to
+optimise -- and the room, at 1.6× the whole feature bill, is the largest token lever the harness has.
+
+So §13.118.6's *"2× prompt tokens"* is a **cached-token** statement; the resident price of the room is +63% per
+call, not 2×. The other half of that sentence — **2.87× wall clock** — is untouched by any of this, and it is now
+the stronger of the two cost arguments. Nothing here reverses the decision: +1 question on 500 for +63% per call
+and 2.87× wall clock is a rejection at any cache rate.
+
+#### 13.202.5 The instrument, and the pair it refuses
+
+`readout-arm-run.py --config CONTROL.json --treatment <fields> RUN.json` flattens both `memoryArmConfig` blocks
+to dotted paths, prints every field that differs as `control -> run`, and **exits non-zero when any of them is not
+named by `--treatment`**. Run on the pair at the top of this section:
+
+```
+  differ   4 field(s):
+    declared    ask: "operands" -> "operands+operand-gap"
+    declared    askRoutes: ["multi-session", "temporal", "abstention", "knowledge-update"] -> ["multi-session", "flat", "temporal", "abstention"]
+    UNDECLARED  maxPromptChars: 96000 -> 48000
+    UNDECLARED  turnCutMarker: "ellipsis" -> "none"
+  verdict: 4 field(s) differ, 2 declared by --treatment, 2 undeclared: ['maxPromptChars', 'turnCutMarker']
+  readings from this pair are not attributable: …
+EXIT=1
+```
+
+Five decisions in it are refused shapes rather than conveniences:
+
+1. **`400:ellipsis` is one input and two fields.** A treatment naming `cortex_memory_max_turn_chars` clears both
+   `maxTurnChars` and `turnCutMarker`; naming only `maxTurnChars` leaves the marker undeclared, and both directions
+   are asserted. Without this, every marker run reads as an unregistered pair.
+2. **`askRoutes` is a function of `ask`; `turnCutMarker` is not a function of `maxTurnChars`.** The first is
+   covered by declaring the ask. The second must be declared, because a derived field and a co-travelling one are
+   the difference between a convenience and a silent second variable.
+3. **`voteCounts` is a census, not a configuration** (§13.104). Comparing it would fail every legitimately paired
+   voting run, which is how a check teaches a reader to skip its output.
+4. **`thinking` writes `reader.thinking` and `reader.thinkingRoutes`.** Same shape as the cut marker, found by
+   pointing the tool at the artifact the next registered dispatch produces (§13.201.5): a route-scoped reader run
+   against a control that predates the field is an absent-vs-present pair, and left one-to-one it would be refused as
+   undeclared. Recorded because a mapping table is only verified by a real artifact of each shape it claims to read —
+   the lesson §13.192.7.2 paid for with two wrong readings.
+5. **A treatment name that resolves to nothing is refused.** A typo would license the pair while naming no field —
+   the `--set` defect's shape (§13.192.7.3) applied to the declaration instead of the dispatch.
+
+An absent field prints as `<-absent->` rather than matching `null`, and a missing `memoryArmConfig` is an error
+rather than an agreement about nothing.
+
+#### 13.202.6 What this decides, and the dispatch it withdraws
+
+1. **48,000 remains the adopted budget.** §13.118.6 decided it on a one-variable pair; this section adds no
+   evidence that reverses it and one number (per-call prompt +63%) that makes the cost argument more precise
+   rather than weaker.
+2. **The dispatch §13.200.4 implied is withdrawn as already paid.** A one-field room pair was registered there in
+   spirit; `40698867439` against `40722772896` **is** that pair, and re-running it would be a third measurement of
+   the same two configurations (§13.198.4 refuses exactly that shape).
+3. **§10.3 gets the line §13.192.7.3 asked for.** An "as-of" record that runs from `41144910162` through
+   `41222844945` carry `maxPromptChars 96000` and `400:ellipsis` by `--set`, so a reader of §10.3 can tell that
+   the registration describes the **adoption** while the recent runs describe an **experiment that was declined**.
+   The marker has the same status: §13.188 registered it as a treatment and no adoption of it has ever been read.
+4. **From the next dispatch, a run at 96,000 must name itself.** Either it registers as an experiment and says which
+   control it is pinned to, or it runs at the adopted 48,000. `readout-arm-run.py --config` is the check that the
+   field it meant to move is the only field that moved.
+5. **The comparison in flight is unaffected.** `41222844945` is pinned to `41185512391`, which is also at 96,000, so
+   the pair is internally consistent and its six §13.194.4 readings stand as registered.
+6. **What this does not license:** quoting `41203245999`'s 421.50 or `41185512391`'s 428.25 against 48,000-era
+   numbers such as 83.40% without naming the budget each side ran. That comparison is the drift wearing a result's
+   clothes, and it is the one §13.192.7.1 already refused for `41185512391`.
