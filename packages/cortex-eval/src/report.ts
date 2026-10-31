@@ -12,6 +12,7 @@ import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds } from './rerank-factory.js';
+import { bothSides, residualUsage, type UsageBySide } from './usage-by-side.js';
 import { dominantFlow } from './answer-transition.js';
 import type { AnswerTransition } from './types.js';
 
@@ -195,6 +196,20 @@ export type AblationReport = {
    * fact about a contract that this repository does not own.
    */
   llmUsage?: UsageSnapshot | undefined;
+  /**
+   * The same spend, split by the side that spent it, with the remainder named.
+   *
+   * §13.189's instrument. `llmUsage` is the whole bill and cannot say which arm caused it, so a
+   * saving on the feature arm was indistinguishable from a saving on the judge -- and the only
+   * token question worth asking ("can this cost less without losing answers") starts from that
+   * split. The three parts close exactly (`baseline + feature + residual === llmUsage`), and the
+   * closure is a property of the definition rather than of a tag applied at each call site:
+   * `residual` is the difference, so the judge and the phrasing stage are named by construction.
+   *
+   * Optional for the reason `llmUsage` is: an artifact written before the instrument existed has
+   * no split, and that absence must not read as "both sides spent nothing".
+   */
+  usageBySide?: UsageBySide | undefined;
   /**
    * How many times each question was asked, as the report's own record of it.
    *
@@ -1383,7 +1398,7 @@ export function formatAblationReport(report: AblationReport): string {
   // census) each vanished from a re-rendered artifact, and a reader with the JSON and no
   // Markdown could not tell a free run from an unmeasured one.
   if (report.llmUsage !== undefined) {
-    lines.push(...llmUsageLines(report.llmUsage));
+    lines.push(...llmUsageLines(report.llmUsage, report.usageBySide));
   }
   // The census also goes BELOW the results, for the `retryFires` reason: it
   // explains a delta's attribution rather than changing what the delta means, so
@@ -1857,6 +1872,17 @@ export function attachLlmUsage(report: AblationReport, usage: UsageSnapshot): Ab
 }
 
 /**
+ * Attach the per-side split, on the same absence rule as the total.
+ *
+ * A run in which neither side made an instrumented call has no split to report, and attaching
+ * zeros would claim both arms were free rather than unmeasured -- the distinction `unpricedCalls`
+ * exists to keep one layer down.
+ */
+export function attachUsageBySide(report: AblationReport, bySide: UsageBySide): AblationReport {
+  return bothSides(bySide).calls === 0 ? report : { ...report, usageBySide: bySide };
+}
+
+/**
  * The provider-spend section, as lines.
  *
  * **Not exported**, unlike `retryFireLines` beside it: that one has a second renderer in
@@ -1880,7 +1906,7 @@ export function attachLlmUsage(report: AblationReport, usage: UsageSnapshot): Ab
  * its prefix cache. That share is the quantity that prices a prompt-ordering change, and
  * a run that reports it makes the next dispatch's cost predictable before it is paid.
  */
-function llmUsageLines(usage: UsageSnapshot): string[] {
+function llmUsageLines(usage: UsageSnapshot, bySide?: UsageBySide): string[] {
   const hitShare = usage.promptTokens === 0 ? 0 : usage.cacheHitPromptTokens / usage.promptTokens;
   const lines = [
     '',
@@ -1897,6 +1923,49 @@ function llmUsageLines(usage: UsageSnapshot): string[] {
     `- Prefix-cache share of the prompt: **${(hitShare * 100).toFixed(2)}%** ` +
       `(${usage.cacheHitPromptTokens.toLocaleString('en-US')} of ${usage.promptTokens.toLocaleString('en-US')})`,
   ];
+  if (bySide !== undefined) {
+    // Rendered only when it closes. A negative residual means the two snapshots did not come from
+    // one ledger, and printing that as a side that spent nothing would be worse than printing no
+    // split at all -- so the section says the split is unavailable instead of printing one that
+    // does not add up.
+    let residual: UsageSnapshot | null = null;
+    try {
+      residual = residualUsage(usage, bySide);
+    } catch {
+      residual = null;
+    }
+    if (residual === null) {
+      lines.push(
+        '',
+        '- **SPLIT UNAVAILABLE**: the two sides together claim more spend than the run reported, ' +
+          'so the snapshots were not taken from one ledger. No per-arm column is printed rather ' +
+          'than one that does not add up.',
+      );
+    } else {
+      const rows: Array<[string, UsageSnapshot]> = [
+        ['baseline (`reference-pipeline`)', bySide.baseline],
+        ['feature (`cortex-memory`)', bySide.feature],
+        ['neither arm (judge, phrasing, setup)', residual],
+      ];
+      lines.push(
+        '',
+        '| Side | calls | prompt tokens | completion tokens | cached prompt |',
+        '|---|---|---|---|---|',
+        ...rows.map(
+          ([label, part]) =>
+            `| ${label} | ${part.calls} | ${part.promptTokens.toLocaleString('en-US')} | ` +
+            `${part.completionTokens.toLocaleString('en-US')} | ` +
+            `${part.cacheHitPromptTokens.toLocaleString('en-US')} |`,
+        ),
+        '',
+        // The identity, stated rather than left to the reader: three columns that are supposed to
+        // sum to the total above are the easiest place for an instrument to drift quietly.
+        `- Attribution closes: **${bothSides(bySide).promptTokens + residual.promptTokens === usage.promptTokens ? 'yes' : 'no'}** ` +
+          `(${bothSides(bySide).promptTokens.toLocaleString('en-US')} + ` +
+          `${residual.promptTokens.toLocaleString('en-US')} prompt tokens)`,
+      );
+    }
+  }
   if (usage.unpricedCalls === usage.calls) {
     // Every call unpriced is the strongest warning this section can carry and it is not
     // the same statement as a large unpriced share: it means the instrument is pointing

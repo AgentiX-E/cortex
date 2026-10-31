@@ -20663,3 +20663,53 @@ something true.
    one.
 3. It says nothing about the ceiling. 101/121 = 83.5% remains the best this class of fix can produce,
    and this is one question of seventeen.
+
+### 13.189 The bill split by the side that spent it — the instrument token work has to start from
+
+**Registered 2026-10-31, as an instrument rather than a treatment.** `packages/cortex-eval/src/usage-by-side.ts`
+(`minusUsage`, `residualUsage`, `bothSides`, `traceUsage`), `packages/cortex-eval/src/system-mirror.ts`
+(`mirrorMembers`, moved out of the arm so both wrappers share one delegation), artifact field
+`usageBySide`, a per-side table in the provider-spend section. Accounting: `usage-by-side.test.ts` (12),
+`system-mirror.test.ts` (3).
+
+#### 13.189.1 What the artifact could not say
+
+`llmUsage` is the whole bill and nothing else: on `41159983913` that is **50,736,848 prompt tokens over
+5,670 calls**, 38,402,551 of them (75.69%) served from the provider's prefix cache. The one question any
+token work has to answer — *which side spent it* — had no field, so a saving on the feature arm was
+indistinguishable from a saving on the judge, and a run that halved its window could not be told from one
+that halved its retries. §13.84's own budget decision was argued from coverage counts, not from spend.
+
+#### 13.189.2 The split, and why its residual is a definition rather than a tag
+
+The process ledger is global by design (`cortex-ai/src/usage.ts`: replacing it would change the `LLM`
+contract or make every caller forward a number it does not want). So the split is taken **around each
+answer**: snapshot, call, snapshot, add the delta to that side's accumulator — and the wrap uses
+`finally`, because a call that throws has still left the machine and been billed.
+
+What is left after both sides is `residual = total − baseline − feature`, which names the judge, the
+phrasing stage and any setup by **construction** rather than by a tag each caller would have to remember.
+That makes the closure `baseline + feature + residual === total` true by definition, and the renderer
+prints it as a line (`Attribution closes: yes`) so a reader does not have to add three columns.
+
+`minusUsage` refuses a negative rather than clamping: a part larger than its whole means the two
+snapshots did not come from one ledger, and a clamped zero would print as a side that spent nothing —
+the opposite of what happened. The renderer follows the same rule and says `SPLIT UNAVAILABLE` instead of
+printing a table that does not add up.
+
+#### 13.189.3 What it deliberately does not measure
+
+1. **Currency.** Still no rate card in this repository; the columns are tokens.
+2. **Embedding calls.** `llmUsage` counts completions through the adapter; the embedding client is a
+   different endpoint and is not in this ledger. Stated because "the split closes" is a claim about
+   completions only, not about the whole invoice.
+3. **Per-question cost.** The accumulator is per side, not per question. A per-question ledger would be a
+   second table in the artifact and a second place to drift; the question a saving has to answer is
+   "which side", and that is what this answers.
+
+> **Prediction for the next dispatch that carries it:** the feature arm accounts for the large majority
+> of prompt tokens (its room is 96,000 characters against the reference pipeline's smaller window), and
+> the residual is a two-digit share of the bill rather than a rounding term.
+
+**Falsified if** the feature arm is not the largest of the three parts, or the residual is larger than
+the feature arm, or either side reports zero on a run whose total is non-zero.
