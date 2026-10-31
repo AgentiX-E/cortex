@@ -20006,3 +20006,154 @@ two limits on it — single reader, non-office corpus — stay attached to it.
 What changes is the reason the widening is defensible. It was never "coverage went up". It is that
 twenty rows a reader called private stopped being published, and the price was paid in cards rather
 than in loosened publishing.
+
+### 13.182 The judge is the instrument, and nobody has checked it: a false-accept audit registered before it runs
+
+`§10.1` compares arms by counting questions the judge called correct. The effects the campaign is
+chasing are two or three questions on a 121-question capability — 1.7 to 2.5 points. The published
+audit of LoCoMo's gold answers puts about 6.4% of them at risk of a scoring error and reports that a
+standard judge (`gpt-4o-mini`, official prompt) **accepted 62.81% of answers that were topical but
+wrong**. This repository has never measured its own judge. That gap is registered as P1 in the
+execution plan and is closed here, before the reading rather than after it.
+
+#### 13.182.1 The population is answers the judge already accepted
+
+A rejected answer cannot produce a false accept — the judge already called it wrong — so the audit
+draws from `correct: true` rows of an artifact. Each is perturbed so that it is wrong **by
+construction**, and re-submitted with the same template the artifact was graded under:
+
+| kind | what moves | example |
+| ---- | ---------- | ------- |
+| `number-swap` | a number the gold states, replaced with a value absent from the conversation | "18 days" → "139 days" |
+| `entity-swap` | a name the gold states, replaced with another real name from the corpus, absent from this conversation | "Rachel moved to Berlin" → "Marcus moved to Berlin" |
+| `cross-gold` | the answer replaced by a different question's gold of the same capability | topically adjacent, entirely wrong |
+
+Two invariants make a "yes" unambiguous, and both run on every planned case rather than in a test:
+
+1. the perturbed answer no longer **mentions** the gold;
+2. the introduced token appears **nowhere in the conversation the model read**, so a swapped name
+   cannot be another true fact about the user that the instrument simply cannot see.
+
+The second is why the pool is drawn from the corpus's own golds rather than invented: an invented
+string is easy in a way a real but wrong name is not, and a judge that only rejects non-words has not
+been measured on the failure that matters.
+
+#### 13.182.2 Two defects the invariants caught on a real artifact, before a token was spent
+
+Both are in `run-40989420944`, and both would have inflated the false-accept rate:
+
+| question | what happened | what it would have cost |
+| -------- | ------------- | ---------------------- |
+| `75499fd8` | the answer says "…it would suit a Golden Retriever like Max…" and closes with "Golden Retriever" on its own line. Replacing the **first** occurrence left the gold intact at the end | a correct answer scored as a false accept |
+| `3a704032` | gold is `"3"`, and `"34".includes("3")` is true, so a substring-based invariant rejected the case; the first substitution also applied the token pass on top of the gold pass and produced `"344"` | every numeric swap on a count question silently dropped — the family MR is made of — or a case with two uncontrolled variables |
+
+The fixes are a full-occurrence replacement, word-boundary semantics in the invariant, and mutually
+exclusive passes. All three are asserted as test cases, not only as code.
+
+#### 13.182.3 Predictions, registered before dispatch
+
+Payload: `tools/judge-audit.mjs` on the `41159983913` artifact, `limit 120`, `deepseek-chat`, one
+pass, temperature 0 (the judge's own setting). 120 accepted answers yield up to 360 cases plus 120
+control calls; the plan on that artifact emits **167** (59 `number-swap`, 51 `entity-swap`, 57
+`cross-gold`), because a gold with no swappable token emits nothing rather than a bogus case.
+
+| prediction | passes when | falsified when |
+| ---------- | ----------- | -------------- |
+| the gate | false-accept upper bound **> 5%** — the judge does accept wrong answers | ≤ 5%, and this repository's judge is better than the published one by an order of magnitude |
+| numbers are the weak kind | `number-swap` accepts more than `entity-swap` | the reverse; then the failure is naming, not arithmetic |
+| a wholly wrong gold is caught | `cross-gold` rate ≤ 10% | above, and the judge is not reading the question |
+| the judge is reproducible | control ≥ 95% re-accepted | below, and the noise floor dominates every reading the campaign has |
+| the rate is larger than the effect | `falseAccept × 121 ≥ 2` questions on MR | below, and the judge is not the binding constraint |
+
+The first and the last are the ones that change how results are reported: if both pass, every
+capability comparison from now on is a **paired flip count**, not a difference of accuracies, because
+two points of judge error can produce a two-question difference out of nothing.
+
+#### 13.182.4 The gate, and why the threshold is 5%
+
+Exit 1 when the false-accept upper bound exceeds 5%. The number is not borrowed from the false-share
+gate for symmetry: the campaign resolves about 1.7 points (two questions of 121), so a judge that
+mis-accepts 5% of wrong answers is already larger than the signal it is being used to detect. Above
+it, the correct response is not to stop measuring but to **annotate**: every capability reading
+becomes judge-limited rather than memory-limited, and the paired design becomes mandatory.
+
+#### 13.182.5 What this does not say
+
+- **Not agreement with a human.** It measures one judge against one family of perturbations. A low
+  rate on substitutions does not transfer to answers that are wrong by **omission** — a plausible
+  half-answer, which is exactly the shape `§13.96` found in the MR failures.
+- **Not the official judge.** `deepseek-chat` with the official templates is this repository's judge,
+  not LongMemEval's. The 62.81% figure is a reference point about judges in general, not a
+  prediction about this one.
+- **Not a correction.** Nothing here adjusts a published accuracy. It prices the instrument; a
+  correction would need ground truth the judge does not have.
+
+### 13.183 The identity fix worked, the cost fell, and the variance did not move: `41159983913` against six predictions
+
+The dispatch registered in `§13.177.6` ran to completion (run `41159983913`, `fa51a895`, 2026-10-31,
+02:26–04:27 GMT, 61 minutes). Payload verified from the artifact rather than from the dispatch note:
+`ask=operands`, `contract=abstention-evidence-blocks`, `review_pass=bare`,
+`relevanceSignal=retrieval-hybrid`, `top_k=256`, `units=turn`, `maxPromptChars=96000`, `runs=4`,
+`temperature=0`, `threshold=0` — one variable moved from `41144910162`, the id derivation.
+
+#### 13.183.1 Four predictions hold
+
+| prediction | criterion | measured | verdict |
+| ---------- | --------- | -------- | ------- |
+| row 6, the premise | ≥ 95% of questions carry `promptVariants == 1` | **500/500 = 100%** | **passes** |
+| cache share | ≥ 60% of prompt tokens report a cache hit | **38,402,551 / 50,736,848 = 75.69%** | **passes** |
+| witness | `commonPrefix` equals the full length on ≥ 95% of passes | `[null, 94,674, 94,674, 94,674]` against a text of **94,674** characters; all four texts byte-identical | **passes** |
+| billed cost | `promptTokens × (1 − 0.9 × cacheShare)` ≤ 0.7 × 28.18 M | **16.17 M** against a ceiling of **19.73 M** (0.574× the previous draw) | **passes** |
+
+The witness is the one worth keeping: three comparisons, three full-length prefixes, four identical
+texts. Before the fix, a random id inside every prompt made the bytes differ at an offset near the
+end, which is exactly what a cache miss looks like and what made the previous draw's cache share
+11.2%. It is now 75.69%, and the instrument that says so is in the artifact rather than in a
+provider's dashboard.
+
+The cost prediction passing is the interesting arithmetic: `promptTokens` **rose** 1.62× (31.37 M →
+50.74 M) because the ceiling doubled to 96,000, and the billed estimate still fell to 0.574× of the
+previous draw. Caching is what pays for the extra room — 75.69% of 50.74 M is 38.40 M tokens the
+provider did not charge for.
+
+#### 13.183.2 Two predictions fail, and the failure is the result
+
+| prediction | criterion | measured | verdict |
+| ---------- | --------- | -------- | ------- |
+| accuracy | MR first repetition ≥ 87, and overall within ±2.2 pt of 84.00% | MR first repetition **84**; overall first repetition **83.80%** | **overall passes, MR fails** |
+| within-run spread | MR's four passes span ≤ 2 questions | **84, 86, 87, 92 — span 8** | **fails** |
+
+`§13.177.6` said of the last row: *"the one that costs the campaign something if it passes. If four
+passes of one request return near-identical answers, `runs: 4` stops measuring model variance."* It did
+not pass — and the opposite finding is worth more than the prediction was:
+
+> **The prompts are now byte-identical and the answers are not.** Four passes of the same request, at
+> temperature 0, with a witness proving the bytes match to the character, still spread MR across 8
+> questions (84–92) and the roster across 10 (417–427 of 500).
+
+So the 2.2-point band `§13.175.5` measured between two dispatches was **not** the random ids. Some of
+it is the reader, and no prompt-level fix removes it. That has three consequences the campaign has to
+carry:
+
+1. **`runs: 4` still buys something.** It is not a determinism check; it is the only instrument that
+   sees this variance, and the per-run bitmaps (`featureCorrectByRun`) are what make it visible.
+2. **A single-repetition reading cannot resolve 2 questions.** MR first repetition is 84 and the mean
+   is 87.25; the adoption rule that reads the first repetition is therefore reading the low tail of a
+   distribution whose width is larger than the effects being chased. `§13.182` registers the judge
+   audit for the same reason from the other side.
+3. **Per-capability means, not first-pass counts, are the comparable quantity.** MR 87.25 (84–92),
+   TR 102.5 (100–105), IE 143 (141–144), KU 60.25 (59–61), ABS 29 (29–29). ABS is the only capability
+   whose four passes agree exactly, which is what a calibrated decline path should look like.
+
+#### 13.183.3 What the run does not say
+
+- **Not that 96,000 is the right ceiling.** It says the ceiling is now affordable at 0.574× the
+  previous draw's billed estimate. Whether the extra room *earns* anything is a different question:
+  the roster first pass moved 83.00% → 83.80%, which is inside the 10-question span measured here and
+  is therefore not a difference this design can see.
+- **Not that the id fix helped accuracy.** It was not supposed to. Overall is within the registered
+  band; MR first repetition is not, and the honest reading of that is the variance above rather than a
+  regression.
+- **Not that MR is fixed.** MR mean 87.25 against the reference pipeline's 103.75 on the same
+  questions. The 96,000 ceiling did not close a 16-question gap, and `§13.182` now asks whether the
+  judge can even see 2 of those questions.

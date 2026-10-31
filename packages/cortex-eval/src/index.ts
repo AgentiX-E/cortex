@@ -48,6 +48,16 @@ export {
   type AnswerJudge,
 } from './judge.js';
 
+// The judge's own audit. Exported because `tools/judge-audit.mjs` is the only thing that can run it
+// (it needs a model and a key), and because the planner is the half that has to be reviewable
+// without a key: every case it emits is wrong by construction, and that is asserted rather than
+// promised.
+// Only the two functions are exported. The types they mention are declared in `judge-audit.ts` and
+// used there; a caller that needs one imports it from the module, which is what the tool's JS does not
+// do and the tests do. Re-exporting six type names from the package barrel would advertise a surface
+// nothing consumes — the exact claim-shape `tools/export-census.mjs` refuses.
+export { planAudit, summariseAudit } from './judge-audit.js';
+
 // The reading stage of the competition harness. Only the factory is exported: the tool needs a reader, and the
 // prompt, the renderer and the refusal phrase are its internals — a second caller reaching for them would be
 // building a second reader, which is the thing this module exists to prevent. The tests import the module

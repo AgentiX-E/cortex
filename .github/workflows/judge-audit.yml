@@ -1,0 +1,119 @@
+name: Judge audit
+
+# How often does this repository's judge accept an answer that is wrong?
+#
+# Every accuracy number this project publishes is the judge's opinion, and the campaign's effects are
+# two or three questions on a 121-question capability. The published audit of LoCoMo's gold answers
+# reports that a standard judge (`gpt-4o-mini`, official prompt) **accepted 62.81%** of answers that
+# were topical but wrong. If this judge behaves like that, `§10.1` has been comparing arms by a
+# quantity whose error is larger than every difference it reports.
+#
+# The instrument is `tools/judge-audit.mjs`: it perturbs answers the judge already accepted, in three
+# ways that are wrong by construction, and re-submits them with the same templates. `--plan-only` runs
+# with no model and no key, which is why the case list can be reviewed in a pull request while the
+# rate can only be produced here.
+#
+# Dispatch only, never on push: it spends credits and its reading is only meaningful against a
+# specific artifact, which is an input rather than a constant.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Benchmark run id whose `longmemeval-s-report` artifact is audited'
+        required: true
+        type: string
+      limit:
+        description: 'Accepted answers to audit (each yields up to three cases plus one control call)'
+        required: false
+        default: '120'
+        type: string
+      model:
+        description: 'DeepSeek model id — the same judge the artifact was graded with, or the audit measures a different one'
+        required: false
+        default: 'deepseek-chat'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: judge-audit-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: False accepts on provably wrong answers
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Dispatch inputs enter through the environment rather than through script text: the runner
+      # substitutes an expression into a `run:` block BEFORE bash parses it, so a quote in a value
+      # would edit the program. `--limit "$LIMIT"` cannot.
+      LIMIT: ${{ inputs.limit }}
+      RUN_ID: ${{ inputs.run_id }}
+      CORTEX_LLM_BACKEND: remote
+      CORTEX_LLM_BASE_URL: https://api.deepseek.com/v1
+      CORTEX_LLM_MODEL: ${{ inputs.model }}
+      CORTEX_LLM_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Refuse to start without a credential
+        run: |
+          set -euo pipefail
+          if [ -z "${CORTEX_LLM_API_KEY}" ]; then
+            echo "CORTEX_LLM_API_KEY is empty: the org secret DEEPSEEK_API_KEY is not visible to this job" >&2
+            exit 1
+          fi
+          echo "credential present (length ${#CORTEX_LLM_API_KEY}); value never printed"
+
+      - name: Fetch the artifact under audit
+        run: |
+          set -euo pipefail
+          mkdir -p readings/artifact
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name longmemeval-s-report --dir readings/artifact
+          ls -la readings/artifact
+
+      - name: Plan only (no model) — the case list has to be reviewable before it is spent on
+        run: |
+          set -o pipefail
+          node tools/judge-audit.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --limit "$LIMIT" --plan-only 2>&1 | tee readings/plan.txt
+
+      - name: Audit
+        run: |
+          set -o pipefail
+          node tools/judge-audit.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --limit "$LIMIT" \
+            --out readings/judge-audit.json 2>&1 | tee readings/judge-audit.txt
+
+      - name: Upload readings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-audit
+          path: readings/
+          if-no-files-found: warn
