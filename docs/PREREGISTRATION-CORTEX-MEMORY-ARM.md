@@ -21745,3 +21745,73 @@ At the registered configuration the change is inert **by construction rather tha
 **0** bare `MR` finals, so `isBareDecline` is false on every one of its 121 `MR` questions and the new branch is
 never entered. That is also why the composite dispatch of §13.194.4 is pinned to the ref before this commit: the
 registration claims one variable, and a build that adds a retry — even one predicted to be inert — is a second.
+
+### 13.197 The compliant reader buys `TR` four questions and sells `IE` sixteen
+
+`41196814139` (`thinking: enabled`) arrived at **188/220 (85.45%)** against `41196801892`'s **196/220 (89.09%)**.
+Both arms ran the same 220 questions, the same prompts, the same reader model, and one repetition each; the only
+difference in `memoryArmConfig` is `thinking`.
+
+#### 13.197.1 The six predictions, one by one
+
+| # | prediction | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | amended gate: `MR` prose tail `5/32` → **≤ 2/32** | **2 of 32** | **holds** |
+| 1b | amended gate: `TR` median `627.5` → **≤ 400** | **133.5** | **holds** |
+| 2 | `MR` **≥ +6** | 23 → **24** (**+1**) | **falsified** |
+| 3 | `TR` **≥ +4** | 27 → **31** (**+4**) | **holds, exactly** |
+| 4 | `IE` **≥ −3** | 88 → **74** (**−14**) | **falsified, by 11** |
+| 5 | `ABS` keeps every point | 29 → **28** (**−1**) | **falsified by one** |
+| 6 | `bareRetry` → 0 | 17 → **5** attempts, prose share 19.0% → **0.0%** | **holds** |
+
+Per capability, with the two directions separated:
+
+| capability | disabled | enabled | Δ | questions lost | questions gained |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **IE** | **88 / 94** | **74 / 94** | **−14** | 16 | 2 |
+| MR | 23 / 32 | 24 / 32 | +1 | 3 | 4 |
+| KU | 29 / 32 | **31 / 32** | **+2** | 1 | 3 |
+| **TR** | 27 / 32 | **31 / 32** | **+4** | **0** | **4** |
+| ABS | 29 / 30 | 28 / 30 | −1 | 2 | 1 |
+| roster | **196 / 220** | **188 / 220** | **−8** | **22** | **14** |
+
+#### 13.197.2 What the pair says, and it is not "the reader axis is closed"
+
+The registered decision rule (§13.192.9) had three branches: gate fails → no 500-question run; gate holds and
+signal holds → 500-question confirmation; **gate holds and signal fails → compliance is not what the roster is
+missing**. The reading is the fourth state the rule did not enumerate: **the gate holds, one signal holds exactly,
+the other two move in opposite directions with large effects.** `TR` gained 4 questions with **zero losses**, `KU`
+gained 2 net, `MR` gained 1 — and `IE` lost **16 while gaining 2**.
+
+That is not noise, and the roster total cannot see it: 22 lost and 14 gained is a McNemar exact two-sided
+**p = 0.243**, i.e. the −8 is inside what 36 discordant questions can do by chance. **The aggregate is the one
+statistic on this page that says nothing.** The per-capability moves are 14 and 16 on samples of 94, and `TR`'s
+movement is 4 questions with no loss at all.
+
+Prediction 4 named this branch in advance — *"that outcome would mean the axis trades one capability for another
+rather than adding"* — and the trade is legible in the mechanism: `temporal` and `multi-session` close with *"reply
+with the Step 2 number alone"*, so a reader that obeys gives the number and TR's judge is satisfied. `IE`'s block
+does not close that way, its answers are legitimately paragraphs, and a reader that has learned to answer tersely
+answers `IE` tersely: its median falls 34.5 → 28.5, its >40 tail 46 → 40, and sixteen of its ninety-four questions
+stop being right.
+
+The `ABS` loss is the same mechanism from the other side: `6456829e_abs` converts to a decline (**gained**, and it
+is the question §13.193 was built for), while `a96c20ee_abs` and `09ba9854_abs` stop declining and lose.
+
+#### 13.197.3 Registered: the reader is a route-scoped knob, and it is the next increment
+
+The measurement names its own treatment. Every capability is served by one route, and the two routes that gained are
+exactly the two whose block ends with the answer instruction:
+
+1. **Configuration.** `thinking` becomes route-scoped the way `maxTurnChars` already is
+   (`maxTurnCharsRoutes=multi-session,temporal`, §13.76): enabled on `temporal` and `multi-session`, disabled on
+   `flat`, `knowledge-update`, `assistant` and `abstention`. Absent means today's behaviour, so every archived
+   artifact keeps its meaning.
+2. **Predicted reading at 220 questions.** `TR` 31 and `MR` 24 (the enabled arm's numbers), `KU` and `IE` at the
+   disabled arm's (29 and 88), `ABS` 29 — roster **201/220 (91.36%)**, a **+5** over the better of the two arms and
+   **+13** over the enabled one. Stated as counts of the same 220 questions, not as a share of 500.
+3. **Falsified if** `IE` does not return to 88 ± 2 — which would mean IE's loss was not the reader's terseness but
+   something the reader did to the *flat route's* prompt, and the route-scoped knob is addressing the wrong layer.
+4. **Why this is a product increment and not another experiment.** `thinking` is a switch on one reader, and this
+   campaign has now measured both of its states on the same questions. A route-scoped knob is what a product ships
+   after that measurement; a fifth 220-question probe would be measuring the same two states a third time.
