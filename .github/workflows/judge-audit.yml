@@ -52,10 +52,14 @@ jobs:
       # would edit the program. `--limit "$LIMIT"` cannot.
       LIMIT: ${{ inputs.limit }}
       RUN_ID: ${{ inputs.run_id }}
-      CORTEX_LLM_BACKEND: remote
-      CORTEX_LLM_BASE_URL: https://api.deepseek.com/v1
+      # `createLlmFromEnv` — the factory the judge is built from — reads `DEEPSEEK_API_KEY` by that
+      # name (`packages/cortex-eval/src/llm-factory.ts:92`), not the profile variables the authoring
+      # tools use. The first dispatch of this workflow set only `CORTEX_LLM_*` and died on
+      # "DEEPSEEK_API_KEY is required for natural-language benchmark" after the plan step had already
+      # passed — which is the one failure mode a configuration mistake produces here that a reader
+      # could mistake for the audit finding nothing.
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       CORTEX_LLM_MODEL: ${{ inputs.model }}
-      CORTEX_LLM_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
@@ -81,11 +85,11 @@ jobs:
       - name: Refuse to start without a credential
         run: |
           set -euo pipefail
-          if [ -z "${CORTEX_LLM_API_KEY}" ]; then
-            echo "CORTEX_LLM_API_KEY is empty: the org secret DEEPSEEK_API_KEY is not visible to this job" >&2
+          if [ -z "${DEEPSEEK_API_KEY}" ]; then
+            echo "DEEPSEEK_API_KEY is empty: the org secret DEEPSEEK_API_KEY is not visible to this job" >&2
             exit 1
           fi
-          echo "credential present (length ${#CORTEX_LLM_API_KEY}); value never printed"
+          echo "credential present (length ${#DEEPSEEK_API_KEY}); value never printed"
 
       - name: Fetch the artifact under audit
         run: |
