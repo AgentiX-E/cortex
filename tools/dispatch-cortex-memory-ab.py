@@ -360,6 +360,17 @@ INPUTS = {
     # slot. The workflow now sets it as a constant, which is where a reader of a run looks for it
     # anyway; §13.30's measurement and the value are unchanged. Same precedent as
     # `evidenceTurnsPerRecord` (§13.94).
+    # §13.192.6. The reader is a configuration value and this table did not send it, so every dispatch
+    # from here ran the workflow's default and the one run that changed the model (`40698883428`) was
+    # dispatched outside this script. §13.192.1 measured what that leaves behind: two artifacts 7.20
+    # points apart with identical `memoryArmConfig` blocks and no field naming the reader. Sent
+    # explicitly for the reason this file gives everywhere else, now applied to the value with the
+    # largest measured effect on the arm.
+    "model": "deepseek-chat",
+    # The second half of the identity, and the only half that changes a reply's shape without changing
+    # the model: `resolveReaderIdentity` reports it, `DEEPSEEK_THINKING=enabled` opts in, and no
+    # 500-question run in this campaign ever did. §13.192's probe moves this one.
+    "thinking": "disabled",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

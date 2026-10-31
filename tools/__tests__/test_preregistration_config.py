@@ -106,6 +106,12 @@ CONCEPT_TO_INPUT = {
     # rather than a treatment. The workflow sets it as a constant (90), which is where a reader of a
     # run looks for it -- the same repair, for the same reason, as `evidenceTurnsPerRecord` in §13.94.
 
+    # §13.192.6. The reader identity, registered because the dispatch sent neither half of it: `model`
+    # and `thinking` are both workflow inputs with defaults, and a default is the one value an artifact
+    # cannot be checked against. The comparison that lost 7.20 points is the reason -- its own files say
+    # nothing about which model produced them.
+    "readerModel": "model",
+    "readerThinking": "thinking",
     "limit": "limit",
     "ablation_runs": "ablation_runs",
     "temperature": "temperature",

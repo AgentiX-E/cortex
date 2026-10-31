@@ -175,6 +175,7 @@ def test_the_json_carries_the_same_readings_and_the_invariant(tmp_path: Path) ->
     assert only["label"] == "one"
     assert only["length"]["allQuestions"] == {"n": 2, "median": 5.0, "p90": 10}
     assert only["length"]["answeredOnly"] == {"n": 1, "median": 10, "p90": 10}
+    assert only["questionsByCapability"] == {"ABS": 1, "MR": 1}
     assert only["bareFinals"]["byCapability"] == {"ABS": 1}
     assert only["retry"]["firstPassOutsideAbstention"] == 1
     assert only["retry"]["proseShare"] == 0.0
@@ -192,6 +193,20 @@ def test_two_reports_get_a_pair_block_with_the_readings_and_their_deltas(tmp_pat
     assert "median, all questions" in completed.stdout
     assert "+20.0" in completed.stdout
     assert "note: these are shape readings, not a ranking." in completed.stdout
+
+
+def test_the_sample_states_its_own_capability_coverage(tmp_path: Path) -> None:
+    """A small probe has to say which capabilities its twenty questions covered, not just how many it got."""
+    body = report(
+        [
+            record("q1", answer="a", capability="MR"),
+            record("q2", answer="b", capability="TR"),
+            record("q3", capability="ABS"),
+        ]
+    )
+    completed = run(tmp_path, [("one", body)])
+    assert completed.returncode == 0, completed.stderr
+    assert "questions by capability: ABS 1, MR 1, TR 1" in completed.stdout
 
 
 def test_the_label_defaults_to_the_parent_directory_name(tmp_path: Path) -> None:

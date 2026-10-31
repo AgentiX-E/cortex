@@ -723,6 +723,20 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   whose questions assemble evidence across turns; the three untouched capabilities reproduce their control's
   window **to the character** (61.0 / 62.0 / 72.0 turns) and that is the check §13.83 registered before the run
   existed. `all` reaches every route and is the identity a run with no filter is in.
+- `readerModel: deepseek-chat` — **registered by §13.192.6, and it was the one configuration value no
+  registration named.** The workflow has declared a `model` input since it was split from `benchmark.yml`, and
+  the dispatch script never sent it: every run from this table applied whatever the workflow default was, and
+  the one experiment that *moved* the reader (`40698883428`, `DEEPSEEK_MODEL=deepseek-v4-pro`) did not come
+  from this table at all. §13.192.1 records what that costs — the two artifacts of a −7.20-point comparison
+  cannot name their own model, so "the configs are equal and the model is the only difference" is a claim
+  about dispatch inputs rather than about anything either artifact carries. It is written down here rather
+  than only in the table because a value this arm's largest measured effect depends on is not an experiment's
+  private business.
+- `readerThinking: disabled` — **registered by §13.192.6 beside the id.** `resolveReaderIdentity` reports
+  `thinking` in every artifact since §13.110.1, and the input that sets it (`DEEPSEEK_THINKING`) was sent by
+  nobody: `none` of this campaign's 500-question runs ever enabled it. It is the second half of the reader
+  identity and the only one that can change a reply's *shape* without changing the model — which is exactly
+  the axis §13.192 registers a probe for, so the state every archived run was in has to be on the record.
 - `reviewPass: bare` — **adopted by §13.112, which is also the section that found the drift this
   line had accumulated.** The bare-decline retry is what a dispatch now ships: a reply that is the
   abstention token and nothing else is asked once more with that token absent from the prompt, on the
@@ -21093,3 +21107,70 @@ which `13.192.3` already fixes.
 one pair block whose deltas are printed for legibility and are not a test statistic. It also does not decide
 which denominator a claim should use — it prints both so that the choice is made in the open, which is the only
 repair available for a mistake that was made by choosing silently.
+
+#### 13.192.6 The reader identity becomes a registered value, and the probe moves the half that is addressable
+
+**Registered and dispatched 2026-10-31: two runs, 20 questions each, one variable.**
+
+The first thing this section had to fix was not the probe. §13.192.1 ended on a hole it could not close from
+the artifacts: `MemoryArmConfig.reader` was absent from both files, and the "configs equal, model the only
+difference" claim came from dispatch inputs nobody could re-read. Looking for that dispatch turned up the
+reason — **`model` and `thinking` are workflow inputs that `dispatch-cortex-memory-ab.py` does not send**. Every
+run from that table applied the workflow's defaults, and the one run that changed the reader was dispatched
+outside the script. So the arm's largest measured effect (7.20 points) rests on a value that was never
+registered in §10.3, never sent by the guarded path, and never recorded in the artifact it produced. Both
+halves are now registered (`readerModel`, `readerThinking`) and both are sent, which is what
+`test_preregistration_config.py`'s two-directional assertions verify — the same guard that caught the
+`relevanceSignal` drift in §13.69.
+
+**What the probe moves, and why it is not another model.** §13.192.1 refuted size, and the only other model id
+this endpoint offers (`deepseek-reasoner`) is not addressable through this arm's request shape without a
+pre-flight call that this checkout cannot make — the sandbox holds no provider key. `thinking` is the one
+reader axis that is (a) accepted by the same endpoint and the same SDK call, (b) already a declared input, and
+(c) able to change the *shape* of a reply without changing the model. That last property is the whole reason it
+is worth twenty questions: §13.192.4 measured that the two readers differ in how they spell a decline while
+declining about as often, and this is the cheapest lever that can move spelling alone.
+
+| | control | treatment |
+| --- | --- | --- |
+| dispatch | `--set limit=20 --set ablation_runs=1` | same, plus `--set thinking=enabled` |
+| `model` | `deepseek-chat` | `deepseek-chat` |
+| everything else | §10.3 | §10.3 |
+| read by | `tools/reader-shape.mjs --report control --report treatment` | same |
+
+Twenty questions is not a smaller 500. `sampling.ts` round-robins across buckets (`IE` split by question type,
+`MR`, `KU`, `TR`, `ABS`), so the sample covers every capability at about three questions each — enough to say
+which capabilities the reading speaks about and not enough to say anything about any of them. `ablation_runs: 1`
+is deliberate and is the one place this probe borrows a rule it otherwise obeys: §6.1.6's repetition guard exists
+because accuracy under `T = 1` moves 5–6 questions per capability between identical runs, and a *shape* statistic
+over 20 questions is not an accuracy estimate. The number this probe must never be quoted for is the roster.
+
+**Predictions, each of them falsifiable from the two artifacts:**
+
+1. **Coverage.** All five capabilities appear in the sample, `ABS` and `MR` included. Falsified if either is
+   absent, which would also falsify the claim in `sampling.ts`'s docblock and is why it is written down.
+2. **Shape moves up, not down.** The `thinking: enabled` arm's median answer length over all 20 questions is
+   **larger** than the control's. Reasoning before answering is the mechanism most likely to break a closing
+   line that asks for one number. Falsified if it is equal or smaller.
+3. **The abstention route is unchanged.** `ABS`'s replies are the bare token on both arms, so the final-record
+   bare count equals the `ABS` question count on both. Falsified if any `ABS` reply carries prose — that would
+   mean thinking mode rewrites the token, and the route's criterion becomes unusable rather than merely
+   unchanged.
+4. **No parse failures.** `empty replies among the declines` is **0** on both arms. The thinking adapter returns
+   `content` with the reasoning dropped, so the arm reads the same field; a non-zero count would mean the
+   adapter is not what this section assumes and every shape reading is suspect.
+5. **The retry invariant holds** on both: `non-ABS bare finals <= attempted - answered`. This is a bug detector
+   rather than a prediction — it holds if the abstention gate works, and the tool exits 1 if it does not.
+
+**The decision rule, fixed before the artifacts exist.** If prediction 2 holds — the enabled arm's median is
+materially longer — then thinking mode is disqualified as a compliance lever and the reader axis is closed for
+this arm on **shape** rather than on accuracy, which is the cheapest possible disqualification and the one thing
+§13.192.1 could not buy at 500 questions. If the two arms are within a few characters of each other with the
+same bare/prose split, then this lever is exhausted and §13.192.2's second falsification clause fires: what
+distinguishes readers available to this arm is not compliance, and the axis is closed for a reason that has
+nothing to do with accuracy. **A 500-question run under `thinking: enabled` is not the next step in either
+branch**; it becomes the next step only if the enabled arm is *both* shorter and more contract-shaped, which
+would be the first reader this campaign has found that is.
+
+**What it cannot read**, unchanged from §13.192.3: accuracy, the judge's tier (§13.184), and the MR ceiling
+(§13.187).

@@ -220,6 +220,15 @@ function readArtifact(body, isBareDecline) {
   return {
     dataset: body.dataset ?? null,
     questions: questions.length,
+    /**
+     * The sample's own coverage, which is the first thing a small artifact has to state.
+     *
+     * A 20-question probe covers every capability at about three questions each, and nothing else on this
+     * page says so: a reader who saw `roster 12/20` would have no way to know whether the twenty were one
+     * capability or five. `sampling.ts` round-robins across buckets rather than slicing, and this line is
+     * where that property is either true of the artifact or not.
+     */
+    questionsByCapability: countBy(questions, 'capability'),
     roster: {
       correct: body.feature?.metrics?.correct ?? null,
       total: body.feature?.metrics?.total ?? questions.length,
@@ -279,6 +288,9 @@ function linesFor(label, reading) {
     `${label}`,
     `  dataset ${show(reading.dataset)} · ${reading.questions} question(s) · reader ${show(reading.reader)}`,
     `  roster ${show(reading.roster.correct)}/${show(reading.roster.total)} · answered ${reading.answered} · declined ${reading.declines}`,
+    `  questions by capability: ${Object.entries(reading.questionsByCapability)
+      .map(([capability, count]) => `${capability} ${count}`)
+      .join(', ')}`,
     `  declines by capability: ${Object.entries(reading.declinesByCapability)
       .map(([capability, count]) => `${capability} ${count}`)
       .join(', ')}`,
