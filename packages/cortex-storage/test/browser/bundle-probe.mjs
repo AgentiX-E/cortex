@@ -39,7 +39,11 @@ import { serveDist } from './server.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACKAGE = resolve(HERE, '..', '..');
 const ROWS = Number(process.env.CORTEX_ROWS ?? 200);
-const RESULTS = join(PACKAGE, 'test', 'browser', 'bundle-run.json');
+// A separate variable from the restart probes' `CORTEX_RESULTS`: `test:browser` runs both suites, so one
+// shared override would have the bundle reading overwrite the restart reading and the CI comparison
+// would then report 24 checks against 4. Measured the obvious way, by running it.
+const RESULTS =
+  process.env.CORTEX_RESULTS_BUNDLE ?? join(PACKAGE, 'test', 'browser', 'bundle-run.json');
 
 /**
  * Bundle the two entries a consumer needs.

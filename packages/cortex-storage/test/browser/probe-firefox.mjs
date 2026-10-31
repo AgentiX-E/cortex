@@ -38,7 +38,8 @@ import { serveDist } from './server.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACKAGE = resolve(HERE, '..', '..');
 const ROWS = Number(process.env.CORTEX_ROWS ?? 2_000);
-const RESULTS = join(PACKAGE, 'test', 'browser', 'last-run-firefox.json');
+const RESULTS =
+  process.env.CORTEX_RESULTS ?? join(PACKAGE, 'test', 'browser', 'last-run-firefox.json');
 
 const NOTE =
   'One run. The throughput numbers are engine surface, not a criterion: they are cited as a range ' +

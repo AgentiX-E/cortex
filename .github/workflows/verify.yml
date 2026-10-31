@@ -93,3 +93,73 @@ jobs:
           name: verify-output
           path: check-output.log
           if-no-files-found: ignore
+
+  # The two browser gates, run where a browser exists.
+  #
+  # `pnpm check` cannot reach them: one needs a bundler and a Chromium, the other needs a second
+  # engine, and neither is present in the library job. Until this job existed their evidence was a
+  # committed JSON file and a paragraph in the delivery log, which is the shape of gate this project
+  # keeps finding un-attached -- `§10.2` items 1 and 2 were "closed" by hand-run probes, and a probe
+  # that only runs when someone remembers is a probe that is not running.
+  #
+  # The row count is smaller than the committed reading's 2,000 on purpose. 2,000 rows at ~60 ms per
+  # commit is two minutes of runner time to prove arithmetic that the digest already proves; 400 keeps
+  # the restart, the digest and the 24 checks, which is what the gate is about. The fresh reading goes
+  # to /tmp so the committed file survives to be compared with it -- that comparison is the next step
+  # and the reason the file is evidence rather than a log.
+  browser:
+    name: Verify browser suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The probe finds a browser through `CORTEX_CHROME` or the playwright cache, so installing
+      # playwright's Chromium is enough; no automation library is imported by the suite itself, and
+      # nothing here depends on `playwright` being a dependency of this repository.
+      #
+      # Pinned through `@1.49.1` and confirmed with `--yes` because `npx` in a non-interactive shell
+      # otherwise behaves differently across npm versions, and a job that hangs on a prompt reports as
+      # a timeout rather than as the missing browser it is.
+      - name: Install a browser
+        run: npx --yes playwright@1.49.1 install --with-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run the browser suites
+        env:
+          CORTEX_ROWS: '400'
+          CORTEX_RESULTS: /tmp/fresh-browser-run.json
+        run: pnpm test:browser
+
+      - name: The committed reading still describes this tree
+        run: |
+          node tools/browser-reading-check.mjs \
+            --committed packages/cortex-storage/test/browser/last-run.json \
+            --fresh /tmp/fresh-browser-run.json
+
+      - name: Upload the readings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-readings
+          path: |
+            /tmp/fresh-browser-run.json
+            packages/cortex-storage/test/browser/bundle-run.json
+          if-no-files-found: ignore

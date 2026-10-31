@@ -117,3 +117,18 @@ Not closed by it:
 - **that Firefox is supported as a product.** Obtaining the tier and surviving a restart is the API
   contract. Quota behaviour, eviction order and sync-handle contention across many tabs are a different
   sentence with a different measurement.
+
+## Where this runs now
+
+The readings above were taken by hand. Two of the three checks below need no browser, which is why two of them gate
+every push:
+
+| where | asserts | browser |
+| ----- | ------- | ------- |
+| `pnpm check` → `guard:browser` | the two **committed** readings run the same 24 checks, same order, same strings, both `opfs`, both digest-matched | no |
+| `Verify` job `browser` | the suite still passes on a real Chromium at 400 rows, and `last-run.json` still describes the tree | Chromium |
+| `tools/__tests__/test_browser_reading_check.py` (6) | the comparator bites: renamed check, dropped check, `idb` reading, unread digest, missing argument | no |
+
+`CORTEX_RESULTS` (restart probes) and `CORTEX_RESULTS_BUNDLE` (the bundle suite) exist so a CI run writes its own
+reading instead of overwriting the committed evidence — one shared variable let the bundle reading clobber the restart
+one, and the comparison then read 24 checks against 4.

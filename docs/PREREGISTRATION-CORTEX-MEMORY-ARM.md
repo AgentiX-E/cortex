@@ -19638,3 +19638,27 @@ The remaining two are the ones that need something this host does not have: **ga
 ≤5%, needs a corpus and a reader; **gate 4**, the LongMemEval reading with run id, configuration row and per-question
 records, is the accuracy campaign's own output and is the same table `§13.177` reports against. So the sentence
 "browser-capable, privacy-safe" is still not publishable, and the reason is now two named rows rather than four.
+
+#### 13.178.9 The gate was measured by hand, which is the shape of gate this repository keeps finding un-attached
+
+Everything above was run by hand on one host, and its evidence is two committed JSON files. That is exactly the defect
+`verify.yml` was written to fix for `pnpm check` — *"a gate you have to remember to run is a gate that is not
+running"* — reappearing one level up. Three things now attach it:
+
+| where | what it asserts | needs a browser |
+| ----- | --------------- | --------------- |
+| `pnpm check` → `guard:browser` | the **two committed readings** run the same 24 checks, in the same order, by the same strings, both on `opfs`, both digest-matched | **no** |
+| `Verify` → job `browser` | the suite still passes on a real Chromium at 400 rows, and the committed `last-run.json` still describes the tree | yes |
+| `tools/__tests__/test_browser_reading_check.py` (6) | the comparator itself: a renamed check, a dropped check, an `idb` reading, an unread digest, and a missing argument each produce a named failure | **no** |
+
+The middle row is the load-bearing one and it is deliberately weaker than the committed reading: 400 rows instead of
+2,000, because 2,000 rows at ~60 ms per commit is two minutes of runner time to prove arithmetic the digest already
+proves. What it keeps is the restart, the digest and all 24 checks. `CORTEX_RESULTS` sends the fresh reading to `/tmp`
+so the committed file survives to be compared with it — writing over it would destroy the comparison on the run that
+matters. `CORTEX_RESULTS_BUNDLE` is separate for the bundle suite, because `test:browser` runs both and one shared
+variable let the bundle reading overwrite the restart reading, which the comparison then read as 24 checks against 4.
+That was measured the obvious way.
+
+Two honest limits: the `browser` job covers **Chromium only** (a Firefox job would double the install and the runtime for
+a criterion already enforced offline by `guard:browser`), and it does not re-measure throughput — the job would fail on
+a slow runner for a number `13.178.4` excludes from the criteria on purpose.

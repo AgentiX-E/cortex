@@ -44,7 +44,9 @@ import { serveDist } from './server.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACKAGE = resolve(HERE, '..', '..');
 const ROWS = Number(process.env.CORTEX_ROWS ?? 2_000);
-const RESULTS = join(PACKAGE, 'test', 'browser', 'last-run.json');
+// Overridable so a CI job can keep the committed reading intact and compare the fresh run with it.
+// Writing over the committed file would make the comparison impossible on the very run that matters.
+const RESULTS = process.env.CORTEX_RESULTS ?? join(PACKAGE, 'test', 'browser', 'last-run.json');
 
 const NOTE =
   'One run. The throughput numbers move by ~15% between runs on the same host, so the documents ' +
