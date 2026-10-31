@@ -191,7 +191,15 @@ jobs:
   cortex-memory-ablation:
     name: cortex-memory A/B
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    # 240 minutes was sized against runs whose reader never thinks: the 500x4 arm takes 118
+    # minutes (41222844945, 17:05Z-19:04Z 2026-10-31). It is not enough headroom for the
+    # route-scoped reader §13.201.5 needs, and the arithmetic is measured rather than guessed:
+    # 220 questions at 1 repetition took 17.8 minutes with `thinking=disabled` and 37.0 with
+    # thinking on `multi-session+temporal` (2.08x) -- so the same ratio applied to 118 minutes
+    # is 245, i.e. five minutes past the ceiling and a lost run rather than a slow one. The
+    # routes named are 248 of 500 questions, so the ratio is an average over the arm and not an
+    # upper bound; 350 leaves the whole thing inside the job and still inside GitHub's 360.
+    timeout-minutes: 350
     steps:
       - name: Checkout
         uses: actions/checkout@v4
