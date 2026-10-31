@@ -174,8 +174,49 @@ function countBy(records, key) {
   );
 }
 
+/**
+ * `ablation.featureAggregate`, converted from shares to counts, or `null` when the artifact carries none.
+ *
+ * Returned as counts because every other roster on this page is a count, and a page that mixed `0.8565` with
+ * `426/500` would be inviting exactly the comparison the two representations hide: they are the same number at
+ * different denominators, and 0.8565 is the *mean* while 426 is *one draw*.
+ */
+function aggregateOf(body, total) {
+  const aggregate = body?.ablation?.featureAggregate;
+  if (aggregate === null || aggregate === undefined) return null;
+  const count = (share) => (typeof share === 'number' ? Math.round(share * total) : null);
+  const countOf = (key) => count(aggregate[key]);
+  return {
+    min: countOf('min'),
+    max: countOf('max'),
+    avg: countOf('avg'),
+    median: countOf('median'),
+    share: typeof aggregate.avg === 'number' ? aggregate.avg : null,
+  };
+}
+
 /** The abstention route is the one capability whose gold answer is a decline, and the only one the retry skips. */
 const ABSTENTION_CAPABILITY = 'ABS';
+
+/**
+ * The reader a run used, rendered rather than printed as `[object Object]`.
+ *
+ * `MemoryArmConfig.reader` became a record when §13.110.1's debt was paid: provider, model, base URL, thinking
+ * mode and temperature, which is the whole identity and the thing `40698883428` could not state. The first
+ * version of this file interpolated it and printed `reader [object Object]` on the first artifact that had one --
+ * a tool that hides the field it was written to make legible.
+ */
+function readerOf(body) {
+  const reader = body?.memoryArmConfig?.reader ?? null;
+  if (reader === null || reader === undefined) return null;
+  if (typeof reader === 'string') return reader;
+  const thinking = reader.thinking === undefined ? 'thinking not reported' : `thinking ${reader.thinking}`;
+  const temperature =
+    reader.temperature === null || reader.temperature === undefined
+      ? 'no temperature sent'
+      : `temperature ${reader.temperature}`;
+  return `${reader.provider ?? 'provider?'}/${reader.model ?? 'model?'} (${thinking}, ${temperature})`;
+}
 
 function readArtifact(body, isBareDecline) {
   const questions = Array.isArray(body.questions)
@@ -209,9 +250,26 @@ function readArtifact(body, isBareDecline) {
   const attempted = typeof census?.attempted === 'number' ? census.attempted : null;
   const retried = typeof census?.answered === 'number' ? census.answered : null;
 
+  /**
+   * How many repetitions the census was summed over.
+   *
+   * ## The second denominator mistake this file would have made, caught by its first real multi-run artifact
+   *
+   * `bareRetry` is a process-wide counter, so a four-repetition run reports four runs' worth of attempts, while
+   * `questions[]` carries one record per question. On `41185512391` (`runs: 4`) the census reads **111** against
+   * 21 prose finals, and the first version of this file printed "first-pass non-ABS declines = 132, prose share
+   * 15.9%" -- a number that mixes a summed numerator with a per-question denominator, which is the exact defect
+   * §13.192.4 was written to repair at the level of prose. The reading is therefore per repetition or not at
+   * all: `attempted / runs` is printed beside the census, and the share is **not computable** when `runs > 1`.
+   */
+  const runs = Number.isInteger(body.runs) && body.runs > 0 ? body.runs : 1;
+  const attemptedPerRun = attempted === null ? null : attempted / runs;
+  const retriedPerRun = retried === null ? null : retried / runs;
+
   // The population the retry's reach partitions: questions the pass converted, plus the ones it left declining.
+  // Only meaningful when one repetition produced the census and the records.
   const firstPassOutsideAbstention =
-    attempted === null ? null : attempted + proseOutsideAbstention.length;
+    attemptedPerRun !== null && runs === 1 ? attemptedPerRun + proseOutsideAbstention.length : null;
   const proseShare =
     firstPassOutsideAbstention === null || firstPassOutsideAbstention === 0
       ? null
@@ -234,7 +292,18 @@ function readArtifact(body, isBareDecline) {
       total: body.feature?.metrics?.total ?? questions.length,
       accuracy: body.feature?.metrics?.accuracy ?? null,
     },
-    reader: body.memoryArmConfig?.reader ?? null,
+    /**
+     * The same roster across repetitions, when the artifact reports it.
+     *
+     * `feature.metrics.correct` is **one** repetition's count -- the one whose records were kept -- and on a
+     * four-run artifact it is neither the mean nor the interval. `41185512391`'s records read 426 while its own
+     * `ablation.featureAggregate` reads min 0.852 / max 0.860 / avg 0.8565, which is 426 to 430 with a mean of
+     * 428.3. A reader who compares 426 against another run's roster is comparing one draw to one draw, the
+     * mistake §6.1.6's repetition guard exists for, so the interval is printed whenever it exists.
+     */
+    aggregate: aggregateOf(body, body.feature?.metrics?.total ?? questions.length),
+    reader: readerOf(body),
+    runs,
     answered: answered.length,
     declines: declines.length,
     declinesByCapability: countBy(declines, 'capability'),
@@ -266,15 +335,20 @@ function readArtifact(body, isBareDecline) {
       reported: attempted !== null,
       attempted,
       answered: retried,
+      runs,
+      attemptedPerRun,
       firstPassOutsideAbstention,
       proseShare,
     },
     /** Held when a non-abstention bare decline cannot exist outside what the retry already accounted for. */
     invariant: {
-      name: 'non-ABS bare finals <= attempted - answered',
+      name: 'non-ABS bare finals <= (attempted - answered) / runs',
       left: bareOutsideAbstention.length,
-      right: attempted === null ? null : attempted - (retried ?? 0),
-      held: attempted === null ? null : bareOutsideAbstention.length <= attempted - (retried ?? 0),
+      right: attempted === null ? null : (attempted - (retried ?? 0)) / runs,
+      held:
+        attempted === null
+          ? null
+          : bareOutsideAbstention.length <= (attempted - (retried ?? 0)) / runs,
     },
   };
 }
@@ -286,8 +360,20 @@ function show(value) {
 function linesFor(label, reading) {
   const lines = [
     `${label}`,
-    `  dataset ${show(reading.dataset)} · ${reading.questions} question(s) · reader ${show(reading.reader)}`,
-    `  roster ${show(reading.roster.correct)}/${show(reading.roster.total)} · answered ${reading.answered} · declined ${reading.declines}`,
+    `  dataset ${show(reading.dataset)} · ${reading.questions} question(s) · ${reading.runs} repetition(s)`,
+    `  reader ${show(reading.reader)}`,
+    `  roster ${show(reading.roster.correct)}/${show(reading.roster.total)}${
+      reading.runs === 1 ? '' : ' (one repetition, the one whose records are here)'
+    } · answered ${reading.answered} · declined ${reading.declines}`,
+    ...(reading.aggregate === null || reading.runs === 1
+      ? []
+      : [
+          `  roster across ${reading.runs} repetition(s): min ${show(reading.aggregate.min)} / max ${show(
+            reading.aggregate.max,
+          )} / mean ${show(reading.aggregate.avg)} (${reading.aggregate.share === null ? 'no share' : reading.aggregate.share.toFixed(4)}) / median ${show(
+            reading.aggregate.median,
+          )}`,
+        ]),
     `  questions by capability: ${Object.entries(reading.questionsByCapability)
       .map(([capability, count]) => `${capability} ${count}`)
       .join(', ')}`,
@@ -319,12 +405,22 @@ function linesFor(label, reading) {
     );
   } else {
     lines.push(
-      `  bareRetry: attempted ${reading.retry.attempted}, answered ${reading.retry.answered}`,
-      `    first-pass non-${ABSTENTION_CAPABILITY} declines = attempted + prose finals = ${show(reading.retry.firstPassOutsideAbstention)}`,
-      `    prose share of that population: ${reading.retry.proseShare === null ? 'not computable' : `${reading.retry.proseShare.toFixed(1)}%`} (${reading.proseFinals.outsideAbstention} of ${show(reading.retry.firstPassOutsideAbstention)})`,
+      `  bareRetry: attempted ${reading.retry.attempted}, answered ${reading.retry.answered}${
+        reading.runs === 1 ? '' : ` over ${reading.runs} repetition(s) = ${reading.retry.attemptedPerRun} per run`
+      }`,
       '    attempted / declines is NOT a share: the numerator is first-pass on the four non-abstention routes,',
       '    the denominator is final on all five, and the converted questions are not in the denominator',
     );
+    if (reading.runs > 1) {
+      lines.push(
+        `    first-pass non-${ABSTENTION_CAPABILITY} declines: not computable across ${reading.runs} repetition(s) -- the census is summed over runs and the declines are one per question`,
+      );
+    } else {
+      lines.push(
+        `    first-pass non-${ABSTENTION_CAPABILITY} declines = attempted + prose finals = ${show(reading.retry.firstPassOutsideAbstention)}`,
+        `    prose share of that population: ${reading.retry.proseShare === null ? 'not computable' : `${reading.retry.proseShare.toFixed(1)}%`} (${reading.proseFinals.outsideAbstention} of ${show(reading.retry.firstPassOutsideAbstention)})`,
+      );
+    }
   }
 
   const { invariant } = reading;

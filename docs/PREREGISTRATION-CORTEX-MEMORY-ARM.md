@@ -21174,3 +21174,81 @@ would be the first reader this campaign has found that is.
 
 **What it cannot read**, unchanged from §13.192.3: accuracy, the judge's tier (§13.184), and the MR ceiling
 (§13.187).
+
+#### 13.192.7 The control artifact arrived, and reading it found two defects in the tool that read it
+
+**Read 2026-10-31 from `41185512391` (`completed/success`), the control `§13.190.4` dispatched for the
+`operand-gap` pair. Nothing here reads ABS's criterion — that is `41188431321`, still running — and nothing here
+is about the ask.**
+
+##### 13.192.7.1 What the control reads
+
+| reading | value |
+| --- | --- |
+| roster, one repetition (`feature.metrics`) | **426/500** |
+| roster across 4 repetitions (`ablation.featureAggregate`) | min **426** / max **430** / mean **428.3** / median **429** → **0.8565** |
+| per capability, mean over 4 | IE 144.25, MR 89.75, TR 104.25, KU 61, ABS 29 |
+| reader, from the artifact | `deepseek/deepseek-chat`, `thinking disabled`, `temperature 0` |
+| declines | 50 (ABS 29, TR 12, MR 7, KU 2) |
+| `bareRetry` | attempted **111**, answered **111** → **27.75 per run**, every one converted |
+| final bare declines | 29 of 50, **all `ABS`**; outside `ABS` **0** |
+| `llmUsage` | 5,566 calls, 50.58 M prompt tokens, 44.49 M of them cache hits |
+
+Three things follow, and the first one is a boundary rather than a result:
+
+1. **This is not the registered configuration.** Its `memoryArmConfig` carries `maxPromptChars: 96000`,
+   `turnCutMarker: ellipsis`, `ask: operands`, `reviewPass: bare` — the 96,000 ceiling every run since
+   `41144910162` uses, the §13.188 ellipsis treatment, and §13.190's ask. §10.3 registers **48,000** and a bare
+   `400`. So **428 is the roster of a configuration the registration does not describe**, and quoting it against
+   an 83.40% figure measured at 48,000 compares two budgets. §13.192.7.3 is that drift, which no existing guard
+   can see.
+2. **The artifact now names its reader.** `MemoryArmConfig.reader` is present with provider, model, base URL,
+   thinking mode and temperature. §13.110.1's debt is paid on this path, which is what makes `§13.192.6`'s
+   two-dispatch probe readable at all — and it retro-confirms `§13.192.1`'s weakness: the field exists *now*,
+   which is precisely why its absence in `40698867439`/`40698883428` is a missing measurement rather than a
+   contradiction.
+3. **The retry converts everything it touches, for the fifth time.** 111 attempts, 111 answers, over four
+   repetitions. The population is per run 27.75 and every one became an answer, so `answered == attempted` again
+   — the arithmetic form of §13.111's reach being a formatting statistic rather than an uncertainty one.
+
+##### 13.192.7.2 The tool was wrong twice, and only a real artifact of each shape could show it
+
+`tools/reader-shape.mjs` was run on this artifact for the first time, and it printed two things it should not
+have:
+
+- **`first-pass non-ABS declines = attempted + prose finals = 132`, prose share `15.9%`.** `bareRetry` is a
+  **process-wide** counter, so a four-repetition run reports four runs' worth of attempts, while `questions[]`
+  carries **one** record per question. The tool divided a summed numerator by a per-question denominator — the
+  same defect §13.192.4 exists to repair, one level up, committed by the tool written to repair it. It now prints
+  the census **per repetition** (`27.75 per run`) and refuses the share across repetitions rather than
+  approximating it.
+- **`reader [object Object]`.** The field §13.110.1 added became a record, and the tool interpolated it. It is
+  now rendered (`deepseek/deepseek-chat (thinking disabled, temperature 0)`), with `null` temperature printing as
+  *no temperature sent* rather than as `0` — the distinction `resolveReaderIdentity` returns `number | null` for.
+
+Both are recorded because of what they say about instruments in general: **a reading tool is unverified until it
+has been pointed at a real artifact of every shape it claims to read.** Every test in `test_reader_shape.py` used
+a hand-built single-run fixture, and both defects live in shapes no fixture had — a multi-repetition census, and
+a reader record. The suite is 19 tests now, and the four added ones are those two shapes plus the interval and
+the absent-temperature case.
+
+##### 13.192.7.3 The drift §10.3 cannot see, because both sides of the comparison moved together
+
+`test_preregistration_config.py` compares §10.3 against the dispatch table, in both directions, and that guard
+was written for §13.64's doc↔script drift. It cannot see this one: **§10.3 and the dispatch table both say
+`maxPromptChars: 48000`, and every 500-question run on this arm since `41144910162` runs at 96,000 through a
+`--set` that neither document records.** The same shape applies to the cut marker: §10.3 names `maxTurnChars: 400`
+and the table sends `400`, while the newest runs send `400:ellipsis`.
+
+So the registration describes a configuration that the arm no longer runs, and the drift is invisible for the
+reason the §13.64 guard cannot reach — it is not a disagreement between two documents but a disagreement between
+the documents and what is dispatched. Two consequences, neither taken here:
+
+1. **`--set` is the hole.** A guarded table plus an unguarded override that lands in the same field means the
+   guard's coverage is `(registered ∩ sent)` and the interesting value lives outside it. An override should be
+   recorded in §10.3's own list, at least as a one-line "as of §13.17x, the arm runs at 96,000 and the marker is
+   on"; otherwise the next reader of §10.3 measures 48,000 by reading a document.
+2. **The two probe dispatches of §13.192.6 therefore run at 48,000 without the marker**, not at this run's
+   configuration. That is deliberate — a shape reading wants the registered arm — but it means the probe's control
+   and `41185512391` are **not** comparable, and any future 500-question run should say which of the two budgets
+   it is on before its roster is quoted.

@@ -134,7 +134,7 @@ def test_a_non_abstention_bare_decline_the_retry_cannot_explain_is_a_failure(tmp
     )
     completed = run(tmp_path, [("one", body)])
     assert completed.returncode == 1, completed.stdout
-    assert "invariant non-ABS bare finals <= attempted - answered: VIOLATED (1 vs 0)" in completed.stdout
+    assert "invariant non-ABS bare finals <= (attempted - answered) / runs: VIOLATED (1 vs 0)" in completed.stdout
     assert "q2" in completed.stdout
     assert "the retry invariant is VIOLATED on one" in completed.stdout
 
@@ -149,7 +149,7 @@ def test_abstention_bare_declines_are_by_design_and_do_not_fail_it(tmp_path: Pat
     assert completed.returncode == 0, completed.stderr
     assert "by capability: ABS 2" in completed.stdout
     assert "outside ABS: 0" in completed.stdout
-    assert "invariant non-ABS bare finals <= attempted - answered: held (0 vs 0)" in completed.stdout
+    assert "invariant non-ABS bare finals <= (attempted - answered) / runs: held (0 vs 0)" in completed.stdout
 
 
 def test_a_missing_census_reads_as_unmeasured_and_not_as_zero(tmp_path: Path) -> None:
@@ -158,7 +158,7 @@ def test_a_missing_census_reads_as_unmeasured_and_not_as_zero(tmp_path: Path) ->
     completed = run(tmp_path, [("one", body)])
     assert completed.returncode == 0, completed.stderr
     assert "bareRetry: not reported by this artifact" in completed.stdout
-    assert "invariant non-ABS bare finals <= attempted - answered: not read (no census)" in completed.stdout
+    assert "invariant non-ABS bare finals <= (attempted - answered) / runs: not read (no census)" in completed.stdout
     assert "first-pass non-ABS declines" not in completed.stdout
 
 
@@ -278,3 +278,76 @@ def test_a_decline_that_carried_its_list_is_prose_and_keeps_its_bare_count_at_ze
     assert completed.returncode == 0, completed.stderr
     assert "bare declines in the final record: 0 of 2" in completed.stdout
     assert "empty replies among the declines: 1" in completed.stdout
+
+
+def test_a_multi_repetition_census_is_not_divided_by_one_run_of_declines(tmp_path: Path) -> None:
+    """The defect the first real four-run artifact exposed: a summed counter over a per-question denominator.
+
+    `bareRetry` counts the whole process, so `runs: 4` reports four repetitions of attempts while `questions[]`
+    holds one record per question. The first version of the tool printed "first-pass non-ABS declines = 132,
+    prose share 15.9%" for `41185512391` -- two populations again, one level up from the one §13.192.4 repaired.
+    The share is now refused rather than approximated, and the per-run rate is printed instead.
+    """
+    body = report(
+        [
+            record("q1", answer="a"),
+            record("q2", capability="ABS"),
+            record("q3", raw_output="The evidence does not state a count."),
+        ],
+        bare_retry={"attempted": 20, "answered": 20},
+    )
+    body["runs"] = 4
+    completed = run(tmp_path, [("one", body)])
+    assert completed.returncode == 0, completed.stderr
+    assert "4 repetition(s)" in completed.stdout
+    assert "attempted 20, answered 20 over 4 repetition(s) = 5 per run" in completed.stdout
+    assert "not computable across 4 repetition(s)" in completed.stdout
+    assert "prose share of that population" not in completed.stdout
+    assert "first-pass non-ABS declines = attempted" not in completed.stdout
+
+
+def test_the_roster_of_a_multi_repetition_artifact_is_printed_as_an_interval(tmp_path: Path) -> None:
+    """`feature.metrics.correct` is one draw; `ablation.featureAggregate` is the distribution. Both are printed."""
+    body = report([record("q1", answer="a", correct=True), record("q2", capability="ABS")], correct=1)
+    body["runs"] = 4
+    body["ablation"] = {"featureAggregate": {"min": 0.5, "max": 1.0, "avg": 0.75, "median": 0.75}}
+    completed = run(tmp_path, [("one", body)])
+    assert completed.returncode == 0, completed.stderr
+    assert "roster 1/2 (one repetition, the one whose records are here)" in completed.stdout
+    assert "roster across 4 repetition(s): min 1 / max 2 / mean 2 (0.7500) / median 2" in completed.stdout
+
+
+def test_a_single_repetition_artifact_does_not_print_an_interval_of_one(tmp_path: Path) -> None:
+    """An interval with one draw in it is not an interval, and printing it invites reading it as a stability claim."""
+    body = report([record("q1", answer="a", correct=True)], correct=1)
+    body["ablation"] = {"featureAggregate": {"min": 1.0, "max": 1.0, "avg": 1.0, "median": 1.0}}
+    completed = run(tmp_path, [("one", body)])
+    assert completed.returncode == 0, completed.stderr
+    assert "roster across" not in completed.stdout
+
+
+def test_the_reader_record_is_rendered_and_not_printed_as_an_object(tmp_path: Path) -> None:
+    """The field §13.110.1 added is the one this tool exists to make legible, so it cannot read `[object Object]`."""
+    body = report([record("q1", answer="a")])
+    body["memoryArmConfig"] = {
+        "reader": {
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "baseUrl": "https://api.deepseek.com/v1",
+            "thinking": "disabled",
+            "temperature": 0,
+        }
+    }
+    completed = run(tmp_path, [("one", body)])
+    assert completed.returncode == 0, completed.stderr
+    assert "reader deepseek/deepseek-chat (thinking disabled, temperature 0)" in completed.stdout
+    assert "[object Object]" not in completed.stdout
+
+
+def test_a_reader_that_sent_no_temperature_says_so_rather_than_printing_null(tmp_path: Path) -> None:
+    """`null` is a fact -- the request carried none -- and it is not the same fact as `0`."""
+    body = report([record("q1", answer="a")])
+    body["memoryArmConfig"] = {"reader": {"provider": "deepseek", "model": "deepseek-chat", "temperature": None}}
+    completed = run(tmp_path, [("one", body)])
+    assert completed.returncode == 0, completed.stderr
+    assert "reader deepseek/deepseek-chat (thinking not reported, no temperature sent)" in completed.stdout
