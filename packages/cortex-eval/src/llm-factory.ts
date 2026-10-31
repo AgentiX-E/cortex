@@ -110,7 +110,10 @@ export function readThinkingReach(raw: string | undefined): ThinkingReach {
           'treatment on fewer routes than the value names and report the value that was typed.',
       );
     }
-    if (!(name in TURN_CAP_ROUTES)) {
+    // `Object.hasOwn`, not `in`: the table is an object literal, so `in` also accepts every
+    // inherited member, and `DEEPSEEK_THINKING=constructor` would then build a map whose only
+    // entry is a route the product can never ask for while the artifact printed it as reach.
+    if (!Object.hasOwn(TURN_CAP_ROUTES, name)) {
       throw new Error(
         `${THINKING_VARIABLE} must be "disabled", "enabled", or a "+"-separated list of routes ` +
           `(${ALL_TURN_CAP_ROUTES.map((route) => JSON.stringify(route)).join(', ')}); ` +

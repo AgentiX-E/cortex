@@ -122,6 +122,17 @@ describe('readThinkingReach', () => {
     );
   });
 
+  it('rejects an inherited object member rather than mapping it', () => {
+    // `TURN_CAP_ROUTES` is an object literal, so `'toString' in table` is true. With `in`, this
+    // value would have produced a map whose only entry is a key the product can never ask for,
+    // and the artifact would have printed `thinking=enabled on toString` as the treatment.
+    for (const inherited of ['toString', 'constructor', '__proto__']) {
+      expect(() => readThinkingReach(inherited), inherited).toThrow(
+        /must be "disabled", "enabled", or a "\+"-separated list of routes/,
+      );
+    }
+  });
+
   it('rejects "all", which names a reach without naming a mode', () => {
     // `all` means "every route" for `cortex_memory_max_turn_chars_routes`. Here the same word would
     // have to mean "thinking on every route" or "thinking off on every route", and a grammar that

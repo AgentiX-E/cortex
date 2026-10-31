@@ -1644,7 +1644,12 @@ function readRouteReach(raw: string | undefined, variable: string): readonly str
   if (trimmed.toLowerCase() === 'none') return [];
   const named = trimmed.split(',').map((part) => part.trim());
   for (const name of named) {
-    if (!(name in TURN_CAP_ROUTES)) {
+    // `Object.hasOwn`, not `in`. The table is an object literal, so `in` also answers true for
+    // every inherited member -- `toString`, `constructor`, `__proto__` -- and such a name would
+    // pass validation and then be dropped by the filter below, which is exactly the silent
+    // five-of-six application the message argues against. §13.198 gave the table a second reader
+    // in `llm-factory`, and the same hole was there; both sides were fixed together.
+    if (!Object.hasOwn(TURN_CAP_ROUTES, name)) {
       throw new Error(
         `${variable} must be "all", "none", or a comma-separated list of ` +
           `${Object.keys(TURN_CAP_ROUTES)

@@ -3317,6 +3317,22 @@ describe('the per-turn cap reach', () => {
     }
   });
 
+  it('rejects an inherited object member, which is not a route however the table is read', () => {
+    // The table is an object literal, so `name in TURN_CAP_ROUTES` answers true for `toString`,
+    // `constructor` and `__proto__` as well as for the six routes. That hole made the check pass
+    // and the filter below drop the name, so a dispatch spelling one of them would apply the cap
+    // to five of six routes while the artifact recorded the sixth -- the exact failure the
+    // rejection message argues against, arrived at through the check meant to prevent it.
+    for (const inherited of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(() =>
+        cortextMemoryArmOptions({
+          CORTEX_MEMORY: '1',
+          CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: inherited,
+        }),
+      ).toThrow(/CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES/);
+    }
+  });
+
   it('lists the accepted names in the rejection, so a typo is fixable without the source', () => {
     expect(() =>
       cortextMemoryArmOptions({
