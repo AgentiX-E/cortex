@@ -21327,8 +21327,15 @@ condition §6.1.6 makes for any comparison and the reason this is a pair rather 
    disabled arm's > 100 on the same questions. Falsified if it exceeds 50 — which would mean the 20-question
    reading was a property of the sample rather than of the reader, and that would be the more interesting result.
 2. **Compliance converts on `MR`.** The enabled arm's `MR` correct count exceeds the disabled arm's by **≥ +6
-   questions** (of about 53 at this sample). This is the whole question: the disabled reader's MR is 68.6% and its
-   failures are enumerations that never emit a number.
+   questions**. This is the whole question: the disabled reader's MR is 68.6% and its failures are enumerations that
+   never emit a number.
+
+   **Correction to this prediction's denominator, made after the control artifact arrived and before the treatment
+   one did, and stated so a reader can check it.** I wrote "of about 53 at this sample" by scaling 121 × 220/500.
+   The control artifact reads **MR 32, IE 94, KU 32, TR 32, ABS 30** — `sampling.ts` round-robins over seven
+   buckets (`IE` split into user/assistant/preference), so 220 questions is ~31 per bucket, `ABS` exhausts at its
+   own 30, and `IE` takes its three buckets' share. The threshold is unchanged at **+6**; only the base it is 6 out
+   of is corrected, from 53 to **32**. Six of 32 is a large effect, and that is what the prediction claims.
 3. **`TR` moves in the same direction but less.** `TR`'s closing line is also the enumerated one, so ≥ +4. Falsified
    if TR falls, which would say the compliance gain is route-specific in a way the reach table does not predict.
 4. **`IE` does not fall by more than 3.** `IE`'s answers are legitimately long (median 64 on both arms), and the
