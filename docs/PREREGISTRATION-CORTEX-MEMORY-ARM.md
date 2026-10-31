@@ -20870,7 +20870,11 @@ whitepaper already holds the measurement, from `40698883428` against `4069886743
 
 #### 13.192.1 The measurement that was already here
 
-`deepseek-chat` → `deepseek-v4-pro`, one run each, same load:
+`deepseek-chat` → `deepseek-v4-pro`, one run each, same load — and the two ids are named explicitly here
+because the whitepaper lists them in descending order, which reads as if `40698883428` were the control:
+**`40698867439` is the `deepseek-chat` arm** (its artifact's own `feature.metrics` reads `417 / 500`,
+`accuracy 0.834`) and **`40698883428` is the `deepseek-v4-pro` arm** — taken from the whitepaper's table,
+because that run's artifact would not download twice and this file therefore has not opened it:
 
 | capability | `deepseek-chat` | `deepseek-v4-pro` | Δ |
 | --- | --- | --- | --- |
@@ -20882,8 +20886,16 @@ whitepaper already holds the measurement, from `40698883428` against `4069886743
 | **roster** | **417 (83.40%)** | **381 (76.20%)** | **−36 (−7.20)** |
 
 Four capabilities moved in one direction and the mechanism is in the artifact rather than in the model's
-quality: the median answer went from **19 to 60 characters** on a block whose closing line is *"Reply with the
-Step 2 number alone"*, and the share of declines that were the bare token fell from **45.1% to 13.2%**. The
+quality: the whitepaper's figure is a median answer of **19 → 60 characters** on a block whose closing line is
+*"Reply with the Step 2 number alone"*, and a bare-token share of declines falling **45.1% → 13.2%**.
+
+**The 19 could not be reproduced, and that is recorded rather than smoothed.** Recomputing from
+`40698867439`'s own records gives a median `answer` length of **30** over its 449 answered questions (and
+251.5 over `rawOutput` on all 500), so either the whitepaper's population is narrower than "all answers"
+(IE's median in that artifact is 17 and KU's 23) or it was measured from a different field. The direction
+of the mechanism does not depend on it — 60 against either 19 or 30 is the same finding — but a number in a
+registration has to be one this file can point at, so the next reader is told which measurement reproduces
+and which does not. The
 sampled errors are enumeration and arithmetic — a charity total of `8,750` against a gold of `$3,750`, a
 rollercoaster count of `7` against `10` with an activity missing from the model's own list — which is to say the
 larger model **followed the contract less well and reasoned no better on this task**.
