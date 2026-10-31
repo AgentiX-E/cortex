@@ -152,20 +152,47 @@ function numbersIn(text: string): string[] {
 }
 
 /**
- * Capitalised words that are plausibly names, with the two families that are not excluded by a
- * stoplist rather than by a heuristic: month and weekday names are capitalised in ordinary English
- * and substituting one changes a date, which the temporal template is allowed to tolerate.
+ * Capitalised words that are not names.
+ *
+ * Three families are excluded by a list rather than by a heuristic, and each was found by watching an
+ * instrument produce a number that was wrong rather than by imagining it:
+ *
+ *   months and weekdays  capitalised in ordinary English, and substituting one changes a date, which
+ *                        the temporal template is allowed to tolerate. `§13.182` excluded these first.
+ *   determiners and      capitalised at the start of a sentence, so every sentence-initial word would
+ *   function words       otherwise be an "entity". `§13.184.5` added the pronouns after the name screen
+ *                        hit it: an answer starting `They adopted a Labrador` extracted `They`, which made
+ *                        the answer's name set non-empty, made it disjoint from a gold naming `Rachel`, and
+ *                        would have listed a **correct** answer as a false accept.
+ *   discourse markers     `However`, `Meanwhile`, `Finally` — same position, same problem.
+ *
+ * The list is deliberately conservative about ordinary nouns: `Golden` and `Retriever` are both kept
+ * from `Golden Retriever`, which makes the screen *less* eager (either half being present counts as a
+ * shared name) and an `entity-swap` on the first half still destroys the gold.
  */
 const NOT_A_NAME = new Set(
   (
     'January February March April May June July August September October November December ' +
-    'Monday Tuesday Wednesday Thursday Friday Saturday Sunday I The A An It This That These Those ' +
-    'My Our Your His Her Their There Then When What Where Which Who Why How If So And But Or Not No ' +
-    "Yes It It's"
+    'Monday Tuesday Wednesday Thursday Friday Saturday Sunday ' +
+    'I The A An It This That These Those My Our Your His Her Their There Then When What Where Which ' +
+    'Who Why How If So And But Or Not No Yes ' +
+    'They Them She He We Us You Him Its Both Each Every All Some Many Most One Two Three ' +
+    'However Meanwhile Finally First Second Third Instead Besides Also Even Only Just Still ' +
+    'After Before Because Since During Until Unless Though Although While Now Today Yesterday ' +
+    'Tomorrow Okay Ok Sure Thanks Thank'
   ).split(' '),
 );
 
-function entitiesIn(text: string): string[] {
+/**
+ * The names a text states.
+ *
+ * Exported since `§13.184.5`: `nameScreen` compares an answer's names against its gold's names, and it
+ * has to use *this* definition. The pool `entity-swap` draws replacements from and the set the screen
+ * tests for disjointness are then one set, so the 44.90% the audit measured and the candidates the
+ * screen lists are statements about the same thing. Not exported from the package index: the only
+ * consumer is a sibling module, and `tools/export-census.mjs` refuses an advertisement with no caller.
+ */
+export function entitiesIn(text: string): string[] {
   const found = text.match(/\b[A-Z][a-z]{2,}\b/g) ?? [];
   return [...new Set(found.filter((word) => !NOT_A_NAME.has(word)))];
 }

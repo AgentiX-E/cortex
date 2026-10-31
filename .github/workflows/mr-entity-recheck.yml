@@ -1,0 +1,104 @@
+name: MR entity recheck
+
+# Which of the answers the judge accepted name something the gold does not name?
+#
+# `§13.184` measured this judge accepting 19.38% of answers that were wrong by construction, and the
+# split is the finding: `entity-swap` **44.90%**, `number-swap` **14.75%**, `cross-gold` **0/50**. A judge
+# that checked numbers would have caught the number swaps more often than the name swaps; it caught them
+# three times less often. So the channel it leaves open is *which name appears*.
+#
+# This workflow exercises that channel on every answer instead of on a sample, using an artifact that
+# already exists. It spends no tokens and needs no key: the screen reads `groundTruth`, `answer` and
+# `correct` from the report and compares name sets. That is why it can run on a published run and why
+# anyone can re-derive the number from the artifact named in the reading.
+#
+# Dispatch only. The input is a run id, so there is nothing for a push to trigger on.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Benchmark run id whose `longmemeval-s-report` artifact is screened'
+        required: true
+        type: string
+      capability:
+        description: 'Capability to screen (`MR`, `TR`, `IE`, `ABS`, or `all`)'
+        required: false
+        default: 'MR'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mr-entity-recheck-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    name: Names disjoint from the gold, on accepted answers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Dispatch inputs reach the script through the environment, never through the script text: the
+      # runner substitutes an expression into a `run:` block before bash parses it.
+      RUN_ID: ${{ inputs.run_id }}
+      CAPABILITY: ${{ inputs.capability }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Fetch the artifact under screen
+        run: |
+          set -euo pipefail
+          mkdir -p readings/artifact
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name longmemeval-s-report --dir readings/artifact
+          ls -la readings/artifact
+
+      # The report the benchmark writes. `benchmark-cortex-memory-ablation-report.json` carries the
+      # `questions` array, and its `correct` field is the **first repetition**'s verdict — which is the
+      # population `§13.184.5` registered the prediction on ("MR first round at most 84 - 5 = 79").
+      - name: Screen
+        run: |
+          set -o pipefail
+          node tools/mr-entity-recheck.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --capability "$CAPABILITY" \
+            --out readings/mr-entity-recheck.json 2>&1 | tee readings/mr-entity-recheck.txt
+
+      # Every capability at once, so a reading on `MR` can be read against the other three rather than
+      # taken on its own. If the screen fires at the same rate everywhere it is a property of the gold
+      # corpus, not of the arm under study.
+      - name: Screen every capability beside it
+        run: |
+          set -o pipefail
+          node tools/mr-entity-recheck.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --capability all 2>&1 | tee readings/mr-entity-recheck-all.txt
+
+      - name: Upload readings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mr-entity-recheck
+          path: readings/mr-entity-recheck*
+          retention-days: 30

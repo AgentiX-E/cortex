@@ -58,6 +58,12 @@ export {
 // nothing consumes — the exact claim-shape `tools/export-census.mjs` refuses.
 export { planAudit, summariseAudit } from './judge-audit.js';
 
+// The audit's reading, applied to every answer instead of to a sample. `nameScreen` is what makes the
+// 19.38% usable: it turns a rate into a list of answers whose names are disjoint from the gold's, on an
+// artifact that already exists, with no model and no key. Exported for the same reason as the audit —
+// `tools/mr-entity-recheck.mjs` is a thin shell and the predicate has to be testable without one.
+export { nameScreen } from './mr-entity-recheck.js';
+
 // The reading stage of the competition harness. Only the factory is exported: the tool needs a reader, and the
 // prompt, the renderer and the refusal phrase are its internals — a second caller reaching for them would be
 // building a second reader, which is the thing this module exists to prevent. The tests import the module
