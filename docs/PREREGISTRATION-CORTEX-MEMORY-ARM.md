@@ -20860,61 +20860,72 @@ table is not what the renderer does, and §13.190.4's single-variable claim is f
 nothing to do with prompt wording. Also falsified if the tool reports `unmeasured` on those two runs, which
 would mean the digest is not being written on the path that produces the artifacts.
 
-### 13.192 The reader tier is the largest published effect on this benchmark, and this arm has never measured it on itself
+### 13.192 The reader axis was already measured once, by size — and the size-selected reader lost 7.20 points
 
-**Registered 2026-10-31, before dispatch.** No code: the reader is already a configuration field
-(`DEEPSEEK_MODEL`, default `deepseek-chat`, recorded in `memoryArmConfig.reader`), so this is a load change
-with a prediction rather than an increment. Load copied field for field from the run it is compared against,
-with the model id the only difference.
+**Registered 2026-10-31, as a correction and then as a plan. Nothing dispatched under this number yet.** The
+first version of this section claimed the arm "has never measured the reader on itself" and registered a
+stronger reader. That claim was **false**, and it is withdrawn rather than amended in place: `§6.1.6` of the
+whitepaper already holds the measurement, from `40698883428` against `40698867439`, with `memoryArmConfig`
+**equal field for field** and `DEEPSEEK_MODEL` the only difference.
 
-#### 13.192.1 What the ledger now says, and what it says about where the gap lives
+#### 13.192.1 The measurement that was already here
 
-`tools/competitor-ledger.json` was re-mined on 2026-10-31 and now holds **46** entries. Three of the additions
-change how this arm's number should be read, and none of them is about a memory mechanism:
+`deepseek-chat` → `deepseek-v4-pro`, one run each, same load:
 
-| what | number | who measured it |
-| --- | --- | --- |
-| **oracle** — gold evidence sessions only, `gpt-4o` | **82.4%** (jakecuth) / **87.0%** (the paper, quoted by sentra) / **92.4%** with chain-of-note | two sources that disagree; both recorded |
-| full context, no memory system, `gpt-4o` | 60.6% (paper) / 62.1% | the benchmark authors |
-| one memory layer, three readers (Mastra OM) | **84.23 → 93.27 → 94.87** | the vendor, against itself |
-| one memory layer, eight readers (Agent Zero) | 92.2 → 95.6 (**3.4 points**) | Zero Labs, arXiv August 2026 |
+| capability | `deepseek-chat` | `deepseek-v4-pro` | Δ |
+| --- | --- | --- | --- |
+| IE | 141/150 | 129/150 | −12 |
+| MR | 83/121 | 80/121 | −3 |
+| KU | 64/72 | 56/72 | −8 |
+| TR | 100/127 | 86/127 | −14 |
+| ABS | 29/30 | 30/30 | +1 |
+| **roster** | **417 (83.40%)** | **381 (76.20%)** | **−36 (−7.20)** |
 
-Two facts follow, and the second is the one this arm has been missing.
+Four capabilities moved in one direction and the mechanism is in the artifact rather than in the model's
+quality: the median answer went from **19 to 60 characters** on a block whose closing line is *"Reply with the
+Step 2 number alone"*, and the share of declines that were the bare token fell from **45.1% to 13.2%**. The
+sampled errors are enumeration and arithmetic — a charity total of `8,750` against a gold of `$3,750`, a
+rollercoaster count of `7` against `10` with an activity missing from the model's own list — which is to say the
+larger model **followed the contract less well and reasoned no better on this task**.
 
-First: **this arm's 83.0% sits at the published oracle**, not twelve points below a memory mechanism. Perfect
-retrieval behind a `gpt-4o` reader lands in the low-to-high eighties, and this arm reaches the low eighties with
-a DeepSeek reader. The distance to 95.6% is therefore **not** a retrieval gap that a better window closes.
+So the selector "bigger model" is refuted on this arm, and the published straddle (Mastra 10.64 points across
+three readers, Agent Zero 3.4 across eight) says only that the axis is large and its **sign is not a function of
+size**. Neither fact licenses another size-selected dispatch.
 
-Second: **the reader's worth is published, and it is not one number** — 10.64 points for Mastra across three
-models, 3.4 for Agent Zero across eight. A system whose retrieval already carries the evidence is insensitive to
-the reader; a system whose retrieval does not is very sensitive. That makes this an experiment on **our own**
-retrieval, read through the reader knob: if our arm is sensitive, its context is not carrying the evidence; if
-it is insensitive, the retrieval is doing its job and the gap is elsewhere.
+**One weakness in the chain, stated because it is this file's own record rather than the whitepaper's.**
+`MemoryArmConfig.reader` is optional, and neither artifact from `40698867439` / `40698883428` carries it — checked
+in the downloaded JSON of the first: the config lists `ask`, `askRoutes`, `reviewPass` and the rest, and there is no
+`reader` key at all. So "the two configs are equal field for field, and the model is the only difference" is a
+claim whose second half comes from the **dispatch inputs**, not from the artifacts; the artifacts are equal
+*because* neither records the model. The field exists now (§13.110.1's debt was paid after these runs), which is
+why `41159983913` and everything after it name the reader — and why this correction costs nothing to check and
+would have cost a re-run to discover later.
 
-#### 13.192.2 The prediction, and the number it has to beat
+#### 13.192.2 What is still open, and the cheapest thing that could settle it
 
-The arm's own four-repetition spread on byte-identical prompts is **8–10 questions (2.0 points)** on the roster
-and 8 on MR (§9.131). Any prediction smaller than that is unwritable, so the criterion is stated in points and
-against that floor:
+Open: whether a reader selected on **measured compliance with this arm's output contract** clears the noise
+floor. `§6.1.6` states that as the remaining route and does not take it, for a reason that is still true — the
+only way it was tested cost a full run, and it lost.
 
-> **Prediction:** the roster rises by **at least 3.0 points** (`≥ +15` questions) at the stronger reader, with
-> MR and TR both moving and IE not falling; `prompt` bytes are unchanged for every question, since the reader is
-> not a prompt; the artifact's `memoryArmConfig.reader.model` names the new model; and the token bill rises by
-> more than the accuracy does, because the reader is invoked on every question.
+So the next step is not a 500-question dispatch. It is a **compliance probe**: `limit: 20`, one repetition, one
+candidate reader, and the reading is the one `§6.1.6` already knows how to take from an artifact — median answer
+length against the routed block's closing line, the share of declines that are the bare token, and the parse
+failures. Twenty questions is enough to separate 19 characters from 60 and not enough to say anything about
+accuracy, which is exactly the scope of the question being asked.
 
-**Falsified if** the roster moves by less than 2.0 points — then *this arm's* retrieval is already carrying the
-evidence (the Maximem reading rather than Mastra's), the gap to the published frontier is a judge or a
-configuration difference, and no reader change is worth its cost. Also falsified if IE falls by more than the
-2.2-point floor, which would say the stronger reader is being hurt by this arm's instruction blocks rather than
-helped by its evidence.
+**Falsified if** a candidate's probe shows a median answer length within a few characters of `deepseek-chat`'s
+and a bare-token share within a few points — then the candidate complies, and the full run under it is the next
+registration rather than this one. **Also falsified if** every candidate probed this way is already at
+`deepseek-chat`'s shape, in which case compliance is not what distinguishes the models available to this arm and
+the axis is closed for reasons that have nothing to do with accuracy.
 
-#### 13.192.3 What this does not do
+#### 13.192.3 What the probe does not do, stated before it runs
 
-1. **It does not make a cross-harness ranking possible.** The ledger groups on
-   `dataset | variant | answerModel | judge | harness`; this run produces a *new* answer model, so it starts its
-   own group. The reading is the **paired** one — the same harness, the same questions, one field apart.
-2. **It does not move the judge.** If the judge's tier is the confound rather than the reader's, this run cannot
-   see it, and §13.184's audit is the instrument that can.
-3. **It does not touch the MR ceiling.** §13.187 closed the 96-question target arithmetically (fixing all
-   seventeen durable misses without losing a lead is 101/121 = 83.5%, below the reference arm), so a reader that
-   adds points to MR is welcome and still cannot reach the arm that does no memory at all.
+1. **It cannot read accuracy.** Twenty questions has a per-capability resolution of one question and a roster
+   interval too wide to compare with 83.40. A probe that is read as a result is a 20-question ranking published
+   as a 500-question one.
+2. **It does not re-open the judge question.** If the confound is the judge's tier rather than the reader's, no
+   reader probe sees it; §13.184's audit is the instrument for that, and it is already red.
+3. **It does not move the MR ceiling.** §13.187 closed the 96-question target arithmetically — fixing all
+   seventeen durable misses without losing a lead is 101/121 = 83.5%, still below the arm that does no memory at
+   all — so a reader that adds MR points is welcome and cannot reach the reference pipeline.
