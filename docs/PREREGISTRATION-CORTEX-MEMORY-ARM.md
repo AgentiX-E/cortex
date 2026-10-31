@@ -21917,6 +21917,15 @@ The export ledger moved by two (`ThinkingReach`, `readThinkingReach`), both in `
 `resolveTimeoutMs` is already there: a name a test imports is legitimately exported, and a barrel re-export is not a
 caller the census follows.
 
+**One defect found while moving the table, and it was not new.** `TURN_CAP_ROUTES` is an object literal, so
+`name in TURN_CAP_ROUTES` is true for every inherited member as well as for the six routes. In `readRouteReach` the
+effect was the silent five-of-six application its own message argues against: `toString` passed the check and was then
+dropped by `ALL_TURN_CAP_ROUTES.filter(...)`, so a dispatch spelling it would have applied a cap to five routes while the
+artifact recorded six. The new grammar had the same hole and would have built a map whose only entry is a key the
+product can never ask for, printing `thinking=enabled on toString` as the treatment administered. Both sides now use
+`Object.hasOwn`, both are tested with the four names a reviewer reaches for first, and the reach test sits beside the
+rejection it belongs to rather than in a file of its own.
+
 #### 13.198.4 What this does not do, and what the first dispatch of it will test
 
 **No run accompanies this section.** The prediction §13.197.3 fixed is unchanged and still untouched by any
