@@ -136,6 +136,20 @@ describe('the predicate itself', () => {
     expect(row.relation).toBe('unnamed-answer');
   });
 
+  it('does not read a number word at the start of a gold as a name', () => {
+    // `Five months ago` is a real gold, and `Five` passed `[A-Z][a-z]{2,}`. The row it produced named a
+    // city in its answer, so the screen listed a false accept on a question about duration.
+    const row = nameScreen([
+      answer({
+        questionId: 'q12',
+        gold: 'Five months ago',
+        answer: 'They were in San Francisco about five months ago.',
+      }),
+    ]).rows[0]!;
+    expect(row.goldNames).toEqual([]);
+    expect(row.relation).toBe('unnamed-gold');
+  });
+
   it('reports the names it compared, so the predicate can be audited from the reading alone', () => {
     const reading = nameScreen([
       answer({

@@ -80,9 +80,13 @@ jobs:
       - name: Screen
         run: |
           set -o pipefail
+          # `--sample 25`: the reading is a count, and a count of zero is unreadable without the golds
+          # it was taken over. The first dispatch of this workflow returned 0 candidates on MR because
+          # 82 of 84 golds name nothing, and the only way to tell "the answers are clean" from "the
+          # screen cannot see them" was to read the golds.
           node tools/mr-entity-recheck.mjs \
             --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
-            --capability "$CAPABILITY" \
+            --capability "$CAPABILITY" --sample 25 \
             --out readings/mr-entity-recheck.json 2>&1 | tee readings/mr-entity-recheck.txt
 
       # Every capability at once, so a reading on `MR` can be read against the other three rather than

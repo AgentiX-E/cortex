@@ -2,7 +2,7 @@
 /**
  * Which of the answers the judge accepted name something the gold does not name?
  *
- *     node tools/mr-entity-recheck.mjs --artifact <report.json> [--capability MR] [--out <file>]
+ *     node tools/mr-entity-recheck.mjs --artifact <report.json> [--capability MR] [--out <file>] [--sample N]
  *
  * ## Why this runs on an artifact rather than against a model
  *
@@ -88,6 +88,36 @@ function printTally(label, tally) {
   );
 }
 
+/**
+ * `--sample N`: print the first N rows of the population in id order, with both texts and the relation.
+ *
+ * This exists because the first reading (`§13.185`) came back with **0 candidates and 82 of 84 golds
+ * naming nothing**, which is a statement that the screen did not reach rather than that the answers are
+ * clean. Designing the next screen from that number alone would be guessing; designing it from twenty
+ * golds is reading. `--sample` costs no tokens and adds no predicate, so what it prints is the same
+ * artifact the reading came from.
+ */
+export function sampleRows(rows, size) {
+  return [...rows].sort((left, right) => left.questionId.localeCompare(right.questionId)).slice(0, size);
+}
+
+function printSample(rows, sources, size) {
+  if (size <= 0) return;
+  const chosen = sampleRows(rows, size);
+  const byId = new Map(sources.map((source) => [source.questionId, source]));
+  console.log(`\nsample (${chosen.length} rows, id order, so the same run prints the same rows)`);
+  for (const row of chosen) {
+    const source = byId.get(row.questionId);
+    const clean = (text) => (text ?? '').replace(/\s+/g, ' ').slice(0, 300);
+    console.log(`[${row.relation}] ${row.accepted ? 'accepted' : 'rejected'} ${row.questionId}`);
+    console.log(`  gold    ${clean(source?.gold)}`);
+    console.log(`  answer  ${clean(source?.answer)}`);
+    console.log(
+      `  names   gold ${row.goldNames.join(', ') || '(none)'} | answer ${row.answerNames.join(', ') || '(none)'}`,
+    );
+  }
+}
+
 function main() {
   const artifacts = flags('--artifact');
   if (artifacts.length === 0) {
@@ -145,6 +175,8 @@ function main() {
       console.log(`  answer names  ${row.answerNames.join(', ') || '(none)'}`);
     }
   }
+
+  printSample(reading.rows, all, Number(flag('--sample') ?? '0'));
 
   const out = flag('--out');
   if (out) {

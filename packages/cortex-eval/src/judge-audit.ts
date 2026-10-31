@@ -165,6 +165,12 @@ function numbersIn(text: string): string[] {
  *                        the answer's name set non-empty, made it disjoint from a gold naming `Rachel`, and
  *                        would have listed a **correct** answer as a false accept.
  *   discourse markers     `However`, `Meanwhile`, `Finally` — same position, same problem.
+ *   number words          `Five months ago` is a gold in this corpus, and `Five` passed the regex. That
+ *                         produced a candidate whose `goldNames` was `[Five]` and whose answer named a
+ *                         city — the screen reported a false accept on a question about duration. Found
+ *                         by running the screen on a real artifact and reading the seven rows it listed
+ *                         (`§13.185`); not found by any test, because the test corpus had no gold that
+ *                         began with a number word.
  *
  * The list is deliberately conservative about ordinary nouns: `Golden` and `Retriever` are both kept
  * from `Golden Retriever`, which makes the screen *less* eager (either half being present counts as a
@@ -176,8 +182,10 @@ const NOT_A_NAME = new Set(
     'Monday Tuesday Wednesday Thursday Friday Saturday Sunday ' +
     'I The A An It This That These Those My Our Your His Her Their There Then When What Where Which ' +
     'Who Why How If So And But Or Not No Yes ' +
-    'They Them She He We Us You Him Its Both Each Every All Some Many Most One Two Three ' +
-    'However Meanwhile Finally First Second Third Instead Besides Also Even Only Just Still ' +
+    'They Them She He We Us You Him Its Both Each Every All Some Many Most ' +
+    'One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve Fifteen Twenty Thirty ' +
+    'Hundred Thousand First Second Third ' +
+    'However Meanwhile Finally Instead Besides Also Even Only Just Still ' +
     'After Before Because Since During Until Unless Though Although While Now Today Yesterday ' +
     'Tomorrow Okay Ok Sure Thanks Thank'
   ).split(' '),

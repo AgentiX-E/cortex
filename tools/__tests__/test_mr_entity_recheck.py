@@ -164,3 +164,25 @@ def test_a_missing_questions_array_is_refused(tmp_path: Path) -> None:
     result = run('--artifact', str(path))
     assert result.returncode != 0
     assert 'no questions array' in result.stderr, result.stderr
+
+
+def test_the_sample_is_bounded_and_reproducible(tmp_path: Path) -> None:
+    """The next instrument has to be designed from golds, so the sample has to be stable.
+
+    `§13.185` came back with 0 candidates and 82 of 84 golds naming nothing: a statement that the screen
+    did not reach, not that the answers are clean. Designing a replacement from that number alone would
+    be guessing, so the sample prints the golds themselves — in id order, so two runs of the same
+    artifact print the same rows and a reading can cite them.
+    """
+    path = artifact(tmp_path)
+    first = run('--artifact', str(path), '--capability', 'all', '--sample', '2')
+    second = run('--artifact', str(path), '--capability', 'all', '--sample', '2')
+    assert first.returncode == 0, first.stderr
+    assert first.stdout == second.stdout
+    assert 'sample (2 rows' in first.stdout
+    # Both texts, because a gold alone does not say whether the answer is wrong.
+    assert 'gold    ' in first.stdout and 'answer  ' in first.stdout
+    # Bounded: five rows in the artifact, two printed. Counted inside the sample section, because the
+    # word `accepted` also appears in the tallies above it.
+    _, _, sample = first.stdout.partition('sample (2 rows')
+    assert sample.count(' accepted ') + sample.count(' rejected ') == 2, sample
