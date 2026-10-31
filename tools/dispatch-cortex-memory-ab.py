@@ -370,6 +370,12 @@ INPUTS = {
     # The second half of the identity, and the only half that changes a reply's shape without changing
     # the model: `resolveReaderIdentity` reports it, `DEEPSEEK_THINKING=enabled` opts in, and no
     # 500-question run in this campaign ever did. §13.192's probe moves this one.
+    #
+    # §13.198.4 gave the value a second form that is not a word: `multi-session+temporal` enables
+    # thinking on those routes and leaves the rest where this line has them. The registered value
+    # stays `disabled` -- the scoped form is an experiment until a run reads it (§13.199) -- but a
+    # reader of this table should know the field is no longer two-valued, because `--set
+    # thinking=...` is how the next dispatch departs from it.
     "thinking": "disabled",
     "limit": "0",
     "ablation_runs": "4",
