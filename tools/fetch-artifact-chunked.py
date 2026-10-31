@@ -16,8 +16,9 @@ import time
 import urllib.error
 import urllib.request
 
-ARTIFACT = "https://api.github.com/repos/AgentiX-E/cortex/actions/artifacts/13046359642/zip"
-OUT = "/tmp/a41203245999.zip"
+ARTIFACT_ID = sys.argv[1] if len(sys.argv) > 1 else "13046359642"
+ARTIFACT = f"https://api.github.com/repos/AgentiX-E/cortex/actions/artifacts/{ARTIFACT_ID}/zip"
+OUT = sys.argv[2] if len(sys.argv) > 2 else "/tmp/a41203245999.zip"
 CHUNK = 2 * 1024 * 1024
 
 

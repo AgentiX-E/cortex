@@ -22124,3 +22124,89 @@ the overrides is now known to produce a run that cannot be paired with anything,
 (*"an override should be recorded in §10.3's own list"*) is therefore not bookkeeping. Resolving it requires either
 adopting 96,000 + `ellipsis` by registration or re-baselining the arm at 48,000, and both are product decisions with a
 cost measured in runs. It is carried as an open item rather than decided in a section about the ask.
+
+### 13.201 The knob reads 199/220, and every flip it caused is on a route the map names
+
+`41218182053` (220 questions, one repetition, `thinking=multi-session+temporal`) completed `success` in **37 min**
+against the control `41196801892` (17.8 min) and the whole-run `enabled` arm (88.5 min). All four wire readings that
+§13.199.4 made non-negotiable were checked before any accuracy number was read.
+
+#### 13.201.1 The four wire readings
+
+| # | what it must show | reading |
+| --- | --- | --- |
+| 1 | `memoryArmConfig.reader` carries the reach | `{"thinking": "enabled", "thinkingRoutes": ["multi-session", "temporal"], "temperature": 0, …}` |
+| 2 | the rendered line says so | `reader=deepseek:deepseek-chat@api.deepseek.com/thinking=enabled on multi-session+temporal/temp=0` |
+| 3 | the pair was built, before question 1 | job log `16:08:51.862` — `Route-scoped reader: multi-session,temporal` |
+| 4 | **every prompt byte-identical to the control** | `window-pair`: **220 digest-equal, 0 digest-differs, 0 unmeasured**; multiset changes 0, order changes 0 |
+
+Reading 4 is the one that makes the rest interpretable. `thinking` is not an input to the prompt builder, so identical
+prompts are the proof that the wiring changed the reader and nothing else; a prompt that moved would have made every
+accuracy delta ambiguous between the reader and the prompt.
+
+#### 13.201.2 The five accuracy readings
+
+| # | criterion | registered | observed | verdict |
+| --- | --- | ---: | ---: | --- |
+| 1 | `TR` **≥ 30** | 31 | **30** | **holds** — control 27, so **+3** |
+| 2 | `IE` **∈ [86, 90]** | 88 | **86** | **holds, at the lower edge** — control 88 |
+| 3 | `MR` **∈ [22, 26]** | 24 | **25** | **holds** — control 23, so **+2** |
+| 4 | `KU` **∈ [28, 30]**, `ABS` **∈ [28, 30]** | 29 / 29 | **29 / 29** | **holds** — both unchanged from the control |
+| 5 | roster **≥ 197** | 201 | **199** | **holds** — control 196, so **+3** |
+
+**The falsification did not fire.** §13.197.3 said a run in which `IE` does not return to `88 ± 2` would mean the
+sixteen-question loss was not the reader's terseness and the knob was addressing the wrong layer. `IE` reads **86**,
+which is inside the band and exactly on its edge. Sixteen questions came back as fourteen; the two that did not are on
+a route the map does not touch and are discussed below.
+
+The point prediction of 201 was **two high**, and the shortfall is legible in its components: `TR` −1, `IE` −2, `MR` +1.
+The `IE` component is the informative one — those two questions are on the **unmapped** `flat` route, whose reader is
+byte-identically the control's, and the prompts are identical, so the movement is the same-prompt noise floor that
+§13.194 measured at ≥ 1 question on two runs of one configuration. A point prediction inside one question per capability
+is not a claim this instrument can settle.
+
+#### 13.201.3 Where the flips are, which is the stronger statistic than the net
+
+`window-pair` reports **15 flips of 220** between the control's feature side and this run's, and their location is the
+mechanism:
+
+| capability | route mapped? | questions | flips | net |
+| --- | --- | ---: | ---: | ---: |
+| `MR` | **yes** (`multi-session`) | 32 | **8** | **+2** |
+| `TR` | **yes** (`temporal`) | 32 | **3** | **+3** |
+| `IE` | no (`flat`) | 94 | 4 | −2 |
+| `KU` | no (`knowledge-update`) | 32 | 0 | 0 |
+| `ABS` | no (`abstention`) | 30 | 0 | 0 |
+
+**11 of the 15 flips are on the 64 questions the map names.** Under a null in which a flip is equally likely on any
+question, the probability of 11 or more of 15 landing in those 64 is **p ≈ 0.0005**. The net movement, by contrast, is
+9 gained against 6 lost — a McNemar exact **p = 0.607**, i.e. **the count is not significant at this N and the location
+is**. That is the correct reading of a 220-question run: an effect that concentrates where the treatment is applied is
+evidence about the mechanism, and an aggregate of +3 on 220 questions is not evidence about the size.
+
+Two routes with zero flips matter as much: `KU` and `ABS` did not move at all, which is what a map that does not name
+them predicts and what a leak would have contradicted.
+
+#### 13.201.4 What the knob costs, now measured rather than estimated
+
+| arm | questions | calls | prompt tokens | completion tokens | cache-hit prompt | wall clock |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `disabled` (`41196801892`) | 220 | 865 | 6,327,996 | **44,668** | 6,160,303 | 17.8 min |
+| **route-scoped** (`41218182053`) | 220 | 853 | 6,322,029 | **244,885** | 6,158,016 | **37 min** |
+| `enabled` (`41196814139`) | 220 | 882 | 6,107,551 | **767,066** | 211,584 | 88.5 min |
+
+Thinking is billed as completion, so the prompt column is flat across the three arms and the whole cost sits in the
+completion column: the scoped arm spends **5.5×** the disabled arm's completion tokens and **32%** of the enabled arm's.
+That is the answer to "what does the knob cost" in tokens rather than in wall clock — **68% of the whole-run thinking
+bill is avoided while keeping the movement** — and it is the first price this switch has had that is not a stopwatch.
+
+#### 13.201.5 What this licenses and what it does not
+
+**Licensed:** `thinking=multi-session+temporal` is a measured configuration. Its mechanism is where the map says it is
+(p ≈ 0.0005 on location), its damage is bounded (`IE` at the band's edge, `KU` and `ABS` untouched), and its cost is
+known in tokens.
+
+**Not licensed:** adopting it as the arm's default. That needs a 500-question reading against `41185512391` at the same
+configuration, and it needs the budget question of §13.200.4 settled first — a 220-question, one-repetition run cannot
+distinguish a +3 from a +0. And §13.197.2's trade is now *priced* rather than removed: the knob converts "TR +4 for
+IE −16" into "TR +3 for IE −2", which is what a route-scoped switch is for, and it is still a trade.
