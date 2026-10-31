@@ -2230,6 +2230,32 @@ describe('the ask reaches the artifacts, in both renderings', () => {
     expect(config.askRoutes).toEqual(['abstention', 'temporal', 'knowledge-update', 'assistant']);
   });
 
+  it('accepts the abstention-only ask and reports the one route it reaches', () => {
+    // §13.190. The value has to survive `readAsk` (which validates against this module's own copy of the
+    // table, not the product's) and the artifact has to state a reach of one, because the reading is
+    // "ABS moved and the other four capabilities could not have".
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_ASK: 'operand-gap',
+    });
+    const config = toMemoryArmConfig(options);
+    expect(config.ask).toBe('operand-gap');
+    expect(config.askRoutes).toEqual(['abstention']);
+
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: config,
+    });
+    expect(markdown).toContain('- Evidence ask: `operand-gap`');
+    expect(markdown).toContain('Evidence ask reached: 1 route(s)');
+    expect(markdown).toContain('`abstention`');
+  });
+
   it('renders the ask and its reach into the Markdown, naming the routes', () => {
     const markdown = formatAblationReport({
       dataset: 'fixture',

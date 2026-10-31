@@ -212,6 +212,16 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // The reach is one route for the reason every ask above has one: MR is the only capability routed
   // to `multi-session`, and the six derivation questions this addresses are all MR.
   operands: ['multi-session', 'flat', 'temporal'],
+  // §13.190. One route, and the first ask whose subject is the abstention route rather than the reading
+  // ones. The mechanism is `operands`' complement rather than its extension: `operands` asks the reading
+  // route to FIND the numbers a derivation question needs, this asks the abstention route to notice when
+  // one of the things the question names is not there at all.
+  //
+  // Reach and change set coincide, which no ask above manages: the abstention route is the only route
+  // that reads `CONTRACT_INSTRUCTIONS.abstention`, so MR, IE, KU and TR are byte-identical to the
+  // shipped block *by construction* -- they are not controls that must be checked, they are prompts this
+  // ask cannot address.
+  'operand-gap': ['abstention'],
 };
 
 /**
@@ -256,6 +266,9 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   recommend: 'enumerated',
   derive: 'enumerated',
   operands: 'enumerated',
+  // The abstention route needs no control of its own: nothing else in the campaign changes its bytes, so
+  // the shipped block IS the control and an archived run at the same load can be read against this one.
+  'operand-gap': 'route',
 };
 
 /**
@@ -287,6 +300,9 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // shape -- so the change set for "a question this ask does nothing for" is empty. The set it does
   // claim lives in `ASK_CHANGES_WHEN_DERIVATION` below, and `ask-changes.test.ts` renders both.
   operands: [],
+  // §13.190. The abstention route's block, and nothing else. This is the first entry whose reach and
+  // change set are both a single route that is not `multi-session`.
+  'operand-gap': ['abstention'],
 };
 
 /**
@@ -365,7 +381,8 @@ export type EvidenceAsk =
   | 'answer-line'
   | 'recommend'
   | 'derive'
-  | 'operands';
+  | 'operands'
+  | 'operand-gap';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -976,6 +993,56 @@ const OPERANDS_MULTI_SESSION_INSTRUCTION = withReplacedClose(
   OPERAND_CLOSE,
 );
 
+/**
+ * The closing rule `operand-gap` gives the abstention route, in place of the shipped one.
+ *
+ * ## The failure this is written against
+ *
+ * `6456829e_abs` asks *"How many plants did I initially plant for tomatoes and chili peppers"* and its
+ * gold is a decline, because the evidence states five tomato plants and never mentions chili peppers.
+ * The arm answers `5` in every repetition of every archived run: a correct count of half the question.
+ * The reference pipeline declines on it. Six other questions in the same thirty have the same shape — one
+ * operand carried, one absent, the gold saying so in the same words — and all six decline correctly, so
+ * the capability is not the limit and the model is not being asked for a kind of judgement it cannot
+ * make. It declines when the missing thing is a **named entity** and answers when the missing thing looks
+ * like another **quantity**: a `which came first` question over two absent operands is a comparison with
+ * nothing to compare, while `how many` over one present operand still has a number in it.
+ *
+ * ## Why the rule and not a sentence near it
+ *
+ * The shipped block declines on *"if no evidence supports an answer"* — a predicate over the question,
+ * and a half-answer satisfies it: evidence supports an answer to "how many tomato plants", which is what
+ * the reader reads. The per-part condition is not a qualification of that rule, it is a different
+ * predicate, so it has to be the rule. §13.55 placed its exception above the closing line and run
+ * `39035438120` returned the same delta and the same declines, twelve of them with a non-empty list in
+ * hand; `withReplacedClose` exists because that was measured, and this is its second use.
+ *
+ * ## What it deliberately does not touch
+ *
+ * The retrieval half of the same failure. The query expansion fuses the two operands into one phrase
+ * (`"tomatoes and chili peppers"`), a fused phrase can only be satisfied by the operand that exists, and
+ * the window therefore fills with single-operand evidence dense enough to look complete — the census
+ * measures 64 lines naming tomatoes and 0 naming chili peppers. Decomposing the expansion is a second
+ * treatment on a second layer and is registered separately, because one run cannot price both and
+ * §13.104 is the record of what a bundled prompt edit costs the reading.
+ *
+ * Nor does it weaken the licence: the block still says *"this question may have no answer"* and still
+ * names the token twice, so a question with one absent operand declines for the old reason as well as
+ * the new one, which is why ABS is graded on a one-sided criterion — 30 of its 30 golds are declines.
+ */
+const OPERAND_GAP_CLOSE =
+  'Reply with the answer alone only when the evidence supports an answer to every part of the question. ' +
+  'A question that names several things — two items, two people, two periods, a count over several ' +
+  'kinds — is answerable only if the evidence mentions all of them; answering for the ones that are ' +
+  'there answers a different question. If a part is missing, or the question asks for a total over ' +
+  `parts where only some are stated, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/** The abstention route's block under `operand-gap`: the shipped block, with its closing rule replaced. */
+const OPERAND_GAP_ABSTENTION_INSTRUCTION = withReplacedClose(
+  CONTRACT_INSTRUCTIONS.abstention(undefined),
+  OPERAND_GAP_CLOSE,
+);
+
 const DERIVE_MULTI_SESSION_INSTRUCTION = withReplacedClose(
   withInsertedBeforeClose(
     withInsertedBeforeClose(CONTRACT_INSTRUCTIONS.extractive(undefined), ENUMERATION_CONTRACT),
@@ -1416,6 +1483,18 @@ function instructionsFor(
         : ENUMERATED_MULTI_SESSION_INSTRUCTION;
     }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
+  }
+  if (ask === 'operand-gap') {
+    // §13.190. The first ask whose whole subject is the abstention route, and the only one whose
+    // fallthrough can be written as one expression: the abstention route is the only route that reads
+    // `CONTRACT_INSTRUCTIONS.abstention`, so every other contract reads the shipped block and the
+    // single-variable claim is a property of the reach rather than a promise about five routes.
+    //
+    // The three-statement form the four fallthrough defects forced elsewhere (§13.104, §13.124) is not
+    // needed here and it would be worse than this: `own` IS the control's block for every contract but
+    // one, and writing out a table of routes to say so would be a second copy of what `ASK_ROUTES`
+    // states.
+    return contract === 'abstention' ? OPERAND_GAP_ABSTENTION_INSTRUCTION : own;
   }
   if (ask === 'computed' && (contract === 'extractive' || contract === 'temporal')) {
     return withMergingSentence(own);

@@ -20713,3 +20713,88 @@ printing a table that does not add up.
 
 **Falsified if** the feature arm is not the largest of the three parts, or the residual is larger than
 the feature arm, or either side reports zero on a run whose total is non-zero.
+
+### 13.190 The abstention rule could only see the question as a whole — `operand-gap`, and the one question it is counted against
+
+**Registered 2026-10-31, before dispatch.** Product: `EvidenceAsk` gains `'operand-gap'`, `ASK_ROUTES` and
+`ASK_CHANGES` both `['abstention']`, `ASK_CONTROLS` `'route'`, and one constant —
+`OPERAND_GAP_ABSTENTION_INSTRUCTION`, the shipped abstention block with its **closing line replaced**
+(`withReplacedClose`). Arm: one row in `ASK_ROUTES`, which is what `readAsk` validates a dispatch against.
+Accounting: `prompt-operand-gap.test.ts` (7), `ask-changes.test.ts` 29 → **31** (the data-driven loop picks
+the value up, so the reach and the change set are asserted against the registration rather than by this
+file), `bench-memory-arm.test.ts` 183 → **184**.
+
+#### 13.190.1 The failure, and the six controls that make it a prompt defect
+
+`6456829e_abs` asks *"How many plants did I initially plant for tomatoes and chili peppers"*. Its gold is a
+decline — the evidence states five tomato plants and never mentions chili peppers. The arm answers **`5`**
+in every repetition of every archived run: a correct count of **half** the question. The reference pipeline
+declines on it. ABS therefore reads 29/30 where the reference arm reads 30/30, run after run.
+
+The population is not one question. Six others in the same thirty have the same shape — one operand carried,
+one absent, a gold that says so in almost the same words — and all six decline correctly: `edced276_abs`
+(Hawaii and Seattle), `e5ba910e_abs` (headphones and iPad), `gpt4_70e84552_abs` (fence and cows),
+`gpt4_c27434e8_abs` (Ferrari and Porsche), `gpt4_fe651585_abs` (Tom and Alex), `80ec1f4f_abs` (museums or
+galleries). A mechanism that gets six of seven right is not a capability limit, so the failure is in what
+**this** instance's prompt said, and the two readings that survive are the reader's willingness to return a
+*number* for a partly-evidenced counting question and the block's own rule.
+
+#### 13.190.2 Why the closing line, and not a sentence above it
+
+The shipped abstention block declines on *"If no evidence supports an answer, reply exactly
+`INSUFFICIENT_EVIDENCE`"* — a predicate over the **question**, and a half-answer satisfies it, because
+evidence does support an answer to "how many tomato plants". That is what the reader reads, and it is
+literally true. The per-part condition is not a qualification of that predicate; it is a different
+predicate, so it has to be the rule that decides and not a rule near it.
+
+The placement argument is measured, not asserted: §13.55 inserted its rule **above** the closing line on the
+same reasoning (an exception belongs adjacent to the rule it excepts) and run `39035438120` returned the
+same delta and, of the 28 MR declines it inherited, 21 declined again — twelve of them holding a non-empty
+Step 1 list. `withReplacedClose` exists because of that reading. So `operand-gap` replaces the block's last
+line, `Otherwise reply with the answer alone.`, with a rule that carries both halves: *answer alone only
+when the evidence supports an answer to **every part** of the question; a question that names several things
+is answerable only if the evidence mentions all of them; if a part is missing, or the question asks for a
+total over parts where only some are stated, reply exactly the token.*
+
+Everything else in the block is untouched, including the earlier token rule. A question with one absent
+operand is still declined for the shipped reason as well as the new one.
+
+#### 13.190.3 What this deliberately does not fix
+
+1. **The retrieval half.** The census on the archived run measures the window as **64 lines naming tomatoes
+   and 0 naming chili peppers**: the query expansion fused the two operands into one phrase
+   (`["tomatoes and chili peppers", "initially plant", "how many plants"]`), a fused phrase can only be
+   satisfied by the operand that exists, and the six sessions it pulled are dense enough to look complete.
+   Decomposing the expansion into one phrase per operand is a treatment on a different layer — the paired
+   success `gpt4_c27434e8_abs` decomposed (`["Ferrari model", "Porsche 991 Turbo S model"]`) — and one run
+   cannot price two layers. §13.104 is the record of what a bundled edit costs the reading.
+2. **The wording the reference pipeline also carries.** Its aggregation prompt names the arithmetic taxonomy
+   (a sum, a difference, an average, a percentage, an elapsed time, a date). Adding that here would make
+   this run two changes — a predicate and a vocabulary — and it is the registered next step if the
+   predicate alone does not convert.
+3. **The quantity-versus-ordering confound.** `6456829e_abs` is a `how many` question; every one of the six
+   controls except `80ec1f4f_abs` is a `which … first` or a total, and none of the seven both decomposes its
+   expansion and asks for a count. So a null result here cannot be read as clearing the question-type
+   explanation, and it is recorded as a confounder rather than resolved.
+
+#### 13.190.4 The criterion, and why it is one-sided
+
+Reach and change set are the same single route, which no ask before this one manages: the abstention route
+is the only route that reads `CONTRACT_INSTRUCTIONS.abstention`, so MR, IE, KU and TR read the shipped block
+**by construction**. Their `promptChars` in the artifact are a check on that claim rather than a hope about
+it, and the dispatch is readable against the shipped arm at the same load because nothing else in the
+campaign changes these bytes.
+
+That makes ABS's criterion directional: **30 of its 30 golds are declines**, so the only way this treatment
+can lose a point is by converting a correct decline into an answer. The prediction is therefore about one
+question and not about a headline:
+
+> **Prediction:** `6456829e_abs` declines in the feature arm, in all four repetitions; the other 29 ABS
+> questions keep declining; ABS reads **30/30** per repetition; MR/IE/KU/TR `promptChars` are equal between
+> the arms on every question; no capability's headline falls by more than the 2.2-point noise floor; the
+> added characters are one 60-word line on 30 questions, which is below the run's rounding.
+
+**Falsified if** `6456829e_abs` answers again — then the per-part clause is not the variable, the chain's
+prose half is wrong, and the next candidate is the retrieval half (§13.190.3 item 1) — or if any ABS
+question that declined in the control answers here, or if any of the four other capabilities moves by more
+than the noise floor, which would mean the reach table is not what the renderer does.

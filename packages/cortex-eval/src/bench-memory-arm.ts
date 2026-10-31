@@ -1152,6 +1152,16 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // own classifier -- a dispatch field cannot express "for some questions", so the artifact must not
   // pretend it does.
   operands: ['multi-session', 'flat', 'temporal'],
+  // §13.190's ask: the abstention route alone, and the first one whose subject is the route whose gold is
+  // a decline. `operands`' complement rather than its extension -- `operands` asks the reading route to
+  // find the numbers a derivation question needs, this asks the abstention route to notice that one of the
+  // things the question names is absent from the evidence.
+  //
+  // The reach is a single route that is not `multi-session`, which is what makes this dispatch readable
+  // without a second control run: the abstention route is the only route that reads the abstention
+  // contract, so MR, IE, KU and TR cannot be moved by this value and their `promptChars` in the artifact
+  // are a check on the claim rather than a hope about it.
+  'operand-gap': ['abstention'],
 };
 
 /**
