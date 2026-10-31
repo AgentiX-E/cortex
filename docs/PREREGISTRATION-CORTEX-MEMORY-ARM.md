@@ -21662,3 +21662,86 @@ is asking.
 declines of which 4 are prose, i.e. **19.0%** — against 48.9% at 500 questions (`§13.192.4`). The share is a
 property of the sample, which is the third time this campaign has found a ratio whose denominator was the thing
 that moved.
+
+### 13.196 The retry the arm relies on has never run on the route that needed it
+
+The invariant added to `tools/reader-shape.mjs` one increment ago fired on the first artifact that could violate it.
+It was written to catch a leak in the retry's route gate. What it caught is the opposite: **the retry's reach is
+narrower than every document in this repository says it is**, and the route it does not reach is the one whose
+replies most often take the shape the retry exists for.
+
+#### 13.196.1 The reading
+
+`41188431321` (`ask: operand-gap`), `runs: 4`, census `bareRetry: {attempted: 271, answered: 271}`:
+
+| capability | final declines | of which the bare token | bare finals on this route before |
+| --- | ---: | ---: | ---: |
+| ABS | 30 | 30 | 30 |
+| **MR** | **58** | **58** | **0** |
+| TR | 12 | 0 | 0 |
+| KU | 2 | 0 | 0 |
+
+`bare finals outside ABS` reads **58**, and the invariant's right-hand side is `(271 − 271) / 4 = 0`, so it reads
+`VIOLATED (58 vs 0)`. Those 58 questions are the bulk of §13.193.3's 63-question loss: the loss is not
+"the reader computed the wrong number", it is **58 bare refusals** plus wrong numbers.
+
+#### 13.196.2 The cause, in two call sites
+
+`#answerWithBareRetry` is called from exactly two places — `#prompt` (the flat routes: `flat`,
+`knowledge-update`, `assistant`, `abstention`) and `#promptWithDate` (`temporal`). **`answerSessions` does not call
+it**: it goes through `#promptSessionAware`, which assembles with `buildSessionPrompt` and consults once. So the
+`multi-session` route — the route `MR` is served by — has never had the bare-decline retry at all.
+
+Why this was invisible for the whole campaign: on the registered configuration MR's declines are **prose** (7 of
+them on `41185512391`, and `isBareDecline` is false for prose), so the absent mechanism had nothing to fire on. The
+gap arm's vague block changed the *shape* of the decline, not just its frequency: 58 MR questions answered with the
+bare token, and the one mechanism built for that shape was not on that route.
+
+The two facts had been recorded separately and never joined: §13.111's census argues about bare declines on four
+routes, and §13.141's per-question `recoveryAttempted` fields cover the *other* pass. Nothing anywhere said which
+routes the bare retry reached, and the artifact carries no per-question flag for it — `promptVariants: 1` on all 58
+is what a route with no retry looks like from outside.
+
+#### 13.196.3 What it would be worth, stated as the two populations
+
+| configuration | MR bare declines | what a retry on the session route would attempt |
+| --- | ---: | ---: |
+| `41185512391` (registered, `operands`) | 0 | **0** |
+| `41188431321` (`operand-gap`) | 58 | 58 |
+| any terse reader | unknown | the whole MR decline population |
+
+So on the registered configuration the fix is **free and inert**, which is the cheapest kind of correctness to add:
+it changes no published reading. Its value is conditional and now measurable — a reader that declines in the
+instruction's own words (the compliance axis, §13.192) declines *bare*, and MR is where the arm is 74%.
+
+#### 13.196.4 Registered: extend the retry to the session route
+
+1. **Implementation.** `#promptSessionAware` gets the same treatment as `#prompt`: if the first consultation
+   returned no answer and the raw output is a bare decline, rebuild with `buildRetryPrompt(question,
+   assembled.carried, options)` — the same function, the same carried turns, the same census counters. No second
+   prompt builder, because a second one is a second place for the retry's instruction block to drift.
+2. **The invariant then becomes true** rather than scoped: after the change, a non-`ABS` bare final can only
+   survive a retry that ran and declined again, which is what `(attempted − answered) / runs` counts. The
+   instrument needs no change and `41188431321` stays readable as an artifact of the pre-fix build.
+3. **Predictions.** (a) On `41185512391`'s configuration the census is **unchanged** — 0 new attempts, and a
+   re-read of that artifact still holds the invariant at `0 vs 0`. (b) On the `operand-gap` configuration the
+   session route attempts **≥ 50** and converts a measurable number; re-running it is not worth a dispatch, so
+   this is a prediction about a build rather than a run. (c) Under a terse reader MR's declines are bare, so this
+   becomes the mechanism that keeps a compliance gain from being spent on refusals.
+4. **Falsified if** the session route's retry changes a published reading at the registered configuration — that
+   would mean MR's declines are not all prose after all, and §13.111's population needs re-reading.
+
+#### 13.196.5 Landed, and why the registered configuration cannot feel it
+
+The retry is on `#promptSessionAware` now, after the recovery pass and only where that pass did not fire, using the
+same `buildRetryPrompt` and the same two census counters. `session-bare-retry.test.ts` (7 tests) asserts the four
+things the flat-route version asserts — one extra consultation on a bare decline, the token withheld from the retry
+prompt, `{attempted: 1, answered: 0}` when the retry declines again, and nothing at all when the option is off — plus
+the two route-specific ones: a **prose** reply is left alone (`parseAnswer` keeps it, which is why `isBareDecline`
+and not "parsed to null" is the predicate), and `reviewPass: 'recover'` + a bare decline produces
+`recoveryCensus {0, 0}` with `bareRetryCensus {1, 1}`, i.e. the two passes do not overlap.
+
+At the registered configuration the change is inert **by construction rather than by luck**: `41185512391` has
+**0** bare `MR` finals, so `isBareDecline` is false on every one of its 121 `MR` questions and the new branch is
+never entered. That is also why the composite dispatch of §13.194.4 is pinned to the ref before this commit: the
+registration claims one variable, and a build that adds a retry — even one predicted to be inert — is a second.

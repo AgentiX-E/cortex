@@ -19,6 +19,7 @@ names the question and exits non-zero instead of printing a number a reader woul
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -381,4 +382,60 @@ def test_a_capability_that_declined_everything_reports_no_median_rather_than_zer
     completed = run(tmp_path, [("one", body)], "--json")
     assert completed.returncode == 0, completed.stderr
     parsed = json.loads(completed.stdout)["reports"][0]["length"]["byCapability"]["ABS"]
-    assert parsed == {"n": 2, "answered": 0, "medianAll": 0, "medianAnswered": None, "max": None}
+    assert parsed == {
+        "n": 2,
+        "answered": 0,
+        "medianAll": 0,
+        "medianAnswered": None,
+        "max": None,
+        "over40": 0,
+    }
+
+def test_the_prose_tail_is_counted_beside_each_capability(tmp_path: Path) -> None:
+    """The tail is a different statistic from the median, and it is the one the amended gate reads.
+
+    `41196801892` reads an `MR` median of 2.5 characters and still has five answers over forty, because a short
+    median is compatible with a handful of long replies. A gate written as "the median is at most ten" is
+    satisfied by that artifact before the treatment runs, which is how the amended gate came to be about the
+    tail: what the compliant reader stops doing is narrating, and a narration is long.
+    """
+    body = report(
+        [
+            record("q1", capability="MR", answer="12"),
+            record("q2", capability="MR", answer="x" * 41),
+            record("q3", capability="TR", answer="y" * 500),
+            record("q4", capability="TR"),
+        ]
+    )
+    completed = run(tmp_path, [("one", body)], "--json")
+    assert completed.returncode == 0, completed.stderr
+    by_capability = json.loads(completed.stdout)["reports"][0]["length"]["byCapability"]
+    assert by_capability["MR"]["over40"] == 1
+    assert by_capability["TR"]["over40"] == 1
+    # A decline has no answer, so it is not a long answer either: the count is over answers, not over records.
+    assert by_capability["TR"]["n"] == 2 and by_capability["TR"]["answered"] == 1
+
+    text = run(tmp_path, [("one", body)])
+    assert text.returncode == 0, text.stderr
+    assert "MR 21.5 / 41 / 2 of 2 · 1 over 40" in text.stdout
+    assert "TR 500 / 500 / 1 of 2 · 1 over 40" in text.stdout
+
+
+def test_the_pair_block_prints_the_two_statistics_the_amended_gate_reads(tmp_path: Path) -> None:
+    """A gate that needs two arms has to print them side by side, or it is read out of two scrolls."""
+    control = report(
+        [record("q1", capability="MR", answer="12"), record("q2", capability="MR", answer="x" * 90)],
+        correct=1,
+    )
+    treated = report([record("q1", capability="MR", answer="12"), record("q2", capability="MR", answer="9")],
+                     correct=2)
+    completed = run(tmp_path, [("disabled", control), ("enabled", treated)])
+    assert completed.returncode == 0, completed.stderr
+    out = completed.stdout
+    assert "MR median (answered)" in out
+    assert "MR answers over 40 chars" in out
+    # The control's median is 46 (2 and 90) against the treated's 1.5, and the tail goes 1 -> 0 -- which is the
+    # reading the amended gate is stated over. Asserted as the row rather than as loose numbers, because a `1` and
+    # a `0` appear elsewhere on this page (the invariant line is `0 vs 0`).
+    assert re.search(r"MR median \(answered\)\s+46\s+1\.5\s+-44\.5", out)
+    assert re.search(r"MR answers over 40 chars\s+1\s+0\s+-1\.0", out)

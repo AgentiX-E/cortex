@@ -1282,6 +1282,34 @@ export class CortexMemory implements SessionAwareMemorySystem {
       }
     }
 
+    // §13.196. The bare-decline retry, on the route that never had it.
+    //
+    // `41188431321` ends 58 `MR` questions on the bare token and its census claims every attempt converted, because
+    // `#answerWithBareRetry` is reached from `#prompt` and `#promptWithDate` only. The registered configuration's
+    // `MR` declines are prose, so the absence cost nothing until a vague block changed the shape of the decline.
+    //
+    // Placed **after** the recovery pass and only where that pass did not fire, because `types.ts` is right that two
+    // retries on one route make any movement two variables: the recovery pass quotes the reader's own list back and
+    // this one re-reads the evidence. A bare decline carries no list, so the recovery pass cannot act on it -- that
+    // gap is exactly the population this covers, and in the registered `reviewPass: bare` mode the recovery pass is
+    // off entirely.
+    if (
+      first === null &&
+      this.#options.reviewBareDecline === true &&
+      isBareDecline(this.#lastRawOutput)
+    ) {
+      this.#bareRetries.attempted += 1;
+      // `assembled.carried`, not `kept`, for the reason `#answerWithBareRetry` records at length: the retry must
+      // re-read the evidence the first pass was given, not the window the route admitted.
+      const second = await this.#consult(buildRetryPrompt(question, assembled.carried, options));
+      if (second !== null) this.#bareRetries.answered += 1;
+      this.#recordEvidence(
+        sessions.flatMap((session) => session.turns),
+        assembled,
+      );
+      return this.#recordOutcome(second);
+    }
+
     // §13.94's second consultation. Two conditions, each a state this pass must not enter: no pass
     // was configured, or the first pass declined -- an abstention is a decision, and this pass audits
     // a list that does not exist.

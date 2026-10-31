@@ -78,6 +78,17 @@ unreadable. Nothing here is comparable across question sets.
 const DEFAULT_LABEL = 'report';
 
 /**
+ * What counts as a prose answer rather than a stated one, in characters.
+ *
+ * Forty is chosen against the two shapes the arm actually produces, not against a notion of brevity: a number, a
+ * date, a name and a short phrase are all under it (`41196801892`'s `MR` median is 2.5 characters), while the
+ * enumeration-and-explain replies that never emit the answer run to hundreds (`TR`'s median at the same sample is
+ * 627.5). The median cannot separate those two readers when the short answers dominate the draw -- the amended
+ * gate of `§13.195.1` is about this number for exactly that reason.
+ */
+const PROSE_CHARS = 40;
+
+/**
  * The bare-decline predicate is imported, not restated.
  *
  * The first draft of this file carried its own copy — trim, drop the token, require wrappers only — and it read
@@ -276,6 +287,9 @@ function readArtifact(body, isBareDecline) {
         answeredOfCapability.length === 0
           ? null
           : Math.max(...answeredOfCapability.map((record) => String(record.answer).length)),
+      // Over the answers, not over the records: a decline has no length, so counting it here would report the
+      // abstention rate as a shape. `answeredOfCapability` is the population and it is stated beside every use.
+      over40: answeredOfCapability.filter((record) => String(record.answer).length > PROSE_CHARS).length,
     };
   }
 
@@ -425,7 +439,7 @@ function linesFor(label, reading) {
     )
       .map(
         ([capability, value]) =>
-          `${capability} ${show(value.medianAnswered)} / ${show(value.max)} / ${value.answered} of ${value.n}`,
+          `${capability} ${show(value.medianAnswered)} / ${show(value.max)} / ${value.answered} of ${value.n} · ${value.over40} over ${PROSE_CHARS}`,
       )
       .join('; ')}`,
     '',
@@ -491,6 +505,7 @@ function pairLines(leftLabel, left, rightLabel, right) {
         ? String(value)
         : value.toFixed(1)
       : show(value);
+  const capabilities = [...new Set([...Object.keys(left.length.byCapability), ...Object.keys(right.length.byCapability)])].sort();
   const row = (name, leftValue, rightValue) => {
     const delta =
       typeof leftValue === 'number' && typeof rightValue === 'number'
@@ -515,6 +530,24 @@ function pairLines(leftLabel, left, rightLabel, right) {
     ),
     row('retry attempted', left.retry.attempted, right.retry.attempted),
     row('prose share (%)', left.retry.proseShare, right.retry.proseShare),
+    // Per capability, because the two routed blocks do not close the same way: `multi-session` and `temporal` end
+    // with "reply with the Step 2 number alone" and the others do not, so one roster median averages a route that
+    // states a rule with routes that do not. `§13.195.1`'s gate is stated per capability for that reason, and a
+    // gate that has to be assembled from two single-artifact printouts is a gate somebody will read wrong.
+    '',
+    `  per capability, answered only          ${leftLabel.slice(0, 8).padStart(8)} ${rightLabel.slice(0, 8).padStart(8)} ${'Δ'.padStart(9)}`,
+    ...capabilities.flatMap((capability) => [
+      row(
+        `${capability} median (answered)`,
+        left.length.byCapability[capability]?.medianAnswered ?? null,
+        right.length.byCapability[capability]?.medianAnswered ?? null,
+      ),
+      row(
+        `${capability} answers over ${PROSE_CHARS} chars`,
+        left.length.byCapability[capability]?.over40 ?? null,
+        right.length.byCapability[capability]?.over40 ?? null,
+      ),
+    ]),
   ];
 }
 
