@@ -210,7 +210,8 @@ function readerOf(body) {
   const reader = body?.memoryArmConfig?.reader ?? null;
   if (reader === null || reader === undefined) return null;
   if (typeof reader === 'string') return reader;
-  const thinking = reader.thinking === undefined ? 'thinking not reported' : `thinking ${reader.thinking}`;
+  const thinking =
+    reader.thinking === undefined ? 'thinking not reported' : `thinking ${reader.thinking}`;
   const temperature =
     reader.temperature === null || reader.temperature === undefined
       ? 'no temperature sent'
@@ -245,6 +246,38 @@ function readArtifact(body, isBareDecline) {
   );
 
   const emptyReplies = declines.filter((record) => String(record.rawOutput ?? '').trim() === '');
+
+  /**
+   * The answer length **per capability**, which is where a compliance claim actually lives.
+   *
+   * The routed blocks do not close the same way: `multi-session` and `temporal` end with *"Reply with the Step 2
+   * number alone"*, and `flat`/`knowledge-update` do not. One median over the roster therefore averages a route
+   * that states a rule with routes that do not, and the probe that motivated this file measured exactly that: on
+   * the same twenty questions, `thinking: enabled` reads an MR median of **1** character against **135**, while
+   * IE's medians are 56.5 and 64. The roster median (25 against 120) is true and says less than the partition.
+   */
+  const lengthByCapability = {};
+  for (const capability of new Set(questions.map((record) => record.capability ?? 'unknown'))) {
+    const ofCapability = questions.filter(
+      (record) => (record.capability ?? 'unknown') === capability,
+    );
+    const answeredOfCapability = ofCapability.filter((record) => record.answer != null);
+    lengthByCapability[capability] = {
+      n: ofCapability.length,
+      answered: answeredOfCapability.length,
+      medianAll: median(
+        ofCapability.map((record) => (record.answer == null ? 0 : String(record.answer).length)),
+      ),
+      medianAnswered:
+        answeredOfCapability.length === 0
+          ? null
+          : median(answeredOfCapability.map((record) => String(record.answer).length)),
+      max:
+        answeredOfCapability.length === 0
+          ? null
+          : Math.max(...answeredOfCapability.map((record) => String(record.answer).length)),
+    };
+  }
 
   const census = body.bareRetry ?? undefined;
   const attempted = typeof census?.attempted === 'number' ? census.attempted : null;
@@ -330,6 +363,7 @@ function readArtifact(body, isBareDecline) {
         p90: quantile(lengthAnswered, 0.9),
       },
       rawOutput: { n: lengthRaw.length, median: median(lengthRaw) },
+      byCapability: lengthByCapability,
     },
     retry: {
       reported: attempted !== null,
@@ -386,6 +420,14 @@ function linesFor(label, reading) {
     '  answer length, answered only (this denominator removes the declines)',
     `    median ${show(reading.length.answeredOnly.median)} · p90 ${show(reading.length.answeredOnly.p90)} · n ${reading.length.answeredOnly.n}`,
     `  rawOutput length, all questions: median ${show(reading.length.rawOutput.median)}`,
+    `  answer length by capability, answered only (median / max / answered of n): ${Object.entries(
+      reading.length.byCapability,
+    )
+      .map(
+        ([capability, value]) =>
+          `${capability} ${show(value.medianAnswered)} / ${show(value.max)} / ${value.answered} of ${value.n}`,
+      )
+      .join('; ')}`,
     '',
     `  bare declines in the final record: ${reading.bareFinals.count} of ${reading.declines}`,
     `    by capability: ${
@@ -406,7 +448,9 @@ function linesFor(label, reading) {
   } else {
     lines.push(
       `  bareRetry: attempted ${reading.retry.attempted}, answered ${reading.retry.answered}${
-        reading.runs === 1 ? '' : ` over ${reading.runs} repetition(s) = ${reading.retry.attemptedPerRun} per run`
+        reading.runs === 1
+          ? ''
+          : ` over ${reading.runs} repetition(s) = ${reading.retry.attemptedPerRun} per run`
       }`,
       '    attempted / declines is NOT a share: the numerator is first-pass on the four non-abstention routes,',
       '    the denominator is final on all five, and the converted questions are not in the denominator',

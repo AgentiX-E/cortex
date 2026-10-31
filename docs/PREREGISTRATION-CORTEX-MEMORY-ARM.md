@@ -21252,3 +21252,101 @@ the documents and what is dispatched. Two consequences, neither taken here:
    configuration. That is deliberate — a shape reading wants the registered arm — but it means the probe's control
    and `41185512391` are **not** comparable, and any future 500-question run should say which of the two budgets
    it is on before its roster is quoted.
+
+#### 13.192.8 The probe ran: four predictions met, the fifth falsified in the direction that matters
+
+**Both arms completed: `41195744819` (`thinking: disabled`, 175 s job) and `41195758208` (`thinking: enabled`,
+627 s).** Same twenty questions, same config, one variable. Read with
+`tools/reader-shape.mjs --report … --report …`.
+
+| reading | disabled | enabled |
+| --- | --- | --- |
+| sample coverage | **ABS 3, IE 8, KU 3, MR 3, TR 3** | identical |
+| reader, from the artifact | `deepseek/deepseek-chat (thinking disabled, temperature 0)` | `… (thinking enabled, temperature 0)` |
+| roster (not quotable at n = 20) | 18/20 | 17/20 |
+| median answer length, all questions | **120** | **25** |
+| median answer length, answered only | **161** | **49** |
+| median `rawOutput`, all questions | **316** | **73.5** |
+| **MR** median / max answer (answered) | **135 / 161** | **1 / 1** |
+| **TR** median / max | **664 / 708** | **150 / 236** |
+| **KU** median / max | **328 / 374** | **83 / 103** |
+| **IE** median / max | 64 / **8,094** | 56.5 / **952** |
+| final bare declines | 3 of 3, all `ABS` | 3 of 3, all `ABS` |
+| `bareRetry` | 1 / 1 | **0 / 0** |
+| empty replies among declines | 0 | 0 |
+
+**Prediction 1 (coverage) met** — all five capabilities present on both arms, and `ABS` and `MR` among them, which
+is the claim `sampling.ts` makes and the reason a 20-question probe is not a smaller 500. **Prediction 3 met**
+(`ABS` bare on both, 3 of 3). **Prediction 4 met** (no parse failures on either arm — the thinking adapter returns
+`content` with the reasoning dropped, so the shape reading reads the same field). **Prediction 5 met** (the retry
+invariant holds at `0 vs 0` on both).
+
+**Prediction 2 is falsified, and this is the finding.** I wrote that the `thinking: enabled` arm's median would be
+**larger**, on the reasoning that reasoning before answering is what breaks a closing line that asks for one
+number. It is **four times smaller** at the roster level and **135 times smaller** on `MR`. The mechanism is not
+"thinking writes more" — it is that the same model, given a thinking pass, **does what the routed block's closing
+line says**:
+
+| question | `disabled` answers | `enabled` answers |
+| --- | --- | --- |
+| `6d550036` (MR, "how many distinct projects…") | *"Both items refer to the same single project/team leadership (leading a team of five engineers), so the count of distinct…"* — 135 characters, **no number** | **`2`** |
+| `gpt4_59c863d7` (MR, "how many model kits") | a numbered list of kits, **never totalled** — 161 characters | **`5`** |
+| `6aeb4375` (KU, "how many Korean restaurants") | *"Based on the evidence, the most recent statement about how many Korean restaurants you have tried is from 2023/09/30: \"I…"* — 328 characters | **`4`** |
+
+The disabled reader's replies are not wrong in their reasoning; they are **unscoreable**, because the contract
+asked for the Step 2 number alone and the answer never states one. That is the same shape §13.110 described as
+"the larger model followed the contract less well", now measured as a *seat on a switch* rather than as a property
+of model size: the same model id, one input apart, and MR's median answer goes from 135 characters to 1.
+
+**What this does not claim.** Not accuracy: 18 against 17 at n = 20 is one question, and §13.192.3 said so before
+the runs existed. Not that compliance is what the *judge* rewards — that is the next run's question, not this
+one's. And not that `thinking: enabled` is free: the job took **627 s against 175 s**, a **3.58×** wall-clock
+multiplier, which is what §13.192.9 has to fit inside.
+
+#### 13.192.9 The next step is a matched 220-question pair, because the 90-minute budget cannot hold a 500
+
+§13.192.6's decision rule said a 500-question run under `thinking: enabled` becomes the next step only if the
+enabled arm is *both* shorter **and** more contract-shaped. It is both. So the run is owed — and it does not fit.
+
+**The arithmetic, from measured numbers rather than from a guess.** The probe spent **627 s** on 20 questions × 2
+arms × 1 repetition with thinking on, which is **15.7 s per question** including both sides. At 500 questions that
+is **7,850 s ≈ 2 h 11 m**, and the workflow's `budgetMinutes` is a **constant 90 minutes** (§13.30 / §13.115 moved
+it there when the input surface hit GitHub's 25-input ceiling). A 500-question thinking run would be killed with
+most of the roster unread, and the artifact would be a partial one — the failure mode where a run looks like a
+result. At **220 questions** the same arithmetic gives **3,454 s ≈ 58 min**, which fits with headroom.
+
+**Dispatched as a pair, `d973362`:** both arms at `limit: 220`, `ablation_runs: 1`,
+`cortex_memory_max_prompt_chars: 96000`, `cortex_memory_max_turn_chars: 400:ellipsis`, `model: deepseek-chat` —
+and `thinking` the only difference. The two dispatches are matched on **N and repetition count**, which is the
+condition §6.1.6 makes for any comparison and the reason this is a pair rather than the enabled run alone against
+`41185512391`'s four repetitions.
+
+**Predictions, fixed before the artifacts exist:**
+
+1. **Compliance holds at scale.** The enabled arm's `MR` median answer length is **≤ 10 characters**, against the
+   disabled arm's > 100 on the same questions. Falsified if it exceeds 50 — which would mean the 20-question
+   reading was a property of the sample rather than of the reader, and that would be the more interesting result.
+2. **Compliance converts on `MR`.** The enabled arm's `MR` correct count exceeds the disabled arm's by **≥ +6
+   questions** (of about 53 at this sample). This is the whole question: the disabled reader's MR is 68.6% and its
+   failures are enumerations that never emit a number.
+3. **`TR` moves in the same direction but less.** `TR`'s closing line is also the enumerated one, so ≥ +4. Falsified
+   if TR falls, which would say the compliance gain is route-specific in a way the reach table does not predict.
+4. **`IE` does not fall by more than 3.** `IE`'s answers are legitimately long (median 64 on both arms), and the
+   enabled reader's IE max fell from 8,094 to 952 — a state where verbosity may have been *helping* the judge.
+   Falsified if IE falls by ≥ 4, and that outcome would mean the axis trades one capability for another rather
+   than adding.
+5. **`ABS` keeps every point it can.** Both arms decline the same `ABS` questions bare; at 220 questions that is
+   about 13. The reading is the two bare counts and the invariant, not accuracy.
+6. **`bareRetry` collapses toward zero** on the enabled arm (0 attempts at n = 20). If it stays high, the enabled
+   reader declines bare outside `ABS` too and §13.111's reach argument is stronger than measured.
+
+**Decision rule, before the runs.** Prediction 1 is a **gate**: if it fails, the 20-question probe does not
+generalize and no 500-question dispatch follows from it. Predictions 2 and 3 are the **signal**: if both hold, the
+500-question confirmation is the next registration and `thinking: enabled` is a candidate adoption. If 1 holds and
+2 fails, compliance is not what the roster is missing — the arm's points are elsewhere and the reader axis closes
+on **evidence** rather than on shape, which is the outcome §13.192.2 could not reach. Prediction 4 is the **cost**:
+if it fails, the adoption decision becomes a per-capability trade and needs its own registration rather than an
+adoption.
+
+**What neither run can read.** Accuracy at 500 questions, the judge's tier (§13.184), and the MR ceiling
+(§13.187) — 220 questions cannot reach a 101/121 target even if every prediction holds.

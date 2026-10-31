@@ -351,3 +351,34 @@ def test_a_reader_that_sent_no_temperature_says_so_rather_than_printing_null(tmp
     completed = run(tmp_path, [("one", body)])
     assert completed.returncode == 0, completed.stderr
     assert "reader deepseek/deepseek-chat (thinking not reported, no temperature sent)" in completed.stdout
+
+
+def test_the_answer_length_is_partitioned_by_capability(tmp_path: Path) -> None:
+    """The roster median averages a route that states a closing rule with routes that do not.
+
+    On the twenty-question probe, `thinking: enabled` reads an MR median of **1** character against **135** while
+    IE reads 56.5 against 64: the roster's 25-against-120 is true and says much less than the partition, because
+    `multi-session` and `temporal` close with "Reply with the Step 2 number alone" and `flat` does not.
+    """
+    body = report(
+        [
+            record("q1", answer="2", capability="MR"),
+            record("q2", answer="x" * 135, capability="MR", correct=False),
+            record("q3", answer="x" * 64, capability="IE"),
+            record("q4", capability="ABS"),
+        ]
+    )
+    completed = run(tmp_path, [("one", body)])
+    assert completed.returncode == 0, completed.stderr
+    assert "MR 68 / 135 / 2 of 2" in completed.stdout
+    assert "IE 64 / 64 / 1 of 1" in completed.stdout
+    assert "ABS not reported / not reported / 0 of 1" in completed.stdout
+
+
+def test_a_capability_that_declined_everything_reports_no_median_rather_than_zero(tmp_path: Path) -> None:
+    """Zero is an answer of length zero; `ABS`'s three declines have no answer at all, and the two differ."""
+    body = report([record("q1", capability="ABS"), record("q2", capability="ABS")])
+    completed = run(tmp_path, [("one", body)], "--json")
+    assert completed.returncode == 0, completed.stderr
+    parsed = json.loads(completed.stdout)["reports"][0]["length"]["byCapability"]["ABS"]
+    assert parsed == {"n": 2, "answered": 0, "medianAll": 0, "medianAnswered": None, "max": None}
