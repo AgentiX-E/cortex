@@ -369,10 +369,16 @@ export {
 } from './embedding-factory.js';
 export {
   createLlmFromEnv,
+  // §13.197.4's pair: the base reader plus the map a route-scoped `thinking` value asks for. The
+  // arm constructs it; `createLlmFromEnv` refuses such a value rather than silently building the
+  // base reader and letting the artifact name a treatment it did not administer.
+  createReadersFromEnv,
   DEFAULT_DEEPSEEK_BASE_URL,
   DEFAULT_DEEPSEEK_MODEL,
+  readThinkingReach,
   resolveReaderIdentity,
   type LlmEnv,
+  type ThinkingReach,
 } from './llm-factory.js';
 export {
   createMemoryArmReranker,

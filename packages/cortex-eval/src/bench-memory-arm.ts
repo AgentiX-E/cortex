@@ -50,6 +50,7 @@ import { readToggle } from './env-toggle.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds, RerankIdentity } from './rerank-factory.js';
 import { promptDigest } from './prompt-digest.js';
+import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
 import type {
   AblationReport,
   AbstentionReasons as ReportAbstentionReasons,
@@ -780,21 +781,12 @@ const EVIDENCE_ROLE_PREFIX = /^\[[^\]]+\]\s*(user|assistant)\s*:/i;
 /**
  * The route names a reach may name, and the arm's own copy of the product's `TURN_CAP_ROUTES`.
  *
- * A table rather than an array because the value is a *set membership test*, and a table keyed by
- * the name makes a lookup the same operation as the validation -- an array would need `includes`
- * at one site and `find` at another, and the two would eventually disagree about case.
+ * It is imported rather than declared here as of §13.197.4: the route-scoped `thinking` value gives
+ * the table a second reader in `llm-factory`, and two copies in one package would be the drift the
+ * copy exists to prevent. Both names are imported above and used below (`readRouteReach` validates
+ * against the table, the parsers default to every route); neither is re-exported, because nothing
+ * outside this module ever read them.
  */
-const TURN_CAP_ROUTES: Record<string, true> = {
-  'multi-session': true,
-  temporal: true,
-  flat: true,
-  'knowledge-update': true,
-  abstention: true,
-  assistant: true,
-};
-
-/** Every route, in the order the product declares them. */
-const ALL_TURN_CAP_ROUTES: readonly string[] = Object.keys(TURN_CAP_ROUTES);
 
 /**
  * The contract a run gets when it does not name one.

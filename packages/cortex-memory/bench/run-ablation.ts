@@ -39,7 +39,10 @@
  */
 import {
   assertRerankReachesRanking,
-  createLlmFromEnv,
+  // §13.197.4's pair rather than the single reader: a route-scoped `thinking` value names the routes
+  // that carry a second reader, and `createLlmFromEnv` refuses such a value instead of building the
+  // base reader and letting the artifact claim a treatment the run never administered.
+  createReadersFromEnv,
   createMemoryArmReranker,
   resolveReaderIdentity,
   resolveRerankBounds,
@@ -234,7 +237,13 @@ async function main(): Promise<void> {
   const sampled = sampleInstances(parsed as never, limit);
   const dataset = loadLongMemEval(sampled as never);
 
-  const llm = createLlmFromEnv(process.env);
+  // The base reader, plus -- only when `thinking` names routes -- the map `CortexMemory` resolves per
+  // route. The baseline below keeps `llm`: the reference pipeline is not the treatment, and a pair
+  // that reached it would move both sides of the comparison.
+  const { llm, readerByRoute } = createReadersFromEnv(process.env);
+  if (readerByRoute !== undefined) {
+    console.log(`Route-scoped reader: ${Object.keys(readerByRoute).sort().join(',')}`);
+  }
   const runs = Number(process.env['ABLATION_RUNS'] ?? 4);
 
   // Constructed and logged before any question is graded. The embedding backend is
@@ -544,6 +553,11 @@ async function main(): Promise<void> {
     // Same conditional shape as `reviewPass`: absent is the shipped behaviour, and a present-but-false key would
     // make "the control ran" indistinguishable from "the switch was configured off" to a `!== undefined` check.
     ...(armOptions.reviewBareDecline === true ? { reviewBareDecline: true } : {}),
+    // §13.197.4's knob, spread conditionally like every other treatment here: absent is the shipped
+    // configuration every archived artifact was produced under, and a present-but-empty map would
+    // read as configured to the `!== undefined` check `#readerFor` performs while resolving no route
+    // at all -- an artifact then claiming a treatment the product never administered.
+    ...(readerByRoute === undefined ? {} : { readerByRoute }),
     // §13.153. Same conditional shape and for the same reason: absent is the shipped behaviour, and a
     // present-but-empty reader pair would read as configured to a `!== undefined` check while resolving
     // no window at all -- an artifact then claiming a treatment the product never administered.

@@ -47,6 +47,10 @@ describe('resolveReaderIdentity', () => {
       model: 'deepseek-chat',
       baseUrl: 'https://api.deepseek.com/v1',
       thinking: 'disabled',
+      // §13.197.4: absent, not `[]`. "This value names no routes" and "this value names routes and
+      // the list is empty" are different claims, and only the absence leaves an archived artifact's
+      // rendering byte-identical.
+      thinkingRoutes: undefined,
       temperature: null,
     });
   });
@@ -66,6 +70,16 @@ describe('resolveReaderIdentity', () => {
     expect(
       resolveReaderIdentity({ DEEPSEEK_BASE_URL: 'https://api.example.com/v1' }).provider,
     ).toBe('openai-compatible');
+  });
+
+  it('survives a base URL that does not parse, because an identity is not a validation', () => {
+    // `hostOf` catches `new URL`'s throw and falls back to the string it was given. The fallback is
+    // the branch that keeps `resolveReaderIdentity` total: it is also called on a replayed artifact,
+    // where a malformed URL is a fact about the record rather than a reason to refuse to describe it.
+    // A malformed host cannot be deepseek.com, so the provider is the generic one.
+    const identity = resolveReaderIdentity({ DEEPSEEK_BASE_URL: 'api.example.com/v1' });
+    expect(identity.baseUrl).toBe('api.example.com/v1');
+    expect(identity.provider).toBe('openai-compatible');
   });
 
   it('reports thinking mode as the constructor reads it', () => {
@@ -157,6 +171,19 @@ describe('the reader reaches the artifact', () => {
     // distinguishable in the one line a reader of the Markdown actually looks at (§13.119).
     expect(line(resolveReaderIdentity({ TEMPERATURE: '0' }))).toContain('temp=0`');
     expect(line(resolveReaderIdentity({ TEMPERATURE: '0' }))).not.toContain('temp=default');
+    // §13.197.4. A route-scoped run and a whole-run run are different treatments, and the line has
+    // to say which one it was: `enabled` alone would describe the 220-question `enabled` arm while
+    // four of six routes were answered with thinking off.
+    expect(line(resolveReaderIdentity({ DEEPSEEK_THINKING: 'multi-session+temporal' }))).toContain(
+      '/thinking=enabled on multi-session+temporal/temp=default`',
+    );
+    // The whole-run spelling keeps the bytes every archived artifact carries.
+    expect(line(resolveReaderIdentity({ DEEPSEEK_THINKING: 'enabled' }))).toContain(
+      '/thinking=enabled/temp=default`',
+    );
+    // And an empty reach -- which the parser cannot produce, but a replayed artifact carrying one
+    // could -- renders as the plain mode rather than as a trailing `on ` with nothing after it.
+    expect(line({ ...identity, thinkingRoutes: [] })).toContain('/thinking=disabled/temp=default`');
     // The control, and the one that matters: an artifact from before the field must not appear
     // to have run against an unrecorded reader.
     expect(line(undefined)).not.toContain('reader=');

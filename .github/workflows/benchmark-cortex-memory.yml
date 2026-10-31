@@ -59,7 +59,7 @@ on:
         default: 'deepseek-chat'
         type: string
       thinking:
-        description: 'Thinking mode: enabled or disabled (default disabled for shallow QA)'
+        description: "Thinking mode: 'disabled' (shipped), 'enabled' (every route), or a '+'-separated route list such as 'multi-session+temporal', which enables thinking on those routes and leaves the rest at the shipped state. The list form exists because GitHub's 25-input ceiling is reached -- see PREREGISTRATION 13.197.4 -- and the artifact renders it as 'thinking=enabled on multi-session+temporal'"
         required: false
         default: 'disabled'
         type: string

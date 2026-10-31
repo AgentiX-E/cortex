@@ -750,6 +750,16 @@ export type MemoryArmConfig = {
         readonly model: string;
         readonly baseUrl: string;
         readonly thinking: 'enabled' | 'disabled';
+        /**
+         * The routes `thinking` applies to, or absent when it applies to every route.
+         *
+         * §13.197.4: the value can name a reach (`multi-session+temporal`), and a reader line that
+         * said only `thinking=enabled` would describe a configuration the run did not administer --
+         * half of the run was answered with thinking off. The line therefore reads
+         * `thinking=enabled on multi-session+temporal`. Absent stays absent rather than becoming an
+         * empty list, so every archived artifact renders the bytes it always rendered.
+         */
+        readonly thinkingRoutes?: readonly string[] | undefined;
         readonly temperature: number | null;
       }
     | undefined;
@@ -810,6 +820,7 @@ function renderReader(reader: {
   readonly model: string;
   readonly baseUrl: string;
   readonly thinking: 'enabled' | 'disabled';
+  readonly thinkingRoutes?: readonly string[] | undefined;
   readonly temperature: number | null;
 }): string {
   // `new URL` throws on a malformed string, and a rendered report is not the place to throw:
@@ -823,9 +834,31 @@ function renderReader(reader: {
   }
   return (
     `reader=${reader.provider}:${reader.model}@${host}` +
-    `/thinking=${reader.thinking}` +
+    `${renderThinking(reader)}` +
     `/temp=${reader.temperature === null ? 'default' : String(reader.temperature)}`
   );
+}
+
+/**
+ * The thinking field of the reader line, with its reach when it has one.
+ *
+ * `/thinking=enabled` is what every archived artifact carries and stays byte-identical. A
+ * route-scoped run renders `/thinking=enabled on multi-session+temporal`, because the two claims are
+ * different: the first says thinking was on for the whole run, the second says it was on for two of
+ * six routes and off for four. An artifact that spelled only `enabled` would be describing a
+ * configuration the run did not administer -- and §13.197 is precisely the measurement of what the
+ * four unnamed routes cost when they carry it.
+ */
+function renderThinking(reader: {
+  readonly thinking: 'enabled' | 'disabled';
+  readonly thinkingRoutes?: readonly string[] | undefined;
+}): string {
+  const routes = reader.thinkingRoutes;
+  // Absent and empty both render as the plain mode. The empty list is not a state the parser can
+  // produce (a value that names no routes IS the plain mode), so this branch exists only so a
+  // replayed artifact with `[]` cannot print a trailing `on ` with nothing after it.
+  if (routes === undefined || routes.length === 0) return `/thinking=${reader.thinking}`;
+  return `/thinking=${reader.thinking} on ${routes.join('+')}`;
 }
 
 /**

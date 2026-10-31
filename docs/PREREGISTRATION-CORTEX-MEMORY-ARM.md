@@ -21833,3 +21833,116 @@ route, the arm constructs the two clients and maps them, and `#readerFor` falls 
 does not name. `reader-by-route.test.ts` (5 tests) asserts the route decides, the retry goes to the same reader as the
 first pass, the abstention route can be mapped independently, and that an absent map is one reader for every route —
 which is every archived artifact.
+
+### 13.198 The knob is dispatchable, and it took no input to become so
+
+§13.197.3 registered the treatment and §13.197.4 recorded the constraint it has to be built under: **24 of 25
+dispatch inputs are spent**, so a `cortex_memory_thinking_routes` input does not exist and the state has to live
+inside the value that already does. This section is the landing. It is a **product increment**, not a fifth probe,
+and that distinction is the reason it was built rather than dispatched: the campaign has now measured both states of
+`thinking` on the same 220 questions, so another run of the same two states would be the third measurement of a
+two-valued switch.
+
+#### 13.198.1 The grammar, and the three values it refuses
+
+`DEEPSEEK_THINKING` keeps both words it ever had and gains one form:
+
+| value | reach | readers built | artifact line |
+| --- | --- | --- | --- |
+| `''` (unfilled), `disabled`, `off`, `false` | every route, `disabled` | one | `/thinking=disabled` |
+| `enabled`, `on`, `true` | every route, `enabled` | one | `/thinking=enabled` |
+| `multi-session+temporal` (any non-empty route list) | **those** routes `enabled`, the rest `disabled` | two: the base at `disabled`, one scoped client shared by the named routes | `/thinking=enabled on multi-session+temporal` |
+
+A route list can only ever spell `enabled`. The grammar has **no form for "disabled on these, enabled elsewhere"**,
+deliberately: the state that exists is the one §13.197 measured a reason for (thinking on the two routes whose block
+closes with the answer instruction, off on the four that do not), and a grammar that could express the other
+direction would be a way to dispatch a combination no registration names. Adding it when it is measured is one line;
+un-dispatching a run is not possible at all.
+
+Three values are refused, and each refusal was written for a mistake an operator will actually make rather than for
+symmetry:
+
+| refused | why it is the likely mistake | what the message says |
+| --- | --- | --- |
+| a name that is not a route (`multi-session+multi-sesion`) | a run that enabled thinking on five of six routes with the sixth misspelled produces numbers consistent with six | names the offending token, and all six valid names |
+| `multi-session,temporal` | the sibling reach inputs (`cortex_memory_max_turn_chars_routes`, `cortex_memory_evidence_roles_routes`) are comma-separated, so a comma is the likeliest transcription | says the separator is `+`, and that a value silently read as one route would run the treatment on a sixth of the questions it was dispatched for |
+| `all` | the same two inputs use `all` for "every route", so it is the first word anyone reaches for | says every route is spelled `enabled`, and why: `all` names a reach without naming a mode |
+
+Empty segments (`multi-session+`, `+temporal`, `a++b`) and a route named twice are refused on the same principle as
+the caps' reach: dropping a segment would run the treatment on fewer routes than the value names, and printing a
+duplicated route back into the artifact would make the record claim a list the run did not have.
+
+#### 13.198.2 The base reader is `disabled`, and that is the whole treatment
+
+The map is built on a **disabled** base, always. The four routes a route list does not name are exactly the ones that
+lost nothing under `enabled` — and `IE`, which lost sixteen. A pair that built the base at `enabled` and then mapped
+two routes to `enabled` would administer the treatment to all six while the artifact reported two, which is the
+`thinking: enabled` arm again under a new name.
+
+The same reasoning produces a refusal rather than a fallback in the single-reader factory. `createLlmFromEnv` now
+**throws** on a route list, because its contract is one reader for every route and the only ways to honour a list
+would be to pick a mode for the caller. A silent `disabled` there would let a dispatch run with the base reader while
+`resolveReaderIdentity` went on naming `enabled on multi-session+temporal` — an artifact describing a configuration
+the run did not administer, which is the `40698883428` failure (§13.110) on a new axis.
+
+One client serves every named route, not one per route: two clients would be two connection pools and two usage
+counters for one treatment, and the artifact's usage block would be a sum of parts that never existed.
+
+#### 13.198.3 What is asserted, and why two of the tests read a socket
+
+`thinking-reach.test.ts` (18 tests) covers the grammar, the identity, and the pair:
+
+- the three refusals above, each asserting the message's *reasons* — the offender, the separator, the six names —
+  because a dispatch is not repeatable for free and a message that does not state the offending input sends the
+  operator back to a job log that expires;
+- the reach's **order** is the operator's, not sorted: the artifact prints the value back, and a canonicalisation is
+  a different claim from a record;
+- every one of the six routes is accepted on its own, and the list of six is asserted against this copy — a route
+  added to the product's union but missing here would be a route the arm cannot scope thinking to, silently;
+- `createReadersFromEnv` builds **one** reader when the value names no routes (every archived artifact), and exactly
+  two objects when it does, with the map's two entries **the same object** and the base a different one.
+
+The last two assertions are structural, and structure is not the property the treatment depends on: a pair that
+swapped base and scoped client would satisfy every one of them and buy `IE`'s sixteen questions back for nothing. So
+the two clients are driven against a local HTTP server and their request bodies read: `thinking` is
+`{type: 'disabled'}` on the base and `{type: 'enabled'}` on the mapped route, and a pinned `TEMPERATURE` appears on
+**both** bodies — the second construction site is exactly where the temperature wrapper would be lost (§13.119).
+
+`reader-identity.test.ts` gains three assertions rather than a file: the identity carries `thinkingRoutes: undefined`
+for both shipped words (absent, not `[]`, so archived renderings stay byte-identical), a route-scoped identity renders
+`/thinking=enabled on multi-session+temporal/temp=default`, and an empty reach — which the parser cannot produce but a
+replayed artifact could carry — renders as the plain mode instead of a trailing `on `.
+
+The export ledger moved by two (`ThinkingReach`, `readThinkingReach`), both in `eval-harness-surface`, for the reason
+`resolveTimeoutMs` is already there: a name a test imports is legitimately exported, and a barrel re-export is not a
+caller the census follows.
+
+#### 13.198.4 What this does not do, and what the first dispatch of it will test
+
+**No run accompanies this section.** The prediction §13.197.3 fixed is unchanged and still untouched by any
+measurement:
+
+| capability | disabled arm | enabled arm | registered prediction | rule |
+| --- | ---: | ---: | ---: | --- |
+| `TR` | 27 | 31 | **31** | the four gained, none lost — the whole reason for the knob |
+| `MR` | 23 | 24 | **24** | +1 under `enabled`; kept |
+| `KU` | 29 | 31 | **29** | +2 under `enabled` was *not* predicted and is not claimed |
+| `IE` | **88** | 74 | **88** | falsified if it does not return to **88 ± 2**: that would mean IE's loss was not the reader's terseness but something done to the `flat` route's prompt, and the knob is addressing the wrong layer |
+| `ABS` | 29 | 28 | **29** | −1 under `enabled`; the question `6456829e_abs` that converted is the one §13.193 was built for |
+| roster | 196 | 188 | **201 / 220 (91.36%)** | +5 over the better arm, +13 over the enabled one |
+
+**Cost.** The scoped reader touches **64 of the 220 questions** (`multi-session` 32 and `temporal` 32) and only on the
+feature side, because the baseline keeps `llm`. That is what makes the knob a *product* answer to the 3.58× wall clock
+`§13.197` priced for the whole-run switch: it buys the two routes the measurement named and leaves the other 158
+questions at the shipped reader. The artifact's `llmUsage` / `usageDelta` block puts the token bill beside the accuracy
+it bought, so this run is also the first time the knob has a price rather than a wall-clock estimate.
+
+One property of the §13.197 pair matters for how that prediction is read and was not stated there. **Both** sides of
+the 220-question pair ran with `thinking: enabled` — `run-ablation.ts` builds the reference pipeline from the same
+`createLlmFromEnv` — so in the enabled arm the *baseline* moved too. The feature side's per-capability counts are
+attributable to the feature side alone (the two sides share no answer cache: `answerCache` is
+`NaturalLanguageMemorySystem`'s, and `CortexMemory` is not given one), which is what makes the table above a
+statement about the treatment. But the aggregate `196 → 188` is **not** a feature-versus-baseline delta of the shipped
+configuration, and the route-scoped run is the first one in which the baseline returns to the shipped reader while
+the feature side carries the treatment. That is the configuration a product ships; it is also the first dispatch that
+can read the knob's own claim.

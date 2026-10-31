@@ -57,6 +57,14 @@ ROOT = Path(__file__).resolve().parents[2]
 PRODUCT = ROOT / "packages" / "cortex-memory" / "src" / "prompt.ts"
 PRODUCT_TYPES = ROOT / "packages" / "cortex-memory" / "src" / "types.ts"
 ARM = ROOT / "packages" / "cortex-eval" / "src" / "bench-memory-arm.ts"
+# The arm's route table lives here as of §13.198: the route-scoped `thinking` value gave the six
+# names a second reader inside `cortex-eval` (`llm-factory` has to reject a route it does not
+# recognise, and it cannot import a 4,000-line benchmark module to get six strings), so the table
+# moved down to a module both read. This constant follows it; `test_the_table_is_declared_once`
+# is what stops a second copy from appearing beside it, which is the failure mode a moved
+# declaration invites.
+ARM_ROUTES = ROOT / "packages" / "cortex-eval" / "src" / "turn-cap-routes.ts"
+ARM_SRC = ROOT / "packages" / "cortex-eval" / "src"
 
 
 def product_values() -> set[str]:
@@ -114,11 +122,11 @@ def product_routes() -> set[str]:
 
 
 def arm_routes() -> set[str]:
-    """The keys of the arm's `TURN_CAP_ROUTES` table."""
-    source = ARM.read_text(encoding="utf-8")
-    table = re.search(r"const TURN_CAP_ROUTES: [^=]+= \{(.*?)\n\};", source, re.S)
+    """The keys of the arm's `TURN_CAP_ROUTES` table, read from the module that declares it."""
+    source = ARM_ROUTES.read_text(encoding="utf-8")
+    table = re.search(r"export const TURN_CAP_ROUTES: [^=]+= \{(.*?)\n\};", source, re.S)
     if table is None:
-        raise AssertionError("bench-memory-arm.ts declares no TURN_CAP_ROUTES table")
+        raise AssertionError("turn-cap-routes.ts declares no TURN_CAP_ROUTES table")
     keys = set(re.findall(r"^\s*'?([A-Za-z][A-Za-z0-9-]*)'?:\s*", table.group(1), re.M))
     if not keys:
         raise AssertionError(f"TURN_CAP_ROUTES parsed to no keys: {table.group(1)[:200]}")
@@ -206,6 +214,45 @@ class TestTheTwoRouteTablesAgree(unittest.TestCase):
             "A route belongs to both or to neither: the arm's list is what a dispatched reach "
             "is validated against, and the product's is what the cap actually reaches.",
         )
+
+    def test_the_table_is_declared_once_in_the_package(self) -> None:
+        """One `TURN_CAP_ROUTES` table in `cortex-eval`, and it is the one this file reads.
+
+        The table lived inside `bench-memory-arm.ts` until §13.198 moved it, and a moved
+        declaration invites the failure this test exists for: a file that keeps its own copy
+        beside the shared one. The parser above reads a single path, so a second copy would be
+        invisible to it -- the arm would validate a dispatched reach against one table while the
+        `thinking` grammar validated the same six names against another, and the two could
+        disagree about a route without any test in this file failing.
+
+        Scanned as source because that is the only view that sees both declarations at once, the
+        same reason the parity check above is a text comparison.
+        """
+        declaring = sorted(
+            path.relative_to(ROOT).as_posix()
+            for path in ARM_SRC.rglob("*.ts")
+            if "__tests__" not in path.parts
+            and re.search(r"const TURN_CAP_ROUTES\b[^=]*=\s*\{", path.read_text(encoding="utf-8"))
+        )
+        self.assertEqual(
+            declaring,
+            [ARM_ROUTES.relative_to(ROOT).as_posix()],
+            "exactly one module may declare the route table: the parity test above reads that one "
+            "path, so a second declaration is a vocabulary this file cannot compare -- and the "
+            "arm validates dispatched reaches against it.",
+        )
+
+    def test_the_arm_reaches_the_shared_table_rather_than_restating_it(self) -> None:
+        # The other direction of the move: the two consumers must *import* the table. A file that
+        # merely stopped declaring it and started hard-coding the six names in a switch would pass
+        # the scan above and lose the shared vocabulary anyway.
+        for consumer in (ARM, ROOT / "packages" / "cortex-eval" / "src" / "llm-factory.ts"):
+            with self.subTest(consumer=consumer.name):
+                self.assertIn(
+                    "from './turn-cap-routes.js'",
+                    consumer.read_text(encoding="utf-8"),
+                    f"{consumer.name} does not import the shared route table",
+                )
 
     def test_the_config_lines_all_shorthand_matches_the_vocabulary(self) -> None:
         # `report.ts` renders the whole vocabulary as `all` and decides that by COUNT, because it
