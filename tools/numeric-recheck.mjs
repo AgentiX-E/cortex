@@ -47,23 +47,32 @@ function flags(name) {
   return values;
 }
 
-/** One artifact's graded answers as numeric-screen sources. */
+/**
+ * One artifact's graded answers as numeric-screen sources, with the rows it could not use named.
+ *
+ * The first version of this function filtered on `typeof question.answer === 'string'` and dropped every
+ * row whose answer was absent — which is every **decline**. On MR that silently removed 8 of 121 rows
+ * (`§13.186`), and because a decline is never correct the effect was invisible in the numerator: the
+ * denominator fell from 121 to 113 and the reading looked complete. A missing answer is not a row to
+ * drop, it is a decline, and this instrument already has a relation for it.
+ */
 export function sourcesFrom(questions) {
-  return questions
-    .filter(
-      (question) =>
-        typeof question.questionId === 'string' &&
-        typeof question.groundTruth === 'string' &&
-        typeof question.answer === 'string' &&
-        typeof question.correct === 'boolean',
-    )
-    .map((question) => ({
+  const usable = questions.filter(
+    (question) =>
+      typeof question.questionId === 'string' && typeof question.correct === 'boolean',
+  );
+  return {
+    sources: usable.map((question) => ({
       questionId: question.questionId,
       capability: typeof question.capability === 'string' ? question.capability : '',
-      gold: question.groundTruth,
-      answer: question.answer,
+      gold: typeof question.groundTruth === 'string' ? question.groundTruth : '',
+      // A decline, kept as an empty answer so it lands in `answer-unreachable` rather than vanishing.
+      answer: typeof question.answer === 'string' ? question.answer : '',
       accepted: question.correct,
-    }));
+    })),
+    dropped: questions.length - usable.length,
+    total: questions.length,
+  };
 }
 
 const RELATIONS = ['agrees', 'agrees-early', 'differs', 'gold-unreachable', 'answer-unreachable'];
@@ -109,9 +118,12 @@ function main() {
   for (const path of artifacts) {
     const report = JSON.parse(readFileSync(path, 'utf8'));
     if (!Array.isArray(report.questions)) throw new Error(`${path} has no questions array`);
-    const sources = sourcesFrom(report.questions);
+    const { sources, dropped, total } = sourcesFrom(report.questions);
     const screened = sources.filter((source) => capability === 'all' || source.capability === capability);
-    console.log(`artifact          ${path}  (${screened.length} of ${sources.length} rows in scope)`);
+    console.log(
+      `artifact          ${path}  (${screened.length} of ${sources.length} rows in scope; ` +
+        `${dropped} of ${total} unusable, no verdict)`,
+    );
     all.push(...screened);
   }
 
@@ -127,9 +139,13 @@ function main() {
       `(${total === 0 ? '—' : `${((correct / total) * 100).toFixed(1)}%`})` +
       `   unreachable ${unreachable} of ${reading.accepted.total + reading.rejected.total}`,
   );
+  const bound = reading.falseAccept;
   console.log(
-    `disagreements       accepted ${reading.falseAccepts.length} stating a different number   ` +
-      `rejected ${reading.falseRejects.length} stating the gold's number`,
+    `false accepts      ${bound.accepted}/${bound.readable} readable accepted answers ` +
+      `(${(bound.rate * 100).toFixed(1)}%, Wilson 95% upper ${(bound.upper * 100).toFixed(1)}%)`,
+  );
+  console.log(
+    `false rejects      ${reading.falseRejects.length} rejected answers stating the gold's number`,
   );
 
   if (reading.falseAccepts.length > 0 || reading.falseRejects.length > 0) {
@@ -153,6 +169,7 @@ function main() {
       accepted: reading.accepted,
       rejected: reading.rejected,
       judgeFree: reading.judgeFree,
+      falseAccept: reading.falseAccept,
       falseAccepts: reading.falseAccepts.map((row) => ({
         questionId: row.questionId,
         goldValues: row.goldValues,

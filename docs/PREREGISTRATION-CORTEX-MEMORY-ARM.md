@@ -20249,3 +20249,153 @@ Prediction to test, registered before the tool exists: the entity-checked MR acc
 most 84/121 first repetition minus 5** — i.e. at least five of the 84 accepted MR answers name
 something the gold does not. If it is fewer than five, the 44.9% is concentrated in the capabilities
 with more names (IE, TR) and MR's gap stays a memory question.
+
+### 13.185 The entity check reaches two of eighty-four MR golds, and the prediction it falsifies is the finding
+
+`§13.184.5` registered one prediction and one reason for it: if the judge does not check names, then some
+of the 84 accepted MR answers should name something the gold does not, so MR after an entity check would
+be **at most 79**. The tool is `tools/mr-entity-recheck.mjs`, the predicate is `nameScreen`, and the
+reading is `tools/mr-entity-recheck-reading.json`, taken on `41159983913` with no model and no key.
+
+#### 13.185.1 What was counted
+
+| population | rows | `shared-name` | `names-disjoint` | `unnamed-gold` | `unnamed-answer` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| accepted | 84 | 1 | **0** | **82** | 1 |
+| rejected | 37 | 0 | 0 | 33 | 4 |
+
+**Candidates 0. Reach 2 of 84.** The prediction is **falsified**, and not because MR is clean.
+
+#### 13.185.2 Why it is falsified, which is worth more than the prediction
+
+82 of the 84 accepted MR golds contain no name at all. They are `2`, `$50`, `20%`, `3 days`, `$5,850`,
+`140 hours`, `an hour and a half`, `43`, `$750`. Multi-session reasoning on this dataset is arithmetic
+across sessions, so a screen built on *which name appears* cannot be pointed at the capability the
+campaign's head-to-head is about.
+
+The consequence is not about MR at all. Across all five capabilities the screen reaches **119 of 419**
+accepted answers, and MR contributes **two** of those. So `§13.184`'s 44.90% on `entity-swap` is a
+statement about the 119, and the previous iteration's annotation — `19.38% × 121 = 23.5` questions of MR
+headroom — had no premise behind the multiplication. The rate is real; its transfer to MR was assumed.
+
+**Withdrawn:** "MR 87.25 is judge-limited, not memory-limited" (`§13.184.4`, `docs/MEASURE-JUDGE-AUDIT.md`,
+`03-execution-plan.md` §14.2, `04` §9.132). The audit's own reading stands unchanged; the annotation does
+not. What replaces it is `§13.186`, which measures the channel MR does have.
+
+#### 13.185.3 The control, because a screen that fires nowhere would also produce this table
+
+On all five capabilities: accepted `5 of 419` (1.2%) against rejected `5 of 81` (6.2%) — the screen
+fires **5.2× more often** on answers the judge rejected than on the ones it accepted, so it detects
+something. It is not calibrated, and one of the five accepted candidates is a *correct* abridged answer
+(`Screen protectors, phone wallet cases` against a gold about an `iPhone 13 Pro`). The list is for
+adjudication, not for subtraction, and every row prints both texts and both name sets so a reader can
+check the predicate rather than trust it.
+
+#### 13.185.4 Two defects the real artifact found, neither of which a test wrote
+
+**`Five` was read as a name.** Gold `Five months ago` yields `goldNames: [Five]`, and an answer naming a
+city is then `names-disjoint`, so the screen listed a false accept on a question about duration. Number
+words are now excluded from `NOT_A_NAME`, beside the months and weekdays `§13.182` had already excluded.
+Because `entity-swap` draws its replacement pool from the same function, this also removes nonsense
+substitutions from the audit — one fix, two instruments.
+
+**Pronouns made a correct answer a candidate.** `They adopted a Labrador` extracted `They`, which made the
+answer's name set non-empty and disjoint from a gold naming Rachel. Pronouns, discourse markers and
+sentence-initial function words are excluded, and the case is a test.
+
+**Not needed, and recorded as an error:** a sample of the population, because the count alone could not
+distinguish "the answers are clean" from "the screen cannot see them". `--sample N` was added and
+`--capability MR --sample 25` is what produced 13.185.2. The first dispatch of the workflow (`41176808751`)
+printed a table that took a second dispatch (`41177330482`) and a sample to explain.
+
+### 13.186 MR read without the judge: zero false accepts in eighty answers, and one disagreement in a hundred and one
+
+`§13.185` ends with a channel that cannot see MR. This section registers the one that can, because the
+control that made 13.185 worth publishing — reach — is also what says where to look next: MR golds are
+numbers.
+
+#### 13.186.1 The instrument
+
+`numericScreen` (`packages/cortex-eval/src/numeric-recheck.ts`) compares the value an answer **commits
+to** with the values the gold states. The arm ends its replies with its answer (`$60 / 5 = $12 per mug.
+12`), so the last numeric token is that value. Five relations: `agrees`, `agrees-early` (the gold's value
+appears, and the answer commits to a different one), `differs`, `gold-unreachable` (a gold with no digits),
+`answer-unreachable` (a decline lands here). No model, no key, no credit.
+
+Two things follow from having no judge in the loop: the reading is not the instrument's opinion, and
+**false rejects become measurable** — the audit perturbs answers the judge already accepted, so a rejected
+answer that was right never enters its sample.
+
+#### 13.186.2 What it reads
+
+| population | rows | `agrees` | `agrees-early` | `differs` | gold unreachable | answer unreachable |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| accepted | 84 | **80** | 0 | **0** | 4 | 0 |
+| rejected | 37 | 1 | 0 | 20 | 8 | 8 |
+
+- **False accepts: 0 of 80 readable accepted answers. Wilson 95% upper bound 4.6%.**
+- **False rejects: 1** — `92a0aa75`, gold `1,5` (two acceptable values), the answer stated `1`.
+- Judge-free accuracy **81/101 (80.2%)**. The judge, on the same 101 rows: **80/101**.
+
+The two instruments disagree on **one MR question out of 101**, and the judge is the one that is wrong.
+
+#### 13.186.3 Why 4.6% settles the question the audit could not
+
+The audit's gate is 5%, and its own bound was 26.19%. On MR's number channel the bound is **4.6%** — under
+the gate, and 5.7× smaller than what the audit's overall bound would have licensed. If the judge were as
+lenient on MR numbers as the aggregate suggested, 80 readable accepted answers would carry about **21**
+false accepts. It carries **0**.
+
+Per capability, the same rule: MR `0/80` (4.6%), TR `1/54` (9.8%), IE `0/43` (8.2%), KU `1/32` (15.7%),
+ABS `0/0`, all `2/209` (3.4%). Both false accepts in 209 are outside MR. A judge that misses a swapped
+name at 44.90% is not a judge that accepts wrong numbers, and those two statements are only in tension if
+the rate is read as a per-answer property — which it never was.
+
+#### 13.186.4 The silent denominator, which is the defect this reading shipped and then fixed
+
+`sourcesFrom` filtered on `typeof question.answer === 'string'`. A **decline** is written without an
+`answer` key, so the filter dropped every decline: MR lost **8 of its 121 rows**. Nothing said so, and the
+damage was invisible in the numerator — a decline is never correct, so the accepted count was untouched
+while the denominator fell from 121 to 113. The workflow's own output (`41177874270`) says 113; the
+committed reading says 121, and the difference is this fix.
+
+The repair is not a wider filter, it is the recognition that a decline is a **row with a relation**
+(`answer-unreachable` / `unnamed-answer`). Both tools now print `N of M unusable, no verdict`, so the one
+thing that can be dropped is a row with no verdict at all, and it is counted.
+
+#### 13.186.5 What changes, and what does not
+
+- **Withdrawn:** MR is judge-limited. The annotation cost 23.5 hypothetical questions; the measurement
+  finds 1 actual disagreement.
+- **Unchanged:** MR's 84/121, the four-round spread 84/86/87/92, the 16-question gap to the reference arm
+  (100–102). The gap is now a **memory** finding on the numeric channel rather than a grading one, which
+  makes the `enumerated` / review-pass / session-channel work the right place to spend the next round.
+- **Unchanged:** the judge audit's 19.38%. It keeps its own meaning — this judge does not verify names —
+  and it can no longer be multiplied by 121. It applies to the 119 accepted answers whose golds state a
+  name, 2 of which are MR.
+- **New:** a reading whose error is not the judge's. Every capability comparison in this campaign has been
+  a comparison of two judge readings; MR now has one that is not.
+
+#### 13.186.6 What it cannot say, each with the class it costs
+
+1. **A wrong answer that keeps the gold's number.** `3 people` against a gold of `3 days` agrees here, and
+   the judge accepted it. This bounds the number channel, not the capability.
+2. **Units.** `3 days` against `72 hours` differs. The class is small on MR and is not zero.
+3. **Scale.** `20%` is 20, so `0.2` differs. A normaliser that guessed the scale would be deciding the
+   answer.
+4. **Golds with no digits.** `an hour and a half`: 4 of the 84 accepted, 20 of 121 rows. Excluded from the
+   rate and counted beside it, because a denominator that absorbed them would make the instrument look
+   better the blinder it got.
+5. **Other capabilities.** The stated-answer semantics hold where the answer is a value; on TR the same
+   rule reads 28.3%, which is not a claim about TR. Only MR is read as an accuracy here.
+
+#### 13.186.7 The next step this implies, registered now
+
+The judge is not what costs MR 16 questions, so the next experiment is a **memory** experiment, and the
+candidate already has a mechanism and a prediction on file: `PREREG-MR-SESSION-CHANNEL` (session-granularity
+relevance, `MR ≥ 96/121`). Before dispatching it, register one thing this reading makes cheap to check:
+**the number screen must be run on the new artifact in the same reading step**, because an MR gain that
+moves 121 answers can now be checked for whether it moved them by being right rather than by being
+accepted — and if the reference arm's 100–102 contains false accepts of its own, the gap is smaller than
+16 and the target of 96 is easier than it looks. That check is `--capability all` on both arms, and it
+needs no key.

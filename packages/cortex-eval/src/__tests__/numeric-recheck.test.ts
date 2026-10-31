@@ -142,6 +142,28 @@ describe('the reading', () => {
     expect(numericScreen(SOURCES).judgeFree).toEqual({ correct: 3, total: 5, unreachable: 1 });
   });
 
+  it('bounds the false-accept rate, because a zero on its own is not a measurement', () => {
+    // `0 of 80` is consistent with a rate as high as the Wilson upper bound, and the bound is what makes
+    // the claim quotable: with 0 of 5 the same zero could hide 52%.
+    const five = numericScreen([
+      answer({ questionId: 'b1', gold: '1', answer: '1' }),
+      answer({ questionId: 'b2', gold: '1', answer: '1' }),
+      answer({ questionId: 'b3', gold: '1', answer: '1' }),
+      answer({ questionId: 'b4', gold: '1', answer: '1' }),
+      answer({ questionId: 'b5', gold: '1', answer: '1' }),
+    ]);
+    expect(five.falseAccept).toMatchObject({ accepted: 0, readable: 5, rate: 0 });
+    expect(five.falseAccept.upper).toBeGreaterThan(0.4);
+
+    // And the denominator is the readable accepted rows: the unreadable gold is not counted as a row the
+    // instrument examined and cleared.
+    const mixed = numericScreen([
+      answer({ questionId: 'c1', gold: '1', answer: '1' }),
+      answer({ questionId: 'c2', gold: 'an hour and a half', answer: '90 minutes' }),
+    ]);
+    expect(mixed.falseAccept.readable).toBe(1);
+  });
+
   it('keeps both value lists on every row, so the predicate can be audited from the reading', () => {
     const reading = numericScreen([
       answer({ questionId: 'v1', gold: '$60 ÷ 5 = $12', answer: '12 per mug' }),

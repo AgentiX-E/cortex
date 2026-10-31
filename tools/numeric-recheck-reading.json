@@ -1,0 +1,82 @@
+{
+  "what": "MR's accuracy read from the numbers the answers state, with no judge in the loop — and therefore the first reading in this repository whose error is not the judge's.",
+  "why": "§13.185 screened every accepted answer for a name the gold does not state and reached 2 of MR's 84, because the golds are `2`, `$50`, `20%`, `3 days`, `$5,850`, `140 hours`. Multi-session reasoning on this dataset is arithmetic across sessions, so the channel that matters is the number. The arm ends its replies with its answer (`$60 / 5 = $12 per mug. 12`), so the last number is what it committed to, and comparing that with the gold's number needs no model.",
+  "artifact": {
+    "run": "41159983913",
+    "headSha": "fa51a895",
+    "report": "longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+    "rows": 500,
+    "why": "the artifact the campaign is currently read from, and the one §13.184 audited the judge on"
+  },
+  "command": "node tools/numeric-recheck.mjs --artifact <report.json> --capability MR --sample 20 --out readings/numeric-recheck.json",
+  "workflow": "numeric-recheck.yml dispatched with run_id=41159983913, capability=MR (GitHub run 41177874270). The reading below was recomputed locally on the same downloaded artifact after the silent-denominator fix, which is why it counts 121 MR rows and the workflow's own output counted 113.",
+  "reading": {
+    "MR": {
+      "rows": 121,
+      "accepted": {
+        "total": 84,
+        "agrees": 80,
+        "agrees-early": 0,
+        "differs": 0,
+        "gold-unreachable": 4,
+        "answer-unreachable": 0
+      },
+      "rejected": {
+        "total": 37,
+        "agrees": 1,
+        "agrees-early": 0,
+        "differs": 20,
+        "gold-unreachable": 8,
+        "answer-unreachable": 8
+      },
+      "falseAccept": { "accepted": 0, "readable": 80, "rate": 0.0, "upper": 0.0458 },
+      "falseRejects": [{ "questionId": "92a0aa75", "goldValues": [1, 5], "stated": 1 }],
+      "judgeFree": { "correct": 81, "total": 101, "unreachable": 20 },
+      "judgeOnTheSameRows": { "correct": 80, "total": 101 }
+    },
+    "byCapability": {
+      "MR": { "accepted": 84, "readableAccepted": 80, "falseAccepts": 0, "upper": 0.0458, "falseRejects": 1 },
+      "TR": { "accepted": 105, "readableAccepted": 54, "falseAccepts": 1, "upper": 0.0981, "falseRejects": 0 },
+      "IE": { "accepted": 141, "readableAccepted": 43, "falseAccepts": 0, "upper": 0.0824, "falseRejects": 0 },
+      "KU": { "accepted": 60, "readableAccepted": 32, "falseAccepts": 1, "upper": 0.1574, "falseRejects": 1 },
+      "ABS": { "accepted": 29, "readableAccepted": 0, "falseAccepts": 0, "upper": null, "falseRejects": 0 },
+      "all": { "accepted": 419, "readableAccepted": 209, "falseAccepts": 2, "upper": 0.0342, "falseRejects": 2 }
+    }
+  },
+  "verdict": "MR is not judge-limited",
+  "predictions": [
+    {
+      "name": "the judge's leniency reaches MR",
+      "registered": "§13.184.5: MR's 87.25 is judge-limited, 19.38% x 121 = 23.5 questions of headroom",
+      "measured": "0 false accepts in the 80 readable accepted MR answers; Wilson 95% upper 4.6%",
+      "verdict": "falsified"
+    },
+    {
+      "name": "the two instruments agree on MR",
+      "registered": "not registered",
+      "measured": "on the same 101 rows the numbers say 81 correct and the judge says 80. They disagree once, and the judge is the one that is wrong (92a0aa75, gold `1,5`, answer stated 1)",
+      "verdict": "the disagreement is 1 of 101 = 1.0%, not 19.38%"
+    },
+    {
+      "name": "the audit's rate is a channel property, not an answer property",
+      "registered": "not registered",
+      "measured": "the same screen on all five capabilities finds 2 false accepts in 209 readable accepted answers (1.0%, upper 3.4%), and both are outside MR. A judge that misses a swapped name at 44.90% is not a judge that accepts wrong numbers",
+      "verdict": "consistent with the audit, and it constrains what the audit means"
+    }
+  ],
+  "whatItChanges": [
+    "MR's headline is no longer annotated 'judge-limited'. The annotation cost 23.5 hypothetical questions of headroom; the measurement finds 1 actual disagreement.",
+    "The head-to-head against the reference arm (87.25 against 103.75 on MR) is a memory finding, not a grading finding, on the numeric channel. The 16-question gap stands as published.",
+    "The audit's 19.38% keeps its own meaning — the judge does not verify names — but it can no longer be multiplied by 121 and quoted as MR error. It applies to the 119 accepted answers whose golds name anything, 2 of which are MR."
+  ],
+  "defectsFound": [
+    "Silent denominator: the first `sourcesFrom` dropped rows whose `answer` was absent, which is every decline. MR lost 8 of 121 rows and nothing said so, because a decline is never correct and the numerator did not move. §13.186 records the reconciliation; the tool now prints `N of M unusable, no verdict` and keeps declines as `answer-unreachable`."
+  ],
+  "limits": [
+    "Units are ignored. `3 days` against `72 hours` is called a difference; the class is small on MR but it is not zero.",
+    "Percentages are read as their number, so `20%` against `0.2` differs. A normaliser that guessed the scale would be deciding the answer.",
+    "Golds with no digits (`an hour and a half`) are unreachable: 4 of the 84 accepted MR answers, and 20 of 121 rows in total. They are excluded from the rate and counted beside it.",
+    "The stated-answer semantics hold where the answer is a value. On TR the same rule reads 28.3% judge-free accuracy, which is not a claim about TR — the answers there end with reasoning, not with a value. Only MR is read as an accuracy here.",
+    "It cannot see a wrong answer that keeps the gold's number. A reader that answers `3 people` to a gold of `3 days` agrees on this instrument and was accepted by the judge, so this bounds the number channel and not the capability."
+  ]
+}

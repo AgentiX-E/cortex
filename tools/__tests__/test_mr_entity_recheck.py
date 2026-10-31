@@ -86,13 +86,13 @@ def test_only_rows_in_the_requested_capability_are_screened(tmp_path: Path) -> N
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'capability        MR' in result.stdout
     # Four MR rows in scope, out of five in the artifact.
-    assert '(4 of 5 rows in scope)' in result.stdout, result.stdout
+    assert '(4 of 5 rows in scope;' in result.stdout, result.stdout
 
 
 def test_capability_all_screens_every_row(tmp_path: Path) -> None:
     result = run('--artifact', str(artifact(tmp_path)), '--capability', 'all')
     assert result.returncode == 0
-    assert '(5 of 5 rows in scope)' in result.stdout, result.stdout
+    assert '(5 of 5 rows in scope;' in result.stdout, result.stdout
 
 
 def test_the_candidate_is_printed_with_both_texts(tmp_path: Path) -> None:
@@ -186,3 +186,77 @@ def test_the_sample_is_bounded_and_reproducible(tmp_path: Path) -> None:
     # word `accepted` also appears in the tallies above it.
     _, _, sample = first.stdout.partition('sample (2 rows')
     assert sample.count(' accepted ') + sample.count(' rejected ') == 2, sample
+
+
+def test_a_decline_is_screened_rather_than_dropped(tmp_path: Path) -> None:
+    """The same silent-denominator defect, in the name screen.
+
+    A decline has no `answer` key. Dropping it shrinks the population without saying so, and the
+    population is what the registered prediction was written against (84 of 121, not 84 of 113).
+    """
+    path = tmp_path / 'decline.json'
+    path.write_text(
+        json.dumps(
+            {
+                'questions': [
+                    {
+                        'questionId': 'mr-answered',
+                        'capability': 'MR',
+                        'question': 'Who moved?',
+                        'groundTruth': 'Rachel',
+                        'answer': 'Rachel',
+                        'correct': True,
+                    },
+                    {
+                        'questionId': 'mr-declined',
+                        'capability': 'MR',
+                        'question': 'Who moved?',
+                        'groundTruth': 'Rachel',
+                        'correct': False,
+                    },
+                ]
+            }
+        )
+    )
+    result = run('--artifact', str(path))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '(2 of 2 rows in scope; 0 of 2 unusable, no verdict)' in result.stdout, result.stdout
+    assert 'answer unnamed   1' in result.stdout, result.stdout
+
+
+def test_the_committed_reading_recomputes() -> None:
+    """The name reading's whole content is that it does not reach MR.
+
+    0 candidates out of 84 accepted, with a reach of 2: the screen saw 2 of the 84 golds. A reader with
+    the artifact can confirm all three numbers, which is the only reason the falsified prediction is worth
+    publishing.
+    """
+    reading = json.loads((REPO / 'tools' / 'mr-entity-recheck-reading.json').read_text())
+    mr = reading['reading']['MR']
+    assert mr['candidates'] == 0
+    assert mr['reach'] == 2 and mr['reachOf'] == 84
+    # The four relations partition the accepted population.
+    tally = mr['accepted']
+    assert (
+        tally['shared-name'] + tally['names-disjoint'] + tally['unnamed-gold'] + tally['unnamed-answer']
+        == tally['total']
+        == 84
+    )
+    # 82 of the 84 golds name nothing, which is the explanation rather than the result.
+    assert tally['unnamed-gold'] == 82
+
+    # The control: the screen is not simply blind everywhere. On all five capabilities it fires 5 times on
+    # 81 rejected answers and 5 times on 419 accepted ones.
+    everything = reading['reading']['all']
+    assert everything['rejected']['names-disjoint'] == 5
+    assert everything['accepted']['names-disjoint'] == 5
+    assert everything['reach'] == 119
+
+
+def test_the_reading_records_the_prediction_it_falsified() -> None:
+    reading = json.loads((REPO / 'tools' / 'mr-entity-recheck-reading.json').read_text())
+    verdicts = {prediction['name']: prediction['verdict'] for prediction in reading['predictions']}
+    assert verdicts['the registered one'] == 'falsified'
+    assert reading['verdict'] == 'the screen does not reach MR'
+    # The withdrawal of the previous iteration's annotation is in the file rather than in a commit message.
+    assert 'judge-limited' in reading['withdrawn']

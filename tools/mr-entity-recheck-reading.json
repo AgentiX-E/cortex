@@ -1,0 +1,90 @@
+{
+  "what": "Every accepted answer in a published artifact, screened for a name the gold does not state — the judge audit's 44.90% entity-swap rate applied to all 500 rows instead of to 49 sampled cases.",
+  "why": "§13.184 measured the judge accepting 19.38% of answers that were wrong by construction, and split it: entity-swap 44.90%, number-swap 14.75%, cross-gold 0/50. A rate over 160 cases does not say which capability carries it, and the campaign's head-to-head is MR. This screen answers that from the artifact, with no model and no key.",
+  "artifact": {
+    "run": "41159983913",
+    "headSha": "fa51a895",
+    "report": "longmemeval-s-report/benchmark-cortex-memory-ablation-report.json",
+    "rows": 500,
+    "why": "the artifact the campaign is currently read from"
+  },
+  "command": "node tools/mr-entity-recheck.mjs --artifact <report.json> --capability MR --sample 25 --out readings/mr-entity-recheck.json",
+  "workflow": "mr-entity-recheck.yml dispatched with run_id=41159983913, capability=MR (GitHub run 41177330482)",
+  "reading": {
+    "MR": {
+      "accepted": {
+        "total": 84,
+        "shared-name": 1,
+        "names-disjoint": 0,
+        "unnamed-gold": 82,
+        "unnamed-answer": 1
+      },
+      "rejected": {
+        "total": 37,
+        "shared-name": 0,
+        "names-disjoint": 0,
+        "unnamed-gold": 33,
+        "unnamed-answer": 4
+      },
+      "candidates": 0,
+      "reach": 2,
+      "reachOf": 84
+    },
+    "all": {
+      "accepted": {
+        "total": 419,
+        "shared-name": 108,
+        "names-disjoint": 5,
+        "unnamed-gold": 300,
+        "unnamed-answer": 6
+      },
+      "rejected": {
+        "total": 81,
+        "shared-name": 6,
+        "names-disjoint": 5,
+        "unnamed-gold": 63,
+        "unnamed-answer": 7
+      },
+      "candidates": 5,
+      "reach": 119,
+      "reachOf": 419,
+      "discrimination": {
+        "acceptedRate": 0.0119,
+        "rejectedRate": 0.0617,
+        "reading": "the screen fires 5.2x more often on answers the judge rejected than on the ones it accepted, so it is not blind — but at 1.2% it is far below the 19.38% the audit measured, which is the first sign that the audit's rate is not a per-answer property"
+      }
+    }
+  },
+  "verdict": "the screen does not reach MR",
+  "predictions": [
+    {
+      "name": "the registered one",
+      "registered": "MR first-round accepted count after the screen is at most 84 - 5 = 79, i.e. at least 5 accepted answers name something the gold does not name",
+      "measured": "0 candidates, so the count stays at 84",
+      "verdict": "falsified"
+    },
+    {
+      "name": "why it failed",
+      "registered": "not registered",
+      "measured": "82 of the 84 accepted MR golds name nothing at all: they are 2, $50, 20%, 3 days, $5,850, 140 hours. The screen's reach on MR is 2 of 84 = 2.4%",
+      "verdict": "the falsification is informative rather than null"
+    },
+    {
+      "name": "the audit's population",
+      "registered": "not registered",
+      "measured": "119 of 419 accepted answers name anything, so the 44.90% entity-swap rate is a statement about at most those 119 — and MR contributes 2 of them",
+      "verdict": "the 19.38% cannot be attributed to MR on name evidence"
+    }
+  ],
+  "withdrawn": "The previous iteration annotated MR's 87.25 as 'judge-limited' by multiplying 19.38% x 121 = 23.5 questions. This reading removes the premise: MR golds carry no names, so entity-swap cases could not be drawn from MR, and the rate is about the other capabilities. §13.186 replaces the annotation with a measurement on the channel MR does have.",
+  "defectsFound": [
+    "The first version of `sourcesFrom` filtered on `typeof question.answer === 'string'`, which dropped every decline: 8 of MR's 121 rows vanished and the reading still looked whole, because a decline is never correct and the numerator was untouched. Fixed; the second reading counts 121 MR rows.",
+    "The audit's own stoplist read `Five` in the gold `Five months ago` as a name, and the screen listed a false accept on a question about duration. Pronouns, discourse markers and number words are now excluded (§13.185)."
+  ],
+  "limits": [
+    "The screen compares capitalised words. A gold whose only content is a list of common nouns (`a tent, a sleeping bag`) is unreachable, which is 300 of 419 accepted rows in this artifact.",
+    "An answer that names nothing but is wrong (`2 people` against a gold naming Alice and Bob) is `unnamed-answer`, a published relation rather than a pass. The candidate count is a lower bound, never an estimate.",
+    "A candidate is a candidate: 1 of the 5 listed on `all` is a correct abridged answer (`Screen protectors, phone wallet cases` against a gold about an `iPhone 13 Pro`). The list is for adjudication, not for subtraction.",
+    "It does not measure the judge. It measures which real answers exercise the channel the judge was shown to miss."
+  ]
+}

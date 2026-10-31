@@ -83,7 +83,7 @@ def test_only_rows_in_the_capability_are_read(tmp_path: Path) -> None:
     result = run('--artifact', str(artifact(tmp_path)))
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'capability        MR' in result.stdout
-    assert '(4 of 5 rows in scope)' in result.stdout, result.stdout
+    assert '(4 of 5 rows in scope;' in result.stdout, result.stdout
 
 
 def test_the_reading_reports_a_judge_free_accuracy_over_the_rows_it_can_read(tmp_path: Path) -> None:
@@ -160,3 +160,97 @@ def test_a_missing_questions_array_is_refused(tmp_path: Path) -> None:
     result = run('--artifact', str(path))
     assert result.returncode != 0
     assert 'no questions array' in result.stderr, result.stderr
+
+
+def test_a_decline_stays_in_the_denominator(tmp_path: Path) -> None:
+    """The silent-denominator defect this tool shipped for one run.
+
+    A decline is written without an `answer` key, and the first version of `sourcesFrom` filtered on
+    `typeof question.answer === 'string'` — which dropped every decline. MR lost 8 of its 121 rows and
+    nothing anywhere said so: a decline is never correct, so the numerator was untouched and the reading
+    looked whole. `§13.186` is the reconciliation; this is the test.
+    """
+    path = tmp_path / 'decline.json'
+    path.write_text(
+        json.dumps(
+            {
+                'questions': [
+                    {
+                        'questionId': 'mr-answered',
+                        'capability': 'MR',
+                        'question': 'How many?',
+                        'groundTruth': '2',
+                        'answer': '2',
+                        'correct': True,
+                    },
+                    # A decline: no `answer` at all, and counted wrong by the judge.
+                    {
+                        'questionId': 'mr-declined',
+                        'capability': 'MR',
+                        'question': 'How many?',
+                        'groundTruth': '3',
+                        'correct': False,
+                    },
+                ]
+            }
+        )
+    )
+    result = run('--artifact', str(path))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '(2 of 2 rows in scope; 0 of 2 unusable, no verdict)' in result.stdout, result.stdout
+    # The decline is `answer-unreachable`, which is a relation rather than a silent exclusion.
+    assert 'answer-unreachable 1' in result.stdout, result.stdout
+
+
+def test_the_committed_reading_recomputes() -> None:
+    """The arithmetic has to survive a reader who cannot run the benchmark.
+
+    0 of 80 is 0.0%, and the Wilson 95% upper bound is 4.58% -- the number that decides whether MR is
+    judge-limited. The audit's own gate fails above 5%, so a bound of 4.6% on the channel MR actually has
+    is the reason `§13.186` withdraws the annotation rather than repeating it.
+    """
+    import math
+
+    def wilson_upper(accepted: int, total: int, z: float = 1.96) -> float:
+        if total == 0:
+            return 1.0
+        p = accepted / total
+        denominator = 1 + (z * z) / total
+        centre = p + (z * z) / (2 * total)
+        margin = z * math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total))
+        return min(1.0, (centre + margin) / denominator)
+
+    reading = json.loads((REPO / 'tools' / 'numeric-recheck-reading.json').read_text())
+    mr = reading['reading']['MR']
+    bound = mr['falseAccept']
+    assert abs(bound['upper'] - wilson_upper(bound['accepted'], bound['readable'])) < 5e-4
+    assert bound['accepted'] == 0 and bound['readable'] == 80
+    assert bound['upper'] < 0.05
+
+    # The five relations partition each judge population, so no row can be counted twice or lost.
+    for side in ('accepted', 'rejected'):
+        tally = mr[side]
+        total = tally['agrees'] + tally['agrees-early'] + tally['differs'] + tally['gold-unreachable'] + tally['answer-unreachable']
+        assert total == tally['total'], side
+
+    # Rows: accepted + rejected is the capability's whole population, which is the silent-denominator
+    # fix stated as arithmetic.
+    assert mr['accepted']['total'] + mr['rejected']['total'] == mr['rows'] == 121
+
+    # And the by-capability table has to agree with the per-capability run.
+    assert reading['reading']['byCapability']['MR']['falseAccepts'] == bound['accepted']
+    assert (
+        reading['reading']['byCapability']['all']['falseAccepts']
+        == sum(
+            bucket['falseAccepts'] for name, bucket in reading['reading']['byCapability'].items() if name != 'all'
+        )
+    )
+
+
+def test_the_reading_says_which_registered_prediction_it_falsified() -> None:
+    reading = json.loads((REPO / 'tools' / 'numeric-recheck-reading.json').read_text())
+    verdicts = {prediction['name']: prediction['verdict'] for prediction in reading['predictions']}
+    assert verdicts["the judge's leniency reaches MR"] == 'falsified'
+    assert reading['verdict'] == 'MR is not judge-limited'
+    # The withdrawal is part of the record, not a silent edit: the previous annotation is quoted in it.
+    assert any('23.5' in item for item in reading['whatItChanges'])

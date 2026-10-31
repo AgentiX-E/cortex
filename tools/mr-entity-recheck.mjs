@@ -55,23 +55,30 @@ function flags(name) {
   return values;
 }
 
-/** One artifact's graded answers as screen sources. Abstentions are screened like anything else. */
+/**
+ * One artifact's graded answers as screen sources, with the rows it could not use named.
+ *
+ * A row is unusable only when it has no verdict. A missing `answer` is a **decline**, and a missing
+ * `groundTruth` is an abstention question whose gold is an explanation rather than a value — both are
+ * rows this screen has a relation for, and filtering them out would shrink the denominator silently.
+ * That is what the first version did on MR: 8 of 121 rows vanished and the reading still looked whole.
+ */
 export function sourcesFrom(questions) {
-  return questions
-    .filter(
-      (question) =>
-        typeof question.questionId === 'string' &&
-        typeof question.groundTruth === 'string' &&
-        typeof question.answer === 'string' &&
-        typeof question.correct === 'boolean',
-    )
-    .map((question) => ({
+  const usable = questions.filter(
+    (question) =>
+      typeof question.questionId === 'string' && typeof question.correct === 'boolean',
+  );
+  return {
+    sources: usable.map((question) => ({
       questionId: question.questionId,
       capability: typeof question.capability === 'string' ? question.capability : '',
-      gold: question.groundTruth,
-      answer: question.answer,
+      gold: typeof question.groundTruth === 'string' ? question.groundTruth : '',
+      answer: typeof question.answer === 'string' ? question.answer : '',
       accepted: question.correct,
-    }));
+    })),
+    dropped: questions.length - usable.length,
+    total: questions.length,
+  };
 }
 
 function percent(part, whole) {
@@ -133,16 +140,19 @@ function main() {
   for (const path of artifacts) {
     const report = JSON.parse(readFileSync(path, 'utf8'));
     if (!Array.isArray(report.questions)) throw new Error(`${path} has no questions array`);
-    const sources = sourcesFrom(report.questions);
+    const { sources, dropped, total } = sourcesFrom(report.questions);
     const screened = sources.filter((source) => capability === 'all' || source.capability === capability);
-    perArtifact.push({ path, sources, screened });
+    perArtifact.push({ path, sources, screened, dropped, total });
     all.push(...screened);
   }
 
   const reading = nameScreen(all);
   console.log(`capability        ${capability}`);
-  for (const { path, sources, screened } of perArtifact) {
-    console.log(`artifact          ${path}  (${screened.length} of ${sources.length} rows in scope)`);
+  for (const { path, sources, screened, dropped, total } of perArtifact) {
+    console.log(
+      `artifact          ${path}  (${screened.length} of ${sources.length} rows in scope; ` +
+        `${dropped} of ${total} unusable, no verdict)`,
+    );
   }
 
   console.log('\njudge verdict, then what the names say');

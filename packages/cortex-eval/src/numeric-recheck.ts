@@ -44,6 +44,8 @@
  *    that looks most like success.
  */
 
+import { wilsonUpper } from './judge-audit.js';
+
 /** How the number the answer states relates to the number the gold states. */
 type NumericRelation =
   'agrees' | 'agrees-early' | 'differs' | 'gold-unreachable' | 'answer-unreachable';
@@ -90,6 +92,19 @@ type NumericReading = {
     readonly correct: number;
     readonly total: number;
     readonly unreachable: number;
+  };
+  /**
+   * False accepts per accepted answer this instrument could read, with a Wilson 95% upper bound.
+   *
+   * `0 of 80` is not a measurement on its own: it is consistent with a rate as high as the bound. The
+   * pair is what makes the number quotable, and the bound is the same function the audit's gate uses, so
+   * "this capability is under 5%" and "the judge accepts 19.38% overall" are the same arithmetic.
+   */
+  readonly falseAccept: {
+    readonly accepted: number;
+    readonly readable: number;
+    readonly rate: number;
+    readonly upper: number;
   };
 };
 
@@ -172,12 +187,27 @@ export function numericScreen(sources: readonly NumericSource[]): NumericReading
     if (relation === 'agrees') correct += 1;
   }
 
+  const falseAccepts = rows.filter((row) => row.accepted && row.relation === 'differs');
+  // The denominator is the accepted answers this instrument could read, not all of them: a gold with no
+  // digits cannot produce a false accept here, and including it would dilute the rate with rows the
+  // instrument never examined.
+  const readableAccepted = rows.filter(
+    (row) =>
+      row.accepted && row.relation !== 'gold-unreachable' && row.relation !== 'answer-unreachable',
+  ).length;
+
   return {
     rows,
     accepted,
     rejected,
-    falseAccepts: rows.filter((row) => row.accepted && row.relation === 'differs'),
+    falseAccepts,
     falseRejects: rows.filter((row) => !row.accepted && row.relation === 'agrees'),
     judgeFree: { correct, total: reachable, unreachable },
+    falseAccept: {
+      accepted: falseAccepts.length,
+      readable: readableAccepted,
+      rate: readableAccepted === 0 ? 0 : falseAccepts.length / readableAccepted,
+      upper: wilsonUpper(falseAccepts.length, readableAccepted),
+    },
   };
 }

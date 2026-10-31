@@ -57,9 +57,17 @@ The control at 120/120 is what makes the 19.4% readable: the judge is perfectly 
 answers, so this is bias, not noise, and `§13.135`'s 5.0% floor belongs to the reader.
 
 Applied to MR: `19.38% × 121 = 23.5 questions`, against a measured gap of 16 questions to the
-reference pipeline. **The instrument's error is larger than the effect it reports.** MR 87.25 is
-judge-limited, not memory-limited, and paired flip counts become mandatory rather than preferred.
-Registered reading, five prediction verdicts (one falsified), and the next step: `§13.184`.
+reference pipeline — **the instrument's error is larger than the effect it reports**, so paired flip
+counts become mandatory rather than preferred. Registered reading, five prediction verdicts (one
+falsified), and the next step: `§13.184`.
+
+> **Withdrawn in part (`§13.185`, `§13.186`).** That multiplication assumed the rate transfers to MR. It
+> does not: 82 of the 84 accepted MR golds name nothing at all, so `entity-swap` cases could not be drawn
+> from MR, and the 44.90% is about the 119 accepted answers whose golds do name something — two of which
+> are MR. The channel MR does have is the number, and reading it judge-free finds **0 false accepts in 80
+> readable accepted answers (upper bound 4.6%)** and one disagreement with the judge in 101 rows, in which
+> the judge was wrong. The 19.38% stands; the annotation "MR is judge-limited" does not. See
+> [`MEASURE-MR-CHANNEL.md`](MEASURE-MR-CHANNEL.md).
 
 ## The gate, and why 5%
 

@@ -120,8 +120,14 @@ type AuditReading = {
   readonly control: AuditRate;
 };
 
-/** The observed-frequency half of a Wilson score interval, matching `wilsonScoreInterval`'s z. */
-function wilsonUpper(accepted: number, total: number, z = 1.96): number {
+/**
+ * The observed-frequency half of a Wilson score interval, matching `wilsonScoreInterval`'s z.
+ *
+ * Exported since `§13.186`: the numeric screen reports `0 false accepts of 80`, and a zero is not a
+ * measurement without the bound that says how large the rate could be. Two implementations of one
+ * interval is how the audit's bound and the screen's bound would come to disagree about the same word.
+ */
+export function wilsonUpper(accepted: number, total: number, z = 1.96): number {
   if (total === 0) return 1;
   const p = accepted / total;
   const denominator = 1 + (z * z) / total;
