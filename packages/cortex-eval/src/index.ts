@@ -64,6 +64,13 @@ export { planAudit, summariseAudit } from './judge-audit.js';
 // `tools/mr-entity-recheck.mjs` is a thin shell and the predicate has to be testable without one.
 export { nameScreen } from './mr-entity-recheck.js';
 
+// The same question asked of the channel MR actually has. `§13.185` found 82 of 84 accepted MR golds
+// naming nothing, and the golds are `$5,850`, `20%`, `3 days`: the capability is arithmetic, so the
+// screen that can see it compares the number the answer states against the number the gold states — and
+// that comparison needs no judge at all, which makes it the only reading in this repository that can
+// report accuracy for a capability without the instrument under audit.
+export { numericScreen } from './numeric-recheck.js';
+
 // The reading stage of the competition harness. Only the factory is exported: the tool needs a reader, and the
 // prompt, the renderer and the refusal phrase are its internals — a second caller reaching for them would be
 // building a second reader, which is the thing this module exists to prevent. The tests import the module

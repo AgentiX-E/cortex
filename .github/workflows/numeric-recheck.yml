@@ -1,0 +1,102 @@
+name: Numeric recheck
+
+# What is MR's accuracy if the judge is removed from the loop?
+#
+# `§13.185` screened the 84 accepted MR answers of `41159983913` for names the gold never states and could
+# reach **2 of them**: 82 of those golds name nothing at all. Reading the population explains it — the MR
+# golds are `2`, `$50`, `20%`, `3 days`, `$5,850`, `140 hours`. Multi-session reasoning on this dataset is
+# arithmetic across sessions, so the capability the head-to-head is about has no names to check.
+#
+# This workflow reads the other channel. The arm ends its replies with the answer (`$60 ÷ 5 = $12 per
+# mug. 12`), so the last number in a reply is what it committed to; comparing that with the gold's number
+# needs no judge. Two things come out that no other reading in this repository can produce:
+#
+#   false accepts   accepted answers stating a different number
+#   false rejects   **rejected** answers stating the gold's number — structurally invisible to the judge
+#                   audit, which perturbs answers the judge already accepted
+#
+# Dispatch only, no key, no credits: it reads strings.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Benchmark run id whose `longmemeval-s-report` artifact is read'
+        required: true
+        type: string
+      capability:
+        description: 'Capability to read (`MR`, `TR`, `IE`, `ABS`, or `all`)'
+        required: false
+        default: 'MR'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: numeric-recheck-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  read:
+    name: The number the answer states, against the number the gold states
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN_ID: ${{ inputs.run_id }}
+      CAPABILITY: ${{ inputs.capability }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Fetch the artifact under read
+        run: |
+          set -euo pipefail
+          mkdir -p readings/artifact
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name longmemeval-s-report --dir readings/artifact
+          ls -la readings/artifact
+
+      - name: Read
+        run: |
+          set -o pipefail
+          node tools/numeric-recheck.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --capability "$CAPABILITY" --sample 20 \
+            --out readings/numeric-recheck.json 2>&1 | tee readings/numeric-recheck.txt
+
+      # The whole artifact at once, because a judge-free accuracy on one capability is only readable
+      # against the others: if it agrees with the judge everywhere except MR, the disagreement is about
+      # MR rather than about the instrument.
+      - name: Read every capability beside it
+        run: |
+          set -o pipefail
+          node tools/numeric-recheck.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --capability all 2>&1 | tee readings/numeric-recheck-all.txt
+
+      - name: Upload readings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numeric-recheck
+          path: readings/numeric-recheck*
+          retention-days: 30
