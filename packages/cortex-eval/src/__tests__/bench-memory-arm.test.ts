@@ -2256,6 +2256,33 @@ describe('the ask reaches the artifacts, in both renderings', () => {
     expect(markdown).toContain('`abstention`');
   });
 
+  it('accepts the composed ask and reports all four routes it reaches', () => {
+    // §13.193.5. The value exists because `ask` is a single field: `41188431321` dispatched
+    // `operand-gap` and moved ABS to 30/30, while the three routes that had read `operands` fell back
+    // to the shipped block and cost 62 questions. The arm's copy of the table is what `readAsk`
+    // validates against, so the composite has to survive here or the dispatch fails at startup -- the
+    // §13.35 failure -- and the reach has to name four routes, because that union is the claim.
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_ASK: 'operands+operand-gap',
+    });
+    const config = toMemoryArmConfig(options);
+    expect(config.ask).toBe('operands+operand-gap');
+    expect(config.askRoutes).toEqual(['multi-session', 'flat', 'temporal', 'abstention']);
+
+    const markdown = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 2,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: config,
+    });
+    expect(markdown).toContain('- Evidence ask: `operands+operand-gap`');
+    expect(markdown).toContain('Evidence ask reached: 4 route(s)');
+  });
+
   it('renders the ask and its reach into the Markdown, naming the routes', () => {
     const markdown = formatAblationReport({
       dataset: 'fixture',

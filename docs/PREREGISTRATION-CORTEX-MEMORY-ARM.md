@@ -21457,3 +21457,208 @@ Registered as the next increment, with its own criterion and no code written yet
 4. **The prompt identity check is now mandatory for this arm.** `window-pair`'s per-capability digest counts are
    the instrument: the run is only single-variable if `KU` stays 72/72 equal and the three operands routes show
    the same digest on both sides, with `ABS` alone moving.
+
+### 13.194 The composition lands, and the first implementation read the wrong block
+
+§13.193.5 registered the fix and named two ways to build it. It is built, it is a third way, and the reason is
+the one this campaign keeps arriving at: **a configuration is a claim with a control, and a general mechanism is
+not.** What follows is the decision, the defect the first implementation had, and the registration of the run
+that will read it.
+
+#### 13.194.1 What `ask` as a single value costs, per run rather than in aggregate
+
+The two artifacts, computed from `ablation.featureCorrectByRun` — which nothing in this repository had read per
+capability until now, because every comparison in §13 subtracted two averages:
+
+| capability | `41185512391` (`operands`) | `41188431321` (`operand-gap`) | Δ |
+| --- | --- | --- | ---: |
+| IE | 143, 143, 145, 146 (144.25) | 142, 141, 142, 140 (141.25) | −3.00 |
+| **MR** | **91, 90, 90, 88 (89.75)** | **42, 41, 40, 41 (41.00)** | **−48.75** |
+| KU | 61, 61, 61, 61 (61.00) | 61, 61, 62, 62 (61.50) | +0.50 |
+| **TR** | **102, 106, 103, 106 (104.25)** | **91, 93, 93, 93 (92.50)** | **−11.75** |
+| ABS | 29, 29, 29, 29 (29.00) | **30, 30, 30, 30 (30.00)** | **+1.00** |
+| roster | 426, 429, 428, 430 (**428.25**) | 366, 366, 367, 366 (**366.25**) | −62.00 |
+
+Two facts in that table are not in §13.193 and both change how the next reading has to be made.
+
+**The control's `KU` is deterministic and the treatment's is not.** `41185512391` reads `61, 61, 61, 61`;
+`41188431321` reads `61, 61, 62, 62` — on a route whose **72 prompts are byte-identical between the two runs**
+(`window-pair` digest: `72/72` equal). So the identical-prompt floor of this arm is **at least one question**,
+temperature `0` is not determinism, and the control's zero variance was a property of that draw rather than of
+the configuration. Every "returns to its range" criterion below is stated with that floor in it, because a
+criterion that assumed a deterministic reader would call a one-question drift a movement.
+
+**`MR`'s four runs are a range, not a number.** 91 and 88 are the same configuration. §13.187's paired-flip
+reading already showed the reference arm itself moving across 105/104/104/102, and this is the same fact on the
+feature side: the next dispatch is read against **[88, 91]**, not against 89.75.
+
+#### 13.194.2 The composite, and why it is a name rather than a map
+
+§13.193.5 proposed `askRoutes` becoming a map, or a second input `abstentionAsk`. What is implemented is a
+**third value in the union**, `operands+operand-gap`, which delegates:
+
+```ts
+if (ask === 'operands+operand-gap') {
+  return instructionsFor(contract, date, contract === 'abstention' ? 'operand-gap' : 'operands', scope, shape);
+}
+```
+
+The trade-off, stated rather than left implicit:
+
+| | per-route map | composite value |
+| --- | --- | --- |
+| generality | any route → any ask | one combination at a time |
+| what the artifact can claim | a configuration no measurement covers | a claim with a control and a change set |
+| backwards compatibility | a new field beside `ask` | a new union member; absent = today |
+| what the oracle checks | a map needs a new oracle | the existing one: 6 routes × 2 shapes vs a named control |
+| cost of the second combination | zero | one more name |
+
+The map is the general form and it is the wrong shape **for a measured configuration**: every value in
+`ASK_ROUTES` is a rule that was dispatched, read, and kept or retired, and a map would let a run state a
+configuration nobody measured while its `askRoutes` still read like a reach. The composition of two measured
+rules is itself measurable — it has a control (`operands`, the run it will be read against), a change set (the
+abstention route, one route, on both question shapes) and a reach (the union, four routes) — and all three are
+asserted by rendering rather than described. When a *second* combination is needed, that is the day the map
+earns its keep.
+
+The delegation is the part that matters most: the composite is not a third copy of either block, so the two
+halves cannot drift from it. `ask-composite.test.ts` renders all six routes under both question shapes and
+requires the composite's block to be **byte-identical to the half that owns the route**, which is a property no
+copy could satisfy after a single edit to either rule.
+
+#### 13.194.3 The defect the first implementation had, and it was mine
+
+The first version of the composite passed the new tests on enumeration questions and failed on derivation ones:
+the multi-session block came back as `enumerated`'s rather than `operands`. The cause was not in the composite.
+`buildSessionPrompt` computed the question shape under a gate:
+
+```ts
+const shape = options.ask === 'operands' ? classifyQuestionShape(question) : undefined;
+```
+
+That gate was a **second declaration** of which ask reads the shape, written when there was one such ask, and
+the composite is a second — so the delegating branch received `shape: undefined` and silently took the
+enumeration path while `ASK_ROUTES` said four routes were reached. The reach table and the render disagreed,
+which is the defect class `ask-changes.test.ts` exists for, arriving through a gate rather than a fallthrough.
+
+The repair is to delete the gate rather than to widen it: the classifier now runs unconditionally, so the branch
+that reads `shape` is the **only** statement of the fact, and a future composition cannot inherit the defect by
+being absent from a list. The cost is one regex over the question against a network call per question, and the
+alternative — a literal array of asks that read the shape — is the arrangement that failed.
+
+This is the second time in two increments that a table and a render disagreed in a place nobody was looking
+(`§13.193.2`'s reach claim was the first), and in both cases the **test** found it before the dispatch. That is
+the whole argument for writing the test first: this defect produces a plausible artifact — `askRoutes` naming
+four routes, `ABS` moving to 30, and `MR` short by the derivation questions — and the reading would have blamed
+the operands block.
+
+#### 13.194.4 The registration
+
+The run is `41185512391`'s configuration with one value changed: `ask: operands → operands+operand-gap`, which
+the dispatch carries as `--set cortex_memory_ask=operands+operand-gap`. Everything else — 500 questions, 4
+repetitions, `deepseek-chat` with `thinking: disabled` at temperature 0, `maxPromptChars 96000`, `400:ellipsis`
+on `multi-session+temporal`, `relevance-hybrid`, `topK 256`, `reviewPass bare` — is the control's, so the two
+runs differ in the instruction text of **one route**.
+
+Six predictions, all one-sided where the mechanism makes them one-sided:
+
+1. **Gate — `ABS` reads 30 in all four runs.** From `41188431321`, and the conversion is `6456829e_abs`, whose
+   gold is a decline. If `ABS` falls below 30 in any run, the two blocks interfere and the composition is
+   wrong even if the roster rises.
+2. **Signal — `MR` in `[87, 92]` per run.** The control reads `91, 90, 90, 88`; the composite's `MR` prompts are
+   the control's byte for byte, so the prediction is reproduction, not improvement, and a reading below 87 is
+   §13.193.3's 63 re-attributed rather than confirmed.
+3. **Signal — `TR` in `[99, 108]`** (control `102, 106, 103, 106`) and **`IE` in `[140, 148]`** (control
+   `143, 143, 145, 146`), for the same reason: identical prompts.
+4. **Noise control — `KU` in `{61, 62}`** (control `61, 61, 61, 61`; the treated run of §13.194.1 reads
+   `61, 61, 62, 62` on identical prompts). A `KU` reading outside that set is not noise and means the
+   abstention route's block reached a route it must not reach.
+5. **Roster — each run equal to the control's plus one, i.e. `427, 430, 429, 431`, average 429.25**, with the
+   arm's identical-prompt floor of ±1 per capability making `[425, 433]` the acceptance band. This is the exact
+   arithmetic of "the composition adds the ABS question and nothing else", which is why it is stated per run
+   rather than as a delta.
+6. **Prompt identity, which is now mandatory for this arm** (`§13.193.5.4`): `window-pair` must read `MR`
+   121/121, `IE` 150/150, `TR` 127/127 and `KU` 72/72 equal against `41185512391`, with `ABS` 30/30 different.
+   Any other combination means the value did something the tables do not state, and no number in the run can
+   explain it.
+
+**Decision rule, fixed before the run.** If 1–6 hold, the composite is adopted as the registered `ask`: §10.3
+gains the line and `tools/dispatch-cortex-memory-ab.py`'s `INPUTS` moves with it in the same commit, which is
+what `test_preregistration_config.py` pins. If 1 holds and 2 or 3 fails, the 63-question attribution of
+§13.193.3 is a draw and not a mechanism, and the `operands` block's price has to be re-measured with a design
+that holds the abstention block fixed. If 1 fails, the two rules are not composable on this prompt and the map
+in §13.194.2 is the wrong direction as well.
+
+#### 13.194.5 What this does not do
+
+It does not read accuracy on `MR`: the composite is a *restoration*, so its entire value is that it makes the
+abstention block adoptable without paying 62 questions. §13.187's ceiling reading stands — `MR`'s 17 stable
+failures are unchanged by this value, and the best case here is `ABS` 30 and a roster of 429 against the
+control's 428. The reader axis (`§13.192`) and this one are separate by construction: one changes the block
+every route reads, this changes which block one route reads, and a run that moved both would make neither
+attributable.
+
+### 13.195 The control side of the 220-question pair, and a gate that cannot fail
+
+Run `41196801892` (the disabled arm of the §13.192.9 pair) arrived. `41196814139` — the `thinking: enabled` arm —
+was still `in_progress` when everything below was written, which is the only reason this section can be trusted as a
+pre-registration rather than a rationalisation.
+
+#### 13.195.1 Prediction 1's baseline was read off the probe, and the control contradicts it
+
+§13.192.9's first prediction says the enabled arm's `MR` median answer length is **≤ 10 characters**, *"against the
+disabled arm's > 100 on the same questions"*, and that it is falsified if the median exceeds 50. The control
+artifact reads:
+
+| capability | median (answered only) | max | answers > 40 chars | answered of n |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 34.5 | 19,808 | 46 of 94 | 94 of 94 |
+| **MR** | **2.5** | **376** | **5 of 32** | 32 of 32 |
+| KU | 137.5 | 658 | 16 of 30 | 30 of 32 |
+| TR | 627.5 | 2,703 | 30 of 30 | 30 of 32 |
+| ABS | 15 | 15 | 0 of 1 | 1 of 30 |
+
+`MR`'s median at this sample is **2.5 characters**, not > 100. The "> 100" came from the twenty-question probe,
+where `MR` is about four questions and the median was 135 — a statistic over four items, two of which were long
+prose. So the gate as written **is satisfied by the control** and cannot distinguish the arms: any enabled reading
+at or below 10 passes, including one produced by a reader that changed nothing.
+
+This is §13.192.4's rule arriving on a different axis: before concluding that a reading fails to reproduce, change
+the denominator or the sample — and here the sample is what changed, because 32 `MR` questions are not 4.
+
+**Amended gate, written before the treated artifact exists.** The mechanism §13.192.8 established is not "the
+median falls", it is **"the long enumeration-and-explain replies stop happening"**: the enabled reader answers the
+question the closing line asks instead of narrating why it cannot. The statistic that carries that is the tail.
+
+1. **`MR` prose share falls**: answers longer than 40 characters go from **5 of 32** to **≤ 2 of 32**. Falsified if
+   it stays at 5 or above — which would say the probe's short replies were sample luck and the compliance reading
+   does not generalize, the outcome §13.192.9 was written to be able to produce.
+2. **`TR` median falls**: from **627.5** to **≤ 400**. `TR`'s closing line is the enumerated one too, so the same
+   mechanism applies; a `TR` median at or above the control's would say the reader's verbosity is a property of the
+   route rather than of the instruction.
+3. Predictions 2–6 of §13.192.9 stand **unchanged**, including their thresholds (`MR` ≥ +6, `TR` ≥ +4, `IE` ≥ −3,
+   `ABS` bare counts, `bareRetry` → 0). Only prediction 1's *statistic* changed, and it changed because the control
+   measured what the probe could not.
+
+#### 13.195.2 What the control establishes on its own, independent of the pair
+
+Four facts worth recording whether or not the treated arm ever lands, because each one is a reading the arm has
+never had at this sample:
+
+**The roster is not a shape artifact.** 196 of 220 (89.09%) with 33 declines, of which **29 are the bare ABS
+token** and **none outside `ABS`** (`bareFinals.outsideAbstention: 0`, invariant `0 ≤ (17 − 17) / 1` held). So the
+disabled reader's answers, at this sample, are contract-shaped everywhere the contract is measurable.
+
+**`MR` is short on this draw and the arm still loses 9 of 32.** Median 2.5 characters, 32 of 32 answered, 23
+correct — the failures are not refusals and not prose. That is §13.187's paired-flip reading in a different
+sample: `MR`'s remaining loss is **wrong numbers**, not unanswered questions.
+
+**`TR`'s answers are long by design and the judge absorbs them.** Median 627.5, 30 of 30 answered, 27 correct. A
+`TR` answer here is a paragraph; the enabled arm's predicted shortening (prediction 2) is therefore a change in
+*how* the answer is given, which the judge may or may not reward — that is exactly what prediction 3 (`TR` ≥ +4)
+is asking.
+
+**The retry population is now measured at this sample**: 17 attempted, 17 answered, 21 first-pass non-`ABS`
+declines of which 4 are prose, i.e. **19.0%** — against 48.9% at 500 questions (`§13.192.4`). The share is a
+property of the sample, which is the third time this campaign has found a ratio whose denominator was the thing
+that moved.

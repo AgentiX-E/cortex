@@ -222,6 +222,32 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // shipped block *by construction* -- they are not controls that must be checked, they are prompts this
   // ask cannot address.
   'operand-gap': ['abstention'],
+  // §13.193.5. The two asks above, composed -- and the name states the composition so a reader can
+  // check the claim by rendering both halves rather than by trusting a third description of them.
+  //
+  // ## Why a composition is needed at all
+  //
+  // `ask` is a single value and `ASK_ROUTES` is its reach, so naming one ask is also a statement about
+  // every other ask that IS NOT named. Run `41188431321` dispatched `operand-gap` and got its registered
+  // result -- `ABS` 29 → **30**, `6456829e_abs` `0000` → `1111`, no second ABS decline -- while
+  // removing 62 questions from the roster, because the three routes that had been reading `operands`
+  // fell through to the shipped block. Measured for the first time: `operands` is worth **63
+  // questions** on this arm (MR 49, TR 12, IE 3).
+  //
+  // The two rules are disjoint in contract space -- `operands` changes `extractive` and `temporal`,
+  // `operand-gap` changes `abstention`, and no contract is reachable by both -- so their union is
+  // defined on every route and neither can shadow the other.
+  //
+  // ## Why it is a name rather than a per-route map
+  //
+  // `route → ask` is the general form and it is the wrong shape for a measured configuration: every
+  // value in this table is a rule that was dispatched, read and kept or retired, and a map would let a
+  // run state a configuration no measurement covers while the artifact's `askRoutes` still reads like a
+  // reach. The composition of two measured rules is itself a claim with a control (`operands`, the run
+  // this one is read against) and a change set (one route), and both are asserted byte-wise by
+  // `ask-changes.test.ts` and `ask-composite.test.ts`. If a second combination is ever needed, that is
+  // the point at which the map earns its keep -- not before.
+  'operands+operand-gap': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**
@@ -269,6 +295,16 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   // The abstention route needs no control of its own: nothing else in the campaign changes its bytes, so
   // the shipped block IS the control and an archived run at the same load can be read against this one.
   'operand-gap': 'route',
+  // §13.193.5. `operands`, because that is the run this value will be read against: `41185512391` ran
+  // `ask: operands` at the same load, so the composite's single variable is the abstention route. Naming
+  // `enumerated` instead would be true of the blocks and wrong about the comparison, and the comparison
+  // is the whole content of the claim -- the same argument `aggregation`, `silent` and `derive` make by
+  // naming the ask they were registered against rather than the shipped one.
+  //
+  // It also makes the shape-dependence cancel: `operands` is the only ask whose block reads the
+  // question, and it sits on the control side of every route the composite does not touch, so
+  // `ASK_CHANGES_WHEN_DERIVATION` needs no entry for this value.
+  'operands+operand-gap': 'operands',
 };
 
 /**
@@ -303,6 +339,11 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // §13.190. The abstention route's block, and nothing else. This is the first entry whose reach and
   // change set are both a single route that is not `multi-session`.
   'operand-gap': ['abstention'],
+  // §13.193.5. One route, on both shapes, and that is the shape-dependence cancelling rather than
+  // being absent: the half that reads the question (`operands`) is the control, so the questions it
+  // moves are already on both sides of the comparison. `ask-composite.test.ts` drives both shapes on
+  // all six routes and holds the rendered difference to this set.
+  'operands+operand-gap': ['abstention'],
 };
 
 /**
@@ -382,7 +423,8 @@ export type EvidenceAsk =
   | 'recommend'
   | 'derive'
   | 'operands'
-  | 'operand-gap';
+  | 'operand-gap'
+  | 'operands+operand-gap';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -1484,6 +1526,20 @@ function instructionsFor(
     }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
+  if (ask === 'operands+operand-gap') {
+    // §13.193.5. Delegation rather than a third copy of either block, and the route decides which half
+    // speaks -- the same key the `operand-gap` branch below uses (`abstention` is the only contract that
+    // reads it), so the composition is a property of the two branches rather than a parallel claim about
+    // them. `ask-composite.test.ts` asserts the equality per route and per question shape, which is what
+    // makes this a decomposition of one function into two rather than a paraphrase of both.
+    return instructionsFor(
+      contract,
+      date,
+      contract === 'abstention' ? 'operand-gap' : 'operands',
+      scope,
+      shape,
+    );
+  }
   if (ask === 'operand-gap') {
     // §13.190. The first ask whose whole subject is the abstention route, and the only one whose
     // fallthrough can be written as one expression: the abstention route is the only route that reads
@@ -2547,10 +2603,24 @@ export function buildSessionPrompt(
   const body = render(flat);
 
   // The shape is resolved here, from the question, because this builder is the only site that has
-  // both the question and the knowledge that the route is multi-session. `operands` reads it; every
-  // other ask ignores it, and the classifier is not called unless the ask can use the answer --
-  // a classification per question that no block reads would be work done to support a report.
-  const shape = options.ask === 'operands' ? classifyQuestionShape(question) : undefined;
+  // both the question and the knowledge that the route is multi-session.
+  //
+  // ## Why this is not gated on the ask any more
+  //
+  // It was: `options.ask === 'operands' ? classify(question) : undefined`, so that "a classification
+  // per question that no block reads" would not be work done for a report. The gate was a **second
+  // declaration** of which ask reads the shape, and it was wrong within one increment: §13.193.5's
+  // `operands+operand-gap` delegates to `operands` on this contract, is therefore shaped by the
+  // question exactly as `operands` is, and read `undefined` here -- so the composite rendered the
+  // enumeration block for derivation questions while `ASK_ROUTES` said it reached this route. The
+  // render and the reach table disagreed, which is the defect `ask-changes.test.ts` exists for,
+  // arriving through the gate instead of through a fallthrough.
+  //
+  // A literal list of asks would have to be updated beside every composition, which is the same
+  // arrangement that failed. Classifying unconditionally costs one regex over the question against a
+  // network call per question, and it makes the branch below the **only** statement of the fact:
+  // whichever ask reads `shape` reads it, and every other ask ignores the value it is handed.
+  const shape = classifyQuestionShape(question);
   const instruction = instructionsFor('extractive', undefined, options.ask, 'multi-session', shape);
 
   // `SESSION_NOTE` is passed to the allocator rather than left in the fit path's

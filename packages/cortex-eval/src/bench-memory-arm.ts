@@ -1162,6 +1162,17 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // contract, so MR, IE, KU and TR cannot be moved by this value and their `promptChars` in the artifact
   // are a check on the claim rather than a hope about it.
   'operand-gap': ['abstention'],
+  // §13.193.5's value: the two asks above, composed. The reach is their union -- four of the six routes
+  // -- and the artifact states it because a reader comparing this run with `41185512391` (which ran
+  // `operands`) needs to see that the difference is the abstention route and not a fourth route the
+  // dispatcher forgot to name.
+  //
+  // This is the entry that would have been missing on the day the product's union grew: `readAsk`
+  // validates against THIS table, so a composite added to `EvidenceAsk` alone type-checks everywhere and
+  // is rejected at startup -- §13.35's failure, which `test_ask_table_parity.py` now reads out of both
+  // sources. The value is spelled the way the product spells it, with a `+`, because a name that
+  // restated the composition in words would let the two copies disagree about what is being composed.
+  'operands+operand-gap': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**

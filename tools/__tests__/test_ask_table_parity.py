@@ -77,10 +77,23 @@ def arm_values() -> set[str]:
     table = re.search(r"const ASK_ROUTES: [^=]+= \{(.*?)\n\};", source, re.S)
     if table is None:
         raise AssertionError("bench-memory-arm.ts declares no ASK_ROUTES table")
-    keys = set(re.findall(r"^\s*'?([A-Za-z][A-Za-z0-9-]*)'?:\s*\[", table.group(1), re.M))
+    keys = parse_ask_keys(table.group(1))
     if not keys:
         raise AssertionError(f"ASK_ROUTES parsed to no keys: {table.group(1)[:200]}")
     return keys
+
+
+def parse_ask_keys(block: str) -> set[str]:
+    """The keys of one ask table, quoted or not, with `+` allowed inside a name.
+
+    `+` is in the character class because §13.193.5's value is a **composition** and its name states
+    the two values it composes (`operands+operand-gap`). Without it here the parser would skip that
+    key silently, and the parity test would then compare the product's fourteen values against the
+    arm's thirteen and report a *missing* value rather than a missing *parse* -- the guard would still
+    fail, but the message would send its reader to the wrong table. A name carrying an operator is
+    exactly the kind of key a hand-written regex drops.
+    """
+    return set(re.findall(r"^\s*'?([A-Za-z][A-Za-z0-9+-]*)'?:\s*\[", block, re.M))
 
 
 def product_routes() -> set[str]:
@@ -158,6 +171,22 @@ class TestTheTwoAskTablesAgree(unittest.TestCase):
         self.assertIn("route", product_values())
         source = ARM.read_text(encoding="utf-8")
         self.assertIn("Object.keys(ASK_ROUTES)", source)
+
+    def test_a_composite_name_is_parsed_and_not_skipped(self) -> None:
+        # §13.193.5's value carries the operator that states its composition, and the first
+        # version of the parser above could not see one: the key would vanish from the arm's set
+        # and the failure would read as "the product names a value the arm does not", sending its
+        # reader to add a table entry that was already there. The parser is therefore asserted on
+        # a block that has the shape rather than only on the two real files, which is the
+        # arrangement that keeps this test from passing for the wrong reason.
+        self.assertEqual(
+            parse_ask_keys("  operands+operand-gap: ['abstention'],\n  'operand-gap': ['abstention'],\n"),
+            {"operands+operand-gap", "operand-gap"},
+        )
+        # The real files, because a synthetic block cannot notice a key the real table spells
+        # differently from what this parser accepts.
+        self.assertIn("operands+operand-gap", arm_values())
+        self.assertIn("operands+operand-gap", product_values())
 
 
 class TestTheTwoRouteTablesAgree(unittest.TestCase):
