@@ -22922,3 +22922,81 @@ a comparison whose two sides never touch.
 
 **Not `KU`.** §13.204.4's third point stands: `KU`'s failures are a window problem (8 of 12 with gold
 missing), and a `KU` experiment is a room or ranking experiment that must not be bundled with this one.
+
+### 13.206 The budget question is decided, and the condition now travels with the number
+
+**Registered 2026-11-01, as a decision, a mechanism, and one dispatch that isolates the field.**
+
+§13.202.6 kept **48,000** adopted and required that, from the next dispatch, a run at 96,000 either name
+the control it is pinned to or run at the adopted budget. Two dispatches have gone out since, and neither
+carried a budget:
+
+| run | configuration | reading |
+| --- | --- | --- |
+| `41254359622` | 500 × 4, 96,000, `400:ellipsis`, `thinking=multi-session+temporal` | **90.45%** (452.25) |
+| `41222844945` | same, `thinking=disabled` | **85.75%** (428.75) |
+| `41259622431` | as `41254359622` with `ask=candidates` | dispatched, read below |
+
+Both sides of the thinking pair are at 96,000, so the pair is internally consistent and its **+23.50**
+stands as a reading. What does not stand is the number as a **product** figure, and this section decides
+why, once, rather than re-litigating it every round.
+
+#### 13.206.1 48,000 remains adopted, and the reason is the pair that moved it
+
+The only registered pair that moved the budget is `40698867439` → `40722772896` (§13.118.1), and it moved
+it the wrong way:
+
+| statistic | 48,000 | 96,000 |
+| --- | --- | --- |
+| feature aggregate | 83.40% | **82.95%** (mean of four) |
+| per-call prompt evidence chars (median) | 46,851.5 | **92,078.5** |
+| wall clock | 44m37s | 2h08m04s |
+
+Doubling the room bought **−0.45 pt** at **+97%** prompt and **2.9×** wall clock. Adopting 96,000 today
+would justify a configuration by a number measured under it — the circularity §13.202.6 refused and
+`AUDIT-PARAMETER-SELF-EVOLUTION.md` §2 refuses one level up. So the decision is: **48,000.**
+
+#### 13.206.2 What that costs the campaign, stated plainly
+
+`90.45%` is not the product number. It is a reading taken at a budget the register declined, and no row in
+this document lets it be quoted against `83.40%` — that comparison differs in budget *and* in ask *and* in
+reader mode. The headline stays **85.75% (96k + `ellipsis`) / 83.40% (48k)**, both labelled, neither
+adopted, until §13.206.4 lands.
+
+#### 13.206.3 The mechanism, because a document has now failed four times
+
+`readout-arm-run.py --registration` has existed since §13.203 and exits non-zero on an undeclared
+departure. **Nothing consumed it.** That is `AUDIT-SCORING-RULE-AS-CONDITION.md`'s general form again: a
+condition that lives only in an instrument is lost at the second consumer, and the second consumer here is
+the plain `readout-arm-run.py <artifact>` invocation a person types when they want a number.
+
+So `congruence_note` is now part of that default report. When the artifact departs from the dispatch table
+and declares none of it, the report ends with:
+
+```
+configuration: this artifact departs from the registered dispatch on at least one field and declares
+none of them. `--registration` names them; every number above is a reading at those values, not at the
+registration's, and quoting it without that condition is the defect §13.202.6 recorded.
+```
+
+It is silent when the artifact agrees, and silent on an artifact with no registration at all — a competitor's
+report must stay readable. Three tests in `test_registration_diff.py`, including the silent cases, because a
+warning that fires on every run is a warning nobody reads.
+
+#### 13.206.4 The dispatch this section registers
+
+**48,000, routes on, everything else as `41254359622`.** Registered before dispatch:
+
+- **control**: `41254359622` (96,000, `thinking=multi-session+temporal`, `ask=operands+operand-gap`);
+- **the one field that moves**: `cortex_memory_max_prompt_chars` 96,000 → 48,000;
+- **what it answers**: whether the +23.50 from enabling thinking routes survives the room change. §13.197
+  already flags that the effect is baseline-dependent — §13.197 measured the same knob at −12 on a
+  different ask — so a reading at 48,000 either confirms the interaction or bounds it;
+- **success**: the run's aggregate is within `--null` of `41254359622` and its `--config` reports one
+  declared departure;
+- **stopping rule**: one dispatch. A second attempt to get a better draw is the behaviour §13.198.4 refuses.
+
+If the 48,000 reading holds the gain, the headline becomes a 48,000 number and the register has one budget
+again. If it does not, the +23.50 is a 96,000 phenomenon, and the honest choice is between a bigger
+headline and a cheaper product — which is a product decision with two real numbers behind it, not this
+section's.

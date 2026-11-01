@@ -328,3 +328,49 @@ class TestAbsentIsNotNull:
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
         assert "reader.thinkingRoutes" not in text
+
+
+# ---------------------------------------------------------------------------------------------
+# The condition has to reach the consumer, not just the instrument
+# ---------------------------------------------------------------------------------------------
+
+
+class TestTheDefaultReportCarriesTheVerdict:
+    """`registration_section` is a check; `congruence_note` is the mechanism.
+
+    §13.202.6 shipped the check and the campaign kept quoting a number whose pair ran at a budget
+    that section had declined. The lesson `AUDIT-SCORING-RULE-AS-CONDITION.md` records is that a
+    condition living only in a document is lost at the second consumer, and the second consumer here
+    is the plain `readout-arm-run.py <artifact>` invocation somebody types when they want a number.
+    """
+
+    def test_says_nothing_when_the_artifact_is_the_registered_configuration(self) -> None:
+        module = _module()
+        inputs = module.dispatch_inputs()
+        config = {
+            **REAL_41222844945,
+            "ask": inputs["cortex_memory_ask"],
+            "maxPromptChars": int(inputs["cortex_memory_max_prompt_chars"]),
+            "turnCutMarker": "none",
+            "askRoutes": ["multi-session"],
+        }
+        assert module.congruence_note(report(config)) == ""
+
+    def test_names_the_condition_when_a_field_moved_without_being_declared(self) -> None:
+        module = _module()
+        config = {
+            **REAL_41222844945,
+            "maxPromptChars": 96000,
+            "turnCutMarker": "ellipsis",
+        }
+        note = module.congruence_note(report(config))
+        assert "departs from the registered dispatch" in note
+        assert "§13.202.6" in note
+        assert "--registration" in note
+
+    def test_stays_silent_on_an_artifact_it_cannot_compare(self) -> None:
+        """A competitor's artifact has no registration at all. A warning that fired there would be
+        a warning about this tool, and it would make the default report unusable for the one case
+        that has nothing to declare."""
+        module = _module()
+        assert module.congruence_note({}) == ""

@@ -3494,6 +3494,36 @@ def null_section(  # noqa: PLR0912, PLR0915 - the branches are the verdicts
     return '\n'.join(lines), 0
 
 
+def congruence_note(report: dict) -> str:
+    """One line, printed only when the artifact does not describe the configuration it ran.
+
+    `--registration` prints the whole comparison and exits non-zero when a field moved without being
+    declared. That is a check, not a mechanism: nothing consumed it, so the campaign's headline
+    numbers were quoted for two rounds while both sides of their pair ran at a budget §13.202.6 had
+    declined. The repair is the same one `AUDIT-SCORING-RULE-AS-CONDITION.md` arrives at from a
+    different direction -- the condition has to live in the artifact that consumes the number, and
+    the consumer here is this default report.
+
+    Deliberately quiet when the artifact agrees with the table: a warning that fires on every run is
+    a warning nobody reads.
+    """
+    try:
+        _text, code = registration_section(report, [])
+    except SystemExit:
+        # An artifact this tool cannot compare -- no dispatch table, an unreadable field -- is a
+        # separate failure and `--registration` already names it. Saying nothing here keeps the
+        # default report usable on a competitor's artifact, which has no registration at all.
+        return ''
+    if code == 0:
+        return ''
+    return (
+        'configuration: this artifact departs from the registered dispatch on at least one field '
+        'and declares none of them. `--registration` names them; every number above is a reading at '
+        'those values, not at the registration\'s, and quoting it without that condition is the '
+        'defect §13.202.6 recorded.'
+    )
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -4046,6 +4076,10 @@ def main(argv: list[str]) -> int:
         return 0
 
     print(describe(report, args.reference))
+    note = congruence_note(report)
+    if note:
+        print()
+        print(note)
     return 0
 
 

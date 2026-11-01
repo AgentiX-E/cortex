@@ -38,11 +38,29 @@
  * ## Why the bucket comes from a **must-pass subset** and never from a score
  *
  * A weighted score would let four good dimensions hide one that makes the product produce wrong
- * answers. `format-adherence` is the clear case: a reader that emits `7` where the parser expects
- * `Answer: 7` is not 80% of a reader, it is a reader whose answers land in the wrong field. A score
- * expresses that as a small deduction; a must-pass subset expresses it as what it is. So the
- * classifier reports **which named probes failed**, and the bucket is a function of membership in
- * that subset, not of a total.
+ * answers. `answer-fidelity` is the clear case: a reader whose answer never reaches the field the
+ * scorer reads is not 80% of a reader, it is a reader whose answers are discarded. A score expresses
+ * that as a small deduction; a must-pass subset expresses it as what it is. So the classifier
+ * reports **which named probes failed**, and the bucket is a function of membership in that subset,
+ * not of a total.
+ *
+ * ## The format dimension was written wrong, and production data said so
+ *
+ * The first version of this file probed **style**: does the reply carry the `Answer:` label, is it
+ * one line. Both were must-pass, on the belief that `parse.ts` required the label. It does not.
+ * Measured over the 500 outputs archived by `41254359622` -- the highest-scoring arm this campaign
+ * has run, at 90.45%:
+ *
+ * | shape | count | parsed as |
+ * |---|---|---|
+ * | carries `Answer:` | **0 of 500** | would have been stripped if it had |
+ * | more than one line | **161 of 500** | the answer, unchanged |
+ *
+ * So the two style probes would have classified the reader that produced the campaign's best number
+ * as `minimal`, and a probe set that rejects a working reader is not conservative, it is wrong. The
+ * pipeline's real rejects are elsewhere and are what the dimension now probes: an **empty** parse, a
+ * parse that returns the **transcript**, an abstention in an **unrecognised** literal, and a
+ * **truncated** reply. A probe must price a reject the pipeline has, not a house style it prefers.
  *
  * ## Why an unmeasured must-pass probe is not a pass
  *
@@ -63,7 +81,7 @@
  * failure this file exists to avoid.
  */
 export type CapabilityDimension =
-  | 'format-adherence'
+  | 'answer-fidelity'
   | 'abstention-lexicon'
   | 'step-discipline'
   | 'context-window'
@@ -98,22 +116,25 @@ export type Probe = {
  */
 export const CAPABILITY_PROBES: readonly Probe[] = [
   {
-    id: 'format-label',
-    dimension: 'format-adherence',
+    id: 'answer-round-trip',
+    dimension: 'answer-fidelity',
     mustPass: true,
-    asks: 'A question whose context contains the answer, expecting the `Answer: <text>` label.',
+    asks: 'A question whose context states one unusual token, expecting that token back and nothing else.',
     evidence:
-      'parse.ts reads `Answer: X` and `Answer - X` as labels; a reader that emits the bare value ' +
-      'lands it in the same field by luck, and one that emits a sentence does not land it anywhere.',
+      'The rule this probes is "what the reader said comes out of the parser as the answer". It is ' +
+      "the pipeline's only requirement on shape, and 41254359622 met it 500 times out of 500 while " +
+      'carrying the `Answer:` label zero times — so a probe that demanded the label would have been ' +
+      'testing a house style the product does not read.',
   },
   {
-    id: 'format-single-line',
-    dimension: 'format-adherence',
+    id: 'answer-not-transcript',
+    dimension: 'answer-fidelity',
     mustPass: true,
-    asks: 'The same question, where the correct answer is one clause and the reply is prose.',
+    asks: 'The same question inside a long evidence block, expecting a reply that does not echo it.',
     evidence:
-      'The prose-answer repair in parse.ts exists because archived runs contained both shapes; a ' +
-      'reader that only ever emits prose is not covered by it.',
+      '`afterLastStepHeading` and the transcript-shaped prose repair in parse.ts exist because ' +
+      'readers echo their input; a parse that returns the transcript scores the transcript, which ' +
+      'is a wrong answer the artifact cannot tell from a miss.',
   },
   {
     id: 'abstain-token',
@@ -152,13 +173,15 @@ export const CAPABILITY_PROBES: readonly Probe[] = [
       'the heading rule exists and why a reader that echoes can be detected at all.',
   },
   {
-    id: 'context-96k',
+    id: 'context-48k',
     dimension: 'context-window',
     mustPass: false,
-    asks: 'A prompt of 96,000 characters with a fact at 5% and another at 95% depth.',
+    asks: 'A prompt of 48,000 characters with a fact at 5% and another at 95% depth.',
     evidence:
-      'The shipped budget is 96k with `ellipsis` truncation (85.75% against 83.40% at 48k), so a ' +
-      'reader below that budget cannot be given the configuration this product was measured with.',
+      '§13.118.1 is the budget pair and it did not favour the bigger one: doubling the room to ' +
+      '96,000 moved the aggregate from 83.40% to 82.95% while the per-call prompt grew 97% and the ' +
+      'wall clock 2.9x. §13.202.6 therefore kept 48,000 adopted, so a reader that cannot hold 96,000 ' +
+      'loses a configuration this campaign declined, not one it ships.',
   },
   {
     id: 'context-tail',
@@ -191,7 +214,7 @@ export const CAPABILITY_PROBES: readonly Probe[] = [
     id: 'latency-plain',
     dimension: 'latency-envelope',
     mustPass: true,
-    asks: 'The 96k prompt above, with a 60-second deadline.',
+    asks: 'The 48k prompt above, with a 60-second deadline.',
     evidence:
       'DeepSeek V4-Pro enables thinking by default and blew past 60s on a large retrieved context, ' +
       'which is why the adapter carries a separate 300s deadline for that mode.',
@@ -276,8 +299,11 @@ export type PortabilityConfig = {
 export const PORTABILITY_MATRIX: Readonly<Record<PortabilityBucket, PortabilityConfig>> = {
   'as-measured': {
     contextChars: {
-      value: 96_000,
-      evidence: 'Shipped budget: 85.75% at 96k + ellipsis against 83.40% at 48k.',
+      value: 48_000,
+      evidence:
+        'The adopted budget (13.202.6). This row said 96,000 until the portability audit read ' +
+        '13.118.1 against it: that pair moved the aggregate 83.40% -> 82.95% while the per-call ' +
+        'prompt grew 97%, so 96,000 is an experiment the register declined, not the shipped value.',
       scope: 'measured-single-model',
     },
     promptContract: {
@@ -314,9 +340,12 @@ export const PORTABILITY_MATRIX: Readonly<Record<PortabilityBucket, PortabilityC
   },
   guarded: {
     contextChars: {
-      value: 48_000,
-      evidence: '83.40% at 48k with the same truncation, the nearest measured budget below 96k.',
-      scope: 'measured-single-model',
+      value: 24_000,
+      evidence:
+        'Derived, not read: the value below every measured budget, kept because the soft failure ' +
+        'most likely to have caused this row is context-48k and there is no reading for anything ' +
+        'between the two.',
+      scope: 'arithmetic',
     },
     promptContract: {
       value: 'enumerated',
@@ -354,8 +383,10 @@ export const PORTABILITY_MATRIX: Readonly<Record<PortabilityBucket, PortabilityC
     contextChars: {
       value: 24_000,
       evidence:
-        'Below every measured budget. Derived from the smallest context a LongMemEval question ' +
-        'needs at the 90th percentile of evidence length, not from a reading — the honest label.',
+        'Unchanged from `guarded`, and that equality is the statement: 24,000 is the smallest ' +
+        'context a LongMemEval question needs at the 90th percentile of evidence length, no ' +
+        'reading exists below it, and the row therefore moves the contract and the repetitions ' +
+        'instead of inventing a smaller number.',
       scope: 'arithmetic',
     },
     promptContract: {

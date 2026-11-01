@@ -332,6 +332,67 @@ rerank jointly" — which is a recommendation this arm already satisfies by cons
 memory store to search alongside. What it adds is the evidence that this is not a weakness of the design
 but the design.
 
+### 4.10 Model-swap portability: one controlled study, one gateway mechanism, one taxonomy
+
+This is the literature a deployment-on-a-different-reader question actually sits in, and it was not in
+this landscape until the round that asked whether a reader nobody measured could be made safe.
+
+**Goyal & Ray, *Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory
+Portability*, arXiv:2609.05339 (2026-09-04, under review, 18 pp).** The same history stored four ways,
+read by a swapped-in model, 48 synthetic histories with randomised answer codes, **exact scoring and no
+LLM judge**, two open-weight models under 10B:
+
+| format | accuracy after a writer swap | what it costs here |
+| --- | --- | --- |
+| LC-RAW (verbatim long context) | the baseline everything is measured against | this is the arm's own shape: raw turns, no store |
+| KG-fixed (fixed-schema graph) | **+0.0004 ± 0.0020** — uncertainty five times the effect | we have no graph, and this is the row that says a *schema* is what makes memory portable |
+| NOTES (model-compressed) | **+9.91 or −13.28**, by direction | we compress nothing, which is why the arm has no such row |
+| RAG, full re-embed | **+11.90** available | |
+| RAG, 50/50 mixed index | **+4.96** — forfeits most of it, and every call still succeeds | **Zhipu `embedding-3` versus the hash fallback is exactly this case** |
+
+Their three recommendations are direction-specific migration testing, strict embedding-space isolation,
+and retaining source histories for repair (store-only repair failed the 90% recovery target in **all 48**
+cases; with raw history retained, 34 of 48 recovered). The third is already true here — every artifact
+keeps `turns` — and the first two this project has not done. Their decomposition is also worth copying as
+a method: 80% of the notes deficit is born at *writing*, 81% of the retrieval deficit at *lookup* — the same
+symptom with two different causes, separated by where the loss happens.
+
+**LiteLLM's health-check routing** is the shipped version of the same instinct and is the closest thing to a
+competitor for `DegradationGuard`. It runs a background loop that pings every deployment, removes failing
+ones from the pool, supports `allowed_fails_policy` per error class, and — the part that matters — **puts
+them back when the cooldown expires.** Two differences are the whole argument for our design:
+
+| | LiteLLM | `DegradationGuard` |
+| --- | --- | --- |
+| what it observes | liveness: 401/404/5xx, timeouts, a `max_tokens=1` completion | conformance: empty answer, transcript echo, unrecognised abstention |
+| what it can conclude | this endpoint is down | this reader does not produce what the parser reads |
+| recovery | automatic, after a cooldown | **none, by construction** |
+
+Its bidirectional recovery is correct for its question and would be wrong for ours: a cooldown expiring says
+the endpoint answers again, while ours would have to say the *reader's output became readable again*, and
+nothing in the four signals can say that. LiteLLM also has `health_check_ignore_transient_errors` for 429
+and 408 — the same insight as our `3 of 20` floor, applied to availability rather than conformity.
+
+**The instrumented-contract taxonomy** (Datasumi, 2026) names eight structured-output outcomes
+— `valid`, `schema_invalid`, `malformed_json`, `provider_refusal`, `content_filtered`, `truncated`,
+`tool_call_instead_of_result`, `timeout` — and its central claim is the one this project arrived at
+independently: **a gateway that returns HTTP 200 for a refusal, a truncation and a schema failure hides
+production failures from everyone, including its operator**, and "portability on paper; regressions found
+by customers" is what a compatibility proxy buys. Two of its eight are gaps here: **`truncated`** is not one
+of our four signals, and a response cut at the output limit can still carry a parseable answer early in the
+text. `provider_refusal` and `content_filtered` collapse into `parse-failed` for this arm, and
+`tool_call_instead_of_result` does not apply because the arm has no tools.
+
+**The judge literature is what bounds any swap measured through a judge.** Cortex's first scoring tier is
+exact match, and the controlled study above keeps the judge out entirely for the same reason. The numbers
+that make that non-negotiable: identical-input pairwise flip rates of **11–14%** across six judges and three
+providers, unchanged across model generations (Yagubyan, GroundLM 2026); same-window Spearman agreement
+**0.400** against a pre-registered 0.90 gate, next-day replay 0.78 against 0.99, and **no provider reaching
+0.99** across four (2026, 52,988 requests); and two production judges that are >0.95 test–retest reliable
+while carrying position bias >0.10 — *consistent and wrong* (>541,000 judgments across 21 judges).
+
+---
+
 ## 5. Datasets, ranked by what they would add
 
 | dataset                      | scale                                 | what it scores that we do not                                                      | verdict                                                                                     |

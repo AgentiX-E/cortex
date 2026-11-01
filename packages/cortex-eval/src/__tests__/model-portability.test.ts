@@ -53,12 +53,49 @@ describe('the probe set', () => {
     }
   });
 
-  it('marks abstention and format as must-pass, since a miss there produces an unreadable answer', () => {
+  it('pins the must-pass set, because it is what makes a bucket a bucket', () => {
     const mustPass = CAPABILITY_PROBES.filter((probe) => probe.mustPass).map((probe) => probe.id);
-    expect(mustPass).toContain('format-label');
-    expect(mustPass).toContain('abstain-token');
+    // Exact rather than "contains": a probe promoted to must-pass without one, or demoted with one,
+    // changes how many calls an operator spends and which readers get refused, and it has to show
+    // up as a diff here rather than arrive as a quiet edit.
+    expect(mustPass).toEqual([
+      'answer-round-trip',
+      'answer-not-transcript',
+      'abstain-token',
+      'context-tail',
+      'sample-repeat',
+      'latency-plain',
+    ]);
     // The soft side has to be non-empty, or `guarded` would be an unreachable bucket.
     expect(CAPABILITY_PROBES.some((probe) => !probe.mustPass)).toBe(true);
+  });
+
+  it('probes what the parser rejects rather than what the prompt would prefer', () => {
+    // The first version of this set demanded the `Answer:` label and a single-line reply, and made
+    // both must-pass. Run 41254359622 archived 500 outputs at 90.45%: zero carried the label and
+    // 161 were multi-line. Both probes would have failed the reader that produced the campaign's
+    // best number, so the set now names the four shape rejections the pipeline actually has.
+    const ids = CAPABILITY_PROBES.map((probe) => probe.id);
+    for (const absent of ['format-label', 'format-single-line']) {
+      expect(ids, absent).not.toContain(absent);
+    }
+    // And every must-pass probe is one whose failure loses the answer rather than costing calls.
+    expect(CAPABILITY_PROBES.filter((p) => p.mustPass).map((p) => p.dimension)).toEqual([
+      'answer-fidelity',
+      'answer-fidelity',
+      'abstention-lexicon',
+      'context-window',
+      'sampling-stability',
+      'latency-envelope',
+    ]);
+  });
+
+  it('keeps the must-pass count at six, because the probe budget is priced from it', () => {
+    // `tools/probe-budget.py` prints `5 repeats x 6 must-pass probes = 30 calls`. A seventh
+    // must-pass probe silently makes that sentence false, and the sentence is what an operator
+    // decides on.
+    expect(CAPABILITY_PROBES.filter((probe) => probe.mustPass)).toHaveLength(6);
+    expect(CAPABILITY_PROBES).toHaveLength(12);
   });
 });
 
@@ -79,12 +116,12 @@ describe('classification', () => {
   });
 
   it('is minimal when a must-pass probe failed, and keeps the soft failures too', () => {
-    const result = classifyPortability(withFailures('abstain-token', 'context-96k'));
+    const result = classifyPortability(withFailures('abstain-token', 'context-48k'));
     expect(result).toEqual({
       kind: 'verified',
       bucket: 'minimal',
       blocking: ['abstain-token'],
-      soft: ['context-96k'],
+      soft: ['context-48k'],
     });
   });
 
@@ -128,15 +165,15 @@ describe('classification', () => {
   });
 
   it('rejects a duplicated id rather than letting array order decide', () => {
-    const report = [...ALL_PASS, { id: 'format-label', passed: false }];
-    expect(() => classifyPortability(report)).toThrow(/format-label.*reported twice/s);
+    const report = [...ALL_PASS, { id: 'answer-round-trip', passed: false }];
+    expect(() => classifyPortability(report)).toThrow(/answer-round-trip.*reported twice/s);
   });
 
   it('prints failures in probe order, not in report order', () => {
-    const reversed = [...withFailures('abstain-token', 'context-96k')].reverse();
+    const reversed = [...withFailures('abstain-token', 'context-48k')].reverse();
     const result = classifyPortability(reversed);
     expect(result.kind === 'verified' && result.blocking).toEqual(['abstain-token']);
-    expect(result.kind === 'verified' && result.soft).toEqual(['context-96k']);
+    expect(result.kind === 'verified' && result.soft).toEqual(['context-48k']);
   });
 
   it('is unverified on an empty report rather than passing by default', () => {
@@ -166,8 +203,24 @@ describe('the matrix', () => {
     const contract = PORTABILITY_MATRIX['as-measured'].contextChars.value;
     const guarded = PORTABILITY_MATRIX.guarded.contextChars.value;
     const minimal = PORTABILITY_MATRIX.minimal.contextChars.value;
-    expect(guarded).toBeLessThan(contract);
-    expect(minimal).toBeLessThan(guarded);
+    // Non-widening, not strict decrease. These were `<` while the rows read 96k / 48k / 24k, which
+    // was a ladder built on a budget the register had declined: §13.118.1 measured 96,000 as no
+    // better than 48,000 at twice the prompt, so the top rung came down to the adopted value and
+    // the rungs below it had nowhere to go. Leaving `<` here would have forced a fourth number
+    // nobody measured, and inventing a value to satisfy a test is the wrong repair.
+    expect(guarded).toBeLessThanOrEqual(contract);
+    expect(minimal).toBeLessThanOrEqual(guarded);
+    // What must still hold is that the ladder is not flat: a row that changed nothing would be a
+    // bucket with no behaviour, which is worse than a bucket with a small one.
+    for (const [weaker, stronger] of [
+      [PORTABILITY_MATRIX.guarded, PORTABILITY_MATRIX['as-measured']],
+      [PORTABILITY_MATRIX.minimal, PORTABILITY_MATRIX.guarded],
+    ] as const) {
+      const moved = (Object.keys(stronger) as (keyof typeof stronger)[]).filter(
+        (field) => weaker[field].value !== stronger[field].value,
+      );
+      expect(moved.length).toBeGreaterThan(0);
+    }
   });
 
   it('never shortens a deadline as the bucket weakens, since a weak reader is the slower one', () => {
@@ -205,8 +258,8 @@ describe('configFor', () => {
   });
 
   it('throws on an unverified reader rather than handing it the shipped row', () => {
-    expect(() => configFor({ kind: 'unverified', missing: ['format-label'] })).toThrow(
-      /unverified.*format-label.*13\.114/s,
+    expect(() => configFor({ kind: 'unverified', missing: ['answer-round-trip'] })).toThrow(
+      /unverified.*answer-round-trip.*13\.114/s,
     );
   });
 });

@@ -73,15 +73,15 @@ conformance test**, and a conformance test is cheap by construction.
 `CAPABILITY_PROBES` is data, and every entry cites the reading in this repository that says what
 that dimension costs when it goes wrong:
 
-| id | dimension | must-pass | the reading behind it |
-| -- | --------- | --------- | --------------------- |
-| `format-label` | format-adherence | yes | `parse.ts` reads `Answer: X` / `Answer - X` |
-| `format-single-line` | format-adherence | yes | the prose-answer repair exists because both shapes appeared |
-| `abstain-token` | abstention-lexicon | yes | `ABSTAIN_TOKEN` is one literal by design (§13.107 census) |
-| `abstain-last-line` | abstention-lexicon | no | the last-non-empty-line rule was written for preambles |
-| `step2-only` | step-discipline | no | §13.197: +4 on `TR`, −16 on `IE` — a real axis |
-| `step2-obeyed` | step-discipline | no | 118 of 121 multi-session questions wrote the contract out |
-| `context-96k` | context-window | no | 85.75% at 96k + `ellipsis` against 83.40% at 48k |
+| id | dimension | must-pass | the reject it prices |
+| -- | --------- | --------- | -------------------- |
+| `answer-round-trip` | answer-fidelity | yes | the parsed answer is empty, so the question is scored blank |
+| `answer-not-transcript` | answer-fidelity | yes | the parse returns the evidence block, so the transcript is scored |
+| `abstain-token` | abstention-lexicon | yes | the decline is not the literal, so it is scored as an answer (§13.107 census) |
+| `abstain-last-line` | abstention-lexicon | no | the decline is on the last line behind a preamble, and the rule reads it |
+| `step2-only` | step-discipline | no | the clause's own axis is real and two-directional (§13.197: `TR` +4, `IE` −16) |
+| `step2-obeyed` | step-discipline | no | the answer sits after an echoed contract heading |
+| `context-48k` | context-window | no | the reader cannot hold the adopted budget at all |
 | `context-tail` | context-window | yes | a tail-truncating reader answers from the first half, plausibly |
 | `sample-repeat` | sampling-stability | yes | §13.118: 16 questions of spread against an effect of 3 |
 | `sample-absent` | sampling-stability | no | §13.114: every reading before the fix ran at the provider default |
@@ -91,6 +91,34 @@ that dimension costs when it goes wrong:
 Two per dimension, not one: a single probe cannot tell "this reader cannot do it" from "this reader
 declined this instance", and §13.118 measured the second kind at 16 questions of dispersion. A
 classifier built on single instances would be measuring that dispersion and calling it a capability.
+
+### 3.0 The first version of this table was wrong, and production data said so
+
+Four of the twelve probes above did not exist this morning. The two that did — `format-label` and
+`format-single-line` — were **both must-pass**, and their premise was that `parse.ts` requires the
+`Answer:` label. It does not. Run `41254359622` archived 500 outputs from the highest-scoring arm
+this campaign has run, and:
+
+| shape | count | what it means |
+| --- | --- | --- |
+| carries `Answer:` | **0 of 500** | the label is an *accepted* form, not a required one |
+| more than one line | **161 of 500** | the parser returns multiline answers intact |
+| scored correct, overall | **451 of 500** (90.45%) | a reader that fails both probes scored 90.45% |
+
+So the probe set would have classified the reader that produced the campaign's best number as
+`minimal`. That is not conservatism; it is a probe measuring the prompt's house style instead of the
+pipeline's rejects. **This is falsifier 2 of §9 firing on the probe set itself**, and it fired for
+free, on data that was already on disk, two days after the set was written.
+
+The repair is a rule rather than four new strings, and it is worth stating because it will be the
+test of every future probe:
+
+> A probe may only be must-pass if its failure makes the answer **unreadable** — the parse is empty,
+> or it is the transcript, or a decline is scored as an answer. A probe whose failure only makes the
+> reply *less pretty* prices a cost the product does not pay.
+
+The four `answer-fidelity` and `abstention-lexicon` entries above are the pipeline's actual rejects.
+They are the ones that lose a question rather than an aesthetic.
 
 ### 3.1 Why the bucket comes from a must-pass subset, never from a score
 
@@ -238,6 +266,68 @@ provider, which is the confound. So the honest status is:
 > wrong; the evidence for its central assumption does not exist yet, and pretending otherwise would
 > be the decorative-check failure `search-budget.py` was rewritten to avoid.
 
+### 7.0 The one controlled study of this question, and the three things it says this design is missing
+
+**Goyal & Ray, *Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory
+Portability*, arXiv:2609.05339 (4 Sep 2026).** Four storage formats over the same history, two
+open-weight readers under 10B, 48 synthetic histories with randomised answer codes, **exact scoring
+with no LLM judge**, and the model swapped in both directions:
+
+| format | accuracy after a writer swap |
+| --- | --- |
+| fixed-schema knowledge graph | **+0.0004 ± 0.0020** — the uncertainty is five times the effect |
+| model-compressed notes | **+9.91 or −13.28** depending on direction |
+| chunked RAG, full re-embed | **+11.90** available |
+| chunked RAG, 50/50 mixed index | **+4.96** — forfeits most of the gain |
+
+Three results in that table bear directly on this file.
+
+**One: the design is direction-blind, and direction dominates.** Cortex classifies one reader in
+isolation and never compares A→B against B→A. Their measurement is that the same store gains ten
+points one way and loses thirteen the other, so a one-sided classification can call a pair portable
+when half of it is not. **This is a real gap in the design, not a difference of emphasis.** It also
+reproduces here: last round's pair measured +23.50 for enabling the reader's thinking routes, and
+§13.197 measured the same knob at −12 on a different ask. Two independent observations of the same
+asymmetry, one external and one internal, and the file that classifies readers does not model it.
+
+**Two: the embedding space is a harder lock-in than the reader, and this file does not mention it.**
+Cortex is RAG-shaped: evidence is retrieved into a prompt, so the store's vectors came from whichever
+embedding provider was running. Their partial-migration row is the one that applies — **4.96 of a
+possible 11.90**, i.e. mixing old and new embedding spaces forfeits most of the gain while every call
+still succeeds. Cortex ships Zhipu `embedding-3` and a deterministic hash embedding as its credential-less fallback,
+so a deployment that runs both is exactly the mixed-index case.
+
+Cortex is **ahead of the study on the field and behind it on the magnitude**. `EmbeddingProvenance`
+already records `provider` / `model` / `dimensions` / `preflight` per run, and its own docstring
+makes the study's argument a year early: *"a silent substitution between two deterministic-but-
+incompatible embeddings is invisible in every downstream number: both produce stable vectors, so a
+determinism probe reads `0` either way."* What does not exist is a **number for cortex's own store**
+— nobody has measured full-versus-partial migration here — and `classifyPortability` has no
+dimension for it at all: every row of the matrix describes the reader. **Reader portability is the
+smaller half of portability**, and this file has so far been about the smaller half.
+
+**Three: exact scoring is what makes their result citable, and it bounds what can be claimed about
+a swap measured through a judge.** Their study keeps the judge out entirely. A pipeline that scores
+through one cannot make that claim: the repeated audits of LLM-as-judge put identical-input flip
+rates at **11–14%** (Yagubyan, GroundLM 2026, six judges, three providers, 29 tasks), and a
+pre-registered audit of 52,988 requests found same-window Spearman agreement of **0.400 against a
+0.90 gate**, with four providers spanning 0.74–0.88 on replay and **none reaching 0.99**
+(arXiv, 2026). Cortex's own same-prompt flip rate is **4.8%** (§13.194.4) — better than those
+figures because the first scoring tier is exact match rather than a judge, which is the same design
+choice Goyal & Ray made. The tier below it is a judge, and **anything that reads a swap through that
+tier inherits the judge's 11–14%, whatever the reader did.**
+
+What this changes in the design, in priority order, and all of it is bigger than a probe:
+
+1. **A measured migration cost for cortex's own store.** One index built across two providers is
+   not a single space, and the study puts the gap between a full and a partial re-embed at
+   **11.90 against 4.96 points**. Cortex has the provenance field and has never taken the
+   measurement; until it does, the matrix's silence about embeddings is an assumption.
+2. **A direction, recorded.** `classifyPortability` classifies a *reader*; it should classify a
+   *migration*, because the study's asymmetry is the largest effect either document contains.
+3. **The judge's contribution to any delta, stated.** If a reading moves and the judge is in the
+   loop, part of the move is the judge — and the judge literature puts that part at 11–14%.
+
 ### 7.1 The net gain, which is what a product decision turns on
 
 ```
@@ -287,6 +377,54 @@ Written down before the measurement, so a disappointing result cannot be re-read
 Falsifier 3 is the cheapest to run and the one I would run first: it needs no new calls at all, only
 the archived readings already in the repository.
 
+### 9.1 Falsifier 3, run: the guard is quiet, and one of its four signals is unreadable
+
+`tools/guard-window.py` slides the guard's own window over a run's call stream. On the two archived
+runs of the shipped configuration:
+
+```
+artifact  41254359622
+  derivable  1 of 4 guard signals
+    empty-completion          0 of 500 calls ( 0.000%)   windows fired   0 of 481 (  0.00%)
+  not derivable from this artifact
+    parse-failed           the artifact stores the parse result, never a judgement about it
+    abstention-unrecognised needs a lexicon, and a lexicon is a guess until someone measures it
+    deadline-exceeded      the adapter raises it and no artifact field carries it
+verdict: quiet on the one signal this artifact can express
+```
+
+So falsifier 3 **does not fire on the signal that can be read**, and the other three are stated as
+unreadable rather than as zero. That is the honest form of the result: one quarter of the falsifier
+is answered and three quarters are blocked on fields nobody writes.
+
+**The counterfactual is the part worth keeping.** The one failure-shaped thing every artifact does
+record is the decline (`answer === null`). Counting it would fire the guard:
+
+| run | declines | windows that would fire | of those declines, scored correct |
+| --- | --- | --- | --- |
+| `41254359622` | 32 of 500 (6.40%) | **105 of 481 (21.83%)** | **30 of 32** |
+| `41222844945` | 45 of 500 (9.00%) | **136 of 481 (28.27%)** | **30 of 45** |
+
+Thirty of the thirty-two declines are *correct answers* to questions whose evidence was absent. A
+guard that counted declines would downgrade a deployment for abstaining properly, four times an
+hour, and the two declines that were genuinely wrong occur at **2 in 500** — about a tenth of the
+4.22% rate at which `3 of 20` fires on one window in twenty.
+
+**And the clustering, which nobody had noticed.** The same 32 events fire on 21.83% of windows when
+they arrive in runs of six (which is how they arrive: LongMemEval groups questions by capability and
+the absent-capability ones sit together) against **13.27%** if the calls were exchangeable. The rule
+`3 of 20` is a statement about a *rate*, and nothing in it can see arrangement, so the same reader
+trips it **1.65× more often** when the dataset happens to group the hard questions.
+
+That is a design finding rather than a bug: the guard's threshold is calibrated on a rate and applied
+to a sequence, and sequences of questions are not exchangeable. It argues for two things the next
+round should do and this one cannot:
+
+1. calibrate on the **archive's own arrangement** rather than on `p`, which is what
+   `guard-window.py` now makes possible and what the 4.22% figure above is not; and
+2. keep `abstention-unrecognised` off by default — which the design already does, and which the
+   21.83% row above now prices.
+
 ---
 
 ## 10. Why `@ax-llm/ax` does not enter this, given that it now has a place
@@ -320,9 +458,12 @@ breadth of provider support.
 - **That 12 probes are the right 12.** They are the dimensions this repository has published costs
   for. A dimension nobody has measured would be a guess about what to ask, which is the failure this
   file exists to avoid — so the set is deliberately limited to what is citable, and it will grow
-  only by gaining citations.
+  only by gaining citations. It has already shrunk once: §3.0 records the two style probes that
+  were must-pass and that production data failed.
 - **That the guard's thresholds are calibrated.** `3 of 20` is derived from the largest published
-  dispersion; falsifier 3 is the check, and it has not been run.
+  dispersion. Falsifier 3 has now been run for one of its four signals (§9.1) and the guard is
+  quiet there, but the other three are unreadable from an artifact, and the same section found that
+  the rule's rate calibration is 1.65x too optimistic when the calls arrive in blocks.
 - **That a pre-classified table would be accurate for a model it has never seen.** D is release
   engineering; it inherits every uncertainty above.
 
@@ -336,3 +477,11 @@ downgrade itself on its own failures without ever being compared to another mode
 that a substitute reader reaches the same score is a **matrix whose rows must first be shown to be
 further apart than the readers inside them**, which is the one measurement this document cannot
 supply and the next one must.
+
+Two corrections belong beside that sentence, because both came after it was written and both point
+the same way — **the reader is not the main character.** The probe set's first version measured the
+prompt's house style and would have refused the campaign's best reader (§3.0); and the only
+controlled study of model swaps in an agent's memory puts the *storage format* and the *migration
+direction* ahead of the reader's identity — `+0.0004` for a fixed schema against `+9.91 / −13.28`
+for a note store, and 4.96 of a possible 11.90 points for a half-migrated index (§7.0). The design
+in this file is sound about the reader and silent about the two things that are larger.
