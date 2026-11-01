@@ -22,7 +22,7 @@
  */
 import { describe, expect, it, afterEach } from 'vitest';
 import type { SqlEngine } from '../browser/rpc.js';
-import { KV_PURGE, type SqlSession, type SqlRow } from '../storage/sql.js';
+import { KV_PURGE, KV_SCHEMA, type SqlSession, type SqlRow } from '../storage/sql.js';
 import { SqlStorage, StorageClosedError, TransactionOpenError } from '../storage/sql-storage.js';
 import { SqliteStorage } from '../storage/sqlite.js';
 import {
@@ -320,5 +320,52 @@ describe('SqliteStorage', () => {
     await storage.put('facts', 'k', { v: 1 });
     expect(await storage.get('facts', 'k')).toEqual({ v: 1 });
     await storage.close();
+  });
+});
+
+describe('SqlStorage: a failed schema must not keep the engine open', () => {
+  /**
+   * The invariant is stated by `close`'s own comment: *"A failed schema application must not
+   * prevent the engine from being released"*. It is the one path where the eager `#ready` promise
+   * rejects, and a `close` that awaited it plainly would reject instead of releasing, leaving the
+   * caller with a handle they cannot get rid of -- the failure mode `close` exists to prevent.
+   *
+   * The fault is injected over a real engine, the same way `failingRollback` does above: a session
+   * that refuses exactly the DDL statement and delegates everything else.
+   */
+  function withFailingSchema(): { session: SqlSession; released: () => string[] } {
+    const { session } = withSession(createBetterSqliteEngine);
+    const released: string[] = [];
+    return {
+      session: {
+        exec: async (sql: string) => {
+          if (sql === KV_SCHEMA) throw new Error('schema rejected by the engine');
+          await session.exec(sql);
+        },
+        run: (sql, params) => session.run(sql, params),
+        all: (sql, params) => session.all(sql, params),
+        close: async () => {
+          released.push('close');
+          await session.close();
+        },
+      },
+      released: () => released,
+    };
+  }
+
+  it('resolves rather than rejecting, so the caller keeps hold of the handle', async () => {
+    const { session, released } = withFailingSchema();
+    const storage = new SqlStorage(session);
+    await expect(storage.close()).resolves.toBeUndefined();
+    expect(released()).toEqual(['close']);
+  });
+
+  it('still refuses operations afterwards, rather than pretending the schema exists', async () => {
+    // The engine being released is not the same as the storage being usable: a read after a failed
+    // schema and a close must report the close, which is the reason that error exists.
+    const { session } = withFailingSchema();
+    const storage = new SqlStorage(session);
+    await storage.close();
+    await expect(storage.get('facts', 'k')).rejects.toBeInstanceOf(StorageClosedError);
   });
 });

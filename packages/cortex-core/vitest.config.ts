@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 /**
  * Coverage is gated, not merely reported.
@@ -36,9 +36,31 @@ import { defineConfig } from 'vitest/config';
  *
  * The fix was to **extract** the guards into `clampAwayFromZero` and
  * `degenerateDfPValue`, driven directly by `stats-degenerate.test.ts`. Coverage
- * is now earned rather than excluded, and this package reports **100% on all
- * four dimensions for every file that contains runtime code**, with no
- * annotations and no `exclude` patterns beyond tests and `.d.ts`.
+ * is earned rather than excluded: no annotations, and no `exclude` patterns
+ * beyond tests and `.d.ts`.
+ *
+ * ## The 100% that the extraction produced was partly the instrument's
+ *
+ * This file used to say the package "reports 100% on all four dimensions for
+ * every file that contains runtime code". Under `vitest` 5 it reports
+ * **98.77 statements / 96.29 branches / 99.49 functions / 99.20 lines**, and the
+ * code did not get worse in between: the provider changed. Since vitest 3,
+ * `@vitest/coverage-v8` remaps V8's counters through the AST instead of through
+ * `v8-to-istanbul`, so a `switch` arm or the third clause of a comparator is now
+ * attributed to itself rather than to the enclosing function's covered range.
+ *
+ * Two of the newly visible gaps were real, and were proved so by reading them:
+ * `knowledge/revision.ts`'s `RevisionOptions.invalidations` is a documented
+ * public option that had no test anywhere (87.09 / 74.41 before the seven cases
+ * appended to `revision.test.ts`, 95.96 / 86.04 after), and `markers.ts:156` is
+ * the third arm of a sort comparator that no fixture reaches. The rest of the
+ * gap is the same mechanism applied to `switch` arms across the package.
+ *
+ * The gate did not move. 95 on all four dimensions is what it was and what it
+ * stays, and the measurement that changed is recorded rather than absorbed by
+ * widening a band — which is the same judgement this file makes about not
+ * raising the threshold to fit the old noise. `docs/FIX-DEPENDENCY-ADVISORIES.md`
+ * holds the full before/after.
  *
  * Two consequences are recorded here rather than only in the document, because
  * this is the file someone edits when they want to change the gate:
@@ -62,6 +84,13 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
+    // vitest 5 collects `**/*.{test,spec}.*` under a default exclude of `node_modules` and `.git`
+    // only -- the `**/dist/**` entry vitest 2 shipped was removed from the defaults. `tsc` emits the
+    // compiled copies of the test files into `dist/`, so without this line every compiled test runs a
+    // second time and the ones that read a fixture by path fail, because `tsc` copies no fixtures.
+    // Restored explicitly rather than inherited, so the set of collected tests is a decision in this
+    // file and not a default that can move underneath it again.
+    exclude: [...configDefaults.exclude, 'dist/**'],
     coverage: {
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.d.ts', 'src/**/__tests__/**'],

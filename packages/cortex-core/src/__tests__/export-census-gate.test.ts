@@ -430,8 +430,19 @@ describe('the census CLI survives output that is larger than a pipe buffer', () 
    * with a reader that does not consume everything at once, rather than through
    * `spawnSync`, which hands back a buffer the child has already finished
    * writing into.
+   *
+   * ## Why the budget is stated instead of inherited
+   *
+   * This test spawns three `node` processes, and each one re-reads the whole
+   * workspace: measured at 1.66, 1.66 and 1.67 seconds, so 4.99 seconds against
+   * vitest's 5,000 ms default. It used to fit by 10 ms. That margin is a property
+   * of the machine and of how large the tree has grown, not of the code under
+   * test -- the harness is superseded rather than kept as the arbiter, so the
+   * budget is set to 60 s and every assertion stays exactly as it was. Widening
+   * the clock cannot make a truncation pass; the byte-count equality below is
+   * what fails when the pipe drops output.
    */
-  it('emits the whole --json payload when the reader is a pipe', () => {
+  it('emits the whole --json payload when the reader is a pipe', { timeout: 60_000 }, () => {
     const shell = (command: string): { status: number | null; stdout: string } => {
       const result = spawnSync('bash', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8' });
       return { status: result.status, stdout: result.stdout };

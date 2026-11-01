@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 /**
  * Coverage is gated, not merely reported — see cortex-core/vitest.config.ts for
@@ -11,6 +11,10 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
+    // vitest 5 dropped `**/dist/**` from its default exclude, so `tsc`'s compiled copies of these
+    // tests were being collected and run a second time. Restored explicitly -- see
+    // cortex-core/vitest.config.ts for the full account.
+    exclude: [...configDefaults.exclude, 'dist/**'],
     coverage: {
       include: ['src/**/*.ts'],
       // `types.ts` is pure type declarations: it emits no runtime code, so v8

@@ -1,0 +1,70 @@
+{
+  "source": {
+    "endpoint": "GET https://api.github.com/repos/AgentiX-E/cortex/dependabot/alerts?state=open",
+    "readAt": "2026-11-01",
+    "open": 6,
+    "note": "Every row below was an open Dependabot alert on that date, six rows for six alerts. The table is not a copy of the GitHub Advisory Database: it is the subset that was open against this lockfile, and it exists so test_dependency_advisories.py can fail if a resolution ever moves back inside one of these ranges. A row is removed when the advisory stops applying, never because the alert went quiet."
+  },
+  "advisories": [
+    {
+      "package": "@vitest/mocker",
+      "ghsa": "GHSA-82fw-gwwq-j7x9",
+      "cve": "CVE-2026-84373",
+      "severity": "medium",
+      "vulnerable": ">= 2.1.0, < 4.1.11",
+      "patched": "4.1.11",
+      "summary": "Path traversal / arbitrary file read via the redirect mock",
+      "fixedBy": "vitest 5.0.5, whose bundled @vitest/mocker is the same version -- the two move together, so an override of one without the other is not a fix"
+    },
+    {
+      "package": "@vitest/mocker",
+      "ghsa": "GHSA-qxg6-89mg-rqv8",
+      "cve": "CVE-2026-112949",
+      "severity": "medium",
+      "vulnerable": ">= 2.1.0-beta.7, < 4.1.12",
+      "patched": "4.1.12",
+      "summary": "Code injection via unauthenticated manual mock registration",
+      "fixedBy": "vitest 5.0.5; this is the row that sets the real floor on the axis, at 4.1.12 rather than 4.1.11"
+    },
+    {
+      "package": "vitest",
+      "ghsa": "GHSA-82fw-gwwq-j7x9",
+      "cve": "CVE-2026-84373",
+      "severity": "medium",
+      "vulnerable": ">= 2.1.0, < 4.1.11",
+      "patched": "4.1.11",
+      "summary": "Path traversal / arbitrary file read via the redirect mock",
+      "fixedBy": "vitest 5.0.5"
+    },
+    {
+      "package": "js-yaml",
+      "ghsa": "GHSA-2883-xcg3-v3hh",
+      "cve": "CVE-2026-84375",
+      "severity": "high",
+      "vulnerable": ">= 4.0.0, < 4.3.2",
+      "patched": "4.3.2",
+      "summary": "maxTotalMergeKeys does not limit CPU use for empty merge sources",
+      "fixedBy": "js-yaml 4.3.2, reached inside @eslint/eslintrc's existing ^4 range -- no override, because the range already allowed the patch"
+    },
+    {
+      "package": "brace-expansion",
+      "ghsa": "GHSA-q2hr-2g5m-vwhr",
+      "cve": "CVE-2026-102277",
+      "severity": "medium",
+      "vulnerable": "< 1.1.21",
+      "patched": "1.1.21",
+      "summary": "Quadratic-time expansion of the {a,b} rewrite causes CPU denial of service",
+      "fixedBy": "brace-expansion 1.1.21 under minimatch 3, again inside the existing ^1.1.7 range; the 2.x and 5.x lines were never affected"
+    },
+    {
+      "package": "source-map-js",
+      "ghsa": "GHSA-68fv-2mgg-jv7q",
+      "cve": "CVE-2026-93749",
+      "severity": "high",
+      "vulnerable": ">= 1.0.0, < 1.2.2",
+      "patched": "1.2.2",
+      "summary": "Event-loop denial of service through indexed source-map section offsets",
+      "fixedBy": "source-map-js 1.2.2, inside postcss's and magicast's existing ^1.2.1 ranges"
+    }
+  ]
+}

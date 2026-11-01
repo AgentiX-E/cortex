@@ -252,3 +252,134 @@ describe('reviseLedger: determinism and the input order', () => {
     expect(manual.revisions).toEqual([]);
   });
 });
+
+describe('reviseLedger: a declared invalidation is bookkeeping, not inference', () => {
+  // STALE's Type II: the upstream attribute changed and the downstream fact was never mentioned
+  // again, so there is no same-slot disagreement for the derived pass to notice. These facts are
+  // deliberately on different predicates, which means `deriveSupersedes` produces no edge at all --
+  // every refutation below is one a caller declared, and the test would pass vacuously if it were
+  // reading an edge instead.
+  const RENT = factOf({
+    id: 'r1',
+    frameId: 'f1',
+    text: 'The flat costs 900 a month.',
+    subject: 'flat',
+    predicate: 'rent',
+    at: T0,
+  });
+  const CITY = factOf({
+    id: 'c1',
+    frameId: 'f2',
+    text: 'I live in Berlin.',
+    subject: 'user',
+    predicate: 'city',
+    at: T0 + 90 * DAY,
+  });
+
+  it('refutes the named fact and records which fact did it', () => {
+    const result = reviseLedger([RENT, CITY], { invalidations: [['c1', 'r1']] });
+    const retired = result.facts.find((fact) => fact.id === 'r1')!;
+    expect(assumptionOf(retired, 'persistence')!.status).toBe('refuted');
+    expect(assumptionOf(retired, 'persistence')!.contradict).toBe(1);
+
+    const revision = result.revisions.find((entry) => entry.factId === 'r1')!;
+    expect(revision).toMatchObject({ kind: 'persistence', verdict: 'refuted', byFactId: 'c1' });
+    expect(revision.detail).toContain('declared meaningless by');
+  });
+
+  it('refutes the slot claim too, because the slot no longer holds what it described', () => {
+    const result = reviseLedger([RENT, CITY], { invalidations: [['c1', 'r1']] });
+    const retired = result.facts.find((fact) => fact.id === 'r1')!;
+    expect(assumptionOf(retired, 'uniqueness')!.status).toBe('refuted');
+    expect(result.revisions.filter((entry) => entry.factId === 'r1').map((e) => e.kind)).toEqual([
+      'persistence',
+      'uniqueness',
+    ]);
+  });
+
+  it('leaves the declaring fact untouched, because invalidating is not being invalidated', () => {
+    const result = reviseLedger([RENT, CITY], { invalidations: [['c1', 'r1']] });
+    const declarer = result.facts.find((fact) => fact.id === 'c1')!;
+    expect(assumptionOf(declarer, 'persistence')!.status).not.toBe('refuted');
+    expect(result.revisions.every((entry) => entry.byFactId === 'c1')).toBe(true);
+  });
+
+  it('ignores a declaration that points backwards in time', () => {
+    // Only a later fact can make an earlier one meaningless. Honouring the reverse would let a
+    // fixture or an import decide the answer by asserting the impossible, so the pair is skipped
+    // rather than applied with a warning.
+    const result = reviseLedger([RENT, CITY], { invalidations: [['r1', 'c1']] });
+    expect(result.revisions).toEqual([]);
+    expect(
+      assumptionOf(
+        result.facts.find((f) => f.id === 'c1')!,
+        'persistence',
+      )!.status,
+    ).not.toBe('refuted');
+  });
+
+  it('ignores a declaration between two facts at the same instant', () => {
+    // `newerAt <= olderAt` is skipped, so an equal pair is a contradiction rather than an update --
+    // the same rule the derived pass applies to two values at one instant.
+    const sameInstant = factOf({
+      id: 'c2',
+      frameId: 'f3',
+      text: 'I live in Paris.',
+      subject: 'user',
+      predicate: 'city',
+      at: T0,
+    });
+    const result = reviseLedger([RENT, sameInstant], { invalidations: [['c2', 'r1']] });
+    expect(result.revisions).toEqual([]);
+  });
+
+  it('skips a pair naming an id that is not in the ledger', () => {
+    // A declaration is a caller's claim about ids, and a claim about an id that is not there is
+    // dropped: the alternative is a non-null assertion over a map miss.
+    const result = reviseLedger([RENT, CITY], {
+      invalidations: [
+        ['missing', 'r1'],
+        ['c1', 'also-missing'],
+      ],
+    });
+    expect(result.revisions).toEqual([]);
+  });
+
+  it('survives an agreement reached elsewhere in the same batch', () => {
+    // The ordering is the point of the comment at the loop: the agreement pass runs after the
+    // declared refutations, so two unrelated facts agreeing with each other cannot resurrect a fact
+    // whose retirement was declared. The pair below is deliberately on a slot of its own -- a repeat
+    // ON r1's slot is a real agreement and would legitimately confirm it, which is a different case
+    // and not what this loop's ordering is for.
+    const liking = factOf({
+      id: 't1',
+      frameId: 'f4',
+      text: 'I like tea.',
+      subject: 'user',
+      predicate: 'drink',
+      at: T0,
+    });
+    const likingAgain = factOf({
+      id: 't2',
+      frameId: 'f5',
+      text: 'I like tea.',
+      subject: 'user',
+      predicate: 'drink',
+      at: T0 + 120 * DAY,
+    });
+    const result = reviseLedger([RENT, CITY, liking, likingAgain], {
+      invalidations: [['c1', 'r1']],
+    });
+    expect(
+      assumptionOf(
+        result.facts.find((f) => f.id === 'r1')!,
+        'persistence',
+      )!.status,
+    ).toBe('refuted');
+    expect(
+      result.facts
+        .filter((fact) => fact.id.startsWith('t'))
+        .every((fact) => assumptionOf(fact, 'persistence')!.status === 'confirmed'),
+    ).toBe(true);
+  });
+});
