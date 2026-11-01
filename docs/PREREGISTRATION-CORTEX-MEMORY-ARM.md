@@ -22896,7 +22896,12 @@ honest read available, and they are registered as a report rather than as a bar.
 
 **Not a bundled change.** `thinking`, `maxPromptChars`, `turnCutMarker` and the reader are held at
 whatever the control ran, because §13.104 is the case for why a run with two variables is not attributable
-even when both are right. The dispatch that reads this value differs from `41254359622` in one field.
+even when both are right. The dispatch that reads this value differs from `41254359622` in one field, and
+it is `41259622431`: `ask: operands+operand-gap → candidates` at 500 questions, four repetitions, 96,000
+characters, `400:ellipsis` and `thinking=multi-session+temporal`. It was dispatched while `41254359622` was
+still running because the two are independent jobs and the pair is one variable either way — the control is
+the configuration, not the finishing order — and because §13.203.4's floor says a four-hour serial wait buys
+a comparison whose two sides never touch.
 
 **Not `KU`.** §13.204.4's third point stands: `KU`'s failures are a window problem (8 of 12 with gold
 missing), and a `KU` experiment is a room or ranking experiment that must not be bundled with this one.
