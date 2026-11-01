@@ -23170,3 +23170,112 @@ A `datasetFingerprint` in the artifact is the repair that needs no prior knowled
 digest is the one that refuses a mismatch. Neither is done here: the file is not present in this
 environment, so any digest written now would be a guess, and a guessed digest is the defect this
 campaign keeps finding in other people's harnesses.
+
+---
+
+## 13.209 The thinking gain is a temporal gain: 89.80%, and 22 of the 24 questions are TR
+
+`41284575092` finished 2026-11-01T12:23Z in 299.6 minutes — the dispatch §13.206.4 opened to answer
+whether the rout-scoped reader's **+23.50** was an artifact of the 96,000-character budget. It was
+not, and the artifact says something more specific than "it replicated".
+
+### 13.209.1 The pair, and why it is not one variable
+
+Against `41203245999` — same 48,000 budget, same `ask=operands+operand-gap`, same rendering — the
+declared differences are **three**:
+
+| field | control | treatment |
+| --- | --- | --- |
+| `reader.thinking` | `disabled` | `enabled` |
+| `reader.thinkingRoutes` | absent | `["multi-session", "temporal"]` |
+| `turnCutMarker` | `none` | `ellipsis` |
+
+So this is a **two-variable** pair (thinking, and the cut marker) rather than the single-variable run
+§13.206.4 described. `--config` reports exactly that, and the honest reading is the joint effect:
+
+| capability | `41203245999` | `41284575092` | Δ |
+| --- | --- | --- | --- |
+| **overall** | **425 / 500 = 85.00%** | **449 / 500 = 89.80%** | **+24** |
+| IE | 143 / 150 | 143 / 150 | **0** |
+| ABS | 30 / 30 | 30 / 30 | **0** |
+| MR | 92 / 121 | 93 / 121 | **+1** |
+| TR | 98 / 127 | **120 / 127** | **+22** |
+| KU | 62 / 72 | 63 / 72 | **+1** |
+
+Four repetitions: 89.40 / 89.80 / 89.80 / 90.40, mean **89.80%**, **spread 1.00 pp**.
+
+### 13.209.2 The +22 is a route-level result, and it is the strongest causal evidence in the campaign
+
+The thinking switch reached `multi-session` and `temporal` and nothing else. The result follows the
+reach **exactly**:
+
+- **TR: +22 of 127.** The route whose question asks for a value assembled from several dates is the
+  route that a date-arithmetic chain helps. +17.32 pp on one capability.
+- **MR: +1 of 121.** The switch reached this route too, and it was worth one question. Thinking does
+  not help aggregate evidence across sessions — there is no reasoning chain the reader is missing,
+  it is choosing among candidates it already has.
+- **IE, ABS, KU: 0, 0, +1.** The switch did not reach these routes, and they did not move. The +1 on
+  KU is one question, inside the spread.
+
+A switch that reached two routes and moved one of them by 22 questions, while leaving three
+unreached routes at 0/0/+1, is not a correlation that needs a confound argument. It is the reach
+reproducing itself in the outcome, which is what `§13.73`'s route list exists to make possible and
+what `§13.196`'s per-route design was built to measure.
+
+**This also falsifies a reading §13.197's −12 could have supported.** That run measured the same
+knob negative on one route and positive on another; the temptation was to conclude the knob is
+unstable. It is not unstable: it is **one capability wide**. TR +22 against MR +1, in the same run,
+is the same asymmetry at a larger amplitude.
+
+### 13.209.3 What the 89.80% is, and what it is not
+
+**It is** the mean of four repetitions at a configuration that can be reproduced from the artifact
+alone: `maxPromptChars=48000`, `maxTurnChars=400` on `multi-session+temporal`, `turnCutMarker=ellipsis`,
+`thinking=enabled` on the same two routes, `ask=operands+operand-gap`, `promptContract=abstention-evidence-blocks`,
+`relevanceSignal=retrieval-hybrid`, `relevanceTopK=256`, reader `deepseek-chat`, temperature 0. The
+baseline it is paired against is `reference-pipeline` at **44.15%**, and the paired McNemar p is
+**7.007e-53** with 248 discordant pairs in the feature's favour against 18 against.
+
+**It is not** a claim that the default configuration reaches it. `DEFAULT_MAX_PROMPT_CHARS` is
+24,000; this run is at 48,000 with a marker. `AUDIT-BENCHMARK-WALLCLOCK.md` §7 is where that gap is
+stated, and it does not close here.
+
+**It is not** SOTA. Agentmemory V4 reports 96.20% on the same benchmark at the same QA-accuracy
+denominator; the gap is **6.40 pp**. What it does establish is a position that this campaign has not
+held before: **+2.30 pp over Raw-RAG (87.5%)** and **+4.00 pp over memoricai (85.8%)**, both of which
+were ahead of every previous artifact.
+
+### 13.209.4 The one pool that is left, and it is not a thinking pool
+
+Per capability, against the 96.20% target, the room is:
+
+| capability | now | at 96% | room | is thinking the lever? |
+| --- | --- | --- | --- | --- |
+| **MR** | 93 / 121 = 76.86% | 116 | **+23** | **no — measured +1 with thinking on** |
+| KU | 63 / 72 = 87.50% | 69 | +6 | untested on this route |
+| IE | 143 / 150 = 95.33% | 144 | +1 | closed |
+| TR | 120 / 127 = 94.49% | 122 | +2 | mostly closed |
+| ABS | 30 / 30 = 100.00% | 30 | 0 | closed |
+
+**MR holds 23 of the 32 remaining questions, and §13.209.2 has just measured that thinking does not
+move it.** The next dispatch therefore has to be a multi-session experiment — candidate selection,
+session ordering or the aggregation the reader is asked to perform — and not another reader-mode
+experiment. `§13.204.4` already argued that a `KU` experiment is a room or ranking experiment; the
+same argument applies to `MR` with the additional fact that its reader is now known to be the wrong
+lever.
+
+### 13.209.5 Predictions for the next multi-session dispatch
+
+Registered before it is built, so the answer cannot be chosen afterwards:
+
+1. A multi-session change that reorders or re-selects candidates moves **MR ≥ +8** while moving IE
+   by less than 3 in either direction, because IE's evidence is one turn and a re-selection cannot
+   reach it.
+2. TR moves by less than 3 in either direction, because its +22 came from the reader and the change
+   does not touch the reader.
+3. The four-repetition spread stays at or below 2 pp, as it has on the two most recent runs (1.00 and
+   2.00) and against the 4.75 pp of `40722772896`.
+
+Stopping rule: **one dispatch.** If MR moves less than 8 while the other predictions hold, the
+conclusion is that MR's remaining 23 questions are a knowledge limit of this reader rather than a
+selection limit of this pipeline, and the third prediction is what distinguishes those two.

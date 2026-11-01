@@ -27,13 +27,20 @@ One dispatch is `2 arms x 4 repetitions = 8` passes over 500 questions, i.e. **4
 | `41203245999` | 48k, `thinking=disabled` | 122.6 min | 15.3 | 1.84 s |
 | `41254359622` | 96k, thinking on `multi-session+temporal` | 305.9 min | 38.2 | 4.59 s |
 | `41259622431` | the same plus `candidates` | 334.8 min | 41.9 | 5.02 s |
-| `41284575092` | 48k, thinking on the same routes | 280 min at 12:04Z, still running | — | — |
+| `41284575092` | 48k, thinking on the same routes | **299.6 min** | 37.4 | 4.49 s |
 
-So a thinking-enabled dispatch costs **2.60x** a thinking-disabled one (305.9 / 117.5) and the
-candidate arm **2.85x** (334.8 / 117.5). At 5.0 s per call, 4000 calls is 5h34m of pure provider
-time before any local work; 334.8 minutes means the local pipeline — retrieval, budget, rendering,
-scoring — is **under 1% of the wall clock**. There is nothing to optimise in this repository's own
-code. The run is exactly as long as the provider makes it.
+So a thinking-enabled dispatch costs **2.60x** a thinking-disabled one at 96k (305.9 / 117.5),
+**2.44x** at 48k (299.6 / 122.6), and the candidate arm **2.85x** (334.8 / 117.5). At 5.0 s per call,
+4000 calls is 5h34m of pure provider time before any local work; 334.8 minutes means the local
+pipeline — retrieval, budget, rendering, scoring — is **under 1% of the wall clock**. There is
+nothing to optimise in this repository's own code. The run is exactly as long as the provider makes
+it.
+
+**`41284575092` is also the run that makes §2 concrete rather than theoretical.** It finished at
+299.6 minutes — **50 minutes** before the old 350-minute kill — and the run before it finished at
+334.8, fifteen minutes before. Two consecutive dispatches landed inside a 15-minute band of a
+ceiling that would have destroyed them silently, and the number that was supposed to fire first
+permitted 721.
 
 That is worth stating plainly because it kills three plausible-looking repairs at once: caching the
 retrieval index, warming embeddings, and parallelising the local stages. All three are already
