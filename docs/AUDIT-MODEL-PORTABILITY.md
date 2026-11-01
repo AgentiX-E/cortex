@@ -108,7 +108,7 @@ this campaign has run, and:
 So the probe set would have classified the reader that produced the campaign's best number as
 `minimal`. That is not conservatism; it is a probe measuring the prompt's house style instead of the
 pipeline's rejects. **This is falsifier 2 of §9 firing on the probe set itself**, and it fired for
-free, on data that was already on disk, two days after the set was written.
+free, on data that was already on disk, within a day of the set being written.
 
 The repair is a rule rather than four new strings, and it is worth stating because it will be the
 test of every future probe:

@@ -22989,6 +22989,11 @@ warning that fires on every run is a warning nobody reads.
 
 - **control**: `41254359622` (96,000, `thinking=multi-session+temporal`, `ask=operands+operand-gap`);
 - **the one field that moves**: `cortex_memory_max_prompt_chars` 96,000 → 48,000;
+- **held constant, although the dispatch default would not hold it**: `cortex_memory_max_turn_chars` stays
+  `400:ellipsis`. The script's default is a bare `400`, so dispatching without this override would move the
+  marker alongside the budget and make the pair two-variable. The marker is itself undeclared against §10.3
+  (§13.188 registered it as a treatment and no adoption was ever read), so `--registration` will name it and
+  `congruence_note` will print the condition — which is the instrument working, not a defect in the run;
 - **what it answers**: whether the +23.50 from enabling thinking routes survives the room change. §13.197
   already flags that the effect is baseline-dependent — §13.197 measured the same knob at −12 on a
   different ask — so a reading at 48,000 either confirms the interaction or bounds it;
@@ -23000,3 +23005,87 @@ If the 48,000 reading holds the gain, the headline becomes a 48,000 number and t
 again. If it does not, the +23.50 is a 96,000 phenomenon, and the honest choice is between a bigger
 headline and a cheaper product — which is a product decision with two real numbers behind it, not this
 section's.
+
+### 13.207 `candidates` reads as registered and fails its own bar: 0 of 8, against a floor of 4
+
+**Registered outcome 2026-11-01, as the reading §13.205 was written to be falsified by.**
+
+The pair is `41259622431` (`ask: candidates`) against `41254359622` (`ask: operands+operand-gap`), every
+other field identical, 500 questions × 4 repetitions, 96,000, `400:ellipsis`,
+`thinking=multi-session+temporal`. `--config` reports **31 fields the same and 2 different**, and both of the
+two are the treatment and its derived route list:
+
+```
+  differ   2 field(s):
+    declared    ask: "operands+operand-gap" -> "candidates"
+    declared    askRoutes: [...] -> [...]
+  verdict: 2 field(s) differ and every one of them is declared
+```
+
+#### 13.207.1 The two readings, and neither is a gain
+
+| statistic | `41254359622` (operands+operand-gap) | `41259622431` (candidates) |
+| --- | --- | --- |
+| feature aggregate, mean of 4 | **90.45%** | **90.75%** |
+| per repetition | 89.8 / 90.4 / 91.4 / 90.4 | 90.6 / 91.0 / 90.6 / 90.8 |
+| McNemar against the run's own baseline | p = 2.3e-07 | p = 5.8e-54 |
+
+The +0.30 pt is inside the pair's own noise. `--null` puts **349 of 500 prompts byte-identical** (the ask
+changes the `ABS` and `MR` prompts and nothing else: 151 differ, exactly `{'ABS': 30, 'MR': 121}`), and on
+the identical stratum the delta is **+1.25 against a null band of 6.31**. There is no reading here.
+
+#### 13.207.2 The population, which is where the section said this would be decided
+
+§13.205.6 registered the converts set at **≥ 4 of 8**. The run converts **0**:
+
+```
+converts: 8 question(s), bar 4
+  converted 0   worsened 2   held 6   mixed 0
+  verdict: 0 of 8 converted, BELOW the registered floor of 4
+guard: 83 question(s), bar 4
+  converted 3   worsened 2   held 70   mixed 8
+  verdict: 2 of 83 worsened, at or below the registered ceiling of 4
+EXIT=1
+```
+
+So the guard holds — the screen did not buy conversions by excluding mentions that should have been
+included — and the converts set fails completely: **the two questions it was written to fix (`6d550036`,
+`a9f6b44c`) both got worse**, going from `1110`/`1111` to `0101`, i.e. correct in one repetition out of four
+instead of two and four.
+
+**The registration is falsified, not the null.** §13.205.6 already said what that means: *the screen is not
+the variable, and the next candidate is the ask's **position** rather than its content.* That sentence is
+now the standing next step and it is not this section's to re-open.
+
+#### 13.207.3 The token number that looks like an 8x saving and is not attributable
+
+The two runs are worth comparing on cost because they are the same size:
+
+| | `41254359622` | `41259622431` |
+| --- | --- | --- |
+| feature calls | 2,092 | 2,095 |
+| prompt tokens (total) | 47,399,949 | 47,488,620 (**+0.19%**) |
+| of which served from the provider's prompt cache | 43,053,623 (90.8%) | 46,958,522 (98.9%) |
+| **uncached prompt tokens** | **4,346,326** | **530,098** |
+
+An 8.2x difference in what would be billed, at equal total prompt size. **It cannot be attributed to the
+ask**, and the reason is a property of the instrument rather than a subtlety: DeepSeek's prompt cache is
+server-side and keyed on the prefix, it persists across runs, and `41259622431` started hours after
+`41254359622` finished. A run that begins on a warm cache reads a high hit rate whatever its ask does.
+
+The honest form of this table is therefore a *test to run*, not a result: two dispatches of the same
+configuration, one cold and one warm, would price the cache; or the two asks alternated within one day. Until
+one of those exists, this repository has **no measurement** of whether `candidates` is cheaper, and quoting
+98.9% as an efficiency finding would be the §13.194.4 defect — a rate reported without the condition it was
+taken under.
+
+#### 13.207.4 What this decides
+
+1. **`candidates` is not adopted.** Its population failed, its aggregate is noise, and §13.205.6 named the
+   successor before the artifact existed.
+2. **The next ask experiment is about position, not content** — where in the prompt the ask sits, not what
+   it says. §13.204.4's reasoning about `KU` still stands: a `KU` experiment is a room or ranking
+   experiment and must not be bundled with this one.
+3. **A cold-versus-warm cache pair is worth registering on its own**, because it is the only way to price
+   the one axis where the two runs differ by 8x, and it decides whether the product's per-question cost is
+   4.3M tokens or 0.5M for the same 47.5M prompt.
