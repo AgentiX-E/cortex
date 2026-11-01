@@ -273,63 +273,183 @@ describe('the degradation guard', () => {
     }
   }
 
+  /** One window of twenty calls carrying `signals` compliance failures, all of the same kind. */
+  function window(guard: DegradationGuard, signals: number): void {
+    for (let call = 0; call < 20; call += 1) {
+      guard.observe(call < signals ? 'parse-failed' : undefined);
+    }
+  }
+
   it('does not downgrade on two failures in a window of twenty', () => {
     const guard = new DegradationGuard('as-measured');
-    observe(guard, 20, [3, 11]);
+    window(guard, 2);
+    window(guard, 2);
     expect(guard.bucket).toBe('as-measured');
     expect(guard.downgrades).toEqual([]);
   });
 
-  it('downgrades one step on three failures in a window of twenty', () => {
+  it('does not downgrade on one firing window, however full', () => {
+    // A window is twenty calls, and one window of failures is one episode. Downgrading on it is
+    // what turns a single provider incident into a permanent configuration change — four times an
+    // hour, per §9.2 of the audit.
     const guard = new DegradationGuard('as-measured');
-    observe(guard, 20, [3, 11, 19]);
+    window(guard, 20);
+    expect(guard.bucket).toBe('as-measured');
+    expect(guard.downgrades).toEqual([]);
+  });
+
+  it('downgrades one step on two consecutive firing windows', () => {
+    const guard = new DegradationGuard('as-measured');
+    window(guard, 3);
+    window(guard, 3);
     expect(guard.bucket).toBe('guarded');
     expect(guard.downgrades).toEqual([
-      { from: 'as-measured', to: 'guarded', signal: 'parse-failed', observed: 3 },
+      { from: 'as-measured', to: 'guarded', signal: 'parse-failed', observed: 3, total: 3 },
     ]);
+  });
+
+  it('does not downgrade on two firing windows with a quiet one between them', () => {
+    // Persistence is what separates "this reader is broken" from "this reader had a bad minute",
+    // and the separation has to be consecutive or it is not persistence.
+    const guard = new DegradationGuard('as-measured');
+    window(guard, 3);
+    window(guard, 0);
+    window(guard, 3);
+    expect(guard.bucket).toBe('as-measured');
+  });
+
+  it('resets the persistence counter, so two pairs of firing windows with a gap never add up', () => {
+    const guard = new DegradationGuard('as-measured');
+    window(guard, 3);
+    window(guard, 3);
+    window(guard, 0);
+    window(guard, 3);
+    window(guard, 0);
+    window(guard, 3);
+    expect(guard.downgrades.map((step) => step.to)).toEqual(['guarded']);
+  });
+
+  it('counts failures of different kinds toward the same trigger', () => {
+    // The published tolerance is "3 of 20", which is a statement about a *rate*. A rule that needs
+    // three of the same kind is not that statement: it is four statements ORed together, and the
+    // window fires if any one of them does. Pooling makes the tolerance mean what it says.
+    const guard = new DegradationGuard('as-measured');
+    for (let round = 0; round < 2; round += 1) {
+      guard.observe('parse-failed');
+      guard.observe('empty-completion');
+      guard.observe('deadline-exceeded');
+      observe(guard, 17);
+    }
+    expect(guard.bucket).toBe('guarded');
+    expect(guard.downgrades).toEqual([
+      // `parse-failed` wins the tie on SIGNAL_ORDER, and the record says 1 of 3 so nobody reads the
+      // dominant count as the total.
+      { from: 'as-measured', to: 'guarded', signal: 'parse-failed', observed: 1, total: 3 },
+    ]);
+  });
+
+  it('reports the total alongside the dominant signal, so the account can be checked', () => {
+    const guard = new DegradationGuard('as-measured');
+    for (let round = 0; round < 2; round += 1) {
+      guard.observe('empty-completion');
+      guard.observe('empty-completion');
+      guard.observe('empty-completion');
+      guard.observe('parse-failed');
+      observe(guard, 16);
+    }
+    expect(guard.downgrades[0]).toMatchObject({
+      signal: 'empty-completion',
+      observed: 3,
+      total: 4,
+    });
+  });
+
+  it('still does not downgrade on two failures of two different kinds', () => {
+    const guard = new DegradationGuard('as-measured');
+    guard.observe('parse-failed');
+    guard.observe('deadline-exceeded');
+    observe(guard, 18);
+    expect(guard.bucket).toBe('as-measured');
+  });
+
+  it('the OR-over-four rule was four tolerances, and the union is what an operator experiences', () => {
+    // 4.22% is the per-call rate at which ONE signal fires on 5% of windows. The rule as written
+    // fired if ANY of four did, so at that rate it fired on 1 - (1 - 0.05)^4 of windows. This is the
+    // arithmetic that made pooling necessary rather than cosmetic, pinned so the claim stays
+    // checkable: 18.55%, not 5%.
+    const perSignal = 0.05;
+    const union = 1 - (1 - perSignal) ** 4;
+    expect(union).toBeCloseTo(0.18549, 5);
+  });
+
+  it('the persistence requirement is worth 13x, and the arithmetic is pinned here', () => {
+    // Over one 500-question run (25 windows), a latched alarm fires at least once with probability
+    // 1 - (1 - p)^25. At the 5% tolerance that is 72.26% of working deployments downgraded
+    // permanently. Requiring two consecutive firing windows drops it to 5.58% and costs a genuinely
+    // broken reader twenty extra calls: at p = 0.95 the two-window rule still fires with certainty.
+    const single = 1 - 0.95 ** 25;
+    // `endsQuiet` and `endsFiring` partition the sequences that have had no back-to-back pair:
+    // a quiet window can follow either, a firing window can only follow a quiet one.
+    let endsQuiet = 1.0;
+    let endsFiring = 0.0;
+    for (let step = 0; step < 25; step += 1) {
+      [endsQuiet, endsFiring] = [(endsQuiet + endsFiring) * 0.95, endsQuiet * 0.05] as [
+        number,
+        number,
+      ];
+    }
+    const persisted = 1 - (endsQuiet + endsFiring);
+    expect(single).toBeCloseTo(0.7226, 4);
+    expect(persisted).toBeCloseTo(0.0558, 4);
+    expect(single / persisted).toBeGreaterThan(12);
   });
 
   it('never upgrades, however many clean calls follow', () => {
     const guard = new DegradationGuard('as-measured');
-    observe(guard, 20, [1, 2, 3]);
+    window(guard, 3);
+    window(guard, 3);
     observe(guard, 400);
     expect(guard.bucket).toBe('guarded');
   });
 
-  it('stops at minimal after a second window, and records both steps', () => {
+  it('stops at minimal after two more firing windows, and records both steps', () => {
     const guard = new DegradationGuard('as-measured');
-    observe(guard, 20, [1, 2, 3]);
-    observe(guard, 20, [1, 2, 3]);
+    window(guard, 3);
+    window(guard, 3);
+    window(guard, 3);
+    window(guard, 3);
     expect(guard.bucket).toBe('minimal');
     expect(guard.downgrades.map((step) => step.to)).toEqual(['guarded', 'minimal']);
   });
 
   it('does not accumulate across windows, so one failure per window never fires', () => {
     const guard = new DegradationGuard('as-measured');
-    observe(guard, 20, [5]);
-    observe(guard, 20, [5]);
-    observe(guard, 20, [5]);
+    window(guard, 1);
+    window(guard, 1);
+    window(guard, 1);
+    window(guard, 1);
     expect(guard.bucket).toBe('as-measured');
   });
 
   it('is inert at minimal rather than counting calls it cannot act on', () => {
     const guard = new DegradationGuard('minimal');
-    observe(guard, 100, [1, 2, 3, 4]);
+    window(guard, 4);
+    window(guard, 4);
     expect(guard.bucket).toBe('minimal');
     expect(guard.downgrades).toEqual([]);
   });
 
-  it('names one signal deterministically when two would both fire', () => {
+  it('names one signal deterministically when two tie for dominant', () => {
     // `parse-failed` and `deadline-exceeded` both reach three. The recorded signal must not depend
     // on which arrived first, or two deployments with the same 20 calls would explain themselves
     // differently — AUDIT-DISCORDANT-IDENTITY's shape.
     const forward = new DegradationGuard('as-measured');
-    for (let call = 0; call < 20; call += 1) {
-      forward.observe(call < 3 ? 'deadline-exceeded' : call < 6 ? 'parse-failed' : undefined);
-    }
     const backward = new DegradationGuard('as-measured');
-    for (let call = 0; call < 20; call += 1) {
-      backward.observe(call < 3 ? 'parse-failed' : call < 6 ? 'deadline-exceeded' : undefined);
+    for (let round = 0; round < 2; round += 1) {
+      for (let call = 0; call < 20; call += 1) {
+        forward.observe(call < 3 ? 'deadline-exceeded' : call < 6 ? 'parse-failed' : undefined);
+        backward.observe(call < 3 ? 'parse-failed' : call < 6 ? 'deadline-exceeded' : undefined);
+      }
     }
     expect(forward.downgrades).toEqual(backward.downgrades);
     expect(forward.downgrades[0]?.signal).toBe('parse-failed');
@@ -339,11 +459,17 @@ describe('the degradation guard', () => {
     const guard = new DegradationGuard('as-measured');
     // 17 calls with nothing observable, then three signals: the twentieth call closes the window.
     // If the plain calls were not counted, this would need twenty of the 23 to fire the trigger.
-    observe(guard, 17);
-    guard.observe('empty-completion');
-    guard.observe('empty-completion');
-    expect(guard.bucket).toBe('as-measured');
-    guard.observe('empty-completion');
+    for (let round = 0; round < 2; round += 1) {
+      observe(guard, 17);
+      guard.observe('empty-completion');
+      guard.observe('empty-completion');
+      if (round === 0) expect(guard.bucket).toBe('as-measured');
+      guard.observe('empty-completion');
+      if (round === 0) {
+        // One firing window is not yet a downgrade; the second closes it.
+        expect(guard.bucket).toBe('as-measured');
+      }
+    }
     expect(guard.bucket).toBe('guarded');
     expect(guard.downgrades[0]?.observed).toBe(3);
   });

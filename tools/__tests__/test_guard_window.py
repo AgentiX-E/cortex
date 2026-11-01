@@ -213,20 +213,58 @@ class TestTheReport:
         assert guard.main([str(quiet), str(loud)]) == 1
         assert guard.main([str(loud), str(quiet)]) == 1
 
+    def test_reports_the_dispersion_and_the_arrangement_ratio(self, tmp_path, capsys):
+        # The rate the tool reports is only interpretable next to the two numbers that move it.
+        flags = [question("INSUFFICIENT_EVIDENCE", answer=None)] * 6 + [question("x")] * 34
+        path = artifact(tmp_path, flags)
+        guard.main([str(path)])
+        out = capsys.readouterr().out
+        assert "intraclass correlation" in out
+        assert "exchangeable predicts" in out
+        assert "arrangement" in out
+
+    def test_says_so_when_no_dispersion_can_be_measured(self, tmp_path, capsys):
+        # An all-answered stream has no variance, so ICC is undefined -- and undefined is not zero.
+        guard.main([str(self.quiet(tmp_path))])
+        out = capsys.readouterr().out
+        assert "no dispersion to measure" in out
+
+    def test_reports_the_cumulative_risk_a_latching_alarm_carries(self, tmp_path, capsys):
+        path = artifact(tmp_path, [question("x")] * 500)
+        guard.main([str(path)])
+        out = capsys.readouterr().out
+        assert "cumulative" in out
+        assert "over 25 windows (500 calls)" in out
+
+    def test_reports_the_figure_the_shipped_guard_actually_meets(self, tmp_path, capsys):
+        path = artifact(tmp_path, [question("x")] * 500)
+        guard.main([str(path), "--persistence", "2"])
+        out = capsys.readouterr().out
+        assert "2 consecutive firing window" in out
+        assert "one window enough would be 72.26%" in out
+
+    def test_uses_the_guards_tumbling_stride_when_asked(self, tmp_path, capsys):
+        path = artifact(tmp_path, [question("")] * 40)
+        guard.main([str(path), "--stride", "20"])
+        out = capsys.readouterr().out
+        assert "tumbling" in out
+
 
 class TestTheNumbersTheAuditQuotes:
-    def test_the_uniform_prediction_for_the_published_decline_rate_is_about_fourteen_percent(self):
-        # 32 of 500 is run 41254359622's measured decline rate. If calls were exchangeable, a
-        # 20-call window would fire 1 - P(0) - P(1) - P(2) of the time at p = 0.064.
+    def test_the_uniform_prediction_for_the_published_decline_rate_is_about_thirteen_percent(self):
+        # 32 of 500 is a real decline rate on this dataset. If calls were exchangeable, a 20-call
+        # window would fire 1 - P(0) - P(1) - P(2) of the time at p = 0.064.
         assert guard.binomial_tail(3, 20, 32 / 500) == pytest.approx(0.1327, abs=5e-4)
 
     def test_the_same_number_of_events_fires_or_not_depending_only_on_their_arrangement(self):
-        # 41254359622's declines arrive in runs of six -- indices 64..69, 126..131, 227..232,
-        # 360..365 -- because LongMemEval groups questions by capability and the absent-capability
-        # ones sit together. Measured, that sequence fires on 21.83% of windows against the 13.27%
-        # an exchangeable model predicts: 1.65x. The guard's rule is "three of twenty", which is a
-        # statement about a *rate*, and nothing in it can see arrangement -- so the same reader
-        # trips it twice as often when the dataset happens to group the hard questions.
+        # 32 events, two arrangements, nothing else changed. This is the falsifier's own falsifier:
+        # whatever `3 of 20` is, it is not a property of the events.
+        #
+        # The packed array below is a **construction**, not a measurement -- an earlier version of
+        # this test called its 21.83% "measured" and the audit repeated that. It is not: the real
+        # archives are under-dispersed relative to this array, and twelve of them are summarised in
+        # `AUDIT-MODEL-PORTABILITY.md` 9.2. What survives is only the weaker claim proved here,
+        # that arrangement alone moves the number by more than 20 points.
         blocked = [False] * 500
         for start in (64, 126, 227, 360, 440):
             for offset in range(6):
@@ -251,3 +289,176 @@ class TestTheNumbersTheAuditQuotes:
     def test_zero_events_can_never_fire_whatever_the_window(self):
         assert guard.window_fires([False] * 500, 20, 1) == 0
         assert guard.window_fires([False] * 500, 2, 1) == 0
+
+
+# --------------------------------------------------------------------------- dispersion
+
+class TestTheBetaBinomialTail:
+    """The one-parameter over-dispersion model, and the two places it surprises.
+
+    Surprise one: the tail is **not monotone** in `rho`. Surprise two: at the guard's own
+    operating point it moves the answer by 1.94x, and at a rate twice that it moves it the other
+    way. Both are asserted rather than described, because a reader who has not computed them will
+    assume the opposite.
+    """
+
+    def test_reduces_to_the_binomial_at_zero_dispersion(self):
+        for k in (1, 3, 20):
+            assert guard.beta_binomial_tail(k, 20, 0.048, 0.0) == pytest.approx(
+                guard.binomial_tail(k, 20, 0.048), rel=1e-12
+            )
+
+    def test_at_the_guards_operating_point_clustering_almost_doubles_the_firing_rate(self):
+        # p = 0.048 is §13.194.4's measured same-prompt flip rate, i.e. the rate at which a working
+        # reader can be expected to produce a signal. Exchangeable: 6.85%. At rho = 0.10, which is
+        # the mean ICC of the twelve archives: 13.27%. 1.94x.
+        assert guard.beta_binomial_tail(3, 20, 0.048, 0.1) == pytest.approx(0.1327, abs=5e-4)
+        assert guard.binomial_tail(3, 20, 0.048) == pytest.approx(0.0685, abs=5e-4)
+        assert guard.beta_binomial_tail(3, 20, 0.048, 0.1) > 1.9 * guard.binomial_tail(3, 20, 0.048)
+
+    def test_near_the_trigger_clustering_moves_the_rate_the_other_way(self):
+        # p = 0.10 puts the expected count at 2.0, one event short of the trigger. Here packing
+        # events into runs *reduces* the share of windows that reach three: a run of six produces
+        # one dense window region, while six spread-out events produce many windows that just reach
+        # the trigger. So the sign of the arrangement effect is a property of where the trigger sits
+        # relative to the mean, and no single correction factor exists.
+        assert guard.beta_binomial_tail(3, 20, 0.1, 0.0) == pytest.approx(0.3231, abs=5e-4)
+        assert guard.beta_binomial_tail(3, 20, 0.1, 0.1) == pytest.approx(0.3095, abs=5e-4)
+        assert guard.beta_binomial_tail(3, 20, 0.1, 0.1) < guard.beta_binomial_tail(3, 20, 0.1, 0.0)
+
+    def test_the_tail_falls_back_toward_the_mean_as_dispersion_goes_to_one(self):
+        # At rho = 1 a window is either empty or full, so P(Y >= 3) is exactly the per-call rate.
+        assert guard.beta_binomial_tail(3, 20, 0.048, 1.0) == pytest.approx(0.048, abs=1e-12)
+        assert guard.beta_binomial_tail(3, 20, 0.048, 0.5) == pytest.approx(0.0986, abs=5e-4)
+
+    def test_is_not_monotone_in_dispersion(self):
+        low = guard.beta_binomial_tail(3, 20, 0.048, 0.1)
+        high = guard.beta_binomial_tail(3, 20, 0.048, 0.9)
+        assert low > high, "an operator who assumes more clustering means more firing is wrong here"
+
+    def test_refuses_a_dispersion_it_cannot_apply(self):
+        with pytest.raises(ValueError, match="rho must be in"):
+            guard.beta_binomial_tail(3, 20, 0.048, -0.1)
+        with pytest.raises(ValueError, match="mean must be in"):
+            guard.beta_binomial_tail(3, 20, 1.2, 0.1)
+
+
+class TestTheIntraclassCorrelation:
+    def test_a_perfectly_packed_sequence_is_maximally_correlated(self):
+        assert guard.intraclass_correlation([1, 1, 0, 0, 1, 1, 0, 0], 2) == pytest.approx(1.0)
+
+    def test_a_perfectly_alternating_sequence_is_maximally_anti_correlated(self):
+        # Negative values are real and the beta-binomial cannot represent them, which is why the
+        # estimator reports what it computes instead of clamping.
+        assert guard.intraclass_correlation([1, 0] * 10, 2) == pytest.approx(-1.0)
+
+    def test_a_constant_sequence_carries_no_dispersion_information(self):
+        # MSB and MSW are both zero, so the ratio is 0/0. Returning 0.0 would claim "exchangeable",
+        # which is a measurement this sequence cannot support.
+        assert guard.intraclass_correlation([0] * 40, 20) is None
+        assert guard.intraclass_correlation([1] * 40, 20) is None
+
+    def test_needs_at_least_two_windows(self):
+        assert guard.intraclass_correlation([1, 0, 1], 20) is None
+
+    def test_the_remainder_is_dropped_rather_than_padded(self):
+        # 45 calls is two windows of 20 plus five calls that belong to no window; the last partial
+        # window would otherwise contribute a mean computed from a different denominator.
+        flags = [1] * 20 + [0] * 20 + [1] * 5
+        assert guard.intraclass_correlation(flags, 20) == pytest.approx(1.0)
+
+
+# --------------------------------------------------------------------------- stride and strata
+
+class TestTheStride:
+    def test_a_tumbling_stride_counts_the_windows_the_guard_actually_measures(self):
+        # `DegradationGuard` resets a counter every GUARD_WINDOW calls; it does not slide. The tool
+        # slid by default, which was a real mismatch between the thing measured and the thing
+        # modelled -- so both are now reportable and the denominator follows the stride.
+        flags = [True] * 20 + [False] * 20 + [True] * 20
+        # 41 sliding starts: 0..17 see 20-s trues from the first run, 23..40 see s-20 from the
+        # second, and the 22 starts in between see at most two.
+        assert guard.window_fires(flags, 20, 3) == 36
+        assert guard.window_fires(flags, 20, 3, stride=20) == 2  # tumbling
+        assert guard.window_count(60, 20) == 41
+        assert guard.window_count(60, 20, stride=20) == 3
+
+    def test_a_trailing_partial_window_is_not_counted(self):
+        assert guard.window_count(45, 20, stride=20) == 2
+
+    def test_refuses_a_stride_it_cannot_apply(self):
+        with pytest.raises(ValueError, match="stride must be positive"):
+            guard.window_fires([True] * 40, 20, 3, stride=0)
+
+
+class TestTheCumulativeRisk:
+    """A latching alarm is not described by its per-window rate.
+
+    SPC quotes an average run length, `1 / p` windows, and that formula assumes the process keeps
+    running after an alarm. `DegradationGuard` does not: one downgrade is permanent, so the quantity
+    an operator experiences is the probability of *ever* firing, which is `1 - (1 - p)^n` and grows
+    with the length of the deployment.
+    """
+
+    def test_matches_the_hand_computation(self):
+        # 1 - 0.95^25 = 0.7226. Twenty-five windows is one 500-question run.
+        assert guard.ever_fires(0.05, 25) == pytest.approx(0.72261, abs=5e-5)
+
+    def test_is_the_average_run_length_inverted_only_at_one_window(self):
+        assert guard.ever_fires(0.05, 1) == pytest.approx(0.05)
+        assert 1 / 0.05 == pytest.approx(20.0)  # the ARL0 SPC would quote, and what it hides
+
+    def test_is_certain_at_a_certain_rate_and_zero_at_zero(self):
+        assert guard.ever_fires(0.0, 1000) == 0.0
+        assert guard.ever_fires(1.0, 1) == 1.0
+
+    def test_grows_with_exposure(self):
+        assert guard.ever_fires(0.05, 50) > guard.ever_fires(0.05, 25) > guard.ever_fires(0.05, 1)
+
+    def test_requiring_two_consecutive_windows_takes_it_from_seventy_two_to_six_percent(self):
+        # The shipped guard requires persistence, so the number an operator meets is this one. The
+        # 13x is what made the rule change worth making: a permanently downgraded deployment is not
+        # something 72% of working readers should experience in a single run.
+        assert guard.ever_fires(0.05, 25, 2) == pytest.approx(0.05583, abs=5e-5)
+        assert guard.ever_fires(0.05, 25) / guard.ever_fires(0.05, 25, 2) > 12.9
+
+    def test_a_reader_that_fails_every_call_is_still_caught_by_the_persistence_rule(self):
+        assert guard.ever_fires(0.95, 25, 2) > 0.999
+
+    def test_a_longer_persistence_can_never_raise_the_risk(self):
+        risks = [guard.ever_fires(0.3, 25, needed) for needed in (1, 2, 3, 4)]
+        assert risks == sorted(risks, reverse=True)
+
+    def test_cannot_persist_longer_than_the_exposure(self):
+        assert guard.ever_fires(0.5, 1, 2) == 0.0
+
+    def test_refuses_a_rate_or_length_it_cannot_apply(self):
+        with pytest.raises(ValueError, match="rate must be in"):
+            guard.ever_fires(1.5, 10)
+        with pytest.raises(ValueError, match="windows must be"):
+            guard.ever_fires(0.05, 0)
+        with pytest.raises(ValueError, match="needed must be"):
+            guard.ever_fires(0.05, 10, 0)
+
+
+class TestTheStrata:
+    def test_a_window_never_spans_two_strata(self):
+        # The benchmark groups questions by capability, so a window that straddles a boundary mixes
+        # two populations and the exchangeability the rate model needs is exactly what it loses.
+        flags = [True] * 6 + [False] * 10 + [True] * 6 + [False] * 10
+        strata = ["IE"] * 16 + ["MR"] * 16
+        fired, windows = guard.stratum_fires(flags, strata, 20, 3)
+        assert windows == 0
+        # The same flags without the boundary restriction: one window starts inside each run.
+        assert guard.window_fires(flags, 20, 3) >= 1
+
+    def test_the_denominator_is_summed_per_stratum(self):
+        flags = [True] * 25 + [False] * 25
+        strata = ["A"] * 25 + ["B"] * 25
+        fired, windows = guard.stratum_fires(flags, strata, 20, 1)
+        assert windows == 6 + 6
+        assert fired == 6 + 0
+
+    def test_refuses_a_stream_that_does_not_line_up_with_its_labels(self):
+        with pytest.raises(ValueError, match="strata must align"):
+            guard.stratum_fires([True, False], ["A"], 1, 1)

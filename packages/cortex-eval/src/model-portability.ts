@@ -534,7 +534,7 @@ const SIGNAL_ORDER: readonly DegradationSignal[] = [
 ];
 
 /**
- * How many observations of one signal, inside how many calls, force a downgrade.
+ * How many observations, inside how many calls, force a downgrade.
  *
  * Two separate constants, because the two ways to get this wrong are symmetric and both fatal: a
  * single failure downgrading turns one provider hiccup into a permanent configuration change for
@@ -544,17 +544,47 @@ const SIGNAL_ORDER: readonly DegradationSignal[] = [
  * `WINDOW = 20`, `TRIGGER = 3` is 15%, against the largest published dispersion in this repository
  * (16 questions of 500, 3.2%). A signal that fires at twice the noise floor is a signal; anything
  * closer would be indistinguishable from §13.118's own spread.
+ *
+ * **The trigger counts signals of every kind, not observations of one kind.** That is a correction,
+ * not a simplification. Read as "three of the same kind", the rule was four tolerances ORed
+ * together: at a per-call rate of 4.22% — the point where one signal fires on 5% of windows — the
+ * disjunction fires on `1 - (1 - 0.05)^4 = 18.55%` of them. So the published "15%" described a
+ * sensitivity the code did not have, and a reader passing at 4% per signal would have been
+ * downgraded four times as often as the documentation promised. Pooled, 15% is the total rate a
+ * reader may carry before a typical window trips, which is the statement the constant was written
+ * to make. `AUDIT-MODEL-PORTABILITY.md` §9.3 has the arithmetic.
  */
 const GUARD_WINDOW = 20;
 const GUARD_TRIGGER = 3;
+
+/**
+ * How many consecutive firing windows are required before the bucket moves.
+ *
+ * This constant exists because the downgrade is **permanent**, and a permanent action cannot be
+ * priced by a per-window rate. A latched alarm fires at least once within `n` windows with
+ * probability `1 - (1 - p)^n`; at the 5% tolerance and `n = 25` — one 500-question run — that is
+ * **72.26%** of working deployments downgraded. The average run length SPC would quote (`1 / p = 20`
+ * windows) describes a process that restarts after an alarm, which this one does not.
+ *
+ * Two consecutive windows take that to **5.58%**, a factor of 13, and the price is paid only by a
+ * genuinely broken reader: one that fails every window still downgrades, at 40 calls instead of 20,
+ * and at `p = 0.95` the two-window rule fires within 25 windows with certainty. The evidence for
+ * `3 of 20` is §13.194.4's 4.8% same-prompt flip rate; the evidence for requiring two of them is
+ * the arithmetic above, which `tools/guard-window.py --window 20 --stride 20` prints for any
+ * archive. `AUDIT-MODEL-PORTABILITY.md` §9.4.
+ */
+const GUARD_PERSISTENCE = 2;
 
 /** One downgrade, recorded so a deployment can explain itself afterwards. */
 export type Downgrade = {
   readonly from: PortabilityBucket;
   readonly to: PortabilityBucket;
+  /** The most frequent signal in the window; ties resolve on {@link SIGNAL_ORDER}. */
   readonly signal: DegradationSignal;
-  /** How many of the last `GUARD_WINDOW` calls carried this signal when it fired. */
+  /** How many calls carried *that* signal. Not the total — read it beside `total`. */
   readonly observed: number;
+  /** How many signals of any kind the window carried. This is what crossed the trigger. */
+  readonly total: number;
 };
 
 /**
@@ -579,6 +609,8 @@ export class DegradationGuard {
   readonly #counts = new Map<DegradationSignal, number>();
   readonly #downgrades: Downgrade[] = [];
   #calls = 0;
+  #total = 0;
+  #consecutive = 0;
 
   constructor(bucket: PortabilityBucket) {
     this.#bucket = bucket;
@@ -599,21 +631,49 @@ export class DegradationGuard {
     this.#calls += 1;
     if (this.#bucket === 'minimal') return;
     if (signal !== undefined) {
+      this.#total += 1;
       this.#counts.set(signal, (this.#counts.get(signal) ?? 0) + 1);
     }
     if (this.#calls < GUARD_WINDOW) return;
     this.#calls = 0;
-    for (const name of SIGNAL_ORDER) {
-      const count = this.#counts.get(name) ?? 0;
-      if (count < GUARD_TRIGGER) continue;
+    this.#consecutive = this.#total >= GUARD_TRIGGER ? this.#consecutive + 1 : 0;
+    if (this.#consecutive >= GUARD_PERSISTENCE) {
+      const { signal, count } = this.#dominant();
       const to: PortabilityBucket = this.#bucket === 'as-measured' ? 'guarded' : 'minimal';
-      this.#downgrades.push({ from: this.#bucket, to, signal: name, observed: count });
+      this.#downgrades.push({
+        from: this.#bucket,
+        to,
+        signal,
+        observed: count,
+        total: this.#total,
+      });
       this.#bucket = to;
-      break;
+      this.#consecutive = 0;
     }
     // Cleared whether or not a downgrade fired: a window describes the last N calls, and keeping a
     // tally across windows would let a signal that fired once in the first window fire again in the
     // fifth without three new observations.
     this.#counts.clear();
+    this.#total = 0;
+  }
+
+  /**
+   * The signal that appeared most often in the window, ties resolved on {@link SIGNAL_ORDER}.
+   *
+   * Returns the count with the name rather than making the caller look it up: a lookup would need a
+   * `?? 0` for a case that cannot occur, and an unreachable branch is a place where a later edit can
+   * hide a real one.
+   */
+  #dominant(): { signal: DegradationSignal; count: number } {
+    let signal: DegradationSignal = SIGNAL_ORDER[0]!;
+    let count = -1;
+    for (const name of SIGNAL_ORDER) {
+      const seen = this.#counts.get(name) ?? 0;
+      if (seen > count) {
+        signal = name;
+        count = seen;
+      }
+    }
+    return { signal, count };
   }
 }

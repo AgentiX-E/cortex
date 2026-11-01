@@ -145,8 +145,8 @@ made.
 ## 4. The guard, and why it may only move one way
 
 The guard watches four signals a call site can produce without labels: `parse-failed`,
-`empty-completion`, `abstention-unrecognised`, `deadline-exceeded`. Three inside a window of twenty
-calls forces one step down; it never moves up.
+`empty-completion`, `abstention-unrecognised`, `deadline-exceeded`. Three of them inside a window of
+twenty calls, in **two consecutive windows**, forces one step down; it never moves up.
 
 **Why never up.** Upgrading is the operation that needs a measurement, and a guard by construction
 has none: it sees malformed replies and deadlines, never a correct answer. A guard that judged its
@@ -158,6 +158,16 @@ act — re-run the probes — and the type has no method that performs it.
 configuration change for every later session. A rate with no floor never fires, because a 5% signal
 on 20 calls is one observation. 3/20 is 15%, against the largest published dispersion in this
 repository (16 of 500, 3.2%). A signal that fires at twice the noise floor is a signal.
+
+**Why two consecutive windows.** Because the downgrade is permanent, and a permanent action cannot be
+priced by a per-window rate — §9.4. At the 5% tolerance a latched alarm downgrades **72.26%** of
+working deployments within one 500-question run. Two consecutive firing windows take that to
+**5.58%**, and only a reader that fails every window pays: it downgrades at 40 calls instead of 20.
+
+**Why the three are counted together and not per signal.** Because 15% is a statement about a rate,
+and four separate tallies ORed together is four tolerances rather than one — §9.3. Counting them
+together is what makes the sentence above true; naming the most frequent one afterwards is what keeps
+it auditable.
 
 **Why per reader, not global.** §13.197 measured routes to differ in both directions (+4 on `TR`,
 −16 on `IE`). A global window would let one route's failures downgrade another route's reader. One
@@ -410,20 +420,151 @@ guard that counted declines would downgrade a deployment for abstaining properly
 hour, and the two declines that were genuinely wrong occur at **2 in 500** — about a tenth of the
 4.22% rate at which `3 of 20` fires on one window in twenty.
 
-**And the clustering, which nobody had noticed.** The same 32 events fire on 21.83% of windows when
-they arrive in runs of six (which is how they arrive: LongMemEval groups questions by capability and
-the absent-capability ones sit together) against **13.27%** if the calls were exchangeable. The rule
-`3 of 20` is a statement about a *rate*, and nothing in it can see arrangement, so the same reader
-trips it **1.65× more often** when the dataset happens to group the hard questions.
+**And the clustering, which the first version of this section got wrong twice.** The claim here used
+to be that the same 32 events fire on 21.83% of windows when they arrive in runs of six, against
+13.27% if the calls were exchangeable — 1.65× — because LongMemEval groups questions by capability
+and the absent-capability ones sit together. The mechanism is right. The number was not measured: it
+came from a hand-built 500-element array with five runs of six and two singletons, and no archive
+looks like that array. §9.2 replaces it with twelve measurements and retracts the 1.65×.
 
-That is a design finding rather than a bug: the guard's threshold is calibrated on a rate and applied
-to a sequence, and sequences of questions are not exchangeable. It argues for two things the next
-round should do and this one cannot:
+What survives §9.2 is stronger than what it replaces: the arrangement does move the firing rate by a
+factor of two across archives, it just does not do so in the direction or the magnitude the
+constructed example implied, and the largest single contributor is not dispersion at all but the
+composition of the call stream.
 
-1. calibrate on the **archive's own arrangement** rather than on `p`, which is what
-   `guard-window.py` now makes possible and what the 4.22% figure above is not; and
-2. keep `abstention-unrecognised` off by default — which the design already does, and which the
-   21.83% row above now prices.
+---
+
+### 9.2 The dispersion factor was constructed, not measured. Twelve archives, and what they say
+
+The table below is `tools/guard-window.py` run over every 500-question ablation report this campaign
+still has on disk. `exchangeable` is `P(X >= 3)` for `X ~ Binomial(20, p)` at the archive's own
+decline rate; `sliding` is the share of the 481 start positions that actually reach three; `ICC` is
+the one-way random-effects intraclass correlation of the decline stream in blocks of twenty;
+`stratum-local` counts only windows that stay inside one capability label.
+
+| run | declines | exchangeable | sliding | ratio | ICC | stratum-local |
+| --- | --- | --- | --- | --- | --- | --- |
+| `39367801501` | 74 | 58.53% | 46.36% | 0.79x | +0.131 | 30.45% (102/335) |
+| `39449569048` | 72 | 56.54% | 44.70% | 0.79x | +0.123 | 27.76% (93/335) |
+| `39509698041` | 69 | 53.46% | 46.36% | 0.87x | +0.104 | 27.46% (92/335) |
+| `39529234665` | 73 | 57.54% | 46.57% | 0.81x | +0.122 | 27.46% (92/335) |
+| `39641088296` | 114 | 86.73% | 66.11% | 0.76x | +0.158 | 54.93% (184/335) |
+| `39699987781` | 77 | 61.43% | 51.56% | 0.84x | +0.121 | 37.31% (125/335) |
+| `40083132802` | 482 | 100.00% | 100.00% | 1.00x | +0.064 | 100.00% (335/335) |
+| `40088479628` | 75 | 59.51% | 48.02% | 0.81x | +0.100 | 29.85% (100/335) |
+| `41159983913` | 48 | 30.03% | 34.51% | 1.15x | +0.108 | 15.52% (52/335) |
+| `41185512391` | 50 | 32.31% | 34.51% | 1.07x | +0.107 | 16.72% (56/335) |
+| `41188431321` | 100 | 79.39% | 46.36% | 0.58x | +0.267 | 28.96% (97/335) |
+| `41203245999` | 50 | 32.31% | 29.73% | 0.92x | +0.100 | 10.15% (34/335) |
+
+Three corrections come out of it.
+
+**One. The ratio has no fixed sign and its range excludes the published number.** Across the eleven
+non-degenerate archives the observed share runs from **0.58× to 1.15×** of the exchangeable
+prediction, median **0.81×**. Nine of eleven fire *less* than exchangeable. The published 1.65× is
+outside the range of every archive in this campaign — not because the arithmetic was wrong but
+because the array it was computed on was chosen to be maximally clustered and the real streams are
+not.
+
+**Two. Positive dispersion coexists with a lower firing rate, and that is not a paradox.** ICC is
+positive in all twelve archives (+0.064 to +0.267, mean +0.125) while nine of eleven fire less than
+exchangeable. The mechanism is where the trigger sits relative to the window's expected count. At
+`p = 0.048` the expected count is 0.96 and the trigger is three: clustering moves mass into the far
+tail and the share goes from 6.85% to 13.27% at `rho = 0.1`. At `p = 0.10` the expected count is
+2.0, one short of the trigger: packing events into runs now *reduces* the number of windows that
+reach three, and the same `rho = 0.1` takes the share from 32.31% down to 30.95%. Both numbers are
+`beta_binomial_tail(3, 20, p, 0.1)` and the tool prints them side by side. **So the guard's
+operating point decides the sign of the correction, and a guard is by construction operated well
+below its trigger** — which is the regime where exchangeability is optimistic by up to 1.9×.
+
+That last sentence is the one that changes a decision. Inverting the rule at the measured `rho` of
++0.10 gives the per-call rate at which a working reader still fires on 5% of windows: **2.03%**
+rather than 4.22%. The exchangeable figure is **2.08× too generous as a tolerance**, and the
+direction of that error is the dangerous one — it promises quiet to readers the guard will actually
+downgrade.
+
+**Three. Composition beats dispersion, and by more than an order of magnitude.** Sliding windows that
+straddle a capability boundary sample two populations, and on `41203245999` restricting to
+stratum-local windows takes the share from **29.73% to 10.15%**, a factor of 2.93. Across the table
+the stratified column is 35% to 66% below the sliding one. The archive's call order is a
+concatenation of sub-populations with different decline rates; that is not a dispersion parameter,
+it is a mixture, and no `rho` can recover it. `--stride` was also wrong: `DegradationGuard` resets
+its counter every twenty calls, so it tumbles, and the tool slid. Both are now reportable and the
+guard's own setting is the one named in the output.
+
+None of this changes the shipped constant yet, because the two facts that would justify a change are
+not in hand: the guard's own signals run at **0 of 2000 calls** on the measured reader, so no
+archive contains a compliance-failure stream to calibrate against, and the audit's own rule is that a
+threshold moves only when a measurement says it must. What changes now is the *claim*: 4.22% is a
+tolerance under exchangeability, the exchangeable assumption is wrong in the direction of optimism at
+the operating point, and the honest tolerance at the measured dispersion is 2.03%.
+
+---
+
+### 9.3 The trigger counts one signal, and the rule ORs four
+
+Found while writing §9.2, and it is a defect in the shipped guard rather than in the audit.
+
+`DegradationGuard` held one tally per signal and fired if **any** tally reached `GUARD_TRIGGER`. The
+documented tolerance said `WINDOW = 20, TRIGGER = 3` is 15%, compared against a 3.2% noise floor.
+Both statements are about *one* signal. The rule was a disjunction over four: at a per-call rate of
+4.22% — the point where one signal fires on 5% of windows — the rule as written fires on
+`1 - (1 - 0.05)^4 = **18.55%**` of them, assuming independence, and less only insofar as the four
+signals correlate. So a reader sitting exactly at the documented tolerance was being downgraded up to
+**3.7× more often** than the number promised, and a reader at a quarter of it was being downgraded at
+the promised rate.
+
+The fix is to count signals of every kind against one trigger, which makes 15% the total rate a
+reader may carry before a typical window trips — the statement the constant was written to make. The
+record keeps attribution by naming the most frequent signal (ties on `SIGNAL_ORDER`) and now carries
+`total` beside `observed`, so a window that fired on `1 + 1 + 1` is distinguishable from one that
+fired on `3 + 0 + 0` after the fact. Both are downgrades; only one of them is a reader that
+mis-formats.
+
+Nine existing tests passed unchanged under pooling, including the tie-break one, which means the
+change is a strengthening of what the guard already claimed rather than a new behaviour. Four tests
+were added: the three-way spread fires, the record separates `observed` from `total`, two failures of
+two kinds still do not fire, and the union arithmetic is pinned at 18.55%.
+
+
+---
+
+### 9.4 A permanent action cannot be priced by a per-window rate
+
+The last defect is the one that would have made the feature impossible to switch on.
+
+`DegradationGuard` downgrades and **never recovers**. So the quantity an operator experiences is not
+"5% of windows" but "has this fired at all", which over `n` windows is `1 - (1 - p)^n`. One
+500-question run is 25 windows:
+
+| per-window rate | latched, 25 windows | two consecutive windows |
+| --- | --- | --- |
+| 5.0% (the tolerance) | **72.26%** | **5.58%** |
+| 13.0% (measured dispersion, §9.2) | 96.92% | 30.80% |
+| 30.0% | 99.99% | 84.17% |
+| 95.0% (a reader that fails every call) | 100.00% | 100.00% |
+
+A guard calibrated to downgrade 72% of *working* deployments inside a single evaluation run is not a
+safety feature; it is a configuration shredder, and the reason it had not been noticed is that the
+guard's own signals run at **0 of 2000 calls** on the measured reader. The safety came entirely from
+the signals being absent, never from the rule being conservative.
+
+The fix is `GUARD_PERSISTENCE = 2`: a window that fires only arms the guard, and a second consecutive
+firing window acts. That is the smallest change that makes "this reader is broken" different from
+"this reader had a bad twenty calls", and it costs a genuinely broken reader twenty extra calls —
+40 instead of 20 — while a reader that fails every call still downgrades with probability 1.
+
+The SPC literature is what made this visible rather than the code: control charts quote an **average
+run length**, `1 / p`, and every source that defines it also warns that the run-length distribution is
+heavily skewed and that ARL alone misleads. `1 / p = 20` windows reads as "once every 20 windows" and
+is in fact "27.7% chance of surviving 20 windows". A latching alarm is the case where quoting the ARL
+is not merely imprecise but inverted.
+
+Four tests were added for the new rule and four existing ones were rewritten to reach the second
+window; the record gained no new field, because persistence is a property of the sequence rather than
+of the window. `model-portability.ts` remains at 100% statements, branches, functions and lines.
+
+---
 
 ---
 
