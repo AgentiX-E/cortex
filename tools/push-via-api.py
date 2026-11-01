@@ -120,6 +120,14 @@ def req(method: str, path: str, payload=None):
                 return json.load(response)
         except urllib.error.HTTPError as error:
             detail = error.read().decode(errors="replace")
+            # 400 is retried once and only once. GitHub answers `malformed request` for a blob POST
+            # that is well formed, and the same body succeeds on the next call: on 2026-11-01 two
+            # consecutive pushes of identical content failed that way and a third carried all five
+            # changed paths. Without the retry the failure reads as a defect in the payload, which
+            # is where a reader would look first and find nothing wrong.
+            if error.code == 400 and attempt == 0 and path.endswith('/git/blobs'):
+                time.sleep(2)
+                continue
             if error.code in (500, 502, 503, 504) and attempt < 5:
                 time.sleep(2 * (attempt + 1))
                 continue
