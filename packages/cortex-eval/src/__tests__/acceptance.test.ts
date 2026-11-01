@@ -10,10 +10,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   CRITERIA,
+  currentOf,
   describe as describeSource,
   unrun,
   verdictOf,
   type Criterion,
+  type Resolvers,
 } from '../acceptance.js';
 
 function criterionOf(overrides: Partial<Criterion> = {}): Criterion {
@@ -61,6 +63,26 @@ describe('verdictOf: three comparators and one absence', () => {
     const evaluation = verdictOf(criterionOf({ comparator: 'equals', threshold: 0 }), 0);
     expect(evaluation.status).toBe('pass');
   });
+
+  it('says where a value was expected when the source had none, rather than calling it not run', () => {
+    // The state every pre-registered row is in before its artifact lands: the source is declared, the file
+    // does not exist yet, and "not run" would be the wrong sentence — the run was dispatched, the reading is
+    // missing. The note has to name the place the number will come from.
+    const evaluation = verdictOf(
+      criterionOf({ source: { kind: 'artifact', path: 'runs/b.json', key: 'rollup.mr' } }),
+      null,
+    );
+    expect(evaluation.status).toBe('unrun');
+    expect(evaluation.note).toBe('no value at runs/b.json#rollup.mr');
+  });
+
+  it('quotes the declared reason for a row that was never dispatched', () => {
+    const evaluation = verdictOf(
+      criterionOf({ source: { kind: 'unrun', reason: 'needs a second dataset' } }),
+      null,
+    );
+    expect(evaluation.note).toBe('needs a second dataset');
+  });
 });
 
 describe('blocking: a gate that broke stops a build, an aim that is unmet does not', () => {
@@ -96,6 +118,126 @@ describe('describe: every source can be named, because an unrun row has to say w
     expect(describeSource({ kind: 'probe', reading: 'block-saving' })).toBe('probe:block-saving');
     expect(describeSource({ kind: 'artifact', path: 'a/b.json', key: 'c.d' })).toBe('a/b.json#c.d');
     expect(describeSource({ kind: 'unrun', reason: 'later' })).toBe('unrun');
+  });
+});
+
+describe('currentOf: one dispatch per kind, and no row reads a resolver it did not name', () => {
+  /**
+   * Resolvers that record what they were asked and answer with a value only that resolver can produce.
+   *
+   * The distinct answers are the point. A dispatch that fell through to the wrong branch would return a
+   * number rather than `undefined`, so a test that only checked "not undefined" would pass on a table where
+   * every arm row silently read the probe resolver. Distinct values make the wrong branch visible.
+   */
+  function recording(overrides: Partial<Resolvers> = {}) {
+    const calls: string[] = [];
+    const resolve: Resolvers = {
+      probe: (reading) => {
+        calls.push(`probe:${reading}`);
+        return 1;
+      },
+      artifact: (path, key) => {
+        calls.push(`artifact:${path}#${key}`);
+        return 2;
+      },
+      arm: (arm) => {
+        calls.push(`arm:${arm}`);
+        return 3;
+      },
+      gap: () => {
+        calls.push('gap');
+        return 4;
+      },
+      leak: () => {
+        calls.push('leak');
+        return 5;
+      },
+      ablation: (removed) => {
+        calls.push(`ablation:${removed}`);
+        return 6;
+      },
+      ...overrides,
+    };
+    return { calls, resolve };
+  }
+
+  it('passes the declared argument to the resolver that kind names', () => {
+    const cases: ReadonlyArray<[Criterion['source'], string, number]> = [
+      [{ kind: 'probe', reading: 'block-saving' }, 'probe:block-saving', 1],
+      [{ kind: 'artifact', path: 'a/b.json', key: 'c.d' }, 'artifact:a/b.json#c.d', 2],
+      [{ kind: 'arm', arm: 'annotated' }, 'arm:annotated', 3],
+      [{ kind: 'gap' }, 'gap', 4],
+      [{ kind: 'leak' }, 'leak', 5],
+      [{ kind: 'ablation', removed: 'persistence' }, 'ablation:persistence', 6],
+    ];
+    for (const [source, expectedCall, expectedValue] of cases) {
+      const { calls, resolve } = recording();
+      expect(currentOf(criterionOf({ source }), resolve)).toBe(expectedValue);
+      expect(calls).toEqual([expectedCall]);
+    }
+  });
+
+  it('keeps the artifact path and key apart, because one is not a prefix of the other', () => {
+    const { calls, resolve } = recording();
+    currentOf(criterionOf({ source: { kind: 'artifact', path: 'x/y.json', key: 'z' } }), resolve);
+    // A concatenated lookup would have produced `x/y.jsonz` and silently missed the file.
+    expect(calls).toEqual(['artifact:x/y.json#z']);
+  });
+
+  it('calls nothing for an unrun row', () => {
+    const { calls, resolve } = recording();
+    expect(currentOf(criterionOf(), resolve)).toBeUndefined();
+    // The property that matters: an unrun row cannot pick up a value from a neighbouring resolver.
+    expect(calls).toEqual([]);
+  });
+
+  it('propagates an absent resolver answer as absent rather than as zero', () => {
+    const { resolve } = recording({
+      probe: () => undefined,
+      artifact: () => undefined,
+      ablation: () => undefined,
+    });
+    expect(
+      currentOf(criterionOf({ source: { kind: 'probe', reading: 'block-saving' } }), resolve),
+    ).toBe(undefined);
+    expect(
+      currentOf(criterionOf({ source: { kind: 'artifact', path: 'p', key: 'k' } }), resolve),
+    ).toBe(undefined);
+    expect(currentOf(criterionOf({ source: { kind: 'ablation', removed: 'r' } }), resolve)).toBe(
+      undefined,
+    );
+  });
+
+  it('lets a zero survive the dispatch, which is a reading and not an absence', () => {
+    const { resolve } = recording({ gap: () => 0 });
+    expect(currentOf(criterionOf({ source: { kind: 'gap' } }), resolve)).toBe(0);
+  });
+
+  it('returns absent for a source kind this build does not know', () => {
+    // Reachable from a persisted artifact written by a newer build. Throwing would turn a forward-compatible
+    // read into a crash; answering with a number would invent a measurement.
+    const unknown = { kind: 'from-the-future' } as unknown as Criterion['source'];
+    const { calls, resolve } = recording();
+    expect(currentOf(criterionOf({ source: unknown }), resolve)).toBeUndefined();
+    expect(calls).toEqual([]);
+  });
+
+  it('routes every row in the table to the resolver its own source names', () => {
+    const { resolve } = recording();
+    const expected: Record<Criterion['source']['kind'], number | undefined> = {
+      probe: 1,
+      artifact: 2,
+      arm: 3,
+      gap: 4,
+      leak: 5,
+      ablation: 6,
+      unrun: undefined,
+    };
+    for (const row of CRITERIA) {
+      expect(currentOf(row, resolve), `row ${row.id} reads ${describeSource(row.source)}`).toBe(
+        expected[row.source.kind],
+      );
+    }
   });
 });
 

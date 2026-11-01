@@ -615,7 +615,7 @@ export const CRITERIA: readonly Criterion[] = [
         value: 0.925,
         grade: 'C',
         recipe:
-          'best published multi-session figure, reached by agentic multi-step retrieval (2–3 steps per query) rather than by a prompt. Grade C because the reader and judge are not reported in a form this arm can reproduce; it is here as the ceiling the next phase aims at, not as a paired comparison',
+          'arXiv:2605.28046 Table 2, MemCog (full) multi-session 92.48 -- the highest published multi-session figure, reached by agentic multi-step retrieval (2-3 ReAct steps per query, capped at 6 tool calls) rather than by a prompt. Grade C because the reader and judge are not reported in a form this arm can reproduce, and because that table copies its baseline rows from two other papers while measuring only its own row, so its 95.80 overall is not a paired difference against the 85.71 it prints for Mastra (whose own report is 94.87); it is here as the ceiling the next phase aims at, not as a comparison',
       },
     ],
     onMiss:

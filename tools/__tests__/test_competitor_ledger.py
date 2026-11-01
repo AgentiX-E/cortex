@@ -1,7 +1,7 @@
-"""`competitor-ledger.mjs`, checked on the real ledger and on five deliberate defects.
+"""`competitor-ledger.mjs`, checked on the real ledger and on six deliberate defects.
 
 The tool answers one question -- may these two numbers be ordered? -- and the answer is a
-five-tuple rather than a dataset. Every test here is a case where a plausible reading would get
+six-tuple rather than a dataset. Every test here is a case where a plausible reading would get
 that wrong:
 
   - **one dataset is not one comparison.** Two entries that share `LongMemEval-S` and nothing else
@@ -14,11 +14,19 @@ that wrong:
     reported distance a property of the file's key ordering.
   - **an invalid ledger must not print tables.** A check that runs after the table has been printed
     is decoration; a reader who sees the table has already read it.
+  - **one answer per question, or eight?** Supermemory's ASMR reports 98.6 on LongMemEval-S by
+    running eight prompt variants per question and counting the question correct if any of the
+    eight is -- a rule whose ceiling is above 100% of what one answer can reach. Its own second
+    configuration, twelve variants with a majority vote, reports 97.2. Every other number in this
+    file is a single answer. The scoring rule is therefore a condition of comparability, and the
+    tests below exist because a five-tuple would have placed those rows one field away from ours
+    and called that near.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,11 +51,19 @@ def entry(**overrides: object) -> dict:
         "answerModel": "gpt-x",
         "judge": "gpt-y",
         "harness": "their-harness",
+        "scoring": "single",
         "kind": "self",
         "source": "a paper",
     }
     row.update(overrides)
     return row
+
+
+def without(row: dict, field: str) -> dict:
+    """The same entry with one field absent, which is how an undeclared condition looks."""
+    copy = dict(row)
+    copy.pop(field, None)
+    return copy
 
 
 def write_ledger(tmp_path: Path, entries: list[dict]) -> Path:
@@ -95,7 +111,7 @@ class TestTheRealLedger:
         assert not [row for row in data["spreads"] if row["system"].startswith("cortex")]
 
 
-class TestTheFiveTuple:
+class TestTheSixTuple:
     def test_a_judge_difference_is_not_absorbed_into_one_group(self, tmp_path: Path) -> None:
         # The stronger form of "judge is part of the tuple": the ledger does not quietly split them
         # into two quietly-sorted tables -- it refuses, because one harness name covering two
@@ -126,6 +142,127 @@ class TestTheFiveTuple:
         assert len(groups) == 1
         (members,) = groups.values()
         assert [row["system"] for row in members] == ["b", "a"], "the group must be sorted by score"
+
+
+class TestTheScoringRule:
+    """The sixth field, and the reason it is not optional.
+
+    A bench number is a number of *something*. "98.6" under best-of-eight and "98.6" under one
+    answer per question differ by the entire headroom of the second, so the rule that turned
+    predictions into a score is a condition of comparability in exactly the sense the answer model
+    is. It is required with no default: a default would silently read an undeclared pass@k as a
+    single answer, which is the one direction of error that inflates somebody else's row.
+    """
+
+    def test_a_missing_scoring_rule_is_refused(self, tmp_path: Path) -> None:
+        path = write_ledger(tmp_path, [without(entry(), "scoring")])
+        r = run("--check", "--ledger", str(path))
+        assert r.returncode == 1
+        assert "missing scoring" in r.stdout
+
+    def test_an_unrecognised_scoring_rule_is_refused(self, tmp_path: Path) -> None:
+        path = write_ledger(tmp_path, [entry(scoring="best-of-lots")])
+        r = run("--check", "--ledger", str(path))
+        assert r.returncode == 1
+        assert "scoring" in r.stdout
+        # The refusal has to name the permitted set, or the author's only move is to guess.
+        assert "single" in r.stdout
+
+    def test_the_rule_is_part_of_the_group_key(self, tmp_path: Path) -> None:
+        # Everything else identical: same dataset, variant, model, judge and harness. Under a
+        # five-tuple these are one group and their difference is presented as a system
+        # difference; under a six-tuple they are two readings of two different questions.
+        path = write_ledger(
+            tmp_path,
+            [
+                entry(system="eight-shots", score=98.6, scoring="pass@k"),
+                entry(system="one-shot", score=80.0, scoring="single"),
+            ],
+        )
+        groups = json.loads(run("--json", "--ledger", str(path)).stdout)["groups"]
+        assert len(groups) == 2
+
+    def test_a_harness_reporting_two_rules_prints_two_tables_not_one(
+        self, tmp_path: Path
+    ) -> None:
+        # The refusal is the wrong instrument here. A harness that prints a single-answer column
+        # and an any-of-k column for every system it ran is the most honest table in the
+        # literature. What must not happen is the merge: one score-sorted block whose first row
+        # came from one rule and whose second came from the other. So the check accepts the input
+        # and the rendering separates it -- asserted on the print, because that is where the harm
+        # was.
+        path = write_ledger(
+            tmp_path,
+            [
+                entry(system="eight-shots", score=98.6, scoring="pass@k"),
+                entry(system="one-shot", score=80.0, scoring="single"),
+            ],
+        )
+        r = run("--ledger", str(path))
+        assert r.returncode == 0, r.stderr
+        assert "scoring pass@k" in r.stdout
+        assert "scoring single" in r.stdout
+        # Two headers, and the higher number only ever appears under the rule it was produced by.
+        assert r.stdout.count("harness their-harness") == 2
+        pass_block = r.stdout.split("scoring pass@k", 1)[1].split("scoring single", 1)[0]
+        assert "eight-shots" in pass_block and "one-shot" not in pass_block
+
+    def test_a_scoring_difference_is_named_when_our_score_is_placed(self, tmp_path: Path) -> None:
+        # The sentence this field exists to make true. With `--gap` pointed at a group that differs
+        # only in the scoring rule, the tool must name that field rather than report a distance.
+        path = write_ledger(
+            tmp_path,
+            [
+                entry(
+                    system="theirs",
+                    score=98.6,
+                    scoring="pass@k",
+                    answerModel="DeepSeek",
+                    judge="cortex-judge",
+                    harness="cortex-ablation-40989420944",
+                )
+            ],
+        )
+        r = run("--ledger", str(path), "--gap", "83.0")
+        assert r.returncode == 0, r.stderr
+        tail = r.stdout.split("83 has no comparable group", 1)
+        assert len(tail) == 2, "the score must not be placed in the group"
+        assert re.search(r"rank \d+ of \d+", tail[1]) is None
+        # The field that differs is named, and it is the only one: every other condition of
+        # comparability is identical in this fixture, which is what makes the row dangerous.
+        assert "same 1 field(s): scoring" in tail[1], tail[1]
+
+    def test_readings_under_two_rules_are_not_given_one_spread(self, tmp_path: Path) -> None:
+        # A system read at 98.6 (pass@8) and 97.2 (majority of 12) has not "travelled 1.4 points".
+        # Both are its own numbers and neither is a repeat of the other.
+        path = write_ledger(
+            tmp_path,
+            [
+                entry(system="asmr", score=98.6, scoring="pass@k", harness="asmr-setup"),
+                entry(system="asmr", score=97.2, scoring="majority", harness="asmr-forest"),
+            ],
+        )
+        data = json.loads(run("--json", "--ledger", str(path)).stdout)
+        assert data["spreads"] == [], data["spreads"]
+
+    def test_the_committed_ledger_declares_a_rule_on_every_row_and_uses_more_than_one(
+        self,
+    ) -> None:
+        # Two properties at once. Declaring one is the guard against an undeclared pass@k sneaking
+        # in later; using more than one is the evidence that the field is doing work rather than
+        # being a constant that happens to be present.
+        ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
+        rules = {row["scoring"] for row in ledger["entries"]}
+        assert rules >= {"single", "pass@k"}, rules
+        assert len(rules) > 1
+
+    def test_our_own_row_is_a_single_answer(self) -> None:
+        # The rule our numbers are produced under, pinned, because `--gap` compares only within a
+        # scoring rule and a change here would silently re-point every gap in the file.
+        ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
+        ours = [row for row in ledger["entries"] if row["kind"] == "ours"]
+        assert ours
+        assert {row["scoring"] for row in ours} == {"single"}
 
 
 class TestTheRefusals:
@@ -267,9 +404,11 @@ class TestTheGap:
         assert r.returncode == 0, r.stderr
         assert "rank 2 of 2" in r.stdout
 
-    def test_a_score_with_no_group_reports_every_tied_nearest(self, tmp_path: Path) -> None:
-        # Two groups both share dataset and variant and nothing else, so both are equally near and
-        # both must be named. Naming one would make the distance a property of key ordering.
+    def test_a_score_with_no_group_counts_every_tied_nearest(self, tmp_path: Path) -> None:
+        # Two groups share dataset and variant and nothing else, so both are equally near. The
+        # count must be both, not one: reporting one of them would make the distance a property of
+        # key ordering. Their names are not printed because both are near for the same reason, and
+        # that reason is printed once instead.
         path = write_ledger(
             tmp_path,
             [
@@ -280,8 +419,33 @@ class TestTheGap:
         r = run("--gap", "83", "--ledger", str(path))
         assert r.returncode == 0, r.stderr
         assert "2 group(s) are equally near" in r.stdout
+        assert "same 3 field(s): answerModel, harness, judge" in r.stdout
+
+    def test_ties_with_different_causes_are_listed_by_name(self, tmp_path: Path) -> None:
+        # The counterweight to the condensation above. Two groups can tie at the same agreement
+        # count while differing in different fields, and then the shared signature is a lie: no
+        # single sentence describes why neither is comparable, so the list has to be printed.
+        path = write_ledger(
+            tmp_path,
+            [
+                # Differs in answerModel, judge, harness.
+                entry(system="a", harness="aaa", answerModel="m1", judge="j1"),
+                # Differs in scoring, judge, harness -- and matches our answer model.
+                entry(
+                    system="b",
+                    harness="bbb",
+                    answerModel="DeepSeek",
+                    judge="j2",
+                    scoring="pass@k",
+                ),
+            ],
+        )
+        r = run("--gap", "83", "--ledger", str(path))
+        assert r.returncode == 0, r.stderr
+        assert "2 group(s) are equally near" in r.stdout
         body = r.stdout[r.stdout.index("equally near") :]
-        assert "aaa" in body and "bbb" in body
+        assert "aaa" in body and "bbb" in body, body
+        assert "every one differs in the same" not in body
 
     def test_no_rank_is_reported_across_differing_conditions(self, tmp_path: Path) -> None:
         # The sentence this refuses to print is "83 would be second": the rank would be a fact

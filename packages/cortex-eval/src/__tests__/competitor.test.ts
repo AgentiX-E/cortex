@@ -27,6 +27,7 @@ const BASE: RunConfig = {
   judgePolicy: 'official-v1',
   topK: 200,
   tokenBudget: 48_000,
+  scoring: 'single',
 };
 
 describe('comparability: three grades, decided by which fields differ', () => {
@@ -55,6 +56,29 @@ describe('comparability: three grades, decided by which fields differ', () => {
 
   it('refuses a gap when the context ceiling differs', () => {
     expect(comparability(BASE, { ...BASE, tokenBudget: 24_000 }).grade).toBe('C');
+  });
+
+  it('refuses a gap when only the scoring rule differs', () => {
+    // The case no other hard field catches: two published numbers on the same questions, the same
+    // reader, the same judge and the same budget, differing only in whether one answer or the best of
+    // eight produced the score. A `B` here would license "the direction is the same", and the
+    // direction cannot be stated at all -- an any-of-k score rises with k by construction, so "ahead"
+    // may be nothing but the extra tries.
+    expect(comparability(BASE, { ...BASE, scoring: 'pass@k' })).toEqual({
+      grade: 'C',
+      differing: ['scoring'],
+    });
+  });
+
+  it('treats a majority vote as incomparable to a single answer, because it is twelve samples', () => {
+    expect(comparability(BASE, { ...BASE, scoring: 'majority' }).grade).toBe('C');
+  });
+
+  it('still calls two readings under the same non-single rule grade A', () => {
+    // The reflexivity the whole rule rests on, checked on the new field: a rule that returned B for
+    // every pass@k pair would make the grade a property of the rule rather than of the comparison.
+    const eight = { ...BASE, scoring: 'pass@k' as const };
+    expect(comparability(eight, eight)).toEqual({ grade: 'A', differing: [] });
   });
 
   it('refuses a gap when the dataset or the question count differs', () => {

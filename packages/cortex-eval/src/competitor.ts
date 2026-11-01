@@ -105,6 +105,17 @@ export type RunConfig = {
   readonly topK: number;
   /** The context ceiling, when the harness enforces one. Zero means "no ceiling". */
   readonly tokenBudget: number;
+  /**
+   * How a prediction became a score.
+   *
+   * `single` is one answer per question. `pass@k` counts the question correct if any of k tries is, and
+   * `majority` reduces k tries to one answer by vote. Both spend more inference per question and both raise
+   * the score for that reason alone, so a run under either is not comparable to a single-answer run no matter
+   * how many of the other fields agree. The published counter-example: one system reported 98.6 on
+   * LongMemEval-S as any-of-eight and 97.2 as a majority of twelve, from the same team, on the same questions,
+   * with the same readers and the same judge.
+   */
+  readonly scoring: 'single' | 'pass@k' | 'majority';
 };
 
 /**
@@ -116,11 +127,16 @@ export type RunConfig = {
  * | --- | --- | --- |
  * | none | `A` | "we are N points behind" |
  * | reader, judge, or judgePolicy only | `B` | "the direction is the same" |
- * | dataset, questions, topK or tokenBudget | `C` | nothing about the gap |
+ * | dataset, questions, topK, tokenBudget or scoring | `C` | nothing about the gap |
  *
  * `topK` and `tokenBudget` are in the third row on purpose. They are not presentation details: a run that
  * reads 200 hits and one that reads 10 are answering different questions, and the one with more context wins
  * for reasons that have nothing to do with memory.
+ *
+ * `scoring` is there for a sharper version of the same reason. A `pass@k` reading is allowed to fail k-1 times,
+ * so it rises with k by construction and its "direction" against a single answer is not even a direction. A
+ * `B` grade — "the direction is the same" — would be a false statement, which is why this field is hard rather
+ * than soft.
  */
 /**
  * `A` / `B` / `C`, and deliberately **not** exported as a named type.
@@ -134,7 +150,13 @@ export type Comparability = {
   readonly differing: readonly (keyof RunConfig)[];
 };
 
-const HARD: readonly (keyof RunConfig)[] = ['dataset', 'questions', 'topK', 'tokenBudget'];
+const HARD: readonly (keyof RunConfig)[] = [
+  'dataset',
+  'questions',
+  'topK',
+  'tokenBudget',
+  'scoring',
+];
 const SOFT: readonly (keyof RunConfig)[] = ['reader', 'judge', 'judgePolicy'];
 
 /** Compare two run configurations. Total, deterministic, and the only place the grade is decided. */

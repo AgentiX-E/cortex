@@ -52,11 +52,14 @@ and metric, different reader or judge; **C** = different metric, subset, or an u
 | EmergenceMem                      | 86.00%                           | C     | GPT-4o                           | GPT-4o            | internal, not reproducible                                                                                              |
 | memoricai                         | **85.8%**                        | A     | gpt-4o-2024-08-06                | gpt-4o-2024-08-06 | independent; the reproducible frontier                                                                                  |
 | Redis reproduction                | **86.5%**                        | A     | GPT-4o-class                     | official          | independent; converges with the row above                                                                               |
-| Supermemory                       | 85.86% single-pass               | B     | GPT-4o                           | GPT-4o            | advertised ~99% is an 8-variant ensemble                                                                                |
+| Supermemory                       | 85.86% single-pass               | B     | GPT-4o                           | GPT-4o            | the advertised 98.6 is `pass@k` over 8 variants and the 97.2 is a majority of 12; neither is this row's metric          |
 | Mastra OM (base)                  | 84.23%                           | B     | GPT-4o                           | GPT-4o            | the reader-controlled half of the pair above                                                                            |
 | Emergence Simple                  | 82.40%                           | B     | GPT-4o                           | GPT-4o            | oracle-context baseline                                                                                                 |
 | Oracle (gold context handed over) | 82.40%                           | A     | GPT-4o                           | GPT-4o            | **the ceiling for a GPT-4o reader given the answer's evidence**                                                         |
 | **Cortex**                        | **83.45%** (417.25/500)          | B     | DeepSeek `deepseek-chat`         | official prompts  | five runs of the shipped arm, band **83.0–84.2%**; paired control in the same invocation (`reference-pipeline`, 43.40%) |
+| MemCog                            | 95.80%                           | C     | GPT-4o-mini / GPT-4.1-mini       | GPT-4o            | arXiv:2605.28046; **baseline column copied from two other papers**, not re-run; multi-session 92.48 by 2–3 ReAct steps  |
+| PlugMem                           | 90.20%                           | C     | not stated                       | not stated        | arXiv:2603.03296, ICML 2026; **Apache-2.0 code**, so this is the row that can become a measurement                      |
+| MEMTIER                           | 38.20%                           | C     | Qwen2.5-7B, 6 GB GPU             | not stated        | Algorithms 19(7):607; the only 7B row held, and it makes the 57-point reader effect visible in one table                |
 | Zep                               | 71.20%                           | A     | GPT-4o                           | GPT-4o            | graph memory, 2025-01 paper                                                                                             |
 | full context                      | 60.20%                           | A     | GPT-4o                           | GPT-4o            | the paper's no-memory baseline                                                                                          |
 
@@ -70,6 +73,29 @@ rather than a ceiling (§4.6), or the DeepSeek reader buys something the oracle'
 explanatory variable to reach for (§8, item 2). Mastra's 94.87% is still above both rows, which means it is
 not the same experiment: either a stronger reader raised the ceiling, or the configuration differs in a way
 the publication does not state.
+
+### 2.1 A score is not a number until the rule that produced it is named
+
+Three of the rows above cannot be sorted against the others for a reason none of the five conditions
+catches, and it is not the reader or the judge. Supermemory's advertised 98.6 is **any-of-eight**:
+eight specialised prompt variants each answer, and the question counts correct if one of them is. Its own
+second configuration — twelve variants reduced by majority vote — reports 97.2. Every other row in this
+table is one answer per question. Dataset, variant, reader, judge and harness can all be identical across
+those two numbers while they remain two different questions.
+
+The ledger has therefore grown a sixth field, `scoring ∈ {single, pass@k, majority}`, required on every row
+with no default. The audit is `AUDIT-SCORING-RULE-AS-CONDITION.md`, and the part of it worth repeating here
+is that **this document already said the 99 was an eight-variant ensemble** while the tool that prints the
+comparability groups had no field to hold that fact. A caveat written in prose and absent from the artifact
+is a caveat that cannot be enforced, printed, or noticed when a future row arrives without it.
+
+Two consequences for how this landscape is read:
+
+- **`--gap` now reports the rule as a differing field.** The any-of-eight row is four fields from ours
+  instead of one, so it is out of the tie set entirely rather than being the nearest thing to it.
+- **The remaining 26-way tie is the real finding.** Every single-answer LongMemEval-S row differs from
+  this arm in exactly _answer model, judge, harness_ — the three things only a re-run can change. That is
+  what `PLAN-COMPETITOR-HARNESS.md` is for, and it is why no amount of reading can produce a rank.
 
 ## 3. Independent reproductions, which is the only tier that constrains us
 

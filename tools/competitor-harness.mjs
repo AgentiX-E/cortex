@@ -285,6 +285,10 @@ const config = {
   judgePolicy: readAnswers ? 'longmemeval-official-per-type' : 'n/a',
   topK: limit,
   tokenBudget: 0,
+  // This harness asks one question and grades one answer, so the rule is `single` by construction. It is stated
+  // rather than defaulted because `comparability()` treats a differing rule as a hard difference: a competitor
+  // figure produced any-of-k cannot be placed beside a number from here.
+  scoring: 'single',
 };
 
 if (jsonOut !== undefined) {

@@ -15,11 +15,25 @@
  * So the unit of comparability is a group, not a dataset. Two numbers are ordered only when
  * they agree on all of:
  *
- *   dataset, variant, answer model, judge, harness
+ *   dataset, variant, scoring rule, answer model, judge, harness
  *
- * The first two say what was asked, the middle two say who answered and who marked it, and the
- * last says whose pipeline decided what reached the answer model at all. Any one of them
- * differing makes an ordering an artifact of the difference.
+ * The first two say what was asked, the third says how a prediction became a score, the middle
+ * two say who answered and who marked it, and the last says whose pipeline decided what reached
+ * the answer model at all. Any one of them differing makes an ordering an artifact of the
+ * difference.
+ *
+ * ## Why the scoring rule is a condition and not a footnote
+ *
+ * It was added after a row arrived that no five-tuple could have caught. A published 98.6 on
+ * LongMemEval-S was produced by eight prompt variants per question, scored correct if any one of
+ * the eight was -- a rule whose ceiling is higher than what one answer per question can reach,
+ * because the eighth shot is allowed to see what the first got wrong. The same system reported
+ * 97.2 under twelve variants and a majority vote, and every other number in this file is a single
+ * answer. Dataset, variant, model, judge and harness were identical across those rows; only the
+ * rule that turned predictions into a score differed, and a reader sorting them would have
+ * ordered two different questions. So the rule is required with no default: a default of `single`
+ * would read an undeclared pass@k as a single answer, and that is the one direction of error that
+ * inflates somebody else's row rather than ours.
  *
  * ## What `--check` is allowed to refuse
  *
@@ -54,6 +68,17 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER = join(HERE, 'competitor-ledger.json');
 
+/**
+ * How a prediction became a score, and nothing else.
+ *
+ * `pass@k` is any-of-k tries: the question counts correct if one of them is. `majority` is k tries
+ * reduced to one answer by vote, which is one answer per question but not one *sample* per
+ * question. Both raise the score by spending more inference per question, neither is comparable to
+ * `single` without saying so, and the difference is large enough to exceed every system gap in
+ * this file. A fourth value would be a rule this tool cannot reason about.
+ */
+const SCORINGS = new Set(['single', 'pass@k', 'majority']);
+
 /** The four provenances, and nothing else. A fifth value would be a number with no owner. */
 const KINDS = new Set(['self', 'third', 'harness', 'ours']);
 
@@ -64,6 +89,7 @@ const REQUIRED = [
   'score',
   'dataset',
   'variant',
+  'scoring',
   'answerModel',
   'judge',
   'harness',
@@ -72,16 +98,25 @@ const REQUIRED = [
 ];
 
 /**
- * The five-tuple that decides comparability.
+ * The six-tuple that decides comparability.
  *
  * `harness` is part of it rather than derived from `answerModel`/`judge`, because two harnesses
  * can share both and still differ in what they retrieve, how they truncate, and what they call a
- * correct answer. Grouping on the tuple is therefore coarser than grouping on the pair, which is
- * the safe direction: it can split a table that was in fact comparable, and it cannot merge two
- * that were not.
+ * correct answer. `scoring` is part of it for the same reason one level up: one harness can report
+ * both a single-answer and an any-of-k reading of its own system, and those are two questions.
+ * Grouping on the tuple is therefore coarser than grouping on any subset, which is the safe
+ * direction: it can split a table that was in fact comparable, and it cannot merge two that were
+ * not.
  */
 export function groupKey(entry) {
-  return [entry.dataset, entry.variant, entry.answerModel, entry.judge, entry.harness].join('|');
+  return [
+    entry.dataset,
+    entry.variant,
+    entry.scoring,
+    entry.answerModel,
+    entry.judge,
+    entry.harness,
+  ].join('|');
 }
 
 /** Groups by `dataset|variant|harness`, the coarser key a reader thinks in, and keeps the members. */
@@ -118,6 +153,12 @@ export function problems(entries) {
         `${where}: kind ${JSON.stringify(entry.kind)} is not one of ${[...KINDS].join('/')}`,
       );
     }
+    if (entry.scoring !== undefined && !SCORINGS.has(entry.scoring)) {
+      found.push(
+        `${where}: scoring ${JSON.stringify(entry.scoring)} is not one of ${[...SCORINGS].join('/')}` +
+          ' -- a rule this tool cannot reason about is a number it cannot place',
+      );
+    }
     if (typeof entry.score !== 'number' || !Number.isFinite(entry.score)) {
       found.push(`${where}: score is not a number`);
     } else if (entry.score < 0 || entry.score > 100) {
@@ -149,6 +190,11 @@ export function problems(entries) {
       );
     }
   }
+  // The scoring rule is deliberately NOT in the list above. A harness that prints both a
+  // single-answer and an any-of-k column for every system it ran is the most honest table in the
+  // literature, and refusing it would refuse the evidence. The harm is not the coexistence, it is
+  // the MERGING -- one sorted table ordered across two rules -- and that is prevented below by
+  // grouping on the full tuple rather than by rejecting the input.
   return found;
 }
 
@@ -157,7 +203,9 @@ export function spreads(entries) {
   const bySystem = new Map();
   for (const entry of entries) {
     if (entry.kind === 'ours') continue;
-    const key = `${entry.system}|${entry.dataset}|${entry.variant}`;
+    // The scoring rule belongs in the key for the same reason the dataset does: 98.6 under
+    // any-of-eight and 97.2 under a majority of twelve are two claims, not two readings of one.
+    const key = `${entry.system}|${entry.dataset}|${entry.variant}|${entry.scoring}`;
     const list = bySystem.get(key) ?? [];
     list.push(entry);
     bySystem.set(key, list);
@@ -222,11 +270,11 @@ export function gap(entries, ours) {
     const ahead = sorted.filter((entry) => entry.score > ours.score).length;
     return { comparable: true, group: mine, rank: ahead + 1, of: sorted.length, members: sorted };
   }
-  // No group shares all five fields. Name the nearest by the number of fields that agree, so the
+  // No group shares all six fields. Name the nearest by the number of fields that agree, so the
   // reason is inspectable rather than asserted -- and name ALL the tied ones, because "the nearest
   // group" is usually not unique and picking one by map order would make the reported distance a
   // property of the file's key ordering.
-  const FIELDS = ['dataset', 'variant', 'answerModel', 'judge', 'harness'];
+  const FIELDS = ['dataset', 'variant', 'scoring', 'answerModel', 'judge', 'harness'];
   const mineFields = mine.split('|');
   const ranked = [...groups.keys()].map((key) => {
     const fields = key.split('|');
@@ -242,15 +290,33 @@ export function gap(entries, ours) {
         .map((value, i) => ({ field: FIELDS[i], theirs: value, ours: mineFields[i] }))
         .filter((pair) => pair.theirs !== pair.ours),
     }));
-  return { comparable: false, group: mine, nearest, differing: nearest[0]?.differing ?? [] };
+  // The shared signature, or null when the tied groups are near for different reasons. Sorted, so
+  // that two rows differing in the same fields in a different order compare equal -- the field set
+  // is the finding, not the order the tuple happens to be written in.
+  const signatures = new Set(
+    nearest.map((row) =>
+      row.differing
+        .map((pair) => pair.field)
+        .sort()
+        .join(','),
+    ),
+  );
+  const signature = signatures.size === 1 ? [...signatures][0].split(',') : null;
+  return {
+    comparable: false,
+    group: mine,
+    nearest,
+    signature,
+    differing: nearest[0]?.differing ?? [],
+  };
 }
 
 function renderTable(group, entries) {
-  const [dataset, variant, harness] = group.split('|');
+  const [dataset, variant, scoring, answerModel, judge, harness] = group.split('|');
   const sorted = [...entries].sort((a, b) => b.score - a.score);
   const lines = [
-    `\n${dataset}-${variant}  harness ${harness}`,
-    `  answer model ${sorted[0].answerModel}  judge ${sorted[0].judge}`,
+    `\n${dataset}-${variant}  harness ${harness}  scoring ${scoring}`,
+    `  answer model ${answerModel}  judge ${judge}`,
     '',
   ];
   for (const entry of sorted) {
@@ -263,11 +329,25 @@ function renderTable(group, entries) {
 
 export function render(entries) {
   const lines = [];
-  lines.push('Comparability is a five-tuple: dataset | variant | answer model | judge | harness.');
+  lines.push(
+    'Comparability is a six-tuple: dataset | variant | scoring | answer model | judge | harness.',
+  );
+  lines.push(
+    'The scoring rule is `single` for one answer per question, `pass@k` for any-of-k, `majority`',
+  );
+  lines.push('for k votes reduced to one. Only `single` is comparable to this repository.');
   lines.push(
     'Numbers are ordered only inside one group. Across groups this prints distributions, not ranks.',
   );
-  for (const [key, members] of [...byHarness(entries)].sort((a, b) => a[0].localeCompare(b[0]))) {
+  // Grouped on the full tuple, not on dataset|variant|harness. One harness can report two scoring
+  // rules for the same systems; printing those in one score-sorted block would order numbers
+  // produced by two different questions and call the result a table.
+  const groups = new Map();
+  for (const entry of entries) {
+    const key = groupKey(entry);
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+  for (const [key, members] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
     lines.push(renderTable(key, members));
   }
 
@@ -357,7 +437,12 @@ function main(argv) {
 
   if (args.has('--json')) {
     const groups = {};
-    for (const [key, members] of byHarness(entries)) {
+    const byTuple = new Map();
+    for (const entry of entries) {
+      const key = groupKey(entry);
+      byTuple.set(key, [...(byTuple.get(key) ?? []), entry]);
+    }
+    for (const [key, members] of byTuple) {
       groups[key] = [...members]
         .sort((a, b) => b.score - a.score)
         .map((entry) => ({
@@ -392,6 +477,7 @@ function main(argv) {
       score: oursFlag,
       dataset: 'LongMemEval',
       variant: 'S',
+      scoring: 'single',
       answerModel: 'DeepSeek',
       judge: 'cortex-judge',
       harness: 'cortex-ablation-40989420944',
@@ -400,13 +486,24 @@ function main(argv) {
       console.log(`\n${oursFlag} is in group ${where.group}: rank ${where.rank} of ${where.of}`);
     } else {
       console.log(`\n${oursFlag} has no comparable group.`);
-      console.log(
-        `  ${where.nearest.length} group(s) are equally near, and none of them shares all five fields:`,
-      );
-      for (const row of where.nearest) {
-        console.log(`    ${row.key}`);
-        for (const pair of row.differing) {
-          console.log(`      ${pair.field.padEnd(12)} theirs ${pair.theirs}  ours ${pair.ours}`);
+      // When every tied group differs in the same fields, printing the same three lines N times
+      // buries the answer. The answer is the signature: these N groups are all unusable for one
+      // reason, and that reason is what a reader has to act on. When the signatures differ, the
+      // list is the answer and it is printed in full.
+      if (where.signature) {
+        console.log(
+          `  ${where.nearest.length} group(s) are equally near, none shares all six fields, and every ` +
+            `one differs in the same ${where.signature.length} field(s): ${where.signature.join(', ')}.`,
+        );
+      } else {
+        console.log(
+          `  ${where.nearest.length} group(s) are equally near, and none of them shares all six fields:`,
+        );
+        for (const row of where.nearest) {
+          console.log(`    ${row.key}`);
+          for (const pair of row.differing) {
+            console.log(`      ${pair.field.padEnd(12)} theirs ${pair.theirs}  ours ${pair.ours}`);
+          }
         }
       }
       console.log(

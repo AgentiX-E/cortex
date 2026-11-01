@@ -32,6 +32,7 @@
       "total": 500,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "DeepSeek",
       "judge": "cortex-judge",
       "harness": "cortex-ablation-40989420944",
@@ -46,6 +47,7 @@
       "total": 500,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "DeepSeek",
       "judge": "cortex-judge",
       "harness": "cortex-ablation-40989420944",
@@ -58,6 +60,7 @@
       "score": 94.4,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "unknown",
       "judge": "unknown",
       "harness": "mem0-published",
@@ -71,6 +74,7 @@
       "score": 93.4,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "lowest-cost tier",
       "judge": "unknown",
       "harness": "mem0-v3-published",
@@ -84,6 +88,7 @@
       "score": 90.2,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "unknown",
       "judge": "unknown",
       "harness": "zep-published",
@@ -96,6 +101,7 @@
       "score": 91.6,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "lowest-cost tier",
       "judge": "unknown",
       "harness": "contextier-published",
@@ -108,6 +114,7 @@
       "score": 86.2,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "Claude 4.5 Sonnet",
       "judge": "LLM judge, mean of 3 trials",
       "harness": "apex-mem-published/sonnet",
@@ -120,6 +127,7 @@
       "score": 59.3,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "unknown",
       "judge": "LLM judge, mean of 3 trials",
       "harness": "apex-mem-published/unspecified",
@@ -132,6 +140,7 @@
       "score": 74.6,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "unknown",
       "judge": "LLM judge, mean of 3 trials",
       "harness": "apex-mem-published/unspecified",
@@ -144,6 +153,7 @@
       "score": 72.5,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "Claude 4.5 Sonnet",
       "judge": "LLM judge, mean of 3 trials",
       "harness": "apex-mem-published/sonnet",
@@ -156,6 +166,7 @@
       "score": 62.2,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "Claude 4.5 Sonnet",
       "judge": "LLM judge, mean of 3 trials",
       "harness": "apex-mem-published/sonnet",
@@ -168,6 +179,7 @@
       "score": 84.6,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-5",
       "judge": "GPT-4o",
       "harness": "supermemory-published/gpt5",
@@ -180,6 +192,7 @@
       "score": 71.2,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4o",
       "judge": "GPT-4o",
       "harness": "supermemory-published/gpt4o",
@@ -192,6 +205,7 @@
       "score": 60.2,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4o",
       "judge": "GPT-4o",
       "harness": "supermemory-published/gpt4o",
@@ -204,6 +218,7 @@
       "score": 89.2,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -216,6 +231,7 @@
       "score": 80.4,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -228,6 +244,7 @@
       "score": 79.8,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -240,6 +257,7 @@
       "score": 77.67,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -252,6 +270,7 @@
       "score": 72.2,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -264,6 +283,7 @@
       "score": 66.07,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -276,6 +296,7 @@
       "score": 61.07,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -288,6 +309,7 @@
       "score": 56.0,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -301,6 +323,7 @@
       "score": 51.8,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -313,6 +336,7 @@
       "score": 49.0,
       "dataset": "LongMemEval",
       "variant": "S",
+      "scoring": "single",
       "answerModel": "unknown",
       "judge": "unknown",
       "harness": "mem0-open-source-third-party",
@@ -326,6 +350,7 @@
       "score": 88.83,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -338,6 +363,7 @@
       "score": 83.48,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -350,6 +376,7 @@
       "score": 81.99,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -362,6 +389,7 @@
       "score": 77.68,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -375,6 +403,7 @@
       "score": 77.12,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -387,6 +416,7 @@
       "score": 73.53,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -399,6 +429,7 @@
       "score": 63.83,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "GPT-4.1-mini",
       "judge": "GPT-4o-mini",
       "harness": "OmniMemEval",
@@ -411,6 +442,7 @@
       "score": 94.7,
       "dataset": "LoCoMo",
       "variant": "full",
+      "scoring": "single",
       "answerModel": "unknown",
       "judge": "unknown",
       "harness": "zep-published-locomo",
@@ -430,7 +462,8 @@
       "source": "maximem.ai/evals, \"checked 28 Oct 2026\", 478/500 at ~7.4K context tokens per question",
       "note": "The highest figure in this ledger and a self-reported one. Its own table is the useful part: the same memory layer moves 0.4 points across two answer models while Mastra's moves 10.6 across three, which is the argument that the retrieved context, not the reader, is doing the work -- made by the vendor about itself and therefore worth less than the same claim would be from a third party.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "Mastra Observational Memory",
@@ -442,7 +475,8 @@
       "source": "mastra.ai/research/observational-memory, February 2026",
       "note": "Quoted as a PAIR with 84.23 below. One memory layer, three answer models, nothing else changed: 84.23 (gpt-4o), 93.27 (gemini-3-pro-preview), 94.87 (gpt-5-mini). That 10.64-point span is the largest published measurement of the reader on this benchmark and it is the number to read before attributing any gap to a memory mechanism.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "Mastra Observational Memory",
@@ -454,7 +488,8 @@
       "source": "mastra.ai/research/observational-memory, February 2026",
       "note": "The same system as the row above with the weakest of its three readers. It is the only published configuration in this ledger whose answer model matches the benchmark's own judge tier, which makes it the closest thing to a like-for-like comparison against the oracle figures below.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "Hindsight",
@@ -468,7 +503,8 @@
       "source": "Vectorize, arXiv December 2025; 473/500 at ~43.6K context tokens",
       "note": "Reported at 91.4% with Gemini 3 Pro in an earlier revision and graded by its own model (GPT-OSS-120B) rather than by the benchmark's judge. Its context per question is 6x Mem0's, which is the trade this row makes and the 90.4/85.2 rows below do not.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "Honcho",
@@ -482,7 +518,8 @@
       "source": "honcho.dev/evals",
       "note": "Neither the answer model nor the judge is published, so this number cannot be placed in any group that contains a system which does publish them. It is here because a table that omits every unstated configuration is a table that flatters itself.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "Agent Zero Memory",
@@ -494,7 +531,8 @@
       "source": "Zero Labs, arXiv August 2026; 92.2% to 95.6% across eight answer models; setting not stated",
       "note": "Highest published LongMemEval figure known to this ledger, and the least quotable: the paper does not state LongMemEval_S or _M, and does not name its judge. It is recorded because \"the ceiling moved\" is a fact about the field even when the number is unusable, and because its own eight-model spread (3.4 points) is the counter-example to Mastra's 10.6 -- two systems, two very different reader sensitivities, which is a finding about their retrieval, not about their readers.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "OMEGA",
@@ -506,7 +544,8 @@
       "source": "single-author publication; figure quoted by jakecuth.com/work/agent-memory-lab, which grades it \"self-reported without independent replication\"",
       "note": "Included with that caveat as its source. A 95.4 with a middle-tier reader is the strongest single claim against the \"reader does the work\" reading, and the weakest-supported one at the same time.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "EverMemOS",
@@ -518,7 +557,8 @@
       "source": "quoted by jakecuth.com/work/agent-memory-lab, S12.1 bar chart",
       "note": "Coincides with this repository's 83.0 exactly, which is worth stating rather than quietly noting: two numbers agreeing to a tenth of a point on a 500-question roster is a coincidence of two decimals, not a finding, and no group here contains both.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "TiMem",
@@ -530,7 +570,8 @@
       "source": "quoted by jakecuth.com/work/agent-memory-lab, S12.1 bar chart",
       "note": "A published figure with a small reader, below every strong system here. It is the row that makes the reader-tier argument testable in the other direction: if the reader is worth ten points, this system's number is a lower bound on what its retrieval would score behind a flagship model.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "ByteRover",
@@ -542,7 +583,8 @@
       "source": "mem0.ai/blog/ai-memory-benchmarks-in-2026, \"ByteRover 92.8% on LongMemEval-S (self-reported)\"",
       "note": "The same vendor publishes two figures for itself on LoCoMo (92.2 and 96.1). Recorded for the second time in this ledger as its own entry because the disagreement is about the vendor, not about the benchmark.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "Mem0",
@@ -556,7 +598,8 @@
       "source": "mem0ai/memory-benchmarks repository, April 2026; top-200 retrieval budget; ~6.8K context tokens per question",
       "note": "A revision of the 94.4 already in this ledger and a sharper one: the reader and the judge are the same model, the retrieval budget is stated, and the context per question is 6.8K against the history's ~115K. Paired with the OmniMemEval row at 56.0, which is the same system under a harness that is not its own.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "oracle (gold evidence sessions only)",
@@ -568,7 +611,8 @@
       "source": "quoted by jakecuth.com/work/agent-memory-lab as the oracle ceiling; the benchmark's own paper reports 87.0 on the oracle and 92.4 with chain-of-note (sentra.app/articles/longmemeval-benchmark)",
       "note": "The most important number in this file after the roster size, and the two sources disagree: 82.4 against 87.0 for the same configuration. Both are recorded. What the pair says is that perfect retrieval behind a gpt-4o reader lands in the low-to-high eighties, so any published figure above ~92 is a claim about the READER or the JUDGE, not about retrieval -- and this repository's 83.0 with a DeepSeek reader sits at that oracle, not twelve points below a memory mechanism.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "full context, no memory system",
@@ -580,19 +624,86 @@
       "source": "quoted by jakecuth.com/work/agent-memory-lab; the benchmark's own paper reports 60.6 on LongMemEval_S",
       "note": "The floor every memory system has to clear before its number means anything. This ledger already holds 60.2 for the same configuration under supermemory's harness and 62.2 under apex-mem's, so the spread across three harnesses for one configuration is 2.1 points -- smaller than any effect this campaign is trying to resolve.",
       "dataset": "LongMemEval",
-      "variant": "S"
+      "variant": "S",
+      "scoring": "single"
     },
     {
       "system": "Mem0",
       "score": 64.1,
       "dataset": "BEAM",
       "variant": "1M",
+      "scoring": "single",
       "answerModel": "unknown",
       "judge": "unknown",
       "harness": "mem0-published-beam",
       "kind": "self",
       "source": "mem0.ai/blog/ai-memory-benchmarks-in-2026: \"Mem0 scores 92.5% on LoCoMo, 94.4% on LongMemEval, and 64.1% on BEAM-1M\"",
       "note": "The only BEAM figure this ledger can source, and it is the reason BEAM belongs here: the same system that reports 94.4 on LongMemEval reports 64.1 when conversations reach a million tokens. A benchmark whose histories are ~115K cannot distinguish a memory mechanism from a retrieval budget; BEAM-1M and BEAM-10M can, and ICLR 2026's paper reports LIGHT gaining 3.5 to 12.7 points over the strongest long-context baseline with the gap widening at 10M."
+    },
+    {
+      "system": "Supermemory ASMR (any of 8 prompt variants)",
+      "score": 98.6,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "pass@k",
+      "answerModel": "unknown",
+      "judge": "unknown",
+      "harness": "supermemory-asmr-or8",
+      "kind": "self",
+      "source": "supermemorylabs blog, March 2026, as reported by aiHola (\"Supermemory Claims 99% on LongMemEval With a Brute-Force Agent Swarm\"): three reader agents on Gemini 2.0 Flash extract six categories, three search agents answer, then eight specialised prompt variants each answer independently and the question counts correct if ANY of the eight does.",
+      "note": "The row that made the scoring rule a sixth field. The rule is any-of-eight: the eighth variant is allowed to see what the first got wrong, so the ceiling of this number is not the ceiling of one answer per question, and it is not comparable to any other row in this file even when dataset, variant, model, judge and harness all match. The 99% that circulated in Chinese-language coverage in March 2026 is this row rounded; the vendor states in the same post that it is not their production engine, and the production engine is the 84.6 already recorded under supermemory-published/gpt5. One reproduction of the post describes the release as a parody aimed at what a memory benchmark can be made to say, which is a second reason not to quote the number as a capability."
+    },
+    {
+      "system": "Supermemory ASMR (majority of 12 variants)",
+      "score": 97.2,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "majority",
+      "answerModel": "unknown",
+      "judge": "unknown",
+      "harness": "supermemory-asmr-vote12",
+      "kind": "self",
+      "source": "same post: twelve specialist variants feed an aggregator that produces one consensus answer by majority vote, reported at 97.2.",
+      "note": "The defensible half of the same experiment and the reason it is a separate row rather than a spread. One answer per question, twelve samples per question: closer to a user experience than the 98.6, and still not comparable to `single` because the vote is paid for in inference per query. The pair 98.6/97.2 is also the cleanest available measurement of what the any-of-k rule is worth on this dataset -- 1.4 points, on a system whose own two configurations otherwise share everything."
+    },
+    {
+      "system": "PlugMem",
+      "score": 90.2,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "single",
+      "answerModel": "unknown",
+      "judge": "unknown",
+      "harness": "plugmem-published",
+      "kind": "self",
+      "source": "arXiv:2603.03296 (ICML 2026), UIUC / Tsinghua / Microsoft Research; README states \"With light task adaptation, PlugMem reaches 90.2 Acc on LongMemEval\" and the code is Apache-2.0 at github.com/TIMAN-group/PlugMem.",
+      "note": "The highest-scoring entry in this file whose weights and pipeline are both obtainable, which makes it the one competitor number that can be replaced by a measurement instead of quoted. Its mechanism is a write-path split -- propositions (facts about the world) against prescriptions (instructions about behaviour) -- decided at ingestion rather than at query time, plus retrieval routed on high-level concept and intent, plus a compression step that turns retrieved units into a short task instruction. That is a claim about the WRITE path, which is where this repository has spent its last sixty steps, so it is the first entry here worth reproducing before copying."
+    },
+    {
+      "system": "MemCog",
+      "score": 95.8,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "single",
+      "answerModel": "unknown",
+      "judge": "gpt-4o",
+      "harness": "memcog-published",
+      "kind": "self",
+      "source": "arXiv:2605.28046 Table 2, \"MemCog (full) 95.80\", with the table stating all experiments in it are GPT-4o-judged; baseline rows in that table are sourced by the authors from Latimer et al. (2025) and Sen et al. (2026) rather than re-run.",
+      "note": "The highest single-answer figure this ledger holds, and the one whose table is least usable as a comparison. Its baseline column is COPIED from two other papers while its own row is measured fresh, so the 95.80 against 85.71 for Mastra in the same table is not a paired difference -- Mastra self-reports 94.87, which is already in this file, and the 9.2-point distance between the two readings of Mastra is the size of the effect being mistaken for a system gap. Its multi-session subscore of 92.48 is the number worth taking seriously: it is reached by agentic multi-step navigation (2-3 steps of ReAct per query, capped at 6 tool calls), not by a prompt, and multi-session is this repository's weakest route."
+    },
+    {
+      "system": "MEMTIER",
+      "score": 38.2,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "single",
+      "answerModel": "qwen2.5-7b",
+      "judge": "unknown",
+      "harness": "memtier-published",
+      "kind": "self",
+      "source": "Sidik & Rokach, Algorithms 19(7):607 (2026), doi:10.3390/a19070607; also arXiv:2605.03675. Acc 0.382, F1 0.412, LongMemEval-S N=500, Qwen2.5-7B on a 6 GB consumer GPU.",
+      "note": "The only row in this file measured with a 7B reader, and it is here to keep one fact visible: the same benchmark reads 38.2 at Qwen2.5-7B and 95.8 at a frontier model, so a 57-point interval in this ledger is a reader difference rather than a memory-mechanism difference. Its own diagnostic is the useful part and it agrees with this repository's finding by a different route -- the correct session is in the candidate set 98% of the time while fact recall@k is 4.5%, so the binding constraint is what reaches the reader, not what can be found. The paper also reports that removing its whole multi-signal retrieval scaffold leaves accuracy unchanged in its setting, which is a null result registered against its own component."
     }
   ]
 }
