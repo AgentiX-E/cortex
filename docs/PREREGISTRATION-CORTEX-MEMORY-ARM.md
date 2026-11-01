@@ -22859,7 +22859,24 @@ Registered before the run, as §13.204.4 fixed it:
 | set | questions | bar | what a failure would mean |
 | --- | --- | --- | --- |
 | converts | `0a995998` `6d550036` `9d25d4e0` `a9f6b44c` `bf659f65` `681a1674` `8e91e7d9` `21d02d0d` | **≥ 4 of 8** | the screen is not the variable, and the next candidate is the ask's *position* rather than its content |
-| guard | `2e6d26dc` `88432d0a` `00ca467f` | **≤ 1 of 3** worsens | the screen buys conversions by making the reader count exclusions it should have excluded |
+| guard | *the 83 `MR` questions that are enumeration-shaped and are not named above*, listed in `tools/populations/mr-screen.json` | **≤ 4 of 83** worsens | the screen buys its conversions by excluding mentions that should have been included |
+
+**The guard §13.204.4 named was replaced before any artifact of this pair existed, because it could not
+fail.** It named the three over-by-one questions (`2e6d26dc`, `88432d0a`, `00ca467f`) with "at most one may
+worsen" — and all three are already wrong in every repetition of the control, so a verdict of "worsened" had
+no state to move into. A criterion whose failure is unrepresentable is the §7.3 defect in its fifth form: it
+reads as a guard and is a sentence about an intent. The replacement is derived **from the control artifact
+alone** — `MR` ∩ enumeration-shaped by the product's own classifier, minus the eleven ids named in this
+section — so it contains no treatment information and could have been written before the dispatch. It is 83
+questions, of which 61 read `1111` on `41222844945` and 17 read `0000`; the tool counts a question as
+worsened only where the control had it right, so the 17 are inert rather than generous.
+
+The ceiling is **4**, and it is the noise band rather than a round number: §13.203.4's 9.3 questions on 470
+scale as `9.3 · sqrt(83/470) = 3.9`. So the guard fails only on damage the reader's own churn does not
+explain, which is the same rule the population's floor obeys in the other direction.
+
+The three over-by-one questions stay in the file as `descriptive`: they are the same failure class read from
+the other side, they can only convert or stay wrong, and a direction is what they can honestly report.
 
 The bar is a **count of questions, not a mean**, because §13.203.4 measured the noise floor at 4.8% of
 1,880 paired verdicts with a 2σ of **9.3 questions** — and on a set of eight, a mean is not a statistic.
@@ -22877,7 +22894,7 @@ two sides differ in two variables by construction.
 
 Three outcomes are distinguishable, and only the first is a pass:
 
-1. **≥ 4 convert and ≤ 1 guard worsens** — the screen is adopted on this axis, and the next experiment is
+1. **≥ 4 convert and ≤ 4 of the 83 worsen** — the screen is adopted on this axis, and the next experiment is
    its interaction with the route-scoped reader (§13.199), because both address MR by different means.
 2. **≤ 1 converts** — the reader's omission is not a writing problem. The next candidate in that case is
    §13.204.3's third reading: the discrimination is *semantic* (which of fourteen mentions was led by the

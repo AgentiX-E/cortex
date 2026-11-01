@@ -276,9 +276,37 @@ class TestTheRegisteredPopulation:
         assert registration["converts"]["direction"] == "floor"
         assert registration["guard"]["direction"] == "ceiling"
         assert len(registration["converts"]["ids"]) == 8
-        assert len(registration["guard"]["ids"]) == 3
         assert registration["converts"]["bar"] == 4
-        assert registration["guard"]["bar"] == 1
+        assert registration["guard"]["bar"] == 4
+
+    def test_the_guard_cannot_contain_a_question_the_floor_counts(self) -> None:
+        # A question cannot be both the treatment and the guard: if the eight converted and were
+        # also in the guard, a conversion would be counted as nothing while a regression would be
+        # counted twice, and the two bars would stop being independent.
+        registration = json.loads(SPEC.read_text(encoding="utf-8"))
+        converts = set(registration["converts"]["ids"])
+        guard = set(registration["guard"]["ids"])
+        descriptive = set(registration["descriptive"]["ids"])
+        assert converts.isdisjoint(guard)
+        assert descriptive.isdisjoint(guard)
+        assert descriptive.isdisjoint(converts)
+
+    def test_the_guard_is_the_route_less_what_is_named_above_it(self) -> None:
+        # The rule, stated as arithmetic rather than repeated as a list: MR has 121 questions, 94 of
+        # them enumeration-shaped on the control artifact, and the guard is that 94 minus the 11 ids
+        # this section names. If a later edit adds an id to `converts` without removing it from the
+        # guard, this fails -- which is the failure a copied list cannot report about itself.
+        registration = json.loads(SPEC.read_text(encoding="utf-8"))
+        assert len(registration["guard"]["ids"]) == 94 - 8 - 3
+        assert registration["guard"]["count"] == len(registration["guard"]["ids"])
+        assert len(set(registration["guard"]["ids"])) == len(registration["guard"]["ids"])
+
+    def test_the_old_three_question_guard_is_kept_as_descriptive(self) -> None:
+        # §13.204.4's guard could not fail -- all three are already wrong in every repetition, so
+        # `worsened` had no state to move into. It is kept in the file rather than deleted, because a
+        # criterion that was replaced for being unfalsifiable is worth being able to find.
+        registration = json.loads(SPEC.read_text(encoding="utf-8"))
+        assert registration["descriptive"]["ids"] == ["2e6d26dc", "88432d0a", "00ca467f"]
 
     def test_the_registered_population_is_the_documents_population(self) -> None:
         # §13.205.6 is the registration and the JSON is what the tool reads; two copies of one
@@ -290,19 +318,17 @@ class TestTheRegisteredPopulation:
         table = section.group(0)
 
         converts_row = re.search(r"\| converts \| (.+?) \|", table)
-        guard_row = re.search(r"\| guard \| (.+?) \|", table)
-        assert converts_row is not None and guard_row is not None
-
+        assert converts_row is not None
         registration = json.loads(SPEC.read_text(encoding="utf-8"))
         assert re.findall(r"`([0-9a-z_]+)`", converts_row.group(1)) == registration["converts"]["ids"]
-        assert re.findall(r"`([0-9a-z_]+)`", guard_row.group(1)) == registration["guard"]["ids"]
 
     def test_the_document_states_the_same_bars(self) -> None:
         source = PREREGISTRATION.read_text(encoding="utf-8")
         section = re.search(r"#### 13\.205\.6 .*?(?=\n#### |\n### )", source, re.S)
         assert section is not None
         registration = json.loads(SPEC.read_text(encoding="utf-8"))
-        # The prose states them as "≥ 4 of 8" and "≤ 1 of 3", which carries the direction as well as
+        guard_size = len(registration["guard"]["ids"])
+        # The prose states them as "≥ 4 of 8" and "≤ 4 of 83", which carries the direction as well as
         # the number: a floor read as a ceiling would pass a run that converted nothing.
         assert f"**≥ {registration['converts']['bar']} of 8**" in section.group(0)
-        assert f"**≤ {registration['guard']['bar']} of 3**" in section.group(0)
+        assert f"**≤ {registration['guard']['bar']} of {guard_size}**" in section.group(0)
