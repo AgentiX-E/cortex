@@ -3215,7 +3215,38 @@ def population_section(run_report: dict, control_report: dict, spec: dict) -> tu
     return '\n'.join(lines), failures
 
 
-def null_section(run_report: dict, control_report: dict) -> tuple[str, int]:
+_SEARCH_BUDGET: object | None = None
+
+
+def search_budget():  # noqa: ANN201 - a module, loaded by path, see the docstring
+    """`tools/search-budget.py`, loaded by path so `E[max_k]` has exactly one definition.
+
+    The file name has a hyphen and cannot be imported by name, so this loads it by path and caches
+    it. Re-deriving the integral here would be a second definition of the same number, which is the
+    failure this module's own docstring already forbids about the scorer channel -- and the two
+    definitions would drift the first time either changed. `test_the_count_comes_from_the_one_
+    definition_of_the_integral` asserts the value rather than the wiring, so a rewrite of either
+    side fails there.
+    """
+    global _SEARCH_BUDGET
+    if _SEARCH_BUDGET is None:
+        import importlib.util
+
+        path = Path(__file__).resolve().parent / 'search-budget.py'
+        spec = importlib.util.spec_from_file_location('search_budget', path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f'{path} could not be loaded')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _SEARCH_BUDGET = module
+    return _SEARCH_BUDGET
+
+
+def null_section(  # noqa: PLR0912, PLR0915 - the branches are the verdicts
+    run_report: dict,
+    control_report: dict,
+    search_effect: float | None = None,
+) -> tuple[str, int]:
     """Each pair's own noise floor, measured on the questions whose prompt did not change.
 
     ## Why a pair needs a null of its own
@@ -3238,6 +3269,22 @@ def null_section(run_report: dict, control_report: dict) -> tuple[str, int]:
     differing stratum's delta against `2 sd`, which is the band the identical stratum implies for a
     stratum of that size -- stated as a bound rather than a test, because the thing being bounded is
     the reader, not the treatment.
+
+    ## `search_effect`, and why the bar is an argument rather than a constant
+
+    The same `sd` answers a second question: how many candidate configurations could be compared on
+    this pair before taking the best of them is indistinguishable from taking a maximum. That is
+    `AUDIT-PARAMETER-SELF-EVOLUTION.md`, and it needs two more inputs -- a `sigma` and an effect --
+    and both are already either measured here or named by the caller.
+
+    `sigma` is measured: it is this pair's own `sd`, printed to two decimals, and the candidate count
+    is computed from the printed value rather than the unrounded one so that a reader who checks the
+    arithmetic by hand arrives at the tool's answer.
+
+    `effect` is not measured and cannot be: it is the movement the caller would call a result, and it
+    has to be written down before the reading for the same reason every registration in this campaign
+    is. A tool that defaulted it -- to the `2 sd` band, or to the last registered effect -- would be
+    choosing the bar to fit the answer.
     """
     run_questions = _questions(run_report)
     control_questions = _questions(control_report)
@@ -3370,11 +3417,46 @@ def null_section(run_report: dict, control_report: dict) -> tuple[str, int]:
             + (f'   unanimous losses: {stats["lost"]}' if stats['lost'] else '')
         )
 
+    if search_effect is not None and search_effect <= 0:
+        raise ValueError(
+            'search_effect must be positive: a search cannot be bounded by a movement nobody would '
+            'call a result, and zero would make every candidate count trivially readable'
+        )
+
     if 'identical-prompt' in summary:
         block = summary['identical-prompt']
         lines.append(
             f'  null: a change of up to {2 * block["sd"]:.1f} question(s) on the identical stratum is '
             f'the reader, not the treatment (observed {block["delta"]:+.2f}, 2 sd = {2 * block["sd"]:.2f})'
+        )
+        if search_effect is not None:
+            # The printed sigma, not the unrounded one: a reader who does this arithmetic by hand has
+            # only the printed digits, and a tool whose answer changes at the third decimal is a tool
+            # that cannot be checked.
+            sigma = round(block['sd'], 2)
+            budget = search_budget()
+            widest = budget.candidates_for_readability(search_effect, sigma)
+            boundary = budget.expected_maximum(sigma, widest + 1)
+            tail = (
+                f'{widest + 1} does not ({boundary:.2f})'
+                if boundary >= search_effect
+                else f'{widest + 1} also does ({boundary:.2f})'
+            )
+            lines.append(
+                f'  search: at this pair\'s sigma ({sigma:.2f}) a search of {widest} candidate(s) '
+                f'stays under the {search_effect:.2f} question effect '
+                f'(E[max] {budget.expected_maximum(sigma, widest):.2f}); {tail}'
+            )
+            lines.append(
+                '    sigma is this pair\'s own measurement and the effect is the caller\'s '
+                'statement; neither is inferred here, and a search wider than this count reports '
+                'its maximum rather than its treatment'
+            )
+    elif search_effect is not None:
+        lines.append(
+            '  search: this pair has no identical-prompt stratum, so its sigma is not measured here '
+            'and the candidate count is not printed -- a sigma borrowed from another pair is a claim '
+            'rather than a measurement'
         )
     if 'differing' not in summary:
         return '\n'.join(lines), 0
@@ -3532,6 +3614,15 @@ def main(argv: list[str]) -> int:
         help=(
             'measure this pair\'s own noise floor on the questions whose prompt is byte-identical '
             'to CONTROL\'s, and report whether the changed stratum moves outside it'
+        ),
+    )
+    parser.add_argument(
+        '--search-effect',
+        type=float,
+        metavar='QUESTIONS',
+        help=(
+            'with --null, print how many candidate configurations this pair\'s measured sigma can '
+            'support against an effect of this many questions (see AUDIT-PARAMETER-SELF-EVOLUTION.md)'
         ),
     )
     parser.add_argument(
@@ -3717,7 +3808,7 @@ def main(argv: list[str]) -> int:
         print(f'control: {args.null}')
         print(f'run:     {args.report}')
         try:
-            section, _outside = null_section(report, control)
+            section, _outside = null_section(report, control, args.search_effect)
         except ValueError as error:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2

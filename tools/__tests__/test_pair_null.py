@@ -217,3 +217,70 @@ class TestTheRefusals:
         del run["ablation"]["featureCorrectByRun"]
         with pytest.raises(ValueError, match="no per-run correctness bits"):
             module.null_section(run, control)
+
+
+class TestTheSearchBudgetAtThisPairsOwnSigma:
+    """`--search-effect`, which is `--null` reporting how wide a search this pair can read.
+
+    ## Why the connection belongs here rather than in a document
+
+    `AUDIT-PARAMETER-SELF-EVOLUTION.md` computes `E[max_k]` and `tools/search-budget.py` decides
+    whether a given search is readable, but both need a `sigma`, and a `sigma` supplied by hand is a
+    claim. `--null` already measures this pair's own `sigma` from the questions whose prompt did not
+    change. Attaching the candidate count to that measurement is the difference between "a search is
+    unreadable in general" and "**on this pair**, two candidates are readable and three are not".
+
+    ## Why it is optional
+
+    The effect size has to be named before the reading, not after. A tool that picked one -- the 2 sd
+    band, or yesterday's registered effect -- would be choosing the bar to fit the result. So the
+    flag is absent by default and the output is byte-identical to before when it is.
+    """
+
+    def test_the_candidate_count_is_printed_beside_the_measured_sigma(self) -> None:
+        module = _module()
+        run, control = pair()
+        section, _ = module.null_section(run, control, search_effect=1.0)
+        assert "search: at this pair's sigma" in section
+        assert "candidate(s) stays under the 1.00 question effect" in section
+
+    def test_absent_by_default_so_existing_transcripts_do_not_move(self) -> None:
+        module = _module()
+        run, control = pair()
+        without, _ = module.null_section(run, control)
+        assert "search:" not in without
+
+    def test_the_count_comes_from_the_one_definition_of_the_integral(self) -> None:
+        # A second implementation of `E[max_k]` in this file would be a second definition of the
+        # same number, and the two would drift the first time either changed. Asserted by value,
+        # against the shared module, so a rewrite of one fails here.
+        module = _module()
+        budget = module.search_budget()
+        run, control = pair()
+        section, _ = module.null_section(run, control, search_effect=1.0)
+        sd = float(section.split("2 sd = ")[1].split(")")[0]) / 2
+        assert f"a search of {budget.candidates_for_readability(1.0, sd)} candidate(s)" in section
+
+    def test_the_next_candidate_count_is_named_as_the_one_that_fails(self) -> None:
+        # The inverse, for the same reason `search-budget.py` prints its own: a refusal that does not
+        # name the boundary cannot be acted on.
+        module = _module()
+        run, control = pair()
+        section, _ = module.null_section(run, control, search_effect=1.0)
+        assert "does not" in section or "also does" in section
+
+    def test_a_pair_without_an_identical_stratum_says_why_it_cannot_print_the_count(self) -> None:
+        # Silence would read as "no search fitted", which is a different statement from "this pair
+        # has no measurement of its own noise". The second is what is true.
+        module = _module()
+        control = side(DIFFERING_CONTROL, ["0" * 30 for _ in range(4)])
+        run = side(DIFFERING_RUN, ["1" * 30 for _ in range(4)])
+        section, _ = module.null_section(run, control, search_effect=1.0)
+        assert "no identical-prompt stratum" in section
+        assert "claim rather than a measurement" in section
+
+    def test_a_zero_effect_is_refused_rather_than_treated_as_always_readable(self) -> None:
+        module = _module()
+        run, control = pair()
+        with pytest.raises(ValueError, match="positive"):
+            module.null_section(run, control, search_effect=0.0)
