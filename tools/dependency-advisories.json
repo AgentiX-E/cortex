@@ -2,8 +2,8 @@
   "source": {
     "endpoint": "GET https://api.github.com/repos/AgentiX-E/cortex/dependabot/alerts?state=open",
     "readAt": "2026-11-01",
-    "open": 6,
-    "note": "Every row below was an open Dependabot alert on that date, six rows for six alerts. The table is not a copy of the GitHub Advisory Database: it is the subset that was open against this lockfile, and it exists so test_dependency_advisories.py can fail if a resolution ever moves back inside one of these ranges. A row is removed when the advisory stops applying, never because the alert went quiet."
+    "open": 8,
+    "note": "Every row below was an open Dependabot alert on that date. Six were open when this table was first written; two more surfaced when GitHub re-evaluated the dependency graph after the six were closed, which is why the count in this file is 8 and not 6. The table is not a copy of the GitHub Advisory Database: it is the subset that was open against this lockfile, and it exists so test_dependency_advisories.py can fail if a resolution ever moves back inside one of these ranges. A row is removed when the advisory stops applying, never because the alert went quiet."
   },
   "advisories": [
     {
@@ -13,6 +13,7 @@
       "severity": "medium",
       "vulnerable": ">= 2.1.0, < 4.1.11",
       "patched": "4.1.11",
+      "mechanism": "in-range",
       "summary": "Path traversal / arbitrary file read via the redirect mock",
       "fixedBy": "vitest 5.0.5, whose bundled @vitest/mocker is the same version -- the two move together, so an override of one without the other is not a fix"
     },
@@ -23,6 +24,7 @@
       "severity": "medium",
       "vulnerable": ">= 2.1.0-beta.7, < 4.1.12",
       "patched": "4.1.12",
+      "mechanism": "in-range",
       "summary": "Code injection via unauthenticated manual mock registration",
       "fixedBy": "vitest 5.0.5; this is the row that sets the real floor on the axis, at 4.1.12 rather than 4.1.11"
     },
@@ -33,6 +35,7 @@
       "severity": "medium",
       "vulnerable": ">= 2.1.0, < 4.1.11",
       "patched": "4.1.11",
+      "mechanism": "in-range",
       "summary": "Path traversal / arbitrary file read via the redirect mock",
       "fixedBy": "vitest 5.0.5"
     },
@@ -43,6 +46,7 @@
       "severity": "high",
       "vulnerable": ">= 4.0.0, < 4.3.2",
       "patched": "4.3.2",
+      "mechanism": "in-range",
       "summary": "maxTotalMergeKeys does not limit CPU use for empty merge sources",
       "fixedBy": "js-yaml 4.3.2, reached inside @eslint/eslintrc's existing ^4 range -- no override, because the range already allowed the patch"
     },
@@ -53,6 +57,7 @@
       "severity": "medium",
       "vulnerable": "< 1.1.21",
       "patched": "1.1.21",
+      "mechanism": "in-range",
       "summary": "Quadratic-time expansion of the {a,b} rewrite causes CPU denial of service",
       "fixedBy": "brace-expansion 1.1.21 under minimatch 3, again inside the existing ^1.1.7 range; the 2.x and 5.x lines were never affected"
     },
@@ -63,8 +68,31 @@
       "severity": "high",
       "vulnerable": ">= 1.0.0, < 1.2.2",
       "patched": "1.2.2",
+      "mechanism": "in-range",
       "summary": "Event-loop denial of service through indexed source-map section offsets",
       "fixedBy": "source-map-js 1.2.2, inside postcss's and magicast's existing ^1.2.1 ranges"
+    },
+    {
+      "package": "moment",
+      "ghsa": "GHSA-4p3w-j4w9-5jqw",
+      "cve": "CVE-2026-17495",
+      "severity": "medium",
+      "vulnerable": ">= 2.29.2, < 2.31.0",
+      "patched": "2.31.0",
+      "mechanism": "in-range",
+      "summary": "Path traversal via a crafted non-string locale name",
+      "fixedBy": "moment 2.31.0, inside pg-mem's existing ^2.27.0 range -- no override, same as the first three"
+    },
+    {
+      "package": "minimatch",
+      "ghsa": "GHSA-g3hv-75wg-m249",
+      "cve": "CVE-2026-118764",
+      "severity": "medium",
+      "vulnerable": "< 11.0.1",
+      "patched": "11.0.1",
+      "mechanism": "override",
+      "summary": "Denial of service via globparts amplification",
+      "fixedBy": "an explicit pnpm.overrides pin to ^11.0.1, which is the one override in this file and the only advisory here with no patched version inside any declared range: eslint 9 asks for ^3.1.2, @eslint/eslintrc for ^3.1.5, @eslint/config-array for ^10.2.4 and typescript-eslint for ^10.2.6, all below 11.0.1. The override was measured before it was trusted -- the set of files eslint lints is byte-identical at 366 files on minimatch 3 and on 11, and pnpm check is green -- and the advisory itself carries no CVSS score (0.0), which is recorded rather than read as 'harmless'"
     }
   ]
 }

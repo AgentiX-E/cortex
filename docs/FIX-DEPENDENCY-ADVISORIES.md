@@ -1,10 +1,11 @@
-# FIX — Six Dependency Advisories, and the Three Things the Upgrade Changed Underneath
+# FIX — Eight Dependency Advisories, and the Three Things the Upgrade Changed Underneath
 
-**Status:** fixed and guarded. Six open Dependabot alerts closed by moving `vitest` 2.1.9 → 5.0.5
-and three transitive packages inside the ranges their parents already allowed. The upgrade also
-changed three behaviours that no test in this repository would have reported on its own — collected
-test files, a test's time budget, and the coverage instrument — and each of those is recorded here
-with the measurement that found it.
+**Status:** fixed and guarded. Eight open Dependabot alerts closed — six in the first pass, by moving
+`vitest` 2.1.9 → 5.0.5 and three transitive packages inside ranges their parents already allowed, and
+two more that surfaced when the dependency graph was re-evaluated after those six closed, one of which
+needed the only `pnpm.overrides` entry in the repository. The upgrade also changed three behaviours
+that no test here would have reported on its own — collected test files, a test's time budget, and the
+coverage instrument — and each is recorded with the measurement that found it.
 
 **Found by:** reading the open alerts rather than the build. Nothing was red. Every alert was on a
 `development` dependency, so none of them was reachable in a shipped artifact, and the suite was
@@ -14,32 +15,44 @@ green throughout — which is exactly the state in which a lockfile rots.
 
 ## 1. What was open
 
-Six alerts, all `pnpm-lock.yaml`, all `development` scope. Read from
-`GET /repos/AgentiX-E/cortex/dependabot/alerts?state=open` on 2026-11-01:
+Eight alerts, all `pnpm-lock.yaml`, all `development` scope. Read from
+`GET /repos/AgentiX-E/cortex/dependabot/alerts?state=open` on 2026-11-01, in two waves: six were open
+when the work started, and alerts 7 and 8 appeared in the same list once the first six had been closed
+and GitHub re-evaluated the graph against the new lockfile. The second wave is not a regression — it is
+what the graph reports once it is asked again.
 
-| # | package | advisory | CVSS | vulnerable range | first patched |
-| --- | --- | --- | --- | --- | --- |
-| 6 | `@vitest/mocker` | GHSA-qxg6-89mg-rqv8 | 4.7 medium | `>= 2.1.0-beta.7, < 4.1.12` | 4.1.12 |
-| 5 | `source-map-js` | GHSA-68fv-2mgg-jv7q | 7.5 high | `>= 1.0.0, < 1.2.2` | 1.2.2 |
-| 4 | `brace-expansion` | GHSA-q2hr-2g5m-vwhr | 5.3 medium | `< 1.1.21` | 1.1.21 |
-| 3 | `js-yaml` | GHSA-2883-xcg3-v3hh | 7.5 high | `>= 4.0.0, < 4.3.2` | 4.3.2 |
-| 2 | `vitest` | GHSA-82fw-gwwq-j7x9 | 5.9 medium | `>= 2.1.0, < 4.1.11` | 4.1.11 |
-| 1 | `@vitest/mocker` | GHSA-82fw-gwwq-j7x9 | 5.9 medium | `>= 2.1.0, < 4.1.11` | 4.1.11 |
+| # | package | advisory | CVSS | vulnerable range | first patched | mechanism |
+| --- | --- | --- | --- | --- | --- | --- |
+| 8 | `minimatch` | GHSA-g3hv-75wg-m249 | none (0.0) | `< 11.0.1` | 11.0.1 | override |
+| 7 | `moment` | GHSA-4p3w-j4w9-5jqw | 5.9 medium | `>= 2.29.2, < 2.31.0` | 2.31.0 | in-range |
+| 6 | `@vitest/mocker` | GHSA-qxg6-89mg-rqv8 | 4.7 medium | `>= 2.1.0-beta.7, < 4.1.12` | 4.1.12 | in-range |
+| 5 | `source-map-js` | GHSA-68fv-2mgg-jv7q | 7.5 high | `>= 1.0.0, < 1.2.2` | 1.2.2 | in-range |
+| 4 | `brace-expansion` | GHSA-q2hr-2g5m-vwhr | 5.3 medium | `< 1.1.21` | 1.1.21 | in-range |
+| 3 | `js-yaml` | GHSA-2883-xcg3-v3hh | 7.5 high | `>= 4.0.0, < 4.3.2` | 4.3.2 | in-range |
+| 2 | `vitest` | GHSA-82fw-gwwq-j7x9 | 5.9 medium | `>= 2.1.0, < 4.1.11` | 4.1.11 | in-range |
+| 1 | `@vitest/mocker` | GHSA-82fw-gwwq-j7x9 | 5.9 medium | `>= 2.1.0, < 4.1.11` | 4.1.11 | in-range |
 
-Two things about that table are worth stating because they decide the shape of the fix.
+Three things about that table are worth stating because they decide the shape of the fix.
 
 **The two vitest advisories are one axis with two floors.** Alert 6 asks for 4.1.12 and alerts 1 and 2
 ask for 4.1.11, so the real floor on the axis is **4.1.12**, not the lower number, and `vitest` and
 `@vitest/mocker` must move together — `@vitest/mocker` is published at exactly `vitest`'s version, so
 an override of one without the other produces a resolver error rather than a fix.
 
-**Three of the six never needed an override.** `js-yaml` was 4.3.1 under `@eslint/eslintrc`'s
-`^4.1.0`, `brace-expansion` was 1.1.18 under `minimatch@3.1.5`'s `^1.1.7`, and `source-map-js` was
-1.2.1 under `postcss`'s and `magicast`'s `^1.2.1`. All three patches were already inside the
-declared ranges; the lockfile had simply pinned an older resolution. `pnpm update js-yaml
-brace-expansion source-map-js -r` moved them to 4.3.2, 1.1.21 (and the 5.x line to 5.0.12), and
-1.2.2, and `pnpm.overrides` stayed empty. A pin is a smaller fix than an override, and an override
-is a smaller fix than a fork — this is the first of those.
+**Seven of the eight never needed an override.** `js-yaml` was 4.3.1 under `@eslint/eslintrc`'s
+`^4.1.0`, `brace-expansion` was 1.1.18 under `minimatch@3.1.5`'s `^1.1.7`, `source-map-js` was 1.2.1
+under `postcss`'s and `magicast`'s `^1.2.1`, and `moment` was 2.30.1 under `pg-mem`'s `^2.27.0`. All
+four patches were already inside the declared ranges; the lockfile had simply pinned an older
+resolution, so `pnpm update … -r` was the whole fix. A pin is a smaller fix than an override, and an
+override is a smaller fix than a fork; seven rows are the first of those and one is the second.
+
+**The eighth could not be anything but an override, and that is a fact about the ecosystem rather
+than about this repository.** `minimatch < 11.0.1` is patched only at 11, and no package that needs
+it declares a range that reaches 11: `eslint@9.39.5` asks for `^3.1.2`, `@eslint/eslintrc@3.3.6` for
+`^3.1.5`, `@eslint/config-array@0.21.2` for `^10.2.4` and `@typescript-eslint/typescript-estree` for
+`^10.2.6`. Even `eslint@10.14.0`, the current major, still depends on `minimatch ^10.2.6` — so the
+advisory is ahead of the toolchain and an in-range update does not exist. Section 2.1 records what was
+measured before the pin was trusted.
 
 ## 2. The one thing that did not resolve itself: vite
 
@@ -58,6 +71,46 @@ than emergent — `vite ^7.3.7` is now a root `devDependency`, and `resolve-peer
 (pnpm's default) makes that one declaration satisfy every package's peer. Vite 8 was available and
 inside the range; 7 was chosen because it is the line `vitest@5.0.5`'s own lockfile was cut against,
 and an upgrade that fixes advisories is not the commit in which to also move a bundler major.
+
+## 2.1 The one override, and the measurement that licensed it
+
+`package.json` now carries `"pnpm": { "overrides": { "minimatch": "^11.0.1" } }` — the only override in
+the repository. Writing one is a claim that a package works outside the range its own dependents
+declare, so the claim was tested rather than asserted.
+
+**What could break.** `minimatch` 3 exports a callable (`module.exports = minimatch`); 10 and 11 export
+named bindings. A consumer doing `require('minimatch')(path, pattern)` would throw `TypeError: not a
+function` under the new version. Reading the consumers in this tree, neither of the two that matter
+calls it that way:
+
+- `eslint/lib/eslint/eslint-helpers.js` — `const minimatch = require("minimatch"); const Minimatch =
+  minimatch.Minimatch;`
+- `@eslint/eslintrc/dist/eslintrc.cjs` — `_interopDefaultLegacy(minimatch)` then
+  `const { Minimatch } = minimatch__default["default"];`
+
+Both take the class and construct `new Minimatch(pattern, opts)`, which exists in every line.
+
+**What was measured.** The risk that is not visible in a type check is glob semantics: `eslint.config.js`
+declares `ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**']`, and those three patterns are
+the ones that go through minimatch, so a change in how `**` or `dot` is treated would silently lint a
+different set of files while everything stayed green. So the set was compared, not the count:
+
+| | minimatch 3.1.5 | minimatch 11.0.3 |
+| --- | --- | --- |
+| `eslint src --format json`, five packages | 366 files, 0 errors | 366 files, 0 errors |
+| the sorted absolute path list | — | **byte-identical** (`diff` empty) |
+
+The comparison was made by removing the override, reinstalling, capturing the list, re-adding the
+override, reinstalling and capturing again — the same machine, the same tree, one variable. `pnpm
+check` then ran green end to end on the new version, which is what puts the override inside the gate
+rather than beside it.
+
+**What is still not proved.** A code path inside eslint that uses minimatch and that this repository
+never reaches — `--stdin-filename` matching, an `overrideConfig` with negated patterns, the
+`file-enumerator`'s caching — is not exercised by that comparison. The mitigation is that lint is a
+test-time tool here and runs on this repository's own configuration; the alternative (staying on
+`minimatch` 3) leaves a medium advisory open with no in-range fix, which is the worse trade for a
+dependency that the *lint* path uses and the shipped packages do not.
 
 ## 3. Three behaviours the upgrade changed underneath
 
@@ -182,8 +235,8 @@ agreement **elsewhere** in the batch.
 
 ## 4. The guard
 
-`tools/dependency-advisories.json` holds the six rows with the advisory range verbatim, and
-`tools/__tests__/test_dependency_advisories.py` (15 cases) parses `pnpm-lock.yaml` and asserts no
+`tools/dependency-advisories.json` holds the eight rows with the advisory range verbatim, and
+`tools/__tests__/test_dependency_advisories.py` (17 cases) parses `pnpm-lock.yaml` and asserts no
 resolved version sits inside any of them.
 
 The design decision worth defending is **range, not floor**. "At least the patched version" is what
@@ -199,11 +252,18 @@ the range is stored as text and parsed, and the parser is tested before it is tr
 - `^1.2.3`, a bare `1.2.3`, and `1.0.0+sha` **raise**. A parser that treated an unknown operator as
   "probably fine" would report a vulnerable version as safe, which is worse than stopping.
 
-Two properties the file asserts about itself, because a guard that cannot fail is a sentence about
+Three properties the file asserts about itself, because a guard that cannot fail is a sentence about
 an intent: a synthetic lockfile with `js-yaml 4.3.1` is caught and the message names both the
-advisory and the patch, and a package that has vanished from the lockfile is reported rather than
-forgiven — removing a dependency is a legitimate fix and also a way to make a guard vacuous by
-accident.
+advisory and the patch; a package that has vanished from the lockfile is reported rather than
+forgiven (removing a dependency is a legitimate fix and also a way to make a guard vacuous by
+accident); and each row carries a `mechanism` field whose allowed values are `in-range` and
+`override`, with exactly one row in the second category.
+
+That last field exists because the first version of that test scanned `fixedBy` for the string
+"override" — and matched the four rows that say *"no override"*. A substring search over prose found
+exactly the reassurance it was looking for, which is the failure mode this whole campaign keeps
+finding: a criterion that reads as a check while being a sentence about an intent. The data now has
+the field, the test reads the field, and moving a second row into `override` has to change a literal.
 
 ## 5. What this does not do
 
@@ -211,11 +271,16 @@ accident.
 green. That is the honest limit of an offline check; `pnpm audit` and Dependabot answer the other
 question, and both need the network. What this file guarantees is that these six cannot regress.
 
-**It does not claim the packages were exploitable.** All six are `development` scope. The two
-vitest ones describe `@vitest/mocker` reading files on behalf of a mock the *test author* wrote, and
-the three DoS ones need attacker-controlled input into a build-time parser. The reason to fix them
-is not that a shipped artifact was vulnerable — it is that a lockfile with six open advisories
-stops being evidence of anything, and the next person reads the alert list instead of the code.
+**It does not claim the packages were exploitable.** All eight are `development` scope. The two
+vitest ones describe `@vitest/mocker` reading files on behalf of a mock the *test author* wrote, the
+DoS ones need attacker-controlled input into a build-time parser or a glob, and the `moment` one needs
+a non-string locale name handed to it. The reason to fix them is not that a shipped artifact was
+vulnerable — it is that a lockfile with eight open advisories stops being evidence of anything, and
+the next person reads the alert list instead of the code.
+
+**It does not turn the override into a habit.** `minimatch ^11.0.1` is the only entry in
+`pnpm.overrides`, it exists because no declared range in the ecosystem reaches the patch, and the
+test above fails if a second row ever acquires one without the count changing.
 
 **It does not restore the five "100%" claims to their old numbers.** They were measured by an
 instrument that has been superseded. The numbers in the configs are now the ones this instrument

@@ -234,13 +234,35 @@ class TestTheLockfile:
         versions = resolved(LOCKFILE.read_text(encoding="utf-8"))
         assert violations(rows, versions) == []
 
-    def test_the_six_alerts_are_the_six_rows(self) -> None:
+    def test_the_recorded_count_is_the_row_count(self) -> None:
         # The count is not decoration: a row quietly dropped from the table would leave its
         # package unguarded while everything stayed green, and the file's own header would
-        # still claim six. `open` is what the API said on the date in `readAt`.
+        # still claim the old number. `open` is what the API said on the date in `readAt`, and
+        # the literal below is deliberate friction -- it is 8 rather than 6 because two more
+        # alerts surfaced when the graph was re-evaluated after the first six were closed, so a
+        # future change to the table has to touch this line and say which wave it belongs to.
         record = json.loads(ADVISORIES.read_text(encoding="utf-8"))
-        assert record["source"]["open"] == len(record["advisories"]) == 6
+        assert record["source"]["open"] == len(record["advisories"]) == 8
         assert "dependabot/alerts" in record["source"]["endpoint"]
+
+    def test_the_one_override_is_the_one_row_that_needed_it(self) -> None:
+        # `mechanism` is a field rather than a sentence, because the first version of this test
+        # scanned `fixedBy` for the word "override" and matched the three rows that say "no
+        # override" -- a substring search over prose, reading exactly the reassurance it was
+        # supposed to police. The property asserted is that an override is an exception with a
+        # reason and not a habit: if a second row acquires one, this line has to change too.
+        rows = load_advisories()
+        overrides = [row["package"] for row in rows if row["mechanism"] == "override"]
+        assert overrides == ["minimatch"]
+        assert {row["mechanism"] for row in rows} == {"in-range", "override"}
+
+    def test_every_override_names_a_package_the_lockfile_still_resolves(self) -> None:
+        # An override for a package nobody depends on any more is a pin that will silently stop
+        # applying, so the row and the resolution are held together.
+        versions = resolved(LOCKFILE.read_text(encoding="utf-8"))
+        for row in load_advisories():
+            if row["mechanism"] == "override":
+                assert versions.get(row["package"]), row["package"]
 
     def test_a_version_below_the_patch_is_caught(self) -> None:
         # The check has to be able to fail, or it is a sentence about an intent. This is the

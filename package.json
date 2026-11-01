@@ -56,7 +56,10 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "minimatch": "^11.0.1"
+    }
   },
   "packageManager": "pnpm@9.15.0"
 }
