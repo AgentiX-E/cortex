@@ -257,7 +257,17 @@ INPUTS = {
     "cortex_memory_source_trust": "0.5",
     "cortex_memory_prompt_contract": "abstention-evidence-blocks",
     # §13.34: `computed` plus the two-step enumeration contract on multi-session alone.
-    "cortex_memory_ask": "enumerated",
+    #
+    # §13.203 replaced the value with `operands+operand-gap`. Two facts made that a registration
+    # rather than a change of mind: the arm has not run `enumerated` since `40989420944`, every
+    # 500-question run from `41144910162` onwards carried `--set cortex_memory_ask=operands`, and
+    # nothing in this table or in §10.3 said so. `readout-arm-run.py --registration` is the check
+    # that now reports that class of drift from one artifact instead of from a re-read of 22,000
+    # lines. `operands` is `enumerated`'s bytes everywhere but the derivation-shaped questions on
+    # multi-session, and `operand-gap` adds the abstention route's closing line — so this value is
+    # a superset of the one it replaced, and what it was measured at is §13.203.3: one question,
+    # converted in all four repetitions, price zero.
+    "cortex_memory_ask": "operands+operand-gap",
     # §13.64's adopted ranking: dense cosine fused with a rare-keyword channel by reciprocal
     # rank. This line said `retrieval` for six sections after that adoption, because §10.3
     # held BOTH the adoption bullet and §13.17's original one and the registration parser

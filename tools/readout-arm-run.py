@@ -2827,6 +2827,435 @@ def diff_section(
     return '\n'.join(lines), 0
 
 
+# ---------------------------------------------------------------------------------------------
+# `--registration`: ONE artifact against the dispatch table.
+#
+# `--config` compares two artifacts. It cannot answer the question a reader of a *single* run has:
+# is what ran the thing this arm says it runs? Three separate values had drifted out of §10.3 by
+# 2026-10-31 -- `maxPromptChars` 96,000 against a registered 48,000, `turnCutMarker` `ellipsis`
+# against a bare 400, and `ask` `operands` against a registered `enumerated` -- and every one of
+# them was found by a person re-reading 22,000 lines rather than by a check (§13.192.7.3,
+# §13.203.2). A prose record cannot fail; this can.
+#
+# The registered side is imported rather than restated. A second copy of the table is the defect
+# these sections keep finding: the copy in the document disagrees with the copy that runs, and the
+# one nobody executes is the one that reads as authoritative.
+# ---------------------------------------------------------------------------------------------
+
+# The artifact records these inputs nowhere, because they are not the arm's configuration.
+PRESENCE_INPUTS = {
+    'cortex_memory': 'the block\'s presence is the flag: a report with no memoryArmConfig has no arm '
+    'to check, and `_arm_config` refuses it rather than comparing nothing',
+}
+HARNESS_INPUTS = {
+    'limit': 'how many questions were asked, not how the arm is configured',
+    'ablation_runs': 'how many repetitions, not how the arm is configured',
+}
+
+
+def dispatch_inputs() -> dict:
+    """`tools/dispatch-cortex-memory-ab.py`'s `INPUTS`, imported rather than copied."""
+    import importlib.util
+
+    path = Path(__file__).with_name('dispatch-cortex-memory-ab.py')
+    spec = importlib.util.spec_from_file_location('dispatch_cortex_memory_ab', path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f'{path}: cannot be imported, so there is no registration to compare against')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    inputs = getattr(module, 'INPUTS', None)
+    if not isinstance(inputs, dict) or not inputs:
+        raise SystemExit(f'{path}: has no INPUTS dict, so there is no registration to compare against')
+    return dict(inputs)
+
+
+def two_field_expectation(name: str, raw: str) -> dict | None:
+    """The inputs whose one value writes two fields, and what each field must read.
+
+    Two shapes, both registered rather than inferred (§13.188.3, §13.198.1):
+
+      * `cortex_memory_max_turn_chars=400:ellipsis` is a width and a marker. The marker is `none`
+        when the value states none, which is the identity §13.188 shipped.
+      * `thinking` is a mode, until it is a route list; a list means `enabled` on those routes and
+        the shipped state everywhere else. `readThinkingReach` owns that grammar in the product --
+        this mirror exists because the artifact records the *result* and a reader must be able to
+        say which dispatch value would have produced it. The three spellings are pinned by test.
+
+    A name this function does not recognise returns `None` and is compared one-to-one.
+    """
+    if name == 'cortex_memory_ask':
+        return {'ask': raw}
+    if name == 'cortex_memory_max_turn_chars':
+        width, _, marker = raw.partition(':')
+        return {'maxTurnChars': int(width), 'turnCutMarker': marker or 'none'}
+    if name in ('thinking', 'cortex_memory_thinking'):
+        if raw in ('enabled', 'disabled') or raw == '':
+            return {'reader.thinking': raw or 'disabled', 'reader.thinkingRoutes': ABSENT}
+        return {
+            'reader.thinking': 'enabled',
+            'reader.thinkingRoutes': [part.strip() for part in raw.split('+') if part.strip()],
+        }
+    return None
+
+
+def coerce_to_artifact(raw: str, target: object):
+    """The dispatch string read as the artifact field's type, or `ValueError` if it cannot be.
+
+    The artifact is authoritative for the type, so there is no second type table to keep in step
+    with it: a field the artifact holds as an `int` is read as an `int`, one it holds as a list is
+    split on commas, and anything else is compared as text.
+    """
+    if isinstance(target, bool):
+        return raw not in ('', '0', 'false', 'False')
+    if isinstance(target, int):
+        return int(raw)
+    if isinstance(target, float):
+        return float(raw)
+    if isinstance(target, list):
+        return [part.strip() for part in raw.split(',') if part.strip()]
+    return raw
+
+
+def registration_section(report: dict, departed: list[str]) -> tuple[str, int]:
+    """This artifact's configuration against the dispatch table, and how much of it was not declared.
+
+    ## What "departed" means
+
+    §10.3 registers the arm. A run that moves a value registers *as an experiment* by naming the
+    fields it moved -- the same contract `--config --treatment` puts on a pair, applied to a single
+    artifact. A departure that is named is printed as `declared`; one that is not is printed as
+    `UNDECLARED` and makes the exit code non-zero, because a run whose own registration does not
+    describe it cannot be reproduced from the record it left behind.
+
+    ## What is not compared, and why each one is not
+
+    A **derived** field (`askRoutes` from `ask`) has no dispatch input of its own and is computed by
+    the product, so comparing it would compare the product to this tool. A **harness** input
+    (`limit`, `ablation_runs`) is not the arm's configuration. The **presence** input (`cortex_memory`)
+    is the block itself. Each is counted in the header rather than dropped, because a comparison that
+    silently covers less than it appears to is the shape §13.191 found in the pair tool.
+    """
+    config = _arm_config(report, 'report')
+    flat, _runtime = _flatten_config(config)
+    inputs = dispatch_inputs()
+
+    compared: list[tuple[str, str, object, object]] = []
+    derived: list[tuple[str, str]] = []
+    harness: list[str] = []
+    presence: list[str] = []
+
+    for name in sorted(inputs):
+        raw = str(inputs[name])
+        if name in HARNESS_INPUTS:
+            harness.append(name)
+            continue
+        if name in PRESENCE_INPUTS:
+            presence.append(name)
+            continue
+        aliases = DISPATCH_FIELD_ALIASES.get(name)
+        if aliases is None:
+            harness.append(name)
+            continue
+        expectation = two_field_expectation(name, raw)
+        if expectation is not None:
+            for path, expected in expectation.items():
+                compared.append((name, path, expected, flat.get(path, ABSENT)))
+            for alias in aliases:
+                if not any(_covers(alias, path) for path in expectation):
+                    derived.append((name, alias))
+            continue
+        for alias in aliases:
+            paths = [path for path in flat if _covers(alias, path)]
+            if not paths:
+                derived.append((name, alias))
+                continue
+            for path in paths:
+                try:
+                    expected = coerce_to_artifact(raw, flat[path])
+                except ValueError:
+                    raise SystemExit(
+                        f'{name}={raw!r} cannot be read as the type the artifact holds at {path} '
+                        f'({type(flat[path]).__name__}), so the registration cannot be compared. '
+                        'This is a mismatch between the two records, not a value to skip: a field '
+                        'the tool silently declines to compare is the shape §13.191 found.'
+                    )
+                compared.append((name, path, expected, flat[path]))
+
+    def differs(expected: object, actual: object) -> bool:
+        if expected is ABSENT or actual is ABSENT:
+            return expected is not actual
+        return _value_text(expected) != _value_text(actual)
+
+    moved = [(name, path, expected, actual) for name, path, expected, actual in compared if differs(expected, actual)]
+    undeclared = [entry for entry in moved if entry[0] not in departed]
+    idle = [name for name in departed if not any(entry[0] == name for entry in moved)]
+    unknown = [name for name in departed if name not in inputs]
+
+    lines: list[str] = []
+    lines.append(
+        f'  registration: {len(compared)} field(s) compared, {len(derived)} derived (no dispatch '
+        f'input of their own), {len(harness)} harness, {len(presence)} presence'
+    )
+    lines.append(f'  same         {len(compared) - len(moved)} field(s)')
+    for name, path, expected, actual in moved:
+        mark = 'declared  ' if name in departed else 'UNDECLARED'
+        lines.append(f'    {mark}  {path}: {_value_text(expected)} (registered) -> {_value_text(actual)} (ran)')
+    for name, alias in derived:
+        lines.append(f'    derived     {alias} is computed from {name} and is not compared here')
+
+    if unknown:
+        lines.append(
+            f'  refused: --departs names {unknown}, which the dispatch table does not send. A '
+            'departure that resolves to nothing declares nothing, which is the `--set` defect '
+            '(§13.192.7.3) applied to the declaration.'
+        )
+        return '\n'.join(lines), len(unknown)
+
+    if idle:
+        lines.append(
+            f'  declared but unchanged: {sorted(idle)} -- the departure names a field this run did '
+            'not move, so the record describes an intention rather than what ran'
+        )
+
+    if not moved:
+        lines.append(
+            '  verdict: this run is the registered configuration, field for field, so its numbers '
+            'are quotable as the arm\'s and need no line in §10.3'
+        )
+        return '\n'.join(lines), 0
+
+    if undeclared:
+        lines.append(
+            f'  verdict: {len(moved)} field(s) departed from the registration and '
+            f'{len(undeclared)} was not declared: {[path for _, path, _, _ in undeclared]}'
+        )
+        lines.append(
+            '  the run is an experiment that has not said so. §10.3 describes the adopted '
+            'configuration, so this artifact cannot be quoted as the arm without naming each '
+            'departure beside it (§13.202.6)'
+        )
+        return '\n'.join(lines), len(undeclared)
+
+    lines.append(
+        f'  verdict: {len(moved)} field(s) departed and every one of them is declared — the run is '
+        'an experiment whose registration is its departure list, and §10.3 still describes what it '
+        'did not run'
+    )
+    return '\n'.join(lines), 0
+
+
+def _feature_bits(report: dict, side: str) -> list[str]:
+    """The feature side's per-run correctness bits, one string per repetition, in roster order.
+
+    Without this there is no per-question reading: `questions[].correct` is the majority verdict
+    across repetitions, which is exactly the aggregation that hides a flip. A report that predates
+    the field cannot answer the question this section asks, and saying so is better than answering
+    it with the majority.
+    """
+    ablation = report.get('ablation')
+    bits = ablation.get('featureCorrectByRun') if isinstance(ablation, dict) else None
+    if not isinstance(bits, list) or not bits or not all(isinstance(entry, str) for entry in bits):
+        raise ValueError(f'{side} has no per-run correctness bits (ablation.featureCorrectByRun)')
+    return bits
+
+
+def null_section(run_report: dict, control_report: dict) -> tuple[str, int]:
+    """Each pair's own noise floor, measured on the questions whose prompt did not change.
+
+    ## Why a pair needs a null of its own
+
+    §13.194.4 pinned `KU` to `{61, 62}` from eight observations (two runs of four repetitions) and
+    the next independent run read `60` twice. The band was not wrong about the arm; it was too
+    narrow about the reader, and the artifact that falsified it also measured why: 470 of 500
+    prompts in `41222844945` were **byte-identical** to its control's, and those 470 still moved by
+    `+3, -1, +1, -5` across four repetitions -- a 4.8% flip rate on identical input.
+
+    That stratum is the null, and it is free: it is computed from the two artifacts, needs no extra
+    dispatch, and is specific to the pair in hand rather than borrowed from a run three sections
+    earlier. Any other arm's band is a claim; this one is a measurement.
+
+    ## What the numbers are
+
+    `flips` counts question-reads that changed verdict in either direction on identical prompts,
+    `p` is that rate, and `sd` is the standard deviation of a net difference of the same size under
+    a symmetric null (`sqrt(F * (1 - p))`, with `F` the expected flips). The verdict compares the
+    differing stratum's delta against `2 sd`, which is the band the identical stratum implies for a
+    stratum of that size -- stated as a bound rather than a test, because the thing being bounded is
+    the reader, not the treatment.
+    """
+    run_questions = _questions(run_report)
+    control_questions = _questions(control_report)
+    if run_questions is None or control_questions is None:
+        raise ValueError('one side has no per-question roster, so no question can be paired')
+    control_index = {record.get('questionId'): position for position, record in enumerate(control_questions)}
+    if len(control_index) != len(control_questions):
+        raise ValueError('the control roster repeats a questionId, so pairing is ambiguous')
+    missing = [record.get('questionId') for record in run_questions if record.get('questionId') not in control_index]
+    if missing:
+        raise ValueError(f'{len(missing)} question(s) in the run are absent from the control, e.g. {missing[:3]}')
+
+    run_bits = _feature_bits(run_report, 'run')
+    control_bits = _feature_bits(control_report, 'control')
+    if any(len(bits) != len(run_questions) for bits in run_bits):
+        raise ValueError('the run\'s correctness bits are not one per question')
+    if any(len(bits) != len(control_questions) for bits in control_bits):
+        raise ValueError('the control\'s correctness bits are not one per question')
+
+    identical: list[int] = []
+    differing: list[int] = []
+    differing_caps: dict[str, int] = {}
+    unmeasured = 0
+    for position, record in enumerate(run_questions):
+        control_record = control_questions[control_index[record.get('questionId')]]
+        left = control_record.get('promptDigest')
+        right = record.get('promptDigest')
+        if left is None or right is None:
+            unmeasured += 1
+            continue
+        if left == right:
+            identical.append(position)
+        else:
+            differing.append(position)
+            capability = str(record.get('capability'))
+            differing_caps[capability] = differing_caps.get(capability, 0) + 1
+
+    def per_run(stratum: list[int]) -> dict:
+        """Per-repetition counts, the flip count, and the questions that moved the same way every time.
+
+        The last of those is the statistic the aggregate cannot see. A stratum of thirty questions can
+        gain exactly one in each of four repetitions -- four flips, a delta of +1, well inside any band
+        a 4.8% flip rate implies for that size -- and still be the strongest reading in the artifact,
+        because the alternative is that one specific question converted every single time. The
+        aggregate calls that churn; the per-question view calls it a mechanism, and it is the per-question
+        view that §13.194.4's criterion 1 was written about (`6456829e_abs`).
+        """
+        control_counts: list[int] = []
+        run_counts: list[int] = []
+        flips = 0
+        votes: dict[int, list[tuple[str, str]]] = {position: [] for position in stratum}
+        for repetition in range(min(len(run_bits), len(control_bits))):
+            run_total = 0
+            control_total = 0
+            for position in stratum:
+                control_position = control_index[run_questions[position].get('questionId')]
+                left = control_bits[repetition][control_position]
+                right = run_bits[repetition][position]
+                control_total += left == '1'
+                run_total += right == '1'
+                flips += left != right
+                votes[position].append((left, right))
+            control_counts.append(control_total)
+            run_counts.append(run_total)
+        gained = sorted(
+            str(run_questions[position].get('questionId'))
+            for position, pairs in votes.items()
+            if pairs and all(left == '0' and right == '1' for left, right in pairs)
+        )
+        lost = sorted(
+            str(run_questions[position].get('questionId'))
+            for position, pairs in votes.items()
+            if pairs and all(left == '1' and right == '0' for left, right in pairs)
+        )
+        return {
+            'control': control_counts,
+            'run': run_counts,
+            'flips': flips,
+            'gained': gained,
+            'lost': lost,
+            'repetitions': len(control_counts),
+        }
+
+    lines: list[str] = []
+    lines.append(
+        f'  prompt identity: {len(identical)}/{len(run_questions)} byte-identical, '
+        f'{len(differing)} differ' + (f', {unmeasured} unmeasured' if unmeasured else '')
+    )
+    if differing_caps:
+        lines.append(f'    differing by capability: {dict(sorted(differing_caps.items()))}')
+    header = (
+        f'  {"stratum":<18} {"n":>4} {"control":>8} {"run":>8} {"delta":>7} {"flips":>6} {"p":>7} '
+        f'{"sd":>5} {"unanim":>7} {"E[unanim]":>10}'
+    )
+    lines.append(header)
+
+    summary: dict[str, dict] = {}
+    for name, stratum in (('identical-prompt', identical), ('differing', differing)):
+        if not stratum:
+            lines.append(f'  {name:<18} {0:>4} {"-":>8} {"-":>8} {"-":>7} {"-":>6} {"-":>7} {"-":>5} {"-":>7} {"-":>10}')
+            continue
+        stats = per_run(stratum)
+        repetitions = stats['repetitions']
+        mean_control = sum(stats['control']) / repetitions
+        mean_run = sum(stats['run']) / repetitions
+        delta = mean_run - mean_control
+        observations = len(stratum) * repetitions
+        rate = stats['flips'] / observations if observations else 0.0
+        deviation = ((rate * len(stratum)) * (1 - rate)) ** 0.5
+        unanimous = len(stats['gained']) + len(stats['lost'])
+        # Under a symmetric null each question-read flips one way with probability rate/2, so the
+        # chance a given question moves the same way in every repetition is (rate/2)**repetitions,
+        # and there are two directions to move in.
+        expected_unanimous = len(stratum) * 2 * (rate / 2) ** repetitions if repetitions else 0.0
+        summary[name] = {
+            'delta': delta,
+            'sd': deviation,
+            'rate': rate,
+            'unanimous': unanimous,
+            'expected': expected_unanimous,
+            'stats': stats,
+        }
+        lines.append(
+            f'  {name:<18} {len(stratum):>4} {mean_control:>8.2f} {mean_run:>8.2f} {delta:>+7.2f} '
+            f'{stats["flips"]:>6} {rate * 100:>6.1f}% {deviation:>5.2f} {unanimous:>7} {expected_unanimous:>10.2e}'
+        )
+        lines.append(
+            f'    per repetition delta: {[right - left for left, right in zip(stats["control"], stats["run"])]}'
+            + (f'   unanimous gains: {stats["gained"]}' if stats['gained'] else '')
+            + (f'   unanimous losses: {stats["lost"]}' if stats['lost'] else '')
+        )
+
+    if 'identical-prompt' in summary:
+        block = summary['identical-prompt']
+        lines.append(
+            f'  null: a change of up to {2 * block["sd"]:.1f} question(s) on the identical stratum is '
+            f'the reader, not the treatment (observed {block["delta"]:+.2f}, 2 sd = {2 * block["sd"]:.2f})'
+        )
+    if 'differing' not in summary:
+        return '\n'.join(lines), 0
+
+    block = summary['differing']
+    band = 2 * block['sd']
+    outside = abs(block['delta']) > band
+    if outside:
+        lines.append(
+            f'  verdict: the differing stratum moved {block["delta"]:+.2f} with a 2 sd band of '
+            f'{band:.2f} -- outside it, so this pair carries a movement the identical stratum does '
+            f'not explain'
+        )
+    elif (block['stats']['gained'] or block['stats']['lost']) and block['expected'] < 0.001:
+        lines.append(
+            f'  verdict: the aggregate ({block["delta"]:+.2f}) is inside the {band:.2f} band, but '
+            f'{block["unanimous"]} question(s) moved in every one of {block["stats"]["repetitions"]} '
+            f'repetitions and the null expects {block["expected"]:.1e} of them -- the reading is those '
+            f'questions, not the mean, which churn elsewhere on the stratum cancels'
+        )
+    elif block["stats"]["gained"] or block["stats"]["lost"]:
+        lines.append(
+            f'  verdict: the differing stratum moved {block["delta"]:+.2f} with a 2 sd band of '
+            f'{band:.2f} -- inside it, and although {block["unanimous"]} question(s) moved in every '
+            f'repetition, a flip rate of {block["rate"] * 100:.1f}% expects {block["expected"]:.2f} of '
+            f'them, so unanimity here is not evidence'
+        )
+    else:
+        lines.append(
+            f'  verdict: the differing stratum moved {block["delta"]:+.2f} with a 2 sd band of '
+            f'{band:.2f} -- inside it, and no question moved the same way every repetition, so nothing '
+            f'on this stratum survives the reader\'s own churn'
+        )
+    return '\n'.join(lines), block['unanimous']
+    return '\n'.join(lines), 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -2938,6 +3367,32 @@ def main(argv: list[str]) -> int:
             'comma-separated fields --config may move without refusing the pair; accepts artifact '
             f'paths (`reader.model`) and dispatch names (`model`), known names: '
             f'{", ".join(sorted(DISPATCH_FIELD_ALIASES))}'
+        ),
+    )
+    parser.add_argument(
+        '--null',
+        type=Path,
+        metavar='CONTROL',
+        help=(
+            'measure this pair\'s own noise floor on the questions whose prompt is byte-identical '
+            'to CONTROL\'s, and report whether the changed stratum moves outside it'
+        ),
+    )
+    parser.add_argument(
+        '--registration',
+        action='store_true',
+        help=(
+            'compare this report\'s memoryArmConfig against the dispatch table (INPUTS) and exit '
+            'non-zero when any field departed without being named by --departs'
+        ),
+    )
+    parser.add_argument(
+        '--departs',
+        default='',
+        metavar='FIELDS',
+        help=(
+            'comma-separated dispatch inputs --registration may depart from without refusing the '
+            'run; refuses a name the dispatch table does not send'
         ),
     )
     parser.add_argument(
@@ -3058,6 +3513,35 @@ def main(argv: list[str]) -> int:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2
         return 0
+
+    if args.null:
+        try:
+            control = json.loads(args.null.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f'{args.null}: {error}', file=sys.stderr)
+            return 2
+        print(f'control: {args.null}')
+        print(f'run:     {args.report}')
+        try:
+            section, _outside = null_section(report, control)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        # A movement outside the band is the reading, not an error: this section answers "is the
+        # difference bigger than the reader's own churn", and both answers are informative. The
+        # exit code stays 0 so that the tool is usable in a loop over many pairs, unlike
+        # `--config` and `--registration`, which refuse.
+        return 0
+
+    if args.registration:
+        departed = [name.strip() for name in args.departs.split(',') if name.strip()]
+        print(f'report:  {args.report}')
+        print(f'against: tools/dispatch-cortex-memory-ab.py INPUTS')
+        print(f'departs: {departed if departed else "none declared"}')
+        section, failures = registration_section(report, departed)
+        print(section)
+        return 1 if failures else 0
 
     if args.config:
         try:

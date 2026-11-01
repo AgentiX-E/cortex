@@ -801,7 +801,20 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
   rendering as well would move both at once and attribute the result to neither.
-- `ask: enumerated` — **set by §13.34, after §13.26 sent `computed`.** It is `computed` plus
+- `ask: operands+operand-gap` — **registered by §13.203, replacing `enumerated`, which the arm had not
+  run since `40989420944`.** Three things are true at once and only the first was ever written down: §13.34
+  set `enumerated`; §13.166 dispatched `operands` and every 500-question run from `41144910162` to
+  `41254359622` carried `--set cortex_memory_ask=operands`; and §13.193 called `41185512391` "the
+  registered, `operands`" in one table while §10.3 said `enumerated` in another. Nothing failed, because
+  `test_preregistration_config.py` compares §10.3 with the dispatch table and **both** said `enumerated`
+  — the disagreement was between the documents and the runs, which no check could see. §13.203.2 is the
+  measurement of that gap, and `readout-arm-run.py --registration` is the check that now reports it from
+  a single artifact. The value is a superset of the one it replaced: `operands` keeps `enumerated`'s bytes
+  everywhere except the derivation-shaped questions on multi-session (§13.166.6), and `operand-gap`
+  replaces the abstention block's closing line (§13.190.1). **What was measured for it is one question,
+  converted in all four repetitions at a price of zero (§13.203.3); what was never measured is
+  `operands` against `enumerated`, and that comparison is the next experiment on this axis.**
+  The value it replaced was **set by §13.34, after §13.26 sent `computed`.** It is `computed` plus
   a **two-step contract on the multi-session route alone**: enumerate every matching item with
   its date, compute the answer from that list per the question's kind, and make the abstain
   token conditional on the list existing. Run `38828538851` is why — MR's 47 wrong answers
@@ -817,8 +830,9 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   four values this entry replaced, in order, and why each was retired. **A sixth value is registered by
   §13.103**: `aggregation`, the reference pipeline's aggregation shape on the multi-session route
   alone, whose Step 1 says an exchange is two items and whose Step 2 maps four question forms to four
-  operations. The registered value of this concept stays `enumerated` until a run beats the floor of
-  §13.100.2 with it.
+  operations. The registered value of this concept was `enumerated` until §13.203 replaced it with
+  `operands+operand-gap`; `aggregation` remains an unadopted value of this concept and is not part of
+  the registered one.
   §13.8 falsified the ask
   hypothesis at the time -- with
   the `extractive` ask the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
@@ -21592,7 +21606,13 @@ Six predictions, all one-sided where the mechanism makes them one-sided:
 
 **Decision rule, fixed before the run.** If 1–6 hold, the composite is adopted as the registered `ask`: §10.3
 gains the line and `tools/dispatch-cortex-memory-ab.py`'s `INPUTS` moves with it in the same commit, which is
-what `test_preregistration_config.py` pins. If 1 holds and 2 or 3 fails, the 63-question attribution of
+what `test_preregistration_config.py` pins.
+
+*Read on 2026-10-31 (`41222844945`): criteria 1, 2, 3 and 6 hold, 4 fails and 5 fails as arithmetic /
+holds as a band. §13.203 is the reading — it finds that criterion 4's `{61, 62}` was already contradicted by
+`41159983913`'s `KU` 60/59/61/61 nine sections earlier, measures the identical-prompt noise floor this
+criterion was guessing at (4.8% of reads flip; 2σ = 9.3 questions on 470), and adopts the composite on the
+one thing that survives both: `6456829e_abs` converting in four repetitions out of four.* If 1 holds and 2 or 3 fails, the 63-question attribution of
 §13.193.3 is a draw and not a mechanism, and the `operands` block's price has to be re-measured with a design
 that holds the abstention block fixed. If 1 fails, the two rules are not composable on this prompt and the map
 in §13.194.2 is the wrong direction as well.
@@ -22403,3 +22423,210 @@ rather than an agreement about nothing.
 6. **What this does not license:** quoting `41203245999`'s 421.50 or `41185512391`'s 428.25 against 48,000-era
    numbers such as 83.40% without naming the budget each side ran. That comparison is the drift wearing a result's
    clothes, and it is the one §13.192.7.1 already refused for `41185512391`.
+
+### 13.203 The composite converts the one question it was written for, and the band that would have hidden it
+
+**Registered 2026-10-31, as a reading, two instruments, and one amendment to §10.3.** The run is
+`41222844945` (500 questions, 4 repetitions, `deepseek-chat` at temperature 0, `thinking: disabled`,
+`maxPromptChars 96000`, `400:ellipsis`, `ask: operands+operand-gap`) against `41185512391`
+(`ask: operands`, everything else identical). The instruments are `readout-arm-run.py --registration`
+(one artifact against the dispatch table) and `--null` (one pair's own noise floor), with
+`test_registration_diff.py` (27) and `test_pair_null.py` (17).
+
+The pair was checked before it was read, which is §13.202.6's own rule:
+
+```
+  same     30 field(s)
+  differ   2 field(s):
+    declared    ask: "operands" -> "operands+operand-gap"
+    declared    askRoutes: [...] -> [..., "abstention"]
+  verdict: 2 field(s) differ and every one of them is declared
+EXIT=0
+```
+
+#### 13.203.1 The six criteria: four hold exactly, one holds inside its band, one fails
+
+| # | registered prediction | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | `ABS` **30 in all four** runs | 30, 30, 30, 30 | **holds, exactly** |
+| 2 | `MR` in `[87, 92]` per run | 89, 89, 89, 90 | holds (control 91, 90, 90, 88) |
+| 3 | `TR` in `[99, 108]`, `IE` in `[140, 148]` | 107, 105, 108, 105 · 144, 144, 143, 140 | holds (`IE` 140 is the lower bound, no margin) |
+| 4 | `KU` in `{61, 62}` | **60, 61, 60, 61** | **fails** |
+| 5 | roster = control's **plus one** per run (`427, 430, 429, 431`), band `[425, 433]` | 430, 429, 430, 426 (mean **428.75**), deltas `+4, 0, +2, −4` | band holds; **arithmetic fails** |
+| 6 | digest identity: `MR` 121/121, `IE` 150/150, `TR` 127/127, `KU` 72/72 equal, `ABS` 30/30 different | 121/121, 150/150, 127/127, 72/72, **0/30** | **holds, exactly** |
+
+| capability | `41185512391` (`operands`) | `41222844945` (composite) | Δ |
+| --- | --- | --- | ---: |
+| `IE` | 143/143/145/146 (**144.25**) | 144/144/143/140 (**142.75**) | −1.50 |
+| `ABS` | 29 ×4 (**29.00**) | 30 ×4 (**30.00**) | **+1.00** |
+| `MR` | 91/90/90/88 (**89.75**) | 89/89/89/90 (**89.25**) | −0.50 |
+| `TR` | 102/106/103/106 (**104.25**) | 107/105/108/105 (**106.25**) | +2.00 |
+| `KU` | 61 ×4 (**61.00**) | 60/61/60/61 (**60.50**) | −0.50 |
+| **roster** | 426/429/428/430 (**428.25**) | 430/429/430/426 (**428.75**) | **+0.50** |
+
+The decision rule §13.194.4 fixed fires on "if 1–6 hold", and criterion 4 does not. So the rule does not
+fire, and the honest question is not "is the composite adopted" but "was criterion 4 a criterion". §13.203.2
+answers that with evidence that predates this run, and §13.203.3 answers the substantive question from the
+stratum criterion 6 makes readable.
+
+#### 13.203.2 Criterion 4 was already contradicted in the table it was written beside
+
+`{61, 62}` was derived from **eight** observations: the control's `61, 61, 61, 61` and the treated run of
+§13.194.1 reading `61, 61, 62, 62`. Nine sections earlier, §13.200.2's own four-arm table records:
+
+| run | `ask` | room | marker | `KU` |
+| --- | --- | ---: | --- | --- |
+| `41159983913` | `operands` | 96,000 | none | 60/59/61/61 (**60.25**) |
+| `41185512391` | `operands` | 96,000 | `ellipsis` | 61/61/61/61 (**61.00**) |
+
+Those two runs differ in `turnCutMarker` alone, and the marker rides `max_turn_chars_routes` =
+`multi-session,temporal`, so **`KU` is outside its reach and its prompts are the control's on every
+question.** The identical-prompt `KU` range was therefore `[59, 61]` before this run existed, and criterion
+4 chose the narrower set — `{61, 62}` is the treated run's range plus the control's four, which is a band
+built from the two runs that happened to agree.
+
+This run reads `KU` 60, 61, 60, 61 against **72/72 byte-identical prompts**, which refutes the criterion's
+stated meaning — *"a `KU` reading outside that set is not noise and means the abstention route's block
+reached a route it must not reach"* — using the artifact that falsifies it. The block did not reach `KU`.
+The band was wrong.
+
+**No band is widened here by hand.** §13.203.4 measures the quantity the band was guessing at, on 1,880
+paired question-reads, and the result is that a ±1 floor was 3.4× too tight. That measurement stands on its
+own whether or not anyone accepts this run, which is the difference between correcting a criterion and
+moving a goalpost.
+
+#### 13.203.3 What the composite does, cut by whether the prompt changed at all
+
+`readout-arm-run.py --null` partitions the 500 questions by `promptDigest` and reports each stratum:
+
+```
+  prompt identity: 470/500 byte-identical, 30 differ
+    differing by capability: {'ABS': 30}
+  stratum               n  control      run   delta  flips       p    sd  unanim  E[unanim]
+  identical-prompt    470   399.25   398.75   -0.50     90    4.8%  4.63       0   3.09e-04
+    per repetition delta: [3, -1, 1, -5]
+  differing            30    29.00    30.00   +1.00      4    3.3%  0.98       1   4.63e-06
+    per repetition delta: [1, 1, 1, 1]   unanimous gains: ['6456829e_abs']
+```
+
+Three readings, in increasing order of strength:
+
+1. **The block reached thirty questions and nothing else.** 470 of 500 prompts are byte-identical to the
+   control's; the thirty that differ are exactly `ABS`. This is criterion 6, and it is the reason any
+   per-capability movement outside `ABS` is the reader rather than the treatment.
+2. **On those thirty, one question converted, in every repetition.** `6456829e_abs` — the question
+   §13.194.4(1) named in advance, whose gold is a decline — went `0 → 1` four times out of four, and no
+   `ABS` question moved the other way. Under a symmetric null at the observed 3.3% per-read flip rate the
+   expected number of such questions is **4.6 × 10⁻⁶**. That is the mechanism, at the finest granularity
+   the artifact can express.
+3. **Everywhere else the movement is churn.** The 470 identical prompts moved `+3, −1, +1, −5` across four
+   repetitions — a mean of **−0.50**, which cancels most of the `ABS` gain in the roster and is the whole
+   of the −1.50 on `IE` and the −0.50 on `MR`.
+
+So the composite is worth **one question, deterministically, at a price of zero** — and the roster's
+`+0.50` is that gain minus churn, not a measurement of anything.
+
+#### 13.203.4 The noise floor this arm had been quoting was 3.4× too tight
+
+The 470 identical prompts are a null experiment that costs nothing, because two arms reading byte-identical
+text at temperature 0 should agree. They do not:
+
+| quantity | reading |
+| --- | ---: |
+| question-reads on identical prompts | 1,880 (470 × 4) |
+| reads that changed verdict | **90 (4.8%)** |
+| net per repetition | `+3, −1, +1, −5` |
+| standard deviation of the net | **3.42** |
+| 2σ band on 470 questions | **9.3 questions** |
+
+§13.194.4(5) called ±1 per capability "the arm's identical-prompt floor". It is **3.4× too tight**, and the
+`+4 / −4` per-run spread in criterion 5's arithmetic — which that criterion treated as a failure — is
+exactly what this null predicts.
+
+Two independent estimates now agree, which is why the older one should have been trusted:
+
+| source | band on 500 questions |
+| --- | ---: |
+| §13.175.5, two dispatches of one payload | ±2.2 points = **±11 questions** |
+| this pair's identical stratum | 2σ = **9.3 questions** |
+
+**Consequences, stated as limits rather than as findings.** A single 4-repetition comparison on this arm
+cannot resolve a movement smaller than about nine questions; `§13.200.3`'s "`ellipsis` ≈ +6.25 questions"
+is **inside** that band and stays a candidate rather than becoming an adoption; and any future criterion
+that pins a capability to a set of observed values is pinning the reader, not the arm, unless the set is
+as wide as this measurement.
+
+#### 13.203.5 The decision, and the third value that was running unregistered
+
+**Adopted: `ask: operands+operand-gap`.** §10.3's `ask` bullet and this script's `INPUTS` move together in
+this commit, which is what `test_preregistration_config.py` pins. The evidence is threefold and each part is
+weaker than the whole: criterion 6 held exactly as registered (`470/500`, `ABS` 30/30 different); the `ABS`
+conversion is unanimous at `E = 4.6e-06`; and the composite's price is zero on the stratum that did not
+change.
+
+**The amendment is also the closure of a drift nobody had found.** §10.3 said `enumerated`; `INPUTS` said
+`enumerated`; every 500-question run from `41144910162` to `41254359622` carried
+`--set cortex_memory_ask=operands`, and §13.193.2 called `41185512391` "the registered, `operands`" in one
+table while §10.3 said otherwise in another. `test_preregistration_config.py` could not see it: it compares
+§10.3 with the dispatch table, and **both** were stale in the same direction. That is the third member of a
+family — `maxPromptChars` (§13.202.6), `turnCutMarker` (§13.188), `ask` (here) — and the family's shape is
+invariant: a `--set` on a shell command line is a value no record compares to anything.
+
+**Not adopted: `maxPromptChars 96000` and `turnCutMarker ellipsis`.** §13.202.6 already recorded them as
+experiments and nothing here reverses that; the run in flight (`41254359622`) is pinned to
+`41222844945`, which is also at 96,000, so it is internally consistent.
+
+**Not licensed:** quoting `428.75` as an improvement on `428.25`. The difference is `+0.50` against a null
+whose 2σ on the same questions is 9.26 — it is the `ABS` question minus churn. What is licensed is the
+narrower and stronger sentence: *the composite converts `6456829e_abs` in four repetitions out of four and
+moves nothing else that survives the null.*
+
+**What is still unmeasured on this axis:** `operands` against `enumerated`. `operands` is `enumerated`'s
+bytes everywhere except the derivation-shaped questions on multi-session (§13.166.6), and the only price
+ever measured for that block is §13.193.3's 63 questions — measured against `operand-gap`, not against
+`enumerated`. That comparison is the next experiment on this axis, and it is named here rather than run
+because the reader confirmation in flight is the higher-value use of the next four hours.
+
+#### 13.203.6 The two instruments, and why each is a gate rather than a report
+
+**`--registration`** reads ONE artifact against the dispatch table, and exits non-zero when a field
+departed without being named by `--departs`. It exists because every drift in this campaign was found by a
+person re-reading the document, and a prose record cannot fail. On `41222844945` before this section's
+amendment it printed three undeclared departures; after it, two declared ones:
+
+```
+  registration: 20 field(s) compared, 1 derived, 3 harness, 1 presence
+  same         18 field(s)
+    declared    maxPromptChars: 48000 (registered) -> 96000 (ran)
+    declared    turnCutMarker: "none" (registered) -> "ellipsis" (ran)
+    derived     askRoutes is computed from cortex_memory_ask and is not compared here
+EXIT=0
+```
+
+Three refusals are the design, and each was found by running it rather than by writing it: a **derived**
+field (`askRoutes`) is not compared, because the first version reported `askRoutes: ["enumerated"]
+(registered)` — a registered value that never existed, counted as a second departure; a dispatch value the
+artifact's type cannot hold is a **refusal**, not a skip (§13.191's shape); and a `--departs` name the table
+does not send is **refused**, because a typo would license the run while declaring nothing (§13.192.7.3 on
+the declaration side).
+
+**`--null`** measures the pair's own noise floor and reports four verdicts rather than one, because a
+mean-only instrument would have suppressed this section's finding: an aggregate inside the band **with** a
+unanimous conversion is a reading, one **without** is not, and the expected count `n · 2 · (p/2)^reps` is
+what distinguishes them without a hand-written threshold per capability.
+
+The job ceiling moved with them: `timeout-minutes 240 → 350`, from the measured 2.08× thinking ratio
+(§13.201.3) applied to the 118-minute 500×4 baseline — 245 minutes, five past the old ceiling, which is a
+lost run rather than a slow one.
+
+#### 13.203.7 What this does not licence
+
+1. **Comparing `41222844945` to a 48,000-era number.** Its budget and marker are experiments (§13.202.6);
+   only pairs at the same room are readings.
+2. **Reading criterion 4's failure as a mechanism failure.** It is a band failure, and the artifact proves
+   it in the same breath it falsifies the band.
+3. **Treating `E[unanim]` as a p-value for the arm.** It is the expected number of unanimous conversions
+   under a null whose rate is measured on *this* pair; it says a conversion happened, not that the
+   conversion is worth a config change on its own.
+4. **Re-running the composite for a better draw.** The artifact is `success`, the pair is clean, and the
+   reading is fixed at one question. A second dispatch would measure the reader again.
