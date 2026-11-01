@@ -149,10 +149,16 @@ export type QuestionRecord = {
    * This field counts the turns of the captured context -- `lastRetrievedContext`,
    * which is what was **passed to** `buildPrompt`. It is not what the prompt
    * carried: `buildPrompt` calls `fitToBudget` when the assembled prompt exceeds
-   * `maxChars`, and that truncates the evidence. The arm never sets
-   * `maxPromptChars`, so the budget is `DEFAULT_MAX_PROMPT_CHARS` (24,000) on
-   * every question, while run `38044858147` averaged 506,338 characters of
-   * evidence per question.
+   * `maxChars`, and that truncates the evidence. The arm sets `maxPromptChars`
+   * only when the run asks for it, so a run that does not is at
+   * `DEFAULT_MAX_PROMPT_CHARS` (24,000) on every question, while run
+   * `38044858147` averaged 506,338 characters of evidence per question.
+   *
+   * That run predates the input, and most of the archive does not: sixteen of the
+   * seventeen artifacts on disk name 48,000 or 96,000. The field's meaning is
+   * unchanged -- it counts what was passed to `buildPrompt` -- but a reader
+   * comparing this number against 24,000 on a recent artifact is comparing it
+   * against a budget that run did not use.
    *
    * So on that run this field reports 3,016-4,528 while the model received at most
    * 24,000 characters -- roughly 150-160 turns, an overstatement of about twenty

@@ -589,14 +589,18 @@ const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
  *
  * ## Why this input did not exist until §13.81
  *
- * `DEFAULT_MAX_PROMPT_CHARS` is 24,000 and every run in this campaign used it, so every experiment
- * traded truncation against room **inside** that budget. §13.80 found the trade's floor: at a
- * 200-character cap the room reached 100 turns and MR fell to 29 of 121, because a 223-character
+ * `DEFAULT_MAX_PROMPT_CHARS` is 24,000 and every run before §13.82 used it, so every experiment up
+ * to then traded truncation against room **inside** that budget. §13.80 found the trade's floor: at
+ * a 200-character cap the room reached 100 turns and MR fell to 29 of 121, because a 223-character
  * mean turn is a fragment and the model declines from fragments. The only way past the floor is to
  * raise the budget, and until this variable existed the arm could not express that.
  *
- * Absent means the product default, which is what every archived run used — so an artifact without
- * this field is a run at 24,000 rather than an unrecorded budget.
+ * **"Every run used it" stopped being true when this variable was added**, and the sentence stayed
+ * in this comment for long enough that it misdescribed the archive: of the seventeen artifacts on
+ * disk, ten ran at 48,000, six at 96,000 and one at the default. Absent still means the product
+ * default — an artifact without this field is a run at 24,000 rather than an unrecorded budget —
+ * but the default is now the exception rather than the rule, and the gap between the two is the
+ * subject of `AUDIT-BENCHMARK-WALLCLOCK.md` §7.
  */
 const MAX_PROMPT_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_PROMPT_CHARS';
 

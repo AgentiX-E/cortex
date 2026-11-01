@@ -202,3 +202,68 @@ A four-hour run is the provider's arithmetic, not a defect: 4000 sequential call
 defect is that the only ceiling guarding it permitted 2.06 times the job containing it, so the run
 that finally ran long would have died silently — and the repair had to change the unit rather than
 the number, because the number that binds sits below what a working pass already costs.
+
+---
+
+## 7. The number we publish is not the configuration we ship
+
+Found while checking what the run's budget actually was, and the largest thing in this document.
+
+`DEFAULT_MAX_PROMPT_CHARS` is **24,000** — the library's default, what a caller gets by passing no
+`maxPromptChars` at all. The published numbers are taken at **48,000** (83.40%, run `40698867439`)
+and **96,000 with `ellipsis`** (85.75%). Neither is the default.
+
+| configuration | source | roster |
+| --- | --- | --- |
+| 24,000 (library default) | `DEFAULT_MAX_PROMPT_CHARS` | **never measured** |
+| 48,000 | `40698867439`, and ten other artifacts | 417 / 500 = **83.40%** |
+| 96,000 + `ellipsis` | the six 96k artifacts | **85.75%** |
+
+**There is no valid measurement at the default.** Of the seventeen archived artifacts, sixteen name
+48,000 or 96,000 and the one that does not (`40083132802`) declined **482 of 500** questions — a
+degenerate run, not a reading. So the question *"what does the product score out of the box?"* has
+no answer in this repository today, and every number in the whitepaper is conditional on a flag the
+user has to know to set.
+
+The two comments that were supposed to guard this both said the opposite, and both were true when
+written:
+
+- `bench-memory-arm.ts` — *"`DEFAULT_MAX_PROMPT_CHARS` is 24,000 and **every run in this campaign
+  used it**"*. That stopped being true when the input was added in §13.81. Sixteen of seventeen
+  artifacts now disagree with it.
+- `question-record.ts` — *"The arm never sets `maxPromptChars`"*. Same vintage, same problem.
+
+Both are corrected, and the corrections state the counts rather than the reassurance, because the
+failure mode is not a wrong sentence: it is a sentence that makes a reader stop checking.
+
+### 7.1 Why this is not a documentation bug
+
+`AUDIT-SILENT-DENOMINATOR.md` and `AUDIT-PERSISTED-NULLS.md` are the same defect at other layers: a
+number whose denominator, or whose condition, is not what the reader will assume. Here the condition
+is a budget, and the assumption it invites is the natural one — *the published score is what I get*.
+
+The whitepaper's own third promise is *"we will state the condition each number was taken under"*.
+It does state 96,000 and 48,000. What it does not state is that **neither is the default**, so a
+reader who sets nothing is not reading about their own deployment.
+
+### 7.2 Why the default was not changed in this round
+
+Two candidate repairs, and neither is a commit this round should make unilaterally:
+
+1. **Raise `DEFAULT_MAX_PROMPT_CHARS` to 48,000.** The campaign's adopted configuration is 48,000
+   (§13.206), and §13.82 measured 24,000 → 48,000 at **MR +14pp** with a roster moving 394 → 403. A
+   library default that is 14 points worse on a capability, months after the campaign adopted the
+   better value, is a stale default rather than a design decision — but it is still a **product
+   behaviour change**, and the cost it adds (evidence characters per prompt roughly double) is the
+   user's latency to accept.
+2. **Measure 24,000 and publish it beside the others.** Cheaper to defend and strictly more
+   informative: it turns *"we do not know"* into a third row.
+
+The second is what this round registers as P1; the first needs the owner's decision, and §7.3 is
+what makes the decision without ambiguity.
+
+### 7.3 The one-line version
+
+> Two of the three numbers this project publishes require a flag that is not the default, and the
+> default has never been measured. That is not a rounding error in the documentation — it is the
+> difference between a score and a score-what-you-get.
