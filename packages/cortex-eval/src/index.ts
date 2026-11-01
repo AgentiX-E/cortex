@@ -506,3 +506,26 @@ export {
   type ProviderScore,
   type RetrievalMode,
 } from './harness.js';
+
+// The portability classifier landed with one in-package consumer and a public contract: a
+// deployment classifies its reader once, then reads one row of the matrix. Everything here is
+// exported because the operator-facing surface is exactly this — a probe set, a classifier, a
+// matrix, a config lookup and a one-way guard — and a consumer that had to reach into the module
+// path would be a consumer this package does not support.
+export {
+  CAPABILITY_PROBES,
+  classifyPortability,
+  configFor,
+  DegradationGuard,
+  PORTABILITY_MATRIX,
+  type CapabilityDimension,
+  type Classification,
+  type ConfigCell,
+  type DegradationSignal,
+  type Downgrade,
+  type EvidenceScope,
+  type PortabilityBucket,
+  type PortabilityConfig,
+  type Probe,
+  type ProbeOutcome,
+} from './model-portability.js';
