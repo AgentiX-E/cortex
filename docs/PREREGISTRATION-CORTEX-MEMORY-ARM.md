@@ -22630,3 +22630,86 @@ lost run rather than a slow one.
    conversion is worth a config change on its own.
 4. **Re-running the composite for a better draw.** The artifact is `success`, the pair is clean, and the
    reading is fixed at one question. A second dispatch would measure the reader again.
+
+### 13.204 MR's remaining thirty-two are the reader's: the gold is all in the window, and the window is not fragmented
+
+**Registered 2026-10-31, as a diagnosis. No dispatch, and no product change.** The artifact is
+`41222844945` (the composite, 96,000 + `ellipsis`), and the three measurements below all come from it:
+`goldOverlap`, `featureRetrievedContexts` and the reader's own `rawOutput`. They cost nothing, and the
+first one reframes the roadmap's largest number.
+
+#### 13.204.1 At this budget, retrieval delivers the whole gold set — on every question, right or wrong
+
+| capability | wrong | of which **every** gold turn was in the window | overall gold recall |
+| --- | ---: | ---: | ---: |
+| `MR` | 32 / 121 | **32** | **100.0%** |
+| `TR` | 20 / 127 | **20** | 100.0% |
+| `IE` | 6 / 150 | 4 | 99.3% |
+| `KU` | 12 / 72 | 4 | 89.6% |
+| `ABS` | 0 / 30 | — | 80.2% |
+
+`MR`'s recall is **100.0%** and **every** one of its 32 wrong answers had `carried == total`. So at 96,000
+characters there is no retrieval component left in `MR`'s loss: the reader is shown every turn the gold
+names, and answers anyway. `TR` reads the same way. `KU` is the one capability where the window still
+matters — 8 of its 12 failures are missing gold — which is consistent with it being the capability §13.202
+showed loses 8 questions when the room halves.
+
+**This retires §13.26's explanation for `MR` at this budget.** That section's mechanism was that the signal
+ranks *turns*, so a multi-session answer spread across a session arrives scattered and the room buys the
+highest-scoring turns wherever they live; it was measured at 48,000, against a pool of 256 and a window of
+~144 turns, and its remedy was the session unit. At 96,000 the same ranking carries the whole gold set on
+all 121 questions, so the scattering no longer costs gold — and `MR` is still 73.55%, against a reference
+pipeline in the same artifact that reads 82.6–84.3% over a **smaller** window.
+
+#### 13.204.2 The obvious second explanation is false: the windows are not fragmented
+
+If the reader fails because it is shown eleven half-sessions instead of three complete ones, the windows of
+the wrong answers should be more fragmented than the windows of the right ones. They are not:
+
+| stratum | n | sessions in window (median) | turns in window (median) | turns per session (median) | sessions with ≤ 2 turns |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| correct | 89 | 11 | 241 | 21 | 2.7% |
+| wrong | 32 | 11 | 244 | 22 | 2.1% |
+
+Both strata hold the same number of sessions, the same number of turns, and the same turns per session, and
+fragments are 2–3% of sessions in both. So "the reference pipeline wins because it completes the session
+behind each hit" is **not** the difference between our `MR` and the reference's, at this budget.
+
+That is a negative result with a use: it removes the leading candidate for the one number §14.3 calls the
+most severe, and it does so without a run. What is left on the table is the difference the reference does
+have and this arm does not — **what it asks**, not what it shows. The reference's builder asks its two
+steps *with the notes unwritten*; this arm has asked for the list since §13.34 and for the operands since
+§13.166.
+
+#### 13.204.3 The failures are an inclusion test over near-misses, and the gold is always there
+
+`--arithmetic` splits the 32: **11 under** (7 off by one), **6 over** (3 off by one), 7 abstention,
+7 non-numeric gold, 1 equal. Three read by hand, chosen because they are the largest class, all with
+`carried == total`:
+
+| question | gold | answered | what the window holds |
+| --- | ---: | ---: | --- |
+| `0a995998` *items of clothing to pick up or return* | 3 | 2 | 17/17 carried; the reader listed three lines, two of which were the same Zara boots, and merged them |
+| `6d550036` *projects I have led or am currently leading* | 2 | 1 | 22/22 carried; the window holds **fourteen** "project" mentions of which at most two are ones the user led |
+| `9d25d4e0` *jewelry acquired in the last two months* | 3 | 2 | 18/18 carried; the window holds ~10 jewelry mentions of which two are acquisitions |
+
+The structure is the same in all three: the evidence is complete, the window contains many *near-misses*
+of the asked-for kind, and the reader's Step 1 lists the obvious ones and stops. The instruction it is
+under (`do not substitute a similar one`) does not help, because the discrimination is not substitution —
+it is deciding which of fourteen mentions satisfies *led by me* and which of ten satisfies *acquired*.
+
+#### 13.204.4 What this decides, and the one thing it does not
+
+1. **The next `MR` experiment is a change of ask, not of window.** Increasing the room, changing the
+   ranking, or switching to session units all target a quantity that is already at 100%.
+2. **It has a population, named before the run**, which is what makes it readable at a 9-question noise
+   floor: `0a995998`, `6d550036`, `9d25d4e0`, `a9f6b44c`, `bf659f65`, `681a1674`, `8e91e7d9`, `21d02d0d`
+   — the eight questions wrong by exactly −1 whose gold is fully carried. The bar is **≥ 4 of 8 convert**,
+   the same shape as §13.166.6's "at least 4 of the 7", and the guard is the three over-by-one questions
+   (`2e6d26dc`, `88432d0a`, `00ca467f`), **at most one of which may worsen**.
+3. **`KU` is the capability whose window still matters** (8 of 12 failures with gold missing), so a `KU`
+   experiment is a room or ranking experiment, and it must not be bundled with the `MR` one.
+4. **What this does not do: write the ask.** The candidate contract — Step 1 listing *candidates* with the
+   clause that includes or excludes each, Step 2 counting the includes — is named here as the shape the
+   population implies, and it is not implemented in this commit. A prompt value registered before it exists
+   would be the §7.3 defect in its fourth form: an artifact that describes the intent.
