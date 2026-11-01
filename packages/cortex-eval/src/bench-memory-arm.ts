@@ -2156,6 +2156,15 @@ export type CortexMemoryArmRunOptions = {
   /** Fixed timestamp, so a report is reproducible. */
   generatedAt?: string;
   /**
+   * The content identity of the dataset file this run graded, as `sha256:<hex>`.
+   *
+   * Set by the entry point that reads the file, because this function is handed the
+   * dataset already parsed -- the bytes are gone by the time it is called. Forwarded
+   * into the report rather than logged: the artifact is the only thing that outlives
+   * the job, and `AblationReport.datasetFingerprint` states the reasoning.
+   */
+  datasetFingerprint?: string;
+  /**
    * §13.85's policy, so the gold denominator follows the filter the product applied.
    *
    * ## Why the run needs it when the product already has it
@@ -2497,6 +2506,9 @@ export async function runCortexMemoryArm(
       // auditing that run's duration from the artifact alone gets 92 seconds for 2h08m of work.
       // `PREREGISTRATION` §13.118.5 is where the wrong number was first read.
       ...(options.generatedAt === undefined ? {} : { generatedAt: options.generatedAt }),
+      ...(options.datasetFingerprint === undefined
+        ? {}
+        : { datasetFingerprint: options.datasetFingerprint }),
       ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
       memoryArmConfig: options.memoryArmConfig,
       ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),

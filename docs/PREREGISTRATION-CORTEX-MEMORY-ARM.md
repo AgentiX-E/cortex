@@ -23167,9 +23167,9 @@ in the artifact.
 
 **A dataset digest.** The workflow downloads `resolve/main`, a mutable pointer, and verifies nothing.
 A `datasetFingerprint` in the artifact is the repair that needs no prior knowledge, and a pinned
-digest is the one that refuses a mismatch. Neither is done here: the file is not present in this
-environment, so any digest written now would be a guess, and a guessed digest is the defect this
-campaign keeps finding in other people's harnesses.
+digest is the one that refuses a mismatch. Only the first ships, in §13.210, because a pinned digest
+has to be taken from a file and the file is not present in this environment — a guessed digest is the
+defect this campaign keeps finding in other people's harnesses.
 
 ---
 
@@ -23279,3 +23279,69 @@ Registered before it is built, so the answer cannot be chosen afterwards:
 Stopping rule: **one dispatch.** If MR moves less than 8 while the other predictions hold, the
 conclusion is that MR's remaining 23 questions are a knowledge limit of this reader rather than a
 selection limit of this pipeline, and the third prediction is what distinguishes those two.
+
+---
+
+## 13.210 Every artifact now names the file it graded
+
+**Shipped 2026-11-01.** The audited defect is `AUDIT-BENCHMARK-WALLCLOCK.md` §5's first bullet, and
+what ships is the half of the repair that needs no prior knowledge.
+
+`AblationReport.dataset` is a **name** (`longmemeval`), `questionCount` is a **sample size**, and
+neither says which bytes were read. The workflow fetches that name from
+`longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json`, a mutable pointer: the contents can
+change under the name with no commit in this repository, and no artifact could have recorded it. A
+score is therefore a property of (pipeline, file) and only one of the two was ever written down.
+
+### 13.210.1 What is recorded, and where
+
+| layer | file | change |
+| --- | --- | --- |
+| digest | `packages/cortex-eval/src/dataset-fingerprint.ts` | **new**: `fingerprintBytes(Uint8Array) -> "sha256:<64 hex>"` |
+| report | `packages/cortex-eval/src/report.ts` | `datasetFingerprint?` on the report and on `AblationReportOptions`; one line in the Markdown, directly under the dataset name |
+| arm | `packages/cortex-eval/src/bench-memory-arm.ts` | forwarded from the entry point, because the arm is handed the dataset already parsed |
+| entry point | `packages/cortex-memory/bench/run-ablation.ts` | **one** read of the file: the buffer is parsed for the questions and hashed for the digest; printed with the file's instance count beside it |
+| tests | `__tests__/dataset-fingerprint.test.ts` (8), `__tests__/report-dataset-fingerprint.test.ts` (3) | FIPS vectors, bytes-not-string, file identity, absent-renders-absent, JSON round-trip |
+
+Two design decisions worth their own sentence:
+
+1. **One read, not two.** There is no `fingerprintDatasetFile(path)`. The entry point reads the file
+   for its JSON anyway, and a second read of a 110 MB file is a way for the digest and the questions
+   to come from two different reads of one run. `tools/export-census.mjs` called the unused export an
+   orphan and was right.
+2. **Hashing bytes, not the decoded string.** `readFileSync(path, 'utf8')` then hashing the string
+   maps every invalid byte sequence to U+FFFD, so two different malformed files would collide — a
+   fingerprint whose collision set contains "any pair of malformed files" is not a fingerprint.
+
+### 13.210.2 What it buys, stated narrowly
+
+- **Comparability becomes checkable.** Two artifacts can now be asked whether they graded the same
+  file, and the answer does not depend on anyone having pinned a digest in advance.
+- **The absent branch is informative.** A dataset constructed in code (`longmemeval-mini`) has no
+  file, and the field is **absent** rather than empty, so "read no file" and "predates the field" are
+  distinguishable bytes — the rule `abstentionReasons` already states for the census.
+- **A probe is separable from a full run.** `LIMIT=220` over the same file has the same digest and a
+  different `questionCount`; the log line prints both plus the file's own instance count, so the
+  three cannot be confused.
+
+### 13.210.3 What it does not buy, and this is the part that cannot be repaired later
+
+**The seventeen archived artifacts have no digest and never will.** That includes `41284575092`, the
+89.80% headline. No claim in any document of this repository can be checked against the file that
+produced it, and the gap does not close retroactively — the digest is not recoverable from a score.
+
+**Refusing is not implemented.** Haki's harness checks a sha256 before every run and refuses a
+different file; this one now records and still refuses nothing. The pinned expected value has to be
+taken from the file, the file is not present in this environment, and a guessed digest would be the
+defect this campaign keeps finding in other people's harnesses. So the ordering is: **recording now,
+refusal once a real digest exists to pin** — and until then a mismatch, if one ever occurred, would
+be visible in the artifact rather than blocking the run.
+
+### 13.210.4 The prediction this registers
+
+For the next multi-session dispatch (§13.209.5), the artifact's `datasetFingerprint` will be present,
+`questionCount` will be 500, and the digest will be **equal** to the digest of every later run in this
+campaign unless the upstream file moves. If a later run's digest differs while `questionCount` is
+unchanged, the comparison between the two is void and the older number is not a baseline — it is a
+different population. That condition is stated now so that it cannot be discovered as a surprise
+after a delta has already been published.

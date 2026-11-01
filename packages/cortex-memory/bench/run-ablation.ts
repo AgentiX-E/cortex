@@ -72,6 +72,7 @@ import {
   cortextMemoryArmOptions,
   describeEmbeddingCachePersist,
   expandMultiSessionQueries,
+  fingerprintBytes,
   persistEmbeddingCache,
   restoreArmEmbeddingCache,
   roleOfTurn,
@@ -230,13 +231,30 @@ async function main(): Promise<void> {
     return;
   }
 
-  const parsed = JSON.parse(readFileSync(dataPath, 'utf8')) as unknown;
+  // One read, two uses: the parsed instances and the bytes they came from. The
+  // fingerprint is taken here because this is the only place in the process that holds
+  // the file -- by the time the arm is called the dataset is parsed and the bytes are
+  // gone, which is why `CortexMemoryArmRunOptions.datasetFingerprint` is an input rather
+  // than something the arm computes. `AblationReport.datasetFingerprint` says why the
+  // report carries it: the workflow fetches this name from `resolve/main`, so a score is
+  // a property of (pipeline, file) and only half of that pair was ever written down.
+  const rawDataset = readFileSync(dataPath);
+  const datasetFingerprint = fingerprintBytes(rawDataset);
+  const parsed = JSON.parse(rawDataset.toString('utf8')) as unknown;
   if (!Array.isArray(parsed)) {
     throw new Error(`LONGMEMEVAL_PATH must contain a JSON array, got ${typeof parsed}`);
   }
   const limit = Number(process.env['LIMIT'] ?? 0);
   const sampled = sampleInstances(parsed as never, limit);
   const dataset = loadLongMemEval(sampled as never);
+  // Printed as well as recorded, because the two cross-check each other: the log is what
+  // a triage reader sees while the job still exists, and the artifact is what survives it.
+  // Printing the file's instance count beside the digest is what distinguishes a 500-question
+  // run from a `LIMIT=220` probe over the same file -- the digest is equal in both.
+  console.log(
+    `Dataset fingerprint: ${datasetFingerprint} (${(parsed as unknown[]).length} instances in file, ` +
+      `${dataset.questions.length} graded after sampling)`,
+  );
 
   // The base reader, plus -- only when `thinking` names routes -- the map `CortexMemory` resolves per
   // route. The baseline below keeps `llm`: the reference pipeline is not the treatment, and a pair
@@ -728,6 +746,7 @@ async function main(): Promise<void> {
     // artifacts this dispatch compares differ by exactly this entry: the config line is the only place
     // a reader of the JSON can see that the treatment was administered rather than merely dispatched.
     featureConfig: { cortexMemory: true, windowReorder },
+    datasetFingerprint,
     // Read from the parsed arm options, not decided here: §13.12 registers the
     // bound, and a value written in this file would never appear in the
     // environment the pre-registration guard compares against `§10.3`.

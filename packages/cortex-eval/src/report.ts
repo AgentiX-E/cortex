@@ -24,6 +24,25 @@ export type AblationReport = {
   ablation: AblationResult;
   generatedAt: string;
   /**
+   * The content identity of the dataset FILE this run graded, as `sha256:<hex>`.
+   *
+   * `dataset` is a name (`longmemeval`) and `questionCount` is a sample size; neither
+   * says which bytes were read, and the workflow fetches that name from
+   * `resolve/main`, a reference that can move without any commit here. So a score is
+   * a property of (pipeline, file) and this artifact only ever wrote one of the two.
+   *
+   * Absent rather than defaulted when no file was named -- `longmemeval-mini` is
+   * constructed in code, and a synthesized digest for it would claim a file
+   * provenance it does not have. The absent branch is what keeps "predates the
+   * field" and "read no file" from being the same bytes, which is the same rule
+   * `abstentionReasons` states below.
+   *
+   * Recording only. Refusing on a mismatch needs a pinned expected digest, and there
+   * is no file in this environment to take one from --
+   * `cortex/docs/AUDIT-BENCHMARK-WALLCLOCK.md` §7.2 keeps that half open.
+   */
+  datasetFingerprint?: string | undefined;
+  /**
    * Coverage of the pre-registered cohort, when the arm declares one.
    *
    * Part of the report rather than a side-channel return value because a
@@ -964,6 +983,16 @@ export type AblationReportOptions = {
   alpha?: number;
   abstentionAware?: boolean;
   generatedAt?: string;
+  /**
+   * The content identity of the dataset file, when the caller read one.
+   *
+   * Passed in rather than computed here because this module never sees a path: the
+   * dataset arrives already parsed, and by then the bytes are gone. The entry point
+   * that reads the file is the only place that can take the digest, so it takes it
+   * and this function carries it into the report
+   * (`AblationReport.datasetFingerprint` says why it is in the report at all).
+   */
+  datasetFingerprint?: string;
   scorer?: AnswerScorer;
   featureConfig?: FeatureConfig;
   /**
@@ -1028,6 +1057,9 @@ export async function runAblationReport(
     feature: { name: feature.name, metrics: ablation.featureMetrics },
     ablation,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
+    ...(options.datasetFingerprint === undefined
+      ? {}
+      : { datasetFingerprint: options.datasetFingerprint }),
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     ...(options.questions === undefined ? {} : { questions: options.questions }),
     ...(options.memoryArmConfig === undefined ? {} : { memoryArmConfig: options.memoryArmConfig }),
@@ -1047,6 +1079,12 @@ export function formatAblationReport(report: AblationReport): string {
     `# Cortex Benchmark Report — \`${report.feature.name}\``,
     '',
     `- Dataset: \`${report.dataset}\` (${report.questionCount} questions)`,
+    // Immediately under the name, because the name is the half that does not move and
+    // the digest is the half that can. Conditional: a dataset constructed in code has
+    // no file, and printing an empty fingerprint for it would be a claim.
+    ...(report.datasetFingerprint === undefined
+      ? []
+      : [`- Dataset file: \`${report.datasetFingerprint}\``]),
     // Both arms, on one line, above every number in the document. The line is what
     // makes a screenshot of this report self-describing, which the per-section labels
     // below are too far down the page to do.

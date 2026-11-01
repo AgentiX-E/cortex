@@ -186,14 +186,17 @@ completion order, and the twin-run digest is the instrument. It is the same rule
 
 ## 5. What this round did not fix
 
-- **The dataset is not pinned by content.** The workflow downloads
-  `longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json`, which is a **mutable** pointer, and
-  nothing verifies the bytes. Haki's harness checks a sha256 before every run and refuses a
-  different file; this one would silently measure a different population under the same name. The
-  repair is a `datasetFingerprint` in the artifact (so two artifacts can prove comparability without
-  anyone having recorded a hash in advance) plus an optional pinned digest that refuses a mismatch.
-  Not done here because the file is not present in this environment, so no real digest could be
-  recorded — writing one from guesswork is the failure this repository keeps refusing.
+- **The dataset is pinned by content only from now on.** The workflow downloads
+  `longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json`, which is a **mutable** pointer.
+  Haki's harness checks a sha256 before every run and refuses a different file. **The recording half
+  now ships**: `AblationReport.datasetFingerprint` carries `sha256:<hex>` of the file the run read,
+  rendered directly under the dataset name, and absent when no file was read (§13.210). The
+  **refusing** half does not ship, and cannot from here: a pinned expected digest has to come from a
+  file, and the file is not present in this environment — writing one from guesswork is the failure
+  this repository keeps refusing. The consequence is stated rather than implied: **the seventeen
+  archived artifacts, including the 89.80% headline, have no digest and never will**, so no claim in
+  this document can be checked against the file that produced it. From the next dispatch onward it
+  can.
 - **Concurrency.** §3.
 - **Repeat artifacts are not cached.** lm-evaluation-harness keeps responses in SQLite and a crashed
   run resumes without recomputing; this harness re-asks all 4000 questions every time. Deliberate,
