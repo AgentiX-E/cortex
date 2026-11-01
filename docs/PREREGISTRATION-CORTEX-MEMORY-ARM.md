@@ -23640,3 +23640,52 @@ a shared declaration would make one dispatch's choice silently move the other.
 place, a dispatch that selected `zhipu:glm-4.6` for the *reader* would have sent `zhipu:glm-4.6` as
 a model id to the *reranker's* endpoint — a failure in a stage the dispatch never mentioned. It now
 reads through `readModelSelection`, which is the one parser, and a test pins both spellings.
+
+### 13.212.6 The probe: the axis works, and the second provider's tier does not carry this prompt
+
+Run `41346610318`, dispatch `master` @ `b254e29`, `limit=20`, `ablation_runs=1`,
+`temperature=0`, `model=zhipu:glm-4.6`, `thinking=disabled`. **Failed at 12 of 20 questions on
+`LLM request failed: 429`** after the retry policy spent its five attempts. The artifact is a
+progress checkpoint (`reached: 12`, `total: 20`), not a report, so it carries no `reader` line —
+that line is written into the final report, which this run never produced.
+
+**What the run did establish.** The declared provider reached the wire: `DEEPSEEK_MODEL:
+zhipu:glm-4.6` is printed in the job env, the grammar maps it to `providerId: 'zhipu'` and
+`baseUrl: 'https://open.bigmodel.cn/api/paas/v4'` (five unit tests, including the refusal for an
+unrecognised prefix), and a `429` is a provider-side rate answer rather than a credential or wiring
+error — the same workflow serves 4,000-call runs against the other endpoint with the same code path.
+Twelve questions were answered by a model that is not the default one, which is twelve more than any
+earlier artifact in this campaign.
+
+**What it established about the provider, which is the more useful half.** Two arms ran in the same
+job, on the same endpoint, at the same time:
+
+| arm | questions reached | wall clock | throughput |
+| --- | --- | --- | --- |
+| `reference-pipeline` | **20 / 20** | 193 s | **6.20 q/min** |
+| `cortex-memory` | **12 / 20** (then 429) | 512 s | **1.41 q/min** |
+
+Same endpoint, same minute, a **4.4× difference**, and the one variable is the prompt: the memory arm
+sends the `48,000`-character window (≈12k tokens) and the reference pipeline does not. So the
+binding constraint is **tokens per minute**, not requests per minute — the account's tier is sized
+for the small prompts and is exhausted by the large ones. This run does not separate TPM from
+concurrency, and the next attempt should: a probe that sends the same window at half the length
+distinguishes a token budget from a slot budget.
+
+**What that implies for the registered scale, computed rather than estimated.** The full comparison is
+`500 × 4` on each side. At the measured rates: `2,000 / 6.20 = 323 min` for the pipeline side plus
+`2,000 / 1.41 = 1,418 min` for the memory side, **≈ 1,741 min ≈ 29 h**, against the arm's
+`CORTEX_MEMORY_BUDGET_MINUTES=340` and a 350-minute job ceiling. **The job budget is 5.1× too small
+for this provider at this window.** No amount of retry tuning closes a 5× gap, which is why the next
+step is capacity — a higher tier, or a second credential whose tier matches the prompt — and not a
+code change.
+
+**And that is what the declaration bought.** With §13.212 in place, a second credential is one
+dispatch away: `model=custom:<id>` plus `CORTEX_READER_BASE_URL`/`CORTEX_READER_MODEL` in the job env
+needs no source edit, and the artifact will name it. Before this section the same move required
+editing the workflow's `env:` and putting the key into `DEEPSEEK_API_KEY`, which no artifact records.
+
+**Registered consequence.** P0's measurement stays open; its blocker is now stated as a number
+(5.1× the budget at 1.41 q/min) rather than as "needs a second provider". The increment that
+unblocks it is either a higher TPM tier or a smaller window — and the second one changes the
+treatment, so it is a different registration, not a workaround for this one.
