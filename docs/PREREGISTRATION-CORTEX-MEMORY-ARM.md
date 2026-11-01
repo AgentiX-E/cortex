@@ -23384,3 +23384,105 @@ campaign unless the upstream file moves. If a later run's digest differs while `
 unchanged, the comparison between the two is void and the older number is not a baseline — it is a
 different population. That condition is stated now so that it cannot be discovered as a surprise
 after a delta has already been published.
+
+---
+
+## 13.211 The multi-session loss is the enumeration, and the instrument that would fix it was measured first
+
+**Shipped 2026-11-01, as a reading and a guard rather than a treatment.** `AUDIT-MR-ENUMERATION.md`
+holds the whole of it; this section registers what follows and what was deliberately not dispatched.
+
+### 13.211.1 The five readings that decide the next increment
+
+Read from `41284575092` (48,000 characters, `ellipsis`, thinking on `multi-session` + `temporal`, four
+repetitions, `449 / 500`). Each is a count over that artifact and nothing else.
+
+| reading | value |
+| --- | --- |
+| MR questions wrong on all four repetitions | 22 (of 121; 93.75 average correct) |
+| …whose recorded answer equals the number of Step 1 lines | **22 of 22** |
+| MR failures that are numeric golds | 28 of 28 (the 16 non-numeric MR questions are correct) |
+| …whose gold digits appear in the offered evidence | **18 of 22** stable failures |
+| …that are totals or two-operand derivations, with a Step 1 of 0–2 lines | 10 of 22 |
+
+The first row is the one that reorders the work. `ENUMERATION_CONTRACT` forbids re-filtering the list at
+Step 2, and the reader obeys it exactly: the aggregate step has not made a single error in this run.
+Every increment that audits or rewrites Step 2 — a second pass over the list, a checking prompt, a
+"recompute carefully" instruction — is aimed at a step with a zero error rate. The list is the treatment.
+
+The fourth row retires the retrieval hypothesis for this capability. The `48,000`-character budget
+discards about two thirds of a haystack and **the answer's own digits are still in the window on 18 of
+the 22**, so a wider top-k, a second index, or a reranker is aimed at a cell that is already mostly
+filled. This is also where `AUDIT-BENCHMARK-WALLCLOCK.md` §5's first bullet stops being a footnote: no
+archived artifact carries a dataset digest, so all five readings are comparable only to themselves.
+
+### 13.211.2 Implemented, measured, reverted: the classifier widening
+
+§2's last two rows are the population `OPERAND_CONTRACT` was written for — *"identify the numbers this
+question needs"*, with **a sum** among its named operations — and the classifier still does not route
+them there. Extending `DERIVATION` to read totals as derivations was implemented, unit-tested and then
+**measured against the same artifact before any dispatch**:
+
+| pattern | newly reached | currently correct | currently wrong |
+| --- | --- | --- | --- |
+| `in total` / `altogether` / `combined` | 6 | 4 | 2 |
+| `total <quantifier>` | 10 | 7 | 3 |
+| `page count` / `word count` / `view count` | 1 | 0 | 1 |
+| **total** | **19** | **13** | **6** |
+
+**Thirteen correct questions would be re-contracted to reach six wrong ones, and no sub-pattern has an
+upside larger than its downside.** The property that separates the two groups is not in the question
+text: a correct total and a wrong total are both *"the total X over period Y"*, and the difference is in
+the evidence and the gold. So no classifier over questions can reach the six without moving the
+thirteen. The change was reverted rather than dispatched, and the measurement is recorded here so that
+the next person to notice §2's two rows finds the arithmetic before the implementation.
+
+What ships from it is `question-shape-parity.test.ts`. The classifier's docblock claimed a guard in
+`cortex-eval` that did not exist and had the dependency direction backwards; the test now pins the
+shipped boundary question by question, and imports the other package's **source** rather than its
+barrel — a parity test comparing a source file against a stale `dist` reports the build state, which is
+how the first version of this file read two different values on six questions.
+
+### 13.211.3 The three registered increments, and what each must show
+
+**P0 — the strong half of the contract, which no configuration can reach.** The requirement is that a
+reasoning model scores better than a non-reasoning one on the same contract and the same window, and
+**half of it is still unmeasured**: every artifact of this campaign is `deepseek-chat` with
+`thinking: enabled`, and the disabled side of the same configuration is `41203245999` — so *"does
+thinking help"* is answered (`+24` questions, §13.209) while *"does a stronger model help"* is not.
+`DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL` and `DEEPSEEK_API_KEY` are already read from the environment, so
+an OpenAI-compatible endpoint can be pointed at today without a code change; what is missing is a
+second **named** provider in `llm-factory.ts` so that the reader's identity string records which
+backend produced a number, and so that switching is a dispatch input rather than an env substitution
+nobody can see in the artifact.
+
+*Prediction:* a reasoning-capable model from a different family raises MR by at least 8 and TR by at
+least 4 at the same `48,000`, with `ABS` unchanged (its gold is a decline and 30/30 already). *Falsified
+if* MR moves by less than 4 — that would say the remaining loss is a property of the task's evidence
+rather than of the reader, and the next increment is `P1`'s retention rule rather than a model swap.
+
+**P1 — a `KU` retention rule.** `AUDIT-MR-ENUMERATION.md` §4: `KU` reads 63/72, five of its seven stable
+failures answered with the superseded value although the instruction already forbids it and the
+evidence is time-monotone on all 72 questions, and one has the update **absent from the window**
+entirely. The treatment is therefore retention, not wording: keep the latest turn of each session in
+the window before the relevance budget spends itself. *Prediction:* `KU` +3 or more, `MR` and `TR`
+inside ±3, no capability below its `41284575092` reading.
+
+**P2 — quotation-grounded enumeration.** §5 of the audit shows that groundedness on a long window
+**cannot be audited after the fact**: three offline checks — token coverage, longest contiguous run,
+timestamp validity — all had zero discriminating power between correct and incorrect questions, because
+a 12,000-token block contains every common word, enumerated items are paraphrases rather than
+quotations, and a session's turns share a date. It can only be *produced*, by asking for a quotation
+per line and dropping the lines whose quotation is not in the evidence. *Acceptance:* the drop rate is
+reported per capability, and a question whose lines are all dropped abstains rather than counting zero.
+
+### 13.211.4 Why this round dispatched nothing
+
+Three candidate treatments were examined and one was measured; the one that was measured came out
+negative, and the other two are code changes with registered predictions rather than configurations to
+flip. The one configuration that *could* be dispatched today is the `thinking: disabled` control, and it
+is not worth a five-hour run: its reading already exists as `41203245999`, and repeating it would
+measure a question that is answered. What is not answerable by any dispatch of this workflow is the
+second provider, which is the next structural increment — and it is structural precisely because the
+artifact currently cannot say which backend produced a number, which is the same defect as a report that
+cannot say which dataset file it graded.
