@@ -12,6 +12,7 @@ import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds } from './rerank-factory.js';
+import type { EndpointCheck, ReaderProviderId } from './reader-provider.js';
 import { bothSides, residualUsage, type UsageBySide } from './usage-by-side.js';
 import { dominantFlow } from './answer-transition.js';
 import type { AnswerTransition } from './types.js';
@@ -765,9 +766,29 @@ export type MemoryArmConfig = {
    */
   readonly reader?:
     | {
-        readonly provider: string;
+        /**
+         * The backend the run **declared**, never a guess about it.
+         *
+         * §13.212: this was `provider: string` and held the host-derived family -- `'deepseek'`
+         * for one domain and `'openai-compatible'` for every other. That field was a vendor for
+         * one provider and a protocol for the rest, so two runs could not be compared on it and a
+         * second vendor could only be reached by substituting a credential into a variable named
+         * after the first. The declared name is a fact a dispatch can set and an artifact can be
+         * held to.
+         */
+        readonly providerId: ReaderProviderId;
         readonly model: string;
         readonly baseUrl: string;
+        /**
+         * Whether the endpoint is the one `providerId` implies.
+         *
+         * `'overridden'` is rendered as an `endpoint=` clause, because the declaration and the
+         * reach are two facts and a reader line that showed only the declaration would attribute
+         * a proxy's numbers to the named vendor. `'none'` (a `custom` provider) makes no claim, so
+         * there is nothing to render -- an unconditional clause would warn on every correct custom
+         * run.
+         */
+        readonly endpoint: EndpointCheck;
         readonly thinking: 'enabled' | 'disabled';
         /**
          * The routes `thinking` applies to, or absent when it applies to every route.
@@ -833,11 +854,22 @@ export type MemoryArmConfig = {
  * provider this project has run and the host is the part that says **which service** answered.
  * A URL with a query string would put a credential in an artifact if one ever arrived that way,
  * which is why this reads `URL.host` and never echoes the string it was given.
+ *
+ * ## Why the provider is the declared name
+ *
+ * §13.212 replaced the host-derived family with the name the dispatch declared. For every
+ * archived run the two agree -- the default provider is `deepseek` and every archived dispatch
+ * named a `deepseek.com` endpoint -- so the bytes do not move. They stop agreeing in the two
+ * cases that matter: a second vendor (`zhipu:glm-4.6`), where the old field said
+ * `openai-compatible` and named nothing; and an endpoint override, which is where the `endpoint=`
+ * clause appears. That clause is the reason the host is still printed: the declaration says what
+ * was selected, the host says what was reached, and the clause says they differ.
  */
 function renderReader(reader: {
-  readonly provider: string;
+  readonly providerId: ReaderProviderId;
   readonly model: string;
   readonly baseUrl: string;
+  readonly endpoint: EndpointCheck;
   readonly thinking: 'enabled' | 'disabled';
   readonly thinkingRoutes?: readonly string[] | undefined;
   readonly temperature: number | null;
@@ -852,7 +884,8 @@ function renderReader(reader: {
     host = reader.baseUrl.replace(/^https?:\/\//, '').split('/')[0] ?? 'unknown';
   }
   return (
-    `reader=${reader.provider}:${reader.model}@${host}` +
+    `reader=${reader.providerId}:${reader.model}@${host}` +
+    `${reader.endpoint === 'overridden' ? '/endpoint=override' : ''}` +
     `${renderThinking(reader)}` +
     `/temp=${reader.temperature === null ? 'default' : String(reader.temperature)}`
   );

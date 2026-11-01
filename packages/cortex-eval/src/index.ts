@@ -374,13 +374,24 @@ export {
   // arm constructs it; `createLlmFromEnv` refuses such a value rather than silently building the
   // base reader and letting the artifact name a treatment it did not administer.
   createReadersFromEnv,
-  DEFAULT_DEEPSEEK_BASE_URL,
-  DEFAULT_DEEPSEEK_MODEL,
   readThinkingReach,
   resolveReaderIdentity,
   type LlmEnv,
   type ThinkingReach,
 } from './llm-factory.js';
+export {
+  // §13.212: the provider axis. `readModelSelection` is exported because `rerank-factory` reads the
+  // same `DEEPSEEK_MODEL` value for a different purpose and has to strip the provider prefix the
+  // same way; `resolveReaderProvider` is the resolution the reader factories share. The provider
+  // table itself stays module-private -- `READER_PROVIDERS` and `ReaderProvider` have no caller
+  // outside the module, and the census treats an export with no caller as dead weight.
+  DEFAULT_DEEPSEEK_BASE_URL,
+  DEFAULT_DEEPSEEK_MODEL,
+  readModelSelection,
+  resolveReaderProvider,
+  type EndpointCheck,
+  type ReaderProviderId,
+} from './reader-provider.js';
 export {
   createMemoryArmReranker,
   createRerankerFromEnv,

@@ -216,6 +216,11 @@ const ABSTENTION_CAPABILITY = 'ABS';
  * mode and temperature, which is the whole identity and the thing `40698883428` could not state. The first
  * version of this file interpolated it and printed `reader [object Object]` on the first artifact that had one --
  * a tool that hides the field it was written to make legible.
+ *
+ * §13.212 renamed the provider field to `providerId` and made it the **declared** name. Artifacts written before
+ * that carry `provider`, which was host-derived; reading the old name as a fallback is what keeps this tool
+ * usable on the archive, and printing it unaltered is honest -- for every archived run the two hold the same
+ * value, because the default provider and the default host agree.
  */
 function readerOf(body) {
   const reader = body?.memoryArmConfig?.reader ?? null;
@@ -227,7 +232,9 @@ function readerOf(body) {
     reader.temperature === null || reader.temperature === undefined
       ? 'no temperature sent'
       : `temperature ${reader.temperature}`;
-  return `${reader.provider ?? 'provider?'}/${reader.model ?? 'model?'} (${thinking}, ${temperature})`;
+  const provider = reader.providerId ?? reader.provider ?? 'provider?';
+  const endpoint = reader.endpoint === 'overridden' ? ', endpoint overridden' : '';
+  return `${provider}/${reader.model ?? 'model?'}${endpoint} (${thinking}, ${temperature})`;
 }
 
 function readArtifact(body, isBareDecline) {

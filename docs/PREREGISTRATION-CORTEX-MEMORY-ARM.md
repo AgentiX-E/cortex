@@ -23486,3 +23486,157 @@ measure a question that is answered. What is not answerable by any dispatch of t
 second provider, which is the next structural increment — and it is structural precisely because the
 artifact currently cannot say which backend produced a number, which is the same defect as a report that
 cannot say which dataset file it graded.
+
+---
+
+## 13.212 The reader's backend is a declaration, and the only public model-swap evidence says the effect is small
+
+**Shipped 2026-11-01, as a code change with a registered measurement.** This section registers the
+provider axis, states why the name could not take an input of its own, and **amends §13.211.3's
+prediction before the run it applies to**, on evidence that did not exist when that prediction was
+written. The amendment is recorded rather than silently applied, because a prediction moved after
+the data is a different practice from a prediction moved before it.
+
+### 13.212.1 What shipped
+
+Four facts that were one fact before:
+
+| fact | before §13.212 | after |
+| --- | --- | --- |
+| which backend a run declared | nothing — the only provider was the default one | `providerId`: `deepseek` \| `zhipu` \| `custom` |
+| which endpoint it reached | `baseUrl`, and a host-derived `provider` string | `baseUrl`, plus `endpoint`: `matches` \| `overridden` \| `none` |
+| which variable held the credential | `DEEPSEEK_API_KEY`, hardcoded | the declared provider's own variable |
+| how an operator selected a backend | by substituting a key into a variable named after a different vendor | by naming it in the `model` value |
+
+The `provider` field it replaces was **two kinds of fact in one field**: `'deepseek'` for one host —
+a vendor — and `'openai-compatible'` for every other host — a protocol. Two runs could not be
+compared on it, and a second vendor could only be reached by an act the artifact could not show.
+`providerId` is a declaration; `endpoint` is the check on it; the host is already printed beside both.
+
+### 13.212.2 Why the name rides `model` and not a 25th input
+
+`benchmark-cortex-memory.yml` declares **24** `workflow_dispatch` inputs.
+`tools/__tests__/test_dispatch_inputs.py::test_no_workflow_sits_at_the_input_ceiling` **fails a
+workflow at 25**, so the ceiling is not GitHub's number but one below it — the headroom exists
+precisely so that the next axis does not have to argue with the API at dispatch time. This is the
+third time the surface has forced a state into an existing value (§13.188's turn-cap width,
+§13.197.4's thinking reach), and the third time the grammar is what keeps it from becoming a
+free-text field:
+
+| `model` value | provider | model | note |
+| --- | --- | --- | --- |
+| `deepseek-chat` | `deepseek` | `deepseek-chat` | every archived dispatch; unchanged |
+| `deepseek:deepseek-v4-pro` | `deepseek` | `deepseek-v4-pro` | explicit spelling of the default |
+| `zhipu:glm-4.6` | `zhipu` | `glm-4.6` | a different family |
+| `zhipu:` | `zhipu` | `glm-4.6` | the provider's default; a complete request |
+| `custom:qwen2.5:7b` | `custom` | `qwen2.5:7b` | first colon splits, so tags survive |
+| `qwen2.5:7b` | — | — | **refused**, with the message naming `custom:qwen2.5:7b` |
+
+The two facts are recorded together because a model id is meaningless without the endpoint that
+serves it: `glm-4.6` is not a DeepSeek model and `deepseek-chat` is not a Zhipu one. An artifact that
+carried the model and left the provider to be inferred from the host would be the §13.110 defect
+again — the number with no record of what produced it.
+
+**Backward compatibility is a property, not an intention.** Unprefixed values resolve to `deepseek`,
+whose implied domain contains `api.deepseek.com`, so every archived configuration renders
+`reader=deepseek:<model>@api.deepseek.com` — the exact bytes it rendered before. The clause
+`endpoint=override` appears only when the declaration and the reach disagree, which is never true
+for an archived run.
+
+### 13.212.3 The credential defect this repairs, stated as a failure
+
+Before this section, a Zhipu run had to put its key into `DEEPSEEK_API_KEY`. Two consequences, both
+observable:
+
+1. **The artifact could not say which backend answered.** The host could, incidentally, but the
+   field that existed to say it returned `'openai-compatible'` — the protocol, which is true of every
+   provider and therefore distinguishes none.
+2. **A missing credential produced a message naming the wrong vendor.**
+   `DEEPSEEK_API_KEY is required for natural-language benchmark` on a run that had been dispatched
+   as a Zhipu run sends the operator to look for a variable that is not the problem.
+
+`requireKey` now reads `provider.credentialVariable`, and the refusal names it *and* the provider:
+`ZHIPU_LLM_API_KEY is required for natural-language benchmark (reader provider "zhipu")`. The
+association between a provider and its credential variable is a kind of fact this repository has
+been bitten by twice: `ZHIPU_BASE_URL` belongs to the **embedding** factory, so the reader's Zhipu
+endpoint is `ZHIPU_LLM_BASE_URL` — a shared name would have made a dispatch that moved the
+embeddings silently move the reader, and the artifact would have shown two changed backends for one
+intent.
+
+### 13.212.4 The amendment to §13.211.3's prediction, and the evidence for it
+
+§13.211.3 predicted, for this exact increment: *"a reasoning-capable model from a different family
+raises MR by at least 8 and TR by at least 4 at the same 48,000, with ABS unchanged; falsified if MR
+moves by less than 4."* That was written from the shape of the MR loss (§13.211.1) and **before any
+public measurement of a model swap on a memory benchmark had been located**. Two now have been, and
+they point the other way.
+
+**Mem0, *Bring Your Own Key: Accuracy, Cost & Latency by Model*, 2026-10-20.** Seventeen models run
+on LoCoMo's 1,540 questions with *"only the model that extracts memories changed; everything else
+stayed the same"* — the same one-variable design as this increment, on the same benchmark family:
+
+| model | accuracy | note |
+| --- | --- | --- |
+| Claude Opus 5.5 | 93.5% | most accurate tested |
+| Claude Sonnet 5.5 | 93.4% | half the price |
+| GLM-5.3 Flash | **93.0%** | slowest tested (86.5 s p95) |
+| DeepSeek V4.1 Flash | **92.9%** | best value |
+| GPT-6 Luna | 92.6% | |
+| GPT-5 mini | 92.6% | |
+| Claude Haiku 5.5 | 92.3% | |
+| Mem0's own default | 92.5% | the dashed line in their chart |
+| GPT-4o-mini | 91.3% | |
+| Mistral Nemo | 84.1% | least accurate tested |
+
+The whole range is **9.4 points**, and it is a *price* range: the cheap end is where the loss is. The
+**frontier band is 1.2 points wide** (92.3–93.5) across seven models from four vendors, and the two
+families this increment compares sit **0.1 point apart** on it. A second, independent swap — Roampal's
+model-swap run on a corrected LoCoMo, 20B open model against GPT-4o-mini — moves TagCascade from
+74.1% to 76.6% (**+2.5**) and CE-Only from 74.4% to 75.9% (**+1.5**).
+
+So the honest point expectation for a frontier-to-frontier swap, on this class of benchmark, is
+**+1 to +3 points**, and `MR +8` is outside what any public measurement supports. §13.211.3's number
+is therefore amended **before the run**, and the original is left in place above rather than edited:
+a registered prediction that turned out to be too optimistic is a fact about the registration, and
+deleting it would hide the one thing this document exists to show.
+
+**The amended registration.**
+
+- *Point expectation:* MR **+1 to +3**, TR **+1 to +3**, ABS unchanged (its gold is a decline and
+  30/30 already). Outside `[−1, +4]` on MR falsifies the point expectation in the direction it lands.
+- *Decision rule, which is what the run is actually for.* Three outcomes, three different next
+  increments, and none of them is "run it again":
+
+  | MR delta | reading | next increment |
+  | --- | --- | --- |
+  | **≥ +4** | the reader *is* a live constraint at this window; the contract is saturating it | a per-reader-class contract: `model-portability.ts` already buckets readers, and the pair (reader, contract) becomes the unit rather than the reader alone |
+  | within ±4 | the reader is **not** the constraint; the loss is in the list | P2's quotation-grounded enumeration (§13.211.3), with P1's retention rule unchanged |
+  | **≤ −4** | the second reader is worse on *this* task | report it as a finding about LoCoMo's MR shape — 28 of 28 MR failures are numeric golds, which is an arithmetic task, not a recall one — not as a failed dispatch |
+
+- *Also recorded, because it is the cost half of the same question and §13.211.3 did not name it:*
+  **tokens per answered question**, from the artifact's own usage block (`prompt_tokens`,
+  `completion_tokens`). A reasoning reader that buys +2 points for triple the completion tokens is a
+  different product decision from one that buys +2 for the same tokens, and the artifact can already
+  tell the two apart. Nothing here predicts which; it predicts only that the number is reported
+  beside the accuracy rather than after it.
+
+### 13.212.5 What this does not do, and why the omission is deliberate
+
+**`thinking` is always sent, for every provider.** `buildReader` passes `{type: mode}` unconditionally,
+which honours §13.197's treatment on DeepSeek and on Zhipu (GLM-4.5 and above accept the same field).
+A third-party endpoint that rejects an unknown request field would fail at first call. The repair
+would be a per-provider "does this endpoint accept `thinking`" declaration — a knob that could be
+pointed at a combination no registration names, which is what §13.197.4 refused for the reach
+grammar. It is registered here as a known limitation rather than shipped unmeasured:
+`custom` is the escape hatch, and the honest statement is "this provider must speak the DeepSeek
+`thinking` field", not "this provider is supported".
+
+**The reranker keeps its own provider axis.** `CORTEX_RERANK_PROVIDER` already names three backends;
+this section does not fold it into the reader's table, because the two are selected independently and
+a shared declaration would make one dispatch's choice silently move the other.
+
+**One thing it fixed as a side effect, and that would otherwise have been a silent break.**
+`rerank-factory`'s `llm` backend read `DEEPSEEK_MODEL` directly as a model id. With the grammar in
+place, a dispatch that selected `zhipu:glm-4.6` for the *reader* would have sent `zhipu:glm-4.6` as
+a model id to the *reranker's* endpoint — a failure in a stage the dispatch never mentioned. It now
+reads through `readModelSelection`, which is the one parser, and a test pins both spellings.

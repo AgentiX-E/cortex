@@ -17,13 +17,25 @@
 import type { LLM } from '@agentix-e/cortex-core';
 import { OpenAICompatibleLLM, type ThinkingMode } from '@agentix-e/cortex-ai';
 
+import {
+  resolveReaderProvider,
+  type EndpointCheck,
+  type LlmEnv,
+  type ReaderProviderId,
+} from './reader-provider.js';
 import { readTemperature, withTemperature } from './reader-temperature.js';
 import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
 
-export type LlmEnv = Record<string, string | undefined>;
+/**
+ * The environment the reader reads.
+ *
+ * Declared in `reader-provider.ts` rather than here because that is the module the type is about:
+ * seven of these variables are the provider declaration's, one is the thinking reach's. Re-exported
+ * so `LlmEnv` keeps its public name -- `index.ts` and both benchmark entry points import it from
+ * this module -- while the source graph stays acyclic (`llm-factory` → `reader-provider`).
+ */
+export type { LlmEnv };
 
-export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
-export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
 /** Per-attempt deadline for thinking-mode calls; reasoning takes far longer. */
 const THINKING_TIMEOUT_MS = 300_000;
 
@@ -165,15 +177,46 @@ export function resolveTimeoutMs(thinking: ThinkingMode): number | undefined {
  * same reason both call this function rather than reading the variables themselves.
  */
 export function resolveReaderIdentity(env: LlmEnv): {
-  readonly provider: string;
+  readonly providerId: ReaderProviderId;
   readonly model: string;
   readonly baseUrl: string;
+  readonly endpoint: EndpointCheck;
   readonly thinking: 'enabled' | 'disabled';
   readonly thinkingRoutes: readonly string[] | undefined;
   readonly temperature: number | null;
 } {
-  const baseUrl = env['DEEPSEEK_BASE_URL'] ?? DEFAULT_DEEPSEEK_BASE_URL;
-  const model = env['DEEPSEEK_MODEL'] ?? DEFAULT_DEEPSEEK_MODEL;
+  return describeReader(env, resolveReaderProvider(env));
+}
+
+/**
+ * The identity, given a provider the caller already resolved.
+ *
+ * ## Why the provider is a parameter rather than resolved again here
+ *
+ * `createLlmFromEnv` needs the provider too -- the credential's variable name lives on it -- and
+ * a second call would be a second copy of one fact. The same argument the module docblock makes
+ * for `resolveReaderIdentity` itself: the reader that answers and the reader the artifact names
+ * must not be two expressions of one environment. Here it is one expression, read once.
+ *
+ * ## What the identity says about the backend
+ *
+ * The **declared** name (`providerId`) and whether the endpoint it reaches is the one that name
+ * implies (`endpoint`). Before §13.212 the field was derived from the host: `'deepseek'` for one
+ * domain and `'openai-compatible'` for every other, which is a vendor for one provider and a
+ * protocol for the rest -- two kinds of fact in one field, comparable to nothing.
+ */
+function describeReader(
+  env: LlmEnv,
+  provider: ReturnType<typeof resolveReaderProvider>,
+): {
+  readonly providerId: ReaderProviderId;
+  readonly model: string;
+  readonly baseUrl: string;
+  readonly endpoint: EndpointCheck;
+  readonly thinking: 'enabled' | 'disabled';
+  readonly thinkingRoutes: readonly string[] | undefined;
+  readonly temperature: number | null;
+} {
   // DeepSeek V4-Pro enables thinking by default with effort=high, which makes
   // even a one-line QA answer reason for tens of seconds (minutes on a large
   // retrieved context) and blows past the 60s request deadline. This benchmark
@@ -185,34 +228,32 @@ export function resolveReaderIdentity(env: LlmEnv): {
   // the mode those routes run under and `thinkingRoutes` states which they are; the routes not
   // named keep the shipped `disabled`, which is what the base reader below is built with.
   const reach = readThinkingReach(env[THINKING_VARIABLE]);
-  // Named by the service rather than by the vendor that happens to be the default: a run
-  // pointed at an OpenAI-compatible proxy is not a DeepSeek run, and an artifact that called
-  // it one would attribute its numbers to a provider that never served them.
-  const provider = /(^|\.)deepseek\.com$/i.test(hostOf(baseUrl)) ? 'deepseek' : 'openai-compatible';
   return {
-    provider,
-    model,
-    baseUrl,
+    providerId: provider.id,
+    model: provider.model,
+    baseUrl: provider.baseUrl,
+    endpoint: provider.endpoint,
     thinking: reach.mode,
     thinkingRoutes: reach.routes,
     temperature: readTemperature(env),
   };
 }
 
-/** The host of a base URL, or the string itself when it does not parse. */
-function hostOf(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).host;
-  } catch {
-    return baseUrl;
-  }
-}
-
-/** The credential every reader needs, refused once so both factories state it the same way. */
-function requireKey(env: LlmEnv): string {
-  const apiKey = env['DEEPSEEK_API_KEY'];
+/**
+ * The credential the resolved provider needs, refused once so both factories state it the same way.
+ *
+ * The variable is the **provider's**, not a hardcoded one. That is the repair, not a tidy-up:
+ * §13.211.3 records that switching providers before §13.212 meant putting a second vendor's key
+ * into a variable named after the first, so the only record of which backend answered was the
+ * host string -- and the failure mode of getting it wrong was a 401 that named the wrong variable.
+ */
+function requireKey(env: LlmEnv, provider: ReturnType<typeof resolveReaderProvider>): string {
+  const apiKey = env[provider.credentialVariable];
   if (!apiKey) {
-    throw new Error('DEEPSEEK_API_KEY is required for natural-language benchmark');
+    throw new Error(
+      `${provider.credentialVariable} is required for natural-language benchmark ` +
+        `(reader provider ${JSON.stringify(provider.id)})`,
+    );
   }
   return apiKey;
 }
@@ -246,10 +287,12 @@ function buildReader(
 }
 
 export function createLlmFromEnv(env: LlmEnv): LLM {
-  const apiKey = requireKey(env);
-  // The identity is resolved rather than re-derived, so the model that answers and the model
-  // the artifact names cannot be two different expressions of the same environment.
-  const identity = resolveReaderIdentity(env);
+  // One resolution, used for both the credential and the identity: the variable the key is read
+  // from and the backend the artifact names are properties of the same declaration, so reading
+  // the environment twice would be two chances to disagree about which provider was selected.
+  const provider = resolveReaderProvider(env);
+  const apiKey = requireKey(env, provider);
+  const identity = describeReader(env, provider);
   // A route list has no meaning here: this function's contract is one reader for every route, and
   // the only way to honour a list would be to pick the mode for the caller. `createReadersFromEnv`
   // is the function that can express it, so a run that needs one is a run that has to name it --
@@ -286,8 +329,9 @@ export function createReadersFromEnv(env: LlmEnv): {
   readonly llm: LLM;
   readonly readerByRoute: Readonly<Record<string, LLM>> | undefined;
 } {
-  const apiKey = requireKey(env);
-  const identity = resolveReaderIdentity(env);
+  const provider = resolveReaderProvider(env);
+  const apiKey = requireKey(env, provider);
+  const identity = describeReader(env, provider);
   const routes = identity.thinkingRoutes;
   if (routes === undefined) {
     return { llm: buildReader(identity, apiKey, identity.thinking), readerByRoute: undefined };

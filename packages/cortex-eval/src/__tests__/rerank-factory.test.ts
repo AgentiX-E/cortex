@@ -16,7 +16,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { createRerankerFromEnv, DEFAULT_RERANK_MODEL } from '../rerank-factory.js';
+import {
+  createRerankerFromEnv,
+  DEFAULT_RERANK_MODEL,
+  resolveRerankIdentity,
+} from '../rerank-factory.js';
 import { readRerankFallbacks } from '../runner.js';
 
 /**
@@ -227,6 +231,26 @@ describe('createRerankerFromEnv provider selection', () => {
         CORTEX_RERANK_PROVIDER: 'llm',
       }),
     ).toThrow(/DEEPSEEK_API_KEY/);
+  });
+
+  it('strips the provider prefix the reader selection may carry', () => {
+    // §13.212 lets `DEEPSEEK_MODEL` name a provider (`zhipu:glm-4.6`). This arm reads the same
+    // variable for a different purpose and would otherwise send the prefixed string as a model id
+    // to its own endpoint -- so a dispatch that swapped the *reader's* provider would break a
+    // reranker it never mentioned, at first request rather than at startup.
+    const identity = resolveRerankIdentity({
+      CORTEX_RERANK: 'on',
+      CORTEX_RERANK_PROVIDER: 'llm',
+      DEEPSEEK_MODEL: 'zhipu:glm-4.6',
+    });
+    expect(identity.provider === 'llm' ? identity.model : null).toBe('glm-4.6');
+    // An unprefixed value keeps meaning exactly what it meant before the grammar existed.
+    const plain = resolveRerankIdentity({
+      CORTEX_RERANK: 'on',
+      CORTEX_RERANK_PROVIDER: 'llm',
+      DEEPSEEK_MODEL: 'deepseek-v4-pro',
+    });
+    expect(plain.provider === 'llm' ? plain.model : null).toBe('deepseek-v4-pro');
   });
 
   it('does not silently accept a RERANK_API_KEY in place of the chat credential', () => {

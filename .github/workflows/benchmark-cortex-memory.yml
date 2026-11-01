@@ -54,7 +54,7 @@ on:
         default: '0'
         type: string
       model:
-        description: 'DeepSeek model id (deepseek-chat, deepseek-v4-pro, ...)'
+        description: "Reader model, optionally prefixed with the provider that serves it: 'deepseek-chat' (the default provider), 'deepseek:deepseek-v4-pro', 'zhipu:glm-4.6', or 'custom:<id>' with CORTEX_READER_BASE_URL/CORTEX_READER_MODEL set in the job env. The split is on the FIRST colon, so a tag such as 'custom:qwen2.5:7b' keeps its tag. This rides the existing value rather than taking an input of its own because the surface sits one below GitHub's ceiling of 25 -- see PREREGISTRATION section 13.212.4 -- and because a model id is meaningless without the endpoint that serves it, which is why the two are recorded together. Section 13.212 also replaced the artifact's host-derived provider field with this declared name; every archived dispatch is unprefixed and resolves to 'deepseek', so their artefacts render the bytes they always rendered"
         required: false
         default: 'deepseek-chat'
         type: string

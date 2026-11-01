@@ -43,6 +43,7 @@ import {
 // in through a transitive import.
 import { makeRerankPipelineFactory as makeDefaultRerankPipelineFactory } from '@agentix-e/cortex-ai/local';
 import type { RerankScoreFn } from '@agentix-e/cortex-core';
+import { readModelSelection } from './reader-provider.js';
 
 export type RerankEnv = Record<string, string | undefined>;
 
@@ -289,10 +290,14 @@ function readChoice(env: RerankEnv, variables: RerankVariableSet): RerankChoice 
     };
   }
   if (backend === 'llm') {
+    // §13.212: `DEEPSEEK_MODEL` may carry a provider prefix (`zhipu:glm-4.6`), and this arm would
+    // otherwise send the whole string as a model id to the endpoint it resolves below. The reader
+    // factory strips the prefix; this path has to strip it the same way, or a dispatch that swapped
+    // the *reader's* provider would silently break the reranker it never mentioned.
     return {
       enabled: true,
       backend,
-      model: env['DEEPSEEK_MODEL'] ?? DEFAULT_LLM_RERANK_MODEL,
+      model: readModelSelection(env).model ?? DEFAULT_LLM_RERANK_MODEL,
       baseUrl: env['DEEPSEEK_BASE_URL'] ?? DEFAULT_LLM_RERANK_BASE_URL,
     };
   }

@@ -43,9 +43,12 @@ const GATE = {
 describe('resolveReaderIdentity', () => {
   it('names the shipped defaults when the environment says nothing', () => {
     expect(resolveReaderIdentity({})).toEqual({
-      provider: 'deepseek',
+      providerId: 'deepseek',
       model: 'deepseek-chat',
       baseUrl: 'https://api.deepseek.com/v1',
+      // The shipped endpoint is the one this provider name implies, so there is nothing to
+      // report. §13.212: the third state (`'none'`) belongs to a provider that makes no claim.
+      endpoint: 'matches',
       thinking: 'disabled',
       // §13.197.4: absent, not `[]`. "This value names no routes" and "this value names routes and
       // the list is empty" are different claims, and only the absence leaves an archived artifact's
@@ -64,22 +67,25 @@ describe('resolveReaderIdentity', () => {
     );
   });
 
-  it('names the service rather than the default vendor when the base URL points elsewhere', () => {
-    // A run against an OpenAI-compatible proxy is not a DeepSeek run. Calling it one would
-    // attribute the numbers to a provider that never served them.
-    expect(
-      resolveReaderIdentity({ DEEPSEEK_BASE_URL: 'https://api.example.com/v1' }).provider,
-    ).toBe('openai-compatible');
+  it('flags an endpoint that is not the one the provider name implies', () => {
+    // A run against an OpenAI-compatible proxy is not a DeepSeek run, and calling it one would
+    // attribute the numbers to a provider that never served them. §13.212 states that as a fact
+    // about the endpoint rather than as a host-derived pseudo-vendor: the declaration stands
+    // (that is what was selected) and `endpoint: 'overridden'` says the two disagree, which the
+    // rendered line carries as an `endpoint=override` clause beside the host.
+    const identity = resolveReaderIdentity({ DEEPSEEK_BASE_URL: 'https://api.example.com/v1' });
+    expect(identity.providerId).toBe('deepseek');
+    expect(identity.endpoint).toBe('overridden');
   });
 
   it('survives a base URL that does not parse, because an identity is not a validation', () => {
     // `hostOf` catches `new URL`'s throw and falls back to the string it was given. The fallback is
     // the branch that keeps `resolveReaderIdentity` total: it is also called on a replayed artifact,
     // where a malformed URL is a fact about the record rather than a reason to refuse to describe it.
-    // A malformed host cannot be deepseek.com, so the provider is the generic one.
+    // A malformed host cannot be deepseek.com, so the endpoint is reported as overridden.
     const identity = resolveReaderIdentity({ DEEPSEEK_BASE_URL: 'api.example.com/v1' });
     expect(identity.baseUrl).toBe('api.example.com/v1');
-    expect(identity.provider).toBe('openai-compatible');
+    expect(identity.endpoint).toBe('overridden');
   });
 
   it('reports thinking mode as the constructor reads it', () => {
@@ -181,6 +187,36 @@ describe('the reader reaches the artifact', () => {
     expect(line(resolveReaderIdentity({ DEEPSEEK_THINKING: 'enabled' }))).toContain(
       '/thinking=enabled/temp=default`',
     );
+    // §13.212. The second provider, rendered. Before this the line said
+    // `openai-compatible:glm-4.6@open.bigmodel.cn`, which named the protocol and left the vendor
+    // to be inferred from the host -- so two runs against two different vendors could not be told
+    // apart by the field that exists to tell them apart.
+    expect(line(resolveReaderIdentity({ DEEPSEEK_MODEL: 'zhipu:glm-4.6' }))).toContain(
+      '`reader=zhipu:glm-4.6@open.bigmodel.cn/thinking=disabled/temp=default`',
+    );
+    // And an endpoint override is stated, because the declaration alone would attribute a proxy's
+    // numbers to the vendor the operator named. The clause appears only when the two disagree, so
+    // every correct run -- including every archived one -- renders without it.
+    expect(
+      line(
+        resolveReaderIdentity({
+          DEEPSEEK_MODEL: 'zhipu:glm-4.6',
+          ZHIPU_LLM_BASE_URL: 'https://proxy.internal/v4',
+        }),
+      ),
+    ).toContain(
+      '`reader=zhipu:glm-4.6@proxy.internal/endpoint=override/thinking=disabled/temp=default`',
+    );
+    // A `custom` provider claims no endpoint, so there is nothing to verify and no clause to print:
+    // an unconditional one would warn on every correctly configured custom run.
+    expect(
+      line(
+        resolveReaderIdentity({
+          DEEPSEEK_MODEL: 'custom:house-model',
+          CORTEX_READER_BASE_URL: 'https://proxy.internal/v1',
+        }),
+      ),
+    ).toContain('`reader=custom:house-model@proxy.internal/thinking=disabled/temp=default`');
     // And an empty reach -- which the parser cannot produce, but a replayed artifact carrying one
     // could -- renders as the plain mode rather than as a trailing `on ` with nothing after it.
     expect(line({ ...identity, thinkingRoutes: [] })).toContain('/thinking=disabled/temp=default`');
