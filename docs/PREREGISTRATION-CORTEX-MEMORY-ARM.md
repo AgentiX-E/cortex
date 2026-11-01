@@ -833,6 +833,13 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   operations. The registered value of this concept was `enumerated` until §13.203 replaced it with
   `operands+operand-gap`; `aggregation` remains an unadopted value of this concept and is not part of
   the registered one.
+  **A seventh value is registered by §13.205**: `candidates`, `enumerated`'s reach with the
+  multi-session block's two steps replaced by a screen — one line per mention, `INCLUDE` or `EXCLUDE`,
+  with the clause that decided it, and Step 2 counting the inclusions. It is written against §13.204's
+  attribution, which closed both retrieval explanations on MR's remaining thirty-two failures with
+  measurement, and it costs 167 characters over the block it replaces. It is **not** part of the
+  registered value either: the value this line registers is still `operands+operand-gap`, and the
+  dispatch that reads `candidates` is §13.205.7's single-field change to `41254359622`.
   §13.8 falsified the ask
   hypothesis at the time -- with
   the `extractive` ask the feature side's MR went `13 -> 0` and TR `16 -> 0`, so
@@ -22713,3 +22720,183 @@ it is deciding which of fourteen mentions satisfies *led by me* and which of ten
    clause that includes or excludes each, Step 2 counting the includes — is named here as the shape the
    population implies, and it is not implemented in this commit. A prompt value registered before it exists
    would be the §7.3 defect in its fourth form: an artifact that describes the intent.
+
+### 13.205 `candidates`: the inclusion test written down, so an omission is visible
+
+§13.204.4 named the shape this section implements and deliberately did not implement it, on the ground
+that a prompt value registered before it exists is §7.3's defect in its fourth form. The value now exists
+and is measured against an `enumerated` control: `candidates`, a seventh name on the ask axis.
+
+#### 13.205.1 What §13.204 left, and why the variable is a predicate
+
+The attribution closed both retrieval explanations with measurement rather than argument, so the room,
+the ranking and the unit are all at 100% of what they can deliver on this route's failures: the gold is
+inside the window on **32 of 32** of them, and the failing windows carry the same session count, turn
+count, turns-per-session and fragment share as the succeeding ones. What is left is the reading, and the
+three read by hand are one shape. `0a995998` lists three lines of which two are the same boots and
+merges them, so the third item is never written down. `6d550036` looks at fourteen "project" mentions and
+writes one of the at most two the user led. `9d25d4e0` writes two of three acquisitions among ten jewelry
+mentions. In all three the reader stopped while the evidence was still speaking — and in none of the
+three is the missing item absent from the window.
+
+So the variable is **which predicate the transcript makes readable**. `enumerated`'s Step 1 is *"list
+every item in the evidence that matches the question"*, which is a predicate over the **answer**: the
+reader evaluates it, keeps what passes, and writes the passes. A mention it judged and rejected and a
+mention it never considered produce the same transcript, and a third case — a mention it never saw —
+produces the same transcript again. That is why four asks in this family could sharpen *how* the list is
+written without raising accuracy (§13.96: three attempts, each lengthening the list, none converting),
+and why "list every item" cannot be made to work by asking harder.
+
+#### 13.205.2 The block, in four differences from the control
+
+The treatment is `enumerated`'s block with the two steps and the closing line replaced. The four
+differences, in the order they matter:
+
+| # | `enumerated` | `candidates` | why |
+| --- | --- | --- | --- |
+| 1 | Step 1 lists items that **match** | Step 1 lists **every mention**, `INCLUDE` or `EXCLUDE`, with the clause of the question that decided it | makes an omission a missing line rather than an invisible judgement |
+| 2 | — | *"A Step 1 with no EXCLUDE line is usually a screen that stopped early"* | states the expected shape of a correct transcript, so a pure-inclusion list reads as unfinished |
+| 3 | Step 2 computes *from that list* | Step 2 answers *from the INCLUDE lines alone*, and may not re-read the evidence | fixes the population Step 2 counts, so a mention that arrives late cannot be dropped at compute time |
+| 4 | declines when the Step 1 list is **empty** | declines when **every line reads EXCLUDE** | §13.204 counts **7** of the 32 failures as declines taken over a list the reader had already filled |
+
+Three things are deliberately unchanged, and each has a measurement behind it. The **merging sentence**
+stays byte for byte, because §13.132 showed its position is a variable of its own and twelve declines
+quote it back as their reason. The **duplicate rule** stays in both directions — *one event is one line,
+two different events are two lines* — because `0a995998` is a failure on exactly that rule and the
+control already states it correctly. And the close stays in the **last position**, because §13.56
+measured a rule placed above the close losing to the close: run `39035438120` returned the same delta as
+the run before it, with 12 of 21 surviving declines carrying a non-empty list.
+
+#### 13.205.3 The cost is 167 characters, and it is registered as a ceiling
+
+Measured on the multi-session route with an empty window, so the number is the instruction block and
+nothing else: `enumerated` **1,415** characters, `candidates` **1,582**, both **8 lines**. The difference
+is 167 characters, about 42 tokens per MR prompt. MR is 121 of a 500-question run over four repetitions,
+so the whole experiment pays roughly **20k prompt tokens** for a screen that is 167 characters wide.
+
+`ask-candidates.test.ts` asserts both directions: the block is larger than the control's, at least 100
+characters larger, and at most 15% larger. An equality would fail on a legitimate re-wording; a ceiling
+fails on a block that doubles. The lower bound is what stops the ceiling from passing on an ask that
+says nothing — the same argument §13.203 makes about a prompt value that describes an intent.
+
+#### 13.205.4 The control is `enumerated`, not `operands`, and the arithmetic decides it
+
+The run in flight (`41254359622`) carries `ask: operands+operand-gap`, and on every question that is not
+derivation-shaped that value renders `enumerated`'s block **byte for byte** (§13.166). The registered
+population is entirely counting questions — the eight are "how many items", "how many projects", "how
+many jewelry pieces" — so for the questions this section is about, the two candidate controls are the
+same render and the choice makes no difference to the reading.
+
+It makes a difference everywhere else, and that is the whole argument. Against `enumerated` the change
+set is one route on **both** question shapes, so a run of `candidates` at the same load is one variable
+on MR everywhere and `ASK_CHANGES_WHEN_DERIVATION` needs no entry. Against `operands` the derivation
+questions would move two variables at once, and the honest record of that would be a second table entry
+saying *"true of a comparison nobody is going to make"*. `ASK_CONTROLS` therefore names `enumerated`, and
+`ask-changes.test.ts` — which renders six routes twice under every ask and compares bytes — holds it.
+
+The residual is bigger than it looked, and it was measured rather than estimated. `classifyQuestionShape`
+puts **27 of MR's 121** questions in the derivation class on `41222844945` — not the six declines
+§13.166 counted, because that number was a population of *declines* and this one is the classifier's
+reach. Twenty-seven is three times the §13.203.4 noise floor of 9.3 questions, so against an `operands`
+control **`MR`'s total is not a guard and must not be read as one**: the two sides differ on a fifth of
+the route before the treatment does anything. The registered claim is therefore the population and the
+guard only, both of which are enumeration-shaped and therefore render `enumerated`'s bytes under either
+control — verified per question, not assumed:
+
+| id | gold | answered | shape |
+| --- | ---: | ---: | --- |
+| `0a995998` | 3 | 2 | enumeration |
+| `6d550036` | 2 | 1 | enumeration |
+| `9d25d4e0` | 3 | 2 | enumeration |
+| `a9f6b44c` | 2 | 1 | enumeration |
+| `bf659f65` | 3 | 2 | enumeration |
+| `681a1674` | 2 | 1 | enumeration |
+| `8e91e7d9` | 4 | 3 | enumeration |
+| `21d02d0d` | 2 | 1 | enumeration |
+| `2e6d26dc` (guard) | 5 | 6 | enumeration |
+| `88432d0a` (guard) | 4 | 5 | enumeration |
+| `00ca467f` (guard) | 2 | 3 | enumeration |
+
+Eleven of eleven enumeration-shaped, and the eight are wrong by exactly −1 while the three are wrong by
+exactly +1, which is what makes the two sets a treatment and a guard rather than two samples. The
+classification is the product's own (`classifyQuestionShape`), read out of the control artifact, so the
+claim is reproducible without a judge.
+
+The per-read state on `41222844945` is the floor's arithmetic, and it is worth writing down because it
+bounds what the bar can even ask for: `9d25d4e0` reads `0011` (two of four already correct, so one more
+read converts it), `a9f6b44c` reads `0010` (two more), `88432d0a` on the guard side reads `0110`, and the
+other eight read `0000` (three more). So seven of the eight are at the floor and one is one read away from
+it, which is why **4 of 8** is a real bar rather than a formality — the population's own churn can supply
+two or three reads without any treatment at all, and the bar sits above that.
+
+The answers also say the diagnosis in their own words, which no reading of counts could. `0a995998`
+writes *"The Zara boots are one event mentioned across two sessions (one item)"* — it merged, correctly,
+and then never listed the third. `a9f6b44c` does the inclusion test **in prose**: *"The commuter bike tire
+replacement is a tire purchase, not a bike service. All service events concern the same road bike"* — a
+correct exclusion, applied to a set it had already truncated, and the gold is 2 against its 1. That is
+the whole argument for putting the screen in Step 1 instead of leaving it in the reasoning: the reader is
+already doing it, and it is invisible until the format asks for it.
+
+#### 13.205.5 Reach and change set, as renders rather than as a description
+
+| table | `candidates` | assertion |
+| --- | --- | --- |
+| `ASK_ROUTES` | `['multi-session', 'flat', 'temporal']` | the reach `enumerated` has, because flat and temporal read the composed block in both |
+| `ASK_CHANGES` | `['multi-session']` | `ask-changes.test.ts` renders all six routes on both question shapes and requires the moved set to equal this exactly |
+| `ASK_CHANGES_WHEN_DERIVATION` | *no entry* | the ask does not read the question's shape; the same table test renders both and would fail if it did |
+| `ASK_CONTROLS` | `'enumerated'` | §13.205.4 |
+
+The four fallthrough defects this campaign has paid for (§13.104 `aggregation` TR −21.4/IE −9, §13.123
+`silent` caught in review, §13.124 `answer-line` MR −48/TR −12) were all cases of the code being right
+about the block and wrong about what the unnamed routes read. The branch is therefore written as the
+same three statements `silent`, `derive` and `operands` are rather than `return own`, and the oracle is
+the registration table instead of the implementation.
+
+#### 13.205.6 The population, the guard, and what each outcome would mean
+
+Registered before the run, as §13.204.4 fixed it:
+
+| set | questions | bar | what a failure would mean |
+| --- | --- | --- | --- |
+| converts | `0a995998` `6d550036` `9d25d4e0` `a9f6b44c` `bf659f65` `681a1674` `8e91e7d9` `21d02d0d` | **≥ 4 of 8** | the screen is not the variable, and the next candidate is the ask's *position* rather than its content |
+| guard | `2e6d26dc` `88432d0a` `00ca467f` | **≤ 1 of 3** worsens | the screen buys conversions by making the reader count exclusions it should have excluded |
+
+The bar is a **count of questions, not a mean**, because §13.203.4 measured the noise floor at 4.8% of
+1,880 paired verdicts with a 2σ of **9.3 questions** — and on a set of eight, a mean is not a statistic.
+The eight were chosen for one property that makes the set readable at that size: every one of them is
+wrong by exactly −1 with its gold fully carried, so the treatment's target is visible in the artifact
+without a judge, and a conversion is a verdict that flips from wrong to right on a question whose window
+did not change.
+
+The **secondary read** is the 94 enumeration-shaped `MR` questions, which is what §13.205.4's residual
+leaves readable: those 94 read `enumerated`'s bytes under an `operands` control and this ask's screen under
+the treatment, so they are a one-variable sample of the route rather than a subset of the population. It
+is a *report*, not a bar — 94 questions carry a floor of about 9, and a movement inside that is not a
+finding. The 27 derivation questions are excluded from that read and counted separately, because their
+two sides differ in two variables by construction.
+
+Three outcomes are distinguishable, and only the first is a pass:
+
+1. **≥ 4 convert and ≤ 1 guard worsens** — the screen is adopted on this axis, and the next experiment is
+   its interaction with the route-scoped reader (§13.199), because both address MR by different means.
+2. **≤ 1 converts** — the reader's omission is not a writing problem. The next candidate in that case is
+   §13.204.3's third reading: the discrimination is *semantic* (which of fourteen mentions was led by the
+   user), and no Step 1 format supplies it; that points at retrieval-side filtering rather than at the
+   ask, and it would return this axis to the ranking.
+3. **Conversions and guard regressions both appear** — the screen moves the reader's attention rather
+   than its thoroughness, which is measurable by re-running with the guard set promoted to the population.
+
+#### 13.205.7 What this does not license
+
+**Not a capability claim.** Eight questions cannot move `MR` beyond the noise floor's resolution, and the
+section says so in advance. And on this pairing `MR`'s total cannot carry one at all: §13.205.4 measured
+27 derivation-shaped questions on the route, three times the floor, so the route's headline number differs
+on a fifth of itself before the treatment speaks. The 94 enumeration-shaped questions are the largest
+honest read available, and they are registered as a report rather than as a bar.
+
+**Not a bundled change.** `thinking`, `maxPromptChars`, `turnCutMarker` and the reader are held at
+whatever the control ran, because §13.104 is the case for why a run with two variables is not attributable
+even when both are right. The dispatch that reads this value differs from `41254359622` in one field.
+
+**Not `KU`.** §13.204.4's third point stands: `KU`'s failures are a window problem (8 of 12 with gold
+missing), and a `KU` experiment is a room or ranking experiment that must not be bundled with this one.

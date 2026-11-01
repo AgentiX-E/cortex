@@ -3059,6 +3059,162 @@ def _feature_bits(report: dict, side: str) -> list[str]:
     return bits
 
 
+def population_section(run_report: dict, control_report: dict, spec: dict) -> tuple[str, int]:
+    """Whether a registered population moved, read question by question rather than by mean.
+
+    ## Why a population read exists at all
+
+    §13.203.4 measured the pair's noise floor and it is not small: 4.8% of 1,880 paired reads
+    flip on **byte-identical** prompts, and the 2σ band for a capability-sized difference is
+    **9.3 questions**. So a claim of the form "this ask converts the four questions it was
+    written for" cannot be read off a capability's total -- the total cannot see four questions,
+    and the reader's own churn is larger than the effect. The only readable claim at that size is
+    a set of questions named **before** the run, counted one by one.
+
+    ## Why each question's verdict is a boundary crossing rather than a majority
+
+    With four repetitions three is a majority and two is a coin, so the read asks one question of
+    each question: did it cross the decisive boundary of three, and in which direction? `0011` on
+    the control against `1100` on the run has not crossed anything, whatever the four reads look
+    like individually, and calling it a conversion would publish the reader's churn as a treatment
+    effect. A read that moved without crossing -- 1 of 4 to 2 of 4, or 4 of 4 to 3 of 4 -- is printed
+    as `mixed` and counted in no direction, because that is the state the measured flip rate
+    produces on its own.
+
+    ## What the two groups mean
+
+    `converts` is the population the ask was written for and its bar is a **floor**: at least
+    `bar` of them must move. `guard` is a set the ask must not damage, and its bar is a
+    **ceiling**: at most `bar` may move the wrong way. Everything else about the reading --
+    which questions, how many, which direction -- comes from the registration file rather than
+    from this function, so a population cannot be edited at read time.
+
+    A missing id, a repeated id, or a group with no bar is a refusal: a population read that
+    silently skips a question reports a smaller denominator and a larger rate, which is the
+    failure mode every other refusal in this file exists to prevent.
+    """
+    run_questions = _questions(run_report)
+    control_questions = _questions(control_report)
+    if run_questions is None or control_questions is None:
+        raise ValueError('one side has no per-question roster, so the population cannot be read')
+
+    def index_of(questions: list[dict], side: str) -> dict[str, int]:
+        index: dict[str, int] = {}
+        for position, record in enumerate(questions):
+            identifier = record.get('questionId')
+            if identifier in index:
+                raise ValueError(f'the {side} roster repeats {identifier!r}, so the read is ambiguous')
+            index[identifier] = position
+        return index
+
+    run_index = index_of(run_questions, 'run')
+    control_index = index_of(control_questions, 'control')
+
+    run_bits = _feature_bits(run_report, 'run')
+    control_bits = _feature_bits(control_report, 'control')
+    for bits, questions, side in (
+        (run_bits, run_questions, 'run'),
+        (control_bits, control_questions, 'control'),
+    ):
+        if any(len(entry) != len(questions) for entry in bits):
+            raise ValueError(f'the {side} correctness bits are not one per question')
+    if len(run_bits) != len(control_bits):
+        raise ValueError(
+            f'the two sides have {len(run_bits)} and {len(control_bits)} repetitions, '
+            'so a per-question comparison would mix a decisive read with a coin'
+        )
+
+    repetitions = len(run_bits)
+    decisive = repetitions // 2 + 1
+
+    lines = [f'population: {spec.get("name", "(unnamed)")}   repetitions: {repetitions}   decisive: {decisive} of {repetitions}']
+    failures = 0
+    for group in ('converts', 'guard'):
+        block = spec.get(group)
+        if not isinstance(block, dict):
+            raise ValueError(f'the population names no {group!r} group')
+        identifiers = block.get('ids')
+        bar = block.get('bar')
+        if not isinstance(identifiers, list) or not identifiers:
+            raise ValueError(f'the {group!r} group names no questions')
+        if not isinstance(bar, int) or isinstance(bar, bool):
+            raise ValueError(f'the {group!r} group has no integer bar')
+
+        rows: list[tuple[str, str, str, str]] = []
+        converted = 0
+        worsened = 0
+        held = 0
+        mixed = 0
+        for identifier in identifiers:
+            if identifier not in run_index:
+                raise ValueError(f'{identifier!r} is in the population but absent from the run')
+            if identifier not in control_index:
+                raise ValueError(f'{identifier!r} is in the population but absent from the control')
+            run_reads = ''.join(entry[run_index[identifier]] for entry in run_bits)
+            control_reads = ''.join(entry[control_index[identifier]] for entry in control_bits)
+            run_right = run_reads.count('1')
+            control_right = control_reads.count('1')
+            if control_right < decisive <= run_right:
+                verdict = 'converted'
+                converted += 1
+            elif run_right < decisive <= control_right:
+                verdict = 'worsened'
+                worsened += 1
+            elif run_right == control_right:
+                verdict = 'held'
+                held += 1
+            else:
+                # Moved in reads without crossing the decisive boundary: 1 of 4 -> 2 of 4, or
+                # 2 -> 1. Printed because it is the reader wobbling on a question the registration
+                # named, and counted in no direction because a read that did not cross the boundary
+                # is the churn §13.203.4 measured rather than a treatment effect.
+                verdict = 'mixed'
+                mixed += 1
+            rows.append((identifier, control_reads, run_reads, verdict))
+
+        lines.append('')
+        lines.append(f'{group}: {len(identifiers)} question(s), bar {bar}')
+        for identifier, control_reads, run_reads, verdict in rows:
+            lines.append(f'  {identifier}  control {control_reads}  run {run_reads}  {verdict}')
+        lines.append(
+            f'  converted {converted}   worsened {worsened}   held {held}   mixed {mixed}'
+        )
+
+        if group == 'converts':
+            if converted >= bar:
+                lines.append(
+                    f'  verdict: {converted} of {len(identifiers)} converted, at or above the registered '
+                    f'floor of {bar} — the screen is the variable on this population'
+                )
+            else:
+                failures += 1
+                lines.append(
+                    f'  verdict: {converted} of {len(identifiers)} converted, BELOW the registered floor '
+                    f'of {bar} — this population does not carry the claim, and §13.205.6 names what the '
+                    'next candidate would then be'
+                )
+        else:
+            if worsened <= bar:
+                lines.append(
+                    f'  verdict: {worsened} of {len(identifiers)} worsened, at or below the registered '
+                    f'ceiling of {bar} — the ask did not buy its conversions from this set'
+                )
+            else:
+                failures += 1
+                lines.append(
+                    f'  verdict: {worsened} of {len(identifiers)} worsened, ABOVE the registered ceiling '
+                    f'of {bar} — the screen is moving the reader\'s attention, not its thoroughness'
+                )
+
+    if failures:
+        lines.append('')
+        lines.append(
+            'a registered bar was missed; the counts above are the reading and the registration is the '
+            'authority, so this pair is reported as a failed prediction rather than as a null result'
+        )
+    return '\n'.join(lines), failures
+
+
 def null_section(run_report: dict, control_report: dict) -> tuple[str, int]:
     """Each pair's own noise floor, measured on the questions whose prompt did not change.
 
@@ -3425,6 +3581,20 @@ def main(argv: list[str]) -> int:
         help='print the provider spend this artifact reports, and read its prefix-cache share '
         'against the bands 13.147.3 registers',
     )
+    parser.add_argument(
+        '--population',
+        type=Path,
+        metavar='SPEC',
+        help='a registered population (`tools/populations/*.json`): reads the questions it names '
+        'against `--control` and counts conversions and regressions against its own bars. Requires '
+        '--control, because a bar without a comparison side is a number about nothing',
+    )
+    parser.add_argument(
+        '--control',
+        type=Path,
+        metavar='REPORT',
+        help='the artifact this run is read against; required by --population and unused otherwise',
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -3513,6 +3683,30 @@ def main(argv: list[str]) -> int:
             print(f'{args.report}: {error}', file=sys.stderr)
             return 2
         return 0
+
+    if args.population:
+        if args.control is None:
+            print('--population needs --control: a bar is a comparison', file=sys.stderr)
+            return 2
+        try:
+            spec = json.loads(args.population.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f'{args.population}: {error}', file=sys.stderr)
+            return 2
+        try:
+            control = json.loads(args.control.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f'{args.control}: {error}', file=sys.stderr)
+            return 2
+        print(f'control: {args.control}')
+        print(f'run:     {args.report}')
+        try:
+            section, failures = population_section(report, control, spec)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 1 if failures else 0
 
     if args.null:
         try:

@@ -1165,6 +1165,11 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // sources. The value is spelled the way the product spells it, with a `+`, because a name that
   // restated the composition in words would let the two copies disagree about what is being composed.
   'operands+operand-gap': ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.205's value: `enumerated`'s reach, with the multi-session block's two steps replaced by a screen
+  // -- one line per mention, included or excluded, and Step 2 counting the inclusions. The reach equals
+  // `enumerated`'s and the change set is one route, so a run at the same load is a single variable on MR;
+  // the artifact states the reach rather than the change set, which is why both are written here.
+  candidates: ['multi-session', 'flat', 'temporal'],
 };
 
 /**

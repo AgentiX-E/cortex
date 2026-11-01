@@ -1,0 +1,30 @@
+{
+  "name": "mr-screen",
+  "registeredBy": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.205.6",
+  "ask": "candidates",
+  "control": "enumerated",
+  "why": "The eight questions the inclusion screen was written for, and the three it may not damage. All eleven are enumeration-shaped by the product's own classifyQuestionShape, so under an operands control they still read enumerated's bytes and the comparison is one variable. The eight are wrong by exactly -1 on 41222844945; the three are wrong by exactly +1.",
+  "reads": {
+    "decisive": "one side at or below one correct read, the other at or above three, out of four repetitions",
+    "mixed": "anything else, counted and printed but not attributed, because a 2-of-4 split is what the measured 4.8% per-read flip rate produces on its own"
+  },
+  "converts": {
+    "bar": 4,
+    "direction": "floor",
+    "ids": [
+      "0a995998",
+      "6d550036",
+      "9d25d4e0",
+      "a9f6b44c",
+      "bf659f65",
+      "681a1674",
+      "8e91e7d9",
+      "21d02d0d"
+    ]
+  },
+  "guard": {
+    "bar": 1,
+    "direction": "ceiling",
+    "ids": ["2e6d26dc", "88432d0a", "00ca467f"]
+  }
+}

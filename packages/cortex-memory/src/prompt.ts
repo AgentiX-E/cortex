@@ -248,6 +248,21 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // `ask-changes.test.ts` and `ask-composite.test.ts`. If a second combination is ever needed, that is
   // the point at which the map earns its keep -- not before.
   'operands+operand-gap': ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.205. The same three routes as `enumerated`, and the multi-session block becomes a **screen**:
+  // Step 1 writes one line per mention -- included AND excluded, with the clause that decided it --
+  // and Step 2 counts the inclusions rather than re-reading the evidence.
+  //
+  // Written against §13.204, which is a change of ask by elimination. The gold is inside the window on
+  // 32 of 32 of the route's failures and the failing window is the same shape as the succeeding one,
+  // so room and ranking are already at 100% of what they can deliver. What is left is three hand-read
+  // failures of one form: the reader lists the mentions that obviously qualify and stops, and the gold
+  // is the third one it never wrote down.
+  //
+  // `enumerated` cannot fix that by asking harder. Its Step 1 is *"list every item in the evidence that
+  // matches the question"*, a predicate over the answer, so a mention the reader never considered and a
+  // mention that does not exist are the same absence. This ask makes the exclusion a line, which is the
+  // only way the screen becomes readable from the transcript.
+  candidates: ['multi-session', 'flat', 'temporal'],
 };
 
 /**
@@ -305,6 +320,17 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   // question, and it sits on the control side of every route the composite does not touch, so
   // `ASK_CHANGES_WHEN_DERIVATION` needs no entry for this value.
   'operands+operand-gap': 'operands',
+  // §13.205. `enumerated` rather than `operands`, and the reason is arithmetic rather than stylistic:
+  // `operands` renders `enumerated`'s block byte for byte on every question that is not derivation-
+  // shaped (§13.166), so for the population this ask was written for the two controls are the same
+  // render. Naming `operands` would then be a claim about a difference the population cannot see.
+  //
+  // Naming `enumerated` is also the stronger statement, because it holds on the questions where the two
+  // controls *do* differ: against `enumerated` the change set is one route on both question shapes, so a
+  // run of this ask at the same load is one variable on MR everywhere. Against `operands` the derivation
+  // questions would move two variables and `ASK_CHANGES_WHEN_DERIVATION` would have to say so -- which
+  // is a true statement about a comparison nobody is going to make, and §13.205.4 records it instead.
+  candidates: 'enumerated',
 };
 
 /**
@@ -344,6 +370,10 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // moves are already on both sides of the comparison. `ask-composite.test.ts` drives both shapes on
   // all six routes and holds the rendered difference to this set.
   'operands+operand-gap': ['abstention'],
+  // §13.205. One route on both shapes. `candidates` does not read the question's shape -- the screen is
+  // about the mentions, and Step 2 is whatever the question asked of them -- so `ASK_CHANGES_WHEN_
+  // DERIVATION` needs no entry, and `ask-changes.test.ts` renders both shapes to hold that.
+  candidates: ['multi-session'],
 };
 
 /**
@@ -424,7 +454,8 @@ export type EvidenceAsk =
   | 'derive'
   | 'operands'
   | 'operand-gap'
-  | 'operands+operand-gap';
+  | 'operands+operand-gap'
+  | 'candidates';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -915,6 +946,74 @@ const ENUMERATED_MULTI_SESSION_INSTRUCTION = withReplacedClose(
     ENUMERATION_CONTRACT,
   ),
   ENUMERATED_CLOSE,
+);
+
+/**
+ * The two-step screen `candidates` gives the multi-session route.
+ *
+ * ## The one sentence `enumerated` cannot write, and the four it can
+ *
+ * §13.204 read the route's remaining thirty-two failures and closed both retrieval explanations
+ * with measurement rather than argument: the gold is in the window on 32 of 32, and the failing
+ * windows carry the same session count, turn count and turns-per-session as the succeeding ones.
+ * Three read by hand are one shape — `0a995998` lists one item twice and merges it, `6d550036`
+ * finds one of at most two qualifying mentions among fourteen, `9d25d4e0` finds two of three
+ * acquisitions among ten jewelry mentions. In each, the reader stopped while the evidence was
+ * still speaking.
+ *
+ * `enumerated`'s Step 1 is *"list every item in the evidence that matches the question"*. That is
+ * a predicate over the **answer**, so it cannot distinguish a mention the reader judged and
+ * rejected from a mention the reader never saw — the two are the same absence in the transcript,
+ * and the third is where the gold was. This contract asks for a predicate over the **evidence**:
+ * every mention gets a line whether or not it counts, and the line carries the verdict plus the
+ * clause of the question that produced it. Step 2 then counts a screen instead of recalling a set.
+ *
+ * ## Why the exclusion line is the mechanism rather than extra caution
+ *
+ * A list of inclusions is what the failing responses already produce, so asking for it again more
+ * firmly cannot help — §13.96 records three asks that sharpened how the list is *written*, each
+ * lengthening it, none raising accuracy. What none of them could do is make an omission visible.
+ * Once `EXCLUDE` is a line, "most mentions do not count" is the expected shape of a correct
+ * screen, and a transcript with no exclusions at all is a detectable stop rather than a plausible
+ * short answer. That is also why the closing rule is keyed on the verdicts and not on the list:
+ * `enumerated` declines when the list is empty, which licenses a decline over a list the reader
+ * already filled (§13.204 counts seven such declines among the thirty-two).
+ *
+ * ## What is copied and what is not
+ *
+ * The duplicate rule is kept in both directions, because `0a995998` failed on exactly it and
+ * `enumerated` already states it correctly. The merging sentence is untouched, because §13.132
+ * measured that it is the sentence twelve declines quote back as their reason and its position is
+ * the variable there. Everything this adds is inside the two steps and the closing line, so the
+ * difference from an `enumerated` control is the screen and not the licence.
+ */
+const CANDIDATE_CONTRACT = [
+  'Work in two steps, and write both of them out.',
+  'Step 1 — go through the evidence and list every mention of the kind of thing the question names, whether or not you think it counts: one line per mention, written as `<date> | <what the evidence says, in its own words> | INCLUDE or EXCLUDE | <the part of the question that decides it>`. A mention the question rules out is a line reading EXCLUDE, not a line you leave out.',
+  'Step 2 — answer from the INCLUDE lines alone: the number of them, the total of the values on them, or the single value or event they name, exactly as the question asks. Do not re-read the evidence at this step.',
+  // The completeness demand, stated as a property of the expected transcript rather than as an
+  // adjective. "Be exhaustive" is what every ask in this family already says in one form or another.
+  'A Step 1 with no EXCLUDE line is usually a screen that stopped early: on a question of this kind most mentions do not count, so a list where everything counts is a list that has not finished. One event described in several turns is one line with the descriptions joined there, and two different events are two lines even when they are the same kind of thing.',
+  `Do not reply ${ABSTAIN_TOKEN} while any Step 1 line reads INCLUDE: a screen with an inclusion in it has an answer to compute.`,
+].join('\n');
+
+/**
+ * The closing rule `candidates` gives the multi-session block.
+ *
+ * The condition is the screen's own verdicts -- every line EXCLUDE -- rather than the list's
+ * emptiness, so the licence to decline moves with the mechanism that produces it. Stated in the
+ * last position because §13.56 measured a rule placed above the close losing to the close
+ * (`39035438120`: the same delta, and 12 of 21 surviving declines carrying a non-empty list).
+ */
+const CANDIDATES_CLOSE = `Reply with the Step 2 answer alone. If every Step 1 line reads EXCLUDE because the evidence states nothing of the kind the question asks for, reply exactly ${ABSTAIN_TOKEN}.`;
+
+/** The multi-session block under `candidates`: `enumerated`'s, with the screen replacing its steps. */
+const CANDIDATES_MULTI_SESSION_INSTRUCTION = withReplacedClose(
+  withInsertedBeforeClose(
+    withMergingSentence(CONTRACT_INSTRUCTIONS.extractive(undefined)),
+    CANDIDATE_CONTRACT,
+  ),
+  CANDIDATES_CLOSE,
 );
 
 /**
@@ -1508,6 +1607,17 @@ function instructionsFor(
     // TR 12 under a registration that named neither.
     if (scope === 'multi-session' && contract === 'extractive') {
       return DERIVE_MULTI_SESSION_INSTRUCTION;
+    }
+    return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
+  }
+  if (ask === 'candidates') {
+    // §13.205. `enumerated`'s reach and `enumerated`'s fallthrough, so the single variable against an
+    // `enumerated` control is what the multi-session route reads and nothing else moves. Written as the
+    // same three statements `silent`, `derive` and `operands` are, rather than `return own`, for the
+    // reason §13.124 wrote them: `40807829150` returned the shipped block and cost MR 48 questions and
+    // TR 12 under a registration that named neither.
+    if (scope === 'multi-session' && contract === 'extractive') {
+      return CANDIDATES_MULTI_SESSION_INSTRUCTION;
     }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
   }
