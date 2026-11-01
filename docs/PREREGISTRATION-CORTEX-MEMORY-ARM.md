@@ -23090,6 +23090,45 @@ taken under.
    the one axis where the two runs differ by 8x, and it decides whether the product's per-question cost is
    4.3M tokens or 0.5M for the same 47.5M prompt.
 
+#### 13.207.5 The three commands, and the second effect the route diff hides
+
+Re-verified 2026-11-01 by re-downloading both artifacts (`13070701774`, `13074125137`) and re-running the
+readout. All three readings reproduce exactly. The commands are recorded because the first one does not
+say what it looks like it says:
+
+```
+tools/readout-arm-run.py RUN.json --config CONTROL.json --treatment ask
+tools/readout-arm-run.py RUN.json --null CONTROL.json
+tools/readout-arm-run.py RUN.json --population tools/populations/mr-screen.json --control CONTROL.json
+```
+
+**`--config` without `--treatment ask` gives a different verdict on the same two files.** It prints
+
+```
+  verdict: 2 field(s) differ, 0 declared by --treatment, 2 undeclared: ['ask', 'askRoutes']
+  readings from this pair are not attributable
+```
+
+which is the tool being right and the section being under-specified: the sentence §13.207 states -- *"every
+one of them is declared"* -- is a property of the command, not of the artifacts. A reader who runs `--config`
+alone concludes the opposite about the same bytes, so the flag is now part of the record.
+
+**And the second effect the elided route list hides.** The full `askRoutes` difference is
+
+```
+["multi-session", "flat", "temporal", "abstention"] -> ["multi-session", "flat", "temporal"]
+```
+
+`abstention` **disappears**. So the 30 `ABS` prompts that `--null` reports as differing are not a *different*
+ask -- they are **no ask**, because the route is no longer in the list. The treatment therefore has two
+effects, not one: `MR` gets a new ask, and `ABS` loses the one it had. §13.207.1 wrote `askRoutes: [...] ->
+[...]` and moved on; that elision is exactly the kind of missing condition this campaign keeps finding in
+other people's artifacts, so it is spelled out here.
+
+It is also a second, independent reason not to adopt `candidates`: a screen intended to reach 121 `MR`
+questions silently stopped reaching 30 `ABS` questions, and the aggregate (+0.30 pt, inside noise) could not
+show it. The `--null` stratum could, and did.
+
 ---
 
 ## 13.208 The ceiling that could not fire, and the pre-registration it needs
