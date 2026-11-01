@@ -196,8 +196,9 @@ function readBudgetMs(env: NodeJS.ProcessEnv): number | undefined {
   if (!Number.isFinite(minutes) || minutes <= 0) {
     throw new Error(
       `CORTEX_MEMORY_BUDGET_MINUTES must be a positive number of minutes or unset, got ` +
-        `${JSON.stringify(raw)}. It is the per-pass ceiling: 0 abandons every pass before ` +
-        'its first question, which fails the run while looking like a healthy configuration.',
+        `${JSON.stringify(raw)}. It is the ceiling for the whole run -- every pass shares one ` +
+        'deadline, so 0 abandons the run before its first question, which fails the measurement ' +
+        'while looking like a healthy configuration.',
     );
   }
   return minutes * 60_000;

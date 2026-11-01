@@ -101,7 +101,7 @@ describe('runAblationReport forwards progress without persisting it', () => {
     expect(JSON.stringify(report)).not.toContain('onProgress');
   });
 
-  it('forwards the per-pass ceiling, so the entry point cannot hold a switch nothing applies', async () => {
+  it('forwards the run ceiling, so the entry point cannot hold a switch nothing applies', async () => {
     // §13.30 added a wall-clock ceiling to `runBenchmark` and threaded it through four
     // call sites and two option types to reach the arm. A field that is declared and never
     // forwarded is exactly the defect the census was added for, one layer up: the run

@@ -23089,3 +23089,84 @@ taken under.
 3. **A cold-versus-warm cache pair is worth registering on its own**, because it is the only way to price
    the one axis where the two runs differ by 8x, and it decides whether the product's per-question cost is
    4.3M tokens or 0.5M for the same 47.5M prompt.
+
+---
+
+## 13.208 The ceiling that could not fire, and the pre-registration it needs
+
+Triggered by a dispatch that was four hours old when someone asked whether that was normal
+(`41284575092`, dispatched 07:23Z 2026-11-01). It was. It also exposed a protection that could not
+act, and the repair is a change to **what a budget bounds**, which is a registration rather than a
+commit because it changes the conditions under which a future run may be called complete.
+
+### 13.208.1 The arithmetic, measured
+
+A dispatch is `2 arms x 4 repetitions = 8` passes over 500 questions, i.e. **4000 reader calls**.
+
+| run | configuration | wall clock | per pass | per call |
+| --- | --- | --- | --- | --- |
+| `41222844945` | 96k, `thinking=disabled` | 117.5 min | 14.7 | 1.76 s |
+| `41203245999` | 48k, `thinking=disabled` | 122.6 min | 15.3 | 1.84 s |
+| `41254359622` | 96k, thinking on `multi-session+temporal` | 305.9 min | 38.2 | 4.59 s |
+| `41259622431` | the same plus `candidates` | 334.8 min | 41.9 | 5.02 s |
+
+The thinking knob costs **2.60x** and the candidate arm **2.85x**. At 5.0 s per call the local
+pipeline is under 1% of the wall clock, so the run is exactly as long as the provider makes it.
+`AUDIT-BENCHMARK-WALLCLOCK.md` §1 carries the arithmetic and §3 the reason the obvious 8x is blocked.
+
+### 13.208.2 The defect
+
+`CORTEX_MEMORY_BUDGET_MINUTES` was `90` **per pass**, against a job killed at 350 minutes. Eight
+passes therefore permitted `8 x 90 + 1 = 721` minutes — **2.06x** the job — so for every timing where
+the job ends the run, the budget was still quiet. `41259622431` finished with **15 minutes** of
+margin and no artifact recorded it; a job timeout kills the steps carrying `if: always()`, so the next
+draw 5% slower would have produced no artifact and no `benchmark-error.log`.
+
+**Why the fix is not a smaller number.** The binding per-pass budget is `(350 - 1) / 8 = 43.6`
+minutes and a thinking-enabled pass already costs **41.85**. Narrowing alone converts a lost run into
+a false failure, which is worse. The unit had to change.
+
+### 13.208.3 What is registered
+
+1. **`AblationOptions.budgetMs` bounds the whole ablation.** Every pass receives `deadline - now`,
+   clamped at zero. One deadline, eight consumers.
+2. **The dispatch value is 340 minutes and the job is 360.** 341 <= 360 binds; 340 sits above the
+   largest measured run (334.8), so the repair does not fire on any run this campaign has produced.
+3. **`tools/job-budget.py` is the instrument**, and it must be able to read **both** scopes: `pass`
+   describes the archived dispatches, `run` describes the current one, and a tool knowing only one
+   could not explain the other.
+4. **A run that reaches its deadline fails with evidence, not silence.** `BenchmarkBudgetExceeded`
+   from between two questions, the existing `catch` writing the partial artifact.
+
+### 13.208.4 Predictions, and what would falsify each
+
+| # | prediction | falsified if |
+| --- | --- | --- |
+| 1 | a run above 341 minutes ends with `BenchmarkBudgetExceeded` and a partial artifact | the run ends with no artifact, or with a job-timeout conclusion |
+| 2 | no run at or below 334.8 minutes is affected | a completed run's artifact acquires a budget failure it did not have before |
+| 3 | the eight-pass total is within 2% of `8 x measured per pass` | a run's wall clock differs from the sum of its passes by more than setup |
+| 4 | `job-budget.py` says `IT CANNOT BIND` for the old configuration and `it binds` for the new one | either reading inverts |
+
+Prediction 2 is the one that would be easy to get wrong: clamping the remainder at zero means the
+last pass starts with `deadline - now` rather than a fresh 340, so a run that used to squeak through
+at 339 minutes now fails at 335 if the passes are unevenly distributed. The margin is 5.2 minutes
+against a measured spread of 305.9 to 334.8 across configurations — **this is the closest call in the
+section**, and it is the reason 340 was chosen over the 341 that would maximise headroom.
+
+### 13.208.5 What is not registered here
+
+**Concurrency.** It would turn 336 minutes into 42 at eight in flight, and it cannot be switched on:
+`runBenchmark` reads five quantities back through single-slot mutable state (`#lastRawOutput`,
+`#lastPromptText`, `#lastRetrievedContext`, `#lastPromptEvidenceChars`, `#lastAdmittedEvidence`)
+rather than through the call's return value, so a second call in flight overwrites the first one's
+evidence and nothing throws. The repair is an `answerWithTrace` returning the trace with the answer,
+after which the side channels are deleted rather than shadowed. Its acceptance criterion is a
+**byte-identical per-question comparison** at concurrency 1 and c on a 60-question arm, which is
+about ten minutes of provider time — and it is P2 behind the product axis because it moves no number
+in the artifact.
+
+**A dataset digest.** The workflow downloads `resolve/main`, a mutable pointer, and verifies nothing.
+A `datasetFingerprint` in the artifact is the repair that needs no prior knowledge, and a pinned
+digest is the one that refuses a mismatch. Neither is done here: the file is not present in this
+environment, so any digest written now would be a guess, and a guessed digest is the defect this
+campaign keeps finding in other people's harnesses.

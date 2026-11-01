@@ -364,12 +364,15 @@ INPUTS = {
     "cortex_memory_self_consistency": "none",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
-    # §13.30's per-pass ceiling is no longer a dispatch input. It is a hang detector rather than a
-    # treatment -- 90 minutes against a longest observed pass of about 26 minutes -- and the input
-    # surface sat one below GitHub's 25-input ceiling when §13.115's `cortex_memory_rerank` needed a
-    # slot. The workflow now sets it as a constant, which is where a reader of a run looks for it
-    # anyway; §13.30's measurement and the value are unchanged. Same precedent as
-    # `evidenceTurnsPerRecord` (§13.94).
+    # §13.30's ceiling is no longer a dispatch input. It is a hang detector rather than a
+    # treatment, and the input surface sat one below GitHub's 25-input ceiling when §13.115's
+    # `cortex_memory_rerank` needed a slot. The workflow now sets it as a constant, which is where a
+    # reader of a run looks for it anyway. Same precedent as `evidenceTurnsPerRecord` (§13.94).
+    #
+    # The value changed on 2026-11-01 and the unit changed with it: it was 90 minutes **per pass**,
+    # which permitted `8 x 90 = 720` minutes of run inside a job killed at 350 and therefore could
+    # never fire. It is now 340 minutes for the **whole run**, so the in-run ceiling fails first and
+    # writes a partial artifact. `tools/job-budget.py` reads this and the job timeout together.
     # §13.192.6. The reader is a configuration value and this table did not send it, so every dispatch
     # from here ran the workflow's default and the one run that changed the model (`40698883428`) was
     # dispatched outside this script. §13.192.1 measured what that leaves behind: two artifacts 7.20

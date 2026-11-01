@@ -130,26 +130,39 @@ export type AblationOptions = {
    */
   onProgress?: BenchmarkProgressCallback;
   /**
-   * Wall-clock ceiling for **each pass**, in milliseconds. Absent means no ceiling.
+   * Wall-clock ceiling for the **whole ablation**, in milliseconds. Absent means no ceiling.
    *
-   * ## Why the unit is a pass and not the whole ablation
+   * ## Why the unit is the run and not a pass
    *
-   * Each pass is one system over one repetition, and that is where a hang happens: run
-   * `38725510400` spent over five hours in the reference pipeline's first question and
-   * never ended, and the workflow's own `timeout-minutes: 240` did not fire, so no
-   * `benchmark-error.log` was written at all. A per-ablation ceiling would have to be
-   * derived from a figure the caller knows (four repetitions of two sides) and would still
-   * let one hung pass consume it; a per-pass ceiling is the quantity that was actually
-   * observed to run away.
+   * It used to be a pass, and the argument was that a pass is where a hang happens (run
+   * `38725510400` spent over five hours inside one question and never ended). That argument is
+   * right about hangs and wrong about budgets, because a ceiling on one pass is multiplied by the
+   * number of passes: one dispatch is `2 arms x 4 repetitions = 8` passes, so the workflow's
+   * `CORTEX_MEMORY_BUDGET_MINUTES: 90` permitted **721 minutes** of run inside a job killed at
+   * **350**. Run `41259622431` finished at 334.8 minutes with 15 to spare, and no artifact recorded
+   * that margin — a run that exceeds it next time dies with no `benchmark-error.log` and no report,
+   * which is precisely the failure this option was added to prevent.
    *
-   * ## Why the measured value is generous rather than tight
+   * `tools/job-budget.py` computes the two ceilings from a workflow file and reports whether the
+   * inner one can fire at all; for this repository's shape it cannot (`8 x 90 + 1 = 721`, 2.06x the
+   * job), so the protection was decorative.
    *
-   * A pass is roughly a twenty-sixth of a completed run on this arm (`3h32m` for eight
-   * passes), so a ceiling has to be far above that to be a hang detector rather than a
-   * slow-run detector. The dispatch sets it well above what any healthy pass has measured,
-   * and the reason is the same one §13.28 gives: a hang and a slow pass want opposite
-   * repairs, and a ceiling that fires on the slow one destroys the measurement it was meant
-   * to protect.
+   * ## What still bounds a hang
+   *
+   * The per-attempt timeout in `cortex-ai`, which is the layer that can see a single request. A
+   * per-run deadline does not replace it: it bounds the total, and a hang inside one call is
+   * still that layer's to interrupt. What the deadline adds is that **the run ends with a record**
+   * — the last pass to start gets what is left, `evaluateWithScorerDetailed` throws
+   * `BenchmarkBudgetExceeded` from between two questions, and the existing `catch` writes the
+   * partial artifact.
+   *
+   * ## Why the dispatch value is still generous
+   *
+   * A healthy eight-pass run measured 122.6 minutes with the reader's thinking disabled and 305.9
+   * with it enabled on three routes, so a ceiling that fires on a *slow but working* run destroys
+   * the measurement it was meant to protect (§13.28). The value has to sit above the upper end of
+   * the observed distribution and below the job's own timeout, and the gap between those two is
+   * thinner than it looks: see `AUDIT-MODEL-PORTABILITY.md` §9.5 and `tools/job-budget.py`.
    */
   budgetMs?: number | undefined;
 };
@@ -239,6 +252,22 @@ export async function runAblation(
 ): Promise<AblationResult> {
   const runs = options.runs ?? 3;
   const alpha = options.alpha ?? 0.05;
+  // The run's ceiling is an **instant**, not a duration, because the passes share it: whichever one
+  // runs longest is the one that finds nothing left, and it is the one that reports. Converted once
+  // here rather than per pass so a pass cannot extend the run by starting later.
+  const deadline =
+    options.budgetMs === undefined ? undefined : performance.now() + options.budgetMs;
+  /**
+   * What is left of the run's ceiling when the next pass starts.
+   *
+   * Clamped at zero rather than allowed to go negative: `evaluateWithScorerDetailed` compares
+   * `elapsed > budgetMs`, and a negative ceiling would make that true before the first question —
+   * which reports the failure against a question that was never attempted. Zero still fires on the
+   * second call, so an exhausted run still ends with a record, and the first question still runs,
+   * which is what lets the partial artifact name the pass it died in.
+   */
+  const remaining = (): number | undefined =>
+    deadline === undefined ? undefined : Math.max(0, deadline - performance.now());
   const abstentionAware = options.abstentionAware ?? true;
   const scorer = options.scorer ?? exactMatchScorer;
   if (runs < 1) {
@@ -277,7 +306,7 @@ export async function runAblation(
       false,
       false,
       (answer) => baselineAnswers.push(answer),
-      options.budgetMs,
+      remaining(),
     );
   } catch (error) {
     throw attachPartial(error, {
@@ -309,7 +338,7 @@ export async function runAblation(
       // can only be asked of the side that lost.
       true,
       (answer) => featureAnswers.push(answer),
-      options.budgetMs,
+      remaining(),
     );
   } catch (error) {
     throw attachPartial(error, {
@@ -478,7 +507,7 @@ export async function runAblation(
         false,
         false,
         (answer) => baselineThisRun.push(answer),
-        options.budgetMs,
+        remaining(),
       );
     } catch (error) {
       throw attachPartial(error, {
@@ -507,7 +536,7 @@ export async function runAblation(
         // grow by `runs`, which is what the baseline's flag above is protecting.
         true,
         (answer) => featureThisRun.push(answer),
-        options.budgetMs,
+        remaining(),
       );
     } catch (error) {
       throw attachPartial(error, {

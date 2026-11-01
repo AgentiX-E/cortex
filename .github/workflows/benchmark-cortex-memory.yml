@@ -177,7 +177,15 @@ env:
   # sits one below GitHub's 25-input ceiling, and `test_dispatch_inputs.py` refuses a workflow that
   # reaches it. The precedent is `evidenceTurnsPerRecord` (section 13.94): a value that is a
   # writability guard rather than a treatment belongs in the job, where a reader of a run looks anyway.
-  CORTEX_MEMORY_BUDGET_MINUTES: '90'
+  # The ceiling for the WHOLE RUN, not for one pass. It was 90 and it was a per-pass figure, which
+  # made it permit `8 x 90 = 720` minutes of run inside a job that is killed at 350 -- so it could
+  # never fire, and the only protection a slow dispatch had was the job's own timeout, which writes
+  # nothing. Run `41259622431` finished at 334.8 minutes with fifteen to spare, and no artifact
+  # recorded that margin. `tools/job-budget.py` reads this line and the job timeout together and says
+  # whether the inner ceiling can fire at all; the value below sits above the largest measured run
+  # (334.8) and below the job, so a slower draw ends with `BenchmarkBudgetExceeded`, a partial
+  # artifact and a log naming the question -- instead of with nothing.
+  CORTEX_MEMORY_BUDGET_MINUTES: '340'
   CORTEX_MEMORY_RERANK_BASE_URL: https://open.bigmodel.cn/api/paas/v4
   CORTEX_MEMORY_RERANK_MODEL: rerank
   # The endpoint's published wire limits: 128 documents per call, 4096 characters per document. The
@@ -196,10 +204,19 @@ jobs:
     # route-scoped reader §13.201.5 needs, and the arithmetic is measured rather than guessed:
     # 220 questions at 1 repetition took 17.8 minutes with `thinking=disabled` and 37.0 with
     # thinking on `multi-session+temporal` (2.08x) -- so the same ratio applied to 118 minutes
-    # is 245, i.e. five minutes past the ceiling and a lost run rather than a slow one. The
-    # routes named are 248 of 500 questions, so the ratio is an average over the arm and not an
-    # upper bound; 350 leaves the whole thing inside the job and still inside GitHub's 360.
-    timeout-minutes: 350
+    # is 245, i.e. five minutes past the ceiling and a lost run rather than a slow one.
+    #
+    # That 2.08x was measured on a **220-question probe** and it under-predicts the full arm.
+    # Two full 500-question dispatches with thinking on three routes took 305.9 and 334.8
+    # minutes, i.e. 2.60x and 2.85x of the 117.5-minute thinking-off run, against the 245 the
+    # probe implied. The difference is not noise: the probe's 220 questions are also the ones
+    # with the shortest contexts, so the ratio it measures is an average over the cheap half.
+    #
+    # 360 is GitHub's ceiling for a hosted job and 334.8 is the largest run measured, so the
+    # margin here is 25 minutes on the best evidence available -- thin enough that the in-run
+    # ceiling above is what has to fail first, and `tools/job-budget.py` is what says whether
+    # it can. `AUDIT-MODEL-PORTABILITY.md` §9.5 carries the table.
+    timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -425,8 +442,10 @@ jobs:
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}
-          # The per-pass ceiling, passed the same way. Blank means no ceiling, and the
-          # arm rejects a non-positive one rather than reading it as "unset".
+          # The run's ceiling, passed the same way. Blank means no ceiling, and the arm
+          # rejects a non-positive one rather than reading it as "unset". It is now the
+          # whole run rather than one pass -- see the env block at the top of the job for
+          # what the per-pass reading cost.
           # Section 13.12's bound, passed the same way. It is what keeps the run from
           # dying at the JSON write: run 38003036421 graded all four runs of all five
           # hundred questions and then lost the whole measurement to

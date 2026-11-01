@@ -853,7 +853,7 @@ describe('runCortexMemoryArm', () => {
     expect(result.report.ablation.discordant.baselineCorrectFeatureIncorrect).toBe(0);
   });
 
-  it('applies the per-pass ceiling it was handed', async () => {
+  it('applies the run ceiling it was handed', async () => {
     // §13.30's ceiling crosses two option types to reach `runBenchmark`: this one and
     // `AblationReportOptions`. A field declared on the first and dropped before the second
     // is a switch nothing applies -- the run would be dispatched with a ceiling, its
