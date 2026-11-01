@@ -603,8 +603,10 @@ breadth of provider support.
   were must-pass and that production data failed.
 - **That the guard's thresholds are calibrated.** `3 of 20` is derived from the largest published
   dispersion. Falsifier 3 has now been run for one of its four signals (§9.1) and the guard is
-  quiet there, but the other three are unreadable from an artifact, and the same section found that
-  the rule's rate calibration is 1.65x too optimistic when the calls arrive in blocks.
+  quiet there, but the other three are unreadable from an artifact. §9.2 then measured what §9.1 had
+  only constructed: across twelve archives the arrangement moves the firing rate from 0.58x to 1.15x
+  of the exchangeable prediction — no fixed sign — so the honest statement is an interval rather than
+  the factor §9.1 originally published, and the factor is retracted there.
 - **That a pre-classified table would be accurate for a model it has never seen.** D is release
   engineering; it inherits every uncertainty above.
 
