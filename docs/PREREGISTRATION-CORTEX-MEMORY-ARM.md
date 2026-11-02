@@ -24510,3 +24510,79 @@ exists to prevent.
 
 *Falsified by:* the next failed artifact whose partial record is not read by the audit step, or one
 whose printed extent disagrees with its own `reached`/`total`.
+
+## 13.217 The 8× that is not on the table yet, and the two ways to get it
+
+*A registered increment, not a change. Nothing is dispatched on it and nothing is implemented by it.*
+
+### 13.217.1 What it is worth, measured against the thing that is actually blocking
+
+`AUDIT-BENCHMARK-WALLCLOCK.md` §3 puts the arithmetic plainly: ~4,000 provider calls at ~5 s, one at a
+time, is **336 minutes**; at concurrency 8 it is **42 minutes**. The registered job ceiling is 360 and
+the arm's own deadline is 340, so today **one iteration is one dispatch and one dispatch is a day**.
+
+That is not a throughput nicety. Requirement #12 — *the contract and the pipeline must support weak and
+strong models, and the strong model must measurably do better* — is blocked on exactly this number:
+§13.212.6 measured the second provider (`zhipu:glm-4.6`) at **5.1× the run budget, 1.41 questions per
+minute**, which no ceiling can absorb. An 8× reduction does not make that provider fast; it makes the
+measurement **fit**, which is the difference between a blocked requirement and a scheduled one.
+
+So the priority of this increment is not "research comfort". It is the enabling change for a registered
+contract requirement, and that is why it is written down now rather than queued behind the P2 items.
+
+### 13.217.2 Why the obvious implementation is wrong, in one sentence
+
+`runBenchmark` reads five quantities **after** the call that produced them, from single-slot accessors on
+the system (`#lastRawOutput`, `#lastRetrievedContext`, `#lastPromptEvidenceChars`, `#lastPromptText`,
+`#lastAdmittedEvidence`), so under concurrency the slot belongs to whichever call wrote it last and
+question A's record can carry question B's prompt — silently, with nothing throwing.
+
+There is a sixth reader the audit did not name, and it is the one that decides between the two designs
+below: the arm wraps the system in a prototype chain and takes a **per-question census delta around each
+answer** (`bench-memory-arm.ts`, §13.145.6). "Before and after one call" is the same single-slot
+assumption one layer up.
+
+### 13.217.3 Two designs, and what each one costs
+
+| | **A. One system instance per worker** | **B. The trace becomes the return value** |
+| --- | --- | --- |
+| how | `c` instances built from the same config, sharing the LLM and embedding clients; a shared index queue hands each worker one question at a time | every routed method returns `Answer \| { answer, trace }`; the five slots and the census delta are replaced by a sink the call owns |
+| single-slot state | correct **by construction** — no two calls share an instance | deleted rather than protected |
+| census delta | preserved: each worker's wrapper brackets its own call | must move into the sink, or it breaks |
+| cost | ~150 lines: a factory in the arm, a worker pool in `benchmark.ts`, index placement | ~500 lines across two packages, 239 references, and the five accessors' documentation has to move to the trace type |
+| risk | state accumulated **per instance** (vote census, abstention census, any online state) is partitioned and must be summed — and the sum is only equal if nothing in the mechanism depends on seeing every earlier question | the type widens on a contract three packages implement, and the equality proof has to hold for every route |
+| second provider | same | same |
+
+**Recommendation: A, then B only if a mechanism is found that needs cross-question state.** A is ordered
+first not because it is smaller but because its failure mode is checkable by the same instrument the
+audit already registered: if the mechanism is per-question, the answers are byte-identical; if it is not,
+they differ and the difference names the state. B's failure mode is a contract migration, whose mistakes
+show up as *types* rather than as *numbers*, and this campaign's whole discipline is that a wrong number
+is the expensive kind.
+
+### 13.217.4 The acceptance criterion, unchanged from the audit
+
+*Claim:* at the same configuration, a 60-question arm answers **byte-identically** at concurrency 1 and
+concurrency `c`.
+
+*Instrument:* the twin-run digest — the per-question answer vector and the per-question prompt bytes,
+placed by **question index, never by completion order**. Aggregation order is part of the measurement:
+summing in completion order produces last-digit differences that propagate through tie-breaking, which is
+the rule `commonPrefixByPass` already follows by comparing bytes rather than hashes.
+
+*Falsified by:* any question whose answer or prompt differs between the two runs, which names the state
+that is shared. That is a **finding about the mechanism**, not a failure of the harness, and it is the
+first thing this instrument is for.
+
+*Cost:* ~10 minutes per arm at concurrency 1, ~2 at concurrency 8.
+
+### 13.217.5 What is explicitly not registered
+
+- **Not** that 8 is the right width. It is the audit's example. The width this arm can sustain is a
+  function of the provider's refusal rate, which is what `transportRetry.rateLimited` now measures — and
+  a run that raises concurrency into a `429` wall will report it rather than hide it.
+- **Not** that concurrency is free of scoring consequences. A timeout is a scoring policy: the same
+  answers under a longer queue are scored the same, which is why the digest compares answers and not
+  elapsed time.
+- **Not** that the default changes before the proof lands. Default stays 1 until the 60-question twin run
+  is green; the flag exists, the default does not move.
