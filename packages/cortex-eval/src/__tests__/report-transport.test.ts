@@ -110,6 +110,7 @@ function transport(overrides: Partial<TransportRetryReport> = {}): TransportRetr
     retriedCalls: 0,
     cleanCalls: 100,
     exhaustedCalls: 0,
+    refusedCalls: 0,
     retryRate: 0,
   };
   const merged = { ...base, ...overrides };
@@ -196,7 +197,7 @@ describe('the reading the counters imply', () => {
     // the middle -- which makes every rate above it uninterpretable.
     const md = rendered(transport({ cleanCalls: 90, retriedCalls: 5, exhaustedCalls: 0 }));
     expect(md).toContain('**COUNTERS DO NOT PARTITION**');
-    expect(md).toContain('90 + 5 + 0 ≠ 100');
+    expect(md).toContain('90 + 5 + 0 + 0 ≠ 100');
   });
 
   it('says an exhausted call should not appear in a completed artifact', () => {
@@ -205,5 +206,33 @@ describe('the reading the counters imply', () => {
     );
     expect(md).toContain('**1 calls exhausted every attempt**');
     expect(md).toContain('should report `0` here');
+  });
+});
+
+describe('a refusal is not a quiet run', () => {
+  it('names the calls the ladder declined, and says the counters cannot say why', () => {
+    // The reading that inverted this run's meaning. `retried: 0` alone prints "nothing was
+    // throttled -- every call was served on its first attempt", which is exactly what
+    // `41393748964`'s artifact said while the process was dying of a declined retry. With the
+    // fourth class present the same counters say the opposite, and they have to be read
+    // together because each one alone is true and the pair is not.
+    const md = rendered(transport({ cleanCalls: 99, refusedCalls: 1, calls: 100, attempts: 100 }));
+
+    expect(md).toContain('| calls whose retry the ladder declined | 1 |');
+    expect(md).toContain('**1 calls were refused without a retry**');
+    // The three reasons are not in the artifact -- only on the error message -- so the section
+    // says so rather than implying one of them.
+    expect(md).toContain('that reason travels on the error message');
+    // The partition still closes, so the warning above it must not appear.
+    expect(md).not.toContain('COUNTERS DO NOT PARTITION');
+  });
+
+  it('says nothing extra when nothing was refused', () => {
+    // The control. A section that printed the refusal reading unconditionally would train a
+    // reader to skip it, which is the failure mode every conditional warning in this report is
+    // written against.
+    const md = rendered(transport({ cleanCalls: 100, calls: 100 }));
+    expect(md).not.toContain('refused without a retry');
+    expect(md).toContain('| calls whose retry the ladder declined | 0 |');
   });
 });

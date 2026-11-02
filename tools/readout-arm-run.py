@@ -1692,6 +1692,11 @@ def transport_section(report: dict) -> tuple[str, str]:
         exhausted = _whole_count(block['exhaustedCalls'])
         rate_limited = _whole_count(block['rateLimited'])
         honoured = _whole_count(block['retryAfterHonoured'])
+        # Optional, and absence is a reading rather than a zero: `refusedCalls` was added after
+        # `41393748964`, and an artifact written before it cannot report one. Requiring it would
+        # refuse every earlier record, which is the check that passes on everything written after
+        # the field and rejects the archives.
+        refused = _whole_count(block['refusedCalls']) if 'refusedCalls' in block else None
     except (KeyError, ValueError):
         return '', TRANSPORT_CORRUPT
 
@@ -1709,13 +1714,33 @@ def transport_section(report: dict) -> tuple[str, str]:
         f'  {"calls that never settled":<26}{exhausted:>8}',
         f'  {"attempts answered 429":<26}{rate_limited:>8}',
         f'  {"Retry-After honoured":<26}{honoured:>8}',
+    ]
+    if refused is None:
+        lines.append(
+            f'  {"retries the ladder declined":<26}{"predates":>8}'
+        )
+    else:
+        lines.append(f'  {"retries the ladder declined":<26}{refused:>8}')
+    lines += [
         '',
         f'  retry rate: {rate:.2f}%  ({retried_calls} of {calls} calls)',
     ]
-    if clean_calls + retried_calls + exhausted != calls:
+    # Two identities, because the artifact has two vintages and each one has to close against
+    # the terms it actually carries. Checking the four-term sum against a record that predates
+    # the fourth term would report a defect in a correct older artifact -- and skipping the
+    # check entirely would let a broken legacy record through, which is the check that only
+    # passes on the records written after it.
+    if refused is None:
+        if clean_calls + retried_calls + exhausted != calls:
+            lines.append(
+                f'  NOT A PARTITION: {clean_calls} + {retried_calls} + {exhausted} != {calls}. '
+                'The counts were read across a boundary, so no rate above can be trusted.'
+            )
+    elif clean_calls + retried_calls + exhausted + refused != calls:
         lines.append(
-            f'  NOT A PARTITION: {clean_calls} + {retried_calls} + {exhausted} != {calls}. '
-            'The counts were read across a boundary, so no rate above can be trusted.'
+            f'  NOT A PARTITION: {clean_calls} + {retried_calls} + {exhausted} + {refused} '
+            f'!= {calls}. The counts were read across a boundary, so no rate above can be '
+            'trusted.'
         )
     if calls == 0:
         lines.append(

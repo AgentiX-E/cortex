@@ -15,7 +15,11 @@
  * appears, not in advance of one.
 */
 import type { LLM } from '@agentix-e/cortex-core';
-import { OpenAICompatibleLLM, type ThinkingMode } from '@agentix-e/cortex-ai';
+import {
+  DEFAULT_RETRY_BUDGET_MS,
+  OpenAICompatibleLLM,
+  type ThinkingMode,
+} from '@agentix-e/cortex-ai';
 
 import {
   resolveReaderProvider,
@@ -157,6 +161,30 @@ export function resolveTimeoutMs(thinking: ThinkingMode): number | undefined {
 }
 
 /**
+ * Retry allowance for the given thinking mode, or `undefined` to keep the adapter's default.
+ *
+ * ## Why thinking mode cannot use the default budget
+ *
+ * The retry budget is measured from the first attempt, so a per-attempt deadline longer than
+ * the budget means **the ladder can never make its first retry**: a single full-length attempt
+ * spends the whole allowance. Thinking mode's deadline is 300 s and the adapter's default
+ * budget is 120 s, so that is not a hypothetical -- run `41393748964` ran this exact pair and
+ * the consequence was recorded as `LLM request failed: 429` on a stalled attempt, because the
+ * pre-fix code invented a status when it declined to retry.
+ *
+ * The allowance is therefore stated as *one full-length attempt plus the standard budget*: the
+ * attempt itself may consume its own deadline, and what remains is exactly the window the
+ * non-thinking path gets. Because the budget only gates retries and never interrupts one, this
+ * bounds the sequence at two attempts -- 300 s then up to 300 s -- rather than at nine.
+ *
+ * Non-thinking keeps `undefined` rather than repeating 120 s here: the adapter's default is the
+ * single place that number lives, and a second copy is a second thing to keep in step.
+ */
+export function resolveRetryBudgetMs(thinking: ThinkingMode): number | undefined {
+  return thinking.type === 'enabled' ? THINKING_TIMEOUT_MS + DEFAULT_RETRY_BUDGET_MS : undefined;
+}
+
+/**
  * Which reader a run will use, resolved from the same environment the constructor reads.
  *
  * ## Why this exists as a separate function rather than as fields on the LLM
@@ -272,12 +300,14 @@ function buildReader(
 ): LLM {
   const thinking: ThinkingMode = { type: mode };
   const timeoutMs = resolveTimeoutMs(thinking);
+  const retryBudgetMs = resolveRetryBudgetMs(thinking);
   const llm = new OpenAICompatibleLLM({
     baseUrl: identity.baseUrl,
     apiKey,
     model: identity.model,
     thinking,
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    ...(retryBudgetMs !== undefined ? { retryBudgetMs } : {}),
   });
   // Wrapped only when the environment asks for a temperature. The absent path stays absent on
   // purpose: §13.114 records that every reading before §13.119 was taken with no temperature in

@@ -573,40 +573,64 @@ describe('retryableFetch respects a wall-clock budget', () => {
     expect(calls()).toBe(1);
   });
 
-  it('synthesises a 429 when the budget refuses a retry after a transport failure', async () => {
-    // The refusal path returns `resFromLastAttempt`, and after a transport failure
-    // there is no response to return -- the failure cleared it. The fallback is a
-    // synthetic 429, so the caller still sees an HTTP status to act on instead of
-    // a bare `undefined` reaching `res.ok`.
+  it('rethrows the transport error rather than inventing a status the provider never sent', async () => {
+    // ## The loss this pins
     //
-    // The mutation this guards: replacing the fallback with a non-429 status, or
-    // removing it, makes the refused-after-failure case report a status the
-    // retry layer never observed. `rateLimited` must stay at zero either way,
-    // because no 429 was ever received.
+    // This case used to return `new Response(null, { status: 429 })`, and run `41393748964`
+    // is the bill. A thinking-mode attempt stalled for 133 s -- longer than the whole 120 s
+    // budget -- so the next attempt was unaffordable, and the caller was handed a fabricated
+    // `429`. The artifact then said `LLM request failed: 429` about a provider that never sent
+    // one, while the counters, which were correct, reported `rateLimited: 0`. The two readings
+    // looked like a contradiction and were the same misattribution seen from both ends, and
+    // the run that produced them was dispatched to look at quota instead of at a stall.
     //
-    // The budget is `0` rather than "shorter than the first backoff" because a shorter
-    // budget no longer refuses: the last wait is truncated to whatever remains, so 10 ms
-    // against a 30 ms backoff is now one truncated wait and one more attempt (the case
-    // below). Nothing left at all is the state that refuses.
+    // With no response there is no status to report. The transport error is the only thing
+    // this layer can substantiate, so it is rethrown with the counts attached -- the same
+    // contract the exhaustion path already uses.
+    //
+    // The budget is `0` rather than "shorter than the first backoff" because a shorter budget
+    // no longer refuses: the last wait is truncated to whatever remains, so 10 ms against a
+    // 30 ms backoff is one truncated wait and one more attempt (the case below). Nothing left
+    // at all is the state that refuses.
     let calls = 0;
     const fetchFn = async (): Promise<Response> => {
       calls += 1;
       throw new Error('socket hang up');
     };
     resetRetryStats();
-    const outcome = await retryableFetchWithStats(
+
+    const failure = await retryableFetchWithStats(
       fetchFn,
       'http://x',
       {},
       { maxRetries: 10, baseDelayMs: 30, retryBudgetMs: 0 },
+    ).then(
+      (outcome) => ({ outcome }),
+      (error: unknown) => ({ error: error as Error }),
     );
 
-    expect(outcome.response.status).toBe(429);
+    expect('outcome' in failure).toBe(false);
+    const error = 'error' in failure ? failure.error : new Error('unreachable');
+    // The cause survives, which is the whole point: `socket hang up` names the network.
+    expect(error.message).toBe('socket hang up');
+    // The field is attached by the throw rather than declared on `Error`, which is the contract
+    // `withExhaustion` describes: the original error is rethrown untouched apart from one
+    // added field, so its class and its stack survive.
+    const exhaustion = (error as Error & { retryExhausted?: unknown }).retryExhausted;
+    expect(exhaustion).toMatchObject({
+      url: 'http://x',
+      attempts: 1,
+      retried: 0,
+      rateLimited: 0,
+      cause: 'socket hang up',
+    });
     expect(calls).toBe(1);
-    // A refused retry is a retry that never happened.
-    expect(outcome.retried).toBe(0);
-    expect(outcome.rateLimited).toBe(0);
-    expect(outcome.attempts).toBe(1);
+    // And the aggregate classifies it as a call that never settled, not as a clean one and
+    // not as a refusal: no response arrived, so there was nothing to refuse.
+    const after = retryStats();
+    expect(after.exhaustedCalls).toBe(1);
+    expect(after.cleanCalls).toBe(0);
+    expect(after.refusedCalls).toBe(0);
   });
 
   it('spends the remaining budget on a retry after a transport failure', async () => {
@@ -622,18 +646,25 @@ describe('retryableFetch respects a wall-clock budget', () => {
       throw new Error('socket hang up');
     };
     resetRetryStats();
-    const outcome = await retryableFetchWithStats(
+    const error = await retryableFetchWithStats(
       fetchFn,
       'http://x',
       {},
       { maxRetries: 10, baseDelayMs: 30, retryBudgetMs: 10 },
+    ).then(
+      () => new Error('the call resolved; it should have rethrown the transport error'),
+      (thrown: unknown) => thrown as Error,
     );
 
-    expect(outcome.response.status).toBe(429);
+    // Two attempts, then no budget left -- and no response to hand back, so the transport
+    // error is what surfaces. `calls` is the criterion: the truncated wait bought one more
+    // request, which is the whole reason the truncation exists.
     expect(calls).toBe(2);
-    expect(outcome.retried).toBe(1);
-    expect(outcome.attempts).toBe(2);
-    expect(outcome.rateLimited).toBe(0);
+    expect(error.message).toBe('socket hang up');
+    expect(retryStats().attempts).toBe(2);
+    expect(retryStats().retried).toBe(1);
+    expect(retryStats().rateLimited).toBe(0);
+    expect(retryStats().exhaustedCalls).toBe(1);
   });
 
   it('keeps retrying while the budget still allows it', async () => {
@@ -1053,6 +1084,7 @@ describe('retry stats aggregation', () => {
       retriedCalls: 0,
       cleanCalls: 0,
       exhaustedCalls: 0,
+      refusedCalls: 0,
       retryRate: 0,
     });
   });
@@ -1084,19 +1116,26 @@ describe('retry stats aggregation', () => {
     expect(snap.cleanCalls + snap.retriedCalls + snap.exhaustedCalls).toBe(snap.calls);
   });
 
-  it('counts an exhausted call that retried in both counters, because both are true', () => {
-    // A call that issued six requests and never got an answer DID retry, so it belongs in
-    // `retriedCalls` -- the retry rate is about the provider's behaviour, and suppressing
-    // it there would report a smooth run over traffic that was failing. `exhaustedCalls`
-    // is what says the retrying did not work, which is why the two are not exclusive.
+  it('puts a call in exactly one class, even when two of them are true of it', () => {
+    // This test used to assert the opposite -- that an exhausted call which retried lands in
+    // both `retriedCalls` and `exhaustedCalls` -- and the defence was that both facts are
+    // true. They are, and that is why the partition broke: with one call counted twice, the
+    // identity `clean + retried + exhausted + refused === calls` cannot hold, and the identity
+    // is the only thing that says the counters were read from one aggregate rather than across
+    // a boundary.
+    //
+    // The class is chosen by what a reader needs first: a call with no response at all is a
+    // different event from one that was answered and refused, so `exhaustedCalls` takes it and
+    // `retried` keeps the volume. Nothing is lost -- 5 retries are still in `retried`.
     const agg = createRetryStatsAggregate();
     agg.recordExhausted({ attempts: 6, retried: 5, rateLimited: 0, retryAfterHonoured: 0 });
 
     const snap = agg.snapshot();
-    expect(snap.retriedCalls).toBe(1);
+    expect(snap.retriedCalls).toBe(0);
     expect(snap.exhaustedCalls).toBe(1);
     expect(snap.cleanCalls).toBe(0);
-    expect(snap.retryRate).toBe(1);
+    expect(snap.retryRate).toBe(0);
+    expect(snap.retried).toBe(5);
   });
 });
 
@@ -1202,9 +1241,12 @@ describe('an exhausted retry reports itself', () => {
 
     const after = retryStats();
     expect(after.calls).toBe(before.calls + 1);
-    // Recorded as a call that retried rather than as a clean one: the distinction the
-    // counter exists for, and the one an exhausted call has to land on.
-    expect(after.retriedCalls).toBe(before.retriedCalls + 1);
+    // Recorded as a call that never settled, rather than as a clean one: the distinction the
+    // counter exists for. It retried once and was answered by nobody, so `exhaustedCalls` is
+    // the single class it belongs to and `retried` still carries the volume.
+    expect(after.exhaustedCalls).toBe(before.exhaustedCalls + 1);
+    expect(after.retriedCalls).toBe(before.retriedCalls);
+    expect(after.retried).toBe(before.retried + 1);
     expect(after.attempts).toBe(before.attempts + 2);
   });
 
@@ -1387,5 +1429,103 @@ describe('the per-attempt deadline covers the body', () => {
       { timeoutMs: 1_000, maxRetries: 0 },
     );
     expect(outcome.response.status).toBe(204);
+  });
+});
+
+/**
+ * A call answered "not now" is not a call that was served, and the counters said it was.
+ *
+ * ## The loss this pins
+ *
+ * Run `41393748964` graded a complete repetition on both sides, then died 349 questions into
+ * the next one with `LLM request failed: 429 `. The artifact's counters read
+ * `{"attempts":2892,"retried":0,"rateLimited":0,"cleanCalls":2892,"exhaustedCalls":0}` and the
+ * log read `429`. Both were produced by this module, and they could not both be right: a `429`
+ * that reached the counters would have incremented `rateLimited`, and one that did not reach
+ * them would have left no trace at all.
+ *
+ * Neither had happened. The attempt was a **transport failure** that outlived the retry budget,
+ * and the refusal path fabricated `new Response(null, { status: 429 })` so the caller would
+ * have "a status to act on". That status quoted the provider for something it never said, and
+ * the call it belonged to was then recorded as `clean` -- served on the first attempt, no
+ * retry, nothing to see.
+ *
+ * Three corrections follow, and each is a separate test below: no fabricated status, a refusal
+ * is its own class, and the four classes close the partition.
+ */
+describe('a call that is answered and not retried is a refusal, not a clean call', () => {
+  /** A response that names a window this client will never wait out. */
+  const unreachableWindow = (): Response =>
+    new Response('', { status: 429, headers: { 'retry-after': '3600' } });
+
+  it('counts it as refused and reports why, rather than as served', async () => {
+    resetRetryStats();
+    const outcome = await retryableFetchWithStats(
+      async () => unreachableWindow(),
+      'http://x',
+      {},
+      { retryBudgetMs: 120_000 },
+    );
+
+    expect(outcome.response.status).toBe(429);
+    // One request, no retry, and the reason is a decision this client made.
+    expect(outcome.attempts).toBe(1);
+    expect(outcome.retried).toBe(0);
+    expect(outcome.refusal).toEqual({
+      reason: 'retry-after-beyond-budget',
+      attempts: 1,
+      retried: 0,
+      retryAfterMs: 3_600_000,
+      remainingMs: 120_000,
+    });
+
+    const after = retryStats();
+    expect(after.refusedCalls).toBe(1);
+    // The field that used to absorb it, and the reason the artifact read as a smooth run.
+    expect(after.cleanCalls).toBe(0);
+    expect(after.rateLimited).toBe(1);
+  });
+
+  it('names the count running out separately from the budget running out', async () => {
+    // A different repair: `maxRetries: 0` is a legitimate configuration, and the call it
+    // refuses has to be distinguishable from one the budget refused. The three reasons are
+    // named in `RetryRefusal` for this: `attempts-exhausted` means the count is too small,
+    // which is a tuning answer, and `budget-exhausted` means the allowance was spent, which
+    // is usually an attempt deadline that outlived it.
+    resetRetryStats();
+    const outcome = await retryableFetchWithStats(
+      async () => new Response('', { status: 503 }),
+      'http://x',
+      {},
+      { maxRetries: 0 },
+    );
+
+    expect(outcome.refusal?.reason).toBe('attempts-exhausted');
+    expect(outcome.refusal?.retryAfterMs).toBeNull();
+    expect(retryStats().refusedCalls).toBe(1);
+    // A 503 is retryable but is not a rate limit, and the counter keeps the two apart.
+    expect(retryStats().rateLimited).toBe(0);
+  });
+
+  it('keeps the four classes closed across every ending this module can produce', async () => {
+    // The identity is the only thing that says the counters were read from one aggregate.
+    // It could not hold before this round: an exhausted call that retried was counted in two
+    // classes, and a refused call was counted in none.
+    const agg = createRetryStatsAggregate();
+    agg.record({ attempts: 1, retried: 0, rateLimited: 0, retryAfterHonoured: 0 }); // served
+    agg.record({ attempts: 4, retried: 3, rateLimited: 2, retryAfterHonoured: 1 }); // retried
+    agg.recordExhausted({ attempts: 9, retried: 8, rateLimited: 9, retryAfterHonoured: 0 });
+    agg.recordRefused({ attempts: 1, retried: 0, rateLimited: 1, retryAfterHonoured: 0 });
+    agg.recordRefused({ attempts: 3, retried: 2, rateLimited: 3, retryAfterHonoured: 0 });
+
+    const snap = agg.snapshot();
+    expect(snap.calls).toBe(5);
+    expect(snap.cleanCalls).toBe(1);
+    expect(snap.retriedCalls).toBe(2); // the 3-retry call, and the 2-retry refusal
+    expect(snap.exhaustedCalls).toBe(1);
+    expect(snap.refusedCalls).toBe(1); // only the call that never retried
+    expect(snap.cleanCalls + snap.retriedCalls + snap.exhaustedCalls + snap.refusedCalls).toBe(
+      snap.calls,
+    );
   });
 });

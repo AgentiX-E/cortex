@@ -4,7 +4,7 @@
  */
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { parseJson } from '../json.js';
-import { retryableFetch } from '../retry.js';
+import { retryableFetchWithStats, type RetryRefusal } from '../retry.js';
 import { parseUsage, recordUsage } from '../usage.js';
 
 /** DeepSeek thinking-mode toggle (also honoured by compatible providers). */
@@ -20,6 +20,15 @@ export type OpenAICompatibleLLMOptions = {
   maxRetries?: number;
   /** Initial backoff in milliseconds; doubles each retry. */
   retryBaseDelayMs?: number;
+  /**
+   * Wall-clock allowance for the retry sequence; default `DEFAULT_RETRY_BUDGET_MS` (120 s).
+   *
+   * Exposed because the budget and `timeoutMs` have to be chosen together: the budget is
+   * measured from the first attempt, so a per-attempt deadline **longer than the budget**
+   * makes the ladder unreachable. Thinking mode sets a 300 s deadline and therefore passes
+   * a budget above it; see `resolveTimeoutMs` in `cortex-eval`'s `llm-factory`.
+   */
+  retryBudgetMs?: number;
   /** Per-attempt request deadline in milliseconds; default 60000. */
   timeoutMs?: number;
   /**
@@ -71,7 +80,7 @@ export class OpenAICompatibleLLM implements LLM {
 
   private async post(path: string, body: unknown): Promise<Response> {
     const fetchFn = this.options.fetchFn ?? fetch;
-    const res = await retryableFetch(
+    const outcome = await retryableFetchWithStats(
       fetchFn,
       `${this.options.baseUrl}${path}`,
       {
@@ -86,15 +95,47 @@ export class OpenAICompatibleLLM implements LLM {
         maxRetries: this.options.maxRetries,
         baseDelayMs: this.options.retryBaseDelayMs,
         timeoutMs: this.options.timeoutMs,
+        retryBudgetMs: this.options.retryBudgetMs,
       },
     );
+    const res = outcome.response;
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '');
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
-      throw new Error(`LLM request failed: ${res.status} ${res.statusText}${detail}`);
+      throw new Error(
+        `LLM request failed: ${res.status} ${res.statusText}${detail}${describeRefusal(outcome.refusal)}`,
+      );
     }
     return res;
   }
+}
+
+/**
+ * Name why the retry ladder did not chase this status, when it did not.
+ *
+ * ## Why the reason belongs in the message
+ *
+ * `41393748964` printed `LLM request failed: 429 ` and nothing else -- no reason, no attempt
+ * count, no window. Every operator who read it concluded the provider had throttled, and the
+ * record supported that conclusion until the counters were read against it: 2,892 calls, zero
+ * rate-limited, one call whose only attempt had outlived the budget. The status alone cannot
+ * distinguish "the provider is throttling me" from "I am not waiting long enough to find out",
+ * and those two call for opposite next steps.
+ *
+ * Absent when the call was served, so a message for a refused request reads identically to what
+ * it read before this function existed.
+ */
+function describeRefusal(refusal: RetryRefusal | undefined): string {
+  if (refusal === undefined) {
+    return '';
+  }
+  const window =
+    refusal.retryAfterMs === null
+      ? ''
+      : `; the provider asked for ${Math.round(refusal.retryAfterMs / 1000)} s`;
+  const left =
+    refusal.remainingMs === null ? '' : ` and ${Math.round(refusal.remainingMs / 1000)} s was left`;
+  return ` — not retried (${refusal.reason}) after ${refusal.attempts} attempt(s)${window}${left}`;
 }
 
 export function buildChatBody(

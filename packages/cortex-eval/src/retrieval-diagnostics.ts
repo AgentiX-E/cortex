@@ -525,9 +525,19 @@ type TransportRetrySnapshot = {
    * makes the rest readable: without it, a call that issued one request and was cut off
    * is counted as CLEAN, so a run whose traffic was failing outright reports a higher
    * share of untroubled calls than a healthy one. `cleanCalls + retriedCalls +
-   * exhaustedCalls === calls` is the identity, and it is asserted in `cortex-ai`.
+   * exhaustedCalls + refusedCalls === calls` is the identity, and it is asserted in
+   * `cortex-ai`.
    */
   exhaustedCalls: number;
+  /**
+   * Calls that ended on a retryable status and were **not** retried.
+   *
+   * The fourth class, added because its absence was read as its opposite: run `41393748964`
+   * reported 2,892 clean calls and zero rate-limited ones, and then died of a status the
+   * ladder had declined to chase. Without this field a refusal is indistinguishable from a
+   * call that was served first time, which is the reading that made a stall look like quota.
+   */
+  refusedCalls: number;
   /** `retriedCalls / calls` -- per call, never per retry. */
   retryRate: number;
 };
@@ -560,6 +570,7 @@ export function transportRetryReport(
     retriedCalls: snapshot.retriedCalls,
     cleanCalls: snapshot.cleanCalls,
     exhaustedCalls: snapshot.exhaustedCalls,
+    refusedCalls: snapshot.refusedCalls,
     retryRate: snapshot.retryRate,
   };
 }

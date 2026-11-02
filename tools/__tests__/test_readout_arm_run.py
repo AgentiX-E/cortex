@@ -2797,6 +2797,7 @@ class TestWhatTheProviderDidWithTheRequests:
             'retriedCalls': 60,
             'cleanCalls': 40,
             'exhaustedCalls': 0,
+            'refusedCalls': 0,
             'rateLimited': 80,
             'retryAfterHonoured': 0,
             'retryRate': 0.6,
@@ -2867,7 +2868,7 @@ class TestWhatTheProviderDidWithTheRequests:
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert 'NOT A PARTITION' in r.stdout, r.stdout
-        assert '90 + 5 + 0 != 100' in r.stdout, r.stdout
+        assert '90 + 5 + 0 + 0 != 100' in r.stdout, r.stdout
 
     @pytest.mark.parametrize(
         'block',
@@ -2888,6 +2889,87 @@ class TestWhatTheProviderDidWithTheRequests:
         assert r.returncode == 2
         assert 'present and unreadable' in r.stderr, r.stderr
         assert 'predates the field' not in r.stderr
+
+
+class TestTheClassThatWasMissing:
+    """`refusedCalls` is the fourth class, and its absence inverted a run's meaning.
+
+    `41393748964` reported `retried: 0`, `rateLimited: 0`, `cleanCalls: 2892` and then died of
+    `LLM request failed: 429`. Every number was produced by the retry layer and every one of
+    them was, in isolation, true -- and together they said "nothing was throttled, every call
+    was served first time" about a process that was ending. The class that was missing is the
+    one that names it: a call answered `429` whose retry the ladder declined.
+
+    Absence has to keep its single meaning, which is why the field is optional on this side:
+    every artifact written before this round lacks it, and those records are the ones a failure
+    investigation actually reads.
+    """
+
+    @staticmethod
+    def _run(tmp_path: Path, block: dict) -> 'subprocess.CompletedProcess[str]':
+        # A whole report, not a lone block: `--transport` reads a finished artifact, and a bare
+        # `{"transportRetry": ...}` is refused a layer earlier for having no roster -- a true
+        # sentence about a file this test never meant to describe.
+        report = _synthetic_report()
+        report['transportRetry'] = block
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--transport', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    @staticmethod
+    def _block(**overrides: object) -> dict:
+        block = {
+            'provider': 'run',
+            'scope': 'process',
+            'calls': 100,
+            'attempts': 100,
+            'retried': 0,
+            'rateLimited': 0,
+            'retryAfterHonoured': 0,
+            'retriedCalls': 0,
+            'cleanCalls': 100,
+            'exhaustedCalls': 0,
+            'refusedCalls': 0,
+            'retryRate': 0,
+        }
+        block.update(overrides)
+        return block
+
+    def test_the_count_is_printed_when_the_artifact_carries_it(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._block(cleanCalls=99, refusedCalls=1, rateLimited=1))
+        assert r.returncode == 0, r.stderr
+        assert 'retries the ladder declined' in r.stdout
+        assert 'NOT A PARTITION' not in r.stdout
+
+    def test_absence_is_a_reading_and_not_a_zero(self, tmp_path: Path) -> None:
+        # The archive case. Printing `0` for a field the record does not have would be the same
+        # defect the field exists to fix, one level up.
+        block = self._block()
+        block.pop('refusedCalls')
+        r = self._run(tmp_path, block)
+        assert r.returncode == 0, r.stderr
+        assert 'predates' in r.stdout, r.stdout
+        assert 'NOT A PARTITION' not in r.stdout
+
+    def test_a_partition_that_does_not_close_says_so(self, tmp_path: Path) -> None:
+        # With the fourth class present the identity has four terms, and a reader who counts
+        # three would call a correct artifact broken.
+        r = self._run(tmp_path, self._block(cleanCalls=90, retriedCalls=5, refusedCalls=1))
+        assert r.returncode == 0, r.stderr
+        assert 'NOT A PARTITION: 90 + 5 + 0 + 1 != 100' in r.stdout, r.stdout
+
+    def test_a_refused_count_that_is_not_a_count_is_corruption(self, tmp_path: Path) -> None:
+        # A bool is an int in Python, and a producer that wrote `true` reported a flag where a
+        # count belongs. That is the block being unreadable, not a run that refused nothing.
+        r = self._run(tmp_path, self._block(refusedCalls=True))
+        assert r.returncode == 2
+        # `--transport` reports a corrupt block on stderr and exits 2; the extent of a partial
+        # is printed on stdout, but this mode has no extent to keep.
+        assert 'producer defect' in r.stderr, r.stderr
+        assert r.stdout.strip() == '', r.stdout
 
 
 class TestWhatAFailedRunLeftBehind:

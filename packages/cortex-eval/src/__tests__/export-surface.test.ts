@@ -90,6 +90,10 @@ const TEST_IMPORTED: ReadonlyArray<[pkg: string, file: string, name: string]> = 
   ['cortex-eval', 'natural-language-memory.ts', 'formatStructuredContext'],
   ['cortex-eval', 'fact-memory.ts', 'overlapScore'],
   ['cortex-eval', 'llm-factory.ts', 'resolveTimeoutMs'],
+  // Its only caller outside this module is the test that states the invariant, and the
+  // invariant is a relation between two functions rather than a fact about one -- so it is
+  // asserted here rather than inlined into `buildReader` where nothing could check it.
+  ['cortex-eval', 'llm-factory.ts', 'resolveRetryBudgetMs'],
 ];
 
 function sourceOf(pkg: string, file: string): string {

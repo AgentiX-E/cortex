@@ -277,6 +277,68 @@ describe('OpenAICompatibleLLM (real local server)', () => {
     await expect(llm.complete('hi')).rejects.not.toThrow(/stream closed/);
   });
 
+  it('names why the ladder declined, because the status alone reads as throttling', async () => {
+    // ## The loss this pins
+    //
+    // `41393748964` printed `LLM request failed: 429 ` and stopped there. Every reader took it
+    // for a rate limit; the counters said `rateLimited: 0` over 2,892 calls, and the two could
+    // not both be right until the refusal was named. A `Retry-After` of an hour against a
+    // two-minute allowance is a *decision* -- this client will not wait an hour -- and it is a
+    // different fact from the provider slowing down, which is the one the message implied.
+    const llm = new OpenAICompatibleLLM({
+      baseUrl: 'http://llm.invalid',
+      apiKey: 'k',
+      model: 'm',
+      fetchFn: (async () =>
+        new Response('', {
+          status: 429,
+          headers: { 'retry-after': '3600' },
+        })) as unknown as typeof fetch,
+    });
+
+    const message = await llm.complete('hi').then(
+      () => 'resolved',
+      (error: unknown) => (error as Error).message,
+    );
+
+    expect(message).toContain('LLM request failed: 429');
+    expect(message).toContain('not retried (retry-after-beyond-budget)');
+    expect(message).toContain('the provider asked for 3600 s');
+    expect(message).toContain('after 1 attempt(s)');
+  });
+
+  it('carries the budget it was given, so a long attempt deadline cannot eat the ladder', async () => {
+    // The pair that has to be chosen together. A `timeoutMs` larger than `retryBudgetMs` makes
+    // the ladder unreachable by construction, because the budget is measured from the first
+    // attempt; the adapter's job is to pass both through unchanged so the composer owns that
+    // inequality. Here an 80 ms budget against a 1,000 ms backoff and a 429 with no header:
+    // the computed wait is truncated to the 80 ms that remain, so a second request IS made and
+    // the third is declined. Two requests and a named reason is the whole contract -- the
+    // alternative reading, one request and a fabricated status, is what `41393748964` produced.
+    let issued = 0;
+    const llm = new OpenAICompatibleLLM({
+      baseUrl: 'http://llm.invalid',
+      apiKey: 'k',
+      model: 'm',
+      retryBudgetMs: 80,
+      retryBaseDelayMs: 1000,
+      fetchFn: (async () => {
+        issued += 1;
+        return new Response('', { status: 429 });
+      }) as unknown as typeof fetch,
+    });
+
+    const message = await llm.complete('hi').then(
+      () => 'resolved',
+      (error: unknown) => (error as Error).message,
+    );
+
+    expect(issued).toBe(2);
+    expect(message).toContain('not retried (budget-exhausted)');
+    expect(message).toContain('after 2 attempt(s)');
+    expect(message).toContain('and 0 s was left');
+  });
+
   it('embeds text via a real HTTP server', async () => {
     const emb = new OpenAIEmbedding({ baseUrl, apiKey: 'test', model: 'm', dimensions: 3 });
     expect(emb.dimension()).toBe(3);

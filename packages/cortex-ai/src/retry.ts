@@ -74,6 +74,16 @@ export const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
  * the last wait must be truncated to whatever remains so the final attempt lands on the
  * deadline instead of half a ceiling short. Both are asserted in `retry.test.ts`, together
  * with the identity `last attempt time === DEFAULT_RETRY_BUDGET_MS`.
+ *
+ * ## The third half: the per-attempt deadline has to leave the ladder something
+ *
+ * The budget is measured from the first attempt, so an attempt that runs long spends it. That
+ * is right for a client whose attempts are seconds long and wrong for one whose attempts are
+ * minutes: run `41393748964` ran thinking mode with a 300 s per-attempt deadline against this
+ * 120 s ceiling, so **a single stalled attempt consumed the whole budget and no retry was ever
+ * possible** -- the same shape as the count defect above, one parameter over. The composer of
+ * the pair has to keep `retryBudgetMs > timeoutMs`; `llm-factory` states and tests that
+ * inequality for the one caller with a five-minute deadline.
  */
 export const DEFAULT_RETRY_BUDGET_MS = 120_000;
 /**
@@ -239,8 +249,41 @@ export type RetryStats = {
   retryAfterHonoured: number;
 };
 
+/**
+ * Why the ladder declined to make a retry.
+ *
+ * ## Why the reason travels rather than only a boolean
+ *
+ * The three reasons call for different work and are indistinguishable in a status code:
+ * `attempts-exhausted` means the count is too small, `budget-exhausted` means the last attempt
+ * outlasted the allowance, and `retry-after-beyond-budget` means the provider named a window
+ * longer than this client is willing to wait. A caller that saw only "429" would treat all three
+ * as throttling, which is exactly the misreading run `41393748964` produced: a transport failure
+ * after 133 s was reported as a rate limit the provider never sent.
+ */
+export type RetryRefusal = {
+  reason: 'attempts-exhausted' | 'budget-exhausted' | 'retry-after-beyond-budget';
+  /** Requests issued before the ladder gave up. */
+  attempts: number;
+  /** Retries performed before the ladder gave up. */
+  retried: number;
+  /** The `Retry-After` the response named, or `null` when it named none. */
+  retryAfterMs: number | null;
+  /** What was left of the budget when the retry was declined, or `null` when unbudgeted. */
+  remainingMs: number | null;
+};
+
 /** One call's stats plus the response it finally returned. */
-export type RetryOutcome = RetryStats & { response: Response };
+export type RetryOutcome = RetryStats & {
+  response: Response;
+  /**
+   * Present only when the call ended on a retryable status that was **not** retried.
+   *
+   * Absent on every other outcome, so a caller that never inspects it is unaffected and a caller
+   * that does cannot mistake a served call for a refused one.
+   */
+  refusal?: RetryRefusal;
+};
 
 /**
  * What a call that failed on every attempt reports, attached to the error it throws.
@@ -296,6 +339,11 @@ export type RetryStatsSnapshot = RetryStats & {
    * than an absence: a call that issued one request and failed does not complete, so it
    * is not clean -- and counting it as clean would let a run whose traffic was failing
    * outright report a higher share of untroubled calls than a healthy one.
+   *
+   * `refusedCalls` completes that reasoning one step further. A call answered `429` that
+   * then *declined a retry* has not completed either, and it used to land here: run
+   * `41393748964` reported 2,892 clean calls and zero rate-limited ones, then died of a
+   * `429` the provider never sent.
    */
   cleanCalls: number;
   /**
@@ -309,10 +357,27 @@ export type RetryStatsSnapshot = RetryStats & {
    * backwards for a failure investigation: an artifact could report a 2% retry rate over
    * 4000 calls and be describing a run whose last call was the end of it.
    *
-   * The three call classes partition the sample -- `cleanCalls + retriedCalls +
-   * exhaustedCalls === calls` -- and that identity is asserted rather than intended.
+   * The four call classes partition the sample -- `cleanCalls + retriedCalls +
+   * exhaustedCalls + refusedCalls === calls` -- and that identity is asserted rather than
+   * intended.
    */
   exhaustedCalls: number;
+  /**
+   * Calls that ended on a retryable status and were **not** retried.
+   *
+   * ## Why this is not folded into `exhaustedCalls`
+   *
+   * Exhaustion means the network never answered. A refusal means it answered "not now" and
+   * this client decided not to ask again -- a policy outcome rather than an infrastructure
+   * one. Folding them together would make a run that declined one retry indistinguishable
+   * from one whose traffic never arrived, and the two call for opposite work: the first is
+   * a tuning question, the second is an outage.
+   *
+   * Only calls whose `retried` is zero can land here, which is what keeps the partition
+   * disjoint: a call that retried at least once counts in `retriedCalls` whatever status it
+   * ended on.
+   */
+  refusedCalls: number;
   /**
    * `retriedCalls / calls` — the share of calls that had to retry.
    *
@@ -322,8 +387,10 @@ export type RetryStatsSnapshot = RetryStats & {
    * lets a reader tell "many calls each retrying once" from "one call retrying
    * many times".
    *
-   * An exhausted call counts here when it retried, and it is `exhaustedCalls` that says
-   * whether the retrying worked.
+   * An exhausted call does **not** count here even when it retried: `exhaustedCalls` takes
+   * that call, because "never answered" is a different event from "answered and refused" and
+   * the partition has to put it somewhere. Its retries are still in `retried`, which is the
+   * volume; this rate is the share of calls that were answered after at least one retry.
    *
    * `0` for an empty aggregate rather than `NaN`: `NaN` serializes to `null`,
    * which would read beside a genuine `0` as missing data. The sample size is
@@ -349,10 +416,11 @@ export class RetryStatsAggregate {
   #retriedCalls = 0;
   #cleanCalls = 0;
   #exhaustedCalls = 0;
+  #refusedCalls = 0;
 
   /** A call that finished, whichever way it finished. */
   record(stats: RetryStats): void {
-    this.#accumulate(stats, false);
+    this.#accumulate(stats, 'completed');
   }
 
   /**
@@ -365,24 +433,47 @@ export class RetryStatsAggregate {
    * which is the kind of thing a signature can prevent and a comment cannot.
    */
   recordExhausted(stats: RetryStats): void {
-    this.#accumulate(stats, true);
+    this.#accumulate(stats, 'exhausted');
   }
 
-  #accumulate(stats: RetryStats, exhausted: boolean): void {
+  /**
+   * A call that ended on a retryable status and was deliberately not retried.
+   *
+   * The third kind, and the one whose absence made run `41393748964` unreadable: the call was
+   * counted as clean, so the artifact said every request had been served on its first attempt
+   * while the process was dying of a status the ladder had declined to chase.
+   */
+  recordRefused(stats: RetryStats): void {
+    this.#accumulate(stats, 'refused');
+  }
+
+  #accumulate(stats: RetryStats, outcome: 'completed' | 'exhausted' | 'refused'): void {
     this.#attempts += stats.attempts;
     this.#retried += stats.retried;
     this.#rateLimited += stats.rateLimited;
     this.#retryAfterHonoured += stats.retryAfterHonoured;
     this.#calls += 1;
-    if (exhausted) this.#exhaustedCalls += 1;
-    if (stats.retried === 0) {
-      // A call that never retried is clean only if it finished. One that did not is
-      // counted by `exhaustedCalls` and by nothing else, so the three classes partition
-      // the sample instead of one call being counted twice.
-      if (!exhausted) this.#cleanCalls += 1;
-    } else {
-      this.#retriedCalls += 1;
+    if (outcome === 'exhausted') {
+      this.#exhaustedCalls += 1;
+      return;
     }
+    if (stats.retried === 0) {
+      // No retry was made, so what the call did is fully described by how it ended: served
+      // (clean) or answered with a status this client declined to chase (refused). These are
+      // the two classes a run can be wrong about, and putting the second here rather than in
+      // `cleanCalls` is the repair: run `41393748964` reported 2,892 clean calls and died of a
+      // declined `429`.
+      if (outcome === 'refused') {
+        this.#refusedCalls += 1;
+      } else {
+        this.#cleanCalls += 1;
+      }
+      return;
+    }
+    // It retried, so it is counted by the retry rate whatever the ending. `exhaustedCalls`
+    // still takes precedence above, because a call with no response at all is a different
+    // event from one that was answered and refused.
+    this.#retriedCalls += 1;
   }
 
   /** A copy, so a caller holding it cannot mutate numbers already read. */
@@ -396,6 +487,7 @@ export class RetryStatsAggregate {
       retriedCalls: this.#retriedCalls,
       cleanCalls: this.#cleanCalls,
       exhaustedCalls: this.#exhaustedCalls,
+      refusedCalls: this.#refusedCalls,
       retryRate: this.#calls === 0 ? 0 : this.#retriedCalls / this.#calls,
     };
   }
@@ -410,6 +502,7 @@ export class RetryStatsAggregate {
     this.#retriedCalls = 0;
     this.#cleanCalls = 0;
     this.#exhaustedCalls = 0;
+    this.#refusedCalls = 0;
   }
 }
 
@@ -558,15 +651,52 @@ export async function retryableFetchWithStats(
         // at 40 ms then 80 ms against a 100 ms budget, refusing the overshoot stops at
         // 40 ms with 60% of the window unused.
         if (fromHeader !== null || remaining <= 0) {
-          // Unaffordable. Returning `resFromLastAttempt` rather than sleeping past
-          // the deadline: the caller inspects `res.ok` and raises the provider's
-          // own status, which is strictly more informative than a timeout error
-          // raised after the run has already been delayed.
+          const refusal: RetryRefusal = {
+            reason: fromHeader !== null ? 'retry-after-beyond-budget' : 'budget-exhausted',
+            attempts: stats.attempts,
+            retried: stats.retried,
+            retryAfterMs: fromHeader,
+            remainingMs: budgetEnforced ? Math.max(0, remaining) : null,
+          };
+          if (resFromLastAttempt === undefined) {
+            // ## Never invent a status
+            //
+            // This path used to `return new Response(null, { status: 429 })`, and run
+            // `41393748964` is what that costs. A thinking-mode attempt stalled for 133 s,
+            // which is longer than the whole 120 s budget, so the next attempt was declined
+            // -- and the caller was handed a fabricated `429`. The artifact then said
+            // `LLM request failed: 429` about a provider that never sent one, and the
+            // counters, which were correct, said `rateLimited: 0`; the two readings
+            // together looked like a contradiction and were in fact the same misattribution
+            // seen from both ends.
+            //
+            // With no response there is no status to report. The truth is the transport
+            // error, and it is the only thing this layer can substantiate -- so it is
+            // rethrown with the counts attached, on the same contract the exhaustion path
+            // uses one branch below.
+            processRetryStats.recordExhausted(stats);
+            throw withExhaustion(
+              lastError ?? new Error(`fetch failed after ${stats.attempts} attempts`),
+              {
+                url,
+                attempts: stats.attempts,
+                retried: stats.retried,
+                rateLimited: stats.rateLimited,
+                elapsedMs: Date.now() - sequenceStart,
+                cause: lastError === undefined ? '' : lastError.message,
+              },
+            );
+          }
+          // Unaffordable. Returning the real response rather than sleeping past the
+          // deadline: the caller inspects `res.ok` and raises the provider's own status,
+          // which is strictly more informative than a timeout raised after the run has
+          // already been delayed.
           //
-          // No counter is incremented here, and that is the point: this retry was
+          // No retry counter is incremented here, and that is the point: this retry was
           // never made, so recording it would report a request the provider never
-          // received.
-          return withResponse(resFromLastAttempt ?? new Response(null, { status: 429 }), stats);
+          // received. `refusedCalls` is what says the call was declined rather than served,
+          // and the refusal travels with the outcome so the caller can name the reason.
+          return withRefusal(resFromLastAttempt, stats, refusal);
         }
         waitMs = remaining;
       }
@@ -610,8 +740,22 @@ export async function retryableFetchWithStats(
     if (res.status === 429) {
       stats.rateLimited += 1;
     }
-    if (res.ok || !isRetryableStatus(res.status) || attempt === maxRetries) {
+    if (res.ok || !isRetryableStatus(res.status)) {
       return withResponse(res, stats);
+    }
+    if (attempt === maxRetries) {
+      // The count ran out on a status we would have retried. That is a refusal like any
+      // other -- the call was answered and not served -- so it is counted and reported the
+      // same way rather than as a clean completion.
+      return withRefusal(res, stats, {
+        reason: 'attempts-exhausted',
+        attempts: stats.attempts,
+        retried: stats.retried,
+        retryAfterMs: retryAfterMs(res),
+        remainingMs: budgetEnforced
+          ? Math.max(0, retryBudgetMs - (Date.now() - sequenceStart))
+          : null,
+      });
     }
     resFromLastAttempt = res;
   }
@@ -690,5 +834,19 @@ async function withBufferedBody(res: Response): Promise<Response> {
 function withResponse(response: Response, stats: RetryStats): RetryOutcome {
   const outcome: RetryOutcome = { ...stats, response };
   processRetryStats.record(outcome);
+  return outcome;
+}
+
+/**
+ * Record a call that ended on a retryable status without being retried, and say why.
+ *
+ * Separate from {@link withResponse} rather than a flag on it, because the two are different
+ * events and the aggregate counts them in different classes: a refusal is not a completion, and
+ * a reader of the artifact has to be able to tell "every request was served" from "one request
+ * was answered 'not now' and we stopped asking".
+ */
+function withRefusal(response: Response, stats: RetryStats, refusal: RetryRefusal): RetryOutcome {
+  const outcome: RetryOutcome = { ...stats, response, refusal };
+  processRetryStats.recordRefused(outcome);
   return outcome;
 }

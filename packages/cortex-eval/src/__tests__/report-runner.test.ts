@@ -21,7 +21,8 @@ import { buildAblationSkipRecord } from '../ablation-skip.js';
 import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
 import type { DecisionTrace } from '../natural-language-memory.js';
 import { createEmbeddingFromEnv } from '../embedding-factory.js';
-import { createLlmFromEnv, resolveTimeoutMs } from '../llm-factory.js';
+import { DEFAULT_RETRY_BUDGET_MS } from '@agentix-e/cortex-ai';
+import { createLlmFromEnv, resolveRetryBudgetMs, resolveTimeoutMs } from '../llm-factory.js';
 import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
 import { HashEmbedding } from '../embedding.js';
 import { FactMemorySystem } from '../fact-memory.js';
@@ -242,6 +243,44 @@ describe('resolveTimeoutMs', () => {
 
   it('keeps the default deadline for non-thinking mode', () => {
     expect(resolveTimeoutMs({ type: 'disabled' })).toBeUndefined();
+  });
+});
+
+/**
+ * The budget and the per-attempt deadline have to be chosen together, and nothing enforced it.
+ *
+ * ## The loss this pins
+ *
+ * The retry budget is measured from the **first attempt**, so an attempt that runs longer than
+ * the budget spends all of it: at that point `retrying` is impossible by construction, not
+ * merely unlikely. Thinking mode sets a 300 s attempt deadline while the adapter's default
+ * budget is 120 s, and run `41393748964` ran exactly that pair. A thinking attempt stalled for
+ * 133 s, the next one was unaffordable, and the run died reporting `429` -- a status the
+ * provider never sent, because the refusal path used to invent one.
+ *
+ * Both numbers are legitimate in isolation. The defect is in the **composition**, which is why
+ * the assertion lives here rather than in either module: `resolveTimeoutMs` returns a deadline
+ * and `resolveRetryBudgetMs` returns an allowance, and the invariant is a relation between them.
+ */
+describe('resolveRetryBudgetMs', () => {
+  it('leaves the adapter default alone for non-thinking mode', () => {
+    // Not a copy of 120_000: a second constant is a second thing to keep in step, and the
+    // adapter already owns that number.
+    expect(resolveRetryBudgetMs({ type: 'disabled' })).toBeUndefined();
+  });
+
+  it('gives thinking mode a budget that can fund a retry after a full-length attempt', () => {
+    const timeout = resolveTimeoutMs({ type: 'enabled' });
+    const budget = resolveRetryBudgetMs({ type: 'enabled' });
+
+    expect(timeout).toBeDefined();
+    expect(budget).toBeDefined();
+    // The invariant, stated as an inequality rather than as two literals: whichever way either
+    // number moves, a budget at or below the deadline makes the ladder unreachable.
+    expect(budget!).toBeGreaterThan(timeout!);
+    // And the allowance is one full attempt plus the window the non-thinking path gets, so the
+    // sequence is bounded at two attempts rather than at nine.
+    expect(budget!).toBe(timeout! + DEFAULT_RETRY_BUDGET_MS);
   });
 });
 

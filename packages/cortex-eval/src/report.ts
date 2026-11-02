@@ -2174,8 +2174,15 @@ function llmUsageLines(usage: UsageSnapshot, bySide?: UsageBySide): string[] {
  * the run can substantiate.
  */
 function transportRetryLines(transport: TransportRetryReport): string[] {
+  // Four classes, and the fourth is the one whose absence was read as its opposite: a call
+  // answered `429` and then not retried used to be counted as clean, so an artifact could say
+  // "every request was served first time" about a run that was dying of a declined retry.
   const closes =
-    transport.cleanCalls + transport.retriedCalls + transport.exhaustedCalls === transport.calls;
+    transport.cleanCalls +
+      transport.retriedCalls +
+      transport.exhaustedCalls +
+      transport.refusedCalls ===
+    transport.calls;
   const lines = [
     '',
     '## Transport (what the provider did with the requests)',
@@ -2188,6 +2195,7 @@ function transportRetryLines(transport: TransportRetryReport): string[] {
     `| calls served on the first attempt | ${transport.cleanCalls} |`,
     `| calls that had to retry | ${transport.retriedCalls} |`,
     `| calls that exhausted every attempt | ${transport.exhaustedCalls} |`,
+    `| calls whose retry the ladder declined | ${transport.refusedCalls} |`,
     `| attempts answered \`429\` | ${transport.rateLimited} |`,
     `| retries whose wait came from \`Retry-After\` | ${transport.retryAfterHonoured} |`,
     '',
@@ -2202,8 +2210,9 @@ function transportRetryLines(transport: TransportRetryReport): string[] {
     lines.push(
       '',
       `- **COUNTERS DO NOT PARTITION**: ${transport.cleanCalls} + ${transport.retriedCalls} + ` +
-        `${transport.exhaustedCalls} ≠ ${transport.calls}. Every class is still an honest count, ` +
-        'but they were not read from one aggregate, so no rate above can be trusted.',
+        `${transport.exhaustedCalls} + ${transport.refusedCalls} ≠ ${transport.calls}. Every class ` +
+        'is still an honest count, but they were not read from one aggregate, so no rate above ' +
+        'can be trusted.',
     );
   }
   if (transport.calls === 0) {
@@ -2235,6 +2244,20 @@ function transportRetryLines(transport: TransportRetryReport): string[] {
         `requests were answered \`429\`, and the retry ladder absorbed ` +
         `${transport.retriedCalls} of the ${transport.calls} calls. The cost is wall clock, ` +
         'not tokens, and the next dispatch inherits it.',
+    );
+  }
+  if (transport.refusedCalls > 0) {
+    // Its own reading, because it inverts the one above: `retried === 0` with a non-zero
+    // refused count means "nothing was throttled" is FALSE -- something was answered "not now"
+    // and the ladder did not chase it. The distinction is a tuning question versus an outage,
+    // so it is named rather than left for the reader to infer from two fields.
+    lines.push(
+      '',
+      `- **${transport.refusedCalls} calls were refused without a retry**: the provider answered ` +
+        'with a retryable status and the ladder declined to ask again -- the budget was spent, a ' +
+        '`Retry-After` named a window longer than the allowance, or the count ran out. This is a ' +
+        'policy outcome, not an outage, and the numbers above cannot say which of the three it ' +
+        'was: that reason travels on the error message.',
     );
   }
   if (transport.exhaustedCalls > 0) {

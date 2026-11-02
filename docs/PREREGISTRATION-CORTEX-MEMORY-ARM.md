@@ -24586,3 +24586,139 @@ first thing this instrument is for.
   elapsed time.
 - **Not** that the default changes before the proof lands. Default stays 1 until the 60-question twin run
   is green; the flag exists, the default does not move.
+
+## 13.218 The 429 that was never sent
+
+*Dispatch `41393748964` finished after 267 minutes with `failure`. What it recorded, and what it
+did not, is the subject of this section.*
+
+### 13.218.1 Two readings that could not both be true
+
+The artifact's tail:
+
+```
+=== transport retry accounting (process-wide) ===
+{"attempts":2892,"retried":0,"rateLimited":0,"retryAfterHonoured":0,
+ "calls":2892,"retriedCalls":0,"cleanCalls":2892,"exhaustedCalls":0,"retryRate":0}
+progress: died on cortex-memory run=1 q=350/500 id=gpt4_2f56ae70 at +3242.8s
+
+LLM request failed: 429
+```
+
+Read plainly, the counters say **the provider never throttled anything**: 2,892 calls, every one
+served on its first attempt, zero `429`s, nothing retried. The line below says a `429` killed the
+run. One of the two has to be wrong.
+
+Neither is. `attempts === calls === 2892` means no call in that process ever made a second request,
+and `rateLimited === 0` means no attempt was answered `429`. So the status in the last line was
+never received. It was **manufactured one layer down**:
+
+```ts
+// retry.ts, before this round
+return withResponse(resFromLastAttempt ?? new Response(null, { status: 429 }), stats);
+```
+
+A transport failure carries no response, so the retry ladder had nothing to return — and invented a
+`429` "so the caller still has an HTTP status to act on". The caller printed it. The record now
+blames the provider's rate limiter for a fault that happened on the wire.
+
+### 13.218.2 Reproduced, not inferred
+
+Three fixtures against the built package, each one line of code away from the real path:
+
+| fixture | what was returned | counters |
+| --- | --- | --- |
+| transport failure, budget already spent | `new Response(null, {status: 429})` → `LLM request failed: 429 ` | `attempts 1, retried 0, rateLimited 0, cleanCalls 1` |
+| `429` + `Retry-After: 200`, budget 120 s | the real `429`, immediately | `attempts 1, retried 0, rateLimited 1, cleanCalls 1` |
+| `429`, no header, default budget | after 8 attempts / 120 s | `attempts 8, retried 7, rateLimited 8, retriedCalls 1` |
+
+The first row is byte-identical to the production message (`429`, empty status text, no body) and
+to the production counters. **That is the proof**: the run died of a fabricated status, and the two
+"contradictory" readings are the same event seen from both ends.
+
+### 13.218.3 Three defects, one chain
+
+**(a) A fabricated status.** `429` is the strongest signal a provider can send about quota. Printing
+it for a stall sends the next dispatch to look at rate limits. There was nothing to see there.
+
+**(b) A refusal counted as a clean call.** `cleanCalls` is documented as *"calls that completed
+without a single retry"*, and a call answered `429` and then declined a retry did not complete. It
+landed there anyway, so the artifact's most reassuring number (2,892 calls served first time) was
+describing a process that was ending. The class that was missing is the one that names it.
+
+**(c) The budget could not fund a single retry in thinking mode.** The budget is measured from the
+first attempt; the per-attempt deadline in thinking mode is `300 s` (`THINKING_TIMEOUT_MS`) and the
+budget is `120 s`. So **one full-length attempt spends the entire allowance**, and the ladder is
+unreachable by construction — the same shape as §13.216's count defect, one parameter over. Measured:
+the failing attempt took 133.8 s (last progress line `+3109 s`, death at `+3242.8 s`), which is
+exactly "long enough to eat the budget, short enough to be a stall".
+
+### 13.218.4 The fixes
+
+| where | change | why there |
+| --- | --- | --- |
+| `retry.ts` | the no-response refusal **rethrows the transport error** with `retryExhausted` attached | there is no status to report; the transport error is the only thing this layer can substantiate |
+| `retry.ts` | `RetryRefusal` travels on the outcome: `attempts-exhausted` / `budget-exhausted` / `retry-after-beyond-budget`, with `retryAfterMs` and `remainingMs` | the three call for different work and are indistinguishable in a status code |
+| `retry.ts` | `refusedCalls` is a **fourth call class** | a refusal is not a completion, and the partition has to put it somewhere |
+| `retry.ts` | a call that never got an answer is counted in `exhaustedCalls` **only** | it used to be counted in both `exhaustedCalls` and `retriedCalls`, which broke the identity the counters are checked against |
+| `openai-compatible.ts` | `retryBudgetMs` forwarded; refusal named in the message | `41393748964` printed a status and stopped, and every reader drew the wrong conclusion from it |
+| `llm-factory.ts` | `resolveRetryBudgetMs` = `THINKING_TIMEOUT_MS + DEFAULT_RETRY_BUDGET_MS` | the budget and the attempt deadline are one decision, and the composition is the only place that can hold the invariant |
+
+The partition is now `cleanCalls + retriedCalls + exhaustedCalls + refusedCalls === calls`, asserted
+in `cortex-ai` and re-checked by both readers — the report (four terms) and `--transport`
+(four terms when the artifact carries the field, three when it predates it, because an artifact
+cannot fail an identity written after it).
+
+### 13.218.5 What the run actually held, and threw away
+
+`completed` carries **one full repetition**: 500 baseline answers and 500 feature answers, paired.
+The run then died 349 questions into repetition 1. Every graded answer of repetition 0 was in the
+artifact, and no report exists to score it — the pipeline writes `completed` and nothing reads it.
+
+That is now the fourth instance of the same shape in this campaign, and it is registered here rather
+than fixed here: **a record with no scorer**.
+
+### 13.218.6 What this withdraws
+
+The pending P1 was *"if the run still dies on `429`, re-time the ceiling by the `rateLimited`
+reading"*. It is **withdrawn**: the reading it would have been timed on was false. There was no
+throttling to measure. Re-tuning the budget against a fabricated status would have produced a
+longer ladder for a fault the ladder cannot fix.
+
+### 13.218.7 Acceptance
+
+| # | what must be true | how it is checked |
+| --- | --- | --- |
+| 1 | no fabricated status exists | `retry.test.ts`: transport failure + spent budget **rejects** with the original message (`socket hang up`) |
+| 2 | the cause survives the rethrow | the same test asserts `retryExhausted.cause` and `.attempts` |
+| 3 | a refusal is not a clean call | `Retry-After: 3600` → `refusedCalls 1`, `cleanCalls 0`, `rateLimited 1` |
+| 4 | the reason is named, with both numbers | `it('counts it as refused and reports why')`: `retry-after-beyond-budget`, `retryAfterMs 3_600_000`, `remainingMs 120_000` |
+| 5 | the count running out is a different reason | `maxRetries: 0` on a `503` → `attempts-exhausted`, `rateLimited 0` |
+| 6 | the four classes close | mixed aggregate of five calls: 1 clean + 2 retried + 1 exhausted + 1 refused = 5 |
+| 7 | an exhausted call is in exactly one class | the test that used to assert the double count now asserts `retriedCalls 0`, `retried 5` |
+| 8 | the LLM message names the refusal | `llm.test.ts`: `not retried (retry-after-beyond-budget)`, `the provider asked for 3600 s` |
+| 9 | the adapter forwards the budget | 80 ms budget + 1 s backoff → exactly 2 requests, `budget-exhausted` |
+| 10 | thinking mode's budget can fund a retry | `resolveRetryBudgetMs > resolveTimeoutMs`, asserted as an inequality |
+| 11 | the report renders the fourth class | `transport-transport.test.ts`: table row + `1 calls were refused without a retry` |
+| 12 | the fourth class is silent at zero | control test: no `refused without a retry` on a clean run |
+| 13 | the reader tolerates the field's absence | `predates` printed, no partition warning |
+| 14 | a modern artifact is checked against four terms | `NOT A PARTITION: 90 + 5 + 0 + 1 != 100` |
+| 15 | a legacy artifact is checked against three | the pre-existing test still passes its `90 + 5 + 0 != 100` assertion |
+
+*Falsified by:* the next failing artifact whose log says `429` while its counters say
+`rateLimited 0` — that pair is now impossible without a fabricated status, so its reappearance means
+the fabrication is back.
+
+### 13.218.8 The mutations, and which row each one breaks
+
+Three mutants, each applied to the source, run, and reverted. A test that cannot fail is a comment.
+
+| mutant | rows that fail | what that proves |
+| --- | --- | --- |
+| the fabricated `429` is put back on the no-response refusal | 1 and 2 (`rethrows the transport error…`, `spends the remaining budget on a retry…`) | the test is bound to the **rethrow**, not to the refusal object being present |
+| `recordRefused` is replaced by `record` | 3 and 4 (`counts it as refused…`, `names the count running out…`) | the fourth class is a real counter, not a label |
+| thinking mode's budget is set back to `DEFAULT_RETRY_BUDGET_MS` | 10 (`gives thinking mode a budget that can fund a retry…`) | the inequality is the assertion, so neither number can drift alone |
+
+The third one is the one worth keeping: it fails with `120000 > 300000`, which is the defect stated in one line. Any future
+change that widens `THINKING_TIMEOUT_MS` without touching the allowance reproduces the pre-fix condition exactly, and this
+row is the only thing that would say so.
