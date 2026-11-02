@@ -31,7 +31,7 @@ export type OpenAICompatibleRerankerOptions = {
   model: string;
   /** Injectable fetch for testability and for hosts without a global fetch. */
   fetchFn?: typeof fetch;
-  /** Retries on top of the first attempt; default `DEFAULT_MAX_RETRIES`. */
+  /** Retries on top of the first attempt; default `DEFAULT_MAX_RETRIES` (8). */
   maxRetries?: number;
   /** Initial backoff delay in milliseconds; doubles on each retry. */
   retryBaseDelayMs?: number;

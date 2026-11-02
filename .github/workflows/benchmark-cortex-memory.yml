@@ -614,4 +614,12 @@ jobs:
         run: |
           python3 tools/readout-arm-run.py --spend \
             packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          # Beside the spend, because the two are what a run cost: `--spend` counts the calls that
+          # RETURNED and this counts the requests that were MADE. A run whose provider rejected a
+          # third of its attempts costs the same tokens and several times the wall clock, and only
+          # the transport section can say so (§13.216, run 41346610318). Separate invocations rather
+          # than one: each readout is its own command line and its own exit code, so a corrupt block
+          # in one cannot suppress the other.
+          python3 tools/readout-arm-run.py --transport \
+            packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
 

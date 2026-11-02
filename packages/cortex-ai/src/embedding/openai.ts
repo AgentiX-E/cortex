@@ -11,7 +11,7 @@ export type OpenAIEmbeddingOptions = {
   model: string;
   dimensions: number;
   fetchFn?: typeof fetch;
-  /** Retries for transient (429/5xx) failures; default 5. */
+  /** Retries for transient (429/5xx) failures; default `DEFAULT_MAX_RETRIES` (8). */
   maxRetries?: number;
   /** Initial backoff in milliseconds; doubles each retry. */
   retryBaseDelayMs?: number;

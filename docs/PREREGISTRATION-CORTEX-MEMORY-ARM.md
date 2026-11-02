@@ -24242,3 +24242,124 @@ against a 340-minute budget, so the dispatch is affordable and is the first item
 
 What survives from §13.214 is its arithmetic: 707 / 296 cut, 53 / 185 beyond, 361 reach at both
 budgets, and the `max(0, Σ)` repair. Those numbers are unchanged and are what §13.215.2 reads.
+
+## 13.216 A `429` ended a five-hour campaign run, and the ladder meant to outlast it reached 31 seconds
+
+### 13.216.1 The run, and what it left behind
+
+`41346610318` was a 20-question probe of this arm at commit `b254e29`. It ran 6m25s of grading,
+reached question 13 of 20 on the first repetition, and stopped:
+
+    progress: died on cortex-memory run=0 q=13/20 id=6aeb4375 at +385.2s
+    LLM request failed: 429
+        at OpenAICompatibleLLM.post (.../packages/cortex-ai/src/llm/openai-compatible.ts:94:13)
+
+The artifact it uploaded holds `reached: 12` and a stack trace. Twelve graded answers, no verdict,
+and — this is the part that took a second read to notice — **no number anywhere saying a rate limit
+had been hit**. The counters existed: `retryStats()` in `cortex-ai` reports `attempts`, `retried`,
+`rateLimited`, `retryAfterHonoured`, `calls`, `retriedCalls`, `cleanCalls`, `exhaustedCalls` and
+`retryRate`, and its own docblock says a retried request "is a fact about the run and belongs in the
+run's artifact". Every published artifact of this campaign was written without it. The only place it
+was printed was stderr, on the failure path, in a log that expires.
+
+### 13.216.2 The measurement: what the ladder actually reached
+
+`DEFAULT_RETRY_BUDGET_MS` is 120 s, and its docblock states the requirement — a throttle window
+measured in minutes has to be reachable. Measured against a fetch that answers `429` forever, at the
+defaults:
+
+    status 429  attempts 6  retried 5  rateLimited 6  elapsedMs 31051
+
+Six attempts, 31,051 ms. The waits are `1+2+4+8+16 = 31 s` and the sixth attempt is already the last
+one, because `DEFAULT_MAX_RETRIES` was 5. The budget was **3.9× the ladder** and never consulted: the
+ceiling could not be reached by any input, so its adequacy was a claim about code that never ran.
+
+That is the same defect the budget was introduced to fix, one layer down. The budget replaced a
+counted retry limit because "what has to be exceeded is a duration, and an attempt count implies a
+different duration for every `baseDelayMs`" — and the count stayed, binding first, so the duration
+the comment requires was never exceeded in any run this campaign has ever made.
+
+### 13.216.3 What a 31-second ladder costs at this campaign's scale
+
+The arm issues ~5,650 provider calls per 500-question dispatch and the job ceiling is 360 minutes.
+Against a per-minute window, 31 s straddles at most one reset; 120 s spans two. The difference
+between the two is not a delay, it is a dispatch: a run that dies at question 13 of 500 loses four
+hours of grading, and the next one starts from zero because there is no resume path.
+
+The repair is therefore not about this one probe. It is that the arm's survival probability against
+its own provider was being set by a constant nobody had measured against the other constant.
+
+### 13.216.4 The repair, in two halves, and why both are needed
+
+**(a) The ladder must be able to spend the budget.** `DEFAULT_MAX_RETRIES` is now 8: the smallest
+count whose geometric sum (`1+2+…+128 = 255 s`) exceeds the 120 s ceiling, so the ceiling binds and
+the count does not. A caller that names a count still gets exactly that count — the defect was the
+default, and `retry.test.ts` pins both halves, including the old 31 s reach as the control.
+
+**(b) The last wait must be truncated to what remains.** With doubling, a budget is almost never
+spent exactly: 40 ms then 80 ms against a 100 ms budget used to stop at 40 ms with 60% of the window
+unused. The final computed backoff now waits whatever is left and the last attempt lands on the
+deadline. The rule is asymmetric on purpose and the asymmetry is stated in the code: a `Retry-After`
+beyond the remaining budget is **declined in full** (retrying inside a window the server just said
+is closed is a request we know will be rejected), while our own estimate is truncated (it is a
+guess, and the budget is its ceiling).
+
+At the defaults this makes the reach exactly `DEFAULT_RETRY_BUDGET_MS` — asserted as an identity
+(`at().at(-1) === DEFAULT_RETRY_BUDGET_MS`), not as a constant, so a future change to either number
+has to keep the two consistent or fail.
+
+### 13.216.5 The artifact: `transportRetry`
+
+The arm's report now carries the counters, attached unconditionally rather than under
+`attachLlmUsage`'s absence rule. The difference is deliberate: `llmUsage` omits the field when the
+provider reported no `usage` block, because a run that called and was not priced is a real state.
+The retry counters are incremented by the loop **before** the provider answers, so a graded run
+cannot have zero — `calls: 0` in the artifact is a statement that the counters were not wired, and
+absence is therefore unambiguously "written before the field existed".
+
+Three readings are rendered as findings rather than left to the reader, because each implies a
+different next action:
+
+| counters | reading | next action |
+| --- | --- | --- |
+| `retried: 0` | nothing was throttled; the run spent no wall clock waiting | none — the provider was healthy |
+| `retried > 0, rateLimited: 0` | transport failures or `5xx`, not a rate limit | look at the network and the endpoint, not at quota |
+| `rateLimited > 0` | the provider throttled; the cost is wall clock, not tokens | the next dispatch inherits it; the budget decides whether it survives |
+
+`scope: 'process'`, `provider: 'run'`: the counters cannot be split by provider after the fact,
+because both the reader and the embedding backend pass through the same loop, and an artifact that
+presented the shared total as the reader's alone would be reporting a number it cannot substantiate.
+
+### 13.216.6 What this section does not claim
+
+- **Not** that the run would have survived. A `429` that outlasts 120 s kills the pass exactly as one
+  that outlasts 31 s does. What changes is that the ladder now has the reach its own documentation
+  claimed, and that the *next* failure carries the counters that decide whether the budget is the
+  right number.
+- **Not** that 120 s is the right ceiling for this provider. It is the registered value and the
+  measurement that would replace it does not exist yet — `rateLimited` against `retriedCalls` in the
+  next artifact is that measurement.
+- **Not** that `DEFAULT_MAX_RETRIES: 8` is an improvement on its own. Raising the count with the
+  budget unbound would spend 255 s per failing call inside a 340-minute run; the count only earns its
+  value together with the ceiling that now binds.
+
+### 13.216.7 Acceptance
+
+| # | what must be true | how it is checked |
+| --- | --- | --- |
+| 1 | the ladder reaches the ceiling at the defaults | `retry.test.ts`: attempt timestamps `[0, 1k, 3k, 7k, 15k, 31k, 63k, 120k]` |
+| 2 | a short budget is spent exactly, not abandoned | attempt timestamps `[0, 40, 100]` against `retryBudgetMs: 100` |
+| 3 | a named count still binds | `maxRetries: 5` reproduces the 31 s reach |
+| 4 | a negative budget disables the ceiling | three attempts, nothing truncated |
+| 5 | the artifact carries the counters, at zero too | `attachTransport` attaches with `calls: 0`; the section prints `NOT WIRED` |
+| 6 | the reading matches the counters | throttled / retried-without-429 / nothing-throttled are separable in the Markdown |
+| 7 | the counters describe this arm, not the process before it | `resetRetryStats()` before the passes; a seeded retry is absent from the report |
+| 8 | the partition closes | `cleanCalls + retriedCalls + exhaustedCalls === calls`, flagged in the document when it does not |
+
+*Registered for the next dispatch:* its artifact carries `transportRetry` with `calls > 0`, and the
+`rateLimited` share it reports is the first measurement of this arm's throttling rate against
+DeepSeek at the registered configuration.
+
+*Falsified by:* an artifact whose `transportRetry.calls` is `0` on a run that graded answers (the
+wiring is wrong, not the provider), **or** a `429` that still ends the pass after 120 s of permitted
+waiting — which would make the ceiling, not the ladder, the thing to measure next.

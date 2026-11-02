@@ -285,7 +285,12 @@ describe('retryableFetch', () => {
 
 describe('defaults', () => {
   it('exposes sane retry defaults', () => {
-    expect(DEFAULT_MAX_RETRIES).toBe(5);
+    // Eight, not five: the geometric sum of the default backoff has to exceed the default
+    // budget, or the budget is never reached. `1+2+4+8+16 = 31 s` against a 120 s ceiling
+    // is the defect run `41346610318` died of; `1+2+4+…+128 = 255 s` is a ladder the
+    // ceiling can actually stop. See the block on spending the budget below, which asserts
+    // the identity rather than the constant.
+    expect(DEFAULT_MAX_RETRIES).toBe(8);
     expect(DEFAULT_RETRY_BASE_DELAY_MS).toBe(1000);
     expect(DEFAULT_RETRY_TIMEOUT_MS).toBe(60_000);
   });
@@ -578,6 +583,39 @@ describe('retryableFetch respects a wall-clock budget', () => {
     // removing it, makes the refused-after-failure case report a status the
     // retry layer never observed. `rateLimited` must stay at zero either way,
     // because no 429 was ever received.
+    //
+    // The budget is `0` rather than "shorter than the first backoff" because a shorter
+    // budget no longer refuses: the last wait is truncated to whatever remains, so 10 ms
+    // against a 30 ms backoff is now one truncated wait and one more attempt (the case
+    // below). Nothing left at all is the state that refuses.
+    let calls = 0;
+    const fetchFn = async (): Promise<Response> => {
+      calls += 1;
+      throw new Error('socket hang up');
+    };
+    resetRetryStats();
+    const outcome = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 10, baseDelayMs: 30, retryBudgetMs: 0 },
+    );
+
+    expect(outcome.response.status).toBe(429);
+    expect(calls).toBe(1);
+    // A refused retry is a retry that never happened.
+    expect(outcome.retried).toBe(0);
+    expect(outcome.rateLimited).toBe(0);
+    expect(outcome.attempts).toBe(1);
+  });
+
+  it('spends the remaining budget on a retry after a transport failure', async () => {
+    // The counterpart of the case above, and the behaviour the truncation exists for: a
+    // budget shorter than the next computed backoff is not a refusal any more. Ten
+    // milliseconds remain and the backoff wants thirty, so the wait is the ten and one
+    // more request is made. Under the old rule the ladder stopped with 10 ms of a 10 ms
+    // budget unspent, which is the same defect as the default count: a ceiling the ladder
+    // cannot reach.
     let calls = 0;
     const fetchFn = async (): Promise<Response> => {
       calls += 1;
@@ -592,11 +630,10 @@ describe('retryableFetch respects a wall-clock budget', () => {
     );
 
     expect(outcome.response.status).toBe(429);
-    expect(calls).toBe(1);
-    // A refused retry is a retry that never happened.
-    expect(outcome.retried).toBe(0);
+    expect(calls).toBe(2);
+    expect(outcome.retried).toBe(1);
+    expect(outcome.attempts).toBe(2);
     expect(outcome.rateLimited).toBe(0);
-    expect(outcome.attempts).toBe(1);
   });
 
   it('keeps retrying while the budget still allows it', async () => {
@@ -685,6 +722,142 @@ describe('retryableFetch respects a wall-clock budget', () => {
     );
     expect(res.status).toBe(429);
     expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+
+/**
+ * The ladder has to be able to SPEND the budget it is given.
+ *
+ * ## What was measured, and what it cost
+ *
+ * `DEFAULT_RETRY_BUDGET_MS` is 120 s and its docblock states the requirement: a provider
+ * whose throttle window is measured in minutes has to be reachable. At the defaults the
+ * ladder reached **31,051 ms** — measured, not inferred — because `DEFAULT_MAX_RETRIES`
+ * bound first: the waits are `1+2+4+8+16 = 31 s` and the sixth attempt is already the last
+ * one, so the budget was 3.9x the ladder and never consulted. That is the *same* defect
+ * the budget was introduced to fix, one layer down: the protection's adequacy was never
+ * exercised because the failure it guards arrives through a different constant.
+ *
+ * Run `41346610318` is what it costs. A 20-question probe, answered `429` at question 13,
+ * dead inside the 31 s ladder after six attempts, with the twelve answers it had already
+ * graded left in a partial artifact nobody can score. Two minutes of permitted waiting
+ * would have outlasted the per-minute window that rejected it.
+ *
+ * ## Why the count is asserted beside the duration
+ *
+ * The duration is the requirement and the count is the mechanism. A run that reached 120 s
+ * with one attempt would also satisfy the duration, by sleeping once and never retrying —
+ * which is not a retry ladder. So both are pinned, and the arithmetic that produces the
+ * count is written down here rather than left as a constant someone has to reverse.
+ */
+describe('the retry ladder can spend the budget it is given', () => {
+  /**
+   * A fetch that answers 429 forever and records when each attempt was issued.
+   *
+   * The timestamps are read inside the fake rather than from `Date.now()` after the
+   * promise resolves, because with fake timers the clock has already been advanced past
+   * the end of the sequence — an elapsed reading taken afterwards describes the test's
+   * `advanceTimersByTimeAsync`, not the ladder. The per-call timestamps are the ladder's
+   * own schedule, which is the thing the budget governs.
+   *
+   * Offsets from the first attempt, not absolute times: fake timers start the clock at a
+   * real epoch, so an absolute reading would pin this test to the day it was written.
+   */
+  function timedRateLimitedFetch(): { fetchFn: typeof fetch; at: () => number[] } {
+    const offsets: number[] = [];
+    let first: number | undefined;
+    const fetchFn = (async () => {
+      const now = Date.now();
+      first ??= now;
+      offsets.push(now - first);
+      return new Response('{}', { status: 429 });
+    }) as unknown as typeof fetch;
+    return { fetchFn, at: () => offsets };
+  }
+
+  it('waits out the whole default budget when the provider rejects every attempt', async () => {
+    // 1 + 2 + 4 + 8 + 16 + 32 = 63 s of computed backoff, then the seventh wait would
+    // be 64 s and only 57 s of the budget remain, so it is truncated to the remainder and
+    // the last attempt lands exactly on the deadline.
+    vi.useFakeTimers();
+    try {
+      const { fetchFn, at } = timedRateLimitedFetch();
+      const promise = retryableFetch(fetchFn, 'http://x', {});
+      await vi.advanceTimersByTimeAsync(200_000);
+      const res = await promise;
+      expect(res.status).toBe(429);
+      // Eight attempts, the last of them at the deadline. Six was the reach that the
+      // default count implied, and it is the number that must not come back.
+      expect(at()).toEqual([0, 1_000, 3_000, 7_000, 15_000, 31_000, 63_000, 120_000]);
+      expect(at().at(-1)).toBe(DEFAULT_RETRY_BUDGET_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('imposes no ceiling at all when the budget is negative', async () => {
+    // The other disarm: a negative budget turns the deadline off, so the count is the ONLY
+    // limit and nothing is truncated. Asserted because the truncation rule reads
+    // `remaining`, which is `Infinity` here -- and an implementation that truncated against a
+    // negative or zero remainder would stop a run whose caller asked for no ceiling.
+    vi.useFakeTimers();
+    try {
+      const { fetchFn, at } = timedRateLimitedFetch();
+      const promise = retryableFetch(
+        fetchFn,
+        'http://x',
+        {},
+        { maxRetries: 2, baseDelayMs: 1_000, retryBudgetMs: -1 },
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      const res = await promise;
+      expect(res.status).toBe(429);
+      expect(at()).toEqual([0, 1_000, 3_000]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('spends a short budget exactly, on the last backoff rather than abandoning it', async () => {
+    // A budget the geometric series overshoots is the common case, not a corner: 40 ms
+    // then 80 ms against a 100 ms budget. Refusing the second wait leaves 60 ms of the
+    // budget unused and stops after two attempts; truncating it to the remainder spends
+    // the budget and makes the third attempt at the deadline. The difference is one
+    // request and 60% of the window.
+    vi.useFakeTimers();
+    try {
+      const { fetchFn, at } = timedRateLimitedFetch();
+      const promise = retryableFetch(
+        fetchFn,
+        'http://x',
+        {},
+        { maxRetries: 5, baseDelayMs: 40, retryBudgetMs: 100 },
+      );
+      await vi.advanceTimersByTimeAsync(5000);
+      const res = await promise;
+      expect(res.status).toBe(429);
+      expect(at()).toEqual([0, 40, 100]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still binds on the count when a caller names one', async () => {
+    // The count is not deprecated: it remains the caller's ceiling, and this is the
+    // 31 s reach the default used to impose. It is asserted so that "5 retries" keeps
+    // meaning five, which is what a caller who writes 5 is asking for — the defect was
+    // the DEFAULT, not the parameter.
+    vi.useFakeTimers();
+    try {
+      const { fetchFn, at } = timedRateLimitedFetch();
+      const promise = retryableFetch(fetchFn, 'http://x', {}, { maxRetries: 5 });
+      await vi.advanceTimersByTimeAsync(200_000);
+      const res = await promise;
+      expect(res.status).toBe(429);
+      expect(at()).toEqual([0, 1_000, 3_000, 7_000, 15_000, 31_000]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

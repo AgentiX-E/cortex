@@ -1631,6 +1631,116 @@ def composition_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), measured
 
 
+def _whole_count(value: object) -> int:
+    """A count, or `ValueError`. `bool` is an `int` in Python, so it is refused by name.
+
+    The same rule `--spend` applies one section over: a producer that serialised a flag into a
+    counter must not read as a count of 1, because 1 is a plausible count and nothing downstream
+    would ever question it.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError('not a non-negative whole number')
+    return value
+
+
+# The three states `transport_section` can be in, and they are not two: an artifact written
+# before the field existed and an artifact whose block is corrupt both print nothing, and they
+# mean opposite things about the run.
+TRANSPORT_OK = 'ok'
+TRANSPORT_ABSENT = 'absent'
+TRANSPORT_CORRUPT = 'corrupt'
+
+
+def transport_section(report: dict) -> tuple[str, str]:
+    """What the provider did with the requests: attempts, retries, and the `429` count.
+
+    ## Why a run's wall clock is not visible anywhere else
+
+    `--spend` counts the calls that RETURNED. A call rejected six times and then served is one
+    call there and seven requests on the wire, and before `13.216` nothing in the artifact could
+    tell the two apart. Run `41346610318` died on a `429` at question 13 of 20 and left twelve
+    graded answers, a stack trace, and no number saying a rate limit had been hit -- the
+    counters existed and were printed to stderr, which is the channel that expires first.
+
+    ## Why absence and corruption are separate answers
+
+    A table of zeros would say "nothing was throttled". Absence says "this run predates the
+    field". A block that is present and malformed says a third thing: the producer wrote
+    something this reader cannot substantiate. Folding that into "absent" would let a broken
+    producer hide behind an old artifact's excuse.
+
+    ## Why the reading line is not left to the reader
+
+    Eight counters and no sentence is how a `429` count gets read as "the provider was slow".
+    The three states below call for different work, so the section names which one it is.
+
+    `provider` and `scope` are printed rather than assumed: the counters are process-wide, and a
+    reader who took them for the reader's alone would attribute the embedding backend's failures
+    to the LLM.
+    """
+    block = report.get('transportRetry')
+    if block is None:
+        return '', TRANSPORT_ABSENT
+    if not isinstance(block, dict):
+        return '', TRANSPORT_CORRUPT
+    try:
+        calls = _whole_count(block['calls'])
+        attempts = _whole_count(block['attempts'])
+        retried = _whole_count(block['retried'])
+        retried_calls = _whole_count(block['retriedCalls'])
+        clean_calls = _whole_count(block['cleanCalls'])
+        exhausted = _whole_count(block['exhaustedCalls'])
+        rate_limited = _whole_count(block['rateLimited'])
+        honoured = _whole_count(block['retryAfterHonoured'])
+    except (KeyError, ValueError):
+        return '', TRANSPORT_CORRUPT
+
+    rate = 0.0 if calls == 0 else 100.0 * retried_calls / calls
+    lines = [
+        '=== transport (what the provider did with the requests) ===',
+        f'  scope: {block.get("scope", "?")}, provider: {block.get("provider", "?")}  '
+        '(process-wide counters; not attributable to one backend)',
+        '',
+        f'  {"calls":<26}{calls:>8}',
+        f'  {"requests issued":<26}{attempts:>8}',
+        f'  {"retries":<26}{retried:>8}',
+        f'  {"served on the first attempt":<26}{clean_calls:>8}',
+        f'  {"calls that retried":<26}{retried_calls:>8}',
+        f'  {"calls that never settled":<26}{exhausted:>8}',
+        f'  {"attempts answered 429":<26}{rate_limited:>8}',
+        f'  {"Retry-After honoured":<26}{honoured:>8}',
+        '',
+        f'  retry rate: {rate:.2f}%  ({retried_calls} of {calls} calls)',
+    ]
+    if clean_calls + retried_calls + exhausted != calls:
+        lines.append(
+            f'  NOT A PARTITION: {clean_calls} + {retried_calls} + {exhausted} != {calls}. '
+            'The counts were read across a boundary, so no rate above can be trusted.'
+        )
+    if calls == 0:
+        lines.append(
+            '  NOT WIRED: no call reached the retry layer, which a run that graded answers '
+            'cannot do -- this is the instrument, not the provider.'
+        )
+    elif retried == 0:
+        lines.append(
+            '  reading: nothing was throttled; every call was served on its first attempt, '
+            'so this run spent no wall clock waiting for a window to reopen.'
+        )
+    elif rate_limited == 0:
+        lines.append(
+            f'  reading: {retried} retries, none of them a 429 -- transport failures or 5xx. '
+            'The provider was not throttling; the network or the server was.'
+        )
+    else:
+        lines.append(
+            f'  reading: the provider throttled {rate_limited} of {attempts} requests and the '
+            f'ladder absorbed {retried_calls} of {calls} calls. The cost is wall clock, not '
+            'tokens, and the next dispatch inherits it.'
+        )
+    return '\n'.join(lines), TRANSPORT_OK
+
+
 # The cut points the rank curve reports.
 #
 # Three, and they are the three the argument needs rather than a sweep: 8 is roughly the
@@ -3726,6 +3836,11 @@ def main(argv: list[str]) -> int:
         help='print where the room went: how much of each window the ranking could order',
     )
     parser.add_argument(
+        '--transport',
+        action='store_true',
+        help='print what the provider did with the requests: attempts, retries, 429s (§13.216)',
+    )
+    parser.add_argument(
         '--reach',
         action='store_true',
         help='print the ranked gold banded by rank, with the median beyond the old pool width',
@@ -4220,6 +4335,30 @@ def main(argv: list[str]) -> int:
             print(
                 f'{args.report}: no record carries a goldOverlap.pool. A run that consulted '
                 'no ranking has none, and an artifact produced before §13.62 predates the field.',
+                file=sys.stderr,
+            )
+            return 2
+        print(section)
+        return 0
+
+    if args.transport:
+        section, state = transport_section(report)
+        if state == TRANSPORT_ABSENT:
+            print(
+                f'{args.report}: no transportRetry block. An artifact produced before '
+                '§13.216 predates the field, and this is not a run that never retried -- '
+                'which is what a table of zeroes would say. The counters are attached '
+                'unconditionally, so absence only ever means the field did not exist.',
+                file=sys.stderr,
+            )
+            return 2
+        if state == TRANSPORT_CORRUPT:
+            # Separate from the branch above on purpose: this block EXISTS and cannot be read,
+            # so "the run predates the field" would be a false explanation for a present field.
+            print(
+                f'{args.report}: the transportRetry block is present and unreadable -- every '
+                'count must be a non-negative whole number (a bool is a flag, not a count). '
+                'This is a producer defect, not an old artifact.',
                 file=sys.stderr,
             )
             return 2

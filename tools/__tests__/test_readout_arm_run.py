@@ -2761,3 +2761,130 @@ class TestTheProviderSpend:
         r = self._run(tmp_path, report)
         assert r.returncode == 2
         assert 'non-negative integer' in r.stderr or 'subset' in r.stderr or 'cannot be' in r.stderr
+
+
+class TestWhatTheProviderDidWithTheRequests:
+    """`transportRetry` is the only field that says a run was throttled.
+
+    `llmUsage` counts the calls that returned, so a call rejected six times and then served is
+    one call there and seven requests on the wire. Before §13.216 no artifact in this campaign
+    could tell the two apart, and run `41346610318` died on a `429` leaving twelve graded answers
+    and no counter anywhere saying what had happened.
+
+    These tests pin the three states the reader must not confuse: a run that was throttled, a run
+    that never retried, and an artifact that predates the field. The fourth -- a block that is
+    present and unreadable -- has to be its own answer, because "predates the field" is a false
+    explanation for a field that is there.
+    """
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--transport', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    @staticmethod
+    def _block(**overrides: object) -> dict:
+        block = {
+            'provider': 'run',
+            'scope': 'process',
+            'calls': 100,
+            'attempts': 180,
+            'retried': 80,
+            'retriedCalls': 60,
+            'cleanCalls': 40,
+            'exhaustedCalls': 0,
+            'rateLimited': 80,
+            'retryAfterHonoured': 0,
+            'retryRate': 0.6,
+        }
+        block.update(overrides)
+        return block
+
+    def test_a_throttled_run_names_both_denominators(self, tmp_path: Path) -> None:
+        # 80 of 180 requests against 60 of 100 calls. A reader given only one of the two cannot
+        # tell "one call retried eighty times" from "eighty calls each retried once" -- and the
+        # rate must be per CALL: dividing 80 retries by 100 calls would print 80.00%, which is the
+        # rate of an event that happened eighty times, not the share of calls that had to retry.
+        report = _synthetic_report()
+        report['transportRetry'] = self._block()
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '80.00%' not in r.stdout, r.stdout
+        assert '60.00%' in r.stdout and '60 of 100 calls' in r.stdout, r.stdout
+        assert 'throttled 80 of 180 requests' in r.stdout, r.stdout
+        assert 'provider: run' in r.stdout and 'scope: process' in r.stdout, r.stdout
+
+    def test_a_run_that_never_retried_says_so_rather_than_printing_zeroes(self, tmp_path: Path) -> None:
+        report = _synthetic_report()
+        report['transportRetry'] = self._block(
+            attempts=100, retried=0, retriedCalls=0, cleanCalls=100, rateLimited=0,
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'nothing was throttled' in r.stdout, r.stdout
+        assert 'the provider throttled' not in r.stdout
+
+    def test_retries_without_a_rate_limit_are_a_different_finding(self, tmp_path: Path) -> None:
+        # A 5xx is retried and is not a throttle. Reporting it as one would name a provider
+        # behaviour that never happened.
+        report = _synthetic_report()
+        report['transportRetry'] = self._block(rateLimited=0, retryAfterHonoured=0)
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'none of them a 429' in r.stdout, r.stdout
+        assert 'The provider was not throttling' in r.stdout
+
+    def test_an_artifact_that_predates_the_field_is_refused(self, tmp_path: Path) -> None:
+        report = _synthetic_report()
+        report.pop('transportRetry', None)
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'no transportRetry block' in r.stderr
+        assert 'predates the field' in r.stderr
+        # And nothing is printed: a table of zeroes would be read as "nothing was throttled",
+        # which is the one thing an old artifact cannot say.
+        assert r.stdout.strip() == ''
+
+    def test_zero_calls_is_reported_as_a_wiring_defect(self, tmp_path: Path) -> None:
+        # The counters increment before the provider answers, so a graded run cannot reach zero.
+        # Printing "nothing was throttled" here would hide a broken instrument.
+        report = _synthetic_report()
+        report['transportRetry'] = self._block(
+            calls=0, attempts=0, retried=0, retriedCalls=0, cleanCalls=0, rateLimited=0,
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'NOT WIRED' in r.stdout, r.stdout
+        assert 'nothing was throttled' not in r.stdout
+
+    def test_a_partition_that_does_not_close_is_flagged(self, tmp_path: Path) -> None:
+        report = _synthetic_report()
+        report['transportRetry'] = self._block(cleanCalls=90, retriedCalls=5, exhaustedCalls=0)
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'NOT A PARTITION' in r.stdout, r.stdout
+        assert '90 + 5 + 0 != 100' in r.stdout, r.stdout
+
+    @pytest.mark.parametrize(
+        'block',
+        [
+            {'calls': True},                       # bool is an int: a flag must not read as 1
+            {'calls': '100'},                      # a string is not a count
+            {'calls': -1},                         # a negative count did not come from a counter
+            {'retried': 1.5},                      # a rate is not a count
+            {'rateLimited': None},                 # JSON null is not zero
+        ],
+    )
+    def test_a_corrupt_block_is_a_producer_defect_not_an_old_artifact(
+        self, tmp_path: Path, block: dict
+    ) -> None:
+        report = _synthetic_report()
+        report['transportRetry'] = {**self._block(), **block}
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'present and unreadable' in r.stderr, r.stderr
+        assert 'predates the field' not in r.stderr

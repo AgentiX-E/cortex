@@ -478,9 +478,15 @@ export async function computeSessionRetrievalDiagnostics(
  * honest alternative to inventing a per-provider breakdown that does not exist.
  * An artifact that presents the shared total as the embedding's alone would be
  * reporting a number it cannot substantiate.
+ *
+ * `run` is the third value and it is not a provider: it says the counters are the
+ * process's whole traffic during the measured passes, which is what an A/B arm can
+ * truthfully report because both sides of it call the same reader. It exists so the
+ * arm's artifact can carry the numbers without claiming an attribution it does not
+ * have.
  */
 export type TransportRetryScope = {
-  provider: 'embedding' | 'llm';
+  provider: 'embedding' | 'llm' | 'run';
 };
 
 /**

@@ -44,7 +44,13 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
-import { llmUsage, usageDelta, type UsageSnapshot } from '@agentix-e/cortex-ai';
+import {
+  llmUsage,
+  resetRetryStats,
+  retryStats,
+  usageDelta,
+  type UsageSnapshot,
+} from '@agentix-e/cortex-ai';
 
 import { readToggle } from './env-toggle.js';
 import type { RerankCensus } from './rerank-census.js';
@@ -70,11 +76,13 @@ import {
 } from './question-record.js';
 import {
   attachLlmUsage,
+  attachTransport,
   attachUsageBySide,
   formatAblationReport,
   runAblationReport,
   type FeatureConfig,
 } from './report.js';
+import { transportRetryReport } from './retrieval-diagnostics.js';
 import { traceUsage, zeroUsage, type UsageSide } from './usage-by-side.js';
 import { mirrorMembers } from './system-mirror.js';
 import type { AnswerScorer } from './metrics.js';
@@ -2483,6 +2491,19 @@ export async function runCortexMemoryArm(
   // the first answer), but a snapshot taken after the call would silently exclude it if
   // that ever changed, and the exclusion would be invisible in the artifact.
   const usageBefore = llmUsage();
+  // §13.216: the transport counters describe THIS arm's passes and nothing before them.
+  //
+  // Reset here rather than in the entry point, and the placement is the same argument the
+  // spend snapshot above makes one line up: the counters live in a process-level aggregate,
+  // so without a reset they would include whatever the process did before the first
+  // question -- an embedding preflight, a probe, a warm-up -- and the artifact would present
+  // that residue as part of the measured run. A number nobody can attribute is worse than no
+  // number, because it looks like a measurement.
+  //
+  // The cost of resetting inside a library function is that a caller measuring something
+  // else across this call would lose its own counts. There is no such caller: this function
+  // runs the whole ablation, and the CLI's only other question is what to write.
+  resetRetryStats();
   // §13.145.6: which questions the review mechanisms reached, taken as a census delta around each answer.
   // The wrapper is a prototype chain and is a no-op for a system with no census, so this changes nothing
   // about what the run measures -- it only makes the population addressable in the artifact.
@@ -2614,9 +2635,19 @@ export async function runCortexMemoryArm(
   // The split is attached after the total, so the section that renders both reads them from one
   // place and the two cannot disagree about which run they describe.
   const withUsage = attachUsageBySide(attachLlmUsage(reported, usage), usageLedger);
+  // §13.216: read after everything that talks to a provider has finished, and attached
+  // unconditionally -- see `attachTransport` for why this field does not use the absence rule
+  // the two above do. Snapshotted here rather than inside the renderer so the JSON and the
+  // Markdown describe one reading; a renderer that took its own snapshot would describe the
+  // moment of rendering, which is later than the run and would drift with any future work
+  // done between the two writes.
+  const withTransport = attachTransport(
+    withUsage,
+    transportRetryReport(retryStats(), { provider: 'run' }),
+  );
   return {
-    report: withUsage,
-    markdown: formatAblationReport(withUsage),
+    report: withTransport,
+    markdown: formatAblationReport(withTransport),
     // Read from the ablation's own aggregate rather than recomputed here, so the
     // returned value cannot disagree with the tables rendered beside it.
     delta: report.ablation.delta,

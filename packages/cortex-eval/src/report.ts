@@ -12,6 +12,7 @@ import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds } from './rerank-factory.js';
+import type { TransportRetryReport } from './retrieval-diagnostics.js';
 import type { EndpointCheck, ReaderProviderId } from './reader-provider.js';
 import { bothSides, residualUsage, type UsageBySide } from './usage-by-side.js';
 import { dominantFlow } from './answer-transition.js';
@@ -230,6 +231,27 @@ export type AblationReport = {
    * no split, and that absence must not read as "both sides spent nothing".
    */
   usageBySide?: UsageBySide | undefined;
+  /**
+   * What the transport layer saw: attempts, retries, and how many were `429`.
+   *
+   * ## Why the spend section is not enough
+   *
+   * `llmUsage` counts the calls that RETURNED. A call the provider rejected three times and
+   * then served is one call there and four requests on the wire, and the artifact could not
+   * tell it apart from one served first time — which is precisely the question that decides
+   * whether the next dispatch is affordable. Run `41346610318` died on a `429` after six
+   * attempts, and no artifact from any run in this campaign has ever carried a retry count.
+   *
+   * ## Why it attaches even at zero
+   *
+   * `attachLlmUsage` omits the field when `calls === 0`, because a run whose provider
+   * reported no `usage` block is a real state. This one is different: the counters are
+   * incremented by the retry loop itself, before any provider answers, so a graded run
+   * cannot have zero calls. `calls: 0` here therefore means the counters were not wired —
+   * a defect, not a quiet provider — and that is a statement the artifact should be able to
+   * make. Absence means the artifact predates the field.
+   */
+  transportRetry?: TransportRetryReport | undefined;
   /**
    * How many times each question was asked, as the report's own record of it.
    *
@@ -1504,6 +1526,13 @@ export function formatAblationReport(report: AblationReport): string {
   if (report.llmUsage !== undefined) {
     lines.push(...llmUsageLines(report.llmUsage, report.usageBySide));
   }
+  // Directly beside the bill, because the two together are what a run cost: the spend
+  // section counts the calls that RETURNED, and this one counts the requests that were
+  // made. A run whose provider rejected a third of its attempts is not more expensive in
+  // tokens and is far more expensive in wall clock, and only this section can say so.
+  if (report.transportRetry !== undefined) {
+    lines.push(...transportRetryLines(report.transportRetry));
+  }
   // The census also goes BELOW the results, for the `retryFires` reason: it
   // explains a delta's attribution rather than changing what the delta means, so
   // it reads as a footnote. `report.memoryArmConfig` is passed alongside because
@@ -1987,6 +2016,29 @@ export function attachUsageBySide(report: AblationReport, bySide: UsageBySide): 
 }
 
 /**
+ * Attach what the transport layer saw, unconditionally.
+ *
+ * ## Why this does not follow the absence rule the two above use
+ *
+ * `attachLlmUsage` omits the field when the run made no instrumented call, because a
+ * provider that reports no `usage` block is a real state and attaching zeros would call
+ * that state free. The retry counters are different in kind: they are incremented by the
+ * loop itself before the provider answers, so any run that reached a provider at all has a
+ * non-zero `attempts`. A zero here is therefore not "a quiet provider" -- it is "the
+ * instrument was not wired", and an artifact should be able to say so rather than leaving a
+ * reader to guess whether the field is absent because the code predates it.
+ *
+ * That makes absence unambiguous: every artifact written after this field existed carries
+ * it, so an artifact without it was written before.
+ */
+export function attachTransport(
+  report: AblationReport,
+  transport: TransportRetryReport,
+): AblationReport {
+  return { ...report, transportRetry: transport };
+}
+
+/**
  * The provider-spend section, as lines.
  *
  * **Not exported**, unlike `retryFireLines` beside it: that one has a second renderer in
@@ -2088,6 +2140,112 @@ function llmUsageLines(usage: UsageSnapshot, bySide?: UsageBySide): string[] {
       `- **PARTIAL**: ${usage.unpricedCalls} of ${usage.calls} calls reported no \`usage\` ` +
         'block, so the token totals above cover the rest. The shortfall is not recoverable ' +
         'from this artifact.',
+    );
+  }
+  return lines;
+}
+
+/**
+ * The transport section: what the provider did with the requests, as lines.
+ *
+ * ## Why this is not part of the spend section
+ *
+ * They count different things and disagree by construction. A call rejected three times
+ * and then served is ONE call in the spend table and FOUR requests here. Stating them in
+ * one table would invite reading a rate against the wrong denominator, and the rate is the
+ * whole point: it is the only number that says whether the provider was a cost in wall
+ * clock rather than in tokens.
+ *
+ * ## Why the reading lines are shaped like findings
+ *
+ * A table of eight counters leaves the reader to decide what a non-zero `rateLimited`
+ * means. Three states are separable and each implies a different next action: nothing was
+ * retried (the provider was healthy, or the counters are not wired -- `calls` decides
+ * which), retries happened but none was a `429` (transient faults or `5xx`, not a rate
+ * limit), and a non-zero `429` count (the provider throttled, and the next dispatch's
+ * wall clock inherits it). The section says which one it is rather than making the reader
+ * derive it.
+ *
+ * ## What it deliberately does not say
+ *
+ * The per-call waiting ceiling. It is a code constant (`DEFAULT_RETRY_BUDGET_MS` in
+ * `cortex-ai`), not a value this run carried, and an artifact that printed a number no run
+ * recorded would be describing the code rather than the measurement. The counters are what
+ * the run can substantiate.
+ */
+function transportRetryLines(transport: TransportRetryReport): string[] {
+  const closes =
+    transport.cleanCalls + transport.retriedCalls + transport.exhaustedCalls === transport.calls;
+  const lines = [
+    '',
+    '## Transport (what the provider did with the requests)',
+    '',
+    '| Field | Value |',
+    '|---|---|',
+    `| calls | ${transport.calls} |`,
+    `| requests issued (first attempts + retries) | ${transport.attempts} |`,
+    `| retries | ${transport.retried} |`,
+    `| calls served on the first attempt | ${transport.cleanCalls} |`,
+    `| calls that had to retry | ${transport.retriedCalls} |`,
+    `| calls that exhausted every attempt | ${transport.exhaustedCalls} |`,
+    `| attempts answered \`429\` | ${transport.rateLimited} |`,
+    `| retries whose wait came from \`Retry-After\` | ${transport.retryAfterHonoured} |`,
+    '',
+    `- Retry rate: **${(transport.retryRate * 100).toFixed(2)}%** of ${transport.calls} calls ` +
+      `(${transport.retriedCalls} retried at least once)`,
+  ];
+  if (!closes) {
+    // The three classes partition the sample in `cortex-ai` and the identity is asserted
+    // there. Printing the failure here rather than only there is deliberate: the reader
+    // holding an artifact cannot run that test, and a partition that does not close means
+    // the counters were read across a boundary -- two processes, or a reset in the middle.
+    lines.push(
+      '',
+      `- **COUNTERS DO NOT PARTITION**: ${transport.cleanCalls} + ${transport.retriedCalls} + ` +
+        `${transport.exhaustedCalls} ≠ ${transport.calls}. Every class is still an honest count, ` +
+        'but they were not read from one aggregate, so no rate above can be trusted.',
+    );
+  }
+  if (transport.calls === 0) {
+    // The one state that is a defect rather than a finding: the loop counts a call before
+    // the provider answers, so a graded run cannot reach this line with zero.
+    lines.push(
+      '',
+      '- **NOT WIRED**: no call reached the retry layer at all. On a run that graded ' +
+        'answers this is impossible, so it means the counters were never incremented — not ' +
+        'that the provider was quiet.',
+    );
+  } else if (transport.retried === 0) {
+    lines.push(
+      '',
+      `- **Nothing was throttled**: every one of the ${transport.calls} calls was served on its ` +
+        'first attempt, so this run spent no wall clock waiting for a window to reopen.',
+    );
+  } else if (transport.rateLimited === 0) {
+    lines.push(
+      '',
+      `- **Retries, but no rate limit**: ${transport.retried} of the ` +
+        `${transport.attempts} requests were retried after a transport failure or a \`5xx\`. ` +
+        'The provider was not throttling; the network or the server was.',
+    );
+  } else {
+    lines.push(
+      '',
+      `- **The provider throttled**: ${transport.rateLimited} of the ${transport.attempts} ` +
+        `requests were answered \`429\`, and the retry ladder absorbed ` +
+        `${transport.retriedCalls} of the ${transport.calls} calls. The cost is wall clock, ` +
+        'not tokens, and the next dispatch inherits it.',
+    );
+  }
+  if (transport.exhaustedCalls > 0) {
+    // Not expected on a completed artifact: an exhausted call throws, which ends the pass
+    // and writes a partial measurement instead. Saying so keeps a reader from reading the
+    // number as "these calls were merely slow".
+    lines.push(
+      '',
+      `- **${transport.exhaustedCalls} calls exhausted every attempt**: a call that reaches ` +
+        'this state throws, so a completed artifact should report `0` here. A non-zero value ' +
+        'means the counters span a failure that did not end the run.',
     );
   }
   return lines;

@@ -34,8 +34,28 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Default number of attempts (1 initial + `maxRetries` retries). */
-export const DEFAULT_MAX_RETRIES = 5;
+/**
+ * Default number of attempts (1 initial + `maxRetries` retries).
+ *
+ * ## Why eight, and why this constant is derived from the budget rather than chosen
+ *
+ * The budget below is 120 s and says why it exists: a throttle window measured in minutes
+ * has to be reachable. At the previous value of 5 the waits were `1+2+4+8+16 = 31 s` and
+ * the sixth attempt was already the last one, so the budget was 3.9x the ladder and could
+ * never be consulted. The protection was unimplemented in practice while reading as
+ * implemented, which is the same shape as a guard whose firing condition cannot occur.
+ *
+ * What that cost is run `41346610318`: a 20-question probe answered `429` at question 13,
+ * dead inside the 31 s ladder, twelve graded answers left in a partial artifact. The
+ * provider's window is per minute; two minutes of permitted waiting would have outlasted
+ * it.
+ *
+ * Eight is the smallest count whose geometric sum exceeds the default budget
+ * (`1+2+4+…+128 = 255 s`), so the budget binds and the count does not. A caller that names
+ * a count still gets exactly that count — the defect was the default, not the parameter,
+ * and `retry.test.ts` pins both halves.
+ */
+export const DEFAULT_MAX_RETRIES = 8;
 /** Initial backoff delay in milliseconds; doubles on each retry. */
 export const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 /**
@@ -44,6 +64,16 @@ export const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
  * Larger than 60 s on purpose: a throttle window measured in minutes has to be
  * reachable, and a budget at or below one minute would reproduce the original
  * defect with the code nominally fixed.
+ *
+ * ## A ceiling is only a ceiling if the ladder can reach it
+ *
+ * This number was 120 s from the day it was written, and for the same period the ladder
+ * topped out at **31 s** — the ceiling was never once consulted, because the attempt count
+ * bound first. The requirement has two halves and the second is easy to forget: the counts
+ * in {@link DEFAULT_MAX_RETRIES} must let the geometric backoff sum past this value, and
+ * the last wait must be truncated to whatever remains so the final attempt lands on the
+ * deadline instead of half a ceiling short. Both are asserted in `retry.test.ts`, together
+ * with the identity `last attempt time === DEFAULT_RETRY_BUDGET_MS`.
  */
 export const DEFAULT_RETRY_BUDGET_MS = 120_000;
 /**
@@ -507,17 +537,38 @@ export async function retryableFetchWithStats(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
       const fromHeader = retryAfterMs(resFromLastAttempt);
-      const waitMs = fromHeader ?? baseDelayMs * 2 ** (attempt - 1);
-      if (budgetEnforced && Date.now() - sequenceStart + waitMs > retryBudgetMs) {
-        // Unaffordable. Returning `resFromLastAttempt` rather than sleeping past
-        // the deadline: the caller inspects `res.ok` and raises the provider's
-        // own status, which is strictly more informative than a timeout error
-        // raised after the run has already been delayed.
+      const computed = baseDelayMs * 2 ** (attempt - 1);
+      // What is left of the budget, read fresh at every retry: the ceiling is measured
+      // from the first attempt, and every attempt before this one has spent some of it.
+      const remaining = budgetEnforced
+        ? retryBudgetMs - (Date.now() - sequenceStart)
+        : Number.POSITIVE_INFINITY;
+      let waitMs = fromHeader ?? computed;
+      if (waitMs > remaining) {
+        // Two refusals live here, and they are different decisions.
         //
-        // No counter is incremented here, and that is the point: this retry was
-        // never made, so recording it would report a request the provider never
-        // received.
-        return withResponse(resFromLastAttempt ?? new Response(null, { status: 429 }), stats);
+        // The server's own window (`Retry-After`) is an instruction: either it is honoured
+        // in full or it is declined. Sleeping part of it and retrying inside the window
+        // the server just said is still closed is not a retry, it is a request we already
+        // know will be rejected -- so a header beyond the remaining budget returns at once.
+        //
+        // The computed backoff is this client's estimate, and the budget is its ceiling.
+        // Truncating the last wait to the remainder spends the budget that was allocated
+        // and lands the final attempt ON the deadline, rather than abandoning the room:
+        // at 40 ms then 80 ms against a 100 ms budget, refusing the overshoot stops at
+        // 40 ms with 60% of the window unused.
+        if (fromHeader !== null || remaining <= 0) {
+          // Unaffordable. Returning `resFromLastAttempt` rather than sleeping past
+          // the deadline: the caller inspects `res.ok` and raises the provider's
+          // own status, which is strictly more informative than a timeout error
+          // raised after the run has already been delayed.
+          //
+          // No counter is incremented here, and that is the point: this retry was
+          // never made, so recording it would report a request the provider never
+          // received.
+          return withResponse(resFromLastAttempt ?? new Response(null, { status: 429 }), stats);
+        }
+        waitMs = remaining;
       }
       // Counted at the retry itself, after the budget has agreed to it, so
       // `retried` is a count of retries performed rather than of retries wanted.
