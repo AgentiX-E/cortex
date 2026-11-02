@@ -23887,3 +23887,39 @@ would say the ranking is not what excluded them and the 96,000 gain came from so
 **Nothing is dispatched on it this round**, and the reason is the same as §13.211.4's: the
 instrument reads an artifact that already exists, so it costs nothing and does not need capacity that
 §13.212.6 measured at 5.1× the run budget.
+
+### 13.213.8 The premise, checked before it costs anything
+
+§13.213.7 says the four are lost "at the tail of the relevance prefix" and that ranking can reach
+them. That is a claim about the artifact, so it was checked against the artifact in the same round
+rather than left to the next one.
+
+**`10d9b85a`, "how many days did I spend attending workshops, lectures, and conferences in April",
+gold `3 days`:**
+
+| window | turns delivered | turns containing `lecture` |
+| --- | --- | --- |
+| 48,000 | 167 | **none** |
+| 96,000 | 232 | one, at position **158 of 232** |
+
+The 48,000 window carries the two-day workshop (position 152 of 167) and **does not carry the
+lecture at all**, so the reader can only reach `2`. The 96,000 window carries both and answers `3`.
+
+**What that settles, and what it does not.** It settles the symptom: the loss is a **missing
+decisive turn**, not a misread one, and the missing content is evidence rather than noise. It does
+**not** settle the repair. The premise of a ranking fix is that the turn is inside the admitted pool
+and outside the cut — and the artifact records what was delivered, not what was admitted, so this
+reading cannot tell whether that turn was ranked 160th or was never a candidate. `--pool` would
+answer it on an artifact produced with retrieval attribution; `41284575092` predates that field.
+
+**So the decision in §13.213.3 is provisional, and it says so with a reversal condition rather than
+a preference:**
+
+> If the ranking instrument cannot show that the missing turn is recoverable at 48,000 — i.e. if it
+> is absent from the admitted pool and not merely below the cut — then **96,000 is the only measured
+> lever**, and it should be adopted on a registered prediction of `MR +4 ± 2` with the four
+> questions named in advance, at +61.7% prompt tokens, rather than left refused.
+
+That is a different statement from "96,000 is worse", and it is the one the evidence supports. It
+also gives the ranking increment a deadline: it is the cheaper repair only until someone shows it
+cannot reach these four.
