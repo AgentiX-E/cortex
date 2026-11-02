@@ -395,6 +395,11 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // measurement. A record that never had a measurement rebuilds to one that does
         // not, so the absence round-trips as an absence.
         goldOverlap: record.goldOverlap ?? null,
+        // Forwarded for the same reason, and it is the same measurement at a different
+        // denominator: a composition recomputed here would be a composition over the
+        // bound's output, so the share of the window the ranking had scored would rise
+        // every time the writability guard bit.
+        windowComposition: record.windowComposition ?? null,
       })),
       featureConfig,
       records.map((record) => record.correct),

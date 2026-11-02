@@ -315,6 +315,20 @@ export type QuestionRecord = {
    */
   readonly goldOverlap?: GoldOverlap | undefined;
   /**
+   * What the window was made of: how much of it the ranking had scored, by count and by
+   * character.
+   *
+   * Beside `goldOverlap` and answering the other half of the same question. The gold
+   * account is conditioned on the turns the dataset annotated; this one covers every
+   * turn the reader read, so it is the only field that can say whether the room was
+   * spent on evidence the ranking could order or on leftovers it never saw.
+   *
+   * Absent rather than zero when no ranking was consulted, by the rule `goldOverlap`
+   * follows: `relevanceSignal: none` reports no measurement, not a window that was 100%
+   * unscored.
+   */
+  readonly windowComposition?: WindowComposition | undefined;
+  /**
    * The switches this record was produced under, stamped per record.
    *
    * Per record rather than once beside the array: a reader handed one record out
@@ -456,6 +470,16 @@ export type QuestionRecordInput = {
    * than an artifact whose coverage is absent for an unstated reason.
    */
   readonly goldOverlap: GoldOverlap | null;
+  /**
+   * The window composition the producer measured, or `null` when no ranking was consulted.
+   *
+   * Required and nullable for the reason `goldOverlap` above is: a producer that forgets
+   * it is a compile error rather than an artifact whose window is unaccounted for without
+   * saying so. The two fields travel together because they are the two halves of one
+   * measurement -- where the gold went, and where the room went -- and a record carrying
+   * one without the other invites a reader to treat the missing half as zero.
+   */
+  readonly windowComposition: WindowComposition | null;
 };
 
 /**
@@ -725,6 +749,10 @@ export function buildQuestionRecords(
         ? {}
         : { promptVariants: input.promptVariants }),
       ...(input.goldOverlap === null ? {} : { goldOverlap: input.goldOverlap }),
+      // Absent when the producer measured nothing, which is the one state that means "no
+      // ranking was consulted". An empty window is not it: that is a measured zero-turn
+      // window and it round-trips as an object.
+      ...(input.windowComposition === null ? {} : { windowComposition: input.windowComposition }),
       // Written together or not at all, and only when the producer traced: a `false` here would be a
       // statement about the mechanism rather than about the instrument.
       ...(input.recoveryAttempted === undefined
@@ -817,6 +845,90 @@ export function goldOverlapOf(
           goldRanks: ranks,
         }),
   };
+}
+
+/**
+ * What the window was made of, and why the gold account cannot answer it.
+ *
+ * `goldOverlap` says where the **gold** went: carried, cut, or never surfaced. That
+ * account is conditioned on the handful of turns the dataset annotated, and on a
+ * question whose annotation names one turn it says nothing about the other two
+ * hundred the reader also read.
+ *
+ * This says where the **room** went. Two facts follow that the gold account cannot
+ * express:
+ *
+ * 1. **How many characters were spent on turns the ranking never scored.** The index
+ *    answers `UNSCORED_RELEVANCE` -- a floor below every cosine -- for a turn it was
+ *    never asked about, and `selectByRelevance` sorts descending, so those turns sit
+ *    after every scored one and are admitted only by leftover room. That makes "the
+ *    room overflowed past the pool" a measured event rather than an inference. The
+ *    `--pool` table reports the same overflow for *gold* turns only (`beyond the
+ *    pool`: 53 at 48,000), and 53 is not a statement about the other six thousand.
+ * 2. **Whether a better order could have changed what the reader read.** A window that
+ *    is 80% unscored by characters is not one a re-rank can improve -- the turns a
+ *    re-rank would promote are not the turns it is spending on. A window that is
+ *    entirely scored is one where a wider pool, not a better order, is the lever.
+ *
+ * ## Why the characters are the turn texts and not the rendered prompt
+ *
+ * This is `sum(turn.length)`, not the length of the string the model received. The
+ * prompt carries per-turn decoration (an index, a role prefix, a cut marker) and the
+ * session note, so the denominator of `maxPromptChars` is larger than this total. The
+ * number is for comparing one window against another, which the decoration would add
+ * noise to; it is not a share of the budget, and `Chars` rather than `Budget` is the
+ * field's whole claim. `evidenceChars` remains the rendered figure.
+ */
+export type WindowComposition = {
+  /** Delivered turns -- every turn the reader was shown. */
+  readonly turns: number;
+  /** Of those, how many the ranking offered a score for. */
+  readonly offered: number;
+  /** Characters spent on turns the ranking offered. */
+  readonly offeredChars: number;
+  /** Characters spent on turns the ranking never scored. */
+  readonly unscoredChars: number;
+};
+
+/**
+ * The one implementation of the window-composition measurement.
+ *
+ * `null` when no ranking was consulted, for the reason `goldOverlapOf` returns `null`
+ * when the dataset named no gold: `relevanceSignal: none` is a run where nothing scored
+ * the turns, so a composition object would report `offered: 0` with a full
+ * `unscoredChars` -- a measurement of a signal that failed, where the truth is that no
+ * signal existed. The two must not render the same.
+ *
+ * An **empty** array is not that case. A caller holding an index that answered this
+ * question with no candidates has a ranking that fired and found nothing, which is a
+ * finding; reporting it as `null` would send a reader looking for a missing signal.
+ *
+ * Membership is `includes` against the pool rather than a `Set` built here: the pool is
+ * 256 entries and the delivery a few hundred, so a set would cost more than it saves,
+ * and one structure is what keeps the two columns from disagreeing (`§12.7`).
+ *
+ * `offered + (turns - offered)` is the split by count and
+ * `offeredChars + unscoredChars` by characters, and the second is the whole of the
+ * first -- a turn is in exactly one column. `window-composition.test.ts` asserts that
+ * identity on every fixture, so a third column cannot be added as a silent partition.
+ */
+export function windowCompositionOf(
+  retrieved: RetrievedTurns,
+  pool: readonly string[] | undefined,
+): WindowComposition | null {
+  if (pool === undefined) return null;
+  let offered = 0;
+  let offeredChars = 0;
+  let unscoredChars = 0;
+  for (const turn of retrieved) {
+    if (pool.includes(turn)) {
+      offered += 1;
+      offeredChars += turn.length;
+    } else {
+      unscoredChars += turn.length;
+    }
+  }
+  return { turns: retrieved.length, offered, offeredChars, unscoredChars };
 }
 
 /**
@@ -1148,6 +1260,10 @@ export function buildRecordsFromDataset(
         // `turns`. Restoring it means giving the trace the turn list `respondWith`
         // already receives, which is registered separately.
         goldOverlap: null,
+        // `null` for the same reason: this product carries what the reader was shown, and
+        // its `retrieved` is rebuilt from units rather than kept as the delivered list, so
+        // a membership count against the pool would be a number about the rebuild.
+        windowComposition: null,
       };
     }),
     featureConfig,

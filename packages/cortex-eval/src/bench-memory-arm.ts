@@ -63,8 +63,10 @@ import {
   buildQuestionRecords,
   evidenceReductionOf,
   goldOverlapOf,
+  windowCompositionOf,
   type EvidenceBoundOptions,
   type QuestionRecord,
+  type WindowComposition,
 } from './question-record.js';
 import {
   attachLlmUsage,
@@ -2706,7 +2708,18 @@ export async function runCortexMemoryArm(
  * ungrounded" are different findings, and the artifact was publishing the second.
  */
 /**
- * One question's gold overlap, with the denominator the run's policy implies.
+ * One question's two accounts: where the gold went, and where the room went.
+ *
+ * ## Why one function returns both
+ *
+ * Both are membership tests against **the same pool**, and the pool arrives from a
+ * callback the arm does not own (`relevancePoolFor`, which answers from the index's
+ * `candidatesFor`). Calling that callback twice would leave two orderings possible in
+ * principle and unverifiable in the artifact: a reader holding a record whose `goldOverlap`
+ * and `windowComposition` disagree about what the ranking offered would have no way to tell
+ * which of the two calls was the stale one. One read, two readers.
+ *
+ * ## The gold half, and the denominator the run's policy implies
  *
  * `totalAll` is attached only when the eligible set is **smaller** than the dataset's. Length
  * rather than identity: a filter that reaches a question but excludes nothing returns a new list
@@ -2715,13 +2728,19 @@ export async function runCortexMemoryArm(
  *
  * `null` passes through: a question with no gold turns has no ratio, and inventing one here would
  * make "the dataset names no gold" indistinguishable from "none of the gold reached the reader".
+ *
+ * ## The room half
+ *
+ * `windowCompositionOf`'s own docblock carries the argument; the point of returning it here is
+ * that it is measured against the delivery as captured, before `evidenceBound` reduces it --
+ * the same rule `goldOverlap` follows, so a writability guard cannot move either figure.
  */
-function overlapOf(
+function accountOf(
   question: BenchmarkDataset['questions'][number],
   retrieved: readonly string[],
   poolFor: ((question: string) => readonly string[] | undefined) | undefined,
   rolePolicy: { roles?: readonly string[]; reach?: readonly string[] } | undefined,
-): GoldOverlap | null {
+): { goldOverlap: GoldOverlap | null; windowComposition: WindowComposition | null } {
   const eligible = eligibleGoldOf(
     question.goldTurns,
     rolePolicy?.roles,
@@ -2734,9 +2753,15 @@ function overlapOf(
   // guard -- the shape §57.6 removed a field over.
   const eligibleCount = eligible?.length ?? 0;
   const goldCount = question.goldTurns?.length ?? 0;
-  const overlap = goldOverlapOf(retrieved, eligible, poolFor?.(question.question));
-  if (overlap === null || eligibleCount === goldCount) return overlap;
-  return { ...overlap, totalAll: goldCount };
+  const pool = poolFor?.(question.question);
+  const overlap = goldOverlapOf(retrieved, eligible, pool);
+  return {
+    goldOverlap:
+      overlap === null || eligibleCount === goldCount
+        ? overlap
+        : { ...overlap, totalAll: goldCount },
+    windowComposition: windowCompositionOf(retrieved, pool),
+  };
 }
 
 /**
@@ -2928,7 +2953,7 @@ function buildArmRoster(
       // cap the window can be wider than the pool, so `carried` can exceed `pool` and the
       // three counts become marginals rather than a partition (§13.214). §13.61.7 is what
       // six runs could not say without them.
-      goldOverlap: overlapOf(question, retrievedContexts[i] ?? [], poolFor, rolePolicy),
+      ...accountOf(question, retrievedContexts[i] ?? [], poolFor, rolePolicy),
     })),
     featureConfig,
     ablation.featureCorrect,

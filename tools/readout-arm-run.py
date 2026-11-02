@@ -1511,6 +1511,126 @@ def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple
     return '\n'.join(lines), measured
 
 
+def composition_section(questions: list[dict]) -> tuple[str, int]:
+    """How much of each window the ranking could order at all.
+
+    ## The question, and the account that could not answer it
+
+    `--pool` reports where the **gold** went. That account is conditioned on the turns the
+    dataset annotated, so on a question whose annotation names one turn it says nothing about
+    the other two hundred the reader also read. The consequence is a specific blindness: a
+    window that is 40% unscored leftovers and a window that is fully scored produce the same
+    `--pool` row, and they call for opposite work.
+
+    ## Why the split is where the ranking's reach ends
+
+    The index answers a floor of `-2` for a turn it was never asked about, and the selection
+    sorts descending, so an unscored turn is admitted **only** by room the scored turns left
+    over. That makes "the window overflowed past the pool" a measured event, and it puts the
+    two columns in different worlds: the left one is room a re-rank can re-spend, the right
+    one is room no re-rank can reach, because the turns in it have no score to reorder.
+
+    ## Why the total is the sum of the rows
+
+    `§13.214` is the reason this is spelled out. That table computed its TOTAL from summed
+    `pool` and `carried` before clamping two of the four columns, so a capability delivering
+    past the pool cancelled one cut short of it, and 53 gold turns printed as 0. Here the
+    rows are accumulated and every TOTAL cell is the sum of the cells above it; the test
+    asserts the identity per column, so a column added later cannot silently stop adding up.
+
+    ## Why the character columns are turn texts and not the prompt
+
+    `sum(turn.length)`, not the length of the string the model received: the prompt carries
+    per-turn decoration and the session note, so the denominator of `maxPromptChars` is larger
+    than this total. The share this prints is a share of **delivered evidence**, which is the
+    quantity the two columns partition. It is not a share of the budget, and the heading says
+    so rather than leaving a reader to divide it by 48,000 and get a number that describes
+    neither.
+    """
+    by_capability: dict[str, list[int]] = {}
+    measured = 0
+    for question in questions:
+        composition = question.get('windowComposition')
+        if not isinstance(composition, dict):
+            continue
+        try:
+            turns = int(composition['turns'])
+            offered = int(composition['offered'])
+            offered_chars = int(composition['offeredChars'])
+            unscored_chars = int(composition['unscoredChars'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        row = by_capability.setdefault(str(question.get('capability', '?')), [0, 0, 0, 0, 0])
+        row[0] += 1
+        row[1] += turns
+        row[2] += offered
+        row[3] += offered_chars
+        row[4] += unscored_chars
+        measured += 1
+
+    if measured == 0:
+        return '', 0
+
+    lines = [
+        '=== where the room went (delivered evidence, by turn and by character) ===',
+        '  a turn is in the left column when the ranking scored it; an unscored turn is '
+        'admitted only by room the scored ones left over, so no re-rank can reorder it',
+        '',
+        f'  {"capability":<10}{"n":>5}{"turns":>7}{"offered":>9}{"offered chars":>15}'
+        f'{"unscored chars":>16}{"total chars":>13}',
+    ]
+    totals = [0, 0, 0, 0, 0, 0]
+    for capability in sorted(by_capability):
+        n, turns, offered, offered_chars, unscored_chars = by_capability[capability]
+        total_chars = offered_chars + unscored_chars
+        lines.append(
+            f'  {capability:<10}{n:>5}{turns:>7}{offered:>9}{offered_chars:>15}'
+            f'{unscored_chars:>16}{total_chars:>13}'
+        )
+        totals[0] += n
+        totals[1] += turns
+        totals[2] += offered
+        totals[3] += offered_chars
+        totals[4] += unscored_chars
+        totals[5] += total_chars
+
+    lines.append(
+        f'  {"TOTAL":<10}{totals[0]:>5}{totals[1]:>7}{totals[2]:>9}{totals[3]:>15}'
+        f'{totals[4]:>16}{totals[5]:>13}'
+    )
+
+    if totals[5] > 0:
+        share = 100.0 * totals[3] / totals[5]
+        lines.append('')
+        lines.append(
+            f'  share of delivered evidence the ranking could order: {share:.1f}%  '
+            f'({totals[3]} of {totals[5]} characters)'
+        )
+        lines.append(
+            f'  share it could not: {100.0 - share:.1f}%  ({totals[4]} characters on turns '
+            'the ranking never scored)'
+        )
+        if totals[4] == 0:
+            lines.append(
+                '  every delivered character was scored, so the levers left in this window are '
+                "the ranking's ORDER and the POOL's WIDTH -- not the selection, which had "
+                'nothing unscored to spend on.'
+            )
+        else:
+            lines.append(
+                '  the unscored share is room a re-rank cannot reach: those turns carry no '
+                "score to reorder, so the only repairs that move them are a wider POOL or a "
+                'selection that refuses the unscored tail.'
+            )
+    if totals[2] > totals[1]:
+        lines.append(
+            f'  {totals[2]} offered against {totals[1]} delivered: a record counts a turn it '
+            'was offered more than once, so a repeat is a caller defect reported rather than '
+            'clamped'
+        )
+    return '\n'.join(lines), measured
+
+
 # The cut points the rank curve reports.
 #
 # Three, and they are the three the argument needs rather than a sweep: 8 is roughly the
@@ -3601,6 +3721,11 @@ def main(argv: list[str]) -> int:
         help='print where the gold went: never surfaced, cut by the budget, delivered',
     )
     parser.add_argument(
+        '--composition',
+        action='store_true',
+        help='print where the room went: how much of each window the ranking could order',
+    )
+    parser.add_argument(
         '--reach',
         action='store_true',
         help='print the ranked gold banded by rank, with the median beyond the old pool width',
@@ -4095,6 +4220,20 @@ def main(argv: list[str]) -> int:
             print(
                 f'{args.report}: no record carries a goldOverlap.pool. A run that consulted '
                 'no ranking has none, and an artifact produced before §13.62 predates the field.',
+                file=sys.stderr,
+            )
+            return 2
+        print(section)
+        return 0
+
+    if args.composition:
+        section, measured = composition_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries a windowComposition. A run with '
+                '`relevanceSignal: none` has none, and an artifact produced before '
+                '§13.215 predates the field -- so this is not a window that was '
+                'entirely unscored, which is what a table of zeroes would say.',
                 file=sys.stderr,
             )
             return 2

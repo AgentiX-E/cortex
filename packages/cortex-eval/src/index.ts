@@ -425,9 +425,11 @@ export {
   goldOverlapOf,
   recordIds,
   REDUCED_TURNS_MARKER,
+  windowCompositionOf,
   type EvidenceBoundOptions,
   type EvidenceReduction,
   type QuestionRecord,
+  type WindowComposition,
 } from './question-record.js';
 
 export { preflightEmbedding, type EmbeddingPreflight } from './embedding-preflight.js';

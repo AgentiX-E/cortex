@@ -763,13 +763,18 @@ async function main(): Promise<void> {
     // was built, which is the truth: with `relevanceSignal: none` there is no pool, and a
     // record that reported `pool: 0` would describe a ranking that surfaced nothing.
     //
-    // The set arrives from `candidatesFor`, which returns the keys `relevanceFor` is built
-    // from, so the two counts cannot disagree. Copied to an array here rather than handed
-    // through as a `Set` because `goldOverlapOf` takes the same list type as the delivery
-    // it counts against -- one shape for the two memberships it tests.
+    // The list arrives from `rankedCandidatesFor`, which is the same structure `candidatesFor`
+    // reads as a set -- one ordered array, two views -- and it is the view this line needs.
+    //
+    // It used to spread `candidatesFor` instead, which worked only because a `Set` preserves
+    // insertion order. That is a property of the JavaScript `Set`, not of this interface:
+    // `candidatesFor`'s own docblock says the returned set deliberately answer only "was this
+    // turn a candidate" and refuses the ordering question, so a caller reading the order out of
+    // it was depending on a guarantee nobody made. `goldRanks` and the window composition both
+    // read this array as ordered, and `rankedCandidatesFor` exists precisely so they can.
     ...(relevance === null
       ? {}
-      : { relevancePoolFor: (question: string) => [...relevance.candidatesFor(question)] }),
+      : { relevancePoolFor: (question: string) => relevance.rankedCandidatesFor(question) }),
     // §13.85's policy, forwarded to the RECORD as well as to the product. The two are different
     // objects and this line is the whole difference: without it the prompt filters roles and the
     // artifact divides by a denominator the run could never fill. `bench/**` is an entry point and

@@ -67,6 +67,7 @@ function reportWithEvidence(
       correct: true,
       grounded: false,
       goldOverlap: gold,
+      windowComposition: null,
       retrieved,
       // The offer, equal to the carried context here because this fixture builds a
       // report by hand and no budget stands between the two.

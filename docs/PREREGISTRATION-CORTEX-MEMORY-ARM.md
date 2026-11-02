@@ -24047,3 +24047,198 @@ is a worse trade at zero tokens than 96,000 is at +61.7%.
 *Not dispatched this round.* The instrument work above is offline; the increment needs a product change
 in window assembly and a dispatch, and §13.212.6 measured the run budget at 5.1× what the capacity
 allows. It is registered so the next round starts from a falsifiable claim rather than a preference.
+
+## 13.215 The window was already filled by relevance, and one premise of the falsifier was a unit error
+
+**Written 2026-11-02, as a correction.** §13.214.3 registered a selection repair — "fill each session
+by relevance rather than chronology, at the same budget" — on the reading that `10d9b85a`'s decisive
+turn sat at chronological position 158 of a 232-turn session while 48,000's room held 167 of that same
+session. This section checks that reading against the artifact it came from and finds the inference
+invalid, the mechanism already shipped, and the actual loss somewhere neither §13.213.7 nor §13.214.5
+looked.
+
+### 13.215.1 The premise that was already true
+
+`memoryArmConfig` on `41284575092`, verbatim:
+
+| field | value |
+| --- | --- |
+| `relevanceSignal` | `retrieval-hybrid` |
+| `relevanceUnits` | **`turn`** |
+| `relevanceTopK` | `256` |
+| `rerank.provider` | `none` |
+
+`relevanceUnits: "turn"` is the whole of it. `chooseEvidence` dispatches on that field —
+`session` and `session-fill` take the session paths, **everything else falls through to
+`selectByRelevance`**, which sorts the admitted turns by `relevanceFor` descending and carries the
+largest prefix that fits. So the shipped configuration has been filling the window **by relevance and
+not by chronology** since the signal was wired, and the increment §13.214.5 registered as "the next
+thing to do" is the thing that was already running.
+
+That is checkable in the product rather than argued from the config:
+
+```ts
+// prompt.ts, selectByRelevance
+const ranked = plan.turns
+  .map((turn, arrival) => ({ turn, arrival, relevance: validateRelevance(...) }))
+  .sort((a, b) => b.relevance - a.relevance || a.arrival - b.arrival);
+```
+
+`a.arrival - b.arrival` is only a tie-break, and it is reachable only between two turns the signal
+scored identically.
+
+### 13.215.2 The evidence that settles it, and it is a shape rather than a document
+
+A chronological fill and a relevance fill make **different predictions about which turns a bigger
+room adds**, and the difference is visible in the two artifacts without any new field:
+
+- chronological fill carries turns `0..166` of the 232, so 48,000's window is a **contiguous prefix**
+  of 96,000's;
+- relevance fill carries the top 167 by score, so the 65 dropped turns are **scattered across the
+  whole session** — and, because cosine similarity is not correlated with arrival, the dropped set
+  reaches into the first quarter.
+
+Measured on the four questions §13.214.5 named, using `turns[].text` as identity:
+
+| question | 48,000 turns | 96,000 turns | dropped | kept positions span | dropped in first quarter |
+| --- | --- | --- | --- | --- | --- |
+| `0977f2af` | 55 | 119 | 64 | **3 … 114** | 17 |
+| `10d9b85a` | 167 | 232 | 66 | **0 … 227** | **0** |
+| `a1cc6108` | 181 | 243 | 64 | **0 … 235** | **0** |
+| `d24813b1` | 50 | 86 | 36 | **0 … 83** | 10 |
+
+**Not one of the four is a contiguous prefix.** For `10d9b85a` the window keeps turn 227 while
+dropping 66 earlier ones, and it drops **none** of the first 58. A chronological prefix cannot do
+that under any budget, because it can only ever stop.
+
+So the question is not whether the fill was chronological. It was not. The question is what the
+removed 66 turns had in common, and the answer is in the field that was already there.
+
+### 13.215.3 Where the loss actually is, per question, in the artifact's own counts
+
+`goldOverlap` on `10d9b85a`, both budgets:
+
+| field | 48,000 | 96,000 |
+| --- | --- | --- |
+| `total` (gold, after the role filter) | 11 | 11 |
+| `totalAll` (gold, before it) | 22 | 22 |
+| `pool` (gold the ranking surfaced) | **9** | **9** |
+| `carried` (gold delivered) | **9** | **11** |
+| `goldRanks` | `[-1, 10, 113, 141, 86, 9, 167, 241, 209, 233, -1]` | same |
+
+Two readings, and the first one is the one §13.214.3 got wrong:
+
+1. **At 48,000, all nine gold turns the ranking surfaced were delivered.** `carried == pool == 9`.
+   Nothing inside the pool was cut. The budget did not remove a single ranked gold turn on this
+   question.
+2. **The two the wider room adds are the two `-1`s** — gold turns with no rank, because
+   `goldRanks` encodes "not in the pool" as `-1`. There are 256 candidate slots and 241 is in the
+   pool, so a `-1` means rank ≥ 256 or a turn the retrieval never returned at all.
+
+So `10d9b85a` is not a question the 48,000 room answered worse than the 96,000 room **from the pool**.
+It is a question whose answer needed a turn the ranking placed below 256th, and the only way it
+reached the reader was leftover room after every scored turn had been carried.
+
+**`pool` is identical at both budgets — 9 and 9.** The ranking's reach does not move with room, which
+is what §13.214.2 said in aggregate (361 and 361) and what this question shows at the level of one
+question's gold.
+
+### 13.215.4 The inference error, named
+
+§13.214.3 read:
+
+> For `10d9b85a` the decisive turn sits at chronological 158 of a 232-turn session while 48,000's room
+> holds 167 of that same session. **The room was large enough to hold a set containing it; the
+> selection did not choose it.**
+
+The first clause is right and the second does not follow. `167` is the **cardinality** of the window;
+`158` is a **position in arrival order**; and the window is not a prefix of arrival order. Comparing
+them assumes the very thing the rest of the section sets out to doubt.
+
+The two numbers would settle each other only if the fill were chronological — and if it were, the
+position evidence in §13.215.2 would show contiguous prefixes. It does not. So `158 < 167` says
+nothing about whether turn 158 was carried, and in fact it was not, because the ranking scored it
+below the 167th-best.
+
+**This is the unit error to keep.** "The room holds N turns" and "the room holds turns 0..N−1" are
+the same statement only under arrival order. Once selection is by a signal, cardinality stops being
+a statement about membership, and every argument of the form "the room was big enough" has to name
+which set it means.
+
+### 13.215.5 The instrument that would have caught it in one line, and now exists
+
+The missing fact is not the ordering — the ordering is in the config — it is **how much of the
+delivered evidence the ranking had scored at all**. `goldOverlap.pool` answers that for gold turns
+only; on a question whose annotation names eleven turns out of two hundred and thirty-two it is
+silent about the other 221.
+
+`windowComposition` is that field, per record:
+
+```ts
+export type WindowComposition = {
+  readonly turns: number;          // delivered turns
+  readonly offered: number;        // of those, how many the ranking scored
+  readonly offeredChars: number;   // characters spent on scored turns
+  readonly unscoredChars: number;  // characters spent on turns the ranking never saw
+};
+```
+
+Its contract, which is `goldOverlap`'s one layer out:
+
+- **absent** when no ranking was consulted (`relevanceSignal: none`), because a composition of
+  `offered: 0` over a full `unscoredChars` is the shape of a ranking that failed, and it is also the
+  shape of a run where none existed;
+- **present and zero-turn** when the window is genuinely empty, because that is a measurement;
+- the two character columns are the whole of `sum(turn.length)` and a test asserts that identity on
+  every fixture, so a third column cannot be added as a silent partition — the `max(0, Σ)` failure
+  §13.214 is one section older than this one.
+
+The characters are the **turn texts**, not the rendered prompt. The prompt carries per-turn decoration
+and the session note, so the denominator of `maxPromptChars` is larger; the share this prints is a
+share of delivered evidence, and it is not a share of the budget.
+
+`tools/readout-arm-run.py --composition` prints it per capability with a `TOTAL` that is the column
+sum, and refuses an artifact that predates the field (`exit 2`) rather than printing a table of
+zeroes. Both `41284575092` and `41254359622` are such artifacts, which is the honest state: the
+instrument exists and no run has carried it yet.
+
+### 13.215.6 What it decides, and the increment this replaces §13.214.5 with
+
+The field measures the one thing that separates the two remaining hypotheses, and they call for
+different work:
+
+| if | then the lever is | cost |
+| --- | --- | --- |
+| `unscoredChars` is a large share | **room** — the window is spent on turns no re-rank can order, and the repair is a selection that refuses the unscored tail or a pool wide enough to score it | a product change, no tokens |
+| `unscoredChars` is near zero | **pool width and recall** — every character delivered was scoreable, so the only thing that can find `10d9b85a`'s two `-1`s is a ranking that surfaces them | `relevanceTopK` 256 → 512, no extra LLM tokens |
+
+`10d9b85a`'s own `pool` count points at the second row: `carried == pool` at 48,000 means the room was
+not wasted on unscored turns **for gold**, and the two gold turns the wider room bought were beyond
+rank 255. But eleven gold turns is not a population, and the gold account cannot see the 221
+non-gold turns at all — which is exactly why the field had to exist before the claim could be made.
+
+*Registered:* with `windowComposition` in the artifact, `relevanceTopK` 256 → 512 at the 48,000 budget
+raises `MR` by at least 3, on the mechanism that `10d9b85a`'s decisive turns move from `-1` to a rank
+inside the window.
+
+*Falsified by:* `MR` moving by less than 2, **or** `windowComposition.offered / turns` falling when
+the pool widens — the second would mean the wider pool is displacing scored turns rather than adding
+to them, which is a different event and not the one registered.
+
+*Not dispatched this round.* The instrument has to be in a run before the prediction can be judged,
+and §13.212.6's capacity measurement (1.41 q/min at this window on the second provider) is about the
+second provider, not about this one: a DeepSeek pass at the registered configuration is 299.6 minutes
+against a 340-minute budget, so the dispatch is affordable and is the first item for the next round.
+
+### 13.215.7 What this section withdraws
+
+- **§13.213.7**'s "the four are lost at the tail of the relevance prefix, and a ranking repair
+  reaches ≥3 of 4": withdrawn. They are not at the tail of the prefix — they are outside the prefix,
+  and for `10d9b85a` two of them are outside the pool.
+- **§13.214.3**'s "the room was large enough; the selection did not choose it": withdrawn, with the
+  unit error named in §13.215.4.
+- **§13.214.5**'s registered selection increment: withdrawn. The mechanism it registers is the
+  shipped one.
+
+What survives from §13.214 is its arithmetic: 707 / 296 cut, 53 / 185 beyond, 361 reach at both
+budgets, and the `max(0, Σ)` repair. Those numbers are unchanged and are what §13.215.2 reads.

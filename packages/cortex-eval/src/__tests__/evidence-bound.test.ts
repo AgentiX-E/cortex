@@ -72,6 +72,9 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
     // No dataset annotation in this fixture, so coverage is unmeasurable rather
     // than measured as zero -- the absent state `goldOverlapOf` returns for `[]`.
     goldOverlap: null,
+    // No ranking is consulted by this fixture, so the room's composition is
+    // unmeasurable for the same reason and in the same way.
+    windowComposition: null,
     ...overrides,
   };
 }

@@ -70,6 +70,9 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
     // absent state is what says "not measured" where a zero would say "measured as a
     // miss". Tests about coverage override it.
     goldOverlap: null,
+    // No ranking in this fixture, so the room's composition is unmeasurable rather than
+    // a window that was entirely unscored.
+    windowComposition: null,
     ...overrides,
   };
 }
@@ -695,5 +698,43 @@ describe('the record carries the coverage it was given, or omits it', () => {
     const [record] = buildQuestionRecords([input({ goldOverlap: null })]);
     expect(Object.hasOwn(record!, 'goldOverlap')).toBe(false);
     expect(JSON.parse(JSON.stringify(record))).not.toHaveProperty('goldOverlap');
+  });
+});
+
+describe('the record carries the room to the same contract the gold follows', () => {
+  it('writes the measured composition', () => {
+    const [record] = buildQuestionRecords([
+      input({
+        retrieved: ['the record says 85', 'the note says 240'],
+        windowComposition: { turns: 2, offered: 1, offeredChars: 19, unscoredChars: 17 },
+      }),
+    ]);
+    expect(record!.windowComposition).toEqual({
+      turns: 2,
+      offered: 1,
+      offeredChars: 19,
+      unscoredChars: 17,
+    });
+  });
+
+  it('omits it rather than writing zeroes when no ranking was consulted', () => {
+    // The collapse this guards is the one `relevanceSignal: none` would otherwise render:
+    // a composition of `offered: 0` over a full `unscoredChars` is the shape of a ranking
+    // that failed, and it is also the exact shape of a run where no ranking existed. The
+    // key's absence is what tells them apart, which is why this asserts on the key and on
+    // the JSON rather than on the value.
+    const [record] = buildQuestionRecords([input({ windowComposition: null })]);
+    expect(Object.hasOwn(record!, 'windowComposition')).toBe(false);
+    expect(JSON.parse(JSON.stringify(record))).not.toHaveProperty('windowComposition');
+  });
+
+  it('keeps a measured zero-turn window as an object', () => {
+    // A question declined with no evidence was measured, and its window is empty. That is
+    // a fact about the run, not an absence of measurement, so it must survive as an object
+    // while `null` above does not survive at all.
+    const zero = { turns: 0, offered: 0, offeredChars: 0, unscoredChars: 0 };
+    const [record] = buildQuestionRecords([input({ retrieved: [], windowComposition: zero })]);
+    expect(record!.windowComposition).toEqual(zero);
+    expect(JSON.parse(JSON.stringify(record))).toHaveProperty('windowComposition');
   });
 });

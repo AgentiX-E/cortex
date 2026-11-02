@@ -1750,6 +1750,123 @@ class TestWhatTheRankFooterPromises:
         assert 'larger ROOM' in r.stdout
 
 
+
+class TestWhereTheRoomWent:
+    """`windowComposition` answers a question `goldOverlap` structurally cannot.
+
+    The gold account is conditioned on the turns the dataset annotated. On a question whose
+    annotation names one turn it says nothing about the other two hundred the reader also
+    read -- so it cannot say whether the room was spent on evidence the ranking could order,
+    or on the tail the ranking never scored and only leftover room admitted.
+
+    These tests pin three things the table has to get right, and the third is the one this
+    campaign keeps relearning: **the total is the sum of the rows**, not a statistic over
+    aggregated parts (`§13.214`: a clamp applied after summing printed 53 gold turns as 0).
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, dict] | tuple[str, None]]) -> dict:
+        questions = []
+        for index, (capability, composition) in enumerate(rows):
+            record = {
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None,
+                'rawOutput': None,
+                'correct': False,
+            }
+            if composition is not None:
+                record['windowComposition'] = composition
+            questions.append(record)
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--composition', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    @staticmethod
+    def _cells(stdout: str) -> dict[str, list[int]]:
+        out: dict[str, list[int]] = {}
+        for line in stdout.splitlines():
+            parts = line.split()
+            if len(parts) != 7:
+                continue
+            try:
+                out[parts[0]] = [int(value) for value in parts[1:]]
+            except ValueError:
+                continue
+        return out
+
+    def test_the_total_is_the_sum_of_the_rows(self, tmp_path: Path) -> None:
+        report = self._report([
+            ('MR', {'turns': 4, 'offered': 3, 'offeredChars': 300, 'unscoredChars': 100}),
+            ('KU', {'turns': 2, 'offered': 0, 'offeredChars': 0, 'unscoredChars': 50}),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        cells = self._cells(r.stdout)
+        assert 'MR' in cells and 'KU' in cells and 'TOTAL' in cells, r.stdout
+        for column in range(6):
+            assert cells['TOTAL'][column] == cells['MR'][column] + cells['KU'][column], (
+                f'column {column}: TOTAL is not the sum of the rows\n{r.stdout}'
+            )
+        # 300 + 150 = 450 characters of delivered evidence in total, and it is the sum of
+        # the two character columns rather than a third measurement of them.
+        assert cells['TOTAL'] == [2, 6, 3, 300, 150, 450], r.stdout
+
+    def test_a_run_whose_window_is_wholly_offered_says_so(self, tmp_path: Path) -> None:
+        # The state that sends a reader to the pool rather than to the order: every character
+        # was scored, so a better ranking is the only lever left in the window.
+        report = self._report([
+            ('IE', {'turns': 2, 'offered': 2, 'offeredChars': 80, 'unscoredChars': 0}),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert '100.0%' in r.stdout, r.stdout
+        # And the sentence that says where the remaining lever is, so the reading is not left
+        # to the reader's inference from a percentage.
+        assert 'ranking' in r.stdout.lower()
+
+    def test_an_artifact_without_the_field_is_refused_rather_than_read_as_zero(
+        self, tmp_path: Path
+    ) -> None:
+        # The failure this refuses: a table of zeroes reads as "the ranking offered nothing",
+        # which is a measurement of a signal that failed. The truth is that the artifact
+        # predates the field, and the two must not render the same.
+        r = self._run(tmp_path, self._report([('MR', None), ('KU', None)]))
+        assert r.returncode == 2, r.stdout
+        assert 'windowComposition' in r.stderr
+        assert 'predates' in r.stderr
+        assert 'TOTAL' not in r.stdout
+
+    def test_a_partial_artifact_counts_only_the_records_that_carry_it(
+        self, tmp_path: Path
+    ) -> None:
+        # A record with no composition is not a record with an empty one, and the denominator
+        # of the `n` column is what says how much of the roster the reading covers.
+        report = self._report([
+            ('MR', {'turns': 3, 'offered': 1, 'offeredChars': 10, 'unscoredChars': 20}),
+            ('MR', None),
+        ])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        cells = self._cells(r.stdout)
+        assert cells['TOTAL'][0] == 1, r.stdout
+        assert cells['TOTAL'][1] == 3, r.stdout
+
+
 class TestTheTotalIsTheColumnSum:
     """`max(0, sum)` is not `sum(max(0, .))`, and the pool table printed the first as the TOTAL.
 
