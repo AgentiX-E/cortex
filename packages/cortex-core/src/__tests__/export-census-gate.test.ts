@@ -13,18 +13,111 @@
  */
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../../../..');
 const SCRIPT = resolve(REPO_ROOT, 'tools/export-census.mjs');
 const BASELINE = resolve(REPO_ROOT, 'tools/export-census-baseline.json');
 
-/** Runs the census script and returns its status and combined output. */
-function runCensus(args: readonly string[]): { status: number | null; output: string } {
-  const result = spawnSync('node', [SCRIPT, ...args], { cwd: REPO_ROOT, encoding: 'utf8' });
+/**
+ * The file every injection test used to write, and the one whose mtime proves the
+ * injections have moved off the checkout.
+ */
+const WITNESS = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
+const WITNESS_MTIME_BEFORE = statSync(WITNESS).mtimeMs;
+
+/**
+ * Runs the census script against `root`, defaulting to this checkout.
+ *
+ * ## Why the second parameter exists
+ *
+ * The gate's regression tests have to make a new orphan appear, and they did it by
+ * appending an export to a real source file and restoring it in `finally`. That is a test
+ * writing to the tree it asserts about, and the failure modes are not hypothetical:
+ *
+ *   - two vitest instances on one checkout (a package run beside a full `pnpm check`,
+ *     which is what a developer does while waiting for one) interleave the write and the
+ *     restore, and the loser's bytes survive. Measured in this campaign: a probe export
+ *     left in `packages/cortex-core/src/math/vector.ts` after exactly that overlap;
+ *   - a timeout or a `SIGKILL` skips `finally` entirely;
+ *   - and the residue is silent in the direction that matters -- the next baseline
+ *     mismatch reads as a ledger problem, not as a harness problem.
+ *
+ * So the injections moved to a throwaway tree seeded here and removed afterwards, and the
+ * checkout is read-only for the whole suite. `EXPORT_CENSUS_ROOT` is what makes that
+ * possible; see the script's own comment for why the override lives there rather than in
+ * the harness.
+ */
+function runCensus(
+  args: readonly string[],
+  root: string = REPO_ROOT,
+): { status: number | null; output: string } {
+  const result = spawnSync('node', [SCRIPT, ...args], {
+    cwd: root,
+    encoding: 'utf8',
+    // The default is the inherited environment untouched, so the tests that measure this
+    // checkout run exactly the command a reader would type.
+    env: root === REPO_ROOT ? process.env : { ...process.env, EXPORT_CENSUS_ROOT: root },
+  });
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
+}
+
+/**
+ * A three-symbol tree whose baseline reconciles exactly.
+ *
+ * `a.ts` exports two functions; `b.ts` calls one of them and exports nothing, so it
+ * contributes a caller and no declaration site. `orphanThing` is recorded in the seeded
+ * ledger, which means the tree passes `--check` -- that is the property every injection
+ * test needs, because "the gate fails" is only evidence when the same tree passed a moment
+ * earlier.
+ *
+ * The consumer exports nothing on purpose. An exported-but-uncalled `value` would be a
+ * second orphan and every injection would then be measured against a backlog of two,
+ * which makes `1 NEW orphan(s)` the wrong assertion to write.
+ */
+function makeCensusTree(): string {
+  const root = mkdtempSync(join(tmpdir(), 'census-tree-'));
+  mkdirSync(join(root, 'packages/fixture/src'), { recursive: true });
+  mkdirSync(join(root, 'tools'), { recursive: true });
+  writeFileSync(
+    join(root, 'packages/fixture/src/a.ts'),
+    'export function usedThing(): number {\n  return 1;\n}\n' +
+      'export function orphanThing(): number {\n  return 2;\n}\n',
+  );
+  writeFileSync(
+    join(root, 'packages/fixture/src/b.ts'),
+    "import { usedThing } from './a.js';\n\n// A consumer that exports nothing.\nvoid usedThing();\n",
+  );
+  writeFileSync(
+    join(root, 'tools/export-census-baseline.json'),
+    JSON.stringify(
+      {
+        knownOrphans: ['fixture: orphanThing'],
+        locations: { 'fixture: orphanThing': ['packages/fixture/src/a.ts:4'] },
+        groups: [
+          {
+            category: 'fixture',
+            count: 1,
+            rationale: 'one recorded orphan, so the gate has a backlog to reconcile against',
+            declarationSites: ['packages/fixture/src/a.ts:4'],
+          },
+        ],
+        totals: {
+          exports: 2,
+          withCaller: 1,
+          orphaned: 1,
+          referencedLocally: 0,
+          unreferenced: 1,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  return root;
 }
 
 type Baseline = {
@@ -160,7 +253,13 @@ describe('the census gate enforces the baseline', () => {
     //
     // The injection is a byte suffix and the restore is a byte write, so neither
     // depends on git being present or on the tree being clean.
-    const victim = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
+    const tree = makeCensusTree();
+    // The seeded tree passes before the injection, so the failure below is caused by
+    // the probe and not by the fixture. This is the positive control the assertion
+    // needs and the one that used to be implicit in "the committed tree passes".
+    expect(runCensus(['--check'], tree).status).toBe(0);
+
+    const victim = resolve(tree, 'packages/fixture/src/a.ts');
     const original = readFileSync(victim, 'utf8');
     const marker = 'orchestratedCensusGateProbe';
     try {
@@ -171,11 +270,11 @@ describe('the census gate enforces the baseline', () => {
       );
       // The census reads source text, not dist, so no rebuild is needed: the
       // appended declaration is visible immediately.
-      const { status, output } = runCensus(['--check']);
+      const { status, output } = runCensus(['--check'], tree);
       expect(status).toBe(1);
       expect(output).toContain('1 NEW orphan(s) not in the baseline');
       expect(output).toContain(marker);
-      expect(output).toContain('packages/cortex-core/src/math/vector.ts');
+      expect(output).toContain('packages/fixture/src/a.ts');
     } finally {
       writeFileSync(victim, original);
       expect(readFileSync(victim, 'utf8')).toBe(original);
@@ -225,8 +324,9 @@ describe('the census gate enforces the baseline', () => {
       // a comment in the declaring file would also have satisfied
       // `isReferencedLocally` and moved the symbol between buckets instead of out
       // of the report entirely.
-      const declarationSite = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
-      const proseSite = resolve(REPO_ROOT, 'packages/cortex-core/src/math/fsrs.ts');
+      const tree = makeCensusTree();
+      const declarationSite = resolve(tree, 'packages/fixture/src/a.ts');
+      const proseSite = resolve(tree, 'packages/fixture/src/b.ts');
       const originalDeclaration = readFileSync(declarationSite, 'utf8');
       const originalProse = readFileSync(proseSite, 'utf8');
       const marker = 'proseMentionedCensusGateProbe';
@@ -243,7 +343,7 @@ describe('the census gate enforces the baseline', () => {
         // POSITIVE CONTROL first: with the prose removed the gate must fail, so a
         // zero exit below cannot be blamed on the injection not taking effect.
         writeFileSync(proseSite, originalProse);
-        const withoutProse = runCensus(['--check']);
+        const withoutProse = runCensus(['--check'], tree);
         expect(withoutProse.status, 'probe export was not detected at all').toBe(1);
         expect(withoutProse.output).toContain(marker);
 
@@ -252,7 +352,7 @@ describe('the census gate enforces the baseline', () => {
           proseSite,
           `${originalProse}\n// See ${marker} for the extraction pattern this repo now uses.\n`,
         );
-        const withProse = runCensus(['--check']);
+        const withProse = runCensus(['--check'], tree);
         expect(withProse.status, 'a comment naming the orphan suppressed the finding').toBe(1);
         expect(withProse.output).toContain(marker);
       } finally {
@@ -305,7 +405,7 @@ describe('the census gate enforces the baseline', () => {
       // Not a simulation of the CI environment: it is the environment. The
       // archive below is exactly what the failing run had, and the assertion is
       // that a byte-level restore is indifferent to it.
-      const archive = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
+      const archive = resolve(makeCensusTree(), 'packages/fixture/src/a.ts');
       const before = readFileSync(archive, 'utf8');
       const probe = `${before}\n/** probe */\nexport function restoreIsByteLevel(): number {\n  return 1;\n}\n`;
       writeFileSync(archive, probe);
@@ -490,7 +590,8 @@ describe('the census CLI survives output that is larger than a pipe buffer', () 
     // eat it, because losing the refusal is the failure mode that matters: CI
     // reads the exit status AND the named symbol, and a silent truncation gives
     // a red run whose message does not say why.
-    const victim = resolve(REPO_ROOT, 'packages/cortex-core/src/math/vector.ts');
+    const tree = makeCensusTree();
+    const victim = resolve(tree, 'packages/fixture/src/a.ts');
     const original = readFileSync(victim, 'utf8');
     const marker = 'pipedCensusGateProbe';
     try {
@@ -501,8 +602,11 @@ describe('the census CLI survives output that is larger than a pipe buffer', () 
       );
       const result = spawnSync(
         'bash',
-        ['-c', 'node tools/export-census.mjs --check 2>&1 | cat; exit ${PIPESTATUS[0]}'],
-        { cwd: REPO_ROOT, encoding: 'utf8' },
+        // The script by absolute path, because the pipe test's working directory is the
+        // fixture tree and `tools/export-census.mjs` does not exist there -- the tool that
+        // measures a tree is not part of the tree it measures.
+        ['-c', `node ${SCRIPT} --check 2>&1 | cat; exit \${PIPESTATUS[0]}`],
+        { cwd: tree, encoding: 'utf8', env: { ...process.env, EXPORT_CENSUS_ROOT: tree } },
       );
       // `${PIPESTATUS[0]}` is the CLI's status, not `cat`'s: the point is that the
       // gate keeps its non-zero exit through a pipeline, which is how CI runs it.
@@ -547,5 +651,42 @@ describe('the census counts the workspace outside packages/*/src', () => {
     const payload = JSON.parse(output) as { orphans: string[] };
     const fromBench = payload.orphans.filter((line) => line.includes('/bench/'));
     expect(fromBench).toEqual([]);
+  });
+});
+
+describe('the suite does not write to the checkout it asserts about', () => {
+  /**
+   * THE REGRESSION TEST for the harness's own side effect.
+   *
+   * Every injection test in this file appends an export to a source file so the gate has
+   * something new to report. They used to append to `packages/cortex-core/src/math/vector.ts`
+   * -- the file this suite is measuring -- and restore it in `finally`. The restore held,
+   * which is why the defect survived so long: it fails only when two runs overlap or a run
+   * is killed.
+   *
+   * Both happened in this campaign. Two vitest instances on one checkout (a single-package
+   * run beside a full `pnpm check`) interleaved the write and the restore, and a probe
+   * export was left in that file — visible as a `git status` entry nobody wrote and as a
+   * baseline mismatch attributed to the ledger. A timeout would do the same without the
+   * second process.
+   *
+   * So the property asserted here is not "the tree is restored". It is the stronger one the
+   * mtime carries: **the file was never opened for writing at all**. A restore that works
+   * still bumps the mtime, and the assertion below is what tells those two worlds apart.
+   */
+  it('leaves the witness file with the bytes and the mtime it started with', () => {
+    const bytes = readFileSync(WITNESS, 'utf8');
+    for (const marker of [
+      'orchestratedCensusGateProbe',
+      'proseMentionedCensusGateProbe',
+      'pipedCensusGateProbe',
+      'restoreIsByteLevel',
+    ]) {
+      expect(bytes, `${marker} survived in the checkout`).not.toContain(marker);
+    }
+    // The mtime is the half that a working restore cannot satisfy. `toBe` on the float is
+    // deliberate: a filesystem that rewrote the file would report a different value, and
+    // the only way to pass is to not write.
+    expect(statSync(WITNESS).mtimeMs).toBe(WITNESS_MTIME_BEFORE);
   });
 });

@@ -30,8 +30,42 @@ import {
 } from '../packages/cortex-core/dist/export-census.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, '..');
-const BASELINE_PATH = join(HERE, 'export-census-baseline.json');
+/**
+ * The tree this script measures.
+ *
+ * `EXPORT_CENSUS_ROOT` exists for one reason: the gate's own regression tests have to inject an
+ * orphan to prove that `--check` reports it, and injecting into the checkout they are running in
+ * makes the suite a writer of the tree it is asserting about. That is not a theoretical hazard.
+ *
+ *   - Two vitest instances on one checkout (a package run beside a full `pnpm check`, which is what
+ *     a developer does while waiting) interleave the write and the restore, and the loser's bytes
+ *     survive. The orphan then sits in a source file until somebody runs `git status`.
+ *   - A timeout or a `SIGKILL` skips `finally` entirely, so the injected export stays. The gate
+ *     that is supposed to catch orphans then reports one, in the file the harness picked.
+ *   - The failure is silent in the direction that matters: the next run's baseline mismatch is
+ *     attributed to the ledger, not to the harness.
+ *
+ * With a root, an injection test builds a throwaway tree, points the script at it, and the checkout
+ * is read-only for the whole suite. The script's own behaviour does not branch on which tree it is
+ * given: it walks `packages/` and `tools/` under it either way.
+ */
+const ROOT_OVERRIDE = process.env.EXPORT_CENSUS_ROOT;
+const REPO_ROOT =
+  ROOT_OVERRIDE === undefined || ROOT_OVERRIDE === ''
+    ? resolve(HERE, '..')
+    : resolve(ROOT_OVERRIDE);
+/**
+ * The ledger, which follows the measured tree.
+ *
+ * Under an override the baseline is read from `<root>/tools/export-census-baseline.json`, so a
+ * fixture can seed the backlog it wants to test against. Reading the real ledger while measuring a
+ * fixture tree would compare a three-symbol tree to a 141 KB record of this repository, and every
+ * orphan in the fixture would be "new" for the wrong reason.
+ */
+const BASELINE_PATH =
+  ROOT_OVERRIDE === undefined || ROOT_OVERRIDE === ''
+    ? join(HERE, 'export-census-baseline.json')
+    : join(REPO_ROOT, 'tools', 'export-census-baseline.json');
 
 /** Recursively collects files under `dir`, skipping build output and deps. */
 function walk(dir) {
