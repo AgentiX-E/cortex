@@ -24363,3 +24363,73 @@ DeepSeek at the registered configuration.
 *Falsified by:* an artifact whose `transportRetry.calls` is `0` on a run that graded answers (the
 wiring is wrong, not the provider), **or** a `429` that still ends the pass after 120 s of permitted
 waiting — which would make the ceiling, not the ladder, the thing to measure next.
+
+### 13.216.8 The failure path carries the counters too, and it is the one that needed them
+
+`13.216.5` put the counters in the **report**. Run `41346610318` did not produce a report. It
+graded twelve of twenty probe questions, was rejected with `429` on the thirteenth, spent six
+minutes and twenty-five seconds inside the ladder, and uploaded:
+
+```
+cortex-memory/benchmark-error.log    12 progress lines and a stack trace
+cortex-memory/benchmark-*.json       absent
+cortex-memory/benchmark-*.md         absent
+```
+
+`PartialAblation` carried `reached: 12`, the twelve answers, and no number saying a rate limit
+had been hit. So the question the next dispatch had to be chosen on — *is this arm affordable,
+or is the quota gone* — was answered eleven minutes later by a hand-run of the default
+parameters. That is not a thing a pipeline can do, and it is the same asymmetry `13.216.5`
+corrects one layer up: a report without counters is a gap, a **failure** without counters is
+the end of a five-hour run that cannot be read.
+
+#### Where the snapshot is taken
+
+In `attachPartial`, the single funnel every failing run passes through — the
+single-repetition wrapper, the repetition loop and the empty-measurement boundary all end
+there. A snapshot taken by each caller would be a line every future caller could forget, which
+is the argument that put `attachPartial` here rather than in `bench/run-ablation.ts` in the
+first place. It makes the function impure, and the trade is stated in its comment: it is called
+exactly once per run, at the moment of failure, and *what the transport had seen by then* is a
+property of that moment rather than of the arguments. A pure signature would require every
+caller to snapshot the aggregate before the throw, which cannot be done — the throw is the
+event.
+
+#### Why this funnel does not reset the aggregate, and the arm's does
+
+The two paths want opposite things from the same counters, and the asymmetry is the design:
+
+| path | rule | why |
+| --- | --- | --- |
+| report (`bench-memory-arm.ts`) | `resetRetryStats()` **before** the passes | the report describes this arm; a preflight or probe that preceded it is traffic nobody can attribute |
+| failure (`attachPartial`) | read **without** resetting | the retries are the failure. Resetting here would discard the exact traffic that ended the run, which is the number the next dispatch is chosen on |
+
+`provider: 'run'` and `scope: 'process'` are the labels that keep the second row honest: the
+number is everything the process had seen, and the artifact says so rather than presenting it
+as one endpoint's.
+
+#### Why it is attached at zero, and why that is not the same as absent
+
+Same rule as the report: `calls: 0` on a partial says the counters were wired and saw no
+traffic, which is what a system double produces. Absence therefore keeps its single meaning —
+*this artifact was written before the field existed* — which is a different fact with a
+different reading. The guard order matters as much: `measuredNothing` is decided **before** the
+aggregate is read, so a run that measured nothing attaches no partial at all rather than a
+record of two empty vectors with a live retry count on it (which would read as *a measurement
+happened, and it was throttled*).
+
+#### Acceptance
+
+| # | what must be true | how it is checked |
+| --- | --- | --- |
+| 1 | a failed run's partial carries the counters | `partial-ablation.test.ts`: seeded retry, then a feature-side death; `partial.transportRetry` defined |
+| 2 | the number is live, not a constant zero | the same test: `attempts: 2`, `retried: 1`, `rateLimited: 1` from a seeded rejected-then-served call |
+| 3 | it is labelled as the run's, not a provider's | `provider === 'run'`, `scope === 'process'` |
+| 4 | zero is a reading | reset, then die: field present with `calls: 0` |
+| 5 | no measurement attaches nothing at all | baseline-side death at question 0 with a live seeded retry: `partial` absent, so no counters hang on a fabricated record |
+| 6 | the funnel does not reset | mutant that calls `resetRetryStats()` before the read fails row 2 (`expected +0 to be 2`) |
+| 7 | dropping the attach fails the right rows | mutant that removes it fails rows 1 and 4 and leaves row 5 green — the correct pairing |
+
+*Falsified by:* the next failing artifact whose `partial.transportRetry` is absent while its
+`reached` is above zero (the wiring is wrong, not the provider), or one whose counters do not
+close (`cleanCalls + retriedCalls + exhaustedCalls !== calls`) at the moment of death.

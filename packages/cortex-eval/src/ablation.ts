@@ -9,6 +9,7 @@
  *   introduce sampling variance (stochastic temperature), because a t-test over
  *   identical deterministic repeats is undefined.
  */
+import { retryStats } from '@agentix-e/cortex-ai';
 import { stddev, wilsonScoreInterval } from '@agentix-e/cortex-core';
 import type {
   AblationResult,
@@ -25,6 +26,7 @@ import { classifyTransitions } from './answer-transition.js';
 import { evaluateWithScorerDetailed } from './benchmark.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import { correctnessMask } from './question-record.js';
+import { transportRetryReport } from './retrieval-diagnostics.js';
 import {
   aggregate,
   cohensD,
@@ -81,6 +83,21 @@ const ALL_CAPABILITIES: Capability[] = ['IE', 'MR', 'KU', 'TR', 'ABS'];
  * `reached` counts the side that was RUNNING when the error surfaced, so a feature-side
  * death at question 0 leaves `reached: 0` and a COMPLETE baseline, and discarding the
  * baseline then would throw away the half of the measurement that finished.
+ *
+ * ## Why the transport counters are read HERE rather than by each caller
+ *
+ * A partial is written on a failure, and the failure that matters to a five-hour dispatch is
+ * the one this campaign finally measured: a `429` that outlived the retry ladder
+ * (`13.216`, run `41346610318`). What the counters say at that moment -- how many attempts the
+ * provider rejected, how many calls retried -- is the number that decides whether the next
+ * dispatch is affordable, and it is only available while the process is alive. Reading it in
+ * this one funnel means no call site can forget it, which is the same argument that put
+ * `attachPartial` here rather than in `bench/run-ablation.ts`.
+ *
+ * This makes the function impure, and that is the trade: it is called exactly once per run, at
+ * the moment of failure, and "what the transport saw by then" is a property of that moment
+ * rather than of the arguments. A pure signature would require every caller to snapshot the
+ * aggregate before the throw, which cannot be done -- the throw is the event.
  */
 function attachPartial(error: unknown, partial: PartialAblation): unknown {
   const measuredNothing =
@@ -90,7 +107,10 @@ function attachPartial(error: unknown, partial: PartialAblation): unknown {
     partial.completed.length === 0;
   if (measuredNothing) return error;
   if (error !== null && typeof error === 'object') {
-    (error as { partial?: PartialAblation }).partial = partial;
+    (error as { partial?: PartialAblation }).partial = {
+      ...partial,
+      transportRetry: transportRetryReport(retryStats(), { provider: 'run' }),
+    };
   }
   return error;
 }

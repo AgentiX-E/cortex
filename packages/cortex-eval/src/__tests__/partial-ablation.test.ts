@@ -42,6 +42,8 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { resetRetryStats, retryStats, retryableFetch } from '@agentix-e/cortex-ai';
+
 import { runAblation } from '../ablation.js';
 import { exactMatchScorer } from '../metrics.js';
 import type { Answer, BenchmarkDataset, MemorySystem, PartialAblation } from '../types.js';
@@ -658,5 +660,127 @@ describe('a repetition that finished is durable, not only the one that died', ()
     const partial = partialOf(failure)!;
     expect(partial.run).toBe(2);
     expect(partial.completed.map((pass) => pass.run)).toEqual([0, 1]);
+  });
+});
+
+/**
+ * A failure is the run that needs the transport counters most, and it was the one run
+ * that never carried them.
+ *
+ * ## The loss this pins
+ *
+ * Run `41346610318` graded twelve of twenty probe questions, hit `429` on the thirteenth,
+ * and spent six minutes and twenty-five seconds in the retry ladder before giving up. The
+ * artifact it uploaded held `reached: 12` and a stack trace. Twelve graded answers, no
+ * verdict, and **no number anywhere saying a rate limit had been hit** -- so the one
+ * question the next dispatch had to answer, "is this arm affordable or is the quota gone",
+ * had no answer in the record. It was answered eleven minutes later by a hand-run of the
+ * default parameters, which is not a thing a pipeline can do.
+ *
+ * The report path had just been given the counters (`attachTransport`, §13.216.5), and the
+ * failure path is where they matter more: a report with no counters is a gap, a failure
+ * with no counters is the end of a five-hour run that cannot be read.
+ *
+ * ## Why the read is here and not at each call site
+ *
+ * `attachPartial` is the one funnel every failing run passes through -- the single-repetition
+ * wrapper, the repetition loop and the empty-measurement boundary all end at it. A counter
+ * snapshot taken by each caller would be a line every future caller could forget, which is
+ * the same argument that put `attachPartial` here rather than in `bench/run-ablation.ts`.
+ *
+ * ## Why the test seeds a real retry instead of starting from zero
+ *
+ * A fixture whose aggregate is already zero passes against an implementation that reads a
+ * constant `0` -- and against one that never read at all. Seeding a genuine rejected-then-
+ * served call first makes `retried: 1` a live reading: it can only be there if the funnel
+ * looked at the aggregate at the moment of the throw.
+ */
+describe('a failure carries what the transport saw before it', () => {
+  /** One call that is rejected once and then served, so the aggregate is provably non-zero. */
+  async function seedOneRetry(): Promise<void> {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response('{}', { status: 429 })
+        : new Response('{}', { status: 200 });
+    }) as unknown as typeof fetch;
+    // `baseDelayMs: 0` keeps the fixture instant; the counter does not care how long it waited.
+    await retryableFetch(fetchFn, 'http://seed.invalid', {}, { maxRetries: 1, baseDelayMs: 0 });
+  }
+
+  it('attaches the counters that were live when the run died', async () => {
+    resetRetryStats();
+    await seedOneRetry();
+    // The seed is a fact about the process aggregate before the ablation starts, and it is
+    // the shape of `41346610318`'s traffic: one request rejected, one retry served.
+    expect(retryStats().retried).toBe(1);
+
+    const failure = await failureOf(
+      datasetOf(3),
+      healthySystem('reference-pipeline', []),
+      dyingSystem('cortex-memory', ['answer-0'], 1),
+    );
+
+    const partial = partialOf(failure)!;
+    expect(partial.featureAnswers).toEqual(['answer-0']);
+    expect(partial.transportRetry).toBeDefined();
+    // Presented as the run's counters rather than as one provider's, because the aggregate is
+    // process-level and the retry layer cannot tell the reader which endpoint it was spending
+    // on -- `provider: 'run'` is the label that says so rather than a claim it cannot support.
+    expect(partial.transportRetry?.provider).toBe('run');
+    expect(partial.transportRetry?.scope).toBe('process');
+    // Live, not constant: the seeded call issued two attempts and retried once, and this
+    // funnel does NOT reset the aggregate -- resetting here would discard the very traffic
+    // that ended the run, which is the number the next dispatch is chosen on.
+    expect(partial.transportRetry?.attempts).toBe(2);
+    expect(partial.transportRetry?.retried).toBe(1);
+    expect(partial.transportRetry?.rateLimited).toBe(1);
+  });
+
+  it('carries the counters at zero too, so absence keeps meaning "written before the field"', async () => {
+    // The boundary that makes the field readable. If the counters were attached only when
+    // non-zero, an artifact without them would be ambiguous between "this run was never
+    // throttled" and "this artifact predates the counters" -- the two readings a later
+    // dispatch treats in opposite ways. `calls: 0` is the honest third state: the aggregate
+    // was wired and saw no traffic, which is what a fixture of system doubles produces.
+    resetRetryStats();
+
+    const failure = await failureOf(
+      datasetOf(3),
+      healthySystem('reference-pipeline', []),
+      dyingSystem('cortex-memory', ['answer-0'], 1),
+    );
+
+    const partial = partialOf(failure)!;
+    expect(partial.transportRetry).toBeDefined();
+    expect(partial.transportRetry?.calls).toBe(0);
+    expect(partial.transportRetry?.attempts).toBe(0);
+    expect(partial.transportRetry?.retried).toBe(0);
+    expect(partial.transportRetry?.rateLimited).toBe(0);
+  });
+
+  it('attaches neither a partial nor counters when nothing was measured', async () => {
+    // The guard order, pinned where the seed makes it visible. `measuredNothing` is decided
+    // BEFORE the aggregate is read, so a run that measured nothing leaves no object to hang
+    // counters on -- not a partial with two empty vectors and a live retry count, which
+    // would read as "a measurement happened and it was throttled". The seed here is what
+    // separates this from a test that would pass against an unconditional attach.
+    resetRetryStats();
+    await seedOneRetry();
+    expect(retryStats().retried).toBe(1);
+
+    const failure = await runAblation(
+      datasetOf(4),
+      dyingSystem('reference-pipeline', [], 0),
+      healthySystem('cortex-memory', []),
+      { runs: 1, scorer: exactMatchScorer },
+    ).then(
+      () => null,
+      (error: unknown) => error as Error,
+    );
+
+    expect(failure).toBeInstanceOf(TypeError);
+    expect(partialOf(failure!)).toBeUndefined();
   });
 });

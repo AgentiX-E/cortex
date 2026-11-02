@@ -1,4 +1,5 @@
 import type { ConfidenceInterval } from '@agentix-e/cortex-core';
+import type { TransportRetryReport } from './retrieval-diagnostics.js';
 
 /**
  * Core types for the Cortex scientific evaluation harness.
@@ -290,6 +291,22 @@ export type PartialAblation = {
    * stated in the type rather than left to the writer.
    */
   completed: CompletedPass[];
+  /**
+   * What the transport layer saw before the failure, read at the moment of the throw.
+   *
+   * ## Why a failure record needs it more than a report does
+   *
+   * The counters say how many requests the provider rejected and how many calls had to retry,
+   * and the reading that matters is the one taken when a run DIES: `41346610318` ended on a
+   * `429` at question 13 of a 20-question probe and its artifact could not say whether the
+   * ladder had been beaten by a per-minute window or by a quota nobody can wait out. Those are
+   * different next dispatches.
+   *
+   * Optional for the reason every field here that predates an instrument is optional: a partial
+   * written before `13.216` has none, and its absence must read as "not measured" rather than
+   * as "nothing was retried".
+   */
+  transportRetry?: TransportRetryReport | undefined;
 };
 
 /** One finished repetition, both sides, in dataset order. */
