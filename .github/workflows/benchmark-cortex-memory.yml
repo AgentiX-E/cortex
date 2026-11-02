@@ -585,8 +585,24 @@ jobs:
         env:
           EXPANSION: ${{ github.event.inputs.cortex_memory_query_expansion }}
         run: |
+          # When the run fails there is no report to audit, and the readout used to end here with
+          # "file not found" -- while the one artifact the failure DID produce sat beside it,
+          # unread. `41346610318` is that file: a partial record with twelve graded answers and,
+          # before 13.216.8, no counters. So the audit is kept for a report and the partial is read
+          # for a failure; neither branch is allowed to be silent about which one it took.
           report=packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          partial=packages/cortex-memory/benchmark-cortex-memory-partial.json
           replay=/tmp/window-replay.json
+          if [ ! -f "$report" ]; then
+            if [ -f "$partial" ]; then
+              echo "::notice::no report: the run did not finish. Reading the partial record."
+              python3 tools/readout-arm-run.py --partial "$partial"
+              exit $?
+            fi
+            echo "::error::neither a report nor a partial record exists, so this run left no"
+            echo "::error::measurement at all. That is the defect 13.216.8 exists to prevent."
+            exit 1
+          fi
           extra=()
           if [ "$EXPANSION" = "window" ]; then
             if ! node tools/window-wired.mjs --control "$report" --json > "$replay"; then

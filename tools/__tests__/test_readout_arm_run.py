@@ -2888,3 +2888,223 @@ class TestWhatTheProviderDidWithTheRequests:
         assert r.returncode == 2
         assert 'present and unreadable' in r.stderr, r.stderr
         assert 'predates the field' not in r.stderr
+
+
+class TestWhatAFailedRunLeftBehind:
+    """`--partial` reads the one artifact a failed run produces, and it is the only one.
+
+    `41346610318` died on a `429` at question 13 of 20. The report reader could not say anything
+    about it, because a run that dies writes no report: the file that exists is
+    `benchmark-cortex-memory-partial.json`. Until this mode existed, the counters the previous
+    commit attached to that record had no reader in the pipeline at all -- a field with no reader
+    is the same defect as no field, one commit later.
+
+    The fixtures are the archived records rather than invented ones, because the two shapes that
+    matter are both in the archives: `41346610318` (a complete baseline, twelve of twenty on the
+    feature side, no counters) and `38941095220` (a failure in repetition 1, six keys, no
+    `completed`, and two thousand graded answers that were in memory and were never written).
+    """
+
+    @staticmethod
+    def _run(tmp_path: Path, record: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'benchmark-cortex-memory-partial.json'
+        path.write_text(json.dumps(record), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--partial', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    @staticmethod
+    def _record(**overrides: object) -> dict:
+        """`41346610318`'s own record, key for key."""
+        record = {
+            'system': 'cortex-memory',
+            'reached': 12,
+            'total': 20,
+            'run': 0,
+            'baselineAnswers': [f'baseline-{i}' for i in range(20)],
+            'featureAnswers': [f'feature-{i}' for i in range(12)],
+            'completed': [],
+        }
+        record.update(overrides)
+        return record
+
+    def test_the_extent_is_printed_as_a_share_and_not_as_a_count(self, tmp_path: Path) -> None:
+        # 12 of 20 is the number the failed artifact could always have given, and nobody read,
+        # because the reader took a report path. The share matters: "12" alone is unreadable
+        # without knowing whether the dataset is 20 or 500.
+        r = self._run(tmp_path, self._record())
+        assert r.returncode == 0, r.stderr
+        assert 'reached: 12 of 20 questions (60.0% of it)' in r.stdout, r.stdout
+        assert 'answers kept -- baseline: 20, feature: 12' in r.stdout, r.stdout
+        assert 'died on: cortex-memory, repetition 0' in r.stdout, r.stdout
+
+    def test_the_readings_a_partial_must_not_offer_are_named(self, tmp_path: Path) -> None:
+        # The three subtractions. Each produces a number that looks like a measurement -- the
+        # baseline here is complete, so scoring it alone yields a real rate that belongs to no
+        # arm -- so the section says which are absent and why, instead of leaving silence.
+        r = self._run(tmp_path, self._record())
+        assert r.returncode == 0, r.stderr
+        assert 'ungraded' in r.stdout, r.stdout
+        assert 'delta' in r.stdout and 'never happened' in r.stdout, r.stdout
+        assert '0/0' in r.stdout, r.stdout
+        # And no accuracy is printed, because none can be: there is no `accuracy` string anywhere
+        # in this block, so a reader cannot take one away from it.
+        assert 'accuracy:' not in r.stdout, r.stdout
+
+    def test_a_complete_report_is_refused_rather_than_read_as_an_empty_partial(
+        self, tmp_path: Path
+    ) -> None:
+        # The dangerous direction. A report has no `reached`, so a lenient reader would print
+        # "0 of 0" for a run that answered every question -- the same class of error as a table
+        # of zeroes standing in for "not measured".
+        r = self._run(tmp_path, _synthetic_report())
+        assert r.returncode == 2
+        assert 'this is a complete report' in r.stderr, r.stderr
+        assert r.stdout.strip() == '', r.stdout
+
+    def test_an_artifact_without_completed_still_says_how_many_repetitions_finished(
+        self, tmp_path: Path
+    ) -> None:
+        # `cortex-run-38941095220-partial.json` exactly: `run: 1`, no `completed`. The ordinal is
+        # enough to prove repetition 0 finished on both sides, and the honest sentence says both
+        # halves -- that it finished, and that its answers are not in this file.
+        record = self._record(
+            system='reference-pipeline', reached=390, total=500, run=1,
+            baselineAnswers=[f'b{i}' for i in range(390)], featureAnswers=[],
+        )
+        record.pop('completed')
+        r = self._run(tmp_path, record)
+        assert r.returncode == 0, r.stderr
+        assert '78.0% of it' in r.stdout, r.stdout
+        assert 'repetitions finished before it: 1' in r.stdout, r.stdout
+        assert '0..0 completed on both sides' in r.stdout, r.stdout
+        assert 'NOT in this record' in r.stdout, r.stdout
+        assert 'not recorded' not in r.stdout, r.stdout
+
+    def test_a_record_without_completed_and_without_a_second_repetition_says_not_recorded(
+        self, tmp_path: Path
+    ) -> None:
+        # The other half of the branch: at `run: 0` there is nothing to infer, so the reader must
+        # not invent "0 finished" -- the field is absent, and absence is not zero.
+        record = self._record()
+        record.pop('completed')
+        r = self._run(tmp_path, record)
+        assert r.returncode == 0, r.stderr
+        assert 'not recorded' in r.stdout and 'predates the field' in r.stdout, r.stdout
+        assert 'repetitions finished before it: 0' not in r.stdout, r.stdout
+
+    def test_completed_repetitions_are_listed_with_their_answer_counts(
+        self, tmp_path: Path
+    ) -> None:
+        # A finished repetition is a complete paired vector. Printing only the count would hide
+        # what it holds; printing the pair per repetition is what makes `38520676669`'s three-hour
+        # loss legible.
+        record = self._record(
+            run=2,
+            completed=[
+                {'run': 0, 'baselineAnswers': ['a', 'b', 'c'], 'featureAnswers': ['a', 'b', 'c']},
+                {'run': 1, 'baselineAnswers': ['a', 'b', 'c'], 'featureAnswers': ['a', 'b', 'c']},
+            ],
+        )
+        r = self._run(tmp_path, record)
+        assert r.returncode == 0, r.stderr
+        assert 'repetitions finished before it: 2' in r.stdout, r.stdout
+        assert 'run 0: 3 + 3 answers' in r.stdout and 'run 1: 3 + 3 answers' in r.stdout, r.stdout
+
+    @pytest.mark.parametrize('completed', ['not-a-list', [42], [{'run': 0}], [{'baselineAnswers': []}]])
+    def test_a_completed_block_that_cannot_be_read_is_a_defect_not_a_zero(
+        self, tmp_path: Path, completed: object
+    ) -> None:
+        r = self._run(tmp_path, self._record(completed=completed))
+        assert r.returncode == 2
+        assert 'completed' in r.stderr, r.stderr
+
+    def test_counters_absent_are_an_absence_and_never_a_zero(self, tmp_path: Path) -> None:
+        # The record from `41346610318` has no `transportRetry` because it predates it. The
+        # sentence has to say that, because the alternative reading -- "nothing was throttled" --
+        # is the exact opposite of what happened to that run.
+        r = self._run(tmp_path, self._record())
+        assert r.returncode == 0, r.stderr
+        assert 'not in this record' in r.stdout and 'predates the field' in r.stdout, r.stdout
+        assert 'nothing was throttled' not in r.stdout, r.stdout
+
+    def test_counters_present_are_read_with_the_same_three_readings(self, tmp_path: Path) -> None:
+        # The mode for the artifact the NEXT failure will leave. It reuses `transport_section`
+        # rather than reimplementing it, so the throttle / retried-without-429 / clean readings
+        # cannot drift between the report reader and this one.
+        record = self._record(
+            transportRetry={
+                'provider': 'run', 'scope': 'process', 'calls': 100, 'attempts': 180,
+                'retried': 80, 'retriedCalls': 60, 'cleanCalls': 40, 'exhaustedCalls': 0,
+                'rateLimited': 80, 'retryAfterHonoured': 0, 'retryRate': 0.6,
+            }
+        )
+        r = self._run(tmp_path, record)
+        assert r.returncode == 0, r.stderr
+        assert 'throttled 80 of 180 requests' in r.stdout, r.stdout
+        assert 'provider: run' in r.stdout, r.stdout
+
+    def test_a_corrupt_counter_block_is_a_defect_and_does_not_exit_zero(
+        self, tmp_path: Path
+    ) -> None:
+        # The extent is legible and the counters are not. Exit 0 would say the record was read
+        # cleanly; the whole purpose of this record is to explain a failure, so an unreadable
+        # counter block on it is a producer defect that must be visible in the exit code.
+        record = self._record(
+            transportRetry={
+                'provider': 'run', 'scope': 'process', 'calls': True, 'attempts': 1,
+                'retried': 0, 'retriedCalls': 0, 'cleanCalls': 1, 'exhaustedCalls': 0,
+                'rateLimited': 0, 'retryAfterHonoured': 0, 'retryRate': 0,
+            }
+        )
+        r = self._run(tmp_path, record)
+        assert r.returncode == 2, r.stdout
+        assert 'PRESENT AND UNREADABLE' in r.stdout, r.stdout
+        # The extent is still printed: the run's progress is real and is not withheld because a
+        # different field is broken.
+        assert 'reached: 12 of 20' in r.stdout, r.stdout
+        assert 'predates the field' not in r.stdout, r.stdout
+
+    @pytest.mark.parametrize(
+        'overrides',
+        [
+            {'reached': True},                     # bool is an int: a flag must not read as 1
+            {'reached': -1},                       # a negative count did not come from a counter
+            {'total': '20'},                       # a string is not a count
+            {'run': 1.5},                          # an ordinal is a whole number
+            {'baselineAnswers': 'twenty answers'},  # not a list
+            {'featureAnswers': None},              # JSON null is not an empty list
+        ],
+    )
+    def test_an_unreadable_extent_is_refused(self, tmp_path: Path, overrides: dict) -> None:
+        r = self._run(tmp_path, self._record(**overrides))
+        assert r.returncode == 2
+        assert 'extent is unreadable' in r.stderr, r.stderr
+
+    @pytest.mark.parametrize(
+        'missing',
+        ['system', 'reached', 'total', 'run', 'baselineAnswers', 'featureAnswers'],
+    )
+    def test_every_required_key_is_named_when_it_is_missing(
+        self, tmp_path: Path, missing: str
+    ) -> None:
+        record = self._record()
+        record.pop(missing)
+        r = self._run(tmp_path, record)
+        assert r.returncode == 2
+        assert missing in r.stderr, r.stderr
+
+    def test_an_empty_system_is_refused_rather_than_printed_as_a_blank_side(
+        self, tmp_path: Path
+    ) -> None:
+        r = self._run(tmp_path, self._record(system=''))
+        assert r.returncode == 2
+        assert 'no side to attribute' in r.stderr, r.stderr
+
+    def test_a_dataset_with_no_questions_does_not_divide_by_zero(self, tmp_path: Path) -> None:
+        # `total: 0` is a legal count and an illegal denominator. The sentence replaces the share
+        # rather than the share crashing the readout of a failed run.
+        r = self._run(tmp_path, self._record(total=0, reached=0, baselineAnswers=[], featureAnswers=[]))
+        assert r.returncode == 0, r.stderr
+        assert 'no questions in the dataset' in r.stdout, r.stdout

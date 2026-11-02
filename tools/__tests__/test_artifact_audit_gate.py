@@ -39,6 +39,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "benchmark-cortex-memory.yml"
 #: The report the readout tool defaults to and the workflow produces.
 REPORT = "packages/cortex-memory/benchmark-cortex-memory-ablation-report.json"
 
+#: The record a failed run leaves instead of that report (§13.216.9).
+PARTIAL = "packages/cortex-memory/benchmark-cortex-memory-partial.json"
+
 #: The upload's glob, which must be able to match that report.
 UPLOAD_GLOB = "packages/cortex-memory/benchmark-*.json"
 
@@ -72,10 +75,36 @@ class TestTheAuditIsAWiredGate(unittest.TestCase):
         )
 
     def test_the_audit_runs_even_when_the_benchmark_failed(self) -> None:
-        # A run that died halfway still uploads its partial report, and a partial report is where
-        # two fields are most likely to disagree.
+        # A run that died halfway still uploads what it measured, and the step that looks at it has
+        # to reach that case. It reads the report when there is one and the partial record when
+        # there is not (§13.216.9): before that branch existed, the step exited with "file not
+        # found" while the only artifact the failure produced sat beside it unread.
         audited = [step for step in steps() if "--audit" in str(step.get("run", ""))]
         self.assertEqual(audited[0].get("if"), "always()")
+
+    def test_a_run_with_no_report_is_read_from_its_partial_record(self) -> None:
+        # The branch itself, and the second property (§13.107) applied one file down: the partial
+        # the step reads has to be the partial the upload publishes, or the readout answers about a
+        # file nobody can download.
+        run = str(
+            [step for step in steps() if "--audit" in str(step.get("run", ""))][0]["run"]
+        )
+        self.assertIn("--partial", run, "no branch reads the record a failed run leaves")
+        self.assertIn(PARTIAL, run, "the branch names a partial record the run does not produce")
+        self.assertTrue(
+            fnmatch.fnmatch(PARTIAL, UPLOAD_GLOB),
+            f"{PARTIAL} would not be picked up by {UPLOAD_GLOB}",
+        )
+
+    def test_a_run_that_left_neither_file_is_an_error_and_not_a_silence(self) -> None:
+        # The third state. A step that printed nothing here would make "the run left no artifact"
+        # indistinguishable from "the readout had nothing to say", and the first is a defect in the
+        # durability path rather than in the arm.
+        run = str(
+            [step for step in steps() if "--audit" in str(step.get("run", ""))][0]["run"]
+        )
+        self.assertIn("::error::neither a report nor a partial record exists", run)
+        self.assertIn("exit 1", run)
 
     def test_the_audit_runs_after_the_upload(self) -> None:
         # Both orders publish the artifact, because the upload is `if: always()`. What differs is

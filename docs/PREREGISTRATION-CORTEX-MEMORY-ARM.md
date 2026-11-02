@@ -24433,3 +24433,80 @@ happened, and it was throttled*).
 *Falsified by:* the next failing artifact whose `partial.transportRetry` is absent while its
 `reached` is above zero (the wiring is wrong, not the provider), or one whose counters do not
 close (`cleanCalls + retriedCalls + exhaustedCalls !== calls`) at the moment of death.
+
+### 13.216.9 The record needs a reader, or the field is inert
+
+`13.216.8` attached the counters to the partial. Nothing in the pipeline read them. The audit step is
+handed `benchmark-cortex-memory-ablation-report.json`, which a failed run does not write, so it exited
+with "file not found" while the one artifact the failure *did* leave sat beside it unread. **A field
+with no reader is the same defect as no field, one commit later** — this campaign has now recorded
+that shape in three consecutive rounds (the ladder nobody reached, the recording point nobody wrote,
+the reader nobody called).
+
+`tools/readout-arm-run.py --partial` opens that file. It reuses `transport_section` rather than
+reimplementing it, so the throttle / retried-without-429 / clean readings cannot drift between the
+report reader and this one, and it adds the extent the report reader has no way to know:
+
+```
+=== partial measurement (the run did not finish) ===
+  died on: cortex-memory, repetition 0
+  reached: 12 of 20 questions (60.0% of it)
+  answers kept -- baseline: 20, feature: 12
+  repetitions finished before it: 0 -- the failure was in the first repetition, so
+  nothing earlier was lost with it
+```
+
+Run against the two archived records rather than invented fixtures, because the two shapes that matter
+are both in the archives and they differ in a way no synthetic record would have suggested:
+
+| artifact | keys | what it proves | what it does not carry |
+| --- | --- | --- | --- |
+| `run-41346610318` | 7, including `completed: []` | twelve of twenty graded, complete baseline | the counters (written before them) |
+| `cortex-run-38941095220-partial` | 6, no `completed` | `run: 1`, so repetition 0 finished **on both sides** | its two thousand answers, and the field that would carry them |
+
+The second one is why `completed` is optional in the reader. `reached`/`total`/`run` and the two answer
+arrays are required; `completed` and `transportRetry` are not, and a reader that demanded `completed`
+would reject the only failure records that exist — a check that passes on everything written after the
+field and refuses the archives.
+
+#### The four readings a partial must not offer
+
+Each of these produces a number that looks like a measurement, so each is named as absent rather than
+left to silence:
+
+- **an accuracy** over whichever side happens to be complete — that artifact's baseline has all twenty
+  answers, so scoring it alone yields a real rate belonging to no arm;
+- **a delta**, which subtracts two aggregates over the same index, so a short side makes it arithmetic
+  over a comparison that was never paired;
+- **a per-capability table**, where an unanswered capability renders `0/0` — byte-identical to a
+  measured zero;
+- **an extent of zero** for a finished run, which is what a lenient reader prints when it is pointed at
+  a report: the two files are distinguished and the report is refused by name.
+
+#### The workflow takes the branch instead of failing on a missing file
+
+The audit step now checks which file exists: a report → `--audit` as before; no report but a partial →
+`--partial`, with a `::notice::` saying which branch it took; neither → `::error::` and exit 1, because
+a run that left neither file left no measurement at all, which is precisely the defect `13.216.8`
+exists to prevent.
+
+#### Acceptance
+
+| # | what must be true | how it is checked |
+| --- | --- | --- |
+| 1 | the extent reads as a share | `reached: 12 of 20 questions (60.0% of it)` |
+| 2 | both sides' kept answers are counted | `answers kept -- baseline: 20, feature: 12` |
+| 3 | the three prohibited readings are named | `ungraded`, `delta … never happened`, `0/0` |
+| 4 | a complete report is refused, not read as empty | `--partial` on the synthetic report exits 2 with `this is a complete report` |
+| 5 | a record without `completed` still reports finished repetitions | `run: 1` prints `1 (the ordinal says 0..0 …)` |
+| 6 | a record without `completed` at `run: 0` says "not recorded" | the absent field is not printed as `0` |
+| 7 | a finished repetition is listed with its pair | `run 0: 3 + 3 answers` |
+| 8 | absent counters are never a zero | `not in this record … predates the field`, and no `nothing was throttled` |
+| 9 | present counters use the same three readings | `throttled 80 of 180 requests`, `provider: run` |
+| 10 | a corrupt block does not exit 0 | extent printed **and** exit 2 with `PRESENT AND UNREADABLE` |
+| 11 | the extent cannot be a flag | `reached: true`, `-1`, `"20"`, `1.5`, non-list answers all exit 2 |
+| 12 | every required key is named when missing | six params, one per key |
+| 13 | `total: 0` does not divide by zero | `no questions in the dataset` |
+
+*Falsified by:* the next failed artifact whose partial record is not read by the audit step, or one
+whose printed extent disagrees with its own `reached`/`total`.

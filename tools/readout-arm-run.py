@@ -1741,6 +1741,157 @@ def transport_section(report: dict) -> tuple[str, str]:
     return '\n'.join(lines), TRANSPORT_OK
 
 
+# The keys a partial record cannot be read without, and the two it can.
+#
+# `completed` and `transportRetry` are OPTIONAL on purpose, and the archives say so rather than a
+# preference: `/workspace/cortex-run-38941095220-partial.json` -- a real failure record from this
+# campaign -- carries six keys and neither of them. A reader that demanded `completed` would call
+# that file "not a partial", which is the shape of defect this whole family is about: the check
+# would pass on everything written after the field and refuse the only records that exist.
+PARTIAL_REQUIRED = ('system', 'reached', 'total', 'run', 'baselineAnswers', 'featureAnswers')
+
+
+def partial_section(record: dict) -> tuple[str, str]:
+    """Read a `PartialAblation`: how far the run got, and what the transport saw on the way.
+
+    ## The loss this reads, and why the report reader could not
+
+    `13.216` gave the report the retry counters and `13.216.8` gave them to the partial, because a
+    run that dies produces no report at all: `41346610318` left one log file, twelve graded answers
+    and no number saying a rate limit had been hit. The field is now written -- and until this
+    section existed, nothing in the pipeline could read it. A field with no reader is the same
+    defect as no field, one commit later.
+
+    The archived record is the fixture this section is built from, key for key:
+
+        {"system": "cortex-memory", "reached": 12, "total": 20, "run": 0,
+         "baselineAnswers": [...20 answers...], "featureAnswers": [...12 answers...],
+         "completed": []}
+
+    A complete baseline, twelve of twenty feature answers, and -- in that file -- no counters,
+    because it was written before they existed. Both facts are printed, and the second is printed
+    as an absence rather than as a zero.
+
+    ## Why the prohibited readings are named
+
+    A partial invites three subtractions, and each produces a number that looks like a measurement:
+
+    - **an accuracy**, over whichever side happens to be complete. The baseline here has all twenty
+      answers, so scoring it alone yields a rate that is real and that belongs to no arm;
+    - **a delta**, which is `featureAggregate.avg - baselineAggregate.avg` over the same index, so
+      a short side makes it arithmetic over a comparison that was never paired;
+    - **a per-capability table**, in which an unanswered capability renders as `0/0` -- identical
+      to a measured zero.
+
+    So the section states the extent, states that the answers are ungraded (scoring them needs the
+    dataset, which the record does not carry), and names `delta` as absent rather than leaving a
+    reader to notice.
+
+    Returns the block and the state of the counter block (`'ok'`, `'absent'`, `'corrupt'`), because
+    the exit code says which of the three happened and a printed line cannot.
+    """
+    report_shaped = _questions(record) is not None or 'ablation' in record
+    if report_shaped:
+        raise ValueError(
+            'this is a complete report, not a partial record. Nothing was lost, so read it '
+            'without --partial: a partial reader pointed at a finished run would report an '
+            'extent of zero for a run that reached every question.'
+        )
+    missing = [key for key in PARTIAL_REQUIRED if key not in record]
+    if missing:
+        raise ValueError(
+            f'no {", ".join(missing)} -- keys: {sorted(record)}. A partial record carries the '
+            'side that was running, how far it got, and the answers on both sides.'
+        )
+    try:
+        reached = _whole_count(record['reached'])
+        total = _whole_count(record['total'])
+        ordinal = _whole_count(record['run'])
+        baseline = record['baselineAnswers']
+        feature = record['featureAnswers']
+        if not isinstance(baseline, list) or not isinstance(feature, list):
+            raise ValueError('answers are not lists')
+    except (KeyError, ValueError):
+        raise ValueError(
+            'the extent is unreadable: `reached`, `total` and `run` must be non-negative whole '
+            'numbers and both answer fields must be lists (a bool is a flag, not a count).'
+        ) from None
+    if not isinstance(record['system'], str) or record['system'] == '':
+        raise ValueError('`system` is missing or empty, so there is no side to attribute this to.')
+
+    share = 'no questions in the dataset' if total == 0 else f'{100.0 * reached / total:.1f}% of it'
+    lines = [
+        '=== partial measurement (the run did not finish) ===',
+        f'  died on: {record["system"]}, repetition {ordinal}',
+        f'  reached: {reached} of {total} questions ({share})',
+        f'  answers kept -- baseline: {len(baseline)}, feature: {len(feature)}',
+    ]
+    completed = record.get('completed')
+    if completed is None:
+        # `completed` predates nothing -- it is the younger of the two optional fields, and an
+        # artifact without it can still say how many repetitions finished, because the ordinal
+        # does: the repetitions are sequential, so `run: i` means `0..i-1` completed on BOTH
+        # sides. `cortex-run-38941095220-partial.json` is exactly this case -- `run: 1`, no
+        # `completed`, and two thousand graded answers that were in memory and were not written.
+        # Saying "not recorded" alone would understate what the record proves.
+        finished = (
+            '  repetitions finished before it: not recorded -- this artifact predates the field'
+            if ordinal == 0
+            else f'  repetitions finished before it: {ordinal} (the ordinal says 0..{ordinal - 1} '
+            'completed on both sides); their answers are NOT in this record, which predates the '
+            'field that carries them'
+        )
+        lines.append(finished)
+    elif not isinstance(completed, list):
+        raise ValueError('`completed` is present and is not a list.')
+    elif completed == []:
+        lines.append(
+            '  repetitions finished before it: 0 -- the failure was in the first repetition, so '
+            'nothing earlier was lost with it'
+        )
+    else:
+        ordinals = []
+        for entry in completed:
+            if not isinstance(entry, dict):
+                raise ValueError('`completed` carries a non-object entry.')
+            pair = (entry.get('baselineAnswers'), entry.get('featureAnswers'))
+            if not all(isinstance(value, list) for value in pair):
+                raise ValueError('a `completed` entry is missing one of its two answer lists.')
+            ordinals.append(
+                f'run {entry.get("run", "?")}: {len(pair[0])} + {len(pair[1])} answers'
+            )
+        lines.append(f'  repetitions finished before it: {len(completed)} ({"; ".join(ordinals)})')
+
+    lines += [
+        '',
+        '  What this record CAN say: how far the run got, and what the transport saw before it died.',
+        '  What it cannot: any accuracy and any delta. These answers are ungraded -- scoring them',
+        '  needs the dataset, which this record does not carry -- and `delta` subtracts two',
+        '  aggregates over the same index, so a short side would be arithmetic over a comparison',
+        '  that never happened. A per-capability table is absent for the same reason: an unanswered',
+        '  capability renders as 0/0, which is identical to a measured zero.',
+    ]
+
+    counters, state = transport_section(record)
+    if state == TRANSPORT_ABSENT:
+        lines += [
+            '',
+            '  counters: not in this record. The partial carries `transportRetry` from 13.216.8',
+            '  onward, so absence here means the artifact predates the field -- NOT that the run',
+            '  was never throttled, which a table of zeroes would claim.',
+        ]
+    elif state == TRANSPORT_CORRUPT:
+        lines += [
+            '',
+            '  counters: PRESENT AND UNREADABLE. Every count must be a non-negative whole number,',
+            '  so this is a producer defect on the one record whose purpose is to explain a',
+            '  failure -- not an old artifact, and not a run that never retried.',
+        ]
+    else:
+        lines += ['', counters]
+    return '\n'.join(lines), state
+
+
 # The cut points the rank curve reports.
 #
 # Three, and they are the three the argument needs rather than a sweep: 8 is roughly the
@@ -3841,6 +3992,12 @@ def main(argv: list[str]) -> int:
         help='print what the provider did with the requests: attempts, retries, 429s (§13.216)',
     )
     parser.add_argument(
+        '--partial',
+        action='store_true',
+        help='read a benchmark-cortex-memory-partial.json: how far a failed run got, and what '
+        'the transport saw before it died (§13.216.8)',
+    )
+    parser.add_argument(
         '--reach',
         action='store_true',
         help='print the ranked gold banded by rank, with the median beyond the old pool width',
@@ -4006,6 +4163,22 @@ def main(argv: list[str]) -> int:
     except (OSError, json.JSONDecodeError) as error:
         print(f'{args.report}: {error}', file=sys.stderr)
         return 2
+
+    # Before the roster guard, and that order is the whole reason this branch works: a partial
+    # record has no `questions` and no `ablation`, so the guard below would reject it with
+    # "no per-question roster and no ablation block" -- a true sentence about a file it was never
+    # meant to describe. The one artifact a failure leaves is the one the guard cannot see.
+    if args.partial:
+        try:
+            section, state = partial_section(report)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        # The extent is readable in all three cases; the exit code is about the counters. A
+        # corrupt block is a producer defect on the record that exists to explain a failure, so it
+        # is not allowed to exit 0 just because the rest of the sentence was legible.
+        return 2 if state == TRANSPORT_CORRUPT else 0
 
     questions = _questions(report)
     if questions is None and 'ablation' not in report:
