@@ -639,3 +639,67 @@ jobs:
           python3 tools/readout-arm-run.py --transport \
             packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
 
+      # §13.220. The artifact's configuration against the dispatch table, and it is a GATE.
+      #
+      # `--audit` above asks whether the artifact contradicts ITSELF, and a run can pass it while
+      # having been produced by a configuration nobody registered. Dispatch `41431790794` is that
+      # run: it carried no inputs at all, so nine fields fell to their defaults -- `relevanceTopK`
+      # 256 -> 64, `relevanceSignal` `retrieval-hybrid` -> `none`, `promptContract`
+      # `abstention-evidence-blocks` -> `abstention`, `ask` `operands+operand-gap` -> `route`,
+      # `maxTurnChars` 400 -> absent, `evidenceRolesRoutes` two routes -> six, `thinking` disabled
+      # -> enabled on two routes -- and it read **10.8%** against the registered arm's **83.4%**.
+      # The tool that says so already existed (`--registration`, built by §13.203 for exactly this
+      # class); what did not exist was a place in the pipeline where it runs. So the defect is not
+      # a missing check, it is a check with no caller -- the same shape as §13.216.6's `completed`
+      # block, one level up.
+      #
+      # It GATES rather than advises, and the argument is the one the audit step makes above: a
+      # green job with an unpriced configuration is how a default-configuration run becomes a
+      # citation. The measurement is still in the artifact and still readable; what the red job
+      # denies is the reading "this is the arm at 10.8%".
+      #
+      # The escape is a DECLARATION, and it rides a repository variable rather than a dispatch
+      # input because the input surface is one below GitHub's 25-input ceiling and an experiment's
+      # departure list is a property of the run rather than of the queue form. Unset means "this
+      # run claims to be the registration", which is the strict default: a departure nobody
+      # declared is a departure nobody priced.
+      #
+      # The list reaches the shell through `env` and never through interpolation. A `${{ }}` inside
+      # `run:` is substituted into the script text before bash parses it, so a value carrying a
+      # quote or a semicolon would change the program instead of the variable.
+      - name: Read the artifact against the registration
+        if: always()
+        env:
+          DECLARED_DEPARTURES: ${{ vars.CORTEX_DECLARED_DEPARTURES }}
+        run: |
+          report=packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          if [ ! -f "$report" ]; then
+            # No report means the run did not finish, and the audit step above is the one that
+            # reports that. Failing here as well would make one condition red twice and leave a
+            # reader unable to tell which check spoke.
+            echo "::notice::no report: the run did not finish, so no configuration was applied"
+            exit 0
+          fi
+          set +e
+          python3 tools/readout-arm-run.py --registration "$report" --departs "$DECLARED_DEPARTURES" \
+            > /tmp/registration.txt 2>&1
+          code=$?
+          set -e
+          cat /tmp/registration.txt
+          {
+            echo '### The artifact against the registration'
+            echo
+            if [ "$code" -eq 0 ]; then
+              echo "**match.** \`$DECLARED_DEPARTURES\` is the declared departure list."
+            else
+              echo '**DEPARTED.** This artifact was not produced by the registered configuration.'
+              echo 'Either dispatch through `tools/dispatch-cortex-memory-ab.py`, or declare the'
+              echo 'departure list in the `CORTEX_DECLARED_DEPARTURES` repository variable.'
+            fi
+            echo
+            echo '```'
+            cat /tmp/registration.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+

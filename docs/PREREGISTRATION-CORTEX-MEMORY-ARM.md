@@ -24764,3 +24764,145 @@ for nothing and the retry gets blamed on the provider.
 
 The rule it leaves behind: an assertion may pin a **decision** or a **count**, never a subtraction that includes a clock.
 Where a duration has to be asserted, it is asserted as a range whose endpoints are the claim.
+
+## 13.220 The run that carried no inputs, and the readout that was never called
+
+*Two hours, four repetitions and 4,291 calls spent on a configuration nobody registered, and the only
+instrument that could say so had to be invoked by hand from a shell afterwards.*
+
+Dispatch `41431790794` was issued to confirm §13.218 on the production path. It completed successfully, uploaded a
+73 MB artifact, and published **10.8%**. The registered arm reads **83.4%** on the same 500 questions. For a few
+minutes that gap looked like a catastrophic regression in the retry repair — the previous hour had edited
+`retry.ts`, `llm-factory.ts` and the report renderer, and a 72.6-point collapse is exactly what a bad edit to a
+shared path looks like.
+
+It was not an edit. The dispatch carried **no inputs at all**.
+
+### 13.220.1 What the artifact says, field by field
+
+`memoryArmConfig` on that run, against `tools/dispatch-cortex-memory-ab.py`'s `INPUTS`:
+
+| field | registered | observed | what it decides |
+| --- | --- | --- | --- |
+| `relevanceTopK` | 256 | **64** | how many scored turns the selection could speak about |
+| `relevanceSignal` | `retrieval-hybrid` | **`none`** | whether a ranking was applied at all |
+| `promptContract` | `abstention-evidence-blocks` | **`abstention`** | whether a turn carries its source-memory label |
+| `ask` | `operands+operand-gap` | **`route`** | the instruction block on three routes |
+| `maxTurnChars` | 400 | **absent** | the per-turn cut, and with it the cut marker |
+| `evidenceRolesRoutes` | `multi-session,temporal` | **all six** | which routes filter to user turns |
+| `reader.thinking` | `disabled` | **`enabled`** | whether the reader reasons before answering |
+| `reader.thinkingRoutes` | absent | **`multi-session,temporal`** | the reach of that mode |
+| `turnCutMarker` | `none` | `none` | (rides `maxTurnChars`; absent here, so unchanged) |
+
+Nine departures, and `readout-arm-run.py --registration` names all nine in one command with exit code **1**. The tool
+worked. Nothing called it.
+
+### 13.220.2 The mechanism, and it is not the nine fields
+
+The cost is not that the values were wrong. It is that **the default of a knob is a configuration**, and this arm's
+defaults are not a weaker version of the registered configuration — they are a different experiment:
+
+| | registered | default |
+| --- | --- | --- |
+| gold recall (question's answer turn inside the prompt) | **0.881** | **0.071** |
+| questions with gold recall 0 | **0** of 500 | **414** of 500 |
+| median promptChars | 46,855 | 47,568 |
+| feature accuracy | 0.834–0.898 | **0.108** |
+
+The prompt spent the **same room** (47.6k of a 48k budget, 99.2%) and carried almost none of the answers. A default
+that reads as "the same thing without the optional extras" is the dangerous shape, because an artifact produced under
+it is complete, self-consistent, passes `--audit`, costs two hours, and answers a question nobody asked.
+
+The baseline side is the internal control that proves the reading is about the feature side alone: it scored
+**219/500 = 43.8%**, byte-identical to every archived run (`run-41284575092`, `41259622431`, `41254359622` all read
+219). The model, the dataset, the grader and the transport were untouched — `cleanCalls 4,291`, `retriedCalls 0`,
+`refusedCalls 0`, `exhaustedCalls 0`, four terms closing on 4,291, which is §13.218's acceptance row 6 holding on a
+production artifact for the first time. Only the nine fields moved.
+
+### 13.220.3 Why a tool with a correct exit code changed nothing
+
+`--registration` was built by §13.203 for precisely this class of defect, after three values had drifted out of §10.3
+without anything failing. It compares one artifact against the dispatch table, prints every departure, and exits 1.
+It has 33 tests.
+
+None of them is a caller. The check lived in `tools/`, ran when a person typed it, and the pipeline that produces the
+artifact had no stage that asked. That is §13.216.6's shape — a field with a writer and no reader — applied to a
+**check** rather than to a field: the instrument existed, the defect it detects existed, and the two never met
+because meeting them required remembering.
+
+The rule this leaves behind: *a check that lives outside the pipeline is a check whose invocation is a human
+decision, and human decisions are what pipelines exist to remove.* The 33 tests measured the tool's correctness.
+Correctness was never the problem.
+
+### 13.220.4 The repair: the check becomes a stage, and the declaration becomes a value
+
+A new final step, `Read the artifact against the registration`, in `benchmark-cortex-memory.yml`:
+
+1. **It runs on the report the reader downloads** — the same path the audit step uses, under `if: always()`.
+2. **It runs after the upload**, so a red job still has its measurement. The artifact is the reason the comparison is
+   worth making; a gate that fires before publication throws it away.
+3. **It gates.** Departures → exit 1 → red job. An advisory version is the defect in its original form: the
+   departure printed into a log nobody reads while the job stays green and quotable, which is how a
+   default-configuration run becomes a citation. The measurement remains in the artifact and remains readable; what
+   the red job denies is the reading *"this is the arm at 10.8%"*.
+4. **A run that left no report is not a second failure.** The audit step already reports that condition, and two red
+   checks for one cause leave a reader unable to tell which spoke.
+5. **The escape is a declaration**, `CORTEX_DECLARED_DEPARTURES`, a **repository variable** rather than a dispatch
+   input: the input surface is one below GitHub's 25-input ceiling (§13.17, `benchmark-cortex-memory.yml`'s own
+   header), and an experiment's departure list is a property of the run rather than of the queue form. Unset means
+   *"this run claims to be the registration"* — the strict default, because a departure nobody declared is a
+   departure nobody priced.
+6. **The list reaches the shell through `env`, never through `${{ }}` in `run:`.** A `${{ }}` inside a `run:` block is
+   expanded into the script text before bash parses it, so a value carrying a quote or a semicolon changes the
+   program rather than the variable. `tools/check-shell-interpolation.py` is the general form of that rule; this is
+   its instance for the one new free-text value.
+
+### 13.220.5 Acceptance
+
+| # | what must be true | how it is checked |
+| --- | --- | --- |
+| 1 | exactly one step asks the registration question | `test_registration_gate.py`: selected by the `--registration` flag, not by the step name |
+| 2 | it reads the report the reader downloads | the step's `run:` names the artifact path |
+| 3 | it runs even when the benchmark failed | `if: always()` |
+| 4 | it runs after the upload | step index greater than the upload step's |
+| 5 | it is not advisory | `continue-on-error` absent |
+| 6 | the tool's exit code is the step's exit code | `run:` ends with `exit $code` |
+| 7 | no report is not a second failure | `run:` contains an `exit 0` branch |
+| 8 | the declaration arrives through `env` | `env.DECLARED_DEPARTURES == vars.CORTEX_DECLARED_DEPARTURES` |
+| 9 | the run body interpolates nothing | `'${{' not in run` |
+| 10 | the list is passed through, not re-defaulted | `--departs "$DECLARED_DEPARTURES"` |
+| 11 | both verdicts are named | `match` and `DEPARTED` both appear |
+| 12 | the verdict reaches the reader | `$GITHUB_STEP_SUMMARY` written |
+| 13 | the artifact is still published on a departure | the gate is after the upload step |
+| 14 | the tool itself still refuses a departure | `test_registration_diff.py`, 33 tests, unchanged |
+| 15 | the run that motivated this reads as DEPARTED | `--registration` on `41431790794` exits 1 naming nine fields |
+
+*Falsified by:* any run whose registration step reports `DEPARTED` while the job concludes **success**. That pair is
+now impossible without the gate being removed or demoted, so its reappearance means the demotion is back.
+
+### 13.220.6 The mutations, and which rows each one breaks
+
+| mutant | rows that fail | what that proves |
+| --- | --- | --- |
+| `continue-on-error: true` is added to the gate | 5 | the assertion is bound to the gate's severity, not to the step existing |
+| the declaration is moved from `env` into the `run:` body as `${{ vars.… }}` | 8, 9, 10 | three independent rows notice a substitution that would work in the happy path |
+
+Both were applied to the workflow, run, and reverted; the table records what actually failed, not what should have.
+
+The first is the one worth keeping. Every other row is about plumbing; this one is about the difference between a
+check that can fail and a check that can only speak — and that difference is the whole of this section, because the
+tool that could fail already existed and the pipeline called it never.
+
+### 13.220.7 What this does not fix
+
+The `default` column of §13.220.2 is still reachable by any dispatch that forgets its inputs — the gate makes such a
+run **unquotable**, not **impossible**. Making it impossible means the workflow refusing an empty input surface at
+start, which is a different change: `cortex_memory_relevance_top_k` and fifteen siblings are legitimately optional
+for a 60-question smoke run, and a workflow that refuses every unset knob cannot run cheaply. The division is
+therefore: *cheap runs may be unregistered; expensive runs may not be quoted as the arm.* The gate enforces the
+second and says nothing about the first, which is the correct split — a 60-question sample was never the arm either.
+
+The registered configuration's own reading was in flight when this section was written: dispatch `41488630010` on
+`e280a622`, issued through `tools/dispatch-cortex-memory-ab.py` with all 21 inputs printed to the log. It is read in
+the section that follows, and not before — a number quoted here would be the same defect this section is about,
+one level down.
