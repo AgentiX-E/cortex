@@ -97,9 +97,16 @@ evidence with the latest date"* — and the evidence is **time-monotone on all 7
 ordering is not fighting the model.
 
 The coins row is different and is the only one of the seven that no wording can reach: `38` appears
-**nowhere** in the offered evidence, and `37` does. The turn carrying the update was discarded by the
-budget. One question, and it is the one that says what a `KU`-aware retention rule would be worth —
-which is why it is a registered increment rather than a shipped change (§13.211).
+**nowhere** in the offered evidence, and `37` does. This paragraph read that as *"the turn carrying
+the update was discarded by the budget"* and made a `KU`-aware retention rule a registered increment
+(§13.211.3, P1).
+
+**That reading is wrong, and §13.213.4 is the correction.** Read against the artifact's own
+`promptTexts`, all seven of these questions carry the gold-bearing content: the coins question's
+`37` is stated in block 25 and the update is in block 45 — *"I just added a new coin to my collection
+of pre-1920 American…"* — so `38` is a **derivation** (`37 + 1`), not a turn that fell outside the
+window. The retention rule would have changed none of the seven, and it is withdrawn. What replaces
+it is a delta step in the counting contract, which is where the arithmetic lives.
 
 ## 5. Three offline grounded checks, and why all three were worthless
 
@@ -171,7 +178,10 @@ the next increment is chosen accordingly:
    thinking enabled is one model; the run has never been repeated with the provider's reasoning model
    on the same artifact, so the requirement is **unmeasured** rather than satisfied. This is the only
    registered change that could plausibly move twenty-two stable questions at once.
-2. **A `KU` retention rule** (P1). One question is provably unfixable without it (`38` absent), five
+2. ~~**A `KU` retention rule** (P1).~~ **Withdrawn in §13.213.4**: seven of seven carry the
+   evidence, so there is no dropped update turn to retain. Kept here, struck through, because the
+   reading it rested on was made in good faith and its correction is the point. The original text
+   read: one question is provably unfixable without it (`38` absent), five
    are supersession misses with both values in the window, and the instruction that forbids picking the
    old value is already there — so the treatment is a retention rule that keeps the latest turn of each
    session in the window, not another sentence.

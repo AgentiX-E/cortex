@@ -647,8 +647,48 @@ export type RelevanceUnits = 'turn' | 'session' | 'session-fill';
  */
 export type TurnCutMarker = 'none' | 'ellipsis';
 
-/** Default prompt budget. Generous enough for evidence, bounded enough to cap cost. */
-export const DEFAULT_MAX_PROMPT_CHARS = 24_000;
+/**
+ * Default prompt budget: the size of the evidence room a caller gets without asking.
+ *
+ * ## Why this is 48,000 and not the 24,000 it was for the whole campaign
+ *
+ * Because 24,000 was never measured and 48,000 is the configuration every published number is
+ * taken at. `AUDIT-BENCHMARK-WALLCLOCK.md` §7 found the split -- sixteen of seventeen archived
+ * artifacts name 48,000 or 96,000 while the constant said 24,000 -- and stated the consequence in
+ * one line: *"two of the three numbers this project publishes require a flag that is not the
+ * default, and the default has never been measured."* A library whose default is a configuration
+ * its own README does not quote is not offering the product it measured.
+ *
+ * The curve has three points and only one of them is a knee:
+ *
+ * | budget | what moved | source |
+ * | --- | --- | --- |
+ * | 24,000 | roster 394, MR 83/121 -- the control | `39260774611`, §13.82 |
+ * | **48,000** | roster **403**, MR **83**, delivered share 72.9% -> 86.9%, +4 min wall clock | the same run |
+ * | 96,000 | 452.25 vs 449.00 (+3.25, **inside** the pair's own 10.15 band) for **+62%** prompt tokens | `41254359622` vs `41284575092`, §13.213 |
+ *
+ * The middle row is where the money is: doubling the room from 24,000 moved the roster nine
+ * questions, and doubling it again from 48,000 moved it three and a quarter -- inside the reader's
+ * own noise -- while adding 19.2M prompt tokens per dispatch. A default belongs at the knee, and
+ * the knee is also, by coincidence that is worth stating rather than relying on, exactly the
+ * configuration every published figure was measured under. So "what you get" and "what we quote"
+ * become one number, and the next person who reads 89.80% knows it describes their own deployment.
+ *
+ * ## What this changes for a caller who does not set a budget
+ *
+ * Roughly twice the evidence characters per prompt, which is twice the prefill and the same
+ * decode (§13.82.4 measured the whole change at four minutes on a 2-hour run). It is a product
+ * behaviour change and it is made deliberately: the old value was a documented-but-unmeasured
+ * default that no artifact in this repository was produced under, and shipping it was the larger
+ * risk of the two.
+ *
+ * ## What this does not do
+ *
+ * It does not make 96,000 the default. §13.213 took that decision against a measured pair and
+ * refused it -- see the section, and note that the refusal is on the *aggregate*, while five
+ * questions do move unanimously between the two budgets and are the next increment's target.
+ */
+export const DEFAULT_MAX_PROMPT_CHARS = 48_000;
 
 /**
  * The instruction text per contract.

@@ -162,12 +162,14 @@ describe('buildPrompt reports the evidence it carried', () => {
     expect(assembled.evidenceChars).toBe(0);
   });
 
-  it('keeps the default budget observable, since it is what makes the cut routine', () => {
-    // The arm never sets `maxPromptChars`, so this constant is the budget every
-    // question met. Asserting it here means a future change to it is a change to
-    // what the artifacts mean, and shows up as this failure rather than as a
-    // silent shift in every prompt-carried number.
-    expect(DEFAULT_MAX_PROMPT_CHARS).toBe(24_000);
+  it('pins the default budget to the configuration every published number was taken at', () => {
+    // The arm passes `maxPromptChars` only when the run asks for it, so this constant is the
+    // budget a caller who asks for nothing meets. Pinning it here makes a future change to it a
+    // change to what every published figure describes, and shows up as this failure rather than
+    // as a silent shift in the campaign's headline. §13.213 is why it is 48,000: 24,000 was never
+    // measured against it, 96,000 measured inside the pair's own noise band for 62% more tokens,
+    // and 48,000 is both the knee and the number in the whitepaper.
+    expect(DEFAULT_MAX_PROMPT_CHARS).toBe(48_000);
   });
 });
 
@@ -260,7 +262,15 @@ describe('the system reports the evidence the prompt carried', () => {
     // would land hundreds of thousands of characters past the end of the evidence.
     const seen: string[] = [];
     const memory = system({ llm: recordingLlm(seen) });
-    const context = Array.from({ length: 1_200 }, (_, i) => `user: entry ${i} of the log`);
+    // Sized from the budget, not fixed: §13.213 trebled the default and a constant
+    // fixture that used to overflow it started fitting inside it, at which point
+    // `roster.length < context.length` stopped being true for a reason that had
+    // nothing to do with the accessor this case is about.
+    const entry = (i: number): string => `user: entry ${i} of the log, written down at length`;
+    const context = Array.from(
+      { length: Math.ceil((DEFAULT_MAX_PROMPT_CHARS * 3) / entry(0).length) },
+      (_, i) => entry(i),
+    );
 
     await memory.answer('What did I log?', context);
 

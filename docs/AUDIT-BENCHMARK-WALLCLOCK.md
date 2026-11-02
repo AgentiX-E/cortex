@@ -225,7 +225,7 @@ and **96,000 with `ellipsis`** (85.75%). Neither is the default.
 
 | configuration | source | roster |
 | --- | --- | --- |
-| 24,000 (library default) | `DEFAULT_MAX_PROMPT_CHARS` | **never measured** |
+| 24,000 (library default until §13.213) | `DEFAULT_MAX_PROMPT_CHARS` | **never measured** |
 | 48,000 | `40698867439`, and ten other artifacts | 417 / 500 = **83.40%** |
 | 96,000 + `ellipsis` | the six 96k artifacts | **85.75%** |
 
@@ -261,16 +261,20 @@ reader who sets nothing is not reading about their own deployment.
 Two candidate repairs, and neither is a commit this round should make unilaterally:
 
 1. **Raise `DEFAULT_MAX_PROMPT_CHARS` to 48,000.** The campaign's adopted configuration is 48,000
-   (§13.206), and §13.82 measured 24,000 → 48,000 at **MR +14pp** with a roster moving 394 → 403. A
-   library default that is 14 points worse on a capability, months after the campaign adopted the
+   (§13.206), and §13.82 measured 24,000 → 48,000 with a roster moving 394 → 403 and **MR 78 → 83**
+   (+5 questions, +4.1 points; the +14.3pp in §13.82.2 is the lift inside the 35 questions that
+   crossed 85% coverage, not the capability — this paragraph quoted it as the capability until
+   §13.213.1 corrected it). A
+   library default that is five questions worse on a capability, months after the campaign adopted the
    better value, is a stale default rather than a design decision — but it is still a **product
    behaviour change**, and the cost it adds (evidence characters per prompt roughly double) is the
    user's latency to accept.
 2. **Measure 24,000 and publish it beside the others.** Cheaper to defend and strictly more
    informative: it turns *"we do not know"* into a third row.
 
-The second is what this round registers as P1; the first needs the owner's decision, and §7.3 is
-what makes the decision without ambiguity.
+The second is what this round registered as P1; the first was taken in §13.213 — the owner's
+decision, on a pair that had never been registered, and the default is now 48,000. §7.3 is what
+makes the decision without ambiguity.
 
 ### 7.3 The one-line version
 

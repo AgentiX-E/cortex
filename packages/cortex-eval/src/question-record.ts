@@ -151,7 +151,8 @@ export type QuestionRecord = {
    * carried: `buildPrompt` calls `fitToBudget` when the assembled prompt exceeds
    * `maxChars`, and that truncates the evidence. The arm sets `maxPromptChars`
    * only when the run asks for it, so a run that does not is at
-   * `DEFAULT_MAX_PROMPT_CHARS` (24,000) on every question, while run
+   * `DEFAULT_MAX_PROMPT_CHARS` -- 24,000 when this paragraph was written, 48,000
+   * since §13.213 -- on every question, while run
    * `38044858147` averaged 506,338 characters of evidence per question.
    *
    * That run predates the input, and most of the archive does not: sixteen of the

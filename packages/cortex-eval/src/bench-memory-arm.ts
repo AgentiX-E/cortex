@@ -589,8 +589,10 @@ const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
  *
  * ## Why this input did not exist until §13.81
  *
- * `DEFAULT_MAX_PROMPT_CHARS` is 24,000 and every run before §13.82 used it, so every experiment up
- * to then traded truncation against room **inside** that budget. §13.80 found the trade's floor: at
+ * `DEFAULT_MAX_PROMPT_CHARS` was 24,000 and every run before §13.82 used it, so every experiment up
+ * to then traded truncation against room **inside** that budget. §13.213 has since raised the
+ * constant to 48,000 -- the budget this variable's every published run already passed -- so the
+ * sentence above is history rather than a description of the default. §13.80 found the trade's floor: at
  * a 200-character cap the room reached 100 turns and MR fell to 29 of 121, because a 223-character
  * mean turn is a fragment and the model declines from fragments. The only way past the floor is to
  * raise the budget, and until this variable existed the arm could not express that.

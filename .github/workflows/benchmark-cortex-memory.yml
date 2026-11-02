@@ -114,7 +114,7 @@ on:
         default: ''
         type: string
       cortex_memory_max_prompt_chars:
-        description: 'Evidence budget in UTF-16 code units: how many characters one prompt may hold (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.81). Empty = the product default of 24000, which is what every archived run used; a positive integer = that budget. This input did not exist until section 13.81 because every experiment traded truncation against room INSIDE 24000, and section 13.80 found that trade floor: at a 200-character cap the room reached 100 turns and MR fell to 29 of 121, with 42 abstentions at a median coverage of 86.1 percent -- a 223-character mean turn is a fragment and the model declines from fragments. Raising the budget buys the same room with no additional truncation, which no smaller cap can do. A budget of 0 is REJECTED rather than clamped, because the allocator would fail at its first step and every question would answer from no evidence while the artifact recorded a budget'
+        description: 'Evidence budget in UTF-16 code units: how many characters one prompt may hold (see PREREGISTRATION-CORTEX-MEMORY-ARM.md 13.81). Empty = the product default of 48000, which since 13.213 is also the configuration every published number was taken at (before 13.213 the default was 24000 and no archived run used it); a positive integer = that budget. This input did not exist until section 13.81 because every experiment traded truncation against room INSIDE 24000, and section 13.80 found that trade floor: at a 200-character cap the room reached 100 turns and MR fell to 29 of 121, with 42 abstentions at a median coverage of 86.1 percent -- a 223-character mean turn is a fragment and the model declines from fragments. Raising the budget buys the same room with no additional truncation, which no smaller cap can do. A budget of 0 is REJECTED rather than clamped, because the allocator would fail at its first step and every question would answer from no evidence while the artifact recorded a budget'
         required: false
         default: ''
         type: string
@@ -421,8 +421,9 @@ jobs:
           # section 13.68 shipped; the arm also accepts `all` and `none`, and rejects any name it
           # does not know rather than ignoring it.
           CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: ${{ github.event.inputs.cortex_memory_max_turn_chars_routes }}
-          # Section 13.81's budget. Blank means the product's 24000; the arm rejects 0 rather than
-          # reading it as "unset".
+          # Section 13.81's budget. Blank means the product's 48000 (13.213 raised it from 24000,
+          # which no artifact was ever produced under); the arm rejects 0 rather than reading it
+          # as "unset".
           CORTEX_MEMORY_MAX_PROMPT_CHARS: ${{ github.event.inputs.cortex_memory_max_prompt_chars }}
           # Section 13.83's filter. Blank means every role, which is the state every archived run
           # is in; the arm rejects an unknown role and rejects `none`, because an empty role set

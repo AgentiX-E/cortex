@@ -23689,3 +23689,201 @@ editing the workflow's `env:` and putting the key into `DEEPSEEK_API_KEY`, which
 (5.1× the budget at 1.41 q/min) rather than as "needs a second provider". The increment that
 unblocks it is either a higher TPM tier or a smaller window — and the second one changes the
 treatment, so it is a different registration, not a workaround for this one.
+
+---
+
+## 13.213 The shipped default becomes the published configuration, and 96,000 is refused on its own pair
+
+**Shipped 2026-11-02, as a code change plus a decision.** Two things happen here and they are one
+thing: a library whose default is a configuration none of its published numbers were taken at is
+offering a product it never measured. §13.213.2 is the pair that decides where the default goes;
+§13.213.4 is the walk-back of a registered increment that a reading says was never aimed at a
+mechanism.
+
+### 13.213.1 Three numbers for one budget, and a fourth in a quotation
+
+| where | value | what it describes |
+| --- | --- | --- |
+| `DEFAULT_MAX_PROMPT_CHARS` | **24,000** | what a caller who passes no `maxPromptChars` gets |
+| the register, since §13.206 | **48,000** | what the published 89.80% was measured under |
+| sixteen of seventeen archived artifacts | **48,000** or **96,000** | what the campaign actually ran |
+| the dispatch input's empty default | **falls through to 24,000** | what a dispatch gets by forgetting the input |
+
+A dispatch that leaves `cortex_memory_max_prompt_chars` blank does not run the configuration anyone
+has read about; it runs one **no artifact in this repository was ever produced under**. That is not
+a documentation defect. The next dispatch written from the register and dispatched without the input
+measures a third configuration while reporting it as the second, and the difference is nine
+questions on the roster (§13.82: 394 → 403).
+
+**A number in this round's own reading was also wrong, and it is corrected here rather than
+quietly.** `AUDIT-BENCHMARK-WALLCLOCK.md` §7.2 says *"§13.82 measured 24,000 → 48,000 at MR +14pp"*.
+§13.82.1 reads MR **78 → 83**, which is **+5 questions, +4.1 points**. The **+14.3pp** in that
+section is the lift inside the 35 questions that crossed 85% coverage — a subgroup, not the
+capability. Quoting it as MR's gain overstates the budget's value by 3.5×, which matters because the
+whole of §13.213.3 is an argument about how much the budget is worth per token.
+
+### 13.213.2 The pair that decides 96,000
+
+`41254359622` (96,000) against `41284575092` (48,000). Both `thinking` on `multi-session+temporal`,
+`ellipsis`, `ask=operands+operand-gap`, `relevanceTopK=256`, same reader, same 500 questions, four
+repetitions each.
+
+```
+$ readout-arm-run.py --config <96k> --treatment cortex_memory_ask <48k>
+  same     32 field(s)
+  differ   1 field(s):
+    UNDECLARED  maxPromptChars: 96000 -> 48000
+  verdict: 1 field(s) differ, 0 declared by --treatment, 1 undeclared
+```
+
+One field. **No registration had ever named it**, which is why `--config` calls it undeclared: the
+pair is clean and the *question* was never asked in writing. That is the gap this section closes.
+
+```
+$ readout-arm-run.py --null <96k> <48k>
+  prompt identity: 0/500 byte-identical, 500 differ
+  differing           500   452.25   449.00   -3.25    109    5.5%  5.08       5   5.51e-04
+    per repetition delta: [-2, -1, 0, -10]
+    unanimous gains: ['3ba21379']
+    unanimous losses: ['0977f2af', '10d9b85a', 'a1cc6108', 'd24813b1']
+  verdict: the aggregate (-3.25) is inside the 10.15 band, but 5 question(s) moved in every one of
+           4 repetitions and the null expects 5.5e-04 of them -- the reading is those questions
+```
+
+**The mean is not the result; the five are.** The aggregate is 3.25 questions inside a 10.15-question
+band, and 109 of 500 questions flipped at least once — which is churn. Five questions converted in
+all four repetitions, and the null expects five in two thousand runs. The direction is 4:1 against
+48,000, and the four are:
+
+| question | capability | gold | 96,000 | 48,000 |
+| --- | --- | --- | --- | --- |
+| `10d9b85a` days at workshops/lectures/conferences in April | MR | `3 days` | 3 | **2** |
+| `a1cc6108` how old when Alex was born | MR | `11` | 11 | **evidence dump** |
+| `d24813b1` what to bake for a gathering | IE | a grounded preference | recommendation | **generic** |
+| `0977f2af` gadget bought before the Air Fryer | KU | `Instant Pot` | correct | **`None`** |
+| `3ba21379` which vehicle model I am working on | KU | `Ford F-150 pickup truck` | **Mustang GT350R** | correct |
+
+Per capability, summed over four repetitions (`96k − 48k`): **MR +11, TR +6, IE −2, KU −2**. So the
+budget's whole case is MR, which is the capability the campaign is behind on — and the case is four
+questions, three of them "one item short".
+
+### 13.213.3 The decision: 48,000 becomes the shipped default, 96,000 is not adopted
+
+**What adopting 96,000 would buy:** 452.25 / 500 = **90.45%**, and the two MR questions above.
+
+**What it would cost:** `llmUsage` moves 31.1M → 50.3M prompt tokens (**+61.7%**) for a dispatch,
+8,830 tokens per call against 5,504, and 2.05× the evidence characters in every prompt a user ever
+sends. The four recovered questions are ≈ **+0.8 point**, which is real, and this section does not
+pretend it is zero.
+
+**Why the answer is still no, stated as the trade it is.** The four are lost for one reason: a
+specific turn fell outside a *prefix of the relevance ranking*, i.e. at the tail. Doubling the room
+recovers them by carrying twice as much of everything, including the fifth and sixth hundred turns
+that have never been read — 85.3% of the carried turns share no content word with their question
+(§13.213.6). The same four are recoverable **by ranking**, at unchanged cost, and that is a code
+increment rather than a flag. Buying them with a budget that doubles every prompt in the product
+would make the cheaper repair invisible, because the symptom it treats would be gone.
+
+So: **48,000 is the default from this commit**, and the four questions are registered as the target
+of the ranking increment (§13.213.7), with the prediction that a ranking repair recovers ≥3 of 4 at
+48,000's token cost.
+
+| configuration | roster | MR | tokens per call | status |
+| --- | --- | --- | --- | --- |
+| 24,000 | 394 | 78 | — | was the default; never an archived artifact |
+| **48,000** | **449 = 89.80%** | **93** | **5,504** | **published, and the default from §13.213** |
+| 96,000 | 452.25 = 90.45% | 97 | 8,830 | refused: +0.65 inside a 3.25-wide reading, for +61.7% tokens |
+
+*MR in this table is the artifact's `featureMetrics.perCapability.correct` — one repetition. The
+four-repetition sums are 375 → 386, which is where the campaign's "MR 77.5%" comes from (93.75 /
+121); the two conventions differ by 0.75 of a question and the register uses the per-repetition one
+because §13.82's 78 → 83 was quoted that way.*
+
+### 13.213.4 P1 is cancelled: the KU retention rule was aimed at a mechanism the artifact does not show
+
+`AUDIT-MR-ENUMERATION.md` §4 states the direction for `KU`: *"the turn carrying the update was
+discarded by the budget … which is why it is a registered increment rather than a shipped change"*,
+and §8 lists it as P1 — **keep the latest turn of every session in the window**.
+
+The artifact says otherwise. Reading the seven `KU` questions wrong on all four repetitions of
+`41284575092` against their own `promptTexts`:
+
+| question | gold | answer | gold-bearing content in the window |
+| --- | --- | --- | --- |
+| mortgage pre-approval | `$400,000` | `$350,000` | **yes**, block 44, 111 days after block 4's `$350,000` |
+| Instagram followers now | `1300` | `1250` | **yes**, block 48 "close to 1300", after block 17's `1250` |
+| pre-1920 coins | `38` | `37` | **yes**, as `37` plus block 45 "I just added a new coin" |
+| usual gym time | `6:00 pm` | `7:00 pm …` | **yes**, block 58 states `6:00 pm` |
+| where the old sneakers are | `in a shoe rack in my closet` | `Under my bed` | **yes**, block 50 "storing your old sneakers in a shoe rack" |
+| gym more often than before | `Yes` | prose decline | **yes** |
+| gadget before the Air Fryer | `Instant Pot` | prose decline | **yes**, six mentions |
+
+**Seven of seven carry the evidence.** The retention rule would have changed none of them: there is
+no dropped update turn to retain. Three are not supersession misses at all —
+
+- **the coins question is arithmetic across turns**: `37` stated, then "I just added a new coin" →
+  `38`. No turn states 38, which is true and is not the same as "unfixable": the *derivation* is in
+  the window and the reader applied neither operand to the other;
+- **two are hedged or planned statements the gold treats as completed** — "I think I'm close to
+  1300" and "planning to store your old sneakers in a shoe rack". A reader that prefers the explicit
+  earlier value is being wrong about a gold that is itself an inference, and no retention rule
+  addresses that.
+
+So `AUDIT-MR-ENUMERATION.md` §4's mechanism sentence is corrected in place, and the P1 increment is
+**withdrawn rather than postponed**: an increment aimed at a mechanism the evidence does not show is
+a round bought with nothing.
+
+### 13.213.5 What replaces it
+
+Two candidates, both from the seven, neither dispatchable today:
+
+1. **A delta step in the counting contract.** `ENUMERATION_CONTRACT`'s Step 2 says *"do not
+   re-filter the list"*, which is right and incomplete: it should also ask whether any evidence
+   sentence **adds to, removes from, or replaces** an item in the list. That is the coins question,
+   and by §2's shape table it is also the MR failures whose answer is one short of the gold.
+2. **A stated-uncertainty reading.** "close to 1300" and "planning to store" are not facts; a
+   question that asks for the *current* value needs a rule for hedged updates. That is a wording
+   change with a 2-question ceiling and no measurement design yet — written down so it is not
+   rediscovered as a good idea.
+
+### 13.213.6 What the room is actually spent on
+
+The refusal in §13.213.3 rests on one measurement, taken from the 48,000 artifact's own `turns`
+arrays — every carried turn, compared with its question after removing a stoplist:
+
+| capability | carried turns | share sharing **no** content word with the question | share of characters |
+| --- | --- | --- | --- |
+| `MR` | 21,237 | **91.1%** | — |
+| `TR` | 22,971 | **91.2%** | — |
+| `ABS` | 2,140 | 78.8% | — |
+| `KU` | 4,658 | 70.1% | — |
+| `IE` | 9,529 | 66.9% | — |
+| **all** | **60,535** | **85.3%** | **65.5%** |
+
+Two thirds of the characters in a prompt, and five sixths of the turns, are text that shares no word
+with the question it is offered for. Some of that is paraphrase the metric cannot see, and §5 of
+`AUDIT-MR-ENUMERATION.md` already established that post-hoc groundedness checks have **no
+discriminating power** — so this is not a claim that the turns are worthless. It is a claim about
+what the budget *buys at the margin*: when the four questions above need 48,000 more characters,
+the room they are added into is two-thirds unrelated text, and the marginal character is drawn from
+the tail of a ranking whose head is already mostly off-topic.
+
+That is why the repair belongs in the ranking and not in the budget, and why the number above is
+stated as a floor on the waste rather than as an estimate of it.
+
+### 13.213.7 The ranking increment, registered
+
+*Claim:* the four questions 48,000 loses unanimously are lost at the **tail** of the relevance
+prefix, and a ranking repair reaches ≥3 of 4 at 48,000's token cost.
+
+*Instrument:* the 48,000 artifact's own per-question windows — for each of the four, the position of
+the decisive turn in the delivered order, and the overlap between that turn and the question. If the
+decisive turn is delivered but ranked low, the claim's premise holds and the repair is a re-rank. If
+it is **not** delivered at any rank, the premise fails and the budget was the only lever after all.
+
+*Falsified by:* all four decisive turns already sitting in the top quartile of their windows, which
+would say the ranking is not what excluded them and the 96,000 gain came from somewhere else.
+
+**Nothing is dispatched on it this round**, and the reason is the same as §13.211.4's: the
+instrument reads an artifact that already exists, so it costs nothing and does not need capacity that
+§13.212.6 measured at 5.1× the run budget.

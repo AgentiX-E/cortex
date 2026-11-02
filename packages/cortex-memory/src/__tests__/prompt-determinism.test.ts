@@ -70,9 +70,15 @@ describe('the prompt is a function of its inputs, so a drift in it is a drift in
       await memory.answer('How many trips did I take?', context);
       seen.push(memory.lastPromptText() ?? '');
     }
-    // Every prompt is the same 23,498 bytes, which is what `fitToBudget` spends at the default ceiling.
+    // Every prompt is the same 47,502 bytes, which is what `fitToBudget` spends at the default
+    // ceiling. The count moved with the ceiling and not on its own: §13.213 raised
+    // `DEFAULT_MAX_PROMPT_CHARS` from 24,000 to 48,000 and this rendering went from 23,498 to
+    // 47,502 -- one budget step, four characters more than the step, because the last turn the
+    // larger room admits is cut four characters into its 400. So this number is the assertion
+    // that the *default* is what the fixture is rendered under, and a change to either the
+    // budget or the allocator lands here rather than in a published comparison.
     expect(new Set(seen).size).toBe(1);
-    expect(seen[0]!.length).toBe(23498);
+    expect(seen[0]!.length).toBe(47502);
   });
 
   it('multi-session route, constant relevance: four passes send one prompt', async () => {

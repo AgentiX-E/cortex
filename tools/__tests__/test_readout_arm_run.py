@@ -929,7 +929,13 @@ class TestHowMuchTheWindowActuallyHeld:
 
     def test_it_reports_the_share_of_the_budget_the_prompt_used(self, tmp_path: Path) -> None:
         # The number that says whether the room was the constraint: 21,000 of 24,000 is 87.5%.
+        #
+        # The budget is NAMED here rather than left to the default. This case is about the
+        # division, and a fixture that borrowed the product's default was silently rewriting its
+        # own expectation every time that default moved -- §13.213 trebled it and this assertion
+        # would have started reading 43.75% while still passing its name.
         report = self._report([('MR', 26, 21_000)])
+        report['memoryArmConfig']['maxPromptChars'] = 24_000
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert '87.5%' in r.stdout
@@ -965,17 +971,19 @@ class TestHowMuchTheWindowActuallyHeld:
     def test_an_artifact_that_never_named_the_budget_reads_the_default(
         self, tmp_path: Path
     ) -> None:
-        """Absent means 24,000, which is what every archived artifact was produced under.
+        """Absent means the product's default, which is 48,000 since §13.213 and 24,000 before it.
 
         Absent is not "unknown": `DEFAULT_MAX_PROMPT_CHARS` is a value, the arm omits the field
-        only when it was not set, and every pre-§13.81 run therefore assembled at 24,000. The
-        table says which divisor it used so a historical artifact stays readable.
+        only when it was not set, so a run that names no budget assembled at whatever the constant
+        said on the day it ran. The table says which divisor it used -- here the word `default` --
+        because the same artifact read under a different constant is a different percentage, which
+        is exactly what §13.213 changed for a library caller.
         """
-        report = self._report([('MR', 30, 24_000)])
+        report = self._report([('MR', 30, 48_000)])
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert '100.0%' in r.stdout
-        assert '24,000' in r.stdout
+        assert '48,000' in r.stdout
         assert 'default' in r.stdout
 
     def test_a_prompt_that_spent_more_than_the_budget_names_the_disagreement(
@@ -990,7 +998,11 @@ class TestHowMuchTheWindowActuallyHeld:
         the second is the §13.11 collapse; the table names the state rather than printing a
         percentage over 100 as if it were a measurement.
         """
+        # Named, not defaulted: the case needs a prompt ABOVE its divisor, and with the product
+        # default at 48,000 a 36,000-character fixture would sit comfortably inside it. Naming the
+        # budget is what keeps this a test of the detector rather than a test of the default.
         report = self._report([('MR', 30, 36_000)])
+        report['memoryArmConfig']['maxPromptChars'] = 24_000
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         assert '150.0%' in r.stdout

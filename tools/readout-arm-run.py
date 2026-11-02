@@ -1630,7 +1630,7 @@ def turns_section(questions: list[dict]) -> tuple[str, int]:
 # an artifact reports the value it ran under. This constant is what an artifact produced before
 # that input existed was assembled at, and dividing every artifact by it was a reader defect
 # waiting for the first run that spent more than it -- see `prompt_budget`.
-DEFAULT_PROMPT_BUDGET_CHARS = 24_000
+DEFAULT_PROMPT_BUDGET_CHARS = 48_000
 
 
 def prompt_budget(report: dict) -> tuple[int, str]:
@@ -1649,8 +1649,14 @@ def prompt_budget(report: dict) -> tuple[int, str]:
     ## Absent means the default, which is a value and not a gap
 
     The arm omits the field exactly when the input was not set, and an unset input means the
-    product's default: 24,000. So absence is decided, not unknown, and the table names which
-    divisor it used so a historical artifact is still readable and a current one is checkable.
+    product's default: 48,000 since §13.213, 24,000 before it. So absence is decided, not unknown,
+    and the table names which divisor it used so a historical artifact is still readable and a
+    current one is checkable.
+
+    **This constant is a copy of a TypeScript one, and copies drift.** `prompt.ts` owns the value
+    and `test_prompt_budget_parity.py` reads it out of the source and compares, so the two cannot
+    disagree silently -- the failure mode `test_ask_table_parity.py` exists for, at the other
+    place in this repository where one number lives in two languages.
 
     ## Zero and negatives are refused rather than clamped
 

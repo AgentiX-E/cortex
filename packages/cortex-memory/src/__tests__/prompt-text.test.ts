@@ -84,12 +84,22 @@ describe('the system can hand out the prompt it sent', () => {
   });
 
   it('reports the budgeted prompt when the context is over budget', async () => {
-    // The unbounded text is 20x the budget, so "the accessor returns what was sent"
-    // is only true if it reports the post-budget prompt. A builder that captured its
-    // input would satisfy the case above and fail this one.
+    // The unbounded text is several times the budget, so "the accessor returns what
+    // was sent" is only true if it reports the post-budget prompt. A builder that
+    // captured its input would satisfy the case above and fail this one.
+    //
+    // The fixture is sized FROM the budget rather than fixed at a count that happened
+    // to overflow 24,000. §13.213 raised the default and this test's old 2,000 turns
+    // -- 62,000 characters -- slid under it, so the assertion below started describing
+    // a prompt the budget never touched. A fixture whose premise is "over budget" has
+    // to be written in terms of the budget or it stops testing that premise.
     const seen: string[] = [];
     const memory = system({ llm: recordingLlm(seen) });
-    const context = Array.from({ length: 2_000 }, (_, i) => `user: note number ${i} about it`);
+    const note = (i: number): string => `user: note number ${i} about it and about the rest`;
+    const context = Array.from(
+      { length: Math.ceil((DEFAULT_MAX_PROMPT_CHARS * 4) / note(0).length) },
+      (_, i) => note(i),
+    );
 
     await memory.answer('What did I note?', context);
 
