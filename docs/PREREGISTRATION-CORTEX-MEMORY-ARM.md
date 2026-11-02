@@ -24980,3 +24980,85 @@ number in the whitepaper has to be the number a user's default produces.
 
 *Falsified by:* either dispatch producing an artifact whose `--registration` reads zero departures — that
 would mean the `--set` did not reach the arm, which is §13.220's defect wearing a treatment's name.
+
+## 13.222 One call in six that neither arm made, and the two dimensions that disagree
+
+### 13.222.1 The number was in the artifact all along
+
+`--spend` prints the bill: calls, prompt tokens, completion tokens, the prefix-cache share, and how
+many of the calls the answers account for. On `41284575092` that is 5,651 calls and 4,000 answer calls,
+which leaves 1,651 unexplained — and the readout said only that the rest were "of the 5,651 recorded".
+
+The artifact's **Markdown** report has carried the missing line since §13.189:
+
+```
+| neither arm (judge, phrasing, setup) | 886 | 235,881 | 886 | 33,651 |
+```
+
+So the residual was never unrecorded. It was **unread at the terminal**, which is where the spend
+question is actually asked, and the reader who asks it sees two numbers that do not add up with no field
+between them. This is §13.220's shape a layer down: the number exists, the artifact carries it, and the
+place a decision is made does not show it. The repair is arithmetic, not an instrument.
+
+### 13.222.2 The two dimensions differ by an order of magnitude, and that is the whole point
+
+| run | calls on neither arm | share of calls | prompt tokens on neither arm | share of prompt |
+| --- | --- | --- | --- | --- |
+| `41284575092` | 886 of 5,651 | 15.7% | 235,881 of 31.1M | **0.8%** |
+| `41259622431` | 952 of 5,739 | 16.6% | — | — |
+| `41254359622` | 917 of 5,695 | 16.1% | — | — |
+| `41431790794` | 822 of 4,287 | 19.2% | 521,379 of 22.1M | **2.4%** |
+
+A judge call carries about **266 prompt tokens** against the feature arm's **13,600**, because it grades
+an answer rather than reading a context. So the residual is one call in six and under one token in a
+hundred, and **a readout that prints tokens alone shows a bill that looks complete while missing 16% of
+the requests**.
+
+That asymmetry is not a rounding detail; it is the reason a cost discussion between this arm and a
+competitor has to name which dimension it is comparing. §1.10 of the competitor analysis compares tokens
+per query, and on that axis the judge is invisible — while the same run's *request* count is 16% higher
+than its answer count, and request rate is what a provider throttles.
+
+### 13.222.3 What is checked, and it is one-sided on purpose
+
+The audit gains a `spend` row whose invariant is:
+
+> the calls the two arms report must be **at most** the calls the process recorded.
+
+Not "equal". The residual is real, named, and by construction; a check that demanded equality would fail
+every legitimate run. What it refuses is the opposite: **sides larger than the total**, which can only
+mean one ledger counted a call twice or that one ledger is not a subset of the other. That is the shape
+this row exists for, and it is the only shape it treats as a contradiction.
+
+The share is printed and **not judged**. No registration has said what a legitimate share is, and a
+threshold invented here would be a bar invented to be passed.
+
+An artifact carrying `llmUsage` but no `usageBySide` prints `SKIP` and says it predates one of the two
+instruments. Absence is not a partition of zero, and a `PASS` on an unchecked artifact is the failure
+mode §13.216.2 records.
+
+### 13.222.4 Acceptance
+
+| # | what must be true | how it is checked |
+| --- | --- | --- |
+| 1 | the readout prints the residual in **calls** | `--spend`: `886 calls (15.7%)` |
+| 2 | the readout prints the residual in **tokens** | `--spend`: `235,881 prompt tokens (0.8%)` |
+| 3 | the residual names where it comes from | the line names the judge, the phrasing stage and setup |
+| 4 | the side total is read, not recomputed | the printed split equals the artifact's `usageBySide` |
+| 5 | a subset passes the audit | `PASS  spend` and exit 0 on a consistent artifact |
+| 6 | sides above the total fail | `FAIL  spend` and exit 1 |
+| 7 | no split is `SKIP`, not `PASS` | the row says `predates` and does not claim a check |
+| 8 | four archived artifacts still pass | `--audit` on `41284575092`, `41259622431`, `41254359622`, `41431790794` |
+
+*Falsified by:* an artifact whose `usageBySide` totals exceed its `llmUsage.calls` and whose audit still
+exits 0 — that pair cannot occur while the row exists, so its reappearance means the row was removed or
+the comparison was loosened.
+
+### 13.222.5 The mutation
+
+| mutant | rows that fail | what that proves |
+| --- | --- | --- |
+| the invariant is loosened to `residual >= -100_000` | 6 | the row is bound to the comparison, not to the row's existence |
+
+Applied, run and reverted. With the mutant in place the exceeding fixture passes, which is exactly the
+artifact the row exists to refuse.

@@ -934,6 +934,51 @@ def spend_section(report: dict) -> str:
             f'{500 * 2 * runs:,} answer calls of the {calls:,} recorded'
         )
 
+    # The residual, which the Markdown report has carried since §13.189 and this readout has not.
+    #
+    # `usageBySide` partitions the calls onto the two arms; the judge, the phrasing stage and
+    # setup belong to neither, and `report.ts` renders that on its own line
+    # (`neither arm (judge, phrasing, setup)`). So this number is not unrecorded -- it is
+    # unread at the terminal, which is where the spend question actually gets asked.
+    #
+    # Two dimensions, and they disagree by an order of magnitude, which is the reason to print
+    # both. On run `41284575092`: 886 calls are on neither arm, 15.7% of 5,651 -- and they spent
+    # 235,881 prompt tokens, 0.8% of 31.1M. A judge call carries about 266 prompt tokens against
+    # the feature arm's 13,600, so a readout that prints tokens alone shows a bill that looks
+    # complete and is short by one call in six. That is the same defect as §13.220's, one
+    # measurement down: the number exists, and the place a decision is made does not show it.
+    by_side = report.get('usageBySide')
+    if isinstance(by_side, dict):
+        parts: list[str] = []
+        side_calls = 0
+        for side in ('baseline', 'feature'):
+            entry = by_side.get(side)
+            if isinstance(entry, dict) and isinstance(entry.get('calls'), int):
+                parts.append(f'{side} {entry["calls"]:,}')
+                side_calls += entry['calls']
+        if parts:
+            residual = calls - side_calls
+            share_of_calls = (residual / calls * 100) if calls else 0.0
+            side_prompt = 0
+            for side in ('baseline', 'feature'):
+                entry = by_side.get(side)
+                if isinstance(entry, dict) and isinstance(entry.get('promptTokens'), int):
+                    side_prompt += entry['promptTokens']
+            residual_prompt = prompt - side_prompt
+            share_of_prompt = (residual_prompt / prompt * 100) if prompt else 0.0
+            lines.append(f'  by side      {" + ".join(parts)} = {side_calls:,} calls')
+            lines.append(
+                f'  residual     {residual:,} calls ({share_of_calls:.1f}%) and '
+                f'{residual_prompt:,} prompt tokens ({share_of_prompt:.1f}%) belong to neither '
+                'arm: the judge, the phrasing stage and setup (report.ts renders this as '
+                '"neither arm")'
+            )
+            if residual < 0:
+                lines.append(
+                    '  reading      the sides exceed the total, so one of the two ledgers is '
+                    'counting another one\'s calls; this artifact contradicts itself'
+                )
+
     if share is not None:
         verdict = None
         for low, high, text in PREFIX_SHARE_BANDS:
@@ -1197,6 +1242,56 @@ def audit_section(
             else '; no window on those routes carries one'
         ),
     )
+
+    # 8. The three spend counts are a partition, and the remainder is stated rather than left
+    #    to the reader's subtraction.
+    #
+    # `usageBySide` partitions the calls onto the two arms, and the judge, the phrasing stage and
+    # setup belong to neither -- `report.ts` renders that on its own line, so the residual is
+    # recorded and named. What has never been checked is that the three add up, and the check
+    # belongs here because these are two fields of one artifact disagreeing or agreeing about the
+    # same total, which is exactly the class §13.107 found three times.
+    #
+    # The invariant is one-sided on purpose: the sides may be smaller than the total (the residual
+    # is real), never larger -- larger would mean two ledgers counted one call twice, or that one
+    # of them is not a subset of the other. The share is printed and not judged, because no
+    # registration has said what a legitimate share is, and a threshold invented here would be a
+    # bar invented to be passed.
+    usage_total = report.get('llmUsage')
+    by_side = report.get('usageBySide')
+    if isinstance(usage_total, dict) and isinstance(by_side, dict):
+        total_calls = usage_total.get('calls')
+        side_calls = sum(
+            side.get('calls')
+            for side in (by_side.get('baseline'), by_side.get('feature'))
+            if isinstance(side, dict) and isinstance(side.get('calls'), int)
+        )
+        if isinstance(total_calls, int):
+            residual = total_calls - side_calls
+            share = (residual / total_calls * 100) if total_calls else 0.0
+            check(
+                'spend',
+                residual >= 0,
+                f'{side_calls:,} of {total_calls:,} calls are on a side; {residual:,} '
+                f'({share:.1f}%) outside both, which is the judge and the phrasing stage '
+                'by construction (report.ts, attachUsageBySide)'
+                if residual >= 0
+                else f'the sides report {side_calls:,} calls against a total of {total_calls:,}, '
+                'so one ledger counted a call twice or is not a subset of the other',
+            )
+        else:
+            check(
+                'spend',
+                False,
+                'llmUsage.calls is not an integer, so the partition cannot be checked',
+            )
+    else:
+        # Absence is not a failure: an artifact that predates either instrument has no partition
+        # to check, and inventing a pass would claim it did.
+        lines.append(
+            '  SKIP  spend         no llmUsage/usageBySide pair to partition (this artifact '
+            'predates one of the two instruments)'
+        )
 
     header = [
         '',

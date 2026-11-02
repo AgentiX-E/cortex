@@ -2763,6 +2763,144 @@ class TestTheProviderSpend:
         assert 'non-negative integer' in r.stderr or 'subset' in r.stderr or 'cannot be' in r.stderr
 
 
+def _spend_report_with_sides(
+    *,
+    baseline_calls: int,
+    feature_calls: int,
+    total_calls: int,
+    baseline_prompt: int = 2_659_336,
+    feature_prompt: int = 28_211_410,
+    total_prompt: int = 31_106_627,
+) -> dict:
+    """A report carrying both the total and the per-side split, which is what §13.189 added.
+
+    The two totals are parameters rather than sums, because the case this fixture exists for is
+    the one where they disagree: the judge, the phrasing stage and setup answer to neither arm.
+    """
+    # The cache total is set below the prompt total on purpose: the readout refuses a hit larger
+    # than its own prompt, and a fixture that violates that would be testing the refusal.
+    report = _spend_report(calls=total_calls, prompt=total_prompt, cached=26_800_000)
+    report['usageBySide'] = {
+        'baseline': {
+            'calls': baseline_calls,
+            'unpricedCalls': 0,
+            'promptTokens': baseline_prompt,
+            'completionTokens': 10_000,
+            'cacheHitPromptTokens': 800_000,
+        },
+        'feature': {
+            'calls': feature_calls,
+            'unpricedCalls': 0,
+            'promptTokens': feature_prompt,
+            'completionTokens': 900_000,
+            'cacheHitPromptTokens': 26_000_000,
+        },
+    }
+    return report
+
+
+class TestTheResidualNeitherArmSpent:
+    """The judge, the phrasing stage and setup answer to neither side, and the split must say so.
+
+    `report.ts` renders that residual on its own line (`neither arm (judge, phrasing, setup)`), so
+    the number was never unrecorded. It was unread at the terminal, which is where the spend
+    question is actually asked -- and the two dimensions disagree by an order of magnitude, so a
+    readout that prints tokens alone shows a bill that looks complete and is short by one call in
+    six. Run `41284575092`: 886 calls of 5,651 (15.7%) against 235,881 prompt tokens of 31.1M
+    (0.8%), because a judge call carries about 266 prompt tokens against the feature arm's 13,600.
+    """
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict, *flags: str) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), str(path), *flags],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_spend_prints_the_residual_in_calls_and_in_tokens(self, tmp_path: Path) -> None:
+        report = _spend_report_with_sides(
+            baseline_calls=2_690, feature_calls=2_075, total_calls=5_651
+        )
+        r = self._run(tmp_path, report, '--spend')
+        assert r.returncode == 0, r.stderr
+        assert 'by side' in r.stdout
+        assert 'baseline 2,690 + feature 2,075 = 4,765 calls' in r.stdout
+        # Both dimensions, because they differ by an order of magnitude and only one of them is
+        # what a reader assumes when the readout prints tokens alone.
+        assert '886 calls (15.7%)' in r.stdout
+        assert '235,881 prompt tokens (0.8%)' in r.stdout
+
+    def test_the_residual_names_where_it_comes_from(self, tmp_path: Path) -> None:
+        # A residual with no attribution is a defect report; one that names the judge and the
+        # phrasing stage is a design decision the reader can check against report.ts.
+        report = _spend_report_with_sides(
+            baseline_calls=2_690, feature_calls=2_075, total_calls=5_651
+        )
+        r = self._run(tmp_path, report, '--spend')
+        assert 'judge' in r.stdout
+        assert 'phrasing' in r.stdout
+
+    @staticmethod
+    def _auditable(split: dict | None) -> dict:
+        """A small artifact that passes every other audit check, plus or minus the split.
+
+        The three audit tests below need a run whose *other* fields are consistent: an artifact
+        that fails `roster` would make the exit code say the same thing about two different
+        checks, which is the confusion the spend row exists to avoid.
+        """
+        report = TestTheArtefactAudit()._artifact()
+        report['llmUsage'] = {
+            'calls': 5_651,
+            'unpricedCalls': 0,
+            'promptTokens': 31_106_627,
+            'completionTokens': 2_368_373,
+            'cacheHitPromptTokens': 26_800_000,
+        }
+        if split is not None:
+            report['usageBySide'] = split
+        return report
+
+    def test_the_audit_passes_when_the_sides_are_a_subset_of_the_total(self, tmp_path: Path) -> None:
+        report = self._auditable(_spend_report_with_sides(
+            baseline_calls=2_690, feature_calls=2_075, total_calls=5_651
+        )['usageBySide'])
+        r = self._run(tmp_path, report, '--audit')
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'PASS  spend' in r.stdout
+
+    def test_the_audit_fails_when_the_sides_exceed_the_total(self, tmp_path: Path) -> None:
+        # Two ledgers cannot both have counted the same call unless one of them is not a subset.
+        # This is the only shape the check treats as a contradiction.
+        report = self._auditable(_spend_report_with_sides(
+            baseline_calls=4_000, feature_calls=3_000, total_calls=5_651
+        )['usageBySide'])
+        r = self._run(tmp_path, report, '--audit')
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert 'FAIL  spend' in r.stdout
+
+    def test_an_artifact_with_no_split_is_skipped_and_says_why(self, tmp_path: Path) -> None:
+        # Absence is not a partition of zero. A report that predates the split has nothing to
+        # check, and printing PASS would claim it did.
+        r = self._run(tmp_path, self._auditable(None), '--audit')
+        assert 'SKIP  spend' in r.stdout
+        assert 'predates' in r.stdout
+
+    def test_the_side_total_is_read_from_the_artifact_rather_than_recomputed(self, tmp_path: Path) -> None:
+        # The counters belong to the run. A tool that recomputed the split from `runs` would
+        # print a number no artifact contains, which is how §13.38's un-re-derivable figure
+        # happened in the first place.
+        report = _spend_report_with_sides(
+            baseline_calls=2_690, feature_calls=2_075, total_calls=5_651
+        )
+        r = self._run(tmp_path, report, '--spend')
+        assert '4,765' in r.stdout
+        assert '4,000' not in r.stdout.split('by side')[1].split('\n')[0]
+
+
 class TestWhatTheProviderDidWithTheRequests:
     """`transportRetry` is the only field that says a run was throttled.
 
