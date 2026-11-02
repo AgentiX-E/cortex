@@ -1471,13 +1471,18 @@ describe('a call that is answered and not retried is a refusal, not a clean call
     // One request, no retry, and the reason is a decision this client made.
     expect(outcome.attempts).toBe(1);
     expect(outcome.retried).toBe(0);
-    expect(outcome.refusal).toEqual({
+    expect(outcome.refusal).toMatchObject({
       reason: 'retry-after-beyond-budget',
       attempts: 1,
       retried: 0,
       retryAfterMs: 3_600_000,
-      remainingMs: 120_000,
     });
+    // A range, not the literal 120_000, because this number is `budget - elapsed` and one
+    // millisecond of scheduling is enough to make it 119_999 -- which is what CI found. The
+    // property is "the allowance was whole", not "the subtraction happened at zero cost";
+    // asserting the literal would pin a clock reading rather than the rule.
+    expect(outcome.refusal?.remainingMs).toBeLessThanOrEqual(120_000);
+    expect(outcome.refusal?.remainingMs).toBeGreaterThan(119_000);
 
     const after = retryStats();
     expect(after.refusedCalls).toBe(1);

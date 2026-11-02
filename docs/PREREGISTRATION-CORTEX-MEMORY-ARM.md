@@ -24748,3 +24748,19 @@ something other than your change, and that is checkable **before** the result is
 after it looks strange.
 
 *Falsified by:* any dispatch whose `head_sha` differs from the branch head at submit time.
+
+### 13.219.1 The first CI run of the acceptance table found a test I had written wrong
+
+`Verify` failed on `b9b75ca7`: `expected { remainingMs: 120000 } to deeply equal { remainingMs: 119999 }`.
+
+That number is `budget - elapsed`, so **one millisecond of scheduling between two statements** moves it. I had written
+`toEqual` on a clock reading and called it an acceptance row. The rule is *"the allowance was whole when the refusal was
+decided"*, and the row now says that: `remainingMs` above 119,000 and below or equal to the budget.
+
+Worth recording because of the direction of the error. The code was right and the test was wrong, and the wrongness was
+**over-specification rather than looseness** — the failure mode everyone guards against is a test that passes when it
+should not. This one would have failed on a fast machine and passed on a slow one, which is how a run gets re-dispatched
+for nothing and the retry gets blamed on the provider.
+
+The rule it leaves behind: an assertion may pin a **decision** or a **count**, never a subtraction that includes a clock.
+Where a duration has to be asserted, it is asserted as a range whose endpoints are the claim.
