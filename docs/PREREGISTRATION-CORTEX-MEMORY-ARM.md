@@ -25062,3 +25062,94 @@ the comparison was loosened.
 
 Applied, run and reverted. With the mutant in place the exceeding fixture passes, which is exactly the
 artifact the row exists to refuse.
+
+## 13.223 The first reading that is the arm, field for field
+
+*Dispatch `41488630010`, head `e280a622`, issued through `tools/dispatch-cortex-memory-ab.py` with all 21
+inputs printed to the log. Four repetitions, 500 questions, temperature 0, five hours of wall clock
+including queue.*
+
+### 13.223.1 What the instrument says
+
+```
+registration: 20 field(s) compared
+same         20 field(s)
+verdict: this run is the registered configuration, field for field,
+         so its numbers are quotable as the arm's and need no line in §10.3
+```
+
+Twenty of twenty, zero departures, and `--registration` exits **0** with a verdict sentence that did not
+exist in any prior section of this document. Every reading before this one carried at least a
+`turnCutMarker` and a `reader.thinking` departure (§13.221.1's table), which is why the arm's number has
+been quoted with a qualifier for the whole campaign.
+
+### 13.223.2 The reading
+
+| statistic | value | note |
+| --- | --- | --- |
+| `featureAggregate.avg` | **0.8390** | the register's statistic: mean over four repetitions |
+| `featureAggregate.min` / `max` | 0.830 / 0.848 | spread 1.8 points, which is the noise floor at this scale |
+| `featureAggregate.median` | 0.839 | |
+| `baseline` (no memory arm) | 0.4480 | 224/500, identical to every archived run to within one question |
+| `ablation.delta` | **+0.3915** | p = 1.51e-06 |
+
+Per capability, feature against baseline:
+
+| capability | feature | baseline | delta |
+| --- | --- | --- | --- |
+| IE (150) | **145 (96.7%)** | 1 (0.7%) | +144 |
+| MR (121) | **86 (71.1%)** | 106 (87.6%) | **−20** |
+| KU (72) | **63 (87.5%)** | 1 (1.4%) | +62 |
+| TR (127) | **100 (78.7%)** | 86 (67.7%) | +14 |
+| ABS (30) | **30 (100%)** | 30 (100%) | 0 |
+
+MR is the row to look at twice: the feature arm is **twenty questions worse than the baseline** on the one
+capability where the baseline's arrival-order window happens to be a good retrieval strategy. That is not
+new (§6.1 MR has been the standing weakness), but it is the first time it has been measured against a
+registered baseline rather than against another departure.
+
+### 13.223.3 What the pair is worth, now that the control exists
+
+| run | `thinking` | `turnCutMarker` | `maxPromptChars` | avg | vs this run |
+| --- | --- | --- | --- | --- | --- |
+| **`41488630010`** | disabled | `none` | 48,000 | **0.8390** | — |
+| `41284575092` | MS+TR | `ellipsis` | 48,000 | 0.8980 | **+5.90** |
+| `41254359622` | MS+TR | `ellipsis` | 96,000 | 0.9045 | +6.55 |
+| `41259622431` | MS+TR | `ellipsis` | 96,000 (`ask=candidates`) | 0.9075 | +6.85 |
+
+§13.221 registered "about +6.8 points" for the pair from a control of 0.834. The control is now 0.839 and
+the pair is worth **+5.9 at the registered budget** and +6.6 to +6.9 at 96,000. The predictions in
+§13.221.3 stand as registered: T at `A + 4.0 ± 1.5`, M at `A + 2.3 ± 1.5`. Their sum, 6.3, sits inside the
+measured 5.9-to-6.9 band, so the pair is consistent with two additive effects and with nothing larger.
+
+### 13.223.4 Why the capability split cannot do the separating
+
+The obvious shortcut is to attribute the difference from the per-capability table, and it does not work:
+
+- `turnCutMarker` rides `cortex_memory_max_turn_chars`, whose reach is `maxTurnCharsRoutes =
+  [multi-session, temporal]` — **MR and TR**.
+- `reader.thinking` carries `thinkingRoutes = [multi-session, temporal]` — **MR and TR**.
+
+The two variables act on **exactly the same 248 questions**. The 27-question gap against
+`41284575092` is concentrated there (TR −20, MR −7, IE +2, KU 0, ABS 0), which is consistent with either
+variable alone, with both, and with any split between them. A capability split separates mechanisms that
+reach different routes; these two reach one route set, so §13.221's two dispatches remain the only way to
+price them.
+
+### 13.223.5 Where this puts the arm against its own acceptance table
+
+| row | threshold | this run | verdict |
+| --- | --- | --- | --- |
+| S1 overall | ≥ 85.0% | **83.90%** | aim, **miss by 1.10** |
+| S2 knowledge-update | ≥ 85.0% | 87.5% | pass |
+| S3 multi-session | ≥ 85.0% | **71.1%** | aim, miss by 13.9 |
+| S4 temporal | ≥ 85.0% | **78.7%** | aim, miss by 6.3 |
+| S5 abstention | ≥ 80.0% | 100% | pass |
+
+S1 is 1.1 points short on the registered configuration, and the pair measured above is worth 5.9 — so
+**the pair's adoption is worth more than the whole remaining distance to S1**, which is the first time that
+sentence has been true with a control behind it.
+
+*Falsified by:* a dispatch of the same configuration whose `featureAggregate.avg` moves more than the
+1.8-point spread of this run's four repetitions. That would mean the arm's reading is not reproducible at
+four repetitions, and every delta in §13.221.3 would have to be restated against a bigger floor.
