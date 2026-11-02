@@ -308,6 +308,26 @@ describe('the table is well formed', () => {
     }
     expect(CRITERIA.find((criterion) => criterion.id === 'R1')?.accepted).toBe(true);
   });
+
+  it('carries the same competitor twice when two parties measured it, and never as one number', () => {
+    // Supermemory publishes 97% on LongMemEval-S with a GPT-4o reader; an independent comparison measures
+    // the same system at 81.6% with the same reader on the same 500 questions. A table that kept one of the
+    // two would be readable as an agreement, and the 15.4-point difference is larger than this project's
+    // whole distance to grade A — so "which figures may be quoted as a gap" is decided here rather than in
+    // a paragraph. Deleting either row must fail this test, not silently simplify the table.
+    const peers = CRITERIA.find((criterion) => criterion.id === 'S1')?.competitors ?? [];
+    const supermemory = peers.filter((peer) => peer.name.startsWith('Supermemory'));
+    expect(supermemory).toHaveLength(2);
+    const independent = supermemory.find((peer) => peer.grade === 'A');
+    const selfReported = supermemory.find((peer) => peer.grade === 'C');
+    expect(independent?.value).toBeCloseTo(0.816, 3);
+    expect(selfReported?.value).toBeCloseTo(0.97, 3);
+    expect((selfReported?.value ?? 0) - (independent?.value ?? 0)).toBeGreaterThan(0.1);
+    // Both rows must say where the number came from. A grade without a recipe cannot be disputed.
+    for (const peer of supermemory) {
+      expect(peer.recipe.length).toBeGreaterThan(100);
+    }
+  });
 });
 
 describe('the reranking rows, written before the run that fills them', () => {

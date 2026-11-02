@@ -349,7 +349,8 @@ export const CRITERIA: readonly Criterion[] = [
         name: 'Supermemory',
         value: 0.816,
         grade: 'A',
-        recipe: 'the published GPT-4o-reader configuration, per the same independent comparison',
+        recipe:
+          'the published GPT-4o-reader configuration, measured by a third party on the same 500 questions rather than reported by the vendor — the grade-C Supermemory row below is the same system reporting itself, 15.4 points higher',
       },
       {
         name: 'Zep',
@@ -439,11 +440,46 @@ export const CRITERIA: readonly Criterion[] = [
           'vendor research page, strongest reader — the same memory system as the GPT-4o row above, differing only in the model that reads it, which is what makes the 10.6-point gap an experiment on the reader',
       },
       {
+        // The row that shows what a vendor's own number is worth, and it is the sharpest single piece of
+        // evidence in this table. Supermemory appears TWICE above and here: 0.816 as the GPT-4o-reader
+        // configuration measured by an independent comparison (grade A), and 0.970 as the vendor's own
+        // report on the same benchmark, same 500 questions, same GPT-4o reader (grade C). Same system, same
+        // model, same dataset, **15.4 points apart**. Nothing about the difference is disclosed as a
+        // mechanism: the vendor publishes category scores and a run count, the independent comparison
+        // publishes a configuration. That gap is larger than this project's entire distance to grade A, so
+        // a campaign that quotes vendor figures as targets is aiming at a number nobody can reproduce --
+        // which is why §13.220 made the artifact's own configuration part of what the job checks.
+        name: 'Supermemory (self-reported, GPT-4o)',
+        value: 0.97,
+        grade: 'C',
+        recipe:
+          'vendor comparison page, LongMemEval-S 500 questions, GPT-4o answering: 97% overall with per-category 97/100/95/100/95/96. The SAME system reads 81.6% in the independent comparison two rows up, so this figure prices the reporting difference rather than the memory',
+      },
+      {
         name: 'agentmemory V4',
         value: 0.962,
         grade: 'C',
         recipe:
-          'single deterministic run, Claude Opus 4.6 reader, GPT-4o judge seed 42, six-signal retrieval — the highest published figure and the least comparable',
+          'single deterministic run, Claude Opus 4.6 reader, GPT-4o judge seed 42, six-signal retrieval — the second-highest figure in this table, and the least comparable: one run, no repetitions, no configuration record',
+      },
+      {
+        // Highest published S-number that states its setting. Included because the previous table's top
+        // row (agentmemory V4) is a single deterministic run, and a claim to "highest published" needs the
+        // runner-up that is stated in a form a reader can argue with.
+        name: 'Agent Zero Memory (Zero Labs)',
+        value: 0.956,
+        grade: 'C',
+        recipe:
+          'arXiv, August 2026: gpt-5.5 answering, 92.2 to 95.6 across eight answer models, 500 questions; the setting is not stated and the judge model is not named',
+      },
+      {
+        // The managed-platform number, and the reason the OSS row reads 32.4: the 94.4 configures an LLM
+        // extraction pass and a top-200 retrieval budget that the open-source package does not.
+        name: 'Mem0 managed platform, GPT-5',
+        value: 0.944,
+        grade: 'C',
+        recipe:
+          'vendor memory-benchmarks repository, April 2026 algorithm: 472 of 500 at a top-200 retrieval budget, GPT-5 as answer model AND as judge — self-reported, and the OSS package reproduced at 32.4 two rows up',
       },
       {
         name: 'Graphonomous (QA proxy)',

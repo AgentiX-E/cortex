@@ -704,6 +704,19 @@
       "kind": "self",
       "source": "Sidik & Rokach, Algorithms 19(7):607 (2026), doi:10.3390/a19070607; also arXiv:2605.03675. Acc 0.382, F1 0.412, LongMemEval-S N=500, Qwen2.5-7B on a 6 GB consumer GPU.",
       "note": "The only row in this file measured with a 7B reader, and it is here to keep one fact visible: the same benchmark reads 38.2 at Qwen2.5-7B and 95.8 at a frontier model, so a 57-point interval in this ledger is a reader difference rather than a memory-mechanism difference. Its own diagnostic is the useful part and it agrees with this repository's finding by a different route -- the correct session is in the candidate set 98% of the time while fact recall@k is 4.5%, so the binding constraint is what reaches the reader, not what can be found. The paper also reports that removing its whole multi-signal retrieval scaffold leaves accuracy unchanged in its setting, which is a null result registered against its own component."
+    },
+    {
+      "system": "Supermemory",
+      "score": 97.0,
+      "dataset": "LongMemEval",
+      "variant": "S",
+      "scoring": "single",
+      "answerModel": "GPT-4o",
+      "judge": "unknown",
+      "harness": "supermemory-published/gpt4o-97",
+      "kind": "self",
+      "source": "vendor comparison page (2026), LongMemEval-S 500 questions, GPT-4o answering: 97% overall, per-category 97 single-session-user / 100 single-session-assistant / 95 single-session-preference / 100 knowledge-update / 95 temporal-reasoning / 96 multi-session",
+      "note": "The same vendor publishes 84.6 with a GPT-5 reader and 66.07 in OmniMemEval's harness, and an independent comparison measures 81.6 with a GPT-4o reader. Four readings of one system span 31 points, and the harness field is what separates them: only the last was run by someone other than the vendor."
     }
   ]
 }
