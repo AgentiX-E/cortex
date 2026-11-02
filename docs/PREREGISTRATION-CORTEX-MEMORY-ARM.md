@@ -24722,3 +24722,29 @@ Three mutants, each applied to the source, run, and reverted. A test that cannot
 The third one is the one worth keeping: it fails with `120000 > 300000`, which is the defect stated in one line. Any future
 change that widens `THINKING_TIMEOUT_MS` without touching the allowance reproduces the pre-fix condition exactly, and this
 row is the only thing that would say so.
+
+## 13.219 The dispatch that ran 89 commits behind, and did not build
+
+*An operational finding, recorded because it cost a dispatch and would cost another.*
+
+`master` is this repository's default branch and the ref every push lands on. `main` also existed,
+84 commits behind and **diverged** by one: a single commit that master carries under a different SHA
+because the two were written by different push paths.
+
+A dispatch sent with `ref: main` therefore ran code from **eleven days ago**, and the job failed at
+`Build packages` — the branch is not merely old, it does not compile. Nothing in the dispatch
+response says which ref it used; the run's `head_sha` is the only place that fact appears, and it
+takes a comparison against the branch list to notice it is not the commit that was just pushed.
+
+**Repaired, not documented away:** `main` was fast-forwarded to the current `master` (`b9b75ca7`).
+Its one unique commit is already on `master` as `01a0cf0c` with the same message, so nothing was
+lost. The stale branch no longer exists as a trap.
+
+**And the dispatch was reissued on `master`** — `41431790794`, head `b9b75ca7`.
+
+The general rule this is an instance of: a dispatch names a ref, and a ref that is not the default
+can be arbitrarily old. A run whose `head_sha` is not the commit you just pushed has measured
+something other than your change, and that is checkable **before** the result is read rather than
+after it looks strange.
+
+*Falsified by:* any dispatch whose `head_sha` differs from the branch head at submit time.
