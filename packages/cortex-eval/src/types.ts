@@ -416,13 +416,35 @@ export type GoldOverlap = {
    * problem. Until this field existed the campaign could measure `k = 64` and `k = 256`
    * and still not tell them apart (`§13.61.7`).
    *
-   * With `pool` present the three numbers partition the gold set:
+   * With `pool` present the three numbers partition the gold set **while the delivery
+   * comes from the pool**:
    *
    * ```text
    * total - pool      the ranking never surfaced it
    * pool  - carried   the ranking had it and the budget cut it
    * carried           it reached the reader
    * ```
+   *
+   * ## The precondition, and the regime that breaks it
+   *
+   * The partition needs `carried <= pool <= total`. The upper bound cannot fail -- the
+   * ranking cannot surface more gold than the dataset names -- but the lower one can:
+   * since §13.68's per-turn cap the window is often wider than the pool, so selection
+   * continues past the scored set and delivers gold the ranking never offered. Then
+   * `carried > pool`, the same gold turn is counted in both `total - pool` and `carried`,
+   * and the three numbers are **marginal counts rather than a partition**.
+   *
+   * §13.214 is where that was measured: run `41284575092` delivers 53 gold turns from
+   * beyond its pool and run `41254359622` delivers 185, so the reader's totals, which
+   * clamped `pool - carried`, printed a cut 8% and 62% smaller than its own rows and a
+   * **zero** in the beyond-the-pool column that the data contradicts. A reader that adds
+   * the three columns must therefore expect `total + beyond`, not `total`, and
+   * `tools/readout-arm-run.py --pool` now says so in a line of its own.
+   *
+   * So the partition is the statement to make when `carried <= pool`, and the accounting
+   * is the statement to make otherwise. Neither is a clamp: a negative `pool - carried`
+   * is the measurement `carried - pool`, which is why the reader reports both directions
+   * and the artifact keeps the raw counts.
    *
    * ## Absent, never zero
    *
@@ -434,9 +456,11 @@ export type GoldOverlap = {
    * ## The precondition it assumes
    *
    * `carried <= pool <= total` holds when the delivery came from the pool, which is what
-   * the budget does. A caller that passes a pool the retrieval did not produce gets an
-   * impossible row rather than a clamped one: the impossible row is visible, and a
-   * clamped row would read as a finding.
+   * the budget does below the pool's width. A caller that passes a pool the retrieval did
+   * not produce gets an impossible row rather than a clamped one: the impossible row is
+   * visible, and a clamped row would read as a finding. The lower bound fails for a
+   * legitimate reason documented above -- a window wider than the pool -- and `pool > total`
+   * stays a caller defect in both regimes.
    */
   readonly pool?: number | undefined;
   /**

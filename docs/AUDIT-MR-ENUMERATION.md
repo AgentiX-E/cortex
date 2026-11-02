@@ -72,6 +72,13 @@ in the window.** The `48,000`-character budget discards two thirds of the haysta
 what costs MR its points. Any repair aimed at retrieval — a wider top-k, a second index, a reranker —
 is aimed at a cell that is already mostly filled.
 
+> **Which population that sentence is about, stated precisely (§13.214).** It is about the **22 stable
+> failures** — the questions wrong in every repetition — not about every MR question. The budget was
+> separately worth four MR questions between 48,000 and 96,000, and 61 of the 132 gold turns the wider
+> room reached from **beyond the ranking's pool** are MR's. So retrieval's reach is not an empty axis;
+> it is simply not the axis the stable failures sit on. A reader who took the paragraph above to mean
+> "retrieval cannot matter for MR" would be reading a claim about 22 questions as a claim about 121.
+
 This is also the point where `AUDIT-BENCHMARK-WALLCLOCK.md` §5's first bullet stops being an
 uncomfortable footnote and becomes a limit on the reading itself: the digest `datasetFingerprint` now
 records did not exist when this artifact was produced, so all of it is comparable only to itself.

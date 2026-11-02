@@ -2924,7 +2924,10 @@ function buildArmRoster(
       // rendered string -- the gold turn either is one of the carried turns or is not.
       // The third count, when a ranking was consulted: how much of this question's gold
       // the ranking offered at all. `total - pool` is the ranking's miss, `pool - carried`
-      // is the budget's. §13.61.7 is what six runs could not say without it.
+      // is the budget's -- while the delivery comes from the pool. Since §13.68's per-turn
+      // cap the window can be wider than the pool, so `carried` can exceed `pool` and the
+      // three counts become marginals rather than a partition (§13.214). §13.61.7 is what
+      // six runs could not say without them.
       goldOverlap: overlapOf(question, retrievedContexts[i] ?? [], poolFor, rolePolicy),
     })),
     featureConfig,

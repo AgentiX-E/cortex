@@ -1370,8 +1370,21 @@ def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple
     the dataset names, and a prompt cannot deliver more than it was shown. Those are counted and
     printed rather than clamped or dropped, because a caller defect that reads as a plausible row
     is the failure mode the campaign has spent seven sections removing.
+
+    ## The TOTAL, which used to be a clamp of the sums
+
+    §13.214. Each row clamps two differences that point in opposite directions, and the first
+    version summed `pool` and `carried` across capabilities and clamped the **totals**. That makes
+    a capability with a surplus cancel one with a shortfall before either clamp runs, so the TOTAL
+    is not the sum of the column above it: on run `41284575092` the rows hold 707 cut turns and 53
+    beyond-pool turns, while the TOTAL printed 654 and **zero**. A zero where the data says 53 is
+    the false-zero class this campaign refuses, and it is worse here than a missing number because
+    the "arrived from outside the pool" note keys off that column and therefore never fired either.
+
+    The columns are now accumulated per record and the TOTAL is their sum, so a reader can add the
+    column and get the printed number.
     """
-    by_capability: dict[str, list[tuple[int, int, int]]] = {}
+    by_capability: dict[str, list[tuple[int, int, int, int, int]]] = {}
     without_pool = 0
     impossible = 0
     for question in questions:
@@ -1393,7 +1406,11 @@ def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple
         if pool > total or carried > total:
             impossible += 1
         capability = str(question.get('capability', '?'))
-        by_capability.setdefault(capability, []).append((total, carried, pool))
+        # The two clamps are applied **here**, per record, and never to a sum. See the docblock:
+        # a clamp of the sums lets one capability's surplus cancel another's shortfall.
+        by_capability.setdefault(capability, []).append(
+            (total, carried, pool, max(0, pool - carried), max(0, carried - pool))
+        )
 
     measured = sum(len(rows) for rows in by_capability.values())
     if measured == 0:
@@ -1406,18 +1423,23 @@ def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple
     )
     totals = [0, 0, 0, 0]
     beyond_total = 0
+    cut_total = 0
     for capability in sorted(by_capability):
         rows = by_capability[capability]
         gold = sum(row[0] for row in rows)
         carried = sum(row[1] for row in rows)
         pool = sum(row[2] for row in rows)
-        # The two directions are different quantities and only one of them can be positive.
-        # Below the pool's width the room refuses gold the ranking offered; above it the room
-        # reaches gold the ranking never offered, because the selection continues past the
+        # The two directions are different quantities and only one of them can be positive per
+        # record. Below the pool's width the room refuses gold the ranking offered; above it the
+        # room reaches gold the ranking never offered, because the selection continues past the
         # scored set. Printing the second as a negative first would report a cut that ran
         # backwards -- which is what the first version of this table did on run `39180819474`.
-        cut = max(0, pool - carried)
-        beyond = max(0, carried - pool)
+        #
+        # Summed from the records rather than recomputed from `pool - carried`: a capability whose
+        # aggregate floats one turn above the pool can hold records on both sides, and
+        # `max(0, sum)` would report the wrong one of them (§13.214).
+        cut = sum(row[3] for row in rows)
+        beyond = sum(row[4] for row in rows)
         lines.append(
             f'  {capability:<10}{len(rows):>5}{gold:>7}{gold - pool:>16}{cut:>19}'
             f'{beyond:>17}{carried:>11}'
@@ -1426,15 +1448,28 @@ def pool_section(questions: list[dict], roles: list[str] | None = None) -> tuple
         totals[1] += carried
         totals[2] += pool
         beyond_total += beyond
+        cut_total += cut
     lines.append(
         f'  {"TOTAL":<10}{measured:>5}{totals[0]:>7}{totals[0] - totals[2]:>16}'
-        f'{max(0, totals[2] - totals[1]):>19}{beyond_total:>17}{totals[1]:>11}'
+        f'{cut_total:>19}{beyond_total:>17}{totals[1]:>11}'
     )
     lines.append(
         '  "never surfaced" is the ranking\'s reach; "cut by the budget" is the order above '
         'the cut; "beyond the pool" is gold the room reached that the ranking never offered, '
         'which is possible only when the window is wider than the pool.'
     )
+    if beyond_total:
+        # §13.214. The four numbers read as destinations and are not: "never surfaced" is
+        # `total - pool`, so it includes the gold the room carried from beyond the pool, which
+        # "delivered" counts again. Without this line a reader who added the columns would find
+        # a sum larger than `gold` and conclude the table was broken rather than double-counting.
+        lines.append(
+            f'  the columns are NOT a partition: "never surfaced" counts every gold turn the '
+            f'ranking did not offer, including the {beyond_total} the room delivered from beyond '
+            f'the pool -- so those {beyond_total} appear in two columns, and the sum of the '
+            f'columns exceeds `gold` by exactly {beyond_total}. Only the per-row direction is a '
+            'destination; the aggregate is three marginal counts over one gold list.'
+        )
     if without_pool:
         lines.append(f'  {without_pool} record(s) without a pool: no ranking was consulted, '
                      'or the artifact predates the field')
@@ -1556,7 +1591,9 @@ def ranks_section(questions: list[dict]) -> tuple[str, int]:
         lines.append(f'  top {cut:>2}: {totals[cut]:>5} of {totals["gold"]} gold turns = {share:6.1%}')
     lines.append(
         '  the gap between top 8 and top 32 is what a better ORDER could buy; the gap between '
-        'top 32 and surfaced is what a larger ROOM could buy; below surfaced, only the ranking can.'
+        'top 32 and surfaced is what a larger ROOM could buy; below surfaced the ranking never '
+        'reached the gold at all, and the only thing that can is a selection that draws on a '
+        'wider universe than the scored pool -- `--pool` counts it in its "beyond the pool" column.'
     )
     return '\n'.join(lines), len(rows)
 

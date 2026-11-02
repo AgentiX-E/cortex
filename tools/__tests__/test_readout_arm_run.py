@@ -1684,6 +1684,206 @@ class TestWhenTheRoomIsWiderThanThePool:
         assert 'pool > total' in r.stdout
 
 
+class TestWhatTheRankFooterPromises:
+    """`--ranks` ended by saying that below the surfaced line "only the ranking can" reach gold.
+
+    That was true of every artifact before the 400-character cap, where the window was narrower
+    than the pool and delivery stopped at the scored set. It is false of every artifact since:
+    `--pool` reports gold delivered from **beyond** the pool, so the room reaches gold the ranking
+    never offered, and a footer that says otherwise sends a reader to the ranking for a repair only
+    the selection can make.
+
+    Corrected here rather than left to the prose, because the footer is the sentence a decision
+    quotes -- §13.213.7 quoted it when it registered a re-rank as the cheap way to recover four
+    questions, and the one question whose decisive turn can be located had that turn outside the
+    pool entirely.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, int, int, int]]) -> dict:
+        questions = []
+        for index, (capability, total, carried, pool) in enumerate(rows):
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None,
+                'rawOutput': None,
+                'correct': False,
+                'goldOverlap': {
+                    'carried': carried,
+                    'total': total,
+                    'pool': pool,
+                    'goldRanks': list(range(pool)) + [-1] * (total - pool),
+                },
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--ranks', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_the_footer_no_longer_says_only_the_ranking_can_reach_the_tail(
+        self, tmp_path: Path
+    ) -> None:
+        r = self._run(tmp_path, self._report([('MR', 10, 9, 7)]))
+        assert r.returncode == 0, r.stderr
+        assert 'only the ranking can' not in r.stdout
+        # And it names the mechanism that does reach them, so the reader is sent somewhere real.
+        assert 'beyond the pool' in r.stdout
+
+    def test_the_two_buyable_gaps_keep_their_own_words(self, tmp_path: Path) -> None:
+        r = self._run(tmp_path, self._report([('MR', 10, 9, 7)]))
+        assert r.returncode == 0, r.stderr
+        assert 'better ORDER' in r.stdout
+        assert 'larger ROOM' in r.stdout
+
+
+class TestTheTotalIsTheColumnSum:
+    """`max(0, sum)` is not `sum(max(0, .))`, and the pool table printed the first as the TOTAL.
+
+    Every capability row clamps two differences that point in opposite directions: below the pool
+    width the room refuses gold the ranking offered (`pool - carried`), above it the room reaches
+    gold the ranking never offered (`carried - pool`). The rows are right. The TOTAL was computed
+    from the summed `pool` and `carried`, so a capability with a surplus **cancelled** a capability
+    with a shortfall before either clamp ran.
+
+    Run `41284575092` is the first artifact where that bites, because MR and TR deliver past the
+    pool (32 and 21 gold turns) while ABS, IE and KU are cut short of it (178, 210, 319):
+
+        capability   per-record cut    per-record beyond
+        ABS/IE/KU            707                 0
+        MR/TR                  0                53
+        printed TOTAL        654                 0     <- clamp of the sums
+
+    So the table reported 8% less cut than its own rows, and reported **zero** gold arriving from
+    outside the pool when fifty-three did -- a false zero, which is the class of reading this
+    campaign refuses everywhere else. On the 96,000 artifact the same defect understates the cut by
+    62% (111 printed against 296 in the rows).
+
+    ## Why this is a test of an identity rather than of a fixture
+
+    The three numbers the table calls destinations are not a partition even when the totals are
+    right: `never surfaced` counts every gold turn the ranking did not offer, including the ones
+    the room delivered from beyond the pool, so those appear in two columns. What must hold is the
+    weaker, checkable identity the rows already satisfy -- **the TOTAL cell equals the sum of the
+    cells above it** -- and the disclosure that the columns are not a partition.
+    """
+
+    @staticmethod
+    def _report(rows: list[tuple[str, int, int, int]]) -> dict:
+        """(capability, total, carried, pool) -> a report whose records carry a pool."""
+        questions = []
+        for index, (capability, total, carried, pool) in enumerate(rows):
+            questions.append({
+                'questionId': f'q{index}',
+                'capability': capability,
+                'groundTruth': 'x',
+                'answer': None,
+                'rawOutput': None,
+                'correct': False,
+                'goldOverlap': {
+                    'carried': carried,
+                    'total': total,
+                    'pool': pool,
+                    'goldRanks': [-1] * total,
+                },
+            })
+        return {
+            'memoryArmConfig': {'ask': 'enumerated'},
+            'baseline': {'metrics': {'accuracy': 0.4}},
+            'feature': {'metrics': {'accuracy': 0.6}},
+            'ablation': {'delta': 0.2, 'questions': None},
+            'questions': questions,
+        }
+
+    @staticmethod
+    def _run(tmp_path: Path, report: dict) -> 'subprocess.CompletedProcess[str]':
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--pool', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+
+    @staticmethod
+    def _cells(stdout: str) -> dict[str, list[int]]:
+        """The numeric cells of each row, keyed by its first field."""
+        out: dict[str, list[int]] = {}
+        for line in stdout.splitlines():
+            parts = line.split()
+            if len(parts) != 7:
+                continue
+            try:
+                out[parts[0]] = [int(value) for value in parts[1:]]
+            except ValueError:
+                continue
+        return out
+
+    def test_the_total_is_the_sum_of_the_rows_not_a_clamp_of_the_sums(self, tmp_path: Path) -> None:
+        # One capability short of the pool and one past it, which is the shape of every artifact
+        # since the 400-character cap: MR 10 gold / 9 delivered / 7 surfaced, KU 10 / 4 / 7.
+        # Rows: never 3 + 3, cut 0 + 3, beyond 2 + 0, delivered 9 + 4.
+        report = self._report([('MR', 10, 9, 7), ('KU', 10, 4, 7)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        cells = self._cells(r.stdout)
+        assert 'MR' in cells and 'KU' in cells and 'TOTAL' in cells, r.stdout
+        never, cut, beyond, delivered = 6, 3, 2, 13
+        assert cells['TOTAL'] == [2, 20, never, cut, beyond, delivered], r.stdout
+        # The identity, stated directly, so a future column added to the table fails here rather
+        # than silently breaking the sum.
+        for column in range(6):
+            assert cells['TOTAL'][column] == cells['MR'][column] + cells['KU'][column], (
+                f'column {column}: TOTAL is not the sum of the rows\n{r.stdout}'
+            )
+
+    def test_a_clamp_of_the_sums_would_hide_the_overflowing_gold(self, tmp_path: Path) -> None:
+        # The exact wrong numbers the previous version printed for this fixture: 1 and 0. Named
+        # individually so the regression is legible rather than merely "not equal".
+        report = self._report([('MR', 10, 9, 7), ('KU', 10, 4, 7)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        cells = self._cells(r.stdout)
+        assert cells['TOTAL'][3] != 1, r.stdout  # cut, was max(0, 14 - 13) = 1
+        assert cells['TOTAL'][4] != 0, r.stdout  # beyond, was max(0, 13 - 14) = 0
+        # And the note that keys off that column now fires, because two gold turns really did
+        # arrive from outside the pool.
+        assert 'arrived from outside the pool' in r.stdout
+
+    def test_the_table_says_its_columns_are_not_a_partition(self, tmp_path: Path) -> None:
+        # `never surfaced` is `total - pool` and therefore includes the gold the room carried from
+        # beyond the pool, which `delivered` counts again. A reader who added the columns would
+        # otherwise conclude they partition the gold.
+        report = self._report([('MR', 10, 9, 7), ('KU', 10, 4, 7)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'NOT a partition' in r.stdout
+        # The overlap is named as the number of gold turns carried from beyond the pool.
+        assert 'two columns' in r.stdout
+
+    def test_a_run_with_no_overflow_keeps_a_partition_reading(self, tmp_path: Path) -> None:
+        # When no gold arrived from outside the pool the columns DO partition the gold, and the
+        # table must not carry a warning about an overlap that is zero.
+        report = self._report([('KU', 10, 4, 7)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'NOT a partition' not in r.stdout
+        cells = self._cells(r.stdout)
+        assert cells['TOTAL'] == [1, 10, 3, 3, 0, 4], r.stdout
+
+
 class TestWhatTheStepOneListHeld:
     """The measurement that moved MR's next variable from "arithmetic" to "the list".
 

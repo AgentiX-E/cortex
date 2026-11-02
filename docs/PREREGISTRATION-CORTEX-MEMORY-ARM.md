@@ -12747,6 +12747,12 @@ questions** it settles three queued experiments before any of them is dispatched
 | carried into the prompt (`carried`) | **6,501 — 86.5%** |
 | in the pool but not in the prompt   | **654 — 8.7%**    |
 
+> **Corrected in §13.214.** The 654 is `pool - carried` over the whole roster, which is a difference of
+> two sums and not the size of the set `pool \ prompt`. The two are equal only while every delivered turn
+> is a candidate; with a per-turn cap the delivery runs past the pool, and 53 gold turns are **in the
+> prompt but not in the pool**, so the set difference is at most 654 and at least 601. The per-question
+> accounting in §13.214.2 is the figure to quote for "how much did the budget cut": **707**.
+
 And on the 83 wrong answers of the `temperature=0` arm:
 
 | question-level fact                                    | value                |
@@ -23923,3 +23929,121 @@ a preference:**
 That is a different statement from "96,000 is worse", and it is the one the evidence supports. It
 also gives the ranking increment a deadline: it is the cheaper repair only until someone shows it
 cannot reach these four.
+
+## 13.214 The pool table's total was a clamp of the sums, and it hid the gold the room reached past the pool
+
+### 13.214.1 What the table said, and what its own rows said
+
+`--pool` prints where the gold went, per capability, in four columns: never surfaced, cut by the budget,
+beyond the pool, delivered. Each **row** clamps two differences that point in opposite directions — below
+the pool's width the room refuses gold the ranking offered (`pool - carried`), above it the room reaches
+gold the ranking never offered (`carried - pool`). The rows were right. The TOTAL was computed from the
+summed `pool` and `carried`, so a capability running a surplus cancelled a capability running a shortfall
+**before either clamp ran**:
+
+| artifact | rows: cut | TOTAL printed | rows: beyond | TOTAL printed |
+| --- | --- | --- | --- | --- |
+| `41284575092` (48,000) | **707** | 654 (−7.5%) | **53** | **0** |
+| `41254359622` (96,000) | **296** | 111 (−62.5%) | **185** | **0** |
+
+The mechanism is the campaign's own per-turn cap. MR and TR deliver **past** the pool (32 and 21 gold
+turns at 48,000), because a 400-character turn fits more turns than the 256-wide pool holds; ABS, IE and
+KU are cut **short** of it (178, 210, 319). Clamped after summing, the surplus eats the shortfall.
+
+**The zero is the part that matters.** 53 and 185 gold turns arrived from outside the pool, and the table
+printed `0` — and the note that keys off that column, `N gold turn(s) arrived from outside the pool`,
+therefore never fired either. A false zero is worse than a missing number: it is a measurement, it is in
+the artifact's own units, and it says the opposite of the data.
+
+This is `max(0, Σ) ≠ Σ max(0, ·)`, which is the arithmetic equivalent of §12.7's shape — a value reported
+one way and stored another. The fix is one line of accumulation: the clamps are applied per record, and
+the TOTAL is the sum of the column above it. A test now asserts that identity for every column, so a
+future column fails loudly rather than silently ceasing to add up.
+
+### 13.214.2 The four-way account, corrected
+
+| quantity | 48,000 | 96,000 | change |
+| --- | --- | --- | --- |
+| gold turns the dataset names | 7,516 | 7,516 | — |
+| the ranking never surfaced | 361 | 361 | — |
+| **cut by the budget** | **707** | **296** | −411 |
+| **beyond the pool** | **53** | **185** | +132 |
+| delivered | 6,501 | 7,044 | +543 |
+
+The room's shortfall falls by 411 and its reach past the pool rises by 132, and the two are consistent
+with `delivered` rising by 543. Two readings follow that the previous table could not support:
+
+- **the ranking's reach is constant at 361.** Buying room does not change what the ranking surfaces;
+  it changes how much of it the prompt can hold. §13.213's budget decision is therefore a decision about
+  allocation, not about signal;
+- **132 of the 543 gold turns the bigger room bought (24.3%) came from outside the ranking's pool.** A
+  third of what 96,000 buys is evidence the ranking never offered, so no re-ranking of that pool can be
+  responsible for it.
+
+### 13.214.3 What that does to the registered ranking increment
+
+§13.213.7 registered: *the four questions 48,000 loses unanimously are lost at the **tail** of the
+relevance prefix, and a ranking repair reaches ≥3 of 4 at 48,000's token cost.* Checked against the pair
+in the same round, on the question whose decisive turn can be located at all:
+
+`10d9b85a`, gold `3 days`. The 48,000 window carries 167 turns and **none** contains `lecture`; the
+96,000 window carries 232 and one does, at position 158. Its `goldRanks` are
+`[-1, 10, 113, 141, 86, 9, 167, 241, 209, 233, -1]` with `pool = 9` and `carried` 9 → 11. So the two gold
+turns the bigger room adds are the two with rank **−1**: they are the `beyond the pool` kind, and a
+re-rank of a pool they are not in **cannot reach them by construction**.
+
+**So the premise is falsified for the mechanism §13.213.7 named.** They were not at the tail of the
+prefix. They were never in it.
+
+What survives is a different repair, and the subset relation is what makes it visible: on all four
+questions the 48,000 window is a **strict subset** of the 96,000 one, so the budget only ever removes.
+
+| question | capability | turns at 48,000 | turns at 96,000 | share kept |
+| --- | --- | --- | --- | --- |
+| `0977f2af` | KU | 55 | 119 | 46% |
+| `10d9b85a` | MR | 167 | 232 | 72% |
+| `a1cc6108` | MR | 181 | 243 | 74% |
+| `d24813b1` | IE | 50 | 86 | 58% |
+
+For `10d9b85a` the decisive turn sits at chronological 158 of a 232-turn session while 48,000's room
+holds 167 of that same session. **The room was large enough to hold a set containing it; the selection
+did not choose it.** That is a selection defect, not an ordering defect and not a budget defect, and its
+repair costs no tokens.
+
+### 13.214.4 The counterweight, stated before it is convenient
+
+Only one of the four is a demonstrated missing-evidence case. On the other three the decisive content is
+present in **both** windows:
+
+| question | probe | 48,000 | 96,000 |
+| --- | --- | --- | --- |
+| `0977f2af` | `instant pot` | positions 4, 26, 27, 29 | 9, 57, 58, 60 |
+| `a1cc6108` | `alex` | 50, 51 | 50, 51 |
+| `d24813b1` | `bak` | 16, 19, 20, 21, 38 | 17, 23, 36, 38, 40 |
+
+So "the four are lost to a shared coverage mechanism" is not supported even after the mechanism was
+renamed. One is coverage, three are something else — and a single increment cannot be credited with all
+four. Any registration that promises ≥3 of 4 has to name which three and what the mechanism is, and this
+section cannot.
+
+### 13.214.5 The increment this registers instead
+
+*Claim:* filling each selected session by **relevance order rather than chronological order**, at the
+same 48,000-character budget, keeps the decisive turn of `10d9b85a` and does not lose the ordering
+questions that chronological adjacency exists for.
+
+*Instrument:* the same pair, read with `--pool` (the four-way account above) and `--paired` (per-question
+transitions), plus `--caps` for the repetition band. The anchor is named in advance: `10d9b85a` must
+convert, and its 48,000 window must contain `lecture`.
+
+*Prediction:* `MR +4 ± 2` at equal prompt tokens — the same prediction §13.213.8 registered for
+96,000, which is what makes the two directly comparable: the increment is only worth doing if it buys
+the same thing for nothing.
+
+*Falsified by:* `TR` or `ABS` falling outside the noise band. Chronological adjacency is load-bearing
+for "which came first" and for period arithmetic, and a relevance order that pays `MR +4` with `TR −5`
+is a worse trade at zero tokens than 96,000 is at +61.7%.
+
+*Not dispatched this round.* The instrument work above is offline; the increment needs a product change
+in window assembly and a dispatch, and §13.212.6 measured the run budget at 5.1× what the capacity
+allows. It is registered so the next round starts from a falsifiable claim rather than a preference.
