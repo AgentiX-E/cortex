@@ -24906,3 +24906,77 @@ The registered configuration's own reading was in flight when this section was w
 `e280a622`, issued through `tools/dispatch-cortex-memory-ab.py` with all 21 inputs printed to the log. It is read in
 the section that follows, and not before — a number quoted here would be the same defect this section is about,
 one level down.
+
+## 13.221 Two departures that have been travelling together, registered to be separated
+
+*Written before either dispatch exists, and before `41488630010` was read.*
+
+### 13.221.1 What is known, and why it is not enough
+
+Every 500-question run since §13.108 that reads above 89% carries **two** departures from the
+registration at once:
+
+| run | `thinking` | `turnCutMarker` | `maxPromptChars` | S1 | registration check |
+| --- | --- | --- | --- | --- | --- |
+| `41254359622` | enabled on MS+TR | `ellipsis` | 96,000 | 0.902 | 4 undeclared |
+| `41259622431` | enabled on MS+TR | `ellipsis` | 96,000 | 0.906 | 5 undeclared |
+| `41284575092` | enabled on MS+TR | `ellipsis` | 48,000 | 0.898 | 3 undeclared |
+| registered arm (`40698867439`) | disabled | `none` | 48,000 | 0.834 | — |
+
+Three readings of the pair, spread 0.8 points, mean **0.902**. The registered arm reads **0.834**. So the
+pair is worth about **+6.8 points** and the campaign has been quoting the pair's number while describing it
+as the arm's.
+
+What the table cannot say is **which half**. `thinking` is a reader property; `turnCutMarker` is a prompt
+property. They were adopted together (§13.188 registered the marker beside the width) and never separated.
+A number produced by two simultaneous departures is a number about a bundle, and a bundle is not a mechanism
+— §13.132.7's rule, applied to configuration rather than to wording.
+
+The third column is the one piece of separation the archive already has: `41284575092` and `41259622431`
+differ **only** in `maxPromptChars` (48,000 against 96,000) and read 0.898 against 0.906. Four hundredths
+of a point on one variable and 4 runs — the §13.118.5 spread is 16 questions on the roster for one
+configuration, so this difference is inside the spread and `maxPromptChars` is not a third variable worth
+pricing again.
+
+### 13.221.2 The two dispatches, and the order
+
+Both are issued through `tools/dispatch-cortex-memory-ab.py` **with one `--set` each**, so each artifact
+declares exactly one departure and `--registration` reads as `1 field(s) departed`. The control is
+`41488630010` — the registered configuration, no `--set` at all — whose S1 is written `A` here because this
+section is written before that number exists.
+
+| # | dispatch | `--set` | declared departure | price it answers |
+| --- | --- | --- | --- | --- |
+| T | treat the reader | `thinking=multi-session+temporal` | `reader.thinking`, `reader.thinkingRoutes` | what reasoning buys, with the prompt held |
+| M | treat the prompt | `cortex_memory_max_turn_chars=400:ellipsis` | `maxTurnChars`, `turnCutMarker` | what the cut marker buys, with the reader held |
+
+**Serial, not parallel.** §1 fixes one dispatch at a time because time-of-day drift is 1.7–2.1 points, which
+is larger than either effect being looked for. Running T and M concurrently would put that drift between
+them, and the whole question is the difference between two numbers three points apart.
+
+### 13.221.3 Predictions, registered
+
+Each is stated against `A`, so neither depends on a number this section has not seen.
+
+| # | prediction | grade it would earn | falsifier |
+| --- | --- | --- | --- |
+| 1 | T reads `A + 4.0 ± 1.5` points | the arithmetic of the bundle: (0.898 − 0.834) split by the marker's own prior | T − A < 1.5 points |
+| 2 | M reads `A + 2.3 ± 1.5` points | §6.1.7.8's 96,000-only row: 0.8575 against 0.834, marker present and thinking absent | M − A < 1.0 points |
+| 3 | on T, `multi-session` and `temporal` move and `IE`/`KU`/`ABS` do not | `thinkingRoutes` names two routes; the other three read identical prompts | any of IE/KU/ABS moving by more than the §13.118.5 spread |
+| 4 | on M, every route's promptChars is strictly smaller | the marker replaces the tail of a cut turn instead of appending to it | any route's promptChars rising |
+| 5 | the two effects are not additive | if T + M exceeds 6.8 points the bundle has an interaction nobody has claimed | T + M − 2A > 7.5 points |
+
+Prediction 3 is the one that would earn the most from being wrong: `thinking` is a function of the **route**,
+so a movement outside its two named routes means the mode is not route-scoped in practice, and every prior
+attribution that assumed it was would need re-reading.
+
+### 13.221.4 What adoption would require
+
+Neither value is adopted by these dispatches. Adoption is a separate registration that moves
+`tools/dispatch-cortex-memory-ab.py`'s `INPUTS` and §10.3 **together**, and
+`tools/__tests__/test_preregistration_config.py` is what makes that pair atomic. What a passing reading buys
+is a registered amendment; what it does not buy is a number in the whitepaper, because §13.216.7 is why the
+number in the whitepaper has to be the number a user's default produces.
+
+*Falsified by:* either dispatch producing an artifact whose `--registration` reads zero departures — that
+would mean the `--set` did not reach the arm, which is §13.220's defect wearing a treatment's name.
