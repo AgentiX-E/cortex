@@ -25321,6 +25321,12 @@ That is a hypothesis with a number attached, not a change: what it would buy is 
 19–22% by more than a point. That would mean the instruction block changed without a dispatch naming
 it, and every number in §13.225.1 is a statement about this artifact rather than about the arm.
 
+> **Corrected by §13.230.** The share is real and reproduces (17.5 % / 19.7 % on `41560510937`), but
+> it is **not the instruction block**: measured against the code that writes it, the block is 339
+> characters on the abstention contract and 595 on temporal, and constant in the number of turns. The
+> "≈ 41 turns" in §13.225.2 is arithmetic on a number that means something else. Left as written —
+> a preregistration whose arithmetic is edited after the fact is not a preregistration.
+
 ## 13.226 The second provider is blocked by a window, not by a width
 
 *Two smoke dispatches on `zhipu:glm-4.6`, 60 questions, one repetition, width 16 and then width 4.
@@ -25756,3 +25762,120 @@ The next interval is a real experiment with a cost that is now measurable: cutti
 the ceiling and, at this workload, roughly halves the wall clock. It is **not** dispatched this round
 because a 24-minute smoke that completed is worth more than a 12-minute one that has to be explained;
 the ledger is stated so the next dispatch can price it.
+
+## 13.230 The instruction block is 339 characters, and §13.225 was reading a different number
+
+§13.225 concluded that "a fifth of MR's room is not evidence" and priced it at ~41 turns, ranking a
+prompt diet above `maxTurnChars` and above the pool width for the next round. The share reproduces —
+`41560510937` gives MR 17.5 %, TR 19.7 %, IE 6.0 %, KU 6.4 %, ABS 7.5 % — but the attribution does
+not. This section is the measurement that separates them.
+
+### 13.230.1 What was measured, and how
+
+`buildPrompt` composes four things: the evidence rendering, the question, two labels and the
+instruction block. Three of the four are exact, so the fourth is a subtraction:
+
+```
+overhead = prompt.length - evidenceChars - question.length
+```
+
+| contract | overhead | what it contains |
+| --- | ---: | --- |
+| `abstention-evidence-blocks`, `ask` = `route` | **339** | instruction + `EVIDENCE:` / `QUESTION: ` + 4 newlines |
+| `abstention-evidence-blocks`, `ask` = `operands+operand-gap` | **339** | identical — the ask does not change the block on this contract |
+| `temporal` | **595** | + the date frame and the instruction that uses it (256 characters) |
+
+And the property that decides the argument: **it does not grow with the delivery.** Forty turns of
+100 characters and two turns of 100 characters produce the same overhead. A component that is
+constant in the number of turns cannot be what a residual of 8,095 characters per MR question is
+made of, because MR delivers a median of 174 turns.
+
+`prompt-instruction-size.test.ts` pins both facts: the constancy, and ceilings of 400 and 700. The
+ceilings are claims rather than copies — 400 is one MR turn of median length (§13.34.3: 272
+characters, p90 2,305), which is the size at which an instruction diet becomes worth discussing at
+all. Mutation: appending 600 characters to `instructionsFor` fails three of the four tests; the
+constancy test still passes, correctly, because a longer constant is still a constant.
+
+### 13.230.2 What the residual actually is, and why the artifact cannot say
+
+The residual is real and reproducible. What it is made of is **not recoverable from this artifact**,
+and that is the second finding:
+
+| field | value on an MR question whose prompt is 46,143 | what it would have to be to decompose the residual |
+| --- | --- | --- |
+| `promptChars` | 46,143 | the delivered prompt |
+| `evidenceChars` | **83,565** | the delivered rendering — it is larger than the prompt |
+| `windowComposition.offeredChars` | 37,375 | the scored part of the delivery, not the whole |
+| `windowComposition.unscoredChars` | 4,787 | admitted turns with no score, not the rest |
+
+`evidenceChars` exceeding `promptChars` is the decisive one: whatever that field holds, it is not
+"the evidence in the prompt", so `promptChars - evidenceChars` is negative and
+`promptChars - offeredChars` measures the unscored tail rather than the instructions. §13.225 did the
+second subtraction and named the answer "instruction block".
+
+The components that can be measured are too small to be it, and the sum of them does not close the
+gap:
+
+| component | measured cost | at MR's 174 turns |
+| --- | ---: | ---: |
+| the instruction block | 339 (595 temporal) | 339 |
+| numbering, plain rendering | 5.5 per turn | ~960 |
+| numbering plus source prefix, `sourced` rendering | 10.9 per turn | ~1,900 |
+| **total accounted for** | | **~2,240 of the 8,095 residual** |
+
+Both per-turn figures are measured from `buildPrompt` with short content and a bare source, so the
+`sourced` number is a **floor** — a real turn carries a date and a session label this fixture does
+not produce. But a floor is the right shape for this argument: the measurable components account for
+a bit over a quarter of the residual, and what remains (~5.9k per MR question) is per-turn rendering
+that nothing in the tree itemises. The `sourced` prefix is the most likely candidate and it is
+**not** claimed here, because the fixture that would claim it is one fixture.
+
+### 13.230.3 The lever this defuses, and what it does not promote
+
+| candidate | ceiling on what it can buy | verdict after this section |
+| --- | --- | --- |
+| compress the instruction block | 339 characters ≈ **1.6** MR turns at 215 characters | not a lever; §13.225 ranked it **first** |
+| shorten the per-turn source prefix | unmeasured: at least 11 characters per turn, at most the ~34 the residual would need | **not actionable yet**, and §13.225's second row assumed it |
+| raise `maxTurnChars` | already dispatched as M (§13.221.3), predicted +2.3 | unchanged |
+| raise `maxPromptChars` | the prompt is at 46.1k of 48k, so the budget is binding | unchanged, and it is the cheapest test of "room-starved" |
+
+So the ranking in §13.225 was wrong in its first row and unproven in its second. The correction is
+worth more than the dispatch it saves: a prompt diet would have cost a 340-minute run and bought 1.6
+turns, and its falsifier — "MR and TR not both ≥ +1 question" — would have failed for a reason that
+had nothing to do with the mechanism.
+
+### 13.230.4 What has to be added before the residual can be attacked
+
+One field: the length of the evidence **as rendered into the delivered prompt**. Then
+`promptChars - renderedEvidenceChars - 339` is the per-turn overhead, and the numbers in 13.230.2
+stop being a floor from two fixtures and become a measurement from 500 questions. Until then the
+honest statement is the one above: the share is known, at most a quarter of it is accounted for, and
+the rest is not attributable from this artifact.
+
+Adding the field is a producer change with no arm consequence, which is why it belongs beside
+`passShape` rather than in `memoryArmConfig` — §13.228's boundary, applied to the prompt instead of
+the pipe.
+
+
+### 13.229.7 The bug the fake API could not find
+
+`declare_departures` was written to always write, including the empty list, and eight tests agreed
+with it because they agreed with a fake `req`. One call against the real API settled it:
+
+```
+{"message":"Variable value cannot be empty.","status":"422"}
+```
+
+GitHub refuses an empty repository variable. The always-write design would therefore have crashed the
+dispatcher on **the commonest dispatch there is** — a registered one — and it would have done so
+after the staleness check and before the dispatch, i.e. exactly where a person would conclude the
+workflow was broken.
+
+The empty case is a **delete**, and the deletion is also the more precise statement: `vars.X`
+interpolates to the empty string when the variable does not exist, which `--departs ""` already reads
+as "none declared". Both real paths were then exercised once against the API — `POST` with a value
+and `DELETE` returning `204` — so the two branches the fake asserts are the two branches that exist.
+
+This is the round's second finding of the same shape: a test that agrees with its own fake is not a
+test of the API. §13.230.2 is the first (`evidenceChars` exceeding `promptChars`), and both were
+found by measuring rather than by reasoning.

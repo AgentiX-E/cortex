@@ -630,17 +630,29 @@ def departures(inputs: dict[str, str]) -> list[str]:
 def declare_departures(names: list[str]) -> str:
     """Write the departure list where the registration gate will read it.
 
-    Always writes, including the empty case: the variable must describe **this** dispatch, so a
-    registered dispatch that left a previous experiment's declaration in place would let that
-    experiment's departures excuse a run that did not make them. Creating versus updating is
-    decided by a list rather than by catching a 404, because `req` exits the process on any
-    non-transient status and a missing variable is not an error here.
+    Always ends with the variable describing **this** dispatch, so a registered dispatch that left a
+    previous experiment's declaration in place cannot happen -- that declaration would excuse a run
+    which did not make those departures.
+
+    The empty case is a **delete**, and that is not a stylistic choice: GitHub rejects an empty
+    variable value with `422 Variable value cannot be empty`, so `--value ""` would crash the
+    dispatcher on the commonest dispatch there is. The absence of the variable is also the precise
+    meaning -- `vars.CORTEX_DECLARED_DEPARTURES` interpolates to the empty string when it does not
+    exist, which is what `--departs ""` already reads as "none declared".
+
+    Creating versus updating is decided by a listing rather than by catching a 404, because `req`
+    exits the process on any non-transient status and a missing variable is not an error here.
     """
     value = ",".join(names)
     listing = req("GET", f"/repos/{REPO}/actions/variables?per_page=100")
     existing = {variable.get("name") for variable in listing.get("variables", [])}
+    present = DECLARED_DEPARTURES_VARIABLE in existing
+    if not names:
+        if present:
+            req("DELETE", f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}")
+        return value
     payload = {"name": DECLARED_DEPARTURES_VARIABLE, "value": value}
-    if DECLARED_DEPARTURES_VARIABLE in existing:
+    if present:
         req("PATCH", f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}", payload)
     else:
         req("POST", f"/repos/{REPO}/actions/variables", payload)

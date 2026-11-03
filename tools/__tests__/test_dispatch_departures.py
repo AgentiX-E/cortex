@@ -93,11 +93,31 @@ class TestWritingTheVariable:
         # happened for a reason unrelated to the run.
         module = _module()
         calls = self._recording(module, [{'name': 'CORTEX_MEMORY_WORKERS', 'value': '1'}])
-        module.declare_departures([])
+        module.declare_departures(['model'])
         writes = [call for call in calls if call[0] != 'GET']
         assert [call[0] for call in writes] == ['POST']
         assert writes[0][1].endswith('/actions/variables')
-        assert writes[0][2]['value'] == ''
+        assert writes[0][2]['value'] == 'model'
+
+    def test_an_empty_list_deletes_rather_than_writing_an_empty_value(self) -> None:
+        # Found by calling the API once instead of trusting the fake: GitHub answers
+        # `422 Variable value cannot be empty`, so a write here would crash the dispatcher on the
+        # commonest dispatch there is -- a registered one. Absence is also the precise meaning,
+        # because `vars.X` interpolates to the empty string when the variable does not exist.
+        module = _module()
+        calls = self._recording(module, [{'name': module.DECLARED_DEPARTURES_VARIABLE, 'value': 'model'}])
+        module.declare_departures([])
+        writes = [call for call in calls if call[0] != 'GET']
+        assert [call[0] for call in writes] == ['DELETE']
+        assert writes[0][1].endswith(module.DECLARED_DEPARTURES_VARIABLE)
+
+    def test_an_empty_list_with_no_variable_writes_nothing(self) -> None:
+        # A registered dispatch on a clean repository has nothing to say and nothing to undo. A
+        # DELETE against a name that is not there is a 404, i.e. a dispatch that never happened.
+        module = _module()
+        calls = self._recording(module, [{'name': 'CORTEX_MEMORY_WORKERS', 'value': '1'}])
+        module.declare_departures([])
+        assert [call for call in calls if call[0] != 'GET'] == []
 
     def test_the_value_is_comma_joined_without_spaces(self) -> None:
         # The reading side splits on `,` and strips, so spaces would survive; they would also make
