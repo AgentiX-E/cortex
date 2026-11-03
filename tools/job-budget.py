@@ -57,6 +57,26 @@ It does not claim concurrency is free. `--concurrency c` divides each pass by `c
 embedding cache all bound the real speedup, and none of them appear in a workflow file. The tool
 reports the ideal so the gap between it and a measurement is visible.
 
+## The third quantity, which the first two could not see (run `41625442265`)
+
+The sentence above was true of a run that had no client-side pace. It has one, and it is a **gate**
+rather than a delay: `cortex-ai`'s `RequestGate` hands out slots from one process-wide schedule, so
+`CORTEX_LLM_MIN_INTERVAL_MS=6000` means one request every six seconds **whatever the pool width is**.
+Concurrency then moves nothing, and the two quantities this tool already carried -- a per-pass cost
+and a per-run budget -- are both statements about work that a pace has already replaced with a
+schedule.
+
+`41625442265` is the measurement: 500 questions x 8 passes x 6 s = **400 minutes of waiting alone**,
+dispatched with `CORTEX_MEMORY_BUDGET_MINUTES=340` inside a 360-minute job. It could not complete
+before its own ceiling fired, at any speed the provider ran at, and the budget's fire was therefore
+not a protection but a scheduled failure. It fired at question 146 of the fifth pass and wrote a
+partial record -- which is strictly better than the kill it would otherwise have met, and still not
+a measurement.
+
+So the floor is its own quantity, `pacing_floor_minutes`, and it is compared against the **budget**
+rather than against the job: a budget below the floor is a dispatch that cannot succeed. The exit
+code `3` says exactly that, and the workflow refuses the run in five seconds instead of six hours.
+
 ## Output and exit codes
 
 `0` the inner ceiling fires before the job, `1` the job kills the run first, `2` the inputs cannot
@@ -79,6 +99,63 @@ Scope = Literal["run", "pass"]
 DEFAULT_PASSES = 8
 DEFAULT_BUDGET_MINUTES = 340.0
 DEFAULT_SCOPE: Scope = "run"
+
+# The graded set and the requests one question costs the reader. One is a floor, not an estimate: a
+# question that consults the reader at all consults it once, and the judge is a second call on the
+# answers the first one produced. Counting the floor rather than a measured average is what makes the
+# result a lower bound on the run, which is the only form a refusal can be built on.
+DEFAULT_QUESTIONS = 500
+DEFAULT_CALLS_PER_QUESTION = 1.0
+
+
+# --------------------------------------------------------------------------- the pace
+
+def pacing_floor_minutes(
+    questions: int,
+    passes: int,
+    min_interval_ms: float,
+    calls_per_question: float = DEFAULT_CALLS_PER_QUESTION,
+) -> float:
+    """The least wall clock a paced dispatch can finish in, in minutes.
+
+    `RequestGate` hands out one slot per request from a single schedule, so the number of slots a run
+    needs is `questions x calls_per_question x passes` and the schedule spends `min_interval_ms` on
+    each. Nothing here is divided by concurrency, and that is the whole point of the quantity: a gate
+    fixes the rate at which requests leave, so a wider pool changes how much is in flight and not how
+    long the schedule is.
+    """
+    if questions <= 0:
+        raise ValueError(f"questions must be positive, got {questions!r}")
+    _check_passes(passes)
+    if min_interval_ms <= 0:
+        raise ValueError(
+            f"min_interval_ms must be positive, got {min_interval_ms!r}: a run with no pace has no "
+            "floor, and passing 0 would claim a floor of zero minutes for a gate that does not exist",
+        )
+    if calls_per_question <= 0:
+        raise ValueError(f"calls_per_question must be positive, got {calls_per_question!r}")
+    slots = questions * calls_per_question * passes
+    return slots * min_interval_ms / 60_000
+
+
+def can_complete(
+    questions: int,
+    passes: int,
+    min_interval_ms: float,
+    budget_minutes: float,
+    calls_per_question: float = DEFAULT_CALLS_PER_QUESTION,
+) -> bool:
+    """Whether the run's own ceiling can be met at all.
+
+    Inclusive, for the reason `binds` is inclusive: at equality the two mechanisms fire at the same
+    instant, and the one that leaves a readable record is the one to keep. The comparison is against
+    the **budget** and not the job, because a budget below the floor turns the run's protection into
+    the scheduled cause of its failure.
+    """
+    if budget_minutes <= 0:
+        raise ValueError(f"budget must be positive, got {budget_minutes!r}")
+    floor = pacing_floor_minutes(questions, passes, min_interval_ms, calls_per_question)
+    return floor <= budget_minutes
 
 
 # --------------------------------------------------------------------------- arithmetic
@@ -320,6 +397,28 @@ def main(argv: Iterable[str] | None = None) -> int:
     )
     parser.add_argument("--concurrency", type=int, default=1, help="requests in flight, for the repair")
     parser.add_argument(
+        "--questions",
+        type=int,
+        default=DEFAULT_QUESTIONS,
+        help="graded questions per pass, for the pacing floor",
+    )
+    parser.add_argument(
+        "--min-interval-ms",
+        type=float,
+        default=None,
+        help=(
+            "the client-side pace the run is dispatched at (CORTEX_LLM_MIN_INTERVAL_MS). Omitted means "
+            "no floor is computed, which is the only honest reading of a workflow whose pace arrives "
+            "in a repository variable this tool cannot see"
+        ),
+    )
+    parser.add_argument(
+        "--calls-per-question",
+        type=float,
+        default=DEFAULT_CALLS_PER_QUESTION,
+        help="reader requests one question costs; the floor counts this many slots per question",
+    )
+    parser.add_argument(
         "--measured-pass-minutes",
         type=float,
         action="append",
@@ -365,10 +464,39 @@ def main(argv: Iterable[str] | None = None) -> int:
     print(f"  the ceiling permits {ceiling:.0f} min of run ({ceiling / job:.2f}x the job) -> "
           + ("it binds" if can_bind else "IT CANNOT BIND"))
     print(f"  the largest budget that binds at concurrency {args.concurrency}: {bound:.2f} min")
+
+    # The pace, when the caller knows it. Reported before the per-run readings because it outranks
+    # them: a run below its own floor never reaches the point where a measurement exists to read.
+    completes = True
+    if args.min_interval_ms is not None:
+        try:
+            floor_minutes = pacing_floor_minutes(
+                args.questions, args.passes, args.min_interval_ms, args.calls_per_question
+            )
+            completes = can_complete(
+                args.questions, args.passes, args.min_interval_ms, budget, args.calls_per_question
+            )
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 2
+        print(
+            f"  pacing floor {floor_minutes:.0f} min "
+            f"({args.questions} questions x {args.calls_per_question:g} call(s) x {args.passes} "
+            f"passes x {args.min_interval_ms:g} ms), budget {budget:.0f} -> "
+            + (
+                "the run can finish"
+                if completes
+                else f"THE RUN CANNOT FINISH: the budget fires {floor_minutes - budget:.0f} min "
+                "before the last question is asked"
+            )
+        )
+
     for reading in readings:
         print()
         print(reading.describe())
 
+    if not completes:
+        return 3
     return 0 if can_bind else 1
 
 

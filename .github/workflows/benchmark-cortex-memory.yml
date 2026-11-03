@@ -204,7 +204,20 @@ env:
   # The first provider needs neither: `41553176719` and `41552258320` are the two smokes that died
   # at 55 of 60 on the second one, at 1.41 questions per minute and 140 refusals in 279 requests,
   # with `retryAfterHonoured: 0` -- a proud rate and no instruction to wait.
-  CORTEX_LLM_MIN_INTERVAL_MS: ${{ vars.CORTEX_LLM_MIN_INTERVAL_MS }}
+  #
+  # WHICH IS WHY IT IS SCOPED TO `zhipu:` BELOW, AND NOT READ UNCONDITIONALLY. The sentence above was
+  # written when it was true; the variable was then set to 6000 for a `model=zhipu:glm-4.6` smoke and
+  # every DeepSeek dispatch afterwards inherited it. `RequestGate` is process-wide, so 6000 ms is one
+  # request per six seconds whatever the pool width is: 500 questions x 8 passes = 400 minutes of
+  # schedule alone. Run `41625442265` was dispatched that way under a 340-minute budget and died at
+  # question 146 of its fifth pass, which is not a slow run but an impossible one (§13.237). The
+  # DeepSeek arm that produced the 90.15% headline ran unpaced at 1.6 s per question.
+  #
+  # A provider's window is the provider's, and the provider is already named in `model`, so the pace
+  # rides that name rather than a switch of its own -- the input list sits one below GitHub's ceiling.
+  # `tools/test_job_budget.py` pins both halves: the shipped budget cannot cover a 6 s pace over eight
+  # passes, and this line must stay conditional.
+  CORTEX_LLM_MIN_INTERVAL_MS: ${{ startsWith(inputs.model, 'zhipu:') && vars.CORTEX_LLM_MIN_INTERVAL_MS || '' }}
   CORTEX_LLM_RETRY_BUDGET_MS: ${{ vars.CORTEX_LLM_RETRY_BUDGET_MS }}
 
 jobs:
@@ -240,6 +253,35 @@ jobs:
 
       - name: Install Python test dependencies
         run: python3 -m pip install --requirement tools/requirements-dev.txt
+
+      # Five seconds here instead of five hours there.
+      #
+      # A dispatched run whose pace cannot fit its own budget cannot succeed at any provider speed,
+      # and nothing said so: `41625442265` was started with `CORTEX_LLM_MIN_INTERVAL_MS=6000`, eight
+      # passes of 500 questions and a 340-minute budget, and it spent 5h41m discovering that 4,000
+      # paced requests need 400 minutes of schedule before the reader's own latency is counted
+      # (`§13.237`). The arithmetic is in `tools/job-budget.py`, which is where it can be tested;
+      # this step is the call and the refusal.
+      #
+      # It reads the workflow it lives in for the job timeout and the budget, so the two cannot drift
+      # from the file that runs them, and it takes `--passes` from the dispatch because a probe at one
+      # repetition is a different shape from the eight-pass arm.
+      - name: Check the budget covers the pace
+        env:
+          RUNS: ${{ inputs.ablation_runs }}
+          PACE_MS: ${{ env.CORTEX_LLM_MIN_INTERVAL_MS }}
+        run: |
+          set -euo pipefail
+          passes=$(( 2 * ${RUNS:-4} ))
+          if [ -n "${PACE_MS:-}" ]; then
+            python3 tools/job-budget.py \
+              --workflow .github/workflows/benchmark-cortex-memory.yml \
+              --questions 500 --passes "$passes" --min-interval-ms "$PACE_MS"
+          else
+            python3 tools/job-budget.py \
+              --workflow .github/workflows/benchmark-cortex-memory.yml \
+              --questions 500 --passes "$passes"
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

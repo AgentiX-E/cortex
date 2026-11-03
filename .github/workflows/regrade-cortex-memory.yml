@@ -1,0 +1,116 @@
+# Grade a dead dispatch's recorded answers, without spending another dispatch.
+#
+# `41625442265` was dispatched to test §13.234's four predictions at `relevanceTopK=512` and died on
+# its own ceiling in the fifth of eight passes: the pace it ran at (`CORTEX_LLM_MIN_INTERVAL_MS=6000`)
+# floors a 500-question pass at 50 minutes, so eight passes need 400 minutes of waiting alone against
+# a 340-minute budget (§13.237). It wrote no report.
+#
+# It did write `completed[]`, holding **two complete repetitions of both arms** -- 2,000 answers. The
+# answers are the measurement; the report is how they are read. This job reads them, and it is the
+# only reason the two hours that run did spend are not lost.
+#
+# It is deliberately NOT a dispatch of the arm: no reader is called, no prompt is built, no embedding
+# is fetched. Every request this job makes is a judge request, which is why its ceiling is 45 minutes
+# against the arm's 360.
+name: Regrade (cortex-memory, from a recorded pass)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'The run whose artifact holds the recorded answers (`completed[]` in benchmark-cortex-memory-partial.json). The artifact must still exist: GitHub keeps them 90 days'
+        required: true
+        type: string
+      expect_ids:
+        description: 'Alignment check: comma-separated <index>:<question-id> pairs taken from the source run OWN progress log (`q=25/500 id=95bcc1c8` -> 24:95bcc1c8). The recorded answers are aligned to the dataset by index, and an index means nothing without the order it was taken in, so a file that has moved is refused rather than graded. Empty = no check, which the report then says'
+        required: false
+        default: ''
+        type: string
+      partial_file:
+        description: 'File name inside the artifact that holds the record'
+        required: false
+        default: 'benchmark-cortex-memory-partial.json'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+  PARTIAL_FILE: ${{ inputs.partial_file }}
+  REGRADE_EXPECT_IDS: ${{ inputs.expect_ids }}
+  # The judge only, and only for the answers the structural, exact and numeric channels could not
+  # settle -- 755 of 2,000 on the run this was built for. No pace: this job issues one short request
+  # at a time, and a gate here would be the same mistake §13.237 records, one workflow over.
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  regrade:
+    name: regrade
+    runs-on: ubuntu-latest
+    # Grading is 755 short judge calls at one worker. The arm's own dispatch spends 20-40 minutes on
+    # exactly this work at the end of a run, so 45 minutes is several times the largest observed
+    # grading cost and leaves room for a slow provider.
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Download LongMemEval-S
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+
+      # The artifact, not the run. `gh run download` is the only way to ask GitHub for the files a
+      # finished run uploaded, and it needs the token to be able to read actions on this repository.
+      - name: Fetch the recorded answers
+        run: |
+          set -euo pipefail
+          mkdir -p regrade-input
+          gh run download "${SOURCE_RUN_ID}" --name longmemeval-s-report --dir regrade-input
+          ls -la regrade-input
+          test -f "regrade-input/${PARTIAL_FILE}" || {
+            echo "::error::${PARTIAL_FILE} is not in the artifact of run ${SOURCE_RUN_ID}. The run may"
+            echo "::error::have completed (no partial record) or the artifact may have expired."
+            exit 1
+          }
+
+      - name: Regrade
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          PARTIAL_PATH: regrade-input/${{ inputs.partial_file }}
+        run: pnpm --filter @agentix-e/cortex-memory regrade
+
+      - name: Upload the regrade report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regrade-report
+          path: |
+            benchmark-regrade-report.md
+            benchmark-regrade.json
+          if-no-files-found: warn
+          retention-days: 90

@@ -97,6 +97,10 @@ export { createProviderReader } from './competitor-reader.js';
 // referenced-locally.
 export { compareRuns } from './paired-test.js';
 export { runAblation, type AblationOptions } from './ablation.js';
+// §13.237: read a recording back through the scorer. The caller is `bench/regrade-partial.ts`, which
+// replays the two complete repetitions `41625442265` left in a partial artifact -- the run that was
+// dispatched to test §13.234's predictions and died on its own budget.
+export { replaySystem, readCompletedPasses, type CompletedPass } from './replay-system.js';
 // §13.125: what two increments are worth together. `tools/ledger.mjs` is the caller, reading the
 // `discordantQuestions` lists out of archived reports.
 export { ledgerOf, portfolioOf, type IncrementLedger, type Portfolio } from './ledger.js';

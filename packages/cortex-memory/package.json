@@ -23,6 +23,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.bench.json",
     "clean": "rm -rf dist *.tsbuildinfo coverage",
     "bench": "node --import tsx bench/run-ablation.ts",
+    "regrade": "node --import tsx bench/regrade-partial.ts",
     "drift": "node --import tsx bench/reparse-report.ts"
   },
   "dependencies": {

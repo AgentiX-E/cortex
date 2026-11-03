@@ -286,3 +286,104 @@ class TestTheShippedWorkflowIsTheOneTheToolDescribes:
         path.write_text("jobs:\n  bench:\n    timeout-minutes: 350\n  CORTEX_MEMORY_BUDGET_MINUTES: '90'\n")
         assert budget.main(["--workflow", str(path), "--scope", "pass"]) == 1
         assert "IT CANNOT BIND" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- the pace
+
+class TestThePacingFloor:
+    """The third quantity: how long a paced dispatch needs before it has asked every question.
+
+    Run `41625442265` is the measurement behind all of these. It ran 500 questions x 8 passes at
+    `CORTEX_LLM_MIN_INTERVAL_MS=6000` under a 340-minute budget, and the two figures below are the
+    reason it produced no report: 400 minutes of schedule against 340 minutes of ceiling.
+    """
+
+    def test_the_floor_is_slots_times_the_interval(self):
+        # 500 x 1 x 8 = 4000 slots, each 6 s apart = 24000 s = 400 min. Checkable by hand.
+        assert budget.pacing_floor_minutes(questions=500, passes=8, min_interval_ms=6000) == 400.0
+
+    def test_a_wider_pool_does_not_shorten_it(self):
+        # `RequestGate` hands out one slot per request from a single process-wide schedule, so the
+        # pool width changes how much is in flight and not the length of the schedule. This is the
+        # claim that made the run impossible, and it is why the function takes no concurrency.
+        assert budget.pacing_floor_minutes(questions=500, passes=8, min_interval_ms=6000) == (
+            budget.pacing_floor_minutes(questions=500, passes=8, min_interval_ms=6000)
+        )
+
+    def test_the_shipped_budget_cannot_cover_the_pace_the_dead_run_used(self):
+        # The regression guard for `41625442265`: with `CORTEX_MEMORY_BUDGET_MINUTES=340`, a pace of
+        # 6000 ms over eight passes is a dispatch that cannot succeed, and the tool must say so
+        # rather than wait five hours to say it.
+        assert (
+            budget.can_complete(questions=500, passes=8, min_interval_ms=6000, budget_minutes=340)
+            is False
+        )
+
+    def test_equality_counts_as_completable(self):
+        # Inclusive, for the reason `binds` is: at equality both mechanisms fire at the same instant
+        # and the one that leaves a record is the one to keep.
+        assert (
+            budget.can_complete(questions=500, passes=8, min_interval_ms=6000, budget_minutes=400)
+            is True
+        )
+
+    def test_a_pace_the_budget_can_afford_is_reported_as_completable(self):
+        # 500 x 8 x 2000 ms = 133.3 min, which the 340-minute ceiling covers with room for the
+        # reader's own latency on top.
+        assert (
+            budget.can_complete(questions=500, passes=8, min_interval_ms=2000, budget_minutes=340)
+            is True
+        )
+
+    def test_refuses_inputs_that_have_no_floor(self):
+        with pytest.raises(ValueError, match="questions must be positive"):
+            budget.pacing_floor_minutes(questions=0, passes=8, min_interval_ms=6000)
+        with pytest.raises(ValueError, match="min_interval_ms must be positive"):
+            # A run with no pace has no floor; 0 would claim one of zero minutes for a gate that
+            # does not exist, and the caller who wants no pace passes no interval at all.
+            budget.pacing_floor_minutes(questions=500, passes=8, min_interval_ms=0)
+        with pytest.raises(ValueError, match="calls_per_question must be positive"):
+            budget.pacing_floor_minutes(questions=500, passes=8, min_interval_ms=6000, calls_per_question=0)
+        with pytest.raises(ValueError, match="budget must be positive"):
+            budget.can_complete(questions=500, passes=8, min_interval_ms=6000, budget_minutes=0)
+
+    def test_the_main_entry_point_exits_three_when_the_run_cannot_finish(self, tmp_path, capsys):
+        path = tmp_path / "bench.yml"
+        path.write_text("jobs:\n  bench:\n    timeout-minutes: 360\n  CORTEX_MEMORY_BUDGET_MINUTES: '340'\n")
+        assert budget.main(["--workflow", str(path), "--min-interval-ms", "6000"]) == 3
+        out = capsys.readouterr().out
+        assert "THE RUN CANNOT FINISH" in out
+        assert "400" in out
+
+    def test_the_main_entry_point_says_nothing_about_a_floor_it_was_not_given(self, tmp_path, capsys):
+        # The pace arrives in a repository variable the workflow interpolates, and a tool that
+        # guessed one would report a floor for a configuration nobody dispatched.
+        path = tmp_path / "bench.yml"
+        path.write_text("jobs:\n  bench:\n    timeout-minutes: 360\n  CORTEX_MEMORY_BUDGET_MINUTES: '340'\n")
+        assert budget.main(["--workflow", str(path)]) == 0
+        assert "pacing floor" not in capsys.readouterr().out
+
+
+class TestTheShippedPaceIsScopedToTheProviderThatNeedsIt:
+    """The workflow must not lend one provider's window to another.
+
+    `CORTEX_LLM_MIN_INTERVAL_MS` was measured on the second provider (`41553176719`, `41552258320`,
+    140 refusals in 279 requests) and stored as a repository variable, which the workflow then passed
+    to every dispatch. The DeepSeek arm that produced the 90.15% headline ran unpaced at 1.6 s per
+    question; the same arm under a 6 s process-wide gate needs 400 minutes for eight passes.
+    """
+
+    def test_the_pace_is_conditional_on_the_provider_named_in_the_model_input(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        text = (root / ".github" / "workflows" / "benchmark-cortex-memory.yml").read_text()
+        line = next(
+            (ln for ln in text.splitlines() if "CORTEX_LLM_MIN_INTERVAL_MS:" in ln and "vars." in ln),
+            None,
+        )
+        assert line is not None, "the workflow no longer reads a pace variable at all"
+        assert "startsWith(inputs.model, 'zhipu:')" in line, (
+            "the pace must be scoped to the provider it was measured on; an unconditional read "
+            "lends the second provider's window to the first, which is what cost run 41625442265 "
+            "its eight passes"
+        )
+
