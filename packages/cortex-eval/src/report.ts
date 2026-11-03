@@ -2251,9 +2251,20 @@ function transportRetryLines(transport: TransportRetryReport): string[] {
     lines.push(
       '',
       `- **The provider throttled**: ${transport.rateLimited} of the ${transport.attempts} ` +
-        `requests were answered \`429\`, and the retry ladder absorbed ` +
-        `${transport.retriedCalls} of the ${transport.calls} calls. The cost is wall clock, ` +
-        'not tokens, and the next dispatch inherits it.',
+        `requests were answered \`429\`, and ${transport.retriedCalls} of the ${transport.calls} ` +
+        'calls went through the ladder at least once. The cost is wall clock, not tokens, and ' +
+        'the next dispatch inherits it.',
+      '',
+      // Not "absorbed", and the difference is not pedantry. `retriedCalls` counts calls that
+      // retried, and a call that retried eight times and was then **refused** is one of them --
+      // run `41552258320` died on exactly such a call while this sentence read "the ladder
+      // absorbed 55 of the 140 calls". On a completed artifact the two readings coincide; on a
+      // failure record they do not, and the failure record is where the sentence is most read.
+      `  What the ladder did with each of them is a property of how the call ended, and a call ` +
+        'that retried and was then refused is counted here rather than in `refusedCalls`: the ' +
+        'partition is disjoint by the retry rather than by the ending, which is why the ' +
+        'refusal counter says "without a retry". A run that died therefore names its refusal ' +
+        'on the error, not in this line.',
     );
   }
   if (transport.refusedCalls > 0) {

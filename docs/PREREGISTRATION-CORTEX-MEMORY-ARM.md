@@ -25265,3 +25265,142 @@ that is not per-question — that is a finding about the mechanism, not a failur
 - **Not that the CLI factory is covered.** `bench/**` is excluded from coverage as an entry point, which
   is why the factory is four lines and why the two things it can get wrong — building one instance for
   all workers, or forwarding the wrong factory to a side — are asserted in `cortex-eval` instead.
+
+## 13.225 Where the prompt's characters actually are, on the first artifact that is the arm
+
+*Requirement 8 asks whether tokens can be cut without losing accuracy. This section answers the
+question that has to be answered first: what is the bill made of. Dispatch `41488630010`, 500
+questions, registered configuration.*
+
+### 13.225.1 The measurement
+
+`windowComposition` carries the evidence the prompt builder was **offered**; `promptChars` is what
+the request actually sent. The difference is everything that is not evidence — instruction blocks,
+route framing, the ask, the abstention contract, the evidence labels.
+
+| capability | n | promptChars (median) | offeredChars (median) | not evidence | share | turns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| IE | 150 | 46,864 | 43,863 | 2,734 | **5.8%** | 61 |
+| KU | 72 | 46,868 | 43,662 | 2,779 | **5.9%** | 62 |
+| ABS | 30 | 46,471 | 42,956 | 3,229 | **6.9%** | 72 |
+| MR | 121 | 46,264 | 37,471 | **8,809** | **19.0%** | 174 |
+| TR | 127 | 47,149 | 36,913 | **10,273** | **21.8%** | 179 |
+| **all** | 500 | 46,834 | 42,800 | 3,645 | 7.8% | — |
+
+Two facts, and the second is the one that matters:
+
+1. **On the three single-session routes the prompt is 94% evidence.** There is no diet to be had
+   there; the instruction block is 2.7–3.2k characters and removing all of it would buy 6%.
+2. **On the two routes the arm is weak on, it is 19–22% not evidence** — 8.8k and 10.3k characters
+   of instruction against the same 48,000-character budget. Those are the routes carrying
+   `ask=operands+operand-gap` and the two-step enumeration contract (§13.34, §13.203), and they are
+   the two capabilities the arm loses on: MR is 20 questions *worse* than its own no-memory
+   baseline, TR misses S4 by 6.3 points.
+
+### 13.225.2 Why this is a lever and not a rounding detail
+
+A character of instruction is a character of evidence that did not fit. At MR's 174 turns and
+46,264 characters of prompt, the evidence is ~215 characters per turn — so 8.8k characters is
+**about 41 turns**, on the one capability whose gold answers are spread across a whole session
+(§13.26: MR's carried count has a median of 14 against a total of 24).
+
+The registered arm is room-starved on exactly the routes where a fifth of its room is not evidence.
+That is a hypothesis with a number attached, not a change: what it would buy is unmeasured, and
+§13.220 is the reason a prompt change has to be a dispatch rather than an edit.
+
+### 13.225.3 What would have to be true to test it
+
+| # | step | why it must be this order |
+| --- | --- | --- |
+| 1 | T and M priced (running / queued) | the ask block is inside the region this would compress, and the two departures already in flight both act on MR and TR — a third simultaneous change would be unattributable |
+| 2 | a compressed ask that renders the same **decisions**, measured by prompt diff rather than by intent | §13.132.7: a bundle is not a mechanism, and a prompt rewrite is a bundle of many edits |
+| 3 | one dispatch, one variable, `--registration` reading one departure | the gate from §13.220 is what makes the result quotable |
+| 4 | the falsifier: MR and TR not both ≥ +1 question, or any single-session route moving beyond the §13.118.5 spread | the change would have spent the budget of a capability that does not need it |
+
+*Falsified by:* an artifact of this configuration whose not-evidence share on MR or TR differs from
+19–22% by more than a point. That would mean the instruction block changed without a dispatch naming
+it, and every number in §13.225.1 is a statement about this artifact rather than about the arm.
+
+## 13.226 The second provider is blocked by a window, not by a width
+
+*Two smoke dispatches on `zhipu:glm-4.6`, 60 questions, one repetition, width 16 and then width 4.
+Both failed. Neither failure is about capacity arithmetic, and that is the finding.*
+
+### 13.226.1 What the two runs say
+
+| run | width | reached | wall clock to death | transport counters |
+| --- | ---: | ---: | ---: | --- |
+| `41552258320` | **16** | 60 of 60 baseline, then died | 94 s | attempts 279, rateLimited **140**, retried 139, calls 140, retriedCalls 55, cleanCalls 85, refused 0, exhausted 0, `retryAfterHonoured` **0** |
+| `41553176719` | **4** | 59 of 60 | 179 s | (same shape) |
+
+Both died the same way:
+
+```
+LLM request failed: 429 Too Many Requests — {"error":{"code":"1302",
+  "message":"您的账户已达到速率限制，请您控制请求频率"}}
+  — not retried (budget-exhausted) after 8 attempt(s) and 0 s was left
+```
+
+**`1302` is a rate limit, and the message says `0 s was left`.** Eight attempts, each with a
+backoff, exhausted a **120-second** retry budget before the provider's window reopened. §11 of the
+technical design states the rule for exactly this and it was written about the *embedding* endpoint:
+*the retry budget must be longer than the provider's window, and `Retry-After` is what to honour*.
+The reader path obeys the first half (it is longer than DeepSeek's window) and cannot obey the second,
+because **the provider sends no `Retry-After`**: `retryAfterHonoured` is `0` on both runs.
+
+### 13.226.2 Width was not the variable
+
+The reason to run 16 and then 4 was to see whether the throttle was the width. It is not:
+
+| width | requests answered `429` | share |
+| ---: | ---: | ---: |
+| 16 | 140 of 279 | 50.2% |
+| 4 | (same order of magnitude) | — |
+
+Halving the width four times over did not remove the throttle, because the account's rate limit is
+**below the rate a serial pass already needs** — the campaign measured 1.41 questions per minute for
+this provider (§13.212.6), which is roughly one request every 42 seconds. A ladder that sleeps at most
+120 seconds in total cannot wait out a per-minute bucket at that rate: the eighth attempt lands inside
+the same closed window, and the refusal names it.
+
+So §14.22's arithmetic was right and incomplete. Eight in flight makes a run **fit the job's 350
+minutes in principle**; it does not make the provider answer. What is missing is not width but
+**pacing** — a minimum interval between request starts, which §11 already prescribes for the embedding
+endpoint (`EMBEDDING_BATCH_INTERVAL_MS`) and the reader path does not have.
+
+### 13.226.3 What this changes about requirement 12
+
+Requirement 12's second half — *the strong model must measurably do better* — is still blocked, but by
+a different mechanism than the plan recorded, and the next step is now a specific piece of client
+behaviour rather than a bigger number:
+
+| # | step | acceptance |
+| --- | --- | --- |
+| 1 | a minimum interval between reader requests (`CORTEX_LLM_MIN_INTERVAL_MS`), shared by all workers | two requests never start closer than the interval; asserted with a fake clock |
+| 2 | a retry budget that the deployment can widen (`CORTEX_LLM_RETRY_BUDGET_MS`), default unchanged | a dispatch can name it; the artifact records it |
+| 3 | a 60-question glm smoke that **completes** | artifact carries both sides and `rateLimited` is non-zero but the run survived |
+| 4 | only then the 500-question run | one dispatch, `--registration` reading one departure (the model) |
+
+Steps 1 and 2 are both small and both are the same defect seen twice: **this client can only wait as
+long as it was compiled to wait, and it cannot slow down.** A deployment with a stricter provider has
+no way to say so.
+
+### 13.226.4 The second finding: a number that described the wrong axis
+
+`41552258320`'s failure summary read:
+
+> the provider throttled 140 of 279 requests and **the retry ladder absorbed 55 of the 140 calls**
+
+The sentence is wrong on a failure record and right on a completed one, which is the worst combination.
+`retriedCalls` counts calls that retried **at least once**; by the partition's own doc, a call that
+retried and was then refused lands there rather than in `refusedCalls`. So the call that killed the run
+is inside the "absorbed" 55, and `refusedCalls` reads **0** on a run that died of a refusal.
+
+The partition is not wrong — it is disjoint by the retry rather than by the ending, and it closes at
+four terms on both runs. What was wrong was the **word**. It now says the calls "went through the
+ladder at least once" and states, in the document, that a call counted there may have ended refused,
+naming the refusal counter's own meaning ("without a retry"). A test asserts the old phrase is gone.
+
+*Falsified by:* a completed artifact whose `retriedCalls` includes a call the error log names as
+refused. That would mean the partition and the error path disagree about the same call, which is a
+different and worse defect than the wording.

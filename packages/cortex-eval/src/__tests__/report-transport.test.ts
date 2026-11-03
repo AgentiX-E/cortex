@@ -126,6 +126,19 @@ function rendered(snapshot: TransportRetryReport): string {
   return formatAblationReport(attachTransport(report(), snapshot));
 }
 
+it('does not claim the ladder absorbed a call that ended refused', () => {
+  // Run 41552258320 died on a call that retried eight times and was then refused, while the
+  // rendered reading said "the retry ladder absorbed 55 of the 140 calls". `retriedCalls`
+  // counts calls that retried, and by the partition own definition a refused-after-retry
+  // call is one of them -- so the word has to say what the counter says.
+  const md = rendered(
+    transport({ attempts: 279, retried: 139, rateLimited: 140, retriedCalls: 55, cleanCalls: 85 }),
+  );
+  expect(md).not.toContain('ladder absorbed');
+  expect(md).toContain('went through the ladder at least once');
+  expect(md).toContain('refused');
+});
+
 describe('the transport section is a property of the report', () => {
   it('renders from the report object alone, with no call site involved', () => {
     // The defect class this repository has paid for three times (`cohortCoverage`,
