@@ -26233,3 +26233,115 @@ in the file that records them. `SOTA-LANDSCAPE.md` §1 is the right place to kee
 rely on: a table of attributes does not fail when a sentence ignores it, which is the same defect class as a
 producer field with no reader (§13.181) and a check with no caller (§13.220). The three are one shape:
 **a statement whose correctness depends on somebody remembering to consult it is not checked.**
+
+## 13.236 One instrument reading cost the whole measurement
+
+*Run `41585013786` is the experiment §13.234 registered. It answered all 500 questions, judged 342
+of them, and then exited 1 without writing a report. Nothing was measured -- not the pool, not the
+delta -- and the cause was a single provider call whose retry ladder ran out. The arithmetic of that
+trade is the subject of this section, and the repair is four fields and one `catch`.*
+
+### 13.236.1 What the run actually did, in order
+
+| time (UTC) | event |
+| --- | --- |
+| 05:37:46 | job starts, `relevanceTopK=512` as the only declared departure |
+| 06:34 | reference-pipeline pass begins |
+| 07:25:14 | reference-pipeline `q=500/500`, +6361 s |
+| 07:37:56 | cortex-memory pass begins |
+| 08:29:48 | cortex-memory `q=500/500`, +3112 s |
+| 08:29:48 - 08:55:16 | scoring: 342 of 928 judge verdicts produced, then one call dies |
+| 08:55:26 | `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL`, exit 1, no report written |
+
+The transport accounting at death, which is the whole story in one line:
+
+```
+{"attempts":1925,"retried":4,"rateLimited":0,"retryAfterHonoured":0,"calls":1921,
+ "retriedCalls":1,"cleanCalls":1919,"exhaustedCalls":1,"refusedCalls":0}
+```
+
+**1,919 of 1,920 calls completed without a retry.** The gate §13.227 installed held: zero `429`s
+across 1,925 requests, which is the first run of this campaign with no throttling at all. One call
+exhausted, and it was the last one that mattered.
+
+### 13.236.2 The trade, in the two numbers that decide it
+
+| quantity | value |
+| --- | ---: |
+| verdicts the instrument owed | 928 |
+| verdicts it produced | 342 |
+| verdicts it failed to produce | **1** |
+| share of verdicts that failed | **0.066%** |
+| provider work discarded with it | 52 min of feature pass + 106 min of reference pass + 26 min of judging |
+| share of the run's information discarded | **100%** |
+
+A pass is a rate over a population. A rate over 499 of 500 is a measurement; the missing reading is
+a fact to publish. The code did the opposite, and it did it at the one point where the cheapest
+possible repair existed: `metrics.ts`'s scoring loop called `await scorer(q, answer)` with no
+opinion about what happens if the instrument is unavailable.
+
+### 13.236.3 The repair: three decisions, each with the alternative it rejects
+
+| decision | chosen | rejected, and why |
+| --- | --- | --- |
+| where to catch | at the call site in the scoring loop | in the entry point: it cannot resume a loop it has already left, so the only thing a `try` there can do is turn a stack trace into a message -- which `bench-failure.ts` already did for three earlier runs |
+| what to do with the question | score it `false`, record it | drop it: the denominator becomes 499 on this pass and 500 on the last, so two artifacts' accuracies are rates over different populations and the four-run mean mixes them. Impute the other arm: invents a reading in one arm from the other |
+| how a reader learns | `AblationResult.unjudged`, both sides, plus audit check 11 | a log line: the job log expires, and this campaign has spent three runs learning that a fact which lives only in a log is not in the record |
+
+The direction of the pessimism is chosen deliberately: an unjudged answer is not a correct answer,
+so every accuracy in such an artifact is pessimistic by at most `unjudged / total` points, and the
+census carries both sides so the McNemar count can be told which discordances the instrument
+invented. The audit fails on any non-empty census and prints that bound, because the artifact
+surviving is the point of the fix and a red gate is how a human learns to look -- not the reverse.
+
+### 13.236.4 The second defect: the judge inherited the reader's transport
+
+`resolveRetryBudgetMs` gives a thinking reader a 420 s ceiling because a 300 s deadline spends a
+120 s one. The judge was built from the *base* reader -- `thinking: disabled` whenever the run scopes
+thinking to routes -- so it inherited `60 s` per attempt and `120 s` for the whole ladder. **Two
+attempts is what that pair buys**, and the ladder it nominally has is nine rungs.
+
+A judge prompt is one question, one gold answer and one reply, and the completion is the word `yes`
+or `no`. It is not a reader's turn. It now gets its own pair -- 30 s per attempt, 300 s for the
+ladder, the pace inherited because the pace is the provider's window rather than the workload's --
+and the pair is printed from the same constants the client is built from, with a test that fails if
+one moves without the other.
+
+### 13.236.5 The third defect: `rateLimited` had a reader that rejected its producer
+
+`findExhaustion` accepted `rateLimited` only when it was a `boolean`. `RetryExhaustion.rateLimited`
+is a **count**. The field was therefore dropped from every real exhaustion, and the retry line --
+the only one that survives in `benchmark-error.log` -- never printed it. The run's own log shows the
+shape: the transport block said `rateLimited: 0` and the retry line said nothing at all.
+
+`bench-failure.test.ts` had a fixture carrying `rateLimited: true`, which is why the guard looked
+tested: the fixture was written against the reader rather than against the producer, and two
+agreeing half-truths cannot fail. That is the same defect class as §13.181's producer with no
+reader, seen from the other end.
+
+### 13.236.6 The fourth: an exhaustion whose duration could not be attributed
+
+`attempts=4, retried=3, elapsedMs=134163` admits three repairs and the record could not pick one:
+
+| reading | what it implies | where the repair would go |
+| --- | --- | --- |
+| one deadline reached, three fast wire faults | the deadline is too short for this workload | `resolveJudgeTransport` |
+| four attempts of ~34 s against no deadline | the provider stalls; more attempts will not help | retry budget, or per-question fail-soft |
+| four attempts truncated by a ceiling | the ceiling is being spent by attempts | the pair, one parameter over |
+
+`RetryExhaustion` now carries `attemptsMs`, `timeoutMs` and `retryBudgetMs`, and `describeFailure`
+prints a second line that subtracts the attempts from the elapsed to name the waiting. The next
+incident is decidable from the log instead of from a paragraph of arithmetic over a value that does
+not exist -- which is §13.225's lesson in a different register.
+
+### 13.236.7 What this section does not fix, stated so it is not read as fixed
+
+1. **The pool reading is still unmeasured.** §13.234's four predictions remain untested; the run
+   that was to test them produced no artifact. They are not restated or weakened here.
+2. **The reference pass is recomputed on every dispatch.** 106 of the 158 minutes of provider work
+   this run lost were a memoryless baseline whose answers are a function of the dataset, the reader
+   identity and the prompt contract. A persisted baseline keyed on those three would have made this
+   loss 52 minutes and every future experiment 3x cheaper. Not implemented; it changes what an
+   artifact means and needs its own registration.
+3. **The judge's verdicts are cached in memory only.** The 342 verdicts this run computed were
+   discarded with the process, and a re-dispatch recomputes them.

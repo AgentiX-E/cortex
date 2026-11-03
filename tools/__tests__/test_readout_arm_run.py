@@ -2461,6 +2461,43 @@ class TestTheArtefactAudit:
         assert r.returncode == 1
         assert 'census-unit' in r.stdout
 
+    def test_a_run_whose_instrument_decided_everything_passes_and_says_so(
+        self, tmp_path: Path
+    ) -> None:
+        artifact = self._artifact(ablation={'unjudged': {'feature': [], 'baseline': []}})
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'PASS  unjudged' in r.stdout
+
+    def test_an_unjudged_question_fails_and_states_the_pessimism_it_causes(
+        self, tmp_path: Path
+    ) -> None:
+        # `41585013786`: one judge call ran out of attempts, and the run it belonged to was
+        # lost entirely. With the census in the artifact the reading survives and the gate says
+        # what it cost -- at most n/total points, which on this fixture is 20.
+        artifact = self._artifact(
+            ablation={
+                'unjudged': {
+                    'feature': [{'questionId': 'm1', 'cause': 'retry: exhausted after 4 attempts'}],
+                    'baseline': [],
+                }
+            }
+        )
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'FAIL  unjudged' in r.stdout
+        assert 'm1' in r.stdout
+        assert 'exhausted' in r.stdout
+        assert '20.00 points' in r.stdout
+
+    def test_an_artifact_that_predates_the_census_skips_and_says_what_is_lost(
+        self, tmp_path: Path
+    ) -> None:
+        r = self._audit(tmp_path, self._artifact())
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'SKIP  unjudged' in r.stdout
+        assert 'expires with the job' in r.stdout
+
     def test_a_vote_census_on_a_run_that_did_not_vote_fails(self, tmp_path: Path) -> None:
         # §13.104's `vote=0/0/0`: a mechanism claimed by a field nobody's mechanism produced.
         artifact = self._artifact()

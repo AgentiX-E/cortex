@@ -14,6 +14,7 @@ import type {
   PerCapabilityResult,
   Question,
   RetrievedTurns,
+  UnjudgedVerdict,
 } from './types.js';
 import { toJudgeQuestionType, type AnswerJudge } from './judge.js';
 
@@ -208,6 +209,42 @@ export type ScoredEvaluation = {
    * `null` per question means the system exposes no prompt, which is not an empty one.
    */
   promptTexts?: (string | null)[];
+  /**
+   * A question the scorer could not decide, and why.
+   *
+   * ## The trade this type exists to reverse
+   *
+   * Run `41585013786` answered **all 500** questions of a 52-minute pass and then spent 26
+   * minutes judging. One judge call exhausted its retry ladder -- `attempts=4, retried=3,
+   * elapsedMs=134163, cause: The operation was aborted due to timeout` -- and the rejection
+   * travelled out of `scoreEvaluation` into the entry point, which printed `partial
+   * measurement (INCOMPLETE, no delta)` and exited 1. Nothing was written. Lost with it: 500
+   * answers, 342 verdicts, and the 106-minute reference pass that had already finished.
+   *
+   * One instrument reading out of 1,514 verdicts is 0.066% of the measurement and it cost
+   * 100% of the run. That ratio is the argument. A pass is a rate over a population, and a
+   * rate over 499 of 500 is a measurement; the one missing reading is a fact to publish, not
+   * a reason to publish nothing.
+   *
+   * ## Why the unjudged answer is scored `false` rather than dropped
+   *
+   * Three candidate treatments, and the choice is about which mistake is visible:
+   *
+   * - **drop the question** -- the denominator becomes 499 on this pass and 500 on the last,
+   *   so two artifacts' accuracies are rates over different populations and the four-run mean
+   *   silently mixes them;
+   * - **impute the other arm's verdict** -- invents a reading in one arm from the other,
+   *   which is the `never invent a status` rule the retry layer already keeps;
+   * - **score it wrong** -- pessimistic by at most `1/total` per unjudged question, in a
+   *   direction where a defect inflates nothing, and reported beside the number it biases.
+   *
+   * The third is chosen. `unjudgedShare` and the per-question cause travel with it, so the
+   * pessimism is a stated bound and not an assumption a reader has to reconstruct. What the
+   * paired test has to be told is the same fact one level up: an unjudged question in one arm
+   * only is a discordant pair the instrument created, so a pair containing one is excluded
+   * from McNemar's count rather than counted as a flip.
+   */
+  unjudged: UnjudgedVerdict[];
 };
 
 /**
@@ -425,6 +462,7 @@ const scorerChannels: ReturnType<typeof scorerChannelStats> = {
   numeric: 0,
   judge: 0,
   verdicts: 0,
+  unjudged: 0,
 };
 
 /** A copy, so a caller holding it cannot mutate numbers already read. */
@@ -434,6 +472,15 @@ export function scorerChannelStats(): {
   numeric: number;
   judge: number;
   verdicts: number;
+  /**
+   * Verdicts the instrument failed to produce.
+   *
+   * Not a fifth channel: the four channels partition the verdicts that exist, and this
+   * counts the ones that do not. Kept in the same record so a log line cannot report a
+   * split over 500 verdicts while the missing ones are counted somewhere a reader will not
+   * look -- the defect §13.230 named, one module over.
+   */
+  unjudged: number;
 } {
   return { ...scorerChannels };
 }
@@ -444,7 +491,11 @@ export function describeScorerChannels(stats: ReturnType<typeof scorerChannelSta
     stats.verdicts === 0 ? 'n/a' : `${((stats.judge / stats.verdicts) * 100).toFixed(1)}%`;
   return (
     `scorer channels: structural ${stats.structural}, exact ${stats.exact}, ` +
-    `numeric ${stats.numeric}, judge ${stats.judge}/${stats.verdicts} = ${share}`
+    `numeric ${stats.numeric}, judge ${stats.judge}/${stats.verdicts} = ${share}, ` +
+    // Printed on every run rather than only when non-zero: `0` is the statement that the
+    // instrument decided every question, and a line that appears only on failure leaves a
+    // reader unable to tell "no failures" from "this log predates the counter".
+    `unjudged ${stats.unjudged}`
   );
 }
 
@@ -459,6 +510,41 @@ function counted(channel: ScorerChannel, verdict: boolean): boolean {
   scorerChannels[channel] += 1;
   scorerChannels.verdicts += 1;
   return verdict;
+}
+
+/**
+ * Score one answer, keeping a rejection inside the pass.
+ *
+ * ## Why the catch is here and not in the entry point
+ *
+ * The entry point cannot resume a scoring loop it has already left, so a `try` there could
+ * only turn a stack trace into a message -- which is what `bench-failure.ts` already did for
+ * three previous runs. Catching at the call site is what makes the remaining questions still
+ * get scored, and it is the only place that knows which question the failure belongs to.
+ *
+ * ## Why the count is also process-wide
+ *
+ * Same reason `scorerChannels` is: a run's log has to say how many verdicts the instrument
+ * failed to produce, and the layer that observes it is three frames below the entry point
+ * that prints. The two counters travel together so a log line cannot report a channel split
+ * for 500 verdicts while the unjudged ones are counted somewhere else.
+ */
+async function scoreOrRecordUnjudged(
+  scorer: AnswerScorer,
+  question: Question,
+  answer: Answer,
+  unjudged: UnjudgedVerdict[],
+): Promise<boolean> {
+  try {
+    return await scorer(question, answer);
+  } catch (err) {
+    unjudged.push({
+      questionId: question.id,
+      cause: err instanceof Error ? err.message : String(err),
+    });
+    scorerChannels.unjudged += 1;
+    return false;
+  }
 }
 
 /** LLM-judge scorer: abstentions are graded structurally, others via the judge. */
@@ -524,12 +610,13 @@ export async function scoreEvaluation(
   let correct = 0;
   let abstained = 0;
   let abstentionCorrect = 0;
+  const unjudged: UnjudgedVerdict[] = [];
   const correctPerQuestion: boolean[] = [];
 
   for (let i = 0; i < dataset.questions.length; i++) {
     const q = dataset.questions[i]!;
     const answer = answers[i]!;
-    const isCorrect = await scorer(q, answer);
+    const isCorrect = await scoreOrRecordUnjudged(scorer, q, answer, unjudged);
     const isAbstain = answer === null;
     correctPerQuestion.push(isCorrect);
 
@@ -574,6 +661,7 @@ export async function scoreEvaluation(
     },
     correct: correctPerQuestion,
     answers,
+    unjudged,
     ...(rawOutputs === undefined ? {} : { rawOutputs }),
     ...(retrievedContexts === undefined ? {} : { retrievedContexts }),
     ...(promptEvidenceChars === undefined ? {} : { promptEvidenceChars }),

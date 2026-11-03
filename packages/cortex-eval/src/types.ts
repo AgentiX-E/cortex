@@ -522,6 +522,19 @@ export type AnswerTransition = {
   readonly missed: number;
 };
 
+/**
+ * A question the scorer could not decide, and why.
+ *
+ * Declared here rather than in `metrics.ts` because `AblationResult` -- the shape every
+ * report is built from -- carries these, and `metrics.ts` already imports from this module:
+ * the reverse import would be a cycle. `metrics.ts` re-exports it under the name its own
+ * docblock argues for, so there is one shape and two readers rather than two shapes.
+ */
+export type UnjudgedVerdict = {
+  readonly questionId: string;
+  readonly cause: string;
+};
+
 export type AblationResult = {
   feature: string;
   baselineAggregate: AggregateStats;
@@ -752,6 +765,28 @@ export type AblationResult = {
    * Optional for the same reason as the other captures, and `readonly` likewise.
    */
   featureAdmittedEvidence?: readonly (AdmittedEvidence | null)[];
+  /**
+   * Questions each side's scorer could not decide.
+   *
+   * ## Why this is on the result and not only in the log
+   *
+   * `41585013786` reported `unjudged: 0`'s absence as an absence: the judge failed on one
+   * question, the process exited 1, and no report was written, so a reader of the log learns
+   * the count and a reader of any artifact learns nothing. The census belongs to the
+   * measurement -- an accuracy over 500 questions of which 2 were never judged is a different
+   * claim from one over 500 judged, and only the artifact can say which one it is holding.
+   *
+   * Two sides rather than one array because the paired test needs them separate: a question
+   * unjudged in one arm only is a discordant pair the instrument invented, and it has to be
+   * removable from `discordant` without also removing the other arm's legitimate verdict.
+   *
+   * Optional on the type because `AblationResult` is a shape tests build by hand, and
+   * `runAblation` -- the only producer -- writes it on every path.
+   */
+  unjudged?: {
+    readonly feature: readonly UnjudgedVerdict[];
+    readonly baseline: readonly UnjudgedVerdict[];
+  };
   /**
    * The prompt the feature side's reader was sent, per question.
    *

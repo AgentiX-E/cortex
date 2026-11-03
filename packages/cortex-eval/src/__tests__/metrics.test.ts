@@ -461,6 +461,82 @@ describe('scoreEvaluation', () => {
   });
 });
 
+/**
+ * The pass survives its instrument.
+ *
+ * ## What these four tests are defending
+ *
+ * Run `41585013786` lost 158 minutes of provider work -- 500 answered questions, 342
+ * verdicts and a completed reference pass -- because one judge call exhausted its retry
+ * ladder and the rejection escaped `scoreEvaluation`. The tests below pin the three
+ * properties that make that impossible: the remaining questions are still scored, the
+ * failed one is named rather than silently dropped, and the counters agree with the
+ * vector so a log line cannot report a different number from the artifact.
+ */
+describe('a scorer that fails', () => {
+  const ds: BenchmarkDataset = {
+    name: 'd',
+    questions: [q('IE', 'a'), q('IE', 'b'), q('IE', 'c')],
+  };
+
+  it('does not abort the pass, and scores every other question', async () => {
+    const scored = await scoreEvaluation(ds, ['a', 'b', 'c'], (question, answer) => {
+      if (question.id === 'q-IE' && answer === 'b') {
+        throw new Error('retry: exhausted after attempts=4 retried=3 elapsed=134163ms');
+      }
+      return answer === question.expected;
+    });
+    // The other two still got a verdict, in the right slots.
+    expect(scored.correct).toEqual([true, false, true]);
+    expect(scored.metrics.correct).toBe(2);
+  });
+
+  it('names the question and the cause, in the order they failed', async () => {
+    const scored = await scoreEvaluation(ds, ['a', 'b', 'c'], (_question, answer) => {
+      if (answer !== 'a') {
+        throw new Error(`judge unavailable for ${String(answer)}`);
+      }
+      return true;
+    });
+    expect(scored.unjudged).toEqual([
+      { questionId: 'q-IE', cause: 'judge unavailable for b' },
+      { questionId: 'q-IE', cause: 'judge unavailable for c' },
+    ]);
+  });
+
+  it('scores an unjudged answer as incorrect rather than dropping it', async () => {
+    // Pessimism with a stated size: at most `unjudged / total`, which is why the numerator
+    // travels with the number it biases.
+    const scored = await scoreEvaluation(ds, ['a', 'b', 'c'], () => {
+      throw new Error('nope');
+    });
+    expect(scored.metrics.total).toBe(3);
+    expect(scored.correct).toEqual([false, false, false]);
+    expect(scored.metrics.accuracy).toBe(0);
+    expect(scored.unjudged).toHaveLength(3);
+  });
+
+  it('counts what it could not judge, so the log and the vector agree', async () => {
+    const before = scorerChannelStats().unjudged;
+    const scored = await scoreEvaluation(ds, ['a', 'b', 'c'], (_question, answer) => {
+      if (answer === 'b') {
+        throw new Error('nope');
+      }
+      return true;
+    });
+    const after = scorerChannelStats();
+    expect(after.unjudged - before).toBe(scored.unjudged.length);
+    // And the four channels still partition the verdicts that exist -- an unjudged question
+    // is not a fifth door, it is a door that never opened.
+    expect(after.structural + after.exact + after.numeric + after.judge).toBe(after.verdicts);
+  });
+
+  it('reports an empty array when nothing failed, which is a statement', async () => {
+    const scored = await scoreEvaluation(ds, ['a', 'b', 'c'], exactMatchScorer);
+    expect(scored.unjudged).toEqual([]);
+  });
+});
+
 describe('mcnemarPValue', () => {
   it('matches hand-computed exact binomial tails', () => {
     // One discordant pair cannot distinguish the systems: p = 2 * 0.5 = 1.
@@ -652,9 +728,13 @@ describe('describeScorerChannels', () => {
       numeric: 0,
       judge: 35,
       verdicts: 72,
+      unjudged: 0,
     });
     expect(line).toContain('judge 35/72 = 48.6%');
     expect(line).toContain('exact 37');
+    // Always printed, so a log that omits it is a log from before the counter rather
+    // than a run in which nothing failed -- the two used to be the same bytes.
+    expect(line).toContain('unjudged 0');
   });
 
   it('does not divide by zero before any verdict', () => {
@@ -664,7 +744,9 @@ describe('describeScorerChannels', () => {
       numeric: 0,
       judge: 0,
       verdicts: 0,
+      unjudged: 3,
     });
     expect(line).toContain('judge 0/0 = n/a');
+    expect(line).toContain('unjudged 3');
   });
 });

@@ -633,6 +633,69 @@ describe('retryableFetch respects a wall-clock budget', () => {
     expect(after.refusedCalls).toBe(0);
   });
 
+  it('records how long each attempt ran, and the pair it was measured against', async () => {
+    // `41585013786` exhausted one judge call and printed `attempts=4, retried=3,
+    // elapsedMs=134163`. Three repairs fit that sentence -- a deadline reached once, four wire
+    // faults, or four attempts truncated by a budget -- and the artifact could not say which.
+    // This is the record that settles it: per-attempt durations, the deadline, and the ceiling.
+    let calls = 0;
+    const fetchFn = async (): Promise<Response> => {
+      calls += 1;
+      throw new Error('socket hang up');
+    };
+    resetRetryStats();
+
+    const failure = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 2, baseDelayMs: 1, retryBudgetMs: 5_000, timeoutMs: 250 },
+    ).then(
+      (outcome) => ({ outcome }),
+      (error: unknown) => ({ error: error as Error }),
+    );
+
+    expect('outcome' in failure).toBe(false);
+    const error = 'error' in failure ? failure.error : new Error('unreachable');
+    const exhaustion = (error as Error & { retryExhausted?: RetryExhaustion }).retryExhausted!;
+    expect(exhaustion.attempts).toBe(3);
+    // One entry per attempt, in order, so the vector can be read positionally against the
+    // ladder's own backoff schedule.
+    expect(exhaustion.attemptsMs).toHaveLength(3);
+    for (const ms of exhaustion.attemptsMs) {
+      // A wire fault, not the deadline: every attempt died on `throw` and none reached 250 ms.
+      expect(ms).toBeGreaterThanOrEqual(0);
+      expect(ms).toBeLessThan(250);
+    }
+    // The pair travels with the vector, because an attempt duration means nothing without the
+    // deadline it should be compared against.
+    expect(exhaustion.timeoutMs).toBe(250);
+    expect(exhaustion.retryBudgetMs).toBe(5_000);
+    expect(calls).toBe(3);
+  });
+
+  it('reports no ceiling as null rather than as a large number', async () => {
+    // A call that ran with no ceiling and one that ran against a huge one describe different
+    // behaviour under the same message, and `null` is the only value that says which.
+    const fetchFn = async (): Promise<Response> => {
+      throw new Error('socket hang up');
+    };
+    resetRetryStats();
+    const failure = await retryableFetchWithStats(
+      fetchFn,
+      'http://x',
+      {},
+      { maxRetries: 0, retryBudgetMs: -1 },
+    ).then(
+      (outcome) => ({ outcome }),
+      (error: unknown) => ({ error: error as Error }),
+    );
+    expect('outcome' in failure).toBe(false);
+    const error = 'error' in failure ? failure.error : new Error('unreachable');
+    const exhaustion = (error as Error & { retryExhausted?: RetryExhaustion }).retryExhausted!;
+    expect(exhaustion.retryBudgetMs).toBeNull();
+  });
+
   it('spends the remaining budget on a retry after a transport failure', async () => {
     // The counterpart of the case above, and the behaviour the truncation exists for: a
     // budget shorter than the next computed backoff is not a refusal any more. Ten

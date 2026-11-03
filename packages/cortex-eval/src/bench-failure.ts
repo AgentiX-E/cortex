@@ -51,9 +51,16 @@ import type { BenchmarkProgress } from './benchmark.js';
 type ExhaustionSummary = {
   readonly attempts: number;
   readonly retried?: number | undefined;
-  readonly rateLimited?: boolean | undefined;
+  /** Attempts answered `429`. A count, matching `RetryExhaustion.rateLimited`. */
+  readonly rateLimited?: number | undefined;
   readonly elapsedMs?: number | undefined;
   readonly url?: string | undefined;
+  /** Per-attempt durations, in order. See `RetryExhaustion.attemptsMs`. */
+  readonly attemptsMs?: readonly number[] | undefined;
+  /** The per-attempt deadline the call was given. */
+  readonly timeoutMs?: number | undefined;
+  /** The ceiling the ladder was measured against, `null` for none. */
+  readonly retryBudgetMs?: number | null | undefined;
 };
 
 /** How far down a `cause` chain to look before giving up. */
@@ -88,11 +95,25 @@ function findExhaustion(error: unknown): ExhaustionSummary | undefined {
         return {
           attempts,
           ...(typeof candidate.retried === 'number' ? { retried: candidate.retried } : {}),
-          ...(typeof candidate.rateLimited === 'boolean'
+          // A number, not a boolean. `RetryExhaustion.rateLimited` counts the attempts answered
+          // `429`, and this guard read `boolean` from the day it was written -- so the field was
+          // dropped from every real exhaustion and the line below never printed it. `41585013786`
+          // is the reading that missed it: the transport block said `rateLimited: 0` and the
+          // retry line, which is the only one that survives in `benchmark-error.log`, said
+          // nothing at all. A field whose reader rejects its producer's type is a field with no
+          // reader, which is the class §13.181 named.
+          ...(typeof candidate.rateLimited === 'number'
             ? { rateLimited: candidate.rateLimited }
             : {}),
           ...(typeof candidate.elapsedMs === 'number' ? { elapsedMs: candidate.elapsedMs } : {}),
           ...(typeof candidate.url === 'string' ? { url: candidate.url } : {}),
+          ...(Array.isArray(candidate.attemptsMs)
+            ? { attemptsMs: candidate.attemptsMs.filter((n): n is number => typeof n === 'number') }
+            : {}),
+          ...(typeof candidate.timeoutMs === 'number' ? { timeoutMs: candidate.timeoutMs } : {}),
+          ...(typeof candidate.retryBudgetMs === 'number' || candidate.retryBudgetMs === null
+            ? { retryBudgetMs: candidate.retryBudgetMs as number | null }
+            : {}),
         };
       }
     }
@@ -142,6 +163,26 @@ export function describeFailure(input: {
         (exhaustion.elapsedMs === undefined ? '' : ` elapsed=${exhaustion.elapsedMs}ms`) +
         (exhaustion.url === undefined ? '' : ` url=${exhaustion.url}`),
     );
+    // ## The second line, which is what makes the first one decidable
+    //
+    // `attempts=4 elapsed=134163ms` admits three readings -- one 134 s attempt with three fast
+    // failures, four attempts of 34 s against no deadline, or four attempts truncated by a
+    // budget -- and they are repaired in three different places. The deadline and the vector
+    // of attempt durations separate them: `attemptsMs[i] === timeoutMs` is the deadline firing,
+    // a shorter value is a wire fault, and `elapsed - sum(attemptsMs)` is the two waits, which
+    // belong to the ladder and the pacer rather than to any attempt.
+    if (exhaustion.attemptsMs !== undefined && exhaustion.attemptsMs.length > 0) {
+      const spent = exhaustion.attemptsMs.reduce((total, ms) => total + ms, 0);
+      const waited = exhaustion.elapsedMs === undefined ? undefined : exhaustion.elapsedMs - spent;
+      lines.push(
+        `retry: attemptsMs=[${exhaustion.attemptsMs.join(',')}]` +
+          (exhaustion.timeoutMs === undefined ? '' : ` deadline=${exhaustion.timeoutMs}ms`) +
+          (exhaustion.retryBudgetMs === undefined
+            ? ''
+            : ` budget=${exhaustion.retryBudgetMs === null ? 'none' : `${exhaustion.retryBudgetMs}ms`}`) +
+          (waited === undefined ? '' : ` waited=${waited}ms`),
+      );
+    }
   }
 
   lines.push('');

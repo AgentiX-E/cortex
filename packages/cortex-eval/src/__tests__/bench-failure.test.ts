@@ -86,7 +86,11 @@ describe('describeFailure', () => {
       url: 'https://api.z.ai/api/paas/v4/embeddings',
       attempts: 6,
       retried: 5,
-      rateLimited: true,
+      // A count, which is what `RetryExhaustion` carries. This fixture said `true` until
+      // §13.236, and it passed because the reader dropped the field on a `typeof === 'boolean'`
+      // guard -- so the one line that survives in `benchmark-error.log` never named the count,
+      // and a fixture written to the reader's type agreement could not notice.
+      rateLimited: 3,
       elapsedMs: 391_000,
     };
 
@@ -94,9 +98,54 @@ describe('describeFailure', () => {
 
     expect(text).toContain('attempts=6');
     expect(text).toContain('retried=5');
-    expect(text).toContain('rateLimited=true');
+    expect(text).toContain('rateLimited=3');
     expect(text).toContain('391000');
     expect(text).toContain('api.z.ai');
+  });
+
+  it('decomposes an exhausted call into its attempts and its waits', () => {
+    // `41585013786`: `attempts=4 retried=3 elapsed=134163ms`. That sentence admits three repairs
+    // -- one deadline reached, four wire faults, or four attempts truncated by a budget -- and the
+    // log had nothing to choose between them. The vector plus the pair settles it, and the wait
+    // is derived rather than stored: whatever `elapsedMs` holds that no attempt spent was spent
+    // waiting, which belongs to the ladder and the pacer rather than to any attempt.
+    const error = new Error('aborted') as Error & { retryExhausted?: unknown };
+    error.retryExhausted = {
+      url: 'https://api.deepseek.com/v1/chat/completions',
+      attempts: 4,
+      retried: 3,
+      rateLimited: 0,
+      elapsedMs: 134_163,
+      attemptsMs: [26_000, 26_500, 26_000, 25_500],
+      timeoutMs: 60_000,
+      retryBudgetMs: 120_000,
+    };
+
+    const text = describeFailure({ progress: AT_QUESTION_ONE, error });
+
+    expect(text).toContain('attemptsMs=[26000,26500,26000,25500]');
+    // None of the four reached the deadline, so the abort did not come from this client's timer:
+    // that is the reading the vector exists to make available, and it is a different repair from
+    // "the deadline was too short".
+    expect(text).toContain('deadline=60000ms');
+    expect(text).toContain('budget=120000ms');
+    // 134,163 spent, 104,000 of it inside attempts, so 30,163 was waiting.
+    expect(text).toContain('waited=30163ms');
+  });
+
+  it('says a ceiling was absent rather than printing a number for it', () => {
+    const error = new Error('aborted') as Error & { retryExhausted?: unknown };
+    error.retryExhausted = {
+      url: 'http://x',
+      attempts: 1,
+      retried: 0,
+      rateLimited: 0,
+      elapsedMs: 10,
+      attemptsMs: [9],
+      timeoutMs: 250,
+      retryBudgetMs: null,
+    };
+    expect(describeFailure({ progress: AT_QUESTION_ONE, error })).toContain('budget=none');
   });
 
   it('omits the retry line for an error that carries none', () => {

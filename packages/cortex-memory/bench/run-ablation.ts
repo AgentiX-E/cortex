@@ -42,7 +42,9 @@ import {
   // §13.197.4's pair rather than the single reader: a route-scoped `thinking` value names the routes
   // that carry a second reader, and `createLlmFromEnv` refuses such a value instead of building the
   // base reader and letting the artifact claim a treatment the run never administered.
+  createJudgeFromEnv,
   createReadersFromEnv,
+  describeJudgeTransport,
   createMemoryArmReranker,
   resolveReaderIdentity,
   resolveRerankBounds,
@@ -270,6 +272,12 @@ async function main(): Promise<void> {
   if (readerByRoute !== undefined) {
     console.log(`Route-scoped reader: ${Object.keys(readerByRoute).sort().join(',')}`);
   }
+  // A second client for the scoring instrument, on the same identity and the same pace, with the
+  // pair a one-token verdict needs (§13.236). Logged because it is the pipe the verdicts travelled
+  // through: `41585013786` died on a judge call and no line in its log said what that call had
+  // been given.
+  const judgeLlm = createJudgeFromEnv(process.env);
+  console.log(describeJudgeTransport());
   const runs = Number(process.env['ABLATION_RUNS'] ?? 4);
 
   // Constructed and logged before any question is graded. The embedding backend is
@@ -764,7 +772,7 @@ async function main(): Promise<void> {
     // pace is in the artifact (§13.228).
     readerPacing: pacing,
     ...(pool === undefined ? {} : { pool }),
-    scorer: judgeScorer(createLlmJudge(llm)),
+    scorer: judgeScorer(createLlmJudge(judgeLlm)),
     memoryArmConfig: toMemoryArmConfig(
       armOptions,
       {

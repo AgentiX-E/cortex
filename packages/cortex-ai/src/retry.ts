@@ -338,6 +338,41 @@ export type RetryExhaustion = {
   readonly rateLimited: number;
   /** Wall-clock milliseconds from the first attempt to the last failure. */
   readonly elapsedMs: number;
+  /**
+   * How long each attempt ran, in order, excluding the waits between them.
+   *
+   * ## The reading this exists to settle
+   *
+   * `41585013786` exhausted one call and printed `attempts=4, retried=3, elapsedMs=134163`. The
+   * four attempts averaged 27 s each, and nothing in the record said whether that was one 60 s
+   * deadline reached once or four 25 s aborts, whether the pacer had charged the sequence, or
+   * whether the budget had truncated an attempt. Those are three different repairs and the
+   * numbers to choose between them were not written down. §13.236 is one paragraph of
+   * arithmetic over a value that does not exist.
+   *
+   * `elapsedMs` alone cannot answer it because it also contains every backoff and every pacer
+   * wait -- the two quantities that are deliberately *not* the attempt's own cost. Recorded per
+   * attempt, the sum of this vector subtracted from `elapsedMs` is the waiting, and the shape of
+   * the vector says which of the three shapes the failure had.
+   */
+  readonly attemptsMs: readonly number[];
+  /**
+   * The per-attempt deadline this call was given, so the vector above can be judged against it.
+   *
+   * `attemptsMs[i] === timeoutMs` means the deadline fired; anything shorter means the attempt
+   * died on the wire (`ECONNRESET`, a body abort) and the shape is a different one. Without the
+   * deadline in the record a reader has to know which arm was running to interpret an attempt
+   * duration, which is the "check whose input is a memory" defect §13.220 named.
+   */
+  readonly timeoutMs: number;
+  /**
+   * The ceiling this call's retries were measured against, or `null` when none was enforced.
+   *
+   * `null` is a statement (no ceiling) and is not the same as a large number: a call that
+   * reported `elapsedMs=134163` against a `120000` ceiling and one against no ceiling describe
+   * different behaviour under the same error message.
+   */
+  readonly retryBudgetMs: number | null;
   /** The transport error's own message, or `''` when no attempt produced one. */
   readonly cause: string;
 };
@@ -638,6 +673,10 @@ export async function retryableFetchWithStats(
   // fast this client may emit. Charging the second to the first would report
   // `budget-exhausted` for a ladder the pacer never let run.
   let pacedMs = 0;
+  // How long each attempt took, in order, excluding the waits between them. Declared beside
+  // `pacedMs` because the two are the halves of `elapsedMs` a reader has to separate to name a
+  // cause: see `RetryExhaustion.attemptsMs` for the run whose cause could not be named without it.
+  const attemptsMs: number[] = [];
   // Captured before the first attempt so the budget is measured from the start
   // of the sequence. Measuring from the first retry would let a slow initial
   // attempt (up to `timeoutMs`) be spent outside the budget entirely.
@@ -709,6 +748,9 @@ export async function retryableFetchWithStats(
                 retried: stats.retried,
                 rateLimited: stats.rateLimited,
                 elapsedMs: Date.now() - sequenceStart,
+                attemptsMs,
+                timeoutMs,
+                retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
                 cause: lastError === undefined ? '' : lastError.message,
               },
             );
@@ -756,6 +798,9 @@ export async function retryableFetchWithStats(
     }
     const signal = attemptSignal(init.signal, timeoutMs);
     let res: Response;
+    // Started before the attempt is counted, so an attempt that never returns still has a
+    // duration to report in the catch below.
+    const attemptStart = Date.now();
     try {
       stats.attempts += 1;
       res = await fetchFn(url, signal ? { ...init, signal } : init);
@@ -772,7 +817,9 @@ export async function retryableFetchWithStats(
       // can classify it. §13.31 named this exact possibility ("a single abort from
       // somewhere the retry loop does not wrap") and left it open; this closes it.
       res = await withBufferedBody(res);
+      attemptsMs.push(Date.now() - attemptStart);
     } catch (err) {
+      attemptsMs.push(Date.now() - attemptStart);
       lastError = err instanceof Error ? err : new Error(String(err));
       // A transport failure carries no response, so there is no header to read
       // on the next iteration and the computed backoff applies.
@@ -816,6 +863,9 @@ export async function retryableFetchWithStats(
     retried: stats.retried,
     rateLimited: stats.rateLimited,
     elapsedMs: Date.now() - sequenceStart,
+    attemptsMs,
+    timeoutMs,
+    retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
     cause: lastError === undefined ? '' : lastError.message,
   });
 }

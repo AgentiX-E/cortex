@@ -721,6 +721,11 @@ export async function runAblation(
       baselineIncorrectFeatureCorrect: discordantGain,
     },
     transitions,
+    // Both sides, from the evaluations that produced them, written unconditionally: this
+    // function is the only producer of an `AblationResult`, so a run that never reached the
+    // scorer still records that it judged nothing rather than leaving the field to mean
+    // "predates the census". §13.236 is the run that made the difference cost 158 minutes.
+    unjudged: { feature: featFirst.unjudged, baseline: baseFirst.unjudged },
     baselineMetrics: baseFirst.metrics,
     featureMetrics: featFirst.metrics,
     featureCorrect: featFirst.correct,

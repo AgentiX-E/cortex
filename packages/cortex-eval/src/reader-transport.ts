@@ -38,6 +38,26 @@ import type { LlmEnv } from './reader-provider.js';
 /** Per-attempt deadline for thinking-mode calls; reasoning takes far longer. */
 const THINKING_TIMEOUT_MS = 300_000;
 
+/**
+ * Per-attempt deadline for a judge call.
+ *
+ * The judge's prompt is one question, one gold answer and one reply, and its completion is the
+ * word `yes` or `no`; 30 s is a generous reading of that workload and it is deliberately not the
+ * reader's 60 s. The two are different questions -- §13.236 measured the cost of lending the
+ * reader's transport to an instrument -- so they get two numbers.
+ */
+const JUDGE_TIMEOUT_MS = 30_000;
+
+/**
+ * Ceiling for the judge's retry ladder.
+ *
+ * The reader's 120 s default buys two attempts at a 60 s deadline, and the ladder it nominally
+ * has (nine rungs) can never be walked. A judge attempt costs one short request, so the ceiling
+ * that makes the ladder reachable is cheap: 300 s covers the same nine attempts even if every one
+ * of them has to wait out the deployment's pace.
+ */
+const JUDGE_RETRY_BUDGET_MS = 300_000;
+
 /** The variable the minimum interval between reader requests arrives in. */
 const MIN_INTERVAL_VARIABLE = 'CORTEX_LLM_MIN_INTERVAL_MS';
 
@@ -186,4 +206,43 @@ export function resolveReaderTransport(
     ...(budgetMs !== undefined ? { retryBudgetMs: budgetMs } : {}),
     ...(pacing.minIntervalMs !== undefined ? { minIntervalMs: pacing.minIntervalMs } : {}),
   };
+}
+
+/**
+ * The transport a judge call gets.
+ *
+ * ## Why the judge is not given the reader's pair
+ *
+ * `41585013786` spent 26 minutes judging after its 500 answers were already in memory. One judge
+ * call exhausted its ladder (`attempts=4, retried=3, elapsedMs=134163`) and the rejection left
+ * `scoreEvaluation`, so the pass was lost. Two things were wrong and only one of them was the
+ * missing `catch`: the pair the judge inherited describes the reader's workload.
+ *
+ * A judge call is short in both directions, so it can afford many attempts and a small deadline.
+ * It inherits `minIntervalMs` -- the pace is the provider's window, not the workload's -- and it
+ * takes its own two numbers, which are printed beside the reader's so a run's log names the pair
+ * each side of the measurement ran under.
+ */
+export function resolveJudgeTransport(pacing: ReaderPacing): ReaderTransport {
+  return {
+    timeoutMs: JUDGE_TIMEOUT_MS,
+    retryBudgetMs: JUDGE_RETRY_BUDGET_MS,
+    ...(pacing.minIntervalMs === undefined ? {} : { minIntervalMs: pacing.minIntervalMs }),
+  };
+}
+
+/**
+ * The judge's pair as one log line.
+ *
+ * Exported rather than typed at the entry point because a second copy of `30000` in a `console.log`
+ * is a second thing to keep in step with the number the client was actually built with -- the
+ * defect §13.227 avoided for the pacer with a single read. `reader-transport.test.ts` asserts this
+ * line against `resolveJudgeTransport`, so a change to either without the other is a failing test
+ * rather than a log that misdescribes the run.
+ */
+export function describeJudgeTransport(): string {
+  return (
+    `judge transport: deadlineMs=${JUDGE_TIMEOUT_MS} retryBudgetMs=${JUDGE_RETRY_BUDGET_MS} ` +
+    'thinking=disabled'
+  );
 }

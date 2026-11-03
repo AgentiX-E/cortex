@@ -1418,6 +1418,52 @@ def audit_section(
             'promptChars, and what it is made of cannot be recovered from it'
         )
 
+    # 11. Every verdict was produced by an instrument that answered.
+    #
+    # Run `41585013786` is the reason the field exists: 500 answers and 342 verdicts, then one
+    # judge call whose retry ladder ran out (`attempts=4, retried=3, elapsedMs=134163`), and the
+    # rejection left the scoring loop and killed the process. Nothing was written, so the reading
+    # that could have been taken from 499 judged questions over 500 was not taken at all.
+    #
+    # `AblationResult.unjudged` now carries the questions each side's scorer could not decide, and
+    # the count is judged here rather than in the report: an artifact whose instrument failed has
+    # a number that is pessimistic by at most `unjudged / total` points, and the reader is owed
+    # both the number and that bound. The check fails because red is how a human learns to look;
+    # the artifact still exists, which is the half this field was added for.
+    ablation_block = report.get('ablation') if isinstance(report.get('ablation'), dict) else {}
+    census = ablation_block.get('unjudged')
+    if isinstance(census, dict):
+        sides = {name: census.get(name) or [] for name in ('feature', 'baseline')}
+        unjudged_total = sum(len(v) for v in sides.values())
+        if unjudged_total == 0:
+            check(
+                'unjudged',
+                True,
+                'both sides carry an empty census: every verdict in this artifact came from '
+                'the instrument that was asked for it',
+            )
+        else:
+            first = next(
+                (item for side in ('feature', 'baseline') for item in sides[side] if item),
+                {},
+            )
+            per_side = ', '.join(f'{name} {len(v)}' for name, v in sides.items())
+            check(
+                'unjudged',
+                False,
+                f'{unjudged_total} question(s) were never judged ({per_side}); first '
+                f'{first.get("questionId")} -- {str(first.get("cause"))[:120]}. Each one is '
+                f'scored incorrect, so every accuracy in this artifact is pessimistic by at most '
+                f'{unjudged_total / max(1, len(questions)) * 100:.2f} points, and a pair with one '
+                'side unjudged is a discordance the instrument invented rather than a flip',
+            )
+    else:
+        lines.append(
+            '  SKIP  unjudged this artifact predates the census (cortex-eval#unjudged); the '
+            'verdict count is then only bounded by the scorer-channel line in the run log, which '
+            'expires with the job'
+        )
+
     header = [
         '',
         'artifact audit (each field checked against another field of the same run)',

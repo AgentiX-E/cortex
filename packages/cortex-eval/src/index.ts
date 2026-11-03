@@ -380,6 +380,7 @@ export {
   type EmbeddingWithProvenance,
 } from './embedding-factory.js';
 export {
+  createJudgeFromEnv,
   createLlmFromEnv,
   // §13.197.4's pair: the base reader plus the map a route-scoped `thinking` value asks for. The
   // arm constructs it; `createLlmFromEnv` refuses such a value rather than silently building the
@@ -395,6 +396,10 @@ export {
   // the pace is stated, and `bench/run-ablation.ts` has to read it through the same function the
   // reader factory uses -- a second parser is a second answer to "what pace did this run run at".
   readReaderPacing,
+  // §13.236's judge pair. The description is exported rather than typed at the entry point for the
+  // reason the numbers above are read through one function: a literal in a `console.log` is a
+  // second copy of a constant, and it is the copy nobody checks.
+  describeJudgeTransport,
   type ReaderPacing,
 } from './reader-transport.js';
 export {

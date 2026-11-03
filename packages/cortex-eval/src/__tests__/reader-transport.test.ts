@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  describeJudgeTransport,
   readReaderPacing,
+  resolveJudgeTransport,
   resolveReaderTransport,
   resolveRetryBudgetMs,
   resolveTimeoutMs,
@@ -151,10 +153,71 @@ describe('the factory hands the transport to the adapter', () => {
     expect(source).toContain('...resolveReaderTransport(');
   });
 
-  it('reads the environment at both entry points', () => {
-    // Two entry points, two readers per run: a read at only one of them would pace the feature arm
-    // and not the baseline, and the A/B would differ by a transport property.
+  it('reads the environment once per entry point, and there are three of them now', () => {
+    // Two reader entry points, because a read at only one of them would pace the feature arm and
+    // not the baseline, and the A/B would differ by a transport property. The third is the judge
+    // (§13.236): it reads the same variables, so a judge built from a literal would be a second
+    // copy of the deployment's pace -- and the one client whose pace nobody would think to check.
     const reads = source.match(/readReaderPacing\(env\)/g) ?? [];
-    expect(reads.length).toBe(2);
+    expect(reads.length).toBe(3);
+  });
+
+  it('gives the judge its own pair rather than the reader spread', () => {
+    expect(source).toContain('...resolveJudgeTransport(');
+  });
+});
+
+/**
+ * The judge's pair: the instrument's transport, which is not the reader's.
+ *
+ * `41585013786` is the run behind every assertion here. Its five hundred answers were in memory,
+ * it had been judging for twenty-six minutes, and one call exhausted a ladder that nominally has
+ * nine rungs -- because the ceiling it inherited (`120 s`) buys two attempts at the reader's
+ * `60 s` deadline. A judge prompt is one question and one word, so both numbers were wrong for
+ * the workload even after the run's data was made survivable (§13.236).
+ */
+describe('resolveJudgeTransport sizes the instrument separately from the subject', () => {
+  it('gives the judge many attempts by keeping the ceiling far above the deadline', () => {
+    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    expect(judge.timeoutMs).toBe(30_000);
+    expect(judge.retryBudgetMs).toBe(300_000);
+    // The relationship the reader's guard enforces, asserted for the pair that bypasses it: a
+    // ceiling at or below the deadline is spent by one slow attempt and the ladder cannot walk.
+    expect(judge.retryBudgetMs!).toBeGreaterThan(judge.timeoutMs!);
+    // Ten deadlines fit inside the ceiling, so a stalled attempt cannot be the whole story.
+    expect(judge.retryBudgetMs! / judge.timeoutMs!).toBeGreaterThanOrEqual(9);
+  });
+
+  it('is shorter than the reader on the deadline and longer on the ceiling', () => {
+    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    // The reader's pair for a non-thinking arm is the adapter's own defaults -- the resolver
+    // omits both fields rather than restating them, which is why the comparison is against the
+    // defaults and not against the resolver's return value.
+    const reader = resolveReaderTransport(
+      { type: 'disabled' },
+      { minIntervalMs: undefined, retryBudgetMs: undefined },
+    );
+    expect('timeoutMs' in reader).toBe(false);
+    expect(judge.timeoutMs!).toBeLessThan(DEFAULT_RETRY_TIMEOUT_MS);
+    expect(judge.retryBudgetMs!).toBeGreaterThan(DEFAULT_RETRY_BUDGET_MS);
+  });
+
+  it('inherits the pace, which belongs to the provider rather than to the workload', () => {
+    const judge = resolveJudgeTransport({ minIntervalMs: 6000, retryBudgetMs: undefined });
+    expect(judge.minIntervalMs).toBe(6000);
+  });
+
+  it('does not carry a pacing field when the deployment stated none', () => {
+    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    expect('minIntervalMs' in judge).toBe(false);
+  });
+
+  it('describes the pair it builds, so the log cannot drift from the client', () => {
+    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    const line = describeJudgeTransport();
+    expect(line).toContain(`deadlineMs=${String(judge.timeoutMs)}`);
+    expect(line).toContain(`retryBudgetMs=${String(judge.retryBudgetMs)}`);
+    // The one property of a judge that is not a number and cannot be read off the transport.
+    expect(line).toContain('thinking=disabled');
   });
 });

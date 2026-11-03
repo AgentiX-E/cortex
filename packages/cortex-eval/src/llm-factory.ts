@@ -24,7 +24,12 @@ import {
   type ReaderProviderId,
 } from './reader-provider.js';
 import { readTemperature, withTemperature } from './reader-temperature.js';
-import { readReaderPacing, resolveReaderTransport, type ReaderPacing } from './reader-transport.js';
+import {
+  readReaderPacing,
+  resolveJudgeTransport,
+  resolveReaderTransport,
+  type ReaderPacing,
+} from './reader-transport.js';
 import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
 
 /**
@@ -343,4 +348,43 @@ export function createReadersFromEnv(env: LlmEnv): {
   const readerByRoute: Record<string, LLM> = {};
   for (const route of routes) readerByRoute[route] = scoped;
   return { llm: buildReader(identity, apiKey, 'disabled', pacing), readerByRoute };
+}
+
+/**
+ * The LLM the scorer's judge uses.
+ *
+ * ## Why this is a separate reader and not the run's `llm`
+ *
+ * Two reasons, and only the second one is about failures.
+ *
+ * The first is workload: a judge prompt is a question, a gold answer and a reply, and the answer
+ * is the word `yes` or `no`. It is not a reader's turn -- it needs no thinking mode, no 60 s
+ * deadline and no 120 s ceiling -- and giving it the reader's pair is how a nine-rung ladder
+ * became two attempts. See `resolveJudgeTransport`.
+ *
+ * The second is the run that makes it a repair: `41585013786` lost a 500-question pass because
+ * one judge call could not finish, and the pass it was scoring had already succeeded. An
+ * instrument that can destroy the thing it measures has the wrong transport or the wrong
+ * tolerance, and this is the transport half.
+ *
+ * ## Why the identity and the temperature are the reader's
+ *
+ * Because the verdict is a measurement, and a judge that ran on a different model or a different
+ * temperature than the archived readings would make this campaign's numbers incomparable to its
+ * own history. Only the pipe changes here -- the same distinction §13.227 drew for the pacer.
+ */
+export function createJudgeFromEnv(env: LlmEnv): LLM {
+  const provider = resolveReaderProvider(env);
+  const apiKey = requireKey(env, provider);
+  const identity = describeReader(env, provider);
+  const llm = new OpenAICompatibleLLM({
+    baseUrl: identity.baseUrl,
+    apiKey,
+    model: identity.model,
+    // Never a thinking judge: the verdict is one token, and the ten-fold completion cost
+    // `41546569106` measured for thinking on a reader would be paid 342 times a run for a bit.
+    thinking: { type: 'disabled' },
+    ...resolveJudgeTransport(readReaderPacing(env)),
+  });
+  return identity.temperature === null ? llm : withTemperature(llm, identity.temperature);
 }
