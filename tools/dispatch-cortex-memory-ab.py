@@ -658,11 +658,30 @@ def declare_departures(names: list[str]) -> str:
     present = DECLARED_DEPARTURES_VARIABLE in existing
     if not names:
         if present:
-            req("DELETE", f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}")
+            req(
+                "DELETE",
+                f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}",
+                allow_empty=True,
+            )
         return value
     payload = {"name": DECLARED_DEPARTURES_VARIABLE, "value": value}
     if present:
-        req("PATCH", f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}", payload)
+        # `allow_empty` because the update path answers **204 with no body** and `json.loads('')`
+        # raises -- which is a parse failure reported as a dispatch failure, and it was: the
+        # re-dispatch of §13.234 wrote the variable, then died on `unparseable body: Expecting
+        # value: line 1 column 1`, and left a declaration describing a run that was never sent.
+        #
+        # Why this survived §13.229's "two real paths, each exercised once": the two paths that
+        # were exercised are POST (create, answers 201 with a body) and DELETE (204, already read
+        # with `allow_empty`). The third one, PATCH, was never run against the API -- and a path
+        # that is only ever reached when the variable already exists is exactly the path a fresh
+        # campaign never takes. Two agreeing paths cannot testify for a third.
+        req(
+            "PATCH",
+            f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}",
+            payload,
+            allow_empty=True,
+        )
     else:
         req("POST", f"/repos/{REPO}/actions/variables", payload)
     return value

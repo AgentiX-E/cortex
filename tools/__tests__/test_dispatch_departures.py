@@ -66,7 +66,12 @@ class TestWritingTheVariable:
         calls: list[tuple] = []
 
         def fake_req(method: str, path: str, payload=None, allow_empty: bool = False):  # noqa: ANN001, ANN202
-            calls.append((method, path, payload))
+            # `allow_empty` is recorded, not swallowed. It used to be a parameter this fake
+            # accepted and dropped, which made every write path look identical to the test while
+            # the PATCH branch was sending `allow_empty=False` to an endpoint that answers 204
+            # with no body -- and the re-dispatch of §13.234 died on precisely that, after writing
+            # the variable, leaving a declaration for a run that was never sent.
+            calls.append((method, path, payload, allow_empty))
             if method == 'GET':
                 return {'variables': variables}
             return None
@@ -86,6 +91,9 @@ class TestWritingTheVariable:
         assert writes[0][0] == 'PATCH'
         assert writes[0][1].endswith(module.DECLARED_DEPARTURES_VARIABLE)
         assert writes[0][2]['value'] == 'model'
+        # GitHub answers this endpoint 204 with no body, and `req` parses JSON: without the flag
+        # the write succeeds and the process still exits, which is the worst of both.
+        assert writes[0][3] is True
 
     def test_a_missing_variable_is_created(self) -> None:
         # The two branches are not symmetric in consequence: PATCHing a name that does not exist
@@ -98,6 +106,9 @@ class TestWritingTheVariable:
         assert [call[0] for call in writes] == ['POST']
         assert writes[0][1].endswith('/actions/variables')
         assert writes[0][2]['value'] == 'model'
+        # A create answers 201 with a body, so the flag is not needed here -- and asserting it is
+        # absent keeps the two branches from silently acquiring the same call shape.
+        assert writes[0][3] is False
 
     def test_an_empty_list_deletes_rather_than_writing_an_empty_value(self) -> None:
         # Found by calling the API once instead of trusting the fake: GitHub answers
@@ -109,6 +120,8 @@ class TestWritingTheVariable:
         module.declare_departures([])
         writes = [call for call in calls if call[0] != 'GET']
         assert [call[0] for call in writes] == ['DELETE']
+        # 204 with no body, the same shape as the update branch and the same failure if unread.
+        assert writes[0][3] is True
         assert writes[0][1].endswith(module.DECLARED_DEPARTURES_VARIABLE)
 
     def test_an_empty_list_with_no_variable_writes_nothing(self) -> None:
