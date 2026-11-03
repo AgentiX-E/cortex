@@ -64,17 +64,15 @@ function required(name: string): string {
 /** `<index>:<question-id>` pairs, comma separated. See the header for why they are not optional. */
 function readExpectedIds(raw: string | undefined): [number, string][] {
   if (raw === undefined || raw.trim() === '') return [];
-  return raw
-    .split(',')
-    .map((piece): [number, string] => {
-      const [index, id] = piece.split(':');
-      if (index === undefined || id === undefined || !/^\d+$/.test(index.trim())) {
-        throw new Error(
-          `REGRADE_EXPECT_IDS entry ${JSON.stringify(piece)} is not <index>:<question-id>`,
-        );
-      }
-      return [Number(index.trim()), id.trim()];
-    });
+  return raw.split(',').map((piece): [number, string] => {
+    const [index, id] = piece.split(':');
+    if (index === undefined || id === undefined || !/^\d+$/.test(index.trim())) {
+      throw new Error(
+        `REGRADE_EXPECT_IDS entry ${JSON.stringify(piece)} is not <index>:<question-id>`,
+      );
+    }
+    return [Number(index.trim()), id.trim()];
+  });
 }
 
 function pct(correct: number, total: number): string {
@@ -144,12 +142,11 @@ async function main(): Promise<void> {
     `- Repetitions replayed: ${passes.length} (runs ${passes.map((p) => p.run).join(', ')})`,
     `- Alignment: ${expected.length} index/id pair(s) confirmed against the dispatched run's log`,
     '',
-    'The answers are the dead run\'s own, replayed through the scorer that was going to grade them. ' +
+    "The answers are the dead run's own, replayed through the scorer that was going to grade them. " +
       'No answer was regenerated, no missing pass was filled in, and each side is replayed from its ' +
       'own list.',
     '',
-    '| arm | correct/total | accuracy | ' +
-      `${CAPABILITIES.join(' | ')} | MR |`,
+    '| arm | correct/total | accuracy | ' + `${CAPABILITIES.join(' | ')} | MR |`,
     `| --- | --- | --- | ${CAPABILITIES.map(() => '---').join(' | ')} | --- |`,
   ];
 
@@ -194,7 +191,9 @@ async function main(): Promise<void> {
   const outDir = process.env['REGRADE_OUT_DIR'] ?? '.';
   writeFileSync(join(outDir, 'benchmark-regrade-report.md'), lines.join('\n'));
   writeFileSync(join(outDir, 'benchmark-regrade.json'), JSON.stringify(json, null, 2));
-  console.log(`Wrote ${join(outDir, 'benchmark-regrade-report.md')} (${passes.length} repetition(s))`);
+  console.log(
+    `Wrote ${join(outDir, 'benchmark-regrade-report.md')} (${passes.length} repetition(s))`,
+  );
 }
 
 await main();

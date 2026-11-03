@@ -20,7 +20,13 @@ import type { Answer, BenchmarkDataset } from '../types.js';
 const dataset: BenchmarkDataset = {
   name: 'replay-fixture',
   questions: [
-    { id: 'q-1', capability: 'IE', question: 'Where was the meeting?', expected: 'Lisbon', context: [] },
+    {
+      id: 'q-1',
+      capability: 'IE',
+      question: 'Where was the meeting?',
+      expected: 'Lisbon',
+      context: [],
+    },
     { id: 'q-2', capability: 'MR', question: 'How many trips?', expected: '3', context: [] },
     { id: 'q-3', capability: 'ABS', question: 'When was the launch?', expected: null, context: [] },
   ],
@@ -71,7 +77,11 @@ describe('replaySystem', () => {
 });
 
 describe('readCompletedPasses', () => {
-  const pass = { run: 0, baselineAnswers: ['Lisbon', '3', null], featureAnswers: ['Lisbon', '3', null] };
+  const pass = {
+    run: 0,
+    baselineAnswers: ['Lisbon', '3', null],
+    featureAnswers: ['Lisbon', '3', null],
+  };
 
   it('returns the repetitions the record holds, in its order', () => {
     const passes = readCompletedPasses({ completed: [pass, { ...pass, run: 1 }] });
@@ -94,9 +104,9 @@ describe('readCompletedPasses', () => {
     expect(() => readCompletedPasses({ completed: [{ ...pass, run: 'zero' }] })).toThrow(
       /run must be an integer/,
     );
-    expect(() =>
-      readCompletedPasses({ completed: [{ run: 0, baselineAnswers: ['a'] }] }),
-    ).toThrow(/must carry both/);
+    expect(() => readCompletedPasses({ completed: [{ run: 0, baselineAnswers: ['a'] }] })).toThrow(
+      /must carry both/,
+    );
   });
 
   it('refuses two entries claiming the same repetition', () => {
