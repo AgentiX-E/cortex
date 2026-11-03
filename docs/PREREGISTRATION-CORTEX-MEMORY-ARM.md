@@ -26172,3 +26172,64 @@ consistent both with "most were just past 256" and with "a fifth were reachable 
 and the second would license 1,024 rather than 1,024-implied-by-extrapolation. If prediction 2 is met
 at the lower bound, the next step is 1,024 as a second point on the same curve rather than a new
 mechanism.
+
+## 13.235 A recall metric was quoted as an accuracy target, and the ledger it belongs to
+
+*The round's competitor re-verification (2026-11-03) found one error in this campaign's own reporting, and
+the error is worth more than the numbers it corrected.*
+
+### 13.235.1 The error
+
+`SOTA-LANDSCAPE.md` §1 has carried the attribute since it was written: **`metric` — Recall@20 is not answer
+accuracy; Supermemory 97% is recall, single-pass accuracy 85.86%.** The 2026-11-03 write-ups in the docs
+repository quoted **97.0% as the highest published accuracy and as a 6.85-point target**. Both READMEs had the fact; the
+sentence did not use it.
+
+The correction, per three independent pages checked that day: Supermemory's advertised 97% is **Recall@20**,
+its QA accuracy is **85.2%** (Gemini 3 Pro reader), and the same system reads 81.6% in a third-party
+comparison. cortex at 90.15 is therefore **4.95 points above** it, not 6.85 below.
+
+What the published QA field actually looks like, in the order that matters for a comparison:
+
+| system | QA accuracy | the attribute that decides comparability |
+| --- | ---: | --- |
+| Recallium | 98.4 | Claude Opus 5.5 reader, self-reported; 90.2 with the official GPT-4o reader on the same harness |
+| agentmemory V4 | 96.2 | one deterministic run, Claude Opus 4.6 |
+| Maximem Synap | 95.6 | self-reported, "checked 28 Oct 2026" |
+| Agent Zero Memory | 95.6 | arXiv 2026-08; setting and judge **not named** |
+| Mastra Observational Memory | 94.87 | GPT-5-mini; **84.23 with GPT-4o**, same memory |
+| Hindsight | 94.6 | self-reported |
+| Mem0 managed | 94.4 | GPT-5 as answer model **and** judge |
+| Honcho / Zep | 90.4 / 90.2 | self-reported; Zep grades with gpt-5.4 |
+| **cortex (this section's run)** | **90.15** | public prompt, official judge, 500 questions, 4 repetitions |
+| RAW-RAG (naive) | 87.5 | arXiv:2610.30755 |
+| memoricai | 85.8 | the reproducible comparison this campaign has been tracking |
+| Supermemory | **85.2** | its 97% is Recall@20 |
+
+### 13.235.2 The four measurements on the reader axis, and why the ledger matters more than the ranking
+
+| experiment | change | effect |
+| --- | --- | ---: |
+| Mastra (vendor's own ablation) | GPT-4o → GPT-5-mini, memory fixed | **+10.64** |
+| Recallium (vendor's own ablation) | GPT-4o → Claude Opus 5.5, retrieval fixed | **+8.2** |
+| **this repository, 2026-10-28** | `deepseek-chat` → `deepseek-v4-pro`, everything else fixed | **−7.20** |
+| **this repository, `41546569106`** | thinking on two routes, prompt byte-identical | **+6.25** |
+
+Three of the four are positive and large, one is negative and large, and the axis is the same one in all
+four. So the honest reading of "we are 4.25 points behind the 94.4 band" is not "we need a bigger model" —
+this repository already spent that experiment and lost 7.20 points on it. What the axis buys is **contract
+compliance**: a reader that deliberates before emitting (`thinking`, +6.25) complies; a reader with more
+parameters in the same family does not (i.e. does something else, and the arm's `ABS` was the only
+capability that rose).
+
+The consequence for the plan is negative and useful: **the reader axis is not a queue item.** It has been
+measured in both directions on this arm, and the two directions disagree about size and sign. What remains
+is the mechanism the reader is asked to execute — which is where §13.233.3 puts MR.
+
+### 13.235.3 The rule this adds
+
+A number may be quoted only after its four attributes have been read **in the sentence that quotes it**, not
+in the file that records them. `SOTA-LANDSCAPE.md` §1 is the right place to keep them and the wrong place to
+rely on: a table of attributes does not fail when a sentence ignores it, which is the same defect class as a
+producer field with no reader (§13.181) and a check with no caller (§13.220). The three are one shape:
+**a statement whose correctness depends on somebody remembering to consult it is not checked.**

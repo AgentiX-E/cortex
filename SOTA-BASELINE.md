@@ -19,7 +19,56 @@ Zhipu GLM embedding-3, temperature 0, full N=500, 4 interleaved runs.
 
 ---
 
-## 1. Position
+## 0. Current position (2026-11-03), and why the frozen anchor below is still here
+
+§1 onward freezes the position at `a52628f`. This section is the **current** one, and it exists because
+`docs/AUDIT-CODE-VS-DOCS.md` §2 records that quoting the frozen number as the current score is a P0
+defect. The two are kept side by side rather than by rewriting the anchor: a baseline that moves with the
+code is not a baseline.
+
+**Current registered configuration, measured on `41546569106`** (500 questions, 4 repetitions, 303
+minutes, 0 `429`s, `--registration` reports `same 20 field(s)`):
+
+| item | value |
+| --- | --- |
+| `featureAggregate.avg` | **90.15%** (min 89.40, max 91.00, median 90.10) |
+| reader | `deepseek:deepseek-chat`, `thinking = enabled on multi-session+temporal`, `temperature 0` |
+| budget | `maxPromptChars 48,000`, `maxTurnChars 400` on those two routes, `turnCutMarker none` |
+| ranking | `retrieval-hybrid`, `relevanceTopK 256`, `relevanceUnits turn` |
+| embedding | `openai-compatible/embedding-3`, 1024 |
+| per capability (first pass) | IE 96.00 / MR 76.86 / KU 86.11 / TR 95.28 / ABS 100.00 |
+
+The anchor's 83.55% and this 90.15% differ by one input: `thinking` on the two routes. 500 of 500 records
+carry the same `promptDigest`, so the prompt did not move — §13.232 records the pair, the per-capability
+decomposition and the token bill (prompt flat at 28.1 M, completion 0.24 M → 2.35 M).
+
+### 0.1 Where that sits, corrected against the published field
+
+| system | score | what decides whether it compares |
+| --- | ---: | --- |
+| **cortex** (this run) | **90.15** | public prompt, official judge, 500 questions, 4 repetitions, reproducible |
+| Recallium | 98.4 | Claude Opus 5.5 reader, self-reported; the same harness reads 90.2 with the official GPT-4o reader |
+| agentmemory V4 | 96.2 | single deterministic run, Claude Opus 4.6 reader |
+| Maximem Synap | 95.6 | self-reported, 2026-10-28 |
+| Agent Zero Memory | 95.6 | arXiv 2026-08, setting and judge not named |
+| Mastra OM | 94.87 | GPT-5-mini reader; the same memory reads **84.23** with GPT-4o |
+| Hindsight | 94.6 | self-reported |
+| Mem0 managed | 94.4 | GPT-5 as answer model **and** as judge |
+| Honcho / Zep | 90.4 / 90.2 | self-reported; Zep with gpt-5.4 reading and judging |
+| Supermemory | **85.2 accuracy** | its advertised 97% is **Recall@20**, a retrieval metric — `docs/SOTA-LANDSCAPE.md` §1 |
+| RAW-RAG (naive) | 87.5 | arXiv:2610.30755, no extraction, no rewriting |
+
+**cortex is above the reproducible frontier this repository tracks (85.8–86.5%) and is not SOTA overall.**
+The 94.4–96.2 band is vendor-reported, and every row in it runs a stronger reader than `deepseek-chat`
+except Mem0's judge choice. The reader axis is measured four times and its sign is not given by size:
+Mastra +10.64, Recallium +8.2, this repository's own `deepseek-v4-pro` swap **−7.20**, and this run's
+thinking-on-two-routes **+6.25**. What the axis buys is contract compliance, not parameters.
+
+---
+
+## 1. Position at the frozen anchor (`a52628f`, 2026-10)
+
+Every number in §1–§5 was measured at that commit. §0 above is the current one.
 
 | System | Overall | Reader |
 | --- | --- | --- |
@@ -39,7 +88,7 @@ Cortex sits **above the original paper's Oracle baseline** (82.4%, which is hand
 gold answer sessions) and within ~0.7–1.7pp of the Mastra/Supermemory commercial tier —
 **while using a strictly weaker reader (DeepSeek) than every system above it.**
 
-## 2. Per-capability decomposition (current baseline, 4 runs pooled)
+## 2. Per-capability decomposition at the frozen anchor (4 runs pooled)
 
 | Capability | Correct | Accuracy | Abstention | Wrong |
 | --- | --- | --- | --- | --- |
