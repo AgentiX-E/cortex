@@ -740,11 +740,18 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   about dispatch inputs rather than about anything either artifact carries. It is written down here rather
   than only in the table because a value this arm's largest measured effect depends on is not an experiment's
   private business.
-- `readerThinking: disabled` — **registered by §13.192.6 beside the id.** `resolveReaderIdentity` reports
+- `readerThinking: multi-session+temporal` — **registered by §13.192.6 beside the id, and re-registered
+  by §13.232 from the value it used to hold.** `resolveReaderIdentity` reports
   `thinking` in every artifact since §13.110.1, and the input that sets it (`DEEPSEEK_THINKING`) was sent by
   nobody: `none` of this campaign's 500-question runs ever enabled it. It is the second half of the reader
   identity and the only one that can change a reply's *shape* without changing the model — which is exactly
   the axis §13.192 registers a probe for, so the state every archived run was in has to be on the record.
+  It held `disabled` for eleven sections because that is what every archived run was in, and it moves now
+  for the reason a registration can move: a run read the other value. `41546569106` is the registered
+  configuration with this one input moved — 500 questions, 4 repetitions, **90.15%** against **83.90%**,
+  with **500 of 500 prompts byte-identical** (`promptDigest` equal) and therefore the whole of the
+  difference on the decoder. The routes the value names moved (TR +16.54, p=5.7e-06; MR +5.79, p=0.19) and
+  the three it does not did not (IE −0.67, KU −1.39, ABS 0.00) — §13.232 carries the table.
 - `reviewPass: bare` — **adopted by §13.112, which is also the section that found the drift this
   line had accumulated.** The bare-decline retry is what a dispatch now ships: a reply that is the
   abstention token and nothing else is asked once more with that token absent from the prompt, on the
@@ -25879,3 +25886,289 @@ and `DELETE` returning `204` — so the two branches the fake asserts are the tw
 This is the round's second finding of the same shape: a test that agrees with its own fake is not a
 test of the API. §13.230.2 is the first (`evidenceChars` exceeding `promptChars`), and both were
 found by measuring rather than by reasoning.
+
+## 13.231 The prompt's third term, and the subtraction §13.230 asked for the wrong field of
+
+*§13.230.4 said one field would turn the residual into a measurement: "the length of the evidence as
+rendered into the delivered prompt". That field already exists and is called `promptChars`. The term
+that was missing is the other one, and the reason the first one looked wrong is that §13.230.2
+subtracted the offer from the delivery and read the result as a contradiction.*
+
+### 13.231.1 What `promptChars` is, from the code that writes it
+
+`AssembledPrompt.evidenceChars` is `evidence.length`, and its own docstring defines the exclusions:
+
+> Characters of **evidence** this prompt carries, after any budget cut. Excludes the instruction
+> block, the question and the section header.
+
+`buildPrompt` hands it to the record unchanged (`bench-memory-arm.ts` maps
+`featurePromptEvidenceChars[i]` to `promptChars`). So `promptChars` is the delivery of the evidence
+and nothing else, which is what makes the identity `prompt = evidence + question + instruction + labels`
+decidable — and what makes `evidenceChars > promptChars` ordinary rather than impossible.
+
+### 13.231.2 The pair §13.230.2 read, on 500 questions instead of two fixtures
+
+`evidenceChars` is the offer and `promptChars` is the delivery. The first is never smaller than the
+second, and how much larger it is turns out to be a property of the route rather than a constant:
+
+| field | IE (median, n=150) | KU (n=72) | MR (n=121) | TR (n=127) |
+| --- | ---: | ---: | ---: | ---: |
+| `evidenceChars` — the offer | 506,172 | 506,462 | 67,551 | 66,098 |
+| `promptChars` — the delivery | 46,863 | 46,868 | 46,264 | 47,149 |
+| ratio | 10.8× | 10.8× | 1.5× | 1.4× |
+
+On the flat routes admission is handed the whole haystack — a half-million characters — and the room
+prints a tenth of it. On the two expanded routes the operand expansion admits one and a half times
+what the room prints, which is the smallest ratio in the table and still the *same direction*. The
+83,565-against-46,143 pair in §13.230.2 sits in this range; a budget that admits more than it prints
+is doing its job, and the pair is not evidence that the field means something else.
+
+### 13.231.3 The decomposition, measured on the anchor artifact
+
+Every number below is a median over the 500-question artifact `41546569106`, and every column is a
+field of the record. `gap = promptChars - offeredChars` is the quantity §13.225 read as "instruction
+block"; `unsc` is `windowComposition.unscoredChars`, and `over` is what is left after both.
+
+| capability | n | `promptChars` | `offeredChars` | `unscoredChars` | gap | gap % | unsc % | over % | turns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ABS | 30 | 46,471 | 42,956 | 0 | 3,516 | 7.6 | 0.0 | 7.6 | 72 |
+| IE | 150 | 46,864 | 43,863 | 0 | 3,000 | 6.4 | 0.0 | 6.4 | 61 |
+| KU | 72 | 46,868 | 43,662 | 0 | 3,206 | 6.8 | 0.0 | 6.8 | 62 |
+| MR | 121 | 46,264 | 37,471 | 7,012 | 8,793 | 19.0 | 15.2 | 3.8 | 174 |
+| TR | 127 | 47,149 | 36,913 | 7,831 | 10,236 | 21.7 | 16.6 | 5.1 | 179 |
+
+Three things follow, and the third is the correction:
+
+1. **The 19% and 21.7% are real and they are not instruction.** On the two routes whose window is
+   filled by operand expansion, 15.2 and 16.6 points of the prompt are turns the ranking never
+   scored — evidence that was admitted through the expansion rather than through the pool. That is a
+   *composition* finding about the delivery, and it is a lever candidate of its own.
+2. **What remains is 3.8% and 5.1%**, and it is the rendered decoration: `sum(turn.length)` excludes
+   the index, the two-newline separator and the cut marker, all of which are inside `promptChars`.
+   At 174 turns and 5.5 characters of rendering per turn that is ~960 characters, or 2.1% — the same
+   order, and the remainder is the longer `sourced` prefix on some turns.
+3. **The instruction block is not in this table at all**, because `promptChars` excludes it. It is
+   339 characters (595 temporal) and it sits in the term the artifact does not carry: the whole
+   prompt. On MR that term is at most `48,000 - 46,264 = 1,736` characters, i.e. **3.6% of the
+   budget**, and of that the block is 339 — **0.7% of the prompt, 1.3 turns at MR's 266 characters
+   per turn.** §13.225's "≈ 41 turns" was the 15.2% column, not this one.
+
+### 13.231.4 The field that was actually missing, and where it is written
+
+`deliveredPromptChars`: the length of the text handed to the model. It is free — the prompt was
+already captured for `promptDigest`, and a length is not a second capture — and with it
+`deliveredPromptChars - promptChars - question.length` is the decoration as a *measurement* on 500
+questions rather than as a bound from `maxPromptChars - promptChars`.
+
+| layer | change |
+| --- | --- |
+| `question-record.ts` | the field, its omission rule (absent, never zero), and the §13.230.2 correction in its docstring |
+| `bench-memory-arm.ts` | `promptTexts[i].length`, beside the digest it is already hashed for |
+| `report-write.ts` | forwarded through `withEvidenceBound`, so a reduction cannot drop the second term |
+| `readout-arm-run.py --audit` | check 10: `deliveredPromptChars >= promptChars` and `deliveredPromptChars - promptChars >= question.length`, then the distinct decoration sizes |
+
+The check is two containments and a printed measurement, and the invariant is the one that would have
+stopped §13.230.2 inside the artifact: **a substring cannot be longer than the string it sits in.**
+No threshold is invented for the decoration — the audit prints how many distinct sizes a run has and
+what they are, because a run that reports more than one per contract has something in its prompt that
+nobody registered.
+
+## 13.232 The route-scoped reader is worth 6.25 points, and the prompt does not move
+
+*Run `41546569106`: the registered configuration with `thinking=multi-session+temporal` and nothing
+else moved. 500 questions, 4 repetitions, 303 minutes, 0 `429`s. This is the answer to requirement
+#12's first half, and it is stronger than a score: the prompts are byte-identical.*
+
+### 13.232.1 The reading
+
+| # | registered (§10.3, pre-adoption) | observed | verdict |
+| --- | --- | --- | --- |
+| 1 | `featureAggregate.avg` ≥ 83.90 + 4.0 = 87.90 (§13.221.3) | **90.15** (min 89.40, max 91.00) | **met**, by 2.25 |
+| 2 | the falsifier: `< 83.90 + 1.5 = 85.40` | 90.15 | **not triggered** |
+| 3 | TR moves (the temporal route) | **78.74 → 95.28** | met |
+| 4 | the three routes outside the value hold | IE −0.67, KU −1.39, ABS 0.00 | met, inside §13.118.5's spread |
+
+Against the anchor `41488630010`, which is the same configuration with `thinking: disabled`:
+
+| capability | anchor | T | Δ (points) | first-pass McNemar |
+| --- | ---: | ---: | ---: | --- |
+| IE | 96.67 | 96.00 | −0.67 | b=1, c=0, p=1.00 |
+| MR | 71.07 | 76.86 | +5.79 | b=7, c=14, p=0.19 |
+| KU | 87.50 | 86.11 | −1.39 | b=1, c=0, p=1.00 |
+| TR | 78.74 | 95.28 | **+16.54** | b=1, c=22, **p=5.72e-06** |
+| ABS | 100.00 | 100.00 | 0.00 | none |
+| **all** | **83.90** | **90.15** | **+6.25** | b=10, c=36, **p=1.56e-04** |
+
+The 4-run ranges do not overlap: the anchor's best pass (84.80) is below this run's worst (89.40).
+
+### 13.232.2 The prompts are identical, so the whole effect is the decoder
+
+500 of 500 records carry the **same `promptDigest`** and the **same `promptChars`** as the anchor. The
+window, the ranking, the budget, the rendering and the contract are unchanged byte for byte, which
+means the treatment is not a prompt change and cannot be explained by one. It also means the reading
+is immune to the class of defect §13.230 was about: there is no prompt-side arithmetic in it.
+
+What moved is the reply. `transitions` reads 199 recovered and 42 corrected, and the abstention census
+is flat at 130 `llm` declines.
+
+### 13.232.3 What it costs, on the same pair
+
+| side | anchor | T | ratio |
+| --- | ---: | ---: | ---: |
+| feature calls | 2,090 | 2,071 | 0.99× |
+| feature prompt tokens | 28,408,431 | 28,145,808 | **0.99×** |
+| feature completion tokens | 236,781 | 2,345,969 | **9.91×** |
+| prompt tokens per question | 14,204 | 14,073 | 0.99× |
+| completion tokens per question | 118.4 | 1,173.0 | 9.91× |
+| cache-hit share of prompt tokens | 98.6% | 98.6% | flat |
+
+**About 1,050 additional completion tokens per question buys 6.25 points, and the prompt side is
+unchanged.** This is the token question requirement #8 asks from the other direction: the cheap place
+to spend is the decoder, not the window, because the window is billed at cache-hit rates and paid for
+on every one of the four repetitions.
+
+### 13.232.4 Adoption, and the order it had to happen in
+
+The gate ran on this run and went red, correctly:
+
+```
+departs: none declared
+  UNDECLARED  reader.thinking: "disabled" (registered) -> "enabled" (ran)
+  UNDECLARED  reader.thinkingRoutes: <-absent-> (registered) -> ["multi-session", "temporal"] (ran)
+```
+
+Two facts about that red, and the second is the useful one:
+
+1. **The dispatch predated the declaration.** It was sent at 23:35, eleven minutes before the
+   dispatcher learned to declare its own departures (§13.229). Nothing about the run is wrong; the
+   record of what it was is what was missing, and the gate said exactly that.
+2. **The gate was right about the registration, at that moment.** `thinking: disabled` *was* the
+   registered value, and a run that moves it is an experiment until a section adopts the value. You
+   cannot adopt before you measure, so the red is the ordering working rather than failing.
+
+After §10.3's bullet and `INPUTS["thinking"]` carry the route-scoped form, the same artifact reads:
+
+```
+  registration: 20 field(s) compared, 1 derived, 3 harness, 1 presence
+  same         20 field(s)
+  verdict: this run is the registered configuration, field for field
+```
+
+The `--departs thinking` that would have been needed an hour ago is now an *idle* declaration, and the
+tool prints that too. Both readings are in this section because a reader comparing the two must be
+able to see that the difference is the registration and not the run.
+
+## 13.233 Two levers retired by arithmetic, and the mechanism MR's failures actually have
+
+*Both pending experiments were priced against the wrong anchor. Neither is worth a 340-minute slot,
+and the reason is visible in an artifact that has been on disk since 2026-11-01.*
+
+### 13.233.1 `maxPromptChars: 96000` is worth +0.60, not +6.7
+
+The record in §9.181's table said the best archive read **0.906** with `maxPromptChars=96000` against
+the registered **0.839**, i.e. +6.7, and that number has ordered the plan ever since. The archived run
+is `41259622431`, and it was **already a thinking run**:
+
+| field | `41259622431` | T (`41546569106`) |
+| --- | --- | --- |
+| `featureAggregate.avg` | **0.9075** | **0.9015** |
+| `reader.thinking` | `enabled` | `enabled` |
+| `reader.thinkingRoutes` | `multi-session, temporal` | `multi-session, temporal` |
+| `maxPromptChars` | 96,000 | 48,000 |
+| `turnCutMarker` | `ellipsis` | `none` |
+| `ask` | `candidates` | `operands+operand-gap` |
+| `askRoutes` | 3 routes | 4 routes |
+
+So the +6.7 was **thinking's +6.25 plus this bundle's +0.60**, and the bundle has four fields in it.
+Per capability, the bundle buys MR +2.48, TR +0.78, and costs ABS −3.33 (29/30 against 30/30):
+
+| capability | `41259622431` (96k, ellipsis, candidates) | T (48k, none, operands+gap) | Δ |
+| --- | ---: | ---: | ---: |
+| IE | 96.00 | 96.00 | 0.00 |
+| MR | 79.34 | 76.86 | +2.48 |
+| KU | 86.11 | 86.11 | 0.00 |
+| TR | 96.06 | 95.28 | +0.78 |
+| ABS | 96.67 | 100.00 | **−3.33** |
+| **all** (4-run `avg`, not the first pass) | **90.75** | **90.15** | **+0.60** |
+
+**+0.60 points for 2× the prompt tokens and one `ABS` question**, which is inside the noise band the
+campaign uses for a single-capability move. `maxPromptChars` is therefore retired as a lever rather
+than queued: the room is not what MR is short of, and §13.233.3 says what it is short of.
+
+### 13.233.2 `turnCutMarker`'s +2.3 was never that prediction's to make
+
+The §13.221.3 figure for M came from the same comparison, and the comparison is a four-field bundle
+whose `ask` value is `candidates` — a different enumeration contract, which is the thing MR's failures
+are actually about (§13.233.3). The marker is one character per truncated turn. On this artifact
+**9.2% of correct MR windows carry a turn at the cap and 10.7% of wrong ones do**: a 1.5-point
+difference on a 121-question route, which is the wrong sign to be the mechanism and is not
+distinguishable from zero. M stays dispatchable and stops being a prediction; it is scheduled by
+nothing.
+
+### 13.233.3 MR's 28 failures are counting decisions, and the evidence is already delivered
+
+Every one of MR's 28 wrong answers on T is a *how many* question, and the reply is a two-step
+enumeration whose stated count equals its own list length:
+
+| question | gold | list the reader printed | answer |
+| --- | --- | --- | --- |
+| `0a995998` pick up or return clothing | 3 | blazer; Zara boots | 2 |
+| `6d550036` projects led | 2 | one project | 1 |
+| `gpt4_a56e767c` festivals attended | 4 | Austin; Portland; AFI Fest | 3 |
+| `46a3abf7` tanks owned | 3 | community tank; friend's kid's tank | 2 |
+
+The instrument says the evidence is there and the room is not the constraint:
+
+| measurement | correct (n=93) | wrong (n=28) |
+| --- | ---: | ---: |
+| `goldOverlap.carried / total` (median) | **12 / 12** | **16.5 / 17** |
+| `promptChars` (median) | 46,272 | 46,225 |
+| delivered turns (median) | 176 | 173 |
+| share of turns at the 400-character cap | 9.2% | 10.7% |
+
+Wrong questions carry **more** gold, use the **same** room, and are **not** more truncated. So the
+arithmetic in §13.233.1 lands where the table says: a bigger room cannot fix a count. A keyword sweep
+of all 166 delivered turns of `0a995998` finds exactly the two store errands the reader listed — the
+third gold item is not textually a third errand in the window it was shown.
+
+### 13.233.4 What is left, and the one number that points at it
+
+`goldOverlap.goldRanks` carries `-1` for a gold turn the ranking never offered, and the pool is 256:
+
+| MR population | n | wrong | wrong rate |
+| --- | ---: | ---: | ---: |
+| at least one gold turn outside the pool | 41 | 16 | **57.1%** |
+| every gold turn inside the pool | 80 | 12 | **26.9%** |
+
+Fisher's exact two-sided **p = 0.0056** on a 30.3-point difference. A question whose gold the ranker
+could not reach fails twice as often, and 41 of 121 MR questions are in that set — which makes the
+pool the one MR-side quantity that is both short and measurable, and it is the only widening that
+costs no prompt token: the window is fixed at 48,000 and a deeper pool changes *which* turns fill it.
+
+## 13.234 Registration: `relevanceTopK: 512`, and what would refute the pool as MR's constraint
+
+*One variable, one declared departure, no new field.*
+
+| # | item | value |
+| --- | --- | --- |
+| 1 | treatment | `--set cortex_memory_relevance_top_k=512` |
+| 2 | control | T (`41546569106`), the post-§13.232 registration, field for field |
+| 3 | mechanism | `pool 256 -> 512` changes which turns the window may hold and nothing else: `relevanceSignal`, `relevanceUnits`, `maxTurnChars`, `maxPromptChars`, the contract and the reader are held |
+| 4 | token cost | **zero on the prompt side** — the room is still 48,000 characters, so the same number of turns is printed; the pool is a candidate list, not a delivery |
+| 5 | cost that is real | 256 extra scored candidates per question at retrieval time, and the embedding cache is keyed on the dataset rather than on K, so no new vectors are computed |
+
+**Predictions, written before the run:**
+
+| # | prediction | falsified by |
+| --- | --- | --- |
+| 1 | MR's correct ≥ 93 + 3 = **96 of 121** (≥ +2.5 points) | MR ≤ 94 |
+| 2 | the MR gain concentrates in the 41-question outside-pool cohort: **≥ 3 of its 16 wrong convert** | ≤ 1 converts |
+| 3 | `featureAggregate.avg` ≥ **91.5%** | < 90.5% |
+| 4 | the four other capabilities hold inside §13.118.5's spread | any of them moving ≥ 2 points |
+
+**What the pair cannot say**, stated now: the pool's ranks are capped at 255 in `goldRanks`, so the
+artifact cannot report *how far* outside the pool a gold turn was. A conversion rate near 3 of 16 is
+consistent both with "most were just past 256" and with "a fifth were reachable and the rest were not",
+and the second would license 1,024 rather than 1,024-implied-by-extrapolation. If prediction 2 is met
+at the lower bound, the next step is 1,024 as a second point on the same curve rather than a new
+mechanism.

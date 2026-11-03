@@ -371,6 +371,13 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // claiming the reader was shown evidence the prompt never carried --
         // exactly the confusion the field exists to end.
         ...(record.promptChars === undefined ? {} : { promptChars: record.promptChars }),
+        // Forwarded on the same rule, and it is the second term of the pair: a reduction that
+        // kept `promptChars` and dropped this one would leave the reduced artifact able to say
+        // how much evidence the prompt carried and unable to say how much prompt there was --
+        // the state §13.230.2 was written in, arrived at from a full artifact.
+        ...(record.deliveredPromptChars === undefined
+          ? {}
+          : { deliveredPromptChars: record.deliveredPromptChars }),
         ...(record.promptDigest === undefined ? {} : { promptDigest: record.promptDigest }),
         ...(record.promptVariants === undefined ? {} : { promptVariants: record.promptVariants }),
         // Forwarded for exactly that reason: the reduction rebuilds every record through

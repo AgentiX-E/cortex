@@ -405,6 +405,11 @@ describe('serializeReportOrReduce', () => {
         answer: 'a fact',
         rawOutput: `raw ${i}`,
         promptChars: 4242,
+        // §13.231's second term. Populated here for the reason the loop exists: a field added to
+        // the record and not to this list is a field this test cannot notice a rebuild dropping,
+        // and this one is a number whose absence reads exactly like a system that reports no
+        // prompt at all.
+        deliveredPromptChars: 4680,
         // §13.168.8's fingerprint, populated here so the derived-key loop above covers it:
         // the fifth field this rebuild could drop is the one nobody would think to assert
         // by name, which is exactly why the loop reads the record's own keys.

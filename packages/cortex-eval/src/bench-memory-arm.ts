@@ -2978,6 +2978,13 @@ function buildArmRoster(
       // it has no accessor for the offer, which the record then omits.
       admitted: admittedEvidence[i]!,
       promptChars: promptEvidenceChars[i] ?? null,
+      // §13.231. The other term of the only subtraction that decomposes a prompt. `promptChars` is
+      // the evidence the builder printed; this is the text it printed it into. Both are free here --
+      // the prompt was already captured for the digest one line down, and a length is not a second
+      // capture -- and without it the overhead is only bounded by `maxPromptChars`, which is how
+      // §13.230.2 came to attribute 19% of a prompt to a 339-character instruction block.
+      deliveredPromptChars:
+        promptTexts[i] === null || promptTexts[i] === undefined ? null : promptTexts[i]!.length,
       // `§13.168.8`. The fingerprint of the bytes this question's reader was sent, so a
       // reader of two artifacts can tell four repetitions from four prompts. `null` when
       // the system exposes no prompt, which the record renders as absent rather than as

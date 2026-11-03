@@ -2914,6 +2914,156 @@ describe('the record carries a fingerprint of the prompt', () => {
 });
 
 /**
+ * The record carries both terms of the only subtraction that decomposes a prompt.
+ *
+ * ## Why two fields and not a share
+ *
+ * §13.230.4 asked for "the length of the evidence as rendered into the delivered prompt" and named
+ * it as the field that would end the ambiguity. That measurement already existed and is called
+ * `promptChars`; what did not exist is the whole prompt's length, so the artifact could say how much
+ * evidence the model read and not how much text it was handed. The pair is what turns "the
+ * instruction block is 19% of the prompt" -- §13.225's reading, and wrong by two orders of magnitude
+ * -- into `deliveredPromptChars - promptChars - question.length`, a number that is 363 on the
+ * abstention contract whatever the turn count is.
+ *
+ * ## What is asserted, and where the oracle is
+ *
+ * The fixture system reports a prompt text and an evidence size from two different accessors, which
+ * is exactly the pairing that can go wrong: a length taken from the wrong question's prompt passes
+ * every type and every "field is present" assertion. So the assertions are `prompt.length` against
+ * two prompts of different lengths, in dataset order, and the absent case is checked with
+ * `Object.hasOwn` rather than `toBeUndefined` -- an absent field and a field written as `undefined`
+ * read the same through the accessor and differently through the artifact.
+ */
+describe('the record carries the length of the prompt it was sent', () => {
+  function datasetOf(questions: readonly { id: string; question: string }[]): BenchmarkDataset {
+    return {
+      name: 'fixture',
+      questions: questions.map((q) => ({
+        id: q.id,
+        capability: 'IE',
+        questionType: 'single-session-user',
+        question: q.question,
+        expected: 'Lisbon',
+        context: [],
+        sessions: [],
+      })),
+    } as unknown as BenchmarkDataset;
+  }
+
+  const GATE = {
+    threshold: 0,
+    retrievalThreshold: 0,
+    sessionBudget: null,
+    sourceTrust: 0.5,
+    confidenceSignal: 'none',
+    promptContract: 'abstention',
+    relevanceSignal: 'none',
+    relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+    renderingRoutes: [],
+    ask: 'route',
+    askRoutes: [],
+    reviewPass: 'none',
+    reviewBareDecline: false,
+  } as const;
+
+  function promptingSystem(prompts: readonly (string | null)[], evidenceChars = 64): MemorySystem {
+    let call = 0;
+    return {
+      name: 'cortex-memory',
+      answer: () => 'Lisbon',
+      lastRetrievedContext: () => ['turn 0', 'turn 1'],
+      lastPromptEvidenceChars: () => evidenceChars,
+      lastAdmittedEvidence: () => ({ turns: 6, chars: 4096 }),
+      lastRawOutput: () => 'Lisbon',
+      lastPromptText: () => prompts[call++] ?? null,
+    } as unknown as MemorySystem;
+  }
+
+  it('writes the length of the whole prompt beside the evidence it carried', async () => {
+    // Built from its parts so the three terms are known independently: the evidence the renderer
+    // produced, the question, and the instruction block. `buildPrompt` joins them with four
+    // separators and two labels, which is the 24 below -- so the identity this asserts is the one
+    // §13.230.2 could not state: prompt = evidence + question + 24 + instruction.
+    const evidence = '1. turn 0\n\n2. turn 1';
+    const instruction = 'Reply with the answer only.';
+    const question = 'Where?';
+    const prompt = `EVIDENCE:\n${evidence}\n\nQUESTION: ${question}\n\n${instruction}`;
+    const { report } = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([prompt], evidence.length),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+
+    const record = report.questions![0]!;
+    expect(record.deliveredPromptChars).toBe(prompt.length);
+    // The other term is the accessor's, not a substring search of the prompt: the two are captured
+    // at different hops and the record's claim is that both reached it.
+    expect(record.promptChars).toBe(evidence.length);
+    // And the third term -- the question -- is the record's own, so what the budget does not spend
+    // on evidence is decidable from the artifact alone rather than bounded by `maxPromptChars`.
+    expect(record.deliveredPromptChars! - record.promptChars! - question.length).toBe(
+      24 + instruction.length,
+    );
+  });
+
+  it('pairs each length with its own question rather than with the run', async () => {
+    // Two prompts of different lengths, delivered in dataset order. A length hoisted out of the
+    // loop, or read from the last question answered, satisfies "the field is a number" and is
+    // wrong on every record but one -- the same shape as the shared-instance defect §9.184 fixed
+    // one layer down.
+    const short = 'EVIDENCE:\n1. turn 0\n\nQUESTION: Where?\n\nReply.';
+    const long = `${short}${' and then some'.repeat(10)}`;
+    const { report } = await runCortexMemoryArm(
+      datasetOf([
+        { id: 'q1', question: 'Where?' },
+        { id: 'q2', question: 'Where was it?' },
+      ]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([short, long]),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+
+    expect(report.questions!.map((record) => record.deliveredPromptChars)).toEqual([
+      short.length,
+      long.length,
+    ]);
+  });
+
+  it('omits the length when the system reports no prompt, and does not write a zero', async () => {
+    // Absent is a system with no accessor; zero is a prompt of length zero, which no run has sent.
+    // `Object.hasOwn` rather than `toBeUndefined`, because the omission rule writes the key away
+    // and a `0` would pass the second assertion while meaning the opposite.
+    const { report } = await runCortexMemoryArm(
+      datasetOf([{ id: 'q1', question: 'Where?' }]),
+      constantSystem('reference-pipeline', 'Lisbon'),
+      promptingSystem([null]),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: GATE,
+      },
+    );
+
+    const record = report.questions![0]!;
+    expect(Object.hasOwn(record, 'deliveredPromptChars')).toBe(false);
+    expect(record.deliveredPromptChars).toBeUndefined();
+  });
+});
+
+/**
  * The arm reports groundedness, instead of declaring it unreportable.
  *
  * ## The field it replaces

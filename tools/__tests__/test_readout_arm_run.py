@@ -2721,6 +2721,55 @@ class TestTheArtefactAudit:
         assert 'budget 900000' in r.stdout
 
 
+    # §13.231: the prompt's three terms. The invariant is containment, and the measurement that
+    # falls out of it -- decoration per contract -- is what §13.230.2 could only bound.
+
+    def test_a_prompt_that_holds_its_evidence_and_its_question_reports_its_decoration(
+        self, tmp_path: Path
+    ) -> None:
+        artifact = self._artifact()
+        for question in artifact['questions']:
+            question['deliveredPromptChars'] = (
+                question['promptChars'] + len(question['question']) + 363
+            )
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'prompt-overhead' in r.stdout
+        assert '1 distinct decoration size(s) [363]' in r.stdout
+
+    def test_an_absent_delivered_prompt_is_a_reading_and_not_a_zero(self, tmp_path: Path) -> None:
+        # Every artifact before §13.231, and the reference pipeline's reports. Refusing them would
+        # make the audit unusable on its own archive; defaulting them to `promptChars` would claim
+        # the overhead was zero, which is a measurement nobody took.
+        r = self._audit(tmp_path, self._artifact())
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'SKIP  prompt-overhead' in r.stdout
+        assert 'only bounded by maxPromptChars minus promptChars' in r.stdout
+
+    def test_evidence_larger_than_the_prompt_it_sits_in_fails(self, tmp_path: Path) -> None:
+        # The substring cannot be longer than the string. A record that says otherwise has two
+        # numbers read from two different prompts -- the shape §13.230.2 read as a contradiction
+        # about what a field means rather than as two fields about different objects.
+        artifact = self._artifact()
+        for question in artifact['questions']:
+            question['deliveredPromptChars'] = question['promptChars'] + len(question['question']) + 363
+        artifact['questions'][0]['deliveredPromptChars'] = artifact['questions'][0]['promptChars'] - 1
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'more evidence than prompt' in r.stdout
+
+    def test_a_prompt_that_cannot_hold_its_own_question_fails(self, tmp_path: Path) -> None:
+        # Weaker than the evidence check by one term, and it is the term a producer is most likely to
+        # measure somewhere else: a length taken from a different string than the one sent.
+        artifact = self._artifact()
+        for question in artifact['questions']:
+            question['deliveredPromptChars'] = question['promptChars'] + len(question['question']) + 363
+        artifact['questions'][0]['deliveredPromptChars'] = artifact['questions'][0]['promptChars'] + 1
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'cannot hold their own question' in r.stdout
+
+
 def _spend_report(
     *,
     calls: int = 4_084,

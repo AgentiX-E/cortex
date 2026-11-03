@@ -396,11 +396,20 @@ INPUTS = {
     # 500-question run in this campaign ever did. §13.192's probe moves this one.
     #
     # §13.198.4 gave the value a second form that is not a word: `multi-session+temporal` enables
-    # thinking on those routes and leaves the rest where this line has them. The registered value
-    # stays `disabled` -- the scoped form is an experiment until a run reads it (§13.199) -- but a
-    # reader of this table should know the field is no longer two-valued, because `--set
-    # thinking=...` is how the next dispatch departs from it.
-    "thinking": "disabled",
+    # thinking on those routes and leaves the rest where this line has them.
+    #
+    # §13.232 adopts the scoped form on the strength of the run that read it. `41546569106` is the
+    # registered configuration with this one input moved, 500 questions, 4 repetitions, and it
+    # reads **90.15%** against the registered **83.90%** -- a single declared departure, and the
+    # movement lands on the two routes the value names: TR 78.74 -> 95.28, MR 71.07 -> 76.86, and
+    # nothing outside them (IE -0.67, KU -1.39, ABS 0.00), which is the shape a route-scoped
+    # mechanism is supposed to have rather than the shape of a general improvement.
+    #
+    # What it costs is measured on the same pair and is the reason this is an adoption rather than
+    # a trade: prompt tokens are **flat** (28.15 M against 28.41 M, 98.6% of them prefix-cache
+    # hits in both) and the completion side goes from 0.24 M to 2.35 M, which is the thinking
+    # tokens. A per-question budget of ~1,050 completion tokens buys 6.25 points.
+    "thinking": "multi-session+temporal",
     "limit": "0",
     "ablation_runs": "4",
     "temperature": "0",

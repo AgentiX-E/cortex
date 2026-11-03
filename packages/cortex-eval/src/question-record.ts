@@ -226,6 +226,44 @@ export type QuestionRecord = {
    */
   readonly promptChars?: number | undefined;
   /**
+   * The length of the **whole prompt** this question's reader was sent, when it is known.
+   *
+   * ## Why `promptChars` is not this, and why that was read backwards
+   *
+   * `promptChars` is the delivered **evidence** -- `AssembledPrompt.evidenceChars`, which its own
+   * docstring defines as excluding the instruction block, the question and the section header. This
+   * field is the text handed to the model, of which the evidence is a part. The two are the two terms
+   * of the only subtraction that decomposes a prompt, and until this field existed the artifact held
+   * one of them and a bound on the other.
+   *
+   * The cost of the missing term was one wrong conclusion, and it is worth naming because the wrong
+   * conclusion was drawn from a correct pair of numbers. §13.230.2 read `evidenceChars` = 83,565
+   * against `promptChars` = 46,143 on the same question and concluded that whatever `promptChars`
+   * held, it could not be the evidence in the prompt. It is: `evidenceChars` is the **offer** and
+   * `promptChars` is the **delivery**, and an offer larger than the budget is the ordinary case --
+   * on the 500-question artifact the medians are 504,478 against 46,701. The pair that was actually
+   * contradictory-looking and actually missing is this one, and with it
+   * `deliveredPromptChars - promptChars` is the per-turn overhead measured rather than bounded.
+   *
+   * ## Why it is worth a field rather than a subtraction from the budget
+   *
+   * `maxPromptChars` bounds the whole prompt, so `overhead <= maxPromptChars - promptChars` is a
+   * bound the artifact already supports -- and on the registered run that bound is 1,736 characters
+   * on the median MR question, 3.6% of a 48,000-character budget. A bound is enough to refute a
+   * 19% claim and not enough to price a lever: it cannot say whether the median prompt is 48,000 or
+   * 46,900, and it cannot say what the instruction block's share of the overhead is. §13.230.4 asked
+   * for this measurement under the name "the length of the evidence as rendered", which is
+   * `promptChars` and already existed; the term that was missing is the other one.
+   *
+   * Absent when the system exposes no prompt, which is not a prompt of length zero -- the same rule,
+   * and the same absence, as `promptChars` and `promptDigest`.
+   *
+   * `deliveredPromptChars >= promptChars` on every record of every legitimate run, and the audit
+   * checks it: the evidence is a substring of the prompt it sits in. It is the assertion that would
+   * have stopped §13.230.2 at the artifact instead of in prose.
+   */
+  readonly deliveredPromptChars?: number | undefined;
+  /**
    * A 64-bit fingerprint of the prompt this question's reader was sent.
    *
    * ## Why a fingerprint is on the record at all
@@ -418,6 +456,14 @@ export type QuestionRecordInput = {
    * belongs.
    */
   readonly promptChars?: number | null | undefined;
+  /**
+   * The length of the whole prompt this question's reader was sent, or `null`.
+   *
+   * See {@link QuestionRecord.deliveredPromptChars} for what it buys over the budget bound. `null`
+   * means the system exposes no prompt to measure, which is not a prompt of length zero; both `null`
+   * and `undefined` reach the record as **absent**.
+   */
+  readonly deliveredPromptChars?: number | null | undefined;
   /**
    * A 64-bit fingerprint of the prompt this question's reader was sent, or `null`.
    *
@@ -737,6 +783,11 @@ export function buildQuestionRecords(
       ...(input.promptChars === undefined || input.promptChars === null
         ? {}
         : { promptChars: input.promptChars }),
+      // The same omission rule as `promptChars`, and the same reason: an absent length is a system
+      // that reports no prompt, not a prompt that carried no characters.
+      ...(input.deliveredPromptChars === undefined || input.deliveredPromptChars === null
+        ? {}
+        : { deliveredPromptChars: input.deliveredPromptChars }),
       // One rule for both absences, for the reason `promptChars` gives: a system that
       // cannot report a prompt has not reported an empty one, and a digest of the empty
       // string would be exactly the fabricated value this field exists to avoid.

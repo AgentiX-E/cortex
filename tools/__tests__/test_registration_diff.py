@@ -92,7 +92,30 @@ REAL_41222844945 = {
 DEPARTS_41222844945 = [
     "cortex_memory_max_prompt_chars",
     "cortex_memory_max_turn_chars",
+    # §13.232 moved the registered `thinking` off `disabled`, so this artifact now departs on it too.
+    # Declared rather than excused: it is the same field the campaign's own reading moved, and a
+    # fixture that silently gained a fifth difference would be a test that stopped describing the
+    # artifact it is named after.
+    "thinking",
 ]
+
+
+def registered_reader(module) -> dict:  # noqa: ANN001 - the tool module, imported by path
+    """The reader block the dispatch table registers, derived from it rather than restated.
+
+    §13.232 moved the registered `thinking` from `disabled` to `multi-session+temporal`, and every
+    fixture below that means "the registered configuration" would otherwise need the same edit in
+    five places -- which is the two-copies defect that moving a registration exists to avoid. The
+    table is the source; this reads it.
+    """
+    expectation = module.two_field_expectation("thinking", module.dispatch_inputs()["thinking"])
+    reader = {**REAL_41222844945["reader"], "thinking": expectation["reader.thinking"]}
+    routes = expectation["reader.thinkingRoutes"]
+    if routes == module.ABSENT:
+        reader.pop("thinkingRoutes", None)
+    else:
+        reader["thinkingRoutes"] = routes
+    return reader
 
 
 def report(config: dict, **overrides: object) -> dict:
@@ -198,11 +221,16 @@ class TestCoercion:
 class TestTheRealArtifact:
     def test_the_three_departures_this_run_was_dispatched_with_are_found(self) -> None:
         """The state the artifact was produced in: before §13.203 the table still said `enumerated`,
-        so this run departed on `ask` as well. Replayed by putting the old value back rather than by
-        editing the fixture, because the fixture is the artifact and the table is the changing half."""
+        and before §13.232 it still said `thinking: disabled`. Both are put back rather than the
+        fixture being edited, because the fixture is the artifact and the table is the changing
+        half."""
         module = _module()
         inputs = dict(module.dispatch_inputs())
-        module.dispatch_inputs = lambda: {**inputs, "cortex_memory_ask": "enumerated"}
+        module.dispatch_inputs = lambda: {
+            **inputs,
+            "cortex_memory_ask": "enumerated",
+            "thinking": "disabled",
+        }
         text, failures = module.registration_section(report(REAL_41222844945), [])
         assert failures == 3, text
         assert 'UNDECLARED  ask: "enumerated" (registered) -> "operands+operand-gap" (ran)' in text
@@ -245,6 +273,7 @@ class TestTheCleanRun:
             "maxPromptChars": int(inputs["cortex_memory_max_prompt_chars"]),
             "turnCutMarker": "none",
             "askRoutes": ["multi-session"],
+            "reader": registered_reader(module),
         }
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
@@ -308,17 +337,21 @@ class TestWhatIsCounted:
 class TestAbsentIsNotNull:
     def test_an_absent_field_against_a_present_one_is_a_departure(self) -> None:
         module = _module()
-        config = {**REAL_41222844945}
-        config["reader"] = {**REAL_41222844945["reader"]}
+        config = {**REAL_41222844945, "reader": registered_reader(module)}
+        config["reader"] = {**config["reader"]}
         config["reader"].pop("thinking", None)
         text, failures = module.registration_section(report(config), [])
         assert failures >= 1, text
-        assert "reader.thinking: \"disabled\" (registered) -> <-absent-> (ran)" in text
+        assert 'reader.thinking: "enabled" (registered) -> <-absent-> (ran)' in text
 
     def test_an_absent_field_registered_as_absent_is_agreement(self) -> None:
         """A run with `thinking: disabled` records no reach and the table asks for none, so the two
-        absences are one agreement rather than a difference with nothing on one side."""
+        absences are one agreement rather than a difference with nothing on one side. Replayed
+        against the table's pre-§13.232 value for exactly that reason: the identity form is still
+        expressible, and the comparison has to treat its two absences as one state."""
         module = _module()
+        inputs = dict(module.dispatch_inputs())
+        module.dispatch_inputs = lambda: {**inputs, "thinking": "disabled"}
         config = {
             **REAL_41222844945,
             "ask": module.dispatch_inputs()["cortex_memory_ask"],
@@ -353,6 +386,7 @@ class TestTheDefaultReportCarriesTheVerdict:
             "maxPromptChars": int(inputs["cortex_memory_max_prompt_chars"]),
             "turnCutMarker": "none",
             "askRoutes": ["multi-session"],
+            "reader": registered_reader(module),
         }
         assert module.congruence_note(report(config)) == ""
 

@@ -59,9 +59,9 @@ on:
         default: 'deepseek-chat'
         type: string
       thinking:
-        description: "Thinking mode: 'disabled' (shipped), 'enabled' (every route), or a '+'-separated route list such as 'multi-session+temporal', which enables thinking on those routes and leaves the rest at the shipped state. The list form exists because GitHub's 25-input ceiling is reached -- see PREREGISTRATION 13.197.4 -- and the artifact renders it as 'thinking=enabled on multi-session+temporal'"
+        description: "Thinking mode: 'disabled', 'enabled' (every route), or a '+'-separated route list such as 'multi-session+temporal', which enables thinking on those routes and leaves the rest at the shipped state. The list form exists because GitHub's 25-input ceiling is reached -- see PREREGISTRATION 13.197.4 -- and the artifact renders it as 'thinking=enabled on multi-session+temporal'. The default is the registered value (§13.232: the two-route form, +6.25 points for 2.1 M completion tokens and no extra prompt tokens); `disabled` is still what a reader earns on the five routes outside the list"
         required: false
-        default: 'disabled'
+        default: 'multi-session+temporal'
         type: string
       embedding_batch_interval_ms:
         description: 'Minimum spacing between consecutive embedding requests in ms (0 = unpaced). Zhipu throttles on request rate, so a real run should pace'

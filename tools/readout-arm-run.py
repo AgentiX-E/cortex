@@ -1349,6 +1349,75 @@ def audit_section(
             'rate it emitted cannot be recovered from it'
         )
 
+    # 10. The prompt's three terms agree: the question and the evidence are inside the prompt.
+    #
+    # §13.230.2 read `evidenceChars` (the offer) against `promptChars` (the delivery) and concluded
+    # that whatever `promptChars` held, it could not be "the evidence in the prompt". It is: an offer
+    # larger than the delivered prompt is the ordinary case on a budget-bound route -- medians
+    # 504,478 against 46,701 on the 500-question artifact. The pair that answers "what is the
+    # overhead" is `promptChars` against the whole prompt, and §13.231 added
+    # `deliveredPromptChars` for it.
+    #
+    # Two invariants, both containment, both true of any run: the evidence is a substring of the
+    # prompt it was rendered into, and so is the question. A record violating either has two numbers
+    # read from two different prompts, which is the shape §13.230.2 mistook for a contradiction -- a
+    # number filed under an object it is not about.
+    #
+    # What is left after both is the decoration, and it is **printed, not judged**: it is the
+    # instruction block plus the four labels and separators, which `buildPrompt` composes as one
+    # string per contract, so a run reports one value per contract and a spread is the finding. No
+    # threshold is invented here for the reason §13.228 gives one field over -- a bar nobody
+    # registered is a bar invented to be passed.
+    def _whole_number(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    triples = [
+        (
+            str(q.get('questionId')),
+            q.get('promptChars'),
+            q.get('deliveredPromptChars'),
+            len(str(q.get('question') or '')),
+        )
+        for q in questions
+        if _whole_number(q.get('promptChars')) and _whole_number(q.get('deliveredPromptChars'))
+    ]
+    if triples:
+        broken = [(qid, ev, tot) for qid, ev, tot, _ in triples if tot < ev]
+        # A prompt that does not contain its own question is not a prompt this reader sent, and the
+        # subtraction is the only place the artifact states it. `-1` marks "the question does not
+        # fit", which is what a length measured from a different string looks like.
+        unasked = [(qid, ev, tot, qlen) for qid, ev, tot, qlen in triples if tot - ev < qlen]
+        decor = sorted({tot - ev - qlen for _, ev, tot, qlen in triples if tot - ev >= qlen})
+        median_total = _median([float(tot) for _, _, tot, _ in triples]) or 0.0
+        share = (decor[len(decor) // 2] / median_total * 100) if decor and median_total else 0.0
+        detail = (
+            f'{len(triples)} record(s) carry both terms; after the evidence and the question, '
+            f'{len(decor)} distinct decoration size(s) {decor} character(s), the median '
+            f'{share:.1f}% of a median prompt of {median_total:.0f} -- this is the instruction '
+            'block plus the four labels, and it is the whole of what the budget does not spend on '
+            'evidence'
+        )
+        if broken:
+            detail = (
+                f'{len(broken)} record(s) carry more evidence than prompt, first {broken[0][0]} '
+                f'({broken[0][1]} evidence in {broken[0][2]}); one of the two numbers was read '
+                'from a different prompt'
+            )
+        elif unasked:
+            detail = (
+                f'{len(unasked)} record(s) cannot hold their own question, first {unasked[0][0]} '
+                f'({unasked[0][1]} evidence and {unasked[0][3]} question characters in '
+                f'{unasked[0][2]}); the evidence or the question was measured from a different '
+                'string than the one sent'
+            )
+        check('prompt-overhead', not broken and not unasked, detail)
+    else:
+        lines.append(
+            '  SKIP  prompt-overhead no record carries deliveredPromptChars (this artifact '
+            'predates §13.231); the overhead is then only bounded by maxPromptChars minus '
+            'promptChars, and what it is made of cannot be recovered from it'
+        )
+
     header = [
         '',
         'artifact audit (each field checked against another field of the same run)',
