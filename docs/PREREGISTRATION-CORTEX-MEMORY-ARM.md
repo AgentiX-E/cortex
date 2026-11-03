@@ -26345,3 +26345,160 @@ not exist -- which is §13.225's lesson in a different register.
    artifact means and needs its own registration.
 3. **The judge's verdicts are cached in memory only.** The 342 verdicts this run computed were
    discarded with the process, and a re-dispatch recomputes them.
+
+## 13.237 The run could not finish: a pace is a schedule, and nothing compared it to the budget
+
+*`41625442265` spent 5h41m and produced no measurement. The reason was decided before its first
+question, and it was arithmetic.*
+
+### 13.237.1 What the log says, pass by pass
+
+The dispatch declared one departure from the registration -- `cortex_memory_relevance_top_k=512` --
+which is §13.234's treatment. It completed four passes and died inside the fifth.
+
+| arm | run | started | duration | per question | against a 3,000 s floor |
+| --- | ---: | --- | ---: | ---: | ---: |
+| reference-pipeline | 0 | 11:12:50 | **6,355 s** | 12.7 s | **+3,355 s** |
+| cortex-memory | 0 | 13:11:27 | 3,143 s | 6.3 s | +143 s |
+| reference-pipeline | 1 | 14:29:20 | 3,325 s | 6.7 s | +325 s |
+| cortex-memory | 1 | 15:25:32 | 3,126 s | 6.3 s | +126 s |
+| reference-pipeline | 2 | 16:36:56 | 954 s | — | **abandoned at q=146** |
+
+The floor is `500 questions x 6,000 ms`, because `CORTEX_LLM_MIN_INTERVAL_MS` was `6000` in this run.
+Four of the five rows are the floor plus a few percent, which is what a paced pass looks like: the
+reader was answering in under 6 s and the gate was the only limit. The first row is not -- it took
+2.02x the floor, at 51 s per request across four workers -- and the ordering is what identifies it.
+It is the pass that ran between 11:12 and 12:58, and the pass that ran immediately after it was
+already at the floor, so this was **not** a cold prompt cache warming up: a cache that had to warm
+would have made the second pass the slow one.
+
+### 13.237.2 The arithmetic
+
+Eight passes at 500 questions and 6 s per request is 4,000 slots and **400 minutes of schedule**, and
+the run's own ceiling was `CORTEX_MEMORY_BUDGET_MINUTES=340` inside a job killed at 360. The pace
+alone exceeded the budget by an hour, before the reader's latency, before the grading, before
+anything the run was trying to measure. `BenchmarkBudgetExceeded` fired at minute 341, exactly as
+scheduled, and the artifact it left names the question it stopped before -- which is the difference
+between this failure and the ones §13.236 was about. The protection worked. What it protected was a
+run that could not succeed.
+
+The gate is also not a per-worker delay, and the design says so in `cortex-ai/src/pacing.ts`:
+
+> A gate hands out *slots* from one shared schedule, so the width of the pool changes how much work
+> is in flight and not the rate at which it hits the provider.
+
+So `CORTEX_MEMORY_WORKERS=4` did not buy four times the throughput, and no pool width would have.
+Ninety-five percent of four of those five passes was waiting for a slot.
+
+### 13.237.3 Where the pace came from, which is the defect underneath
+
+The variable was measured on the **second** provider. `41553176719` and `41552258320` are the two
+smokes that died at 55 of 60 questions on `429 {"code":"1302"}` with `retryAfterHonoured: 0`, and the
+pace was the answer to a rate: 1.41 questions per minute is one request every 42 s. The number was
+then stored as a repository variable, and the workflow read it for **every** dispatch:
+
+```yaml
+CORTEX_LLM_MIN_INTERVAL_MS: ${{ vars.CORTEX_LLM_MIN_INTERVAL_MS }}
+```
+
+The comment above that line already said the first provider needs neither. The comment was right and
+the value was still applied, because a repository variable is global state that any dispatch can set
+and no dispatch can see. The DeepSeek arm that produced the 90.15% headline ran **unpaced**, at 1.6 s
+per question; the same arm under this gate costs three times that. Nothing in the artifact said
+"this run was throttled", because a pipe is deliberately not part of the registration (§13.227) --
+which is correct for the *score* and was not enough for the *cost*.
+
+### 13.237.4 The tool that should have refused, and the sentence in it that was false
+
+`tools/job-budget.py` exists for exactly this question and answered it wrongly, in a sentence:
+
+> Only concurrency, or a budget on a quantity that does not multiply, moves that wall.
+
+That is true of a run with no pace and false of this one. The tool carried two quantities -- a
+per-pass cost and a per-run budget -- and both are statements about work that a pace has already
+replaced with a schedule. It also had no way to be asked the question that mattered: is the run's
+own ceiling *reachable*?
+
+It has one now. `pacing_floor_minutes(questions, passes, min_interval_ms, calls_per_question)`
+computes `questions x calls x passes x interval / 60,000`, takes no concurrency argument (because the
+gate does not have one), and `can_complete` compares it against the **budget** rather than the job,
+because a budget below the floor is not a protection but the scheduled cause of a failure. The
+workflow runs it before the benchmark step and exits `3`:
+
+```
+pacing floor 400 min (500 questions x 1 call(s) x 8 passes x 6000 ms), budget 340 -> THE RUN CANNOT
+FINISH: the budget fires 60 min before the last question is asked
+```
+
+Five seconds instead of five hours. The two tests that pin it are the two halves of this run: `500 x
+8 x 6000 = 400` and `can_complete(..., budget_minutes=340) is False`.
+
+### 13.237.5 The pace is now scoped to the provider it was measured on
+
+The provider is already named in the `model` input -- `zhipu:glm-4.6` is how the second provider's
+smoke selected itself -- so the pace rides that name rather than a 25th input this surface does not
+have (24 of GitHub's 25):
+
+```yaml
+CORTEX_LLM_MIN_INTERVAL_MS: ${{ startsWith(inputs.model, 'zhipu:') && vars.CORTEX_LLM_MIN_INTERVAL_MS || '' }}
+```
+
+A provider's window is the provider's. The DeepSeek path keeps the rate it was measured at, which is
+no rate at all, and the second provider keeps the protection that was bought for it.
+
+### 13.237.6 What the gate does not bound, measured on the same file
+
+The floor is a **lower** bound, and this run says by how much it can miss: the first pass was 112%
+above it. The mechanism is the other half of the throughput identity -- the gate caps the rate at
+which requests leave, and the provider caps the rate at which they finish; throughput is the slower
+of the two. At 51 s per call across four workers the provider was the limit and the schedule had
+nothing to say, which is why the same eight-pass shape took 288 minutes in `41546569106` and would
+have taken 455 here. `job-budget.py` reports the floor and says it is a floor; a dispatch that wants
+a ceiling has to add the measured pass, which is what `--measured-pass-minutes` is for.
+
+### 13.237.7 The answers the dead run did record are graded, not re-measured
+
+`Answer` is `string | null`, so `completed[]` holds the measurement itself: **two complete
+repetitions of both arms, 2,000 answers**, and the channel census the process printed (structural
+556, exact 485, numeric 204, judge 755 of 2,000) is reproducible from them alone. The report was
+lost; the measurement was not.
+
+`replaySystem(name, dataset, answers)` wraps a recording as a `MemorySystem`, so
+`runAblationReport` -- the same function a live arm calls -- produces the same document, with the
+same per-capability McNemar table, from answers that already exist. Three properties are structural
+rather than promised:
+
+1. **It is keyed by the question, not by a cursor.** A cursor returns answer `i` to question `i` and
+   silently absorbs a misalignment; a map from question text to answer throws instead, and the error
+   names the question that had no answer.
+2. **Duplicate question text is refused at construction**, because two questions sharing a text would
+   each receive whichever answer the map kept and the report would be a mixture no field announces.
+3. **Each side is replayed from its own list.** The replay of the baseline cannot reach the feature's
+   answers, so the one thing §13.236.7 forbade -- imputing one arm from the other -- is not available
+   to it.
+
+The alignment is checked, not assumed: `REGRADE_EXPECT_IDS` carries `<index>:<question-id>` pairs read
+off the dead run's own progress lines (`q=25/500 id=95bcc1c8` -> `25:95bcc1c8`), and the job refuses
+to grade if any of them does not match the file. An index means nothing without the order it was
+taken in, and a dataset that had moved would otherwise produce a complete, plausible report for a
+pairing nobody made.
+
+**What a regrade is not.** It is not interpolation, and the distinction is the one §13.236.7 drew: a
+missing answer is not a wrong answer. Nothing was regenerated, no unfinished pass was filled in, and
+the reading covers two repetitions where the dispatch asked for four. §13.234's predictions are
+stated against the *configuration*, not against a repetition count, so they can be read at two --
+with the caveat, printed with the numbers, that a two-run mean has half the variance reduction of a
+four-run one.
+
+### 13.237.8 What this section does not fix
+
+1. **The predictions are still the thing to read.** Nothing here decides them; it only makes the
+   existing measurement readable. The reading lives in §13.238 and the predictions there are the ones
+   §13.234 wrote, unedited.
+2. **The baseline arm is recomputed on every dispatch.** This run's own numbers make the size of that
+   waste precise rather than assumed: the reference pipeline cost 1.0-2.0 s per question against the
+   feature's 6.8-7.7 s in `41546569106`, i.e. about **16%** of the run, not the 67% that "half of
+   eight passes" implies. A persisted baseline is worth having and it is a smaller lever than it
+   looked.
+3. **The judge's verdicts are still cached in memory only**, and a regrade recomputes them. That is
+   the price of reading a recording back, and it is 755 requests rather than 4,000.

@@ -32,6 +32,7 @@
  * nobody made.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   createJudgeFromEnv,
   describeJudgeTransport,
@@ -185,9 +186,15 @@ async function main(): Promise<void> {
   }
 
   json['runs'] = perRun;
-  writeFileSync('benchmark-regrade-report.md', lines.join('\n'));
-  writeFileSync('benchmark-regrade.json', JSON.stringify(json, null, 2));
-  console.log(`Wrote benchmark-regrade-report.md (${passes.length} repetition(s))`);
+  // Written to `REGRADE_OUT_DIR` rather than the process's working directory, because the two are
+  // not the same thing under `pnpm --filter`: the upload step looks where the job put it, and the
+  // first dispatch of this script (`41740721672`) read its input from a relative path that resolved
+  // against the package directory instead of the repository root. `PWD` is a fine default for a
+  // human and a trap for a job.
+  const outDir = process.env['REGRADE_OUT_DIR'] ?? '.';
+  writeFileSync(join(outDir, 'benchmark-regrade-report.md'), lines.join('\n'));
+  writeFileSync(join(outDir, 'benchmark-regrade.json'), JSON.stringify(json, null, 2));
+  console.log(`Wrote ${join(outDir, 'benchmark-regrade-report.md')} (${passes.length} repetition(s))`);
 }
 
 await main();

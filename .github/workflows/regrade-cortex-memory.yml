@@ -101,7 +101,11 @@ jobs:
       - name: Regrade
         env:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
-          PARTIAL_PATH: regrade-input/${{ inputs.partial_file }}
+          # Absolute, because `pnpm --filter` runs the script from the package directory: the first
+          # dispatch (`41740721672`) resolved a relative path against `packages/cortex-memory` and
+          # died on ENOENT after the alignment check had already passed.
+          PARTIAL_PATH: ${{ github.workspace }}/regrade-input/${{ inputs.partial_file }}
+          REGRADE_OUT_DIR: ${{ github.workspace }}
         run: pnpm --filter @agentix-e/cortex-memory regrade
 
       - name: Upload the regrade report
