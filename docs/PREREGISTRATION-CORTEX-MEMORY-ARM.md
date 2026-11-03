@@ -25153,3 +25153,115 @@ sentence has been true with a control behind it.
 *Falsified by:* a dispatch of the same configuration whose `featureAggregate.avg` moves more than the
 1.8-point spread of this run's four repetitions. That would mean the arm's reading is not reproducible at
 four repetitions, and every delta in §13.221.3 would have to be restated against a bigger floor.
+
+## 13.224 The width that has to be invisible
+
+*`§14.22` registered eight requests in flight as the enabler for requirement 12. This section is the
+instrument it named, and the arithmetic it was registered against.*
+
+### 13.224.1 Why a width is a measurement problem rather than a speed-up
+
+The second provider is blocked by a number: `zhipu:glm-4.6` answers **1.41 questions per minute**
+(§13.212.6), which is **5.1x** the run budget. Four thousand calls at five seconds each is 336 minutes
+serially and 42 minutes at eight workers, and the job is killed at 350. So the width is what turns "the
+strong model cannot be measured" into "it can", and requirement 12's second half — *the strong model
+must measurably do better* — has no other route.
+
+That makes the width a **measurement** problem in one specific sense, and the whole of this section is
+that sense: a pass that runs at eight workers must measure what the same pass at one worker measures.
+If it does not, every number it produces is about a configuration nobody registered.
+
+### 13.224.2 The state that makes the naive version wrong
+
+`MemorySystem` carries per-question state through **optional accessors** — `lastRawOutput`,
+`lastRetrievedContext`, `lastPromptEvidenceChars`, `lastAdmittedEvidence`, `lastPromptText` — and
+`runBenchmark` reads each one *after* the call that wrote it. That is a single-slot contract, and it is
+one slot per instance.
+
+Two calls in flight against one instance therefore produce a record in which question A's entry carries
+question B's prompt, and **nothing throws**. The artifact stays complete, self-consistent, passes
+`--audit`, and is wrong — the shape §13.216 found in `completed`, §13.220 found in the registration
+check, and §13.222 found in the spend readout, applied to concurrency.
+
+The arm adds a sixth reader of the same shape: it wraps the system in a prototype chain and takes a
+**census delta around each answer** (§13.145.6). "Before and after the call" is the same single-slot
+assumption one level up.
+
+### 13.224.3 The design: one instance per worker, and placement by index
+
+| decision | choice | why the alternative is worse |
+| --- | --- | --- |
+| concurrency unit | one `MemorySystem` **per worker**, built by a factory that shares only stateless things (LLM client, embedding cache, answer cache, relevance table) | a lock over one instance serializes the pass it was added to speed up, and a lock that is accidentally released early reintroduces the silent misattribution |
+| result placement | `answers[index]` and every capture vector placed by the **index the worker claimed**, never appended | completion order is not a usable key: the roster, the paired tests and the gold-overlap vectors all pair by index, so an appended vector rotates every explanation one question out of phase |
+| claim | one shared counter incremented synchronously before the answer call | pre-slicing the dataset by worker makes the slowest worker the critical path, and binds a question's index to a worker in a way the artifact cannot show |
+| width | `CORTEX_MEMORY_WORKERS`, a **repository variable**, default 1 | a dispatch input would sit at GitHub's 25-input ceiling, and it would enter the registration comparison — concurrency is a property of the invocation, not of the arm |
+| default | **1**, unchanged | a default of 8 would make every future dispatch a concurrency experiment, and the first thing it would change is the only thing this section claims cannot change |
+
+The cap is 64 and it is refused rather than clamped above it, for the reason §14.22 refused to register
+a width: the provider answers a high enough rate with `1305` rather than with an answer, and a refusal
+retried inside a budget sized for a serial pass is slower than the serial pass.
+
+### 13.224.4 The acceptance, and the fixture that could pass vacuously
+
+> **The same configuration at one worker and at `c` workers produces byte-identical answers and
+> byte-identical prompts, placed by question index.**
+
+The fixture that makes this a measurement rather than a formality keeps state in a **slot**, exactly as
+the product does: `answer` writes `lastPromptText` and `lastRawOutput` when the call starts, awaits a
+delay that is **larger for lower indices**, and then answers *from the slot it last wrote* rather than
+from its argument. Two consequences follow, and both are asserted:
+
+1. With one instance per worker the slots never collide, so every answer is its own question's.
+2. With one instance shared by every worker the delays guarantee an overwrite — a higher-index
+   question finishes while a lower-index one is still waiting — so the lower-index answer comes back
+   as `CORRUPT:`. That is the negative control, and it is what makes the first assertion mean
+   something: the same fixture, one line apart, produces the corruption the design prevents.
+
+*Falsified by:* any answer or prompt that differs between widths. The difference names a piece of state
+that is not per-question — that is a finding about the mechanism, not a failure of the instrument.
+
+### 13.224.5 Acceptance
+
+| # | what must be true | how it is checked |
+| --- | --- | --- |
+| 1 | answers and prompts are identical at 1 and 4 workers | `benchmark-concurrency.test.ts`, full vectors compared |
+| 2 | the answers are in question order however they complete | descending delays, vector compared element-wise |
+| 3 | the answer sink carries the index that owns the answer | each `(answer, index)` pair is self-consistent |
+| 4 | the four capture vectors are placed by index | `evaluateWithScorerDetailed` under 4 workers |
+| 5 | a shared instance is **detected** | the negative control produces `CORRUPT` |
+| 6 | one progress event per question | index set equals `[0, n)` |
+| 7 | the budget still ends the pass | `budgetMs: 0` rejects |
+| 8 | a bad width is refused, naming it | `0`, `2.5`, `-1`, `NaN` all reject |
+| 9 | no instance is built that cannot be used | 3 questions at 8 workers builds 3 |
+| 10 | the ablation forwards one factory per side | 3 workers × 2 repetitions = 6 calls per factory |
+| 11 | the ablation's metrics are width-independent | `delta`, `featureAggregate.avg` equal |
+| 12 | `readWorkers` defaults to one and treats blank as unset | 8 tests, including `'   '` |
+| 13 | the width is on the log line with the other run properties | `workers=` in the gate line |
+| 14 | the workflow reads it from a repository variable | `CORTEX_MEMORY_WORKERS: ${{ vars.… }}` |
+| 15 | nothing else in the arm changed | 2,735 eval tests, 4,763 TS tests, all green |
+
+### 13.224.6 The mutations
+
+| mutant | what failed | what that proves |
+| --- | --- | --- |
+| the accessors are resolved from the outer `system` instead of the worker's | 2 tests | the byte-identity assertion is bound to *which instance* answered, not to the pool existing |
+| answers are appended instead of placed by index | 3 tests | order is asserted, not assumed |
+| the four capture vectors are appended instead of placed | 1 test | the placement of the vectors is its own claim |
+| `reviewPass` is forwarded outside the constructor literal | the wiring test | the anchor change in §13.224.7 did not weaken what that test was for |
+
+### 13.224.7 What this section does not claim
+
+- **Not that eight is the right width.** The width a provider tolerates is measured by
+  `transportRetry.rateLimited`, which today reads zero because the serial pass is under every limit.
+  §14.22 refused to register a number for the same reason.
+- **Not that concurrency leaves the wall clock alone in any other sense.** A pass at eight workers whose
+  provider throttles it will be *slower* than the estimate, and the estimate is what the second
+  provider's arithmetic rests on.
+- **Not that the width is recorded in the artifact.** It is on the log line and it is not in
+  `memoryArmConfig`, deliberately: that block is what `--registration` compares, and the claim here is
+  precisely that the width does not change what is measured. Recording it needs its own field and its
+  own reader, and a field with a writer and no reader is the defect this campaign has now found five
+  times. Registered as the next step rather than asserted.
+- **Not that the CLI factory is covered.** `bench/**` is excluded from coverage as an entry point, which
+  is why the factory is four lines and why the two things it can get wrong — building one instance for
+  all workers, or forwarding the wrong factory to a side — are asserted in `cortex-eval` instead.

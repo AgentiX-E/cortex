@@ -23,7 +23,7 @@ import type {
   PerCapabilityPairedStats,
 } from './types.js';
 import { classifyTransitions } from './answer-transition.js';
-import { evaluateWithScorerDetailed } from './benchmark.js';
+import { evaluateWithScorerDetailed, type BenchmarkWorkerPool } from './benchmark.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import { correctnessMask } from './question-record.js';
 import { transportRetryReport } from './retrieval-diagnostics.js';
@@ -185,7 +185,51 @@ export type AblationOptions = {
    * thinner than it looks: see `AUDIT-MODEL-PORTABILITY.md` §9.5 and `tools/job-budget.py`.
    */
   budgetMs?: number | undefined;
+  /**
+   * Workers in flight, and the per-worker instances that answer their questions.
+   *
+   * ## Why factories rather than instances
+   *
+   * A `MemorySystem` carries per-question state in single slots -- `lastRawOutput`,
+   * `lastRetrievedContext`, `lastPromptText`, and the arm's own census delta -- which
+   * `runBenchmark` reads after the call that wrote them. Two calls in flight against one
+   * instance therefore attribute one question's prompt to another, silently. The pool hands
+   * each worker its own instance, so per-worker state is correct by construction.
+   *
+   * Absent means one worker and the serial pass every archived artifact was produced by.
+   * `§14.22` of the execution plan prices the second provider at 5.1x the run budget at one
+   * request in flight, so this is requirement 12's enabler rather than a speed-up.
+   */
+  pool?: AblationPool | undefined;
 };
+
+/**
+ * One factory per arm, and the number of questions to keep in flight.
+ *
+ * `baselineFor` and `featureFor` must return **distinct** instances per worker: two workers
+ * sharing one reintroduces the single-slot defect, and `benchmark-concurrency.test.ts`
+ * falsifies the claim by building exactly that pair and watching the answers diverge.
+ */
+export type AblationPool = {
+  readonly workers: number;
+  baselineFor(worker: number): MemorySystem;
+  featureFor(worker: number): MemorySystem;
+};
+
+/**
+ * The count of answers a sparse vector actually holds.
+ *
+ * ## Why `.length` is wrong once the pool exists
+ *
+ * `answers[index] = answer` leaves a hole for every question not yet answered, and
+ * `Array.prototype.length` is *highest index plus one*: after question 499 alone, a
+ * 500-question pass reads `length === 500`. `PartialAblation.reached` would then say the run
+ * got to the end when it answered one question -- and that number is what a reader uses to
+ * decide whether to re-run. `filter` skips holes, so it counts what is there.
+ */
+function filled(answers: readonly Answer[]): number {
+  return answers.filter((answer) => answer !== undefined).length;
+}
 
 /** Run a baseline vs feature ablation and report statistical significance. */
 /**
@@ -272,6 +316,14 @@ export async function runAblation(
 ): Promise<AblationResult> {
   const runs = options.runs ?? 3;
   const alpha = options.alpha ?? 0.05;
+  const pool = options.pool;
+  // Built once rather than at each of the four call sites: two of them are the baseline and two
+  // the feature, and a site that forwarded the wrong factory would make one side concurrent and
+  // the other serial -- a difference the artifact would show as a delta.
+  const baselinePool: BenchmarkWorkerPool | undefined =
+    pool === undefined ? undefined : { workers: pool.workers, systemFor: pool.baselineFor };
+  const featurePool: BenchmarkWorkerPool | undefined =
+    pool === undefined ? undefined : { workers: pool.workers, systemFor: pool.featureFor };
   // The run's ceiling is an **instant**, not a duration, because the passes share it: whichever one
   // runs longest is the one that finds nothing left, and it is the one that reports. Converted once
   // here rather than per pass so a pass cannot extend the run by starting later.
@@ -325,13 +377,16 @@ export async function runAblation(
       0,
       false,
       false,
-      (answer) => baselineAnswers.push(answer),
+      (answer, index) => {
+        baselineAnswers[index] = answer;
+      },
       remaining(),
+      baselinePool,
     );
   } catch (error) {
     throw attachPartial(error, {
       system: baseline.name,
-      reached: baselineAnswers.length,
+      reached: filled(baselineAnswers),
       total: dataset.questions.length,
       run: 0,
       baselineAnswers,
@@ -357,13 +412,16 @@ export async function runAblation(
       // feature's, and the question it left open -- wrong evidence or no evidence --
       // can only be asked of the side that lost.
       true,
-      (answer) => featureAnswers.push(answer),
+      (answer, index) => {
+        featureAnswers[index] = answer;
+      },
       remaining(),
+      featurePool,
     );
   } catch (error) {
     throw attachPartial(error, {
       system: feature.name,
-      reached: featureAnswers.length,
+      reached: filled(featureAnswers),
       total: dataset.questions.length,
       run: 0,
       baselineAnswers,
@@ -526,13 +584,16 @@ export async function runAblation(
         // it does not reach the artifact -- see the comment on its capture flag.
         false,
         false,
-        (answer) => baselineThisRun.push(answer),
+        (answer, index) => {
+          baselineThisRun[index] = answer;
+        },
         remaining(),
+        baselinePool,
       );
     } catch (error) {
       throw attachPartial(error, {
         system: baseline.name,
-        reached: baselineThisRun.length,
+        reached: filled(baselineThisRun),
         total: dataset.questions.length,
         run: i,
         baselineAnswers: baselineThisRun,
@@ -555,13 +616,16 @@ export async function runAblation(
         // is returned, and the only thing that survives is a count per question -- so the artifact does not
         // grow by `runs`, which is what the baseline's flag above is protecting.
         true,
-        (answer) => featureThisRun.push(answer),
+        (answer, index) => {
+          featureThisRun[index] = answer;
+        },
         remaining(),
+        featurePool,
       );
     } catch (error) {
       throw attachPartial(error, {
         system: feature.name,
-        reached: featureThisRun.length,
+        reached: filled(featureThisRun),
         total: dataset.questions.length,
         run: i,
         baselineAnswers: baselineThisRun,

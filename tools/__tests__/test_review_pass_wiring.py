@@ -64,8 +64,15 @@ class TestTheReviewPassReachesTheProduct(unittest.TestCase):
         )
         # A forward that is overwritten by a later key is not a forward. The spread has to be inside
         # the constructor's object literal, before the closing brace of the options.
-        options = source[source.index("const feature = new CortexMemory({") :]
-        options = options[: options.index("\n  });")]
+        #
+        # The anchor is `new CortexMemory({` rather than `const feature = ...` because section 14.22
+        # turned the construction into a per-worker factory (`const buildFeature = (): CortexMemory
+        # => new CortexMemory({`): a pool needs one instance per worker, and a shared instance under
+        # concurrency attributes one question's prompt to another. The region between the literal's
+        # opening and the first statement after it is what this assertion is about, so the anchor
+        # follows the literal rather than the binding it used to be assigned to.
+        options = source[source.index("new CortexMemory({") :]
+        options = options[: options.index("// Stated before the numbers")]
         self.assertIn("reviewPass:", options)
 
     def test_the_workflow_declares_and_forwards_it(self) -> None:

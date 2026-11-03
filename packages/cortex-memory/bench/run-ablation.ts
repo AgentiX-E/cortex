@@ -50,6 +50,9 @@ import {
   createEmbeddingWithProvenanceFromEnv,
   resolveEmbeddingProvenance,
   describeFailure,
+  // §14.22's width. Read here rather than inside the arm: it is a property of the invocation, not
+  // of the registered configuration, and the registration check compares the latter field for field.
+  readWorkers,
   retrieveTopKByQueriesHybrid,
   // §13.153's two readers. Both are the arm's to supply because both are facts about a corpus: the
   // turn stamp is this corpus's rendering, and the range inference is the reference's own arithmetic
@@ -328,13 +331,19 @@ async function main(): Promise<void> {
   const answerCache = new Map<string, string>();
   const structuredCache = new Map<string, unknown>();
 
-  const baseline = new NaturalLanguageMemorySystem('reference-pipeline', {
-    embedding,
-    llm,
-    enableAbstention: true,
-    answerCache,
-    structuredCache,
-  });
+  // A factory rather than a value, because the pool below needs one instance per worker and
+  // a `MemorySystem` carries per-question state in single slots. The caches and the embedding
+  // client are shared deliberately -- they pin every worker to the same answer for the same
+  // prompt, which is what makes a concurrent pass comparable to a serial one at all.
+  const builtAt = Date.now();
+  const buildBaseline = (): NaturalLanguageMemorySystem =>
+    new NaturalLanguageMemorySystem('reference-pipeline', {
+      embedding,
+      llm,
+      enableAbstention: true,
+      answerCache,
+      structuredCache,
+    });
 
   // §13.17's single variable, built before either side is graded.
   //
@@ -512,144 +521,170 @@ async function main(): Promise<void> {
       }
     : undefined;
 
-  const feature = new CortexMemory({
-    llm,
-    now: Date.now(),
-    gate: {
-      threshold: armOptions.threshold,
-      retrievalThreshold: armOptions.retrievalThreshold,
-      sessionBudget: armOptions.sessionBudget,
-      sourceTrust: armOptions.sourceTrust,
-      // Spread conditionally rather than passing `undefined`. The distinction is
-      // the config type's own rule (`bench-arm-options.ts`): an always-present key
-      // holding `undefined` reads as "configured" to a `!== undefined` check, and
-      // `admission.ts` uses exactly that check to decide whether the callback ran.
-      ...(armOptions.confidenceSignal === 'length' ? { confidenceFor: confidenceFromLength } : {}),
-    },
-    name: 'cortex-memory',
-    // §12.5's single variable, spread conditionally for the same reason as
-    // `confidenceFor` above: an always-present key holding `undefined` reads as
-    // "configured" to a `!== undefined` check, and `memory.ts` uses exactly that check
-    // to decide whether to substitute the contract. The baseline contract is expressed
-    // by NOT passing the key, so a run that does not name one reproduces the previous
-    // prompt byte for byte.
-    //
-    // The cast is at this boundary rather than on the option's type. `cortex-eval` carries
-    // the contract as `string` because it cannot import this package's union (the
-    // dependency runs the other way), and it validates the string against the product's
-    // own list at parse time -- `readPromptContract` throws on anything unrecognised. So by
-    // the time execution reaches here the value IS one of the union's members, and the
-    // assertion states that rather than re-checking it. Widening the option to `string`
-    // would move the check to a place with no validation behind it.
-    ...(armOptions.promptContract === 'abstention'
-      ? {}
-      : { promptContract: armOptions.promptContract as PromptContract }),
-    // §13's single variable, on its own axis and spread conditionally for the same
-    // reason: `route` IS the shipped behaviour and is expressed by NOT passing the key,
-    // so a run that does not name an ask reproduces the previous prompt byte for byte.
-    // Passing `'route'` explicitly would read as "configured" to the `!== undefined`
-    // check in `#promptOptions` and take a different branch to the same result -- which
-    // is harmless today and is exactly the kind of harmless-until-it-is-not that the
-    // conditional spreads above exist to avoid.
-    //
-    // The cast is at this boundary for the same reason as `promptContract`: `cortex-eval`
-    // carries the ask as `string` because the dependency runs the other way, and
-    // `readAsk` validates it against the product's own list at parse time, throwing on
-    // anything unrecognised. So the value IS one of the union's members here.
-    ...(armOptions.ask === 'route' ? {} : { ask: armOptions.ask as EvidenceAsk }),
-    // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
-    // the key, for the reason every other conditional spread here is: every archived artifact was
-    // produced without a pass, and a present-but-inert key would make the option indistinguishable
-    // from a configured one to a `!== undefined` check.
-    // `bare` is a value of `reviewPass` at the dispatch boundary but not a member of the product's `ReviewPass`
-    // union: it is a different treatment, not a different pass over the same reply. Excluded here so the cast below
-    // cannot smuggle it into a field the product would interpret as `recover`.
-    ...(armOptions.reviewPass === 'none' ||
-    armOptions.reviewPass === undefined ||
-    armOptions.reviewPass === 'bare'
-      ? {}
-      : { reviewPass: armOptions.reviewPass as ReviewPass }),
-    // Same conditional shape as `reviewPass`: absent is the shipped behaviour, and a present-but-false key would
-    // make "the control ran" indistinguishable from "the switch was configured off" to a `!== undefined` check.
-    ...(armOptions.reviewBareDecline === true ? { reviewBareDecline: true } : {}),
-    // §13.197.4's knob, spread conditionally like every other treatment here: absent is the shipped
-    // configuration every archived artifact was produced under, and a present-but-empty map would
-    // read as configured to the `!== undefined` check `#readerFor` performs while resolving no route
-    // at all -- an artifact then claiming a treatment the product never administered.
-    ...(readerByRoute === undefined ? {} : { readerByRoute }),
-    // §13.153. Same conditional shape and for the same reason: absent is the shipped behaviour, and a
-    // present-but-empty reader pair would read as configured to a `!== undefined` check while resolving
-    // no window at all -- an artifact then claiming a treatment the product never administered.
-    ...(windowOrdering === undefined ? {} : { windowOrdering }),
-    // §13.101's sample count. `none` IS one consultation and is expressed by NOT passing the key, for
-    // the reason every conditional spread here is: every archived artifact was produced with one
-    // consultation, and a present-but-inert key would make the option indistinguishable from a
-    // configured one to a `!== undefined` check. The cast is at this boundary because the arm carries
-    // the count as a string so the artifact can spell `none`, and `readSelfConsistency` has already
-    // rejected anything that is not one of the two names.
-    ...(armOptions.selfConsistency === 'none' || armOptions.selfConsistency === undefined
-      ? {}
-      : { selfConsistency: Number(armOptions.selfConsistency) }),
-    // §13.17's single variable, spread conditionally for the same reason as the two
-    // above: `none` IS the shipped behaviour (the budget buys the first turns that
-    // arrived) and is expressed by NOT passing the key, so a run that names no signal
-    // reproduces the previous prompt byte for byte. `relevance.index`'s lookup is a
-    // plain table read, so extracting it from its object does not lose a receiver.
-    ...(relevance === null ? {} : { relevanceFor: relevance.relevanceFor }),
-    // §13.27's single variable, spread conditionally for the reason `relevanceFor` above
-    // is: `turn` IS the shipped behaviour (the budget buys individual turns wherever they
-    // score highest) and is expressed by NOT passing the key, so a run that names no unit
-    // reproduces the previous prompt byte for byte. The cast is at this boundary rather
-    // than on the option's type, for the reason the contract's cast is: `cortex-eval`
-    // carries the unit as `string` because it cannot import this package's union, and it
-    // validates against the product's own list at parse time -- `readRelevanceUnits`
-    // throws on anything unrecognised -- so by the time execution reaches here the value
-    // IS one of the union's members.
-    ...(armOptions.relevanceUnits === 'session' ? { relevanceUnits: 'session' as const } : {}),
-    // §13.67's single variable, spread conditionally for the reason the three above are:
-    // no cap IS the shipped behaviour and is expressed by NOT passing the key, so a run that
-    // names no cap reproduces the previous prompt byte for byte. This is the one line in the
-    // chain that no test reaches -- `bench/**` is excluded from coverage as an entry point --
-    // which is why the same value is echoed in the log line below and projected into the
-    // artifact's config: a spread deleted here would leave the run's own log and its own
-    // config claiming a treatment the prompt never received.
-    ...(armOptions.maxTurnChars === undefined ? {} : { maxTurnChars: armOptions.maxTurnChars }),
-    // §13.187.6D's mark. Spread only when named, for the reason every conditional spread in this
-    // constructor is: `none` IS the historical rendering and is expressed by NOT passing the key,
-    // so a run that names no marker reproduces every archived capped prompt byte for byte. The
-    // cast is at this boundary because `cortex-eval` carries the name as a `string` (it cannot
-    // import this package's union) and validates it against its own copy at parse time -- which is
-    // why `readTurnCutMarker` throws on anything unrecognised and `assertMarkerNeedsCap` refuses
-    // it without a cap.
-    ...(armOptions.turnCutMarker === 'ellipsis' ? { turnCutMarker: 'ellipsis' as const } : {}),
-    // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
-    // number raises the room without touching a single turn, which is the only lever §13.80 left.
-    ...(armOptions.maxPromptChars === undefined
-      ? {}
-      : { maxPromptChars: armOptions.maxPromptChars }),
-    // §13.73's reach, passed beside the width and for the same reason. `undefined` on the arm's
-    // side means every route, which is what §13.68 shipped; an explicit six-route list is the same
-    // state reached by a different path, and the product treats both as "reaches everything". The
-    // cast is at this boundary because `cortex-eval` carries the names as `string` -- it cannot
-    // import this package's union -- and validates them against its own copy at parse time.
-    ...(armOptions.maxTurnCharsRoutes === undefined
-      ? {}
-      : { maxTurnCharsRoutes: armOptions.maxTurnCharsRoutes as readonly TurnCapRoute[] }),
-    // §13.83's filter. The classifier is passed with the roles rather than beside them, because
-    // a role filter without one is refused by the product: the arm knows this dataset's prefix
-    // and the product does not, which is the boundary the option exists to keep. Both reach and
-    // classifier travel only when a filter was named, so an unfiltered run's options are
-    // byte-identical to the previous run's.
-    ...(armOptions.evidenceRoles === undefined
-      ? {}
+  // One instance per worker, for the reason the pool states: the optional accessors that carry a
+  // question's prompt, evidence and raw output are single slots, and a shared instance under
+  // concurrency attributes one question's prompt to another without throwing. Every value the
+  // factory closes over is either immutable or shared on purpose (the answer cache, the embedding
+  // client, the relevance table).
+  const buildFeature = (): CortexMemory =>
+    new CortexMemory({
+      llm,
+      // Hoisted out of the object literal so every worker's instance agrees: `now` participates in
+      // the gate's decay arithmetic, and two instances built milliseconds apart would make the
+      // workers disagree about the clock rather than about the questions.
+      now: builtAt,
+      gate: {
+        threshold: armOptions.threshold,
+        retrievalThreshold: armOptions.retrievalThreshold,
+        sessionBudget: armOptions.sessionBudget,
+        sourceTrust: armOptions.sourceTrust,
+        // Spread conditionally rather than passing `undefined`. The distinction is
+        // the config type's own rule (`bench-arm-options.ts`): an always-present key
+        // holding `undefined` reads as "configured" to a `!== undefined` check, and
+        // `admission.ts` uses exactly that check to decide whether the callback ran.
+        ...(armOptions.confidenceSignal === 'length'
+          ? { confidenceFor: confidenceFromLength }
+          : {}),
+      },
+      name: 'cortex-memory',
+      // §12.5's single variable, spread conditionally for the same reason as
+      // `confidenceFor` above: an always-present key holding `undefined` reads as
+      // "configured" to a `!== undefined` check, and `memory.ts` uses exactly that check
+      // to decide whether to substitute the contract. The baseline contract is expressed
+      // by NOT passing the key, so a run that does not name one reproduces the previous
+      // prompt byte for byte.
+      //
+      // The cast is at this boundary rather than on the option's type. `cortex-eval` carries
+      // the contract as `string` because it cannot import this package's union (the
+      // dependency runs the other way), and it validates the string against the product's
+      // own list at parse time -- `readPromptContract` throws on anything unrecognised. So by
+      // the time execution reaches here the value IS one of the union's members, and the
+      // assertion states that rather than re-checking it. Widening the option to `string`
+      // would move the check to a place with no validation behind it.
+      ...(armOptions.promptContract === 'abstention'
+        ? {}
+        : { promptContract: armOptions.promptContract as PromptContract }),
+      // §13's single variable, on its own axis and spread conditionally for the same
+      // reason: `route` IS the shipped behaviour and is expressed by NOT passing the key,
+      // so a run that does not name an ask reproduces the previous prompt byte for byte.
+      // Passing `'route'` explicitly would read as "configured" to the `!== undefined`
+      // check in `#promptOptions` and take a different branch to the same result -- which
+      // is harmless today and is exactly the kind of harmless-until-it-is-not that the
+      // conditional spreads above exist to avoid.
+      //
+      // The cast is at this boundary for the same reason as `promptContract`: `cortex-eval`
+      // carries the ask as `string` because the dependency runs the other way, and
+      // `readAsk` validates it against the product's own list at parse time, throwing on
+      // anything unrecognised. So the value IS one of the union's members here.
+      ...(armOptions.ask === 'route' ? {} : { ask: armOptions.ask as EvidenceAsk }),
+      // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
+      // the key, for the reason every other conditional spread here is: every archived artifact was
+      // produced without a pass, and a present-but-inert key would make the option indistinguishable
+      // from a configured one to a `!== undefined` check.
+      // `bare` is a value of `reviewPass` at the dispatch boundary but not a member of the product's `ReviewPass`
+      // union: it is a different treatment, not a different pass over the same reply. Excluded here so the cast below
+      // cannot smuggle it into a field the product would interpret as `recover`.
+      ...(armOptions.reviewPass === 'none' ||
+      armOptions.reviewPass === undefined ||
+      armOptions.reviewPass === 'bare'
+        ? {}
+        : { reviewPass: armOptions.reviewPass as ReviewPass }),
+      // Same conditional shape as `reviewPass`: absent is the shipped behaviour, and a present-but-false key would
+      // make "the control ran" indistinguishable from "the switch was configured off" to a `!== undefined` check.
+      ...(armOptions.reviewBareDecline === true ? { reviewBareDecline: true } : {}),
+      // §13.197.4's knob, spread conditionally like every other treatment here: absent is the shipped
+      // configuration every archived artifact was produced under, and a present-but-empty map would
+      // read as configured to the `!== undefined` check `#readerFor` performs while resolving no route
+      // at all -- an artifact then claiming a treatment the product never administered.
+      ...(readerByRoute === undefined ? {} : { readerByRoute }),
+      // §13.153. Same conditional shape and for the same reason: absent is the shipped behaviour, and a
+      // present-but-empty reader pair would read as configured to a `!== undefined` check while resolving
+      // no window at all -- an artifact then claiming a treatment the product never administered.
+      ...(windowOrdering === undefined ? {} : { windowOrdering }),
+      // §13.101's sample count. `none` IS one consultation and is expressed by NOT passing the key, for
+      // the reason every conditional spread here is: every archived artifact was produced with one
+      // consultation, and a present-but-inert key would make the option indistinguishable from a
+      // configured one to a `!== undefined` check. The cast is at this boundary because the arm carries
+      // the count as a string so the artifact can spell `none`, and `readSelfConsistency` has already
+      // rejected anything that is not one of the two names.
+      ...(armOptions.selfConsistency === 'none' || armOptions.selfConsistency === undefined
+        ? {}
+        : { selfConsistency: Number(armOptions.selfConsistency) }),
+      // §13.17's single variable, spread conditionally for the same reason as the two
+      // above: `none` IS the shipped behaviour (the budget buys the first turns that
+      // arrived) and is expressed by NOT passing the key, so a run that names no signal
+      // reproduces the previous prompt byte for byte. `relevance.index`'s lookup is a
+      // plain table read, so extracting it from its object does not lose a receiver.
+      ...(relevance === null ? {} : { relevanceFor: relevance.relevanceFor }),
+      // §13.27's single variable, spread conditionally for the reason `relevanceFor` above
+      // is: `turn` IS the shipped behaviour (the budget buys individual turns wherever they
+      // score highest) and is expressed by NOT passing the key, so a run that names no unit
+      // reproduces the previous prompt byte for byte. The cast is at this boundary rather
+      // than on the option's type, for the reason the contract's cast is: `cortex-eval`
+      // carries the unit as `string` because it cannot import this package's union, and it
+      // validates against the product's own list at parse time -- `readRelevanceUnits`
+      // throws on anything unrecognised -- so by the time execution reaches here the value
+      // IS one of the union's members.
+      ...(armOptions.relevanceUnits === 'session' ? { relevanceUnits: 'session' as const } : {}),
+      // §13.67's single variable, spread conditionally for the reason the three above are:
+      // no cap IS the shipped behaviour and is expressed by NOT passing the key, so a run that
+      // names no cap reproduces the previous prompt byte for byte. This is the one line in the
+      // chain that no test reaches -- `bench/**` is excluded from coverage as an entry point --
+      // which is why the same value is echoed in the log line below and projected into the
+      // artifact's config: a spread deleted here would leave the run's own log and its own
+      // config claiming a treatment the prompt never received.
+      ...(armOptions.maxTurnChars === undefined ? {} : { maxTurnChars: armOptions.maxTurnChars }),
+      // §13.187.6D's mark. Spread only when named, for the reason every conditional spread in this
+      // constructor is: `none` IS the historical rendering and is expressed by NOT passing the key,
+      // so a run that names no marker reproduces every archived capped prompt byte for byte. The
+      // cast is at this boundary because `cortex-eval` carries the name as a `string` (it cannot
+      // import this package's union) and validates it against its own copy at parse time -- which is
+      // why `readTurnCutMarker` throws on anything unrecognised and `assertMarkerNeedsCap` refuses
+      // it without a cap.
+      ...(armOptions.turnCutMarker === 'ellipsis' ? { turnCutMarker: 'ellipsis' as const } : {}),
+      // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
+      // number raises the room without touching a single turn, which is the only lever §13.80 left.
+      ...(armOptions.maxPromptChars === undefined
+        ? {}
+        : { maxPromptChars: armOptions.maxPromptChars }),
+      // §13.73's reach, passed beside the width and for the same reason. `undefined` on the arm's
+      // side means every route, which is what §13.68 shipped; an explicit six-route list is the same
+      // state reached by a different path, and the product treats both as "reaches everything". The
+      // cast is at this boundary because `cortex-eval` carries the names as `string` -- it cannot
+      // import this package's union -- and validates them against its own copy at parse time.
+      ...(armOptions.maxTurnCharsRoutes === undefined
+        ? {}
+        : { maxTurnCharsRoutes: armOptions.maxTurnCharsRoutes as readonly TurnCapRoute[] }),
+      // §13.83's filter. The classifier is passed with the roles rather than beside them, because
+      // a role filter without one is refused by the product: the arm knows this dataset's prefix
+      // and the product does not, which is the boundary the option exists to keep. Both reach and
+      // classifier travel only when a filter was named, so an unfiltered run's options are
+      // byte-identical to the previous run's.
+      ...(armOptions.evidenceRoles === undefined
+        ? {}
+        : {
+            evidenceRoles: armOptions.evidenceRoles,
+            roleOf: roleOfTurn,
+            ...(armOptions.evidenceRolesRoutes === undefined
+              ? {}
+              : { evidenceRolesRoutes: armOptions.evidenceRolesRoutes as readonly TurnCapRoute[] }),
+          }),
+    });
+
+  // Workers in flight (§14.22). The first worker reuses the instances just built rather than
+  // constructing a second pair, so a serial run is byte-identical to what it always was and a
+  // concurrent one differs only in how many questions are open at once.
+  const baseline0 = buildBaseline();
+  const feature0 = buildFeature();
+  const workers = readWorkers(process.env);
+  const pool =
+    workers === 1
+      ? undefined
       : {
-          evidenceRoles: armOptions.evidenceRoles,
-          roleOf: roleOfTurn,
-          ...(armOptions.evidenceRolesRoutes === undefined
-            ? {}
-            : { evidenceRolesRoutes: armOptions.evidenceRolesRoutes as readonly TurnCapRoute[] }),
-        }),
-  });
+          workers,
+          baselineFor: (worker: number) => (worker === 0 ? baseline0 : buildBaseline()),
+          featureFor: (worker: number) => (worker === 0 ? feature0 : buildFeature()),
+        };
 
   // Stated before the numbers, not after. Every figure below is conditioned on this
   // configuration, and `threshold=0` (gates open) and a near-1 threshold produce two
@@ -705,11 +740,16 @@ async function main(): Promise<void> {
       // a fact about the evidence section (`none` = the cut stays silent), and it is the only place
       // the log and the artifact config can be compared against the prompt that was rendered.
       `, turnCutMarker=${armOptions.turnCutMarker ?? 'none'}` +
-      `, maxPromptChars=${armOptions.maxPromptChars ?? 'default'}`,
+      `, maxPromptChars=${armOptions.maxPromptChars ?? 'default'}` +
+      // The width the pass ran at, on the line every other run property is on. It is not part
+      // of the arm's configuration (§14.22) but it is part of what the wall clock means, and a
+      // reader comparing two durations needs it.
+      `, workers=${workers}`,
   );
 
-  const result = await runCortexMemoryArm(dataset, baseline, feature, {
+  const result = await runCortexMemoryArm(dataset, baseline0, feature0, {
     runs,
+    ...(pool === undefined ? {} : { pool }),
     scorer: judgeScorer(createLlmJudge(llm)),
     memoryArmConfig: toMemoryArmConfig(
       armOptions,

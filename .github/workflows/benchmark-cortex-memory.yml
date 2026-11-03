@@ -425,6 +425,13 @@ jobs:
           # which no artifact was ever produced under); the arm rejects 0 rather than reading it
           # as "unset".
           CORTEX_MEMORY_MAX_PROMPT_CHARS: ${{ github.event.inputs.cortex_memory_max_prompt_chars }}
+          # Section 14.22's width: how many questions are in flight. A **repository variable**
+          # rather than a dispatch input, because the input surface is at 24 of GitHub's 25 and
+          # because this is a property of the invocation rather than of the registered
+          # configuration -- `--registration` compares the latter field for field, and an arm that
+          # is measured at eight workers must be the same arm as the one measured at one. Unset
+          # means one worker, which is the serial pass every archived artifact was produced by.
+          CORTEX_MEMORY_WORKERS: ${{ vars.CORTEX_MEMORY_WORKERS }}
           # Section 13.83's filter. Blank means every role, which is the state every archived run
           # is in; the arm rejects an unknown role and rejects `none`, because an empty role set
           # admits nothing and would be reported as a dataset with no evidence.

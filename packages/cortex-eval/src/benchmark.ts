@@ -175,7 +175,7 @@ class BenchmarkBudgetExceeded extends Error {
  * exported because two other modules name it in their option types; this one has
  * no such caller.
  */
-type BenchmarkRawOutputCallback = (raw: string | null) => void;
+type BenchmarkRawOutputCallback = (raw: string | null, index: number) => void;
 
 /**
  * Optional per-question sink for the evidence the reader was shown.
@@ -234,6 +234,7 @@ type BenchmarkRetrievedCallback = (
   promptChars: number | null,
   admitted: AdmittedEvidence | null,
   promptText: string | null,
+  index: number,
 ) => void;
 
 /**
@@ -254,7 +255,56 @@ type BenchmarkRetrievedCallback = (
  * caller is this module's own loop, and an export nothing outside could use is
  * the `1 NEW orphan(s)` the census gate reports.
  */
-type BenchmarkAnswerCallback = (answer: Answer) => void;
+type BenchmarkAnswerCallback = (answer: Answer, index: number) => void;
+
+/**
+ * How many questions may be in flight at once, and which system instance answers each.
+ *
+ * ## Why this exists, and why it is not a lock
+ *
+ * `§14.22` of the execution plan prices the second provider: `zhipu:glm-4.6` needs **5.1x**
+ * the run budget at one request in flight, so requirement 12's "the strong model must
+ * measurably do better" is blocked by arithmetic rather than by implementation. Four
+ * thousand calls at five seconds each is 336 minutes serially and 42 minutes at eight.
+ *
+ * The obvious way to get concurrency -- one system, several calls in flight -- is wrong here
+ * for a reason this package can state exactly. `MemorySystem` exposes **per-question state
+ * through optional accessors** (`lastRawOutput`, `lastRetrievedContext`,
+ * `lastPromptEvidenceChars`, `lastAdmittedEvidence`, `lastPromptText`), and `runBenchmark`
+ * reads each one **after** the call that wrote it. That is a single-slot contract. With two
+ * calls in flight against one instance, question A's record carries question B's prompt and
+ * nothing throws: the artifact stays complete, self-consistent, and wrong, which is the
+ * failure mode this repository has paid for four times (§13.216, §13.220).
+ *
+ * So the pool hands each worker its **own instance** of the same configuration, sharing only
+ * the things that are stateless by design (an HTTP client, an embedding cache keyed by
+ * text). Per-worker state is then correct by construction rather than protected by a lock,
+ * and the acceptance criterion is falsifiable offline: **the same configuration at one
+ * worker and at `c` workers must produce byte-identical answers and byte-identical prompts,
+ * placed by question index**. If it does not, the difference names a piece of state that is
+ * not per-question -- which is a finding about the mechanism, not a failure of the
+ * instrument.
+ *
+ * ## Why the pool is a parameter rather than a field on `system`
+ *
+ * The same argument `budgetMs` carries: how many requests a run has in flight is a property
+ * of **the run**, not of the system under test. Two configurations of one system must not
+ * look like two systems to a reader of the artifact, and `workers` is recorded in the
+ * artifact's configuration block precisely because it can move the wall clock.
+ */
+export type BenchmarkWorkerPool = {
+  /** How many questions may be in flight. A positive integer; 1 is the serial pass. */
+  readonly workers: number;
+  /**
+   * The instance that answers the questions this worker claims.
+   *
+   * Called at most `min(workers, questions)` times, so a pool never builds an instance the
+   * pass cannot use. Implementations must return a **distinct** instance per worker; two
+   * workers sharing one reintroduce the single-slot defect the pool exists to avoid, and
+   * the byte-identity test in `benchmark-concurrency.test.ts` is what detects it.
+   */
+  systemFor(worker: number): MemorySystem;
+};
 
 /** Run a system over every question, preserving question order. */
 export async function runBenchmark(
@@ -285,190 +335,261 @@ export async function runBenchmark(
    * flight, and the per-attempt timeout in `cortex-ai` is what bounds that one.
    */
   budgetMs?: number,
+  /**
+   * Workers to run in flight. Absent means one, and one is exactly the serial pass every
+   * archived artifact was produced by -- the branch below does not run at all.
+   *
+   * With a pool of `c`, a question's **index** is claimed atomically before it is answered,
+   * every write lands at that index, and the returned vector is in question order regardless
+   * of completion order. That last clause is the whole measurement: the roster, the paired
+   * tests and the gold-overlap vectors all pair by index, so a completion-ordered vector
+   * would misattribute every explanation while looking well-formed.
+   */
+  pool?: BenchmarkWorkerPool,
 ): Promise<Answer[]> {
-  const answers: Answer[] = [];
+  const total = dataset.questions.length;
+  // Pre-sized and filled by index, never appended. `answers.push` would make the vector's
+  // order the completion order under concurrency -- see `pool`'s doc.
+  const answers: Answer[] = new Array<Answer>(total);
   // Monotonic and taken once per pass, so `BenchmarkProgress.elapsedMs` is a duration
   // rather than a wall-clock reading. See that field for why this one is not injected.
   const startedAt = performance.now();
-  const total = dataset.questions.length;
-  // Resolved once rather than per question: the member either exists or it does
-  // not, and a lookup per question would call `in` 500 times to learn the same
-  // fact. The `bind` is what keeps `this` intact for the accessor.
-  const rawOutput =
-    onRawOutput === undefined
-      ? undefined
-      : 'lastRawOutput' in system
-        ? (system as { lastRawOutput: () => string | null }).lastRawOutput.bind(system)
-        : undefined;
-  // Resolved once for the same reason, and from the same kind of structural check:
-  // both accessors are optional capabilities rather than members of the injection
-  // contract. `undefined` when the sink is absent, so the branch below is the only
-  // place that has to know whether the capture is wanted.
-  const retrievedContext =
-    onRetrieved === undefined
-      ? undefined
-      : 'lastRetrievedContext' in system
-        ? (
-            system as { lastRetrievedContext: () => RetrievedTurns | null }
-          ).lastRetrievedContext.bind(system)
-        : undefined;
-  // The carried-evidence size, resolved alongside it because the two are captured
-  // together: `retrievedContext` is what the reader was shown and this is how much
-  // of it survived the prompt builder's character budget. Resolved only when the
-  // capture is wanted, so a system that does not expose the accessor costs nothing
-  // and reports `null` rather than a fabricated zero.
-  const promptEvidence =
-    onRetrieved === undefined
-      ? undefined
-      : 'lastPromptEvidenceChars' in system
-        ? (system as { lastPromptEvidenceChars: () => number | null }).lastPromptEvidenceChars.bind(
-            system,
-          )
-        : undefined;
-  // The offer, resolved alongside them for the reason §13.15's run had to teach: the
-  // other two describe the delivery, and a reader with only the delivery cannot tell
-  // a budget that cut the context from a retrieval that found almost nothing. `null`
-  // when the system does not expose the accessor, which is not an offer of zero.
-  const admittedEvidence =
-    onRetrieved === undefined
-      ? undefined
-      : 'lastAdmittedEvidence' in system
-        ? (
-            system as { lastAdmittedEvidence: () => AdmittedEvidence | null }
-          ).lastAdmittedEvidence.bind(system)
-        : undefined;
-  // The prompt itself, resolved under the same rule and for a reason the three above
-  // cannot serve: `§13.168.8` asks whether two passes sent the same bytes, and every
-  // other accessor here reports a size or a subset. It travels as text rather than as a
-  // digest because this module is host-free -- the consumer that writes the artifact
-  // hashes it -- and because hashing here would put `node:crypto` in the entry point's
-  // import graph.
-  const promptText =
-    onRetrieved === undefined
-      ? undefined
-      : 'lastPromptText' in system
-        ? (system as { lastPromptText: () => string | null }).lastPromptText.bind(system)
-        : undefined;
-  // Every branch below routes through this, rather than calling `answers.push`
-  // itself. Seven branches are seven chances to forget the sink, and the routing
-  // is not what the sink measures -- it fires for every answer on every path by
-  // construction. The push happens first so that a sink which throws cannot
-  // produce an answer that is reported but not accumulated.
-  const record = (answer: Answer): Answer => {
-    answers.push(answer);
-    onAnswer?.(answer);
+  // Resolved per worker rather than once, because the accessors are per-instance state and
+  // a pool has one instance per worker. A system that does not expose an accessor reports
+  // `null` for every question it answered -- absence is not a fabricated zero.
+  const accessorsFor = (worker: MemorySystem) => ({
+    rawOutput:
+      onRawOutput === undefined
+        ? undefined
+        : 'lastRawOutput' in worker
+          ? (worker as { lastRawOutput: () => string | null }).lastRawOutput.bind(worker)
+          : undefined,
+    // Resolved from the same kind of structural check, and for the same reason: both of
+    // these are optional capabilities rather than members of the injection contract.
+    retrievedContext:
+      onRetrieved === undefined
+        ? undefined
+        : 'lastRetrievedContext' in worker
+          ? (
+              worker as { lastRetrievedContext: () => RetrievedTurns | null }
+            ).lastRetrievedContext.bind(worker)
+          : undefined,
+    // The carried-evidence size, resolved alongside it because the two are captured
+    // together: `retrievedContext` is what the reader was shown and this is how much
+    // of it survived the prompt builder's character budget. Resolved only when the
+    // capture is wanted, so a system that does not expose the accessor costs nothing.
+    promptEvidence:
+      onRetrieved === undefined
+        ? undefined
+        : 'lastPromptEvidenceChars' in worker
+          ? (
+              worker as { lastPromptEvidenceChars: () => number | null }
+            ).lastPromptEvidenceChars.bind(worker)
+          : undefined,
+    // The offer, resolved alongside them for the reason §13.15's run had to teach: the
+    // other two describe the delivery, and a reader with only the delivery cannot tell a
+    // budget that cut the context from a retrieval that found almost nothing.
+    admittedEvidence:
+      onRetrieved === undefined
+        ? undefined
+        : 'lastAdmittedEvidence' in worker
+          ? (
+              worker as { lastAdmittedEvidence: () => AdmittedEvidence | null }
+            ).lastAdmittedEvidence.bind(worker)
+          : undefined,
+    // The prompt itself, resolved under the same rule and for a reason the three above
+    // cannot serve: `§13.168.8` asks whether two passes sent the same bytes, and every
+    // other accessor here reports a size or a subset. It travels as text rather than as a
+    // digest because this module is host-free -- the consumer that writes the artifact
+    // hashes it -- and because hashing here would put `node:crypto` in the entry point's
+    // import graph.
+    promptText:
+      onRetrieved === undefined
+        ? undefined
+        : 'lastPromptText' in worker
+          ? (worker as { lastPromptText: () => string | null }).lastPromptText.bind(worker)
+          : undefined,
+  });
+  // Every branch below routes through this, rather than calling the vector itself. Seven
+  // branches are seven chances to forget the sink, and the routing is not what the sink
+  // measures -- it fires for every answer on every path by construction. The write happens
+  // first so that a sink which throws cannot produce an answer that is reported but not
+  // accumulated.
+  const record = (answer: Answer, index: number): Answer => {
+    answers[index] = answer;
+    onAnswer?.(answer, index);
     return answer;
   };
-  for (let index = 0; index < dataset.questions.length; index++) {
-    const q = dataset.questions[index]!;
-    // The budget is checked HERE, between questions, and that placement is the whole design.
-    //
-    // It cannot interrupt a request already in flight, and it does not pretend to: a hang
-    // inside one call is the transport's problem and the retry layer's per-attempt timeout
-    // is what bounds it. What this guarantees is that the **pass ends**. Run `38725510400`
-    // hung for over five hours and never ended -- the workflow's `timeout-minutes: 240` did
-    // not fire, so no `benchmark-error.log` was written at all, which is strictly worse than
-    // the thin record the run before it left: a `TimeoutError` reaches `catch`, a hang
-    // reaches nothing.
-    //
-    // Checked before the progress event so the event count is the number of questions this
-    // pass STARTED, and the error carries the question it stopped before.
-    const elapsed = performance.now() - startedAt;
-    if (budgetMs !== undefined && elapsed > budgetMs) {
-      throw new BenchmarkBudgetExceeded(
-        {
-          system: system.name,
+  const workers = resolveWorkers(pool, total);
+  // The claim is a single synchronous statement, so two workers cannot read the same value:
+  // JavaScript runs it to completion before the other loop resumes. That is the only reason
+  // a shared counter is safe here, and it is why the pool is not built from `Promise.all`
+  // over a pre-sliced array -- slicing by worker would make a slow worker's slice the whole
+  // pass's critical path and would make the index/worker binding invisible in the artifact.
+  let next = 0;
+  const claim = (): number => next++;
+
+  const runWorker = async (worker: number): Promise<void> => {
+    const workerSystem = pool === undefined ? system : pool.systemFor(worker);
+    const accessors = accessorsFor(workerSystem);
+    for (;;) {
+      const index = claim();
+      if (index >= total) {
+        return;
+      }
+      const q = dataset.questions[index]!;
+      // The budget is checked HERE, between questions, and that placement is the whole design.
+      //
+      // It cannot interrupt a request already in flight, and it does not pretend to: a hang
+      // inside one call is the transport's problem and the retry layer's per-attempt timeout
+      // is what bounds that. What this guarantees is that the **pass ends**. Run `38725510400`
+      // hung for over five hours and never ended -- the workflow's `timeout-minutes: 240` did
+      // not fire, so no `benchmark-error.log` was written at all, which is strictly worse than
+      // the thin record the run before it left: a `TimeoutError` reaches `catch`, a hang
+      // reaches nothing.
+      //
+      // Checked before the progress event so the event count is the number of questions this
+      // pass STARTED, and the error carries the question it stopped before.
+      const elapsed = performance.now() - startedAt;
+      if (budgetMs !== undefined && elapsed > budgetMs) {
+        throw new BenchmarkBudgetExceeded(
+          {
+            system: workerSystem.name,
+            index,
+            total,
+            run,
+            questionId: q.id,
+            elapsedMs: elapsed,
+          },
+          budgetMs,
+        );
+      }
+      // Before the answer call, so a throw inside it cannot skip the question it threw on.
+      // See `BenchmarkProgress`. `run` is a parameter rather than something read here,
+      // because a single pass over the dataset has no way to know which repetition it is
+      // serving.
+      //
+      // Under a pool these events arrive in claim order, not in index order: they are start
+      // events keyed by `index`, and a consumer that reads them as a sequence is reading a
+      // coincidence. `elapsedMs` is taken here rather than inside the callback so every
+      // consumer sees the same number for the same event.
+      progress?.({
+        system: workerSystem.name,
+        index,
+        total,
+        run,
+        questionId: q.id,
+        elapsedMs: performance.now() - startedAt,
+      });
+      if (
+        isSessionAware(workerSystem) &&
+        q.capability === 'MR' &&
+        q.sessions &&
+        q.sessions.length > 0
+      ) {
+        // Multi-session questions aggregate evidence across sessions.
+        record(await workerSystem.answerSessions(q.question, q.sessions), index);
+      } else if (
+        isSessionAware(workerSystem) &&
+        q.capability === 'TR' &&
+        workerSystem.answerTemporal
+      ) {
+        // Temporal questions need the question date as the reference point for
+        // "how long ago" reasoning, plus a dedicated date-reading prompt.
+        record(
+          await workerSystem.answerTemporal(q.question, q.context, q.questionDate, q.sessions),
           index,
-          total,
-          run,
-          questionId: q.id,
-          elapsedMs: elapsed,
-        },
-        budgetMs,
-      );
+        );
+      } else if (
+        isSessionAware(workerSystem) &&
+        q.capability === 'ABS' &&
+        workerSystem.answerAbstention
+      ) {
+        // Abstention questions are answered with a conservative prompt so the model
+        // recognizes the absence of an answer instead of being pushed to choose a
+        // candidate. Routed before the assistant check because an ABS question may
+        // carry a single-session-assistant type.
+        record(await workerSystem.answerAbstention(q.question, q.context, q.sessions), index);
+      } else if (
+        isSessionAware(workerSystem) &&
+        q.questionType === 'single-session-assistant' &&
+        workerSystem.answerAssistant
+      ) {
+        // The evidence for single-session-assistant questions lives in an assistant
+        // turn, so route to a path that includes assistant turns.
+        record(await workerSystem.answerAssistant(q.question, q.context, q.sessions), index);
+      } else if (
+        isSessionAware(workerSystem) &&
+        q.questionType === 'single-session-preference' &&
+        workerSystem.answerPreference
+      ) {
+        // Preference/recommendation questions ask for a suggestion that reflects the
+        // user's stated preferences, not a single extracted fact. The extractive answer
+        // path would abstain on them, so route to a generative path instead.
+        record(await workerSystem.answerPreference(q.question, q.context, q.sessions), index);
+      } else if (
+        isSessionAware(workerSystem) &&
+        q.questionType === 'knowledge-update' &&
+        workerSystem.answerKnowledgeUpdate
+      ) {
+        // Knowledge-update questions ask which value a time qualifier selects
+        // (previous vs currently), which the generic extractive prompt does not
+        // make explicit. Route to the time-qualifier-aware prompt instead.
+        record(await workerSystem.answerKnowledgeUpdate(q.question, q.context, q.sessions), index);
+      } else {
+        record(await workerSystem.answer(q.question, q.context, q.sessions), index);
+      }
+      // Captured HERE, at the end of the iteration that produced the answer, and not after
+      // the loop. Reading the accessor once at the end would report the last question's text
+      // for every question, which is the defect the capture exists to prevent -- and under a
+      // pool the same reasoning is what forces the accessors to be per-worker. The `index`
+      // travels with each capture so a consumer can place it; the completion order is not a
+      // usable key.
+      if (onRawOutput !== undefined) {
+        onRawOutput(accessors.rawOutput === undefined ? null : accessors.rawOutput(), index);
+      }
+      // Captured here for the same reason and at the same point: the slot describes the
+      // question just answered. Kept as its own statement rather than folded into the block
+      // above so that a run wanting only one of the two captures does not pay for the other.
+      if (onRetrieved !== undefined) {
+        onRetrieved(
+          accessors.retrievedContext === undefined ? null : accessors.retrievedContext(),
+          accessors.promptEvidence === undefined ? null : accessors.promptEvidence(),
+          accessors.admittedEvidence === undefined ? null : accessors.admittedEvidence(),
+          accessors.promptText === undefined ? null : accessors.promptText(),
+          index,
+        );
+      }
     }
-    // Before the answer call, so a throw inside it cannot skip the question it
-    // threw on. See `BenchmarkProgress`. `run` is a parameter rather than
-    // something read here, because a single pass over the dataset has no way to
-    // know which repetition it is serving.
-    //
-    // `elapsedMs` is taken here rather than inside the callback so every consumer sees
-    // the same number for the same event, and so a slow consumer cannot move the reading.
-    progress?.({
-      system: system.name,
-      index,
-      total,
-      run,
-      questionId: q.id,
-      elapsedMs: performance.now() - startedAt,
-    });
-    if (isSessionAware(system) && q.capability === 'MR' && q.sessions && q.sessions.length > 0) {
-      // Multi-session questions aggregate evidence across sessions.
-      record(await system.answerSessions(q.question, q.sessions));
-    } else if (isSessionAware(system) && q.capability === 'TR' && system.answerTemporal) {
-      // Temporal questions need the question date as the reference point for
-      // "how long ago" reasoning, plus a dedicated date-reading prompt.
-      record(await system.answerTemporal(q.question, q.context, q.questionDate, q.sessions));
-    } else if (isSessionAware(system) && q.capability === 'ABS' && system.answerAbstention) {
-      // Abstention questions are answered with a conservative prompt so the
-      // model recognizes the absence of an answer instead of being pushed to
-      // choose a candidate. Routed before the assistant check because an ABS
-      // question may carry a single-session-assistant type.
-      record(await system.answerAbstention(q.question, q.context, q.sessions));
-    } else if (
-      isSessionAware(system) &&
-      q.questionType === 'single-session-assistant' &&
-      system.answerAssistant
-    ) {
-      // The evidence for single-session-assistant questions lives in an
-      // assistant turn, so route to a path that includes assistant turns.
-      record(await system.answerAssistant(q.question, q.context, q.sessions));
-    } else if (
-      isSessionAware(system) &&
-      q.questionType === 'single-session-preference' &&
-      system.answerPreference
-    ) {
-      // Preference/recommendation questions ask for a suggestion that reflects
-      // the user's stated preferences, not a single extracted fact. The
-      // extractive answer path would abstain on them, so route to a generative
-      // path instead.
-      record(await system.answerPreference(q.question, q.context, q.sessions));
-    } else if (
-      isSessionAware(system) &&
-      q.questionType === 'knowledge-update' &&
-      system.answerKnowledgeUpdate
-    ) {
-      // Knowledge-update questions ask which value a time qualifier selects
-      // (previous vs currently), which the generic extractive prompt does not
-      // make explicit. Route to the time-qualifier-aware prompt instead.
-      record(await system.answerKnowledgeUpdate(q.question, q.context, q.sessions));
-    } else {
-      record(await system.answer(q.question, q.context, q.sessions));
-    }
-    // Captured HERE, at the end of the iteration that produced the answer, and
-    // not after the loop. Reading the accessor once at the end would report the
-    // last question's text for every question, which is the defect the capture
-    // exists to prevent. It is also after the `push` rather than inside each
-    // branch: seven branches is seven chances to forget one, and the routing
-    // above is not what this hook measures.
-    if (onRawOutput !== undefined) {
-      onRawOutput(rawOutput === undefined ? null : rawOutput());
-    }
-    // Captured here for the same reason and at the same point: the slot describes
-    // the question just answered, and reading it after the loop would report the
-    // last question's evidence for every record. Kept as its own statement rather
-    // than folded into the block above so that a run wanting only one of the two
-    // captures does not pay for the other.
-    if (onRetrieved !== undefined) {
-      onRetrieved(
-        retrievedContext === undefined ? null : retrievedContext(),
-        promptEvidence === undefined ? null : promptEvidence(),
-        admittedEvidence === undefined ? null : admittedEvidence(),
-        promptText === undefined ? null : promptText(),
-      );
-    }
-  }
+  };
+
+  await Promise.all(Array.from({ length: workers }, (_, worker) => runWorker(worker)));
   return answers;
+}
+
+/**
+ * The pool's worker count, refusing a value that would silently serialize the pass.
+ *
+ * Three shapes are refused rather than coerced: a non-integer (a value like `2.5` would run
+ * two workers and quietly drop the half), a value below one (a pass that opens no worker
+ * never ends), and a non-finite one. Coercion is the wrong repair for all three because each
+ * would produce a run whose configuration line says something the pass did not do.
+ *
+ * Capped at the number of questions so a pool never builds an instance it cannot use -- a
+ * 60-question smoke run at `workers: 8` builds eight, and one at `workers: 500` builds 500
+ * rather than 500 plus nothing.
+ */
+function resolveWorkers(pool: BenchmarkWorkerPool | undefined, total: number): number {
+  if (pool === undefined) {
+    return 1;
+  }
+  if (!Number.isInteger(pool.workers) || pool.workers < 1) {
+    throw new Error(
+      `workers must be a positive integer, received ${pool.workers} -- a fractional or zero ` +
+        'worker count would run a pass whose configuration line describes something else',
+    );
+  }
+  return Math.max(1, Math.min(pool.workers, total));
 }
 
 /**
@@ -505,30 +626,41 @@ export async function evaluateWithScorerDetailed(
   captureRawOutput = false,
   captureRetrievedContext = false,
   onAnswer?: BenchmarkAnswerCallback,
-  /** Wall-clock ceiling for this pass. See {@link runBenchmark}'s last parameter. */
+  /** Wall-clock ceiling for this pass. See {@link runBenchmark}'s second-to-last parameter. */
   budgetMs?: number,
+  /** Workers in flight. See {@link BenchmarkWorkerPool}; absent means the serial pass. */
+  pool?: BenchmarkWorkerPool,
 ): Promise<ScoredEvaluation> {
   const rawOutputs: (string | null)[] = [];
   const retrievedContexts: (RetrievedTurns | null)[] = [];
   const promptEvidenceChars: (number | null)[] = [];
   const admittedEvidence: (AdmittedEvidence | null)[] = [];
   const promptTexts: (string | null)[] = [];
+  // Placed by index, not appended. Four vectors are captured from the same call and all four
+  // are paired with `featureAnswers`/`correct[]` by question index downstream, so under a pool
+  // a push would silently rotate every explanation one question out of phase -- a defect that
+  // leaves every number in the artifact well-formed.
   const answers = await runBenchmark(
     dataset,
     system,
     progress,
     run,
-    captureRawOutput ? (raw) => rawOutputs.push(raw) : undefined,
+    captureRawOutput
+      ? (raw, index) => {
+          rawOutputs[index] = raw;
+        }
+      : undefined,
     captureRetrievedContext
-      ? (retrieved, chars, admitted, prompt) => {
-          retrievedContexts.push(retrieved);
-          promptEvidenceChars.push(chars);
-          admittedEvidence.push(admitted);
-          promptTexts.push(prompt);
+      ? (retrieved, chars, admitted, prompt, index) => {
+          retrievedContexts[index] = retrieved;
+          promptEvidenceChars[index] = chars;
+          admittedEvidence[index] = admitted;
+          promptTexts[index] = prompt;
         }
       : undefined,
     onAnswer,
     budgetMs,
+    pool,
   );
   return scoreEvaluation(
     dataset,

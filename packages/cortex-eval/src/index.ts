@@ -36,7 +36,9 @@ export {
   evaluateWithScorerDetailed,
   type BenchmarkProgress,
   type BenchmarkProgressCallback,
+  type BenchmarkWorkerPool,
 } from './benchmark.js';
+export { readWorkers } from './worker-pool.js';
 export { describeFailure } from './bench-failure.js';
 export { drawUnjudged, type Draw, type DrawableRow } from './a3-draw.js';
 export {

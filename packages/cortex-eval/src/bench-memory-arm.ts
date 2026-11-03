@@ -82,6 +82,7 @@ import {
   runAblationReport,
   type FeatureConfig,
 } from './report.js';
+import type { AblationPool } from './ablation.js';
 import { transportRetryReport } from './retrieval-diagnostics.js';
 import { traceUsage, zeroUsage, type UsageSide } from './usage-by-side.js';
 import { mirrorMembers } from './system-mirror.js';
@@ -2165,6 +2166,14 @@ export type CortexMemoryArmRunOptions = {
   alpha?: number;
   /** Answer scorer. Required in practice: the arm is meaningless without one. */
   scorer?: AnswerScorer;
+  /**
+   * Workers in flight, and the per-worker instances that answer their questions.
+   *
+   * Forwarded verbatim to the ablation, which is where the concurrency lives. Absent means
+   * one worker -- the serial pass every archived artifact was produced by -- so this option
+   * changes nothing about a run that does not name it.
+   */
+  pool?: AblationPool | undefined;
   /** Fixed timestamp, so a report is reproducible. */
   generatedAt?: string;
   /**
@@ -2538,6 +2547,7 @@ export async function runCortexMemoryArm(
       memoryArmConfig: options.memoryArmConfig,
       ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
       ...(options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs }),
+      ...(options.pool === undefined ? {} : { pool: options.pool }),
     },
   );
 

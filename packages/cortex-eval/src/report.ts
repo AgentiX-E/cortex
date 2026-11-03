@@ -7,7 +7,7 @@ import type { UsageSnapshot } from '@agentix-e/cortex-ai';
 import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
 import type { CohortCoverage } from './datasets/sampling.js';
 import type { EvidenceReduction, QuestionRecord } from './question-record.js';
-import { runAblation, type AblationOptions } from './ablation.js';
+import { runAblation, type AblationOptions, type AblationPool } from './ablation.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 import type { RerankCensus } from './rerank-census.js';
@@ -1048,6 +1048,13 @@ export type AblationReportOptions = {
    * (`AblationReport.datasetFingerprint` says why it is in the report at all).
    */
   datasetFingerprint?: string;
+  /**
+   * Workers in flight, forwarded to the ablation. See `AblationOptions.pool`.
+   *
+   * Absent means one worker, so every caller that does not name it keeps the serial pass
+   * its artifacts were produced by.
+   */
+  pool?: AblationPool | undefined;
   scorer?: AnswerScorer;
   featureConfig?: FeatureConfig;
   /**
@@ -1091,6 +1098,9 @@ export async function runAblationReport(
   }
   if (options.budgetMs !== undefined) {
     ablationOptions.budgetMs = options.budgetMs;
+  }
+  if (options.pool !== undefined) {
+    ablationOptions.pool = options.pool;
   }
   if (options.abstentionAware !== undefined) {
     ablationOptions.abstentionAware = options.abstentionAware;
