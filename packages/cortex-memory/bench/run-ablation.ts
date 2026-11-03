@@ -759,6 +759,10 @@ async function main(): Promise<void> {
 
   const result = await runCortexMemoryArm(dataset, baseline0, feature0, {
     runs,
+    // The same resolution the gate line above printed, handed to the report rather than re-read:
+    // the artifact and the log then cannot disagree about the pace, which is the whole reason the
+    // pace is in the artifact (§13.228).
+    readerPacing: pacing,
     ...(pool === undefined ? {} : { pool }),
     scorer: judgeScorer(createLlmJudge(llm)),
     memoryArmConfig: toMemoryArmConfig(

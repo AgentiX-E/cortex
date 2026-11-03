@@ -2653,6 +2653,73 @@ class TestTheArtefactAudit:
         assert r.returncode == 1
         assert 'roster' in r.stdout
 
+    # §13.228: the pass shape. Four claims, and the fourth is the one that keeps the check from
+    # being a formality -- a producer that clamps rather than refuses is a producer whose artifact
+    # says a run did something `readWorkers` would not have allowed it to do.
+
+    def test_a_pass_shape_naming_a_pace_and_a_width_passes(self, tmp_path: Path) -> None:
+        artifact = self._artifact()
+        artifact['passShape'] = {'workers': 4, 'minIntervalMs': 6000, 'retryBudgetMs': None}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'pass-shape' in r.stdout
+        assert '4 worker(s), interval 6000, budget default' in r.stdout
+
+    def test_an_absent_pass_shape_is_a_reading_and_not_a_zero(self, tmp_path: Path) -> None:
+        # Every artifact before §13.228 and every reference-pipeline report has no block. Refusing
+        # them would make the audit unusable on its own archive, and defaulting them to a width of
+        # one would claim a measurement nobody wrote down.
+        r = self._audit(tmp_path, self._artifact())
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'SKIP  pass-shape' in r.stdout
+        assert 'cannot be recovered' in r.stdout
+
+    def test_a_width_outside_the_range_the_reader_refuses_fails(self, tmp_path: Path) -> None:
+        # 65 is the value `readWorkers` refuses; an artifact carrying it did not come from a run
+        # that read the variable, which is a wiring finding rather than a configuration one.
+        artifact = self._artifact()
+        artifact['passShape'] = {'workers': 65, 'minIntervalMs': 6000, 'retryBudgetMs': None}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'pass-shape' in r.stdout
+        assert '1..64' in r.stdout
+
+    def test_a_width_of_zero_fails_because_no_pass_has_no_readers(self, tmp_path: Path) -> None:
+        artifact = self._artifact()
+        artifact['passShape'] = {'workers': 0, 'minIntervalMs': None, 'retryBudgetMs': None}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'pass-shape' in r.stdout
+
+    def test_a_negative_interval_fails_rather_than_reading_as_unthrottled(
+        self, tmp_path: Path
+    ) -> None:
+        artifact = self._artifact()
+        artifact['passShape'] = {'workers': 2, 'minIntervalMs': -6000, 'retryBudgetMs': None}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'pass-shape' in r.stdout
+
+    def test_a_formatted_interval_is_a_producer_defect(self, tmp_path: Path) -> None:
+        # The Markdown renderer writes "6000 ms"; a producer that wrote that string into the block
+        # instead of the number would still parse as present and would make every reader of the
+        # field do arithmetic on a string.
+        artifact = self._artifact()
+        artifact['passShape'] = {'workers': 2, 'minIntervalMs': '6000 ms', 'retryBudgetMs': None}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1
+        assert 'pass-shape' in r.stdout
+
+    def test_a_set_budget_is_told_apart_from_the_default(self, tmp_path: Path) -> None:
+        # `null` means "the code's default", which is a property of the commit the artifact names;
+        # a number means a deployment chose it. Printing both as "unset" would erase the only
+        # difference a reader comparing two runs needs.
+        artifact = self._artifact()
+        artifact['passShape'] = {'workers': 1, 'minIntervalMs': None, 'retryBudgetMs': 900000}
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'budget 900000' in r.stdout
+
 
 def _spend_report(
     *,

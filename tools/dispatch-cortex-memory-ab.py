@@ -44,6 +44,17 @@ from pathlib import Path
 REPO = "AgentiX-E/cortex"
 WORKFLOW = "benchmark-cortex-memory.yml"
 
+# The repository variable the registration gate reads (`§13.220.5`).
+#
+# It is written here, by the dispatcher, rather than kept by hand for the same reason the gate
+# exists: the departure list is a fact about the dispatch that is about to run, and the only
+# process that knows it for certain is the one choosing the inputs. `41560510937` is the run that
+# made this concrete -- a 60-question glm smoke whose artifact departed on `reader.model`, whose
+# gate said *"the run is an experiment that has not said so"*, and which therefore failed after
+# having produced a perfectly good measurement. The gate was right; nothing had told it what to
+# expect.
+DECLARED_DEPARTURES_VARIABLE = "CORTEX_DECLARED_DEPARTURES"
+
 # The configuration registered in `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3,
 # held constant. These values are not free parameters of this script: §10 fixed them
 # before the run, and `tools/__tests__/test_preregistration_config.py` asserts that what
@@ -605,6 +616,37 @@ def staleness_refusal(remote_tree: str, head_tree: str | None) -> str | None:
     )
 
 
+def departures(inputs: dict[str, str]) -> list[str]:
+    """The inputs this dispatch moves away from the registered table, sorted.
+
+    The same comparison `main` prints with a `*` marker, promoted from a decoration to the thing
+    the gate is told. An input set to the value the table already holds is not a departure, and
+    saying it was would make the declaration describe an intention rather than what ran -- the
+    class `--departs` already refuses on the reading side (`declared but unchanged`).
+    """
+    return sorted(key for key in inputs if inputs[key] != INPUTS.get(key))
+
+
+def declare_departures(names: list[str]) -> str:
+    """Write the departure list where the registration gate will read it.
+
+    Always writes, including the empty case: the variable must describe **this** dispatch, so a
+    registered dispatch that left a previous experiment's declaration in place would let that
+    experiment's departures excuse a run that did not make them. Creating versus updating is
+    decided by a list rather than by catching a 404, because `req` exits the process on any
+    non-transient status and a missing variable is not an error here.
+    """
+    value = ",".join(names)
+    listing = req("GET", f"/repos/{REPO}/actions/variables?per_page=100")
+    existing = {variable.get("name") for variable in listing.get("variables", [])}
+    payload = {"name": DECLARED_DEPARTURES_VARIABLE, "value": value}
+    if DECLARED_DEPARTURES_VARIABLE in existing:
+        req("PATCH", f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}", payload)
+    else:
+        req("POST", f"/repos/{REPO}/actions/variables", payload)
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     inputs = apply_overrides(INPUTS, parse_argv(sys.argv[1:] if argv is None else argv))
     sha = remote_head()
@@ -618,6 +660,13 @@ def main(argv: list[str] | None = None) -> int:
     for key in sorted(inputs):
         marker = " *" if inputs[key] != INPUTS.get(key) else ""
         print(f"  {key} = {inputs[key]}{marker}")
+
+    # Before the dispatch, because the workflow reads the variable when the job starts: written
+    # after, it would describe the next run rather than this one, and the gate §13.220.5 installed
+    # would be checking a record nobody had written yet.
+    declared = departures(inputs)
+    declare_departures(declared)
+    print(f"declaring departures: {declared if declared else 'none'}")
 
     req(
         "POST",

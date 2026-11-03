@@ -1293,6 +1293,62 @@ def audit_section(
             'predates one of the two instruments)'
         )
 
+    # 9. The pass shape is three numbers a reader can act on, or it is absent.
+    #
+    # §13.227 put the pace on the gate line and §13.228 moved it into the artifact, so what is left
+    # to check is what a producer is allowed to write there. The three values are not arm properties
+    # -- they belong beside `transportRetry` rather than in `memoryArmConfig` -- so their absence is
+    # a reading (every artifact written before §13.228 has none, and the reference pipeline resolves
+    # no pace at all) and only a present-but-impossible block is a failure.
+    #
+    # What is deliberately NOT checked: whether `attempts` is consistent with the interval. The
+    # bound would be `attempts <= elapsed / interval + 1`, and `elapsed` is nowhere in the artifact;
+    # worse, `transportRetry` is process-wide and "not attributable to one backend" in this tool's
+    # own words, so a run whose embeddings went out unpaced would carry attempts the reader's gate
+    # could not have issued, and a correct run would fail. §13.228.6 records that the falsification
+    # condition stays prose for exactly that reason.
+    shape = report.get('passShape')
+    if isinstance(shape, dict):
+        workers = shape.get('workers')
+        interval = shape.get('minIntervalMs')
+        budget = shape.get('retryBudgetMs')
+
+        def _optional_whole(value: object) -> bool:
+            # `bool` is a subclass of `int` in Python, and `True` where a millisecond count belongs
+            # is a producer writing a flag into a number's slot -- the class of defect this block
+            # exists to catch, not an input to coerce.
+            if value is None:
+                return True
+            return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+        workers_ok = (
+            isinstance(workers, int)
+            and not isinstance(workers, bool)
+            and 1 <= workers <= 64
+        )
+        shape_ok = workers_ok and _optional_whole(interval) and _optional_whole(budget)
+        check(
+            'pass-shape',
+            shape_ok,
+            f'{workers} worker(s), interval '
+            f'{interval if interval is not None else "unset"}, budget '
+            f'{budget if budget is not None else "default"}'
+            + (
+                ''
+                if shape_ok
+                else '; workers must be 1..64 -- the range `readWorkers` refuses outside of, so a '
+                'block naming another is a producer that clamped instead of failing -- and the '
+                'other two must be a non-negative whole number or null, never a formatted string '
+                'and never a bool'
+            ),
+        )
+    else:
+        lines.append(
+            '  SKIP  pass-shape    no passShape block (this artifact predates §13.228, or it came '
+            'from the reference pipeline, which resolves no pace); the width it ran at and the '
+            'rate it emitted cannot be recovered from it'
+        )
+
     header = [
         '',
         'artifact audit (each field checked against another field of the same run)',

@@ -25533,3 +25533,226 @@ ever having refused, i.e. the interval was set from a rate nobody measured.
 *Falsified by:* an artifact from that dispatch whose gate line names `minIntervalMs=6000` and whose
 `attempts` imply a request every 42 seconds anyway — that would mean the gate is not on the path the
 reader takes, which is the wiring failure `41393748964` recorded once already.
+
+## 13.228 The pace lived in a log, which is the channel that expires
+
+§13.227.6 recorded one gap rather than closing it: the pace reached the gate line and the artifact,
+and the gate line is a log. `41393748964` is this campaign's standing example of a fact that existed
+only in a container log — the run had happened, the number existed, and when it mattered nobody could
+recover it. A run whose artifact does not say what pace it was under is a run whose next dispatch is
+a guess, and the two dispatches that are currently in flight (T and M, §13.221.3) will be read by
+someone who was not there when the gate line scrolled past.
+
+### 13.228.1 Why the three values are not three keys in `memoryArmConfig`
+
+`memoryArmConfig` is the block `--registration` compares field for field. Every key in it is a
+statement about **what the arm is**, and adding one is a declared departure — which is the right cost
+for an arm change and the wrong one for a pipe change. Run `41431790794` is why the distinction is
+load-bearing: nine departures in that block, and a reader could not tell which of the nine was the
+experiment.
+
+| value | changes the arm | changes the pipe |
+| --- | --- | --- |
+| `relevanceTopK` 256 → 64 | yes — fewer records reach the reader | |
+| `promptContract` → `abstention` | yes — a different instruction block | |
+| `workers` 1 → 4 | | yes — the same questions, sooner |
+| `minIntervalMs` none → 6000 | | yes — the same requests, slower |
+| `retryBudgetMs` default → 1800000 | | yes — the same call, a wider allowance |
+
+The three pipe values therefore sit in their own block, `passShape`, beside `transportRetry` — which
+is where the counters that describe what the provider did already live. The counters say what was
+done to the run; this says what the run was doing to the provider. A reader with only one of the two
+cannot tell "slow because throttled" from "slow because paced", and those are opposite next
+dispatches.
+
+### 13.228.2 `null` is a reading, and folding it into zero destroys one
+
+| field | `null` | `0` |
+| --- | --- | --- |
+| `minIntervalMs` | nobody configured a pace | the deployment considered a rate and chose none |
+| `retryBudgetMs` | the code's default, a property of the commit the artifact names | a call may not retry at all |
+
+Both pairs behave identically and mean opposite things. An artifact that folded them together would
+make an unconfigured run indistinguishable from a deliberately unthrottled one — the same defect
+`--registration` exists to prevent, one block over. So the block records `null` and the renderer
+prints `none` / `default` rather than `0 ms`.
+
+The width has no `null`: a run always has one reader. It defaults to `1`, which is also what every
+archived artifact was taken at, so the number states a fact rather than a hope.
+
+### 13.228.3 The block is built from the object the client was given
+
+`passShapeReport` takes a `ReaderPacing`, not three loose numbers, so the call site shows that the
+value recorded is **the same object** the reader factory was configured with. Two independent reads
+of `process.env` would be two chances to record a pace the client did not run at — the
+`41393748964` shape (a branch built, tested, and never reached) one layer down. The source-anchored
+test asserts exactly one `readReaderPacing(process.env)` in `run-ablation.ts` and that the resolved
+value is passed on.
+
+The middle link is asserted the same way, because it is where an option dies: `runCortexMemoryArm`
+must forward it into `runAblationReport`. Deleting that one spread line leaves a resolved option
+that reaches nothing, which is indistinguishable from an option nobody set. Mutation: the assertion
+fails, and only that assertion.
+
+### 13.228.4 The audit check, and the check that was deliberately not written
+
+`--audit` gained a ninth check. A present block must satisfy: `workers` a whole number in `[1, 64]`
+— the range `readWorkers` refuses outside of, so a block naming another is a producer that clamped
+instead of failing — and the other two a non-negative whole number or `null`, never a formatted
+string and never a bool (Python makes `True` an `int`, and a flag in a millisecond slot is precisely
+this block's defect class).
+
+Absence is a `SKIP`, not a `FAIL`:
+
+```
+  SKIP  pass-shape    no passShape block (this artifact predates §13.228, or it came
+                      from the reference pipeline, which resolves no pace); the width
+                      it ran at and the rate it emitted cannot be recovered from it
+```
+
+Refusing those would make the audit unusable on its own archive, and defaulting them to a width of
+one would claim a measurement nobody wrote down.
+
+**What is not checked, and this is the finding.** §13.227's second falsification condition — "an
+artifact whose `attempts` imply a request every 42 seconds anyway" — looks mechanizable as
+`attempts <= elapsed / interval + 1`. It is not, for two reasons that are about this repository:
+
+1. `elapsed` is not in the artifact at all. The report has `generatedAt` and no start time, so the
+   duration of a run is not recoverable from it either. (§13.118.5 is where a wrong duration was
+   first read off that stamp.)
+2. `transportRetry` is process-wide and, in this tool's own words, *"not attributable to one
+   backend"*. A run whose embeddings went out unpaced would carry attempts the reader's gate could
+   not have issued, and a **correct** run would fail the check.
+
+A check that fires on a good run is worse than no check: it teaches a reader to skip the output,
+which is how a real failure gets through. The falsification condition therefore stays prose, and the
+two facts that block it are recorded here rather than rediscovered next round.
+
+### 13.228.5 What is met
+
+| §13.227.6 gap | acceptance | state |
+| --- | --- | --- |
+| the pace reaches the artifact, not only the log | a report built with a resolved pace carries the three values and renders them | **met** — 11 tests in `pass-shape.test.ts`, 7 in `tools/__tests__/test_readout_arm_run.py` |
+| a pipe change must not read as an arm change | `--registration` compares `memoryArmConfig` only, and none of the three is in it | **met** — the block is beside `transportRetry` |
+| an old artifact must not fail the new check | absence is `SKIP`, and says what cannot be recovered | **met** |
+| a clamp must not pass as a decision | `workers` outside `[1, 64]` fails, `0` included | **met** — mutation: widening the bound to `0..64` fails exactly one test |
+
+Mutations: dropping the `readerPacing` forward loses the middle link (one test); replacing the
+optional-value predicate with `return True` loses both the negative-interval and the formatted-string
+tests. Neither touched a passing assertion, which is the property a mutation is for.
+
+### 13.228.6 Still open
+
+The two dispatches in flight were cut before this block existed, so their artifacts will not carry it
+and `--audit` will `SKIP` it on both. That is the correct reading and not a regression: what they
+were dispatched to measure — whether `reader.thinking` on two routes is worth 4.0 points (§13.221.3)
+and whether the turn cap is worth 2.3 — does not depend on the pipe being described.
+
+## 13.229 The gate caught its first run, and the declaration had no producer
+
+`41560510937` was dispatched at 01:33 with `CORTEX_LLM_MIN_INTERVAL_MS=6000`, `workers=4`, and
+`limit=60` on `zhipu:glm-4.6` — the smoke §13.226.3 asked for and §13.227.7 specified. It **finished**.
+It also exited 1, and both of those sentences matter.
+
+### 13.229.1 The pace worked, and the number is unambiguous
+
+| counter | `41553176719` (no gate) | `41560510937` (gate, 6000 ms, width 4) |
+| --- | ---: | ---: |
+| questions answered | 55 of 60, then died | **60 of 60, both arms** |
+| requests issued | 279 | 237 |
+| answered `429` | 140 | **0** |
+| calls that retried | 55 | **0** |
+| calls that never settled | several | **0** |
+| wall clock | died after 94 s of thrash | 24 min 34 s |
+
+Every one of the 237 requests was served on the first attempt. The provider that refused 50.2 % of
+the traffic forty minutes earlier refused none of it once the client emitted at a stated rate — so
+the diagnosis in §13.226.1 ("a rate is not a window") was the right one, and the thing §13.227 built
+is the thing that fixes it.
+
+### 13.229.2 What the smoke measured, and what it cannot be compared to
+
+| side | accuracy | correct | abstention rate | abstention precision |
+| --- | ---: | ---: | ---: | ---: |
+| cortex-memory | **0.7667** | 46 / 60 | 16.7 % | 90.0 % |
+| reference pipeline | 0.3667 | 22 / 60 | 61.7 % | 24.3 % |
+| delta | **+0.4000** | | | |
+
+Paired McNemar `p = 8.43e-06` with 27 discordant questions improving and **3** regressing
+(`0a995998`, `gpt4_59c863d7`, `e831120c`) — the transitions block reads `recovered 23, corrected 4,
+declined 0, missed 3`. Per capability: IE 76.9, MR 44.4, KU 75.0, TR 87.5, ABS 100.
+
+None of these is comparable to the anchor `0.8390` (§13.223): that number is 500 questions on
+`deepseek-chat`, this is the first 60 questions on `glm-4.6` with `thinking: disabled`. MR is 4 of 9
+here, so its 44.4 % carries a ±16-point interval on its own. The only thing this run can be compared
+to is another 60-question run on the same 60 questions — which is what requirement #12 needs, and
+which has not been dispatched yet (§13.229.5).
+
+### 13.229.3 The gate's first live catch, in its own words
+
+```
+  same         19 field(s)
+    UNDECLARED  reader.model: "deepseek-chat" (registered) -> "glm-4.6" (ran)
+  verdict: 1 field(s) departed from the registration and 1 was not declared: ['reader.model']
+  the run is an experiment that has not said so. §10.3 describes the adopted configuration, so this
+  artifact cannot be quoted as the arm without naming each departure beside it (§13.202.6)
+```
+
+§13.220.5 built that step because `41431790794` had produced a reading nobody could attribute. Its
+first live catch is a run that a person would have quoted: 0.7667, both arms present, no refusals, a
+strong paired p-value. The gate refused to let it be called the arm **without a declaration**, which
+is exactly the distinction that separates a measurement from a claim.
+
+### 13.229.4 A check whose input is a human's memory
+
+The gate was right and useless. It compares against `CORTEX_DECLARED_DEPARTURES`, a repository
+variable somebody has to remember to set — and the person dispatching an experiment is the least
+likely person to remember that the experiment is an experiment. That is `§13.220`'s own defect one
+level up: *a check outside the pipeline has its invocation decided by a human, and the point of the
+pipeline is to remove the human's decision.*
+
+So the declaration moved into the dispatcher, which is the only process that knows for certain which
+inputs it moved:
+
+| property | why it is the property |
+| --- | --- |
+| `departures(inputs)` compares against `INPUTS`, not against a previous dispatch | the table is the registration; a chain of diffs would drift |
+| an input set to its registered value is **not** a departure | otherwise the list describes an intention rather than what ran |
+| the list is **always** written, including empty | a registered dispatch must clear the last experiment's declaration, or that declaration would excuse a run that never made it |
+| written **before** the dispatch | the workflow reads the variable when the job starts; written after, it would describe the next run |
+| create-vs-update decided by a listing, not by a 404 | `req` exits the process on a non-transient status, and a missing variable is not an error here |
+
+8 tests, and two mutations that both bite: deleting the `declare_departures` call loses the ordering
+assertion, and widening `departures` to `sorted(inputs)` loses five — the registered-configuration
+control first among them.
+
+### 13.229.5 Requirement #12's ledger, after a smoke that completed
+
+| §13.226.3 step | acceptance | state |
+| --- | --- | --- |
+| 1 minimum interval shared by all workers | two requests never start closer than the interval | **met** (§13.227) |
+| 2 a budget the deployment can widen, recorded in the artifact | a dispatch names it; the artifact carries it | **met** (§13.228) |
+| 3 a 60-question glm smoke that **completes** | both sides present, run survived | **met** — 60/60 both arms, 237/237 clean, 24 min 34 s |
+| 3b `rateLimited` **non-zero** as the acceptance wrote it | a refusal observed | **not met, and it should not be**: zero refusals is the gate working. §13.227.7's falsification was "zero refusals *and* nine minutes for three requests' worth of work", and 120 answers in 24 minutes is not that |
+| 4 the 500-question run | one departure (the model) | blocked on 3b's replacement: the interval has headroom |
+| 5 the paired 60-question `deepseek-chat` control | the same 60 questions, the registered model | **not dispatched** — it contends with `41546569106` for one provider's window |
+
+The acceptance in step 3b was written before there was a gate, and it encoded the wrong thing: a
+smoke that completes *with* refusals proves the ladder works, and a smoke that completes *without*
+them proves the rate does. Both are measurements; only the second is the one the gate exists for. The
+row is kept rather than edited, because a registration whose criteria are rewritten after the result
+is not a registration.
+
+### 13.229.6 What the 24 minutes actually say about the interval
+
+120 answers in 24 min 34 s is 4.9 questions per minute — 3.5× the 1.41/min the provider sustained
+while refusing half the traffic, at a stated ceiling of 10 requests/minute. So 6000 ms was
+**conservative**, as §13.227.7 said it would be, and the falsification condition in that section
+(a completed smoke whose refusals are zero *because the interval was set from a rate nobody
+measured*) does not fire: the interval was set from a measured rate and it was set too low a
+ceiling, which is the safe direction.
+
+The next interval is a real experiment with a cost that is now measurable: cutting to 3000 ms halves
+the ceiling and, at this workload, roughly halves the wall clock. It is **not** dispatched this round
+because a 24-minute smoke that completed is worth more than a 12-minute one that has to be explained;
+the ledger is stated so the next dispatch can price it.

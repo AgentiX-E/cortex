@@ -13,6 +13,8 @@ import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds } from './rerank-factory.js';
 import type { TransportRetryReport } from './retrieval-diagnostics.js';
+import { passShapeLines, passShapeReport, type PassShape } from './pass-shape.js';
+import type { ReaderPacing } from './reader-transport.js';
 import type { EndpointCheck, ReaderProviderId } from './reader-provider.js';
 import { bothSides, residualUsage, type UsageBySide } from './usage-by-side.js';
 import { dominantFlow } from './answer-transition.js';
@@ -252,6 +254,14 @@ export type AblationReport = {
    * make. Absence means the artifact predates the field.
    */
   transportRetry?: TransportRetryReport | undefined;
+  /**
+   * How much concurrency, how fast, and how long a call could keep trying.
+   *
+   * Absent on every artifact written before §13.227, and on the reference-pipeline entry, which
+   * never resolved a pace. Present on the A/B arm from §13.228 onwards -- see `pass-shape.ts` for
+   * why the three values are not in `memoryArmConfig`.
+   */
+  passShape?: PassShape | undefined;
   /**
    * How many times each question was asked, as the report's own record of it.
    *
@@ -1055,6 +1065,14 @@ export type AblationReportOptions = {
    * its artifacts were produced by.
    */
   pool?: AblationPool | undefined;
+  /**
+   * What the entry point read about the reader's transport, recorded rather than re-derived.
+   *
+   * Passed by the entry point instead of read here for the reason every option in this type is
+   * passed: this module never sees a `process.env`, and a second parse of the same variables is a
+   * second answer to "what pace did this run run at".
+   */
+  readerPacing?: ReaderPacing | undefined;
   scorer?: AnswerScorer;
   featureConfig?: FeatureConfig;
   /**
@@ -1129,6 +1147,17 @@ export async function runAblationReport(
     ...(options.questions === undefined ? {} : { questions: options.questions }),
     ...(options.memoryArmConfig === undefined ? {} : { memoryArmConfig: options.memoryArmConfig }),
     ...(options.runs === undefined ? {} : { runs: options.runs }),
+    // The width comes from the pool rather than from a second option: the pool IS the concurrency,
+    // and a caller that named one and not the other would leave the block describing a run that
+    // did not happen.
+    ...(options.readerPacing === undefined
+      ? {}
+      : {
+          passShape: passShapeReport({
+            workers: options.pool?.workers ?? 1,
+            pacing: options.readerPacing,
+          }),
+        }),
   };
 }
 
@@ -1542,6 +1571,13 @@ export function formatAblationReport(report: AblationReport): string {
   // tokens and is far more expensive in wall clock, and only this section can say so.
   if (report.transportRetry !== undefined) {
     lines.push(...transportRetryLines(report.transportRetry));
+  }
+  // Beside the transport counters and for the same reason: the counters say what the provider did
+  // to this run, and this says what the run was doing to the provider. Neither is an arm property,
+  // and a reader with only one of them cannot tell "slow because throttled" from "slow because
+  // paced", which are opposite next dispatches.
+  if (report.passShape !== undefined) {
+    lines.push(...passShapeLines(report.passShape));
   }
   // The census also goes BELOW the results, for the `retryFires` reason: it
   // explains a delta's attribution rather than changing what the delta means, so

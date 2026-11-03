@@ -142,6 +142,15 @@ export {
   type RetryFireCounts,
 } from './report.js';
 export {
+  // §13.228: the pass shape. The type is exported because `AblationReport.passShape` is a public
+  // field, and the two functions because a second renderer of the same block would otherwise
+  // restate the "None of the three is part of the arm" sentence -- the claim a reader needs in
+  // order not to read the width as an arm change.
+  passShapeLines,
+  passShapeReport,
+  type PassShape,
+} from './pass-shape.js';
+export {
   runEmbeddingBenchmark,
   runNaturalLanguageBenchmark,
   runMrAggregationAblation,

@@ -83,6 +83,7 @@ import {
   type FeatureConfig,
 } from './report.js';
 import type { AblationPool } from './ablation.js';
+import type { ReaderPacing } from './reader-transport.js';
 import { transportRetryReport } from './retrieval-diagnostics.js';
 import { traceUsage, zeroUsage, type UsageSide } from './usage-by-side.js';
 import { mirrorMembers } from './system-mirror.js';
@@ -2174,6 +2175,14 @@ export type CortexMemoryArmRunOptions = {
    * changes nothing about a run that does not name it.
    */
   pool?: AblationPool | undefined;
+  /**
+   * What the entry point read about the reader's transport (§13.227), recorded in the artifact.
+   *
+   * Forwarded rather than read here for the reason `pool` is: this module has no environment, and
+   * the entry point that DID read the variables is the only thing that can say what the client ran
+   * at. Absent means the caller resolved no pace, which is every reference-pipeline invocation.
+   */
+  readerPacing?: ReaderPacing | undefined;
   /** Fixed timestamp, so a report is reproducible. */
   generatedAt?: string;
   /**
@@ -2530,6 +2539,7 @@ export async function runCortexMemoryArm(
     {
       ...(options.runs === undefined ? {} : { runs: options.runs }),
       ...(options.alpha === undefined ? {} : { alpha: options.alpha }),
+      ...(options.readerPacing === undefined ? {} : { readerPacing: options.readerPacing }),
       ...(options.scorer === undefined ? {} : { scorer: options.scorer }),
       // Stamped inside `runAblationReport`, after the ablation returns -- never here.
       //
