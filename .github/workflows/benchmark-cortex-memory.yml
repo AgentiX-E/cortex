@@ -194,6 +194,18 @@ env:
   CORTEX_MEMORY_RERANK_MAX_DOCUMENTS: '128'
   CORTEX_MEMORY_RERANK_MAX_DOCUMENT_CHARS: '4096'
   RERANK_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+  # §13.227's two transport variables, read from repository variables rather than from the
+  # dispatch inputs: the input list sits one below GitHub's 25-input ceiling, and neither of these
+  # is a treatment -- they are the pipe, not the arm (§14.22). An unset repository variable
+  # interpolates to the empty string, which `readReaderPacing` reads as unset rather than as zero;
+  # that rule exists because `Number('')` is `0` and would have turned "not configured" into
+  # "pacing disabled" without a word.
+  #
+  # The first provider needs neither: `41553176719` and `41552258320` are the two smokes that died
+  # at 55 of 60 on the second one, at 1.41 questions per minute and 140 refusals in 279 requests,
+  # with `retryAfterHonoured: 0` -- a proud rate and no instruction to wait.
+  CORTEX_LLM_MIN_INTERVAL_MS: ${{ vars.CORTEX_LLM_MIN_INTERVAL_MS }}
+  CORTEX_LLM_RETRY_BUDGET_MS: ${{ vars.CORTEX_LLM_RETRY_BUDGET_MS }}
 
 jobs:
   cortex-memory-ablation:

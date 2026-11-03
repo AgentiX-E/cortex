@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeAll } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import {
   buildChatBody,
@@ -328,10 +328,23 @@ describe('OpenAICompatibleLLM (real local server)', () => {
       }) as unknown as typeof fetch,
     });
 
-    const message = await llm.complete('hi').then(
-      () => 'resolved',
-      (error: unknown) => (error as Error).message,
-    );
+    // The clock is faked for the reason the assertion below is exact: the budget is measured from
+    // the first attempt, so a real clock makes "how much was left" depend on how long the first
+    // attempt took -- which under coverage instrumentation was enough to spend the 80 ms twice
+    // over and leave one request where this test expects two. The behaviour under test is the
+    // truncation arithmetic, not the runner's speed, so the clock is the one thing to control.
+    vi.useFakeTimers();
+    let message: string;
+    try {
+      const pending = llm.complete('hi').then(
+        () => 'resolved',
+        (error: unknown) => (error as Error).message,
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      message = await pending;
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(issued).toBe(2);
     expect(message).toContain('not retried (budget-exhausted)');
@@ -497,5 +510,75 @@ describe('TransformersEmbedding', () => {
     const vectors = await emb.embed(['b']);
     expect(attempts).toBe(2);
     expect(vectors[0]![0]).toBeCloseTo(1, 12);
+  });
+});
+
+/**
+ * The adapter's own seam for pacing.
+ *
+ * `retry.test.ts` proves the ladder honours a pacer. This proves the adapter *supplies* one from
+ * the option, which is the half a wiring defect lives in: `41393748964` is a run where a branch was
+ * built, tested and never reached because nothing set the field on the way in.
+ */
+describe('a paced reader spaces consecutive requests', () => {
+  /** Answers 200 with one message, recording when each request started. */
+  function timestampingFetch(): { fetchFn: typeof fetch; times: () => number[] } {
+    const times: number[] = [];
+    const fetchFn = (async () => {
+      times.push(Date.now());
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+    return { fetchFn, times: () => times };
+  }
+
+  it('waits at least the interval before the second request', async () => {
+    // 37 ms rather than a round number, and no other test uses it: `sharedRequestGate` is
+    // process-wide, so a shared interval would make two tests consume each other's slots and this
+    // assertion would pass on the wrong grounds.
+    const { fetchFn, times } = timestampingFetch();
+    const llm = new OpenAICompatibleLLM({
+      baseUrl: 'http://x',
+      apiKey: 'k',
+      model: 'm',
+      fetchFn,
+      minIntervalMs: 37,
+    });
+    await llm.complete('a');
+    await llm.complete('b');
+    const gap = times()[1]! - times()[0]!;
+    // A floor, not an equality: the point is that the second request did not leave at once, and an
+    // exact assertion would be an assertion about the scheduler.
+    expect(gap).toBeGreaterThanOrEqual(30);
+  });
+
+  it('does not wait when the interval is zero', async () => {
+    const { fetchFn, times } = timestampingFetch();
+    const llm = new OpenAICompatibleLLM({
+      baseUrl: 'http://x',
+      apiKey: 'k',
+      model: 'm',
+      fetchFn,
+      minIntervalMs: 0,
+    });
+    await llm.complete('a');
+    await llm.complete('b');
+    expect(times()[1]! - times()[0]!).toBeLessThan(30);
+  });
+
+  it('refuses a negative interval where it is written, not on the first call', async () => {
+    // Construction rather than first request: a run that is misconfigured should fail before it
+    // spends forty minutes and then dies at question 55, which is what `41553176719` did.
+    expect(
+      () =>
+        new OpenAICompatibleLLM({
+          baseUrl: 'http://x',
+          apiKey: 'k',
+          model: 'm',
+          minIntervalMs: -5,
+        }),
+    ).toThrow(/positive/);
   });
 });

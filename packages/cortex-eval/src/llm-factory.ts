@@ -15,11 +15,7 @@
  * appears, not in advance of one.
 */
 import type { LLM } from '@agentix-e/cortex-core';
-import {
-  DEFAULT_RETRY_BUDGET_MS,
-  OpenAICompatibleLLM,
-  type ThinkingMode,
-} from '@agentix-e/cortex-ai';
+import { OpenAICompatibleLLM, type ThinkingMode } from '@agentix-e/cortex-ai';
 
 import {
   resolveReaderProvider,
@@ -28,6 +24,7 @@ import {
   type ReaderProviderId,
 } from './reader-provider.js';
 import { readTemperature, withTemperature } from './reader-temperature.js';
+import { readReaderPacing, resolveReaderTransport, type ReaderPacing } from './reader-transport.js';
 import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
 
 /**
@@ -39,9 +36,6 @@ import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
  * this module -- while the source graph stays acyclic (`llm-factory` → `reader-provider`).
  */
 export type { LlmEnv };
-
-/** Per-attempt deadline for thinking-mode calls; reasoning takes far longer. */
-const THINKING_TIMEOUT_MS = 300_000;
 
 /** The variable `thinking` arrives in. Named once, because four messages state it. */
 const THINKING_VARIABLE = 'DEEPSEEK_THINKING';
@@ -148,40 +142,6 @@ export function readThinkingReach(raw: string | undefined): ThinkingReach {
     seen.add(name);
   }
   return { mode: 'enabled', routes: named };
-}
-
-/**
- * Per-attempt request deadline for the given thinking mode. Thinking mode
- * reasons before answering, so a single call over a large retrieved context can
- * take 30-120s and blows past the adapter's 60s non-thinking default; give it a
- * 5-minute deadline instead. Non-thinking keeps the adapter default (undefined).
- */
-export function resolveTimeoutMs(thinking: ThinkingMode): number | undefined {
-  return thinking.type === 'enabled' ? THINKING_TIMEOUT_MS : undefined;
-}
-
-/**
- * Retry allowance for the given thinking mode, or `undefined` to keep the adapter's default.
- *
- * ## Why thinking mode cannot use the default budget
- *
- * The retry budget is measured from the first attempt, so a per-attempt deadline longer than
- * the budget means **the ladder can never make its first retry**: a single full-length attempt
- * spends the whole allowance. Thinking mode's deadline is 300 s and the adapter's default
- * budget is 120 s, so that is not a hypothetical -- run `41393748964` ran this exact pair and
- * the consequence was recorded as `LLM request failed: 429` on a stalled attempt, because the
- * pre-fix code invented a status when it declined to retry.
- *
- * The allowance is therefore stated as *one full-length attempt plus the standard budget*: the
- * attempt itself may consume its own deadline, and what remains is exactly the window the
- * non-thinking path gets. Because the budget only gates retries and never interrupts one, this
- * bounds the sequence at two attempts -- 300 s then up to 300 s -- rather than at nine.
- *
- * Non-thinking keeps `undefined` rather than repeating 120 s here: the adapter's default is the
- * single place that number lives, and a second copy is a second thing to keep in step.
- */
-export function resolveRetryBudgetMs(thinking: ThinkingMode): number | undefined {
-  return thinking.type === 'enabled' ? THINKING_TIMEOUT_MS + DEFAULT_RETRY_BUDGET_MS : undefined;
 }
 
 /**
@@ -297,17 +257,18 @@ function buildReader(
   identity: ReturnType<typeof resolveReaderIdentity>,
   apiKey: string,
   mode: 'enabled' | 'disabled',
+  pacing: ReaderPacing,
 ): LLM {
   const thinking: ThinkingMode = { type: mode };
-  const timeoutMs = resolveTimeoutMs(thinking);
-  const retryBudgetMs = resolveRetryBudgetMs(thinking);
   const llm = new OpenAICompatibleLLM({
     baseUrl: identity.baseUrl,
     apiKey,
     model: identity.model,
     thinking,
-    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    ...(retryBudgetMs !== undefined ? { retryBudgetMs } : {}),
+    // Composed rather than assembled here: the deadline, the budget and the interval have a
+    // relationship (`resolveReaderTransport` states and tests it), and three spreads at the call
+    // site would put that relationship one refactor away from being nobody's job.
+    ...resolveReaderTransport(thinking, pacing),
   });
   // Wrapped only when the environment asks for a temperature. The absent path stays absent on
   // purpose: §13.114 records that every reading before §13.119 was taken with no temperature in
@@ -336,7 +297,7 @@ export function createLlmFromEnv(env: LlmEnv): LLM {
         'second one -- the shape `CortexMemoryOptions.readerByRoute` accepts.',
     );
   }
-  return buildReader(identity, apiKey, identity.thinking);
+  return buildReader(identity, apiKey, identity.thinking, readReaderPacing(env));
 }
 
 /**
@@ -362,9 +323,15 @@ export function createReadersFromEnv(env: LlmEnv): {
   const provider = resolveReaderProvider(env);
   const apiKey = requireKey(env, provider);
   const identity = describeReader(env, provider);
+  // Read once: both readers of a scoped pair share one transport, and two reads would be two
+  // chances for one of them to be built at a different pace than the other.
+  const pacing = readReaderPacing(env);
   const routes = identity.thinkingRoutes;
   if (routes === undefined) {
-    return { llm: buildReader(identity, apiKey, identity.thinking), readerByRoute: undefined };
+    return {
+      llm: buildReader(identity, apiKey, identity.thinking, pacing),
+      readerByRoute: undefined,
+    };
   }
   // One client for every named route, not one per route: two clients would be two connection pools
   // and two usage counters for one treatment, and the artifact's usage block would be a sum of
@@ -372,8 +339,8 @@ export function createReadersFromEnv(env: LlmEnv): {
   //
   // `identity.thinking` is the mode the named routes run under -- the parser only ever produces
   // `enabled` alongside a list, because the grammar has no form for the other direction.
-  const scoped = buildReader(identity, apiKey, identity.thinking);
+  const scoped = buildReader(identity, apiKey, identity.thinking, pacing);
   const readerByRoute: Record<string, LLM> = {};
   for (const route of routes) readerByRoute[route] = scoped;
-  return { llm: buildReader(identity, apiKey, 'disabled'), readerByRoute };
+  return { llm: buildReader(identity, apiKey, 'disabled', pacing), readerByRoute };
 }

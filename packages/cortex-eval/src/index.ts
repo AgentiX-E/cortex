@@ -382,6 +382,13 @@ export {
   type ThinkingReach,
 } from './llm-factory.js';
 export {
+  // §13.227's transport variables. Exported because the gate line a run prints is the only place
+  // the pace is stated, and `bench/run-ablation.ts` has to read it through the same function the
+  // reader factory uses -- a second parser is a second answer to "what pace did this run run at".
+  readReaderPacing,
+  type ReaderPacing,
+} from './reader-transport.js';
+export {
   // §13.212: the provider axis. `readModelSelection` is exported because `rerank-factory` reads the
   // same `DEEPSEEK_MODEL` value for a different purpose and has to strip the provider prefix the
   // same way; `resolveReaderProvider` is the resolution the reader factories share. The provider

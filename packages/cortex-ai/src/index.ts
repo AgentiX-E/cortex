@@ -86,3 +86,10 @@ export {
   type RetryStatsSnapshot,
   type RetryExhaustion,
 } from './retry.js';
+/**
+ * Pacing, exported because the schedule is a property of the DEPLOYMENT rather than of this
+ * package: a service embedding these adapters may have to share one gate between its reader, its
+ * embedder and its reranker, and it cannot share an object it cannot name. `sharedRequestGate` is
+ * also the only way for a second adapter instance to join the schedule the first one created.
+ */
+export { sharedRequestGate, type RequestPacer } from './pacing.js';

@@ -24,6 +24,8 @@
  * read for every retryable status, not only 429, because 503 carries it too.
  */
 
+import type { RequestPacer } from './pacing.js';
+
 /** Whether an HTTP status should be retried (rate limit or transient server error). */
 export function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
@@ -201,6 +203,20 @@ export type RetryOptions = {
    * negative number to disable the ceiling entirely.
    */
   retryBudgetMs?: number | undefined;
+  /**
+   * A schedule the attempt must wait for before it is issued.
+   *
+   * Absent by default, and absent is load-bearing: every archived artifact was taken without
+   * pacing, so a default that paced would make old and new readings differ by a variable no
+   * registration names. {@link RequestPacer} and `sharedRequestGate` are a structural type and a
+   * process-wide registry rather than a number, because the sharing has to be the default: the
+   * arms of an A/B are built by different factories and the workers by another, and a per-caller
+   * schedule sends N times the configured rate while every artifact still says it was paced.
+   *
+   * The pacer's wait is **not** charged to `retryBudgetMs`. See the note at the pacing site in
+   * {@link retryableFetchWithStats}.
+   */
+  pacer?: RequestPacer | undefined;
 };
 
 /**
@@ -612,6 +628,16 @@ export async function retryableFetchWithStats(
   // without a second boolean whose interaction with the number would need its
   // own rules.
   const budgetEnforced = retryBudgetMs >= 0;
+  // The schedule, when the deployment has one. Consulted before every attempt including the
+  // first: a gate on the retry path only would police the aftermath of a burst and not the
+  // burst, which is the traffic that gets throttled.
+  const pacer = options.pacer;
+  // Milliseconds spent waiting for a slot. Held separately from the budget because the two
+  // waits are different decisions with different owners: the backoff is the ladder's own
+  // estimate of when to try again, and the pace is the deployment's statement about how
+  // fast this client may emit. Charging the second to the first would report
+  // `budget-exhausted` for a ladder the pacer never let run.
+  let pacedMs = 0;
   // Captured before the first attempt so the budget is measured from the start
   // of the sequence. Measuring from the first retry would let a slow initial
   // attempt (up to `timeoutMs`) be spent outside the budget entirely.
@@ -634,7 +660,7 @@ export async function retryableFetchWithStats(
       // What is left of the budget, read fresh at every retry: the ceiling is measured
       // from the first attempt, and every attempt before this one has spent some of it.
       const remaining = budgetEnforced
-        ? retryBudgetMs - (Date.now() - sequenceStart)
+        ? retryBudgetMs + pacedMs - (Date.now() - sequenceStart)
         : Number.POSITIVE_INFINITY;
       let waitMs = fromHeader ?? computed;
       if (waitMs > remaining) {
@@ -708,6 +734,26 @@ export async function retryableFetchWithStats(
       }
       await sleep(waitMs);
     }
+    // ## The pacer holds for every attempt, and its wait is not the ladder's spend
+    //
+    // Placed here rather than wrapped around the whole call so that a retry is paced too: the
+    // provider's window closes on the RATE of requests, and a retry is a request. Placed after
+    // the backoff decision so the two waits add rather than compete -- a client that paced
+    // instead of backing off would retry inside the window the refusal just named.
+    //
+    // `pacedMs` is added back into `remaining` above for a reason with a run behind it:
+    // `41553176719` ended on `not retried (budget-exhausted) after 8 attempt(s) and 0 s was left`
+    // against a provider that publishes no `Retry-After`, at 1.41 questions per minute. A gate
+    // installed without this line would have spent the 120 s budget on the pacer and reported the
+    // same reason code for a ladder that had not been tried -- the fix would have looked
+    // installed and measured as a regression.
+    if (pacer !== undefined) {
+      const pacedWaitMs = pacer.reserve();
+      if (pacedWaitMs > 0) {
+        await sleep(pacedWaitMs);
+        pacedMs += pacedWaitMs;
+      }
+    }
     const signal = attemptSignal(init.signal, timeoutMs);
     let res: Response;
     try {
@@ -753,7 +799,7 @@ export async function retryableFetchWithStats(
         retried: stats.retried,
         retryAfterMs: retryAfterMs(res),
         remainingMs: budgetEnforced
-          ? Math.max(0, retryBudgetMs - (Date.now() - sequenceStart))
+          ? Math.max(0, retryBudgetMs + pacedMs - (Date.now() - sequenceStart))
           : null,
       });
     }

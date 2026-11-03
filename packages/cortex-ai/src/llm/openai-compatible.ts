@@ -4,6 +4,7 @@
  */
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { parseJson } from '../json.js';
+import { sharedRequestGate, type RequestPacer } from '../pacing.js';
 import { retryableFetchWithStats, type RetryRefusal } from '../retry.js';
 import { parseUsage, recordUsage } from '../usage.js';
 
@@ -32,6 +33,20 @@ export type OpenAICompatibleLLMOptions = {
   /** Per-attempt request deadline in milliseconds; default 60000. */
   timeoutMs?: number;
   /**
+   * Minimum wall-clock gap between two request starts, in milliseconds.
+   *
+   * Absent means no pacing, which is what every reading before §13.227 was taken at and is why the
+   * default is absent rather than a number. `0` also means off, because that is what an environment
+   * variable says when the operator has decided there is no limit to respect; a negative value is
+   * refused at construction.
+   *
+   * Resolved in the constructor rather than at each request so a misconfiguration fails where it
+   * was written instead of on the first call of a forty-minute run, and so the gate is looked up
+   * exactly once: `sharedRequestGate` is what makes two adapters built by two factories share one
+   * schedule, and a per-request lookup would be a per-request chance to build a second one.
+   */
+  minIntervalMs?: number;
+  /**
    * DeepSeek thinking-mode toggle. `deepseek-v4-pro` enables thinking by
    * default with effort=high, which makes even short answers reason for tens of
    * seconds (or minutes on a large retrieved context) and can blow past
@@ -42,9 +57,14 @@ export type OpenAICompatibleLLMOptions = {
 
 export class OpenAICompatibleLLM implements LLM {
   private readonly options: OpenAICompatibleLLMOptions;
+  private readonly pacer: RequestPacer | undefined;
 
   constructor(options: OpenAICompatibleLLMOptions) {
     this.options = options;
+    // `sharedRequestGate` and not `new RequestGate`: the process-wide registry is what keeps the
+    // baseline arm, the feature arm and every worker on one schedule. See `pacing.ts`.
+    this.pacer =
+      options.minIntervalMs === undefined ? undefined : sharedRequestGate(options.minIntervalMs);
   }
 
   async complete(prompt: string, opts: CompleteOptions = {}): Promise<string> {
@@ -96,6 +116,7 @@ export class OpenAICompatibleLLM implements LLM {
         baseDelayMs: this.options.retryBaseDelayMs,
         timeoutMs: this.options.timeoutMs,
         retryBudgetMs: this.options.retryBudgetMs,
+        pacer: this.pacer,
       },
     );
     const res = outcome.response;

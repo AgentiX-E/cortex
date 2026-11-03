@@ -25404,3 +25404,132 @@ naming the refusal counter's own meaning ("without a retry"). A test asserts the
 *Falsified by:* a completed artifact whose `retriedCalls` includes a call the error log names as
 refused. That would mean the partition and the error path disagree about the same call, which is a
 different and worse defect than the wording.
+
+## 13.227 The client could wait but it could not slow down
+
+§13.226 ended with a table of four steps and called steps 1 and 2 "the same defect seen twice: this
+client can only wait as long as it was compiled to wait, and it cannot slow down." This section is
+the code that answers both, the guard that had to come with the second, and the three things the
+repository's own gates changed about how it is built.
+
+### 13.227.1 A rate is not a window
+
+The two smokes died with `retryAfterHonoured: 0`. Every retry was the client's own exponential
+backoff — 1, 2, 4, 8 seconds — aimed at a bucket whose refill rate the provider never published. What
+the provider *did* publish was arithmetic: 140 refusals in 279 requests, and 1.41 questions per minute,
+which is about one request every 42 seconds once the provider had slowed down.
+
+A retry ladder cannot answer that. `retryBudgetMs` bounds what happens **after** a rejection, so a run
+that is rejected on half its traffic can spend it and lose, and a run that is never rejected cannot
+spend it at all. What was missing was a floor on the rate requests **leave**, which is a different
+quantity from a ceiling on how long we wait between them, and the repository had it for exactly one
+endpoint: `EMBEDDING_BATCH_INTERVAL_MS`.
+
+### 13.227.2 A gate, not a delay — and why it is process-wide by default
+
+`await sleep(interval)` before each request is only correct when requests are serial. The pool runs
+`CORTEX_MEMORY_WORKERS` readers (§13.224), so a delay carried by each of them still lets four requests
+leave in the first four seconds. `RequestGate` hands out **slots** from one schedule instead:
+
+| width | requests emitted in the first interval | rate the provider sees |
+| ---: | ---: | ---: |
+| 1 | 1 | 1 / interval |
+| 4 | 4 | 1 / interval, spaced |
+
+The reservation is `max(now, nextSlotAt)` and it is synchronous, so two callers in the same tick
+cannot read the same slot. Idle time is forgiveness rather than credit: a process quiet for an hour
+does not come back owing a thousand slots, which the third test asserts by advancing the clock fifty
+intervals and expecting a wait of zero followed by one interval.
+
+The schedule is reached through `sharedRequestGate(intervalMs)`, a registry keyed by the interval,
+rather than through a constructor at each call site — and that is the whole point. The two arms of an
+A/B are built by different factories and the workers by a third; every one of them would have to be
+handed the same object, and the day one is built without it the run goes out at N times the rate the
+artifact claims. A registry makes the default correct and the mistake unavailable. This is the same
+argument `recordUsage` makes one layer over: one hop every request passes through, rather than N call
+sites that each have to get it right.
+
+### 13.227.3 The pacer's wait is not the ladder's spend
+
+Installing the gate without this paragraph would have reproduced `41553176719` more slowly. The
+budget is measured on the same clock the pacing is, so with a 45-second interval against a 120-second
+budget the pacer spends the allowance and the ladder then reports `budget-exhausted` for retries it
+never attempted — the fix would read as installed and measure as a regression.
+
+The two waits therefore have different owners and separate accounting:
+
+| wait | whose decision | charged to the budget |
+| --- | --- | --- |
+| `Retry-After` / exponential backoff | the ladder's estimate of when to try again | yes |
+| the gate's slot | the deployment's statement of how fast it may emit | **no** |
+
+`pacedMs` accumulates the second and is added back into `remaining`. The test that pins it uses a 200 ms
+budget, a 1000 ms interval and four attempts: a ladder that charged pacing refuses at the first retry
+(**1** request issued), and the implemented one makes all four and ends on `attempts-exhausted` — the
+count, not the budget, which is the distinction `RetryRefusal` exists to keep.
+
+### 13.227.4 The guard that had to come with the knob
+
+`CORTEX_LLM_RETRY_BUDGET_MS` can be set to a value that makes the ladder unreachable, because the
+budget is measured from the first attempt: a budget at or below the per-attempt deadline is spent by
+one slow request. Run `41393748964` is the recorded instance of that pair arriving by accident — a
+300 s thinking deadline against the 120 s default — and it cost an afternoon and a fabricated `429`.
+
+`resolveReaderTransport` now refuses the pair a deployment can choose, names the floor, and exempts
+`0` because "no retries" is a decision rather than an unreachable ladder:
+
+```
+CORTEX_LLM_RETRY_BUDGET_MS=30000 must be greater than the 60000 ms per-attempt deadline, or the first
+slow attempt spends the whole allowance and no retry is possible. Raise it, leave it unset to keep
+the default, or set it to 0 to ask for no retries at all.
+```
+
+### 13.227.5 Three things the repository changed about the implementation
+
+The census and the source-anchored export test are gates that fail on their own terms, and all three
+of their complaints were about *structure* rather than about behaviour:
+
+1. `RequestGate` as an exported class was an orphan — nothing outside `pacing.ts` builds one by hand,
+   and the registry is the only door a consumer walks through. It is now module-private, and the tests
+   reach it through `sharedRequestGate` with an interval unique to each test, which is a better test
+   than the one it replaced: it exercises the surface a caller actually has.
+2. `resolveReaderTransport` and its return type had no non-test caller where they were written. They
+   moved to `reader-transport.ts`, together with `THINKING_TIMEOUT_MS` and the two functions that read
+   it, and `llm-factory` became their caller. The gate was right about the placement: a module named
+   for the reader's identity was hosting three decisions about the wire.
+3. The return type stays module-private. It is documented because a caller spreading it needs to know
+   what may appear in it, not because anyone will name it.
+
+Nothing in the above changed a single assertion; the tests failed on the census, not on behaviour, and
+that is the finding.
+
+### 13.227.6 What is met, and what is not
+
+| §13.226.3 step | acceptance | state |
+| --- | --- | --- |
+| 1, a minimum interval shared by all workers | two requests never start closer than the interval; fake clock | **met** — 9 tests in `pacing.test.ts`, 4 in `retry.test.ts`, 3 in `llm.test.ts`, 14 in `reader-transport.test.ts` |
+| 2, a budget the deployment can widen | a dispatch can name it; the artifact records it | **half met** — the dispatch names it (repository variable, read by `readReaderPacing`) and the run states it on the gate line; the artifact does **not** yet carry it |
+| 3, a 60-question glm smoke that **completes** | both sides present, `rateLimited` non-zero, run survived | **not yet dispatched** |
+| 4, the 500-question run | one departure (the model) | blocked on 3 |
+
+The gap in step 2 is recorded rather than papered over: `memoryArmConfig` is the registration's field
+set and adding a key to it would be a departure, so the pace has to go in its own block beside
+`transportRetry` — and that block is the next round's first item, together with the width, which
+§13.224 left in the log for the same reason. A log line expires; an artifact does not.
+
+### 13.227.7 The dispatch that follows
+
+| # | setting | value | why |
+| --- | --- | --- | --- |
+| 1 | `CORTEX_LLM_MIN_INTERVAL_MS` | `6000` | 10 requests/minute, below the 1.41 questions/minute the provider was sustaining with 50% refusals |
+| 2 | `CORTEX_LLM_RETRY_BUDGET_MS` | unset | the default 120 s is now reachable because the gate, not the ladder, does the waiting |
+| 3 | `workers` | `4` | the gate makes the width safe, which is the claim §13.224 could not make on its own |
+| 4 | `limit` | `60` | the smoke §13.226.3 asked for |
+
+*Falsified by:* a completed smoke whose `rateLimited` is **zero** while its wall clock is nine minutes
+or more for three requests' worth of work — that would mean the gate is waiting without the provider
+ever having refused, i.e. the interval was set from a rate nobody measured.
+
+*Falsified by:* an artifact from that dispatch whose gate line names `minIntervalMs=6000` and whose
+`attempts` imply a request every 42 seconds anyway — that would mean the gate is not on the path the
+reader takes, which is the wiring failure `41393748964` recorded once already.

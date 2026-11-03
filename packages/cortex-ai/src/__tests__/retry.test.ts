@@ -1534,3 +1534,126 @@ describe('a call that is answered and not retried is a refusal, not a clean call
     );
   });
 });
+
+/**
+ * Pacing sits in front of every attempt, and its wait is not the ladder's spend.
+ *
+ * ## Why the two claims are one describe block
+ *
+ * `41553176719` died with `not retried (budget-exhausted) after 8 attempt(s) and 0 s was left` on a
+ * provider that publishes no `Retry-After`. Installing a gate without the second half would have
+ * reproduced that death more slowly: the gate's wait is measured on the same clock the budget is,
+ * so a 45 s interval against a 120 s budget spends the allowance on the pacer and then reports
+ * `budget-exhausted` for a ladder that never ran. The pacing is the deployment's decision and the
+ * budget is the ladder's, so the pacer's time is added back.
+ */
+describe('a pacer spaces the attempts and is not charged to the retry budget', () => {
+  /** A pacer with a scripted answer, so these assertions never wait. */
+  function scriptedPacer(waits: readonly number[]): {
+    pacer: { reserve(now?: number): number };
+    calls: () => number;
+  } {
+    let calls = 0;
+    return {
+      pacer: {
+        reserve: () => {
+          const wait = waits[Math.min(calls, waits.length - 1)] ?? 0;
+          calls += 1;
+          return wait;
+        },
+      },
+      calls: () => calls,
+    };
+  }
+
+  it('asks the pacer before the first attempt, not only before the retries', async () => {
+    // A gate consulted only on the retry path would let a fresh process emit its whole width at
+    // once -- which is the traffic pattern that got throttled, and the gate would report itself as
+    // installed while doing nothing about it.
+    const { pacer, calls } = scriptedPacer([0]);
+    const seen: number[] = [];
+    await retryableFetchWithStats(
+      async () => {
+        seen.push(calls());
+        return new Response('{}', { status: 200 });
+      },
+      'http://x',
+      {},
+      { maxRetries: 2, baseDelayMs: 1, pacer },
+    );
+    // The single request was issued after exactly one reservation.
+    expect(seen).toEqual([1]);
+  });
+
+  it('asks the pacer again before every retry', async () => {
+    // Counted against `attempts`, not against `retried`: the gate has to hold for the first
+    // request too, and a number that only counted retries would pass for a ladder that burst its
+    // initial attempt at the provider and then paced the aftermath.
+    let calls = 0;
+    const { pacer, calls: reservations } = scriptedPacer([0]);
+    const res = await retryableFetch(
+      (async () => {
+        calls += 1;
+        return new Response('{}', { status: calls < 3 ? 503 : 200 });
+      }) as unknown as typeof fetch,
+      'http://x',
+      {},
+      { maxRetries: 2, baseDelayMs: 1, pacer },
+    );
+    expect(res.status).toBe(200);
+    expect(calls).toBe(3);
+    expect(reservations()).toBe(3);
+  });
+
+  it('survives a budget that the pacer alone would have exhausted', async () => {
+    // The assertion this block exists for. Budget 200 ms, interval 1000 ms, four attempts: a
+    // ladder that charged pacing to the budget refuses at the first retry (one request issued).
+    // One that forgives it makes all four. `41553176719` is the run that would have been recreated
+    // by the first behaviour, with a different reason code.
+    vi.useFakeTimers();
+    try {
+      const { pacer } = scriptedPacer([1_000]);
+      let calls = 0;
+      const fetchFn = (async () => {
+        calls += 1;
+        return new Response('{}', { status: 429 });
+      }) as unknown as typeof fetch;
+      // Not awaited before the clock advances: the ladder is sleeping, and awaiting it here would
+      // block the very timer that ends the sleep.
+      const pending = retryableFetchWithStats(
+        fetchFn,
+        'http://x',
+        {},
+        {
+          maxRetries: 3,
+          baseDelayMs: 1,
+          retryBudgetMs: 200,
+          pacer,
+        },
+      );
+      await vi.advanceTimersByTimeAsync(30_000);
+      const outcome = await pending;
+      expect(outcome.response.status).toBe(429);
+      expect(calls).toBe(4);
+      // And it ended on the count, not on the budget -- the distinction `RetryRefusal` keeps.
+      expect(outcome.refusal?.reason).toBe('attempts-exhausted');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('paces nothing when no pacer is given', async () => {
+    // The default has to stay absent rather than become a one-millisecond gate: every archived
+    // artifact was taken without pacing, and a default that paced would make old and new readings
+    // differ by a variable no registration names.
+    const started = Date.now();
+    const res = await retryableFetch(
+      (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch,
+      'http://x',
+      {},
+      { maxRetries: 2, baseDelayMs: 1 },
+    );
+    expect(res.status).toBe(200);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});

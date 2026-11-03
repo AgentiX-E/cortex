@@ -58,7 +58,7 @@ const DE_EXPORTED: ReadonlyArray<[pkg: string, file: string, name: string]> = [
   ['cortex-core', 'graph/memory-graph.ts', 'EdgeKind'],
   ['cortex-core', 'graph/memory-graph.ts', 'EdgeAttributes'],
   ['cortex-eval', 'judge.ts', 'JudgeQuestionType'],
-  ['cortex-eval', 'llm-factory.ts', 'THINKING_TIMEOUT_MS'],
+  ['cortex-eval', 'reader-transport.ts', 'THINKING_TIMEOUT_MS'],
   ['cortex-eval', 'rerank-factory.ts', 'DEFAULT_LOCAL_RERANK_MODEL'],
   ['cortex-eval', 'rerank-factory.ts', 'DEFAULT_LLM_RERANK_BASE_URL'],
   ['cortex-eval', 'rerank-factory.ts', 'DEFAULT_LLM_RERANK_MODEL'],
@@ -89,11 +89,11 @@ const TEST_IMPORTED: ReadonlyArray<[pkg: string, file: string, name: string]> = 
   ['cortex-eval', 'natural-language-memory.ts', 'detectBareAbstention'],
   ['cortex-eval', 'natural-language-memory.ts', 'formatStructuredContext'],
   ['cortex-eval', 'fact-memory.ts', 'overlapScore'],
-  ['cortex-eval', 'llm-factory.ts', 'resolveTimeoutMs'],
+  ['cortex-eval', 'reader-transport.ts', 'resolveTimeoutMs'],
   // Its only caller outside this module is the test that states the invariant, and the
   // invariant is a relation between two functions rather than a fact about one -- so it is
   // asserted here rather than inlined into `buildReader` where nothing could check it.
-  ['cortex-eval', 'llm-factory.ts', 'resolveRetryBudgetMs'],
+  ['cortex-eval', 'reader-transport.ts', 'resolveRetryBudgetMs'],
 ];
 
 function sourceOf(pkg: string, file: string): string {

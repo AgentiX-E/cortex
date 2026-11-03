@@ -53,6 +53,10 @@ import {
   // §14.22's width. Read here rather than inside the arm: it is a property of the invocation, not
   // of the registered configuration, and the registration check compares the latter field for field.
   readWorkers,
+  // §13.227's two transport variables. Read here for the gate line only: the factory reads the same
+  // environment with the same function, so the log and the client cannot disagree, and a run whose
+  // pace is not on the line is a run whose wall clock and 429 rate cannot be interpreted later.
+  readReaderPacing,
   retrieveTopKByQueriesHybrid,
   // §13.153's two readers. Both are the arm's to supply because both are facts about a corpus: the
   // turn stamp is this corpus's rendering, and the range inference is the reference's own arithmetic
@@ -677,6 +681,7 @@ async function main(): Promise<void> {
   const baseline0 = buildBaseline();
   const feature0 = buildFeature();
   const workers = readWorkers(process.env);
+  const pacing = readReaderPacing(process.env);
   const pool =
     workers === 1
       ? undefined
@@ -744,7 +749,12 @@ async function main(): Promise<void> {
       // The width the pass ran at, on the line every other run property is on. It is not part
       // of the arm's configuration (§14.22) but it is part of what the wall clock means, and a
       // reader comparing two durations needs it.
-      `, workers=${workers}`,
+      `, workers=${workers}` +
+      // §13.227. The pace is not part of the arm (§14.22) but it is the difference between a run
+      // that finished and one that died at question 55, and `41553176719` left no trace of which
+      // pace it had run at because there was none to have.
+      `, minIntervalMs=${pacing.minIntervalMs ?? 'none'}` +
+      `, retryBudgetMs=${pacing.retryBudgetMs ?? 'default'}`,
   );
 
   const result = await runCortexMemoryArm(dataset, baseline0, feature0, {
