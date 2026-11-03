@@ -26502,3 +26502,95 @@ four-run one.
    looked.
 3. **The judge's verdicts are still cached in memory only**, and a regrade recomputes them. That is
    the price of reading a recording back, and it is 755 requests rather than 4,000.
+
+## 13.238 The pool was not MR's constraint: `topK=512` read back from a dead run's recordings
+
+*§13.234's four predictions, read from two repetitions recovered out of `41625442265`'s partial artifact
+(§13.237.7). The predictions are the ones §13.234 wrote, unedited. One is met, one is in a dead zone the
+registration did not cover, one is untested, one is met.*
+
+### 13.238.1 The two arms, three ways
+
+| arm | repetitions | overall | IE | MR | KU | TR | ABS |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **T** `41546569106` (`topK=256`, registered) | 4 | **90.15%** | 96.00% | 76.86% (93/121) | 86.11% | 95.28% | 100.00% |
+| **512**, replayed, run 0 | 1 | 90.20% | 96.00% | 78.51% (95/121) | 86.11% | 94.49% | 100.00% |
+| **512**, replayed, run 1 | 1 | 91.20% | 96.67% | 81.82% (99/121) | 86.11% | 94.49% | 100.00% |
+| **512**, mean | 2 | **90.70%** | 96.34% | **80.17% (97/121)** | 86.11% | 94.49% | 100.00% |
+
+Both arms were replayed through the same freshly constructed judge in the same job, so the paired
+statistics are internally consistent; the baseline is the check that the replay is faithful.
+
+| check | replayed | registered | drift |
+| --- | ---: | ---: | ---: |
+| reference-pipeline overall | 44.20% (221/500, both runs) | 44.60 / 44.75 / 45.00 / 44.70 | **−0.35 to −0.80** |
+| reference-pipeline MR | 84.30% (102/121) / 85.12% (103/121) | 86.78% (105/121) | −1.7 to −2.5 |
+| feature abstention rate | 6.40% | 6.40% | 0.00 |
+
+The baseline's three-question drop is the instrument, not the arm: the reference pipeline is a fixed
+function of the dataset and the reader, and the only thing that changed between the two readings is a
+fresh draw of judge verdicts. **So a comparison of 90.70 against 90.15 carries about half a point of
+instrument drift in an unknown direction**, which is one of two reasons the number below is not
+promoted.
+
+### 13.238.2 The four predictions
+
+| # | prediction (§13.234, verbatim) | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | MR's correct ≥ **96 of 121** | mean **97/121** (95, 99) | **MET** |
+| 2 | the gain concentrates in the 41-question outside-pool cohort: ≥ 3 of 16 convert | **not computable from this artifact** | **UNTESTED** |
+| 3 | `featureAggregate.avg` ≥ **91.5%** | **90.70%**; falsified only below 90.5 | **IN THE DEAD ZONE** |
+| 4 | the four other capabilities hold inside §13.118.5's spread | IE +0.34, KU 0.00, TR −0.79, ABS 0.00 | **MET** |
+
+Prediction 3 is the one worth naming precisely. §13.234 wrote a threshold to meet (91.5) and a
+threshold to be refuted by (90.5) and left the interval between them undefined, and the reading landed
+**inside that interval** at 90.70. A prediction with a dead zone cannot be read as either, and the
+right response is to write down that it happened rather than to pick the nearer edge: the honest
+statement is *"the pool change did not produce the 1.35 points prediction 3 asked for, and it did not
+produce the −0.35 that would have refuted it either"*.
+
+That is the registration's own defect, and it is the third of its kind in this campaign (a threshold
+without a stated band, a metric read as another metric in §13.235, a fixture written against the reader
+instead of the producer in §13.236.5). **The pattern is that a number is stated without the region
+where it means nothing.**
+
+### 13.238.3 What the reading decides, and what it does not
+
+**It decides that `topK=512` is not adopted.** The reason is not that it lost; it is that the thing it
+was supposed to move is inside the spread of the thing measuring it:
+
+| quantity | value |
+| --- | ---: |
+| the increment being claimed | +0.55 (90.15 → 90.70) |
+| the registered arm's own run-to-run spread | 1.60 (89.40, 90.15, 91.00, 90.10) |
+| the 512 arm's run-to-run spread | 1.00 (90.20, 91.20) |
+| the replay's instrument drift, measured on the baseline | 0.35–0.80 |
+
+A change whose effect is smaller than the arm's own variance and comparable to the instrument's drift
+is not a change this repository adopts on two repetitions. It also costs 256 extra scored candidates
+per question at retrieval time, which §13.234 priced at "zero prompt tokens but not zero retrieval",
+so the trade is a real cost for an unmeasurable gain.
+
+**It does not decide prediction 2, and therefore does not license 1,024.** §13.234 said so before the
+run: *"If prediction 2 is met at the lower bound, the next step is 1,024 as a second point on the same
+curve rather than a new mechanism."* Prediction 2 is untestable from this artifact because the artifact
+does not record which questions had their gold turn outside the 256-pool -- `goldRanks` is capped at
+255, so "outside" and "at 255" are the same value. The cohort has to be recomputed against the
+relevance index at both widths, which needs the embedding cache rather than another dispatch.
+
+**And it moves the target off the pool.** MR at 256 was 76.86%, at 512 it is 80.17% on the mean, and
+the baseline gets 84.30–86.78% **with no memory at all**. Doubling the candidate pool bought 2 to 3
+points of a gap that is 8 to 10 points wide against a system that reads the whole history. The pool is
+a second-order term here; §13.233 already located the first-order one (the count/operand judgement:
+`recover` reaches only the 10 declined questions, and the 28 wrong answers are all answered-and-wrong).
+
+### 13.238.4 What this cost, and what it would have cost
+
+| route | wall clock | provider requests |
+| --- | ---: | ---: |
+| re-dispatch the 8-pass arm at `topK=512`, unpaced | ~300 min | ~4,000 reader + ~750 judge |
+| **regrade the recording** | **14 min** | **755 judge, 0 reader** |
+
+The 5h41m the dead run spent was not wasted after all -- but that is a sentence about the fix, not
+about the run. The run produced no report because nothing had been built to grade a recording, and the
+first thing this campaign should have had was the thing that makes any run's answers survive it.
