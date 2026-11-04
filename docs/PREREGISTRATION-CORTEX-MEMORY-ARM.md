@@ -26941,3 +26941,37 @@ this file.
 Four instances, four different mechanisms, one sentence: **a number is usable only where it is still
 attached to the thing it was measured on.** The repair in each case was to move the number to the place
 the decision is made, not to measure it again.
+
+### 13.241.6 The repair was necessary and not sufficient, and the guard said so
+
+`41754705249` re-ran the regrade on the commit carrying `pairedRows`. Its own log:
+
+```
+Alignment: 4 index/id pair(s) confirmed against the dispatched run's progress log
+Run 0: the report carried no question records, so no paired cohort can be read from it.
+       This is written as null rather than as an empty list.
+Run 1: the report carried no question records, so no paired cohort can be read from it.
+```
+
+So the projection is correct and the roster is still empty, because **`AblationReport.questions` is
+not built by the report path at all**. It is built inside `runAblation` (`runner.ts`), after the
+ablation, from `recordableTraces` -- the per-question trace objects that function holds and does not
+return. `runAblationReport` consumes the ablation's *outputs*; the traces are not among them. A
+regrade calls the report function directly, so it has no traces and therefore no roster.
+
+Two readings of that, and the second is the one that matters:
+
+1. **The null-versus-empty distinction paid for itself on its first run.** A `[]` would have read as
+   "this run graded zero questions" and the absence would have been invisible for a second time --
+   which is exactly the failure this section was written about. The guard turned a silent drop into a
+   printed sentence, and the sentence names the consequence.
+
+2. **The remaining fix is an API, not a projection.** The regrade needs the traces, and the only
+   honest way to get them is for the ablation to return or persist them -- which is also what the
+   B7 criterion and the noise model need, and both are already waiting on the same field. Until then
+   prediction 2 stays **untested**, and the reason is now the true one: *the per-question traces are
+   held by the runner and not returned*, not *`goldRanks` caps at 255*.
+
+The three things this thread produced are worth keeping regardless: the cohort arithmetic (§13.241.1,
+41 and 16 reproduced exactly), the tool (`tools/pool-cohort.py`, 12 tests, which reads a cohort the
+moment one exists), and the guard that announced its own insufficiency in the run's log.
