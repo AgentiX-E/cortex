@@ -27131,11 +27131,11 @@ legitimate object of study, but it is not the registered arm and this document's
    dispatch that was meant to test them did not run the registered arm. Prediction 2 (MR ≥ 96/121)
    and prediction 4 (overall ≥ 90.15%) are the two the campaign most wanted, and both are still
    owed a run.
-2. **`census-unit` failed on this artifact and the failure is a consequence, not a defect.**
-   456 outcomes against 2000 question-answers, i.e. the census covered 114 questions per pass
-   against the registered arm's 500. Which of the six departed fields decides that reach is not
-   measured; the check that would settle it is the next registered run's census returning 2000, and
-   until then this stays an observation rather than a repair.
+2. ~~**`census-unit` failed on this artifact and the failure is a consequence, not a defect.**~~
+   **Retracted by §13.244.** It is a defect, and the six departed fields have nothing to do with it:
+   this run had `workers=4`, and the census was read off worker 0. 456 is that worker's share of four
+   passes over 500 questions -- `41773546221`, which declared one departure and left nothing blank,
+   came back at 488 for the same reason.
 3. **Every future dispatch goes through `tools/dispatch-cortex-memory-ab.py`.** The preflight makes a
    hand-rolled dispatch *fail* rather than *lie*, which is the point, but the dispatcher is what
    sends the twenty-two inputs and writes the declaration that matches them.
@@ -27241,15 +27241,16 @@ have been ruled out rather than guessed at:
 | the arm consulted more than once per question | `vote` passes (one consultation per question) and `recovery` reports 0 consultations |
 | `maxPromptChars` defaulting to unbounded caused it | ruled out by the first row: an unbounded room that changes no prompt cannot change a counter |
 
-What is left is the wiring: 122 per pass is **121 MR questions plus one**, which is what a census
-that only records the session route would look like. `#promptSession` and `#prompt` both call
-`#recordOutcome`, and `abstention-reasons.test.ts` covers both routes in isolation — so the defect is
-in a path the unit tests do not construct, and the next step is a test that runs one question on each
-of the five routes **through the arm's own construction path**, not through the class directly.
+What is left is the wiring — and the paragraph that followed this table in the first draft of this
+section named it wrongly. It said *"122 per pass is 121 MR questions plus one, which is what a census
+that only records the session route would look like"*. **That is a coincidence**, and §13.244 is the
+correction: 122 is not `MR + 1`, it is `500 / 4` — worker 0's share of four workers, rounded down by
+jitter. The `+1` was noise being read as a mechanism, and the reading survived review because it
+explained the number.
 
-**Until that is fixed, the abstention rate in this artifact is not quotable**: 28 declines against a
-488 denominator and the same 28 against 2,000 are rates that differ by a factor of four, and the
-artifact prints the first without knowing the second is the right one.
+**The abstention rate in this artifact is not quotable**, and §13.244 says why in both directions: 28
+declines against a 488 denominator and 28 against 2,000 are rates that differ by a factor of four *in
+the numerator as well as the denominator* — the run's real decline count is about four times 28.
 
 ### 13.243.6 What changes in the plan
 
@@ -27263,3 +27264,162 @@ artifact prints the first without knowing the second is the right one.
    whole — `identify` rather than `enumerate`, answer-only, `Answer:` prefix. It is the only
    difference left between two arms that share a reader, a dataset and a judge, and the smaller-window
    arm is 9.92 points ahead.
+
+## 13.244 The pool gave every worker its own instance, and the arm read the census off one of them
+
+*§13.242.7 and §13.243.5 both tried to explain a census that covered a quarter of its run, and both
+were wrong. This section states the mechanism, the two artifacts it corrupts, the reading it does
+**not** corrupt, and the repair — which is five lines of arithmetic and one enumeration.*
+
+### 13.244.1 The measurement that identified it: a field that is **absent** from the older artifact
+
+The three hypotheses this section replaces were all about the **configuration** (`ask=route`, six
+undeclared fields, an unbounded `maxPromptChars`). The answer came from comparing the two artifacts'
+log lines, where one field is missing from the older one:
+
+| run | census | log line ends | questions | passes |
+| --- | ---: | --- | ---: | ---: |
+| `41546569106` (registered) | **2,000** | `... maxPromptChars=48000` | 500 | 4 |
+| `41751619617` | **456** | `... maxPromptChars=default, workers=4, minIntervalMs=none ...` | 500 | 4 |
+| `41773546221` | **488** | `... maxPromptChars=default, workers=4, minIntervalMs=none ...` | 500 | 4 |
+
+`workers=` is **absent** from the registered arm's line because that run predates §14.22's pool. The
+two runs that under-report are the two that have it. And the quotient says the rest:
+
+| run | census / passes | 500 / workers |
+| --- | ---: | ---: |
+| `41751619617` | 456 / 4 = **114** | 500 / 4 = 125 |
+| `41773546221` | 488 / 4 = **122** | 500 / 4 = 125 |
+
+114 and 122 straddle 125 because the pool claims question **indexes** atomically and workers finish at
+different times, so worker 0's share is 122 on average and not exactly 125. No configuration field is
+in this arithmetic; a worker count is.
+
+### 13.244.2 The mechanism: a census is per-instance state, and a pool is per-instance by design
+
+§14.22's pool exists because `MemorySystem` carries per-question state in single slots
+(`lastRawOutput`, `lastPromptText`, …) and one instance with two calls in flight attributes one
+question's prompt to another. The documented answer is **one instance per worker**:
+
+> *So the pool hands each worker its **own instance** of the same configuration, sharing only the
+> things that are stateless by design.*
+
+Every census in the arm is instance state of exactly the same kind — `CortexMemory`'s `#reasons`,
+`#recoveries`, `#bareRetries`, `#votes` are instance fields — and the arm read them off the `feature`
+it was handed, which under a pool is **worker 0**:
+
+```ts
+const census = {
+  ...abstentionReasonsOf(feature),   // worker 0 only
+  ...recoveryOf(feature),
+  ...bareRetryOf(feature),
+};
+```
+
+So a four-worker run published a quarter of its questions as if it were all of them. The unit §13.107
+fixed — *"the unit is the question answered"* — was still the unit; the **population** was the defect.
+
+There was a second half, in the CLI rather than the arm:
+
+```ts
+featureFor: (worker: number) => (worker === 0 ? feature0 : buildFeature()),
+```
+
+Worker 0 reused `feature0` across all four passes, and every other worker got a **fresh instance per
+pass**. So instance identity was a function of `(worker, pass)` — which means that even a reader who
+knew to look could not have enumerated the set. `BenchmarkWorkerPool.systemFor` had documented the
+opposite ("called at most `min(workers, questions)` times") since it was written, so this was a
+contract violation that nothing tested.
+
+### 13.244.3 What it does **not** corrupt, stated before what it does
+
+This is the part that decides whether anything previously published has to be withdrawn, so it comes
+before the repair.
+
+| quantity | corrupted? | why |
+| --- | --- | --- |
+| accuracy, per capability, per run | **no** | answers are merged by **index** into a pre-sized vector; `workers` changes completion order and nothing else |
+| the headline `featureAggregate.avg` | **no** | same arithmetic, same answers; `benchmark-concurrency.test.ts` asserts byte-identity at 3 workers |
+| census **counts** | **yes, by ≈ the worker count** | one worker's share reported as the run's |
+| census **rates** | **not biased, twice the noise** | numerator and denominator are truncated by the same uniform split, so `28/488 = 5.74%` estimates the same quantity as `130/2,000 = 6.50%` — at `√4 = 2×` the standard error, because the sample is 122 per pass rather than 500 |
+| per-capability attribution of a decline | **unreliable** | the split is by claim order, not by route, so a route can be entirely absent from the quarter that was counted |
+
+That table is why the count check is the one that caught it and the rate check could not: **the rate
+survives the defect approximately, and the count does not survive it at all.** `41773546221`'s
+`5.74%` was within one standard error of the registered arm's `6.50%` and read as a normal run.
+
+### 13.244.4 The repair: enumerate, fold, and refuse a partial answer
+
+`AblationPool` gains `featureInstances()`, and `createAblationPool` is the implementation that cannot
+forget it: it memoises one instance per worker (which is what `systemFor` always claimed) and hands
+back the list in worker order, worker 0 first.
+
+Three rules, each with its own reason:
+
+1. **Fold, don't pick.** `abstentionReasonsAcross`, `recoveryAcross`, `bareRetryAcross`,
+   `voteCountsAcross` sum over the enumerated instances.
+2. **All or nothing.** If any instance cannot report, the field is **absent**. A sum over the subset
+   that happened to answer is the truncated shape this section is about, so it cannot also be the
+   shape of the repair.
+3. **The vote rule belongs to the total.** "Three zeros is not a census" is true of a run, not of a
+   worker: a worker that drew no voting questions legitimately reports `0/0/0`, and applying the rule
+   per instance would drop that worker and then sum the rest.
+
+And a guard that refuses rather than choosing:
+
+```ts
+function censusSourcesOf(feature: MemorySystem, pool: AblationPool | undefined): MemorySystem[] {
+  if (pool === undefined) return [feature];
+  const instances = [...pool.featureInstances()];
+  if (!instances.includes(feature)) throw new Error(/* ... */);
+  return instances;
+}
+```
+
+A pool that does not enumerate the instance the arm measured has two possible readings — `feature`
+alone (the defect) and the pool alone (worker 0's share silently dropped) — and both produce a number
+a reader would believe. The arm stops instead.
+
+### 13.244.5 The tests, and the readings they were written from
+
+| # | test | red reading before the fix | file |
+| --- | --- | --- | --- |
+| 1 | nine questions, two passes, three workers → census sums to **18** | **6** — one third, exactly the defect in miniature | `pool-census.test.ts` |
+| 2 | the serial path still sums to **10** over five questions × two passes | passes (control) | same |
+| 3 | a pool whose worker 1 has no census → field **absent**, not summed over the rest | return a zeroed census | same |
+| 4 | a pool that does not enumerate the instance measured → **throws** | return worker 0's quarter | same |
+| 5 | vote verdicts summed without discarding a worker that took none | — | same |
+| 6 | all workers report `0/0/0` → **no** vote census | — | same |
+| 7 | one instance per worker, the same one on every pass | fresh per pass | same |
+| 8 | **five routes, one question each, product instance, three workers, two passes → 10** | **2** — worker 0 claimed two of the ten, `expected 2 to be 10` | `arm-census-routes.test.ts` |
+| 9 | the same five routes serial → **5** | passes (control) | same |
+
+Test 8 is the one §13.243.5 asked for in its last paragraph — *"a test that runs one question on each
+of the five routes through the arm's own construction path, not through the class directly"* — and it
+is the one that would have made the wrong explanation impossible: with one question per route, a
+census that covers one third of them cannot be explained by "the session route counts and the others
+do not", because the session route is one of the five.
+
+`test_self_consistency_wiring.py` pinned the old function name (`voteCountsOf`) and now pins the pair
+that matters — `voteCountsAcross` **and** `censusSourcesOf(feature, options.pool)` — because a fold
+over `[feature]` is exactly the code that produced 488.
+
+### 13.244.6 What this says about the method, which is the transferable part
+
+Three plausible mechanisms were proposed for one number before the mechanism was found:
+
+| proposed | why it was plausible | why it was wrong |
+| --- | --- | --- |
+| the six undeclared fields decided the reach (§13.242.7) | the run *did* depart on six fields | `41773546221` departed on one and reported the same shape |
+| `122 per pass = MR's 121 + 1` (§13.243.5) | 122 is one more than 121 | 122 is `500 / 4`; the `+1` was jitter |
+| an unbounded `maxPromptChars` broke a counter | the field really was absent | an unbounded room that changes no prompt cannot change a counter |
+
+What settled it was not a better hypothesis. It was a **diff against an artifact that has the property
+this one lacks** — `41546569106` sums to exactly 2,000, and the difference between the two runs is a
+field in the log line. The check that caught it, `census-unit`, is arithmetic against
+`questionCount × runs`, which is why it was right while three readings were wrong: it compares a
+number with the denominator the artifact already declares, and it needs no mechanism at all.
+
+**The rule this campaign takes from it: a census must be publishable only with its denominator, and
+the denominator must be computed rather than assumed.** `488` was a real count of a real quarter; the
+error was never in the counting, it was in what the count was said to be *of*.

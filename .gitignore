@@ -33,6 +33,25 @@ benchmark-*
 # rather than narrowing the glob back to today's three suffixes -- narrowing would
 # restore the original defect the moment a fourth artifact appears.
 !.github/workflows/benchmark-*
+# ...and a second negation, because the first one was scoped to **one directory** and there are four.
+#
+# The paragraph above states the rule it was trying to follow -- "a rule about artifacts applied to a
+# name instead of to a place" -- and then applied it to one place. `**/__tests__/` is the other place a
+# `benchmark-*` file is source, and three test files were invisible to git because of it:
+#
+#   packages/cortex-eval/src/__tests__/benchmark-concurrency.test.ts      (the byte-identity falsifier
+#                                                                          §14.22's pool rests on)
+#   packages/cortex-eval/src/__tests__/benchmark-raw-capture.test.ts
+#   packages/cortex-eval/src/__tests__/benchmark-retrieval-capture.test.ts
+#
+# They ran locally, so `pnpm check` was green while CI never executed them -- the local-pass/CI-fail
+# drift this repository pays a pre-push hook to prevent, arriving through an ignore rule rather than
+# through a skipped test. `git status --ignored` is the command that finds this class; a plain
+# `git status` reports a clean tree, which is what a defect that hides files looks like.
+!**/__tests__/**
+# Re-ignored **after** the negation, because the last matching pattern wins: `__pycache__/` above would
+# otherwise be un-ignored for every test directory, and a compiled `.pyc` is not source.
+__pycache__/
 # Probe scratch. `tools/run-program.py --keep` writes improvised programs here so a
 # probe survives the session that wrote it instead of living in scrollback.
 #

@@ -96,7 +96,15 @@ export { createProviderReader } from './competitor-reader.js';
 // using this one. The tests import the module directly, which is why the census reports them as
 // referenced-locally.
 export { compareRuns } from './paired-test.js';
-export { runAblation, type AblationOptions } from './ablation.js';
+// §13.244: the pool implementation the arm's CLI uses. Exported because it is the only way to build
+// an `AblationPool` that can enumerate its instances, and the enumeration is what keeps a pooled
+// run's census denominator equal to its question count.
+export {
+  runAblation,
+  createAblationPool,
+  type AblationOptions,
+  type AblationPool,
+} from './ablation.js';
 // §13.237: read a recording back through the scorer. The caller is `bench/regrade-partial.ts`, which
 // replays the two complete repetitions `41625442265` left in a partial artifact -- the run that was
 // dispatched to test §13.234's predictions and died on its own budget.

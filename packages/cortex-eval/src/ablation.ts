@@ -209,12 +209,102 @@ export type AblationOptions = {
  * `baselineFor` and `featureFor` must return **distinct** instances per worker: two workers
  * sharing one reintroduces the single-slot defect, and `benchmark-concurrency.test.ts`
  * falsifies the claim by building exactly that pair and watching the answers diverge.
+ *
+ * ## Why the pool also has to say **which** instances it built
+ *
+ * Every census in the arm -- `abstentionReasons`, `recoveryCensus`, `bareRetryCensus`,
+ * `voteCounts` -- is per-**instance** state, and §14.22's pool gives each worker its own
+ * instance on purpose. Reading the census off `feature` therefore reads worker 0's quarter:
+ * `41773546221` published `llm=28, answered=460` against 2,000 question-answers, and 488 is
+ * 122 per pass, which is exactly worker 0's share of 500 at four workers.
+ *
+ * A denominator that is a quarter of the run is not a slightly low rate, it is a rate that is
+ * comparable with nothing else in the campaign. The fix is not a bigger multiplier -- the
+ * service count is not knowable from the number -- so the pool enumerates what it built and
+ * `runCortexMemoryArm` folds the census across the list. {@link createAblationPool} is the
+ * implementation that cannot forget to: it memoises one instance per worker, which is also
+ * what `BenchmarkWorkerPool.systemFor` already documents ("called at most `min(workers,
+ * questions)` times").
  */
 export type AblationPool = {
   readonly workers: number;
   baselineFor(worker: number): MemorySystem;
   featureFor(worker: number): MemorySystem;
+  /**
+   * Every feature instance this pool has handed to a worker, in build order, worker 0 first.
+   *
+   * The feature side only. The arm's censuses are the feature system's, and an enumerator for
+   * the baseline side would have no caller -- which this repository removes rather than keeps
+   * "for symmetry".
+   */
+  featureInstances(): readonly MemorySystem[];
 };
+
+/**
+ * The pool implementation the arm's CLI uses, so the enumeration cannot drift from the factories.
+ *
+ * ## Why `first` is an argument rather than `worker === 0 ? build() : build()`
+ *
+ * The CLI has already built the serial pair by the time it knows the worker count -- `buildFeature()`
+ * runs before `readWorkers(process.env)` -- and the serial instance is the one the arm would measure
+ * with no pool at all. Taking it here makes worker 0 that exact object, so a run at `workers: 1`
+ * and a run at `workers: 4` differ in how many questions are open and in nothing else. The old
+ * inline form (`(worker) => (worker === 0 ? feature0 : buildFeature())`) got worker 0 right and
+ * gave every other worker a **fresh instance per pass**, which is the second half of the same
+ * defect: instance identity was a function of (worker, pass), so no reader could have enumerated
+ * the set even if it had known to try.
+ *
+ * ## Why the memo is a `Map`
+ *
+ * Worker indexes arrive in claim order, so an array would work today and would silently grow a hole
+ * the first time a caller resolved an index out of order -- and `filter` skips holes, which is the
+ * trap `filled()` documents one function above. A map has no such hole to skip.
+ */
+export function createAblationPool(spec: {
+  readonly workers: number;
+  /** The pair a serial pass would have used; worker 0 gets these two instances. */
+  readonly first: { readonly baseline: MemorySystem; readonly feature: MemorySystem };
+  baselineFor(worker: number): MemorySystem;
+  featureFor(worker: number): MemorySystem;
+}): AblationPool {
+  if (!Number.isInteger(spec.workers) || spec.workers < 1) {
+    throw new Error(
+      `createAblationPool received workers=${spec.workers}, which is not a positive integer -- ` +
+        'a fractional count would silently serialise the pass and a zero would open no worker ' +
+        'and answer nothing. See BenchmarkWorkerPool.',
+    );
+  }
+  const baseline = new Map<number, MemorySystem>([[0, spec.first.baseline]]);
+  const feature = new Map<number, MemorySystem>([[0, spec.first.feature]]);
+  const resolve = (
+    worker: number,
+    built: Map<number, MemorySystem>,
+    factory: (worker: number) => MemorySystem,
+    side: string,
+  ): MemorySystem => {
+    if (!Number.isInteger(worker) || worker < 0) {
+      throw new Error(
+        `${side}For received worker=${worker}, which is not a non-negative integer -- the pool ` +
+          'claims indexes from zero and a pool that accepted anything else would build instances ' +
+          'no census could ever enumerate.',
+      );
+    }
+    const existing = built.get(worker);
+    if (existing !== undefined) return existing;
+    const instance = factory(worker);
+    built.set(worker, instance);
+    return instance;
+  };
+  return {
+    workers: spec.workers,
+    baselineFor: (worker) => resolve(worker, baseline, spec.baselineFor, 'baseline'),
+    featureFor: (worker) => resolve(worker, feature, spec.featureFor, 'feature'),
+    // Insertion order, and worker 0 was inserted at construction, so this is worker order rather
+    // than build order -- which is the order a reader comparing a census against a worker count
+    // expects.
+    featureInstances: () => [...feature.values()],
+  };
+}
 
 /**
  * The count of answers a sparse vector actually holds.

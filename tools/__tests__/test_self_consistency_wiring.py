@@ -85,7 +85,11 @@ class TestTheSampleCountReachesTheVote(unittest.TestCase):
             "the census is never read from the feature system, so a run could not say whether its "
             "votes ever disagreed",
         )
-        self.assertIn("function voteCountsOf(", arm)
+        # §13.244: the census is a sum over every instance the pool answered through, and the
+        # enumeration is what makes the denominator the run's. Asserting both pins the fold *and*
+        # the source of the list -- a fold over `[feature]` is what produced `488` against `2,000`.
+        self.assertIn("function voteCountsAcross(", arm)
+        self.assertIn("const censusSystems = censusSourcesOf(feature, options.pool);", arm)
         report = REPORT.read_text(encoding="utf-8")
         self.assertIn("selfConsistency=${memoryArm.selfConsistency ?? 'none'}", report)
         self.assertIn("renderVoteCounts(memoryArm.voteCounts)", report)

@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createAblationPool } from '../ablation.js';
 import { passShapeLines, passShapeReport } from '../pass-shape.js';
 import { formatAblationReport, runAblationReport } from '../report.js';
 import { exactMatchScorer } from '../metrics.js';
@@ -114,11 +115,12 @@ describe('the report carries the shape from the option that configured the clien
         runs: 1,
         scorer: exactMatchScorer,
         readerPacing: { minIntervalMs: 6_000, retryBudgetMs: 600_000 },
-        pool: {
+        pool: createAblationPool({
           workers: 4,
+          first: { baseline: fixedSystem('base', 'a'), feature: fixedSystem('feat', 'a') },
           baselineFor: () => fixedSystem('base', 'a'),
           featureFor: () => fixedSystem('feat', 'a'),
-        },
+        }),
       },
     );
     expect(report.passShape).toEqual({ workers: 4, minIntervalMs: 6_000, retryBudgetMs: 600_000 });

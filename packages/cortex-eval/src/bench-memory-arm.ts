@@ -2698,10 +2698,16 @@ export async function runCortexMemoryArm(
   // provider billed for has happened by now, and a snapshot taken after
   // `formatAblationReport` would include the renderer's own calls if it ever made any.
   const usage: UsageSnapshot = usageDelta(usageBefore, llmUsage());
+  // §13.244. Every census below is **per-instance** state, and a pool gives each worker its own
+  // instance -- so reading them off `feature` reads worker 0's share of the run. `41773546221`
+  // published `llm=28, answered=460` for 2,000 question-answers; 488 is 122 per pass, which is
+  // exactly what worker 0 claims out of 500 at four workers, and it looked plausible enough that
+  // only the artifact's own `census-unit` check caught it.
+  const censusSystems = censusSourcesOf(feature, options.pool);
   const census = {
-    ...abstentionReasonsOf(feature),
-    ...recoveryOf(feature),
-    ...bareRetryOf(feature),
+    ...abstentionReasonsAcross(censusSystems),
+    ...recoveryAcross(censusSystems),
+    ...bareRetryAcross(censusSystems),
   };
   const questions = buildArmRoster(
     dataset,
@@ -2727,7 +2733,7 @@ export async function runCortexMemoryArm(
   // §13.101's census, read after the ablation for the reason `abstentionReasonsOf` is: it counts what
   // happened rather than what was configured. Merged into the arm's config rather than carried at the
   // top level because the configuration line renders it beside the count that produced it.
-  const vote = voteCountsOf(feature);
+  const vote = voteCountsAcross(censusSystems);
   const reported: AblationReport = {
     ...report,
     // The evidence is carried twice, and the registered bound has to reach both
@@ -3176,7 +3182,7 @@ function buildArmRoster(
  * four finite non-negative integers is treated as absent rather than reported.
  */
 /**
- * The vote counts a feature system reports, or nothing when it does not vote.
+ * One instance's vote verdicts, or `null` when it has no vote census to report.
  *
  * ## Why this is an optional capability rather than a `MemorySystem` member
  *
@@ -3190,38 +3196,162 @@ function buildArmRoster(
  * A field that is present but wrong is worse than an absent one: the artifact would show a vote
  * census that no mechanism produced, and a reader could not tell it from a real reading. Anything
  * that is not three finite non-negative integers is treated as absent.
+ *
+ * ## Why `null` and not `{}` for "all zeros" here
+ *
+ * Because under a pool a worker that took no votes is the **normal** case, and the zero rule
+ * belongs to the total rather than to a part. `voteCountsAcross` applies it once, after summing;
+ * applying it here would discard a worker that had nothing to vote on and then add up the rest.
  */
-function voteCountsOf(system: MemorySystem): {
-  voteCounts?: { unanimous: number; majority: number; split: number };
-} {
+function voteVerdictsOf(
+  system: MemorySystem,
+): { unanimous: number; majority: number; split: number } | null {
   const candidate = (system as { voteCounts?: unknown }).voteCounts;
-  if (typeof candidate !== 'function') return {};
+  if (typeof candidate !== 'function') return null;
 
   let payload: unknown;
   try {
     payload = (candidate as () => unknown).call(system);
   } catch {
     // A throwing accessor is a broken optional capability, not a failed run.
-    return {};
+    return null;
   }
 
-  if (payload === null || typeof payload !== 'object') return {};
+  if (payload === null || typeof payload !== 'object') return null;
   const record = payload as Record<string, unknown>;
   const keys = ['unanimous', 'majority', 'split'] as const;
   for (const key of keys) {
     const value = record[key];
-    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null;
   }
-  const counts = {
+  return {
     unanimous: record.unanimous as number,
     majority: record.majority as number,
     split: record.split as number,
   };
-  // A census of three zeros is a run that did not vote, not a run whose votes all failed to
-  // resolve: every vote lands in exactly one of the three buckets, so their sum is the number of
-  // votes taken. Publishing `vote=0/0/0` on a control run -- which run `39641088296` did -- makes
-  // an artifact claim a mechanism that never ran, which is the reading §13.101.2 says the census
-  // exists to prevent.
+}
+
+/**
+ * The instances a census has to be read over: every one this run answered through.
+ *
+ * ## Why the guard throws instead of falling back to `feature`
+ *
+ * A pool that cannot name the instance the arm was handed is a pool built from different factories than
+ * the arm's, and the only two possible behaviours there are both wrong: reading `feature` alone
+ * reproduces the defect, and reading the pool alone silently drops worker 0's share. The arm refuses.
+ *
+ * ## Why `feature` is compared by identity and can be
+ *
+ * `runCortexMemoryArm`'s `feature` parameter is the caller's object, not a wrapper: the tracers this
+ * function builds (`traceUsage`, `traceReviewMechanisms`) are constructed below and handed to the
+ * ablation, so the census read keeps using the instance the caller passed -- which is exactly the
+ * object `createAblationPool({ first: { feature } })` puts at index 0.
+ */
+function censusSourcesOf(feature: MemorySystem, pool: AblationPool | undefined): MemorySystem[] {
+  if (pool === undefined) return [feature];
+  const instances = [...pool.featureInstances()];
+  if (!instances.includes(feature)) {
+    throw new Error(
+      'the pool does not enumerate the feature instance this arm measured, so the census could ' +
+        'only be a subset of the run -- worker 0 answers through `feature`, and a sum that omits ' +
+        'it understates every rate by one worker. Build the pool with createAblationPool and pass ' +
+        'its `first.feature` here. See PREREGISTRATION §13.244.',
+    );
+  }
+  return instances;
+}
+
+/**
+ * The three per-question censuses, summed over every instance the run answered through.
+ *
+ * ## Why a partial answer is no answer
+ *
+ * These counts are per-instance state under a pool, so the correct total is a sum over the instances
+ * that answered. The failure this function is written against is the **truncated** sum: `41773546221`
+ * published a census summing to 488 against 2,000 question-answers, and 488 is worker 0's quarter.
+ * A number that is a quarter of the run reads exactly like a measurement, which is why the rule here
+ * is all-or-nothing -- if any instance cannot report, the field is absent, and the artifact's
+ * `census-unit` check then says "no census" instead of a plausible lie.
+ *
+ * ## Why the zero rule is applied to the total and not per instance
+ *
+ * It is not: that rule belongs to the vote census (a system that took no votes), where an instance
+ * with no votes is the normal case rather than a missing capability. It lives in
+ * {@link voteCountsAcross}, one function down, for exactly that reason.
+ */
+function summedOver(
+  systems: readonly MemorySystem[],
+  read: (system: MemorySystem) => Record<string, number> | undefined,
+): Record<string, number> | undefined {
+  if (systems.length === 0) return undefined;
+  const total: Record<string, number> = {};
+  for (const system of systems) {
+    const one = read(system);
+    if (one === undefined) return undefined;
+    for (const [key, value] of Object.entries(one)) {
+      total[key] = (total[key] ?? 0) + value;
+    }
+  }
+  return total;
+}
+
+function abstentionReasonsAcross(systems: readonly MemorySystem[]): {
+  abstentionReasons?: AbstentionReasons;
+} {
+  const total = summedOver(systems, (system) => abstentionReasonsOf(system).abstentionReasons);
+  if (total === undefined) return {};
+  return {
+    abstentionReasons: {
+      empty: total.empty as number,
+      threshold: total.threshold as number,
+      llm: total.llm as number,
+      answered: total.answered as number,
+    },
+  };
+}
+
+function recoveryAcross(systems: readonly MemorySystem[]): { recovery?: RecoveryCensus } {
+  const total = summedOver(systems, (system) => recoveryOf(system).recovery);
+  if (total === undefined) return {};
+  return {
+    recovery: { attempted: total.attempted as number, answered: total.answered as number },
+  };
+}
+
+function bareRetryAcross(systems: readonly MemorySystem[]): { bareRetry?: BareRetryCensus } {
+  const total = summedOver(systems, (system) => bareRetryOf(system).bareRetry);
+  if (total === undefined) return {};
+  return {
+    bareRetry: { attempted: total.attempted as number, answered: total.answered as number },
+  };
+}
+
+/**
+ * The vote census, summed and then judged.
+ *
+ * The two rules are separate on purpose and in this order:
+ *
+ * 1. **Sum over instances**, all-or-nothing, for the reason {@link summedOver} gives.
+ * 2. **A total of three zeros is not a census.** Every vote lands in exactly one of the three buckets,
+ *    so their sum is the number of votes taken. Publishing `vote=0/0/0` on a control run -- which run
+ *    `39641088296` did -- makes an artifact claim a mechanism that never ran, which is the reading
+ *    §13.101.2 says the census exists to prevent.
+ *
+ * The order matters under a pool: an individual worker may legitimately take zero votes (it drew no
+ * questions from the voting route), so applying rule 2 per instance would discard a worker that had
+ * nothing to vote on and then sum the rest -- a truncated census again, hiding inside a guard that
+ * looks like it is protecting the reader.
+ */
+function voteCountsAcross(systems: readonly MemorySystem[]): {
+  voteCounts?: { unanimous: number; majority: number; split: number };
+} {
+  const total = summedOver(systems, (system) => voteVerdictsOf(system) ?? undefined);
+  if (total === undefined) return {};
+  const counts = {
+    unanimous: total.unanimous as number,
+    majority: total.majority as number,
+    split: total.split as number,
+  };
   if (counts.unanimous + counts.majority + counts.split === 0) return {};
   return { voteCounts: counts };
 }

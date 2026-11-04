@@ -86,6 +86,7 @@ import {
   restoreArmEmbeddingCache,
   roleOfTurn,
   preflightEmbedding,
+  createAblationPool,
   runCortexMemoryArm,
   sampleInstances,
   toMemoryArmConfig,
@@ -697,6 +698,13 @@ async function main(): Promise<void> {
   // Workers in flight (§14.22). The first worker reuses the instances just built rather than
   // constructing a second pair, so a serial run is byte-identical to what it always was and a
   // concurrent one differs only in how many questions are open at once.
+  //
+  // §13.244: built through `createAblationPool` rather than as an object literal, because a literal
+  // factory could not be enumerated and the arm's censuses are per-instance state. The literal this
+  // replaces was `worker === 0 ? feature0 : buildFeature()`, so workers 1..n-1 got a **fresh instance
+  // per pass**: the set of instances a run answered through was a function of (worker, pass) and no
+  // reader could have listed it, which is how `41773546221` published a census covering a quarter of
+  // its questions while every other field in the artifact agreed with itself.
   const baseline0 = buildBaseline();
   const feature0 = buildFeature();
   const workers = readWorkers(process.env);
@@ -704,11 +712,12 @@ async function main(): Promise<void> {
   const pool =
     workers === 1
       ? undefined
-      : {
+      : createAblationPool({
           workers,
-          baselineFor: (worker: number) => (worker === 0 ? baseline0 : buildBaseline()),
-          featureFor: (worker: number) => (worker === 0 ? feature0 : buildFeature()),
-        };
+          first: { baseline: baseline0, feature: feature0 },
+          baselineFor: () => buildBaseline(),
+          featureFor: () => buildFeature(),
+        });
 
   // Stated before the numbers, not after. Every figure below is conditioned on this
   // configuration, and `threshold=0` (gates open) and a near-1 threshold produce two
