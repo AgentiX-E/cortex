@@ -27720,3 +27720,52 @@ already in place (`enumerated` versus `enumerated` with the reference's two abst
 4. **It does not re-open the token axis.** The block is longer than `enumerated`'s by roughly 400
    characters, and §13.245.4 measured the whole instruction block at 1.3% of a 47,343-character prompt.
    Prediction 4 exists only to keep that from silently becoming a second variable.
+
+## 13.247 The budget was read from a note, and two fields of the registered artifact said 48,000
+
+*The first dispatch of §13.246's ask (`41859220351`) declared three departures. One of them,
+`maxPromptChars=96000`, came from §10.3's as-of paragraph — "every 500-question run from `41144910162`
+onwards sends `--set cortex_memory_max_prompt_chars=96000`". It was cancelled eight minutes in. This
+section records why, because the gate that exists to catch this class **passed it**.*
+
+### 13.247.1 The three fields that answered the question the note was being asked
+
+| source | value | what it settles |
+| --- | --- | --- |
+| `41546569106`, feature prompt tokens | 28,145,808 over ~2,000 calls = **14,072 tokens/call** | 48,000 characters is ~13.7k tokens; 96,000 would be ~27k |
+| `41546569106`, MR mean `promptChars` (§13.243.1) | **46,630** | a 96,000-character room does not stop its mean here |
+| `41845802020`, `PASS budget` line | `largest prompt 47454 against maxPromptChars **48000**` | the most recent confirmation ran at 48,000 |
+
+Three independent readings, all from artifacts this campaign produced about itself, all agreeing. The
+note is not a lie — it was true when written — it is a **fact with a shelf life**, and it is spelled in
+the same register as the registered configuration two bullets above it.
+
+### 13.247.2 The gate passed, and that is the part worth keeping
+
+`Check the dispatch against the registration` went green on `41859220351`. It was right to: 96,000 was
+a **declared** departure, the declaration matched the payload, and the payload was sent. So the run was
+compliant, expensive and wrong, and every instrument in the chain said so.
+
+This is a different failure from §13.242's six `UNDECLARED` lines. There the payload disagreed with the
+registration and nobody had said so; here the payload was announced and the announcement was the error.
+A declaration gate cannot audit the operator's reason for declaring, and it should not pretend to.
+
+What it *can* do, and what this section registers as the rule:
+
+> **A budget's value comes from a field of the most recent registered artifact, never from prose.**
+> Where two sources disagree, the artifact wins, and the note is corrected in place rather than
+> re-read charitably.
+
+48,000 has two independent artifact readings. 96,000 has one narrative. That asymmetry is the whole
+decision procedure, and it needs no judgement about which paragraph is fresher.
+
+### 13.247.3 What was re-dispatched
+
+`41860773768`, one declared departure (`cortex_memory_ask`), everything else at §10.3: 48,000
+characters, `maxTurnChars=400`, four repetitions, `thinking: multi-session+temporal`,
+`deepseek-chat`. That is the load `41546569106` ran at, which is what makes §13.246.6's predictions
+comparable to the 90.15 / 76.86 figures they were written against.
+
+The 96,000 axis is not re-opened by this. §13.118.6 closed it on 2× prompt tokens, 2.87× wall clock and
+an absent registered gain; what happened here is that a run was about to re-open a closed axis without
+anyone deciding to.
