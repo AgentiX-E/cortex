@@ -26757,3 +26757,108 @@ converting is +0.85 overall, which is the difference between 90.15 and 91.00.
    on five questions.
 4. **It does not re-derive MR's ranking.** Coverage rises because the room is deeper, not because the
    order is better: the gold's median rank inside the pool is 134 and stays 134.
+
+## 13.240 Two retired levers were one lever, and the largest-looking lever is bounded by coverage
+
+*Three decisions taken without a dispatch: a currency identified, an external bar adopted, and a
+mechanism demoted. The third is the one that cost the most to accept, because the external evidence
+for it was the strongest number in the paper.*
+
+### 13.240.1 The exchange rate of coverage, measured twice
+
+§13.238 retired the candidate pool (+0.55 for 2x the candidates, inside a run-to-run spread of 1.60)
+and §14.31 retired the evidence room (+0.60 for 2x the characters). Both were read as separate
+failures. They are the same purchase:
+
+| lever | what it doubles | measured effect | resolution |
+| --- | --- | ---: | --- |
+| `relevanceTopK` 256 -> 512 | candidates scored per question | +0.55 | below the arm's own spread (1.60) |
+| `maxPromptChars` 24,000 -> 48,000 | characters delivered | +0.60 | at the floor of detection |
+| **depth, per route** (§13.239) | turns delivered | **untested** | the dispatch in flight |
+
+All three buy **the same quantity** -- how much of the in-pool gold is inside the delivered evidence --
+and the first two priced it at roughly **0.6 accuracy points per doubling**. That is the exchange rate
+this campaign has been paying for coverage without knowing it, and it is why §13.239 is written as a
+*redistribution* rather than a purchase: the remaining coverage is affordable only where a route's
+turns are cheap, which is an ordering rather than a price.
+
+### 13.240.2 The external bar, and the one claim it changes
+
+`SOTA-LANDSCAPE` has carried Raw-RAG since it was scanned; what had not been read is the paper's own
+**evidence-token** measurement, which is the field that makes our context spend comparable:
+
+| quantity | Raw-RAG (arXiv 2610.30755, Table 20) | this arm (`41546569106`) |
+| --- | ---: | ---: |
+| corpus | LongMemEval, 500 questions | same |
+| evidence tokens, median | **11,248.5** | **~11.7K** (46,834 characters) |
+| evidence tokens, mean | 11,355.6 | — |
+| reader | GPT-4.1-mini | deepseek-chat |
+| accuracy | 87.53 (default), 89.93 (Qwen3 rerank) | **90.15** |
+
+So the sentence §13.231 and §1.16 of the competitor analysis both leaned on -- "we read 1.9-3.9x what
+the leaders read" -- holds **only against vendor self-reports**, none of which publishes a readable
+configuration. Against the one baseline whose reader, judge, chunking and token budget are all
+stated, our context is 4% larger and our accuracy is **2.6 points higher**. The claim is narrowed
+rather than withdrawn, and the narrowing is recorded in both repositories.
+
+### 13.240.3 The reranker's ceiling is the coverage deficit it repairs
+
+Raw-RAG's own ablation is the strongest external evidence any single stage in this campaign has had:
+
+| variant | MemoryAgentBench total | delta |
+| --- | ---: | ---: |
+| Raw-RAG | 48.32 | — |
+| **without the reranker** | **44.40** | **-3.92** (Holm-adjusted p = 0.0012) |
+| + atomic fact extraction | 28.70 | -19.62 |
+| + summary augmentation | 42.51 | -5.81 |
+| + graph expansion | 42.54 | -5.78 |
+| + turn de-duplication | 45.93 | -2.39 |
+
+The natural reading is "add a reranker". Three facts, all local, say otherwise:
+
+1. **This arm has measured it.** `VERDICT-B1-RERANKING`: cross-encoder reranking, run `35624110842`,
+   150 questions, **+1.33 pp (131 vs 129 of 150), McNemar p = 0.7539**, verdict *inconclusive by power*.
+2. **The paper's effect lives where coverage is low.** The same paper measures coverage at
+   **19.07-45.29%** (MemoryAgentBench) and 35.69-76.35% (MEME) across the systems it compares; this
+   arm's coverage is **84.2-100%** per route (§13.239.1). A reranker repairs one failure -- the right
+   evidence is in the pool and ranked too low -- and there is far less of that failure to repair at
+   nine-tenths coverage than at one-third.
+3. **The power arithmetic does not close.** B1's discordant rate is 10/150 = 6.7%, so 500 questions
+   give about 33 discordant pairs, and a McNemar exact test at that n needs roughly a 23/10 split to
+   reach p < 0.05 -- an overall effect of about **2.6 points**. B1 measured 1.33. Re-running at 500
+   questions would therefore still be underpowered; it would just cost five times as much to learn
+   the same nothing.
+
+A stage worth 3.92 points on a corpus whose coverage is a third of ours, and 1.33 on ours, is not
+evidence that the stage is worth 3.92 here. **The quantity that transfers between corpora is the
+coverage deficit, not the delta.**
+
+### 13.240.4 What replaces it, and why this one is powered
+
+The same artifact carries a row that had not been read as a lever:
+
+| arm | reader | window | MR |
+| --- | --- | --- | ---: |
+| `reference-pipeline` (this product with the memory arm off) | **the same DeepSeek** | **smaller** | **86.78%** |
+| `cortex-memory` (registered) | same | retrieved | **76.86%** |
+
+Same reader, same 500 questions, same judge, a **smaller** window, **+9.92 points**. That row excludes
+three axes this campaign has spent money on -- the reader (identical), coverage (§13.239.2 prices full
+coverage at about +7 and is being measured now), and the budget (the control's is smaller) -- and
+leaves the **prompt shape**: the reference pipeline asks for the two steps with the notes unwritten,
+while this arm has required a list since §13.34.
+
+It is registered as stage **S8**, and unlike B1 it is powered: a 9.9-point effect on 121 questions is
+well inside what a paired test resolves, and the bar is a B-grade measurement from our own artifact
+rather than a C-grade one from someone else's corpus.
+
+### 13.240.5 What this section does not do
+
+1. **It does not remove the reranker.** The stage stays implemented and configurable; what is retired
+   is the *expectation* that turning it on is worth a dispatch at 500 questions.
+2. **It does not conclude that the paper is wrong.** Its claim is about its own systems on its own
+   corpus, and its coverage numbers are the reason its ablation is large -- which is the reading this
+   section adopts rather than disputes.
+3. **It does not settle MR.** §13.239's prediction 2 and S8 both target MR and they are not rival
+   explanations: depth and contract can each be worth points, and the two dispatches are ordered
+   rather than exclusive.
