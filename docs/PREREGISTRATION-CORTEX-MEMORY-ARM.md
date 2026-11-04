@@ -26743,10 +26743,11 @@ full-coverage accuracy is 84.0% -- so if coverage is the whole mechanism, the ce
 `(75 x 0.84 + 46 x 0.84) / 121 = 84.0%`, i.e. **MR +7.1 points and overall +1.7**. Half of that
 converting is +0.85 overall, which is the difference between 90.15 and 91.00.
 
-**Status: all five untested** (§13.242). The dispatch meant to answer them (`41751619617`) left
-twenty-one of its twenty-two inputs blank, so the arm it measured was the product's default
-configuration rather than the registered one: five mechanisms moved together and the reading cannot
-be attributed to the redistribution. The predictions stand as written and are owed a run.
+**Status: judged, three false** (§13.243). The first dispatch meant to answer them (`41751619617`)
+left twenty-one of its twenty-two inputs blank and measured the product's configuration instead; the
+second (`41773546221`) sent all twenty-two and declared one. Predictions 1, 2 and 4 are **false**,
+3 and 5 are true, and prediction 2's falsification carries the meaning this paragraph pre-registered:
+**coverage does not convert to accuracy on MR.**
 
 ### 13.239.7 What this section does not claim
 
@@ -26779,7 +26780,7 @@ failures. They are the same purchase:
 | --- | --- | ---: | --- |
 | `relevanceTopK` 256 -> 512 | candidates scored per question | +0.55 | below the arm's own spread (1.60) |
 | `maxPromptChars` 24,000 -> 48,000 | characters delivered | +0.60 | at the floor of detection |
-| **depth, per route** (§13.239) | turns delivered | **untested** | the dispatch ran the product's configuration, not the arm (§13.242) |
+| **depth, per route** (§13.239) | turns delivered | **null** | +14% depth, +1.6 coverage, 0 accuracy; three of five predictions false (§13.243) |
 
 All three buy **the same quantity** -- how much of the in-pool gold is inside the delivered evidence --
 and the first two priced it at roughly **0.6 accuracy points per doubling**. That is the exchange rate
@@ -27138,3 +27139,127 @@ legitimate object of study, but it is not the registered arm and this document's
 3. **Every future dispatch goes through `tools/dispatch-cortex-memory-ab.py`.** The preflight makes a
    hand-rolled dispatch *fail* rather than *lie*, which is the point, but the dispatcher is what
    sends the twenty-two inputs and writes the declaration that matches them.
+
+## 13.243 The redistribution ran, four of its five predictions are false, and the falsification is the result
+
+*`41773546221` is the dispatch §13.242 was written to make possible: twenty-two inputs, one declared
+departure (`maxPromptChars`), the preflight green in five seconds, 87 minutes of wall clock. This
+section reads it. The headline did not move. What moved is the campaign's belief about what limits
+MR.*
+
+### 13.243.1 The five predictions, judged
+
+| # | prediction | falsified by | measured | verdict |
+| --- | --- | --- | --- | --- |
+| 1 | MR in-pool gold delivered ≥ **99.0%** | < 97% | **96.4%** | **false** |
+| 2 | MR correct ≥ **96 of 121** | ≤ 94 | **92** first pass, 93.5 mean | **false** |
+| 3 | `flat` ≥ **141 of 150** | ≤ 139 | **141** | **true**, with no margin |
+| 4 | overall `featureAggregate.avg` ≥ **90.15%** | < 90.15 | **88.80%** first pass, **89.75%** mean | **false** |
+| 5 | mean `promptChars` ≤ **46,630** | > 46,630 | **46,125** | **true** |
+
+Prediction 3 passing at exactly its threshold is not a pass to celebrate: `flat`'s room was cut to
+36,200 and its depth fell 61 → **52**, and the three questions it cost are the three the prediction
+budgeted for. The bar was set at 141 because that is what a 2.6-point coverage loss should cost, and
+it cost exactly that.
+
+### 13.243.2 Prediction 2 was the one this section was for, and it came back false
+
+§13.239.6 wrote its own falsifier's meaning in advance:
+
+> *coverage does not convert to accuracy on MR, so retrieval is exhausted there and the 8-to-10-point
+> gap to the no-memory baseline is a reasoning deficit. This is the outcome that would save the
+> campaign the most future work, and it is worth the run either way.*
+
+That is what happened. The evidence is stronger than the headline, because the coverage split moved
+in a way that makes the null a composition effect rather than a flat line:
+
+| | registered arm (`41546569106`) | this run (`41773546221`) |
+| --- | ---: | ---: |
+| MR depth (turns delivered) | 174 | **198** (+14%) |
+| MR in-pool gold delivered | 94.8% | **96.4%** |
+| MR questions at full coverage | 75 | **82** (+7) |
+| accuracy, full coverage | 84.0% | **89.0%** (+5.0) |
+| accuracy, partial coverage | 65.2% | **48.7%** (−16.5) |
+| accuracy, all 121 | 76.86% (93) | **76.03% (92)** |
+
+Read the rows together and the mechanism is visible. **Seven questions moved from the partial band
+into the full band, and the full band's accuracy rose five points — and the route's accuracy did not
+move at all.** Two things are true at once and both matter:
+
+1. **Full coverage is worth 89.0%**, which is three points above the reference pipeline's 86.78% on
+   the same route. When the evidence is complete, this arm reads better than the pipeline it loses to.
+2. **The seven questions that arrived at full coverage did not become correct.** The partial band's
+   accuracy fell from 65.2 to 48.7 because the questions left in it are the harder ones, and the
+   arrivals did not compensate. Coverage was not what separated them from their answers.
+
+So the 8-to-10-point gap to the no-memory baseline is **not a retrieval-room deficit**. An arm that
+delivers 96.4% of the in-pool gold on MR and still reads 76% has exhausted what this axis can buy,
+and the next MR experiment has to be a reading experiment rather than a retrieval one.
+
+### 13.243.3 Prediction 1 was false for a reason worth keeping
+
+55,000 characters bought **198** turns, not the 256 that §13.239.2 derived from a density of 215
+characters per turn, and 96.4% coverage, not 100%. The density moved: **189 characters per turn**
+under the wider room.
+
+That is not a broken derivation, it is a measured property of the selection. A wider room admits
+turns that the narrower room excluded, and the marginal turn is shorter than the average one — so
+the density is a function of the depth, and the linear conversion `room = target × density` holds
+only inside the band where the density was measured. §13.239.4's tool searched every integer depth
+precisely to avoid a grid artefact; what it could not avoid is that the density it multiplies by is
+itself a function of the depth it is solving for.
+
+**The repair is not a larger constant.** A 99% target on this route needs the density curve, not one
+point of it, and §13.243.2 says the target would not have paid anyway.
+
+### 13.243.4 The verdict: not adopted, and the reason is not the headline
+
+| quantity | registered | this run | delta |
+| --- | ---: | ---: | ---: |
+| `featureAggregate.avg` (4 runs) | 90.15% | 89.75% | **−0.40** |
+| first pass | 90.15% | 88.80% | −1.35 |
+| run-to-run range of the arm | 1.60 | **2.20** (88.80 to 91.00) | — |
+| mean prompt chars | 46,630 | 46,125 | **−1.1%** |
+
+−0.40 is **inside** the arm's own spread, so this is a null rather than a regression: the honest
+statement is *"the redistribution moved nothing measurable, and three of its five predictions are
+false"*, not *"it costs 0.40"*. The registration stands at 90.15% and the map is not adopted.
+
+That distinction matters for the campaign's rule about reverting a regression on evidence. There is
+no evidence of harm here — there is evidence of **no effect plus a falsified mechanism**, and the
+second is the one that changes the plan.
+
+### 13.243.5 A measurement defect this run exposed, stated with what has been ruled out
+
+The artifact's `census-unit` check failed: **488 outcomes against 2,000 question-answers** (122 per
+pass over 500 questions). The registered arm's own artifact sums to **2,000** exactly. Three things
+have been ruled out rather than guessed at:
+
+| hypothesis | how it was ruled out |
+| --- | --- |
+| the map changed the budget for the unnamed routes | the per-route mean `promptChars` for `abstention` (46,318), `knowledge-update` (46,575) and `temporal` (47,138) are **identical** to the registered arm's, field for field |
+| the arm consulted more than once per question | `vote` passes (one consultation per question) and `recovery` reports 0 consultations |
+| `maxPromptChars` defaulting to unbounded caused it | ruled out by the first row: an unbounded room that changes no prompt cannot change a counter |
+
+What is left is the wiring: 122 per pass is **121 MR questions plus one**, which is what a census
+that only records the session route would look like. `#promptSession` and `#prompt` both call
+`#recordOutcome`, and `abstention-reasons.test.ts` covers both routes in isolation — so the defect is
+in a path the unit tests do not construct, and the next step is a test that runs one question on each
+of the five routes **through the arm's own construction path**, not through the class directly.
+
+**Until that is fixed, the abstention rate in this artifact is not quotable**: 28 declines against a
+488 denominator and the same 28 against 2,000 are rates that differ by a factor of four, and the
+artifact prints the first without knowing the second is the right one.
+
+### 13.243.6 What changes in the plan
+
+1. **The evidence-room axis is closed on both ends.** Widening it (24k → 48k) bought +0.60 (§14.31);
+   redistributing it bought nothing measurable and cost `flat` three questions. The exchange rate is
+   the same at both ends because it is the same purchase (§13.240.1), and the purchase is finished.
+2. **MR is a reading problem.** An arm at 96.4% delivered gold reading 76% has nothing left to buy on
+   the retrieval side, and its full-coverage accuracy (89.0%) is the number a reading experiment has
+   to move the whole route toward.
+3. **The next MR experiment is §13.239's own runner-up**: the reference pipeline's ask, migrated
+   whole — `identify` rather than `enumerate`, answer-only, `Answer:` prefix. It is the only
+   difference left between two arms that share a reader, a dataset and a judge, and the smaller-window
+   arm is 9.92 points ahead.
