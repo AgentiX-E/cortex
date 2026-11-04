@@ -26594,3 +26594,28 @@ a second-order term here; §13.233 already located the first-order one (the coun
 The 5h41m the dead run spent was not wasted after all -- but that is a sentence about the fix, not
 about the run. The run produced no report because nothing had been built to grade a recording, and the
 first thing this campaign should have had was the thing that makes any run's answers survive it.
+
+### 13.238.5 What the control's 44.20% is, and is not
+
+Reading the replay makes one number newly legible that every prior artifact contained and none of them
+explained: the `reference-pipeline` arm records **246 declines out of 500**, and scores **IE 1/150**
+and **KU 1/72**. A pipeline that reads the whole history and answers two of those abilities correctly
+is not "no memory"; it is a pipeline whose prompt declines on the routes where the history does not fit.
+
+That is a property of the control, not of the treatment, and it changes what the +46-point delta means:
+
+| reading | supported? |
+| --- | --- |
+| "cortex-memory is 46 points better than an agent with no memory" | **no** -- the control is not a memoryless agent, it is this product's prompt with the memory arm switched off, and on IE and KU it declines |
+| "cortex-memory is 46 points better than the same product without its memory arm" | yes, and that is the ablation's actual claim |
+| "MR's 76.86% is below the baseline's 84.30-86.78%" | yes, and **this is the one capability where the control is strong**, so it is the one where the comparison is informative -- which is exactly why §13.233 and §13.238.3 treat MR's gap as the campaign's real target |
+
+The external number for "no memory at all" is not this arm; it is the full-history baseline in the
+ledger (57.6%, `SOTA-LANDSCAPE`), and against *that* the margin is 32.6 points rather than 46. Both are
+true statements about different controls, and the campaign's own doctrine -- "a number is only
+comparable together with the conditions it was taken under" -- is what requires them to be kept apart
+rather than quoted interchangeably.
+
+This is not a defect to fix in the arm. It is a defect in how the arm's delta has been *described*, and
+it is the fourth instance this round of the same pattern: a field that exists, is correct, and is read
+as something it is not.
