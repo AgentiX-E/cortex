@@ -27423,3 +27423,99 @@ number with the denominator the artifact already declares, and it needs no mecha
 **The rule this campaign takes from it: a census must be publishable only with its denominator, and
 the denominator must be computed rather than assumed.** `488` was a real count of a real quarter; the
 error was never in the counting, it was in what the count was said to be *of*.
+
+## 13.245 Two defects found while trying to confirm the first one
+
+*§13.244's repair needs one real artifact to confirm it: sixty questions, four passes, a census summing
+to 240. The dispatch for that (`41842684629`) died after three minutes without starting a question, and
+the CI job that ran beside it went red on a test that had been passing. Both are defects in the
+instrument rather than in the arm, and both are worth more than the confirmation they blocked.*
+
+### 13.245.1 The cache keyed on a file the template service cannot afford to hash
+
+```
+##[error]The template is not valid. .github/workflows/benchmark-cortex-memory.yml (Line: 370, Col: 25):
+hashFiles('data/longmemeval_s_cleaned.json') couldn't finish within 120 seconds.
+```
+
+`hashFiles` is evaluated by the **template service**, not by the runner, and it has a 120-second budget
+for the whole template. The corpus is served from a moving HuggingFace branch at 100+ MB. So the step
+that restores the embedding cache could not compute its own key.
+
+The galling part is that the digest it was a function of **had already been computed** one line above,
+in the download step, for the corpus-mismatch assertion that §13.237 added:
+
+```bash
+ACTUAL_SHA="$(sha256sum .../data/longmemeval_s_cleaned.json | cut -d' ' -f1)"
+```
+
+So the key was reading a large file to re-derive a value it already had. The repair writes a 64-byte
+digest file in the download step and keys on that:
+
+| | before | after |
+| --- | --- | --- |
+| what the key hashes | the corpus, 100+ MB | `data/dataset.sha256`, 64 bytes |
+| who computes it | the template service, 120 s budget | the same, in milliseconds |
+| does a corpus change change the key | yes | **yes**, because the file's content *is* the corpus digest |
+| do the two workflows share entries | yes | **yes**, and this is the constraint that makes it non-trivial |
+
+The last row is why this was not a one-line change. `benchmark.yml` and
+`benchmark-cortex-memory.yml` must land on the **same** cache entry — that is the property that lets
+whichever workflow runs first pay for the 170,095 vectors and the other find them. Both now write the
+same digest file in the same form, and a guard pins the key **expression** identical across the two,
+which is the only place that consequence is observable.
+
+`tools/__tests__/test_embedding_cache_key.py` gains four properties, each with the failure it prevents:
+
+| property | what breaks without it |
+| --- | --- |
+| no key hashes the corpus | a run that dies in three minutes with no measurement |
+| the digest file is written **before** the first cache step | the key resolves to `longmemeval-embedding--<id>`, which matches nothing, so every run re-embeds 170,095 turns (1h38m of a 3h21m job — §13 on the old bare key) |
+| the digest is written **from the corpus** | a changed corpus keeps the old key and restores vectors of text that is no longer in the dataset |
+| both workflows use the identical expression | they stop sharing entries and the two reports stop being comparable by construction |
+
+The first version of that guard failed against a workflow that was already correct, because it searched
+the raw file and the **comment** recording the failure quotes the offending expression verbatim. The
+guard now strips comment lines first: what has to hold is a property of the expressions, and a `#` line
+is not one.
+
+### 13.245.2 A budget assertion measured with a clock that cannot resolve it
+
+`Verify` went red on `41842394314` with one test out of 4,887:
+
+```
+retryableFetch respects a wall-clock budget > spends the remaining budget on a retry after a transport failure
+AssertionError: expected 3 to be 2
+```
+
+The claim is arithmetic: ten milliseconds of budget against a thirty-millisecond backoff is one
+truncated wait, therefore exactly one more request. It was measured with a **real** `setTimeout(10)`,
+and a real timer may be delivered a fraction early — so the remaining budget read a hair above zero and
+the ladder took a third attempt. Every other assertion in the file was green, and the run before it was
+green, which is what a timing-dependent instrument looks like.
+
+**The product is not wrong here.** `retryBudgetMs` in production is measured in seconds; a one-tick
+overshoot at ten milliseconds is a tick. The *test* was wrong to ask a 10 ms budget to distinguish
+"zero remaining" from "0.4 ms remaining" with a clock that cannot. The repair fakes the clock — the
+pattern the rest of the file already uses — and asserts the **offsets** rather than only the count:
+
+```ts
+expect(offsets).toEqual([0, 10]);
+```
+
+That is a stronger assertion than the one it replaces: it pins the truncation, not merely its
+consequence. Verified by mutation — with the truncation disabled, the test fails; before the change, a
+ladder that ignored the budget would have passed a `calls === 2` check on a fast enough runner only by
+luck.
+
+### 13.245.3 What is still owed
+
+| # | owed | criterion | status |
+| --- | --- | --- | --- |
+| 1 | **the confirming artifact** | sixty questions × four passes → census sums to **240**, and `census-unit` green | re-dispatched after this section |
+| 2 | §13.243's five predictions | unchanged; three are false and two are true, and the falsification is the reading | closed as a **null**, not as a regression |
+| 3 | the ask migration (§13.243.6) | MR ≥ 96/121 with the other four capabilities inside the noise band | **not started** — it is now the only MR experiment left |
+
+The confirmation run is not a formality. §13.244's fold is covered by nine unit tests, but those build
+their own pools; the only evidence that the **CLI's** pool is enumerated is an artifact whose census
+equals `questionCount × runs`.

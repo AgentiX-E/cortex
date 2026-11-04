@@ -184,6 +184,19 @@ jobs:
             echo "::error::corpus hash mismatch: expected $EXPECTED, got $ACTUAL_SHA"
             exit 1
           fi
+          # The embedding cache is keyed on the corpus, and it used to be keyed by
+          # `hashFiles('data/longmemeval_s_cleaned.json')` -- a hash of the corpus **file**, computed
+          # by the template service on every cache step. `41842684629` died on it:
+          #
+          #   The template is not valid. (Line: 370, Col: 25): hashFiles('data/longmemeval_s_cleaned.json')
+          #   couldn't finish within 120 seconds.
+          #
+          # The hash the digest is a function of is already computed one line up, so the cache reads a
+          # 64-byte file instead of a 100+ MB one. Two properties this keeps deliberately:
+          # `benchmark.yml` and `benchmark-cortex-memory.yml` must produce the **same** key, which is
+          # what lets either workflow find vectors the other paid for; and a corpus change must still
+          # change the key, which it does because the file's content is the corpus digest.
+          printf '%s  longmemeval_s_cleaned.json\n' "$ACTUAL_SHA" > "${{ github.workspace }}/data/dataset.sha256"
 
       # The primary key names the entry THIS run will write, and deliberately cannot
       # match anything older -- see the block above `Save embedding cache` at the bottom
@@ -193,9 +206,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
-          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-
+            longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-
             longmemeval-embedding-
 
       - name: Run benchmark
@@ -320,7 +333,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
-          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload benchmark report
         if: always()

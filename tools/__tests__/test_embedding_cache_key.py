@@ -240,3 +240,100 @@ def test_no_restore_primary_key_can_only_ever_name_a_stale_entry():
         'no restore/save pair sharing a path was found in any workflow; the guard would '
         'pass vacuously, which is the failure mode it exists to prevent.'
     )
+
+
+# ---------------------------------------------------------------------------------------------------
+# The corpus is not the key: a 100+ MB file that a template expression cannot afford to hash.
+# ---------------------------------------------------------------------------------------------------
+#
+# `41842684629` -- the sixty-question run dispatched to confirm the census repair in §13.244 -- never
+# reached a question. It died at the cache step after three minutes:
+#
+#     The template is not valid. .github/workflows/benchmark-cortex-memory.yml (Line: 370, Col: 25):
+#     hashFiles('data/longmemeval_s_cleaned.json') couldn't finish within 120 seconds.
+#
+# `hashFiles` is evaluated by the **template service**, not by the runner, and it has a 120-second
+# budget for the whole template. The corpus is served from a moving HuggingFace branch at 100+ MB. The
+# digest that expression was a function of had already been computed one line above it in the download
+# step, for the mismatch assertion -- so the key was reading a large file to re-derive a value it
+# already had. The key now reads a 64-byte digest file.
+#
+# Four properties, and the failure each one prevents:
+#
+# | property | what breaks without it |
+# | --- | --- |
+# | no key hashes the corpus | the 120-second budget, i.e. a run that dies in three minutes with no measurement |
+# | the digest file is written before the first cache step | the key resolves to `longmemeval-embedding--<id>`, which matches nothing, so every run re-embeds 170,095 turns (1h38m of a 3h21m job) |
+# | the digest is written from the corpus | a changed corpus keeps the old key and restores vectors of text that is no longer in the dataset |
+# | both workflows use the identical expression | they stop sharing entries, which is the property that makes the two reports comparable |
+
+CORPUS_PATH = 'data/longmemeval_s_cleaned.json'
+DIGEST_PATH = 'data/dataset.sha256'
+SHARED_KEY = (
+    "longmemeval-embedding-${{ hashFiles('" + DIGEST_PATH + "') }}-"
+    '${{ github.run_id }}-${{ github.run_attempt }}'
+)
+
+
+def keying_workflows() -> list[pathlib.Path]:
+    """The workflows that key an embedding cache on the corpus at all."""
+    return [path for path in workflow_files() if 'longmemeval-embedding-' in path.read_text()]
+
+
+def uncommented(text: str) -> str:
+    """The workflow with its comment lines removed.
+
+    A guard that reads comments is a guard that fails on its own explanation: this file's subject is
+    quoted verbatim in the comment that records the failure, so the first version of
+    `test_no_cache_key_hashes_the_corpus_itself` failed against a workflow that was already correct.
+    What has to hold is a property of the **expressions**, and a `#` line is not one.
+    """
+    return '\n'.join(line for line in text.splitlines() if not line.lstrip().startswith('#'))
+
+
+def test_no_cache_key_hashes_the_corpus_itself():
+    for path in workflow_files():
+        assert f"hashFiles('{CORPUS_PATH}')" not in uncommented(path.read_text()), (
+            f'{path.name} hashes the corpus file inside an expression. The template service has a '
+            '120-second budget and the corpus is 100+ MB, so the run dies before its first question '
+            '(`41842684629`). Key on the digest file instead, and write it in the download step.'
+        )
+
+
+def test_every_keying_workflow_writes_the_digest_before_reading_it():
+    keying = keying_workflows()
+    assert keying, 'no workflow keys the embedding cache; the checks below would pass vacuously'
+    for path in keying:
+        text = path.read_text()
+        write_at = text.find(DIGEST_PATH + '"')
+        assert write_at != -1, (
+            f'{path.name} keys the cache on {DIGEST_PATH} and never writes it, so the key resolves to '
+            'an empty hash and no entry is ever found'
+        )
+        key_at = text.index(SHARED_KEY)
+        assert text.index('\n          ACTUAL_SHA=', 0) < key_at, (
+            f'{path.name}: the digest is written after the first cache step, so the key is evaluated '
+            'before the file exists -- the same empty-hash outcome in a different order'
+        )
+
+
+def test_the_digest_is_written_from_the_corpus():
+    for path in keying_workflows():
+        text = uncommented(path.read_text())
+        assert f'sha256sum "${{{{ github.workspace }}}}/{CORPUS_PATH}"' in text, (
+            f'{path.name} writes {DIGEST_PATH} from something other than the corpus digest, so a '
+            'changed corpus would keep the same key and restore vectors of the wrong text'
+        )
+
+
+def test_both_workflows_share_one_key_expression():
+    keying = keying_workflows()
+    assert len(keying) >= 2, (
+        'only one workflow keys the embedding cache, so the sharing property this test exists for is '
+        'not measurable any more -- delete the test rather than leaving it vacuous'
+    )
+    for path in keying:
+        assert SHARED_KEY in path.read_text(), (
+            f'{path.name} does not use the shared cache key, so the two workflows stop finding each '
+            "other's vectors -- and the reports they produce stop being comparable by construction"
+        )

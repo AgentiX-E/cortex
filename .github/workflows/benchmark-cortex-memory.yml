@@ -332,6 +332,20 @@ jobs:
             -H "Authorization: Bearer ${HF_TOKEN}" \
             -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
             "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+          # The same digest `benchmark.yml` prints and asserts against a dispatch input. Printed here
+          # because the file is served from a moving branch, so two dispatches can measure two different
+          # corpora while both artifacts claim "LongMemEval-S / 500".
+          ACTUAL_SHA="$(sha256sum "${{ github.workspace }}/data/longmemeval_s_cleaned.json" | cut -d' ' -f1)"
+          echo "corpus sha256: $ACTUAL_SHA"
+          echo "corpus bytes : $(stat -c%s "${{ github.workspace }}/data/longmemeval_s_cleaned.json")"
+          # The cache key reads THIS file, not the corpus. `41842684629` died at
+          # `hashFiles('data/longmemeval_s_cleaned.json') couldn't finish within 120 seconds` -- the
+          # template service hashes the corpus on every cache step, and a 100+ MB file does not fit in
+          # its budget. A 64-byte digest file does, and it is still a function of the corpus, which is
+          # what makes a corpus change change the key. Written identically here and in `benchmark.yml`
+          # because the two workflows must land on the SAME entry: whichever runs first pays for the
+          # vectors and the other finds them.
+          printf '%s  longmemeval_s_cleaned.json\n' "$ACTUAL_SHA" > "${{ github.workspace }}/data/dataset.sha256"
 
       # Keyed on the dataset hash, which is the same key `benchmark.yml` uses -- so
       # whichever workflow runs first pays for the vectors and the other finds them
@@ -366,9 +380,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
-          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-
+            longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-
             longmemeval-embedding-
 
       # A separate step rather than a branch inside the main benchmark's, because the
@@ -607,7 +621,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
-          key: longmemeval-embedding-${{ hashFiles('data/longmemeval_s_cleaned.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The artifact name is deliberately the one `benchmark.yml` uses. The fetch
       # tooling resolves by name, and a run of either workflow is "the report of the

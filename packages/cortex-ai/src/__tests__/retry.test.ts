@@ -703,31 +703,57 @@ describe('retryableFetch respects a wall-clock budget', () => {
     // more request is made. Under the old rule the ladder stopped with 10 ms of a 10 ms
     // budget unspent, which is the same defect as the default count: a ceiling the ladder
     // cannot reach.
-    let calls = 0;
-    const fetchFn = async (): Promise<Response> => {
-      calls += 1;
-      throw new Error('socket hang up');
-    };
-    resetRetryStats();
-    const error = await retryableFetchWithStats(
-      fetchFn,
-      'http://x',
-      {},
-      { maxRetries: 10, baseDelayMs: 30, retryBudgetMs: 10 },
-    ).then(
-      () => new Error('the call resolved; it should have rethrown the transport error'),
-      (thrown: unknown) => thrown as Error,
-    );
+    //
+    // ## Why the clock is faked here, and why that is a repair rather than a tolerance
+    //
+    // This assertion is **arithmetic**: ten milliseconds of budget against a thirty millisecond
+    // backoff is one truncated wait and therefore exactly one more request. It was being measured
+    // with a real clock, and a real `setTimeout(10)` may be delivered a fraction early -- so the
+    // remaining budget read a hair above zero and the ladder took a **third** attempt. `41842394314`
+    // is that: `expected 3 to be 2` on a loaded CI runner, with every other assertion in the file
+    // green.
+    //
+    // The product is not wrong at a real budget: `retryBudgetMs` in production is measured in
+    // seconds, and a one-tick overshoot is a tick. The test was wrong to ask a 10 ms budget to
+    // distinguish "zero remaining" from "0.4 ms remaining" with an instrument that cannot. Faking the
+    // clock makes the measurement the same kind of object as the claim -- the offsets below are
+    // exact, not approximately exact -- and it is the pattern the rest of this file already uses
+    // (`waits out the whole default budget`, `imposes no ceiling at all`).
+    vi.useFakeTimers();
+    try {
+      const offsets: number[] = [];
+      const first = Date.now();
+      const fetchFn = async (): Promise<Response> => {
+        offsets.push(Date.now() - first);
+        throw new Error('socket hang up');
+      };
+      resetRetryStats();
+      const promise = retryableFetchWithStats(
+        fetchFn,
+        'http://x',
+        {},
+        { maxRetries: 10, baseDelayMs: 30, retryBudgetMs: 10 },
+      ).then(
+        () => new Error('the call resolved; it should have rethrown the transport error'),
+        (thrown: unknown) => thrown as Error,
+      );
+      // Long enough for the truncated wait to fire, and long enough that a ladder which ignored the
+      // budget would spend a third attempt inside the same advance and be counted here.
+      await vi.advanceTimersByTimeAsync(100);
+      const error = await promise;
 
-    // Two attempts, then no budget left -- and no response to hand back, so the transport
-    // error is what surfaces. `calls` is the criterion: the truncated wait bought one more
-    // request, which is the whole reason the truncation exists.
-    expect(calls).toBe(2);
-    expect(error.message).toBe('socket hang up');
-    expect(retryStats().attempts).toBe(2);
-    expect(retryStats().retried).toBe(1);
-    expect(retryStats().rateLimited).toBe(0);
-    expect(retryStats().exhaustedCalls).toBe(1);
+      // Two attempts, then no budget left -- and no response to hand back, so the transport
+      // error is what surfaces. The offsets are the criterion: the second attempt lands on the
+      // truncated deadline, which is the whole reason the truncation exists.
+      expect(offsets).toEqual([0, 10]);
+      expect(error.message).toBe('socket hang up');
+      expect(retryStats().attempts).toBe(2);
+      expect(retryStats().retried).toBe(1);
+      expect(retryStats().rateLimited).toBe(0);
+      expect(retryStats().exhaustedCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps retrying while the budget still allows it', async () => {
