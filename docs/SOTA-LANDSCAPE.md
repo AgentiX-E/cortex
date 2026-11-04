@@ -4,7 +4,7 @@ What the frontier is, as of 2026-10-28, and what each published mechanism would 
 
 ## 0. One paragraph
 
-The published LongMemEval frontier is **96.20%** and the reproducible one is **85.8–86.5%**. The distance
+The published LongMemEval frontier is **96.40%** (Exabase M-1, 2026-07) and the reproducible one is **85.8–86.5%**. The distance
 between those two sentences is the most important fact in this document: on the same 500-question benchmark,
 the same published metric and the same judge, the numbers a vendor announces and the numbers an independent
 party can re-derive differ by 10 points at the top of the range and by **62 points** at the bottom (Mem0: 94.4%
@@ -44,6 +44,7 @@ and metric, different reader or judge; **C** = different metric, subset, or an u
 
 | system                            | score                            | grade | reader                           | judge             | note                                                                                                                    |
 | --------------------------------- | -------------------------------- | ----- | -------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Exabase M-1                       | **96.40%**                       | C     | **Gemini 3 Flash** (≈6x cheaper than peers) | not stated | vendor press release, 2026-07-28; ~20% fewer tokens per query than the next best system; same release reports BEAM 76.9 / 75.0 / 68.0 |
 | agentmemory V4                    | **96.20%** (481/500)             | C     | Claude Opus 4.6                  | GPT-4o, seed 42   | single deterministic run; six-signal retrieval; code public                                                             |
 | Chronos High (PwC)                | 95.60%                           | C     | not stated in the public summary | not stated        | arXiv, 2026-03                                                                                                          |
 | Mastra Observational Memory       | 94.87%                           | C     | GPT-5-mini                       | GPT-4o            | vendor research page; **same system at 84.23% with GPT-4o**                                                             |
@@ -403,7 +404,7 @@ while carrying position bias >0.10 — *consistent and wrong* (>541,000 judgment
 | **MemoryAgentBench**         | incremental                           | selective forgetting, multi-hop conflict resolution (≤28% for all systems)         | candidate; novel-competency axis                                                            |
 | **LoCoMo**                   | 1540 q, 35 sessions                   | multi-session dialogue                                                             | secondary; Mem0 OSS scored 0.0% on it in one harness, which is an instrument question first |
 | **Agent Memory Leaderboard** | 10+ datasets, 5000 q                  | a **public leaderboard with a fixed reader and an Add/Search protocol**            | see §7                                                                                      |
-| **BEAM**                     | 10M tokens                            | scale degradation                                                                  | not now; cost                                                                               |
+| **BEAM**                     | 100K / 500K / 1M / 10M; 2,000 probes  | scale degradation across ten abilities                                            | **cost, not doubt.** The 2026-10-05 past.dev release publishes a harness and per-question results (100K 92.08 / 10M 85.03), so the earlier "no reproducible BEAM number exists" no longer holds. Its own breakdown reports **multi-session 28.17% at 10M** — the route we are worst at, at the scale we have never tested |
 
 ## 6. The instrument lesson this landscape repeats
 
@@ -439,8 +440,11 @@ available.
 
 ## 8. What this document changes about the plan
 
-1. **The target is 85.8%, not 96.2%.** Anything above the grade-A frontier is either a different reader or a
-   different metric until an independent run says otherwise.
+1. **The target is 85.8%, not 96.4%.** Anything above the grade-A frontier is either a different reader or a
+   different metric until an independent run says otherwise. The published ceiling moved from 96.20 to
+   **96.40** when Exabase M-1 announced it, and the movement is the point: a ceiling that anyone can raise by
+   announcing a number is not a target, it is a ranking of press releases. The 96.40 row is quoted with all
+   four attributes precisely so that the next announcement does not require re-reading this paragraph.
 2. **A reading made here is withdrawn.** An earlier version of this file treated the 82.4% oracle as the reader
    ceiling and inferred that 80.80% sitting 1.6 points under it meant retrieval had little left to buy. Raw-RAG
    at 87.53 with GPT-4o-mini — 5.1 points _above_ that oracle — retires the inference. 82.4 was one
