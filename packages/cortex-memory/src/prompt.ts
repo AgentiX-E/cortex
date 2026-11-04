@@ -263,6 +263,16 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // mention that does not exist are the same absence. This ask makes the exclusion a line, which is the
   // only way the screen becomes readable from the transcript.
   candidates: ['multi-session', 'flat', 'temporal'],
+  // §13.246. The reference pipeline's aggregation contract, on the questions it was written for --
+  // the enumeration-shaped ones. The derivation half stays `operands`, which is the adopted block and
+  // a different comparison; moving both would price neither.
+  //
+  // The reach is the registration's, not one route, and the distinction is the one this table has
+  // always made: reach is measured against the **shipped** block, and every route the registered arm
+  // moved away from it stays moved under this value, because the delegation returns that arm's block.
+  // So four routes differ from `route` and one — the multi-session one — differs from the control.
+  // `evidence-ask-reach.test.ts` measures the first and `ask-changes.test.ts` the second.
+  verbatim: ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**
@@ -331,6 +341,14 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   // questions would move two variables and `ASK_CHANGES_WHEN_DERIVATION` would have to say so -- which
   // is a true statement about a comparison nobody is going to make, and §13.205.4 records it instead.
   candidates: 'enumerated',
+  // §13.246. The registration's own composition, because that is the arm this value will be read
+  // against: `operands+operand-gap` is what the registered configuration dispatches, so naming it as
+  // the control makes the dispatch a single variable on MR rather than two variables and a revert.
+  //
+  // Naming `enumerated` instead would be the stronger-looking statement and the weaker one: the
+  // adopted arm's derivation questions read `operands`, so against `enumerated` this ask would move
+  // those questions from `operands` to the reference's contract as a second, unregistered change.
+  verbatim: 'operands+operand-gap',
 };
 
 /**
@@ -374,6 +392,10 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // about the mentions, and Step 2 is whatever the question asked of them -- so `ASK_CHANGES_WHEN_
   // DERIVATION` needs no entry, and `ask-changes.test.ts` renders both shapes to hold that.
   candidates: ['multi-session'],
+  // §13.246. One route on an enumeration question, and **nothing** on a derivation one -- the second
+  // half of that statement lives in `ASK_CHANGES_WHEN_DERIVATION`, where an empty set says the
+  // derivation population reads the adopted `operands` block byte for byte.
+  verbatim: ['multi-session'],
 };
 
 /**
@@ -455,7 +477,8 @@ export type EvidenceAsk =
   | 'operands'
   | 'operand-gap'
   | 'operands+operand-gap'
-  | 'candidates';
+  | 'candidates'
+  | 'verbatim';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -1295,6 +1318,76 @@ const SILENT_MULTI_SESSION_INSTRUCTION = withReplacedClose(
 );
 
 /**
+ * The reference pipeline's multi-session contract, migrated whole — §13.246.
+ *
+ * ## The misreading this exists to repair
+ *
+ * §13.123.3 attributed the reference pipeline's ten-point MR lead to a **silent** Step 1 and quoted
+ * `conInstruction` as the evidence: *"Work in two steps, but write ONLY the final answer."* That
+ * function is the skeleton of the **single-session** prompts. The multi-session path never calls it —
+ * `answerSessions` builds with `buildAggregationQaPrompt`, or `buildDerivationQaPrompt` for a
+ * derivation question — and the aggregation builder opens with *"Step 1 — Enumerate every item
+ * matching the question's EXACT action, one per line"*. The reference **writes the list out**,
+ * exactly as `enumerated` does.
+ *
+ * The consequence is arithmetic rather than rhetorical. `silent` was built to copy the reference's ask
+ * and instead removed the thing the reference does, so its −26 questions measure that removal and not
+ * the reference's contract (§13.127). §13.240.4 then read the same misattribution a second time, as
+ * *"the only difference left is the prompt shape: the reference asks for the two steps with the notes
+ * unwritten"*, and §13.243.6 nominated that non-existent ask as the last MR experiment. **The two arms
+ * have never been compared under the same ask**, which is what this block makes possible.
+ *
+ * ## What "whole" means, and the one thing that is not text
+ *
+ * The lines below are `buildAggregationQaPrompt`'s, in its order, unabridged, including the bare
+ * `Answer:` cue that ends it. Nothing is paraphrased, reordered or dropped. `ask-verbatim.test.ts`
+ * renders the reference builder — it is exported from `cortex-eval`, which this package already
+ * imports for `Answer` — and asserts **line equality** against this constant, so an edit to either
+ * side fails a test rather than silently splitting the comparison into two variables.
+ *
+ * The abstention token is not substituted here: it is a parameter of both builders, and the test
+ * passes this package's token to the reference builder. That is what makes the equality exact
+ * rather than approximate, and it is why this block may not acquire a hand-written token later.
+ *
+ * ## The one difference is positional, and it is the assembly's rather than the text's
+ *
+ * The reference emits its instruction block *above* the context and ends the prompt with `Answer:`.
+ * This arm's assembly puts the instruction block last, so the same `Answer:` line is the last line of
+ * the prompt and the model's reply continues from the same place it does there. What the model sees
+ * before that line differs in order from the reference and cannot differ in any other way while
+ * `ask-changes.test.ts` holds the change set to one route.
+ */
+const VERBATIM_MULTI_SESSION_INSTRUCTION = [
+  'You are answering a question based on MULTIPLE conversation sessions.',
+  'The answer may require combining information spread across several sessions.',
+  'Read ALL context carefully.',
+  '',
+  'Work in two steps.',
+  '',
+  "Step 1 — Enumerate every item matching the question's EXACT action, one per line:",
+  '  - <item> | <exact action verb from the question> | <session date>',
+  '  - Do NOT substitute or infer a different verb: for example "participated", "presented", "planned", and "working on" are NOT "led" or "leading".',
+  '  - Treat an "exchange" as TWO items: return the old item AND pick up the replacement.',
+  '  - Count the same event mentioned in multiple sessions only once.',
+  '',
+  'Step 2 — Compute the final answer exactly as the question asks (do NOT re-filter or exclude any of them):',
+  '  - "how many distinct X" → count the distinct items.',
+  '  - "how many hours/days/weeks/months in total" → sum the durations, NOT the item count.',
+  '  - "how much money in total" → sum the amounts.',
+  '  - "what time / which happened first / which event" → report that value or event, NOT a count.',
+  'End your response with a single line in the exact form:',
+  '  Answer: <final answer>',
+  '',
+  `Respond with exactly "${ABSTAIN_TOKEN}" ONLY if the context contains no relevant information at all.`,
+  'Combining facts across several sessions is NOT a reason to abstain.',
+  'If the answer can be computed from facts already in the context — a sum, a difference, an average, a percentage, an elapsed time, or a date read from the context — compute it. Needing to derive the answer is NOT a reason to abstain.',
+  `Do NOT write "${ABSTAIN_TOKEN}" without first writing your Step 1 list. Confirm that you completed Step 1 by listing each candidate item you considered, including the ones you decided to exclude and why.`,
+  `A bare "${ABSTAIN_TOKEN}" with no Step 1 list is not a valid response.`,
+  '',
+  'Answer:',
+].join('\n');
+
+/**
  * The reply shape the flat route never had — §13.124.
  *
  * ## Why a shape and not a length
@@ -1519,6 +1612,11 @@ const AGGREGATE_ASK_INSTRUCTION = withMergingSentence(CONTRACT_INSTRUCTIONS.extr
  */
 export const ASK_CHANGES_WHEN_DERIVATION: Partial<Record<EvidenceAsk, readonly string[]>> = {
   operands: ['multi-session'],
+  // §13.246. Empty rather than absent, and the difference is the reading: absent would claim the ask
+  // moves the same routes on both shapes, which is false, and the loop in `ask-changes.test.ts` would
+  // fail on the derivation render. Empty states the measurement -- a derivation question is not what
+  // the reference's aggregation prompt was written for, so this ask leaves it on `operands`.
+  verbatim: [],
 };
 
 /**
@@ -1660,6 +1758,27 @@ function instructionsFor(
       return CANDIDATES_MULTI_SESSION_INSTRUCTION;
     }
     return contract === 'extractive' || contract === 'temporal' ? withMergingSentence(own) : own;
+  }
+  if (ask === 'verbatim') {
+    // §13.246. The reference pipeline's aggregation contract on the questions it was written for, and
+    // **delegation everywhere else** rather than a fallthrough of `own`.
+    //
+    // The delegation is the whole single-variable claim, and it is written this way for the reason
+    // §13.104 and §13.124 are still in this file: a fallthrough of `own` returns the *shipped* block,
+    // which is not the control's block for five of the six routes, and each time that happened it cost
+    // questions nobody was measuring. Returning `instructionsFor(..., 'operands+operand-gap', ...)`
+    // makes "the other routes read what the registered arm reads" a property of one call rather than a
+    // table that can be updated without the render following it.
+    //
+    // The shape test is the second half: a derivation question's answer is a value computed from
+    // operands, and the reference's aggregation prompt has no line for it -- `buildDerivationQaPrompt`
+    // is a different builder, and migrating it is a different experiment against `operands`, which is
+    // the adopted block. So a derivation question keeps the control's bytes and the change set is
+    // stated as empty for that shape.
+    if (scope === 'multi-session' && contract === 'extractive' && shape !== 'derivation') {
+      return VERBATIM_MULTI_SESSION_INSTRUCTION;
+    }
+    return instructionsFor(contract, date, 'operands+operand-gap', scope, shape);
   }
   if (ask === 'operands') {
     // §13.166. One branch, two questions, and the enumeration half is `enumerated`'s block **by

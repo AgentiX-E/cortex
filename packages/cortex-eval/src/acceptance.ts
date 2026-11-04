@@ -637,7 +637,7 @@ export const CRITERIA: readonly Criterion[] = [
         value: 0.8678,
         grade: 'B',
         recipe:
-          'the `reference-pipeline` arm inside every cortex-memory artifact: same DeepSeek reader, same 500 questions, same judge, and a SMALLER window. Its builder asks the two steps with the notes unwritten; this arm has asked for the list since section 13.34',
+          'the `reference-pipeline` arm inside every cortex-memory artifact: same DeepSeek reader, same 500 questions, same judge, and a SMALLER window. Its multi-session builder (`buildAggregationQaPrompt`) enumerates in writing under a fixed `item | verb | session date` schema and ends on an `Answer:` cue; this arm has asked for the list since section 13.34 but under a different schema, a different Step 2 and no reply terminator. Section 13.246 corrects the earlier reading, which quoted `conInstruction` — the single-session skeleton — and concluded the reference was silent',
       },
       {
         name: 'Raw-RAG (naive), overall',
@@ -655,7 +655,7 @@ export const CRITERIA: readonly Criterion[] = [
       },
     ],
     onMiss:
-      "Read prediction 2 of §13.123.4 first, and it is an assembly check rather than a miss. Flat and temporal are byte-identical between the two asks, so a change to TR or IE means the dispatch administered more than one route and **no number in this row is readable** — re-dispatch before interpreting. Given a clean pair: if MR moves by fewer than 9 and MR declines do not rise, the two-step shape is not where MR's eighteen questions live, and the next candidate is the rendering — the reference hands the reader JSON objects with `date`, `role` and `content`, while this arm hands it numbered prose with source ids, and nothing here has tested one against the other at this window. If MR does not move and declines rise above 13, the written list was doing real work as a decline-suppressant and the answer is a silent Step 1 plus an explicit do-not-decline clause, not a return to the list. The row cannot be reached by overall accuracy: the mechanism lives on one route, so a roster that rises while MR is flat would be a TR or IE movement that prediction 2 already calls an assembly failure.",
+      "Section 13.246 corrects what this row is aiming at. The stage was registered as *the reference pipeline's ask*, and the dispatch that measured it (`silent`) administered an ask the reference does not use: `conInstruction` is the single-SESSION skeleton, and the multi-session path calls `buildAggregationQaPrompt`, which enumerates in writing. So a miss here retires *silence*, not the reference's contract, and `silent`'s -26 is re-read as the price of removing the written list. The corrected target is `ask=verbatim`, the aggregation builder migrated whole, with its own predictions in §13.246.6; the assembly check below still applies unchanged. Given a clean pair on `verbatim`: if MR moves by fewer than 9 and declines do not rise, the ask is exhausted on this route and the remaining axis is the evidence — section 13.243.2's partial-coverage band reads 48.7% where the full band reads 89.0%, and the reference never produces that band because it retrieves sessions and truncates per session. If MR does not move and declines rise, the reference's decline licence is the mechanism rather than its enumeration.",
   },
 ];
 

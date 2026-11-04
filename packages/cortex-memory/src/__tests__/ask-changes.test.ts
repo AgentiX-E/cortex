@@ -76,10 +76,25 @@ function build(seen: string[], ask: EvidenceAsk): CortexMemory {
   });
 }
 
-/** The instruction block: from the first instruction line to the end of the prompt. */
+/**
+ * The instruction block: everything the assembly appends after the question line.
+ *
+ * ## Why this is no longer `indexOf('Answer the question')`
+ *
+ * That worked only for asks whose block *opens* with the shipped sentence. §13.246's `verbatim` is
+ * the reference pipeline's block migrated whole and opens with `You are answering a question based
+ * on MULTIPLE conversation sessions`, so the old helper would have returned the **entire prompt** for
+ * it -- evidence and question included -- and the comparison would still have passed, because both
+ * sides of a per-route comparison carry the same evidence. A helper that turns an equality into a
+ * weaker equality on a superset is exactly the shape of test this file was written to distrust, so it
+ * now cuts at the section boundary the assembly itself uses: the instruction block is the last section,
+ * joined with `\n\n` after `QUESTION: <text>`.
+ */
 function instructionsOf(prompt: string): string {
-  const at = prompt.indexOf('Answer the question');
-  return at === -1 ? prompt : prompt.slice(at);
+  const marker = '\n\nQUESTION: ';
+  const at = prompt.lastIndexOf(marker);
+  if (at === -1) return prompt;
+  return prompt.slice(prompt.indexOf('\n\n', at + marker.length) + 2);
 }
 
 /**
@@ -157,7 +172,7 @@ describe('every ask changes exactly the routes it declares', () => {
     // the question would be a claim with no render behind it. The loop above would catch that as a
     // mismatch; this states the reason the table has one key rather than growing quietly.
     const shapeSpecific = Object.keys(ASK_CHANGES_WHEN_DERIVATION) as EvidenceAsk[];
-    expect(shapeSpecific).toEqual(['operands']);
+    expect(shapeSpecific).toEqual(['operands', 'verbatim']);
     for (const ask of shapeSpecific) expect(asks).toContain(ask);
   });
 

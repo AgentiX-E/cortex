@@ -1200,6 +1200,16 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // `enumerated`'s and the change set is one route, so a run at the same load is a single variable on MR;
   // the artifact states the reach rather than the change set, which is why both are written here.
   candidates: ['multi-session', 'flat', 'temporal'],
+  // §13.246's value: the reference pipeline's aggregation contract on the multi-session route, and the
+  // registration's own composition everywhere else. The reach is one route because the other five read
+  // the **control's** bytes by delegation, which is what makes a run at this load a single variable on
+  // MR. §13.240.4 read the reference's ask off `conInstruction` -- the single-session skeleton -- and
+  // concluded it was a silent Step 1; the multi-session path calls `buildAggregationQaPrompt`, which
+  // enumerates in writing. This value is that builder, migrated whole.
+  //
+  // Four routes, because the reach is measured against the shipped block and this ask is composed on
+  // the registered arm: the three routes `operands`/`operand-gap` moved stay moved.
+  verbatim: ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**

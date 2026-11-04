@@ -22697,9 +22697,12 @@ behind each hit" is **not** the difference between our `MR` and the reference's,
 
 That is a negative result with a use: it removes the leading candidate for the one number §14.3 calls the
 most severe, and it does so without a run. What is left on the table is the difference the reference does
-have and this arm does not — **what it asks**, not what it shows. The reference's builder asks its two
-steps *with the notes unwritten*; this arm has asked for the list since §13.34 and for the operands since
-§13.166.
+have and this arm does not — **what it asks**, not what it shows. ~~The reference's builder asks its two
+steps *with the notes unwritten*~~; this arm has asked for the list since §13.34 and for the operands
+since §13.166. **Correction (§13.246):** that sentence quoted `conInstruction`, which is the
+single-session skeleton. The multi-session builder is `buildAggregationQaPrompt` and it enumerates in
+writing, so the difference this paragraph reaches for is the *schema and terminal contract* of the same
+two steps, not their silence.
 
 #### 13.204.3 The failures are an inclusion test over near-misses, and the gold is always there
 
@@ -27550,3 +27553,170 @@ curiosity: a target of "−30% tokens" **cannot** be reached by shortening instr
 only 1.3% of the prompt there to shorten. It has to come out of the evidence, which means the mechanism
 has to be one that decides *how much evidence to send* — the family §1.19 of the competitor analysis
 lists (AgentIR's cascade, T2Mem's test-time assembly) rather than a prompt rewrite.
+
+## 13.246 The reference pipeline's ask was read off the wrong function, and the ask was never migrated
+
+*§13.243.6 nominated the last MR experiment: "the reference pipeline's ask, migrated whole — `identify`
+rather than `enumerate`, answer-only, `Answer:` prefix". Before dispatching it, this section read the
+reference's multi-session path back from its own source. The ask it names does not exist. The
+reference **enumerates in writing**, and the campaign has never administered its contract.*
+
+### 13.246.1 What was claimed, and where the sentence came from
+
+Three sections carry the same quotation, and the quotation is real:
+
+| section | the claim | the quote |
+| --- | --- | --- |
+| §13.123.3 | the reference's advantage is a **silent** Step 1 | `conInstruction`: *"Work in two steps, but write ONLY the final answer"*, *"Keep those notes to yourself; do NOT write them out"* |
+| §13.240.4 | *"the reference pipeline asks for the two steps with the notes unwritten"* | the same lines, restated |
+| §13.243.6 | the next MR experiment is that ask, migrated whole | the same lines, once more |
+
+`conInstruction` is at `natural-language-memory.ts:1805` and the docblock above it is unambiguous about
+its callers: *"Chain-of-Note (CoN) instruction shared by the **single-session reading prompts**."* Its
+four call sites are `buildQaPrompt` (1928), `buildPreferencePrompt` (2041),
+`buildKnowledgeUpdatePrompt` (2168) and `buildTemporalQaPrompt` (2224). The multi-session path is
+`answerSessions`, and it does not call any of them:
+
+```ts
+const promptBuilder =
+  this.options.aggregationPrompt === undefined && kind === 'derivation'
+    ? buildDerivationQaPrompt
+    : (this.options.aggregationPrompt ?? buildAggregationQaPrompt);
+```
+
+`buildAggregationQaPrompt` (2367) opens with `Work in two steps.` and its Step 1 is:
+
+```
+Step 1 — Enumerate every item matching the question's EXACT action, one per line:
+  - <item> | <exact action verb from the question> | <session date>
+```
+
+**The reference writes the list.** It has never not written it. `silent` was built to copy an ask that
+belongs to a route this campaign does not put MR on, and §13.127's −26 therefore measures the *removal*
+of the written list rather than the reference's contract.
+
+### 13.246.2 The reading that survives, and it is the more useful one
+
+Nothing about the measurement changes. Only what it is a measurement *of*:
+
+| | before | after |
+| --- | --- | --- |
+| `silent` −26 (§13.127) | the reference's ask fails on this arm | **silence costs 26 questions**, i.e. the written list is load-bearing on MR |
+| 86.78% reference MR | unexplained residual | **still unexplained**, and now attributable to something this arm has never varied |
+| §13.240.4's "only difference left" | the prompt shape | the prompt shape, but the *other* one |
+
+The second row is the one that matters for the plan. §13.240.4 excluded three axes — reader, coverage,
+budget — and concluded the difference was prompt shape. It got the exclusion right and the shape wrong.
+The qualification is not cosmetic: the campaign has now spent three dispatches on variants of *"write
+less of the list"* (`enumerated` sharpenings, `sweep`, `silent`) and §13.96 records all three as failing
+to raise accuracy. If the difference were silence, those three are the direction that should have
+worked. They are also, on this reading, the three measurements that say silence is wrong.
+
+### 13.246.3 What the untested difference actually is
+
+Enumerated field by field, the reference's aggregation contract against `enumerated`'s block:
+
+| property | `enumerated` | reference (`buildAggregationQaPrompt`) |
+| --- | --- | --- |
+| scene framing | none; the evidence arrives under `EVIDENCE:` | *"You are answering a question based on MULTIPLE conversation sessions."* |
+| Step 1 predicate | *"every item in the evidence that matches the question"* — a predicate over the answer | *"every item matching the question's **EXACT action**"* — a predicate over the question |
+| Step 1 schema | one line per item *"with the date it was stated"* | a fixed three-field record: `<item> \| <verb> \| <session date>` |
+| verb discipline | *"do not substitute a similar one"* | the same rule **plus four named counter-examples** (*participated, presented, planned, working on* are not *led*) |
+| exchange rule | *"do not merge two items into one"* | *"Treat an 'exchange' as TWO items: return the old item AND pick up the replacement"* |
+| Step 2 | three forms, one sentence | **four forms, each a line**, plus *"do NOT re-filter or exclude any of them"* |
+| reply shape | `Reply with the Step 2 number alone` | a named terminator: `Answer: <final answer>`, then a bare `Answer:` cue |
+| decline licence | declines when *the Step 1 list is empty* | declines when *the context contains no relevant information at all*, and *"Combining facts across several sessions is NOT a reason to abstain"* |
+| what forbids a bare decline | *"a bare INSUFFICIENT_EVIDENCE with no list is not a valid response"* | the same sentence, plus *"Confirm that you completed Step 1 by listing each candidate item you considered, including the ones you decided to exclude and why"* |
+
+Eight of the nine rows are textual and none of them has been administered. Rows 2 and 3 are the ones
+this section would predict an effect from: a predicate over the **question** is a different instruction
+from a predicate over the **answer**, and §13.204's hand-read failures are exactly the shape a predicate
+over the answer produces — the reader lists what obviously qualifies and stops.
+
+### 13.246.4 The audit, stated as a test rather than as this section
+
+A paragraph can be repeated; a failing test cannot. `ask-verbatim.test.ts` opens with two assertions
+about the reference's own source:
+
+| test | what it pins |
+| --- | --- |
+| the aggregation builder enumerates in writing | `buildAggregationQaPrompt` contains `Enumerate every item matching the question's EXACT action`, contains `Answer: <final answer>`, and contains **no** `write ONLY the final answer` |
+| the single-session builder is where the quote lives | `buildQaPrompt` contains `Work in two steps, but write ONLY the final answer` and `Keep those notes to yourself`, and `classifyAggregationKind` routes the two question shapes as the answer path does |
+
+The two together make "the reference's ask is silent" a claim that fails `pnpm test`. That is the only
+form of correction this campaign has found that survives a re-reading.
+
+### 13.246.5 The registration: `ask=verbatim`
+
+**One variable**: `cortex_memory_ask=verbatim` against the registered `operands+operand-gap`,
+everything else at §10.3 plus the dispatch's own `maxPromptChars` and `maxTurnChars`, declared.
+
+The block is `buildAggregationQaPrompt`'s text, unabridged, with the bare `Answer:` cue that ends it.
+The abstention token is a parameter of both builders, so the test passes this package's token to the
+reference builder and asserts **line equality** — there is no substitution in the product and therefore
+no paraphrase for a later edit to hide in.
+
+The reach and the change set are two different numbers and both are stated:
+
+| | value | measured against |
+| --- | --- | --- |
+| `ASK_ROUTES.verbatim` | `multi-session, flat, temporal, abstention` | the **shipped** block — the registered arm's moves stay moved |
+| `ASK_CHANGES.verbatim` | `multi-session` | `operands+operand-gap`, i.e. the run this is read against |
+| `ASK_CHANGES_WHEN_DERIVATION` | *(empty)* | the same control, on a derivation question |
+
+The empty derivation entry is a decision, not an omission. The reference splits by question kind —
+`buildDerivationQaPrompt` is a *different builder* — and this arm's derivation half is `operands`, which
+is adopted and worth 63 questions (§13.193.5). Migrating both halves at once would price neither, so a
+derivation question keeps the control's bytes.
+
+The fallthrough is a **delegation** rather than a copy of `enumerated`'s block:
+
+```ts
+return instructionsFor(contract, date, 'operands+operand-gap', scope, shape);
+```
+
+which is the first ask in this file that can write its fallthrough as one call. §13.104, §13.123 and
+§13.124 each cost questions because the fallthrough returned `own`; delegation makes "the other routes
+read what the control reads" a property of the expression instead of a table that the render can drift
+from.
+
+### 13.246.6 Predictions, and what each outcome means
+
+| # | prediction | falsified by | meaning if falsified |
+| --- | --- | --- | --- |
+| 1 | MR correct ≥ **96 of 121** (the §13.239/§13.243 threshold, so all three are comparable; the registered arm is 92/121 mean 93.5) | ≤ 94 | the contract is not the mechanism either, and the residual 10 points live in the **evidence** rather than in the ask |
+| 2 | the five routes outside the change set reproduce the control **to the question** | any change | assembly failure; no MR prediction is readable |
+| 3 | MR declines do **not exceed** the control's 9-per-60 shape | +3 or more | the reference's decline licence is not transferable, and §13.55's "the list is the licence" is a fact about this arm's wording rather than about lists |
+| 4 | mean `promptChars` stays within **1%** of the control's | > 2% either way | the block's length became a budget variable and the run is two variables |
+
+Prediction 1 is the registered criterion and it is deliberately the same number §13.239 used, because
+three runs judged against one threshold are a series and three runs judged against three thresholds are
+three anecdotes.
+
+**1 holds** (≥96): the migration is worth at least +4 MR questions on one dispatch and no extra
+consultation, and it is adopted. MR then needs 20 more to close the 86.78 gap, and §13.243.2's own table
+names the only remaining axis: the **partial-coverage band reads 48.7% where the full band reads 89.0%**,
+and the reference never produces that band because it retrieves *sessions* and truncates per session.
+
+**1 fails and 3 holds**: the ask is exhausted as an axis on MR, and the next registration is the one the
+table above points at — *session-atomic allocation*, where a question either receives a session whole or
+not at all, so there is no half-served band to read badly.
+
+**1 fails and 3 fails**: the reference's licence to decline is the mechanism, not its enumeration. That
+would send the next dispatch to the decline clause on its own, which is a one-line change with a control
+already in place (`enumerated` versus `enumerated` with the reference's two abstention sentences).
+
+### 13.246.7 What this section does not claim
+
+1. **It does not withdraw §13.127.** `silent` measured −26 and that number stands; what changes is its
+   subject. A campaign that recorded it as "the reference's ask fails" would have retired an axis it had
+   never touched, and the correction is recorded here so that the retirement does not happen by accident.
+2. **It does not explain the 9.92 points.** §13.240.4 excluded reader, coverage and budget; this section
+   adds that the excluded fourth candidate was mis-specified. The gap is still unexplained and it is
+   still the target.
+3. **It does not claim the reference's wording is better prose.** Nine of the ten rows in §13.246.3 are
+   differences in *what is asked for*, not in how it is said. The one row that is purely stylistic — the
+   scene framing — is the one this section would least expect to matter.
+4. **It does not re-open the token axis.** The block is longer than `enumerated`'s by roughly 400
+   characters, and §13.245.4 measured the whole instruction block at 1.3% of a 47,343-character prompt.
+   Prediction 4 exists only to keep that from silently becoming a second variable.
