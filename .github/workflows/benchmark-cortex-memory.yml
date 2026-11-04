@@ -254,6 +254,25 @@ jobs:
       - name: Install Python test dependencies
         run: python3 -m pip install --requirement tools/requirements-dev.txt
 
+      # Five seconds here instead of five hours there, and the same trade as the step below.
+      #
+      # `41751619617` was dispatched with a budget map and nothing else in the input surface filled
+      # in. The workflow forwards a blank input on purpose -- the product's default lives in exactly
+      # one place -- so the run became the product's configuration rather than the registered arm, and
+      # it took 87 minutes and a complete 500-question artifact to discover that: `ask` lost its
+      # operands contract, `relevance` lost its hybrid channel, `maxTurnChars` lost its cap, and the
+      # headline came back at 85.00% against a registered 90.15%. The registration gate read all of it
+      # off the artifact at 02:32 and said the right thing; it was simply late. This step asks the same
+      # question at 01:05, from the payload rather than the artifact, because the payload is the only
+      # place that distinguishes "the product default was chosen" from "nothing was chosen".
+      - name: Check the dispatch against the registration
+        env:
+          # Step scope, not job scope: the value this step reads is the one the dispatcher wrote
+          # before dispatch, and a job-wide copy would also be visible to steps that have no
+          # business comparing themselves to a registration.
+          CORTEX_DECLARED_DEPARTURES: ${{ vars.CORTEX_DECLARED_DEPARTURES }}
+        run: python3 tools/registration-preflight.py
+
       # Five seconds here instead of five hours there.
       #
       # A dispatched run whose pace cannot fit its own budget cannot succeed at any provider speed,

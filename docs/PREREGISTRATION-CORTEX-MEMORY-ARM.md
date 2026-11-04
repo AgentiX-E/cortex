@@ -26743,6 +26743,11 @@ full-coverage accuracy is 84.0% -- so if coverage is the whole mechanism, the ce
 `(75 x 0.84 + 46 x 0.84) / 121 = 84.0%`, i.e. **MR +7.1 points and overall +1.7**. Half of that
 converting is +0.85 overall, which is the difference between 90.15 and 91.00.
 
+**Status: all five untested** (§13.242). The dispatch meant to answer them (`41751619617`) left
+twenty-one of its twenty-two inputs blank, so the arm it measured was the product's default
+configuration rather than the registered one: five mechanisms moved together and the reading cannot
+be attributed to the redistribution. The predictions stand as written and are owed a run.
+
 ### 13.239.7 What this section does not claim
 
 1. **It is not a budget sweep.** That axis is retired with a measured exchange rate: 24,000 to
@@ -26774,7 +26779,7 @@ failures. They are the same purchase:
 | --- | --- | ---: | --- |
 | `relevanceTopK` 256 -> 512 | candidates scored per question | +0.55 | below the arm's own spread (1.60) |
 | `maxPromptChars` 24,000 -> 48,000 | characters delivered | +0.60 | at the floor of detection |
-| **depth, per route** (§13.239) | turns delivered | **untested** | the dispatch in flight |
+| **depth, per route** (§13.239) | turns delivered | **untested** | the dispatch ran the product's configuration, not the arm (§13.242) |
 
 All three buy **the same quantity** -- how much of the in-pool gold is inside the delivered evidence --
 and the first two priced it at roughly **0.6 accuracy points per doubling**. That is the exchange rate
@@ -26975,3 +26980,161 @@ Two readings of that, and the second is the one that matters:
 The three things this thread produced are worth keeping regardless: the cohort arithmetic (§13.241.1,
 41 and 16 reproduced exactly), the tool (`tools/pool-cohort.py`, 12 tests, which reads a cohort the
 moment one exists), and the guard that announced its own insufficiency in the run's log.
+
+## 13.242 A dispatch that filled in one input and left twenty-one blank ran the product, not the arm
+
+*§13.239 registered a redistribution and predicted five readings. The dispatch that was meant to
+test it sent a budget map and nothing else, so the arm it actually measured was the **product's**
+configuration — and the number that came back, 85.00%, is five points below the headline it would
+have been compared against. This section is about the 87 minutes, and about why the guard that
+caught it caught it too late.*
+
+### 13.242.1 The run, and the number that would have been quoted
+
+`41751619617`, dispatched at 01:05 with `cortex_memory_max_prompt_chars=multi-session:55000,flat:36200`
+and `cortex_memory_relevance_top_k=256`:
+
+| quantity | registered arm (`41546569106`) | this run |
+| --- | ---: | ---: |
+| `featureAggregate.avg` | **90.15%** | **85.25%** (84.80 / 85.25 / 85.80) |
+| first pass | 90.15% | 85.00% |
+| baseline (`reference-pipeline`) | 44.20% median | 44.70% median |
+| IE (150) | 96.00% | 95.33% |
+| MR (121) | 76.86% (93) | **71.90% (87)** |
+| KU (72) | 86.11% | 86.11% |
+| TR (127) | 95.28% | **81.89%** |
+| ABS (30) | 100.00% | 96.67% |
+| wall clock | — | **87 minutes** |
+
+The spend was real: 5,867 calls, 27.09M prompt tokens, 2.19M completion, 75.11% of the prompt
+served from the prefix cache, zero retries, zero `429`. **Nothing failed.** The run built a
+complete 500-question artifact, passed ten of eleven self-checks, and would have been quoted as
+*"the redistribution costs five points"* by anyone reading the summary table — which is precisely
+the wrong conclusion, because the redistribution never ran.
+
+### 13.242.2 The blank is not the defect; the blank's meaning is
+
+The workflow forwards `CORTEX_MEMORY_ASK` and its siblings **blank on purpose**, and that decision
+is correct: if the file also wrote `route`, the default would live in two places and the two would
+eventually disagree, which is the defect §13.69 was written about. So a blank input is forwarded as
+an empty environment variable and the product fills in its own default.
+
+That is exactly right for a *step* and wrong for a *dispatch input*, because the product's default
+is not the registered arm. The registration fixes six of those fields to values that are **not**
+their defaults — `ask=operands+operand-gap`, `relevance=retrieval-hybrid`,
+`promptContract=abstention-evidence-blocks`, `maxTurnChars=400`,
+`maxTurnCharsRoutes=multi-session,temporal`, `evidenceRolesRoutes=multi-session,temporal` — and a
+dispatch that omits them gets none of the six.
+
+The artifact said so, in six lines:
+
+```
+UNDECLARED  ask: "operands+operand-gap" (registered) -> "route" (ran)
+UNDECLARED  evidenceRolesRoutes: ["multi-session","temporal"] -> [all six]
+UNDECLARED  maxTurnChars: 400 (registered) -> <-absent-> (ran)
+UNDECLARED  maxTurnCharsRoutes: ["multi-session","temporal"] -> [all six]
+UNDECLARED  promptContract: "abstention-evidence-blocks" -> "abstention"
+UNDECLARED  relevanceSignal: "retrieval-hybrid" -> "retrieval"
+```
+
+**The gate was right and it was 87 minutes late.** `readout-arm-run.py --registration` can only
+read the artifact, and the artifact exists only after the money is spent. That is the whole of the
+defect this section repairs.
+
+### 13.242.3 Why the new gate reads the payload and not the environment
+
+`tools/registration-preflight.py` runs before the build and compares the dispatch's **own inputs**
+against `dispatch-cortex-memory-ab.py`'s table (which `test_preregistration_config.py` already pins
+to §10.3, so this is reading the registration rather than a fourth copy of it).
+
+The environment would have been the obvious source and it cannot work, for the reason in §13.242.2:
+a forwarded blank and an unset variable are the same string. Only `GITHUB_EVENT_PATH` keeps the
+difference — **a key that is absent was never asked for** — and the difference is the whole signal.
+
+Two inputs make the case on their own:
+
+| input | workflow fallback when blank | registered | what an environment read would report |
+| --- | --- | --- | --- |
+| `limit` | `60` | `0` | `60`, a value, and a plausible one |
+| `thinking` | `disabled` | `multi-session+temporal` | `disabled` |
+
+A gate reading the environment would have passed a 60-question run whose thinking was off, because
+both values are non-empty and both look dispatched.
+
+### 13.242.4 Two gates, two questions, and why the counts differ
+
+| gate | question | when | reads | answers |
+| --- | --- | --- | --- | --- |
+| `registration-preflight.py` | what was **asked for** | before the build | the event payload | 15 departures on this dispatch |
+| `readout-arm-run.py --registration` | what **ran** | after the artifact | the artifact's `memoryArmConfig` | 6 departures on this run |
+
+Fifteen against six is not a disagreement. The artifact comparison derives `askRoutes` from `ask`,
+`evidenceRoles` from `evidenceRolesRoutes` and `maxPromptChars` from its own input, so three of the
+fifteen are not separately observable; three more (`limit`, `temperature`, `model`/`thinking` at the
+harness level) are harness properties the artifact does not carry as arm fields; and the rest are
+the same six read through a different surface. **The input-layer count is the larger one because it
+is the earlier question**, and an earlier question is worth answering on a larger set.
+
+Neither gate replaces the other: a run that changes a value *inside* the harness passes the
+preflight and is still caught by the artifact comparison, and a run that departs before it starts is
+caught by the preflight in five seconds rather than caught by the other one in 87 minutes.
+
+### 13.242.5 The declaration has two failure modes
+
+`CORTEX_DECLARED_DEPARTURES` is written by the dispatcher, and this run declared
+`cortex_memory_relevance_top_k` — a key that **did not move** (256 was sent, 256 was registered).
+The gate said so:
+
+```
+declared but unchanged: ['cortex_memory_relevance_top_k'] -- the departure names a field
+this run did not move, so the record describes an intention rather than what ran
+```
+
+So the list can be wrong in two directions, and both are now reported:
+
+| shape | meaning | verdict |
+| --- | --- | --- |
+| a field moved and is not listed | the run is an experiment that has not said so | **fail** |
+| a field is listed and did not move | the record describes an intention | pass, with the note |
+
+The second is a pass because the dispatch itself is legal — the note is the repair. The first is a
+failure because a reader who cannot tell which fields moved cannot attribute the delta.
+
+The preflight prints the declared list **by value**, not by count, so a stale variable (left over
+from a previous dispatch that this one did not write) is visible in the log rather than being
+inherited silently.
+
+### 13.242.6 What this run's reading may and may not be used for
+
+**May:** nothing causal. Five fields moved at once (`ask`, `relevance`, `promptContract`,
+`maxTurnChars`, `evidenceRolesRoutes`) and the budget was also re-narrowed, so the 5.15-point gap
+cannot be split among them, and this section does not try.
+
+**May, as arithmetic:** the per-capability column reconciles the headline exactly — the weighted sum
+of the five capability deltas is **−5.00** against a −5.15 headline, and the residual is the
+difference between a first pass and a four-run mean. That is an identity check, not an explanation.
+
+**May, as the one thing worth keeping:** the direction of each capability's movement is the direction
+its missing mechanism predicts. `relevance` losing its rare-keyword channel and `maxTurnChars`
+losing its cap is where TR's **−13.39** should land, and TR is the route with the longest turns in
+the set; `ask` losing the operands contract is where MR's **−4.96** should land, and MR is the route
+whose contract exists to make it count (§13.34, §13.203). KU does not move, and KU is the route none
+of the five fields targets.
+
+**May not:** be quoted as `cortex-memory` at 85.00%. The product's default configuration is a
+legitimate object of study, but it is not the registered arm and this document's headline is not it.
+
+### 13.242.7 What is still open
+
+1. **§13.239's five predictions are still untested.** Not falsified — *untested*, because the
+   dispatch that was meant to test them did not run the registered arm. Prediction 2 (MR ≥ 96/121)
+   and prediction 4 (overall ≥ 90.15%) are the two the campaign most wanted, and both are still
+   owed a run.
+2. **`census-unit` failed on this artifact and the failure is a consequence, not a defect.**
+   456 outcomes against 2000 question-answers, i.e. the census covered 114 questions per pass
+   against the registered arm's 500. Which of the six departed fields decides that reach is not
+   measured; the check that would settle it is the next registered run's census returning 2000, and
+   until then this stays an observation rather than a repair.
+3. **Every future dispatch goes through `tools/dispatch-cortex-memory-ab.py`.** The preflight makes a
+   hand-rolled dispatch *fail* rather than *lie*, which is the point, but the dispatcher is what
+   sends the twenty-two inputs and writes the declaration that matches them.
