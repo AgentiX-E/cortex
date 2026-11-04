@@ -26619,3 +26619,141 @@ rather than quoted interchangeably.
 This is not a defect to fix in the arm. It is a defect in how the arm's delta has been *described*, and
 it is the fourth instance this round of the same pattern: a field that exists, is correct, and is read
 as something it is not.
+
+## 13.239 A character room is not a depth: the budget becomes per route, derived rather than guessed
+
+*§13.238 closed the pool axis and handed back a target: MR's gap to its own no-memory baseline is
+8 to 10 points, and doubling the candidate pool bought 2 to 3 of them. This section is the other
+half of the same arithmetic, and it needed no new run to find -- every number below is recomputed
+from `41546569106`'s own artifact.*
+
+### 13.239.1 The defect, in one table
+
+A budget of characters is converted into a **depth** by each route's own turn length, and depth is
+what decides how much of the answer's evidence arrives. One room of 48,000 therefore became five
+different experiments:
+
+| route | chars per delivered turn | delivered turns | in-pool gold delivered | prompt chars (median) |
+| --- | ---: | ---: | ---: | ---: |
+| `flat` (IE, 150 q) | 723 | 61 | 86.8% | 46,864 |
+| `knowledge-update` (72 q) | 717 | 62 | 80.1% | 46,868 |
+| `abstention` (30 q) | 596 | 72 | 69.7% | 46,471 |
+| `multi-session` (MR, 121 q) | 215 | 174 | **94.8%** | 46,264 |
+| `temporal` (TR, 127 q) | 205 | 179 | 92.9% | 47,149 |
+
+The same number bought **2.9 times more ranking on `temporal` than on `flat`**, and nothing in any
+artifact said so. The coverage column is `goldOverlap.goldRanks` read against
+`windowComposition.turns`, i.e. the share of in-pool gold whose rank is inside the depth the run
+actually delivered -- so it is a property of the **selection**, recomputable from the artifact, and
+free.
+
+### 13.239.2 The consequence, which is that the room has been in the wrong place
+
+The room needed to deliver **all** in-pool gold, derived per route:
+
+| route | room for 100% | what it costs against 48,000 |
+| --- | ---: | --- |
+| `multi-session` | **55,000** | **+16%** |
+| `temporal` | 52,400 | +9% |
+| `abstention` | 152,600 | 3.2x -- unaffordable |
+| `knowledge-update` | 180,000 | 3.8x |
+| `flat` | 184,400 | 3.9x |
+
+**MR is the cheapest route to completeness in the set and the one with the largest accuracy deficit**,
+and the reason is arithmetic rather than luck: its turns are 215 characters, so a turn of depth is
+15% of the price of a turn of depth on `flat`. Meanwhile the last third of every room buys the last
+tenth of the coverage -- `multi-session` reaches 79.0% at depth 60 (12,900 characters) and 94.8% at
+174 (46,264).
+
+### 13.239.3 Which route converts coverage into accuracy, measured
+
+Full-coverage questions against partial ones, same artifact:
+
+| route | full coverage | accuracy | partial coverage | accuracy | reading |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `multi-session` | 75 | **84.0%** | 46 | **65.2%** | **+18.8, 2.3 SE -- coverage converts** |
+| `temporal` | 72 | 95.8% | 55 | 94.5% | +1.3, no signal |
+| `flat` | 77 | 94.8% | 73 | 97.3% | **-2.5, coverage does not predict** |
+| `knowledge-update` | 5 | 100.0% | 67 | 85.1% | suggestive, n=5 |
+| `abstention` | 4 | 100.0% | 26 | 100.0% | the route is decided by the contract |
+
+So the redistribution has a direction that is measured rather than chosen: **deepen
+`multi-session`, fund it from `flat`.** `flat`'s split is the only one in the table where partial
+coverage scores *higher* than full, and MR's is the only one where the difference survives its own
+standard error.
+
+### 13.239.4 The instrument, and why the width is derived rather than tuned
+
+`tools/evidence-depth.py` takes an artifact and prints the coverage curve per route, the accuracy
+split, and the room each route needs for a stated coverage target:
+
+```
+room needed for           85%        90%        95%        99%       100%
+multi-session           18700      25600      38100      50300      55000
+flat                    39100      61500     101300     164900     184400
+```
+
+It prints a room and refuses to print a score. Coverage explains part of the accuracy on one route
+and none of it on another, so a tool that turned the curve into a predicted score would be asserting
+the thing the campaign has to measure. What it does assert is arithmetic: the room is the smallest
+depth that clears the target times the route's own measured density, searched over every integer
+depth rather than over the printed grid (a grid-derived room is a room derived from the grid, and the
+difference is turns of prompt no measurement asked for).
+
+### 13.239.5 The registration
+
+One knob, `maxPromptCharsByRoute`, dispatched through the existing budget input as
+`<route>:<chars>` pairs -- it rides `cortex_memory_max_prompt_chars` rather than taking a 25th
+dispatch input, because the workflow sits one input below GitHub's ceiling and its suite forbids the
+ceiling. The two shapes cannot be confused: a scalar is digits, a map contains a colon.
+
+| field | registered arm (`41546569106`) | this dispatch |
+| --- | --- | --- |
+| `maxPromptChars` | 48,000 | not named -- the product default, which since §13.213 **is** 48,000 |
+| `maxPromptCharsByRoute` | absent | **`multi-session:55000,flat:36200`** |
+| everything else | — | unchanged, byte for byte |
+
+**The spend, computed on the registered artifact before the run:**
+
+| quantity | registered | this dispatch | delta |
+| --- | ---: | ---: | ---: |
+| mean prompt chars | 46,630 | **45,629** | **-2.1%** |
+| total prompt chars over 500 questions | 23.32M | 22.81M | -0.50M |
+| MR depth (turns) | 174 | **256** | +47% |
+| MR in-pool gold delivered | 94.8% | **100.0%** | +5.2 |
+| `flat` depth | 61 | 50 | -18% |
+| `flat` in-pool gold delivered | 86.8% | 84.2% | -2.6 |
+
+This is a **redistribution, not an increase**: the mean prompt gets *shorter*. That matters for the
+campaign's eighth requirement (spend less, do not do worse) and it is why the map names a route to cut
+rather than only a route to deepen.
+
+### 13.239.6 Predictions, and what each outcome means
+
+| # | prediction | falsified by | meaning if falsified |
+| --- | --- | --- | --- |
+| 1 | MR in-pool gold delivered >= **99.0%**, computed from this run's own `goldRanks` | < 97% | the room was not what limited delivery on MR, and the depth arithmetic in §13.239.2 is wrong about this route |
+| 2 | MR correct >= **96 of 121** (the §13.234 threshold, so the two are comparable; the registered arm is 93) | <= 94 | **coverage does not convert to accuracy on MR**, so retrieval is exhausted there and the 8-to-10-point gap to the no-memory baseline is a reasoning deficit. This is the outcome that would save the campaign the most future work, and it is worth the run either way |
+| 3 | `flat` >= **141 of 150** (94.0%; the registered arm is 144) | <= 139 | `flat` needs what was taken from it, and its full-versus-partial split was noise |
+| 4 | overall `featureAggregate.avg` >= **90.15%** | < 90.15 | the two routes' movements cancel or the redistribution costs more than it buys |
+| 5 | mean `promptChars` <= **46,630** (the registered mean) | > 46,630 | the map was dispatched with a wider global room than it was priced at, and the token claim in §13.239.5 does not hold |
+
+Prediction 2 is the one this section is for. MR is 121 of 500 questions at 76.86%, and its
+full-coverage accuracy is 84.0% -- so if coverage is the whole mechanism, the ceiling is
+`(75 x 0.84 + 46 x 0.84) / 121 = 84.0%`, i.e. **MR +7.1 points and overall +1.7**. Half of that
+converting is +0.85 overall, which is the difference between 90.15 and 91.00.
+
+### 13.239.7 What this section does not claim
+
+1. **It is not a budget sweep.** That axis is retired with a measured exchange rate: 24,000 to
+   48,000 bought +0.60 (§14.31), so the second half of the room converts about 0.6 accuracy points.
+   This experiment holds the total *down* while moving where it is spent, which is a different claim.
+2. **It does not set a per-question width.** The depth a question needs is not observable before it
+   is answered, and the quantity that *is* observable is the route. A per-question policy would need a
+   signal correlated with the gold depth, and `goldRanks` is an evaluation field -- using it to size
+   the prompt would be reading the answer key.
+3. **It says nothing about `knowledge-update` or `abstention`.** Both need 3.2-3.8x the room for
+   completeness, which is unaffordable at any budget this campaign has measured, and KU's split rests
+   on five questions.
+4. **It does not re-derive MR's ranking.** Coverage rises because the room is deeper, not because the
+   order is better: the gold's median rank inside the pool is 134 and stays 134.

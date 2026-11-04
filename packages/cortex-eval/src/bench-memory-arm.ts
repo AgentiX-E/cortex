@@ -405,6 +405,21 @@ export type CortexMemoryArmOptions = {
    */
   maxPromptChars?: number | undefined;
   /**
+   * The evidence budget per route, overriding {@link maxPromptChars} for the routes it names.
+   *
+   * A room is not a depth: at 48,000 characters `41546569106` delivered 61 turns on `flat` (723
+   * characters each) and 179 on `temporal` (205 each), so one number is five different amounts of
+   * ranking paid for. Coverage -- the share of in-pool gold inside the delivered depth, recomputed
+   * from that artifact's own `goldOverlap.goldRanks` -- runs 84.2% to 93.6% across the five routes
+   * for the same reason. §13.239 registers the redistribution this field makes expressible.
+   *
+   * A plain record rather than a typed one, for the reason `maxTurnCharsRoutes` is a `string[]`:
+   * `cortex-memory` is imported type-only here under the acyclicity rule, so the route names are
+   * validated against this module's own copy at parse time and the cast at the boundary in
+   * `bench/run-ablation.ts` states a checked fact.
+   */
+  maxPromptCharsByRoute?: Readonly<Record<string, number>> | undefined;
+  /**
    * The turn roles the evidence may be built from, or absent for every role.
    *
    * §13.82's measurement, not a hypothesis: 51.9% of the multi-session route's rendered room is
@@ -933,10 +948,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     maxTurnCharsRoutes: readMaxTurnCharsRoutes(env[MAX_TURN_CHARS_ROUTES_VARIABLE]),
     // Spread conditionally, because "the product default" is an absent field rather than a number
     // this module would have to keep in step with `prompt.ts`.
-    ...(() => {
-      const budget = readMaxPromptChars(env[MAX_PROMPT_CHARS_VARIABLE]);
-      return budget === undefined ? {} : { maxPromptChars: budget };
-    })(),
+    ...readPromptBudget(env[MAX_PROMPT_CHARS_VARIABLE]),
     // Spread rather than assigned, because "no cap" is an absent field on this type rather
     // than an infinite one -- see `CortexMemoryArmOptions.maxTurnChars`.
     ...(turnCap.width === undefined ? {} : { maxTurnChars: turnCap.width }),
@@ -1561,6 +1573,109 @@ type TurnCapSpec = {
 };
 
 /**
+ * The evidence budget as one input carries it: a scalar, a map, or nothing.
+ *
+ * Two shapes on one variable because the workflow is one dispatch input below GitHub's ceiling of
+ * 25 and its suite forbids sitting at the ceiling. They cannot be confused -- a scalar is digits and
+ * a map contains a colon -- so the grammar decides the branch rather than a heuristic, and a value
+ * that is neither reaches `readMaxPromptChars` and is refused there.
+ *
+ * An absent or blank input returns an **empty object**, not a default: "the product default" is the
+ * absence of the field, and a field carrying the number would make an artifact from before §13.213
+ * indistinguishable from one that chose 24,000.
+ */
+function readPromptBudget(raw: string | undefined): {
+  maxPromptChars?: number;
+  maxPromptCharsByRoute?: Record<string, number>;
+} {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed === '') return {};
+  if (trimmed.includes(':')) return { maxPromptCharsByRoute: readRouteRooms(trimmed) };
+  const width = readMaxPromptChars(raw);
+  return width === undefined ? {} : { maxPromptChars: width };
+}
+
+/**
+ * Read the per-route rooms a budget input carries, or `undefined` for one room for every route.
+ *
+ * ## Why this rides the budget input rather than taking one of its own
+ *
+ * The workflow sits one dispatch input below GitHub's ceiling of 25, and its own suite forbids
+ * sitting *at* the ceiling -- the reason `maxTurnChars` already carries `:ellipsis` in its grammar
+ * (the same precedent, and `maxTurnChars`'s own docstring records it). The two shapes cannot be
+ * confused: a scalar budget is digits, and a map contains a colon, so the parse is decided by a
+ * character rather than by a guess. A run that wants both states the map and takes the product
+ * default (48,000 since §13.213, which is the value the registered arm passed explicitly) for the
+ * routes it does not name.
+ *
+ * ## Why every malformed input is refused rather than dropped
+ *
+ * Three shapes are rejected: a pair with no width, a route this module does not know, and a width
+ * that is not a positive integer. All three would otherwise be *applied to nothing*, and the run
+ * would proceed with the global room while its artifact's config line claimed a redistribution --
+ * the §7.4 defect, in the one field a reader uses to attribute the whole delta.
+ *
+ * A duplicate is the fourth and the quietest. `Object.entries` over a map built by assignment keeps
+ * the last value, so `flat:20000,flat:29000` would apply 29,000 and record one of the two numbers
+ * depending on the order the record was serialised, which is a difference no field announces.
+ *
+ * Ordering is by the product's own route list, so two spellings of one map produce one config line
+ * and the artifact does not distinguish `flat:29000,multi-session:55900` from its reverse.
+ */
+function readRouteRooms(raw: string): Record<string, number> {
+  const trimmed = raw.trim();
+  const out: Record<string, number> = {};
+  for (const part of trimmed.split(',')) {
+    const pair = part.trim();
+    const colon = pair.lastIndexOf(':');
+    if (colon <= 0 || colon === pair.length - 1) {
+      throw new Error(
+        `${MAX_PROMPT_CHARS_VARIABLE} must be a comma-separated list of "<route>:<chars>" ` +
+          `pairs, got ${JSON.stringify(raw)}. The pair ${JSON.stringify(pair)} names no width.`,
+      );
+    }
+    const name = pair.slice(0, colon).trim();
+    const widthText = pair.slice(colon + 1).trim();
+    if (!Object.hasOwn(TURN_CAP_ROUTES, name)) {
+      throw new Error(
+        `${MAX_PROMPT_CHARS_VARIABLE} named ${JSON.stringify(name)}, which is not a route; ` +
+          `the routes are ${Object.keys(TURN_CAP_ROUTES)
+            .map((route) => JSON.stringify(route))
+            .join(
+              ', ',
+            )}. An unrecognised name is refused rather than ignored, because a run that ` +
+          'applied six of seven entries would report every number consistent with having applied ' +
+          'all of them.',
+      );
+    }
+    if (Object.hasOwn(out, name)) {
+      throw new Error(
+        `${MAX_PROMPT_CHARS_VARIABLE} named ${JSON.stringify(name)} twice. The last value ` +
+          'would win while the config line recorded both, so the artifact would describe a room ' +
+          'the prompt was not assembled under.',
+      );
+    }
+    const width = Number(widthText);
+    if (!/^\d+$/u.test(widthText) || !Number.isInteger(width) || width < 1) {
+      throw new Error(
+        `${MAX_PROMPT_CHARS_VARIABLE} gave ${JSON.stringify(name)} the width ` +
+          `${JSON.stringify(widthText)}, which is not a positive integer. The unit is UTF-16 code ` +
+          "units of that route's whole prompt; `0` leaves the allocator nothing to spend and the " +
+          'route would answer from no evidence while the artifact recorded a room.',
+      );
+    }
+    out[name] = width;
+  }
+  // Ordered by the product's own list, so two spellings of one map produce one config line. Built
+  // with a loop rather than `fromEntries` so the value is read once and is known to be present.
+  const ordered: Record<string, number> = {};
+  for (const route of ALL_TURN_CAP_ROUTES) {
+    const width = out[route];
+    if (width !== undefined) ordered[route] = width;
+  }
+  return ordered;
+}
+/**
  * Read the per-turn character cap and its marker, defaulting to none.
  *
  * ## Why zero is refused rather than treated as "no cap"
@@ -1959,6 +2074,12 @@ export function toMemoryArmConfig(
     // §13.81. Absent means the product's 24,000, which is what every archived run used, so the
     // absence is a fact about the run rather than a missing field.
     ...(options.maxPromptChars === undefined ? {} : { maxPromptChars: options.maxPromptChars }),
+    // §13.239. Absent means one room for every route, which is what every archived run used, so the
+    // absence is a fact about the run rather than a missing field -- and a reader who wanted to know
+    // whether a delta came from a redistribution could otherwise not tell it from a lost field.
+    ...(options.maxPromptCharsByRoute === undefined
+      ? {}
+      : { maxPromptCharsByRoute: options.maxPromptCharsByRoute }),
     // §13.73. Always present, unlike the width: the reach is a statement about the run's intent
     // that survives the cap being absent, and a reader comparing two artifacts needs to see that
     // the second one reached two routes where the first reached six.

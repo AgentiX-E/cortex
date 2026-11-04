@@ -163,6 +163,62 @@ export type CortexMemoryOptions = {
   /** Upper bound on prompt length in UTF-16 code units. */
   maxPromptChars?: number;
   /**
+   * The same bound, per route, for the routes a run names. Absent means every route uses
+   * {@link maxPromptChars} and the prompt is byte-identical to the one that option alone produces.
+   *
+   * ## The defect this exists for: a character room is not a depth
+   *
+   * A budget of characters is converted into a number of turns by each route's own turn length, and
+   * the quantity that decides how much of the answer's evidence arrives is the **count**, not the
+   * characters. Measured on `41546569106` (500 questions, `maxPromptChars` 48,000, adopted
+   * configuration), the one room becomes five different depths:
+   *
+   * | route | chars per delivered turn | delivered turns | in-pool gold delivered |
+   * | --- | ---: | ---: | ---: |
+   * | `flat` | 723 | 61 | 93.6% |
+   * | `knowledge-update` | 717 | 62 | 92.0% |
+   * | `abstention` | 596 | 72 | 84.2% |
+   * | `multi-session` | 215 | 174 | 90.6% |
+   * | `temporal` | 205 | 179 | 85.6% |
+   *
+   * The coverage column is computed from the artifact's own `goldOverlap.goldRanks` -- for each
+   * question, the share of in-pool gold turns whose rank is inside the depth actually delivered --
+   * so it costs nothing to recompute and it is a property of the selection rather than of the reader.
+   * Two consequences follow, and both are arithmetic:
+   *
+   * 1. **The routes with short turns are not short of room and are short of depth.** `multi-session`
+   *    reads 174 turns for 46,264 characters while `flat` reads 61 for 46,864 -- the same room, a
+   *    2.9x difference in how much of the ranking is paid for. Raising `multi-session` to full
+   *    coverage costs 56,000 characters, because its turns are 215; doing the same for `flat` would
+   *    cost 188,000.
+   * 2. **The last third of every room buys the last tenth of the coverage.** From the same curve,
+   *    `multi-session` reaches 79.0% coverage at depth 60 (12,900 characters) and 90.6% at 174;
+   *    `flat` reaches 78.2% at depth 30 (21,700 characters) and 93.6% at 61.
+   *
+   * ## Why the reconciliation is per route rather than per question
+   *
+   * Because the depth a question needs is not observable before it is answered. The quantity that
+   * *is* observable is the route, and the accuracy of a route tracks its coverage unevenly enough to
+   * make the distinction worth acting on: on the same artifact, `multi-session` answers **84.0%** of
+   * the questions whose in-pool gold was fully delivered against **65.2%** of those where it was not
+   * (75 and 46 questions, 2.3 standard errors), while `flat` answers 94.8% and 97.3% on the same
+   * split (77 and 73) -- i.e. its accuracy does not track its coverage at all.
+   *
+   * So the increment this option enables is a **redistribution at constant spend**: deepen the route
+   * whose accuracy responds to depth, at the expense of the route whose does not. A run that uses it
+   * to raise the total is running a different experiment, and one that uses it to lower the total is
+   * running §13's retired budget sweep again -- which is why the arm records the map in the artifact
+   * and the registration states the mean prompt length as a constraint rather than as an outcome.
+   *
+   * ## Why absence is the identity
+   *
+   * Every archived artifact was produced under one global room, and the campaign's readings are
+   * comparisons against them. A missing route therefore falls back to {@link maxPromptChars} rather
+   * than to a default of its own, so a run that names two routes leaves the other four byte-identical
+   * and its delta is attributable to the two it named.
+   */
+  maxPromptCharsByRoute?: Partial<Record<TurnCapRoute, number>> | undefined;
+  /**
    * Upper bound on the characters one turn may contribute to the prompt. Absent means none.
    *
    * ## The measurement it answers

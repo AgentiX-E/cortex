@@ -471,6 +471,16 @@ export type MemoryArmConfig = {
    */
   readonly maxPromptChars?: number | undefined;
   /**
+   * The evidence budget per route, or absent for one room for every route.
+   *
+   * §13.239. A room is not a depth: at 48,000 characters `41546569106` delivered 61 turns on `flat`
+   * (723 characters each) and 179 on `temporal` (205 each), and coverage ran 84.2% to 96.4% across
+   * the routes for exactly that reason. Recorded because the redistribution is a statement about
+   * *which* route was deepened, and a delta attributed to it from the bare score would be
+   * unattributable -- the other four routes are byte-identical by construction.
+   */
+  readonly maxPromptCharsByRoute?: Readonly<Record<string, number>> | undefined;
+  /**
    * The routes that cap reached. Every route when the run named none.
    *
    * Recorded even when `maxTurnChars` is absent, because the two answer different questions: the
@@ -1260,6 +1270,16 @@ export function formatAblationReport(report: AblationReport): string {
         // `default` rather than `none`: there is always a budget, and the absent state means the
         // product's 24,000 -- the value every archived run used.
         `, \`maxPromptChars=${memoryArm.maxPromptChars ?? 'default'}\`` +
+        // §13.239, rendered only when a redistribution was dispatched: the absent state is one room
+        // for every route, which is what every archived artifact used, so spelling it on every line
+        // would make the 30 artifacts that predate the field indistinguishable from the ones that
+        // declined it. `+` rather than a comma for the reason the reach uses it -- the line already
+        // separates fields with commas.
+        (memoryArm.maxPromptCharsByRoute === undefined
+          ? ''
+          : `, \`maxPromptCharsByRoute=${Object.entries(memoryArm.maxPromptCharsByRoute)
+              .map(([route, width]) => `${route}:${width}`)
+              .join('+')}\``) +
         // The reach, rendered on every run beside the width and joined with `+` rather than a
         // comma: the line already separates fields with commas, so a comma inside a value would
         // make one field look like three.

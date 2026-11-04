@@ -3628,6 +3628,99 @@ describe('the evidence budget', () => {
 });
 
 /**
+ * The per-route evidence budget, which exists because a room is not a depth.
+ *
+ * §13.239's arithmetic: at one room of 48,000 characters `41546569106` delivered 61 turns on `flat`
+ * (723 characters each) and 179 on `temporal` (205 each), so the same number bought 2.9 times the
+ * ranking on one route as on another. These tests pin the parse and the record; the effect on the
+ * score is what the dispatch measures.
+ */
+describe('the per-route evidence budget', () => {
+  const config = (value: string) =>
+    cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_MAX_PROMPT_CHARS: value });
+
+  it('is absent by default, so every archived run keeps one room for every route', () => {
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).maxPromptCharsByRoute).toBeUndefined();
+    expect(config('').maxPromptCharsByRoute).toBeUndefined();
+    expect(config('   ').maxPromptCharsByRoute).toBeUndefined();
+  });
+
+  it('reads a map and orders it by the product route list, so two spellings are one config', () => {
+    const one = config('flat:29000,multi-session:55900').maxPromptCharsByRoute;
+    const other = config('multi-session:55900,flat:29000').maxPromptCharsByRoute;
+    expect(one).toEqual({ 'multi-session': 55_900, flat: 29_000 });
+    expect(other).toEqual(one);
+    // The order is the product's, not the input's: `multi-session` precedes `flat` in
+    // `TURN_CAP_ROUTES`, so the serialised key order is that one in both spellings.
+    expect(Object.keys(one ?? {})).toEqual(['multi-session', 'flat']);
+  });
+
+  it('rejects a route this arm does not know', () => {
+    expect(() => config('flat:29000,session:1000')).toThrow(/CORTEX_MEMORY_MAX_PROMPT_CHARS/);
+    expect(() => config('flat:29000,session:1000')).toThrow(/not a route/);
+  });
+
+  it('rejects a route named twice, because the last value would win silently', () => {
+    expect(() => config('flat:29000,flat:20000')).toThrow(/twice/);
+  });
+
+  it('rejects a pair with no width and a width that is not a positive integer', () => {
+    // Map-shaped, so the map parser owns them; each one would otherwise be applied to nothing and
+    // the run would proceed with the global room while the artifact claimed a redistribution.
+    for (const bad of ['flat:', ':29000', 'flat:0', 'flat:-1', 'flat:abc', 'flat:1.5']) {
+      expect(() => config(bad), `accepted ${JSON.stringify(bad)}`).toThrow(
+        /CORTEX_MEMORY_MAX_PROMPT_CHARS/,
+      );
+    }
+    // No colon, so it is a scalar and the scalar reader refuses it for not being an integer. The
+    // distinction is the grammar's whole job: a name without a width is not a budget.
+    for (const bad of ['flat', 'abc']) {
+      expect(() => config(bad), `accepted ${JSON.stringify(bad)}`).toThrow(/positive integer/);
+    }
+  });
+
+  it('still reads a scalar as one room for every route, which is what the grammar must keep', () => {
+    // The regression the shared input risks: a bare number must not reach the map parser and must
+    // not lose its meaning, because every archived run states its budget this way.
+    const options = config('38000');
+    expect(options.maxPromptChars).toBe(38_000);
+    expect(options.maxPromptCharsByRoute).toBeUndefined();
+  });
+
+  it('projects the map into the config and onto the line, and only when it was dispatched', () => {
+    const options = config('multi-session:55900,flat:29000');
+    expect(toMemoryArmConfig(options).maxPromptCharsByRoute).toEqual({
+      'multi-session': 55_900,
+      flat: 29_000,
+    });
+
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(options),
+    });
+    expect(line).toContain('maxPromptCharsByRoute=multi-session:55900+flat:29000');
+
+    // Absent rather than `default`: a run that declined the redistribution and an artifact that
+    // predates the field are the same state, and the line must not claim a map on either.
+    const inherited = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' })),
+    });
+    expect(inherited).not.toContain('maxPromptCharsByRoute');
+  });
+});
+
+/**
  * The route table the gold denominator reads, pinned through its **effects**.
  *
  * `evidenceRouteOf` restates which route a capability answers on, because the denominator has to

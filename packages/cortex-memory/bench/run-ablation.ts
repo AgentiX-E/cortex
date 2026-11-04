@@ -659,6 +659,17 @@ async function main(): Promise<void> {
       ...(armOptions.maxPromptChars === undefined
         ? {}
         : { maxPromptChars: armOptions.maxPromptChars }),
+      // §13.239's redistribution. The cast is at this boundary for the reason the reach's is: the
+      // arm carries the route names as `string` because it cannot import this package's union, and
+      // validates every one of them against its own copy at parse time, so what arrives here is a
+      // checked fact rather than a widened option.
+      ...(armOptions.maxPromptCharsByRoute === undefined
+        ? {}
+        : {
+            maxPromptCharsByRoute: armOptions.maxPromptCharsByRoute as Partial<
+              Record<TurnCapRoute, number>
+            >,
+          }),
       // §13.73's reach, passed beside the width and for the same reason. `undefined` on the arm's
       // side means every route, which is what §13.68 shipped; an explicit six-route list is the same
       // state reached by a different path, and the product treats both as "reaches everything". The

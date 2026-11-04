@@ -1462,6 +1462,23 @@ export class CortexMemory implements SessionAwareMemorySystem {
     return routes === undefined || routes.includes(route);
   }
 
+  /**
+   * The character room this route's prompt is assembled under.
+   *
+   * One lookup, in one place, for the reason `#capReaches` is one predicate: the six paths resolve
+   * their options here, so a route cannot be added and silently keep a room the run's artifact says
+   * it does not have. An unnamed route falls back to {@link CortexMemoryOptions.maxPromptChars} --
+   * the global room -- which is what makes a two-route map leave the other four byte-identical.
+   *
+   * `??` rather than a truthiness test, because a room of `0` is a value the caller may mean (it
+   * produces the degenerate prompt `fitToBudget` already handles) and silently substituting the
+   * global room for it would make the artifact describe a prompt that was never assembled.
+   */
+  #promptCharsFor(route: TurnCapRoute): number | undefined {
+    const named = this.#options.maxPromptCharsByRoute?.[route];
+    return named ?? this.#options.maxPromptChars;
+  }
+
   #promptOptions(route: TurnCapRoute): PromptOptions {
     // `promptContract` is absent on every pre-switch construction, and an absent
     // contract means the baseline rendering -- which is the same answer as naming
@@ -1475,10 +1492,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // place, for the same reason. §13 requires them to move separately: the ask
     // experiment holds the rendering at whatever the run named.
     const ask = this.#options.ask;
+    const room = this.#promptCharsFor(route);
     return {
-      ...(this.#options.maxPromptChars === undefined
-        ? {}
-        : { maxChars: this.#options.maxPromptChars }),
+      ...(room === undefined ? {} : { maxChars: room }),
       // §13.68's width, now reached through §13.73's route list. The decision is made HERE
       // rather than at the six call sites, so a route cannot be added and silently receive a
       // cap that the run's artifact says reaches two routes. `undefined` means "every route"
