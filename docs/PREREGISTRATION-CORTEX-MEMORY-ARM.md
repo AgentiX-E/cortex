@@ -27512,10 +27512,41 @@ luck.
 
 | # | owed | criterion | status |
 | --- | --- | --- | --- |
-| 1 | **the confirming artifact** | sixty questions × four passes → census sums to **240**, and `census-unit` green | re-dispatched after this section |
+| 1 | **the confirming artifact** | sixty questions × four passes → census sums to **240**, and `census-unit` green | **done**, `41845802020` |
 | 2 | §13.243's five predictions | unchanged; three are false and two are true, and the falsification is the reading | closed as a **null**, not as a regression |
 | 3 | the ask migration (§13.243.6) | MR ≥ 96/121 with the other four capabilities inside the noise band | **not started** — it is now the only MR experiment left |
 
 The confirmation run is not a formality. §13.244's fold is covered by nine unit tests, but those build
 their own pools; the only evidence that the **CLI's** pool is enumerated is an artifact whose census
 equals `questionCount × runs`.
+
+### 13.245.4 The confirmation, and the number in it worth keeping
+
+`41845802020`: sixty questions, four passes, `workers=4`, one declared departure (`limit`), preflight
+green, **twenty-two minutes**.
+
+```
+PASS  roster        60 records, questionCount says 60
+PASS  census-unit   240 outcomes, 240 question-answers (60 x 4)
+PASS  budget        largest prompt 47454 against maxPromptChars 48000
+PASS  reach         ask=operands+operand-gap touches ['multi-session', 'flat', 'temporal', 'abstention']
+```
+
+`llm` 36 / `answered` 204, i.e. 9 declines per pass of 60 — the same shape the registered arm reports,
+now over the whole run instead of a quarter of it. The reading is not a headline and cannot be: sixty
+questions is a different (much easier) slice at **93.75%**, and comparing it with 90.15 would be
+comparing two datasets.
+
+**The number worth keeping is a different one, from the same artifact:**
+
+```
+PASS  prompt-overhead  60 record(s) carry both terms; after the evidence and the question, 6 distinct
+                       decoration size(s) [365, 417, 536, 607, 761, 1589] character(s), the median
+                       1.3% of a median prompt of 47343
+```
+
+**The instruction block is 1.3% of the prompt.** That is a constraint on the next plan rather than a
+curiosity: a target of "−30% tokens" **cannot** be reached by shortening instructions, because there is
+only 1.3% of the prompt there to shorten. It has to come out of the evidence, which means the mechanism
+has to be one that decides *how much evidence to send* — the family §1.19 of the competitor analysis
+lists (AgentIR's cascade, T2Mem's test-time assembly) rather than a prompt rewrite.
