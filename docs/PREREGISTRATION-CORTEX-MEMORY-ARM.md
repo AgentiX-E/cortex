@@ -26862,3 +26862,82 @@ rather than a C-grade one from someone else's corpus.
 3. **It does not settle MR.** §13.239's prediction 2 and S8 both target MR and they are not rival
    explanations: depth and contract can each be worth points, and the two dispatches are ordered
    rather than exclusive.
+
+## 13.241 Prediction 2 was computable. The regrade had thrown away the rows that answer it
+
+*A correction to §13.238.2, and the third instance this campaign has found of the same shape: a field
+that exists, is correct, and is not carried to the place where the decision is made.*
+
+### 13.241.1 What §13.238.2 said, and what is true
+
+§13.238.2 recorded prediction 2 as **"not computable from this artifact"** and gave the reason
+"`goldRanks` caps at 255, so 'outside the pool' and 'at 255' are the same value". **The reason is
+false.** `goldRanks` encodes a gold turn the ranking never surfaced as **`-1`**; `254` is a rank inside
+a 256-wide pool. The two are different values in the same array, and the array is lossless about which
+is which.
+
+Recomputed from `41546569106`'s own artifact:
+
+| scope | questions | with at least one gold never surfaced | of those, wrong |
+| --- | ---: | ---: | ---: |
+| all capabilities | 500 | **161** | 26 |
+| `multi-session` (MR) | 121 | **41** | **16** |
+
+That is §13.234's prediction **verbatim**: *"the gain concentrates in the 41-question outside-pool
+cohort: at least 3 of 16 convert"*. Both of its numbers reproduce exactly from the registered
+artifact, with no new measurement. The prediction's scope is MR, and the difference between the two
+rows is why scope has to be stated: over all 161 questions a different (and much easier) prediction is
+being read.
+
+### 13.241.2 What was genuinely missing, and it was one field
+
+The *conversion* -- how many of those 16 answer correctly at `topK=512` -- needs per-question verdicts
+of the 512 arm. Those existed when `41741547141` ran: it scored 2,000 answers through the same scorer.
+What it wrote was five aggregate numbers per repetition:
+
+```json
+{ "run": 0, "baseline": {...}, "feature": {...}, "delta": 0.46,
+  "discordant": {"baselineCorrectFeatureIncorrect": 19, "baselineIncorrectFeatureCorrect": 249},
+  "mcnemarPValue": 2.66e-52 }
+```
+
+`discordant` is a **count**, not a list of ids, and `questions` was never written. So the measurement
+existed for the length of one process and the report kept only its summary -- the same failure as
+§13.236.7's "the measurement existed and the report did not", one level down.
+
+### 13.241.3 The repair, in two places
+
+| # | change | where | why there |
+| --- | --- | --- | --- |
+| 1 | `pairedRows(questions)` -- id, capability, correct, `goldRanks`, `goldPool`, delivered turns, prompt chars | `cortex-eval/src/paired-readout.ts` | a projection that decides what a paired reading can see is not a bench script's business to own untested; 500 short objects per repetition against the 75 MB a full record set would carry |
+| 2 | `tools/pool-cohort.py` -- reads the cohort off a live artifact and the verdicts off a regrade, with `--capability` and `--expect` as parameters | `tools/` | the cohort is a comparison, not a count: the tool prints conversion **inside** the cohort against conversion outside it, and McNemar on each |
+
+Two properties are asserted rather than hoped for:
+
+- **A missing row is an error, not a zero.** A question absent from the replay aborts the read, because
+  a cohort read over a subset is a conversion rate for a population nobody defined.
+- **A regrade written before this section is refused with its reason**, not read as an empty cohort:
+  "a regrade written before §13.241 has only aggregates, and a cohort is not recoverable from an
+  aggregate -- re-run the regrade with the current tool".
+
+### 13.241.4 Why it is worth a re-regrade
+
+The decision prediction 2 was written to licence -- `topK=1024` -- has already been declined on other
+grounds (§13.238.3), so closing it changes no plan. It is worth doing anyway for one reason that has
+nothing to do with the pool: **a prediction recorded as "untested" when it was computable is a false
+statement in a registration**, and the campaign's whole method rests on that document being exact. The
+cost of the correction is 755 judge calls and about fourteen minutes, which is the cheapest reading in
+this file.
+
+### 13.241.5 The pattern, named for the fourth time
+
+| instance | the field | how it was lost |
+| --- | --- | --- |
+| §13.236.5 | `rateLimited` | a fixture written against the reader (`boolean`) while the producer wrote a count |
+| §13.238.2 | a stated threshold | a prediction with a dead zone between "meet" and "refute" |
+| §13.240.3 | the reranker's 3.92 | a delta carried from a corpus with a third of our coverage |
+| **here** | `goldRanks` | a report that kept the summary and dropped the rows |
+
+Four instances, four different mechanisms, one sentence: **a number is usable only where it is still
+attached to the thing it was measured on.** The repair in each case was to move the number to the place
+the decision is made, not to measure it again.

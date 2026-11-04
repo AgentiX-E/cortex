@@ -459,6 +459,13 @@ export {
   type WindowComposition,
 } from './question-record.js';
 
+// §13.241: the per-question half of a report. `41741547141` regraded two complete repetitions and
+// carried five aggregate numbers per repetition, which answered three of §13.234's four predictions
+// and could not answer the one stated about a cohort. The projection is here rather than in the bench
+// script that needs it because a projection that decides what a paired reading can see is not a
+// script's business to own untested.
+export { pairedRows, type PairedRow } from './paired-readout.js';
+
 export { preflightEmbedding, type EmbeddingPreflight } from './embedding-preflight.js';
 export { serializeReportOrReduce } from './report-write.js';
 

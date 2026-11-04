@@ -15,6 +15,14 @@
  *
  * So the measurement exists and its report does not. This produces the report.
  *
+ * ## What it writes, and one thing the first dispatch did not
+ *
+ * Per repetition: the two arms' metrics, the delta, the discordant counts, the McNemar p-value, and
+ * **the per-question rows** (§13.241). The rows are not decoration -- `41741547141` wrote the first
+ * five and the campaign then recorded one of §13.234's four predictions as untestable, because a
+ * prediction about a *cohort of questions* cannot be read off an aggregate. The answer was in the
+ * artifact and the tool had removed it.
+ *
  * ## What it will not do
  *
  * It does not re-answer, so it cannot recover the passes that never ran, and it reports what
@@ -41,6 +49,7 @@ import {
   judgeScorer,
   createLlmJudge,
   loadLongMemEval,
+  pairedRows,
   readCompletedPasses,
   replaySystem,
   runAblationReport,
@@ -169,6 +178,16 @@ async function main(): Promise<void> {
       lines.push(armLine(`run ${pass.run} ${report[side].name}`, report, side));
     }
     lines.push('');
+    // `null` rather than `[]` when the report carried no records: "the tool dropped the rows" and
+    // "there were no rows" are the two states this campaign has already confused once, and only one
+    // of them can be written by a projection.
+    const rows = report.questions === undefined ? null : pairedRows(report.questions);
+    if (rows === null) {
+      console.warn(
+        `Run ${pass.run}: the report carried no question records, so no paired cohort can be read ` +
+          'from it. This is written as null rather than as an empty list.',
+      );
+    }
     perRun.push({
       run: pass.run,
       baseline: report.baseline.metrics,
@@ -176,6 +195,14 @@ async function main(): Promise<void> {
       delta: report.ablation.delta,
       discordant: report.ablation.discordant,
       mcnemarPValue: report.ablation.mcnemarPValue,
+      // §13.241. The five numbers above answered §13.234's predictions 1, 3 and 4 and could not
+      // answer prediction 2, which is stated about a cohort -- "at least 3 of 16 of the 41 questions
+      // whose gold sat outside the pool convert" -- and no cohort is recoverable from an aggregate.
+      // The first regrade (`41741547141`) recorded that prediction as untested and gave a reason
+      // that was false: `goldRanks` encodes "never surfaced" as -1, so the cohort *was* computable
+      // and the tool had dropped the rows. `pairedRows` is that repair, and it costs 500 short
+      // objects per repetition against the 75 MB a full record set would carry.
+      questions: rows,
     });
     // The full rendering, per repetition, so a reader who wants the per-capability McNemar table
     // gets the same document a live run would have produced rather than a summary of it.
