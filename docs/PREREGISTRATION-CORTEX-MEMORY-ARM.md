@@ -27977,3 +27977,94 @@ Predictions, written before it runs:
 
 Prediction 3 is a *product* assertion rather than a benchmark one, and it is the reason this dispatch
 cannot be folded into a later one.
+
+## 13.249 The token axis, measured offline before spending anything: a smaller room is not a token strategy, and the headroom is in a predictor
+
+*§14.39 of the plan registered P1' with a zero-call gate — "mean `promptChars` ≤ 32,000, gold
+reachability within −2.0 of the registered arm, partially-served count falling" — and named three
+mechanisms. This section runs the gate's first half against `41860773768`'s own per-question records,
+before any dispatch, and the gate **fails**. The failure is worth more than a pass would have been.*
+
+### 13.249.1 What can be simulated for free, and what cannot
+
+Each record carries the delivered window as an ordered list of turns with their text
+(`turns[i].index === i`, asserted over all 500), the per-question `promptChars`, and the gold's ranks
+in the ordered pool. So a smaller room is exactly a prefix of the window:
+
+```
+room = target − overhead,   overhead = promptChars − Σ len(turn.text)
+k    = the largest prefix whose characters fit in room
+carried(rank r) ⟺ r < k
+```
+
+That is a faithful simulation of `maxPromptChars` and of nothing else: it cannot simulate a *different
+selection* (that needs the retriever), a cascade, or a test-time assembly. So this section prices one
+hypothesis — **the room is too big** — and leaves the other two untouched.
+
+### 13.249.2 The gate, run: a uniform 32,000 loses 17 points of reachability
+
+| capability | n | reachability at 48,000 | at **32,000** | delta | mean chars at 32,000 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ABS | 30 | 13.3% | 10.0% | −3.3 | 31,086 |
+| IE | 150 | 51.3% | 39.3% | **−12.0** | 30,950 |
+| KU | 72 | 6.9% | 2.8% | −4.2 | 31,155 |
+| MR | 121 | 62.0% | 38.0% | **−24.0** | 31,424 |
+| TR | 127 | 56.7% | 29.9% | **−26.8** | 31,447 |
+| **all** | 500 | **46.6%** | **29.6%** | **−17.0** | 31,262 |
+
+"Reachability" is the share of questions on which **every surfaced gold turn** fits the window —
+the quantity the gate names. The gate's tolerance was −2.0. A uniform −33% budget costs **−17.0**,
+and no capability is anywhere near the tolerance.
+
+The failure is not an artefact of the tolerance being strict: the ranking is monotone in every row,
+and it is worst exactly where the turns are cheapest (MR 265 chars/turn, TR 263), because a cheap
+turn buys depth and depth is what those routes need.
+
+**So "cut the budget" is not a token strategy.** It is a way to buy −33% tokens with −17 points of
+gold reachability, and the accuracy consequence of that is not even worth measuring.
+
+### 13.249.3 The positive half: what a room sized to the gold would cost
+
+The same records answer the question the gate was really asking — *how much of the 48,000 is
+doing work?* For each question, size the room to the deepest surfaced gold turn
+(`k = max(surfaced ranks) + 1`) and price it:
+
+| capability | n | gold coverable at any depth | oracle chars | actual chars | ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ABS | 30 | 13.3% | 24,136 | 43,118 | 0.56× |
+| IE | 150 | 51.3% | 19,930 | 43,717 | **0.46×** |
+| KU | 72 | 6.9% | 34,286 | 43,673 | 0.79× |
+| MR | 121 | 62.0% | 24,704 | 45,642 | 0.54× |
+| TR | 127 | 56.7% | 27,486 | 46,226 | 0.59× |
+| **all** | 500 | **46.6%** | **24,182** | **44,778** | **0.54×** |
+
+Two facts, and they are the whole design:
+
+1. **There is 1.85× of headroom** on the questions where the gold is coverable at all — 24,182
+   characters against 44,778. That is more than the −30% the plan asked for, so the target is
+   reachable in principle.
+2. **53.4% of questions are not coverable at any depth**, because the gold sits beyond what the pool
+   surfaced. On those, no room setting and no depth predictor can help; they need a better *pool*,
+   and they are the same population §13.248.3 reads at 63.04% in the partial band.
+
+So the token axis is a **prediction** problem, not a budget problem: the constant 48,000 is wrong in
+both directions at once — too small for the 53.4% (where it is already at 95–98% of the cap) and
+2× too large for the 46.6% (where the oracle needs 24k).
+
+### 13.249.4 What P1' becomes, and what it may not use
+
+The gate is restated, because the first version could only be passed by luck:
+
+| gate | quantity | pass line | why |
+| --- | --- | --- | --- |
+| 1 (offline, zero calls) | mean `promptChars` under the **rule** | ≤ 32,000 | the plan's token target |
+| 2 (offline, zero calls) | reachability under the rule, against 46.6% | ≥ **44.6%** (−2.0) | the plan's tolerance, unchanged |
+| 3 (offline, zero calls) | the rule's chars against the **oracle's 24,182** on the coverable subset | ≤ 1.6× | a rule that beats a uniform cut but loses to the oracle by 2× has no mechanism, only a threshold |
+
+**Gate 2 is the one that kills the uniform cut and gate 3 is the one that stops a fitted constant from
+passing.** A rule that names a depth from observable signals — score distribution, question kind,
+per-route turn density — can pass both. A rule that looks at `goldRanks` cannot: §13.239.7 and §14.39.3
+both draw the line at *offline evaluation may use the gold; online decision may not*, and this is the
+first gate where violating it would have been invisible in the result.
+
+The 24,182 figure is therefore an **oracle for scoring**, never a target to encode.
