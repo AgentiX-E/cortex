@@ -46,6 +46,7 @@
  */
 import type { EmbeddingModel, RerankScoreFn } from '@agentix-e/cortex-core';
 import { rerankHits } from '@agentix-e/cortex-core';
+import { restoreAnchorNeighbourhoods } from './anchor-recall.js';
 import { retrieveTopKByQueries, type RetrievalHit } from './retrieval.js';
 import { temporalBoosts } from './temporal-relevance.js';
 import { countedRerank, type CountedRerank, type RerankCensus } from './rerank-census.js';
@@ -273,6 +274,36 @@ export type RelevanceIndexOptions = {
    * counted, so the artifact says how often the scorer judged a prefix.
    */
   readonly rerankMaxDocumentChars?: number;
+  /**
+   * Widen the retrieved pool with its anchors' session neighbourhoods, deterministically.
+   *
+   * ## Why this is an option on the index rather than a second retriever
+   *
+   * It runs **after** retrieval and after the reranker, on the pool they produced, and it does not
+   * retrieve anything: it reads the boundaries the case carries and adds turns the ranking never
+   * scored. A second `retrieve` would have had to reimplement fusion, and the artifact could no
+   * longer say whether a moved number came from a different ranking or from a wider one.
+   *
+   * ## Why it is off by default and what that keeps true
+   *
+   * Absent has to mean "the pool is exactly what the retriever returned", or every archived
+   * artifact's `scoredPairs` and `goldRanks` would silently describe a pool it never had. The
+   * increment this serves is registered as its own arm (`retrieval-anchored`), with §13.254.5's two
+   * structural gates: zero added model calls, and zero added prompt characters -- the second is a
+   * consequence of restoring **which turns are known** rather than widening the room.
+   *
+   * ## What it composes with
+   *
+   * Everything. It is downstream of `temporalWeight` and of `rerank` by construction, so a restored
+   * turn never carries a boost or a ladder rung it did not earn; it carries a decayed share of its
+   * anchor's final score, which is the only number available to it. See `anchor-recall.ts` for the
+   * selection key and for why restoration cannot outrank an anchor.
+   */
+  readonly anchors?: {
+    readonly count?: number;
+    readonly radius?: number;
+    readonly decay?: number;
+  };
 };
 
 /** The shape both provided retrievers have: queries and a context in, ranked hits out. */
@@ -370,6 +401,21 @@ export type RelevanceIndex = {
    * reranker's absence as the reranker's verdict.
    */
   readonly rerank?: RerankCensus | undefined;
+  /**
+   * What anchor restoration did, when it was configured.
+   *
+   * Absent for a run that did not configure it, for the reason `temporal` and `rerank` are absent:
+   * `restored: 0` and "this artifact predates the mechanism" must not be the same bytes.
+   *
+   * `questions` is the reach -- how many questions the pass actually ran on -- and `restored` is the
+   * turns it added across them. A run whose `questions` equals its case count with `restored: 0` is
+   * a mechanism that fired on nothing (every pool was one statement restated, or no case carried
+   * boundaries), which is a finding, not a wiring bug; a run whose `questions` is zero is a wiring
+   * bug, and the two must not read alike. `anchors` is the total number of anchors selected, which
+   * is what makes "the selection rule fired" separable from "the restoration added turns".
+   */
+  readonly anchors?:
+    { readonly questions: number; readonly anchors: number; readonly restored: number } | undefined;
 };
 
 /**
@@ -439,14 +485,19 @@ export async function buildRetrievalRelevanceIndex(
             : { maxDocumentChars: options.rerankMaxDocumentChars }),
         });
 
-  const scores = new Map<string, Map<string, number>>();
+  const scores = new Map<string, ReadonlyMap<string, number>>();
   // The ranker's own order, kept for measurement. `scores` stays because the lookup is by
   // turn and must remain O(1); this array is what gives a turn a position.
-  const ranked = new Map<string, string[]>();
+  const ranked = new Map<string, readonly string[]>();
   let scoredPairs = 0;
   // The census that separates "the signal fired on nothing" from "the signal was never wired". Counted over
   // distinct turn texts, the same domain `affinityFor` answers in.
   const temporal = { scored: 0, total: 0 };
+  // Resolved once, outside the loop, for the reason every other option is: a run cannot mix two
+  // anchor configurations across questions, and an absent object has to mean "not configured" all
+  // the way down rather than being normalised into defaults here.
+  const anchors = options.anchors;
+  const anchorCensus = { questions: 0, anchors: 0, restored: 0 };
 
   for (const entry of cases) {
     // The question first, then the case's own phrases. Order matters to the fusion --
@@ -487,12 +538,31 @@ export async function buildRetrievalRelevanceIndex(
       reranking === undefined
         ? order
         : await rerankedOrder(entry.question, order, byTurn, reranking);
-    ranked.set(entry.question, finalOrder);
-    scoredPairs += byTurn.size;
+    // Anchor restoration runs here, on the pool the retrieval and the reranker produced, and it is
+    // the LAST thing that touches the scores -- a restored turn must not carry a boost or a ladder
+    // rung it never earned. `scoredPairs` counts what this line leaves behind, which is why the
+    // census below reports the added turns separately rather than leaving a reader to subtract two
+    // numbers that an absent option would have made incomparable.
+    const anchored =
+      anchors === undefined
+        ? null
+        : restoreAnchorNeighbourhoods(
+            finalOrder.map((text) => ({ text, score: byTurn.get(text) ?? 0 })),
+            entry.context,
+            entry.sessions ?? [],
+            { question: entry.question, ...anchors },
+          );
+    ranked.set(entry.question, anchored === null ? finalOrder : anchored.order);
+    scoredPairs += anchored === null ? byTurn.size : anchored.scores.size;
+    if (anchored !== null) {
+      anchorCensus.questions += 1;
+      anchorCensus.anchors += anchored.anchors.length;
+      anchorCensus.restored += anchored.restored;
+    }
     // Last write wins for a repeated question. The arm asks each question once, so
     // the case is not one the run creates; what matters is that the lookup stays a
     // function of the question's text rather than of the case's position.
-    scores.set(entry.question, byTurn);
+    scores.set(entry.question, anchored === null ? byTurn : anchored.scores);
   }
 
   return {
@@ -506,6 +576,9 @@ export async function buildRetrievalRelevanceIndex(
       : { temporal: { scored: temporal.scored, total: temporal.total } }),
     // Only present when the stage was configured, for the reason `temporal` is.
     ...(reranking === undefined ? {} : { rerank: reranking.snapshot() }),
+    // Only present when restoration was configured, for the reason above: a run that did not run it
+    // must not be able to report `restored: 0`.
+    ...(anchors === undefined ? {} : { anchors: { ...anchorCensus } }),
     relevanceFor(question: string, turn: string): number {
       return scores.get(question)?.get(turn) ?? UNSCORED_RELEVANCE;
     },

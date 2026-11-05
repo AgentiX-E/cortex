@@ -463,7 +463,8 @@ async function main(): Promise<void> {
   // `retrieval-hybrid` fuses that ranking with a rare-keyword channel by reciprocal rank.
   // Both share `Retrieval`'s signature, so the index takes a mechanism rather than a flag.
   const retriever: Retrieval | undefined =
-    armOptions.relevanceSignal === 'retrieval-hybrid'
+    armOptions.relevanceSignal === 'retrieval-hybrid' ||
+    armOptions.relevanceSignal === 'retrieval-anchored'
       ? (queries, context, topK) =>
           retrieveTopKByQueriesHybrid(embedding, [...queries], [...context], topK)
       : undefined;
@@ -484,10 +485,15 @@ async function main(): Promise<void> {
           },
         )
       : armOptions.relevanceSignal === 'retrieval' ||
-          armOptions.relevanceSignal === 'retrieval-hybrid'
+          armOptions.relevanceSignal === 'retrieval-hybrid' ||
+          armOptions.relevanceSignal === 'retrieval-anchored'
         ? await buildRetrievalRelevanceIndex(embedding, relevanceCases, {
             ...relevanceOptions,
             ...(retriever === undefined ? {} : { retrieve: retriever }),
+            // §13.256's increment. The empty object is the registration: `anchor-recall.ts` owns the
+            // three parameters, so a dispatch that names the mechanism cannot also move the count,
+            // the radius or the decay without editing the module the gates were written against.
+            ...(armOptions.relevanceSignal === 'retrieval-anchored' ? { anchors: {} } : {}),
           })
         : null;
   if (relevance !== null) {

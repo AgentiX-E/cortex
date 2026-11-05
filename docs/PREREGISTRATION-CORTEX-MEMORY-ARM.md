@@ -28858,3 +28858,92 @@ bar, and the change is arithmetic rather than judgment:
 The last row is the one that costs something: it says the campaign's habit of adopting a change that
 moved three questions is not supportable on its own, and every adoption of that size needs a paired
 statistic or a repeat.
+
+## 13.256 The pool is widened by construction, and the metric it moves is named before it moves
+
+### 13.256.1 Why the increment is not a wider pool
+
+§13.54 raised `relevanceTopK` to 256 and coverage did not move. The reading that survives is narrow:
+the missing turns are not just below the cut, they are far below it. §13.255.2 then closed the
+question of *which* turns are missing -- all 145 are `unsurfaced`, meaning for each of them the gold
+turn that did not arrive is one the ranking never offered -- and §13.254.3 closed the question of
+*why a bigger room cannot help*: on the route where the effect is largest, **not one** MR question
+is room-limited.
+
+So the next variable is neither width nor room. It is **what the pool is built from**. A
+count-bearing question names the property ("how many", "in total") while its evidence states the
+items, so the members of the set score far under any cut that keeps the pool the size of a prompt.
+The construction that reaches them is the one the leading systems use on an unchanged turn-level
+memory: pick a few **anchors** by what they cover of the question, then restore each anchor's own
+session neighbourhood verbatim (Chain on Demand, arXiv:2611.02480; Turnbook's learned reranker is
+the same family of move and is worth 4.8 points on a question set whose answers span sessions).
+
+### 13.256.2 The selection key, stated as an order rather than as weights
+
+Three quantities decide an anchor and they are not commensurable: a count of newly covered question
+terms, a `[0, 1]` lexical distance from the already-chosen anchors, and the retriever's own score.
+Adding them needs weights, and no measurement in this campaign has priced a weight. The order is
+lexicographic instead, and every key is total:
+
+1. **newly covered question terms**, descending -- a hit that covers nothing new is skipped, not
+   demoted, and the walk stops when no candidate covers anything new;
+2. the second key is **novelty against the worst-overlapping chosen anchor**, descending;
+3. then the **retriever's score**, descending;
+4. then the **retriever's own position**, ascending.
+
+The first anchor is the retriever's best hit, unconditionally. That makes the mechanism monotone
+against the shipped ordering: with `count = 1` and `radius = 0` the pool is the retriever's pool,
+score for score. A restoration that moves nothing is therefore attributable to restoration.
+
+Restoration itself is verbatim and decays: a turn `d` steps from an anchor carries
+`anchor_score * 0.5^d`, so it is always ranked **below** its own anchor, and a turn the retriever
+already scored keeps its measured score. No model call, no embedding, no invented number.
+
+### 13.256.3 The gates, restated for this mechanism
+
+Gates 1 and 2 are structural and are properties of the construction above rather than promises:
+
+| gate | quantity | bar | how it is read |
+| --- | --- | ---: | --- |
+| 1 | model calls added per question | **0** | the index's own call counters must equal the registered run's |
+| 2 | prompt characters added per question | **≤ +15%** on the registered 46,631 median | `evidenceChars` per question, unchanged room, so the predicted addition is **0** |
+| 3 | MR numeric, delivered fraction `>=0.9`, **pooled over three dispatches** | **≥ 21 of 27** | against a pooled baseline of 17–18 of 27 |
+| 4 | IE / TR / ABS / MR text answers | each within **two measured noise widths** (MR ±5, TR ±4, KU ±3, IE ±3, ABS 0) | §13.255.3's flip table |
+
+Gate 2 is not vacuous even though the room is unchanged: restoration changes **which** turns the
+room buys, and a session whose turns are larger could fit fewer. The bar is the upper bound on that
+re-arrangement, and it is checked rather than assumed.
+
+### 13.256.4 The metric this dispatch changes, and why gate 3 does not use it
+
+`goldRanks` reads `rankedCandidatesFor`, and that array now contains the restored turns. So the
+`unsurfaced` count is **not comparable across the two mechanisms**: a gold turn that was
+`rank >= 0` before can be `rank >= 0` after for a different reason, and one that was `-1` can become
+a large number without having been retrieved by anything.
+
+That is why gate 3 is a **delivery count** (`goldDelivered`, gate 3's `carried`) and not a pool
+statistic. The pool columns are still printed, because the mechanism's reach has to be visible --
+`anchors.questions`, `anchors.anchors`, `anchors.restored` are new census fields and a run that
+reports `questions: 500, restored: 0` is a mechanism that fired on nothing, which is a finding
+rather than a null result. What the pool columns may **not** be used for is a sentence of the form
+"more gold turns are now surfaced", because the denominator moved with the mechanism.
+
+### 13.256.5 What falsifies this, and what the campaign does if it does
+
+Three falsifiers, each with a different repair:
+
+1. **`restored: 0` on all 500 questions** -- the selection rule found no anchor with new coverage on
+   any question, or the cases carried no boundaries. The second is a wiring fault and the census
+   separates it (`questions` would be 500 with `anchors: 0`); the first would mean the questions name
+   no term their own evidence repeats, which the word "count" makes implausible.
+2. **Gate 3 stays at or below 18 of 27** -- the missing turn is not in an anchor's neighbourhood. The
+   next variable is then **which** neighbourhood: whole-session restoration (the `session-fill` rule
+   already in the selection layer) or a turn-level lexical channel at the point of union.
+3. **Gate 4 fails beyond the noise widths** -- restoration is displacing evidence the reader needed.
+   The repair is the decay, not the mechanism: a restored turn's claim on the room would be too
+   strong relative to a hit the retriever ranked far above its anchor.
+
+Failure 2 is the one worth stating precisely, because it is the most likely and the least
+informative on its own: it would say the anchor's session is the wrong unit, not that widening the
+pool is the wrong idea. The distinction is only readable because the census counts anchors, restored
+turns, and the delivery of every gold turn separately.

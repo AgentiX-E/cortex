@@ -347,10 +347,13 @@ describe('the record is assembled where a test can reach it', () => {
 });
 
 describe('a reranker the ranking cannot reach is refused', () => {
-  it('accepts the two signals that build a pool', () => {
+  it('accepts the signals that build a pool', () => {
     const stage = { provider: 'openai-compatible' as const };
     expect(() => assertRerankReachesRanking('retrieval', stage)).not.toThrow();
     expect(() => assertRerankReachesRanking('retrieval-hybrid', stage)).not.toThrow();
+    // `retrieval-anchored` runs the same retrieval as `retrieval-hybrid` and restores neighbourhoods
+    // downstream of the stage, so the cross-encoder still has a retrieved pool to permute.
+    expect(() => assertRerankReachesRanking('retrieval-anchored', stage)).not.toThrow();
   });
 
   it('refuses the signals that build none, and names the variable to change', () => {

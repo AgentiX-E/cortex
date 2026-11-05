@@ -375,3 +375,124 @@ describe('buildRetrievalRelevanceIndex with query expansion', () => {
     expect(empty.scoredPairs).toBe(absent.scoredPairs);
   });
 });
+
+/**
+ * §13.256's increment, at the layer that owns the pool.
+ *
+ * The fixture states the case the mechanism exists for: two sessions, a question naming four
+ * terms, and a retriever that surfaces the first statement and one turn from the second session.
+ * The gold-shaped turn -- `third turn` -- is the one no ranking offered.
+ */
+describe('buildRetrievalRelevanceIndex anchors', () => {
+  const SESSIONS: readonly (readonly string[])[] = [
+    ['alpha beta start', 'unrelated remark', 'alpha beta end', 'third turn'],
+    ['gamma here', 'delta here'],
+  ];
+  const CONTEXT: readonly string[] = SESSIONS.flat();
+  const QUESTION = 'alpha beta gamma delta';
+  const HITS = [
+    { id: 'a', text: 'alpha beta start', score: 1, index: 0 },
+    { id: 'b', text: 'gamma here', score: 0.9, index: 4 },
+  ];
+
+  /**
+   * `sessions === null` omits the field entirely, which is the archived state of every case: absent
+   * and empty are different inputs even where they produce the same pool.
+   */
+  function build(
+    options: Parameters<typeof buildRetrievalRelevanceIndex>[2],
+    sessions: readonly (readonly string[])[] | null = SESSIONS,
+  ): ReturnType<typeof buildRetrievalRelevanceIndex> {
+    return buildRetrievalRelevanceIndex(
+      tableEmbedding({}, DIM),
+      [
+        {
+          question: QUESTION,
+          context: CONTEXT,
+          ...(sessions === null ? {} : { sessions }),
+        },
+      ],
+      { topK: 2, retrieve: () => Promise.resolve(HITS), ...options },
+    );
+  }
+
+  it('scores a turn the retriever never surfaced when restoration is configured', async () => {
+    // The whole point: `third turn` is two steps from the anchor inside its own session, and no
+    // ranking offered it. Before this option it carried the floor and the budget could only buy it
+    // by accident.
+    const withAnchors = await build({ anchors: {} });
+    const without = await build({});
+
+    expect(without.relevanceFor(QUESTION, 'third turn')).toBeLessThan(0);
+    expect(withAnchors.relevanceFor(QUESTION, 'third turn')).toBeCloseTo(0.125, 12);
+  });
+
+  it('reports the pool as a candidate set that agrees with the scores', async () => {
+    // The equivalence `relevance-index.test.ts` asserts for the retriever's own hits has to survive
+    // a widened pool, or `candidatesFor` would describe a pool the selection cannot see.
+    const index = await build({ anchors: {} });
+    const floor = index.relevanceFor('a question the index never saw', 'a turn it never saw');
+    const ranked = index.rankedCandidatesFor(QUESTION);
+    for (const text of ranked) {
+      expect(index.relevanceFor(QUESTION, text)).toBeGreaterThan(floor);
+      expect(index.candidatesFor(QUESTION).has(text)).toBe(true);
+    }
+    expect(ranked).toContain('third turn');
+  });
+
+  it('counts the added turns in scoredPairs and in its own census', async () => {
+    const index = await build({ anchors: {} });
+    // Two retrieved hits plus the anchor neighbourhoods: three around the first anchor and one
+    // around the second.
+    expect(index.scoredPairs).toBe(6);
+    expect(index.anchors).toEqual({ questions: 1, anchors: 2, restored: 4 });
+  });
+
+  it('reports reach separately from effect when the case carries no boundaries', async () => {
+    // `questions: 1, restored: 0` is a mechanism that ran and had nothing to restore, which is a
+    // different finding from "the field is absent because it never ran".
+    const index = await build({ anchors: {} }, []);
+    // The selection needs no boundary, so it still fires: two anchors, nothing restored. That is the
+    // reading that keeps "this case had no sessions" apart from "nothing was selected".
+    expect(index.anchors).toEqual({ questions: 1, anchors: 2, restored: 0 });
+    expect(index.rankedCandidatesFor(QUESTION)).toEqual(['alpha beta start', 'gamma here']);
+  });
+
+  it('treats a case without boundaries as a case with none', async () => {
+    // `entry.sessions ?? []` is a branch a reader can see and a run cannot: a dataset that does not
+    // carry sessions must reach the same pool as one that carries an empty list.
+    const index = await build({ anchors: {} }, null);
+    expect(index.anchors).toEqual({ questions: 1, anchors: 2, restored: 0 });
+  });
+
+  it('leaves the pool byte-identical when the option is absent', async () => {
+    // The compatibility guarantee every archived artifact rests on.
+    const index = await build({});
+    expect(index.anchors).toBeUndefined();
+    expect(index.scoredPairs).toBe(2);
+    expect(index.rankedCandidatesFor(QUESTION)).toEqual(['alpha beta start', 'gamma here']);
+  });
+
+  it('keeps the retriever head first and restoration below it', async () => {
+    const index = await build({ anchors: {} });
+    expect(index.rankedCandidatesFor(QUESTION)[0]).toBe('alpha beta start');
+    // Every restored turn sits below the lower of the two measured hits, so restoration cannot
+    // displace a hit the retriever ranked above its own anchor.
+    for (const text of ['unrelated remark', 'alpha beta end', 'third turn', 'delta here']) {
+      expect(index.relevanceFor(QUESTION, text)).toBeLessThan(0.9);
+    }
+  });
+
+  it('restores around the pool the reranker produced', async () => {
+    // Restoration runs last, so the anchor is whatever the cross-encoder put first. Here the reranker
+    // promotes the second session's turn, and the neighbourhood restored is that session's.
+    const index = await build({
+      anchors: {},
+      // The scorer answers one number per candidate, in the order it was handed them; reversing the
+      // numbers is what promotes the second session's turn without inventing a second retriever.
+      rerank: (pairs) => Promise.resolve(pairs.map((_, position) => (position === 0 ? 0.1 : 0.9))),
+    });
+    expect(index.rankedCandidatesFor(QUESTION)[0]).toBe('gamma here');
+    expect(index.relevanceFor(QUESTION, 'delta here')).toBeCloseTo(0.5, 12);
+  });
+});

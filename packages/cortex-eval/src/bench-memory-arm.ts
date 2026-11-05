@@ -502,6 +502,32 @@ const RELEVANCE_SIGNALS = {
    * registration fixes both.
    */
   'retrieval-session': 'retrieval-session',
+  /**
+   * `retrieval-hybrid`, then its pool widened by each anchor's session neighbourhood.
+   *
+   * ## Why this is a signal and not a wider `topK`
+   *
+   * §13.54 already spent the width: `k = 256` did not raise coverage, because the missing turns
+   * are not below the cut -- they are far below it. §13.255.2 then located the population exactly:
+   * for **145** of 500 questions the gold turn that never arrived is one the ranking never
+   * surfaced, and §13.254.3 showed not one of MR's missing questions is room-limited. A count asks
+   * for the **property** ("how many", "in total") while its evidence states the **items**, so the
+   * members of the set score far under a cut no width can reach.
+   *
+   * So the pool is widened by *construction* instead: a few anchors chosen by question coverage and
+   * lexical novelty, then each anchor's own session neighbourhood restored verbatim
+   * (`anchor-recall.ts`, after Chain on Demand, arXiv:2611.02480). Both §13.254.5 gates are
+   * structural rather than promised: **0** added model calls, and **0** added prompt characters --
+   * restoration changes which turns the ordering knows, not how much room the reader gets.
+   *
+   * ## Why the name carries it rather than a flag
+   *
+   * The artifact's `relevanceSignal` is the only place a reader can see which operation produced a
+   * pool, and `relevanceTopK` cannot express "the pool was widened after retrieval". A boolean
+   * beside `retrieval-hybrid` would make two runs comparable only if a reader also compared the
+   * flag, which is the shape of the defects §13.63 and §13.27 both fixed by naming the mechanism.
+   */
+  'retrieval-anchored': 'retrieval-anchored',
 } as const;
 
 /** The signal a run gets when it does not name one. */
@@ -1982,14 +2008,21 @@ export function assertRerankReachesRanking(
   if (rerank === undefined || rerank.provider === 'none') {
     return;
   }
-  if (relevanceSignal === 'retrieval' || relevanceSignal === 'retrieval-hybrid') {
+  // `retrieval-anchored` is included because the reranker runs over its pool too: restoration is
+  // downstream of the stage, so enabling both means the cross-encoder reorders the retrieved pool and
+  // the neighbourhoods are restored around the anchors that reordering produced.
+  if (
+    relevanceSignal === 'retrieval' ||
+    relevanceSignal === 'retrieval-hybrid' ||
+    relevanceSignal === 'retrieval-anchored'
+  ) {
     return;
   }
   throw new Error(
     `CORTEX_MEMORY_RERANK is enabled but relevanceSignal="${relevanceSignal}" builds no ranked pool ` +
       'for the stage to reorder, so the reranker would never fire and the artifact would name a ' +
-      'treatment that did not run. Set CORTEX_MEMORY_RELEVANCE=retrieval or retrieval-hybrid, or ' +
-      'leave the reranker off.',
+      'treatment that did not run. Set CORTEX_MEMORY_RELEVANCE=retrieval, retrieval-hybrid or ' +
+      'retrieval-anchored, or leave the reranker off.',
   );
 }
 
