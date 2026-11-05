@@ -161,36 +161,49 @@ function baseline(): Baseline {
   return JSON.parse(readFileSync(BASELINE, 'utf8')) as Baseline;
 }
 
+// Every test in this block spawns the census CLI over the whole workspace, and one spawn measures
+// ~1.7 s on an idle machine and ~4 s while five packages build in parallel -- so the default
+// 5 s timeout reads the scheduler rather than the CLI. Run `42054107910`'s gate failed here
+// at 5,510 ms with an unmodified tree. 30 s is the width this file already justifies for the
+// other spawn-based tests; the assertion is about the output, not the latency.
 describe('the census CLI reports without enforcing by default', () => {
-  it('exits 0 and prints a summary', () => {
+  it('exits 0 and prints a summary', { timeout: 30_000 }, () => {
     const { status, output } = runCensus([]);
     expect(status).toBe(0);
     expect(output).toMatch(/export census: \d+ exported symbols/);
     expect(output).toContain('orphaned');
   });
 
-  it('says so plainly when there is nothing to report, or lists what it found', () => {
-    const { output } = runCensus([]);
-    // Either state is valid on a given tree; what matters is that the output is
-    // never silent about which one it is.
-    const clean = output.includes('no orphans: every exported symbol has a non-test caller');
-    const listed = /orphaned export\(s\)/.test(output);
-    expect(clean || listed).toBe(true);
-  });
+  it(
+    'says so plainly when there is nothing to report, or lists what it found',
+    { timeout: 30_000 },
+    () => {
+      const { output } = runCensus([]);
+      // Either state is valid on a given tree; what matters is that the output is
+      // never silent about which one it is.
+      const clean = output.includes('no orphans: every exported symbol has a non-test caller');
+      const listed = /orphaned export\(s\)/.test(output);
+      expect(clean || listed).toBe(true);
+    },
+  );
 
-  it('names the two orphan classes instead of reporting one undifferentiated number', () => {
-    // THE REGRESSION TEST for the conflation this change removes. Before it,
-    // "235 orphaned" was the whole report: a symbol used everywhere inside its
-    // own file and a symbol nothing mentions read identically, and the 31 dead
-    // ones could not be read out of the output at all.
-    const { output } = runCensus([]);
-    expect(output).toMatch(/used only in their own file/);
-    expect(output).toMatch(/referenced nowhere/);
-    expect(output).toMatch(/still used inside their own file/);
-    expect(output).toMatch(/referenced nowhere at all/);
-  });
+  it(
+    'names the two orphan classes instead of reporting one undifferentiated number',
+    { timeout: 30_000 },
+    () => {
+      // THE REGRESSION TEST for the conflation this change removes. Before it,
+      // "235 orphaned" was the whole report: a symbol used everywhere inside its
+      // own file and a symbol nothing mentions read identically, and the 31 dead
+      // ones could not be read out of the output at all.
+      const { output } = runCensus([]);
+      expect(output).toMatch(/used only in their own file/);
+      expect(output).toMatch(/referenced nowhere/);
+      expect(output).toMatch(/still used inside their own file/);
+      expect(output).toMatch(/referenced nowhere at all/);
+    },
+  );
 
-  it('emits parseable JSON on --json, containing the same orphan list', () => {
+  it('emits parseable JSON on --json, containing the same orphan list', { timeout: 30_000 }, () => {
     const { status, output } = runCensus(['--json']);
     expect(status).toBe(0);
     const parsed = JSON.parse(output) as {
@@ -212,7 +225,7 @@ describe('the census CLI reports without enforcing by default', () => {
     expect(new Set(parsed.unreferenced).size).toBe(parsed.unreferenced.length);
   });
 
-  it('produces a report that matches the committed baseline exactly', () => {
+  it('produces a report that matches the committed baseline exactly', { timeout: 30_000 }, () => {
     // The baseline is only meaningful while it describes the tree it sits in. If
     // this drifts, `--check` would either miss new orphans or flag known ones,
     // and the way to find out should not be a red CI run.
@@ -226,13 +239,13 @@ describe('the census CLI reports without enforcing by default', () => {
 });
 
 describe('the census gate enforces the baseline', () => {
-  it('passes on the committed tree', () => {
+  it('passes on the committed tree', { timeout: 30_000 }, () => {
     const { status, output } = runCensus(['--check']);
     expect(status).toBe(0);
     expect(output).toContain('no new orphans beyond the recorded baseline');
   });
 
-  it(`fails when a new orphan appears, naming it`, () => {
+  it(`fails when a new orphan appears, naming it`, { timeout: 30_000 }, () => {
     // THE REGRESSION TEST for the gate. Injects one orphaned export into a real
     // source file, runs the real gate, and asserts it fails and says which
     // symbol caused it. Without this, a `--check` that forgot to return 1 would
@@ -281,7 +294,7 @@ describe('the census gate enforces the baseline', () => {
     }
   });
 
-  it('ignores an orphan that is already recorded in the baseline', () => {
+  it('ignores an orphan that is already recorded in the baseline', { timeout: 30_000 }, () => {
     // The gate must not fail on the backlog it was seeded with, or it would be
     // red on the commit that introduced it and turned off immediately.
     const recorded = baseline().knownOrphans[0];
@@ -585,7 +598,7 @@ describe('the census CLI survives output that is larger than a pipe buffer', () 
     expect(payload.orphans.length).toBeGreaterThan(0);
   });
 
-  it('still reports the new orphan through a pipe, and still exits 1', () => {
+  it('still reports the new orphan through a pipe, and still exits 1', { timeout: 30_000 }, () => {
     // The gate's refusal has to arrive intact through the same pipe that used to
     // eat it, because losing the refusal is the failure mode that matters: CI
     // reads the exit status AND the named symbol, and a silent truncation gives
@@ -621,27 +634,31 @@ describe('the census CLI survives output that is larger than a pipe buffer', () 
 });
 
 describe('the census counts the workspace outside packages/*/src', () => {
-  it('counts bench/run.ts as a caller, because it is the benchmark entry point', () => {
-    // THE BLIND SPOT. `readAllSources` walked `packages/<pkg>/src` and `tools/*.mjs`
-    // and nothing else, so `packages/cortex-eval/bench/run.ts` -- the benchmark's
-    // actual entry point, 1000+ lines that import the export surface by name --
-    // was read by NEITHER. The gate therefore reported 41 exports as orphans whose
-    // only production caller is that file.
-    //
-    // The check is by name against a symbol this test can prove is called there,
-    // not a count: a count would change whenever unrelated code moved, and the
-    // property under test is "bench/run.ts is read", not "the file has N refs".
-    const benchPath = resolve(REPO_ROOT, 'packages/cortex-eval/bench/run.ts');
-    const bench = readFileSync(benchPath, 'utf8');
-    expect(bench).toContain('createLlmFromEnv');
+  it(
+    'counts bench/run.ts as a caller, because it is the benchmark entry point',
+    { timeout: 30_000 },
+    () => {
+      // THE BLIND SPOT. `readAllSources` walked `packages/<pkg>/src` and `tools/*.mjs`
+      // and nothing else, so `packages/cortex-eval/bench/run.ts` -- the benchmark's
+      // actual entry point, 1000+ lines that import the export surface by name --
+      // was read by NEITHER. The gate therefore reported 41 exports as orphans whose
+      // only production caller is that file.
+      //
+      // The check is by name against a symbol this test can prove is called there,
+      // not a count: a count would change whenever unrelated code moved, and the
+      // property under test is "bench/run.ts is read", not "the file has N refs".
+      const benchPath = resolve(REPO_ROOT, 'packages/cortex-eval/bench/run.ts');
+      const bench = readFileSync(benchPath, 'utf8');
+      expect(bench).toContain('createLlmFromEnv');
 
-    const { status, output } = runCensus(['--check']);
-    expect(status).toBe(0);
-    expect(output).not.toContain('cortex-eval: createLlmFromEnv');
-    expect(output).not.toContain('cortex-eval: sampleInstances');
-  });
+      const { status, output } = runCensus(['--check']);
+      expect(status).toBe(0);
+      expect(output).not.toContain('cortex-eval: createLlmFromEnv');
+      expect(output).not.toContain('cortex-eval: sampleInstances');
+    },
+  );
 
-  it('keeps a bench file from being counted as a declaration site', () => {
+  it('keeps a bench file from being counted as a declaration site', { timeout: 30_000 }, () => {
     // `bench/run.ts` is a TypeScript file, so `isSourceFile` is true for it and it
     // must be read -- but it declares no exported symbol the census should
     // attribute. Asserting the outcome rather than the mechanism: a bench file
