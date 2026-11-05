@@ -32,6 +32,16 @@ on:
         required: false
         default: 'deepseek-chat'
         type: string
+      mode:
+        description: 'false-accept (perturb answers the judge accepted, measure bias) or regrade (re-ask about the same answers, measure variance). The two readings are different quantities and are never summed'
+        required: false
+        default: 'false-accept'
+        type: string
+      passes:
+        description: 'Regrade only: how many times each recorded answer is re-judged. Below 2 there is no second reading and the flip rate would be zero by construction'
+        required: false
+        default: '2'
+        type: string
 
 permissions:
   contents: read
@@ -61,6 +71,11 @@ jobs:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       CORTEX_LLM_MODEL: ${{ inputs.model }}
       GH_TOKEN: ${{ github.token }}
+      # Two readings of one artifact, never one run of both: `false-accept` perturbs answers to price
+      # the judge's bias, `regrade` re-asks about unchanged answers to price its variance. Adding them
+      # would produce a number whose two halves are not the same quantity.
+      MODE: ${{ inputs.mode }}
+      PASSES: ${{ inputs.passes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,6 +115,7 @@ jobs:
           ls -la readings/artifact
 
       - name: Plan only (no model) — the case list has to be reviewable before it is spent on
+        if: env.MODE != 'regrade'
         run: |
           set -o pipefail
           node tools/judge-audit.mjs \
@@ -107,12 +123,37 @@ jobs:
             --limit "$LIMIT" --plan-only 2>&1 | tee readings/plan.txt
 
       - name: Audit
+        if: env.MODE != 'regrade'
         run: |
           set -o pipefail
           node tools/judge-audit.mjs \
             --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
             --limit "$LIMIT" \
             --out readings/judge-audit.json 2>&1 | tee readings/judge-audit.txt
+
+      # The variance half. It costs `questions * passes` judge requests and buys the split §13.255.3
+      # could not make: how much of the arm's noise floor belongs to the judge rather than the reader.
+      #
+      # The plan runs first and unconditionally, because the one failure this job can produce that
+      # looks like a result is a two-pass loop whose second pass never asked: `createLlmJudge`
+      # memoises, and the tool clears that cache between passes. A job that skipped the plan would
+      # report 0.0% and read as a perfectly reproducible judge.
+      - name: Plan the regrade (no model)
+        if: env.MODE == 'regrade'
+        run: |
+          set -o pipefail
+          node tools/judge-regrade.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --limit "$LIMIT" --passes "$PASSES" --plan-only 2>&1 | tee readings/regrade-plan.txt
+
+      - name: Regrade the recorded answers
+        if: env.MODE == 'regrade'
+        run: |
+          set -o pipefail
+          node tools/judge-regrade.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
+            --limit "$LIMIT" --passes "$PASSES" \
+            --out readings/judge-regrade.json 2>&1 | tee readings/judge-regrade.txt
 
       - name: Upload readings
         if: always()
