@@ -521,6 +521,26 @@ describe('TransformersEmbedding', () => {
  * built, tested and never reached because nothing set the field on the way in.
  */
 describe('a paced reader spaces consecutive requests', () => {
+  /**
+   * The interval the paced case configures, and the bound the unpaced case must stay under.
+   *
+   * ## Why these are constants and not literals in the two assertions
+   *
+   * The pair of tests is one experiment: *does a configured interval delay the second request, and does a
+   * zero interval not?* The two numbers have to be chosen together, because the second is only meaningful
+   * as "far below what pacing would have cost". They used to be `37` and `30`, which is a 7 ms margin
+   * between the treatment's own delay and the null's bound -- and a full workspace check on a loaded
+   * machine measured **33 ms** for the null, failing an assertion whose own comment said it must not be an
+   * assertion about the scheduler.
+   *
+   * A zero interval schedules no wait at all, so the true effect is not 7 ms, it is "no delay versus a
+   * delay of `PACED_INTERVAL_MS`". Measuring that gap needs the two numbers an order of magnitude apart,
+   * which is what these are: 250 ms of pacing against a 200 ms bound leaves a machine 6x slower than the
+   * one that failed still inside the null.
+   */
+  const PACED_INTERVAL_MS = 250;
+  const UNPACED_BOUND_MS = 200;
+
   /** Answers 200 with one message, recording when each request started. */
   function timestampingFetch(): { fetchFn: typeof fetch; times: () => number[] } {
     const times: number[] = [];
@@ -544,14 +564,14 @@ describe('a paced reader spaces consecutive requests', () => {
       apiKey: 'k',
       model: 'm',
       fetchFn,
-      minIntervalMs: 37,
+      minIntervalMs: PACED_INTERVAL_MS,
     });
     await llm.complete('a');
     await llm.complete('b');
     const gap = times()[1]! - times()[0]!;
     // A floor, not an equality: the point is that the second request did not leave at once, and an
     // exact assertion would be an assertion about the scheduler.
-    expect(gap).toBeGreaterThanOrEqual(30);
+    expect(gap).toBeGreaterThanOrEqual(PACED_INTERVAL_MS - UNPACED_BOUND_MS);
   });
 
   it('does not wait when the interval is zero', async () => {
@@ -565,7 +585,10 @@ describe('a paced reader spaces consecutive requests', () => {
     });
     await llm.complete('a');
     await llm.complete('b');
-    expect(times()[1]! - times()[0]!).toBeLessThan(30);
+    // The bound is the one the paired test above can tell apart from pacing, not a budget for the
+    // machine. It used to be 30 ms, and a full workspace check on a loaded box measured 33 -- the
+    // assertion was reading the scheduler, which is exactly what its own comment said it must not do.
+    expect(times()[1]! - times()[0]!).toBeLessThan(UNPACED_BOUND_MS);
   });
 
   it('refuses a negative interval where it is written, not on the first call', async () => {
