@@ -194,12 +194,18 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | Mastra OM, GPT-5-mini            | 94.9%                    | C     | the strongest reader; the same memory system as the GPT-4o row, which is what makes the 10.6-point gap an experiment on the reader |
 | agentmemory V4                   | 96.2%                    | C     | single deterministic run, Claude Opus 4.6 reader, six-signal retrieval                                                             |
 | Graphonomous                     | 92.6%                    | C     | keyword-recall proxy on an oracle split — not the official metric                                                                  |
+| Recallium (Claude Opus 5.5 reader) | 98.4%                  | C     | vendor benchmark page, 500 questions, official GPT-4o grading prompts, 3.8 results per question                                    |
+| ContextStream (Claude Opus 5.5 reader) | 96.8%              | C     | vendor benchmark page, 484/500 through the production API, official pinned GPT-4o judge, held-out half 96.0%                       |
+| Recallium (GPT-4o reader)        | 90.2%                    | B     | the same memory and the same official prompts with the official GPT-4o reader — the like-for-like row for this arm                  |
 
 Four consequences, and the last two are uncomfortable:
 
-1. **The gap to close is 85.8%, not 96.2%.** The published, reproducible frontier on this benchmark with a
-   GPT-4o-class reader is memoricai's 85.8%; everything above it is either a vendor claim or a different
-   metric. Writing 96.2% into a target would be targeting a number nobody has reproduced.
+1. **The gap to close is 85.8% in the reproducible class, and 98.4% is the published ceiling.** The
+   published, reproducible frontier on this benchmark with a GPT-4o-class reader is memoricai's 85.8%;
+   everything above it is either a vendor claim or a different metric. The vendor rows that sit above 95%
+   are kept in the table precisely so this section cannot be read as a frontier claim — and the like-for-like
+   row, Recallium at 90.2 with a GPT-4o reader, is the one number here that this arm is level with rather than
+   ahead of.
 2. **Most open-source memory systems lose to having no memory at all.** The reproduced no-memory baseline is
    57.6%, and four of the six systems in the same harness scored below it. So the first acceptance question is
    "beats full context", and only then "beats the leaderboard". Cortex's 83.5% clears that bar by 25.9 points.

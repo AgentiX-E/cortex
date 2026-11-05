@@ -28076,6 +28076,12 @@ The 24,182 figure is therefore an **oracle for scoring**, never a target to enco
 
 ## 13.250 The budget curve has no knee, and the −30% target is unreachable by any allocation rule — including a perfect one
 
+> **Corrected by §13.252.** The curve below is measured and stands. Two sentences built on it do not:
+> the "coverable at any depth" column of §14.41.3 was a copy of the 48,000 row (reach at any depth is
+> 67.8%, not 46.6%), so the oracle below prices a population it has mis-described — its arithmetic
+> still bounds the cost of a coverage-preserving rule, but the claim that depth could not have helped
+> the 53.4% is false for 142 of them. The depth axis is rejected in §13.252.4 on accuracy, not price.
+
 *§13.249 closed "shrink the budget" and left the predictor family open, with an oracle of 24,182
 characters against 44,778 spent. This section finishes the question: how much of that 1.85× is
 reachable by **any** rule that decides depth per question, and is the plan's −30% inside it. It is
@@ -28260,3 +28266,150 @@ So the registration stands, on four stated grounds:
 **What would overturn it**, stated now so that the next dispatch is not another coin: a third draw on
 which MR's four-repetition mean is ≤ 94 **and** the full band ≤ 84.00%. Both conditions, because one
 of them alone is inside the noise.
+
+## 13.252 The column headed "coverable at any depth" was the reach row above it, and the population it mis-filed reads 93.66%
+
+### 13.252.1 The defect, as arithmetic rather than as judgement
+
+§14.41.3 printed this table, headed *"门 3：把房间按金标定尺要花多少——正面的那一半"*:
+
+| capability | n | 任意深度下可覆盖 | oracle 字符 | 实际字符 |
+| --- | ---: | ---: | ---: | ---: |
+| ABS | 30 | 13.3% | 24,136 | 43,118 |
+| IE | 150 | 51.3% | 19,930 | 43,717 |
+| KU | 72 | 6.9% | 34,286 | 43,673 |
+| MR | 121 | 62.0% | 24,704 | 45,642 |
+| TR | 127 | 56.7% | 27,486 | 46,226 |
+| **全部** | 500 | **46.6%** | 24,182 | 44,778 |
+
+Every entry of the third column is the corresponding entry of §14.42.1's **48,000-character row** —
+13.3 / 51.3 / 6.9 / 62.0 / 56.7 / 46.6. Six rows out of six, to the decimal. A quantity that is a
+function of depth cannot coincide with the current reach on every capability at once; the column was
+the reach computed again, and the sentence built on it — *"53.4% of the questions are not coverable at
+any depth"* — is false for 142 of those 267.
+
+The corrected partition, from `readout-arm-run.py --strata` on `41860773768`:
+
+| capability | n | exact | acc | depth-limited | acc | pool-missing | acc | reach@any-depth |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ABS | 30 | 2 | 100.00% | 14 | 100.00% | 14 | 100.00% | 53.3% |
+| IE | 150 | 75 | 94.67% | 43 | 95.35% | 32 | 96.88% | 78.7% |
+| KU | 72 | 5 | 100.00% | 43 | 93.02% | 24 | 75.00% | 66.7% |
+| MR | 121 | 63 | 90.48% | 17 | 76.47% | 41 | 63.41% | 66.1% |
+| TR | 127 | 52 | 94.23% | 25 | 100.00% | 50 | 92.00% | 60.6% |
+| **全部** | 500 | **197** | **93.40%** | **142** | **93.66%** | **161** | **83.85%** | **67.8%** |
+
+The reach ceiling with the pool held fixed is **67.8%**, not 46.6%.
+
+### 13.252.2 The three strata, and why `-1` is not "very deep"
+
+- **exact** — every gold turn the dataset names was surfaced (`rank >= 0`) *and* inside the window
+  (`rank < turns`). No retrieval or room change can improve the evidence this reader saw.
+- **depth-limited** — every gold turn was surfaced; at least one sat below the cut. Reachable by a
+  deeper window with the ranking held fixed.
+- **pool-missing** — at least one gold turn was never surfaced. No window reaches it.
+
+`goldRanks` records `-1` for a gold the ranking never reached, and its magnitude carries no rank. A
+record with `-1` beside a rank below the cut loses on **both** axes; it is filed under `pool` because
+that is the part no room change can fix. Filing it under `depth` is what priced a ranking repair as a
+room repair for three rounds.
+
+### 13.252.3 What the correction does to the two published numbers, and what it does not
+
+**The reach ceiling** moves 46.6% → 67.8%, which is the direction §14.42.2 said was impossible.
+
+**The 0.79× oracle keeps its arithmetic and loses its premise.** §14.42.2 priced the 267 non-full
+questions at their **current** cost, on the argument that *"on those, no depth helps, so the full
+window is the best any rule can do"*. For 142 of them that sentence is false: a deeper window does
+reach the gold. The number 36,887 is still the cheapest cost of a rule that **preserves the current
+coverage** — the objection is not to the sum but to the reason given for it, and to what was built on
+that reason.
+
+What must not be inherited is the conclusion drawn from it: *"a perfect allocation rule cannot help, so
+the 53.4% is a pool problem."* Of the 267, **142 are a room problem** — they are simply an expensive
+one, since covering them costs a median of 56 more turns each. Whether that price is worth paying is a
+question this artifact cannot answer (§13.252.6), but it is no longer answered by an oracle that
+assumed the question away.
+
+**What the token axis keeps.** Every −20% / −30% statement was about rules that do not lose coverage,
+and for those the 36,887 lower bound stands untouched: a rule cannot spend less than the depth its
+delivered evidence requires, and on the 142 the delivered evidence is what it is. So the retirement of
+"shrink the budget" stands; what falls is the separate claim that depth could not have helped anyone.
+
+### 13.252.4 The depth hypothesis dies on the accuracy of the population it would help
+
+| stratum | n | accuracy |
+| --- | ---: | ---: |
+| exact | 197 | **93.40%** |
+| depth-limited | 142 | **93.66%** |
+| pool-missing | 161 | **83.85%** |
+
+The 142 questions a deeper window would make "full" already read **0.26 points above** the population
+whose evidence is complete. Reach was never the mediating variable: those readers were missing a gold
+turn that they did not need.
+
+The exception is stated rather than smoothed: for **MR** the depth stratum reads 76.47% against
+90.48% for exact, so within that route the room does matter for 17 questions. For **KU** the depth
+stratum reads 93.02% on 43 questions — the room is exonerated there — while its pool stratum reads
+75.00% on 24. TR's depth stratum reads 100.00% on 25.
+
+There is a second thing this table refuses to say. The strata are **not ordered by cause**: IE's pool
+stratum reads 96.88%, above its own exact stratum. "Gold the ranking missed" predicts a low reading in
+MR and KU and predicts nothing in IE. Any sentence of the form "the pool is the constraint" has to
+name the route it is about.
+
+### 13.252.5 The 63.04% partial band was two populations averaged together
+
+§13.248.3 read MR's partial band — 46 questions at 63.04% — as evidence that those questions *"lack a
+boundary rather than a quantity"*. The band splits exactly:
+
+| MR partial band | n | accuracy |
+| --- | ---: | ---: |
+| gold surfaced, below the cut | 17 | **76.47%** |
+| gold never surfaced (and one below the cut) | 29 | **55.17%** |
+| the published band | 46 | 63.04% |
+
+`(17 × 76.47 + 29 × 55.17) / 46 = 63.04` — the arithmetic is the check, not the claim. The 21-point
+gap inside a single published band is the reason the two repairs kept being confused: one half wants a
+deeper room, the other wants a ranking that surfaces the turn at all.
+
+### 13.252.6 The instrument gap this exposed, stated so the next run can be gated
+
+The character price of a **deeper** window is not readable from the artifact. It carries `turns` — the
+text of what was delivered — and their count; it does not carry the ranking's per-candidate character
+cost, so the cost of the candidates that were cut cannot be reconstructed. `--room` prices the smaller
+direction exactly for that reason, and that is the only direction the artifact fully describes.
+
+Everything §13.250 and §14.42 said about *shrinking* the budget is therefore measured; everything said
+about *growing* it, including the `extra turns` column above, is in turns, and a turn-to-character
+conversion would be an estimate from a mean. An estimate was enough to reject the depth hypothesis on
+accuracy (§13.252.4), which is the reading that decided it — but it is not enough to price a depth
+rule, and the next run that wants to try one must record `rankingChars` per question: the ordered
+candidate list's per-candidate length, so both directions become simulable.
+
+### 13.252.7 What the next registration is, and the gates it must pass
+
+The surviving population is the **pool-missing** one, and it is concentrated: MR 41 questions at
+63.41%, KU 24 at 75.00%. For these the missing gold was never in the ranking, so a better window, a
+better reader and a better ask are all out of scope by construction.
+
+The mechanism the leading systems use on exactly these two routes is **aggregation** — a compact
+per-session or per-fact view presented beside the turns, so a question whose evidence is a *set spread
+across sessions* does not need one ranking hit per session (supermemory reports its LongMemEval-S
+per-category recall "with aggregation" at MS 96 / KU 100 / TR 95 against full-context 44.3 / 78.2 /
+45.1; Microsoft's Mnemis routes a second "System-2" pass over extracted FACTS and ENTITIES). That is a
+*channel*, not a budget: it changes what the pool contains, which is the only thing this section leaves
+standing.
+
+Gates, written before the implementation, on the MR + KU pool-missing population (65 questions):
+
+| gate | quantity | bar |
+| --- | --- | --- |
+| 1 (structural) | the timeline block's size on MR+KU | ≤ 6,000 chars on ≥95% of them, so it cannot be the budget by another name |
+| 2 (structural) | LLM calls added per question | **0** — the block is derived verbatim from turns already retrieved |
+| 3 (accuracy, merged) | MR pool stratum, three dispatches pooled | ≥ 30 of 41 correct (73.2%) against the current 26 of 41 (63.41%) |
+| 4 (no regression) | IE / TR / ABS | each within ±2 questions of the registered arm |
+
+Gate 3 is a **merged** criterion because the expected effect — 4 to 6 questions — is below two noise
+widths on this route (§13.251.1's rule, ±2.3 questions at 121). Gate 2 is what stops the experiment
+from becoming "call the model once more"; gate 1 is what stops it from becoming a bigger budget.

@@ -2291,6 +2291,177 @@ def split_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), measured
 
 
+# The three populations `--strata` separates, named here so a test can assert the spelling a
+# reader of the table sees rather than a literal repeated in two places.
+STRATUM_EXACT = 'exact'
+STRATUM_DEPTH = 'depth'
+STRATUM_POOL = 'pool'
+
+
+def stratum_of(question: dict) -> str | None:
+    """Which stratum a record is in, or `None` when it does not carry the evidence to say.
+
+    ## The distinction `--split` cannot make, and the cost of not making it
+
+    `--split` files two unlike states under "partial": a question whose gold the room could not
+    hold, and a question whose gold the ranking never offered. They have opposite repairs -- a
+    deeper window, or a different ranking -- and on run `41860773768` they read **18 to 20 points
+    apart inside the same capability**: MR depth-only 17 questions at 76.5%, MR pool-missing 41 at
+    63.4%; KU 43 at 93.0% against 24 at 75.0%. Averaging those into "partial" produced the reading
+    that MR's partial band "lacks boundary rather than quantity", which is true of one half and
+    false of the other -- the half that is 20 points worse is the one where the ranking missed.
+
+    ## The definitions
+
+    `exact` -- every gold turn the dataset names was surfaced by the ranking (`rank >= 0`) **and**
+    the window held all of them (`rank < turns`). No retrieval or room change can improve the
+    evidence this reader saw.
+
+    `depth` -- every gold turn was surfaced, at least one below the cut. Reachable by a deeper
+    window with the ranking held fixed, so its accuracy is the reading a depth treatment targets.
+
+    `pool` -- at least one gold turn was never surfaced. No window reaches it; the repair is the
+    ranking. This population also contains questions that lose *both* (a surfaced gold below the
+    cut *and* a missing one), which is why it is defined by the missing gold rather than by the
+    cut: the missing gold is the part no room change can fix.
+
+    ## Why `-1` is not "depth"
+
+    `-1` is the ranking's own statement that it did not surface the turn, and its magnitude carries
+    no rank. Reading it as "very deep" would price a ranking repair as a room repair, which is the
+    conflation `served_in_full`'s docblock already refuses for its own partition.
+    """
+    overlap = question.get('goldOverlap')
+    composition = question.get('windowComposition')
+    if not isinstance(overlap, dict) or not isinstance(composition, dict):
+        return None
+    ranks = overlap.get('goldRanks')
+    turns = composition.get('turns')
+    if not isinstance(ranks, list) or not isinstance(turns, int):
+        return None
+    if not ranks:
+        return None
+    if any(not isinstance(rank, int) for rank in ranks):
+        return None
+    surfaced = [rank for rank in ranks if rank >= 0]
+    if len(surfaced) != len(ranks):
+        return STRATUM_POOL
+    return STRATUM_EXACT if all(rank < turns for rank in surfaced) else STRATUM_DEPTH
+
+
+def strata_section(questions: list[dict]) -> tuple[str, int]:
+    """Accuracy in each of the three populations, per capability, and the reach a deeper room buys.
+
+    ## What this replaced
+
+    §14.41.3 printed a column headed "coverable at any depth" whose every row was identical to the
+    run's current reach at `maxPromptChars = 48000`. It could not have been anything else: the value
+    was a copy of the reach row above it, and the sentence built on it -- *"53.4% of the questions
+    are not coverable at any depth"* -- is false for 142 of those 267. On `41860773768` the honest
+    split is 197 exact, 142 depth-only, 161 pool-missing, so a window with no budget would reach
+    **339 of 500 (67.8%)**, not 233.
+
+    That correction does not rescue the depth hypothesis, and this mode exists to show why rather
+    than to argue it: the 142 questions a deeper room would reach already read **93.66%**, against
+    93.40% for the exact population. The room is not what limits them. What limits the run is the
+    161 whose ranking missed a gold turn, at 83.85%.
+
+    ## Why the price of a deeper room is not printed here
+
+    The artifact carries the text of the turns that were delivered and how many were delivered. It
+    does not carry the ranking's per-candidate character cost, so the characters a deeper cut would
+    have spent cannot be read -- only estimated from the mean turn length, which is how §14.42's
+    oracle came to be priced against a population it had mis-classified. `--room` prices the smaller
+    direction exactly for the same reason: a prefix of the delivered window is the one thing this
+    artifact fully describes.
+    """
+    by_capability: dict[str, dict[str, list[dict]]] = {}
+    measured = 0
+    for question in questions:
+        stratum = stratum_of(question)
+        if stratum is None:
+            continue
+        measured += 1
+        capability = str(question.get('capability', '?'))
+        by_capability.setdefault(capability, {}).setdefault(stratum, []).append(question)
+    if measured == 0:
+        return '', 0
+
+    def cell(roster: list[dict]) -> tuple[str, str]:
+        if not roster:
+            return '0', '-'
+        correct = sum(1 for question in roster if question.get('correct'))
+        return str(len(roster)), f'{100.0 * correct / len(roster):.2f}%'
+
+    lines: list[str] = [
+        '',
+        'where each question stands (exact / depth-limited / pool-missing), each beside its own accuracy',
+        f'  {"capability":<10}{"n":>5}{"exact":>7}{"acc":>9}{"depth":>7}{"acc":>9}{"pool":>7}{"acc":>9}'
+        f'{"reach@any-depth":>17}{"extra turns":>13}',
+    ]
+    depth_total = 0
+    reach_total = 0
+    pooled: dict[str, list[dict]] = {STRATUM_EXACT: [], STRATUM_DEPTH: [], STRATUM_POOL: []}
+    for capability in sorted(by_capability):
+        groups = by_capability[capability]
+        roster = [question for population in groups.values() for question in population]
+        exact = groups.get(STRATUM_EXACT, [])
+        depth = groups.get(STRATUM_DEPTH, [])
+        pool = groups.get(STRATUM_POOL, [])
+        for name, here in ((STRATUM_EXACT, exact), (STRATUM_DEPTH, depth), (STRATUM_POOL, pool)):
+            pooled[name].extend(here)
+        reach = len(exact) + len(depth)
+        reach_total += reach
+        depth_total += len(depth)
+        # How much deeper the window would have had to be for this population, per question. The
+        # median rather than the mean because one question whose gold sits at rank 255 would
+        # otherwise speak for the whole row.
+        deepness = sorted(
+            max(rank for rank in question['goldOverlap']['goldRanks'])
+            + 1
+            - question['windowComposition']['turns']
+            for question in depth
+        )
+        extra = f'{deepness[len(deepness) // 2]}' if deepness else '-'
+        lines.append(
+            f'  {capability:<10}{len(roster):5d}'
+            f'{cell(exact)[0]:>7}{cell(exact)[1]:>9}'
+            f'{cell(depth)[0]:>7}{cell(depth)[1]:>9}'
+            f'{cell(pool)[0]:>7}{cell(pool)[1]:>9}'
+            f'{100.0 * reach / len(roster):>16.1f}%{extra:>13}'
+        )
+    # The TOTAL carries the same cells as a row, not a sum of the count columns alone: the run's
+    # three accuracies are the numbers a reader quotes, and a total that printed only counts would
+    # send them to compute the pooled figure themselves from three separate denominators.
+    lines.append(
+        f'  {"TOTAL":<10}{measured:5d}'
+        f'{cell(pooled[STRATUM_EXACT])[0]:>7}{cell(pooled[STRATUM_EXACT])[1]:>9}'
+        f'{cell(pooled[STRATUM_DEPTH])[0]:>7}{cell(pooled[STRATUM_DEPTH])[1]:>9}'
+        f'{cell(pooled[STRATUM_POOL])[0]:>7}{cell(pooled[STRATUM_POOL])[1]:>9}'
+        f'{100.0 * reach_total / measured:>16.1f}%'
+    )
+    lines.append(
+        '  exact = every gold surfaced and inside the window; depth = every gold surfaced, at least'
+    )
+    lines.append(
+        '  one below the cut; pool = at least one gold the ranking never surfaced, which no window reaches'
+    )
+    lines.append(
+        '  reach@any-depth = exact + depth: the share a window with no budget would make full with the pool held fixed'
+    )
+    if depth_total:
+        lines.append(
+            '  extra turns = median of (deepest gold rank + 1 - turns) over the depth population,'
+        )
+        lines.append(
+            '  i.e. how much deeper that window would have had to be; its character price is NOT in this'
+        )
+        lines.append(
+            '  artifact, which stores the delivered turns and their count but not the cost of the candidates it cut'
+        )
+    return '\n'.join(lines), measured
+
+
 def _turn_chars(question: dict) -> int | None:
     """The characters the delivered turns actually carry, or `None` when the record cannot say.
 
@@ -4482,6 +4653,11 @@ def main(argv: list[str]) -> int:
         help='print the full/partial coverage split instead of the run summary',
     )
     parser.add_argument(
+        '--strata',
+        action='store_true',
+        help='print the exact / depth-limited / pool-missing strata with each one\'s accuracy',
+    )
+    parser.add_argument(
         '--declines',
         action='store_true',
         help='print the decline table by Step 1 content instead of the run summary',
@@ -4749,6 +4925,18 @@ def main(argv: list[str]) -> int:
             print(
                 f'{args.report}: no `goldRanks` beside a `windowComposition.turns`. The split needs '
                 'both: which gold turns retrieval surfaced, and how deep the window went.',
+                file=sys.stderr,
+            )
+            return 2
+        print(section)
+        return 0
+
+    if args.strata:
+        section, measured = strata_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries `goldRanks` beside `windowComposition.turns`. The '
+                'strata need both: which gold turns the ranking surfaced, and how deep the window went.',
                 file=sys.stderr,
             )
             return 2

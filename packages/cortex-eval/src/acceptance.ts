@@ -488,6 +488,34 @@ export const CRITERIA: readonly Criterion[] = [
         recipe:
           'keyword-recall proxy rather than the official judge, on an oracle split — not the same metric',
       },
+      {
+        // The highest published figure on this benchmark, and the row that ended "the gap to close is 85.8%".
+        // Vendor-reported with a stronger reader than any grade-A row, so it may motivate and may not be
+        // quoted as a gap: the same vendor publishes 90.2 for the same memory with a GPT-4o reader, which is
+        // the row below and the only published figure in this arm's reader class.
+        name: 'Recallium (Claude Opus 5.5 reader)',
+        value: 0.984,
+        grade: 'C',
+        recipe:
+          'vendor benchmark page, 2026-10-17: 500 questions, Claude Opus 5.5 reader, official GPT-4o grading prompts, 3.8 results handed to the reader per question; six of six disclosure conditions stated. Self-reported and not reproduced',
+      },
+      {
+        // The closest like-for-like row in the table: same dataset, same official judge, a GPT-4o-class
+        // reader, and a disclosed depth. It is grade B rather than A only because this arm's judge is its own,
+        // which is why "level with Recallium" is the most this row can license.
+        name: 'Recallium (GPT-4o reader)',
+        value: 0.902,
+        grade: 'B',
+        recipe:
+          'the same vendor run with the official LongMemEval reader script and GPT-4o, official grading prompts, 3.8 results per question — same memory as the row above, differing only in the model that reads it',
+      },
+      {
+        name: 'ContextStream (Claude Opus 5.5 reader)',
+        value: 0.968,
+        grade: 'C',
+        recipe:
+          'vendor benchmark page, 2026-10-27: 484 of 500 through the production API, Claude Opus 5.5 reader, official pinned GPT-4o judge, Wilson 95% CI [94.9, 98.0]; the held-out half of the suite reads 96.0% (239/249)',
+      },
     ],
     onMiss:
       'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader. The value moved from 81.0% to 83.5% when the bare-decline retry was measured over four runs: 417/415/416/421 against a control of 404/399, no category lower, ABS identical at 29/30 in all six. **A retracted reading is recorded here rather than deleted**: an earlier version called the 82.4% oracle a reader ceiling and inferred that a seat 1.6 points under it meant retrieval had little left to buy. arXiv:2610.30755 retired that inference — a naive raw-RAG pipeline reads 87.53 with a GPT-4o-mini reader, above the oracle. So 82.4 was a configuration and not a bound, and the reader axis has to be priced by measurement rather than inferred from a seat under an oracle.',

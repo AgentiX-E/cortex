@@ -309,6 +309,26 @@ describe('the table is well formed', () => {
     expect(CRITERIA.find((criterion) => criterion.id === 'R1')?.accepted).toBe(true);
   });
 
+  it('keeps a published figure above this arm, so the table cannot be read as a frontier claim', () => {
+    // §1.22 of the competitor analysis: the top of this benchmark moved twice in two weeks, and the first
+    // version of consequence 1 ("the gap to close is 85.8%, not 96.2%") was true of the rows that existed
+    // when it was written. A table that only holds figures below this arm's own would let a reader conclude
+    // the frontier had been reached, so the guard is that at least one vendor figure sits above 95% -- and
+    // it is a C, which is exactly what stops it being quoted as a gap.
+    const peers = CRITERIA.find((criterion) => criterion.id === 'S1')?.competitors ?? [];
+    expect(Math.max(...peers.map((peer) => peer.value))).toBeGreaterThan(0.95);
+    expect(peers.some((peer) => peer.grade === 'C' && peer.value > 0.95)).toBe(true);
+    // And the like-for-like row, in this arm's reader class, must be present with its own grade: the 90.2
+    // and the 98.4 are the same memory, and only the pair together says what the reader is worth.
+    const recallium = peers.filter((peer) => peer.name.startsWith('Recallium'));
+    expect(recallium).toHaveLength(2);
+    expect(recallium.some((peer) => peer.grade === 'B')).toBe(true);
+    expect(
+      Math.max(...recallium.map((peer) => peer.value)) -
+        Math.min(...recallium.map((peer) => peer.value)),
+    ).toBeGreaterThan(0.05);
+  });
+
   it('carries the same competitor twice when two parties measured it, and never as one number', () => {
     // Supermemory publishes 97% on LongMemEval-S with a GPT-4o reader; an independent comparison measures
     // the same system at 81.6% with the same reader on the same 500 questions. A table that kept one of the

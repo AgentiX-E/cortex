@@ -3714,3 +3714,156 @@ class TestTheRoomSimulation:
         r = self._run(tmp_path, self._report([broken]), 400)
         assert r.returncode == 2
         assert 'turn list with text' in r.stderr
+
+
+class TestTheStrata:
+    """`--strata`: where a question stands, when "the ranking missed" and "the room cut" differ.
+
+    §14.41.3 printed a column called "coverable at any depth" that was, row for row, the current
+    reach at `maxPromptChars = 48000` -- so the sentence built on it ("53.4% of questions are not
+    coverable at any depth") described 267 questions when 142 of them are reachable by a deeper
+    window. The correction matters in both directions: it raises the reach ceiling to 67.8%, and it
+    then shows the ceiling is not worth reaching, because those 142 questions already read 93.66%.
+    A number that decided a registration twice over belongs in a tool with tests.
+    """
+
+    def _report(self, questions: list[dict]) -> dict:
+        return {
+            'dataset': 'longmemeval',
+            'questionCount': len(questions),
+            'questions': questions,
+            'baseline': {'system': 'reference-pipeline', 'metrics': {'accuracy': 0.5}},
+            'feature': {'system': 'cortex-memory', 'metrics': {'accuracy': 0.5}},
+            'ablation': {'delta': 0.0},
+            'runs': 4,
+        }
+
+    def _question(
+        self,
+        identifier: str,
+        ranks: list[int],
+        turns: int,
+        correct: bool,
+        capability: str = 'MR',
+    ) -> dict:
+        return {
+            'questionId': identifier,
+            'capability': capability,
+            'correct': correct,
+            'answer': '2' if correct else '1',
+            'rawOutput': '2' if correct else '1',
+            'groundTruth': '2',
+            'goldOverlap': {'carried': 1, 'total': len(ranks), 'pool': 1, 'goldRanks': ranks},
+            'windowComposition': {'turns': turns, 'offered': turns, 'offeredChars': 0, 'unscoredChars': 0},
+        }
+
+    def _run(self, tmp_path: Path, report: dict):
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--strata', str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _row(stdout: str, capability: str = 'MR') -> list[str]:
+        """cap, n, exact n, exact acc, depth n, depth acc, pool n, pool acc, reach, extra turns."""
+        line = next(row for row in stdout.splitlines() if row.split() and row.split()[0] == capability)
+        return line.split()
+
+    def test_a_gold_turn_below_the_cut_is_depth_limited(self, tmp_path: Path) -> None:
+        # ranks [4, 30], window 10: nothing missing, one turn below the cut. This is the population
+        # a deeper window moves, and it is NOT the population a better ranking moves.
+        r = self._run(tmp_path, self._report([self._question('d', [4, 30], 10, correct=True)]))
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert (fields[2], fields[4], fields[6]) == ('0', '1', '0')
+
+    def test_a_gold_turn_the_ranking_never_surfaced_is_pool_missing_even_beside_a_deep_one(
+        self, tmp_path: Path
+    ) -> None:
+        # `-1` beside a rank below the cut. The record loses on both axes, and it is filed under the
+        # one no window can fix -- filing it under "depth" would price a ranking repair as a room
+        # repair, which is the conflation that made the old column wrong.
+        r = self._run(tmp_path, self._report([self._question('p', [4, -1], 10, correct=False)]))
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert (fields[2], fields[4], fields[6]) == ('0', '0', '1')
+
+    def test_each_stratum_is_reported_beside_its_own_accuracy(self, tmp_path: Path) -> None:
+        # Two per stratum, one correct in each: an accuracy inherited from the five-question roster
+        # would read 60% beside all three and be wrong for all three.
+        report = self._report(
+            [
+                self._question('e1', [1], 10, correct=True),
+                self._question('e2', [1], 10, correct=False),
+                self._question('d1', [40], 10, correct=True),
+                self._question('d2', [41], 10, correct=False),
+                self._question('p1', [-1], 10, correct=True),
+                self._question('p2', [-1], 10, correct=False),
+            ]
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert fields[1] == '6'
+        assert (fields[2], fields[3]) == ('2', '50.00%')
+        assert (fields[4], fields[5]) == ('2', '50.00%')
+        assert (fields[6], fields[7]) == ('2', '50.00%')
+        # reach@any-depth counts the two populations a deeper room could make full
+        assert fields[8] == '66.7%'
+
+    def test_the_extra_turns_column_is_the_median_of_what_depth_costs_in_turns(
+        self, tmp_path: Path
+    ) -> None:
+        # ranks 20, 40, 60 need depths 21, 41, 61 against a ten-turn window: 11, 31 and 51 turns
+        # deeper. The median is 31, and the column exists because the character price of that depth
+        # is not in the artifact -- only its price in turns is.
+        report = self._report(
+            [
+                self._question('a', [20], 10, correct=True),
+                self._question('b', [40], 10, correct=True),
+                self._question('c', [60], 10, correct=True),
+            ]
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert self._row(r.stdout)[9] == '31'
+
+    def test_a_report_with_no_depth_population_does_not_warn_about_a_price_it_cannot_read(
+        self, tmp_path: Path
+    ) -> None:
+        # The note is about depth pricing. On a report where no question is depth-limited it would be
+        # a claim about a measurement that never came up, which is the shape the campaign files as a
+        # decorative bound.
+        report = self._report(
+            [self._question('e', [1], 10, correct=True), self._question('p', [-1], 10, correct=True)]
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'character price is NOT in this' not in r.stdout
+        assert self._row(r.stdout)[9] == '-'
+
+    def test_a_record_with_no_gold_turns_is_not_filed_as_pool_missing(self, tmp_path: Path) -> None:
+        # An empty `goldRanks` is "the dataset names no gold", which is a different fact from "the
+        # ranking surfaced none of it". Filing it as pool would blame the ranking for a question
+        # that has nothing to retrieve, and would move the pool stratum's accuracy.
+        report = self._report(
+            [self._question('e', [1], 10, correct=True), self._question('n', [], 10, correct=False)]
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert fields[1] == '1'  # only the record that can be classified
+        assert fields[6] == '0'  # and no phantom in the pool stratum
+
+    def test_a_render_that_is_not_a_rank_refuses_rather_than_classifying(self, tmp_path: Path) -> None:
+        # A `null` in `goldRanks` cannot be read as either `-1` or a rank. Guessing either way would
+        # put the record in a stratum on the strength of a type error.
+        broken = self._question('b', [1], 10, correct=True)
+        broken['goldOverlap']['goldRanks'] = [1, None]
+        r = self._run(tmp_path, self._report([broken]))
+        assert r.returncode == 2
+        assert 'goldRanks' in r.stderr
