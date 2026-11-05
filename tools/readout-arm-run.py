@@ -2288,6 +2288,24 @@ def split_section(questions: list[dict]) -> tuple[str, int]:
     lines.append(
         '  room change moves population between the bands; a full question is where an ask change is cleanly readable'
     )
+    # The split's labels say more than the definition supports, and this line is the measurement
+    # of that gap rather than a footnote about it (§13.253.2). `partial` here means "the window did
+    # not cover the ranking's prefix", which is not the same as "a gold turn did not arrive": the
+    # window is not a prefix of the ranking, and unscored gold is admitted by leftover room. So
+    # some partial questions delivered everything, and a reader comparing this table against
+    # `--strata` is owed the count rather than a warning.
+    partial_all = [
+        question
+        for _, _, _, partial in rows
+        for question in partial
+        if isinstance(question.get('goldOverlap'), dict)
+        and question['goldOverlap'].get('carried') == question['goldOverlap'].get('total')
+    ]
+    partial_total = sum(len(partial) for _, _, _, partial in rows)
+    lines.append(
+        f'  {len(partial_all)} of {partial_total} partial questions delivered every gold turn anyway'
+        ' (carried == total): the label is about the ranking prefix, not about missing evidence'
+    )
     return '\n'.join(lines), measured
 
 

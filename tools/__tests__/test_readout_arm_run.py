@@ -3716,6 +3716,62 @@ class TestTheRoomSimulation:
         assert 'turn list with text' in r.stderr
 
 
+class TestTheCoverageSplitLabel:
+    """`--split`'s label says more than its definition supports, and the gap is printed.
+
+    §13.243.2 chose an MR experiment from this table (75 full / 46 partial), and §13.252.5 later
+    split the 46 into two populations without noticing that the better half had delivered every gold
+    turn. `partial` means "the window did not cover the ranking's prefix"; the window is not a
+    prefix of the ranking and unscored gold is admitted by leftover room, so the label can be true
+    while nothing is missing (§13.253.2). A reader comparing this table against `--strata` is owed
+    the count rather than a footnote.
+    """
+
+    def _report(self, questions: list[dict]) -> dict:
+        return {
+            'dataset': 'longmemeval',
+            'questionCount': len(questions),
+            'questions': questions,
+            'baseline': {'system': 'reference-pipeline', 'metrics': {'accuracy': 0.5}},
+            'feature': {'system': 'cortex-memory', 'metrics': {'accuracy': 0.5}},
+            'ablation': {'delta': 0.0},
+            'runs': 4,
+        }
+
+    def _question(self, identifier: str, ranks: list[int], turns: int, carried: int) -> dict:
+        return {
+            'questionId': identifier,
+            'capability': 'MR',
+            'correct': True,
+            'answer': '2',
+            'rawOutput': '2',
+            'groundTruth': '2',
+            'goldOverlap': {'carried': carried, 'total': 2, 'pool': 2, 'goldRanks': ranks},
+            'windowComposition': {'turns': turns, 'offered': turns, 'offeredChars': 0, 'unscoredChars': 0},
+        }
+
+    def test_a_partial_question_that_delivered_everything_is_counted(self, tmp_path: Path) -> None:
+        # rank 40 against ten delivered turns, with `carried == total`: the label is "partial" and
+        # the evidence is whole. Counting it is the only way a reader can see that the label and the
+        # measurement disagree for this record.
+        report = self._report(
+            [
+                self._question('partial-but-whole', [1, 40], 10, carried=2),
+                self._question('partial-and-short', [1, 40], 10, carried=1),
+            ]
+        )
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        r = subprocess.run(
+            [sys.executable, str(TOOL), '--split', str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert r.returncode == 0, r.stderr
+        assert '1 of 2 partial questions delivered every gold turn anyway' in r.stdout
+
+
 class TestTheStrata:
     """`--strata`: what a question is missing, and whether the artifact can say *which* gold.
 

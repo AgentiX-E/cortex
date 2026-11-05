@@ -28690,3 +28690,22 @@ Gates, written before the implementation, on MR's numeric population with a deli
 
 Gate 3 is merged for §13.251.1's reason -- 4 questions is under two noise widths at 27 -- and gate 1
 is what keeps the experiment from becoming "ask the model again".
+
+### 13.254.6 Two tools, two definitions, and the band both of them call "partial"
+
+§13.252.5 bisected MR's published partial band into 17 questions at 76.47% and 29 at 55.17%, using
+`--strata`'s strata. `--split` partitions the same band differently because its `full` test is
+"every **surfaced** gold rank is below `turns`", which puts a question with a `-1` beside an
+in-window rank in `full` where `--strata` files it under `undecidable`:
+
+| definition | MR partial | of which delivered every gold turn | accuracy | of which did not | accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `--split` | 46 | **19** | **78.95%** | 27 | 51.85% |
+| `--strata` | 46 | 17 | 76.47% | 29 | 55.17% |
+
+Both close: `(19 × 78.95 + 27 × 51.85) / 46 = 63.04` and `(17 × 76.47 + 29 × 55.17) / 46 = 63.04`.
+The two disagree on four questions and agree on the thing that matters: **the band's average mixes a
+population that is missing nothing with one that is missing something painful.** Which tool a reader
+quotes decides whether that is 19 or 17, so the choice has to be named rather than defaulted --
+`--split` now prints its own count of the questions whose `carried == total`, and the sentence
+"MR's partial band reads 63.04%" should never appear again without the two halves beside it.
