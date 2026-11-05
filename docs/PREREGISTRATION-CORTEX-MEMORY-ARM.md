@@ -29232,3 +29232,236 @@ The zero rule. `attachUsageBySide` still drops the field when the sides sum to z
 instrument defect of this kind is invisible in the same way. The choice is between reporting zeros
 with a marker and keeping the omission while making it unambiguous another way; it is not decided
 here, and P5 should decide it, because P5 is the reader that needs the number.
+
+## 13.260 The replicate reproduced, and the mechanism's own ledger had no reader
+
+*Run `42013256884` is the replicate §13.257 registered: `41990597116`'s configuration, run again on
+`2d74b188` with no field changed. It answered all five gates, and the fifth one -- the per-side spend
+split -- came back `SKIP` for a reason that was already known when it was dispatched: the artifact
+predates `7946797`. What this section records is the reading, the defect the reading exposed in the
+instrument rather than in the mechanism, and the dispatch that defect makes possible.*
+
+### 13.260.1 The five gates
+
+| gate | quantity | threshold | reading | result |
+| --- | --- | ---: | --- | --- |
+| 1 | calls that returned a response | ±1% of 5,670 | **5,668** (−2, −0.04%) | pass |
+| 2 | median `promptChars` | ±5% of 46,816 | **46,816** (0.0%) | pass |
+| 3 | delivered gold turns | **exactly 6,520** | **6,520 / 7,516 (86.75%)** | pass |
+| 4 | overall mean over four passes | ±1.6 points of 90.25% | **90.60%** (+0.35) | pass |
+| 5 | changed-population paired ledger | report only | see §13.260.2 | n/a |
+
+Gate 3 is the one that decides the pool axis, and it is an equality rather than a bound for the
+reason §14.49.3 gives: nothing that decides delivery samples the model, so the expected value is the
+number itself. It reproduced exactly -- `6,520` of `7,516`, with `7,208` gold turns reaching the pool
+against the control's `7,155`. Two independent runs of one configuration produce the same delivery
+count and the same pool reach, which is what makes every delivery figure in this campaign quotable.
+
+Gate 4 moved `+0.35` between two runs of *identical* configuration, against a band of `±1.6`. That is
+the third measurement of this arm's overall noise (the twelve-question `ABS` route was 30/30 in both),
+and it is the smallest of the three.
+
+### 13.260.2 What the replicate could not answer
+
+The fifth gate -- the paired ledger over the population whose prompts changed -- needs the control
+artifact, and the control for this replicate *is* `41990597116`, which differs from the previous
+round's control. That comparison is a separate reading and it is not in this section.
+
+What the artifact does say, from its own fields:
+
+| quantity | value |
+| --- | ---: |
+| recovered (declined → answered correctly) | 200 |
+| corrected (wrong → correct) | 49 |
+| missed (correct → wrong) | 18 |
+| declined (correct → declined) | **0** |
+| bare-decline retry consulted / answered | 71 / 71 (100.0%) |
+| model declines over 2,000 question-answers | 134 (6.70%) |
+| prefix-cache share of the prompt | 96.50% |
+| judge channel | 1,500 of 4,000 (37.5%), 0 unjudged |
+
+`declined: 0` is the load-bearing one for this arm: not one question that the control answered
+correctly was declined by the treatment, so every one of the 18 losses is a content loss and the
+`-0.80`-point attribution in §13.257.3 does not have a response-shape component hiding inside it.
+
+### 13.260.3 Where the 49 wrong answers actually sit
+
+The artifact's `goldOverlap` and `correct` fields answer a question no section of this document had
+asked: **when the reader is wrong, was the evidence there?**
+
+| capability | wrong | all gold delivered | partly delivered | none delivered |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 7 | 4 | 3 | 0 |
+| MR | **26** | **14** | 12 | 0 |
+| KU | 9 | 0 | 9 | 0 |
+| TR | 7 | 2 | 5 | 0 |
+| ABS | 0 | 0 | 0 | 0 |
+| **all** | **49** | **20** | **29** | **0** |
+
+Two facts fall out of that table and neither was available before this run was read this way:
+
+1. **No wrong answer is a retrieval failure.** `none delivered` is zero on every capability: the
+   ranking always surfaced at least one gold turn, so "the pool is too narrow" cannot be the cause of
+   any single failure in this artifact. §13.233.4's Fisher test said the same thing statistically
+   (57.1% vs 26.9%); this table says it instance by instance.
+2. **Twenty of the forty-nine were handed complete evidence and still answered wrongly.** For MR that
+   is 14 of 26, and all 26 are *how many* questions (§13.233.3). A reader that is shown all seventeen
+   gold turns of `0a995998` and replies `2` is not short of evidence.
+
+The consequence is a boundary on what any retrieval work can buy: the ceiling of the pool/room axes in
+this artifact is the 29 partly-delivered questions, and the other 20 need the reader's **mechanism**.
+§13.235.2 already retired the reader *axis* -- a bigger model in the same family cost 7.20 points, and
+`thinking` on two routes bought 6.25 -- so "the mechanism" means what the reader is asked to do, not
+how large it is.
+
+### 13.260.4 The instrument defect: a producer with no reader, fourth time
+
+`CortexMemory.lastReview()` returns `{ first, final, changed }` and has done since §13.94. Grepping
+this package for it returns **zero call sites**. So a run with `reviewPass: 'audit'` would have:
+
+* issued one extra consultation on every answered multi-session question -- about nine per cent more
+  calls than the control;
+* produced an artifact in which the only trace of that was the call count;
+* and left the reader to infer from an unchanged accuracy whether the review agreed with everything or
+  never ran.
+
+That is the same shape as §13.181 (a producer field with no reader), §13.220 (a check with no caller)
+and §13.235.3 (a statement whose correctness depends on somebody remembering to consult it). The
+repair is a reader, so this section records the reader rather than the intention.
+
+### 13.260.5 What was added, and the identity each field is held to
+
+| where | field | the identity it must satisfy |
+| --- | --- | --- |
+| `cortex-memory` | `auditCensus(): { attempted, changed }` | `changed <= attempted`; both monotone over the instance's life |
+| `cortex-eval` | `report.audit` | present **iff** the run carried `reviewPass: 'audit'` |
+| `cortex-eval` | `questions[].auditAttempted` / `auditChanged` | `attempted` equals the count of records flagged `true` |
+| `cortex-eval` | `## Membership audit` section | renders the tally and states that improvement is not in the table |
+| `tools/readout-arm-run.py` | `PASS/FAIL audit` | the identity above, checked on the artifact it was written in |
+
+`changed` and not `answered`: this pass is handed an answer that already exists, so "returned a value"
+is true of every consultation it makes. The only number a reader can act on is how often the review
+disagreed, and the report says in its own text that whether a disagreement was an improvement is a
+question for the roster beside it and not for the tally.
+
+The two traces (`recoveryCensus`, `auditCensus`) now share one implementation -- `traceCensus` -- because
+they differ only in the accessor they read and the shape they project. Four decisions (the delta, the
+prototype mirroring, the throwing-accessor rule, the per-question key) were one copy each; a second
+copy would have been four more places to be wrong, and §13.145.5 records what a wrong wrapper costs: a
+forty-minute run that dies on question one, three times.
+
+`tracedPool` applies the audit wrapper **per worker** for the reason §13.259 gives about the spend
+split: under a pool the positional wrapper is never called, so a trace taken there is empty on exactly
+the four-worker runs this mechanism will be measured on.
+
+### 13.260.6 Registration: `reviewPass: 'audit'` against this artifact
+
+| item | value |
+| --- | --- |
+| control | `42013256884` -- `reviewPass: 'bare'`, everything else identical |
+| treatment | the same 22 inputs with `cortex_memory_review=audit` |
+| why this mechanism, now | the audit instruction (§13.94) names the three membership decisions -- missing from the first pass, one event split in two, an entry the evidence does not support -- which is §13.260.3's 20 fully-evidenced failures and §13.233.3's bidirectional count errors, stated as an instruction |
+| what it has never had | a dispatch. `recover` was run (`40883121464`, MR net 0); `audit` has not |
+
+Gates, written before the dispatch:
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | MR accuracy, paired against the control | **Mcnemar p < 0.05 and Δ ≥ +6 points** (the MR noise band is ±5, §13.203.4) |
+| 2 | every other capability | no loss **≥ 4 points** |
+| 3 | overall mean over four passes | **≥ +1.5 points** |
+| 4 | calls that returned a response | **≤ 6,300** -- the declared price is one consultation per answered multi-session question; above that the pass fired where it should not |
+| 5 | `census-unit` | still exactly **2,000**, because a pass that consults twice must not turn one question into two outcomes (§13.107) |
+| 6 | `audit` identity | the `--audit` check passes: `attempted` equals the flagged records, `changed <= attempted` |
+| 7 | `usageBySide` | **present**, and the two sides sum to no more than `llmUsage.calls` -- the first live reading of `7946797` |
+
+Gate 4 is a cap and not a threshold: this mechanism costs a call by construction, and a run inside the
+cap has spent what it said it would. Gate 7 is the one item here that is not about the mechanism at
+all; it rides along because a dispatch is the only way to test an instrument that reports on dispatches.
+
+Refutation. If MR moves less than six points while gate 6 passes, the audit ran, reviewed the lists and
+did not change the answers enough to matter -- and then the 26 MR failures are not membership errors
+and §13.233.3's reading needs replacing rather than extending. If gate 6 fails, nothing in the run is
+readable and the next step is the instrument, not another dispatch.
+
+## 13.261 Two runs of one configuration sent the same bytes 500 times, and the reader did not answer the same twice
+
+*`42013256884` and `41990597116` are the same configuration -- the same 22 inputs, the same corpus, the
+same reader, temperature 0. Comparing their artifacts field by field answers three questions this
+campaign has been carrying as assumptions: whether delivery is deterministic, how much of the run-to-run
+movement is the reader, and whether any of it is the judge.*
+
+### 13.261.1 Delivery is deterministic, at the byte
+
+| quantity | reading |
+| --- | ---: |
+| prompts with the same 64-bit digest | **500 / 500** |
+| prompts that differ in any byte | **0** |
+
+Not "the same window size" and not "the same gold set" -- the same `sha256` prefix of the same UTF-8
+bytes, on every question. Delivery is a pure function of the corpus, the embedding, the fusion, the
+anchor selection, the decay and the budget, and none of those read the model.
+
+That result is what licenses §13.260.1's gate 3 being an equality, and it retroactively settles the
+eleventh round's changed-population split: the 128 questions whose prompts moved between the control
+and the treatment could not have moved for any reason other than the mechanism, because a run with no
+mechanism change moves none of them.
+
+### 13.261.2 The judge did not disagree with itself once
+
+| population | n | verdicts that differ |
+| --- | ---: | ---: |
+| answer text **identical** to the other run | **276** | **0** |
+| answer text differs | 224 | 20 |
+
+Two hundred and seventy-six questions produced the same answer string in both runs. The judge saw the
+same question, the same answer and the same gold in both, and returned the same verdict 276 times out
+of 276. It is not that the judge is asked politely to be deterministic; it is that on the only inputs
+where disagreement is observable, it did not disagree.
+
+The 224 that changed are the reader's, and that is the whole of the variance this arm has been
+arguing about.
+
+### 13.261.3 The reader rewrites 44.8% of its answers on identical bytes, and half a point of that is verdict
+
+| quantity | reading |
+| --- | ---: |
+| questions whose answer text differs | 224 / 500 (**44.8%**) |
+| of those, verdict flips | 20 (**8.9%**) |
+| fixed / broken | **7 / 13** |
+| net, in questions | **−6** |
+| net, in points on 500 | **−1.20** |
+| first-pass accuracy, the two runs | 90.20% vs 89.00% |
+
+So the `±1.6`-point band the eleventh round had to argue for from three indirect readings is now the
+direct measurement it was standing in for: **the same bytes, read twice, move six questions.** The band
+is not a policy margin; it is the width at which this reader disagrees with itself.
+
+Two further readings, both of which change what the next increment should be:
+
+1. **The flips are not spread evenly.** MR 12, IE 3, TR 3, KU 2, ABS 0. The route this campaign has
+   been trying to fix is also the route whose reader is least reproducible -- 12 of 121 MR questions
+   change verdict on unchanged input, against 0 of 30 ABS. An arm measuring a three-point MR effect is
+   measuring a sixth of its own noise.
+2. **TR rewrites almost everything and almost never changes its mind.** 125 of 127 temporal answers
+   differ in wording between the two runs and 3 change verdict. The text varies, the decision does not:
+   that is what a route whose answer is a short string under a fixed contract looks like, and it is why
+   the `thinking` gain on TR (§13.235.2) is readable while a 2-point TR effect would not be.
+
+### 13.261.4 P3 is answered, and the answer is that it was the wrong instrument
+
+`tools/judge-regrade.mjs` was queued as `mode=regrade, limit=500, passes=2` -- one thousand short judge
+calls -- to split the `±1.6` band into a reader share and a judge share (§14.49.5). This pair already
+does that split, with no calls at all:
+
+* judge share: **0 of 276** repeated inputs;
+* reader share: **20 of 500**, of which 6 net.
+
+Running the regrade now would measure a component this artifact bounds at zero and would not measure
+the one that matters. P3 is therefore **closed by measurement, not by deferral**, and the budget it
+would have spent belongs to the mechanism.
+
+The standing caveat: this is one reader at one temperature on one corpus. A regrade becomes the right
+instrument the moment a run reports a verdict flip on identical answer text -- which would be the first
+evidence that the judge is a variance source here, and would make every unpaired comparison in the
+archives suspect in a way this pair says they are not.
