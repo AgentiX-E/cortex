@@ -129,6 +129,15 @@ export type AblationReport = {
    */
   bareRetry?: BareRetryCensus | undefined;
   /**
+   * What the membership audit did: consultations issued, and how many moved the answer.
+   *
+   * A fourth field, absent unless the run carried `reviewPass: 'audit'`. Its absence is a statement that the
+   * mechanism could not have fired, which is the only reason the field is conditional rather than zeroed: a
+   * zeroed audit on a `bare` run would be the "a mechanism that never ran looks like one that ran and agreed"
+   * ambiguity `bareRetry` above was introduced to remove. See {@link AuditCensus}.
+   */
+  audit?: AuditCensus | undefined;
+  /**
    * The switches this run was configured with, recorded in the report itself.
    *
    * Every number in the report is conditioned on this object, and without it the
@@ -1064,6 +1073,20 @@ export type BareRetryCensus = {
   readonly answered: number;
 };
 
+/**
+ * The membership audit's own tally.
+ *
+ * A third type rather than a reuse of {@link RecoveryCensus}, and the second field is why: this pass is handed an
+ * answer that already exists, so "came back with an answer" is true of every consultation it makes. What a reader
+ * needs is `changed` -- the consultations whose answer differed from the one they were given. A run reporting
+ * `attempted: 486, changed: 0` has measured a review that read every answer and agreed with all of them, which is
+ * a result; the same run without the field would read as a mechanism whose effect nobody counted.
+ */
+export type AuditCensus = {
+  readonly attempted: number;
+  readonly changed: number;
+};
+
 export type AbstentionReasons = {
   /** The write gate admitted nothing, so there was no evidence to decline from. */
   empty: number;
@@ -1649,6 +1672,10 @@ export function formatAblationReport(report: AblationReport): string {
   // neither, and a section that only appeared when `recovery` did would hide the bare pass on exactly the builds
   // that have it without the older one.
   lines.push(...bareRetryLines(report.bareRetry));
+  // Its own section and its own guard, for the same reason as the two above and one of its own: this pass is
+  // the only one whose product is a **difference**, so a section that appeared only when a conversion happened
+  // would hide the run that most needs reading -- the audit that ran everywhere and agreed everywhere.
+  lines.push(...auditLines(report.audit));
   // Its own section and its own guard, like the two retry passes above: the stage is a property of
   // the arm's ranking rather than of the abstention path, so it must not be nested under a census
   // that a different layer produces.
@@ -1818,6 +1845,44 @@ function bareRetryLines(census: BareRetryCensus | undefined): string[] {
     'that token absent from the prompt. The abstention route is excluded: its gold is the decline, so a retry',
     'there could only spend a call to turn a correct answer into a wrong one. A question answered first time',
     'is never re-asked.',
+  ];
+}
+
+/**
+ * The membership audit's own section.
+ *
+ * ## Why `changed` is printed before any rate
+ *
+ * The pass is handed an answer that already exists, so "it returned something" is true of every consultation.
+ * The only number here that a reader can act on is how often the review disagreed, and the share beside it is
+ * `changed / attempted` rather than a conversion rate -- calling it a conversion would import the vocabulary of
+ * the two retry passes, where a consultation that changes nothing is a failure. Here it is not: an audit that
+ * agrees with every answer has measured the reader's stability, which is a result about the arm.
+ *
+ * ## Why the section says what it cannot say
+ *
+ * The census counts consultations and differences. It does not say whether a difference was an improvement --
+ * that needs the gold, which lives in the roster beside it and not in this tally. Printing a "fixed" column here
+ * would be a second definition of accuracy computed from the same records, and the campaign has paid for two
+ * definitions of one number more than once (§13.41.5 is the first).
+ */
+function auditLines(census: AuditCensus | undefined): string[] {
+  if (census === undefined) return [];
+  const { attempted, changed } = census;
+  const share = attempted === 0 ? 'n/a' : `${((changed / attempted) * 100).toFixed(1)}%`;
+  return [
+    '',
+    '## Membership audit (`reviewPass: audit`)',
+    '',
+    '| Consultations | Moved the answer | Share moved |',
+    '|---|---|---|',
+    `| ${attempted} | ${changed} | ${share} |`,
+    '',
+    'Attempted counts consultations this pass issued: it runs on the multi-session route, on an answer that was',
+    'not a decline, and it re-reads the same evidence with the first pass quoted and a membership-only',
+    'instruction. "Moved" counts the consultations whose answer differed from the one they were handed -- a',
+    'review that agreed everywhere reports `0` here and has still measured something. Whether a move was an',
+    'improvement is not in this table: that needs the gold, and it is read from the roster.',
   ];
 }
 

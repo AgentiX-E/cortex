@@ -60,6 +60,7 @@ import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
 import type {
   AblationReport,
   AbstentionReasons as ReportAbstentionReasons,
+  AuditCensus,
   BareRetryCensus,
   MemoryArmConfig,
   RecoveryCensus,
@@ -2590,6 +2591,14 @@ type AbstentionReasons = ReportAbstentionReasons;
 export type ReviewMechanismTrace = { attempted: boolean; answered: boolean };
 
 /**
+ * What one question's census delta said about the membership audit.
+ *
+ * `changed` is not a synonym for `answered`: an audit that ran and returned the first pass's own answer has
+ * `attempted: true, changed: false`, and that is the state a run needs to be able to report.
+ */
+type AuditMechanismTrace = { attempted: boolean; changed: boolean };
+
+/**
  * Wrap a system so each answer records whether the review mechanisms fired **on that question**.
  *
  * ## Why this exists
@@ -2625,8 +2634,62 @@ export function traceReviewMechanisms(
   system: MemorySystem,
   trace: Map<string, ReviewMechanismTrace>,
 ): MemorySystem {
-  const source = system as { recoveryCensus?: () => { attempted: number; answered: number } };
-  const census = source.recoveryCensus;
+  return traceCensus(system, 'recoveryCensus', trace, (before, after) => ({
+    attempted: after.attempted > before.attempted,
+    answered: after.answered > before.answered,
+  }));
+}
+
+/**
+ * Wrap a system so each answer records whether the **membership audit** ran on that question, and whether it
+ * moved the answer.
+ *
+ * ## Why this is a second wrapper and not a wider first one
+ *
+ * The recovery trace answers "did the corrective consultation fire"; the audit trace answers "did the review
+ * disagree with the answer it was handed". They are different populations -- the recovery pass only runs on a
+ * decline, the audit only runs on a non-decline -- so a single map keyed by question would have to carry two
+ * meanings per entry and every reader would have to know which. Two maps, two types, one implementation each.
+ *
+ * ## Why the shared implementation is the point
+ *
+ * The two differ only in the accessor they read and the shape they project. Duplicating the delta, the
+ * prototype mirroring and the "an accessor that throws is an instrument that is not there" rule would mean two
+ * copies of four decisions, and the campaign has already paid for that shape once: §13.145.5 records a wrapper
+ * that read `this` off an instance and silently measured nothing for three runs. One helper, two thin callers.
+ */
+function traceAuditPass(
+  system: MemorySystem,
+  trace: Map<string, AuditMechanismTrace>,
+): MemorySystem {
+  return traceCensus(system, 'auditCensus', trace, (before, after) => ({
+    attempted: after.attempted > before.attempted,
+    changed: after.changed > before.changed,
+  }));
+}
+
+/**
+ * The machinery both traces above share: take a census before and after every `answer*` call and record the
+ * difference against the question string the caller passed.
+ *
+ * ## Why the accessor is a name and not a function
+ *
+ * A function would be read off the instance once, and the whole point of the read is that it is taken through
+ * `this` on every question. The name is resolved inside the wrapper for the same reason `mirrorMembers` exists.
+ */
+function traceCensus<T>(
+  system: MemorySystem,
+  accessor: 'recoveryCensus' | 'auditCensus',
+  trace: Map<string, T>,
+  project: (
+    before: { attempted: number; answered: number; changed: number },
+    after: { attempted: number; answered: number; changed: number },
+  ) => T,
+): MemorySystem {
+  const source = system as Partial<
+    Record<typeof accessor, () => { attempted: number; answered?: number; changed?: number }>
+  >;
+  const census = source[accessor];
   if (typeof census !== 'function') return system;
   const traced = mirrorMembers(system);
   // A census that throws is an instrument that is not there, which is the rule the report-level readers
@@ -2634,10 +2697,18 @@ export function traceReviewMechanisms(
   // Checked once and then abandoned rather than retried per question: an accessor that throws on the first
   // read throws on the five-hundredth, and a per-question `try` would pay for the same failure every time.
   let usable = true;
-  const readCensus = (): { attempted: number; answered: number } | null => {
+  const readCensus = (): { attempted: number; answered: number; changed: number } | null => {
     if (!usable) return null;
     try {
-      return census.call(system);
+      const reading = census.call(system);
+      // One shape for two accessors: the recovery census carries `answered` and the audit census carries
+      // `changed`, and a projection that had to branch on which one it was holding would be a second place
+      // the two can disagree. The absent member reads as zero, which is exactly what a delta over it means.
+      return {
+        attempted: reading.attempted,
+        answered: reading.answered ?? 0,
+        changed: reading.changed ?? 0,
+      };
     } catch {
       usable = false;
       return null;
@@ -2668,12 +2739,7 @@ export function traceReviewMechanisms(
       const after = readCensus();
       // No entry when either read failed: the record then omits the fields, and `--treated` reports the
       // question as `unknown` rather than as one the mechanism did not reach.
-      if (before !== null && after !== null) {
-        trace.set(question, {
-          attempted: after.attempted > before.attempted,
-          answered: after.answered > before.answered,
-        });
-      }
+      if (before !== null && after !== null) trace.set(question, project(before, after));
       return answer;
     };
   }
@@ -2728,6 +2794,10 @@ export async function runCortexMemoryArm(
   // The wrapper is a prototype chain and is a no-op for a system with no census, so this changes nothing
   // about what the run measures -- it only makes the population addressable in the artifact.
   const recoveryTrace = new Map<string, ReviewMechanismTrace>();
+  // §13.260: the membership audit's own per-question trace. Separate map, separate type, same machinery --
+  // this pass runs on non-declines where the recovery pass cannot, so one map keyed by question would carry
+  // two meanings per entry.
+  const auditTrace = new Map<string, AuditMechanismTrace>();
   // §13.189: the same ledger, read per side. Wrapped on BOTH arms so the split closes against
   // `llmUsage` above; the judge and the phrasing stage land in the residual by construction.
   const usageLedger: Record<UsageSide, UsageSnapshot> = {
@@ -2737,11 +2807,15 @@ export async function runCortexMemoryArm(
   // §13.259. Under a pool the ablation answers through the pool's factories, so the two wrappers
   // below are never called -- the pool has to be wrapped instead, and both paths are kept because a
   // serial run is the one every archived artifact was produced by.
-  const usagePool = options.pool === undefined ? undefined : tracedPool(options.pool, usageLedger);
+  const usagePool =
+    options.pool === undefined ? undefined : tracedPool(options.pool, usageLedger, auditTrace);
   const report = await runAblationReport(
     dataset,
     traceUsage(baseline, 'baseline', usageLedger),
-    traceReviewMechanisms(traceUsage(feature, 'feature', usageLedger), recoveryTrace),
+    traceAuditPass(
+      traceReviewMechanisms(traceUsage(feature, 'feature', usageLedger), recoveryTrace),
+      auditTrace,
+    ),
     {
       ...(options.runs === undefined ? {} : { runs: options.runs }),
       ...(options.alpha === undefined ? {} : { alpha: options.alpha }),
@@ -2795,6 +2869,7 @@ export async function runCortexMemoryArm(
     ...abstentionReasonsAcross(censusSystems),
     ...recoveryAcross(censusSystems),
     ...bareRetryAcross(censusSystems),
+    ...auditAcross(censusSystems),
   };
   const questions = buildArmRoster(
     dataset,
@@ -2810,6 +2885,7 @@ export async function runCortexMemoryArm(
     },
     options.relevancePoolFor,
     recoveryTrace,
+    auditTrace,
   );
   // Derived from the records rather than tallied while building them, so the
   // manifest and the records it describes cannot disagree (`evidenceReductionOf`).
@@ -2852,6 +2928,10 @@ export async function runCortexMemoryArm(
     // treatment on a different population, and a run that carries it must be able to say how often it
     // fired without a reader inferring it from an unchanged accuracy.
     ...(census.bareRetry === undefined ? {} : { bareRetry: census.bareRetry }),
+    // The membership audit's tally, on the same rule: a `bare` run has no audit to report, and writing
+    // `attempted: 0` there would make "this build carries no audit" and "the audit ran and agreed with every
+    // answer" produce the same artifact.
+    ...(census.audit === undefined ? {} : { audit: census.audit }),
     // Spread conditionally on both sides: a run that did not vote has no census, and a report built
     // without an arm config has nowhere to put one. Either absence means "not measured", which the
     // field's optionality already says.
@@ -3039,11 +3119,24 @@ function accountOf(
 function traceOf(
   trace: ReadonlyMap<string, ReviewMechanismTrace> | undefined,
   question: string,
-): { recoveryAttempted: boolean; recoveryAnswered: boolean } | Record<string, never> {
+  audit?: ReadonlyMap<string, AuditMechanismTrace>,
+): {
+  recoveryAttempted?: boolean;
+  recoveryAnswered?: boolean;
+  auditAttempted?: boolean;
+  auditChanged?: boolean;
+} {
   const entry = trace?.get(question);
-  return entry === undefined
-    ? {}
-    : { recoveryAttempted: entry.attempted, recoveryAnswered: entry.answered };
+  const reviewed = audit?.get(question);
+  const recovery: { recoveryAttempted?: boolean; recoveryAnswered?: boolean } =
+    entry === undefined
+      ? {}
+      : { recoveryAttempted: entry.attempted, recoveryAnswered: entry.answered };
+  const auditing: { auditAttempted?: boolean; auditChanged?: boolean } =
+    reviewed === undefined
+      ? {}
+      : { auditAttempted: reviewed.attempted, auditChanged: reviewed.changed };
+  return { ...recovery, ...auditing };
 }
 
 function buildArmRoster(
@@ -3076,6 +3169,14 @@ function buildArmRoster(
    * field at all -- `false` would be a statement about the mechanism rather than about the instrument.
    */
   recoveryTrace?: ReadonlyMap<string, ReviewMechanismTrace>,
+  /**
+   * Whether the membership audit ran on each question, and whether it moved the answer.
+   *
+   * A separate map for the reason {@link AuditMechanismTrace} gives, and passed in for the reason
+   * `recoveryTrace` above is: the trace is captured around each answer and the roster is built after the whole
+   * pass, so a reader inside this function would see only the last question.
+   */
+  auditTrace?: ReadonlyMap<string, AuditMechanismTrace>,
 ): readonly QuestionRecord[] {
   const answers = ablation.featureAnswers!;
   // Captured per question inside the answer loop and carried alongside the
@@ -3209,7 +3310,7 @@ function buildArmRoster(
       promptVariants: promptVariantCounts?.[i] ?? null,
       // §13.145.6. Two fields rather than one because a retry that fired and declined again is `attempted`
       // without `answered`, and that half is what says the mechanism ran rather than which way it went.
-      ...traceOf(recoveryTrace, question.question),
+      ...traceOf(recoveryTrace, question.question, auditTrace),
       // Measured here rather than inside `buildQuestionRecords`, because the
       // measurement needs the **pre-bound** context and this is the last place it
       // exists: the record's `turns` are what the bound left. Computing it a hop later
@@ -3360,7 +3461,11 @@ function voteVerdictsOf(
  * wrapper each call would make instance identity a function of (worker, pass) -- the second half
  * of the defect that function documents. The map here restores that guarantee one layer out.
  */
-function tracedPool(pool: AblationPool, ledger: Record<UsageSide, UsageSnapshot>): AblationPool {
+function tracedPool(
+  pool: AblationPool,
+  ledger: Record<UsageSide, UsageSnapshot>,
+  auditTrace?: Map<string, AuditMechanismTrace>,
+): AblationPool {
   const wrapped: Record<UsageSide, Map<number, MemorySystem>> = {
     baseline: new Map<number, MemorySystem>(),
     feature: new Map<number, MemorySystem>(),
@@ -3368,7 +3473,13 @@ function tracedPool(pool: AblationPool, ledger: Record<UsageSide, UsageSnapshot>
   const once = (side: UsageSide, worker: number, build: () => MemorySystem): MemorySystem => {
     const existing = wrapped[side].get(worker);
     if (existing !== undefined) return existing;
-    const traced = traceUsage(build(), side, ledger);
+    const spent = traceUsage(build(), side, ledger);
+    // The audit trace rides on the same per-worker object, and only on the feature side: the baseline is the
+    // reference pipeline, which carries no `reviewPass` at all. Wrapping here rather than positionally is the
+    // lesson §13.259 wrote down -- under a pool the positional wrapper is never called, so the trace would be
+    // empty and the artifact would say the mechanism did not fire on any question.
+    const traced =
+      side === 'feature' && auditTrace !== undefined ? traceAuditPass(spent, auditTrace) : spent;
     wrapped[side].set(worker, traced);
     return traced;
   };
@@ -3460,6 +3571,21 @@ function bareRetryAcross(systems: readonly MemorySystem[]): { bareRetry?: BareRe
 }
 
 /**
+ * The audit census, summed over every instance the run answered through.
+ *
+ * Summed for the reason §13.244 gives about the other three: a pooled run answers through N instances and reading
+ * the census off the feature object reads worker 0's share. The audit is the pass most exposed to that defect,
+ * because it fires only on the multi-session route -- so a run at four workers would have published roughly a
+ * quarter of its consultations and every reader would have compared that against the run's own call count and
+ * found the two agreeing, since the call count is a process total and the census would not have been.
+ */
+function auditAcross(systems: readonly MemorySystem[]): { audit?: AuditCensus } {
+  const total = summedOver(systems, (system) => auditOf(system).audit);
+  if (total === undefined) return {};
+  return { audit: { attempted: total.attempted as number, changed: total.changed as number } };
+}
+
+/**
  * The vote census, summed and then judged.
  *
  * The two rules are separate on purpose and in this order:
@@ -3546,6 +3672,35 @@ function bareRetryOf(system: MemorySystem): { bareRetry?: BareRetryCensus } {
   return {
     bareRetry: { attempted: record.attempted as number, answered: record.answered as number },
   };
+}
+
+/**
+ * Read the audit census off one instance, or `{}` when the instance carries no such accessor.
+ *
+ * The same three-step shape as its two siblings -- absent member, throwing member, malformed payload -- because a
+ * reader of the artifact has to be able to tell "this build has no audit" from "the audit ran and moved nothing",
+ * and a `try` that returned zeros on a fault would collapse them. A negative or fractional count is treated as
+ * malformed rather than clamped: the only producer is a counter incremented by one, so a non-integer can only mean
+ * the field is not the counter it claims to be.
+ */
+function auditOf(system: MemorySystem): { audit?: AuditCensus } {
+  const candidate = (system as { auditCensus?: unknown }).auditCensus;
+  if (typeof candidate !== 'function') return {};
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    return {};
+  }
+
+  if (payload === null || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  for (const key of ['attempted', 'changed'] as const) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+  }
+  return { audit: { attempted: record.attempted as number, changed: record.changed as number } };
 }
 
 function abstentionReasonsOf(system: MemorySystem): { abstentionReasons?: AbstentionReasons } {

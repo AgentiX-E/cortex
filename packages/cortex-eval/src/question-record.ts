@@ -321,6 +321,18 @@ export type QuestionRecord = {
   /** Whether the retry the mechanism fired came back with an answer. See `recoveryAttempted`. */
   readonly recoveryAnswered?: boolean | undefined;
   /**
+   * Whether the membership audit ran on this question, and whether it moved the answer.
+   *
+   * A second pair rather than two more values in the pair above, because the two passes act on disjoint
+   * populations: the recovery pass only runs on a decline and the audit only runs on a non-decline, so a single
+   * pair would have to carry "not applicable" for half the roster and every reader would have to know which half.
+   * Absent for the same reason the pair above is: a system that cannot report it has not reported that nothing
+   * happened.
+   */
+  readonly auditAttempted?: boolean | undefined;
+  /** Whether the audit's answer differed from the one it was handed. See `auditAttempted`. */
+  readonly auditChanged?: boolean | undefined;
+  /**
    * How much of the dataset's gold evidence the reader's context contained.
    *
    * ## Why this field is the point of `§13.18`
@@ -494,6 +506,10 @@ export type QuestionRecordInput = {
   readonly recoveryAttempted?: boolean | undefined;
   /** See {@link QuestionRecordInput.recoveryAttempted}. */
   readonly recoveryAnswered?: boolean | undefined;
+  /** See {@link QuestionRecordInput.auditAttempted}. */
+  readonly auditAttempted?: boolean | undefined;
+  /** See {@link QuestionRecordInput.auditChanged}. */
+  readonly auditChanged?: boolean | undefined;
   /**
    * How much of the dataset's gold evidence `retrieved` contained, or `null`.
    *
@@ -811,6 +827,14 @@ export function buildQuestionRecords(
         : {
             recoveryAttempted: input.recoveryAttempted,
             recoveryAnswered: input.recoveryAnswered === true,
+          }),
+      // The audit pair, on the same rule: `changed` without `attempted` is not a state the product can produce,
+      // so a producer that supplies one and not the other is a producer whose delta was taken wrong.
+      ...(input.auditAttempted === undefined
+        ? {}
+        : {
+            auditAttempted: input.auditAttempted,
+            auditChanged: input.auditChanged === true,
           }),
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });
