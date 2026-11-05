@@ -1447,6 +1447,58 @@ def audit_section(
         ),
     )
 
+    # 7b. The audit census exists exactly when the run carried the pass, and the roster agrees with it.
+    #
+    # §13.260. `reviewPass` is a knob that produces both a run-level tally and a per-question pair, and
+    # until now neither existed in an artifact: the product's `lastReview()` had no reader anywhere in
+    # the harness, so a run could spend a call on every answered multi-session question and the only
+    # trace of it was a call count nine per cent above the control's.
+    #
+    # The invariant is an identity between two fields of one run, which is the only class a check here
+    # is allowed to be: `audit.attempted` must equal the number of records that say the pass ran. A
+    # tally without the roster behind it cannot be read against the gold, and a roster whose flags the
+    # tally contradicts is two ledgers of one event -- the shape §13.107 found three times.
+    audit_census = report.get('audit')
+    auditing = (config.get('reviewPass') or 'bare') == 'audit'
+    flagged_records = [
+        question for question in questions if question.get('auditAttempted') is not None
+    ]
+    fired_records = [question for question in flagged_records if question.get('auditAttempted') is True]
+    if auditing:
+        tally = audit_census if isinstance(audit_census, dict) else None
+        attempted = tally.get('attempted') if isinstance(tally, dict) else None
+        changed = tally.get('changed') if isinstance(tally, dict) else None
+        consistent = (
+            isinstance(attempted, int)
+            and isinstance(changed, int)
+            and 0 <= changed <= attempted
+            and attempted == len(fired_records)
+            and len(flagged_records) == len(questions)
+        )
+        check(
+            'audit',
+            consistent,
+            f'reviewPass=audit with census {tally if tally is not None else "absent"}; '
+            f'{len(fired_records)} of {len(questions)} records report the pass fired'
+            + (
+                ''
+                if consistent
+                else ' -- the tally and the roster must count the same consultations, and a '
+                'review cannot move more answers than it was shown'
+            ),
+        )
+    else:
+        check(
+            'audit',
+            audit_census is None and not flagged_records,
+            'reviewPass=bare, so neither a tally nor a per-question flag may be published'
+            + (
+                ''
+                if audit_census is None and not flagged_records
+                else ' -- a zeroed census here would claim a mechanism that never ran'
+            ),
+        )
+
     # 8. The three spend counts are a partition, and the remainder is stated rather than left
     #    to the reader's subtraction.
     #
