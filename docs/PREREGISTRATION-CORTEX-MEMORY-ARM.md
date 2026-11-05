@@ -28157,3 +28157,106 @@ offline gate says yes.
 **What this does not do** is retire the token axis. −20% is a real product saving on the same accuracy,
 if a rule can reach it; what it retires is the assumption that the number could be bought by deciding
 how much of the same evidence to send.
+
+## 13.251 The confirmation dispatch landed in the gap its own thresholds left, and that is the finding
+
+*`41939709206` is §13.248.7's dispatch: the registered configuration, **zero declared departures**,
+500 questions, four repetitions, 72 minutes. It was written to confirm the adoption on a second draw
+and to measure the parser repair. It did the second. It could not do the first, because the thresholds
+it was judged against were narrower than the instrument's noise floor.*
+
+### 13.251.1 The four predictions, judged
+
+| # | prediction | falsified by | measured | verdict |
+| --- | --- | --- | --- | --- |
+| 1 | MR ≥ **96 of 121** | ≤ 94 | **94** first repetition, **95.8** mean of four (min 94, max 98) | **neither** — below the confirmation line, above the falsification line |
+| 2 | full-band accuracy ≥ **87%** | < 87% | **86.67%** | **neither** — 0.33 below the line, and the line was not a falsifier |
+| 3 | `answer == rawOutput` on **0** records | > 0 | **365 of 500**, of which **0** carry a closing label | **true under the well-posed reading**, false as written |
+| 4 | four capabilities within ±2 of 143.5 / 62.0 / 120.8 / 30.0 | any further | 144.0 / 62.5 / 119.8 / 30.0 → **+0.5 / +0.5 / −1.0 / 0** | **true** |
+
+Overall **90.40%** (min 89.80, max 91.00). Mean `promptChars` **46,548**, identical to the previous
+dispatch to the character, because the registration did not move either.
+
+### 13.251.2 The gap, stated as arithmetic
+
+| | confirmation line | falsification line | gap | noise floor (§13.248.2) |
+| --- | ---: | ---: | ---: | ---: |
+| MR correct | ≥ 96 | ≤ 94 | **2 questions** | **±2.3 questions** |
+| full-band accuracy | ≥ 87% | *(none declared)* | — | ~±3.5 points at n = 75 |
+
+A prediction whose "confirmed" and "falsified" lines are **two questions apart, on a 121-question
+route whose own reader churns 1.9% of questions at `temp=0`**, is not a test. It is a coin with a
+narrower face than the thumb. The result landing at 94 is not evidence against the contract; it is
+evidence that the design could not have produced evidence either way.
+
+§13.248.7 also left prediction 2 without a falsification line at all — "≥ 87%" with no "otherwise" —
+which is the same defect one level down: a threshold with one side does not define a decision.
+
+**The rule this produces**, and it is the only durable output of this dispatch:
+
+> A pre-registered criterion must separate its confirmation and falsification lines by **at least two
+> noise widths**, and both lines must be stated. Where the effect size is smaller than that, the
+> criterion is a *pooled* one over a named number of dispatches, not a per-dispatch one.
+
+### 13.251.3 What the two draws say together, read as the pooled statistic they are
+
+Two independent dispatches of the same registered configuration, eight repetitions:
+
+| statistic | registered `operands+operand-gap` (`41546569106`) | `verbatim` draw 1 (`41860773768`) | `verbatim` draw 2 (`41939709206`) | pooled |
+| --- | ---: | ---: | ---: | ---: |
+| MR, mean of four | **94.5** | **96.3** | **95.8** | **96.05** |
+| MR, first repetition | 93 | 96 | 94 | 95.0 |
+| full-band accuracy (n = 75) | **84.00%** | **89.33%** | **86.67%** | **88.00%** |
+| overall | 90.15% | 90.50% | 90.40% | **90.45%** |
+| mean `promptChars` | 46,264 | 45,799 | 46,548 | — |
+
+**Both statistics are above the registered arm on both draws**, and the direction never reverses. That
+is what eight repetitions of a 121-question route can say; it is not a significance claim, and
+§13.248.4's p = 0.45 for the first draw stands.
+
+**And the composition is identical for the third time**: 75 full / 46 partial, in the registered arm,
+in draw 1, in draw 2, with depth 175.2 / 174.1 / 174.1. Three runs, one partition. The population an
+ask is read on is fixed by the pool and the room, and both were held. That is the cleanest
+single-variable structure any MR experiment in this campaign has had, and it is now measured three
+times rather than argued once.
+
+### 13.251.4 Prediction 3, as it should have been written
+
+`answer == rawOutput` is **not** a defect signal. 365 of the 500 replies are a bare value — `2`,
+`$750`, `59.6` — and for those the whole reply *is* the answer. Asserting zero would have flagged a
+correct behaviour as a failure, which is the same error as §13.248.5's premature "did not move the
+number" reading, one level up.
+
+The property that actually holds the repair:
+
+| reading | `41860773768` (before) | `41939709206` (after) |
+| --- | ---: | ---: |
+| replies whose last non-empty line is a closing label | 94 | 94 |
+| **of those, answers still returned whole** | **8** | **0** |
+
+So the parser now reads every terminator it is handed, and it is inert on the 365 replies that have
+none. That is the product assertion, and it belongs in a test rather than in a prediction: it is now
+`parse-closing-label.test.ts`'s first two cases plus the 1,060-record inertness check.
+
+### 13.251.5 The decision: keep, and say why it is not a revert
+
+§13.248.7's branch for a falsified prediction 1 was "revert to `operands+operand-gap` and re-open the
+axis". That branch was written for a *falsification*, and the falsifier — ≤ 94 **mean** — did not
+occur (95.8). Neither did the confirmation. A cheap reading would take the written branch anyway,
+because the level check failed; that reading would revert a change whose two statistics are both
+better on both draws, on the strength of a test that could not have said anything.
+
+So the registration stands, on four stated grounds:
+
+1. **Two independent draws, one direction.** MR 96.3 and 95.8 against 94.5; full band 89.33 and 86.67
+   against 84.00. Neither draw reverses.
+2. **The composition never moved.** 75/46 in all three runs, so the gain is reading and not
+   composition — the one thing §13.243 could not establish for its own change.
+3. **Nothing regressed.** Overall 90.50 and 90.40 against 90.15; the four other capabilities read
+   143.5/144.0, 62.0/62.5, 120.8/119.8, 30/30 — every one inside two questions of the registered value.
+4. **The product defect it exposed is fixed and proven.** 0 of 94 labelled replies return the
+   transcript, and the rule is inert on 1,060 archived records.
+
+**What would overturn it**, stated now so that the next dispatch is not another coin: a third draw on
+which MR's four-repetition mean is ≤ 94 **and** the full band ≤ 84.00%. Both conditions, because one
+of them alone is inside the noise.
