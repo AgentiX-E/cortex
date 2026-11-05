@@ -28073,3 +28073,87 @@ both draw the line at *offline evaluation may use the gold; online decision may 
 first gate where violating it would have been invisible in the result.
 
 The 24,182 figure is therefore an **oracle for scoring**, never a target to encode.
+
+## 13.250 The budget curve has no knee, and the −30% target is unreachable by any allocation rule — including a perfect one
+
+*§13.249 closed "shrink the budget" and left the predictor family open, with an oracle of 24,182
+characters against 44,778 spent. This section finishes the question: how much of that 1.85× is
+reachable by **any** rule that decides depth per question, and is the plan's −30% inside it. It is
+not, and the reason is a property of the pool rather than of the budget.*
+
+### 13.250.1 The curve: reachability against budget, with no threshold to sit on
+
+Simulated with `readout-arm-run.py --room`'s rule at eight budgets, per capability:
+
+| budget | IE | KU | MR | TR | ABS | all | mean turns |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **48,000** | 51.3% | 6.9% | **62.0%** | 56.7% | 13.3% | **46.6%** | 120.7 |
+| 44,000 | 48.0% | 6.9% | 57.9% | 49.6% | 13.3% | 42.8% | 111.8 |
+| 40,000 | 44.7% | 5.6% | 51.2% | 43.3% | 13.3% | 38.4% | 100.6 |
+| 36,000 | 40.7% | 2.8% | 44.6% | 37.8% | 10.0% | 33.6% | 89.9 |
+| **32,000** | 39.3% | 2.8% | **38.0%** | 29.9% | 10.0% | **29.6%** | 78.8 |
+| 28,000 | 34.7% | 0.0% | 33.1% | 22.8% | 10.0% | 24.8% | 68.3 |
+| 24,000 | 30.7% | 0.0% | 28.9% | 18.9% | 3.3% | 21.2% | 57.6 |
+| 20,000 | 25.3% | 0.0% | 24.0% | 15.7% | 3.3% | 17.6% | 46.8 |
+
+**There is no knee.** The curve is close to linear across a 2.4× range, so there is no budget at which
+a constant "keeps almost everything" — every 8,000 characters costs about 8.5 points. A fitted
+constant therefore cannot pass §13.249.4's gates by choosing a lucky value; the response to the knob
+is smooth and steep everywhere.
+
+### 13.250.2 The honest oracle, and the number it replaces
+
+§13.249.3's 24,182 was computed on the **46.6% of questions whose gold is coverable at all**. Pricing
+the other 53.4% honestly — on those, no depth helps, so the full window is the best any rule can do —
+gives the bill a perfect predictor would pay:
+
+| | characters | against current |
+| --- | ---: | ---: |
+| current (`41860773768`, mean over the 500) | 46,548 | 1.00× |
+| **oracle, all 500** | **36,887** | **0.79×** |
+| oracle, coverable 233 only | 24,182 | 0.52× |
+
+So the headroom a **perfect, gold-omniscient, per-question depth rule** could take is **21%** — and
+the plan's P1' asked for **−30%**. The target is outside what any allocation rule can reach, and the
+oracle is the *upper bound* on all of them.
+
+Per capability the oracle bill is uneven in a way that explains §13.249's per-route ratios: MR 32,919,
+IE 34,286, TR 37,021, ABS 43,779, KU 45,868. KU is essentially irreducible — 6.9% of its questions are
+coverable at any depth — and KU is also the route whose accuracy is lowest after MR (87.50%).
+
+### 13.250.3 What this closes, and the one sentence that replaces three sections
+
+Three readings now agree, from three different instruments:
+
+| axis | measurement | what it rules out |
+| --- | --- | --- |
+| tokens, uniform cut | 48,000 → 32,000 costs **−17.0** reachability (§13.249.2) | a smaller constant |
+| tokens, perfect per-question depth | **0.79×** at best (§13.250.2) | **every** allocation rule, for a −30% target |
+| accuracy, MR | full band 89.33% against partial 63.04% (§13.248.3) | the room as the reason those 46 read badly |
+
+All three land on the same population: **the 53.4% of questions whose gold the pool never surfaced at a
+usable depth.** They are unreachable by budget, un-improvable by allocation, and they are where MR's
+remaining 8 questions and KU's 9 live.
+
+> **The pool is the single constraint on both axes.** A token target below −21% and a MR target above
+> 82% are the same experiment, and it is a retrieval experiment.
+
+### 13.250.4 What P1' becomes: a restated target and a rule that must beat 0.79×
+
+The plan's −30% is withdrawn as an allocation target, and replaced by two numbers that are both
+inside what measurement says is possible:
+
+| quantity | target | basis |
+| --- | --- | --- |
+| mean `promptChars` under the rule | **≤ 37,000** (−20%) | the oracle's 36,887, rounded up so the target is not literally the oracle |
+| reachability under the rule | **≥ 44.6%** (−2.0 of 46.6%) | unchanged from §13.249.4 |
+| the rule's characters / the oracle's | **≤ 1.10×** | a rule within 10% of perfect foresight; anything looser is a threshold, not a mechanism |
+
+Those three are jointly satisfiable only by a rule with real per-question resolution, and the third is
+what forbids a constant. Whether such a rule exists is now an empirical question about *predictability*
+of gold depth from observable signals — and the next dispatch on the token axis happens only if the
+offline gate says yes.
+
+**What this does not do** is retire the token axis. −20% is a real product saving on the same accuracy,
+if a rule can reach it; what it retires is the assumption that the number could be bought by deciding
+how much of the same evidence to send.
