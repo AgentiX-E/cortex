@@ -14736,9 +14736,12 @@ field is the **dispatch**, so the dispatch is what names a configuration — and
 records both facts separately (`memoryArmConfig.reviewPass` and `memoryArmConfig.reviewBareDecline`),
 so a reader can still see which mechanism was on without reconstructing it from a coupling.
 
-`audit` stays out. It re-asks with the whole window, so a bare retry under it would make any movement
-two consultations rather than one — the same reason `CortexMemory`'s constructor refuses `audit`
-beside a vote.
+**Superseded by §13.262.4 on this one clause.** `audit` does **not** stay out. The reason given here —
+"a bare retry under it would make any movement two consultations rather than one" — describes a state
+`answerSessions` cannot produce: it retries a bare decline and returns before the audit branch, which
+requires a first pass that was not a decline. Run `42054107910` paid for reading the field name instead
+of the populations: the control converted 71 bare declines and the treatment converted none, behind a
+dispatch that declared one field.
 
 One more fact worth stating, because it makes the attribution sharper than the arm-level view
 suggests: `bare` is **not** a member of the product's `ReviewPass` (`'none' | 'audit' | 'recover'`).
@@ -29527,3 +29530,214 @@ was §13.257.5's repair and this is the first adoption read through it.
 The retired bullet is not deleted, it is superseded: §13.64's argument for the hybrid ranking is still
 correct and the anchored signal contains it. What changed is which value a dispatch sends, and a
 document that kept both answers would be the ambiguity the registration parser refuses by design.
+
+## 13.262 The membership audit, measured: −6.10 points overall, and three reasons the number is not yet a verdict
+
+*`42054107910` was dispatched as a single-field experiment against `42013256884`: the same 22 inputs,
+`cortex_memory_review_pass` changed from `bare` to `audit`. It is the first run that administered the
+pass. This section records what it measured, why the measurement cannot be read as a verdict on the
+mechanism, and what the artefact said about the instruments that produced it.*
+
+### 13.262.1 What the run answered
+
+| gate from §14.50.6 | threshold | reading | result |
+| --- | ---: | --- | --- |
+| 1 MR accuracy, paired | McNemar p < 0.05 and Δ ≥ +6 | **62.81%**, Δ **−15.70** | **fail** |
+| 2 every other capability | no loss ≥ 4 points | IE −5.3, KU +2.8, TR 0.0, ABS 0.0 | **fail** (IE) |
+| 3 overall four-pass mean | ≥ +1.5 | **84.50%** vs 90.60%, **−6.10** | **fail** |
+| 4 calls that returned | ≤ 6,300 | **5,966** | pass |
+| 5 `census-unit` | exactly 2,000 | 1,791 answered + 209 declined = **2,000** | pass |
+| 6 `audit` identity | tally summed by the roster | **FAIL, and the check was wrong** (§13.262.5) | n/a |
+| 7 `usageBySide` | present, sides ≤ total | present, sides **3.43×** the total | **fail**, instrument (§13.262.5) |
+
+Three of the seven gates fail on the mechanism and two fail on the instrument. The distinction is the
+whole of this section, because the two instrument failures are what make the mechanism's number
+unreadable rather than merely bad.
+
+### 13.262.2 Where the loss sits, by whether the pass fired
+
+The audit consults on the `multi-session` route only, and `askRoutes` is `[multi-session]`, so the
+population it can reach is `MR` — 118 of whose 121 questions had an audit consultation on the first
+pass. Splitting the paired ledger on that fact:
+
+| population | n | up | down | net | net on 500 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **audited** (first pass answered) | 118 | 4 | **22** | **−18** | −3.60 |
+| **not audited** | 382 | 6 | 13 | −7 | −1.40 |
+
+The unaudited drift of −1.40 points is the reader's own self-disagreement, measured directly at
+−1.20 in §13.261.3. The audited column is **three times** it and has the opposite sign from the +6 the
+registration required. On its own that would refute §13.233.3's hypothesis — the 26 `MR` failures are
+not membership errors a reviewer can repair.
+
+It does not, because of what the 22 destroyed answers look like.
+
+### 13.262.3 All 22 came back as a bare integer
+
+| reading | count |
+| --- | ---: |
+| audited answers the treatment destroyed | **22** |
+| of those, rewritten as a bare integer (`2`, `4`, `1`, `350`) | **22** |
+| of those, whose gold was **not** a count (`TikTok`, `$6`, `February 1st`, `photography and cooking`) | **17** |
+| `MR` questions whose gold **is** a count | 40 of 121 |
+| audited questions that therefore could not produce a valid answer under the instruction | **81 of 118** |
+
+The instruction said, in as many words:
+
+> `Then write one line, exactly Step 2 — <the corrected count>, and nothing after it.`
+
+That is a **specification** defect, not a reader defect. The pass runs on every answered
+multi-session question, two thirds of which do not have a numeric answer, and the contract it was
+given orders a number. `TikTok` → `2` is the instruction being obeyed.
+
+The four improvements are the mirror image: `0` → `2`, `3` → `4`, `$5,250` → `$5,850`, `2` → `5` —
+all count-shaped or money. On the population the instruction was written for, the pass is 4 up and 5
+down: **neutral to one question**, on 118 questions, against a reader whose own noise is ±5 `MR`
+points (§13.203.4).
+
+So the honest summary of the mechanism after this run is: *the form clause destroyed 22 answers; on
+count questions, where the instruction applied, the review was a wash.*
+
+### 13.262.4 The second confound: `audit` silently withdrew the bare ladder
+
+The artifact says something the dispatch did not intend:
+
+| census | control `42013256884` | treatment `42054107910` |
+| --- | ---: | ---: |
+| `bareRetry.attempted` / `.answered` | **71 / 71** | **0 / 0** |
+| declines over 2,000 question-answers | **134** | **209** |
+
+`carriesBareLadder(pass)` returned `true` for `bare` and `recover` and `false` for `audit`, so one
+field changed and **two mechanisms moved**. §13.141.3 wrote that exclusion down with a reason — "a
+bare retry under it would make any movement two consultations rather than one" — and the reason is
+false: `answerSessions` retries a bare decline and **returns** before the audit branch, which requires
+a first pass that was not a decline. The two act on disjoint outcomes of one call, so a run carrying
+both gives each question at most one extra consultation of each kind.
+
+The 71 conversions the control got and the treatment did not are inside every accuracy number in
+§13.262.1. This is §13.141.1's defect, third occurrence: a field name read as if it were a population.
+
+§13.141.3 is **superseded on that one clause**. `carriesBareLadder` is now `pass !== 'none'`, with the
+disjointness argument in its own docblock and `review-pass-ladder.test.ts` asserting `audit` carries
+the ladder.
+
+### 13.262.5 Three instrument failures, and the one that matters most
+
+**The spend split overcounted by 3.43×.** `usageBySide` reported `10,606 + 9,852 = 20,458` calls
+against a run total of `5,966`, and `137,355,496` feature prompt tokens against `37,149,529` in the
+whole run. The split took `llmUsage()` around each answer and added the difference; under four
+workers, four answers overlap, each interval contains the others' calls, and each side counts work the
+other side did. This was the field's **first live reading** — §13.259 repaired its absence one round
+ago — and the first reading was wrong in the direction that would have made the token-efficiency claim
+unfalsifiable.
+
+The repair moves attribution to the **writer**: `cortex-ai` exposes `observeUsage`, `cortex-eval`
+installs an observer backed by an `AsyncLocalStorage` scope, and a call is counted where the response
+is parsed and the side is known from the ambient context. The scope lives in the instrument and not
+in the product because `cortex-ai`'s entry is one of the ones `tools/entry-guard.mjs` reserves for
+portable code, and `node:async_hooks` is not on the reserved list — the guard rejected the first
+version of this fix, which is the guard working.
+
+**The census and the roster counted different units.** `audit.attempted` was `469` against `118`
+flagged records, and the factor was exactly the repetition count: the roster records the **first** of
+four passes (`runs: 4`) and the tally counts all four. My own `--audit` check asserted they were equal,
+which is an assertion that can only hold at `runs: 1`. Four fields were booleans
+(`recoveryAttempted`, `recoveryAnswered`, `auditAttempted`, `auditChanged`); they are now counts
+(`recoveryConsultations`, `recoveryAnswers`, `auditConsultations`, `auditChanges`), accumulated per
+question across repetitions, and the identity is the one that holds at any `runs`: **the column sums
+to the tally**. Renaming was part of the repair — a field whose unit changed under an unchanged name
+is exactly the ambiguity §13.259 paid for.
+
+**The audit's prompt was overwriting the delivery instruments.** `promptChars` was `+530` on every
+audited question and `promptDigest` differed on 117 of 118, while `deliveredPromptChars` moved by a
+median of **2 characters** — the delivering bytes had not changed at all. `#recordEvidence` wrote
+`lastPromptText` from whichever consultation produced the answer, and with an audit that is the
+review's prompt. The two facts are now separate: `#recordDelivery` is written only by the first pass
+and feeds `promptChars`/`promptDigest`; `#recordCoverage` is written by the answering call and feeds
+`carried`/`admittedEvidence`. This matters beyond this run: **every attribution in §13.257 and
+§13.261 keys on `promptDigest`**, so a mechanism that rebuilds a prompt could have made itself look
+like a retrieval change.
+
+One consequence to state rather than discover later: gate 3 (`6,522` delivered gold turns against the
+control's `6,520`) now measures the **answering** call's coverage, which an audit legitimately
+re-samples. The delivery invariant is `promptDigest`, and it reproduced.
+
+### 13.262.6 What was repaired, and what each repair is held to
+
+| where | change | the identity or test it must satisfy |
+| --- | --- | --- |
+| `cortex-ai` | `observeUsage` / `createUsageTally` | an observer sees every recorded call and restoring stops it; the entry stays free of `node:` builtins |
+| `cortex-eval` | `traceUsage` attributes at the writer | two concurrent answers over one side count **2** calls, which the delta method could not (`usage-by-side.test.ts`) |
+| `cortex-eval` | trace fields are counts | the roster column sums to the run tally at `runs: 2` (`audit-census.test.ts`) |
+| `cortex-eval` | `carriesBareLadder(pass) = pass !== 'none'` | `audit` carries the ladder; the populations are disjoint by the `first === null` branch |
+| `cortex-memory` | `#recordDelivery` / `#recordCoverage` | the audit prompt never becomes `lastPromptText`; `carried` still comes from the answering call |
+| `cortex-memory` | form-preserving audit instruction | the instruction no longer says "count"; a non-count first pass round-trips |
+| `tools/readout-arm-run.py` | `--audit` | the column sums to the tally, on every record |
+
+The instruction now reads:
+
+> `Then write one line, exactly Step 2 — <the corrected answer>, and nothing after it, in the first
+> pass's form: a count stays a count, a name stays a name. If the membership did not change, repeat
+> its answer word for word.`
+
+The second sentence is not decoration. 178 of 469 consultations (37.9%) changed the answer, and a
+reviewer with no way to say "nothing changed" has to produce a difference. The literature on
+intrinsic self-correction names both halves of this: refinement prompts bias a model away from a
+correct first answer (ACL 2025 measured 58.8% of correct answers overturned on one model), and
+restating the original task in the refinement prompt is the mitigation that survives that paper's
+ablations (+3.2–4.9 points, −5.3 to −10.9 points of overturning).
+
+### 13.262.7 Registration: the corrected audit, against `42054107910`
+
+| item | value |
+| --- | --- |
+| control | `42054107910` — the same 22 inputs, the same `audit`, the old instruction and the withdrawn ladder |
+| treatment | the same inputs on `2d74b188`+ with the form clause, the ladder restored, and the three instrument repairs |
+| what changes in the artifact | `usageBySide` is exact for the first time; `promptDigest` describes delivery again; `auditConsultations` sums to the tally; `bareRetry` fires again |
+
+Gates, written before the dispatch:
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | `MR` accuracy against **`42013256884`**, not against `42054107910` | **Δ ≥ 0 and McNemar not significant against** — the question is whether the repaired pass is worse than no pass, and neutrality is the pass condition |
+| 2 | `MR` accuracy against `42054107910` | **Δ ≥ +10** — the form clause and the ladder together must recover most of the 15.7 |
+| 3 | every other capability against `42013256884` | no loss **≥ 3 points** |
+| 4 | `bareRetry.attempted` | **≥ 60** — the ladder is back; a run below this is a dispatch defect, not a mechanism result |
+| 5 | calls | **≤ 6,400** = control 5,668 + 469 audits + ladders, and above that the pass fired where it should not |
+| 6 | `audit` identity | the column sums to the tally, and `0 ≤ changed ≤ attempted` |
+| 7 | `spend` | sides **≤ total**, which is the first reading the repaired attribution produces |
+| 8 | `promptDigest` agreement with `42013256884` | **500 / 500** — delivery does not depend on the review, and now nothing else can claim it does |
+
+Refutation. If gate 1 fails while gates 4–8 pass, the audit is worse than no audit even when it is
+asked properly, and the membership hypothesis is dead in both its forms: not because the review cannot
+help, but because a second pass over the same window costs more than the membership errors it repairs.
+If gate 2 fails while gate 1 passes, the form clause did not do what §13.262.3 predicts and the 22
+destroyed answers had a second cause.
+
+### 13.262.8 A cheaper idea, retired before it was dispatched
+
+The obvious repair after §13.262.3 is to stop trusting the reader's arithmetic: it writes a `Step 1`
+list and then a number, and a deterministic tally over its own list would cost **zero calls**. This
+was measured on the artifacts already in hand, over the 121 `MR` questions with a numeric gold:
+
+| reading | control | audit |
+| --- | ---: | ---: |
+| tally equals the gold | 13 | 1 |
+| tally differs | 25 | 5 |
+| **would break a currently correct answer** | **15** | 3 |
+| **would fix a currently wrong one** | **1** | 0 |
+
+Fifteen to one against, and the failures are instructive rather than noisy: for `eeda8a6d` the list is
+`10 neon tetras / 5 gouramis / 1 pleco / 1 betta` and the answer is the **sum** (`17`), for `80ec1f4f`
+it is a **distinct count** of venues (`2`, with one entry being the same venue's opening night), and
+for `6d550036` the reader **excluded** five candidates by reading the question's verb too narrowly and
+answered `0` against a gold of `2`. The aggregation operation is question-shaped and the selection is
+where the remaining error is, so a fixed operation over the reader's own prose is a regression.
+
+That result is why the next axis is not "count harder" but **event specification over a ledger** —
+the mechanism `Beyond Retrieval: Evidence Access and Event Aggregation in Agent Memory` (arXiv
+2610.19474) measures at +13.8 exact match over trajectory memory on 99 held-out repositories, with a
+controlled probe that is the cleanest statement of the problem available: long-context reading answers
+the same count correctly for **100% of trajectories at 14 events and 80% at 53**, and that paper's own
+residual error category after deterministic aggregation is *event selection* — which is what `0a995998`
+and `6d550036` are.
