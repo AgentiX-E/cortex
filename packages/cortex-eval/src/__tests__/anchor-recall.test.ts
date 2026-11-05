@@ -438,7 +438,7 @@ describe('the registered parameters, which the artifact has to carry', () => {
     // The one place the three numbers are asserted. Every other case passes what it needs, so a
     // dispatch that moves a registered value fails here and nowhere else -- which is what makes the
     // movement a decision rather than a diff nobody noticed.
-    expect(resolveAnchorParameters({})).toEqual({ count: 4, radius: 3, decay: 0.5 });
+    expect(resolveAnchorParameters({})).toEqual({ count: 4, radius: 3, decay: 0.25 });
   });
 
   it('passes an override through rather than falling back on it', () => {

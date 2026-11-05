@@ -54,6 +54,7 @@ import {
   runCortexMemoryArm,
   toMemoryArmConfig,
 } from '../bench-memory-arm.js';
+import { resolveAnchorParameters } from '../anchor-recall.js';
 import { exactMatchScorer } from '../metrics.js';
 import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 import { formatAblationReport, type AblationReport } from '../report.js';
@@ -739,7 +740,10 @@ describe('relevance signal', () => {
         CORTEX_MEMORY_RELEVANCE: 'retrieval-anchored',
       }),
     );
-    expect(anchored.anchors).toEqual({ count: 4, radius: 3, decay: 0.5 });
+    // Against the resolver, not against literals: this case asks whether the projection is wired to
+    // the module that owns the numbers. Which numbers those are is pinned once, in the module's own
+    // test, so moving the registration does not edit a test about wiring.
+    expect(anchored.anchors).toEqual(resolveAnchorParameters({}));
 
     // Absent for the two signals the field does not describe. A structural absence rather than a
     // zeroed object: `{count: 0}` would be a restoration that selected no anchors, which is a

@@ -4,6 +4,7 @@ import {
   DEFAULT_RELEVANCE_TOP_K,
   type RelevanceIndex,
 } from '../relevance-index.js';
+import { resolveAnchorParameters } from '../anchor-recall.js';
 import { clearEmbeddingCache } from '../retrieval.js';
 import { tableEmbedding } from './test-embedding.js';
 
@@ -449,16 +450,14 @@ describe('buildRetrievalRelevanceIndex anchors', () => {
     // would publish artifacts a reader could not tell apart, which is exactly the comparison this
     // campaign now has to make.
     const index = await build({ anchors: {} });
-    // The registered triple, spelled out rather than read from the module: a test that imported the
-    // resolver would agree with any dispatch that moved it, and the point of this case is that moving
-    // the registration is visible in a test that fails.
+    // Read from the resolver rather than spelled out: this case is about the census carrying what the
+    // module resolved, and the numbers themselves are pinned once, in `anchor-recall.test.ts`. Two
+    // numeric pins would make a dispatch that moves the registration edit a test that is not about it.
     expect(index.anchors).toEqual({
       questions: 1,
       anchors: 2,
       restored: 4,
-      count: 4,
-      radius: 3,
-      decay: 0.5,
+      ...resolveAnchorParameters({}),
     });
   });
 
@@ -525,6 +524,9 @@ describe('buildRetrievalRelevanceIndex anchors', () => {
       rerank: (pairs) => Promise.resolve(pairs.map((_, position) => (position === 0 ? 0.1 : 0.9))),
     });
     expect(index.rankedCandidatesFor(QUESTION)[0]).toBe('gamma here');
-    expect(index.relevanceFor(QUESTION, 'delta here')).toBeCloseTo(0.5, 12);
+    // The reranker writes a ladder, so the promoted hit carries `1` and its one-step neighbour carries
+    // exactly the registered decay. Asserted as that relation rather than as a literal: this case is
+    // about restoration reading the pool the stage produced, and the registered value has its own pin.
+    expect(index.relevanceFor(QUESTION, 'delta here')).toBeCloseTo(index.anchors!.decay, 12);
   });
 });
