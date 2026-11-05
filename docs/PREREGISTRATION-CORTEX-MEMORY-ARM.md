@@ -29150,3 +29150,52 @@ what is registered is that the number gets published, and that the decision rule
 4. If gate 4 fails and the identical-prompt split is also directional, the dispatch is unreadable and
    the next step is the judge instrument (`tools/judge-regrade.mjs`, commit `690821d`), not another
    benchmark.
+
+## 13.259 The per-side spend split silently vanished, and the field's own absence rule hides it
+
+Found while preparing P5 (the token axis), not while running an experiment. Recorded here because
+the next round starts on it.
+
+### 13.259.1 The evidence
+
+| run | calls in `llmUsage` | `usageBySide` in the artifact |
+| --- | ---: | --- |
+| `41546569106` | 5,685 | **present** |
+| `41970746908` | 5,670 | **absent** |
+| `41990597116` | 5,652 | **absent** |
+
+The field is written by `attachUsageBySide`, and its own implementation is the reason the
+disappearance is invisible:
+
+```ts
+export function attachUsageBySide(report: AblationReport, bySide: UsageBySide): AblationReport {
+  return bothSides(bySide).calls === 0 ? report : { ...report, usageBySide: bySide };
+}
+```
+
+Zero is dropped rather than reported. So "the split was measured and both sides were zero" and "this
+artifact predates the field" are the same bytes -- the distinction `attachTransport`'s own docblock
+refuses to collapse for its field, on the argument that a zero from an instrument that did not run is
+not a measurement.
+
+### 13.259.2 Why it blocks P5
+
+P5's bar is "≤ 37,000 prompt tokens with reach unchanged". The strategy for reaching it depends
+entirely on **which side spends the tokens**: the reader's evidence window, the judge, or the
+phrasing stage. Without the split, a saving on one is indistinguishable from a saving on another, and
+from a saving on the judge -- which is verbatim the argument `usage-by-side.ts` opens with.
+
+It also means the campaign's own "≈11,500 tokens per query against Mem0's 6,787" has no artifact
+trace: this run's whole-bill figure is **15,491 prompt tokens per answer** (30,982,330 over 2,000
+answers, judge included), and no artifact says how much of it the reader spent.
+
+### 13.259.3 What the next round does first
+
+1. An end-to-end assertion that `runCortexMemoryArm` produces `usageBySide` -- every existing test of
+   the split wraps a synthetic system and calls `traceUsage` directly, so no test covers the
+   construction the arm actually performs. If that test passes in the harness and the field is still
+   absent in a dispatch, the cause is instance sharing between the two packages rather than the
+   wrapper's logic, and the test then belongs at the boundary.
+2. A decision on the zero: report `usageBySide` with zeros **plus** a marker, or keep omitting it and
+   make the omission unambiguous some other way. The current state satisfies neither.
+3. Only then P5, because a token budget that cannot be attributed is the wrong thing to optimise.
