@@ -9,9 +9,14 @@ event can disagree, and a disagreeing pair is the class §13.107 found three tim
 counted consultations where it claimed questions, a reach table that contradicted its own
 implementation, a vote tally published on a run that never voted.
 
-The invariant that makes it checkable is an identity inside one artifact: the tally's `attempted`
-must equal the number of records that say the pass ran. No control run is needed to decide it, which
-is the only kind of check `--audit` is allowed to make.
+The invariant that makes it checkable is an identity inside one artifact: the roster's column must
+**sum** to the tally. No control run is needed to decide it, which is the only kind of check `--audit`
+is allowed to make.
+
+§13.262 changed that identity's shape. It used to compare the tally against the *number* of records
+flagged, and run `42054107910` failed it with `attempted: 469` over `118` flags -- the repetition count,
+not a defect: the roster records the first of four passes and the tally counts all four. A flag cannot
+satisfy an identity at `runs > 1`; a count can, and a count is what the producer now writes.
 
 ## Why the negative cases are the point
 
@@ -33,7 +38,13 @@ REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / 'tools' / 'readout-arm-run.py'
 
 
-def _report(*, review_pass: str = 'audit', audit: dict | None = None, flags: list[bool] | None = None) -> dict:
+def _report(
+    *,
+    review_pass: str = 'audit',
+    audit: dict | None = None,
+    counts: list[int] | None = None,
+    changes: list[int] | None = None,
+) -> dict:
     """A run whose every other field is consistent, so the audit check is the only variable."""
     ids = ['q1', 'q2', 'q3', 'q4']
     records = []
@@ -47,9 +58,9 @@ def _report(*, review_pass: str = 'audit', audit: dict | None = None, flags: lis
             'correct': True,
             'promptChars': 1000,
         }
-        if flags is not None:
-            record['auditAttempted'] = flags[index]
-            record['auditChanged'] = flags[index]
+        if counts is not None:
+            record['auditConsultations'] = counts[index]
+            record['auditChanges'] = (changes or counts)[index]
         records.append(record)
 
     report = {
@@ -88,18 +99,30 @@ class TestTheAuditCensusIsCheckedAgainstTheRoster:
     def test_a_consistent_run_passes(self, tmp_path: Path) -> None:
         result = _run(
             tmp_path,
-            _report(audit={'attempted': 4, 'changed': 2}, flags=[True, True, True, True]),
+            _report(audit={'attempted': 4, 'changed': 2}, counts=[1, 1, 1, 1], changes=[1, 1, 0, 0]),
         )
 
         assert result.returncode == 0, result.stdout + result.stderr
         assert 'PASS  audit' in result.stdout
-        assert '4 of 4 records report the pass fired' in result.stdout
+        assert 'the roster sums to 4 consultations and 2 changes over 4 of 4 records' in result.stdout
+
+    def test_the_column_sums_to_the_tally_at_any_repetition_count(self, tmp_path: Path) -> None:
+        # The shape `42054107910` produced: two questions answered four times each, so a count of 2 per
+        # record and a tally of 8 is consistent -- while a roster of flags would have said 2 and disagreed
+        # with a correct tally by the repetition count. Nothing about this test depends on `runs` being 1.
+        result = _run(
+            tmp_path,
+            _report(audit={'attempted': 8, 'changed': 4}, counts=[2, 2, 2, 2], changes=[1, 1, 1, 1]),
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'PASS  audit' in result.stdout
 
     def test_a_tally_that_disagrees_with_the_roster_fails(self, tmp_path: Path) -> None:
         # The pass says it ran four times; the roster says twice. One of them is not a measurement.
         result = _run(
             tmp_path,
-            _report(audit={'attempted': 4, 'changed': 2}, flags=[True, True, False, False]),
+            _report(audit={'attempted': 4, 'changed': 2}, counts=[1, 1, 0, 0], changes=[1, 1, 0, 0]),
         )
 
         assert result.returncode == 1
@@ -109,8 +132,20 @@ class TestTheAuditCensusIsCheckedAgainstTheRoster:
         # `changed` is a subset of `attempted` by construction: the pass only moves an answer it read.
         result = _run(
             tmp_path,
-            _report(audit={'attempted': 2, 'changed': 5}, flags=[True, True, False, False]),
+            _report(audit={'attempted': 2, 'changed': 5}, counts=[1, 1, 0, 0], changes=[3, 2, 0, 0]),
         )
+
+        assert result.returncode == 1
+        assert 'FAIL  audit' in result.stdout
+
+    def test_a_roster_the_check_cannot_sum_over_fails(self, tmp_path: Path) -> None:
+        # A sum is only an identity over the whole roster. A producer that wrote the pair on the questions
+        # the pass reached and omitted it on the others would sum to the same tally over a smaller
+        # denominator and look self-consistent while describing a filtered population.
+        report = _report(audit={'attempted': 4, 'changed': 2}, counts=[1, 1, 1, 1], changes=[1, 1, 0, 0])
+        del report['questions'][0]['auditConsultations']
+
+        result = _run(tmp_path, report)
 
         assert result.returncode == 1
         assert 'FAIL  audit' in result.stdout
@@ -119,7 +154,7 @@ class TestTheAuditCensusIsCheckedAgainstTheRoster:
         # The absence rule: a zeroed tally on a build without the pass claims a mechanism that never ran.
         result = _run(
             tmp_path,
-            _report(review_pass='bare', audit={'attempted': 0, 'changed': 0}, flags=[False] * 4),
+            _report(review_pass='bare', audit={'attempted': 0, 'changed': 0}, counts=[0] * 4),
         )
 
         assert result.returncode == 1

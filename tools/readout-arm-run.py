@@ -1262,6 +1262,18 @@ def _window_fingerprint(replay: dict | None) -> tuple[bool, str]:
     return (True, f'replay: fired {fired}, moved 0 -- the delivery already carries the partition')
 
 
+def consulted_once_each(rows: list[dict], total: int) -> bool:
+    """Whether every record carries the audit pair, so the sum is over the whole roster.
+
+    A sum is only an identity if the rows it adds are all the rows there are: a producer that wrote the
+    field on the questions the pass reached and omitted it on the others would sum to the same tally over
+    a smaller denominator, and the artifact would look self-consistent while describing a population it
+    had silently filtered (§13.262). The count is written for every record by construction -- zero is a
+    measurement and absence is reserved for a build with no audit at all.
+    """
+    return len(rows) == total
+
+
 def audit_section(
     report: dict, questions: list[dict], replay: dict | None = None
 ) -> tuple[str, int]:
@@ -1447,23 +1459,25 @@ def audit_section(
         ),
     )
 
-    # 7b. The audit census exists exactly when the run carried the pass, and the roster agrees with it.
+    # 7b. The audit census exists exactly when the run carried the pass, and the roster **sums** to it.
     #
     # §13.260. `reviewPass` is a knob that produces both a run-level tally and a per-question pair, and
     # until now neither existed in an artifact: the product's `lastReview()` had no reader anywhere in
     # the harness, so a run could spend a call on every answered multi-session question and the only
     # trace of it was a call count nine per cent above the control's.
     #
-    # The invariant is an identity between two fields of one run, which is the only class a check here
-    # is allowed to be: `audit.attempted` must equal the number of records that say the pass ran. A
-    # tally without the roster behind it cannot be read against the gold, and a roster whose flags the
-    # tally contradicts is two ledgers of one event -- the shape §13.107 found three times.
+    # §13.262. The first version of this check compared the tally against the number of records flagged,
+    # and `42054107910` failed it with `attempted: 469` against `118` flags -- not because either ledger
+    # was wrong, but because the roster records the **first** repetition while the tally counts all four.
+    # The factor was the repetition count. A flag cannot satisfy an identity at `runs > 1`; a count can,
+    # and the identity is then the only one worth writing: the column sums to the tally.
     audit_census = report.get('audit')
     auditing = (config.get('reviewPass') or 'bare') == 'audit'
-    flagged_records = [
-        question for question in questions if question.get('auditAttempted') is not None
+    roster_consultations = [
+        question for question in questions if question.get('auditConsultations') is not None
     ]
-    fired_records = [question for question in flagged_records if question.get('auditAttempted') is True]
+    consultations = sum(question.get('auditConsultations') or 0 for question in roster_consultations)
+    changes = sum(question.get('auditChanges') or 0 for question in roster_consultations)
     if auditing:
         tally = audit_census if isinstance(audit_census, dict) else None
         attempted = tally.get('attempted') if isinstance(tally, dict) else None
@@ -1472,29 +1486,31 @@ def audit_section(
             isinstance(attempted, int)
             and isinstance(changed, int)
             and 0 <= changed <= attempted
-            and attempted == len(fired_records)
-            and len(flagged_records) == len(questions)
+            and consulted_once_each(roster_consultations, len(questions))
+            and consultations == attempted
+            and changes == changed
         )
         check(
             'audit',
             consistent,
             f'reviewPass=audit with census {tally if tally is not None else "absent"}; '
-            f'{len(fired_records)} of {len(questions)} records report the pass fired'
+            f'the roster sums to {consultations:,} consultations and {changes:,} changes over '
+            f'{len(roster_consultations)} of {len(questions)} records'
             + (
                 ''
                 if consistent
-                else ' -- the tally and the roster must count the same consultations, and a '
+                else ' -- the column must sum to the tally, every record must carry it, and a '
                 'review cannot move more answers than it was shown'
             ),
         )
     else:
         check(
             'audit',
-            audit_census is None and not flagged_records,
-            'reviewPass=bare, so neither a tally nor a per-question flag may be published'
+            audit_census is None and not roster_consultations,
+            'reviewPass=bare, so neither a tally nor a per-question count may be published'
             + (
                 ''
-                if audit_census is None and not flagged_records
+                if audit_census is None and not roster_consultations
                 else ' -- a zeroed census here would claim a mechanism that never ran'
             ),
         )
