@@ -727,6 +727,67 @@ describe('relevance signal', () => {
     expect(withSignal).toContain('relevanceUnits=session');
     expect(withoutSignal).not.toContain('relevanceUnits=');
   });
+
+  it('projects the anchor parameters only for the signal that runs them', () => {
+    // §13.257. The mechanism's name is a family; the decay is the point on its axis that this
+    // dispatch took. Two runs of `retrieval-anchored` at different decays differ in no other config
+    // field, so without this projection their artifacts are the same bytes on the one axis that
+    // moved -- and the campaign has to compare exactly that pair.
+    const anchored = toMemoryArmConfig(
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_RELEVANCE: 'retrieval-anchored',
+      }),
+    );
+    expect(anchored.anchors).toEqual({ count: 4, radius: 3, decay: 0.5 });
+
+    // Absent for the two signals the field does not describe. A structural absence rather than a
+    // zeroed object: `{count: 0}` would be a restoration that selected no anchors, which is a
+    // different run from one that never restored.
+    for (const signal of ['retrieval', 'retrieval-hybrid']) {
+      expect(
+        toMemoryArmConfig(
+          cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: signal }),
+        ).anchors,
+      ).toBeUndefined();
+    }
+  });
+
+  it('renders the anchor parameters beside the signal they parameterise', () => {
+    const report = (
+      anchors: { count: number; radius: number; decay: number } | undefined,
+    ): string =>
+      formatAblationReport({
+        dataset: 'fixture',
+        questionCount: 0,
+        baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+        feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+        ablation: emptyAblation('cortex-memory'),
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          ...GATE,
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+          reviewPass: 'none',
+          reviewBareDecline: false,
+          relevanceSignal: 'retrieval-anchored',
+          relevanceTopK: 64,
+          relevanceUnits: 'turn',
+          ...(anchors === undefined ? {} : { anchors }),
+        },
+      });
+
+    // Joined with `+` and not commas: the line already separates fields with commas, so a comma
+    // inside a value would make one field look like three.
+    expect(report({ count: 4, radius: 3, decay: 0.25 })).toContain(
+      'anchorParams=count:4+radius:3+decay:0.25',
+    );
+    // The absent state is an artifact that predates the field, and it must not print a parameter
+    // block it cannot vouch for -- the same rule the width and the unit are under.
+    expect(report(undefined)).not.toContain('anchorParams=');
+    expect(report(undefined)).toContain('relevanceSignal=retrieval-anchored');
+  });
 });
 
 describe('source trust reaches the artifact', () => {

@@ -748,6 +748,28 @@ export type MemoryArmConfig = {
    */
   readonly relevanceUnits?: string;
   /**
+   * The parameters anchor restoration ran with, when `relevanceSignal` named it.
+   *
+   * ## Why the config line needs three numbers for one mechanism
+   *
+   * The signal names a family. §13.256 dispatched its first point -- decay `0.5`, radius `3`,
+   * four anchors -- and the pool it widened was ordered well enough to deliver 21 more gold turns
+   * while losing eight MR questions, because a restored turn carried half its anchor's score and
+   * therefore outranked hits the retriever had placed far below that anchor (§13.257). The repair
+   * steepens the decay, and the artifact of the repairing run differs from the artifact of the run
+   * it repairs in **no other field**: same signal, same width, same unit, same reader, same prompt.
+   * A reader comparing the two would otherwise be comparing two artifacts that look identical.
+   *
+   * Resolved rather than configured, because the options carry what a dispatch asked for while the
+   * artifact has to carry what ran: an omitted `decay` and a `decay` equal to the registered value
+   * are the same pool and must not be two different records.
+   *
+   * Absent for every other signal. That absence is not ambiguous, because `relevanceSignal` is
+   * always present: the mechanism's name beside an absent field is an artifact written before the
+   * field existed, and any other name is a run that restored nothing.
+   */
+  readonly anchors?: { readonly count: number; readonly radius: number; readonly decay: number };
+  /**
    * Which embedding backend this artifact's numbers were produced against.
    *
    * ## Why the artifact has to say it
@@ -1327,6 +1349,15 @@ export function formatAblationReport(report: AblationReport): string {
         (memoryArm.relevanceSignal === 'none' || memoryArm.relevanceUnits === undefined
           ? ''
           : `, \`relevanceUnits=${memoryArm.relevanceUnits}\``) +
+        // §13.257, beside the signal it parameterises and under the same conditional rule: the three
+        // numbers describe a pool that only `retrieval-anchored` builds. Joined with `+` rather than
+        // comma-separated, for the reason `maxPromptCharsByRoute` is -- this line already separates
+        // fields with commas, so a comma inside a value would make one field look like three.
+        (memoryArm.anchors === undefined
+          ? ''
+          : `, \`anchorParams=count:${memoryArm.anchors.count}` +
+            `+radius:${memoryArm.anchors.radius}` +
+            `+decay:${memoryArm.anchors.decay}\``) +
         // The backend, and the check that it was serving. Appended only when the caller
         // named one, so an artifact that predates the field reads as pre-dating it rather
         // than as having run against an unrecorded backend. Both halves are rendered

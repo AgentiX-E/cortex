@@ -46,7 +46,7 @@
  */
 import type { EmbeddingModel, RerankScoreFn } from '@agentix-e/cortex-core';
 import { rerankHits } from '@agentix-e/cortex-core';
-import { restoreAnchorNeighbourhoods } from './anchor-recall.js';
+import { resolveAnchorParameters, restoreAnchorNeighbourhoods } from './anchor-recall.js';
 import { retrieveTopKByQueries, type RetrievalHit } from './retrieval.js';
 import { temporalBoosts } from './temporal-relevance.js';
 import { countedRerank, type CountedRerank, type RerankCensus } from './rerank-census.js';
@@ -413,9 +413,37 @@ export type RelevanceIndex = {
    * boundaries), which is a finding, not a wiring bug; a run whose `questions` is zero is a wiring
    * bug, and the two must not read alike. `anchors` is the total number of anchors selected, which
    * is what makes "the selection rule fired" separable from "the restoration added turns".
+   *
+   * ## Why the three parameters travel with the census
+   *
+   * The counts say how much the mechanism did; the parameters say **which mechanism** did it.
+   * `retrieval-anchored` is a family, and the campaign has already run two points on its decay axis
+   * -- the first one widened the pool and lost eight MR questions to displacement (§13.257), so the
+   * second one steepened the decay. Both artifacts name the same signal. Resolved here rather than
+   * read from the options, because the options carry what a caller asked for and the artifact has to
+   * carry what ran: an omitted field resolves to the registered value, and those are different
+   * facts that would otherwise print the same absence.
    */
   readonly anchors?:
-    { readonly questions: number; readonly anchors: number; readonly restored: number } | undefined;
+    | {
+        readonly questions: number;
+        readonly anchors: number;
+        readonly restored: number;
+        /** The registered count, as resolved rather than as configured. */
+        readonly count: number;
+        /** The registered radius, as resolved rather than as configured. */
+        readonly radius: number;
+        /**
+         * The registered decay, as resolved rather than as configured.
+         *
+         * The number this campaign's first dispatch of the mechanism could not be asked about
+         * afterwards: `retrieval-anchored` names the family, and two dispatches sat at two points on
+         * its decay axis -- the first one widened the pool and cost MR eight questions (§13.257).
+         * Without this field the repairing run and the run it repairs carry the same bytes.
+         */
+        readonly decay: number;
+      }
+    | undefined;
 };
 
 /**
@@ -497,6 +525,11 @@ export async function buildRetrievalRelevanceIndex(
   // anchor configurations across questions, and an absent object has to mean "not configured" all
   // the way down rather than being normalised into defaults here.
   const anchors = options.anchors;
+  // Resolved once, and from the same function the restoration itself calls: a census that read the
+  // defaults a second time here would report a decay the pool was not built with the moment either
+  // reading moved. `null` rather than a defaulted object, because the absent state is "no restoration
+  // was configured" and must stay distinguishable from "configured, restored nothing".
+  const anchorParameters = anchors === undefined ? null : resolveAnchorParameters(anchors);
   const anchorCensus = { questions: 0, anchors: 0, restored: 0 };
 
   for (const entry of cases) {
@@ -578,7 +611,7 @@ export async function buildRetrievalRelevanceIndex(
     ...(reranking === undefined ? {} : { rerank: reranking.snapshot() }),
     // Only present when restoration was configured, for the reason above: a run that did not run it
     // must not be able to report `restored: 0`.
-    ...(anchors === undefined ? {} : { anchors: { ...anchorCensus } }),
+    ...(anchorParameters === null ? {} : { anchors: { ...anchorCensus, ...anchorParameters } }),
     relevanceFor(question: string, turn: string): number {
       return scores.get(question)?.get(turn) ?? UNSCORED_RELEVANCE;
     },

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { restoreAnchorNeighbourhoods, type ScoredTurn } from '../anchor-recall.js';
+import {
+  resolveAnchorParameters,
+  restoreAnchorNeighbourhoods,
+  type ScoredTurn,
+} from '../anchor-recall.js';
 
 /**
  * The question names four terms and nothing else, so "did this hit cover something new" is a fact
@@ -181,8 +185,12 @@ const CONTEXT: readonly string[] = SESSIONS.flat();
 
 describe('session-neighbourhood restoration', () => {
   it('restores the turns around an anchor inside its own session, decaying by distance', () => {
+    // `decay: 0.5` is passed rather than left to the registration, so this case tests the arithmetic
+    // it claims to test. What the default is belongs to its own case below, and a dispatch that
+    // steepend the decay must not be able to fail a test about multiplication.
     const pool = restoreAnchorNeighbourhoods([hit('alpha beta start', 1)], CONTEXT, SESSIONS, {
       question: QUESTION,
+      decay: 0.5,
     });
 
     expect(pool.restored).toBe(3);
@@ -259,7 +267,7 @@ describe('session-neighbourhood restoration', () => {
       [hit('alpha beta start', 1), hit('delta here', 0.05)],
       CONTEXT,
       SESSIONS,
-      { question: QUESTION },
+      { question: QUESTION, decay: 0.5 },
     );
     expect(pool.order[0]).toBe('alpha beta start');
     // `gamma here` is restored at `0.05 * 0.5 = 0.025` around the second anchor, so it lands below
@@ -417,9 +425,40 @@ describe('restoration around an anchor in the middle of a session', () => {
     const pool = restoreAnchorNeighbourhoods([hit('alpha beta middle', 1)], middle.flat(), middle, {
       question: QUESTION,
       radius: 1,
+      decay: 0.5,
     });
     expect(pool.scores.get('left one')).toBeCloseTo(0.5, 12);
     expect(pool.scores.get('right one')).toBeCloseTo(0.5, 12);
     expect(pool.order).toEqual(['alpha beta middle', 'left one', 'right one']);
+  });
+});
+
+describe('the registered parameters, which the artifact has to carry', () => {
+  it('resolves to the registered triple when nothing is named', () => {
+    // The one place the three numbers are asserted. Every other case passes what it needs, so a
+    // dispatch that moves a registered value fails here and nowhere else -- which is what makes the
+    // movement a decision rather than a diff nobody noticed.
+    expect(resolveAnchorParameters({})).toEqual({ count: 4, radius: 3, decay: 0.5 });
+  });
+
+  it('passes an override through rather than falling back on it', () => {
+    // `??` and not `||`: zero is a value this module means (`radius: 0` is the selection-only
+    // ablation, `count: 0` is an empty selection), and a falsy test would silently restore the
+    // default and report a mechanism that ran when it did not.
+    expect(resolveAnchorParameters({ count: 0, radius: 0, decay: 0 })).toEqual({
+      count: 0,
+      radius: 0,
+      decay: 0,
+    });
+  });
+
+  it('is the same resolver the restoration uses', () => {
+    // The property that keeps the artifact and the pool one story: a pool built with no options
+    // decays at exactly the registered rate.
+    const { decay } = resolveAnchorParameters({});
+    const pool = restoreAnchorNeighbourhoods([hit('alpha beta start', 1)], CONTEXT, SESSIONS, {
+      question: QUESTION,
+    });
+    expect(pool.scores.get('unrelated remark')).toBeCloseTo(decay, 12);
   });
 });

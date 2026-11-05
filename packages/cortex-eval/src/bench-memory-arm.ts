@@ -96,6 +96,7 @@ import {
   snapshotEmbeddingCache,
 } from './retrieval.js';
 import { DEFAULT_RELEVANCE_TOP_K } from './relevance-index.js';
+import { resolveAnchorParameters } from './anchor-recall.js';
 import { classifyTrFailure } from './tr-failure-class.js';
 import type { EmbeddingProvenance } from './embedding-factory.js';
 import type { AblationResult, BenchmarkDataset, GoldOverlap, MemorySystem } from './types.js';
@@ -346,6 +347,35 @@ export type CortexMemoryArmOptions = {
    * every archived run stays reproducible from the code.
    */
   relevanceUnits: string;
+  /**
+   * The three parameters anchor restoration ran with, when the signal was `retrieval-anchored`.
+   *
+   * ## Why these numbers are on the record rather than implied by the signal's name
+   *
+   * `retrieval-anchored` names a **family of pools**, not one pool. The campaign has already run two
+   * points on its decay axis: the first widened each question's pool by its anchors' session
+   * neighbourhoods and lost eight MR questions to displacement -- restored turns carried half their
+   * anchor's score and outranked hits the retriever had placed far above that anchor (§13.257) -- so
+   * the second one steepened the decay. Both dispatches publish `relevanceSignal=retrieval-anchored`,
+   * and without this field their artifacts are the same bytes on the one axis that differed.
+   *
+   * ## Why it is resolved here rather than read from the environment
+   *
+   * `anchor-recall.ts` owns the three numbers, for the reason it owns the stopping rule: they were
+   * chosen against a registered gate rather than tuned per dispatch, and an environment variable
+   * would let a dispatch move a parameter the gates were written against without moving a name. The
+   * projection is therefore derived from the module's own resolver, so the artifact and the pool
+   * cannot disagree -- and a reader comparing two artifacts can see, without the source, which point
+   * of the axis produced which number.
+   *
+   * Absent for every signal other than `retrieval-anchored`, because restoration is the only
+   * mechanism whose parameters this field describes. That absence is readable against
+   * `relevanceSignal`, which is always present: a signal that names the mechanism beside an absent
+   * `anchors` is an artifact written before the field existed, and any other signal is a run that
+   * administered no restoration at all. A zeroed object would instead be a third reading -- a
+   * mechanism that fired with every parameter zero -- which no dispatch can mean.
+   */
+  anchors?: { readonly count: number; readonly radius: number; readonly decay: number } | undefined;
   /**
    * Upper bound on the characters one turn may contribute to the prompt, or absent for none.
    *
@@ -2109,6 +2139,14 @@ export function toMemoryArmConfig(
     // would have to know this module's constants to do it. §13.27's artifact is read by
     // comparing this field against §13.26's, so it has to be on the record.
     relevanceUnits: options.relevanceUnits,
+    // §13.257. Conditional on the signal rather than unconditional, because the numbers describe a
+    // mechanism that only this signal runs: projecting them for `retrieval` would put a decay on the
+    // record of a run that restored nothing. Resolved through the module's own resolver, so the
+    // artifact states the values the pool was built with rather than a second reading of the
+    // defaults -- the drift this field exists to make impossible.
+    ...(options.relevanceSignal === 'retrieval-anchored'
+      ? { anchors: resolveAnchorParameters({}) }
+      : {}),
     // §13.68. Spread conditionally for the reason the optional fields above are: an absent
     // cap is a run that carried none, and a present-but-undefined key would read as
     // configured to every `!== undefined` check downstream and as pre-dating-the-field to a

@@ -88,6 +88,38 @@ const ANCHOR_RADIUS = 3;
  */
 const ANCHOR_DECAY = 0.5;
 
+/**
+ * The three parameters a caller may override, resolved to the registered values in one place.
+ *
+ * ## Why this is exported rather than inlined at each call site
+ *
+ * Two callers need the resolved numbers: the restoration itself, and the index's census, which
+ * writes them into the artifact so a run says what it administered. Reading `?? ANCHOR_DECAY` in
+ * both would be two definitions of one registration, and the failure mode is silent -- a dispatch
+ * that moved the constant would update one of them and the artifact would then describe a decay
+ * the pool was not built with. That is the defect class §13.63 and §13.27 both fixed by making a
+ * parameter travel with the record instead of with the code that reads it.
+ *
+ * ## Why the artifact needs the numbers when the name already implies them
+ *
+ * `retrieval-anchored` names a **family**; the decay is a **point on its axis**, and the two
+ * dispatches of this campaign sit at different points because the first one's neighbourhood
+ * displaced evidence the reader needed (§13.257). A reader holding two artifacts of the same name
+ * would otherwise have no way to see that, and the run that repairs the regression would be
+ * indistinguishable from the run that caused it.
+ */
+export function resolveAnchorParameters(options: {
+  readonly count?: number;
+  readonly radius?: number;
+  readonly decay?: number;
+}): { readonly count: number; readonly radius: number; readonly decay: number } {
+  return {
+    count: options.count ?? ANCHOR_COUNT,
+    radius: options.radius ?? ANCHOR_RADIUS,
+    decay: options.decay ?? ANCHOR_DECAY,
+  };
+}
+
 /** One turn the retriever surfaced, with the score it gave it. */
 export type ScoredTurn = {
   readonly text: string;
@@ -267,9 +299,8 @@ export function restoreAnchorNeighbourhoods(
     readonly decay?: number;
   },
 ): AnchoredPool {
-  const radius = options.radius ?? ANCHOR_RADIUS;
-  const anchors =
-    hits.length === 0 ? [] : selectAnchors(options.question, hits, options.count ?? ANCHOR_COUNT);
+  const { count, radius, decay } = resolveAnchorParameters(options);
+  const anchors = hits.length === 0 ? [] : selectAnchors(options.question, hits, count);
   const untouched = (): AnchoredPool => ({
     order: hits.map((hit) => hit.text),
     scores: new Map(hits.map((hit) => [hit.text, hit.score])),
@@ -304,7 +335,6 @@ export function restoreAnchorNeighbourhoods(
     positionsOfSession.push(owned);
   }
 
-  const decay = options.decay ?? ANCHOR_DECAY;
   const scores = new Map(hits.map((hit) => [hit.text, hit.score]));
   let restored = 0;
   for (const anchor of anchors) {

@@ -510,6 +510,18 @@ async function main(): Promise<void> {
           `${changed} question(s) reordered, ${clipped} passage(s) clipped`,
       );
     }
+    // §13.257. The same rule for the restoration: its counts are what separates "the selection fired
+    // on nothing" from "the selection never ran", and the three parameters beside them are what
+    // separates this dispatch of the mechanism from the last one -- both publish
+    // `relevanceSignal=retrieval-anchored`, and the artifact's config line carries the parameters
+    // while this line carries what they produced.
+    if (relevance.anchors !== undefined) {
+      const { questions, anchors, restored, count, radius, decay } = relevance.anchors;
+      console.log(
+        `Anchor census: ${questions} question(s), ${anchors} anchor(s), ` +
+          `${restored} restored turn(s) at count=${count} radius=${radius} decay=${decay}`,
+      );
+    }
   }
   // The identity and the census travel together into the artifact. Split, a report could name a model
   // it never consulted -- the ambiguity §13.115 registers as unreadable rather than negative.

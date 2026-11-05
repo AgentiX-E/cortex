@@ -420,7 +420,10 @@ describe('buildRetrievalRelevanceIndex anchors', () => {
     // The whole point: `third turn` is two steps from the anchor inside its own session, and no
     // ranking offered it. Before this option it carried the floor and the budget could only buy it
     // by accident.
-    const withAnchors = await build({ anchors: {} });
+    // The decay is named rather than defaulted: this case is about a never-surfaced turn acquiring a
+    // score at all, and the registered rate belongs to `anchor-recall.test.ts`'s own case. Without the
+    // override, moving the registration would rewrite an expectation that is not about it.
+    const withAnchors = await build({ anchors: { decay: 0.5 } });
     const without = await build({});
 
     expect(without.relevanceFor(QUESTION, 'third turn')).toBeLessThan(0);
@@ -440,12 +443,41 @@ describe('buildRetrievalRelevanceIndex anchors', () => {
     expect(ranked).toContain('third turn');
   });
 
+  it('reports the parameters the pool was built with, not the ones the caller named', async () => {
+    // §13.257. `{ anchors: {} }` names the mechanism and no numbers, so the record has to answer with
+    // the numbers that ran -- otherwise two dispatches of `retrieval-anchored` at different decays
+    // would publish artifacts a reader could not tell apart, which is exactly the comparison this
+    // campaign now has to make.
+    const index = await build({ anchors: {} });
+    // The registered triple, spelled out rather than read from the module: a test that imported the
+    // resolver would agree with any dispatch that moved it, and the point of this case is that moving
+    // the registration is visible in a test that fails.
+    expect(index.anchors).toEqual({
+      questions: 1,
+      anchors: 2,
+      restored: 4,
+      count: 4,
+      radius: 3,
+      decay: 0.5,
+    });
+  });
+
+  it('reports the parameters a caller overrode', async () => {
+    // The other direction: a dispatch that moves a parameter must see the movement in the record, or
+    // the field would be a constant dressed as provenance.
+    const index = await build({ anchors: { radius: 1, decay: 0.25 } });
+    expect(index.anchors).toMatchObject({ count: 4, radius: 1, decay: 0.25 });
+  });
+
   it('counts the added turns in scoredPairs and in its own census', async () => {
     const index = await build({ anchors: {} });
     // Two retrieved hits plus the anchor neighbourhoods: three around the first anchor and one
     // around the second.
     expect(index.scoredPairs).toBe(6);
-    expect(index.anchors).toEqual({ questions: 1, anchors: 2, restored: 4 });
+    // `toMatchObject` rather than `toEqual`: this case is about the counts, and the parameters are
+    // pinned once in their own case below -- a deep equality here would make every dispatch that moves
+    // the registered decay fail a test that is not about the decay.
+    expect(index.anchors).toMatchObject({ questions: 1, anchors: 2, restored: 4 });
   });
 
   it('reports reach separately from effect when the case carries no boundaries', async () => {
@@ -454,7 +486,7 @@ describe('buildRetrievalRelevanceIndex anchors', () => {
     const index = await build({ anchors: {} }, []);
     // The selection needs no boundary, so it still fires: two anchors, nothing restored. That is the
     // reading that keeps "this case had no sessions" apart from "nothing was selected".
-    expect(index.anchors).toEqual({ questions: 1, anchors: 2, restored: 0 });
+    expect(index.anchors).toMatchObject({ questions: 1, anchors: 2, restored: 0 });
     expect(index.rankedCandidatesFor(QUESTION)).toEqual(['alpha beta start', 'gamma here']);
   });
 
@@ -462,7 +494,7 @@ describe('buildRetrievalRelevanceIndex anchors', () => {
     // `entry.sessions ?? []` is a branch a reader can see and a run cannot: a dataset that does not
     // carry sessions must reach the same pool as one that carries an empty list.
     const index = await build({ anchors: {} }, null);
-    expect(index.anchors).toEqual({ questions: 1, anchors: 2, restored: 0 });
+    expect(index.anchors).toMatchObject({ questions: 1, anchors: 2, restored: 0 });
   });
 
   it('leaves the pool byte-identical when the option is absent', async () => {
