@@ -11,9 +11,13 @@
  * size differ by an order of magnitude in cost, and until the split exists a saving on one is
  * indistinguishable from a saving on the other -- and from a saving on the judge.
  *
- * ## Why the arithmetic is a subtraction with a guard
+ * ## Why the sides are tallies and the residual is a subtraction with a guard
  *
- * `minusUsage` refuses to go negative rather than clamping. The ledger is monotone by
+ * A side's total is accumulated where each response is parsed (`withUsageAttribution`), because
+ * subtracting two readings of one process-wide counter is only exact while a single answer is in
+ * flight and the dispatches run four. The **residual** stays a subtraction, and it is the one place
+ * a subtraction is still right: it is taken once, at the end, between two readings of a ledger that
+ * only grows. `minusUsage` refuses to go negative rather than clamping. The ledger is monotone by
  * construction, so a part larger than its whole means the two snapshots came from different
  * ledgers, or a counter was reset between them -- a defect in the instrument, not a number worth
  * printing. Clamping would hide it behind a zero that reads like "nothing was spent there".
@@ -27,7 +31,9 @@
  * summing to the total exactly -- is what lets a reader trust the split instead of adding it up
  * themselves.
  */
-import { llmUsage, usageDelta, type UsageSnapshot } from '@agentix-e/cortex-ai';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+import { observeUsage, type UsageSnapshot, type UsageTally } from '@agentix-e/cortex-ai';
 
 import type { MemorySystem } from './types.js';
 import { mirrorMembers } from './system-mirror.js';
@@ -40,17 +46,6 @@ export type UsageBySide = {
   readonly baseline: UsageSnapshot;
   readonly feature: UsageSnapshot;
 };
-
-/** The identity element, for a side that was never asked a question. */
-export function zeroUsage(): UsageSnapshot {
-  return {
-    calls: 0,
-    unpricedCalls: 0,
-    promptTokens: 0,
-    completionTokens: 0,
-    cacheHitPromptTokens: 0,
-  };
-}
 
 /** Field-wise sum, so a per-question split can be accumulated without a second ledger. */
 function plusUsage(a: UsageSnapshot, b: UsageSnapshot): UsageSnapshot {
@@ -113,33 +108,69 @@ export function bothSides(bySide: UsageBySide): UsageSnapshot {
 /**
  * Wrap a system so every answer it produces is attributed to its side of the A/B.
  *
- * ## Why the ledger is process-wide and the split is a delta
+ * ## Why the ledger is a tally and the attribution happens at the writer
  *
- * `llmUsage()` is one monotone counter for the whole process, and both arms, the judge and the
- * phrasing stage issue their requests through the same adapter. Replacing it would mean changing
- * the `LLM` contract or making every caller forward a number it does not want -- the same argument
- * `cortex-ai/src/usage.ts` makes for the ledger being global. So the split is taken **around each
- * answer**: snapshot, call, snapshot, add the difference to this side's accumulator.
+ * `llmUsage()` is one monotone counter for the whole process and every arm, the judge and the
+ * phrasing stage issue their requests through the same adapter, which is why there is a split at
+ * all. The first version of this wrapper took that counter around each `answer` -- snapshot, call,
+ * snapshot, add the difference -- and that arithmetic is exact only while one answer is in flight.
+ * Under the four-worker pool every dispatch uses, four answers overlap, each interval contains the
+ * others' calls, and each side counts work the other side did: run `42054107910` reported `20,458`
+ * calls on the two sides against a `5,966`-call run, a factor of 3.43, and the number that was
+ * supposed to answer "what does a query cost" could not be divided by anything.
  *
- * The `finally` is deliberate. A call that throws has still been billed (the request left the
- * machine), and skipping the delta would make a failing arm look cheap exactly when it is not.
+ * `withUsageAttribution` credits a tally where the response is parsed, so the count is a count of
+ * calls that happened rather than of calls that happened to fall between two timestamps. What the
+ * tally is shared across is then a choice the caller makes: `runCortexMemoryArm` builds one per
+ * side and hands the same pair to every worker, which is what makes four concurrent workers
+ * summable at all.
  *
- * ## Why the wrapper is `mirrorMembers`, not a spread
- *
- * A class instance keeps its methods on the prototype, so a spread copies none of them and a
- * session-aware system would arrive flat -- the defect `traceReviewMechanisms` records for run
- * `40984213349`, which produced an artifact whose MR numbers described a system the run never
- * used. Mirroring delegates every member, and only the `answer*` members are then wrapped.
- *
- * ## What it does not do
- *
- * It does not route, retry, reorder or rewrite an answer. The return value passes through
- * unchanged, and the only observable effect is that the side's snapshot grows.
+ * The rest of the contract is unchanged. A call that throws still bills the side -- the adapter
+ * records before the throw -- and the wrapper still only observes: `mirrorMembers` delegates every
+ * member and only the `answer*` ones are intercepted, because a spread would arrive flat and
+ * `isSessionAware` would then describe a system the run never used (`40984213349`).
  */
+/**
+ * The async context a side's calls are credited in, and the one observer that reads it.
+ *
+ * `node:async_hooks` lives here rather than in `cortex-ai` because that package is **portable** -- its
+ * entry is one of the ones `tools/entry-guard.mjs` reserves, and a builtin would make the browser build
+ * unloadable to answer a question only this instrument asks. The product therefore exposes a hook
+ * (`observeUsage`) and this module supplies the scope.
+ *
+ * One observer for the process, installed on first use. Re-installing would be harmless (the hook
+ * replaces rather than accumulates) but it would also mean the wiring could differ between two runs of
+ * one process, and an instrument whose wiring depends on call order is the thing §13.145.5 is about.
+ */
+const attribution = new AsyncLocalStorage<readonly UsageTally[]>();
+let scoped = false;
+
+function scopeAttribution(): void {
+  if (scoped) return;
+  observeUsage((usage) => {
+    for (const tally of attribution.getStore() ?? []) tally.record(usage);
+  });
+  scoped = true;
+}
+
+/**
+ * Credit every call `fn` makes to `tally`.
+ *
+ * Nested scopes chain rather than replace: an inner measurement sees a subtree of an outer one, and
+ * dropping the outer would make a caller's total depend on whether the callee happened to wrap
+ * something. Nothing here nests today; the rule is stated so the first caller who does gets the
+ * arithmetic it expects.
+ */
+function withUsageAttribution<T>(tally: UsageTally, fn: () => Promise<T>): Promise<T> {
+  scopeAttribution();
+  const inherited = attribution.getStore() ?? [];
+  return attribution.run([...inherited, tally], fn);
+}
+
 export function traceUsage(
   system: MemorySystem,
   side: UsageSide,
-  ledger: Record<UsageSide, UsageSnapshot>,
+  ledger: Record<UsageSide, UsageTally>,
 ): MemorySystem {
   const traced = mirrorMembers(system);
   const target = traced as unknown as Record<string, unknown>;
@@ -153,14 +184,10 @@ export function traceUsage(
     if (!name.startsWith('answer')) continue;
     const original = (system as unknown as Record<string, unknown>)[name];
     if (typeof original !== 'function') continue;
-    target[name] = async (question: string, ...rest: unknown[]) => {
-      const before = llmUsage();
-      try {
-        return await (original as (...args: unknown[]) => unknown).call(system, question, ...rest);
-      } finally {
-        ledger[side] = plusUsage(ledger[side], usageDelta(before, llmUsage()));
-      }
-    };
+    target[name] = async (question: string, ...rest: unknown[]) =>
+      withUsageAttribution(ledger[side], async () =>
+        (original as (...args: unknown[]) => unknown).call(system, question, ...rest),
+      );
   }
   return traced;
 }

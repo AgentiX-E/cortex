@@ -17,14 +17,26 @@
  *    second variable. The only effect asserted here is that the accumulated numbers move.
  */
 import { describe, expect, it } from 'vitest';
-import { OpenAICompatibleLLM } from '@agentix-e/cortex-ai';
+import { createUsageTally, OpenAICompatibleLLM } from '@agentix-e/cortex-ai';
 import type { LLM } from '@agentix-e/cortex-core';
 
 import type { BenchmarkDataset, MemorySystem } from '../types.js';
 import { cortextMemoryArmOptions, toMemoryArmConfig } from '../bench-memory-arm.js';
 import { exactMatchScorer } from '../metrics.js';
 
-import { bothSides, residualUsage, traceUsage, zeroUsage } from '../usage-by-side.js';
+import { bothSides, residualUsage, traceUsage } from '../usage-by-side.js';
+
+/**
+ * A ledger of tallies, which is what `traceUsage` reads.
+ *
+ * §13.262: this used to be a pair of zeroed snapshots, because the split was a delta around each
+ * answer. The delta is exact only while one answer is in flight -- under the four-worker pool each
+ * interval contained the others' calls, and `42054107910` reported 3.43x the run's calls -- so the
+ * ledger is now accumulated where each response is parsed and the type says so.
+ */
+function ledgerOf() {
+  return { baseline: createUsageTally(), feature: createUsageTally() };
+}
 
 function usage(promptTokens: number, calls = 1) {
   return {
@@ -84,14 +96,18 @@ describe('usage arithmetic', () => {
   });
 
   it('starts from the identity, so a side with no questions is zero rather than absent', () => {
-    expect(zeroUsage()).toEqual({
+    // The identity element comes from a tally now: `zeroUsage` had no caller outside these tests and
+    // was deleted rather than kept as an export (§13.262.5, and the export census's own rule).
+    expect(createUsageTally().snapshot()).toEqual({
       calls: 0,
       unpricedCalls: 0,
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
     });
-    expect(bothSides({ baseline: zeroUsage(), feature: usage(5, 1) }).promptTokens).toBe(5);
+    expect(
+      bothSides({ baseline: createUsageTally().snapshot(), feature: usage(5, 1) }).promptTokens,
+    ).toBe(5);
   });
 });
 
@@ -130,7 +146,7 @@ describe('attributing a call to a side', () => {
   }
 
   it('records the spend of the system it wraps, and only that side', async () => {
-    const ledger = { baseline: zeroUsage(), feature: zeroUsage() };
+    const ledger = ledgerOf();
     const llm = provider(30);
     const system: MemorySystem = {
       name: 'probe',
@@ -140,15 +156,15 @@ describe('attributing a call to a side', () => {
     const traced = traceUsage(system, 'feature', ledger);
     await traced.answer('Where?', ['user: I went to Lisbon.']);
 
-    expect(ledger.feature.promptTokens).toBe(30);
-    expect(ledger.feature.calls).toBe(1);
-    expect(ledger.feature.cacheHitPromptTokens).toBe(15);
-    expect(ledger.baseline.promptTokens).toBe(0);
-    expect(ledger.baseline.calls).toBe(0);
+    expect(ledger.feature.snapshot().promptTokens).toBe(30);
+    expect(ledger.feature.snapshot().calls).toBe(1);
+    expect(ledger.feature.snapshot().cacheHitPromptTokens).toBe(15);
+    expect(ledger.baseline.snapshot().promptTokens).toBe(0);
+    expect(ledger.baseline.snapshot().calls).toBe(0);
   });
 
   it('returns the answer unchanged, because attribution is not a treatment', async () => {
-    const ledger = { baseline: zeroUsage(), feature: zeroUsage() };
+    const ledger = ledgerOf();
     const system: MemorySystem = {
       name: 'probe',
       answer: () => 'Lisbon',
@@ -159,11 +175,11 @@ describe('attributing a call to a side', () => {
     expect(await traced.answer('Where?', [])).toBe('Lisbon');
     // A system that calls no model costs nothing and is attributed nothing: the wrapper must not
     // invent spend for a side that made none.
-    expect(ledger.baseline.calls).toBe(0);
+    expect(ledger.baseline.snapshot().calls).toBe(0);
   });
 
   it('records a call that threw, because the request left the machine anyway', async () => {
-    const ledger = { baseline: zeroUsage(), feature: zeroUsage() };
+    const ledger = ledgerOf();
     const llm = provider(40);
     const system: MemorySystem = {
       name: 'probe',
@@ -176,13 +192,40 @@ describe('attributing a call to a side', () => {
     await expect(traceUsage(system, 'feature', ledger).answer('Where?', [])).rejects.toThrow(
       /failed after the request/,
     );
-    expect(ledger.feature.promptTokens).toBe(40);
+    expect(ledger.feature.snapshot().promptTokens).toBe(40);
   });
 
-  it('ignores an own member that only looks routable', async () => {
+  it('counts concurrent answers once each, which the delta method could not', async () => {
+    // §13.262. The instrument this replaces took `llmUsage()` before and after each answer and added
+    // the difference. One process-wide monotone counter read twice is only exact while one answer is
+    // in flight: with two overlapping, each interval contains the other's call, so a two-call run
+    // reports three or four. Run `42054107910` is the same defect at scale -- `20,458` calls on the
+    // sides against `5,966` in the run, on four workers -- and the quantity it was supposed to
+    // answer, tokens per query, could not be divided by it.
+    //
+    // The order here is deliberately the hard one: both answers open their interval before either
+    // closes it, so a delta implementation cannot get this right by luck.
+    const ledger = ledgerOf();
+    const llm = provider(30);
+    const system: MemorySystem = {
+      name: 'probe',
+      answer: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return (await llm.complete('Where?')) as never;
+      },
+    };
+
+    const traced = traceUsage(system, 'feature', ledger);
+    await Promise.all([traced.answer('Where?', []), traced.answer('Where?', [])]);
+
+    expect(ledger.feature.snapshot().calls).toBe(2);
+    expect(ledger.feature.snapshot().promptTokens).toBe(60);
+  });
+
+  it('ignores a member that only looks routable', async () => {
     // `answerCount` starts with the prefix and is not a function. Wrapping it would replace a
     // number with a function and the reader of that field would get `[Function]` in an artifact.
-    const ledger = { baseline: zeroUsage(), feature: zeroUsage() };
+    const ledger = ledgerOf();
     const system = {
       name: 'probe',
       answerCount: 3,
@@ -197,7 +240,7 @@ describe('attributing a call to a side', () => {
   it('keeps every route of the wrapped system reachable', async () => {
     // The prototype-chain defect: a wrapper built by spreading an instance copies no method, so a
     // session-aware system would arrive flat and MR would answer from one session.
-    const ledger = { baseline: zeroUsage(), feature: zeroUsage() };
+    const ledger = ledgerOf();
     const sessions: unknown[] = [];
     class System {
       readonly name = 'probe';

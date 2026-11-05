@@ -45,11 +45,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 import {
+  createUsageTally,
   llmUsage,
   resetRetryStats,
   retryStats,
   usageDelta,
   type UsageSnapshot,
+  type UsageTally,
 } from '@agentix-e/cortex-ai';
 
 import { readToggle } from './env-toggle.js';
@@ -86,7 +88,7 @@ import {
 import type { AblationPool } from './ablation.js';
 import type { ReaderPacing } from './reader-transport.js';
 import { transportRetryReport } from './retrieval-diagnostics.js';
-import { traceUsage, zeroUsage, type UsageSide } from './usage-by-side.js';
+import { traceUsage, type UsageSide } from './usage-by-side.js';
 import { mirrorMembers } from './system-mirror.js';
 import type { AnswerScorer } from './metrics.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
@@ -1393,12 +1395,24 @@ function readReviewPass(raw: string | undefined): string {
  * ladder withdrawn, a question it had converted would go back to being a decline, and the section's
  * no-loss property would be false for a reason nothing in the artifact would show.
  *
- * `audit` is excluded rather than included, and the exclusion is not an oversight: it re-asks with
- * the whole window, so stacking a bare retry under it would make any movement two consultations
- * rather than one. `none` is excluded by definition.
+ * `audit` used to be excluded, and the exclusion was wrong for the same reason the `=== 'bare'`
+ * version was wrong -- it read a **field name** instead of asking which populations the passes act on.
+ * The stated reason was that stacking a bare retry under `audit` "would make any movement two
+ * consultations rather than one", and that cannot happen: `answerSessions` retries a bare decline and
+ * returns before the audit branch, which requires a first pass that was **not** a decline. The two act
+ * on disjoint outcomes of one call, so a run carrying both still gives each question at most one
+ * extra consultation of each kind.
+ *
+ * Run `42054107910` is what the exclusion cost. It was dispatched as a single-field experiment against
+ * `42013256884` and it moved two mechanisms: the control converted `71` bare declines
+ * (`bareRetry: {attempted: 71, answered: 71}`) and the treatment converted none, while its decline
+ * count rose from `134` to `209`. Every accuracy number in that dispatch is therefore the sum of the
+ * audit and the withdrawal of a shipped pass, and neither can be read off it. The rule this file
+ * already applied to `recover` -- a name covers the passes its dispatches intend, and `none` is the
+ * only name that means "no ladder" -- now applies to `audit` too.
  */
 function carriesBareLadder(pass: string): boolean {
-  return pass === 'bare' || pass === 'recover';
+  return pass !== 'none';
 }
 
 /** The variable this arm reads for §13.101's sample count. */
@@ -2587,16 +2601,24 @@ type AbstentionReasons = ReportAbstentionReasons;
  *    discordant pairs both return confident-looking values, so a run that graded
  *    nothing would publish an interval over nothing.
  */
-/** What one question's census delta said about the review mechanisms. */
-export type ReviewMechanismTrace = { attempted: boolean; answered: boolean };
+/**
+ * What one question's census said about the review mechanisms, **as counts**.
+ *
+ * §13.262: these were booleans, and a boolean is the right unit only at one repetition. A dispatch runs
+ * four, so a question is answered four times and can be corrected four times; `4199…` reported
+ * `attempted: 469` at the run level against `118` records flagged, and the ratio was the repetition
+ * count, not a defect in either side. A count is the unit both ledgers can be held to, and the identity
+ * is then exact: the roster's column sums to the run-level tally.
+ */
+export type ReviewMechanismTrace = { attempted: number; answered: number };
 
 /**
- * What one question's census delta said about the membership audit.
+ * What one question's census said about the membership audit, as counts.
  *
  * `changed` is not a synonym for `answered`: an audit that ran and returned the first pass's own answer has
- * `attempted: true, changed: false`, and that is the state a run needs to be able to report.
+ * a consultation and no change, and that is the state a run needs to be able to report.
  */
-type AuditMechanismTrace = { attempted: boolean; changed: boolean };
+type AuditMechanismTrace = { attempted: number; changed: number };
 
 /**
  * Wrap a system so each answer records whether the review mechanisms fired **on that question**.
@@ -2634,10 +2656,16 @@ export function traceReviewMechanisms(
   system: MemorySystem,
   trace: Map<string, ReviewMechanismTrace>,
 ): MemorySystem {
-  return traceCensus(system, 'recoveryCensus', trace, (before, after) => ({
-    attempted: after.attempted > before.attempted,
-    answered: after.answered > before.answered,
-  }));
+  return traceCensus(
+    system,
+    'recoveryCensus',
+    trace,
+    (delta) => ({ attempted: delta.attempted, answered: delta.answered }),
+    (prev, next) => ({
+      attempted: prev.attempted + next.attempted,
+      answered: prev.answered + next.answered,
+    }),
+  );
 }
 
 /**
@@ -2662,10 +2690,16 @@ function traceAuditPass(
   system: MemorySystem,
   trace: Map<string, AuditMechanismTrace>,
 ): MemorySystem {
-  return traceCensus(system, 'auditCensus', trace, (before, after) => ({
-    attempted: after.attempted > before.attempted,
-    changed: after.changed > before.changed,
-  }));
+  return traceCensus(
+    system,
+    'auditCensus',
+    trace,
+    (delta) => ({ attempted: delta.attempted, changed: delta.changed }),
+    (prev, next) => ({
+      attempted: prev.attempted + next.attempted,
+      changed: prev.changed + next.changed,
+    }),
+  );
 }
 
 /**
@@ -2681,10 +2715,8 @@ function traceCensus<T>(
   system: MemorySystem,
   accessor: 'recoveryCensus' | 'auditCensus',
   trace: Map<string, T>,
-  project: (
-    before: { attempted: number; answered: number; changed: number },
-    after: { attempted: number; answered: number; changed: number },
-  ) => T,
+  project: (delta: { attempted: number; answered: number; changed: number }) => T,
+  merge: (prev: T, next: T) => T,
 ): MemorySystem {
   const source = system as Partial<
     Record<typeof accessor, () => { attempted: number; answered?: number; changed?: number }>
@@ -2739,7 +2771,18 @@ function traceCensus<T>(
       const after = readCensus();
       // No entry when either read failed: the record then omits the fields, and `--treated` reports the
       // question as `unknown` rather than as one the mechanism did not reach.
-      if (before !== null && after !== null) trace.set(question, project(before, after));
+      if (before !== null && after !== null) {
+        // Accumulated, not overwritten: the map is keyed by question and a dispatching run asks each
+        // question `runs` times, so the last write would have described one repetition out of four and
+        // the roster would disagree with the tally by exactly that factor (§13.262).
+        const entry = project({
+          attempted: after.attempted - before.attempted,
+          answered: after.answered - before.answered,
+          changed: after.changed - before.changed,
+        });
+        const prev = trace.get(question);
+        trace.set(question, prev === undefined ? entry : merge(prev, entry));
+      }
       return answer;
     };
   }
@@ -2800,9 +2843,13 @@ export async function runCortexMemoryArm(
   const auditTrace = new Map<string, AuditMechanismTrace>();
   // §13.189: the same ledger, read per side. Wrapped on BOTH arms so the split closes against
   // `llmUsage` above; the judge and the phrasing stage land in the residual by construction.
-  const usageLedger: Record<UsageSide, UsageSnapshot> = {
-    baseline: zeroUsage(),
-    feature: zeroUsage(),
+  //
+  // §13.262: a tally per side rather than a snapshot, because `42054107910` measured the delta
+  // method at 3.43x the whole run's calls under four workers. The pair is built once and handed to
+  // every worker, so four concurrent answers credit one ledger instead of four overlapping ones.
+  const usageLedger: Record<UsageSide, UsageTally> = {
+    baseline: createUsageTally(),
+    feature: createUsageTally(),
   };
   // §13.259. Under a pool the ablation answers through the pool's factories, so the two wrappers
   // below are never called -- the pool has to be wrapped instead, and both paths are kept because a
@@ -2948,7 +2995,10 @@ export async function runCortexMemoryArm(
   // call site: it cannot be tested, so it cannot be wrong out loud.
   // The split is attached after the total, so the section that renders both reads them from one
   // place and the two cannot disagree about which run they describe.
-  const withUsage = attachUsageBySide(attachLlmUsage(reported, usage), usageLedger);
+  const withUsage = attachUsageBySide(attachLlmUsage(reported, usage), {
+    baseline: usageLedger.baseline.snapshot(),
+    feature: usageLedger.feature.snapshot(),
+  });
   // §13.216: read after everything that talks to a provider has finished, and attached
   // unconditionally -- see `attachTransport` for why this field does not use the absence rule
   // the two above do. Snapshotted here rather than inside the renderer so the JSON and the
@@ -3113,29 +3163,36 @@ function accountOf(
  * The record fields for one question's mechanism trace, or nothing when it was not traced.
  *
  * The absence case is the load-bearing one: a system with no `recoveryCensus` leaves the map empty, and
- * writing `recoveryAttempted: false` for every question would turn "this instrument does not apply" into
+ * writing `recoveryConsultations: 0` for every question would turn "this instrument does not apply" into
  * "the mechanism did not fire", which `--treated` would then classify as `untouched` instead of `unknown`.
+ *
+ * §13.262: the four fields are **counts**, and the names say so. They were `recoveryAttempted` and
+ * friends, booleans, which collapsed a question's four repetitions into one and made the column
+ * unsummable against the run-level tally -- `4199…` published `attempted: 469` over a roster of 118
+ * flags. A count is the unit in which "the tally is the sum of its rows" is an identity rather than a
+ * coincidence, and renaming was part of the repair: a field whose unit changed under an unchanged name
+ * is the defect this campaign has paid for as `bareRetry`'s silent loss (§13.259).
  */
 function traceOf(
   trace: ReadonlyMap<string, ReviewMechanismTrace> | undefined,
   question: string,
   audit?: ReadonlyMap<string, AuditMechanismTrace>,
 ): {
-  recoveryAttempted?: boolean;
-  recoveryAnswered?: boolean;
-  auditAttempted?: boolean;
-  auditChanged?: boolean;
+  recoveryConsultations?: number;
+  recoveryAnswers?: number;
+  auditConsultations?: number;
+  auditChanges?: number;
 } {
   const entry = trace?.get(question);
   const reviewed = audit?.get(question);
-  const recovery: { recoveryAttempted?: boolean; recoveryAnswered?: boolean } =
+  const recovery: { recoveryConsultations?: number; recoveryAnswers?: number } =
     entry === undefined
       ? {}
-      : { recoveryAttempted: entry.attempted, recoveryAnswered: entry.answered };
-  const auditing: { auditAttempted?: boolean; auditChanged?: boolean } =
+      : { recoveryConsultations: entry.attempted, recoveryAnswers: entry.answered };
+  const auditing: { auditConsultations?: number; auditChanges?: number } =
     reviewed === undefined
       ? {}
-      : { auditAttempted: reviewed.attempted, auditChanged: reviewed.changed };
+      : { auditConsultations: reviewed.attempted, auditChanges: reviewed.changed };
   return { ...recovery, ...auditing };
 }
 
@@ -3463,7 +3520,7 @@ function voteVerdictsOf(
  */
 function tracedPool(
   pool: AblationPool,
-  ledger: Record<UsageSide, UsageSnapshot>,
+  ledger: Record<UsageSide, UsageTally>,
   auditTrace?: Map<string, AuditMechanismTrace>,
 ): AblationPool {
   const wrapped: Record<UsageSide, Map<number, MemorySystem>> = {

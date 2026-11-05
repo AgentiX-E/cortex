@@ -42,14 +42,24 @@ export {
 /**
  * What the provider said each call cost.
  *
- * Three names and no more: the aggregate class, the parser and the recording entry are
- * internal to this package -- the adapter is their only writer, and exporting a
- * "record your own usage" door would let a caller double-count a call the adapter has
- * already recorded. What a consumer outside this package needs is the reading
- * (`llmUsage`), the arithmetic that turns two readings into one run's spend
- * (`usageDelta`), and the shape both return.
+ * Three readings and one attribution door. The aggregate class, the parser and the recording entry
+ * stay internal -- the adapter is their only writer, and exporting a "record your own usage" call
+ * would let a caller double-count a call the adapter has already recorded. What a consumer outside
+ * this package needs is the reading (`llmUsage`), the arithmetic that turns two readings into one
+ * run's spend (`usageDelta`), the shape both return, and -- since `42054107910` measured the delta
+ * method overcounting by 3.43x under a concurrent pool -- the two names that make a per-side split
+ * exact: `createUsageTally` builds a ledger and `observeUsage` is the hook the instrument installs to
+ * say which calls belong to it. The hook exists rather than the scope because `AsyncLocalStorage` is a
+ * Node builtin and this entry is portable (`tools/entry-guard.mjs`).
  */
-export { llmUsage, usageDelta, type UsageSnapshot } from './usage.js';
+export {
+  createUsageTally,
+  llmUsage,
+  observeUsage,
+  usageDelta,
+  type UsageSnapshot,
+  type UsageTally,
+} from './usage.js';
 export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai.js';
 export {
   OpenAICompatibleReranker,

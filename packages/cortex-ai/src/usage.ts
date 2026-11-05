@@ -133,14 +133,13 @@ function isCount(value: unknown): value is number {
 /**
  * Accumulate {@link LlmUsage} across calls.
  *
- * **Not exported.** Its only instance is the process ledger below, and the two functions
- * that read that ledger are the whole surface a caller needs. It is a class rather than
- * module-level variables for the reason `RetryStatsAggregate` is one -- one instance per
- * ledger, so a second ledger is a construction away -- but unlike `RetryStatsAggregate`
- * nothing outside this file builds one today, and an export with no caller is a claim
- * about a consumer that does not exist.
+ * It is a class rather than module-level variables for the reason `RetryStatsAggregate` is one --
+ * one instance per ledger, so a second ledger is a construction away. It is reachable from outside
+ * this file as `createUsageTally()`, because a per-side or per-arm split needs a ledger of its own
+ * and the alternative -- a caller keeping its own counters -- would be a second implementation of
+ * the `unpricedCalls` rule below.
  */
-class UsageAggregate {
+class UsageAggregate implements UsageTally {
   #calls = 0;
   #unpricedCalls = 0;
   #promptTokens = 0;
@@ -179,6 +178,75 @@ class UsageAggregate {
 }
 
 /**
+ * Something that accepts one response's spend at the moment it is recorded.
+ *
+ * ## Why the split is a sink and not a subtraction
+ *
+ * The first implementation of the per-side split took `llmUsage()` before an answer and after it,
+ * and added the difference to the side's total. That is exact only while one answer is in flight:
+ * the ledger is process-wide and monotone, so two answers running at once each end their interval
+ * inside the other's, and **each counts the other's calls**. Run `42054107910` measured the size of
+ * that error: four workers reported `20,458` calls on the two sides against a whole-run total of
+ * `5,966`, a factor of 3.43, on the first dispatch that carried the field under a pool.
+ *
+ * A sink is attributed at the **writer**, where the response is parsed and the side is known from
+ * the ambient context rather than from a pair of timestamps. Under any number of concurrent answers
+ * the totals then sum to the calls that happened, because a call is counted once, where it happened.
+ */
+type UsageSink = {
+  record(usage: LlmUsage | undefined): void;
+};
+
+/** A sink that keeps a running total, which is what a per-side or per-arm split needs. */
+export type UsageTally = UsageSink & {
+  snapshot(): UsageSnapshot;
+};
+
+/**
+ * Build a ledger that an instrument can accumulate into as calls are recorded.
+ *
+ * The `unpricedCalls` rule lives in the one implementation this returns, so a side's total and the
+ * whole run's total cannot disagree about what a missing `usage` block means.
+ */
+export function createUsageTally(): UsageTally {
+  return new UsageAggregate();
+}
+
+/**
+ * Something that wants to see every response as it is recorded.
+ *
+ * ## Why this is a registration point and not an `AsyncLocalStorage`
+ *
+ * The attribution mechanism is `AsyncLocalStorage`, which is a Node builtin, and this package is
+ * **portable**: `cortex-ai/src/index.ts` is one of the entries `tools/entry-guard.mjs` holds to the
+ * reserved word list, and `node:async_hooks` is not on it. Registering it here would make the browser
+ * build unloadable to answer a question only a Node run asks.
+ *
+ * So the product carries the **hook** and the instrument carries the **scope**. `cortex-eval` installs
+ * one observer for the process (a worker's answer runs in its own async context, so four concurrent
+ * workers credit four tallies), and a browser build installs none, which leaves `recordUsage` exactly
+ * as it was: one process ledger and no per-side split, because nothing in a browser is splitting one.
+ */
+type UsageObserver = (usage: LlmUsage | undefined) => void;
+
+let observer: UsageObserver | undefined;
+
+/**
+ * Install the observer, replacing any previous one, and return a function that restores it.
+ *
+ * Replacing rather than accumulating is deliberate: an observer is a *pipe*, not a listener, and two
+ * pipes over one ledger would either double-count a call (two independent accumulations of the same
+ * responses) or leave the caller unable to say which numbers were whose.
+ */
+export function observeUsage(next: UsageObserver): () => void {
+  const previous = observer;
+  observer = next;
+  return () => {
+    observer = previous;
+  };
+}
+
+/**
  * Process-level aggregate, recorded by `OpenAICompatibleLLM.complete`.
  *
  * Process-wide for the same reason `retryStats()` is: the adapter is constructed deep
@@ -194,9 +262,17 @@ export function llmUsage(): UsageSnapshot {
   return processUsage.snapshot();
 }
 
-/** Record into the process-level aggregate. Called by the adapter, not by callers. */
+/**
+ * Record into the process-level aggregate, and into every sink this call is attributed to.
+ *
+ * Called by the adapter, not by callers. The ambient walk is one array read on the hot path and is
+ * empty for every call made outside an attribution, which is all of them in production reads.
+ */
 export function recordUsage(usage: LlmUsage | undefined): void {
   processUsage.record(usage);
+  // Absent in every production path and in every browser build; the one installer is the measurement
+  // arm, which is the only caller that has a side to attribute a call to.
+  observer?.(usage);
 }
 
 /**

@@ -17,7 +17,7 @@
  * told us nothing was spent" are different facts about the run.
  */
 import { describe, expect, it } from 'vitest';
-import { llmUsage, parseUsage, recordUsage, usageDelta } from '../usage.js';
+import { llmUsage, observeUsage, parseUsage, recordUsage, usageDelta } from '../usage.js';
 
 describe('parseUsage', () => {
   it('reads the OpenAI-compatible shape', () => {
@@ -200,5 +200,45 @@ describe('usageDelta', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
     });
+  });
+});
+
+describe('the observer a per-side split installs', () => {
+  it('sees each call as it is recorded, priced or not', () => {
+    // §13.262. This hook exists instead of a scope in this package because `node:async_hooks` is a
+    // builtin and this entry is portable; the instrument supplies the scope, and this is the contract
+    // between them.
+    const seen: (number | undefined)[] = [];
+    const restore = observeUsage((usage) => seen.push(usage?.promptTokens));
+    try {
+      recordUsage({ promptTokens: 7, completionTokens: 1, cacheHitPromptTokens: 0 });
+      recordUsage(undefined);
+    } finally {
+      restore();
+    }
+
+    expect(seen).toEqual([7, undefined]);
+  });
+
+  it('stops seeing calls once restored, so a measurement cannot outlive its run', () => {
+    const seen: unknown[] = [];
+    const restore = observeUsage((usage) => seen.push(usage));
+    restore();
+    recordUsage({ promptTokens: 3, completionTokens: 1, cacheHitPromptTokens: 0 });
+
+    expect(seen).toEqual([]);
+  });
+
+  it('replaces rather than accumulates, so one ledger cannot be counted twice', () => {
+    const first: number[] = [];
+    const second: number[] = [];
+    const restoreFirst = observeUsage((usage) => first.push(usage?.promptTokens ?? -1));
+    const restoreSecond = observeUsage((usage) => second.push(usage?.promptTokens ?? -1));
+    recordUsage({ promptTokens: 5, completionTokens: 0, cacheHitPromptTokens: 0 });
+    restoreSecond();
+    restoreFirst();
+
+    expect(first).toEqual([]);
+    expect(second).toEqual([5]);
   });
 });
