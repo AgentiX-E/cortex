@@ -1,0 +1,107 @@
+{
+  "registration": "13.262.7",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "The corrected audit, against 42054107910",
+  "controls": {
+    "reference": {
+      "run": 42013256884,
+      "reviewPass": "bare",
+      "note": "the same 22 inputs on the shipped pass; the question gate 1 asks is whether the repaired audit is worse than no audit, and this is the no-audit arm"
+    },
+    "prior": {
+      "run": 42054107910,
+      "reviewPass": "audit",
+      "note": "the same 22 inputs on audit, with the instruction that asked for a count and the bare ladder withdrawn; gates 2 exists to price those two defects together"
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": 0,
+      "requires_nonsignificance": true,
+      "quantity": "`MR` accuracy against **`42013256884`**, not against `42054107910`",
+      "threshold": "**\u0394 \u2265 0 and McNemar not significant against** \u2014 the question is whether the repaired pass is worse than no pass, and neutrality is the pass condition",
+      "numbers": [0],
+      "asks": "is the repaired membership audit worse than no audit at all?"
+    },
+    {
+      "id": 2,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "prior",
+      "at_least_points": 10,
+      "requires_nonsignificance": false,
+      "quantity": "`MR` accuracy against `42054107910`",
+      "threshold": "**\u0394 \u2265 +10** \u2014 the form clause and the ladder together must recover most of the 15.7",
+      "numbers": [10],
+      "asks": "did the form clause and the restored ladder recover most of the 15.7 points the broken audit lost?"
+    },
+    {
+      "id": 3,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "excluding": ["MR"],
+      "max_loss_points": 3,
+      "quantity": "every other capability against `42013256884`",
+      "threshold": "no loss **\u2265 3 points**",
+      "numbers": [3],
+      "asks": "does the pass cost anything on the four capabilities it cannot reach?"
+    },
+    {
+      "id": 4,
+      "kind": "field_at_least",
+      "field": "bareRetry.attempted",
+      "at_least": 60,
+      "quantity": "`bareRetry.attempted`",
+      "threshold": "**\u2265 60** \u2014 the ladder is back; a run below this is a dispatch defect, not a mechanism result",
+      "numbers": [60],
+      "asks": "did the bare ladder fire again?"
+    },
+    {
+      "id": 5,
+      "kind": "field_at_most",
+      "field": "llmUsage.calls",
+      "at_most": 6400,
+      "quantity": "calls",
+      "threshold": "**\u2264 6,400** = control 5,668 + 469 audits + ladders, and above that the pass fired where it should not",
+      "numbers": [6400],
+      "asks": "did the audit fire only where it was registered to?"
+    },
+    {
+      "id": 6,
+      "kind": "audit_identity",
+      "consultations_field": "auditConsultations",
+      "changes_field": "auditChanges",
+      "tally_field": "audit.attempted",
+      "changed_tally_field": "audit.changed",
+      "quantity": "`audit` identity",
+      "threshold": "the column sums to the tally, and `0 \u2264 changed \u2264 attempted`",
+      "numbers": [0],
+      "asks": "does the roster's column sum to the run-level tally, at four repetitions?"
+    },
+    {
+      "id": 7,
+      "kind": "sides_within_total",
+      "sides_field": "usageBySide",
+      "total_field": "llmUsage.calls",
+      "quantity": "`spend`",
+      "threshold": "sides **\u2264 total**, which is the first reading the repaired attribution produces",
+      "numbers": [],
+      "asks": "is each side's spend at most the run's total, now that attribution happens at the writer?"
+    },
+    {
+      "id": 8,
+      "kind": "digest_agreement",
+      "control": "reference",
+      "field": "promptDigest",
+      "denominator": 500,
+      "quantity": "`promptDigest` agreement with `42013256884`",
+      "threshold": "**500 / 500** \u2014 delivery does not depend on the review, and now nothing else can claim it does",
+      "numbers": [500],
+      "asks": "does the reader see the same bytes it would see with no review, on every question?"
+    }
+  ]
+}

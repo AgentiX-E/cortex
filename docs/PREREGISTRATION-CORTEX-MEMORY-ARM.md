@@ -29741,3 +29741,116 @@ controlled probe that is the cleanest statement of the problem available: long-c
 the same count correctly for **100% of trajectories at 14 events and 80% at 53**, and that paper's own
 residual error category after deterministic aggregation is *event selection* — which is what `0a995998`
 and `6d550036` are.
+
+## 13.263 The gate table became data, and the run it judges is still in flight
+
+§13.262.7 wrote eight thresholds before dispatching the corrected audit. That dispatch is
+`42130772725`, created at `adb08726` on 2026-11-05T23:37Z and still queued when this section was
+written, so what follows is not a reading of it. It is the repair of the *reader*: the eight rows are
+now a file, and the file decides.
+
+### 13.263.1 Why prose gates could not survive another round
+
+Gate 6 of the same table read `FAIL` on `42054107910` and was **wrong** (§13.262.5): it compared a
+flag count against a tally accumulated over four repetitions, and the ratio it reported — `469 / 118`
+— was exactly `runs`. Nothing in the sentence "the column sums to the tally" says which of the two
+is the column, and the reader who noticed was the same reader who was already holding the number.
+§13.69 is the neighbouring failure: the registration and the dispatch each carried their own copy of
+an adopted value, each agreed with itself, and they disagreed only with each other.
+
+Both are the same shape. A threshold that exists as prose is re-derived by whoever reads it, at the
+moment they read it, with the result already in hand. The repair is not a better sentence; it is to
+stop asking a person to evaluate it.
+
+### 13.263.2 What was built
+
+| file | what it is |
+| --- | --- |
+| `tools/gates/13.262.7.json` | one entry per registered row: its `quantity` and `threshold` copied verbatim from §13.262.7's table, the `kind` that decides it, and that kind's parameters |
+| `tools/registered-gates.py` | the evaluator: seven kinds, a verdict per gate, exit `1` if any gate is not `PASS` |
+| `tools/__tests__/test_registered_gates.py` | each kind on a fixture whose arithmetic is checkable by hand, every absent-field case, and the agreement test below |
+
+The agreement test parses §13.262.7's markdown rows out of the document and compares them with the
+spec **cell for cell**. Neither side can move alone: an edit to the table that is not mirrored in the
+spec fails, and an edit to the spec that is not mirrored in the table fails. That is the same
+argument §10.3's test makes for the dispatch's registered values, applied one level up — to the
+thresholds rather than to the configuration.
+
+| kind | decides | refuses when |
+| --- | --- | --- |
+| `capability_delta` | one capability's paired delta against a control, plus McNemar when the row asks for neutrality | the two artifacts share no question |
+| `capability_nonloss` | every capability **the control measured**, minus the ones gates 1–2 own, against a loss bar | a capability the control has no longer appears in the treatment |
+| `field_at_least` / `field_at_most` | one numeric field against a bar | the field is absent or is not a number |
+| `audit_identity` | the roster column's sum against the run-level tally, and `0 ≤ changed ≤ attempted` | any record did not write the column |
+| `sides_within_total` | each attribution side's calls against the run total | a side carries no count |
+| `digest_agreement` | delivery digests against the control's, on the shared population | fewer questions carry a digest than the row registered |
+
+Three properties are deliberate rather than incidental.
+
+**Deltas are paired.** Every delta is computed on the intersection of the two artifacts' question ids
+and the excluded count is printed beside it, so a control that measured 480 of 500 questions cannot
+contribute a delta over its 480 while the verdict reads as if it covered 500. The p-value is computed
+on the same intersection, which is what makes the point estimate and the significance statement
+claims about one population.
+
+**`UNEVALUABLE` is not `PASS`.** A run that does not report `bareRetry.attempted` cannot demonstrate
+that the ladder came back, and answering `PASS` for it would publish the absence of evidence as
+evidence — §13.11.2's rule, and §13.262.4's cost when a field name was read as if it were a
+population.
+
+**Nothing stricter than the registration was added.** The registration asked for the consultations
+column against the tally and for `0 ≤ changed ≤ attempted`; it did not ask for the changes column to
+sum to `changed`. The tool prints that sum as an **observation** and keeps it out of the verdict,
+because a check written after the number is exactly what this section exists to prevent.
+
+### 13.263.3 Validated on both artifacts in hand, before the run it will judge
+
+The two artifacts of §13.262 were read again through the tool. The first column is
+`42013256884` read against itself, which has a known answer everywhere and is the only place a false
+`FAIL` could hide.
+
+| # | gate | `42013256884` against itself | `42054107910` against `42013256884` |
+| --- | --- | ---: | --- |
+| 1 | `MR` paired delta vs reference | +0.00 over 121 (0 won, 0 lost, p = 1) **PASS** | **−15.70** over 121 (4 won, 23 lost, p = 3.1e-4) **FAIL** |
+| 2 | `MR` paired delta vs prior | +15.70 over 121 (23 won, 4 lost) **PASS** | control not supplied, **UNEVALUABLE** |
+| 3 | four capabilities vs reference | all +0.00, worst +0.00 **PASS** | `IE` **−5.33** (1 won, 9 lost), `KU` +2.78, `TR` +0.00, `ABS` +0.00, worst −5.33 **FAIL** |
+| 4 | `bareRetry.attempted` | 71 **PASS** | **0** **FAIL** |
+| 5 | `llmUsage.calls` | 5,668 **PASS** | 5,966 **PASS** |
+| 6 | `audit` identity | column absent, **UNEVALUABLE** | column absent, **UNEVALUABLE** |
+| 7 | sides ≤ total | `usageBySide` absent, **UNEVALUABLE** | 10,606 and 9,852 against 5,966 **FAIL** |
+| 8 | `promptDigest` vs reference | 500/500 **PASS** | **383/500** **FAIL** |
+
+Every reading reproduces the number §13.262 recorded by hand — the 15.70, the `IE` 5.33, the 71/71
+ladder, the 5,668 calls, the 3.43× the sides claimed — which is what makes the tool a reader of the
+same measurements rather than a second opinion about them. Gates 6 and 7 answer `UNEVALUABLE` on the
+older artifact for a reason that is itself the finding: `42054107910` predates the counted columns,
+so no artifact of that shape could ever have demonstrated the identity it was judged by.
+
+### 13.263.4 Gate 8's magnitude, which nothing had measured before
+
+`383/500` is new. §13.262.5 established that the audit prompt was being written into `lastPromptText`
+— delivery recorded what the audit sent rather than what answered — and repaired it by splitting
+`#recordDelivery` from `#recordCoverage`. What was not established is **how many questions it
+touched**. The digest comparison says 117 of 500, and the population matches: 118 multi-session
+questions were audited, one of them received the same bytes anyway.
+
+So gate 8 is not a coin flip dressed as a check. A run in which delivery is a function of the review
+can fail it by 117 questions, and a repaired run either agrees on 500 or the split did not do what
+§13.262.6 claims.
+
+### 13.263.5 What the tool cannot do
+
+It cannot run inside the run. Its controls are artifacts of *other* runs, which is why it lives beside
+`readout-arm-run.py` rather than in a workflow step: `--audit` and `--registration` both decide
+properties of one artifact against itself or against the dispatch table, and neither can see a
+control. The verdict command is one line and eight rows, and it is run by whoever reads the artifact:
+
+```
+python3 tools/registered-gates.py tools/gates/13.262.7.json \
+    --treatment <42130772725>/benchmark-cortex-memory-ablation-report.json \
+    --reference <42013256884>/benchmark-cortex-memory-ablation-report.json \
+    --prior     <42054107910>/benchmark-cortex-memory-ablation-report.json
+```
+
+It does not judge whether the registration was right. A gate that is evaluated correctly can still be
+the wrong gate, and that argument belongs in §13.262.7 where it was made.
