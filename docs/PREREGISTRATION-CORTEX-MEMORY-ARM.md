@@ -29189,13 +29189,31 @@ It also means the campaign's own "≈11,500 tokens per query against Mem0's 6,78
 trace: this run's whole-bill figure is **15,491 prompt tokens per answer** (30,982,330 over 2,000
 answers, judge included), and no artifact says how much of it the reader spent.
 
-### 13.259.3 What the next round does first
+### 13.259.3 The cause, and the fix
 
-1. An end-to-end assertion that `runCortexMemoryArm` produces `usageBySide` -- every existing test of
-   the split wraps a synthetic system and calls `traceUsage` directly, so no test covers the
-   construction the arm actually performs. If that test passes in the harness and the field is still
-   absent in a dispatch, the cause is instance sharing between the two packages rather than the
-   wrapper's logic, and the test then belongs at the boundary.
-2. A decision on the zero: report `usageBySide` with zeros **plus** a marker, or keep omitting it and
-   make the omission unambiguous some other way. The current state satisfies neither.
-3. Only then P5, because a token budget that cannot be attributed is the wrong thing to optimise.
+`runAblation` answers through `pool.baselineFor(worker)` / `pool.featureFor(worker)`. The two systems
+handed to `runCortexMemoryArm` positionally were wrapped for the split, and under a pool **neither
+wrapper is ever called** -- so both sides read zero, and the field's own zero rule then dropped it.
+The distinguishing evidence is one column:
+
+| run | `passShape` | `usageBySide` |
+| --- | --- | --- |
+| `41546569106` | absent (no pool) | present |
+| `41970746908`, `41990597116` | `workers: 4` | absent |
+
+`tracedPool` (commit `7946797`) wraps each instance the pool builds, memoised per worker so instance
+identity stays a function of the worker rather than of (worker, pass). `featureInstances()` passes
+through untouched, because it is what `censusSourcesOf` reads and it compares the caller's `feature`
+by identity; the wrapper delegates every call to the instance it wraps, so the per-instance censuses
+are unaffected.
+
+The test is the reproduction, not decoration: it fails against the unfixed code (`usageBySide`
+undefined with a pool at two workers) and passes with it. The serial case beside it passed all along,
+which is exactly why the pooled path needed its own.
+
+### 13.259.4 What remains open
+
+The zero rule. `attachUsageBySide` still drops the field when the sides sum to zero, so a future
+instrument defect of this kind is invisible in the same way. The choice is between reporting zeros
+with a marker and keeping the omission while making it unambiguous another way; it is not decided
+here, and P5 should decide it, because P5 is the reader that needs the number.
