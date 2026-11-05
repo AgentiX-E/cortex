@@ -100,6 +100,10 @@ DEPARTS_41222844945 = [
     # fixture that silently gained a fifth difference would be a test that stopped describing the
     # artifact it is named after.
     "thinking",
+    # §13.260.7 moved the registered `relevanceSignal` to `retrieval-anchored`, so an artifact
+    # dispatched before that adoption departs on it too. Declared for the same reason `thinking`
+    # above is: a fixture that silently gained a difference would stop describing its own run.
+    "cortex_memory_relevance",
 ]
 
 
@@ -233,6 +237,11 @@ class TestTheRealArtifact:
             **inputs,
             "cortex_memory_ask": "enumerated",
             "thinking": "disabled",
+            # §13.260.7 moved the registered ranking to `retrieval-anchored`, so the table is put back
+            # to what it said when this artifact was produced. The alternative -- letting the fourth
+            # difference in -- would make this test describe a run with four departures while its name
+            # and its three assertions say three.
+            "cortex_memory_relevance": "retrieval-hybrid",
         }
         text, failures = module.registration_section(report(REAL_41222844945), [])
         assert failures == 3, text
@@ -277,6 +286,9 @@ class TestTheCleanRun:
             "turnCutMarker": "none",
             "askRoutes": ["multi-session"],
             "reader": registered_reader(module),
+            # Read from the table rather than written here: §13.260.7 moved the registered ranking, and
+            # a second copy of the value is the copy that will be stale next time it moves.
+            "relevanceSignal": inputs["cortex_memory_relevance"],
         }
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
@@ -360,6 +372,7 @@ class TestAbsentIsNotNull:
             "ask": module.dispatch_inputs()["cortex_memory_ask"],
             "maxPromptChars": 48000,
             "turnCutMarker": "none",
+            "relevanceSignal": module.dispatch_inputs()["cortex_memory_relevance"],
         }
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
@@ -390,6 +403,9 @@ class TestTheDefaultReportCarriesTheVerdict:
             "turnCutMarker": "none",
             "askRoutes": ["multi-session"],
             "reader": registered_reader(module),
+            # Read from the table rather than written here: §13.260.7 moved the registered ranking, and
+            # a second copy of the value is the copy that will be stale next time it moves.
+            "relevanceSignal": inputs["cortex_memory_relevance"],
         }
         assert module.congruence_note(report(config)) == ""
 

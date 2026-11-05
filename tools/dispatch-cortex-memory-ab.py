@@ -291,7 +291,17 @@ INPUTS = {
     # disagreed only with the section that decided the question. §13.69 records the run that
     # exposed it: dispatched on `retrieval` against an adopted `retrieval-hybrid`, which
     # would have moved the ranking and the cap at once.
-    "cortex_memory_relevance": "retrieval-hybrid",
+    "cortex_memory_relevance": "retrieval-anchored",
+    # §13.260.7's adoption, as of `42013256884`. The line above carried `retrieval-hybrid` and a
+    # §13.64 docblock; the mechanism that replaced it restores the neighbourhood of every retrieved
+    # anchor into the pool, and its two readings are a delivery count that reproduced exactly
+    # (`6,520` on two dispatches) and an accuracy effect of −1.00 point over 256 paired observations
+    # against a reader whose own self-disagreement on identical bytes is −1.20.
+    #
+    # Kept as a dismissal of the older note rather than an addition to it: §13.64's adoption still
+    # holds -- the hybrid ranking is *inside* the anchored signal -- but the value a dispatch sends
+    # has one answer, and §13.69 is the run that had to be cancelled because the document and the
+    # dispatch each believed their own copy of it.
     # §13.79's adoption. The pool now reaches rank 255, which is what makes the two-route room
     # expressible: at 400 characters the room holds 68 turns against a pool of 256, and the gold
     # that k = 64 could not surface has a median rank of 114 -- inside the pool, outside the room.

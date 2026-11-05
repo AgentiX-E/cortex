@@ -674,13 +674,17 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   mechanism, not on the `+29.45pp` run that followed: the forbidden state fell 12 → 7,
   MR's declines fell 23 → 20, and the predicted cost appeared as `numeric_mismatch`
   27 → 32. §13.61.5 states what that decision does not claim.
-- **`relevanceSignal: retrieval-hybrid` — adopted by §13.64.** Dense cosine fused with a
-  rare-keyword channel by reciprocal rank (`retrieveTopKByQueriesHybrid`). Adopted on TR's
-  +17 (85/127, eighteen declines turned into correct answers), no capability regressed, and
-  the grounding share of TR's correct answers rose rather than fell. **Its three registered
-  mechanism predictions were falsified** — the pool's reach did not improve — and §13.64.4
-  records that the coverage instrument measures quantity while the effect moved _which_
-  turn decides. A run with `relevanceSignal=retrieval` is the pre-§13.64 configuration.
+- **`relevanceSignal: retrieval-anchored` — adopted by §13.260.7 as of `42013256884`.** The
+  §13.64 hybrid (dense cosine fused with a rare-keyword channel by reciprocal rank,
+  `retrieveTopKByQueriesHybrid`) was the configuration from `41358866921` to `41970746908`, adopted on
+  TR's +17 with no capability regressed and its three mechanism predictions falsified (§13.64.4). What
+  replaced it is the same ranking plus anchor restoration: the turns around a retrieved anchor are
+  restored into the pool at anchor count 4, radius 3 and decay 0.5, which bought **+21 delivered gold
+  turns and +53 turns into the pool** at a cost of 54 prompt characters, and the delivery count `6,520`
+  then reproduced **exactly** on a second dispatch (§13.260.1). Its accuracy effect over 256 paired
+  observations is −1.00 point against a reader whose self-disagreement on identical bytes is −1.20
+  (§13.261.3, §13.261.5), so the adoption claims **delivery without a measured accuracy cost** and not
+  an accuracy gain. A run with `relevanceSignal=retrieval-hybrid` is the pre-§13.260 configuration.
 - `maxTurnChars: 400` — **adopted by §13.76.** The global form was rejected by §13.72 (roster 357 against 371,
   union 80.20% against 87.40%, IE −30 while MR +13); the route-scoped form was registered by §13.73 and met all
   five of its predictions in run `39205060432`: IE 135, MR 72, KU 59, TR 94, roster **389**. It is
@@ -29492,3 +29496,34 @@ the width of the reader's self-disagreement measured in §13.261.3 (`−1.20` po
 adoption in §13.260.1 is exactly what the decision rule says it is: the mechanism buys **delivery**
 (`+21` gold turns, `+53` into the pool) and there is no measured accuracy cost, which is not the same as
 a measured accuracy gain and must not be reported as one.
+
+### 13.260.7 Adoption: `retrieval-anchored` is the registered ranking from `42013256884`
+
+§14.49.4's decision rule 1 fired on gates 3 and 4, so the mechanism is adopted. Adoption is three
+edits that have to happen together, and the reason they are one section rather than three is §13.69:
+a dispatch sent on `retrieval` against an adopted `retrieval-hybrid` because the document and the
+dispatch table each held their own copy of the value.
+
+| where | before | after |
+| --- | --- | --- |
+| `PREREGISTRATION` §10.3 bullet | `relevanceSignal: retrieval-hybrid`, adopted by §13.64 | `relevanceSignal: retrieval-anchored`, adopted by this section |
+| `tools/dispatch-cortex-memory-ab.py` `INPUTS` | `"retrieval-hybrid"` | `"retrieval-anchored"` |
+| this section | — | the record of what the adoption claims |
+
+What it claims, in the sharpest available form:
+
+* **delivery**: `+21` gold turns delivered (`6,499` → `6,520` of `7,516`) and `+53` into the pool
+  (`7,155` → `7,208`), reproduced **exactly** on a second dispatch of the same configuration;
+* **cost**: `−0.19` turns and `−54` characters of window per affected question;
+* **accuracy**: `−1.00` point over 256 paired observations, against a reader whose self-disagreement on
+  identical bytes is `−1.20` points on one run (§13.261.3) and which loses `−3.00` points on the
+  population whose bytes the mechanism never touched (§13.261.5).
+
+It does **not** claim an accuracy gain, and the phrase "no measured accuracy cost" is the whole of the
+accuracy statement. The signal name now names one dose: `retrieval-anchored` at count 4, radius 3,
+decay 0.5, which `anchorParams` prints in every artifact and `Anchor census` prints in every log — that
+was §13.257.5's repair and this is the first adoption read through it.
+
+The retired bullet is not deleted, it is superseded: §13.64's argument for the hybrid ranking is still
+correct and the anchored signal contains it. What changed is which value a dispatch sends, and a
+document that kept both answers would be the ambiguity the registration parser refuses by design.
