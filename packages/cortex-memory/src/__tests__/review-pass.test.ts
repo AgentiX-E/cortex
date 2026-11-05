@@ -125,7 +125,10 @@ describe('the review pass asks a second time, about membership', () => {
 
     const audit = seen[1]!;
     expect(audit.toLowerCase()).not.toContain('confirm the count');
-    expect(audit).toContain('corrected count');
+    // The answer may change, and it may also stay: the clause that lets a reviewer agree is the one that
+    // stops "a review happened" from becoming "a review disagreed" (§13.262).
+    expect(audit).toContain('corrected answer');
+    expect(audit).toContain('word for word');
   });
 });
 
@@ -228,7 +231,11 @@ describe('the audit selects evidence the same way the first pass did', () => {
     const memory = system(
       {
         reviewPass: 'audit',
-        maxPromptChars: 900,
+        // §13.262: the audit's instruction grew by the form clause, and the instruction and the evidence
+        // compete for the same room -- which is the property this test is about, not the number 900. The
+        // budget is raised so that the higher-scoring turn still fits; the assertion below is the order the
+        // selection settled on, and it is unchanged.
+        maxPromptChars: 1_300,
         relevanceFor: (_question: string, turn: string) => (turn.includes('blazer') ? 1 : 0.1),
         relevanceUnits: 'turn' as const,
       },
@@ -237,7 +244,7 @@ describe('the audit selects evidence the same way the first pass did', () => {
 
     await memory.answerSessions('How many errands do I have?', [[USER_ONE, ASSISTANT, USER_TWO]]);
 
-    expect(seen[1]!.length).toBeLessThanOrEqual(900);
+    expect(seen[1]!.length).toBeLessThanOrEqual(1_300);
     // The evidence section is what the selection decided; the first pass quoted below it mentions the
     // turn that lost, so the assertion is on the section rather than on the whole prompt.
     const evidence = seen[1]!.slice(0, seen[1]!.indexOf('QUESTION:'));
@@ -317,5 +324,77 @@ describe('the census the artifact reads', () => {
     await memory.answerSessions('How many stops on the way home?', SESSIONS);
 
     expect(memory.auditCensus()).toEqual({ attempted: 2, changed: 2 });
+  });
+});
+
+describe('what the audit does not change', () => {
+  it('leaves the delivery prompt describing retrieval, not the review', async () => {
+    // §13.262. `42054107910` published `promptChars` +530 and a changed `promptDigest` on 117 of the 118
+    // questions the audit touched, while the whole prompt moved by a median of two characters -- so the
+    // artifact said "the delivered bytes changed" for a mechanism that changed no delivered byte. The
+    // digest is the instrument every attribution in this campaign keys on, so a consultation overwriting
+    // it is not a cosmetic defect: it makes a mechanism look like a retrieval change.
+    const memory = system({ reviewPass: 'audit' }, queueLlm([], FIRST, SECOND));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    const prompt = memory.lastPromptText() ?? '';
+    expect(prompt).not.toBe('');
+    // The audit's own instruction, and the thing that would be in a prompt the review built.
+    expect(prompt).not.toContain('FIRST PASS:');
+    expect(prompt).not.toContain('Review that response for MEMBERSHIP only');
+  });
+
+  it('still takes the coverage numbers from the call the answer came from', async () => {
+    // The other half of the same split: `carried` and `admittedEvidence` answer "what was the reader shown
+    // when it produced this answer", and with an audit that is the second consultation. Both fields are read
+    // by the arm's coverage counts and by `goldOverlap`, which would be about discarded evidence if they came
+    // from the first pass.
+    const seen: string[] = [];
+    const memory = system({ reviewPass: 'audit' }, queueLlm(seen, FIRST, SECOND));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    // The second consultation is the one that produced the answer, so it is the one whose context is kept.
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toContain('FIRST PASS:');
+    expect(memory.lastRetrievedContext()?.length).toBeGreaterThan(0);
+  });
+});
+
+describe('the audit instruction and the form of the answer', () => {
+  it('asks for the answer back in the form the first pass used, not for a count', async () => {
+    // §13.262. The instruction said "write one line, exactly `Step 2 — <the corrected count>`", and the
+    // multi-session route is not only counting questions: 40 of `MR`'s 121 golds are counts, and the pass
+    // runs on all of them. `42054107910` is the measurement -- 22 correct answers destroyed and **every one
+    // of them** came back as a bare integer, 17 of them on questions whose gold was a name, a price, a date
+    // or a list (`TikTok` → `2`, `$6` → `2`, `photography and cooking` → `2`). The instruction did that,
+    // not the reader.
+    const seen: string[] = [];
+    const memory = system({ reviewPass: 'audit' }, queueLlm(seen, FIRST, SECOND));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    const audit = seen[1] ?? '';
+    expect(audit).not.toContain('the corrected count');
+    expect(audit).toContain("in the first pass's form");
+    expect(audit).toContain('a count stays a count');
+    // The clause that makes a review able to say "nothing changed" instead of inventing a difference:
+    // 178 of 469 consultations moved the answer, and a reviewer with no way to agree has to disagree.
+    expect(audit).toContain('word for word');
+  });
+
+  it('round-trips a non-count answer the review restated in the same form', async () => {
+    // The contract the instruction now states, exercised end to end: a first pass that named a shop and a
+    // review that found the membership right must return the shop, not the number of things in it.
+    const memory = system(
+      { reviewPass: 'audit' },
+      queueLlm([], 'Thrive Market', 'Step 2 — Thrive Market'),
+    );
+
+    const answer = await memory.answerSessions('Which store did I buy the oats from?', SESSIONS);
+
+    expect(answer).toBe('Thrive Market');
+    expect(memory.auditCensus()).toEqual({ attempted: 1, changed: 0 });
   });
 });

@@ -782,10 +782,43 @@ export class CortexMemory implements SessionAwareMemorySystem {
     admitted: readonly AdmittedTurn[],
     assembled: Pick<AssembledPrompt, 'evidenceChars' | 'carried' | 'prompt'>,
   ): void {
+    this.#recordDelivery(assembled);
+    this.#recordCoverage(admitted, assembled);
+  }
+
+  /**
+   * What the answered call was shown: the window the reader replied from.
+   *
+   * Split from {@link #recordDelivery} because a second consultation makes the two answer different
+   * questions. `lastRetrievedContext` and `lastAdmittedEvidence` are read by the arm's coverage counts and
+   * by `goldOverlap`, and both of those ask "what did the answer come from" -- so an audit that re-selected
+   * evidence has to supply them, even though it did not change what retrieval delivered.
+   */
+  #recordCoverage(
+    admitted: readonly AdmittedTurn[],
+    assembled: Pick<AssembledPrompt, 'carried'>,
+  ): void {
     this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content);
+    this.#lastAdmittedEvidence = admittedEvidenceOf(admitted);
+  }
+
+  /**
+   * What **delivery** produced for this question, as distinct from what the answer came from.
+   *
+   * §13.262, and the two are not the same fact once a run carries a second consultation. Delivery is a
+   * function of the corpus, the embedding, the fusion, the anchors and the budget, and it has to be
+   * comparable across runs of one configuration: `42054107910` showed what happens when it is not, with
+   * `promptChars` **+530** and `promptDigest` changed on 117 of the 118 questions the audit touched, while
+   * `deliveredPromptChars` moved by a median of two characters -- the run published "the bytes changed" for
+   * a mechanism whose input bytes had not moved at all.
+   *
+   * So this writes the three fields that describe the request the *retrieval* built, and the audit branch
+   * below leaves them alone. Coverage (`carried`, `admittedEvidence`) still describes the call the final
+   * answer came from, because that is the window the answer was actually produced against.
+   */
+  #recordDelivery(assembled: Pick<AssembledPrompt, 'evidenceChars' | 'prompt'>): void {
     this.#lastPromptEvidenceChars = assembled.evidenceChars;
     this.#lastPromptText = assembled.prompt;
-    this.#lastAdmittedEvidence = admittedEvidenceOf(admitted);
   }
 
   /**
@@ -1379,10 +1412,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const final = await this.#consult(audit.prompt, 'multi-session');
     if (final !== first) this.#audits.changed += 1;
     this.#lastReview = { first, final, changed: first !== final };
-    // The offer is recorded from the prompt the **answer came from**. Recording the first prompt
-    // would describe a consultation whose answer was discarded, and every coverage count in the
-    // artifact would then be about evidence the reader was not answering from.
-    this.#recordEvidence(
+    // Two facts, two sources (§13.262). Coverage comes from the prompt the **answer came from**:
+    // recording the first pass would describe a consultation whose answer was discarded, and every
+    // coverage count would then be about evidence the reader was not answering from. Delivery comes
+    // from the first pass, because that is the prompt retrieval built -- the audit re-selects evidence
+    // against the room its own instruction needs, so taking delivery from it would report a retrieval
+    // change on every question a *review* touched.
+    this.#recordDelivery(assembled);
+    this.#recordCoverage(
       sessions.flatMap((session) => session.turns),
       audit,
     );
