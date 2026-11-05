@@ -278,7 +278,12 @@ INPUTS = {
     # multi-session, and `operand-gap` adds the abstention route's closing line — so this value is
     # a superset of the one it replaced, and what it was measured at is §13.203.3: one question,
     # converted in all four repetitions, price zero.
-    "cortex_memory_ask": "operands+operand-gap",
+    # §13.248 replaced `operands+operand-gap` with `verbatim`: the reference pipeline's aggregation
+    # contract migrated whole, measured at MR 96/121 (first repetition, 96.3 mean) against 93/94.5,
+    # with the full/partial coverage composition identical to the control (75/46 in both) and the
+    # full band moving 84.00% -> 89.33%. It is the first ask on this arm whose reading is attributable
+    # because the population it is read on did not move.
+    "cortex_memory_ask": "verbatim",
     # §13.64's adopted ranking: dense cosine fused with a rare-keyword channel by reciprocal
     # rank. This line said `retrieval` for six sections after that adoption, because §10.3
     # held BOTH the adoption bullet and §13.17's original one and the registration parser

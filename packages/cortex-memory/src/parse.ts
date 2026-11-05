@@ -51,6 +51,24 @@ const ENUMERATION_STEP_HEADING = /^\s*step\s*\d+\s*[\u2014:-]/i;
 const LABEL_PREFIX = /^[A-Za-z ]{0,20}[:-]\s*/;
 
 /**
+ * The terminator a contract names, and the shapes a model writes instead.
+ *
+ * `Answer:` and `Final answer:`, with a colon or a **spaced** dash. Two narrowings, each forced by a
+ * false positive rather than chosen:
+ *
+ * 1. **Not** `The answer: …`. That is how a prose sentence begins, and since the rule reads the
+ *    closing line, accepting it would cut a sentence's subject off its own answer.
+ * 2. **Not** an unspaced `-`. The conformance suite's fake reader returns `answer-0`, and a separator
+ *    class of `[:\-]` matched the hyphen inside that identifier and answered `0` — a *legitimate*
+ *    answer shortened by three characters. `answer-42` is a plausible model output; `Answer - 42` is a
+ *    label. The space is the difference, so the pattern requires it.
+ *
+ * What is left is the label `ask=verbatim`'s migrated contract names, plus the one variant
+ * (`Final answer:`) that contract's own `Answer: <final answer>` schema invites.
+ */
+const CLOSING_ANSWER_LABEL = /^\s*(?:final\s+)?answer(?:\s*:|\s+[-\u2013\u2014])\s*/i;
+
+/**
  * Turn raw output into an `Answer`.
  *
  * Abstention is recognised only where it constitutes a *decision*: the whole
@@ -72,7 +90,51 @@ export function parseAnswer(raw: string): Answer {
   // responses write the Step 1 list and then the sentinel, and if the heading rule
   // ran first those 29 would be scored as answers. The decline is a decision about
   // the whole response, so it outranks any reading of the response's parts.
-  return stripWrappingQuotes(collapseWhitespaceEdges(afterLastStepHeading(trimmed) ?? trimmed));
+  //
+  // §13.248. The heading is applied first and the closing label to its **result**, not to the raw
+  // response: a reply that writes the label beside the last step (`Step 2 — Answer: 2`) slices to
+  // the literal `Answer: 2`, and `abstention-recovery.ts` records that exact string as the artefact
+  // a previous repair had to work around. Composing the two in this order is what makes that
+  // string impossible to return.
+  const tail = afterLastStepHeading(trimmed) ?? trimmed;
+  return stripWrappingQuotes(collapseWhitespaceEdges(afterClosingLabel(tail) ?? tail));
+}
+
+/**
+ * The text after the last non-empty line's closing label, or `undefined` when that line has none.
+ *
+ * The **last non-empty line**, which is the same rule `isAbstention` applies and for the same
+ * reason: a decision lives on the closing line, and a label on an earlier line is a statement the
+ * reply went on to qualify. A closing label with nothing after it returns the empty string — an
+ * answer, a blank one — rather than falling back to the transcript, which is the defect
+ * `afterLastStepHeading` was built to remove.
+ *
+ * ## Why this exists, with the run that found it
+ *
+ * `ask=verbatim` (§13.246) migrated the reference pipeline's aggregation contract, which ends on a
+ * named terminator instead of asking for the number alone. Run `41860773768` administered it: **94**
+ * of its 121 multi-session records answered in that shape and the arm returned the whole transcript,
+ * `Answer: 2` line included, because no rule in this file had ever read a label on the answer path.
+ * `parse-closing-label.test.ts` pins both halves — the reading, and the fact that the terminator it
+ * reads is the one the contract's rendered prompt actually ends with.
+ *
+ * ## Why it cannot move a published number
+ *
+ * It fires only when the last non-empty line opens with the label. None of this package's other asks
+ * request one — `enumerated` ends with *"Reply with the Step 2 number alone"* — and
+ * `parse-stepped.test.ts` measured a step heading in 0 of the 1,000 questions of runs `38595325261`
+ * and `38828538851`. A rule keyed on a shape the shipped contract never asks for is inert on the
+ * runs that shipped it.
+ */
+function afterClosingLabel(text: string): string | undefined {
+  const lines = text.split('\n');
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]!;
+    if (line.trim().length === 0) continue;
+    const label = CLOSING_ANSWER_LABEL.exec(line);
+    return label === null ? undefined : line.slice(label[0].length);
+  }
+  return undefined;
 }
 
 /**

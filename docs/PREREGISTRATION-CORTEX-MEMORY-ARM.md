@@ -808,8 +808,19 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
   ask moved and the rendering did not, so a run that dropped back to the baseline
   rendering as well would move both at once and attribute the result to neither.
-- `ask: operands+operand-gap` — **registered by §13.203, replacing `enumerated`, which the arm had not
-  run since `40989420944`.** Three things are true at once and only the first was ever written down: §13.34
+- `ask: verbatim` — **registered by §13.248, replacing `operands+operand-gap`.** The value is the
+  reference pipeline's aggregation contract migrated whole: `buildAggregationQaPrompt`'s text, unabridged,
+  with the `item | verb | session date` schema, four per-form Step 2 lines, the "combining is NOT a reason
+  to abstain" licence and the `Answer:` terminal. Run `41860773768` measured it at MR **96 of 121** (first
+  repetition; 96.3 mean over four) against the registered arm's 93 / 94.5, with the full/partial coverage
+  composition **identical to the control to the question** (75 / 46 in both) and the full band moving
+  **84.00% → 89.33%** — the arm now reads better than the reference pipeline on the route where the
+  evidence is complete, with the same reader, the same judge and the same contract. Prediction 1 of
+  §13.246.6 asked for ≥ 96 and got it; §13.248.4 states what the run does **not** establish (the paired
+  first-repetition difference is 2 lost against 5 gained, p = 0.45).
+  **Eighth value of this concept, and the history of the seventh is kept below because it is the
+  measurement this one is read against.** The value it replaces was **registered by §13.203, replacing
+  `enumerated`, which the arm had not run since `40989420944`.** Three things are true at once and only the first was ever written down: §13.34
   set `enumerated`; §13.166 dispatched `operands` and every 500-question run from `41144910162` to
   `41254359622` carried `--set cortex_memory_ask=operands`; and §13.193 called `41185512391` "the
   registered, `operands`" in one table while §10.3 said `enumerated` in another. Nothing failed, because
@@ -27769,3 +27780,200 @@ comparable to the 90.15 / 76.86 figures they were written against.
 The 96,000 axis is not re-opened by this. §13.118.6 closed it on 2× prompt tokens, 2.87× wall clock and
 an absent registered gain; what happened here is that a run was about to re-open a closed axis without
 anyone deciding to.
+
+## 13.248 The migrated contract was administered: +3 MR questions, a coverage composition that did not move, and a parser that never read the terminator
+
+*`41860773768` is §13.246's dispatch — `ask=verbatim`, 500 questions, four repetitions, 48,000
+characters, one declared departure, 85 minutes. This section reads it: the four predictions judged,
+the decomposition that makes the gain attributable, the adoption, and the product defect the run
+exposed on its way through.*
+
+### 13.248.1 The four predictions of §13.246.6, judged
+
+| # | prediction | falsified by | measured | verdict |
+| --- | --- | --- | --- | --- |
+| 1 | MR correct ≥ **96 of 121** | ≤ 94 | **96** first repetition (79.34%), **96.3** mean of four (min 94, max 98) | **true**, margin 0.3 at the mean |
+| 2 | the five routes outside the change set reproduce the control **to the question** | any change | prompts **byte-identical on 379 of 379** (IE 150, ABS 30, KU 72, TR 127); correctness moved **−1 / 0 / +1 / −1** | **false as written**, and the failure it was written to catch did not occur |
+| 3 | MR declines do not exceed the control's shape by 3 or more | +3 or more | **2** against the control's **2** | **true** |
+| 4 | mean `promptChars` within **1%** of the control's | > 2% either way | MR **45,799** against **46,264** = **−1.00%** | **true at the boundary** |
+
+Overall: **90.50%** mean of four (min 90.20, max 90.80) against the registered arm's **90.15%**
+(min 89.40, max 91.00), a delta of **+0.35**.
+
+Per capability, 4-repetition means:
+
+| | IE | MR | KU | TR | ABS | overall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| registered (`41546569106`) | 143.0 | **94.5** | 62.3 | 121.0 | 30.0 | 90.15% |
+| `verbatim` (`41860773768`) | 143.5 | **96.3** | 62.0 | 120.8 | 30.0 | 90.50% |
+| delta | +0.5 | **+1.8** | −0.3 | −0.2 | 0 | **+0.35** |
+
+### 13.248.2 Prediction 2 was falsified by the instrument, not by the assembly
+
+This is the first prediction in the campaign whose falsifier describes the wrong cause, and the run's
+own fields say so:
+
+| capability | prompts byte-identical | records | answer strings that differ | correctness flips |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 150 | 150 | 30 | **1** |
+| ABS | 30 | 30 | 0 | **0** |
+| KU | 72 | 72 | 20 | **1** |
+| TR | 127 | 127 | 124 | **7** |
+| MR | 27 | 121 | 106 | **7** (94 prompts changed) |
+
+`promptDigest` is equal on every one of the 379 records outside the change set, so **no assembly
+failure is possible** — the arm sent the control's bytes. The flips are the reader.
+
+That measurement is worth more than the prediction it falsified: **nine correctness flips on 479
+questions whose prompts did not change is a 1.9% churn rate**, i.e. a noise floor of ±2.3 questions on
+a 121-question route, at `temp=0`. Every MR effect this campaign has measured sits on top of that
+number, and §13.248.4 uses it.
+
+### 13.248.3 The decomposition, and why this run is attributable where §13.243 was not
+
+§13.243's redistribution moved seven questions across the coverage line and the route's accuracy did
+not move. This run moved nothing across it. The split below is the one §13.243.2 used — a question is
+**full** when every gold turn the retrieval **surfaced** (`rank ≥ 0`) reached the window
+(`rank < turns`) — and it is now `readout-arm-run.py --split`, because that section computed it with a
+script that was never committed and the definition had to be recovered from three candidate
+definitions before the numbers reproduced.
+
+| run | all 121 | full band | partial band | mean depth |
+| --- | ---: | ---: | ---: | ---: |
+| registered `41546569106` | 76.86% (93) | **75 @ 84.00%** | **46 @ 65.22%** | 175.2 |
+| redistribution `41773546221` | 76.03% (92) | 82 @ 89.02% | 39 @ 48.72% | 197.8 |
+| `verbatim` `41860773768` | **79.34% (96)** | **75 @ 89.33%** | **46 @ 63.04%** | 174.1 |
+
+**The composition is identical to the control to the question: 75 and 46.** So:
+
+1. The +3 comes from the **full band**, +5.33 points on 75 questions = **+4 correct**, with the partial
+   band giving one back (−2.18 points on 46 = −1).
+2. No question crossed the coverage line, so the reading is not a composition effect. That is the
+   distinction §13.243 could not make.
+3. **In the full band the arm now reads 89.33% against the reference pipeline's 85.95% on the same
+   route**, with the same reader, the same judge and — since this run — the same contract.
+
+The third row is the one to keep. For as long as the two arms had different contracts, "we lose to
+them on MR" was uninterpretable: it could have been the prompt. It is now measurable, and on the
+population where the evidence is complete the answer is that we do not lose.
+
+**The evidence covariate, stated rather than waved.** 92 of the 121 MR questions carry a different
+turn list, because the block is longer and the room is at 95.4% of its budget, so the tail moves:
+mean depth **−1.48 turns**, gold turns carried **−0.017** (one turn lost across the route). §13.243
+already priced that axis at the other end — it moved MR depth **+23 turns (+14%)** and bought
+**nothing** — so a −1.5-turn move sits inside a region a registered experiment measured as flat. The
+partition being identical to the question is the stronger form of the same statement, and it is
+measured rather than argued.
+
+### 13.248.4 What this run does not establish
+
+1. **The +3 is not significant on one dispatch.** Paired over the 121 MR questions, first repetition:
+   two lost, five gained, McNemar exact **p = 0.45**. Overall 7 lost against 9 gained, **p = 0.80**.
+   The 4-repetition means move 94.5 → 96.3, which is 1.8 questions against the ±2.3-question noise
+   floor measured in §13.248.2 — a gain of about 0.8 noise widths.
+2. **It does not close the MR gap.** 79.34% against the reference's 85.95% on this run leaves 8
+   questions. §13.243.2's conclusion stands and is now better supported: an arm that delivers 96.6% of
+   the in-pool gold and reads 79% has exhausted the room.
+3. **It does not say `verbatim` is better prose.** It says the reference's *schema, Step 2 forms,
+   decline licence and terminator* are worth about two questions over `operands+operand-gap` at equal
+   budget — and, in the full band, five points of accuracy.
+
+### 13.248.5 The defect the run exposed: the contract names a terminator the parser never read
+
+Run `41860773768`'s MR replies came back in the contract's shape, and the arm returned the whole
+transcript. **94 of 121 records have `answer` equal to `rawOutput`**, `Answer: 2` line included:
+
+```
+- Peace lily | acquired | 2023/05/20
+- Succulent | acquired | 2023/05/20
+- Snake plant | acquired | 2023/05/25 — excluded: outside "the last month"
+
+Answer: 2
+```
+
+`parseAnswer` had two readers — the abstention rule on the closing line, and the step-heading rule —
+and **neither read a label on the answer path**. `ask=verbatim` is the first ask that ends on a named
+terminator instead of *"reply with the number alone"*, so it produced a shape nothing in this package
+had ever been asked to read.
+
+Two things follow, and they are different:
+
+- **It did not move the number.** 49 of the 94 transcripts contain the gold verbatim, `judgeScorer`
+  reads the answer *and* the ground truth, and the judge said correct. So 79.34% is a real reading of
+  the reader, not a parsing artefact — verified by the direct check that **0 of the 22 wrong records
+  whose `Answer:` line exists would match the gold** if the line were read.
+- **It is a product defect anyway.** A user of `ask=verbatim` receives a four-line list where they
+  asked for a number. That the judge can find the number inside the transcript is the judge working,
+  not the product.
+
+The repair is `afterClosingLabel` in `parse.ts`: the **last non-empty line** opening with
+`Answer:` / `Final answer:` terminates the reply. Same rule `isAbstention` already applies, for the
+same reason — a decision lives on the closing line — and composed **after** the heading rule so that
+`Step 2 — Answer: 2` cannot return the literal `Answer: 2` (`abstention-recovery.ts` records that
+string as an artefact a previous repair had to work around).
+
+**Two narrowings, each forced by a false positive rather than chosen:**
+
+| narrowing | the false positive | why it matters |
+| --- | --- | --- |
+| `The answer: …` is **not** a label | it is how a prose sentence begins, and the rule reads the closing line | accepting it cuts a sentence's subject off its own answer |
+| an unspaced `-` is **not** a separator | the conformance suite's fake reader answers `answer-0`, and `[:\-]` matched the hyphen inside the identifier and returned `0` | `answer-42` is a plausible model output; `Answer - 42` is a label. **The space is the deciding character** |
+
+**And the rule is provably inert on what has been published:** applied to the raw outputs of
+`41546569106`, `41773546221` and `41845802020` — 1,060 records — it fires **0** times, and on
+`41860773768` it fires exactly **94**. So it cannot move an archived number, and it reads the shape it
+was built for.
+
+The coupling is a test, not a paragraph. `parse-closing-label.test.ts` builds the **real** `verbatim`
+prompt, asserts its last non-empty line is the `Answer:` cue the assembly places there, and drives the
+parser with a reply that ends in it — the same form `parse-stepped.test.ts` uses for the headings, and
+strictly stronger than comparing two literals because it also fails if the contract stops reaching the
+route.
+
+### 13.248.6 A misattribution inside §13.246.6, corrected
+
+§13.246.6's prediction 1 read *"the registered arm is 92/121 mean 93.5"*. It is not. The registered
+arm (`41546569106`) is **93 first repetition, 94.5 mean**; 92 and 93.5 belong to `41773546221`, the
+redistribution run §13.243.4 **rejected**. So the comparison §13.246.6 set up was against a rejected
+run's numbers, and it flattered this one: the honest harvest is **+1.8 questions**, not +2.8.
+
+The threshold itself is unaffected — it was written as an absolute (≥ 96), which is why it could be
+inherited from §13.239/§13.243 at all — but the sentence beside it was wrong in the direction that
+makes a result look better than it is. That is the fourth instance this campaign has recorded of *a
+number that is real being attached to the wrong run*, and the only repair that has ever held is
+naming the run id in the same clause as the number: §13.246.6 did name two ids and got them
+crossed, so the rule is now **one id per sentence**.
+
+### 13.248.7 The adoption, and the dispatch it requires
+
+`ask=verbatim` **is registered** (§10.3 and `dispatch-cortex-memory-ab.py`'s `INPUTS`, held together
+by `test_preregistration_config.py`). The grounds, in order of weight:
+
+1. The pre-registered criterion was met (96 ≥ 96) and no capability regressed beyond the noise floor.
+2. The population the change is read on **did not move** (75/46 in both runs), which is what makes the
+   full band's +5.33 points attributable to the contract.
+3. In the full band the arm now beats the pipeline it loses to, on one contract instead of two.
+4. It removes a difference rather than adding one: the remaining MR gap is now *our evidence against
+   theirs*, with the prompt held.
+
+What the adoption costs: nothing measurable — `promptChars` −1.0%, no extra calls
+(`bareRetry` 65/65 as before, `recovery` 0/0), overall +0.35%.
+
+What it requires: **the parser fix changes MR's answer text**, so MR must be re-measured before the
+registered headline can be quoted again. `41860773768`'s 79.34% was produced with the whole transcript
+as the answer; the next run produces the `Answer:` line, and a sharper input to the judge can move the
+number in either direction. So the next dispatch is the registered configuration with both changes —
+which is a confirmation of §13.246.6's prediction 1 on a second draw **and** the first measurement of
+the parser repair.
+
+Predictions, written before it runs:
+
+| # | prediction | falsified by | meaning if falsified |
+| --- | --- | --- | --- |
+| 1 | MR ≥ **96 of 121** on a second independent dispatch | ≤ 94 | §13.248.4's caution was right and the adoption rests on one draw; revert to `operands+operand-gap` and re-open the axis |
+| 2 | full-band accuracy ≥ **87%** (the +5.33 held to within one question) | < 87% | the full-band gain was the reader's churn, not the contract |
+| 3 | MR `answer` equals `rawOutput` on **0** records | > 0 | the parser repair does not reach the shape it was built for |
+| 4 | the four capabilities outside the change set stay within **±2 questions** of 143.5 / 62.0 / 120.8 / 30.0 | any further | the noise floor is wider than §13.248.2 measured |
+
+Prediction 3 is a *product* assertion rather than a benchmark one, and it is the reason this dispatch
+cannot be folded into a later one.

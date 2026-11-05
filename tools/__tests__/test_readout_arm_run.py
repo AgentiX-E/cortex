@@ -3481,3 +3481,115 @@ class TestWhatAFailedRunLeftBehind:
         r = self._run(tmp_path, self._record(total=0, reached=0, baselineAnswers=[], featureAnswers=[]))
         assert r.returncode == 0, r.stderr
         assert 'no questions in the dataset' in r.stdout, r.stdout
+
+
+class TestTheCoverageSplit:
+    """`--split`: a question is full when every gold turn the pool surfaced reached the window.
+
+    §13.243.2 chose the next MR experiment from this partition and computed it with an
+    uncommitted script. Reading the same two runs through `--coverage` instead gives a different
+    partition -- `--coverage` bands `carried / total`, this splits on where the **surfaced** gold
+    sat -- and on run `41773546221` the two disagree by seven questions and by an entirely
+    different account of what limits the route. So the definition is a mode with a test.
+    """
+
+    def _report(self, questions: list[dict]) -> dict:
+        return {
+            'dataset': 'longmemeval',
+            'questionCount': len(questions),
+            'questions': questions,
+            'baseline': {'system': 'reference-pipeline', 'metrics': {'accuracy': 0.5}},
+            'feature': {'system': 'cortex-memory', 'metrics': {'accuracy': 0.5}},
+            'ablation': {'delta': 0.0},
+            'runs': 4,
+        }
+
+    def _question(
+        self,
+        identifier: str,
+        ranks: list[int],
+        turns: int,
+        correct: bool,
+        capability: str = 'MR',
+    ) -> dict:
+        return {
+            'questionId': identifier,
+            'capability': capability,
+            'correct': correct,
+            'answer': '2' if correct else '1',
+            'rawOutput': '2' if correct else '1',
+            'groundTruth': '2',
+            'goldOverlap': {'carried': 1, 'total': 2, 'pool': 2, 'goldRanks': ranks},
+            'windowComposition': {'turns': turns, 'offered': turns, 'offeredChars': 0, 'unscoredChars': 0},
+        }
+
+    def _run(self, tmp_path: Path, report: dict):
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--split', str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _row(stdout: str, capability: str = 'MR') -> list[str]:
+        """The row's fields, positionally: cap, n, acc, full n, full acc, part n, part acc, depth."""
+        line = next(row for row in stdout.splitlines() if row.split() and row.split()[0] == capability)
+        return line.split()
+
+    def test_a_surfaced_gold_turn_outside_the_window_is_partial(self, tmp_path: Path) -> None:
+        # ranks [4, 30], window 10: retrieval offered both, the room held one. That is the
+        # population a room change can move, and it must read as partial rather than as an
+        # ordinary miss.
+        report = self._report([self._question('p', [4, 30], 10, correct=True)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert fields[1] == '1'  # the roster
+        assert fields[3] == '0'  # full: none
+        assert fields[5] == '1'  # partial: the one question
+        assert fields[6] == '100.00%'  # and its accuracy, beside its own denominator
+
+    def test_a_gold_turn_the_pool_never_surfaced_is_neither(self, tmp_path: Path) -> None:
+        # `-1` means the ranking never reached it. A wider room cannot fix that and a better ask
+        # cannot either, so folding it into "partial" would price a pool change as a reading
+        # change and make the band mean two things.
+        report = self._report([self._question('u', [-1, -1], 10, correct=False)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 2
+        assert 'goldRanks' in r.stderr
+
+    def test_a_record_without_a_window_is_not_read_as_full(self, tmp_path: Path) -> None:
+        broken = self._question('b', [1], 10, correct=True)
+        broken['windowComposition'].pop('turns')
+        r = self._run(tmp_path, self._report([broken]))
+        assert r.returncode == 2
+        assert 'windowComposition.turns' in r.stderr
+
+    def test_the_two_halves_are_reported_separately_and_sum_to_the_roster(
+        self, tmp_path: Path
+    ) -> None:
+        report = self._report(
+            [
+                self._question('f1', [1], 10, correct=True),
+                self._question('f2', [2], 10, correct=False),
+                self._question('p1', [1, 40], 10, correct=True),
+                self._question('p2', [1, 40], 10, correct=False),
+            ]
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert fields[1] == '4'  # roster
+        assert (fields[3], fields[5]) == ('2', '2')  # the halves partition it
+        # each half printed beside its own denominator, and neither inherits the roster's
+        assert fields[2] == '50.00%' and fields[4] == '50.00%' and fields[6] == '50.00%'
+
+    def test_the_split_refuses_a_report_with_no_ranks_at_all(self, tmp_path: Path) -> None:
+        question = self._question('n', [1], 10, correct=True)
+        question.pop('goldOverlap')
+        r = self._run(tmp_path, self._report([question]))
+        assert r.returncode == 2
+        assert 'both' in r.stderr

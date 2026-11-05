@@ -31,6 +31,7 @@ Usage:
     python3 tools/readout-arm-run.py path/to/benchmark-cortex-memory-ablation-report.json
     python3 tools/readout-arm-run.py --reference path/to/report.json
     python3 tools/readout-arm-run.py --coverage path/to/report.json
+    python3 tools/readout-arm-run.py --split path/to/report.json
     python3 tools/readout-arm-run.py --declines path/to/report.json
     python3 tools/readout-arm-run.py --union path/to/report.json
     python3 tools/readout-arm-run.py --counted path/to/report.json
@@ -2191,6 +2192,104 @@ def partial_section(record: dict) -> tuple[str, str]:
 RANK_CUTS = (8, 16, 32)
 
 
+def served_in_full(question: dict) -> bool | None:
+    """Whether every gold turn the pool **surfaced** reached the window.
+
+    `None` when the record cannot answer the question: no `goldOverlap`, no `goldRanks`, no
+    `windowComposition.turns`, or no gold turn the pool surfaced at all (a question whose gold the
+    ranking never reached is neither full nor partial -- what it needs is a wider pool, and folding
+    it into "partial" would price a room change as a reading change).
+
+    The definition is `rank >= 0` means "this gold turn was offered by the retrieval", and
+    `rank < turns` means "the window had room for it". So a question is partial exactly when
+    retrieval did its job and the room did not, which is the population a coverage treatment can
+    move.
+    """
+    overlap = question.get('goldOverlap')
+    composition = question.get('windowComposition')
+    if not isinstance(overlap, dict) or not isinstance(composition, dict):
+        return None
+    ranks = overlap.get('goldRanks')
+    turns = composition.get('turns')
+    if not isinstance(ranks, list) or not isinstance(turns, int):
+        return None
+    surfaced = [rank for rank in ranks if isinstance(rank, int) and rank >= 0]
+    if not surfaced:
+        return None
+    return all(rank < turns for rank in surfaced)
+
+
+def split_section(questions: list[dict]) -> tuple[str, int]:
+    """Accuracy at full and at partial coverage, per capability.
+
+    ## Why this is a mode and not a paragraph
+
+    §13.243.2 chose the next MR experiment from this split -- *"accuracy, full coverage 75 -> 82,
+    84.0% -> 89.0%; accuracy, partial coverage 65.2% -> 48.7%"* -- and computed it with a script
+    that was never committed. Run `41860773768` then could not be read against it: the same run read
+    through `--coverage`'s five bands says nothing about this partition, because `--coverage` bands
+    `carried / total` and this splits on **where the surfaced gold sat**. Two definitions, both
+    legitimate, and a reader who takes one for the other gets 85 against 75 questions and a
+    completely different story about what limits MR.
+
+    So the definition lives here, with a test, and a run can be read against another one.
+
+    ## What each half licenses
+
+    A **partial** question is one where retrieval offered a gold turn the window could not hold. Any
+    change to the room moves population between the bands without touching the reading, which is what
+    §13.243 measured and why its headline did not move. A **full** question has every surfaced gold
+    turn in front of the reader, so its accuracy is a statement about the contract and the reader
+    with the retrieval variable held fixed -- the only population on which an ask change is cleanly
+    attributable.
+    """
+    rows: list[tuple[str, list[dict], list[dict], list[dict]]] = []
+    measured = 0
+    for capability in sorted({question.get('capability') for question in questions if question.get('capability')}):
+        roster = [question for question in questions if question.get('capability') == capability]
+        full = [question for question in roster if served_in_full(question) is True]
+        partial = [question for question in roster if served_in_full(question) is False]
+        measured += len(full) + len(partial)
+        if not full and not partial:
+            continue
+        rows.append((capability, roster, full, partial))
+    if not rows:
+        return '', 0
+
+    def accuracy(roster: list[dict]) -> tuple[int, float]:
+        correct = sum(1 for question in roster if question.get('correct'))
+        return correct, (100.0 * correct / len(roster) if roster else 0.0)
+
+    lines: list[str] = [
+        '',
+        'coverage split (a question is full when every gold turn the pool surfaced reached the window)',
+        f"  {'capability':10s} {'n':>4s} {'acc':>7s}   {'full n':>6s} {'acc':>7s}   {'part n':>6s} {'acc':>7s}   {'depth':>6s}",
+    ]
+    for capability, roster, full, partial in rows:
+        correct, overall = accuracy(roster)
+        full_correct, full_accuracy = accuracy(full)
+        part_correct, part_accuracy = accuracy(partial)
+        depths = [
+            question['windowComposition']['turns']
+            for question in roster
+            if isinstance(question.get('windowComposition'), dict)
+            and isinstance(question['windowComposition'].get('turns'), int)
+        ]
+        depth = f'{sum(depths) / len(depths):.1f}' if depths else '-'
+        lines.append(
+            f'  {capability:10s} {len(roster):4d} {overall:6.2f}%   '
+            f'{len(full):6d} {full_accuracy:6.2f}%   {len(partial):6d} {part_accuracy:6.2f}%   {depth:>6s}'
+        )
+        del correct, full_correct, part_correct
+    lines.append(
+        '  a partial question is one where retrieval offered a gold turn the room could not hold, so a'
+    )
+    lines.append(
+        '  room change moves population between the bands; a full question is where an ask change is cleanly readable'
+    )
+    return '\n'.join(lines), measured
+
+
 def ranks_section(questions: list[dict]) -> tuple[str, int]:
     """How many of a question's gold turns sit in the top 8 / 16 / 32 of the ordered pool.
 
@@ -4253,6 +4352,11 @@ def main(argv: list[str]) -> int:
         help='print the gold-coverage table instead of the run summary',
     )
     parser.add_argument(
+        '--split',
+        action='store_true',
+        help='print the full/partial coverage split instead of the run summary',
+    )
+    parser.add_argument(
         '--declines',
         action='store_true',
         help='print the decline table by Step 1 content instead of the run summary',
@@ -4499,6 +4603,18 @@ def main(argv: list[str]) -> int:
                 'beside its `total`, so these bands are NOT comparable against a run whose '
                 'denominator was the dataset.'
             )
+        print(section)
+        return 0
+
+    if args.split:
+        section, measured = split_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no `goldRanks` beside a `windowComposition.turns`. The split needs '
+                'both: which gold turns retrieval surfaced, and how deep the window went.',
+                file=sys.stderr,
+            )
+            return 2
         print(section)
         return 0
 
