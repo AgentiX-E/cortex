@@ -847,6 +847,15 @@ export function buildQuestionRecords(
  * units in hand the test is that statement itself, and the workaround -- and the
  * single-separator assumption it rests on -- is gone.
  *
+ * ## Why `carried` is now accompanied by the flags it counts
+ *
+ * `carried` answers "how many" and the strata this campaign built on it needed "which" (§13.253).
+ * A gold turn's rank is not its delivery: `rank >= turns` happens for 48 delivered gold turns on
+ * `41860773768` because the window is not a prefix of the ranking, and `rank < 0` happens for
+ * delivered golds that the room bought past the scored pool. `goldDelivered` is the measurement
+ * the class `carried` could only summarise, and `carried` is recomputed from the same predicate
+ * rather than beside it, so the two cannot disagree.
+ *
  * ## Why `null` rather than a zero object
  *
  * `[]` and an absent annotation both mean "there is nothing to measure", and a
@@ -884,6 +893,9 @@ export function goldOverlapOf(
   return {
     carried,
     total: goldTurns.length,
+    // Per-gold delivery, so "which gold is missing" is readable and not inferred from a rank.
+    // `carried` above is this same predicate counted, which is the redundancy the tests assert.
+    goldDelivered: goldTurns.map((gold) => retrieved.includes(gold)),
     // Spread rather than assigned `undefined`, so a caller that consulted no ranking
     // gets the two-field object it got before this parameter existed -- byte-identical in
     // JSON, which is what keeps every archived artifact's meaning unchanged.

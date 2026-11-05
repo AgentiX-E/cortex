@@ -3291,12 +3291,14 @@ describe('the arm records how much of the gold the ranking offered', () => {
     expect(await overlapWith(() => [OTHER])).toEqual({
       carried: 0,
       total: 1,
+      goldDelivered: [false],
       pool: 0,
       goldRanks: [-1],
     });
     expect(await overlapWith(() => [GOLD, OTHER])).toEqual({
       carried: 0,
       total: 1,
+      goldDelivered: [false],
       pool: 1,
       goldRanks: [0],
     });
@@ -3308,7 +3310,7 @@ describe('the arm records how much of the gold the ranking offered', () => {
     // is under assertion is that `pool` is not among the keys.
     const overlap = (await overlapWith(undefined)) as Record<string, number> | null;
     expect(overlap).not.toBeNull();
-    expect(Object.keys(overlap!).sort()).toEqual(['carried', 'total']);
+    expect(Object.keys(overlap!).sort()).toEqual(['carried', 'goldDelivered', 'total']);
   });
 });
 

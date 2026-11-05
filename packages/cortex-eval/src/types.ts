@@ -491,6 +491,38 @@ export type GoldOverlap = {
    * reachable". `pool` says how many arrived; this says how nearly.
    */
   readonly goldRanks?: readonly number[] | undefined;
+  /**
+   * Whether each gold turn reached the reader, in the same order as {@link GoldOverlap.goldRanks}.
+   *
+   * ## Why a count was not enough
+   *
+   * {@link GoldOverlap.carried} says how many arrived; it cannot say **which**. Every question this
+   * campaign classified as "the ranking missed the gold" was classified from `goldRanks` alone, and
+   * that inference is invalid in two independent ways (§13.253):
+   *
+   * 1. `rank >= turns` is not "cut". `turns` counts every delivered turn, including ones the
+   *    ranking never scored, and the admission loop skips a turn that does not fit and keeps going
+   *    -- so the delivered set is not a prefix of the ranking. On `41860773768` **48 questions
+   *    carry a gold ranked beyond `turns` that the reader nevertheless received**.
+   * 2. `rank < 0` is not "missing". A gold the ranking never scored is admitted by leftover room,
+   *    and on that run **16 questions were reported as pool-missing with `carried == total`**.
+   *
+   * So "some gold is missing" and "some gold was never surfaced" can both be true while the missing
+   * gold is not the unsurfaced one. Without these flags the intersection is not observable, and a
+   * stratum built on it is a guess wearing a column header.
+   *
+   * ## The identity
+   *
+   * `goldDelivered.filter(Boolean).length === carried` and `goldDelivered.length === total`. Both
+   * are redundancies in the same sense `pool` is, and both are asserted rather than trusted: a
+   * producer that fills one and computes the other from a different list is the defect the
+   * one-implementation rule in `goldOverlapOf` exists to prevent.
+   *
+   * Absent on artifacts that predate it, which is why its absence means "not recorded" rather than
+   * "nothing delivered" -- `readout-arm-run.py --strata` keeps a third column for exactly that
+   * state instead of reading the silence as a measurement.
+   */
+  readonly goldDelivered?: readonly boolean[] | undefined;
 };
 
 /** A count's spread across repetitions: the smallest, the mean and the largest. */

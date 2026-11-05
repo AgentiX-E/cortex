@@ -264,16 +264,25 @@ describe('the roster carries each question gold coverage', () => {
     expect(await overlapOf(['a turn', GOLD, 'another turn'], [GOLD])).toEqual({
       carried: 1,
       total: 1,
+      goldDelivered: [true],
     });
   });
 
   it('reports the miss when the carried context does not', async () => {
-    expect(await overlapOf(['a turn', 'another turn'], [GOLD])).toEqual({ carried: 0, total: 1 });
+    expect(await overlapOf(['a turn', 'another turn'], [GOLD])).toEqual({
+      carried: 0,
+      total: 1,
+      goldDelivered: [false],
+    });
   });
 
   it('counts a partial carry as partial rather than as a pass or a fail', async () => {
     const second = '[2023/02/02 (Thu) 00:00] user: a second gold turn';
-    expect(await overlapOf(['a turn', GOLD], [GOLD, second])).toEqual({ carried: 1, total: 2 });
+    expect(await overlapOf(['a turn', GOLD], [GOLD, second])).toEqual({
+      carried: 1,
+      total: 2,
+      goldDelivered: [true, false],
+    });
   });
 
   it('is a membership test on the units, not a search through a rendered string', async () => {
@@ -284,6 +293,7 @@ describe('the roster carries each question gold coverage', () => {
     expect(await overlapOf([`a turn and ${GOLD} too`], [GOLD])).toEqual({
       carried: 0,
       total: 1,
+      goldDelivered: [false],
     });
   });
 

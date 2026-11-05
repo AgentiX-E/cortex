@@ -2291,97 +2291,143 @@ def split_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), measured
 
 
-# The three populations `--strata` separates, named here so a test can assert the spelling a
-# reader of the table sees rather than a literal repeated in two places.
-STRATUM_EXACT = 'exact'
-STRATUM_DEPTH = 'depth'
-STRATUM_POOL = 'pool'
+# The four states `--strata` separates. Three are a partition of every question the artifact can
+# decide; the fourth is what an artifact that predates `goldDelivered` leaves behind, printed as a
+# count rather than guessed at.
+STRATUM_COMPLETE = 'complete'
+STRATUM_ROOM_CUT = 'room-cut'
+STRATUM_UNSURFACED = 'unsurfaced'
+STRATUM_UNDECIDABLE = 'undecidable'
+STRATA = (STRATUM_COMPLETE, STRATUM_ROOM_CUT, STRATUM_UNSURFACED, STRATUM_UNDECIDABLE)
 
 
 def stratum_of(question: dict) -> str | None:
     """Which stratum a record is in, or `None` when it does not carry the evidence to say.
 
-    ## The distinction `--split` cannot make, and the cost of not making it
+    ## What this replaced, and why the replacement was itself wrong
 
-    `--split` files two unlike states under "partial": a question whose gold the room could not
-    hold, and a question whose gold the ranking never offered. They have opposite repairs -- a
-    deeper window, or a different ranking -- and on run `41860773768` they read **18 to 20 points
-    apart inside the same capability**: MR depth-only 17 questions at 76.5%, MR pool-missing 41 at
-    63.4%; KU 43 at 93.0% against 24 at 75.0%. Averaging those into "partial" produced the reading
-    that MR's partial band "lacks boundary rather than quantity", which is true of one half and
-    false of the other -- the half that is 20 points worse is the one where the ranking missed.
+    §13.252 read delivery off `goldRanks` -- `rank < turns` meant "the window held it" and `rank < 0`
+    meant "the ranking never surfaced it". Both readings are invalid, and `41860773768` shows it
+    twice:
 
-    ## The definitions
+    * `turns` counts **every** delivered turn, including ones the ranking never scored, and the
+      admission loop skips a turn that does not fit and keeps going -- so the delivered set is not a
+      prefix of the ranking. **48 questions carry a gold ranked beyond `turns` that the reader
+      nevertheless received**, and the old rule filed all 48 under "depth-limited".
+    * a gold the ranking never scored is admitted by leftover room, so `rank < 0` does not mean the
+      reader did not get it. **16 questions were filed as "pool-missing" with `carried == total`.**
 
-    `exact` -- every gold turn the dataset names was surfaced by the ranking (`rank >= 0`) **and**
-    the window held all of them (`rank < turns`). No retrieval or room change can improve the
-    evidence this reader saw.
+    `GoldOverlap.carried` is the delivery count and `goldDelivered` is the delivery itself. The rank
+    array answers a different question -- "did the ranking ever offer it" -- and the two only agree
+    when the window is a prefix of the ranking and nothing is admitted past the pool.
 
-    `depth` -- every gold turn was surfaced, at least one below the cut. Reachable by a deeper
-    window with the ranking held fixed, so its accuracy is the reading a depth treatment targets.
+    ## The four states
 
-    `pool` -- at least one gold turn was never surfaced. No window reaches it; the repair is the
-    ranking. This population also contains questions that lose *both* (a surfaced gold below the
-    cut *and* a missing one), which is why it is defined by the missing gold rather than by the
-    cut: the missing gold is the part no room change can fix.
+    `complete` -- every gold turn reached the reader. Whatever the ranks say, nothing is missing, so
+    neither a deeper room nor a better ranking can change the evidence this question was answered
+    from.
 
-    ## Why `-1` is not "depth"
+    `room-cut` -- not every gold arrived, **and** every gold the dataset names was surfaced. The
+    missing part was in the pool and the window did not buy it. This is the population a depth
+    treatment targets, and the only one it can target.
 
-    `-1` is the ranking's own statement that it did not surface the turn, and its magnitude carries
-    no rank. Reading it as "very deep" would price a ranking repair as a room repair, which is the
-    conflation `served_in_full`'s docblock already refuses for its own partition.
+    `unsurfaced` -- not every gold arrived, and at least one that did not arrive was never surfaced
+    either. No window reaches it.
+
+    `undecidable` -- not every gold arrived and some gold was never surfaced, but the record has no
+    `goldDelivered`, so "the unsurfaced gold" and "the gold that did not arrive" cannot be shown to
+    be the same turn. On `41860773768` this is **145 questions**, and it is why the field exists: the
+    archived artifact can say that 145 questions lack a gold turn and that 145 contain an unsurfaced
+    gold, and it cannot say how many lack *because* it was unsurfaced.
+
+    `None` rather than a fifth state for a record that cannot be classified at all: no `goldOverlap`
+    (no gold was measured), no ranks (no ranking was consulted, so the surfaced question is
+    meaningless), or flags that disagree with `carried` -- a summary that contradicts its own
+    measurement is a producer defect, not a population.
     """
     overlap = question.get('goldOverlap')
-    composition = question.get('windowComposition')
-    if not isinstance(overlap, dict) or not isinstance(composition, dict):
+    if not isinstance(overlap, dict):
         return None
+    carried = overlap.get('carried')
+    total = overlap.get('total')
     ranks = overlap.get('goldRanks')
-    turns = composition.get('turns')
-    if not isinstance(ranks, list) or not isinstance(turns, int):
+    if not isinstance(carried, int) or not isinstance(total, int) or total <= 0:
         return None
-    if not ranks:
+    if not isinstance(ranks, list) or len(ranks) != total:
         return None
     if any(not isinstance(rank, int) for rank in ranks):
         return None
-    surfaced = [rank for rank in ranks if rank >= 0]
-    if len(surfaced) != len(ranks):
-        return STRATUM_POOL
-    return STRATUM_EXACT if all(rank < turns for rank in surfaced) else STRATUM_DEPTH
+    # The flags first, when the record has them, because they are the measurement `carried`
+    # summarises. A summary that disagrees with its own measurement is a producer defect: the record
+    # is dropped rather than classified from whichever column the classifier trusts more.
+    delivered = overlap.get('goldDelivered')
+    if isinstance(delivered, list) and len(delivered) == total:
+        if any(not isinstance(flag, bool) for flag in delivered):
+            return STRATUM_UNDECIDABLE
+        if sum(delivered) != carried:
+            return None
+        missing = [index for index, flag in enumerate(delivered) if not flag]
+        if not missing:
+            return STRATUM_COMPLETE
+        return STRATUM_ROOM_CUT if all(ranks[index] >= 0 for index in missing) else STRATUM_UNSURFACED
+    # The archived path: `carried` still answers "how many", and the ranks answer "did the ranking
+    # ever offer it", but the intersection is not observable.
+    if carried >= total:
+        return STRATUM_COMPLETE
+    if all(rank >= 0 for rank in ranks):
+        return STRATUM_ROOM_CUT
+    return STRATUM_UNDECIDABLE
+
+
+def _gold_total(question: dict) -> int:
+    """The gold turns this question's policy admits, or `0` when the record cannot say."""
+    overlap = question.get('goldOverlap')
+    total = overlap.get('total') if isinstance(overlap, dict) else None
+    return total if isinstance(total, int) else 0
 
 
 def strata_section(questions: list[dict]) -> tuple[str, int]:
-    """Accuracy in each of the three populations, per capability, and the reach a deeper room buys.
+    """Where each question stands, in four states, each beside its own accuracy.
 
-    ## What this replaced
+    ## What the first version of this table said, and what it cost
 
-    §14.41.3 printed a column headed "coverable at any depth" whose every row was identical to the
-    run's current reach at `maxPromptChars = 48000`. It could not have been anything else: the value
-    was a copy of the reach row above it, and the sentence built on it -- *"53.4% of the questions
-    are not coverable at any depth"* -- is false for 142 of those 267. On `41860773768` the honest
-    split is 197 exact, 142 depth-only, 161 pool-missing, so a window with no budget would reach
-    **339 of 500 (67.8%)**, not 233.
+    §13.252 replaced a column that had restated its own row above it with a three-way split --
+    exact 197 / depth 142 / pool 161 -- and drew two conclusions from it: that a deeper window is
+    worth nothing because the 142 it would reach already read 93.66%, and that MR's room does matter
+    for 17 of them. Both rest on reading delivery off the rank array, and neither survives being
+    read off `carried` (§13.253).
 
-    That correction does not rescue the depth hypothesis, and this mode exists to show why rather
-    than to argue it: the 142 questions a deeper room would reach already read **93.66%**, against
-    93.40% for the exact population. The room is not what limits them. What limits the run is the
-    161 whose ranking missed a gold turn, at 83.85%.
+    ## What the corrected table says
 
-    ## Why the price of a deeper room is not printed here
+    On `41860773768`: **255 complete at 93.33%, 100 room-cut at 95.00%, 145 undecidable at 82.07%,
+    and 0 unsurfaced** -- zero because an artifact without `goldDelivered` cannot prove that the
+    gold it did not deliver was the gold the ranking never surfaced.
 
-    The artifact carries the text of the turns that were delivered and how many were delivered. It
-    does not carry the ranking's per-candidate character cost, so the characters a deeper cut would
-    have spent cannot be read -- only estimated from the mean turn length, which is how §14.42's
-    oracle came to be priced against a population it had mis-classified. `--room` prices the smaller
-    direction exactly for the same reason: a prefix of the delivered window is the one thing this
-    artifact fully describes.
+    The room is exonerated exactly rather than by inference: `room-cut` is by definition the
+    population a deeper window would change, and on this run it reads **above** the complete
+    population. What is left at 82.07% is a population whose deficit cannot be attributed to
+    retrieval from this artifact at all, which is the finding that replaces the one the first table
+    claimed.
+
+    ## Why the price of the missing turns is not printed here
+
+    The artifact carries the delivered turn texts and their count. It does not carry the ranking's
+    per-candidate cost, so the characters a deeper cut would spend cannot be read; and because
+    delivery is not a prefix of the ranking, a gold's `rank` is not the number of turns that would
+    have to be added either. The column that used to report `max(rank) + 1 - turns` in turns was
+    therefore measuring a quantity that does not exist. `--room` prices the smaller direction exactly
+    for the same reason a prefix can be priced: it is the one direction the artifact fully describes.
     """
     by_capability: dict[str, dict[str, list[dict]]] = {}
     measured = 0
+    undecidable = 0
     for question in questions:
         stratum = stratum_of(question)
         if stratum is None:
             continue
         measured += 1
+        if stratum == STRATUM_UNDECIDABLE:
+            undecidable += 1
         capability = str(question.get('capability', '?'))
         by_capability.setdefault(capability, {}).setdefault(stratum, []).append(question)
     if measured == 0:
@@ -2393,72 +2439,107 @@ def strata_section(questions: list[dict]) -> tuple[str, int]:
         correct = sum(1 for question in roster if question.get('correct'))
         return str(len(roster)), f'{100.0 * correct / len(roster):.2f}%'
 
+    def surfaced_in_full(roster: list[dict]) -> int:
+        return sum(
+            1
+            for question in roster
+            if all(rank >= 0 for rank in question['goldOverlap']['goldRanks'])
+        )
+
+    header = f'  {"capability":<10}{"n":>5}'
+    for name in STRATA:
+        header += f'{name:>12}{"acc":>9}'
     lines: list[str] = [
         '',
-        'where each question stands (exact / depth-limited / pool-missing), each beside its own accuracy',
-        f'  {"capability":<10}{"n":>5}{"exact":>7}{"acc":>9}{"depth":>7}{"acc":>9}{"pool":>7}{"acc":>9}'
-        f'{"reach@any-depth":>17}{"extra turns":>13}',
+        'where each question stands (complete / room-cut / unsurfaced / undecidable), each beside its own accuracy',
+        header + f'{"reach":>8}',
     ]
-    depth_total = 0
+    pooled: dict[str, list[dict]] = {name: [] for name in STRATA}
     reach_total = 0
-    pooled: dict[str, list[dict]] = {STRATUM_EXACT: [], STRATUM_DEPTH: [], STRATUM_POOL: []}
     for capability in sorted(by_capability):
         groups = by_capability[capability]
         roster = [question for population in groups.values() for question in population]
-        exact = groups.get(STRATUM_EXACT, [])
-        depth = groups.get(STRATUM_DEPTH, [])
-        pool = groups.get(STRATUM_POOL, [])
-        for name, here in ((STRATUM_EXACT, exact), (STRATUM_DEPTH, depth), (STRATUM_POOL, pool)):
-            pooled[name].extend(here)
-        reach = len(exact) + len(depth)
+        reach = surfaced_in_full(roster)
         reach_total += reach
-        depth_total += len(depth)
-        # How much deeper the window would have had to be for this population, per question. The
-        # median rather than the mean because one question whose gold sits at rank 255 would
-        # otherwise speak for the whole row.
-        deepness = sorted(
-            max(rank for rank in question['goldOverlap']['goldRanks'])
-            + 1
-            - question['windowComposition']['turns']
-            for question in depth
-        )
-        extra = f'{deepness[len(deepness) // 2]}' if deepness else '-'
-        lines.append(
-            f'  {capability:<10}{len(roster):5d}'
-            f'{cell(exact)[0]:>7}{cell(exact)[1]:>9}'
-            f'{cell(depth)[0]:>7}{cell(depth)[1]:>9}'
-            f'{cell(pool)[0]:>7}{cell(pool)[1]:>9}'
-            f'{100.0 * reach / len(roster):>16.1f}%{extra:>13}'
-        )
-    # The TOTAL carries the same cells as a row, not a sum of the count columns alone: the run's
-    # three accuracies are the numbers a reader quotes, and a total that printed only counts would
-    # send them to compute the pooled figure themselves from three separate denominators.
+        row = f'  {capability:<10}{len(roster):5d}'
+        for name in STRATA:
+            here = groups.get(name, [])
+            pooled[name].extend(here)
+            count, accuracy = cell(here)
+            row += f'{count:>12}{accuracy:>9}'
+        row += f'{100.0 * reach / len(roster):>7.1f}%'
+        lines.append(row)
+    # The TOTAL carries the same cells as a row rather than a sum of the count columns alone: the
+    # run's four accuracies are the numbers a reader quotes, and a total that printed only counts
+    # would send them to compute the pooled figure from four separate denominators.
+    total_row = f'  {"TOTAL":<10}{measured:5d}'
+    for name in STRATA:
+        count, accuracy = cell(pooled[name])
+        total_row += f'{count:>12}{accuracy:>9}'
+    total_row += f'{100.0 * reach_total / measured:>7.1f}%'
+    lines.append(total_row)
     lines.append(
-        f'  {"TOTAL":<10}{measured:5d}'
-        f'{cell(pooled[STRATUM_EXACT])[0]:>7}{cell(pooled[STRATUM_EXACT])[1]:>9}'
-        f'{cell(pooled[STRATUM_DEPTH])[0]:>7}{cell(pooled[STRATUM_DEPTH])[1]:>9}'
-        f'{cell(pooled[STRATUM_POOL])[0]:>7}{cell(pooled[STRATUM_POOL])[1]:>9}'
-        f'{100.0 * reach_total / measured:>16.1f}%'
+        '  complete = every gold turn reached the reader; room-cut = not all arrived, but all were'
     )
     lines.append(
-        '  exact = every gold surfaced and inside the window; depth = every gold surfaced, at least'
+        '  surfaced (the only population a deeper window can change); unsurfaced = a gold that did not'
     )
     lines.append(
-        '  one below the cut; pool = at least one gold the ranking never surfaced, which no window reaches'
+        '  arrive was never surfaced either, so no window reaches it; undecidable = the record has no'
     )
     lines.append(
-        '  reach@any-depth = exact + depth: the share a window with no budget would make full with the pool held fixed'
+        '  goldDelivered, so those two states cannot be told apart -- an instrument gap, not a finding'
     )
-    if depth_total:
+    lines.append('  reach = share of the row whose every gold was surfaced by the ranking, at any depth')
+    if measured != len(questions):
+        # A dropped record moves every denominator, so it is printed rather than absorbed: the four
+        # columns are a partition of `n`, and a reader who does not see this line would take the
+        # roster for the artifact's whole population.
         lines.append(
-            '  extra turns = median of (deepest gold rank + 1 - turns) over the depth population,'
+            f'  {len(questions) - measured} record(s) could not be classified and are in no column '
+            '(no goldRanks, a non-integer rank, or flags that disagree with carried)'
         )
+    if undecidable:
         lines.append(
-            '  i.e. how much deeper that window would have had to be; its character price is NOT in this'
+            f'  {undecidable} of {measured} records predate goldDelivered: re-run to convert undecidable into the other three'
         )
-        lines.append(
-            '  artifact, which stores the delivered turns and their count but not the cost of the candidates it cut'
-        )
+    # The confounder, printed where the table it confounds is read. How many gold turns a question
+    # names predicts its accuracy on its own -- 100.00 / 100.00 / 97.62 / 92.75 / 84.21 across the
+    # buckets on `41860773768` -- and the four strata are not independent of it: a big gold set is
+    # likelier to lose one. So the table above is a comparison of populations, not of treatments, and
+    # the only sentences it supports are the ones that survive holding the bucket fixed. Printing the
+    # cut here is cheaper than a footnote nobody re-derives.
+    buckets: list[tuple[str, int, int]] = [
+        ('1-4', 1, 4),
+        ('5-8', 5, 8),
+        ('9-16', 9, 16),
+        ('17+', 17, 1 << 30),
+    ]
+    lines.append('')
+    lines.append('  the same columns, holding the size of the gold set fixed (the confounder, on the page)')
+    confounded = f'  {"gold turns":<10}{"n":>5}'
+    for name in STRATA:
+        confounded += f'{name:>12}{"acc":>9}'
+    lines.append(confounded)
+    for label, low, high in buckets:
+        here = [
+            question
+            for question in questions
+            if low <= _gold_total(question) <= high
+        ]
+        if not here:
+            continue
+        row = f'  {label:<10}{len(here):5d}'
+        for name in STRATA:
+            count, accuracy = cell([q for q in here if stratum_of(q) == name])
+            row += f'{count:>12}{accuracy:>9}'
+        lines.append(row)
+    lines.append(
+        '  the characters a deeper window would spend are NOT in this artifact, and neither is the depth'
+    )
+    lines.append(
+        '  in turns: delivery is not a prefix of the ranking, so a gold rank is not a number of turns to add'
+    )
     return '\n'.join(lines), measured
 
 
@@ -4935,8 +5016,9 @@ def main(argv: list[str]) -> int:
         section, measured = strata_section(questions)
         if measured == 0:
             print(
-                f'{args.report}: no record carries `goldRanks` beside `windowComposition.turns`. The '
-                'strata need both: which gold turns the ranking surfaced, and how deep the window went.',
+                f'{args.report}: no record could be classified. Each lacks `goldRanks` beside '
+                '`windowComposition.turns`, or carries a non-integer rank, or has `goldDelivered` '
+                'disagreeing with `carried`. The strata need which gold arrived and which the ranking surfaced.',
                 file=sys.stderr,
             )
             return 2

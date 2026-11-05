@@ -28413,3 +28413,170 @@ Gates, written before the implementation, on the MR + KU pool-missing population
 Gate 3 is a **merged** criterion because the expected effect — 4 to 6 questions — is below two noise
 widths on this route (§13.251.1's rule, ±2.3 questions at 121). Gate 2 is what stops the experiment
 from becoming "call the model once more"; gate 1 is what stops it from becoming a bigger budget.
+
+## 13.253 The three-stratum table read delivery off the rank array, and delivery is not a rank
+
+### 13.253.1 The defect, stated as two numbers
+
+§13.252 replaced a column that had restated the row above it with a partition -- `exact` 197,
+`depth` 142, `pool` 161 -- and drew two conclusions from it. Both were computed from `goldRanks`:
+
+```text
+rank < turns    the window held this gold      (no -- it held a *turn*, and turns are not ranked)
+rank < 0        the reader did not get it      (no -- leftover room can buy an unscored gold)
+```
+
+`GoldOverlap.carried` is the delivery count and it was in the same object the whole time. On
+`41860773768` the two readings disagree on **58 questions**:
+
+| reading | questions it mis-files | what the artifact says |
+| --- | ---: | --- |
+| `rank < turns` = held | **42** | `carried == total`: every gold turn reached the reader. Filed as depth-limited, where a deeper window would allegedly help. |
+| `rank < 0` = missed | **16** | `carried == total`: filed as pool-missing with nothing missing at all. |
+
+### 13.253.2 Why the proxy is wrong twice over, and not by a little
+
+**`turns` is not a window depth.** `WindowComposition.turns` counts every delivered turn,
+including ones the ranking never scored, and the admission loop skips a turn that does not fit and
+keeps scanning. So the delivered set is **not a prefix of the ranking**, and a gold at rank 210 can
+be in the reader's window while a cheaper gold at rank 100 was skipped. On `41860773768`:
+
+| question | rank 210 and 220 | delivered turns | scored among them |
+| --- | --- | ---: | ---: |
+| one complete record | both gold, both delivered | 181 | 156 |
+
+The `--strata` column headed *extra turns* -- `max(rank) + 1 - turns` -- was therefore measuring a
+quantity that does not exist. It has been removed rather than repaired: `rank` indexes candidates
+and `turns` counts deliveries, and no arithmetic converts one into the other.
+
+**`rank < 0` is not a miss.** `selectByRelevance` sorts descending and puts unscored turns last, and
+leftover room admits them. A gold the ranking never scored is often a gold the reader read. Sixteen
+questions in the pool stratum carried **all** of their gold this way.
+
+### 13.253.3 The instrument: one predicate, and the count recomputed from it
+
+`GoldOverlap.goldDelivered` is a `boolean[]` aligned with `goldRanks`, written by the same
+membership test `carried` counts:
+
+```ts
+const carried = goldTurns.filter((gold) => retrieved.includes(gold)).length;
+return { carried, total: goldTurns.length, goldDelivered: goldTurns.map((g) => retrieved.includes(g)), ... };
+```
+
+`goldDelivered.filter(Boolean).length === carried` and `goldDelivered.length === total` are
+redundancies a test asserts rather than trusts, for the reason `pool` is. The field is absent on
+every artifact that predates it, and absence means **not recorded**, never "nothing delivered".
+
+### 13.253.4 The corrected partition, and the two sentences it retracts
+
+`readout-arm-run.py --strata` on `41860773768`:
+
+| capability | n | complete | acc | room-cut | acc | unsurfaced | acc | undecidable | acc | reach |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ABS | 30 | 2 | 100.00% | 14 | 100.00% | 0 | – | 14 | 100.00% | 53.3% |
+| IE | 150 | 75 | 94.67% | 43 | 95.35% | 0 | – | 32 | 96.88% | 78.7% |
+| KU | 72 | 5 | 100.00% | 43 | 93.02% | 0 | – | 24 | 75.00% | 66.7% |
+| MR | 121 | 84 | 88.10% | **0** | – | 0 | – | 37 | **59.46%** | 66.1% |
+| TR | 127 | 89 | 96.63% | **0** | – | 0 | – | 38 | 89.47% | 60.6% |
+| **全部** | 500 | **255** | **93.33%** | **100** | **95.00%** | **0** | – | **145** | **82.07%** | 67.8% |
+
+`complete` — every gold turn reached the reader. `room-cut` — not all arrived, but every one the
+dataset names was surfaced: the only population a deeper window can change. `unsurfaced` — a gold
+that did not arrive was never surfaced either. `undecidable` — the record has no `goldDelivered`, so
+"the unsurfaced gold" and "the gold that did not arrive" cannot be shown to be the same turn.
+
+**Retraction 1.** §13.252.4 said *"for MR the depth stratum reads 76.47% against 90.48% for exact,
+so within that route the room does matter for 17 questions."* MR has **zero** room-cut questions.
+Those 17 were questions whose gold all arrived; the rank that made them look depth-limited sat
+beyond a `turns` count that was never a depth. The room does not bind on MR at all.
+
+**Retraction 2.** §13.252.4's headline -- *"the 142 questions a deeper window would make full
+already read 93.66%"* -- is replaced by a stronger statement on a population that is actually the
+one a deeper window would change: **room-cut reads 95.00% against complete's 93.33%**. The
+exoneration of the depth axis survives, and it now rests on the right population.
+
+### 13.253.5 The confounder, printed beside the table it confounds
+
+Accuracy tracks **how many gold turns the dataset names** on its own:
+
+| gold turns | n | accuracy |
+| --- | ---: | ---: |
+| 1–4 | 11 | 100.00% |
+| 5–8 | 42 | 97.62% |
+| 9–16 | 276 | 92.75% |
+| 17+ | 171 | 84.21% |
+
+and the four strata are not independent of it (a large gold set is likelier to lose one). So the
+first table compares **populations, not treatments**. `--strata` now prints the cut:
+
+| gold turns | complete | acc | room-cut | acc | undecidable | acc |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 9–16 | 162 | 93.83% | 38 | 97.37% | 76 | 88.16% |
+| 17+ | 49 | 85.71% | 57 | 92.98% | 65 | 75.38% |
+
+Two readings survive the cut and one does not:
+
+- **`room-cut` > `complete` inside both buckets.** The confounder works *against* the exoneration
+  (a 17+ gold set is harder and room-cut is 57 of the 17+ bucket's 171), so the conclusion is safe
+  in the conservative direction.
+- **`undecidable` loses 10 to 17 points inside a bucket** (88.16 against 97.37; 75.38 against
+  92.98). So the 145 are genuinely worse than their gold count alone predicts, and the cause is
+  what the artifact cannot say.
+- **What does not survive** is any sentence of the form "the pool costs N points": the 145 mix at
+  least two states and the mixture's composition is not in the artifact.
+
+### 13.253.6 A number this settles: reach at *session* granularity is 100%
+
+§22.18.5 and §1.22.2 recorded an incomparability: ContextStream publishes *"at least one
+answer-bearing **session** reached the reader: 491/500 = 98.2%"*, while our 67.8% is turn-level and
+demands **every** gold turn. The artifact can answer the coarser question directly, because
+`carried >= 1` is exactly "at least one gold turn reached the reader":
+
+| quantity | unit | this run |
+| --- | --- | ---: |
+| every gold turn delivered (`complete`) | turn, all | 51.0% (255/500) |
+| every gold turn surfaced by the ranking | turn, all | 67.8% (339/500) |
+| **at least one gold turn delivered** | **session-ish** | **100.0% (500/500)** |
+| gold turns delivered, of gold turns named | turn | 86.47% (6,499/7,516) |
+
+**Retrieval never fails completely on this benchmark for this arm.** Not one of the 500 questions
+was answered without at least one of its annotated turns in front of the reader. That kills the
+premise the previous round's next registration was written on -- *"a question either gets the small
+piece that answers it or nothing at all"* -- and it kills it with an existing field rather than with
+an experiment.
+
+What the 145 lose is not *the* piece. It is **most of a set, or one member of a set**, and the
+correct label for that is aggregation, not recall.
+
+### 13.253.7 The next dispatch is an instrument run, not a hypothesis
+
+Nothing in this section can be finished by argument: 145 questions are `undecidable` because the
+artifact predates the field. So the next dispatch re-runs the **registered configuration
+unchanged** -- same ask, same pool, same room, same reader -- for one reason: to convert
+`undecidable` into the other three states. It is the only dispatch in this campaign with **no
+accuracy hypothesis**, and its gates are therefore structural:
+
+| gate | quantity | bar |
+| --- | --- | --- |
+| 1 (structural) | records carrying `goldDelivered` | 500/500, and `len == total` on every one |
+| 2 (structural) | `sum(goldDelivered) == carried` | 500/500 -- the field and its own count agree |
+| 3 (structural) | `unsurfaced` + `room-cut` == `undecidable` of `41860773768` (145) | the four columns are a partition of 500 |
+| 4 (no drift) | accuracy, overall and per capability | within ±2 questions per capability of `41860773768`/`41939709206`; a movement larger than that is a defect in the instrument, not a finding |
+
+Gate 3 is the one that makes the run worth its 85 minutes: it says the 145 are **converted**, not
+merely re-counted. Gate 4 is a reproducibility check on a run that changes nothing, and it uses the
+turn-level quantity rather than the aggregate because the aggregate is the number that has already
+demonstrated a ±2.3-question noise floor (§13.251.1).
+
+What the conversion buys is one sentence that cannot be written today, in whichever direction it
+comes out:
+
+- if `unsurfaced` dominates the 145, the deficit is a ranking problem and the mechanism to try is a
+  better pool -- which is the aggregation channel, restated as *"the set is there and the ranking
+  finds one member"*;
+- if `room-cut` dominates, a deeper window becomes live again on a population that was mis-filed
+  for three rounds, and §13.252.6's missing `rankingChars` becomes the field to add next.
+
+The previous round's `rankingChars` is **deferred, not dropped**, and the reason is now measured
+rather than assumed: the depth axis is exonerated on 100 room-cut questions at 95.00%, so a field
+that would price a dead axis buys nothing until gate 3 says the axis is alive.

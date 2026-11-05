@@ -538,11 +538,20 @@ describe('goldOverlapOf', () => {
   const B = '[2023/01/02 (Mon) 00:00] assistant: Two of them, actually';
 
   it('counts the gold turns the carried context contains', () => {
-    expect(goldOverlapOf([A, B], [A])).toEqual({ carried: 1, total: 1 });
-    expect(goldOverlapOf([A, B], [A, B])).toEqual({ carried: 2, total: 2 });
+    expect(goldOverlapOf([A, B], [A])).toEqual({
+      carried: 1,
+      total: 1,
+      goldDelivered: [true],
+    });
+    expect(goldOverlapOf([A, B], [A, B])).toEqual({
+      carried: 2,
+      total: 2,
+      goldDelivered: [true, true],
+    });
     expect(goldOverlapOf([A, B], ['[2023/03/03 (Fri) 00:00] user: nothing here'])).toEqual({
       carried: 0,
       total: 1,
+      goldDelivered: [false],
     });
   });
 
@@ -556,9 +565,21 @@ describe('goldOverlapOf', () => {
     // and therefore no prefix relationship for a search to get wrong.
     const short = '[2023/01/01 (Sun) 00:00] user: I went';
     const long = '[2023/01/01 (Sun) 00:00] user: I went to Lisbon';
-    expect(goldOverlapOf([long], [short])).toEqual({ carried: 0, total: 1 });
-    expect(goldOverlapOf([short], [long])).toEqual({ carried: 0, total: 1 });
-    expect(goldOverlapOf([short, long], [short, long])).toEqual({ carried: 2, total: 2 });
+    expect(goldOverlapOf([long], [short])).toEqual({
+      carried: 0,
+      total: 1,
+      goldDelivered: [false],
+    });
+    expect(goldOverlapOf([short], [long])).toEqual({
+      carried: 0,
+      total: 1,
+      goldDelivered: [false],
+    });
+    expect(goldOverlapOf([short, long], [short, long])).toEqual({
+      carried: 2,
+      total: 2,
+      goldDelivered: [true, true],
+    });
   });
 
   it('does not mistake a list marker for a cardinality', () => {
@@ -567,7 +588,7 @@ describe('goldOverlapOf', () => {
     // was produced from list markers. The predicate here is equality with a carried unit,
     // so `3` alone matches nothing.
     const unit = '3. **Humidity:** Peace lilies prefer a humid environment';
-    expect(goldOverlapOf([unit], ['3'])).toEqual({ carried: 0, total: 1 });
+    expect(goldOverlapOf([unit], ['3'])).toEqual({ carried: 0, total: 1, goldDelivered: [false] });
   });
 
   it('handles a gold turn whose content spans lines', () => {
@@ -575,10 +596,18 @@ describe('goldOverlapOf', () => {
     // a line-unit reader could not handle at all: one unit may contain newlines, and it
     // is one unit either way.
     const multi = '[2023/01/01 (Sun) 00:00] user: one\ntwo';
-    expect(goldOverlapOf(['x', multi, 'y'], [multi])).toEqual({ carried: 1, total: 1 });
+    expect(goldOverlapOf(['x', multi, 'y'], [multi])).toEqual({
+      carried: 1,
+      total: 1,
+      goldDelivered: [true],
+    });
     // And the same gold is NOT covered when the units are the lines it spans -- which is
     // why the memory arm's capture reports turns and not lines.
-    expect(goldOverlapOf(['x', 'one', 'two', 'y'], [multi])).toEqual({ carried: 0, total: 1 });
+    expect(goldOverlapOf(['x', 'one', 'two', 'y'], [multi])).toEqual({
+      carried: 0,
+      total: 1,
+      goldDelivered: [false],
+    });
   });
 
   it('counts the gold turns a ranking offered, which is what separates ranking from budget', () => {
@@ -592,6 +621,7 @@ describe('goldOverlapOf', () => {
     expect(goldOverlapOf([A], [A, B], [A, B, 'something else'])).toEqual({
       carried: 1,
       total: 2,
+      goldDelivered: [true, false],
       pool: 2,
       goldRanks: [0, 1],
     });
@@ -599,6 +629,7 @@ describe('goldOverlapOf', () => {
     expect(goldOverlapOf([A], [A, B], [A, 'something else'])).toEqual({
       carried: 1,
       total: 2,
+      goldDelivered: [true, false],
       pool: 1,
       goldRanks: [0, -1],
     });
@@ -607,6 +638,7 @@ describe('goldOverlapOf', () => {
     expect(goldOverlapOf([A], [A, B], ['something else'])).toEqual({
       carried: 1,
       total: 2,
+      goldDelivered: [true, false],
       pool: 0,
       goldRanks: [-1, -1],
     });
@@ -620,15 +652,38 @@ describe('goldOverlapOf', () => {
     expect(goldOverlapOf([], [A, B], [A, 'x', B])).toEqual({
       carried: 0,
       total: 2,
+      goldDelivered: [false, false],
       pool: 2,
       goldRanks: [0, 2],
     });
     expect(goldOverlapOf([], [A, B], ['x'])).toEqual({
       carried: 0,
       total: 2,
+      goldDelivered: [false, false],
       pool: 0,
       goldRanks: [-1, -1],
     });
+  });
+
+  it('keeps the delivery flags and the count they summarise in agreement', () => {
+    // §13.253's two facts, as a property rather than as a claim about one run: a delivered gold
+    // may sit beyond `turns` (the window is not a prefix of the ranking) and an undelivered one may
+    // carry `-1` (never scored). So neither `carried` nor `goldRanks` alone can say *which* gold is
+    // missing -- only these flags can -- and the count must be the flags' own sum or the two
+    // columns are two measurements of one thing.
+    const cases: readonly (readonly string[])[] = [[], [A], [A, B], ['x']];
+    for (const retrieved of cases) {
+      for (const pool of [undefined, [], [A], [A, 'x', B]]) {
+        const overlap = goldOverlapOf(retrieved, [A, B], pool);
+        expect(overlap).not.toBeNull();
+        expect(overlap!.goldDelivered).toHaveLength(overlap!.total);
+        expect(overlap!.goldDelivered!.filter(Boolean)).toHaveLength(overlap!.carried);
+        if (pool !== undefined) expect(overlap!.goldRanks).toHaveLength(overlap!.total);
+        // And the flags are the same predicate `carried` was counted from, not a second one.
+        const delivered = [A, B].map((gold) => retrieved.includes(gold));
+        expect(overlap!.goldDelivered).toEqual(delivered);
+      }
+    }
   });
 
   it('omits the pool when no ranking was consulted', () => {
@@ -637,7 +692,7 @@ describe('goldOverlapOf', () => {
     // truth is that nothing was measured. Absent, never zero, for the reason the null
     // case below states.
     const overlap = goldOverlapOf([A, B], [A]);
-    expect(overlap).toEqual({ carried: 1, total: 1 });
+    expect(overlap).toEqual({ carried: 1, total: 1, goldDelivered: [true] });
     expect(overlap === null ? true : 'pool' in overlap).toBe(false);
   });
 
@@ -668,7 +723,13 @@ describe('goldOverlapOf', () => {
     // row is visible (`carried` above `pool`) and a reader can act on it, while a clamped
     // row reads as a ranking that surfaced two gold turns when it surfaced none.
     const overlap = goldOverlapOf([A, B], [A, B], []);
-    expect(overlap).toEqual({ carried: 2, total: 2, pool: 0, goldRanks: [-1, -1] });
+    expect(overlap).toEqual({
+      carried: 2,
+      total: 2,
+      goldDelivered: [true, true],
+      pool: 0,
+      goldRanks: [-1, -1],
+    });
   });
 
   it('reports nothing to measure as null rather than as a zero', () => {

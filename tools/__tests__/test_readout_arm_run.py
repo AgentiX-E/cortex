@@ -3717,14 +3717,14 @@ class TestTheRoomSimulation:
 
 
 class TestTheStrata:
-    """`--strata`: where a question stands, when "the ranking missed" and "the room cut" differ.
+    """`--strata`: what a question is missing, and whether the artifact can say *which* gold.
 
-    §14.41.3 printed a column called "coverable at any depth" that was, row for row, the current
-    reach at `maxPromptChars = 48000` -- so the sentence built on it ("53.4% of questions are not
-    coverable at any depth") described 267 questions when 142 of them are reachable by a deeper
-    window. The correction matters in both directions: it raises the reach ceiling to 67.8%, and it
-    then shows the ceiling is not worth reaching, because those 142 questions already read 93.66%.
-    A number that decided a registration twice over belongs in a tool with tests.
+    The first version of this table read delivery off `goldRanks` -- `rank < turns` was taken as "the
+    window held it" and `rank < 0` as "the reader did not get it". On `41860773768` those two
+    readings are wrong for 48 and 16 questions respectively: the window is not a prefix of the
+    ranking, so a delivered gold can sit beyond `turns`, and a gold the ranking never scored can be
+    admitted by leftover room. `carried` is the delivery count; the rank array answers a different
+    question. Every test below pins one of the four states against that distinction.
     """
 
     def _report(self, questions: list[dict]) -> dict:
@@ -3745,7 +3745,19 @@ class TestTheStrata:
         turns: int,
         correct: bool,
         capability: str = 'MR',
+        delivered: list[bool] | None = None,
+        carried: int | None = None,
     ) -> dict:
+        overlap: dict = {
+            'carried': sum(1 for flag in delivered if flag)
+            if delivered is not None
+            else (carried if carried is not None else sum(1 for rank in ranks if rank >= 0)),
+            'total': len(ranks),
+            'pool': sum(1 for rank in ranks if rank >= 0),
+            'goldRanks': ranks,
+        }
+        if delivered is not None:
+            overlap['goldDelivered'] = delivered
         return {
             'questionId': identifier,
             'capability': capability,
@@ -3753,7 +3765,7 @@ class TestTheStrata:
             'answer': '2' if correct else '1',
             'rawOutput': '2' if correct else '1',
             'groundTruth': '2',
-            'goldOverlap': {'carried': 1, 'total': len(ranks), 'pool': 1, 'goldRanks': ranks},
+            'goldOverlap': overlap,
             'windowComposition': {'turns': turns, 'offered': turns, 'offeredChars': 0, 'unscoredChars': 0},
         }
 
@@ -3769,100 +3781,189 @@ class TestTheStrata:
 
     @staticmethod
     def _row(stdout: str, capability: str = 'MR') -> list[str]:
-        """cap, n, exact n, exact acc, depth n, depth acc, pool n, pool acc, reach, extra turns."""
+        """capability, n, complete n, complete acc, room-cut n, acc, unsurfaced n, acc, undecidable n, acc, reach."""
         line = next(row for row in stdout.splitlines() if row.split() and row.split()[0] == capability)
         return line.split()
 
-    def test_a_gold_turn_below_the_cut_is_depth_limited(self, tmp_path: Path) -> None:
-        # ranks [4, 30], window 10: nothing missing, one turn below the cut. This is the population
-        # a deeper window moves, and it is NOT the population a better ranking moves.
-        r = self._run(tmp_path, self._report([self._question('d', [4, 30], 10, correct=True)]))
+    def test_a_delivered_gold_ranked_beyond_the_window_is_complete_not_depth_limited(
+        self, tmp_path: Path
+    ) -> None:
+        # The 48-question defect, as one record: `turns` counts delivered turns including unscored
+        # ones, and admission skips a turn that does not fit, so rank 30 with 10 delivered turns is
+        # a gold that arrived after a cheaper one was cut. Nothing is missing here, and the old rule
+        # put every such question in the population a depth treatment was meant to target.
+        report = self._report(
+            [self._question('d', [4, 30], 10, correct=True, delivered=[True, True])]
+        )
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert (fields[2], fields[4], fields[6]) == ('1', '0', '0')
+
+    def test_a_delivered_gold_the_ranking_never_surfaced_is_complete_not_pool_missing(
+        self, tmp_path: Path
+    ) -> None:
+        # The 16-question defect. `rank < 0` means the ranking did not score it; the room can still
+        # buy it, and then the question is answered from evidence that is whole. Filing it under
+        # "the ranking missed" prices a room repair as a ranking repair.
+        report = self._report([self._question('p', [4, -1], 10, correct=True, delivered=[True, True])])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert (fields[2], fields[4], fields[6]) == ('1', '0', '0')
+
+    def test_a_missing_gold_the_ranking_surfaced_is_room_cut(self, tmp_path: Path) -> None:
+        # Every gold was offered; one did not arrive. That is the only population a deeper window
+        # can change, and it is the one the depth hypothesis has to be judged on.
+        report = self._report(
+            [self._question('r', [4, 40], 10, correct=True, delivered=[True, False])]
+        )
+        r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         fields = self._row(r.stdout)
         assert (fields[2], fields[4], fields[6]) == ('0', '1', '0')
 
-    def test_a_gold_turn_the_ranking_never_surfaced_is_pool_missing_even_beside_a_deep_one(
-        self, tmp_path: Path
-    ) -> None:
-        # `-1` beside a rank below the cut. The record loses on both axes, and it is filed under the
-        # one no window can fix -- filing it under "depth" would price a ranking repair as a room
-        # repair, which is the conflation that made the old column wrong.
-        r = self._run(tmp_path, self._report([self._question('p', [4, -1], 10, correct=False)]))
+    def test_a_missing_gold_the_ranking_never_surfaced_is_unsurfaced(self, tmp_path: Path) -> None:
+        # The one state that needs `goldDelivered`: the record has both an unsurfaced gold and an
+        # undelivered gold, and only the flags say they are the same turn. Without them the two
+        # facts coexist and the intersection is unobservable -- that is the next test.
+        report = self._report(
+            [self._question('u', [4, -1], 10, correct=False, delivered=[True, False])]
+        )
+        r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         fields = self._row(r.stdout)
         assert (fields[2], fields[4], fields[6]) == ('0', '0', '1')
 
+    def test_without_the_delivery_flags_the_two_missing_states_are_undecidable(
+        self, tmp_path: Path
+    ) -> None:
+        # An archived artifact. `carried = 1` and `total = 2` say a gold is missing; `ranks` has a
+        # `-1` so some gold was never surfaced; nothing says the two are the same gold. The tool
+        # reports that it cannot tell rather than picking the more quotable of the two.
+        report = self._report([self._question('a', [4, -1], 10, correct=True, carried=1)])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert (fields[2], fields[4], fields[6], fields[8]) == ('0', '0', '0', '1')
+        assert 'predate goldDelivered' in r.stdout
+
+    def test_a_complete_row_prints_no_undecidable_warning(self, tmp_path: Path) -> None:
+        # The warning is about an instrument gap in the artifact. On an artifact that closed it the
+        # line would be a claim about a state no record is in.
+        report = self._report([self._question('c', [1], 10, correct=True, delivered=[True])])
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        assert 'predate goldDelivered' not in r.stdout
+
     def test_each_stratum_is_reported_beside_its_own_accuracy(self, tmp_path: Path) -> None:
-        # Two per stratum, one correct in each: an accuracy inherited from the five-question roster
-        # would read 60% beside all three and be wrong for all three.
+        # Two per stratum, one correct in each: an accuracy inherited from the roster would read 60%
+        # beside all four and be wrong for all four.
         report = self._report(
             [
-                self._question('e1', [1], 10, correct=True),
-                self._question('e2', [1], 10, correct=False),
-                self._question('d1', [40], 10, correct=True),
-                self._question('d2', [41], 10, correct=False),
-                self._question('p1', [-1], 10, correct=True),
-                self._question('p2', [-1], 10, correct=False),
+                self._question('c1', [1], 10, correct=True, delivered=[True]),
+                self._question('c2', [1], 10, correct=False, delivered=[True]),
+                self._question('r1', [1, 40], 10, correct=True, delivered=[True, False]),
+                self._question('r2', [1, 40], 10, correct=False, delivered=[True, False]),
+                self._question('u1', [1, -1], 10, correct=True, delivered=[True, False]),
+                self._question('u2', [1, -1], 10, correct=False, delivered=[True, False]),
+                self._question('a1', [1, -1], 10, correct=True, carried=1),
+                self._question('a2', [1, -1], 10, correct=False, carried=1),
             ]
         )
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
         fields = self._row(r.stdout)
-        assert fields[1] == '6'
-        assert (fields[2], fields[3]) == ('2', '50.00%')
-        assert (fields[4], fields[5]) == ('2', '50.00%')
-        assert (fields[6], fields[7]) == ('2', '50.00%')
-        # reach@any-depth counts the two populations a deeper room could make full
-        assert fields[8] == '66.7%'
+        assert fields[1] == '8'
+        for offset in (2, 4, 6, 8):
+            assert (fields[offset], fields[offset + 1]) == ('2', '50.00%')
+        # reach counts the four rows whose every gold was surfaced, at any depth: the two complete
+        # and the two room-cut. The two unsurfaced and the two undecidable carry a `-1`.
+        assert fields[10] == '50.0%'
 
-    def test_the_extra_turns_column_is_the_median_of_what_depth_costs_in_turns(
-        self, tmp_path: Path
-    ) -> None:
-        # ranks 20, 40, 60 need depths 21, 41, 61 against a ten-turn window: 11, 31 and 51 turns
-        # deeper. The median is 31, and the column exists because the character price of that depth
-        # is not in the artifact -- only its price in turns is.
+    def test_reach_counts_surfacing_and_not_delivery(self, tmp_path: Path) -> None:
+        # A room-cut question has all its gold surfaced and not all of it delivered: reach is about
+        # the pool, so it counts here, and the two states must not be confused in the column that
+        # the depth question was originally asked with.
         report = self._report(
             [
-                self._question('a', [20], 10, correct=True),
-                self._question('b', [40], 10, correct=True),
-                self._question('c', [60], 10, correct=True),
+                self._question('r', [1, 40], 10, correct=True, delivered=[True, False]),
+                self._question('u', [1, -1], 10, correct=True, delivered=[True, False]),
             ]
         )
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
-        assert self._row(r.stdout)[9] == '31'
+        assert self._row(r.stdout)[10] == '50.0%'
 
-    def test_a_report_with_no_depth_population_does_not_warn_about_a_price_it_cannot_read(
+    def test_a_record_whose_flags_contradict_its_count_is_dropped_rather_than_classified(
         self, tmp_path: Path
     ) -> None:
-        # The note is about depth pricing. On a report where no question is depth-limited it would be
-        # a claim about a measurement that never came up, which is the shape the campaign files as a
-        # decorative bound.
-        report = self._report(
-            [self._question('e', [1], 10, correct=True), self._question('p', [-1], 10, correct=True)]
-        )
-        r = self._run(tmp_path, report)
-        assert r.returncode == 0, r.stderr
-        assert 'character price is NOT in this' not in r.stdout
-        assert self._row(r.stdout)[9] == '-'
+        # `carried = 2` with one flag set is a producer defect. Classifying it would be choosing
+        # which of the two columns to believe, and the table would then report a population built
+        # from a contradiction.
+        broken = self._question('x', [1, 2], 10, correct=True, delivered=[True, False])
+        broken['goldOverlap']['carried'] = 2
+        r = self._run(tmp_path, self._report([broken]))
+        assert r.returncode == 2
+        assert 'goldDelivered' in r.stderr
 
-    def test_a_record_with_no_gold_turns_is_not_filed_as_pool_missing(self, tmp_path: Path) -> None:
-        # An empty `goldRanks` is "the dataset names no gold", which is a different fact from "the
-        # ranking surfaced none of it". Filing it as pool would blame the ranking for a question
-        # that has nothing to retrieve, and would move the pool stratum's accuracy.
+    def test_a_dropped_record_is_counted_beside_the_table(self, tmp_path: Path) -> None:
+        # A dropped record moves every denominator, and a table whose `n` silently shrinks is a
+        # table over a population nobody declared. The count is printed; the four columns stay a
+        # partition of `n`.
+        broken = self._question('x', [1, 2], 10, correct=True, delivered=[True, False])
+        broken['goldOverlap']['carried'] = 2
+        kept = self._question('k', [1], 10, correct=True, delivered=[True])
+        r = self._run(tmp_path, self._report([broken, kept]))
+        assert r.returncode == 0, r.stderr
+        assert '1 record(s) could not be classified' in r.stdout
+        assert self._row(r.stdout)[1] == '1'
+
+    def test_the_confounder_table_holds_the_gold_set_size_fixed(self, tmp_path: Path) -> None:
+        # Accuracy tracks how many gold turns the dataset names -- on `41860773768` it runs 100 / 100
+        # / 97.6 / 92.8 / 84.2 across the buckets -- and the strata are not independent of it, so a
+        # cross-stratum comparison confounds the stratum with the question. The second table is the
+        # same columns inside one bucket, which is the only form the comparison can be read in.
         report = self._report(
-            [self._question('e', [1], 10, correct=True), self._question('n', [], 10, correct=False)]
+            [
+                # same bucket, two strata, one correct in each
+                self._question('c', [1, 2, 3, 4, 5, 6], 10, correct=True, delivered=[True] * 6),
+                self._question(
+                    'r', [1, 2, 3, 4, 5, 40], 10, correct=False, delivered=[True] * 5 + [False]
+                ),
+                # a different bucket, so the split is by gold count and not by stratum
+                self._question('big', [1] * 20, 10, correct=True, delivered=[True] * 20),
+            ]
         )
         r = self._run(tmp_path, report)
         assert r.returncode == 0, r.stderr
-        fields = self._row(r.stdout)
-        assert fields[1] == '1'  # only the record that can be classified
-        assert fields[6] == '0'  # and no phantom in the pool stratum
+        small = next(row for row in r.stdout.splitlines() if row.split()[:1] == ['5-8']).split()
+        assert small[1] == '2'
+        assert (small[2], small[3]) == ('1', '100.00%')
+        assert (small[4], small[5]) == ('1', '0.00%')
+        big = next(row for row in r.stdout.splitlines() if row.split()[:1] == ['17+']).split()
+        assert big[1] == '1'
+
+    def test_a_record_with_no_gold_total_is_in_no_bucket(self, tmp_path: Path) -> None:
+        # A record whose `total` is not a number cannot be placed in a bucket, and a `0` would file
+        # it under "1-4" -- a question with no gold sitting in the bucket of the smallest gold sets.
+        report = self._report(
+            [
+                self._question('c', [1], 10, correct=True, delivered=[True]),
+                self._question('x', [1], 10, correct=True, delivered=[True]),
+            ]
+        )
+        report['questions'][1]['goldOverlap']['total'] = None
+        r = self._run(tmp_path, report)
+        assert r.returncode == 0, r.stderr
+        small = next(row for row in r.stdout.splitlines() if row.split()[:1] == ['1-4']).split()
+        assert small[1] == '1'  # the classifiable record only
+        assert '1 record(s) could not be classified' in r.stdout
 
     def test_a_render_that_is_not_a_rank_refuses_rather_than_classifying(self, tmp_path: Path) -> None:
         # A `null` in `goldRanks` cannot be read as either `-1` or a rank. Guessing either way would
         # put the record in a stratum on the strength of a type error.
-        broken = self._question('b', [1], 10, correct=True)
+        broken = self._question('b', [1], 10, correct=True, delivered=[True])
         broken['goldOverlap']['goldRanks'] = [1, None]
         r = self._run(tmp_path, self._report([broken]))
         assert r.returncode == 2
