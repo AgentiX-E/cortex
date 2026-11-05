@@ -28269,6 +28269,14 @@ of them alone is inside the noise.
 
 ## 13.252 The column headed "coverable at any depth" was the reach row above it, and the population it mis-filed reads 93.66%
 
+> **Corrected by §13.253.** The partition below reads delivery off `goldRanks`, and delivery is not a
+> rank: the window is not a prefix of the ranking, and unscored gold is admitted by leftover room. On
+> `41860773768` that mis-files 58 questions -- 42 with nothing missing filed as depth-limited, 16
+> with nothing missing filed as pool-missing. The corrected partition is 255 complete at 93.33%, 100
+> room-cut at 95.00%, 0 unsurfaced and 145 undecidable at 82.07%; **MR has zero room-cut questions**,
+> so the sentence below about the room mattering for 17 of them is withdrawn. The reach ceiling of
+> 67.8% is unaffected: it is a statement about surfacing, which is what the rank array answers.
+
 ### 13.252.1 The defect, as arithmetic rather than as judgement
 
 §14.41.3 printed this table, headed *"门 3：把房间按金标定尺要花多少——正面的那一半"*:
