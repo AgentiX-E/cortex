@@ -386,7 +386,7 @@ describe('serializeReportOrReduce', () => {
   it('forwards every optional per-question field, checked in one pass rather than one assertion at a time', () => {
     // `withEvidenceBound` re-lists each field by hand, so the defect mode is a field that
     // exists on the record and not on the rebuild. It has now happened four times --
-    // `featureConfig`, `promptChars`, `recoveryAttempted` and `questionDate` -- and each
+    // `featureConfig`, `promptChars`, `recoveryConsultations` and `questionDate` -- and each
     // was found one at a time, by a reader who happened to need the field. A per-field
     // assertion cannot catch the fifth, because the fifth is the field nobody thought to
     // assert.
@@ -417,8 +417,12 @@ describe('serializeReportOrReduce', () => {
         // §13.174's within-run count, on the same argument: a field added to the record and not to
         // this list is a field this loop cannot notice a rebuild dropping.
         promptVariants: 2,
-        recoveryAttempted: true,
-        recoveryAnswered: false,
+        // §13.262 renamed the pair and changed its unit: the rebuild forwards counts now, and a
+        // boolean here would be a field this loop reports as dropped -- which is the test working.
+        recoveryConsultations: 2,
+        recoveryAnswers: 1,
+        auditConsultations: 3,
+        auditChanges: 1,
         goldOverlap: { carried: 2, total: 3 },
       })),
     } as unknown as AblationReport;

@@ -389,11 +389,20 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // reduction silently drops, and this one is the only per-question statement of *which* questions a
         // review pass reached (§13.145.6). Dropping it would leave a reduced artifact unable to name the
         // population its own numbers are about, which is the defect the field exists to close.
-        ...(record.recoveryAttempted === undefined
+        ...(record.recoveryConsultations === undefined
           ? {}
           : {
-              recoveryAttempted: record.recoveryAttempted,
-              recoveryAnswered: record.recoveryAnswered,
+              recoveryConsultations: record.recoveryConsultations,
+              recoveryAnswers: record.recoveryAnswers,
+            }),
+        // §13.262: the audit pair, on the same rule and for the same reason. It was missing entirely
+        // until now -- the reduction forwarded the recovery pair and dropped this one, which would have
+        // made a reduced artifact unable to say whether the audit ran on any question at all.
+        ...(record.auditConsultations === undefined
+          ? {}
+          : {
+              auditConsultations: record.auditConsultations,
+              auditChanges: record.auditChanges,
             }),
         // Forwarded, not recomputed, and that is the whole reason the input type carries
         // a measured shape rather than the gold turns: this producer's `retrieved` is

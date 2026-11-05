@@ -303,25 +303,30 @@ export type QuestionRecord = {
    */
   readonly promptVariants?: number | undefined;
   /**
-   * Whether the review mechanisms acted on **this** question.
+   * How many times the review mechanisms consulted the reader on **this** question.
    *
    * `ablation.recovery` and `ablation.bareRetry` are counts for the whole run, so an ask registered
    * against the population a review pass reaches could not name that population. §13.141.1 put the size
    * of the gap on record: the pass reaches ten of the 121 MR questions, and a `+4` on those ten is a large
    * effect while the same `+4` spread over 121 is inside the run's own spread (§13.145.3).
    *
-   * Two fields and not one: a retry that fired and declined again is `attempted` without `answered`, and
+   * **A count, not a flag** (§13.262). A dispatching run asks each question `runs` times, so a flag
+   * collapses four repetitions into one and the column stops summing to the run-level tally:
+   * `42054107910` published `attempted: 469` against `118` flagged rows, and the factor was the
+   * repetition count. As a count the identity is exact -- the column sums to the tally, at any `runs`.
+   *
+   * Two fields and not one: a retry that fired and declined again is consultations without answers, and
    * that half is what says the mechanism ran rather than which way it went.
    *
-   * Absent when the system exposes no census to take a delta from. Absent is not `false` -- a system that
+   * Absent when the system exposes no census to take a delta from. Absent is not zero -- a system that
    * cannot report it has not reported that nothing happened, and a reader must be able to tell the two
    * apart (`--treated` classifies the absent case as `unknown`).
    */
-  readonly recoveryAttempted?: boolean | undefined;
-  /** Whether the retry the mechanism fired came back with an answer. See `recoveryAttempted`. */
-  readonly recoveryAnswered?: boolean | undefined;
+  readonly recoveryConsultations?: number | undefined;
+  /** How many of those consultations came back with an answer. See `recoveryConsultations`. */
+  readonly recoveryAnswers?: number | undefined;
   /**
-   * Whether the membership audit ran on this question, and whether it moved the answer.
+   * How many times the membership audit consulted the reader, and how often it moved the answer.
    *
    * A second pair rather than two more values in the pair above, because the two passes act on disjoint
    * populations: the recovery pass only runs on a decline and the audit only runs on a non-decline, so a single
@@ -329,9 +334,9 @@ export type QuestionRecord = {
    * Absent for the same reason the pair above is: a system that cannot report it has not reported that nothing
    * happened.
    */
-  readonly auditAttempted?: boolean | undefined;
-  /** Whether the audit's answer differed from the one it was handed. See `auditAttempted`. */
-  readonly auditChanged?: boolean | undefined;
+  readonly auditConsultations?: number | undefined;
+  /** How often the audit's answer differed from the one it was handed. See `auditConsultations`. */
+  readonly auditChanges?: number | undefined;
   /**
    * How much of the dataset's gold evidence the reader's context contained.
    *
@@ -498,18 +503,18 @@ export type QuestionRecordInput = {
    */
   readonly promptVariants?: number | null | undefined;
   /**
-   * Whether the review mechanisms acted on this question, when the producer measured it.
+   * How many consultations the review mechanisms made on this question, when the producer measured it.
    *
    * Measured as the delta of the product's own census around one answer rather than counted a second time
    * here: a fourth counter for a fact the product states three times is a fourth counter to drift.
    */
-  readonly recoveryAttempted?: boolean | undefined;
-  /** See {@link QuestionRecordInput.recoveryAttempted}. */
-  readonly recoveryAnswered?: boolean | undefined;
-  /** See {@link QuestionRecordInput.auditAttempted}. */
-  readonly auditAttempted?: boolean | undefined;
-  /** See {@link QuestionRecordInput.auditChanged}. */
-  readonly auditChanged?: boolean | undefined;
+  readonly recoveryConsultations?: number | undefined;
+  /** See {@link QuestionRecordInput.recoveryConsultations}. */
+  readonly recoveryAnswers?: number | undefined;
+  /** See {@link QuestionRecordInput.auditConsultations}. */
+  readonly auditConsultations?: number | undefined;
+  /** See {@link QuestionRecordInput.auditChanges}. */
+  readonly auditChanges?: number | undefined;
   /**
    * How much of the dataset's gold evidence `retrieved` contained, or `null`.
    *
@@ -820,21 +825,21 @@ export function buildQuestionRecords(
       // ranking was consulted". An empty window is not it: that is a measured zero-turn
       // window and it round-trips as an object.
       ...(input.windowComposition === null ? {} : { windowComposition: input.windowComposition }),
-      // Written together or not at all, and only when the producer traced: a `false` here would be a
+      // Written together or not at all, and only when the producer traced: a zero here would be a
       // statement about the mechanism rather than about the instrument.
-      ...(input.recoveryAttempted === undefined
+      ...(input.recoveryConsultations === undefined
         ? {}
         : {
-            recoveryAttempted: input.recoveryAttempted,
-            recoveryAnswered: input.recoveryAnswered === true,
+            recoveryConsultations: input.recoveryConsultations,
+            recoveryAnswers: input.recoveryAnswers ?? 0,
           }),
-      // The audit pair, on the same rule: `changed` without `attempted` is not a state the product can produce,
-      // so a producer that supplies one and not the other is a producer whose delta was taken wrong.
-      ...(input.auditAttempted === undefined
+      // The audit pair, on the same rule: changes without consultations is not a state the product can
+      // produce, so a producer that supplies one and not the other is a producer whose delta was taken wrong.
+      ...(input.auditConsultations === undefined
         ? {}
         : {
-            auditAttempted: input.auditAttempted,
-            auditChanged: input.auditChanged === true,
+            auditConsultations: input.auditConsultations,
+            auditChanges: input.auditChanges ?? 0,
           }),
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });

@@ -412,14 +412,10 @@ describe('the arm records what the recovery pass did', () => {
 
     const result = await runTwo(feature);
 
-    expect(result.report.questions?.map((record) => record.recoveryAttempted)).toEqual([
-      false,
-      true,
-    ]);
-    expect(result.report.questions?.map((record) => record.recoveryAnswered)).toEqual([
-      false,
-      true,
-    ]);
+    // Counts, not flags (§13.262): `0` is a measured zero on the question the pass did not reach and
+    // `1` is one consultation on the question it did.
+    expect(result.report.questions?.map((record) => record.recoveryConsultations)).toEqual([0, 1]);
+    expect(result.report.questions?.map((record) => record.recoveryAnswers)).toEqual([0, 1]);
   });
 
   it('records a retry that fired and declined again as attempted without answered', async () => {
@@ -438,8 +434,8 @@ describe('the arm records what the recovery pass did', () => {
 
     const result = await run(feature);
 
-    expect(result.report.questions?.[0]?.recoveryAttempted).toBe(true);
-    expect(result.report.questions?.[0]?.recoveryAnswered).toBe(false);
+    expect(result.report.questions?.[0]?.recoveryConsultations).toBe(1);
+    expect(result.report.questions?.[0]?.recoveryAnswers).toBe(0);
   });
 
   it('writes neither field for a system that cannot be traced', async () => {
@@ -448,8 +444,8 @@ describe('the arm records what the recovery pass did', () => {
     const result = await run(constantSystem('cortex-memory', 'one'));
 
     const record = result.report.questions?.[0];
-    expect(record === undefined ? false : 'recoveryAttempted' in record).toBe(false);
-    expect(record === undefined ? false : 'recoveryAnswered' in record).toBe(false);
+    expect(record === undefined ? false : 'recoveryConsultations' in record).toBe(false);
+    expect(record === undefined ? false : 'recoveryAnswers' in record).toBe(false);
   });
 
   it('omits the section for a system that does not carry the pass', async () => {
@@ -478,8 +474,8 @@ describe('the arm records what the recovery pass did', () => {
     // §13.146: the per-question trace reads the same accessor, so the same rule has to reach the record. The
     // first version of that trace propagated the throw and turned this test into a stack trace -- the guard
     // belongs on both readers or on neither.
-    expect('recoveryAttempted' in (result.report.questions?.[0] ?? {})).toBe(false);
-    expect('recoveryAnswered' in (result.report.questions?.[0] ?? {})).toBe(false);
+    expect('recoveryConsultations' in (result.report.questions?.[0] ?? {})).toBe(false);
+    expect('recoveryAnswers' in (result.report.questions?.[0] ?? {})).toBe(false);
   });
 });
 

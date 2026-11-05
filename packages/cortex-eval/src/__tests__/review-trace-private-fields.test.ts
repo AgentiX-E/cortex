@@ -69,7 +69,7 @@ class PrivateStateSystem {
 
 describe('the review-mechanism wrapper over a system with private state', () => {
   it('leaves an accessor that reads a private field callable through the wrapper', () => {
-    const trace = new Map<string, { attempted: boolean; answered: boolean }>();
+    const trace = new Map<string, { attempted: number; answered: number }>();
     const wrapped = traceReviewMechanisms(new PrivateStateSystem(), trace) as PrivateStateSystem;
 
     // This is the exact call `runBenchmark` makes: `system.lastRawOutput.bind(system)` then `()`.
@@ -78,17 +78,17 @@ describe('the review-mechanism wrapper over a system with private state', () => 
   });
 
   it('still intercepts the routing member and records the question it saw', async () => {
-    const trace = new Map<string, { attempted: boolean; answered: boolean }>();
+    const trace = new Map<string, { attempted: number; answered: number }>();
     const wrapped = traceReviewMechanisms(new PrivateStateSystem(), trace) as PrivateStateSystem;
 
     expect(await wrapped.answer('where did I put the key?')).toBe(
       'answer:where did I put the key?',
     );
-    expect(trace.get('where did I put the key?')).toEqual({ attempted: true, answered: true });
+    expect(trace.get('where did I put the key?')).toEqual({ attempted: 1, answered: 1 });
   });
 
   it('reflects state written through the intercepting member', async () => {
-    const trace = new Map<string, { attempted: boolean; answered: boolean }>();
+    const trace = new Map<string, { attempted: number; answered: number }>();
     const system = new PrivateStateSystem();
     const wrapped = traceReviewMechanisms(system, trace) as PrivateStateSystem;
 
@@ -99,7 +99,7 @@ describe('the review-mechanism wrapper over a system with private state', () => 
   });
 
   it('keeps the private member reachable for a census that the wrapper calls into', async () => {
-    const trace = new Map<string, { attempted: boolean; answered: boolean }>();
+    const trace = new Map<string, { attempted: number; answered: number }>();
     const wrapped = traceReviewMechanisms(new PrivateStateSystem(), trace) as PrivateStateSystem;
 
     await wrapped.answer('second');
@@ -107,7 +107,7 @@ describe('the review-mechanism wrapper over a system with private state', () => 
   });
 
   it('is still the system it wraps, so structural checks keep passing', () => {
-    const trace = new Map<string, { attempted: boolean; answered: boolean }>();
+    const trace = new Map<string, { attempted: number; answered: number }>();
     const system = new PrivateStateSystem();
     const wrapped = traceReviewMechanisms(system, trace);
 
@@ -118,7 +118,7 @@ describe('the review-mechanism wrapper over a system with private state', () => 
   });
 
   it('carries a non-function member that the source holds as a function value', () => {
-    const trace = new Map<string, { attempted: boolean; answered: boolean }>();
+    const trace = new Map<string, { attempted: number; answered: number }>();
     const system = new PrivateStateSystem();
     const wrapped = traceReviewMechanisms(system, trace) as PrivateStateSystem;
 

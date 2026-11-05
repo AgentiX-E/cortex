@@ -117,8 +117,34 @@ describe('the audit census reaches the artifact', () => {
       },
     );
 
-    expect(result.report.questions!.map((record) => record.auditAttempted)).toEqual([true, true]);
-    expect(result.report.questions!.map((record) => record.auditChanged)).toEqual([true, true]);
+    expect(result.report.questions!.map((record) => record.auditConsultations)).toEqual([1, 1]);
+    expect(result.report.questions!.map((record) => record.auditChanges)).toEqual([1, 1]);
+  });
+
+  it('sums the roster to the tally, which is the identity a boolean column cannot satisfy', async () => {
+    // §13.262. The roster records the **first** repetition and the tally counts all of them, so a boolean
+    // column says `true` for 118 of 500 rows while the tally says 469 -- `42054107910`'s exact disagreement,
+    // and its factor was the repetition count. As counts the two are the same number by construction, and
+    // this is the assertion that fails on the flag version at any `runs > 1`.
+    const result = await runCortexMemoryArm(
+      dataset(3),
+      bareSystem('reference-pipeline'),
+      new AuditingSystem('cortex-memory'),
+      {
+        runs: 2,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    const roster = result.report.questions!;
+    const consultations = roster.reduce((sum, record) => sum + (record.auditConsultations ?? 0), 0);
+    const changes = roster.reduce((sum, record) => sum + (record.auditChanges ?? 0), 0);
+
+    expect(result.report.audit).toEqual({ attempted: 6, changed: 6 });
+    expect(consultations).toBe(6);
+    expect(changes).toBe(6);
   });
 
   it('sums the tally over every worker rather than reading worker 0', async () => {
@@ -170,7 +196,7 @@ describe('the audit census reaches the artifact', () => {
       },
     );
 
-    expect(result.report.questions!.every((record) => record.auditAttempted === true)).toBe(true);
+    expect(result.report.questions!.every((record) => record.auditConsultations === 1)).toBe(true);
   });
 
   it('omits the field entirely when the system carries no audit', async () => {
@@ -190,7 +216,7 @@ describe('the audit census reaches the artifact', () => {
 
     expect(result.report.audit).toBeUndefined();
     expect('audit' in result.report).toBe(false);
-    expect(result.report.questions![0]!.auditAttempted).toBeUndefined();
+    expect(result.report.questions![0]!.auditConsultations).toBeUndefined();
   });
 
   it('reads a throwing accessor as an absent instrument rather than a failed run', async () => {
