@@ -3593,3 +3593,124 @@ class TestTheCoverageSplit:
         r = self._run(tmp_path, self._report([question]))
         assert r.returncode == 2
         assert 'both' in r.stderr
+
+
+class TestTheRoomSimulation:
+    """`--room`: what a smaller `maxPromptChars` would have done, as a prefix of the window.
+
+    §13.249 ran this by hand and it closed the "shrink the budget" reading of the token axis with a
+    −17.0-point reachability loss. That number decided the next registration, so it belongs in a tool
+    with a test rather than in a paragraph — the same rule §13.44 applied to the coverage table, and
+    the same failure §13.243.2 paid for when it did not.
+    """
+
+    def _report(self, questions: list[dict]) -> dict:
+        return {
+            'dataset': 'longmemeval',
+            'questionCount': len(questions),
+            'questions': questions,
+            'baseline': {'system': 'reference-pipeline', 'metrics': {'accuracy': 0.5}},
+            'feature': {'system': 'cortex-memory', 'metrics': {'accuracy': 0.5}},
+            'ablation': {'delta': 0.0},
+            'runs': 4,
+        }
+
+    def _question(
+        self,
+        identifier: str,
+        texts: list[str],
+        ranks: list[int],
+        overhead: int = 100,
+        capability: str = 'MR',
+    ) -> dict:
+        return {
+            'questionId': identifier,
+            'capability': capability,
+            'correct': True,
+            'answer': '2',
+            'rawOutput': '2',
+            'groundTruth': '2',
+            'promptChars': overhead + sum(len(text) for text in texts),
+            'turns': [{'index': index, 'text': text} for index, text in enumerate(texts)],
+            'goldOverlap': {
+                'carried': 1,
+                'total': 2,
+                'pool': 2,
+                'goldRanks': ranks,
+            },
+            'windowComposition': {
+                'turns': len(texts),
+                'offered': len(texts),
+                'offeredChars': sum(len(text) for text in texts),
+                'unscoredChars': 0,
+            },
+        }
+
+    def _run(self, tmp_path: Path, report: dict, target: int):
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--room', str(target), str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _row(stdout: str, capability: str = 'MR') -> list[str]:
+        line = next(row for row in stdout.splitlines() if row.split() and row.split()[0] == capability)
+        return line.split()
+
+    def test_a_room_that_fits_everything_changes_nothing(self, tmp_path: Path) -> None:
+        # 4 turns of 50 characters with the gold at ranks 0 and 3: a 400-character room holds all of
+        # them, so the simulation must report 100% at both ends and spend what was spent.
+        report = self._report([self._question('fits', ['a' * 50] * 4, [0, 3])])
+        r = self._run(tmp_path, report, 400)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert fields[1] == '1'
+        assert fields[2] == '100.0%'  # reach@now
+        assert fields[3] == '100.0%'  # reach@target
+        assert fields[4] == '300'  # 4 x 50 + 100 overhead
+
+    def test_a_room_that_cuts_reports_the_loss_rather_than_a_zero(self, tmp_path: Path) -> None:
+        # A 200-character room is 100 of overhead plus two turns, so the gold at rank 3 is gone.
+        # The answer is reachability 0% at the target and 100% now -- a loss with its direction
+        # visible, not a single number that could be read either way.
+        report = self._report([self._question('cut', ['a' * 50] * 4, [0, 3])])
+        r = self._run(tmp_path, report, 200)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert fields[2] == '100.0%'
+        assert fields[3] == '0.0%'
+
+    def test_the_oracle_prices_the_gold_s_own_depth(self, tmp_path: Path) -> None:
+        # gold at rank 2 of 4 turns: the oracle is three turns plus overhead -- 250 -- against the 300
+        # actually spent on four. The ratio is the saving a perfect depth rule would have taken here,
+        # which is the number gate 3 of §13.249.4 scores a real rule against.
+        report = self._report([self._question('o', ['a' * 50] * 4, [2])])
+        r = self._run(tmp_path, report, 400)
+        assert r.returncode == 0, r.stderr
+        fields = self._row(r.stdout)
+        assert fields[5] == '250'  # 3 x 50 + 100
+        assert fields[6] == '0.83x'  # 250 needed against 300 spent
+
+    def test_a_question_whose_gold_the_pool_never_surfaced_is_excluded(self, tmp_path: Path) -> None:
+        # `-1` everywhere means the ranking never reached the gold, so no room setting is a
+        # counterfactual for it. Counting it would make reach@target fall for a reason the room
+        # cannot cause.
+        report = self._report([self._question('never', ['a' * 50] * 4, [-1, -1])])
+        r = self._run(tmp_path, report, 100)
+        assert r.returncode == 2
+        assert 'goldRanks' in r.stderr
+
+    def test_a_record_without_turn_text_is_refused_rather_than_priced_at_zero(
+        self, tmp_path: Path
+    ) -> None:
+        # The simulation reads the window's own bytes. A record that carries counts instead of text
+        # cannot be simulated, and pricing it at zero would report a perfect saving.
+        broken = self._question('b', ['a' * 50] * 4, [0])
+        broken['turns'] = [{'index': 0}]
+        r = self._run(tmp_path, self._report([broken]), 400)
+        assert r.returncode == 2
+        assert 'turn list with text' in r.stderr

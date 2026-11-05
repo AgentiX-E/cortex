@@ -28038,6 +28038,11 @@ doing work?* For each question, size the room to the deepest surfaced gold turn
 | TR | 127 | 56.7% | 27,486 | 46,226 | 0.59× |
 | **all** | 500 | **46.6%** | **24,182** | **44,778** | **0.54×** |
 
+Both character columns count **turn text only**; `readout-arm-run.py --room` prints the same table
+with the per-record overhead included, which moves the ratio from 0.54× to 0.56× and changes no
+conclusion. The two conventions are stated because §13.243.2 is the last number in this document that
+took a table's denominator for granted.
+
 Two facts, and they are the whole design:
 
 1. **There is 1.85× of headroom** on the questions where the gold is coverable at all — 24,182

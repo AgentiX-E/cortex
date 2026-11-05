@@ -32,6 +32,7 @@ Usage:
     python3 tools/readout-arm-run.py --reference path/to/report.json
     python3 tools/readout-arm-run.py --coverage path/to/report.json
     python3 tools/readout-arm-run.py --split path/to/report.json
+    python3 tools/readout-arm-run.py --room 32000 path/to/report.json
     python3 tools/readout-arm-run.py --declines path/to/report.json
     python3 tools/readout-arm-run.py --union path/to/report.json
     python3 tools/readout-arm-run.py --counted path/to/report.json
@@ -2290,6 +2291,124 @@ def split_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), measured
 
 
+def _turn_chars(question: dict) -> int | None:
+    """The characters the delivered turns actually carry, or `None` when the record cannot say.
+
+    `promptChars` minus this is the *overhead* — instructions, question, section header — which the
+    room does not pay for. Recomputing it per record rather than assuming a constant is what lets the
+    simulation be compared against a real run instead of against an idealised one.
+    """
+    turns = question.get('turns')
+    prompt = question.get('promptChars')
+    if not isinstance(turns, list) or not isinstance(prompt, int):
+        return None
+    if any(not isinstance(turn, dict) or not isinstance(turn.get('text'), str) for turn in turns):
+        return None
+    return sum(len(turn['text']) for turn in turns)
+
+
+def _surfaced(question: dict) -> list[int]:
+    """The gold's ranks that the retrieval actually offered, in pool order."""
+    overlap = question.get('goldOverlap')
+    if not isinstance(overlap, dict):
+        return []
+    ranks = overlap.get('goldRanks')
+    if not isinstance(ranks, list):
+        return []
+    return [rank for rank in ranks if isinstance(rank, int) and rank >= 0]
+
+
+def room_section(questions: list[dict], target: int) -> tuple[str, int]:
+    """What a smaller `maxPromptChars` would do, simulated as a prefix of the delivered window.
+
+    ## Why this is exact, and what it is exact about
+
+    The window is an ordered list of turns and the budget admits a prefix of it — asserted over all
+    500 records of `41860773768` (`turns[i].index == i`). So "a smaller room" is not a heuristic
+    simulation: it is the same prefix the arm would have built, priced by its own turn text, with the
+    per-record overhead held fixed. `--split` and `--coverage` read what the window *did*; this reads
+    what a different window *would have done*, and it is the only one of the three that answers a
+    counterfactual.
+
+    ## What it cannot simulate
+
+    A different **selection** (that needs the retriever), a cascade, or a test-time assembly. So a
+    failure here refutes one hypothesis — *the room is too large* — and says nothing about the two it
+    cannot express. §13.249 uses it for exactly that: the uniform cut loses 17 points of reachability,
+    which closes "shrink the budget" and leaves the predictor family open.
+
+    ## Why the oracle column is not a target
+
+    `oracle` sizes each room to the deepest surfaced gold turn, which is answer information. It is
+    printed to score a rule against, never to be encoded — §13.249.4's gate 3.
+    """
+    rows: dict[str, list[float]] = {}
+    for question in questions:
+        capability = question.get('capability')
+        if not isinstance(capability, str):
+            continue
+        chars = _turn_chars(question)
+        surfaced = _surfaced(question)
+        if chars is None or not surfaced:
+            continue
+        turns = question['turns']
+        overhead = question['promptChars'] - chars
+        room = target - overhead
+        taken = 0
+        depth = 0
+        for index, turn in enumerate(turns):
+            if taken + len(turn['text']) > room:
+                break
+            taken += len(turn['text'])
+            depth = index + 1
+        deepest = max(surfaced) + 1
+        coverable = deepest <= len(turns)
+        oracle = sum(len(turn['text']) for turn in turns[:deepest]) if coverable else None
+        row = rows.setdefault(capability, [0, 0, 0, 0.0, 0, 0.0, 0.0])
+        row[0] += 1
+        row[1] += 1 if all(rank < len(turns) for rank in surfaced) else 0
+        row[2] += 1 if all(rank < depth for rank in surfaced) else 0
+        row[3] += taken + overhead
+        if oracle is not None:
+            row[4] += 1
+            row[5] += oracle + overhead
+        row[6] += question['promptChars']
+    if not rows:
+        return '', 0
+
+    lines: list[str] = [
+        '',
+        f'room simulation at {target:,} characters (a smaller room is a prefix of the delivered window)',
+        f"  {'capability':10s} {'n':>4s} {'reach@now':>10s} {'reach@target':>13s} {'chars':>8s} {'oracle':>8s} {'ratio':>6s}",
+    ]
+    totals = [0, 0, 0, 0.0, 0, 0.0, 0.0]
+    for capability in sorted(rows):
+        count, now, at_target, simulated, coverable, oracle, actual = rows[capability]
+        for index, value in enumerate((count, now, at_target, simulated, coverable, oracle, actual)):
+            totals[index] += value
+        oracle_mean = f'{oracle / coverable:,.0f}' if coverable else '-'
+        ratio = f'{(oracle / coverable) / (actual / count):.2f}x' if coverable and actual else '-'
+        lines.append(
+            f'  {capability:10s} {int(count):4d} {100 * now / count:9.1f}% {100 * at_target / count:12.1f}% '
+            f'{simulated / count:8,.0f} {oracle_mean:>8s} {ratio:>6s}'
+        )
+    count, now, at_target, simulated, coverable, oracle, actual = totals
+    if count:
+        oracle_mean = f'{oracle / coverable:,.0f}' if coverable else '-'
+        ratio = f'{(oracle / coverable) / (actual / count):.2f}x' if coverable and actual else '-'
+        lines.append(
+            f'  {"ALL":10s} {int(count):4d} {100 * now / count:9.1f}% {100 * at_target / count:12.1f}% '
+            f'{simulated / count:8,.0f} {oracle_mean:>8s} {ratio:>6s}'
+        )
+    lines.append(
+        '  `reach` is the share of questions where every surfaced gold turn fits; `oracle` sizes each room'
+    )
+    lines.append(
+        '  to the deepest surfaced gold turn and is a score to beat, never a target to encode'
+    )
+    return '\n'.join(lines), int(totals[0])
+
+
 def ranks_section(questions: list[dict]) -> tuple[str, int]:
     """How many of a question's gold turns sit in the top 8 / 16 / 32 of the ordered pool.
 
@@ -4352,6 +4471,12 @@ def main(argv: list[str]) -> int:
         help='print the gold-coverage table instead of the run summary',
     )
     parser.add_argument(
+        '--room',
+        type=int,
+        metavar='CHARS',
+        help='simulate a smaller maxPromptChars: reachability, characters and the oracle beside it',
+    )
+    parser.add_argument(
         '--split',
         action='store_true',
         help='print the full/partial coverage split instead of the run summary',
@@ -4603,6 +4728,18 @@ def main(argv: list[str]) -> int:
                 'beside its `total`, so these bands are NOT comparable against a run whose '
                 'denominator was the dataset.'
             )
+        print(section)
+        return 0
+
+    if args.room is not None:
+        section, measured = room_section(questions, args.room)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries both a turn list with text and a `goldRanks` with a '
+                'surfaced entry. The simulation needs the window it would have built, not a summary of it.',
+                file=sys.stderr,
+            )
+            return 2
         print(section)
         return 0
 

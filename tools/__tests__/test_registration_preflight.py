@@ -21,8 +21,8 @@ what was *asked for*, and every blank is a question nobody asked.
 | case | asked | registered | expected |
 | --- | --- | --- | --- |
 | the arm | every key | same | pass |
-| one blank | `ask` absent | `operands+operand-gap` | fail, `ABSENT` |
-| one empty | `ask` = `""` | `operands+operand-gap` | fail, `ABSENT` |
+| one blank | `ask` absent | `verbatim` | fail, `ABSENT` |
+| one empty | `ask` = `""` | `verbatim` | fail, `ABSENT` |
 | one moved | `limit` = `60` | `0` | fail, `DEPARTED` |
 | declared | the same departures | same | pass |
 | declared idle | a key that did not move | same | pass, with a note |
@@ -89,7 +89,7 @@ class PreflightTest(unittest.TestCase):
         del inputs["cortex_memory_ask"]
         code, out = self.run_preflight(inputs)
         self.assertEqual(code, 1)
-        self.assertIn('ABSENT    cortex_memory_ask: registered "operands+operand-gap"', out)
+        self.assertIn('ABSENT    cortex_memory_ask: registered "verbatim"', out)
 
     def test_an_empty_input_is_a_departure(self) -> None:
         """The shape a client produces when it forwards an unfilled input.

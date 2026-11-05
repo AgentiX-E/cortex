@@ -86,10 +86,13 @@ REAL_41222844945 = {
 # rather than two strings because every test that clears them must clear both: a run that declares
 # one is a run that still has an undeclared field.
 #
-# `cortex_memory_ask` is deliberately **not** in it. §13.203 adopted `operands+operand-gap`, so the
-# artifact stopped departing from the table without the artifact changing at all -- which is the
-# point of the instrument: it compares a run to a registration, and either side moving is visible.
+# `cortex_memory_ask` left this list when §13.203 adopted `operands+operand-gap` -- "the artifact
+# stopped departing from the table without the artifact changing at all" -- and it returns here when
+# §13.248 adopted `verbatim`, for the same reason in the other direction. **Neither move touched the
+# artifact.** That is the instrument working: it compares a run to a registration, and either side
+# moving is visible.
 DEPARTS_41222844945 = [
+    "cortex_memory_ask",
     "cortex_memory_max_prompt_chars",
     "cortex_memory_max_turn_chars",
     # §13.232 moved the registered `thinking` off `disabled`, so this artifact now departs on it too.
