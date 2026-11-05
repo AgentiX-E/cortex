@@ -29465,3 +29465,30 @@ The standing caveat: this is one reader at one temperature on one corpus. A regr
 instrument the moment a run reports a verdict flip on identical answer text -- which would be the first
 evidence that the judge is a variance source here, and would make every unpaired comparison in the
 archives suspect in a way this pair says they are not.
+
+### 13.261.5 Gate 5: the population the mechanism could not touch moved more than the one it did
+
+Same split as §13.257.2 -- a 64-bit prompt digest against the control `41970746908` -- applied to both
+runs of the identical configuration. The two runs classify the roster the same way, which §13.261.1
+requires: `128` changed, `372` unchanged, the same 128 question ids in both.
+
+| population | run | up | down | net | net on 500 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| changed (128) | `41990597116` | 3 | 7 | −4 | −0.80 |
+| changed (128) | `42013256884` | 5 | 6 | −1 | −0.20 |
+| changed (128) | **both (256 observations)** | **8** | **13** | **−5** | **−1.00** |
+| unchanged (372) | `41990597116` | 2 | 11 | −9 | −1.80 |
+| unchanged (372) | `42013256884` | 2 | 8 | −6 | −1.20 |
+| unchanged (372) | **both (744 observations)** | **4** | **19** | **−15** | **−3.00** |
+
+The reading is the one §13.257.3 reached from one run and this pair makes unavoidable: **the population
+whose bytes the mechanism did not touch drifts further, in the same direction, than the population whose
+bytes it rewrote.** 19 of 744 readings lost a question on evidence that is byte-identical between the
+two sides. A mechanism cannot cause that, and a "released" column computed from the whole 500 would
+attribute it to the mechanism.
+
+Against that floor, the mechanism's own footprint is `−1.00` point over 256 paired observations -- half
+the width of the reader's self-disagreement measured in §13.261.3 (`−1.20` points on one run). So the
+adoption in §13.260.1 is exactly what the decision rule says it is: the mechanism buys **delivery**
+(`+21` gold turns, `+53` into the pool) and there is no measured accuracy cost, which is not the same as
+a measured accuracy gain and must not be reported as one.
