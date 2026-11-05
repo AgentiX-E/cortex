@@ -2734,6 +2734,10 @@ export async function runCortexMemoryArm(
     baseline: zeroUsage(),
     feature: zeroUsage(),
   };
+  // §13.259. Under a pool the ablation answers through the pool's factories, so the two wrappers
+  // below are never called -- the pool has to be wrapped instead, and both paths are kept because a
+  // serial run is the one every archived artifact was produced by.
+  const usagePool = options.pool === undefined ? undefined : tracedPool(options.pool, usageLedger);
   const report = await runAblationReport(
     dataset,
     traceUsage(baseline, 'baseline', usageLedger),
@@ -2759,7 +2763,9 @@ export async function runCortexMemoryArm(
       memoryArmConfig: options.memoryArmConfig,
       ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
       ...(options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs }),
-      ...(options.pool === undefined ? {} : { pool: options.pool }),
+      // The traced pool, not the caller's: a pooled run answers through this one, and passing the
+      // original here is exactly the defect §13.259 registers.
+      ...(usagePool === undefined ? {} : { pool: usagePool }),
     },
   );
 
@@ -3328,6 +3334,52 @@ function voteVerdictsOf(
  * ablation, so the census read keeps using the instance the caller passed -- which is exactly the
  * object `createAblationPool({ first: { feature } })` puts at index 0.
  */
+/**
+ * A pool whose instances are wrapped for the per-side spend split.
+ *
+ * ## The defect this fixes (§13.259)
+ *
+ * `traceUsage` wraps the two systems passed to `runCortexMemoryArm` positionally -- and under a
+ * pool the ablation answers through `pool.baselineFor(worker)` / `pool.featureFor(worker)`, so
+ * those two wrappers are **never called**. Both sides then read zero calls, and
+ * `attachUsageBySide` drops the field when the sides sum to zero, which is why the loss was
+ * invisible: `41546569106` (no pool, `workers` unset) carried `usageBySide`; `41970746908` and
+ * `41990597116` (four workers) do not, and all three are complete 500-question runs of the same
+ * arm.
+ *
+ * ## Why the enumeration passes through untouched
+ *
+ * `featureInstances()` is what `censusSourcesOf` reads to fold the arm's censuses across workers,
+ * and it compares the caller's `feature` **by identity**. The wrapper delegates every call to the
+ * instance it wraps, so the instance still accumulates its own per-question state and the census
+ * path is unaffected; only the object that answers has changed.
+ *
+ * ## Why the memo is per worker
+ *
+ * `createAblationPool` memoises one instance per worker, so a factory that returned a fresh
+ * wrapper each call would make instance identity a function of (worker, pass) -- the second half
+ * of the defect that function documents. The map here restores that guarantee one layer out.
+ */
+function tracedPool(pool: AblationPool, ledger: Record<UsageSide, UsageSnapshot>): AblationPool {
+  const wrapped: Record<UsageSide, Map<number, MemorySystem>> = {
+    baseline: new Map<number, MemorySystem>(),
+    feature: new Map<number, MemorySystem>(),
+  };
+  const once = (side: UsageSide, worker: number, build: () => MemorySystem): MemorySystem => {
+    const existing = wrapped[side].get(worker);
+    if (existing !== undefined) return existing;
+    const traced = traceUsage(build(), side, ledger);
+    wrapped[side].set(worker, traced);
+    return traced;
+  };
+  return {
+    workers: pool.workers,
+    baselineFor: (worker) => once('baseline', worker, () => pool.baselineFor(worker)),
+    featureFor: (worker) => once('feature', worker, () => pool.featureFor(worker)),
+    featureInstances: () => pool.featureInstances(),
+  };
+}
+
 function censusSourcesOf(feature: MemorySystem, pool: AblationPool | undefined): MemorySystem[] {
   if (pool === undefined) return [feature];
   const instances = [...pool.featureInstances()];

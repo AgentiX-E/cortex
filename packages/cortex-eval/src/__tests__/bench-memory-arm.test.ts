@@ -55,9 +55,12 @@ import {
   toMemoryArmConfig,
 } from '../bench-memory-arm.js';
 import { resolveAnchorParameters } from '../anchor-recall.js';
+import { OpenAICompatibleLLM } from '@agentix-e/cortex-ai';
+
 import { exactMatchScorer } from '../metrics.js';
 import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 import { formatAblationReport, type AblationReport } from '../report.js';
+import { createAblationPool } from '../ablation.js';
 import type { QuestionRecord } from '../question-record.js';
 import type { AblationResult, Answer, BenchmarkDataset, MemorySystem, Metrics } from '../types.js';
 
@@ -194,6 +197,164 @@ async function runCortexMemoryArmReport(config: {
   );
   return report;
 }
+
+/**
+ * The per-side spend split, asserted through the construction the arm actually performs.
+ *
+ * §13.259: `41546569106` carried `usageBySide` and `4199…`/`4197…` do not, while all three are
+ * complete 500-question runs. Every existing test of the split wraps a synthetic system and calls
+ * `traceUsage` directly, so no test covers the path that produced the field in one dispatch and not
+ * in the next. This one does: a system whose `answer` records provider usage exactly as the adapter
+ * does, run through `runCortexMemoryArm`.
+ *
+ * If this passes while a dispatch omits the field, the cause is between the two packages -- an
+ * instance of the ledger that one side increments and the other reads -- and not this wiring.
+ */
+describe('the per-side spend split', () => {
+  it('reaches the artifact from the arm, with each side counted separately', async () => {
+    // The adapter, not a stand-in for it: `recordUsage` is deliberately not exported -- "the adapter
+    // is their only writer" -- so the only honest way to spend tokens in a test is to go through the
+    // one hop every provider request in the repository passes through.
+    const spending = (name: string, promptTokens: number): MemorySystem => ({
+      name,
+      answer: () =>
+        new OpenAICompatibleLLM({
+          baseUrl: 'http://llm.invalid',
+          apiKey: 'k',
+          model: 'm',
+          fetchFn: (async () =>
+            new Response(
+              JSON.stringify({
+                choices: [{ message: { content: 'Lisbon' } }],
+                usage: { prompt_tokens: promptTokens, completion_tokens: 10 },
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            )) as unknown as typeof fetch,
+        }).complete('where?'),
+    });
+    const dataset = {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: ['user: I went to Lisbon.'],
+          sessions: [['user: I went to Lisbon.']],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+
+    const { report } = await runCortexMemoryArm(
+      dataset,
+      spending('reference-pipeline', 100),
+      spending('cortex-memory', 300),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          threshold: 0,
+          retrievalThreshold: 0,
+          sessionBudget: null,
+          sourceTrust: 0.5,
+          confidenceSignal: 'none',
+          promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+          reviewPass: 'none',
+          reviewBareDecline: false,
+        },
+      },
+    );
+
+    // The presence assertion is the one that would have caught §13.259: the field is dropped when
+    // the two sides sum to zero, so "wired to nothing" and "predates the field" are the same bytes.
+    expect(report.usageBySide).toBeDefined();
+    expect(report.usageBySide?.baseline.promptTokens).toBe(100);
+    expect(report.usageBySide?.feature.promptTokens).toBe(300);
+  });
+
+  it('reaches the artifact through a pool, which is how every dispatch runs', async () => {
+    // §13.259's reproduction. `41546569106` had no pool and carried the field; `4197…`/`4199…` ran
+    // four workers and did not, because the ablation answers through `pool.featureFor(worker)` and
+    // the wrappers around the positional arguments were never called. Both sides read zero, and the
+    // field's own absence rule then dropped it -- so "wired to nothing" and "predates the field"
+    // were the same bytes.
+    const spending = (name: string, promptTokens: number): MemorySystem => ({
+      name,
+      answer: () =>
+        new OpenAICompatibleLLM({
+          baseUrl: 'http://llm.invalid',
+          apiKey: 'k',
+          model: 'm',
+          fetchFn: (async () =>
+            new Response(
+              JSON.stringify({
+                choices: [{ message: { content: 'Lisbon' } }],
+                usage: { prompt_tokens: promptTokens, completion_tokens: 10 },
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            )) as unknown as typeof fetch,
+        }).complete('where?'),
+    });
+    const dataset = {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: ['user: I went to Lisbon.'],
+          sessions: [['user: I went to Lisbon.']],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+    const baseline0 = spending('reference-pipeline', 100);
+    const feature0 = spending('cortex-memory', 300);
+
+    const { report } = await runCortexMemoryArm(dataset, baseline0, feature0, {
+      runs: 1,
+      scorer: exactMatchScorer,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      pool: createAblationPool({
+        workers: 2,
+        first: { baseline: baseline0, feature: feature0 },
+        baselineFor: () => spending('reference-pipeline', 100),
+        featureFor: () => spending('cortex-memory', 300),
+      }),
+      memoryArmConfig: {
+        threshold: 0,
+        retrievalThreshold: 0,
+        sessionBudget: null,
+        sourceTrust: 0.5,
+        confidenceSignal: 'none',
+        promptContract: 'abstention',
+        relevanceSignal: 'none',
+        relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+        relevanceUnits: 'turn',
+        renderingRoutes: [],
+        ask: 'route',
+        askRoutes: [],
+        reviewPass: 'none',
+        reviewBareDecline: false,
+      },
+    });
+
+    expect(report.usageBySide).toBeDefined();
+    // The one question went to worker 0, which is `baseline0` / `feature0`.
+    expect(report.usageBySide?.baseline.promptTokens).toBe(100);
+    expect(report.usageBySide?.feature.promptTokens).toBe(300);
+  });
+});
 
 /** A system that answers a fixed string, so an arm's identity is observable. */
 function constantSystem(name: string, answer: Answer): MemorySystem {
