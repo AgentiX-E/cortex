@@ -3968,3 +3968,103 @@ class TestTheStrata:
         r = self._run(tmp_path, self._report([broken]))
         assert r.returncode == 2
         assert 'goldRanks' in r.stderr
+
+
+class TestTheInstrument:
+    """`--instrument`: the structural gates of a run that changes no behaviour.
+
+    §13.253.7's four gates are all statements about the artifact's own consistency, and a gate
+    re-typed at readback is a gate typed differently the second time. The mode prints the four
+    numbers the bars are compared against, and it counts a **missing** field apart from a **wrong**
+    one: the first is an artifact that predates the field, the second is a producer that computed
+    two things from two lists.
+    """
+
+    def _question(
+        self, identifier: str, total: int, delivered: list[bool] | None, ranks: list[int] | None = None
+    ) -> dict:
+        overlap: dict = {
+            'carried': sum(1 for flag in delivered if flag) if delivered is not None else 0,
+            'total': total,
+            'pool': 0,
+            'goldRanks': ranks if ranks is not None else [0] * total,
+        }
+        if delivered is not None:
+            overlap['goldDelivered'] = delivered
+        return {
+            'questionId': identifier,
+            'capability': 'MR',
+            'correct': True,
+            'answer': '2',
+            'rawOutput': '2',
+            'groundTruth': '2',
+            'goldOverlap': overlap,
+            'windowComposition': {'turns': 10, 'offered': 10, 'offeredChars': 0, 'unscoredChars': 0},
+        }
+
+    def _run(self, tmp_path: Path, questions: list[dict]):
+        report = {
+            'dataset': 'longmemeval',
+            'questionCount': len(questions),
+            'questions': questions,
+            'baseline': {'system': 'reference-pipeline', 'metrics': {'accuracy': 0.5}},
+            'feature': {'system': 'cortex-memory', 'metrics': {'accuracy': 0.5}},
+            'ablation': {'delta': 0.0},
+            'runs': 4,
+        }
+        path = tmp_path / 'report.json'
+        path.write_text(json.dumps(report), encoding='utf-8')
+        return subprocess.run(
+            [sys.executable, str(TOOL), '--instrument', str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _field(stdout: str, label: str) -> str:
+        line = next(row for row in stdout.splitlines() if row.strip().startswith(label))
+        return line.split()[-1]
+
+    def test_a_record_without_the_field_is_a_gap_and_not_a_defect(self, tmp_path: Path) -> None:
+        # The archived artifact's state. It cannot be audited, and the tool says so instead of
+        # printing a `0` beside "carrying goldDelivered", which would read as a measured absence.
+        r = self._run(tmp_path, [self._question('a', 2, None)])
+        assert r.returncode == 2
+        assert 'no record carries' in r.stderr
+
+    def test_a_field_that_disagrees_with_its_count_is_counted_apart(self, tmp_path: Path) -> None:
+        # 2 delivered flags against `carried = 1`: a producer computing the two from two lists.
+        # Counting it with the missing-field case would file a defect as a gap.
+        broken = self._question('b', 2, [True, True])
+        broken['goldOverlap']['carried'] = 1
+        r = self._run(tmp_path, [self._question('a', 2, [True, True]), broken])
+        assert r.returncode == 0, r.stderr
+        assert self._field(r.stdout, 'carrying goldDelivered') == '2'
+        assert self._field(r.stdout, 'whose sum differs from carried') == '1'
+        assert self._field(r.stdout, 'whose length differs from total') == '0'
+
+    def test_a_length_that_differs_from_total_is_not_counted_as_a_sum_defect(self, tmp_path: Path) -> None:
+        # A short array has no sum to compare, so it is counted once rather than twice: two counts
+        # for one record would read as two independent problems.
+        short = self._question('s', 3, [True, True])
+        r = self._run(tmp_path, [short])
+        assert r.returncode == 0, r.stderr
+        assert self._field(r.stdout, 'whose length differs from total') == '1'
+        assert self._field(r.stdout, 'whose sum differs from carried') == '0'
+
+    def test_the_partition_line_sums_to_the_roster(self, tmp_path: Path) -> None:
+        # Gate 3 in its printed form: the four states are a partition of the classified records, and
+        # a reader comparing the two lines is the check rather than a claim about it.
+        questions = [
+            self._question('c', 2, [True, True]),
+            self._question('r', 2, [True, False], ranks=[0, 5]),
+            self._question('u', 2, [True, False], ranks=[0, -1]),
+            self._question('a', 2, None, ranks=[0, -1]),
+        ]
+        r = self._run(tmp_path, questions)
+        assert r.returncode == 0, r.stderr
+        assert '1 complete / 1 room-cut / 1 unsurfaced / 1 undecidable' in r.stdout
+        assert self._field(r.stdout, 'classified') == '4'
+        # the delivered total, read as the pair the line prints: the sum and its denominator
+        assert '4 of 8 (50.00%)' in r.stdout

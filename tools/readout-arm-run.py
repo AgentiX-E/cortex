@@ -2543,6 +2543,76 @@ def strata_section(questions: list[dict]) -> tuple[str, int]:
     return '\n'.join(lines), measured
 
 
+
+def instrument_section(questions: list[dict]) -> tuple[str, int]:
+    """Whether the artifact carries `goldDelivered`, and whether it agrees with what it summarises.
+
+    ## Why this is a mode and not three lines of judgment
+
+    §13.253.7's gates are all structural -- the field on every record, its length equal to `total`,
+    its sum equal to `carried`, and the four strata summing to the roster. Those are the gates a run
+    that changes no behaviour is judged by, and a gate re-typed at readback is a gate that gets
+    typed differently the second time. So the numbers are printed from one function, and the
+    judgement is a comparison against bars already written down.
+
+    ## What the two failure modes look like, and why they are counted apart
+
+    A record **without** the field is an artifact that predates it; a record **with** it and with
+    `sum != carried` is a producer that computed two things from two lists. The first is an
+    instrument gap and the second is a defect, and a single "inconsistent" count would make them
+    look like one problem with one repair.
+    """
+    present = 0
+    wrong_length = 0
+    wrong_sum = 0
+    delivered = 0
+    named = 0
+    for question in questions:
+        overlap = question.get('goldOverlap')
+        if not isinstance(overlap, dict):
+            continue
+        total = overlap.get('total')
+        if not isinstance(total, int) or total <= 0:
+            continue
+        named += total
+        flags = overlap.get('goldDelivered')
+        if not isinstance(flags, list):
+            continue
+        present += 1
+        if len(flags) != total:
+            wrong_length += 1
+            continue
+        delivered += sum(1 for flag in flags if flag is True)
+        if sum(1 for flag in flags if flag is True) != overlap.get('carried'):
+            wrong_sum += 1
+    # The partition is reported here as well as in `--strata`, because gate 3 is a statement about
+    # this function's own counts: the three decided states must add up to the roster.
+    decided = 0
+    counts: dict[str, int] = {name: 0 for name in STRATA}
+    for question in questions:
+        stratum = stratum_of(question)
+        if stratum is None:
+            continue
+        decided += 1
+        counts[stratum] += 1
+    lines = [
+        '',
+        'instrument: does the artifact carry the delivery flags, and do they agree with the count',
+        f'  records with gold                         {len(questions):5d}',
+        f'  carrying goldDelivered                    {present:5d}',
+        f'  whose length differs from total           {wrong_length:5d}',
+        f'  whose sum differs from carried            {wrong_sum:5d}',
+        f'  delivered gold turns                      {delivered:5d} of {named}'
+        + (f' ({100.0 * delivered / named:.2f}%)' if named else ''),
+        f'  classified                                {decided:5d}',
+        '  partition                                 '
+        + ' / '.join(f'{counts[name]} {name}' for name in STRATA),
+        '  the bars: 500 records carrying the field, 0 wrong length, 0 wrong sum, four columns summing'
+        ' to the roster',
+    ]
+    return '\n'.join(lines), present
+
+
 def _turn_chars(question: dict) -> int | None:
     """The characters the delivered turns actually carry, or `None` when the record cannot say.
 
@@ -4734,6 +4804,11 @@ def main(argv: list[str]) -> int:
         help='print the full/partial coverage split instead of the run summary',
     )
     parser.add_argument(
+        '--instrument',
+        action='store_true',
+        help='print the goldDelivered coverage and its agreement with carried, instead of the run summary',
+    )
+    parser.add_argument(
         '--strata',
         action='store_true',
         help='print the exact / depth-limited / pool-missing strata with each one\'s accuracy',
@@ -5006,6 +5081,18 @@ def main(argv: list[str]) -> int:
             print(
                 f'{args.report}: no `goldRanks` beside a `windowComposition.turns`. The split needs '
                 'both: which gold turns retrieval surfaced, and how deep the window went.',
+                file=sys.stderr,
+            )
+            return 2
+        print(section)
+        return 0
+
+    if args.instrument:
+        section, measured = instrument_section(questions)
+        if measured == 0:
+            print(
+                f'{args.report}: no record carries `goldDelivered`, so there is nothing to audit. '
+                'The field was added in §13.253; every artifact before it answers "not recorded".',
                 file=sys.stderr,
             )
             return 2

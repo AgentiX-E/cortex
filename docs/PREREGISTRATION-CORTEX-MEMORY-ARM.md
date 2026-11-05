@@ -28580,3 +28580,9 @@ comes out:
 The previous round's `rankingChars` is **deferred, not dropped**, and the reason is now measured
 rather than assumed: the depth axis is exonerated on 100 room-cut questions at 95.00%, so a field
 that would price a dead axis buys nothing until gate 3 says the axis is alive.
+
+Gates 1 to 3 are read by one command, `readout-arm-run.py --instrument`, which prints the four
+counts the bars are compared against and counts a **missing** field apart from a **wrong** one: on
+`41860773768` the first is 500 and the second is 0, and on a record whose flags disagree with its
+own `carried` they are the other way round. A gate re-typed at readback is a gate typed differently
+the second time, which is how `--strata` came to be wrong in the first place.
