@@ -619,7 +619,7 @@ export const CRITERIA: readonly Criterion[] = [
     id: 'S8',
     capability: 'multi-session reasoning',
     metric:
-      'multi-session correct answers gained by the silent two-step contract over the enumerated one',
+      "multi-session correct answers gained by the reference pipeline's aggregation contract, migrated whole, over the registered ask it replaced",
     dataset:
       'LongMemEval-S, 121 multi-session questions, treatment and control on byte-identical windows because flat and temporal are unchanged',
     comparator: 'at-least',
