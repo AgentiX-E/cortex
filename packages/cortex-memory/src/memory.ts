@@ -210,6 +210,26 @@ export class CortexMemory implements SessionAwareMemorySystem {
   readonly #recoveries: { attempted: number; answered: number } = { attempted: 0, answered: 0 };
 
   /**
+   * The membership audit, counted: how many times it ran, and how many answers it moved.
+   *
+   * ## Why `changed` and not `answered`
+   *
+   * The two sibling censuses above answer "did the pass fire, and did it produce something" -- both true for a
+   * retry that returns the same answer it was given. This pass is different in kind: it is handed an answer that
+   * already exists and its only product is a **difference**. A tally of "consultations that returned a value"
+   * would therefore be a count of calls, which the transport section already carries, and the number a reader of
+   * an audit run needs is the one that says the review disagreed with the first pass.
+   *
+   * ## Why it is a census on the instance and not a field on the record
+   *
+   * `#lastReview` holds one slot and is reset at the start of every question, so it describes the most recent
+   * consultation and nothing else. A run-level reader that wants "how many answers the audit moved, and did that
+   * help" needs the paired before/after per question, which the arm takes as a delta around each answer; this
+   * counter is the monotonic side of that delta, exactly as `#recoveries` is for the recovery pass.
+   */
+  readonly #audits: { attempted: number; changed: number } = { attempted: 0, changed: 0 };
+
+  /**
    * The model's own output for the most recent call, before `parseAnswer`.
    *
    * ## Why the parsed answer is not enough
@@ -790,6 +810,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * What the membership audit did, for a run that turned `reviewPass: 'audit'` on.
+   *
+   * Two numbers, and the second is the one that matters: `attempted` counts consultations this pass issued, and
+   * `changed` counts the ones whose answer differed from the first pass. A run with `attempted: 486, changed: 0`
+   * has measured a mechanism that looked at every answer and agreed with all of them, which is a finding; the same
+   * run reporting only `attempted` would read as a mechanism whose effect is unknown.
+   */
+  auditCensus(): { attempted: number; changed: number } {
+    return { ...this.#audits };
+  }
+
+  /**
    * Flat answering. Also the fallback for every shape whose dedicated path is
    * absent, and for `single-session-preference`.
    */
@@ -1340,7 +1372,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     }
 
     const audit = buildAuditPrompt(question, sessions, firstRaw, options);
+    // Counted before the call and compared after it, because `attempted` has to mean "a consultation was
+    // issued": a counter incremented on the returned value would report a provider fault as a pass that never
+    // fired, and the two are different findings about the run.
+    this.#audits.attempted += 1;
     const final = await this.#consult(audit.prompt, 'multi-session');
+    if (final !== first) this.#audits.changed += 1;
     this.#lastReview = { first, final, changed: first !== final };
     // The offer is recorded from the prompt the **answer came from**. Recording the first prompt
     // would describe a consultation whose answer was discarded, and every coverage count in the

@@ -267,3 +267,55 @@ describe('the audit prompt stays inside the budget', () => {
     expect(seen[1]).toContain('Step 1');
   });
 });
+
+describe('the census the artifact reads', () => {
+  it('counts a consultation and the answer it moved', async () => {
+    // §13.260. Without this the pass could run on five hundred questions and the artifact would have
+    // nothing to say about it, which is the shape `lastReview()` already had: a producer field with no
+    // reader anywhere in the harness.
+    const memory = system({ reviewPass: 'audit' }, queueLlm([], FIRST, SECOND));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    expect(memory.auditCensus()).toEqual({ attempted: 1, changed: 1 });
+  });
+
+  it('counts a consultation that agreed, which is the state a single tally would hide', async () => {
+    const memory = system({ reviewPass: 'audit' }, queueLlm([], FIRST, FIRST));
+
+    const answer = await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    // The answer is unchanged, so an "answered" counter would have reported 1 here and said nothing
+    // about whether the review disagreed with anything.
+    expect(answer).toBe('1');
+    expect(memory.auditCensus()).toEqual({ attempted: 1, changed: 0 });
+  });
+
+  it('stays at zero when the run carries no audit, so absence is a fact about the build', async () => {
+    const memory = system({}, queueLlm([], FIRST));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    // Zeroed rather than absent on the product side, because the product always carries the accessor;
+    // the artifact omits the field, and that omission is what says "this build has no audit".
+    expect(memory.auditCensus()).toEqual({ attempted: 0, changed: 0 });
+  });
+
+  it('does not count a decline, because there is no list to audit', async () => {
+    const memory = system({ reviewPass: 'audit' }, queueLlm([], 'INSUFFICIENT_EVIDENCE'));
+
+    const answer = await memory.answerSessions('How many errands do I have?', SESSIONS);
+
+    expect(answer).toBeNull();
+    expect(memory.auditCensus()).toEqual({ attempted: 0, changed: 0 });
+  });
+
+  it('accumulates across questions rather than reporting the last one', async () => {
+    const memory = system({ reviewPass: 'audit' }, queueLlm([], FIRST, SECOND, FIRST, SECOND));
+
+    await memory.answerSessions('How many errands do I have?', SESSIONS);
+    await memory.answerSessions('How many stops on the way home?', SESSIONS);
+
+    expect(memory.auditCensus()).toEqual({ attempted: 2, changed: 2 });
+  });
+});
