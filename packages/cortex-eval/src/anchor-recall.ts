@@ -81,28 +81,29 @@ const ANCHOR_RADIUS = 3;
 /**
  * What a restored turn keeps of its anchor's score, per step away from the anchor.
  *
- * ## Why a quarter and not a half
+ * ## Why a half, and what round ten did to the argument for changing it
  *
- * The first dispatch of this mechanism used `0.5`, and its measured failure is the reason for this
- * value. At a half, a turn one step from the top anchor carried half that anchor's score, which in a
- * fused-cosine pool puts it **inside** the measured head -- above hits the retriever had ranked far
- * below the anchor. Round ten (`41990597116`, §13.257) measured the consequence: **21 more gold turns
- * reached the reader** and **MR fell eight questions** (99/121 -> 91/121, outside the registered
- * +/-5 width), with the paired comparison against the previous dispatch at **5 wins to 18 losses**
- * (exact sign test `p = 0.0106`). The widening delivered more gold and the ordering buried it.
+ * The first dispatch of this mechanism (`41990597116`, §13.257) put MR eight questions down and its
+ * paired comparison against the previous dispatch read **5 wins to 18 losses** (`p = 0.0106`). The
+ * obvious repair was a steeper decay, on the theory that a turn one step from the top anchor claims
+ * half of it and therefore ranks inside the measured head.
  *
- * A quarter keeps the invariant the mechanism rests on and moves its claim out of the head:
- * `0.25^d < 1` for every `d >= 1`, so no restored turn can outrank its anchor, while the one-step
- * share falls **below** where measured hits live rather than among them. The registered prediction
- * is that MR returns to `99/121` and the delivered-gold gain survives; the falsifier is that both
- * return to baseline, which would say this widening pays only through the room and never through the
- * ordering -- and would close the axis rather than invite a third dose (§13.257.5).
+ * The artifact says otherwise, and the reason is a field this campaign had not read this way before:
+ * **11 of those 18 losses arrived on prompts whose 64-bit digest is unchanged**. Identical bytes
+ * cannot be a treatment effect -- they are the reader and the judge drifting, at **3.49%**, against
+ * the **3.2%** measured when two dispatches were byte-identical in every field (§13.255.3). The
+ * displacement theory has a second problem in the same table: the mechanism's real room cost was
+ * **54 characters** out of a 46,816-character median prompt and **0.19 turns** per question. There is
+ * nothing there for a decay to fix.
+ *
+ * So this stays a half. Lowering it would be tuning a knob against a defect that the artifact does
+ * not support, which is the move §13.257.5 registers as the failure mode of the whole campaign.
  *
  * Stated as a decay rather than as a flat "just below the anchor" because the distance is real
  * information: the turn adjacent to an anchor is likelier to be the rest of the same statement than
  * the fourth one out.
  */
-const ANCHOR_DECAY = 0.25;
+const ANCHOR_DECAY = 0.5;
 
 /**
  * The three parameters a caller may override, resolved to the registered values in one place.
