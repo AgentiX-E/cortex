@@ -29130,12 +29130,27 @@ it. That is the standard gate 3 already imposes on itself (`pooled over three di
 | --- | --- | ---: |
 | 1 | calls that returned a response | within ±1% of the control's 5,670 |
 | 2 | median `promptChars` | within ±5% of 46,816 |
-| 3 | gold turns carried | **≥ 6,520** (the treatment's own count, which is the number being replicated) |
+| 3 | gold turns carried | **exactly 6,520**, because none of the steps that decide delivery involves a model |
 | 4 | overall four-pass mean | within **±1.6 points** of 90.25% |
 | 5 | changed-population paired ledger | reported with its exact sign test; **no bar**, because 256 questions at a 7.8% flip rate cannot resolve less than ~2 points |
 
 Gate 5 has no bar on purpose. Writing one would invite the campaign to read a 15–15 split as a pass;
 what is registered is that the number gets published, and that the decision rule below reads it.
+
+### 13.258.3b Why gate 3 is an equality and not a floor
+
+It was written as `>= 6,520` first, and that was wrong about what the number is. Delivery is decided
+by the embedding, the fusion, the anchor selection, the decay and the budget -- **none of which
+samples a model** -- against a dataset whose digest is pinned. So the expected count is not "at least
+the value we saw", it is **that value**, and the gate is a determinism check rather than a
+statistical one.
+
+The distinction matters in both directions. A floor passes a run that silently delivered *fewer* gold
+turns than the mechanism is capable of, which is the exact quantity the mechanism is being credited
+with. An equality turns any deviation into a reading of its own: a count above 6,520 or below it means
+something between the embedding service and the four-worker ordering is not reproducible, and **every
+delivery figure in this campaign** -- including the +21 this dispatch exists to reproduce -- inherits
+that noise. That would be a more important finding than the replication itself.
 
 ### 13.258.4 The decision rule, and what closes the pool axis
 
