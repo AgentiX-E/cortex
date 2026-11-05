@@ -41,11 +41,20 @@ describe('what a review pass name covers', () => {
     expect(options('recover').reviewBareDecline).toBe(true);
   });
 
-  it('runs neither ladder under `audit`, which is a second full consultation', () => {
-    // `audit` re-asks with the whole window. Stacking a bare retry under it would make any movement
-    // two consultations rather than one, which is the reason the product's own constructor refuses
-    // `audit` beside a vote.
-    expect(options('audit').reviewBareDecline).toBe(false);
+  it('runs the bare ladder under `audit` too, because the two act on disjoint outcomes', () => {
+    // §13.262. The exclusion read the field name instead of the populations. `answerSessions` retries
+    // a bare decline and **returns** before the audit branch, which needs a first pass that was not a
+    // decline -- so the two cannot both consult one question, and a run carrying both still gives each
+    // question one extra consultation of each kind.
+    //
+    // Run `42054107910` is the cost of getting that wrong: dispatched as a single-field experiment
+    // against `42013256884`, it also withdrew the ladder (`71` conversions in the control, `0` in the
+    // treatment, declines `134` -> `209`), so its accuracy numbers are two mechanisms summed.
+    expect(options('audit').reviewPass).toBe('audit');
+    expect(options('audit').reviewBareDecline).toBe(true);
+  });
+
+  it('runs no ladder under `none`, which is the only name that means that', () => {
     expect(options('none').reviewBareDecline).toBe(false);
   });
 
