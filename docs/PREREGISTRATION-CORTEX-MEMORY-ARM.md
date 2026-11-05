@@ -28594,3 +28594,99 @@ counts the bars are compared against and counts a **missing** field apart from a
 `41860773768` the first is 500 and the second is 0, and on a record whose flags disagree with its
 own `carried` they are the other way round. A gate re-typed at readback is a gate typed differently
 the second time, which is how `--strata` came to be wrong in the first place.
+
+## 13.254 A count is wrong by one when one item is missing, and "missing exactly one" is our modal state
+
+### 13.254.1 An interaction nobody had looked for, on data already in hand
+
+§13.253 exonerated the room by comparing strata. That comparison pools every question shape together, and
+the shapes do not behave alike. Splitting the 500 by **whether the ground truth is a number** -- a
+count, a sum, a duration -- against **whether every gold turn arrived**:
+
+| | every gold delivered | some gold missing | difference |
+| --- | ---: | ---: | ---: |
+| numeric answer | **89.77%** (88) | **78.57%** (70) | **−11.20** |
+| text answer | 95.15% (165) | 89.12% (147) | −6.03 |
+
+Inside MR the same split is **87.69% (65) against 55.56% (27), −32.13 points**. A counting question
+loses three times as much from an incomplete evidence set as an extractive one, which is what the
+mechanism predicts: an extractive answer survives losing a turn it did not need, and a count does not.
+
+### 13.254.2 The number that decides the mechanism
+
+Restricted to numeric questions with some gold missing (70), by **how many** are missing:
+
+| gold turns missing | n | accuracy | mean gold turns named |
+| --- | ---: | ---: | ---: |
+| exactly 1 | 19 | **52.63%** | 16.9 |
+| 2 | 21 | 85.71% | 18.4 |
+| 3 or more | 30 | 90.00% | 19.2 |
+
+and inside MR, missing exactly one is **12 questions at 33.33%** -- four of twelve.
+
+Read by the fraction delivered instead, the same non-monotonicity: `<0.7` delivered reads **100.00%**
+(11), `0.7-0.9` reads 84.38% (32), `>=0.9` reads **62.96%** (27).
+
+**Almost-complete is the worst state, and almost-complete is where this arm lives**: 86.47% of all gold
+turns are delivered, so the modal question is missing one or two of fifteen.
+
+The confound is stated rather than smoothed: a question missing three of nineteen may have a larger,
+more redundant gold set than one missing one of seventeen, and the 100% at `<0.7` says those questions
+are easy for a reason that has nothing to do with the fraction. What survives the confound is the
+operational statement, because it is the one the arm is actually in: **the marginal value of the last
+missing turn is the highest of any turn**, and a mechanism that improves the *average* delivered
+fraction is not the same as one that closes the last gap.
+
+### 13.254.3 Why this does not resurrect the room
+
+It would be the natural reading, and it is wrong on this run's own numbers: **MR has zero room-cut
+questions** (§13.253.4). Every MR question that is missing a gold turn is also missing one the ranking
+never surfaced. So on the route where the effect is largest, the decisive missing turn is not one the
+budget cut -- it is one the ranking never offered. A bigger room cannot buy it.
+
+That leaves the ranking and the ask, and it makes the next mechanism's target precise: **the single
+turn that changes a count**, on MR, numeric, delivered fraction `>=0.9`.
+
+### 13.254.4 The prediction this section is staking, written before the readback
+
+`41970746908` was dispatched before this section was written and re-runs the registered configuration
+with `goldDelivered` added. Its `unsurfaced` column converts the 145 `undecidable` into the two states.
+Two predictions, both falsifiable by that artifact:
+
+1. **`unsurfaced` will dominate `room-cut` inside MR's 37** -- predicted from MR's zero room-cut and
+   from the effect being concentrated in numeric questions. If MR's 37 come out mostly `room-cut`,
+   §13.254.3 is wrong and the room is live again.
+2. **The 19 numeric/missing-one questions will be `unsurfaced`, not `room-cut`** -- their missing turn
+   is the one the ranking never offered. If they come out `room-cut`, the mechanism is a bigger room
+   after all and the price in `rankingChars` becomes the next instrument.
+
+Neither prediction changes any bar already written. They exist so that the next section has to argue
+with a number rather than with a narrative.
+
+### 13.254.5 The mechanism the numbers point at, and its gates
+
+The leading systems' answer to "a set spread across sessions" is not a bigger pool; it is a
+query-time reorganisation of the evidence that is already there. Chain on Demand (arXiv:2611.02480)
+does it deterministically on an unchanged turn-level memory: allocate a fixed anchor budget by query
+relevance, **lexical diversity relative to the chosen anchors** and **newly covered query terms**, then
+restore each anchor's same-session neighbourhood verbatim. Turnbook's learned reranker is the same
+family of move and is worth 4.8 points, with its own note that it helps most where the answer spans
+sessions.
+
+For a count over a period, that construction is the natural fit: the question's own words name the
+*property*, not the *items*, so dense retrieval ranks the few statements that mention the property
+highly and the rest of the set not at all. An anchor-plus-neighbourhood selection reaches the rest
+because it stops asking the score to find them.
+
+Gates, written before the implementation, on MR's numeric population with a delivered fraction
+`>=0.9` (27 questions at 62.96%):
+
+| gate | quantity | bar |
+| --- | --- | --- |
+| 1 (structural) | LLM calls added per question | **0** -- selection is deterministic, restoration is verbatim |
+| 2 (structural) | characters added per question | ≤ **+15%** on the registered 46,631 median |
+| 3 (accuracy, merged) | MR numeric `>=0.9` delivered, three dispatches pooled | ≥ **21 of 27** (77.8%) against 17 of 27 (62.96%) |
+| 4 (no regression) | IE / TR / ABS / MR text answers | each within ±2 questions of the registered arm |
+
+Gate 3 is merged for §13.251.1's reason -- 4 questions is under two noise widths at 27 -- and gate 1
+is what keeps the experiment from becoming "ask the model again".
