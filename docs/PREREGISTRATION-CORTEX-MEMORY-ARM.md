@@ -28947,3 +28947,200 @@ Failure 2 is the one worth stating precisely, because it is the most likely and 
 informative on its own: it would say the anchor's session is the wrong unit, not that widening the
 pool is the wrong idea. The distinction is only readable because the census counts anchors, restored
 turns, and the delivery of every gold turn separately.
+
+## 13.257 The widened pool bought 21 gold turns for 54 characters, and the gate that failed was reading a unit noisier than its own width
+
+### 13.257.1 The comparison, and the one field it moves
+
+`41990597116` ran the registered configuration with `relevanceSignal=retrieval-anchored` (§13.256).
+Its control is the previous dispatch, `41970746908`, and the two configuration lines were compared
+field by field rather than assumed: **22 fields, one difference**.
+
+| | `41970746908` (control) | `41990597116` (treatment) |
+| --- | --- | --- |
+| `relevanceSignal` | `retrieval-hybrid` | **`retrieval-anchored`** |
+| `relevanceTopK` / `relevanceUnits` | `256` / `turn` | identical |
+| reader | `deepseek:deepseek-chat@api.deepseek.com/thinking=enabled on multi-session+temporal/temp=0` | identical |
+| `maxTurnChars` / routes / `maxPromptChars` | `400` / `multi-session+temporal` / `48000` | identical |
+| runs / workers / dataset | 4 / 4 / `sha256:d6f21ea9…` (500) | identical |
+
+The index line is in the job log and reads
+`Relevance index: 129094 scored (question, turn) pairs over 500 questions at topK=256` — the same
+order as the registered width, so the mechanism widened the pool by construction and did not widen
+the index.
+
+### 13.257.2 Gate 1 passed, and the counts moved the other way
+
+Restoration is deterministic and asks no model for anything, so the gate cannot be failed by the
+mechanism; what the artifact can do is confirm it.
+
+| | control | treatment |
+| --- | ---: | ---: |
+| calls that returned a response | 5,670 | **5,652** (−18) |
+| prompt tokens | 30,954,423 | 30,982,330 (**+0.09%**) |
+| completion tokens | 2,155,202 | 2,216,478 (**+2.84%**) |
+
+Eighteen fewer calls than the control is not an addition, and the prompt-token movement is a tenth of
+a percent. The completion growth is the reader writing longer answers under a different evidence
+order, which is a *reader* effect of the treatment rather than a call the treatment made.
+
+### 13.257.3 Gate 2 passed at 0.0%, and the reason it could not have been otherwise
+
+| quantity | control | treatment |
+| --- | ---: | ---: |
+| median `evidenceChars` | 482,305.5 | **482,305.5** |
+| median `promptChars` | 46,834 | 46,816 (**−0.04%**) |
+| median `evidenceTurns` | 417.5 | **417.5** |
+
+The bar was `≤ +15%`, and the predicted value was zero because restoration changes **which** turns are
+known, not how much room the reader gets. The observed median added turn count is zero because the
+room is a character budget: restored turns displace other turns rather than extend the prompt. Measured
+on the population where the prompt actually changed (§13.257.6) the displacement is **−0.19 delivered
+turns and −53.7 characters per question** — mean, with median zero. That number is the whole of what a
+decay parameter could ever have addressed, and it is why §13.257.7 withdraws the decay change.
+
+### 13.257.4 Gate 3 is not adjudicable on one dispatch, and its denominator is why
+
+The bar reads *"MR numeric, delivered fraction `>=0.9`, pooled over three dispatches: ≥ 21 of 27"*.
+This is the first of the three, so the bar cannot be met or missed yet. What the dispatch can report
+is the mechanism's delivery effect, which is the quantity gate 3 was built to move:
+
+| | control | treatment |
+| --- | ---: | ---: |
+| gold turns carried | 6,499 / 7,516 (**86.47%**) | 6,520 / 7,516 (**86.75%**) |
+| gold turns surfaced in the pool | 7,155 | 7,208 (**+53**) |
+| questions that gained gold | — | **21** (+24 turns) |
+| questions that lost gold | — | **3** (−3 turns) |
+| partition `complete / room-cut / unsurfaced / undecidable` | 255 / 100 / **145** / 0 | **259** / **108** / **133** / 0 |
+
+Twelve questions moved out of `unsurfaced` and eight into `room-cut`, which is the partition behaving
+as §13.256.4 predicted it would: the mechanism changes which gold the ranking can see, so the columns
+move with it. That is also why gate 3's *rate* is not comparable across the two dispatches: the two
+definitions this campaign's readout uses produce denominators of 30 and 45 on this run against 32 and
+43 on the control, and a rate whose denominator is a function of the treatment is not a rate.
+
+### 13.257.5 Gate 4 failed on its registered unit, and the unit is the finding
+
+| capability | control (first pass) | treatment (first pass) | Δ questions | width |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 143/150 | 142/150 | −1 | ±3 |
+| **MR** | **99/121** | **91/121** | **−8** | **±5** |
+| KU | 64/72 | 61/72 | −3 | ±3 |
+| TR | 122/127 | 121/127 | −1 | ±4 |
+| ABS | 30/30 | 30/30 | 0 | ±0 |
+
+MR is eight questions down against a five-question width, so the gate fails as written. The four
+passes of the two runs say something the first passes cannot:
+
+| | control MR (min / mean / max) | treatment MR (min / mean / max) |
+| --- | --- | --- |
+| MR, 4 passes | 92 / **94.8** / 99 | 91 / **94.8** / 97 |
+| overall, 4 passes | 89.40% / **90.30%** / 91.60% | 89.00% / **90.25%** / 90.80% |
+
+**The four-pass means are identical on MR (94.8) and differ by 0.05 points overall.** The two runs'
+own pass-to-pass spread is 7 and 6 MR questions, which is **wider than the ±5 width the gate is read
+against**. So the gate is not wrong about arithmetic; it is read on a unit — one pass — whose
+dispersion exceeds the bar it is compared to. A gate that a single pass can fail by chance and pass by
+chance is not measuring the mechanism.
+
+### 13.257.6 Eleven of the eighteen losses arrived on byte-identical prompts
+
+`promptDigest` is a 64-bit SHA-256 of the prompt text (`prompt-digest.ts`), so equal digests mean the
+reader was sent the same bytes. Splitting the 500 paired questions by that field:
+
+| population | n | wins | losses | flip rate | exact sign test | gold Δ |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **prompt identical** | 372 | 2 | **11** | **3.49%** | p = 0.0225 | 0 |
+| **prompt changed** | 128 | 3 | 7 | 7.81% | p = 0.3438 | **+21** |
+
+Three readings, each load-bearing:
+
+1. **The identical-prompt flips are the reader and the judge, not the mechanism.** 3.49% against the
+   **3.2%** measured when two dispatches were byte-identical in every field (§13.255.3). A flip on
+   unchanged bytes cannot be caused by a change, so this population is the noise control, and it
+   behaved like one.
+2. **The all-500 paired test the campaign has been using reads noise as treatment.** Those 23
+   discordant pairs are 5–18 (p = 0.0106); 13 of them are in the identical-prompt population, whose
+   own split is **2–11** (p = 0.0225) — a *more* extreme imbalance than the treatment's attributable
+   component. Applying the campaign's own "a paired significant result is real" rule to this dispatch
+   would require concluding that the mechanism hurt the reader on prompts it did not change.
+3. **The attributable effect is −0.80 points.** On the 128 questions whose prompt changed: 3 up, 7
+   down, `(3−7)/500 = −0.80` points overall, **inside** the ±1.6-point noise floor. MR's own
+   attributable component is 1 up and 5 down, `−3.31` points, against a width that the MR pass spread
+   already exceeds.
+
+All 21 gained gold turns sit in the changed population, which is the structural check that the field
+means what it says: gold cannot arrive on a prompt that did not change.
+
+### 13.257.7 What this round retracts
+
+1. **Retracted: "restoration is displacing evidence the reader needed"** (§13.256.5 falsifier 3's
+   premise). The measured displacement is 0.19 delivered turns and 54 characters per changed question,
+   and 11 of the 18 losses are on prompts that did not change at all.
+2. **Retracted: the all-500 paired sign test as evidence about a mechanism.** It must be reported
+   beside the identical-prompt split from now on. Where a mechanism changes only part of the
+   population, the paired test over the whole population measures the reader.
+3. **Withdrawn before dispatch: the steeper decay.** `5a302b8` moved `ANCHOR_DECAY` from `0.5` to
+   `0.25` as the repair this section's first falsifier predicted; `e130ee9` reverts it. Lowering a
+   parameter to fix a cost measured at 54 characters would be tuning a knob against a defect the
+   artifact does not establish, which is the failure mode this section names.
+
+### 13.257.8 What it establishes
+
+1. The mechanism is a **delivery** mechanism and it works: **+21 gold turns for −54 characters and
+   −0.19 turns**, on 21 questions gained against 3 lost, with `unsurfaced` down from 145 to 133.
+2. Its **accuracy effect is unresolved**, not negative: −0.80 attributable points on 128 changed
+   questions, with the four-pass mean 0.05 points apart.
+3. The instrument that was supposed to decide (2) cannot, at this effect size. That is now a
+   registered defect rather than a disappointment, and §13.258 is the dispatch that changes its unit.
+
+## 13.258 The next dispatch: the same mechanism, read on the four-pass mean and the changed population
+
+### 13.258.1 Why a replicate and not a dose
+
+The obvious continuation is the decay axis. Three numbers close it before it is run: the mechanism's
+room cost is **−0.19 turns** per changed question, its attributable accuracy delta is **−0.80 points**
+inside the noise floor, and its delivery gain is **+21 gold**. There is no cost for a decay to remove
+and no accuracy defect for it to repair, so a second dose would be a search along an axis whose
+endpoints differ by less than the measurement's own resolution.
+
+A replicate buys something the campaign does not have: **a second independent estimate of the same
+two populations.** The changed-prompt population doubles from 128 to 256, the identical-prompt flip
+rate is measured twice, and the +21 delivery is tested for reproducibility before anything is built on
+it. That is the standard gate 3 already imposes on itself (`pooled over three dispatches`).
+
+### 13.258.2 What it is registered to read
+
+| readout | unit | why this unit |
+| --- | --- | --- |
+| **primary** | overall abstention-aware accuracy, **four-pass mean** | the first pass's spread (6–7 MR questions) exceeds the gate width (±5), so a first-pass verdict is a coin |
+| **primary** | paired ledger on the **prompt-changed** population, with the identical-prompt split reported beside it | a flip on unchanged bytes is not the treatment's |
+| secondary | gold turns carried, and the `complete / room-cut / unsurfaced` partition | the mechanism's own effect, comparable as a count |
+| secondary | anchor census (`questions`, `anchors`, `restored`) and `anchorParams` | a live wiring check of `cfc634d`: this dispatch is the first that can report what the mechanism resolved and how far it reached |
+
+### 13.258.3 The gates
+
+| gate | quantity | bar |
+| --- | --- | ---: |
+| 1 | calls that returned a response | within ±1% of the control's 5,670 |
+| 2 | median `promptChars` | within ±5% of 46,816 |
+| 3 | gold turns carried | **≥ 6,520** (the treatment's own count, which is the number being replicated) |
+| 4 | overall four-pass mean | within **±1.6 points** of 90.25% |
+| 5 | changed-population paired ledger | reported with its exact sign test; **no bar**, because 256 questions at a 7.8% flip rate cannot resolve less than ~2 points |
+
+Gate 5 has no bar on purpose. Writing one would invite the campaign to read a 15–15 split as a pass;
+what is registered is that the number gets published, and that the decision rule below reads it.
+
+### 13.258.4 The decision rule, and what closes the pool axis
+
+1. If gate 3 reproduces (≥ 6,520 carried) **and** gate 4 holds, the mechanism is adopted as a
+   delivery improvement with no measurable accuracy cost, and the next increment moves to the room.
+2. If gate 3 does not reproduce, the +21 was one dispatch's draw and the pool axis closes: `topK`,
+   anchor restoration and session-neighbourhood filling have now all been tried against the same
+   `unsurfaced` population without a delivery effect that survives a repeat.
+3. If gate 4 fails beyond ±1.6 points **while the identical-prompt split is inside its own noise
+   band**, that is the first attributable accuracy regression this mechanism has produced, and the
+   repair is the decay after all — with the measured room cost in front of it.
+4. If gate 4 fails and the identical-prompt split is also directional, the dispatch is unreadable and
+   the next step is the judge instrument (`tools/judge-regrade.mjs`, commit `690821d`), not another
+   benchmark.
