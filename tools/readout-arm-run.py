@@ -47,6 +47,7 @@ Usage:
     python3 tools/readout-arm-run.py --lists path/to/report.json
     python3 tools/readout-arm-run.py --reach path/to/report.json
     python3 tools/readout-arm-run.py --paired before.json after.json
+    python3 tools/readout-arm-run.py --attribution before.json after.json
     python3 tools/readout-arm-run.py --config control.json --treatment cortex_memory_ask run.json
 """
 
@@ -54,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -699,6 +701,206 @@ def paired_section(
                 continue
             lines.append(f'     {was:>18} -> {now:<18} {count}')
     return '\n'.join(lines), changed_totals
+
+
+def exact_sign_test(wins: int, losses: int) -> float:
+    """Two-sided exact binomial probability of a split at least this lopsided, at `p = 0.5`.
+
+    ## Why exact and not a normal approximation
+
+    §13.257's ledger had 23 discordant pairs, and the whole point of reading it was that 13 of
+    them turned out not to belong to the treatment. A normal approximation on a number that small
+    is a different answer on the same data, and the difference lands exactly where the decision is.
+    `statistics` has no exact binomial either, so it is computed here.
+
+    ## Why `wins + losses == 0` answers 1.0 and not 0.0
+
+    No disagreement is **not** evidence of a direction. Returning zero would let every run with no
+    flips pass any significance bar, which is the same defect as reporting a missing measurement as
+    a zero one -- the rule §13.11.2 fixes for the artifact fields.
+    """
+    n = wins + losses
+    if n == 0:
+        return 1.0
+    tail = sum(math.comb(n, k) for k in range(0, min(wins, losses) + 1)) / 2**n
+    return min(1.0, 2 * tail)
+
+
+def _digest(question: dict) -> str | None:
+    """The 64-bit prompt fingerprint, or `None` when the record predates the field.
+
+    `None` is not "unchanged". A record without a digest cannot testify about whether the reader
+    saw the same bytes, so it goes into its own bucket rather than being counted with either side
+    -- the distinction the whole attribution rests on.
+    """
+    value = question.get('promptDigest')
+    return value if isinstance(value, str) and value else None
+
+
+def attribution_section(after_report: dict, before_report: dict) -> tuple[str, int]:
+    """Split a paired roster into the population the treatment changed and the one it did not.
+
+    ## The defect this exists to stop reading into a number
+
+    §13.257's dispatch changed the prompt on **128 of 500** questions. The other 372 were sent to
+    the reader as the same bytes, and a flip there cannot be caused by the treatment. Pooling all
+    500 into one paired test produced `5 wins to 18 losses, p = 0.0106` -- and **13 of those 23
+    discordant pairs were in the untouched population**, whose own split was `2-11, p = 0.0225`.
+    Read as a mechanism effect, that number says the mechanism hurt the reader on prompts it did
+    not change.
+
+    So the ledger is printed per population, the untouched one is named as the noise control, and
+    only the changed one carries an attributable delta.
+
+    ## The self-check that makes the split trustworthy
+
+    A gold turn can only enter or leave the delivered set when the prompt changes. If the untouched
+    population shows a non-zero gold delta, then either the digest or the pairing key is wrong, and
+    the function reports it as a failure rather than printing a split nobody should believe.
+
+    ## The second reading: means against spreads
+
+    A first-pass verdict is a sample. The arm's own `featureByCapability` carries `min / avg / max`
+    over the four passes, so the spread is printed beside the mean: §13.257.5 failed a gate whose
+    width (`+-5` MR questions) was narrower than the spread it was reading (`6-7`).
+    """
+    after = {str(question.get('questionId')): question for question in _questions(after_report) or []}
+    before = {str(question.get('questionId')): question for question in _questions(before_report) or []}
+    if not after or not before:
+        raise ValueError('one side has no per-question roster, so no question can be attributed')
+    if set(after) != set(before):
+        missing = sorted(set(after) ^ set(before))
+        raise ValueError(
+            f'the two rosters do not name the same questions: {len(missing)} id(s) are missing '
+            f'from one side ({", ".join(missing[:5])}{"..." if len(missing) > 5 else ""}). '
+            'A missing id counted as a flip would inflate the treatment population.'
+        )
+
+    buckets = {'identical': [], 'changed': [], 'unpaired': []}
+    for identifier in sorted(after):
+        now, was = _digest(after[identifier]), _digest(before[identifier])
+        if now is None or was is None:
+            buckets['unpaired'].append(identifier)
+        elif now == was:
+            buckets['identical'].append(identifier)
+        else:
+            buckets['changed'].append(identifier)
+
+    lines = [
+        '',
+        'attribution of the paired ledger, split by whether the prompt changed',
+        f'  paired questions {len(after)}: '
+        f'identical prompt {len(buckets["identical"])}, '
+        f'changed prompt {len(buckets["changed"])}, '
+        f'no digest on one side {len(buckets["unpaired"])}',
+        '',
+        f'  {"population":<12} {"n":>5} {"up":>5} {"down":>5} {"tie":>5} {"flip":>7} {"p":>8} {"gold":>6}',
+    ]
+    failures = 0
+    for name in ('identical', 'changed', 'unpaired'):
+        identifiers = buckets[name]
+        if not identifiers:
+            continue
+        up = down = gold = 0
+        for identifier in identifiers:
+            was_correct = bool(before[identifier].get('correct'))
+            now_correct = bool(after[identifier].get('correct'))
+            if now_correct and not was_correct:
+                up += 1
+            elif was_correct and not now_correct:
+                down += 1
+            gold += _gold_carried(after[identifier]) - _gold_carried(before[identifier])
+        flips = up + down
+        lines.append(
+            f'  {name:<12} {len(identifiers):>5} {up:>5} {down:>5} {len(identifiers) - flips:>5} '
+            f'{flips / len(identifiers):>7.2%} {exact_sign_test(up, down):>8.4f} {gold:>+6d}'
+        )
+        if name == 'identical' and gold != 0:
+            failures += 1
+            lines.append(
+                f'     FAIL: {gold:+d} gold turn(s) moved on questions whose prompt did not change. '
+                'A delivered turn cannot enter or leave without the prompt changing, so either '
+                '`promptDigest` or the pairing key is wrong and this split means nothing.'
+            )
+
+    changed = buckets['changed']
+    if changed:
+        up = sum(
+            1
+            for identifier in changed
+            if after[identifier].get('correct') and not before[identifier].get('correct')
+        )
+        down = sum(
+            1
+            for identifier in changed
+            if before[identifier].get('correct') and not after[identifier].get('correct')
+        )
+        points = (up - down) / len(after) * 100
+        lines.append('')
+        lines.append(
+            f'  attributable delta {(up - down):+d} question(s) of {len(after)} = {points:+.2f} points'
+        )
+        lines.append(
+            '  Read this beside the identical-prompt row: a directional split there is reader and '
+            'judge drift, and the all-question paired test cannot separate the two.'
+        )
+
+    means = _spread_table(after_report, before_report)
+    if means:
+        lines.append('')
+        lines.extend(means)
+    return '\n'.join(lines), failures
+
+
+def _gold_carried(question: dict) -> int:
+    """Gold turns this record says reached the reader, or zero when it says nothing.
+
+    Zero rather than `None` arithmetic: a record without `goldOverlap` contributes nothing to a
+    delta, and the case where **both** sides lack it cancels. A record that has it on one side only
+    is a schema difference between two dispatches, which the identical-prompt self-check above
+    catches on the gold it would otherwise hide.
+    """
+    overlap = question.get('goldOverlap')
+    if not isinstance(overlap, dict):
+        return 0
+    carried = overlap.get('carried')
+    return carried if isinstance(carried, int) else 0
+
+
+def _spread_table(after_report: dict, before_report: dict) -> list[str]:
+    """The four-pass `min / avg / max` per capability, for both sides of the comparison.
+
+    The point of the table is the **spread**, not the mean: a gate whose width is narrower than the
+    spread it reads cannot be failed or passed by one pass. §13.257.5's MR row is exactly that --
+    `92/94.8/99` against `91/94.8/97`, means identical, first passes seven questions apart.
+    """
+    after_ablation = after_report.get('ablation')
+    before_ablation = before_report.get('ablation')
+    if not isinstance(after_ablation, dict) or not isinstance(before_ablation, dict):
+        return []
+    after_by_capability = after_ablation.get('featureByCapability')
+    before_by_capability = before_ablation.get('featureByCapability')
+    if not isinstance(after_by_capability, dict) or not isinstance(before_by_capability, dict):
+        return []
+    def triple(entry: dict) -> str:
+        return f'{entry.get("min")} / {entry.get("avg")} / {entry.get("max")}'
+
+    lines = [
+        '  four passes, per capability (the spread is what a single-pass gate is compared to)',
+        f'    {"cap":<4} {"control min/avg/max":<22} {"treatment min/avg/max":<22} '
+        f'{"avg delta":>9} {"spread":>6}',
+    ]
+    for capability in sorted(after_by_capability):
+        was = before_by_capability.get(capability)
+        now = after_by_capability.get(capability)
+        if not isinstance(was, dict) or not isinstance(now, dict):
+            continue
+        spread = max(now.get('max', 0) - now.get('min', 0), was.get('max', 0) - was.get('min', 0))
+        lines.append(
+            f'    {capability:<4} {triple(was):<22} {triple(now):<22} '
+            f'{now.get("avg", 0) - was.get("avg", 0):>+9.2f} {spread:>6}'
+        )
+    return lines
 
 
 CLOCK_PATTERN = re.compile(r'\d{1,2}:\d{2}|\b(?:am|pm)\b', re.I)
@@ -4929,6 +5131,15 @@ def main(argv: list[str]) -> int:
         help='print the state transitions from the BEFORE report to this one',
     )
     parser.add_argument(
+        '--attribution',
+        type=Path,
+        metavar='BEFORE',
+        help=(
+            'split the paired ledger by whether the prompt changed, and print both sides\' four-pass '
+            'spreads (BEFORE is the control)'
+        ),
+    )
+    parser.add_argument(
         '--config',
         type=Path,
         metavar='CONTROL',
@@ -5264,6 +5475,20 @@ def main(argv: list[str]) -> int:
             return 2
         print(section)
         return 0
+
+    if args.attribution:
+        try:
+            control = json.loads(args.attribution.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f'{args.attribution}: {error}', file=sys.stderr)
+            return 2
+        try:
+            section, failures = attribution_section(report, control)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 1 if failures else 0
 
     if args.reach:
         section, measured = reach_section(questions)
