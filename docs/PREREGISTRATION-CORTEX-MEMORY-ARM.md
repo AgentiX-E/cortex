@@ -28709,3 +28709,152 @@ population that is missing nothing with one that is missing something painful.**
 quotes decides whether that is 19 or 17, so the choice has to be named rather than defaulted --
 `--split` now prints its own count of the questions whose `carried == total`, and the sentence
 "MR's partial band reads 63.04%" should never appear again without the two halves beside it.
+
+## 13.255 The instrument run closed the 145 and measured the noise floor instead
+
+### 13.255.1 Three of four gates pass, and the fourth fails for a reason worth having
+
+`41970746908` ran the registered configuration unchanged -- departures `none` -- and finished in
+84 minutes. `readout-arm-run.py --instrument` on its artifact:
+
+| gate | bar | reading | verdict |
+| --- | --- | --- | --- |
+| 1 records carrying `goldDelivered` | 500 | **500** | pass |
+| 2 `len == total` / `sum == carried` | 0 / 0 defects | **0 / 0** | pass |
+| 3 `room-cut + unsurfaced` == the 145 `undecidable` | 145 | **100 + 145 = 245 = the 245 incomplete** | pass |
+| 4 accuracy within ±2 questions per capability | ±2 | **MR +3, TR +2, KU +1, IE 0, ABS 0** | **fail** |
+
+### 13.255.2 The 145 are all `unsurfaced`, and that was already determined
+
+| state | `41860773768` | `41970746908` |
+| --- | ---: | ---: |
+| complete | 255 | 255 |
+| room-cut | 100 | 100 |
+| unsurfaced | 0 | **145** |
+| undecidable | 145 | **0** |
+
+Not one of the 145 became `room-cut`. Both predictions of §13.254.4 hold: `unsurfaced` dominates
+inside MR's 37, and the numeric/missing-one questions are `unsurfaced` rather than room-limited. The
+room is now exonerated on a population that is *known* to be room-fixable and turns out not to exist
+in MR at all.
+
+The correct way to read this is narrower than "the prediction was right". `carried` was identical on
+**500 of 500** questions between the two runs, so the partition was already determined; the new field
+did not change it, it made it *readable*. What the field bought is the sentence that could not be
+written before: for each of those 145 questions, **the gold turn that did not arrive is the gold turn
+the ranking never surfaced** -- a claim that needed per-gold delivery to establish, and that no
+amount of `goldRanks` could have supported.
+
+### 13.255.3 Gate 4 failed, and the failure is the round's real measurement
+
+Two dispatches of one configuration, differing only in whether the artifact records a field:
+
+| | `41860773768` | `41970746908` |
+| --- | ---: | ---: |
+| overall | 90.40% | **91.60%** |
+| MR | 96/121 | **99/121** |
+| TR | 120/127 | **122/127** |
+| KU | 63/72 | **64/72** |
+| IE | 143/150 | 143/150 |
+| ABS | 30/30 | 30/30 |
+
+Byte-level comparison of the two artifacts:
+
+| quantity | identical on |
+| --- | ---: |
+| `promptDigest` | **500 / 500** |
+| delivered turn texts | **500 / 500** |
+| `goldOverlap.carried` | **500 / 500** |
+| gold turns delivered, of gold turns named | **6,499 / 7,516 in both** |
+
+and yet **16 questions changed verdict: 11 from wrong to right, 5 from right to wrong** (exact
+sign test, two-sided p = **0.21**). So the +1.20 points is not an improvement, an effect, or drift
+in the instrument: it is the reader's own non-determinism on **identical bytes**.
+
+By capability, on those identical bytes:
+
+| capability | n | flips | up | down | rate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ABS | 30 | 0 | 0 | 0 | 0.0% |
+| IE | 150 | 2 | 1 | 1 | 1.3% |
+| KU | 72 | 3 | 2 | 1 | 4.2% |
+| MR | 121 | **7** | 5 | 2 | **5.8%** |
+| TR | 127 | 4 | 3 | 1 | 3.1% |
+| **all** | 500 | **16** | 11 | 5 | **3.2%** |
+
+**The noise floor this campaign has been quoting is too tight, and it is tightest where the campaign
+looks.** A net count over `n` questions whose per-question flip probability is `p` has
+`sd = sqrt(n · p)`: **±4.0 questions overall** and **±2.6 on MR**, so two noise widths is
+**±8 questions overall (1.6 points)** and **±5 on MR**. The ±2.3-question figure used since §13.251
+was measured on one route over one pair of dispatches; on this pair MR alone moved 3 and has now
+been observed at 94, 96 and 99 across three dispatches of one configuration.
+
+Three consequences, and the third is the uncomfortable one:
+
+1. §13.253.7's gate 4 was written from a single pair and is wrong as written; the replacement is
+   "within two measured noise widths", with the widths quoted per capability from this table.
+2. **Any unpaired single-dispatch difference below 1.6 points is unreadable on this arm.** Several
+   changes adopted earlier in this campaign moved 3 or 4 questions; those are inside this band and
+   their adoption stands only where a paired test -- four repetitions, McNemar -- said so.
+3. The measurement does not decompose into reader and judge. Both are stochastic; this pair bounds
+   their sum and says nothing about the split. A judge-only audit is a separate experiment: re-grade
+   a fixed answer set and count the flips, which is what `--judge-audit` exists for.
+
+### 13.255.4 The confounder table earned its place on this pair
+
+The pooled comparison of `room-cut` against `complete` **changed sign between the two runs** while
+the within-bucket comparison did not:
+
+| | `41860773768` | `41970746908` |
+| --- | ---: | ---: |
+| pooled `room-cut` − `complete` | **+1.67** | **−0.90** |
+| 9–16 bucket, `room-cut` − `complete` | +3.54 | +1.69 |
+| 17+ bucket, `room-cut` − `complete` | +7.27 | +3.47 |
+
+The pooled number moves because `room-cut` is 57 of the 17+ bucket's 171 and only 49 of `complete`'s
+255 are there: the pooled difference is a weighted average of within-bucket differences with weights
+that belong to the population, not to the treatment. A section that quoted the pooled sign would have
+written opposite sentences from two runs that delivered **identical bytes**. This is §13.253.5 with
+teeth rather than advice.
+
+### 13.255.5 The interaction replicated on a second sample
+
+§13.254's numeric-versus-text split, recomputed on the new artifact:
+
+| | `41860773768` | `41970746908` |
+| --- | ---: | ---: |
+| numeric, complete | 89.77% (88) | 92.05% (88) |
+| numeric, incomplete | 78.57% (70) | 81.43% (70) |
+| numeric, difference | **−11.20** | **−10.62** |
+| text, complete | 95.15% (165) | 96.36% (165) |
+| text, incomplete | 89.12% (147) | 89.12% (147) |
+| text, difference | −6.03 | −7.24 |
+
+and the non-monotonicity in how much is missing:
+
+| numeric, gold missing | `41860773768` | `41970746908` |
+| --- | ---: | ---: |
+| exactly 1 | 52.63% (19) | **63.16% (19)** |
+| 2 | 85.71% (21) | 85.71% (21) |
+| 3+ | 90.00% (30) | 90.00% (30) |
+| MR, exactly 1 | 33.33% (12) | **50.00% (12)** |
+
+The ordering replicates on both runs; the "missing exactly one" cell moved **two questions out of
+twelve** between them, which is this section's own noise band applied to itself, and is why the
+gate §13.254.5 wrote is pooled over three dispatches rather than read from one.
+
+### 13.255.6 What this changes in the plan
+
+The mechanism is unchanged -- §13.254.5's anchor-and-neighbourhood construction, with 0 added calls
+and ≤15% added characters -- because the reading that motivates it replicated. What changes is the
+bar, and the change is arithmetic rather than judgment:
+
+| gate | before | after |
+| --- | --- | --- |
+| §13.254.5 gate 3 | ≥ 21 of 27 | **≥ 21 of 27, pooled over three dispatches**, against a pooled baseline of 17–18 of 27 |
+| §13.253.7 gate 4 | ±2 questions per capability | **two measured noise widths per capability** (MR ±5, TR ±4, KU ±3, IE ±3, ABS 0) |
+| every future single-dispatch claim | no bar | **must exceed 1.6 points, or be paired** |
+
+The last row is the one that costs something: it says the campaign's habit of adopting a change that
+moved three questions is not supportable on its own, and every adoption of that size needs a paired
+statistic or a repeat.
