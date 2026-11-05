@@ -2976,7 +2976,14 @@ function auditInstruction(firstPass: string): string {
     `FIRST PASS:\n${firstPass}`,
     'Review that response for MEMBERSHIP only, and write the review before you answer.',
     'Step 1 — name every item in the evidence that matches the question and is missing from the first pass, with the date and the session it appears in. Split an entry that describes two different events, and merge two entries that describe the same event. Remove an entry the evidence does not support. Do not re-derive an item that is already there, and do not adjust a total for any reason other than the list changing.',
-    'Then write one line, exactly `Step 2 — <the corrected count>`, and nothing after it.',
+    // §13.262. It said `<the corrected count>`, and this pass runs on every multi-session question while
+    // only 40 of `MR`'s 121 golds are counts. Run `42054107910` measured the consequence: 22 correct answers
+    // destroyed, every one of them rewritten as a bare integer, 17 of those on questions whose gold was a
+    // name, a price, a date or a list. The form is now the first pass's, and a review that finds the
+    // membership right has a way to say so instead of inventing a difference.
+    'Then write one line, exactly `Step 2 — <the corrected answer>`, and nothing after it, in the first ' +
+      "pass's form: a count stays a count, a name stays a name. If the membership did not change, repeat " +
+      'its answer word for word.',
   ].join('\n\n');
 }
 
