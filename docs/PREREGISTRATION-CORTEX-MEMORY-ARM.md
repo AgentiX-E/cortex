@@ -29072,6 +29072,12 @@ Three readings, each load-bearing:
 All 21 gained gold turns sit in the changed population, which is the structural check that the field
 means what it says: gold cannot arrive on a prompt that did not change.
 
+The split is reproduced by `tools/readout-arm-run.py --attribution <control.json> <treatment.json>`,
+which is where it now lives rather than in a script written for this section (§13.38's rule). It
+prints both populations, the exact binomial for each, the attributable delta, and both sides'
+four-pass spreads; it exits non-zero if gold moved on a question whose prompt did not, because that
+would mean the digest or the pairing key is wrong and the split below it means nothing.
+
 ### 13.257.7 What this round retracts
 
 1. **Retracted: "restoration is displacing evidence the reader needed"** (§13.256.5 falsifier 3's
