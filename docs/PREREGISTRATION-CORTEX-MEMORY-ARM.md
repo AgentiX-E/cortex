@@ -31571,3 +31571,23 @@ Repair two is still an experiment, and its question is now different from repair
 the pool be stable" (it must be, and it is) but "should the neighbourhood the wider pool found be
 kept or dropped". That one costs a second retrieval pass and buys 6 restored turns on the fixture,
 and it stays behind §13.279.
+
+### 13.280.7 The prediction this makes, so the repair can be refuted
+
+A repair that removes a cause makes a statement about every reading that cause produced. Three are
+on record and all three are falsifiable without a new treatment, by the next run at `top_k = 512`:
+
+| reading under the old bound | what the repair predicts at `top_k = 512` |
+| --- | --- |
+| `MR` ablation average 79.34% at 256, **76.45%** at 512 (§13.276.5) | within noise of the 256 figure: the width cost was the anchor walk, and the walk no longer reads the width |
+| paired `MR` 7 down / 2 up across the widths, exact McNemar **p = 0.039** (§13.278.3 d) | sign test no longer rejects: the discordant pairs were the displaced anchors |
+| 63 of 500 questions delivering a different gold set, 28 down / 35 up (§13.280.1) | **0** of 500, and the digests are equal: `anchor-width-invariance.test.ts` is the same claim at unit scale |
+
+The third is the check with no resolution question attached -- it is an equality, so it either holds
+or the proof in §13.280.6 is wrong somewhere the artifacts did not show. The first two carry the
+noise floor this campaign has measured twice (**3.2%** on byte-identical dispatches, **3.49%** on
+the round-ten pair), so a 512 run that lands within about three points of 79.3% is consistent with
+the prediction and a run that reproduces 76.45% refutes it.
+
+None of this needs a dispatch of its own. It is what the next 512 run means, whichever experiment
+that run is.
