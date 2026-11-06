@@ -31522,7 +31522,52 @@ at the registered shape, while (2) spends a second retrieval pass to *keep* the 
 gives up. What the fixture cannot say is which is better on `MR`, and that is the only thing worth
 spending a run on.
 
-Both are registered here only as *candidates*. Neither is dispatched: §13.279 is in flight, and a
-second treatment in the same artifact would make its `MR` delta unattributable. The order is
-§13.279's readout first, then this — and if §13.279 moves `MR` by 3 or more, the stability question
-keeps its place behind it rather than in front.
+Both were registered here as *candidates*. Repair one turned out not to need a run at all: it is a
+defect fix whose acceptance criterion is an equality the archived artifacts already establish, and
+§13.280.6 lands it with a proof and the test the entry above asks for. Repair two stays an
+experiment, and it stays behind §13.279 -- which is still in flight, and a second treatment in the
+same artifact would make its `MR` delta unattributable.
+
+### 13.280.6 Repair one is a defect fix with a proof, and it costs no run
+
+The paragraph above registered both repairs as candidates awaiting §13.279. Working out what repair
+one *costs* to verify shows that it is not an experiment at all, and that its two controls are
+already in hand.
+
+**The proof is an inequality the artifacts already satisfy.** With the anchor walk bounded by a
+constant, the anchors and every restored turn are identical at both widths. The two pools then differ
+only by hits ranked below every hit of the narrow pool. A delivered window is a prefix of the pool's
+order, so provided its length is at most the narrow pool's width, nothing in it can come from the
+added region and nothing in it can leave. The lengths are in the two artifacts:
+
+| | `42177443765` (`top_k = 256`) | `42190193540` (`top_k = 512`) |
+| --- | ---: | ---: |
+| delivered turns, median | 129 | 129 |
+| delivered turns, **max** | **232** | **238** |
+| questions delivering more than 256 | **0** | **0** |
+
+So for all 500 questions the window is narrower than the narrow pool, and the discrepancy §13.280.1
+counted disappears by construction rather than by measurement. That is why repair one needs no
+dispatch: its acceptance criterion is an **equality**, not a level.
+
+**The defect is sharper than "the set reorders".** The invariance test was written before the fix and
+five of its six assertions failed; the one that matters most is containment. Pre-fix, the wide pool
+did **not** contain the narrow pool: the displaced anchor's restored turns were simply gone. Widening
+the candidate list could *remove* evidence, which is the monotonicity violation in its strongest
+form, and it is the sentence §13.275's restore counterfactual and §13.254.5's "widening by
+construction" both assumed away.
+
+**What landing it changes, and what it does not.** `selectAnchors` gains `ANCHOR_SCAN_TURNS = 256`,
+which is where `min(hits.length, 256)` lands at the registered width, and `terms` is still built for
+the whole pool because the comparator reads only chosen anchors. At `top_k = 256` the bound is a
+no-op by definition, so no archived artifact's reading moves and §13.279's in-flight treatment is
+untouched. At `top_k = 512` the run that would have been dispatched to test the repair is replaced by
+`anchor-width-invariance.test.ts`, whose fixture keeps the three properties that make the defect
+visible -- reciprocal-rank scores, a corpus far larger than the pool, and a displacing candidate that
+names two question terms -- and which fails against the old code for exactly the reason §13.280.3
+gives.
+
+Repair two is still an experiment, and its question is now different from repair one's: not "should
+the pool be stable" (it must be, and it is) but "should the neighbourhood the wider pool found be
+kept or dropped". That one costs a second retrieval pass and buys 6 restored turns on the fixture,
+and it stays behind §13.279.

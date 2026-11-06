@@ -106,6 +106,32 @@ const ANCHOR_RADIUS = 3;
 const ANCHOR_DECAY = 0.5;
 
 /**
+ * How deep into the retrieved list an anchor may be chosen from.
+ *
+ * ## Why the walk is bounded by a constant and not by the pool's own length
+ *
+ * The bound used to be `hits.length`, and that made `top_k` a parameter of *this mechanism* rather
+ * than of the retrieval. §13.280 measured the consequence on two artifacts that differ in that one
+ * number: **63 of 500 questions** delivered a different gold set, 28 losing coverage and 35 gaining
+ * it, and on `MR` the moved population reads 60.0% against 80.2% for the stable one. The walk's
+ * first key is question-term coverage, so a hit at rank 300 that names two question terms takes an
+ * anchor slot from a hit at rank 3 that names one -- and the displaced anchor's neighbourhood is
+ * what leaves the window. Widening the pool could therefore *remove* evidence.
+ *
+ * 256 is the registered pool width, so this constant is where `min(hits.length, 256)` lands for a
+ * dispatched run, and it is what makes the pool a function of the question and the retrieval ranking
+ * alone. Two widths then differ only by hits ranked below every hit of the narrower pool, and since
+ * the delivered window is narrower than that pool in every archived record (largest 232 at `top_k =
+ * 256`, 238 at 512) neither a hit nor a restored turn can be pushed out of it: the delivered prompt
+ * becomes byte-identical across widths, which is the property `anchor-width-invariance.test.ts`
+ * asserts.
+ *
+ * Not an environment variable, for the reason `ANCHOR_COUNT` gives: a bound a dispatch could move
+ * would make two artifacts differ by a number the configuration line cannot state in a name.
+ */
+const ANCHOR_SCAN_TURNS = 256;
+
+/**
  * The three parameters a caller may override, resolved to the registered values in one place.
  *
  * ## Why this is exported rather than inlined at each call site
@@ -215,6 +241,11 @@ function jaccard(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
  * then spends its radius around the one turn the question actually points at.
  *
  * Returns positions into `hits`, so the caller keeps the objects it already has.
+ *
+ * The walk is bounded by `ANCHOR_SCAN_TURNS` rather than by `hits.length`: a bound that followed the
+ * pool made the chosen anchors a function of `top_k`, which is a retrieval parameter, and made
+ * widening the pool able to displace a better-ranked anchor. §13.280 measured that on two artifacts
+ * and `anchor-width-invariance.test.ts` asserts the property that replaced it.
  */
 function selectAnchors(
   question: string,
@@ -224,6 +255,9 @@ function selectAnchors(
   if (count <= 0 || hits.length === 0) return [];
   const questionTerms = new Set(extractLexicalKeywords([question]));
   const terms = hits.map((hit) => tokensOf(hit.text));
+  // The scan bound, not the pool's length. See `ANCHOR_SCAN_TURNS`: reading `hits.length` here is
+  // what let a retrieval parameter decide which anchors this mechanism chose.
+  const reach = Math.min(hits.length, ANCHOR_SCAN_TURNS);
   const anchors: number[] = [0];
   const covered = new Set<string>();
   for (const term of terms[0]!) {
@@ -235,7 +269,7 @@ function selectAnchors(
     let bestFresh = 0;
     let bestNovelty = -1;
     let bestScore = Number.NEGATIVE_INFINITY;
-    for (let position = 0; position < hits.length; position += 1) {
+    for (let position = 0; position < reach; position += 1) {
       if (anchors.includes(position)) continue;
       let fresh = 0;
       for (const term of terms[position]!) {
