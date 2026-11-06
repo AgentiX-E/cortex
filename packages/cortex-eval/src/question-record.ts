@@ -922,6 +922,10 @@ export function goldOverlapOf(
   return {
     carried,
     total: goldTurns.length,
+    // The text of every gold turn, delivered or not. Without it the restore counterfactual of
+    // §13.267 has nothing to reinstate: `turns` holds what the reader was shown, and a gold turn
+    // the budget cut leaves with the budget.
+    goldTurns: [...goldTurns],
     // Per-gold delivery, so "which gold is missing" is readable and not inferred from a rank.
     // `carried` above is this same predicate counted, which is the redundancy the tests assert.
     goldDelivered: goldTurns.map((gold) => retrieved.includes(gold)),

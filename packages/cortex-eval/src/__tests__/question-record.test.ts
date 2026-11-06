@@ -542,16 +542,19 @@ describe('goldOverlapOf', () => {
       carried: 1,
       total: 1,
       goldDelivered: [true],
+      goldTurns: [A],
     });
     expect(goldOverlapOf([A, B], [A, B])).toEqual({
       carried: 2,
       total: 2,
       goldDelivered: [true, true],
+      goldTurns: [A, B],
     });
     expect(goldOverlapOf([A, B], ['[2023/03/03 (Fri) 00:00] user: nothing here'])).toEqual({
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: ['[2023/03/03 (Fri) 00:00] user: nothing here'],
     });
   });
 
@@ -569,16 +572,19 @@ describe('goldOverlapOf', () => {
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: [short],
     });
     expect(goldOverlapOf([short], [long])).toEqual({
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: [long],
     });
     expect(goldOverlapOf([short, long], [short, long])).toEqual({
       carried: 2,
       total: 2,
       goldDelivered: [true, true],
+      goldTurns: [short, long],
     });
   });
 
@@ -588,7 +594,12 @@ describe('goldOverlapOf', () => {
     // was produced from list markers. The predicate here is equality with a carried unit,
     // so `3` alone matches nothing.
     const unit = '3. **Humidity:** Peace lilies prefer a humid environment';
-    expect(goldOverlapOf([unit], ['3'])).toEqual({ carried: 0, total: 1, goldDelivered: [false] });
+    expect(goldOverlapOf([unit], ['3'])).toEqual({
+      carried: 0,
+      total: 1,
+      goldDelivered: [false],
+      goldTurns: ['3'],
+    });
   });
 
   it('handles a gold turn whose content spans lines', () => {
@@ -600,6 +611,7 @@ describe('goldOverlapOf', () => {
       carried: 1,
       total: 1,
       goldDelivered: [true],
+      goldTurns: [multi],
     });
     // And the same gold is NOT covered when the units are the lines it spans -- which is
     // why the memory arm's capture reports turns and not lines.
@@ -607,6 +619,7 @@ describe('goldOverlapOf', () => {
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: [multi],
     });
   });
 
@@ -624,6 +637,7 @@ describe('goldOverlapOf', () => {
       goldDelivered: [true, false],
       pool: 2,
       goldRanks: [0, 1],
+      goldTurns: [A, B],
     });
     // In the pool's reach and cut by the budget: the row the campaign has never had.
     expect(goldOverlapOf([A], [A, B], [A, 'something else'])).toEqual({
@@ -632,6 +646,7 @@ describe('goldOverlapOf', () => {
       goldDelivered: [true, false],
       pool: 1,
       goldRanks: [0, -1],
+      goldTurns: [A, B],
     });
     // Outside the pool entirely -- a ranking failure, not a budget one. `pool: 0` is a
     // measurement and must be present, not omitted.
@@ -641,6 +656,7 @@ describe('goldOverlapOf', () => {
       goldDelivered: [true, false],
       pool: 0,
       goldRanks: [-1, -1],
+      goldTurns: [A, B],
     });
   });
 
@@ -655,6 +671,7 @@ describe('goldOverlapOf', () => {
       goldDelivered: [false, false],
       pool: 2,
       goldRanks: [0, 2],
+      goldTurns: [A, B],
     });
     expect(goldOverlapOf([], [A, B], ['x'])).toEqual({
       carried: 0,
@@ -662,6 +679,7 @@ describe('goldOverlapOf', () => {
       goldDelivered: [false, false],
       pool: 0,
       goldRanks: [-1, -1],
+      goldTurns: [A, B],
     });
   });
 
@@ -692,7 +710,7 @@ describe('goldOverlapOf', () => {
     // truth is that nothing was measured. Absent, never zero, for the reason the null
     // case below states.
     const overlap = goldOverlapOf([A, B], [A]);
-    expect(overlap).toEqual({ carried: 1, total: 1, goldDelivered: [true] });
+    expect(overlap).toEqual({ carried: 1, total: 1, goldDelivered: [true], goldTurns: [A] });
     expect(overlap === null ? true : 'pool' in overlap).toBe(false);
   });
 
@@ -727,9 +745,24 @@ describe('goldOverlapOf', () => {
       carried: 2,
       total: 2,
       goldDelivered: [true, true],
+      goldTurns: [A, B],
       pool: 0,
       goldRanks: [-1, -1],
     });
+  });
+
+  it('carries the text of a gold turn that was not delivered', () => {
+    // The whole reason the field exists (§13.267.5). `turns` holds what the reader was shown, so a
+    // gold turn the budget cut leaves with the budget and its text is then nowhere on the artifact.
+    // The restore counterfactual cannot reinstate what it cannot quote, and this is the assertion
+    // that keeps the text on the record.
+    const undelivered = '[2023/04/04 (Tue) 00:00] user: I finally sold the piano for 400';
+    const overlap = goldOverlapOf([A], [A, undelivered]);
+    expect(overlap!.goldDelivered).toEqual([true, false]);
+    expect(overlap!.goldTurns).toEqual([A, undelivered]);
+    // In `total` order, which is the order `goldRanks` and `goldDelivered` already share -- three
+    // parallel arrays over one list, so index `i` means the same gold turn in all of them.
+    expect(overlap!.goldTurns).toHaveLength(overlap!.total);
   });
 
   it('reports nothing to measure as null rather than as a zero', () => {

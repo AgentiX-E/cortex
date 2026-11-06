@@ -3518,6 +3518,7 @@ describe('the arm records how much of the gold the ranking offered', () => {
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: [GOLD],
       pool: 0,
       goldRanks: [-1],
     });
@@ -3525,6 +3526,7 @@ describe('the arm records how much of the gold the ranking offered', () => {
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: [GOLD],
       pool: 1,
       goldRanks: [0],
     });
@@ -3536,7 +3538,14 @@ describe('the arm records how much of the gold the ranking offered', () => {
     // is under assertion is that `pool` is not among the keys.
     const overlap = (await overlapWith(undefined)) as Record<string, number> | null;
     expect(overlap).not.toBeNull();
-    expect(Object.keys(overlap!).sort()).toEqual(['carried', 'goldDelivered', 'total']);
+    // `goldTurns` is present in every run, ranking or not: it records the dataset's gold text, which
+    // is what §13.267's restore counterfactual reinstate from, and it does not depend on a ranking.
+    expect(Object.keys(overlap!).sort()).toEqual([
+      'carried',
+      'goldDelivered',
+      'goldTurns',
+      'total',
+    ]);
   });
 });
 

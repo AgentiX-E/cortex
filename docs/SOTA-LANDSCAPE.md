@@ -479,3 +479,63 @@ available.
    that decides whether two increments compose.
 3. **A second reader that obeys the contract.** §4.7's wrapper results and §13.110's −7.20 both say the
    reader is a lever; only one of them says which direction is available.
+
+### 4.10 Sufficiency rather than relevance (BFR, QEMem, xMemory)
+
+This family arrived in the second half of 2026 and it is the first one whose diagnosis matches a defect this
+campaign measured rather than inferred. All three reject the framing in which retrieval is a ranking problem.
+
+> "Improving selection within the initial candidate pool cannot recover evidence that was never retrieved."
+> — *Relevance Is Not Sufficiency* (arXiv 2610.09348)
+
+**BFR (Budgeted Flat Reconstruction)** decomposes the question into information requirements by Formal Concept
+Analysis, selects a compact candidate subset that jointly covers them, and then **repeatedly acquires records it
+has not seen** — deeper text search, or a complementary entity or session view — until the budget is spent. On
+LongMemEval-S it reports judged accuracy **72.4% → 82.2%** and **Turn Hit 91.4%**, against same-store adaptations
+of recent agent-memory systems. It also proposes the two metrics that make coverage measurable: **Gold Hit** and
+**Turn Hit**. Grade **B**: academic, same-store comparison, but reader and judge are not reported in a form this
+arm can reproduce without a harness change.
+
+**QEMem** (arXiv 2610.22668) is the same idea with a different unit: search several granularities at once,
+organise what comes back into cards that keep each piece's evidential role and its source, then check the set for
+sufficiency and go back for what is missing. **91.43%** LLM-judge on LoCoMo with Claude Opus 4.5, 7.6 points
+above MemR³. Grade **C**: vendor-run.
+
+**xMemory** (*Beyond RAG for Agent Memory*, Hu et al. 2026) argues the failure is the retrieval unit: turn-level
+similarity over a dialogue collapses into one dense region of the embedding space, so it decouples memory into
+components and retrieves top-down through a four-level hierarchy. Grade **C** on the numbers, **A** on the
+diagnosis — the diagnosis is a mechanism, and a mechanism can be tested here without adopting anyone's score.
+
+| what this campaign already measured | what this family adds |
+| --- | --- |
+| `pool < total` on **133 of 241** partial-evidence questions: the gold turn was never a candidate | the word for it: relevance is not sufficiency, and the repair is acquisition, not ranking |
+| `MR` 12 partial-evidence failures at 64.7% against 87 full-evidence at 83.9% | an instrument: restore the missing turn and rerun the same reader, so recoverable / irreversible / residual are measured |
+| a `goldOverlap` block with `carried`, `total`, `pool`, `goldRanks` | `Gold Hit` and `Turn Hit` as the two published names for it, which makes our figures quotable |
+
+Two costs are honest to state. Acquisition needs a **stopping rule**, and BFR's is the budget, which means the
+mechanism spends the budget it is given rather than proving it needed to. And this family's published gains are
+measured with judges, so a comparison against our exact-match figures is a comparison of two metrics.
+
+The one thing here that is *not* a competitor claim, and is worth more than the numbers: **the restore
+counterfactual** (arXiv 2609.08279) — reinstate the question's gold evidence in the read-time context, rerun the
+same reader, and classify by the change. It reports an irreversible share of **0.67–0.73** at an 80k budget under
+top-k retrieval, and it states that recoverable errors exist under top-k and are absent under forced-gold
+injection **by construction**, so budget-accuracy results are not comparable unless the retrieval regime is
+reported. That sentence belongs in every table in this file.
+
+## 10. What changed on 2026-11-06, and what it costs the plan
+
+1. **The gap now has a name and a population.** 133 of 241 partial-evidence questions had a gold turn the ranking
+   never offered; `MR`'s 26 failures split 12 partial / 14 full. Before this the campaign read the same defect as
+   "aggregation" (§13.264), which addressed the smaller half.
+2. **§4.10's mechanism is the next experiment, not §4.1's compression.** Compression buys tokens; acquisition
+   buys reach, and reach is the measured deficit. The order in §9 changes accordingly.
+3. **The width diagnostic is a diagnostic.** `relevanceTopK` 256 → 512 (§13.266) settles whether the pool cut is
+   the constraint. It is not the mechanism: xMemory's argument is that a wider top-k fills with near-duplicates,
+   and §13.257 already lost eight MR questions to displacement at a smaller widening.
+4. **The restore counterfactual is now the blocking instrument.** Its input is the gold turn text, which the
+   record did not carry; `goldTurns` was added for it and the field is pinned by a test. Until a run carries it,
+   "twelve failures are retrieval-shaped" stays an inference.
+5. **One comparability rule tightened.** BFR reports judged accuracy and Turn Hit; this arm reports exact match.
+   No figure from §4.10 may be set beside an `S` row here without the metric named, for the same reason
+   arXiv 2609.08279 refuses cross-regime budget comparisons.

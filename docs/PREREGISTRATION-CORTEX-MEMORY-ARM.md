@@ -30185,3 +30185,64 @@ counterfactual broke ten answers: an intervention that cannot fail is not being 
 It does not choose between BFR's completion loop and a wider pool. It measures how much of the
 population either could reach, which is the input to that choice and not the choice itself. The
 mechanism experiment that follows will be registered against these numbers.
+
+### 13.267.5 Amendment, written before the harness was built: the record does not hold the text
+
+§13.267.1 said the artifact holds almost all of what the counterfactual needs. It does not, and the gap
+is exact.
+
+| block | length on `42013256884` | what it indexes |
+| --- | --- | --- |
+| `turns` | 73 | the **delivered** turns, with their text |
+| `windowComposition.turns` | 73 | the same 73 |
+| `goldOverlap.goldDelivered` | **12** | the **gold** turns — `total`, not the delivered ones |
+| `goldOverlap.goldRanks` | **12** | the same 12, by rank in the scored pool |
+
+So on the first partial-evidence record, `e47becba` has `total = 12`, `pool = 8`, `carried = 4` and
+**seventy-three delivered turns of which four are gold**. The eight gold turns that were not delivered
+have no text anywhere on the record: `turns` holds what the reader saw, and the four of the eight that
+were offered-but-dropped were dropped by the budget after being scored, so their text left with them.
+
+That is the same class of defect as §13.265.7's, one level down. There, `pool < total` could not be
+distinguished from `carried < total` by rank alone and the census said so. Here, **the counterfactual
+cannot be run at all**, because restoring a turn requires knowing what it said.
+
+The repair is one field, and it is cheap:
+
+```
+goldTurns: string[]   // the text of every gold turn, delivered or not, in goldRanks order
+```
+
+Twelve turns at the 400-character cut is under 5 KB per record and ~2.4 MB on a 500-question artifact,
+which is a rounding error against the 23 MB the artifact already carries. Two consequences follow, and
+both are registered:
+
+**The next dispatch after §13.266 must carry the field before any restore experiment can run.** A run
+that measured the counterfactual from today's artifact would have to re-derive the missing text from
+the dataset, and a counterfactual whose intervention is reconstructed outside the artifact is a
+different experiment from one whose intervention is on the record.
+
+**`goldTurns` is a delivery-independent record, so it is a privacy surface.** The artifact already
+carries `turns`, so the marginal exposure is limited to the gold turns that were *not* delivered —
+which is to say, exposure grows exactly where the diagnostic is most needed. That trade is worth
+stating rather than discovering later: the artifact is a research record, not a product surface, and
+§13.267.3's gates do not reach it.
+
+Until the field exists, §13.265.7's "12 partial / 14 full" stays an **inference** and not a
+measurement, and the tracking report says so in those words.
+
+### 13.267.6 The field now exists, and what it cost
+
+`goldTurns` is on the record as of this commit. `goldOverlapOf` already received the gold turn texts —
+it needed them for the `retrieved.includes(gold)` membership test that `carried` is counted from — so
+the change is a projection and not a new measurement, which is also why it cannot disagree with
+`goldDelivered`: both are the same list walked twice.
+
+The fourteen existing `toEqual` assertions in `question-record.test.ts` were extended rather than
+loosened. A test that had been changed to `objectContaining` would have let the field vanish again
+without a failure, and the field is the whole of the restore counterfactual's input.
+
+One new assertion is the one worth naming: a gold turn **that was not delivered** has its text on the
+record, in `total` order alongside `goldDelivered` and `goldRanks`, so index `i` means the same gold
+turn in all three. That is the property §13.267.5 was written for, and it is now pinned by a test
+rather than by a paragraph.

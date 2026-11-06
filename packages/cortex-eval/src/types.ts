@@ -492,6 +492,32 @@ export type GoldOverlap = {
    */
   readonly goldRanks?: readonly number[] | undefined;
   /**
+   * The text of every gold turn, in the same order as {@link GoldOverlap.goldRanks}.
+   *
+   * ## Why the record has to carry the text, and not only its delivery
+   *
+   * `goldDelivered` answers *which* gold turns reached the reader, and until this field existed that
+   * was the whole of the record's account of them. The turns that did **not** reach the reader then
+   * had no text anywhere on the artifact: `turns` holds what the reader was shown, and a gold turn
+   * dropped by the budget left with the budget.
+   *
+   * §13.267 needs exactly that text. The restore counterfactual reinstates a question's missing gold
+   * evidence and reruns the same reader, and it cannot reinstate what it cannot quote -- so the
+   * instrument that would turn §13.265.7's "twelve failures are retrieval-shaped" from an inference
+   * into a measurement was blocked by one absent field. The cost is small: twelve turns at the
+   * 400-character cut is under 5 KB per record and ~2.4 MB on a 500-question artifact.
+   *
+   * ## Absent rather than empty, and the privacy this acknowledges
+   *
+   * Absent when the dataset named no gold, alongside the whole block. It is **not** absent when the
+   * turns were simply not delivered, which is the case it exists for.
+   *
+   * The marginal exposure is the gold turns that were not delivered, so exposure grows exactly where
+   * the diagnostic is most needed. That trade is stated here rather than discovered later: the
+   * artifact is a research record, not a product surface, and no gate in §13.267 reaches it.
+   */
+  readonly goldTurns?: readonly string[] | undefined;
+  /**
    * Whether each gold turn reached the reader, in the same order as {@link GoldOverlap.goldRanks}.
    *
    * ## Why a count was not enough

@@ -265,6 +265,7 @@ describe('the roster carries each question gold coverage', () => {
       carried: 1,
       total: 1,
       goldDelivered: [true],
+      goldTurns: [GOLD],
     });
   });
 
@@ -273,6 +274,7 @@ describe('the roster carries each question gold coverage', () => {
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: [GOLD],
     });
   });
 
@@ -282,6 +284,7 @@ describe('the roster carries each question gold coverage', () => {
       carried: 1,
       total: 2,
       goldDelivered: [true, false],
+      goldTurns: [GOLD, second],
     });
   });
 
@@ -294,6 +297,7 @@ describe('the roster carries each question gold coverage', () => {
       carried: 0,
       total: 1,
       goldDelivered: [false],
+      goldTurns: [GOLD],
     });
   });
 
