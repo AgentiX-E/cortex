@@ -19,7 +19,8 @@ export type PromptContract =
   | 'assistant'
   | 'knowledge-update'
   | 'abstention-evidence-blocks'
-  | 'evidence-blocks-instruction-first';
+  | 'evidence-blocks-instruction-first'
+  | 'evidence-blocks-unsourced';
 
 /**
  * The contracts a run may name, in the order they are worth reading.
@@ -32,6 +33,7 @@ export const PROMPT_CONTRACTS = [
   'abstention',
   'abstention-evidence-blocks',
   'evidence-blocks-instruction-first',
+  'evidence-blocks-unsourced',
 ] as const;
 
 /**
@@ -61,6 +63,9 @@ export const DEFAULT_PROMPT_CONTRACT: PromptContract = 'abstention';
 export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRendering>> = {
   'abstention-evidence-blocks': 'sourced',
   'evidence-blocks-instruction-first': 'sourced',
+  // `evidence-blocks-unsourced` is deliberately absent, and the absence is the value: it is the one
+  // contract whose whole content is "the same instruction, assembled the same way, with no per-turn
+  // source id". §13.283 measured what the id costs and what the reader does with it.
 };
 
 /**
@@ -97,6 +102,10 @@ export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRende
  */
 export const ASSEMBLY_BY_CONTRACT: Partial<Record<PromptContract, 'instruction-first'>> = {
   'evidence-blocks-instruction-first': 'instruction-first',
+  // The same order, because the comparison §13.283 registers is against the contract above and the
+  // only difference between them is the rendering. A contract that changed both would make the
+  // movement unattributable, which is the confound this campaign has already paid for twice.
+  'evidence-blocks-unsourced': 'instruction-first',
 };
 
 /**
@@ -864,6 +873,28 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
    */
   'evidence-blocks-instruction-first': (...parameters) =>
     CONTRACT_INSTRUCTIONS['abstention-evidence-blocks'](...parameters),
+
+  /**
+   * The same block and the same order as the control, with the per-turn source id withheld.
+   *
+   * ## Why the id is the one thing this contract withholds
+   *
+   * §13.283. A prompt on the aggregation route is 13.83% source id by character count -- 38 per
+   * turn, 6,650 in a 48,000-character room -- and the reader reproduces an id in **4 of 500**
+   * answers, none of them on the two routes that pay the most for it. The boundary the id exists to
+   * draw is already drawn: `buildSessionPrompt` writes a `Session N` header unconditionally, and 31
+   * of 500 answers name one. So the id is a second, per-turn copy of a per-session fact, and the
+   * room it occupies is the room the coverage census says is missing.
+   *
+   * ## Why this is a contract and not a new input
+   *
+   * The workflow is at the dispatch-input ceiling, and the contract is already the axis that carries
+   * "how this run renders" -- the same reasoning `evidence-blocks-instruction-first` records. What
+   * makes it one variable rather than two is the delegation below: the instruction text is the
+   * control's function, not a second copy of it, so a later edit to the control moves both.
+   */
+  'evidence-blocks-unsourced': (...parameters) =>
+    CONTRACT_INSTRUCTIONS['evidence-blocks-instruction-first'](...parameters),
 
   temporal: (date) =>
     [

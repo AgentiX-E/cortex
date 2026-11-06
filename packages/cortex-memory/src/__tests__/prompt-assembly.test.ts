@@ -165,10 +165,17 @@ describe('the assembly-order variable', () => {
     expect(RENDERING_BY_CONTRACT[ARM_CONTRACT]).toBe(RENDERING_BY_CONTRACT[CONTROL_CONTRACT]);
   });
 
-  it('maps exactly one contract to the new order', () => {
+  it('maps exactly the two contracts that keep this order, and no others', () => {
     // A total map would force every contract to name an order, and the baseline cannot: its
     // whole job is to reproduce the shipped bytes.
-    expect(Object.entries(ASSEMBLY_BY_CONTRACT)).toEqual([[ARM_CONTRACT, 'instruction-first']]);
+    //
+    // Two entries rather than one since §13.283: that contract is read *against* the one above it,
+    // so holding the order fixed is the whole reason its single variable is the rendering. A map
+    // that dropped this entry would make the sequencing run a two-variable comparison.
+    expect(Object.entries(ASSEMBLY_BY_CONTRACT)).toEqual([
+      [ARM_CONTRACT, 'instruction-first'],
+      ['evidence-blocks-unsourced', 'instruction-first'],
+    ]);
   });
 
   it('puts the instruction above the evidence, and the cue last', () => {

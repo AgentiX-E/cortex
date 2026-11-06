@@ -609,6 +609,131 @@ class GoldTextCompleteTest(unittest.TestCase):
         self.assertEqual(self._verdict(report)['verdict'], 'UNEVALUABLE')
 
 
+class CoverageMonotoneTest(unittest.TestCase):
+    """`coverage_monotone`: §13.283's safety claim, per question rather than as a mean.
+
+    The treatment spends the same room on cheaper evidence, so the delivered set must *contain* the
+    control's. A mean can pass on a run that improved fifty questions and damaged twenty, which is
+    the one outcome that would make the gain unattributable.
+    """
+
+    def _verdict(self, treatment: dict, control: dict) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {'reference': {'run': 1}},
+            'gates': [
+                {
+                    'id': 1,
+                    'kind': 'coverage_monotone',
+                    'quantity': 'q',
+                    'threshold': 't',
+                    'control': 'reference',
+                    'reaches': {'numerator': 'carried', 'denominator': 'total'},
+                }
+            ],
+        }
+        return _module().evaluate(spec, treatment, {'reference': control})[0]
+
+    def _report(self, carried: list[int]) -> dict:
+        return {
+            'questions': [
+                {
+                    'questionId': f'q{index}',
+                    'capability': 'MR',
+                    'goldOverlap': {'carried': value, 'total': 4},
+                }
+                for index, value in enumerate(carried)
+            ]
+        }
+
+    def test_a_question_that_keeps_or_gains_passes(self) -> None:
+        result = self._verdict(self._report([3, 4, 2]), self._report([2, 4, 2]))
+        self.assertEqual(result['verdict'], 'PASS')
+        self.assertEqual(result['detail']['offenders'], 0)
+
+    def test_one_question_losing_a_turn_fails_and_is_named(self) -> None:
+        result = self._verdict(self._report([2, 4, 1]), self._report([3, 4, 2]))
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertEqual(result['detail']['turns_lost'], 2)
+        self.assertIn('q0', result['reading'])
+
+    def test_a_missing_control_is_unevaluable(self) -> None:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {'reference': {'run': 1}},
+            'gates': [
+                {
+                    'id': 1,
+                    'kind': 'coverage_monotone',
+                    'quantity': 'q',
+                    'threshold': 't',
+                    'control': 'reference',
+                    'reaches': {'numerator': 'carried', 'denominator': 'total'},
+                }
+            ],
+        }
+        self.assertEqual(_module().evaluate(spec, self._report([1]), {})[0]['verdict'], 'UNEVALUABLE')
+
+
+class SourceMarkerAbsenceTest(unittest.TestCase):
+    """`source_marker_absence`: the one kind that reads the bytes a rendering treatment removes.
+
+    §13.283 withholds a 38-character per-turn id. Every other gate in that table can be satisfied by
+    a run that changed nothing -- the contract name is a config field and a capability that moved
+    says nothing about which bytes moved -- so the treatment needs a gate on the prompt text itself.
+    """
+
+    MARKER = '[c69190e8-862a-8916-80c1-3af7d69b96fb] '
+
+    def _verdict(self, prompts: list[str] | None) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {},
+            'gates': [
+                {
+                    'id': 1,
+                    'kind': 'source_marker_absence',
+                    'quantity': 'q',
+                    'threshold': 't',
+                    'prompt_field': 'ablation.featurePromptTexts',
+                    'at_most': 0,
+                }
+            ],
+        }
+        report = _report({'MR': (1, 2)})
+        if prompts is not None:
+            report['ablation'] = {'featurePromptTexts': prompts}
+        return _module().evaluate(spec, report, {})[0]
+
+    def test_prompts_without_a_marker_pass(self) -> None:
+        result = self._verdict(['1. [2023/05/30 (Tue) 17:27] user: a turn', 'Session 1\n1. text'])
+        self.assertEqual(result['verdict'], 'PASS')
+        self.assertEqual(result['detail']['markers'], 0)
+        self.assertEqual(result['detail']['prompts'], 2)
+
+    def test_one_surviving_marker_fails_and_is_counted(self) -> None:
+        result = self._verdict([f'1. {self.MARKER}[2023/05/30] user: a turn', '2. plain'])
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertEqual(result['detail']['with_marker'], 1)
+        self.assertEqual(result['detail']['markers'], 1)
+        self.assertIn('1 of 2 prompt(s)', result['reading'])
+
+    def test_a_bracketed_date_or_a_short_hex_run_is_not_a_marker(self) -> None:
+        # The pattern is the renderer's exact shape, not "a bracket holding hex": a looser one would
+        # match a dataset's own bracketed text and read a removed marker as present.
+        result = self._verdict(['1. [2023/05/30 (Tue) 17:27] user: a turn', '2. [deadbeef] tag'])
+        self.assertEqual(result['verdict'], 'PASS')
+
+    def test_an_absent_prompt_field_is_unevaluable_rather_than_a_pass(self) -> None:
+        self.assertEqual(self._verdict(None)['verdict'], 'UNEVALUABLE')
+
+
 class DispatchTookTest(unittest.TestCase):
     """`field_equals`: the departure itself is a gate, because losing it is the cheapest null result."""
 

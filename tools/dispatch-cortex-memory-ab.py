@@ -266,18 +266,24 @@ INPUTS = {
     # `retrievalThreshold` stays, because that one gates whether admitted evidence may be answered from.
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
-    # §13.279. The same sourced rendering plus the reference pipeline's assembly: the instruction
-    # block above the evidence, the question after it, and the block's closing `Answer:` cue last.
+    # §13.283. The §13.279 instruction and the §13.279 order, with the per-turn source id withheld.
     #
-    # The value replaces `abstention-evidence-blocks`, which §12.5 registered and every run from
-    # `37804673104` to `42190193540` carried. What moves is the order and nothing else -- the
-    # segments are the same strings, asserted as a multiset in `prompt-assembly.test.ts` -- so the
-    # run's `MR` delta is a fact about order rather than about wording.
+    # The value replaces `evidence-blocks-instruction-first`, which `42237543941` carried. What
+    # moves is the rendering and nothing else: the instruction text is the control's function
+    # returned by delegation, and the assembly stays `instruction-first`, so both fields the
+    # artifact prints are unchanged or explicitly empty.
     #
-    # §13.278 records why this is not the contract port §13.277 registered: that one was registered
-    # against §13.246's audit row, which still described the pre-§13.248 state. The block has been
-    # this arm's since `41860773768`; the only remaining positional difference is this one.
-    "cortex_memory_prompt_contract": "evidence-blocks-instruction-first",
+    # The measurement behind it is a census of the same artifact. A multi-session prompt is
+    # 13.83% source id by character count -- 38 per turn, 6,650 in a 48,000-character room -- and
+    # the reader reproduces an id in 4 of 500 answers, 0 of 121 on `MR` and 0 of 127 on `TR`. The
+    # boundary the id draws is already drawn by the `Session N` header, which 31 of 500 answers
+    # name. The room it frees is the room the coverage census says is missing: on `MR`, 34
+    # questions are short of gold by 53 turns and every one of them is closed by the turns the
+    # freed characters buy.
+    #
+    # §13.279 stays in the record as the order experiment, and its reading was negative; this is
+    # not a second dispatch of it, because the order is held at the value that experiment adopted.
+    "cortex_memory_prompt_contract": "evidence-blocks-unsourced",
     # §13.34: `computed` plus the two-step enumeration contract on multi-session alone.
     #
     # §13.203 replaced the value with `operands+operand-gap`. Two facts made that a registration

@@ -56,6 +56,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -454,6 +455,103 @@ def gate_artifact_audit(gate: dict, treatment: dict, controls: dict[str, dict], 
     return _result(gate, PASS if passed else FAIL, reading, {'failed': failed, 'exit': code})
 
 
+def gate_coverage_monotone(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """No question carries fewer gold turns than the control carried for it.
+
+    §13.283's safety claim, stated per question rather than as a mean. The argument for the treatment
+    is that a cheaper per-item rendering admits a weakly longer prefix of one order, so the delivered
+    set *contains* the control's: not "coverage rises on average" but "no question can lose a gold
+    turn". A mean would pass on a run that improved fifty questions and damaged twenty, which for a
+    resource change like this is the one outcome that would make the gain unattributable.
+
+    Refused rather than passed when either side lacks the block, for `coverage_gain`'s reason: a
+    record that cannot testify about coverage must not be counted as having kept it.
+    """
+    control_report = controls.get(gate['control'])
+    if control_report is None:
+        return _result(gate, UNEVALUABLE, f'the `{gate["control"]}` artifact was not supplied')
+    reaches = gate['reaches']
+    numerator, denominator = reaches['numerator'], reaches['denominator']
+
+    def carried_by_question(report: dict) -> dict[str, tuple[int, int]]:
+        counted: dict[str, tuple[int, int]] = {}
+        for record in report.get('questions') or []:
+            overlap = record.get('goldOverlap')
+            identifier = record.get('questionId')
+            if not isinstance(overlap, dict) or not isinstance(identifier, str):
+                continue
+            carried, total = overlap.get(numerator), overlap.get(denominator)
+            if isinstance(carried, int) and isinstance(total, int):
+                counted[identifier] = (carried, total)
+        return counted
+
+    after = carried_by_question(treatment)
+    before = carried_by_question(control_report)
+    shared = sorted(set(after) & set(before))
+    if not shared:
+        return _result(gate, UNEVALUABLE, 'the two artifacts share no question with a `goldOverlap` block')
+    offenders = [identifier for identifier in shared if after[identifier][0] < before[identifier][0]]
+    lost = sum(before[i][0] - after[i][0] for i in offenders)
+    reading = (
+        f'{len(shared) - len(offenders)} of {len(shared)} questions carry at least as many gold turns '
+        f'as the control'
+        + ('' if not offenders else f'; {len(offenders)} carry fewer, {lost} turn(s) in total, first: ' + ', '.join(offenders[:3]))
+    )
+    return _result(
+        gate,
+        PASS if not offenders else FAIL,
+        reading,
+        {'shared': len(shared), 'offenders': len(offenders), 'turns_lost': lost},
+    )
+
+
+#: The per-turn source marker `sourced` renders: a bracketed identifier, then the space that follows it.
+#:
+#: Written as the exact shape rather than as "a bracket holding long hex" so the count is a count of
+#: what the renderer emits. A looser pattern would also match a dataset's own bracketed text and the
+#: gate would then read a treatment that removed the marker as one that had not.
+SOURCE_MARKER = re.compile(r'\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\] ')
+
+
+def gate_source_marker_absence(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """No delivered prompt carries a per-turn source id.
+
+    §13.283's treatment is the withholding of a 38-character marker, and every other gate in that
+    table can be satisfied by a run that changed nothing: the contract name is a config field, and a
+    capability that moved says nothing about *which bytes* moved. This reads the bytes.
+
+    It is the same class of gate §13.279's seventh was -- a statement about prompts rather than about
+    scores -- one level more specific: there the claim was that 379 prompts were unchanged, here it
+    is that all 500 lost one token type. A run that named the contract and rendered anyway fails
+    here and nowhere else.
+
+    Absent or empty prompt text is `UNEVALUABLE` rather than a pass, because a prompt the artifact
+    did not keep is a prompt this gate cannot read, and "0 markers in 0 prompts" is exactly the shape
+    that would otherwise read as success.
+    """
+    node = _dotted(treatment, gate['prompt_field'])
+    if not isinstance(node, list) or not node:
+        return _result(
+            gate,
+            UNEVALUABLE,
+            f'`{gate["prompt_field"]}` is absent or empty, so there is no prompt to read',
+        )
+    texts = [text for text in node if isinstance(text, str)]
+    occurrences = sum(len(SOURCE_MARKER.findall(text)) for text in texts)
+    faded = sum(1 for text in texts if SOURCE_MARKER.search(text))
+    limit = int(gate['at_most'])
+    reading = (
+        f'{faded} of {len(texts)} prompt(s) carry a source id, {occurrences:,} marker(s) in total; '
+        f'the bar is at most {limit}'
+    )
+    return _result(
+        gate,
+        PASS if occurrences <= limit else FAIL,
+        reading,
+        {'prompts': len(texts), 'with_marker': faded, 'markers': occurrences, 'at_most': limit},
+    )
+
+
 def gate_gold_text_complete(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
     """Every record that names gold carries the text of every gold turn, indexed with the rest.
 
@@ -512,6 +610,8 @@ KINDS = {
     'coverage_gain': gate_coverage_gain,
     'artifact_audit': gate_artifact_audit,
     'gold_text_complete': gate_gold_text_complete,
+    'source_marker_absence': gate_source_marker_absence,
+    'coverage_monotone': gate_coverage_monotone,
 }
 
 #: The keys every gate of a kind carries, and the keys a gate may additionally carry.
@@ -547,6 +647,8 @@ GATE_SCHEMA: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     'coverage_gain': (frozenset({'reaches', 'at_least_gain'}), frozenset({'capability', 'control'})),
     'artifact_audit': (frozenset(), frozenset()),
     'gold_text_complete': (frozenset(), frozenset()),
+    'source_marker_absence': (frozenset({'prompt_field', 'at_most'}), frozenset()),
+    'coverage_monotone': (frozenset({'control', 'reaches'}), frozenset()),
 }
 
 #: Keys a gate carries whatever its kind: the three the report prints, plus the two documentation

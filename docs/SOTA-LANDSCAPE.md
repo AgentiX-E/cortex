@@ -617,3 +617,33 @@ What that changes in §4's ordering: nothing about which competitor sets the `MR
 does), and one new entry above the anchor-count experiment -- **raise `ANCHOR_COUNT` toward 60 and price the room
 before dispatching**, because their configuration says the mechanism has been run at a fifteenth of its own
 budget for every reading this campaign has published.
+
+## 13. Granularity and denoising: what three 2025 results say about the room this arm spends on ids
+
+§13.283 removes a 38-character identifier from in front of every turn. That is a small, mechanical change, and
+four published results say whether the *direction* is plausible and what the field has already measured about
+it. None of them measures our quantity, and two of them cut against the naive version of the claim.
+
+| source | what it measured | relation to this increment |
+| --- | --- | --- |
+| **SeCom** (arXiv:2502.05589, MSRA) | memory-unit granularity on `LOCOMO` / `Long-MT-Bench+`: turn-level is too fine (incomplete context), session-level too coarse (irrelevant content), summarisation loses information -- **segment-level plus LLMLingua-2 compression as denoising** beats all three | the closest published argument to ours. Their "compression is denoising" is our rendering change one level down: we remove 13.8% of tokens that carry no task information and spend the characters on turns. The difference worth stating is that they compress *memory units before retrieval* and we change *what is rendered at the reader*, so the two compose rather than compete |
+| **Context Rot** (Chroma, 2025-07) | 18 models; even a **single distractor** degraded the answer, and four compounded it; accuracy falls with input length on every task tested | predicts that *replacing* provenance with evidence should help and that *adding* evidence to an already-full prompt could hurt -- which is exactly the difference between a substitution (this increment) and the anchor-budget question §13.281 priced |
+| **"Context length alone hurts"** (arXiv, 2025-10) | with **100% perfect retrieval**, performance still degrades 13.9% to 85% as input length grows; reciting retrieved evidence before answering recovered ~4% on RULER | the reason a fix that changes *no* prompt length can still move accuracy: what changes is the ratio of task-bearing to non-task-bearing tokens. It also predicts that the Step 1 enumeration `ask=verbatim` adopted (§13.248) is doing the "recite first" work already |
+| **EMem** (arXiv:2511.17208) | event-centric memory with **turn-level source attributions** kept "to support downstream agentic behaviors" | the counter-argument, and it is a real one: provenance is valuable to *tooling* (our `AdmittedTurn.id` stays in the record and in the artifact), not necessarily to *the reader*. The treatment withholds the marker from the rendered prompt only, and §13.283.4's second refutation branch is the one that would prove the reader wanted it |
+
+Three consequences for the roadmap.
+
+1. **Granularity is the axis SeCom already won on, and this arm has only ever tested its two endpoints.** §13.34
+   retired `session-fill` under `retrieval-hybrid`; it has never been run under `retrieval-anchored`, where the
+   pool behaves differently. SeCom's result says the right unit is a topical segment, which is neither of our two
+   values -- so the honest next step after this increment is `session-fill` on the anchored signal, and only then
+   a segment-level unit.
+2. **Recall is the quantity to publish against them.** `LongMemEval` scores retrieval with `Recall@k`/`NDCG@k`
+   against labelled evidence turns, and this arm has never printed the equivalent. It reads **86.75%** overall
+   (6,520 of 7,516 gold turns), 97.11% on `MR`. Any claim that this arm is competitive has to be made on that
+   number alongside accuracy, because a reader-side improvement that lowered recall would be indistinguishable
+   from a memory regression.
+3. **Nothing here sets the `MR` ceiling.** MemCog (92.5%, multi-step) and CoD (86.6%, anchor allocation) remain
+   the two published numbers above this arm, and both differ from it on *which* evidence arrives. That is the
+   same conclusion §13.282.2 reached from three null results, now with three external results pointing the same
+   way.

@@ -1108,6 +1108,14 @@ const PROMPT_CONTRACTS = {
    * ceiling, and because the contract is already the axis that carries "how this run renders".
    */
   'evidence-blocks-instruction-first': 'evidence-blocks-instruction-first',
+  /**
+   * §13.283's candidate: the same instruction and the same order, with no per-turn source id.
+   *
+   * A contract rather than a new dispatch input for the reason the entry above gives, and one
+   * variable rather than two because `ASSEMBLY_ROUTES` and `RENDERING_ROUTES` both report the
+   * comparison it is read against.
+   */
+  'evidence-blocks-unsourced': 'evidence-blocks-unsourced',
 } as const;
 
 /**
@@ -1163,6 +1171,10 @@ const RENDERING_ROUTES: Record<string, readonly string[]> = {
     'assistant',
     'flat',
   ],
+  // Empty, and the emptiness is the treatment: this contract administers the same instruction in the
+  // same order and withholds the per-turn source id on every route. Reporting the six would claim a
+  // rendering the run did not draw (§13.283).
+  'evidence-blocks-unsourced': [],
 };
 
 /**
@@ -1180,6 +1192,10 @@ const ASSEMBLY_ROUTES: Record<string, readonly string[]> = {
   abstention: [],
   'abstention-evidence-blocks': [],
   'evidence-blocks-instruction-first': ['multi-session'],
+  // The same route as the contract above, because the order is held fixed: §13.283's single
+  // variable is the rendering, and an assembly that moved as well would make the delta a statement
+  // about two changes.
+  'evidence-blocks-unsourced': ['multi-session'],
 };
 
 /**
@@ -1192,6 +1208,7 @@ const ASSEMBLY_BY_CONTRACT: Record<string, string | undefined> = {
   abstention: undefined,
   'abstention-evidence-blocks': undefined,
   'evidence-blocks-instruction-first': 'instruction-first',
+  'evidence-blocks-unsourced': 'instruction-first',
 };
 
 /**

@@ -139,21 +139,37 @@ describe('runBenchmark progress reporting', () => {
     //
     // A real delay rather than a fake clock: the property is that the number tracks the
     // caller's own work, and a fake clock would only assert the arithmetic of the fake.
+    //
+    // ## Why the delay is 400ms and the margins are 350 and 200
+    //
+    // The callback fires **before** a question is answered, so a question's cost is the gap
+    // between the event that starts it and the one after. A question that does no work should
+    // therefore cost ~0 -- and on a loaded machine it does not: this suite runs 127 worker
+    // processes, and a check under that load measured a no-work bracket at **80.4ms** against a
+    // 60ms sleep in the next bracket, which inverted the comparison and failed a correct
+    // implementation. That is a wall-clock ordering asserted with a 20ms margin against 80ms of
+    // observed scheduler noise, which is not a margin at all.
+    //
+    // 400ms keeps the assertion about the injected cost rather than about the machine: the slow
+    // bracket must exceed the sleep by no more than 50ms of slop, and the no-work bracket must
+    // stay below half of it. Both are five times the largest overhead this suite has been seen
+    // to produce.
     const slow: MemorySystem = {
       name: 'slow',
       answer: async (question: string): Promise<string> => {
-        if (question === 'Q2') await new Promise((resolve) => setTimeout(resolve, 60));
+        if (question === 'Q2') await new Promise((resolve) => setTimeout(resolve, 400));
         return 'x';
       },
     };
     const events: BenchmarkProgress[] = [];
     await runBenchmark(dataset, slow, (p) => events.push(p));
 
-    // Question 1 is the slow one, and the event at index 2 fires once it has returned.
+    // `Q2` is index 1, so the event that starts it is `[1]` and the one after is `[2]`: the gap
+    // is the cost of the question that slept, and `[1]-[0]` is the cost of the one that did not.
     const slowest = events[2]!.elapsedMs - events[1]!.elapsedMs;
     const immediate = events[1]!.elapsedMs - events[0]!.elapsedMs;
-    expect(slowest).toBeGreaterThanOrEqual(50);
-    expect(immediate).toBeLessThan(slowest);
+    expect(slowest).toBeGreaterThanOrEqual(350);
+    expect(immediate).toBeLessThan(200);
   });
 
   it('abandons the pass when its wall-clock budget is spent, and stops where it ran out', async () => {

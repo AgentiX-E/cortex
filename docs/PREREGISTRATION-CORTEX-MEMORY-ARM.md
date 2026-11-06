@@ -808,18 +808,24 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   finally reaches the request: it was declared, forwarded and never read from §10.3's first
   dispatch until then, so every reading before §13.119 was served at the provider's default
   sampling. The number did not move; it started being true.
-- `promptContract: evidence-blocks-instruction-first` — **registered by §13.279, replacing
-  `abstention-evidence-blocks`, which §12.5 registered and every run from `37804673104` to
-  `42190193540` carried.** The contract names the same sourced rendering and selects one further
-  property: the multi-session prompt's sections are joined in the reference pipeline's order --
-  instruction block above the evidence, question after it, the block's closing `Answer:` cue last.
-  It is a contract name rather than a new dispatch input because the workflow sits at GitHub's
-  25-input ceiling, and because this is the axis that already carries "how this run renders".
-  **The treatment is a permutation and nothing else**: `prompt-assembly.test.ts` asserts that the
-  two prompts' `\n\n`-separated segments are equal as multisets at three budgets, so a movement on
-  this arm's `MR` is a fact about order. §13.279 registers the gates, and the reach is one route --
-  `buildSessionPrompt` is the only builder that takes `PromptOptions.assembly`, and `buildPrompt`
-  does not carry it, so the other five capabilities are the internal control.
+- `promptContract: evidence-blocks-unsourced` — **registered by §13.283, replacing
+  `evidence-blocks-instruction-first`.** The contract names the same instruction block and the same
+  `instruction-first` assembly, and withholds the per-turn source id: the rendering is `numbered`
+  rather than `sourced`. One variable, held by delegation in two places -- the instruction is the
+  control's function returned by reference, and `ASSEMBLY_BY_CONTRACT` carries the control's order --
+  so a movement on this arm is a fact about the marker. §13.283 registers the gates.
+  **The measurement behind it** is a census of `42237543941`: a multi-session prompt is 13.83%
+  source id by character count (6,650 of 48,000, 38 per turn), `TR` is 14.51% and `IE` 5.95%, and
+  the reader reproduces an id in **4 of 500** answers -- **0 of 121 on `MR`, 0 of 127 on `TR`** --
+  while 31 of 500 name a `Session N` header, which `buildSessionPrompt` already writes
+  unconditionally. The room freed is the room the coverage census says is missing: on `MR`, 34
+  questions are short of gold by 53 turns, and the median 24.4 extra turns each of them buys closes
+  **all 34**; on `TR`, 37 questions and 64 turns, all closed.
+  **The previous value is not withdrawn from the record.** §13.279 registered
+  `evidence-blocks-instruction-first` and `42237543941` read nine of its ten gates -- the instrument
+  perfect (121 of 121 multi-session digests changed, 0 of 379 outside) and the promise failed
+  (`MR` 80.17% -> 77.69%, 1 won / 4 lost, p = 0.375). §13.282 reads it. This registration holds the
+  order at that value, so it is not a second dispatch of §13.279.
   **Why the rendering did not move with it:** §13.276.6 read §13.246's audit row and concluded the
   reference's schema, Step 2 and terminator were still missing from this arm. They are not --
   §13.248 adopted `ask=verbatim`, which is that block verbatim, and §13.278 records the stale
@@ -31597,6 +31603,13 @@ that run is.
 
 ## 13.281 The room is exhausted, so the anchor-budget question is a substitution question
 
+> **Read with §13.283.** Every number below is taken at the `sourced` rendering, where 13.83% of a
+> multi-session prompt is source id. §13.283 withholds it and predicts ~24 more turns per `MR` question
+> for the same room, so the arithmetic here describes the room *before* that change. The conclusion --
+> that a larger anchor budget substitutes rather than adds -- survives only if gate 8 of that
+> registration fails to move coverage; if it moves, this section is the pre-treatment reading rather
+> than the current one.
+
 SOTA-LANDSCAPE §12 ends with "raise `ANCHOR_COUNT` toward 60 and price the room first". Pricing it is a
 read of an artifact, and the answer closes the experiment as it was stated.
 
@@ -31739,7 +31752,8 @@ not change" list was the last one; it is empty now.
 | axis | state |
 | --- | --- |
 | ranking stability under pool width | **repaired this round** (§13.280.6), prediction pending a 512 run (§13.280.8) |
-| anchor budget 4 against CoD's 60 | measured as a **substitution** question, not a room question (§13.281) |
+| the room itself | **13.83% of every multi-session prompt is a source id**, and the reference pays none of it; §13.283 withholds it and reaches the coverage shortfall it was hiding |
+| anchor budget 4 against CoD's 60 | measured as a **substitution** question, not a room question (§13.281) -- and that measurement is now read against a room §13.283 enlarges |
 | multi-step retrieval (MemCog family) | not started; §13.278.4's item 3 |
 | a second provider | not started |
 
@@ -31751,3 +31765,136 @@ presented.
 refutation costs on this arm, and it is worth stating beside the result -- the campaign spent the same
 order of magnitude to find out that the order is not the difference, which is cheaper than the two
 further levers it would otherwise have been stacked behind.
+
+## 13.283 The room is spent on a source id the reader never cites
+
+Every multi-session prompt this arm has ever sent carries, in front of each turn, a bracketed 36-character
+identifier followed by a space -- 38 characters. It is the `sourced` rendering, and it exists for a stated
+reason (§12.5): a bare number is a position rather than an identity, so two turns from one session would
+otherwise be indistinguishable from two turns from two sessions. That reason was measured and refuted as an
+*answer-quality* claim in §12.10 (dispatch `37827496757`, `MR` 0/17 with the rendering on all six routes),
+but the rendering stayed on, and the cost of keeping it has never been measured at all.
+
+This registration measures it, and the census is a read of `42237543941`:
+
+| | `MR` | `TR` | `IE` |
+| --- | ---: | ---: | ---: |
+| marker share of the delivered prompt, median | **13.83%** | **14.51%** | 5.95% |
+| characters, at the observed prompt sizes | ~6,650 of 48,000 | ~6,900 | ~2,900 |
+| turns the freed characters buy, median | **24.4** | 26.2 | 3.1 |
+| answers that reproduce an identifier | **0 / 121** | **0 / 127** | 2 / 150 |
+
+The reader cites a source id in **4 of 500** answers and never on the two routes that pay the most for it.
+It names a `Session N` header -- which `buildSessionPrompt` writes unconditionally, and which costs about
+eleven characters once per session instead of 38 per turn -- in **31 of 500**. So on this arm the id is a
+per-turn copy of a per-session fact, the boundary it was introduced to draw is already drawn, and the room
+it occupies is the room §13.281 found to be the binding constraint: the median question sits **239
+characters** below the 48,000 cap.
+
+**The reference pipeline pays none of it.** Its aggregation prompt renders numbered session blocks, so on
+the axis where this arm trails by 7.64 points (§13.282.2) it has been comparing a pipeline that spends its
+whole room on evidence against one that spends a seventh of it on provenance. That is the fair-comparison
+defect this registration closes, and it is worth stating plainly: the deficit was not all mechanism.
+
+### 13.283.1 What the treatment is, and the two things held fixed
+
+`promptContract: evidence-blocks-unsourced` -- the §13.279 instruction block, the §13.279
+`instruction-first` assembly, and `rendering: numbered` instead of `sourced`.
+
+Both fixed properties are held by construction rather than by intent, which is what makes this one variable:
+
+- **the instruction text** is `CONTRACT_INSTRUCTIONS['evidence-blocks-instruction-first']` returned by
+  reference, so there is one function and a later edit moves both sides;
+- **the order** is `ASSEMBLY_BY_CONTRACT['evidence-blocks-unsourced'] = 'instruction-first'`, and a test
+  asserts the two entries are the same value rather than asserting a literal.
+
+`evidence-unsourced.test.ts` pins three further properties: that the first `\n\n`-separated segment is
+byte-identical under both renderings, that the `Session N` header and the turn's own date survive, and --
+the one that matters -- that the treatment **cannot remove a turn the control delivered**.
+
+### 13.283.2 The containment, and why no per-question exception is needed
+
+`fitToBudget` takes the largest prefix of one relevance order whose rendering fits. Making each item
+cheaper therefore admits a weakly **longer prefix of the same order**: the delivered set under the
+unsourced rendering contains the control's, question by question. That is not a hope about averages, it is
+a property of a prefix, and it is what makes the safety claim gatable per question instead of only in the
+mean (gate 7).
+
+The arithmetic that predicts a *gain* is the same census read forward. On `MR`, 34 questions fall short of
+their gold set by 53 turns in total, and every one of the 34 is short by fewer turns than the 24.4 the freed
+characters buy; on `TR`, 37 questions and 64 turns, again all within reach. The estimate is necessary rather
+than sufficient -- it says the room exists, not that the next turns in the rank order are the missing gold
+ones -- which is exactly why gate 8 asks for **+20 of 500** against an arithmetic ceiling of 109 and not for
+the ceiling.
+
+The same records give the retrieval-side quantity `LongMemEval` scores and publishes, so the arm can be
+compared on it: **gold-turn recall**, the fraction of the labelled evidence turns that reached the prompt.
+It has never been printed for this arm, and it is the number the coverage gap actually moves:
+
+| | `IE` | `MR` | `KU` | `TR` | `ABS` | all |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| gold turns carried | 1,437/1,709 | **1,779/1,832** | 1,313/1,688 | 1,551/1,615 | 440/672 | 6,520/7,516 |
+| recall | 84.08% | **97.11%** | 77.78% | 96.04% | 65.48% | **86.75%** |
+| questions delivering every gold turn | 75/150 | 87/121 | 5/72 | 90/127 | 2/30 | 259/500 |
+
+`MR`'s recall is already 97.11%, which is why the gain this registration predicts is not "more evidence in
+general" but **the last 2.9%**: 53 turns spread over 34 questions, each of which is a counting question whose
+answer is one short. `KU` is the mirror image and worth stating so nobody reads recall as accuracy -- 77.78%
+recall against 88.9% accuracy, because a knowledge-update question needs the latest value and not the set.
+
+### 13.283.3 The gates
+
+| # | quantity | threshold |
+| --- | --- | ---: |
+| 1 | the artifact's own audit | **every check passes** |
+| 2 | `memoryArmConfig.promptContract` | **`evidence-blocks-unsourced`** |
+| 3 | `memoryArmConfig.promptAssembly` | **`instruction-first`** |
+| 4 | per-turn source markers across the 500 delivered prompts | **0** |
+| 5 | `MR` accuracy against `42237543941` | **Δ ≥ +3 points** with the resolution printed |
+| 6 | `IE`, `KU`, `TR`, `ABS` against `42237543941` | **no loss ≥ 3 points** |
+| 7 | `goldOverlap.carried`, question by question | **no question carries fewer gold turns than the control** |
+| 8 | questions delivering every gold turn | **≥ 279** against 259 |
+| 9 | `llmUsage.promptTokens` | **≤ 31,400,000** against 30,991,956, **+1.3%** |
+| 10 | `bareRetry.attempted` | **≥ 60** |
+
+Gate 4 is the one this table is built around. Every other row can be satisfied by a run that changed
+nothing: gate 2 is a config field, gate 5 a score, and gate 5 would pass on a mechanism improvement that
+had nothing to do with the marker. Gate 4 reads the **bytes**: 500 prompts, zero bracketed identifiers,
+decided by `source_marker_absence` -- a kind added for this registration, because the existing kinds decide
+either on scores (`capability_delta`) or on digests (`digest_agreement`), and a digest equality cannot say
+*which* bytes left.
+
+Gate 7 is the second new kind, `coverage_monotone`, and it exists because the safety argument is
+per-question. A mean would pass on a run that gained fifty questions and damaged twenty, which for a
+resource change is the one outcome that would make gate 5's gain unattributable.
+
+Gate 9's bar is **+1.3%** rather than the **-0.36%** §13.279 measured. The room is the same size and every
+prompt stays inside it, so a rise can only come from the reader's own output on a longer evidence block;
+a run above +1.3% would mean the prompts grew, which the rendering change cannot do -- every turn
+contributes strictly fewer characters.
+
+### 13.283.4 What would refute it
+
+Three branches, and each names the increment that follows rather than a retry:
+
+1. **`MR` moves by less than 3 points.** Coverage was not the mechanism either, and the id was not the
+   constraint -- which would leave the reference's 8-point lead attributable to its session-level
+   retrieval (§13.34's reading) rather than to the prompt's composition. The next increment is then
+   `relevanceUnits: session-fill` **on the anchored signal**, which has never been run: §13.34 retired it
+   under `retrieval-hybrid`, where every session in the pool was admitted anyway.
+2. **`MR` gains but a capability loses 3 points.** The marker was load-bearing somewhere: the follow-up is
+   to restore it at **session scope** (`Session 3 [id]`), which costs 1/38th of the room and separates
+   "provenance" from "per-turn position" as explanations.
+3. **Any question carries fewer gold turns** (gate 7). The containment argument in §13.283.2 is then wrong
+   at artifact scale, which would mean the budget is not the prefix the proof assumes -- and the width
+   repair in §13.280.6 rests on the same assumption, so that would be the more important finding.
+
+### 13.283.5 What this does not decide
+
+- **The anchor budget** (§13.281). More anchors can only substitute for retrieved turns, and this
+  registration changes how much room there is to substitute into -- so it must be read first.
+- **The 512-width verification** (§13.280.7). Its three predictions stand, and this run is at `top_k = 256`
+  with the repaired bound, so it neither tests them nor disturbs them.
+- **Multi-step retrieval** (MemCog's family). It changes what is retrieved rather than how it is rendered,
+  and it is the axis §13.282.3 leaves standing.
+- **A second provider.** Nothing here touches the reader.
