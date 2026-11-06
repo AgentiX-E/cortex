@@ -31348,3 +31348,98 @@ permutation the test asserts it is.
 It does not test multi-step retrieval (MemCog's family) and does not test a second reader. §13.277.5
 said the same, and the reason has not changed: both change the arm's structure rather than a field,
 and one artifact may carry one treatment.
+
+## 13.280 The delivered set is not stable under pool width, and `MR` loses exactly there
+
+§13.278.3 (d) found the width's paired cost on `MR` (7 down / 2 up, exact McNemar p = 0.039) and one
+worked example where gold coverage *fell* while the pool was being widened. This section measures
+that population over all 500 questions and asks the code what could produce it. No provider call.
+
+### 13.280.1 The census: 63 questions delivered a different gold set under a one-parameter change
+
+`42177443765` (`top_k=256`) and `42190193540` (`top_k=512`) differ in one dispatch input. Same
+budget, same ranking signal, same reader, same corpus.
+
+| | count |
+| --- | ---: |
+| questions whose `goldOverlap.carried` differs between the two runs | **63** (12.6%) |
+| ...coverage **fell** | 28 |
+| ...coverage **rose** | 35 |
+| fell, and flipped correct -> wrong | **5** |
+| fell, and flipped wrong -> correct | 0 |
+| rose, and flipped wrong -> correct | 1 |
+| rose, and flipped correct -> wrong | 0 |
+
+The asymmetry is the finding. Losing coverage cost five questions and bought none; gaining coverage
+bought one and cost none. A wider candidate list is supposed to be a superset operation, and on this
+arm it is not.
+
+### 13.280.2 It is not a difficulty artefact: the gap survives stratification
+
+Movers are enriched for `MR` and `TR`, which are also the harder capabilities, so the aggregate
+difference is confounded. Within capability:
+
+| capability | delivered set moved | delivered set stable |
+| --- | ---: | ---: |
+| `MR` | **15/25 = 60.0%** | 77/96 = 80.2% |
+| `TR` | 28/31 = 90.3% | 93/96 = 96.9% |
+| `IE` | 5/5 = 100.0% | 138/145 = 95.2% |
+| `KU` | 1/2 | 62/70 = 88.6% |
+
+And it is not a size effect: the movers' median gold set is **12** turns and their median prompt is
+**47,049** characters, against the stable population's **12** and **46,813**.
+
+On `MR` the difference is **20.2 points**: a question whose delivered evidence changed under a
+pool-only edit is four times likelier to be wrong than one whose did not.
+
+### 13.280.3 What in the code can do that
+
+The registered ranking is `retrieval-anchored`, and its pool is not the retriever's list. It is
+`retrieved ∪ restored`, where restored turns are the session neighbourhoods of up to four **anchors**
+whose choice scans the whole retrieved list:
+
+```ts
+function selectAnchors(question, hits, count = ANCHOR_COUNT): number[] {
+  ...
+  for (let position = 0; position < hits.length; position += 1) {   // <- the pool's length
+```
+
+A candidate that covers two question terms the chosen anchors have not yet named beats one that
+covers one, whatever their ranks. So a hit beyond position 256 that covers more of the question can
+take an anchor slot that a narrower pool gave to a different hit — and the neighbourhood restored
+around the first is not restored around the second.
+
+Demonstrated on a fixture (`restoreAnchorNeighbourhoods` driven directly, no provider): one question,
+one corpus, two pool widths, and the anchors move from `[0, 3]` to `[0, 15]`.
+
+The consequence is a statement about the mechanism rather than about this run: **under
+`retrieval-anchored`, `topK` is not a width parameter. It is a parameter of the mechanism.** Two runs
+that differ only in `topK` differ in the anchor set, the restored set, and therefore the pool.
+
+### 13.280.4 What that does to the archived readings, including one this campaign has been quoting
+
+Every topK comparison on this arm was made under this signal, `41990597116` and `42013256884`
+included. Each of them moved the width *and* the anchor set, which is two variables where the
+registration named one. The readings are not wrong — they are readings of "this mechanism instance
+versus that one" — but they cannot be cited as "wider is free" or "wider costs four points", and
+§13.268's dismissal and §13.278.3 (d)'s cost both need that sentence beside them.
+
+### 13.280.5 The invariant, and why it is the next experiment behind §13.279
+
+The property a pool owes its caller is **monotonicity**: widening the candidate list may add
+evidence and may never remove any. It is checkable without a provider and without a run — build the
+pool at two widths over one corpus and assert containment — and it fails today by construction,
+because the anchor walk reads `hits.length`.
+
+Two repairs are expressible, and they are different experiments rather than one:
+
+1. **Pin the anchor head.** Choose anchors from a fixed prefix (`min(hits.length, 256)`), so the
+   anchor set is a function of the question and the retrieval, not of the pool's width. Restoration
+   then becomes monotone by construction and the width becomes a width again.
+2. **Union the pools.** Build the pool at the registered width and at the widest supported one and
+   take the union. Monotone by construction as well, at the cost of a second retrieval pass.
+
+Both are registered here only as *candidates*. Neither is dispatched: §13.279 is in flight, and a
+second treatment in the same artifact would make its `MR` delta unattributable. The order is
+§13.279's readout first, then this — and if §13.279 moves `MR` by 3 or more, the stability question
+keeps its place behind it rather than in front.
