@@ -68,6 +68,7 @@ def _report(
     reaches: int | None = None,
     pool_short: int | None = None,
     relevance_top_k: int | None = None,
+    gold_turns: list[str] | None = None,
 ) -> dict:
     """A report whose every block is explicit, so no gate can be decided by a default.
 
@@ -99,6 +100,8 @@ def _report(
                     'total': 2,
                     'pool': 1 if (pool_short is not None and index < pool_short) else 2,
                 }
+                if gold_turns is not None:
+                    record['goldOverlap']['goldTurns'] = list(gold_turns)
             questions.append(record)
     report: dict = {'questions': questions}
     if audit is not None:
@@ -373,6 +376,164 @@ class RegistrationAgreementTest(unittest.TestCase):
                 self.assertEqual(named, set(spec['controls']))
                 for name in named:
                     self.assertIsInstance(spec['controls'][name]['run'], int)
+
+    def test_every_spec_satisfies_its_schema(self) -> None:
+        # §13.268. `13.266.json` shipped `at_most_loss_points` against an implementation that reads
+        # `max_loss_points`, so the seven-gate readout died on a `KeyError` after the artifact had
+        # already been produced and paid for. Nothing in this suite could see it: the consistency
+        # tests compare `quantity` and `threshold` cells, and those were right.
+        module = _module()
+        for path in _gate_specs():
+            spec = json.loads(path.read_text())
+            with self.subTest(spec=path.name):
+                self.assertEqual(module.validate_spec(spec), [])
+
+    def test_the_schema_and_the_kinds_name_the_same_gate_types(self) -> None:
+        # A kind added without a schema entry would be validated by nothing, which is the same hole one
+        # level down. Holding the two sets together is what makes `GATE_SCHEMA` a condition of `KINDS`
+        # rather than a parallel list somebody has to remember to extend.
+        module = _module()
+        self.assertEqual(set(module.GATE_SCHEMA), set(module.KINDS))
+
+    def test_the_schema_catches_the_spelling_that_broke_the_readout(self) -> None:
+        module = _module()
+        spec = {
+            'gates': [
+                {
+                    'id': 2,
+                    'kind': 'capability_nonloss',
+                    'control': 'reference',
+                    'at_most_loss_points': 3,
+                    'quantity': 'q',
+                    'threshold': 't',
+                }
+            ]
+        }
+        problems = module.validate_spec(spec)
+        self.assertTrue(any('max_loss_points' in problem for problem in problems), problems)
+        self.assertTrue(any('at_most_loss_points' in problem for problem in problems), problems)
+
+    def test_the_schema_rejects_a_kind_no_reader_implements(self) -> None:
+        module = _module()
+        spec = {'gates': [{'id': 1, 'kind': 'vibes', 'quantity': 'q', 'threshold': 't'}]}
+        problems = module.validate_spec(spec)
+        self.assertTrue(any('unknown kind' in problem for problem in problems), problems)
+
+    def test_the_schema_rejects_a_repeated_id(self) -> None:
+        module = _module()
+        gate = {'id': 1, 'kind': 'field_at_most', 'field': 'x', 'at_most': 1, 'quantity': 'q', 'threshold': 't'}
+        problems = module.validate_spec({'gates': [gate, dict(gate)]})
+        self.assertTrue(any('repeats an id' in problem for problem in problems), problems)
+
+
+class ArtifactAuditGateTest(unittest.TestCase):
+    """`artifact_audit`: the run's own twelve checks, promoted from a CI step to a gate.
+
+    `42161343457` is the case that made this necessary. The audit failed it -- `reviewPass: bare`
+    publishing a zeroed census -- while the seven gates of §13.266 evaluated normally on the same
+    artifact, six of them passing. A readout was therefore available from an artifact the audit had
+    rejected, because the two ran in different jobs and only one of them gated.
+    """
+
+    def _verdict(self, report: dict) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {},
+            'gates': [{'id': 1, 'kind': 'artifact_audit', 'quantity': 'q', 'threshold': 't'}],
+        }
+        return _module().evaluate(spec, report, {})[0]
+
+    def _auditable(self) -> dict:
+        """A report the twelve checks accept, so the gate's **pass** path is exercised end to end.
+
+        Every value here is what the shipped configuration produces: `ask: verbatim` with the routes
+        it touched, `renderingRoutes` covering them, a bare review pass, and an abstention census that
+        sums to the questions times the runs. A fixture that omitted them would fail the audit for
+        reasons unrelated to the gate, which is the defect the sibling test in `audit-census` records
+        one layer up.
+        """
+        report = _report({'MR': (1, 2)}, reaches=1, gold_turns=['a', 'b'], bare_retry=70, calls=10)
+        report['questionCount'] = 2
+        report['memoryArmConfig'] = {
+            'reviewPass': 'bare',
+            'ask': 'verbatim',
+            'askRoutes': ['multi-session'],
+            'renderingRoutes': ['multi-session', 'temporal'],
+            'voteCounts': None,
+            'selfConsistency': 'none',
+            'relevanceSignal': 'retrieval-anchored',
+            'queryExpansion': 'none',
+            'evidenceRoles': ['user'],
+            'evidenceRolesRoutes': ['multi-session', 'temporal'],
+        }
+        report['abstentionReasons'] = {'empty': 1, 'threshold': 1, 'llm': 0, 'answered': 0}
+        return report
+
+    def test_a_consistent_artifact_passes(self) -> None:
+        self.assertEqual(self._verdict(self._auditable())['verdict'], 'PASS')
+
+    def test_the_same_artifact_fails_once_its_census_is_zeroed(self) -> None:
+        # One field moved on an otherwise auditable artifact: the gate must follow the audit, not the
+        # report's overall shape. This is the direction `42161343457` arrived in.
+        report = self._auditable()
+        report['audit'] = {'attempted': 0, 'changed': 0}
+        for record in report['questions']:
+            record['auditConsultations'] = 0
+            record['auditChanges'] = 0
+        result = self._verdict(report)
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertIn('audit', result['detail']['failed'])
+
+    def test_a_zeroed_census_under_a_bare_pass_fails_and_names_the_check(self) -> None:
+        # The exact shape `42161343457` published: an audit tally of nothing with a bare pass.
+        report = _report({'MR': (1, 2)}, audit=(0, 0))
+        report['memoryArmConfig'] = {'reviewPass': 'bare'}
+        result = self._verdict(report)
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertIn('audit', result['detail']['failed'])
+
+
+class GoldTextCompleteTest(unittest.TestCase):
+    """`gold_text_complete`: the field the room calculation and the restore counterfactual both read.
+
+    A sum over an absent list is zero, and §13.268.7 records what that produced: a room calculation
+    that reported every partial question reachable inside 48,000 characters while the budget was the
+    binding constraint. The gate exists so that artifact cannot be read as if it carried the text.
+    """
+
+    def _verdict(self, report: dict) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {},
+            'gates': [{'id': 1, 'kind': 'gold_text_complete', 'quantity': 'q', 'threshold': 't'}],
+        }
+        return _module().evaluate(spec, report, {})[0]
+
+    def test_every_gold_turn_carried_passes(self) -> None:
+        report = _report({'MR': (1, 2)}, reaches=1, gold_turns=['a', 'b'])
+        self.assertEqual(self._verdict(report)['verdict'], 'PASS')
+
+    def test_an_absent_list_fails_rather_than_reading_as_empty(self) -> None:
+        report = _report({'MR': (1, 2)}, reaches=1)
+        self.assertEqual(self._verdict(report)['verdict'], 'FAIL')
+
+    def test_a_short_list_fails_and_prints_the_pair(self) -> None:
+        report = _report({'MR': (1, 2)}, reaches=1, gold_turns=['a'])
+        result = self._verdict(report)
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertIn('1 against 2', result['reading'])
+
+    def test_a_non_text_turn_fails(self) -> None:
+        report = _report({'MR': (1, 2)}, reaches=1, gold_turns=['a', 7])  # type: ignore[list-item]
+        self.assertEqual(self._verdict(report)['verdict'], 'FAIL')
+
+    def test_a_report_with_no_gold_block_is_unevaluable_rather_than_a_pass(self) -> None:
+        report = _report({'MR': (1, 2)})
+        self.assertEqual(self._verdict(report)['verdict'], 'UNEVALUABLE')
 
 
 class DispatchTookTest(unittest.TestCase):

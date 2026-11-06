@@ -27,7 +27,7 @@
       "kind": "capability_nonloss",
       "control": "reference",
       "excluding": ["MR"],
-      "at_most_loss_points": 3,
+      "max_loss_points": 3,
       "quantity": "every other capability against `42013256884`",
       "threshold": "no loss **\u2265 3 points**, and only where the discordance can resolve three",
       "numbers": [3],

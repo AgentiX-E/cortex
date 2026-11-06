@@ -1,0 +1,91 @@
+{
+  "registration": "13.269",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "The re-instrumentation run, at the shipped configuration",
+  "controls": {
+    "reference": {
+      "run": 42013256884,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the same registered configuration byte for byte, so the whole of this registration is the artifact shape"
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "artifact_audit",
+      "quantity": "the artifact's own audit",
+      "threshold": "**all twelve checks pass**, including 7b — the run that this registration exists to make green",
+      "numbers": []
+    },
+    {
+      "id": 2,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": -3,
+      "quantity": "`MR` accuracy against `42013256884`",
+      "threshold": "**Δ ≥ −3 points**, and the net reported beside its resolution. The bar is a null, not a win: nothing was supposed to move",
+      "numbers": [
+        -3
+      ]
+    },
+    {
+      "id": 3,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "excluding": [
+        "MR"
+      ],
+      "max_loss_points": 3,
+      "quantity": "every other capability against `42013256884`",
+      "threshold": "no loss **≥ 3 points**",
+      "numbers": [
+        3
+      ]
+    },
+    {
+      "id": 4,
+      "kind": "field_at_most",
+      "field": "llmUsage.calls",
+      "at_most": 5900,
+      "quantity": "`llmUsage.calls`",
+      "threshold": "**≤ 5,900** against 5,668 — a shape change must not cost a call",
+      "numbers": [
+        5900,
+        5668
+      ]
+    },
+    {
+      "id": 5,
+      "kind": "field_at_most",
+      "field": "llmUsage.promptTokens",
+      "at_most": 32000000,
+      "quantity": "`llmUsage.promptTokens`",
+      "threshold": "**≤ 32,000,000** against 31,076,815, i.e. **+3%** — an absent field and a present one are the whole of the difference",
+      "numbers": [
+        32000000,
+        31076815,
+        3
+      ]
+    },
+    {
+      "id": 6,
+      "kind": "gold_text_complete",
+      "quantity": "`goldOverlap.goldTurns`",
+      "threshold": "**present with `length === total` on every record that names gold**, and absent on the records that do not. This is the field the room calculation and the restore counterfactual both read, and a zero-length list would make the first of them report every question reachable",
+      "numbers": []
+    },
+    {
+      "id": 7,
+      "kind": "field_at_least",
+      "field": "bareRetry.attempted",
+      "at_least": 60,
+      "quantity": "`bareRetry.attempted`",
+      "threshold": "**≥ 60**",
+      "numbers": [
+        60
+      ]
+    }
+  ]
+}

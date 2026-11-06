@@ -412,6 +412,81 @@ def gate_coverage_gain(gate: dict, treatment: dict, controls: dict[str, dict], a
     return _result(gate, verdict, reading, {'gain': delta, 'treatment': gained, 'control': before})
 
 
+def gate_artifact_audit(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """The artifact's own internal-consistency audit, as a registered condition.
+
+    `tools/readout-arm-run.py --audit` already refuses a self-inconsistent artifact, and until now
+    that refusal was a step in the benchmark workflow rather than a gate in any registration: a
+    readout could be produced from an artifact the audit had rejected, because the two ran in
+    different jobs and only one of them gated. `42161343457` is the case -- the audit failed the run
+    on `reviewPass: bare` publishing a zeroed census, and the seven gates §13.266 registered were
+    nonetheless all evaluable, six of them passing, on that same artifact.
+
+    So the audit becomes a gate of its own kind. It reads the same implementation rather than a
+    second copy of the twelve checks, for the reason `_readout` exists: two copies are two answers
+    the first time one is edited.
+    """
+    text, code = _readout().audit_section(treatment, _questions(treatment))
+    failed: list[str] = []
+    for line in text.splitlines():
+        cells = line.split()
+        if len(cells) >= 2 and cells[0] == 'FAIL':
+            failed.append(cells[1])
+    passed = code == 0 and not failed
+    reading = (
+        'every artifact check passes'
+        if passed
+        else 'failed: ' + ', '.join(failed) if failed else f'the audit exited {code}'
+    )
+    return _result(gate, PASS if passed else FAIL, reading, {'failed': failed, 'exit': code})
+
+
+def gate_gold_text_complete(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """Every record that names gold carries the text of every gold turn, indexed with the rest.
+
+    §13.267.5 found that the restore counterfactual was blocked by one missing field, and §13.268.7
+    found the same absence turning a room calculation into "every question is reachable", because a
+    sum over an absent list is zero. The unit tests pin the field on the producer; this pins it on the
+    artifact, which is the object the two instruments actually read.
+
+    Absent is legitimate and required on a record whose `goldOverlap` names no gold -- the block's own
+    rule -- so the population is the records with `total > 0`, and the denominator is printed. A
+    record with `total > 0` and no list is the case this exists for: it is indistinguishable from a
+    question whose gold text happens to be empty, which no dataset produces.
+    """
+    records = _questions(treatment)
+    if not records:
+        return _result(gate, UNEVALUABLE, 'the artifact carries no question records')
+    named = [record for record in records if isinstance(record.get('goldOverlap'), dict)]
+    if not named:
+        return _result(gate, UNEVALUABLE, 'no record carries a `goldOverlap` block')
+    expected = [record for record in named if (record['goldOverlap'].get('total') or 0) > 0]
+    if not expected:
+        return _result(gate, UNEVALUABLE, 'no record names any gold turn, so there is no text to carry')
+    offenders: list[str] = []
+    for record in expected:
+        block = record['goldOverlap']
+        total = block.get('total')
+        turns = block.get('goldTurns')
+        if not isinstance(turns, list) or len(turns) != total:
+            got = len(turns) if isinstance(turns, list) else 'absent'
+            offenders.append(f'{record.get("questionId")}: {got} against {total}')
+        elif not all(isinstance(turn, str) for turn in turns):
+            offenders.append(f'{record.get("questionId")}: a turn is not text')
+    total_gold = sum(len(record['goldOverlap']['goldTurns']) for record in expected if isinstance(record['goldOverlap'].get('goldTurns'), list))
+    reading = (
+        f'{len(expected) - len(offenders)} of {len(expected)} records carry the text of every gold '
+        f'turn ({total_gold:,} turn(s) recorded)'
+        + ('' if not offenders else '; first: ' + '; '.join(offenders[:3]))
+    )
+    return _result(
+        gate,
+        PASS if not offenders else FAIL,
+        reading,
+        {'records': len(expected), 'offending': len(offenders)},
+    )
+
+
 KINDS = {
     'capability_delta': gate_capability_delta,
     'capability_nonloss': gate_capability_nonloss,
@@ -422,7 +497,84 @@ KINDS = {
     'digest_agreement': gate_digest_agreement,
     'field_equals': gate_field_equals,
     'coverage_gain': gate_coverage_gain,
+    'artifact_audit': gate_artifact_audit,
+    'gold_text_complete': gate_gold_text_complete,
 }
+
+#: The keys every gate of a kind carries, and the keys a gate may additionally carry.
+#:
+#: §13.268. `tools/gates/13.266.json` was written with `at_most_loss_points` where the implementation
+#: and its sibling table both say `max_loss_points`, and nothing noticed until the artifact arrived and
+#: `gate_capability_nonloss` raised `KeyError` halfway through a seven-gate readout. A registration is
+#: data, and data that a reader can only fail on is data nobody validated: the table could equally have
+#: said `at_most_loss_point` and produced the same crash, or a key the kind ignores and produced no
+#: crash at all while the bar it meant to set was never applied.
+#:
+#: The schema is stated here, beside `KINDS`, so a new kind cannot be added without one -- the test
+#: holds `KINDS` and `GATE_SCHEMA` to the same key set, which is the assertion that makes the pairing
+#: structural rather than remembered.
+GATE_SCHEMA: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    'capability_delta': (
+        frozenset({'capability', 'control', 'at_least_points'}),
+        frozenset({'requires_nonsignificance'}),
+    ),
+    'capability_nonloss': (frozenset({'control', 'max_loss_points'}), frozenset({'excluding'})),
+    'field_at_least': (frozenset({'field', 'at_least'}), frozenset()),
+    'field_at_most': (frozenset({'field', 'at_most'}), frozenset()),
+    'audit_identity': (
+        frozenset({'consultations_field', 'changes_field', 'tally_field', 'changed_tally_field'}),
+        frozenset(),
+    ),
+    'sides_within_total': (frozenset({'sides_field', 'total_field'}), frozenset()),
+    'digest_agreement': (frozenset({'control', 'field', 'denominator'}), frozenset()),
+    'field_equals': (frozenset({'field', 'equals'}), frozenset()),
+    'coverage_gain': (frozenset({'reaches', 'at_least_gain'}), frozenset({'capability', 'control'})),
+    'artifact_audit': (frozenset(), frozenset()),
+    'gold_text_complete': (frozenset(), frozenset()),
+}
+
+#: Keys a gate carries whatever its kind: the three the report prints, plus the two documentation
+#: cells the consistency test compares against the registration's table, plus the free-form note.
+GATE_COMMON = frozenset({'id', 'kind', 'quantity', 'threshold', 'numbers', 'asks', 'observation'})
+
+
+def validate_spec(spec: dict) -> list[str]:
+    """Every way a gate table can be malformed, as prose. Empty means it is well formed.
+
+    Returns rather than raises so the loader can name the file and the test can assert on the text.
+    A missing required key and an unknown key are both reported, because the first is the defect this
+    exists for and the second is the same defect arriving silently: a typo that happens to be ignored
+    by the kind sets no bar, and no reading would ever show it.
+    """
+    problems: list[str] = []
+    gates = spec.get('gates')
+    if not isinstance(gates, list) or not gates:
+        return ['no `gates` list']
+    seen: set[int] = set()
+    for position, gate in enumerate(gates, start=1):
+        if not isinstance(gate, dict):
+            problems.append(f'gate at position {position} is not an object')
+            continue
+        identifier = gate.get('id', position)
+        if gate.get('id') in seen:
+            problems.append(f'gate {identifier} repeats an id already used')
+        seen.add(gate.get('id'))
+        kind = gate.get('kind')
+        if kind not in KINDS:
+            problems.append(f'gate {identifier} names an unknown kind {kind!r}; known: {", ".join(sorted(KINDS))}')
+            continue
+        required, optional = GATE_SCHEMA[kind]
+        allowed = required | optional | GATE_COMMON
+        missing = sorted(required - gate.keys())
+        if missing:
+            problems.append(f'gate {identifier} ({kind}) is missing {", ".join(missing)}')
+        unknown = sorted(gate.keys() - allowed)
+        if unknown:
+            problems.append(
+                f'gate {identifier} ({kind}) carries {", ".join(unknown)}, which no reader of that kind '
+                f'reads; a bar spelled this way sets nothing'
+            )
+    return problems
 
 
 def _result(gate: dict, verdict: str, reading: str, detail: dict | None = None, observation: str | None = None) -> dict:
@@ -499,6 +651,13 @@ def main(argv: list[str]) -> int:
     arguments = parser.parse_args(argv)
 
     spec = json.loads(arguments.spec.read_text())
+    # Before any artifact is loaded: a malformed table must fail as a malformed table, not as a
+    # `KeyError` from whichever gate happened to be reached first (§13.268).
+    problems = validate_spec(spec)
+    if problems:
+        for problem in problems:
+            print(f'{arguments.spec}: {problem}', file=sys.stderr)
+        return 2
     supplied = {'reference': arguments.reference, 'prior': arguments.prior}
     controls = {name: load(path) for name, path in supplied.items() if path is not None}
     sources = {name: str(path) for name, path in supplied.items() if path is not None}
