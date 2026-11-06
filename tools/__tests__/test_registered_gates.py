@@ -28,6 +28,7 @@ printing `PASS` beside an empty reading.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
@@ -41,6 +42,20 @@ SPEC = REPO / 'tools' / 'gates' / '13.262.7.json'
 PREREGISTRATION = REPO / 'docs' / 'PREREGISTRATION-CORTEX-MEMORY-ARM.md'
 
 
+def _module():  # noqa: ANN202 - loaded by path, the way the tool loads its own collaborators
+    """`registered-gates.py` in process, for the gates asserted on a fixture rather than a file.
+
+    The CLI tests spawn it; these do not, because a subprocess round trip per fixture would make the
+    unit tests slower than the integration ones they sit under.
+    """
+    spec = importlib.util.spec_from_file_location('registered_gates', TOOL)
+    if spec is None or spec.loader is None:
+        raise ImportError(TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _report(
     capabilities: dict[str, tuple[int, int]] | None = None,
     *,
@@ -50,6 +65,9 @@ def _report(
     calls: int | None = None,
     sides: dict[str, int] | None = None,
     offset: int = 0,
+    reaches: int | None = None,
+    pool_short: int | None = None,
+    relevance_top_k: int | None = None,
 ) -> dict:
     """A report whose every block is explicit, so no gate can be decided by a default.
 
@@ -72,6 +90,15 @@ def _report(
             if audit is not None:
                 record['auditConsultations'] = audit[0] // total if total else 0
                 record['auditChanges'] = 0
+            if reaches is not None:
+                # The first `reaches` questions of each capability have every gold turn delivered;
+                # the rest are one short, which is the population a wider pool is supposed to move.
+                full = index < reaches
+                record['goldOverlap'] = {
+                    'carried': 2 if full else 1,
+                    'total': 2,
+                    'pool': 1 if (pool_short is not None and index < pool_short) else 2,
+                }
             questions.append(record)
     report: dict = {'questions': questions}
     if audit is not None:
@@ -82,6 +109,8 @@ def _report(
         report['llmUsage'] = {'calls': calls}
     if sides is not None:
         report['usageBySide'] = {name: {'calls': value} for name, value in sides.items()}
+    if relevance_top_k is not None:
+        report['memoryArmConfig'] = {'relevanceTopK': relevance_top_k}
     return report
 
 
@@ -274,8 +303,18 @@ class ExitCodeTest(unittest.TestCase):
         self.assertIn('run 42013256884', completed.stdout)
 
 
+def _gate_specs() -> list[Path]:
+    """Every registered gate table, so a new registration cannot arrive without its binding.
+
+    This used to be one file, and the temptation with the second one is a second copy of this test.
+    Iterating the directory instead means the argument -- the document and the spec are one
+    threshold -- is made once and holds for every registration that will ever be written.
+    """
+    return sorted((REPO / 'tools' / 'gates').glob('*.json'))
+
+
 class RegistrationAgreementTest(unittest.TestCase):
-    """§13.262.7's table and the spec are one threshold, not two copies.
+    """Each gate table and its section are one threshold, not two copies.
 
     Read out of the document rather than restated here, for the reason §10.3's test gives: a test
     that hard-coded `10` would be a third copy, updated in whichever file the person editing it
@@ -283,10 +322,16 @@ class RegistrationAgreementTest(unittest.TestCase):
     """
 
     @staticmethod
-    def _rows() -> dict[int, tuple[str, str]]:
+    def _rows(registration: str) -> dict[int, tuple[str, str]]:
         text = PREREGISTRATION.read_text()
-        start = text.index('### 13.262.7')
-        end = text.index('### 13.262.8', start)
+        # Any heading level: a registration can be a section of its own (`## 13.266`) or a
+        # subsection of a longer argument (`### 13.262.7`), and the binding is the same one.
+        opened = re.search(rf'^(#{{2,4}}) {re.escape(registration)} ', text, re.M)
+        if opened is None:
+            raise AssertionError(f'the document has no section headed {registration!r}')
+        start = opened.start()
+        following = re.search(r'^#{2,4} ', text[opened.end():], re.M)
+        end = opened.end() + following.start() if following else len(text)
         rows: dict[int, tuple[str, str]] = {}
         for line in text[start:end].splitlines():
             if not re.match(r'^\|\s*\d+\s*\|', line):
@@ -298,29 +343,143 @@ class RegistrationAgreementTest(unittest.TestCase):
         return rows
 
     def test_the_spec_and_the_document_list_the_same_gates(self) -> None:
-        spec = json.loads(SPEC.read_text())
-        self.assertEqual([gate['id'] for gate in spec['gates']], sorted(self._rows()))
+        for path in _gate_specs():
+            spec = json.loads(path.read_text())
+            with self.subTest(spec=path.name):
+                self.assertEqual([gate['id'] for gate in spec['gates']], sorted(self._rows(spec['registration'])))
 
     def test_every_gate_matches_its_row_cell_for_cell(self) -> None:
-        spec = json.loads(SPEC.read_text())
-        rows = self._rows()
-        for gate in spec['gates']:
-            with self.subTest(gate=gate['id']):
-                quantity, threshold = rows[gate['id']]
-                self.assertEqual(gate['quantity'], quantity)
-                self.assertEqual(gate['threshold'], threshold)
+        for path in _gate_specs():
+            spec = json.loads(path.read_text())
+            rows = self._rows(spec['registration'])
+            for gate in spec['gates']:
+                with self.subTest(spec=path.name, gate=gate['id']):
+                    quantity, threshold = rows[gate['id']]
+                    self.assertEqual(gate['quantity'], quantity)
+                    self.assertEqual(gate['threshold'], threshold)
 
-    def test_the_spec_reads_a_document_that_exists(self) -> None:
-        spec = json.loads(SPEC.read_text())
-        self.assertEqual(spec['registration'], '13.262.7')
-        self.assertTrue((REPO / spec['document']).is_file())
+    def test_every_spec_reads_a_document_that_exists(self) -> None:
+        for path in _gate_specs():
+            spec = json.loads(path.read_text())
+            with self.subTest(spec=path.name):
+                self.assertEqual(path.stem, spec['registration'])
+                self.assertTrue((REPO / spec['document']).is_file())
 
     def test_each_control_artifact_the_spec_names_is_a_run(self) -> None:
-        spec = json.loads(SPEC.read_text())
-        named = {gate['control'] for gate in spec['gates'] if 'control' in gate}
-        self.assertEqual(named, set(spec['controls']))
-        for name in named:
-            self.assertIsInstance(spec['controls'][name]['run'], int)
+        for path in _gate_specs():
+            spec = json.loads(path.read_text())
+            named = {gate['control'] for gate in spec['gates'] if 'control' in gate}
+            with self.subTest(spec=path.name):
+                self.assertEqual(named, set(spec['controls']))
+                for name in named:
+                    self.assertIsInstance(spec['controls'][name]['run'], int)
+
+
+class DispatchTookTest(unittest.TestCase):
+    """`field_equals`: the departure itself is a gate, because losing it is the cheapest null result."""
+
+    def _verdict(self, treatment: dict) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {},
+            'gates': [
+                {
+                    'id': 1,
+                    'kind': 'field_equals',
+                    'field': 'memoryArmConfig.relevanceTopK',
+                    'equals': 512,
+                    'quantity': 'q',
+                    'threshold': 't',
+                }
+            ],
+        }
+        return _module().evaluate(spec, treatment, {})[0]
+
+    def test_the_registered_value_passes(self) -> None:
+        self.assertEqual(self._verdict(_report({'MR': (1, 1)}, relevance_top_k=512))['verdict'], 'PASS')
+
+    def test_the_control_value_fails(self) -> None:
+        # 256 is the control. A run that reports it never moved, and every other gate would pass
+        # on it: no capability lost, calls under the bar, digests agreeing.
+        self.assertEqual(self._verdict(_report({'MR': (1, 1)}, relevance_top_k=256))['verdict'], 'FAIL')
+
+    def test_an_absent_field_is_unevaluable_and_not_a_pass(self) -> None:
+        self.assertEqual(self._verdict(_report({'MR': (1, 1)}))['verdict'], 'UNEVALUABLE')
+
+
+class CoverageGainTest(unittest.TestCase):
+    """`coverage_gain`: the leading indicator of a retrieval-width experiment."""
+
+    def _verdict(self, treatment: dict, control: dict, bar: int = 2) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {'reference': {'run': 1}},
+            'gates': [
+                {
+                    'id': 3,
+                    'kind': 'coverage_gain',
+                    'capability': 'MR',
+                    'control': 'reference',
+                    'reaches': {'numerator': 'carried', 'denominator': 'total'},
+                    'at_least_gain': bar,
+                    'quantity': 'q',
+                    'threshold': 't',
+                }
+            ],
+        }
+        return _module().evaluate(spec, treatment, {'reference': control})[0]
+
+    def test_the_gain_is_the_difference_of_the_two_reach_counts(self) -> None:
+        control = _report({'MR': (5, 10)}, reaches=5)
+        treatment = _report({'MR': (5, 10)}, reaches=8)
+        gate = self._verdict(treatment, control)
+        self.assertEqual(gate['verdict'], 'PASS')
+        self.assertEqual(gate['detail']['gain'], 3)
+
+    def test_a_gain_below_the_bar_fails_even_though_it_is_positive(self) -> None:
+        control = _report({'MR': (5, 10)}, reaches=5)
+        treatment = _report({'MR': (5, 10)}, reaches=6)
+        self.assertEqual(self._verdict(treatment, control)['verdict'], 'FAIL')
+
+    def test_an_accuracy_that_did_not_move_does_not_make_the_gate_unevaluable(self) -> None:
+        # The point of a leading indicator: a null accuracy result still says whether the mechanism
+        # fired, so the two fixtures score identically and the gate still decides.
+        control = _report({'MR': (5, 10)}, reaches=5)
+        treatment = _report({'MR': (5, 10)}, reaches=9)
+        gate = self._verdict(treatment, control)
+        self.assertEqual(gate['verdict'], 'PASS')
+
+    def test_a_record_without_the_block_cannot_manufacture_a_gain(self) -> None:
+        # No `goldOverlap` on either side is a run that cannot testify about reach, not a run that
+        # reached nothing.
+        gate = self._verdict(_report({'MR': (5, 10)}), _report({'MR': (5, 10)}))
+        self.assertEqual(gate['verdict'], 'UNEVALUABLE')
+
+    def test_a_missing_control_is_unevaluable(self) -> None:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {},
+            'gates': [
+                {
+                    'id': 3,
+                    'kind': 'coverage_gain',
+                    'capability': 'MR',
+                    'control': 'reference',
+                    'reaches': {'numerator': 'carried', 'denominator': 'total'},
+                    'at_least_gain': 1,
+                    'quantity': 'q',
+                    'threshold': 't',
+                }
+            ],
+        }
+        gate = _module().evaluate(spec, _report({'MR': (5, 10)}, reaches=5), {})[0]
+        self.assertEqual(gate['verdict'], 'UNEVALUABLE')
 
 
 class ThresholdUnitTest(unittest.TestCase):

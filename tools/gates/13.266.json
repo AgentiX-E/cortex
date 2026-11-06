@@ -1,0 +1,89 @@
+{
+  "registration": "13.266",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "The retrieval width, against 42013256884",
+  "controls": {
+    "reference": {
+      "run": 42013256884,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the shipped arm at the shipped pool width; the same 22 inputs and the same 48,000-character reader budget, so the pool is the only variable"
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": 0,
+      "quantity": "`MR` accuracy against `42013256884`",
+      "threshold": "**\u0394 \u2265 0** \u2014 with the resolution printed beside it, and a net below that resolution reported as neutral rather than as a win",
+      "numbers": [0],
+      "asks": "does reaching every gold turn buy anything on the capability with the most partial-evidence failures?"
+    },
+    {
+      "id": 2,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "excluding": ["MR"],
+      "at_most_loss_points": 3,
+      "quantity": "every other capability against `42013256884`",
+      "threshold": "no loss **\u2265 3 points**, and only where the discordance can resolve three",
+      "numbers": [3],
+      "asks": "does a wider pool displace evidence the ranking was delivering correctly elsewhere?"
+    },
+    {
+      "id": 3,
+      "kind": "coverage_gain",
+      "capability": "MR",
+      "control": "reference",
+      "reaches": { "numerator": "carried", "denominator": "total" },
+      "at_least_gain": 20,
+      "quantity": "`MR` questions reaching every gold turn",
+      "threshold": "**\u2265 control + 20** \u2014 the leading indicator: a null accuracy result still says whether the mechanism fired",
+      "numbers": [20],
+      "asks": "did the pool cut actually stop removing gold turns?"
+    },
+    {
+      "id": 4,
+      "kind": "field_at_most",
+      "field": "llmUsage.calls",
+      "at_most": 6400,
+      "quantity": "`llmUsage.calls`",
+      "threshold": "**\u2264 6,400** \u2014 the reader's call count must not move with the pool",
+      "numbers": [6400],
+      "asks": "did the reader start making more calls because there was more to rank?"
+    },
+    {
+      "id": 5,
+      "kind": "field_at_most",
+      "field": "llmUsage.promptTokens",
+      "at_most": 38000000,
+      "quantity": "`llmUsage.promptTokens`",
+      "threshold": "**\u2264 38,000,000** against the control's 31,076,815, i.e. **+22%** \u2014 the price a wider pool is allowed to cost, and no more",
+      "numbers": [38000000, 31076815, 22],
+      "asks": "what did the diagnostic cost, and is it inside the price it declared?"
+    },
+    {
+      "id": 6,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.relevanceTopK",
+      "equals": 512,
+      "quantity": "`memoryArmConfig.relevanceTopK`",
+      "threshold": "**equals 512** \u2014 a run whose departure never took measures nothing and would pass every other gate",
+      "numbers": [512],
+      "asks": "did the dispatch reach the runner?"
+    },
+    {
+      "id": 7,
+      "kind": "field_at_least",
+      "field": "bareRetry.attempted",
+      "at_least": 60,
+      "quantity": "`bareRetry.attempted`",
+      "threshold": "**\u2265 60** \u2014 unchanged from \u00a713.262.7, because a dispatch that loses the ladder is broken regardless of the pool",
+      "numbers": [60],
+      "asks": "is the arm still the arm?"
+    }
+  ]
+}

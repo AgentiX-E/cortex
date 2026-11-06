@@ -345,6 +345,73 @@ def gate_digest_agreement(gate: dict, treatment: dict, controls: dict[str, dict]
     return _result(gate, verdict, f'{agree}/{expected} agree', {'agree': agree, 'compared': len(compared)})
 
 
+def gate_field_equals(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """One field of the artifact against an expected value, for the "the dispatch took" check.
+
+    A run whose configuration never moved measures nothing, and every other gate in the table would
+    read `PASS` on it: no capability lost, the call count is under the bar, the digests agree. The
+    cheapest way to publish a null result as a confirmation is to lose the departure between the
+    dispatch and the runner, so the departure itself is a gate -- §13.69's shape, where the
+    registration and the dispatch each carried their own copy of an adopted value.
+    """
+    value = _dotted(treatment, gate['field'])
+    if value is None:
+        return _result(gate, UNEVALUABLE, f'`{gate["field"]}` is absent')
+    expected = gate['equals']
+    verdict = PASS if value == expected else FAIL
+    return _result(gate, verdict, f'`{gate["field"]}` = {value!r} (registered: {expected!r})', {'value': value})
+
+
+def gate_coverage_gain(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """How many more questions the retrieval could reach, on the pairs the control also graded.
+
+    The quantity is the count of records whose `goldOverlap` satisfies `reaches`, i.e. whose gold
+    turns were all available to the mechanism. It is the leading indicator of a retrieval-width
+    experiment: widening the pool changes this count before it changes an accuracy, so a null
+    accuracy result still says whether the mechanism fired.
+
+    Refused rather than passed when either artifact lacks the block. A record without `goldOverlap`
+    cannot testify about reach, and counting it as unreached would let a missing field manufacture
+    the gain the gate is looking for -- §13.11.2's rule.
+    """
+    capability = gate.get('capability')
+    reaches = gate['reaches']
+    bar = int(gate['at_least_gain'])
+    control_report = controls.get(gate.get('control', 'reference'))
+    if control_report is None:
+        return _result(gate, UNEVALUABLE, 'the control artifact was not supplied')
+
+    def count(report: dict) -> tuple[int, int]:
+        total = 0
+        reached = 0
+        for record in report.get('questions') or []:
+            if capability is not None and record.get('capability') != capability:
+                continue
+            overlap = record.get('goldOverlap')
+            if not isinstance(overlap, dict):
+                continue
+            total += 1
+            carried = overlap.get(reaches['numerator'])
+            target = overlap.get(reaches['denominator'])
+            if not isinstance(carried, int) or not isinstance(target, int):
+                continue
+            if carried >= target and target > 0:
+                reached += 1
+        return reached, total
+
+    gained, graded = count(treatment)
+    before, before_graded = count(control_report)
+    if graded == 0 or before_graded == 0:
+        return _result(gate, UNEVALUABLE, f'no `goldOverlap` block on the {capability or "whole"} population')
+    delta = gained - before
+    verdict = PASS if delta >= bar else FAIL
+    reading = (
+        f'{gained}/{graded} reach every gold turn, against {before}/{before_graded} '
+        f'({delta:+d}; bar: \u2265 {bar:+d})'
+    )
+    return _result(gate, verdict, reading, {'gain': delta, 'treatment': gained, 'control': before})
+
+
 KINDS = {
     'capability_delta': gate_capability_delta,
     'capability_nonloss': gate_capability_nonloss,
@@ -353,6 +420,8 @@ KINDS = {
     'audit_identity': gate_audit_identity,
     'sides_within_total': gate_sides_within_total,
     'digest_agreement': gate_digest_agreement,
+    'field_equals': gate_field_equals,
+    'coverage_gain': gate_coverage_gain,
 }
 
 

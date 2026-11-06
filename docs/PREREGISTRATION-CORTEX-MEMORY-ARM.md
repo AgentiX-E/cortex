@@ -29929,3 +29929,259 @@ before it. The census prints a warning and names the cause instead of publishing
 would read as six aggregation errors. Making an audited run censusable needs the first pass's item
 list on the record — a field, and therefore a registration of its own — and it is not part of this
 axis.
+
+## 13.265 The corrected audit is neutral, and the arm disagrees with itself on three per cent
+
+`42130772725` ran `adb08726` with the same 22 inputs as `42013256884` and only
+`cortex_memory_review_pass` moved. It finished in 1h58m and the artifact carries the counted columns
+§13.262 built. Six of the eight registered gates pass. The two that do not are the finding.
+
+### 13.265.1 What the gates read
+
+| # | `42054107910` (old prompt) | `42130772725` (repaired) |
+| --- | --- | --- |
+| 1 | `MR` −15.70 (4 won, 23 lost) **FAIL** | `MR` **−0.83** (6 won, 7 lost, p = 1) **FAIL** |
+| 2 | — | `MR` +14.88 against the prior (22 won, 4 lost, p = 5.3e-4) **PASS** |
+| 3 | `IE` −5.33, worst −5.33 **FAIL** | `IE` +1.33, `KU` −4.17, `TR` +1.57, `ABS` +0.00, worst **−4.17** **FAIL** |
+| 4 | 0 **FAIL** | **72** **PASS** |
+| 5 | 5,966 **PASS** | 6,157 **PASS** |
+| 6 | column absent **UNEVALUABLE** | 470 = 470, `0 ≤ 49 ≤ 470` **PASS** |
+| 7 | 10,606 / 9,852 against 5,966 **FAIL** | 2,695 / 2,542 against 6,157 **PASS** |
+| 8 | 383 / 500 **FAIL** | **500 / 500** **PASS** |
+
+Gates 4–8 are instrument gates and they all pass: the ladder fires again, the attribution is exact for
+the first time (the two sides now sum to 4,919 fewer than the total, which is the calls made outside
+the two `answer` paths), the consultation column is an identity, and delivery no longer depends on the
+review. Gate 2 says the form clause recovered 14.88 of the 15.70 that the old instruction destroyed.
+
+Gates 1 and 3 are the mechanism's own verdict, and §13.265.2 to §13.265.4 are why neither of them is a
+`FAIL` in the sense the registration meant.
+
+### 13.265.2 The three `KU` losses were never audited
+
+Gate 3's `KU` −4.17 is three questions, `0 won / 3 lost`. Every one of them carries
+`auditConsultations = 0`:
+
+| question | gold | control | treatment |
+| --- | --- | --- | --- |
+| `6a1eabeb` | `4 weeks` | `25:50` | `27:12` |
+| `ce6d2d27` | `4 weeks` | `Friday` | `Thursday` |
+| `7a87bd0c` | `4 weeks` | `4 weeks` | `3 weeks` |
+
+The first two are wrong on both sides and wrong in different ways; the third is one week apart. None of
+them consulted the review. **A capability's delta on a population the mechanism never touched is a
+measurement of the arm's own disagreement**, and the gate that read it as a mechanism loss was
+comparing a treatment against a control as if the control were the truth.
+
+### 13.265.3 The noise floor, measured for the first time
+
+`tools/arm-flip-census.py` counts the questions whose verdict differs between two artifacts and splits
+the count by whether the mechanism acted on them. On this pair:
+
+| side | n | flips | rate | 95% interval |
+| --- | ---: | ---: | ---: | --- |
+| consulted (`auditConsultations > 0`) | 119 | 12 | **10.08%** | [5.86%, 16.80%] |
+| never consulted | 381 | 12 | **3.15%** | [1.81%, 5.42%] |
+
+Risk ratio **3.20×**, and the intervals do not overlap. The net on both sides is **+0**.
+
+So the description of the review pass is precise: **it triples the probability that the answer changes
+and does not change the probability that it is right.** The 49 changes were spread over 24 questions,
+and only **two** of those 24 were rewritten in every one of the four repetitions — so for 22 of them
+the decision to rewrite is itself unstable on identical input. A mechanism whose intervention is
+unstable and whose net is zero is a source of variance and nothing else.
+
+Three per cent is also the number every earlier reading in this campaign lacked. §13.262 attributed
+−15.70 to the audit prompt and was right about the direction; §13.263's gate 3 then read −4.17 and had
+no way to know that a third of the arm's questions move by themselves.
+
+### 13.265.4 Resolution: gate 3 could not have failed on `KU`
+
+`arm-flip-census` prints, beside each delta, the smallest net the observed discordance could have
+called significant. The sweep is exact, not asymptotic:
+
+| capability | net | discordant | resolution | 80% power net |
+| --- | ---: | ---: | ---: | ---: |
+| `MR` | −1 | 13 | **9** | 10.1 |
+| `IE` | +2 | 6 | 6 | 6.9 |
+| `KU` | −3 | 3 | **none** | 4.8 |
+| `TR` | +2 | 2 | none | 4.0 |
+
+`KU`'s three pairs admit no resolvable net at all: 2-1 is p = 1 and 3-0 is p = 0.25. `MR`'s thirteen
+pairs resolve a net of nine, and the observed net is one. **Both `FAIL`s sit below the resolution of
+their own population**, which is a statement about the gate and not about the audit.
+
+This is the third time this campaign has paid for a threshold written without its resolution (§13.9's
+admission cap, §13.79's pool width, §13.262.7's `469 / 118`). The rule registered from here on is not
+that such gates are excused: it is that **a gate on a delta must state the resolution it needs, and a
+population whose discordance cannot reach it is registered as unevaluable from the start** — decided
+by the arithmetic above, before the run.
+
+### 13.265.5 Decision: the review pass is not shipped
+
+The registration's own refutation clause said that if gate 1 failed while the instrument gates passed,
+the audit is worse than no audit. It failed, on a net four and a half times below the resolution, with
+a 3.20× volatility cost and no mean gain. The configuration default stays `reviewPass: bare`.
+
+What that leaves behind is a measured property rather than a hunch: a second-pass reagent applied to
+a five-hundred-question arm buys **+0.00** and **+6.93 points of flip rate**. Any future pass — a
+re-examination, a self-consistency vote, a verifier — is now held to that number.
+
+### 13.265.6 Four ideas refuted before any code was written
+
+The four cheapest repairs each cost nothing to test against the artifacts in hand, and all four are
+wrong:
+
+| idea | test | result |
+| --- | --- | --- |
+| stop excluding candidates | add every excluded item back, recompute | **fix 0, break 10** — 10 currently correct answers depend on an exclusion |
+| the scorer is too literal | re-grade 26 wrong `MR` answers under a lenient contract | **0 of 26** are semantically right; no format penalty exists |
+| enumerate more items | listed items / gold turns, correct vs wrong | **0.24 vs 0.29** — the ratio does not separate them |
+| our prompt is stricter than the reference's | read the reference's builder | it asks for *"every item matching the question's EXACT action"*, and §13.123.3 already recorded that |
+
+The second and third matter because both were the obvious next move: a formatting clause and an
+"enumerate exhaustively" clause. Neither has a population to act on.
+
+The fourth matters most. The reference pipeline beats this arm on `MR` by 16 questions to 9, and the
+temptation is to attribute that to prompt shape — but the two arms have been compared under that
+attribution twice already (§13.123.3, §13.240.4) and both times the attribution was the defect.
+
+### 13.265.7 What the `MR` failures actually are
+
+`tools/evidence-completeness.py` splits every wrong answer by whether the gold turns reached the
+window at all. `goldOverlap` was already on the record; nothing had read it this way.
+
+| capability | n | full evidence | accuracy | partial evidence | accuracy | headroom |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `MR` | 121 | 87 | 83.9% | 34 | **64.7%** | **+6.5** |
+| `KU` | 72 | 5 | 100% | 67 | 86.6% | **+9.0** |
+| `TR` | 127 | 90 | 97.8% | 37 | 86.5% | **+4.2** |
+| `IE` | 150 | 75 | 94.7% | 75 | 96.0% | −1.0 |
+| `ABS` | 30 | 2 | 100% | 28 | 100% | +0.0 |
+
+**No wrong answer in the whole artifact had `carried = 0`.** The gold evidence is always at least
+partly there, which retires "the retrieval found nothing" as a class. What exists is a population where
+**one to five** gold turns are missing, and its error rate is two to three times the complete-evidence
+error rate in three of five capabilities.
+
+`MR`'s 26 failures split **12 partial / 14 full** on that line. The 12 are retrieval-shaped; the 14 are
+reasoning-shaped, and they are the population §13.264 called selection. So §13.264's conclusion —
+"the axis is event specification" — was half the answer, and the half it named is the smaller one.
+
+### 13.265.8 The retrieval never offered the turn, in 133 of 241
+
+`pool < total` is the sharper case: those gold turns were not merely ranked low, they were never
+candidates, so no ordering inside the pool could have delivered them.
+
+**133 of the 241 partial questions are in that sub-case.** At `relevanceTopK = 256` against a haystack
+of roughly five hundred turns, a gold turn ranked below the cut does not exist for any downstream
+mechanism. This is the largest single measured headroom in the campaign so far — `MR` +6.5, `KU` +9.0,
+`TR` +4.2 — and it is not reachable by any prompt, any exclusion predicate, or any arithmetic.
+
+It is reachable by one number.
+
+## 13.266 Registration: the retrieval width, against `42013256884`
+
+The hypothesis is narrow and it is the one §13.265.8 measured: **the pool cut removes gold turns, and
+the pool cut is `relevanceTopK`.** The arm has run at 256 since §13.254; the haystack is five hundred
+turns; 133 questions have a gold turn outside the pool.
+
+The diagnostic is one variable. Everything else is `42013256884`'s configuration byte for byte,
+including `reviewPass: bare` — the shipped default, now that §13.265.5 retired the audit.
+
+| item | value |
+| --- | --- |
+| control | `42013256884` — `relevanceTopK = 256`, `retrieval-anchored`, anchors 4/3/0.5, 48,000 prompt chars |
+| treatment | the same inputs with `cortex_memory_relevance_top_k=512`, so the pool is the whole haystack |
+| what changes in the artifact | `goldOverlap.pool` rises toward `total`; delivery digests move, because a wider pool is a different ranking |
+| what does not change | the reader's budget, its contract, its model, and every other registered input |
+
+Gates, written before the dispatch:
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | `MR` accuracy against `42013256884` | **Δ ≥ 0** — with the resolution printed beside it, and a net below that resolution reported as neutral rather than as a win |
+| 2 | every other capability against `42013256884` | no loss **≥ 3 points**, and only where the discordance can resolve three |
+| 3 | `MR` questions reaching every gold turn | **≥ control + 20** — the leading indicator: a null accuracy result still says whether the mechanism fired |
+| 4 | `llmUsage.calls` | **≤ 6,400** — the reader's call count must not move with the pool |
+| 5 | `llmUsage.promptTokens` | **≤ 38,000,000** against the control's 31,076,815, i.e. **+22%** — the price a wider pool is allowed to cost, and no more |
+| 6 | `memoryArmConfig.relevanceTopK` | **equals 512** — a run whose departure never took measures nothing and would pass every other gate |
+| 7 | `bareRetry.attempted` | **≥ 60** — unchanged from §13.262.7, because a dispatch that loses the ladder is broken regardless of the pool |
+
+Refutation, and this one is symmetric. If gate 3 passes and gates 1–2 do not, the pool was not the
+constraint: reach rose and accuracy did not, which localises the defect in the ranking inside the pool
+or in the reader, and retires width for good. If gate 3 fails, the pool never bound, `pool < total`
+means something other than the cut, and `relevance-index.ts` is where to look. Both outcomes are
+readings; neither is a null.
+
+What is deliberately not gated: the direction of `TR` and `KU`. Their headroom is larger than `MR`'s
+(+4.2, +9.0), but their partial populations are 37 and 67 questions with 90% and 86.6% already
+correct, so a 3-point bar on them is below the resolution §13.265.4 measured. Gating them would repeat
+gate 3's defect in the same registration that corrects it.
+
+## 13.267 Registration: the restore counterfactual, before the harness exists
+
+`evidence-completeness` splits a capability's failures by whether the gold evidence reached the
+window. It cannot say whether the ones that did not are *recoverable*: a wrong answer with one gold
+turn missing may be an answer that the missing turn would have fixed, or an answer the reader would
+have got wrong anyway. §13.265.7 wrote "12 partial / 14 full" as if the first group were retrieval's,
+and that inference is not in the data.
+
+The published instrument for this is per-question and paired: reinstate the question's gold evidence in
+the read-time context, rerun **the same reader**, and classify by what happens.
+
+> "We introduce the restore counterfactual, a per-question paired intervention that reinstates the
+> question's gold evidence in the read-time context and reruns the same reader. Combining the change
+> in correctness with whether the evidence was retained after eviction classifies each
+> oracle-answerable error as recoverable, irreversible, or residual."
+> — *What Eviction Destroys* (arXiv 2609.08279)
+
+### 13.267.1 The artifact already holds almost all of it
+
+| field | what it gives the counterfactual |
+| --- | --- |
+| `turns[].text` | the evidence as the reader saw it, in order |
+| `goldOverlap.goldDelivered[]` | which of those turns are gold, per turn |
+| `goldOverlap.goldRanks[]` | where each gold turn ranked, or outside the pool |
+| `featurePromptTexts` | the exact bytes the reader was sent |
+
+What is missing is one path: appending the undelivered gold turns to the prompt and asking again. That
+is a harness route, not a benchmark arm — the population is the partial-evidence failures plus a
+matched control of partial-evidence successes, which is tens of calls rather than the six thousand a
+full dispatch costs.
+
+### 13.267.2 The three classes, and what each one licenses
+
+| class | test | what a repair would be |
+| --- | --- | --- |
+| `recoverable` | wrong, and correct once the gold turn is restored | retrieval or window: the BFR step |
+| `irreversible` | the turn was never in the pool (`pool < total`), so restoring it changes nothing about what the store held | storage and eviction policy |
+| `residual` | still wrong with every gold turn in front of it | the reader, and nothing upstream of it |
+
+The distinction is the one §13.264 could not make and §13.265.7 only approximated. It also separates
+the two populations `pool < total` already identified: a gold turn that was ranked below the cut is
+`recoverable` by a wider pool, and one that was never a candidate is not.
+
+### 13.267.3 The gates, and one that is about the reading rather than the mechanism
+
+Registered before the harness exists, because a counterfactual whose pass condition is written after
+the replies arrive is a counterfactual shaped to its answer.
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | `MR` partial-evidence failures that become correct under restore | **≥ 4 of 12** — a third of the population, which is the smallest share worth a mechanism |
+| 2 | `MR` partial-evidence **successes** that become wrong under restore | **≤ 1 of 12** — the control: restoring evidence must not be able to break an answer that was right |
+| 3 | `residual` share among restored-correct errors | **reported, not gated** — arXiv 2609.08279 measures 0.67–0.73 irreversible at an 80k budget, and a share quoted without a regime is not comparable |
+| 4 | restore prompts that exceed the control's `promptChars` by more than the restored turns | **0** — the intervention is the restored text and nothing else; a prompt that grew for another reason measured a different experiment |
+| 5 | `llmUsage.calls` for the whole counterfactual | **≤ 120** — 24 questions × 4 repetitions plus the retry allowance, so the instrument stays inside the price of one dispatch's rounding error |
+
+Gate 2 is the one that makes the instrument honest. A restore that *helps* everything would be a
+prompt change in disguise — the restored text would be doing work beyond restoring — and the control
+population exists to catch that. It is the same argument §13.265.6 made when the re-admission
+counterfactual broke ten answers: an intervention that cannot fail is not being measured.
+
+### 13.267.4 What this does not decide
+
+It does not choose between BFR's completion loop and a wider pool. It measures how much of the
+population either could reach, which is the input to that choice and not the choice itself. The
+mechanism experiment that follows will be registered against these numbers.
