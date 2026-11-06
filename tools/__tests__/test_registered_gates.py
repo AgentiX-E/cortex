@@ -264,6 +264,54 @@ class GateTest(unittest.TestCase):
         self.assertEqual(self._verdicts(_report({'MR': (1, 500)}, digests='a'), reference)['8']['verdict'], 'PASS')
         self.assertEqual(self._verdicts(_report({'MR': (1, 500)}, digests='b'), reference)['8']['verdict'], 'FAIL')
 
+    def test_digest_agreement_can_exclude_the_capability_a_treatment_changes(self) -> None:
+        """Section 13.279's gate 5: the reach is stated by agreeing on the questions outside it.
+
+        Without an exclusion the gate can only ask "did anything move", which a treatment is
+        supposed to do on its own route. With one, it asks the question the registration asks --
+        did the treatment leak -- and the denominator is the excluded population rather than 500.
+        """
+        module = _module()
+        reference = _report({'MR': (1, 2), 'IE': (1, 2)}, digests='a')
+        treatment = _report({'MR': (1, 2), 'IE': (1, 2)}, digests='a')
+        for record in treatment['questions']:
+            if record['capability'] == 'MR':
+                record['promptDigest'] = 'changed'
+
+        excluded = module.gate_digest_agreement(
+            {
+                'id': 5,
+                'kind': 'digest_agreement',
+                'field': 'promptDigest',
+                'control': 'reference',
+                'denominator': 2,
+                'excluding': ['MR'],
+                'quantity': '`promptDigest` outside `MR`',
+                'threshold': '**every one agrees**',
+            },
+            treatment,
+            {'reference': reference},
+            0.05,
+        )
+        self.assertEqual(excluded['verdict'], 'PASS', excluded['reading'])
+        self.assertIn('2/2 agree', excluded['reading'])
+
+        unexcluded = module.gate_digest_agreement(
+            {
+                'id': 5,
+                'kind': 'digest_agreement',
+                'field': 'promptDigest',
+                'control': 'reference',
+                'denominator': 4,
+                'quantity': '`promptDigest` on every question',
+                'threshold': '**every one agrees**',
+            },
+            treatment,
+            {'reference': reference},
+            0.05,
+        )
+        self.assertEqual(unexcluded['verdict'], 'FAIL', unexcluded['reading'])
+
     def test_gate_eight_is_unevaluable_below_the_registered_denominator(self) -> None:
         """`499/499` is not `500/500`, and a run that measured fewer questions cannot claim it."""
         reference = _report({'MR': (1, 500)}, digests='a')
@@ -333,8 +381,19 @@ class RegistrationAgreementTest(unittest.TestCase):
         if opened is None:
             raise AssertionError(f'the document has no section headed {registration!r}')
         start = opened.start()
-        following = re.search(r'^#{2,4} ', text[opened.end():], re.M)
-        end = opened.end() + following.start() if following else len(text)
+        # The span runs to the next heading that is *not* one of this registration's own
+        # subsections. Stopping at the first following heading instead made the span the preamble
+        # alone, and a registration that states its gates under `### x.y.3 The gates` -- which is
+        # the house shape -- parsed to zero rows. The failure mode was quiet on the gate table and
+        # loud only as a `KeyError`; §13.277 shipped a table this reader could not see for exactly
+        # that reason, and the spec was written before anyone noticed.
+        end = len(text)
+        for heading in re.finditer(r'^#{2,4} (.+)$', text[opened.end():], re.M):
+            title = heading.group(1)
+            if title.startswith(registration + '.'):
+                continue
+            end = opened.end() + heading.start()
+            break
         rows: dict[int, tuple[str, str]] = {}
         for line in text[start:end].splitlines():
             if not re.match(r'^\|\s*\d+\s*\|', line):
@@ -344,6 +403,20 @@ class RegistrationAgreementTest(unittest.TestCase):
                 continue
             rows[int(cells[0])] = (cells[1], cells[2])
         return rows
+
+    def test_the_reader_sees_a_table_that_sits_under_a_subsection(self) -> None:
+        """The house shape, pinned: `## x.y` argues, `### x.y.3 The gates` tabulates.
+
+        The span used to end at the first following heading of any level, so a registration in this
+        shape parsed to zero rows and the cell-for-cell test died on a `KeyError` rather than on a
+        disagreement. §13.279.6 has the account; this test is the shape it was written for, and it
+        names a registration whose table is *not* under its own heading precisely so that the next
+        reader cannot re-derive the rule from `13.266` and break it again.
+        """
+        subsectioned = {'13.277': 7, '13.279': 10}
+        for registration, count in subsectioned.items():
+            with self.subTest(registration=registration):
+                self.assertEqual(sorted(self._rows(registration)), list(range(1, count + 1)))
 
     def test_the_spec_and_the_document_list_the_same_gates(self) -> None:
         for path in _gate_specs():

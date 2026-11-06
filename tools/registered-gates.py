@@ -321,12 +321,25 @@ def gate_digest_agreement(gate: dict, treatment: dict, controls: dict[str, dict]
     `_digest` rule, and the reason the field exists -- a record cannot testify about bytes it did not
     fingerprint. The denominator is then compared with the registered one, because `480/480` is not
     the registered `500/500` and a run that measured fewer questions cannot claim it.
+
+    ## `excluding`: the reach gate
+
+    Without it the gate can only ask "did any prompt change", which is what a treatment is *for* on
+    its own route. §13.279's gate 5 asks the other question -- did the treatment leak -- by naming
+    the capability it is supposed to move and requiring agreement on the rest; the denominator is
+    then the excluded population (379 of 500 for a multi-session treatment), so a run that agreed on
+    fewer questions because the others vanished cannot claim the reach.
     """
     control = controls[gate['control']]
     field = gate['field']
     after = _by_id(treatment)
     before = _by_id(control)
-    shared = sorted(set(after) & set(before))
+    excluded = set(gate.get('excluding', ()))
+    shared = [
+        key
+        for key in sorted(set(after) & set(before))
+        if before[key].get('capability') not in excluded
+    ]
     compared = [
         key
         for key in shared
@@ -526,7 +539,10 @@ GATE_SCHEMA: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset(),
     ),
     'sides_within_total': (frozenset({'sides_field', 'total_field'}), frozenset()),
-    'digest_agreement': (frozenset({'control', 'field', 'denominator'}), frozenset()),
+    'digest_agreement': (
+        frozenset({'control', 'field', 'denominator'}),
+        frozenset({'excluding'}),
+    ),
     'field_equals': (frozenset({'field', 'equals'}), frozenset()),
     'coverage_gain': (frozenset({'reaches', 'at_least_gain'}), frozenset({'capability', 'control'})),
     'artifact_audit': (frozenset(), frozenset()),

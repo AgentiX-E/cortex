@@ -31313,20 +31313,36 @@ without failing a test. A rewrite would have been a second variable; a permutati
 | # | quantity | threshold |
 | --- | --- | ---: |
 | 1 | the artifact's own audit | **every check passes** |
-| 2 | `memoryArmConfig.promptContract` / `promptAssembly` / `assemblyRoutes` | **`evidence-blocks-instruction-first` / `instruction-first` / `["multi-session"]`** |
-| 3 | `MR` accuracy against `42177443765` | **Δ ≥ +3 points** with the resolution printed |
-| 4 | `IE`, `KU`, `TR`, `ABS` against `42177443765` | **no loss ≥ 3 points** |
-| 5 | `promptDigest` on the 379 non-MR questions | **identical to the control's, 379 of 379** |
-| 6 | `llmUsage.calls` | **≤ 5,900** against 5,690 |
-| 7 | `llmUsage.promptTokens` | **≤ 32,000,000** against 31,103,964, **+2.9%** |
-| 8 | `bareRetry.attempted` | **≥ 60** |
+| 2 | `memoryArmConfig.promptContract` | **`evidence-blocks-instruction-first`** |
+| 3 | `memoryArmConfig.promptAssembly` | **`instruction-first`** |
+| 4 | `memoryArmConfig.assemblyRoutes` | **`["multi-session"]`** |
+| 5 | `MR` accuracy against `42177443765` | **Δ ≥ +3 points** with the resolution printed |
+| 6 | `IE`, `KU`, `TR`, `ABS` against `42177443765` | **no loss ≥ 3 points** |
+| 7 | `promptDigest` on the 379 non-MR questions | **identical to the control's, 379 of 379** |
+| 8 | `llmUsage.calls` | **≤ 5,900** against 5,690 |
+| 9 | `llmUsage.promptTokens` | **≤ 32,000,000** against 31,103,964, **+2.9%** |
+| 10 | `bareRetry.attempted` | **≥ 60** |
 
-Gate 5 is the strongest statement of the reach the campaign has yet had in a gate table: a digest
+Rows 2 to 4 are one gate in the reasoning and three in the table, because the treatment is an order
+and an order leaves **no trace** in the prompt's length, its segment set or its token count: a run
+that named the contract and whose builder ignored it would produce a prompt with the same characters
+as the control and every other config field agreeing. The name is the only field that can say the
+run asked; `assemblyRoutes` is the only field that can say the asking arrived.
+
+Gate 7 is the strongest statement of the reach the campaign has yet had in a gate table: a digest
 equality on every question outside the changed route says the treatment did not leak, without
-reading a single answer. Gate 7's bar is tighter than §13.277's because a permutation has no reason
-to cost tokens at all -- the block is the same text, and the cue moves 2,000 characters closer to
-the question rather than further away. A run above +2.9% would mean the assembly is not the
-permutation the test asserts it is.
+reading a single answer. It is decided by `registered-gates.py`'s `digest_agreement` kind, which
+gained the `excluding` key for this registration -- the kind could previously only ask "did any
+prompt move", which is what a treatment is for on its own route. Gate 9's bar is tighter than
+§13.277's because a permutation has no reason to cost tokens at all -- the block is the same text,
+and the cue moves 2,000 characters closer to the question rather than further away. A run above
++2.9% would mean the assembly is not the permutation the test asserts it is.
+
+The table above is the prose; `tools/gates/13.279.json` is the machine-readable copy the readout is
+decided from, and the two are numbered identically **and agree cell for cell** -- a test reads this
+document and asserts it, so neither can be edited alone. What the spec does not carry is the reason
+a bar sits where it does; that is this section's prose, and §13.279.6 records why the split is
+enforced rather than merely intended.
 
 ### 13.279.4 Refutation
 
@@ -31348,6 +31364,41 @@ permutation the test asserts it is.
 It does not test multi-step retrieval (MemCog's family) and does not test a second reader. §13.277.5
 said the same, and the reason has not changed: both change the arm's structure rather than a field,
 and one artifact may carry one treatment.
+
+### 13.279.6 The dry run, and the two defects the machine copy had
+
+The readout is decided from `tools/gates/13.279.json`, so the copy was dry-run before the artifact
+exists. It failed twice, and both failures were in the instrument rather than the registration.
+
+**The table reader could not see this table.** `RegistrationAgreementTest._rows`, which binds a
+spec to its section, ended the section at the *first* following heading of any level. Every
+registration in this campaign states its gates under `### x.y.3 The gates`, so the span was the
+preamble and the table parsed to zero rows. It surfaced as `KeyError: 1` -- the correct, loud
+failure -- but the reason it had never surfaced before is worth stating: the reader was written
+against `13.266`, whose table sits directly under its `##` heading, and it had never been asked to
+read the house shape. The fix is the span rule, not a special case: subsections whose title starts
+with the registration's own number belong to it, and the span ends at the first heading that does
+not. Every registered spec was re-read under the new rule and every one of them parses (13.262.7
+eight rows, 13.266 seven, 13.269 seven, 13.273 eight, 13.275 eight, 13.277 seven, 13.279 ten).
+
+**Six thresholds were two copies, not one.** The spec's `threshold` cells carried the bar *and* the
+reason it was set there (`**Δ ≥ +3 points**, with the resolution printed. The bar is well below the
+9.5-point gap on purpose...`), while the document's cell carried the bar alone. That is exactly the
+divergence the cell-for-cell test exists to refuse: two texts that agree today and are edited
+separately tomorrow. The bars now live in the spec's `threshold` and the reasons stay in this
+section's prose, which is where they already were -- the spec is the number, the section is the
+argument.
+
+**The dry run also priced the denominator.** Feeding `42177443765` as both sides makes gate 7 read
+`379/379 agree`: 500 questions, 121 of them `MR`, and the exclusion removes exactly the 121. So the
+registered `379` is not an estimate -- it is what the reader computes from the exclusion, and a
+treatment artifact that lost any of the remaining questions would fail on the denominator rather
+than pass on a smaller population. The same run reads gates 2, 5 as **FAIL** (the reference's own
+contract is the old name, and its `MR` does not improve on itself) and 3, 4 as **UNEVALUABLE**
+(`promptAssembly` and `assemblyRoutes` are absent from the reference artifact, which is the point of
+adding them). Six of ten gates decided against an artifact that is not the treatment, with the four
+undecided ones being the four that name fields the treatment introduces: the table does not pass by
+default.
 
 ## 13.280 The delivered set is not stable under pool width, and `MR` loses exactly there
 

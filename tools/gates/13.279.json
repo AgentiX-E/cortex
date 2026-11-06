@@ -1,0 +1,128 @@
+{
+  "registration": "13.279",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "The assembly order, against 42177443765",
+  "controls": {
+    "reference": {
+      "run": 42177443765,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the run the treatment is registered against: same tree family, same reader, same budget, same ask, same rendering, and the shipped assembly order"
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "artifact_audit",
+      "quantity": "the artifact's own audit",
+      "threshold": "**every check passes**",
+      "numbers": []
+    },
+    {
+      "id": 2,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.promptContract",
+      "equals": "evidence-blocks-instruction-first",
+      "quantity": "`memoryArmConfig.promptContract`",
+      "threshold": "**`evidence-blocks-instruction-first`**",
+      "numbers": []
+    },
+    {
+      "id": 3,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.promptAssembly",
+      "equals": "instruction-first",
+      "quantity": "`memoryArmConfig.promptAssembly`",
+      "threshold": "**`instruction-first`**",
+      "numbers": []
+    },
+    {
+      "id": 4,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.assemblyRoutes",
+      "equals": [
+        "multi-session"
+      ],
+      "quantity": "`memoryArmConfig.assemblyRoutes`",
+      "threshold": "**`[\"multi-session\"]`**",
+      "numbers": []
+    },
+    {
+      "id": 5,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": 3,
+      "quantity": "`MR` accuracy against `42177443765`",
+      "threshold": "**Δ ≥ +3 points** with the resolution printed",
+      "numbers": [
+        3
+      ]
+    },
+    {
+      "id": 6,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "excluding": [
+        "MR"
+      ],
+      "max_loss_points": 3,
+      "quantity": "`IE`, `KU`, `TR`, `ABS` against `42177443765`",
+      "threshold": "**no loss ≥ 3 points**",
+      "numbers": [
+        3
+      ]
+    },
+    {
+      "id": 7,
+      "kind": "digest_agreement",
+      "field": "promptDigest",
+      "control": "reference",
+      "denominator": 379,
+      "excluding": [
+        "MR"
+      ],
+      "quantity": "`promptDigest` on the 379 non-MR questions",
+      "threshold": "**identical to the control's, 379 of 379**",
+      "numbers": [
+        379
+      ]
+    },
+    {
+      "id": 8,
+      "kind": "field_at_most",
+      "field": "llmUsage.calls",
+      "at_most": 5900,
+      "quantity": "`llmUsage.calls`",
+      "threshold": "**≤ 5,900** against 5,690",
+      "numbers": [
+        5900,
+        5690
+      ]
+    },
+    {
+      "id": 9,
+      "kind": "field_at_most",
+      "field": "llmUsage.promptTokens",
+      "at_most": 32000000,
+      "quantity": "`llmUsage.promptTokens`",
+      "threshold": "**≤ 32,000,000** against 31,103,964, **+2.9%**",
+      "numbers": [
+        32000000,
+        31103964,
+        2.9
+      ]
+    },
+    {
+      "id": 10,
+      "kind": "field_at_least",
+      "field": "bareRetry.attempted",
+      "at_least": 60,
+      "quantity": "`bareRetry.attempted`",
+      "threshold": "**≥ 60**",
+      "numbers": [
+        60
+      ]
+    }
+  ]
+}
