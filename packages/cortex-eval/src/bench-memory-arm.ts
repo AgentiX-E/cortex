@@ -2719,7 +2719,7 @@ function traceCensus<T>(
   merge: (prev: T, next: T) => T,
 ): MemorySystem {
   const source = system as Partial<
-    Record<typeof accessor, () => { attempted: number; answered?: number; changed?: number }>
+    Record<typeof accessor, () => { attempted: number; answered?: number; changed?: number } | null>
   >;
   const census = source[accessor];
   if (typeof census !== 'function') return system;
@@ -2728,11 +2728,22 @@ function traceCensus<T>(
   // already follow (`recoveryOf` turns a throwing accessor into an absent count rather than a failed run).
   // Checked once and then abandoned rather than retried per question: an accessor that throws on the first
   // read throws on the five-hundredth, and a per-question `try` would pay for the same failure every time.
+  //
+  // §13.268: a census that answers `null` is the same verdict reached on purpose rather than by fault. The
+  // product states its own absence that way (`CortexMemory.auditCensus` under `reviewPass: bare`), and the
+  // distinction between "no mechanism" and "a mechanism that measured zero" is the whole reason the member
+  // exists. It is read as an explicit absence rather than left to the `try`: a `null` that reached
+  // `reading.attempted` would throw a `TypeError` and take the same path by accident, which is a behaviour
+  // no reader of this function could see.
   let usable = true;
   const readCensus = (): { attempted: number; answered: number; changed: number } | null => {
     if (!usable) return null;
     try {
       const reading = census.call(system);
+      if (reading === null) {
+        usable = false;
+        return null;
+      }
       // One shape for two accessors: the recovery census carries `answered` and the audit census carries
       // `changed`, and a projection that had to branch on which one it was holding would be a second place
       // the two can disagree. The absent member reads as zero, which is exactly what a delta over it means.

@@ -849,8 +849,22 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * `changed` counts the ones whose answer differed from the first pass. A run with `attempted: 486, changed: 0`
    * has measured a mechanism that looked at every answer and agreed with all of them, which is a finding; the same
    * run reporting only `attempted` would read as a mechanism whose effect is unknown.
+   *
+   * ## Why `null` and not a zeroed pair (§13.268)
+   *
+   * The accessor used to answer `{ attempted: 0, changed: 0 }` on a build with no audit, on the reasoning that
+   * the artifact would omit the field. It did not omit it: the harness read the accessor, got zeros, and
+   * `42161343457` -- the first `reviewPass: bare` run to reach the arm audit -- published
+   * `audit: { attempted: 0, changed: 0 }` beside `auditConsultations: 0` on all five hundred records. The arm
+   * audit failed the run, correctly: that artifact claims a census of a mechanism that was never configured, and
+   * a reader cannot tell it from a run whose audit looked at five hundred answers and agreed with none.
+   *
+   * So the mechanism reports its own absence, because **the mechanism is the only thing that knows**. A zero is
+   * a measurement and stays a measurement -- a configured pass that declined every list still answers
+   * `{ attempted: 0, changed: 0 }`. Absence is a fact about the build, and only this method can state it.
    */
-  auditCensus(): { attempted: number; changed: number } {
+  auditCensus(): { attempted: number; changed: number } | null {
+    if (this.#options.reviewPass !== 'audit') return null;
     return { ...this.#audits };
   }
 

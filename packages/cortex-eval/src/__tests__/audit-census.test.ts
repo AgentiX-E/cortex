@@ -219,6 +219,29 @@ describe('the audit census reaches the artifact', () => {
     expect(result.report.questions![0]!.auditConsultations).toBeUndefined();
   });
 
+  it('reads a null census as absence, which is what a bare product build now reports', async () => {
+    // §13.268. The sibling test above uses a system with **no accessor**, and the product never has that
+    // shape: `CortexMemory` always carries `auditCensus`. So the sibling passed while the live artifact
+    // published `audit: { attempted: 0, changed: 0 }` on a `bare` run -- `42161343457`, whose arm audit
+    // failed for it. The fixture has to have the product's shape, or it tests a system nobody ships.
+    const absent: MemorySystem = {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      auditCensus: () => null,
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(dataset(2), bareSystem('reference-pipeline'), absent, {
+      runs: 1,
+      scorer: exactMatchScorer,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: { ...GATE },
+    });
+
+    expect('audit' in result.report).toBe(false);
+    expect(result.report.questions![0]!.auditConsultations).toBeUndefined();
+    expect(result.report.questions![0]!.auditChanges).toBeUndefined();
+  });
+
   it('reads a throwing accessor as an absent instrument rather than a failed run', async () => {
     // The rule the sibling readers already follow: a system whose census throws is a system that cannot
     // report, which is not the same as a run that measured zero.

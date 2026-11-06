@@ -298,14 +298,18 @@ describe('the census the artifact reads', () => {
     expect(memory.auditCensus()).toEqual({ attempted: 1, changed: 0 });
   });
 
-  it('stays at zero when the run carries no audit, so absence is a fact about the build', async () => {
+  it('reports absence, not zero, when the run carries no audit', async () => {
     const memory = system({}, queueLlm([], FIRST));
 
     await memory.answerSessions('How many errands do I have?', SESSIONS);
 
-    // Zeroed rather than absent on the product side, because the product always carries the accessor;
-    // the artifact omits the field, and that omission is what says "this build has no audit".
-    expect(memory.auditCensus()).toEqual({ attempted: 0, changed: 0 });
+    // §13.268. This used to return `{ attempted: 0, changed: 0 }` under a comment claiming "the artifact
+    // omits the field, and that omission is what says this build has no audit". The artifact did not omit
+    // it: the harness read the accessor, got zeros, and `42161343457` -- the first bare run to reach the
+    // audit check -- published `audit: { attempted: 0, changed: 0 }` beside `auditConsultations: 0` on all
+    // five hundred records. That is a census of a mechanism that never ran, and the arm audit failed the
+    // run for it. A zero here is a measurement; absence is the only shape that says "no mechanism".
+    expect(memory.auditCensus()).toBeNull();
   });
 
   it('does not count a decline, because there is no list to audit', async () => {
