@@ -31460,8 +31460,26 @@ covers one, whatever their ranks. So a hit beyond position 256 that covers more 
 take an anchor slot that a narrower pool gave to a different hit — and the neighbourhood restored
 around the first is not restored around the second.
 
-Demonstrated on a fixture (`restoreAnchorNeighbourhoods` driven directly, no provider): one question,
-one corpus, two pool widths, and the anchors move from `[0, 3]` to `[0, 15]`.
+**What it takes for that to reach the delivered window.** Three properties of this arm, each of which
+a fixture can omit and then report the opposite conclusion:
+
+| property | why the head cannot move without it |
+| --- | --- |
+| scores are reciprocal-rank (`1/(60+rank)`, the arm's fusion output) | a restored turn scores `0.5 x anchor`; on a cosine-like band (`1 - rank/1000`) that is below every hit, so restoration can only reach the tail |
+| the corpus is far larger than the pool, so a neighbourhood usually holds unscored turns | on a dense pool every neighbour is already a hit, `scores.has(text)` skips it, and restoration adds nothing |
+| one candidate past the narrow cut covers **two** question terms | a candidate that merely *adds* an anchor cannot move the head; the head moves when it **displaces** one |
+
+With all three, at window 73 out of a 256-wide pool: anchors `[alpha beta top, gamma here, delta
+here]` narrow and `[alpha beta top, gamma delta together]` wide, restored turns 15 vs 9, and the
+delivered window loses **4** turns and gains **4** -- the `d = 1` neighbours of the two displaced
+anchors go, and four mid-rank hits take their places. That is the shape §13.280.1 measured on the
+artifacts (one sampled question: 2 narrow-only, 4 wide-only, 73 vs 75 delivered), reproduced on a
+fixture with no provider and no corpus.
+
+The third property is the correction this note makes to the mechanism as first stated: §13.280.3
+demonstrated that the anchor *set* changes, which is necessary and not sufficient. What moves the
+delivered set is that the walk's `fresh`-count-first rule lets a worse-ranked hit **take a slot from
+a better-ranked one**, and the displaced anchor's neighbourhood is what leaves the window.
 
 The consequence is a statement about the mechanism rather than about this run: **under
 `retrieval-anchored`, `topK` is not a width parameter. It is a parameter of the mechanism.** Two runs
@@ -31486,9 +31504,23 @@ Two repairs are expressible, and they are different experiments rather than one:
 
 1. **Pin the anchor head.** Choose anchors from a fixed prefix (`min(hits.length, 256)`), so the
    anchor set is a function of the question and the retrieval, not of the pool's width. Restoration
-   then becomes monotone by construction and the width becomes a width again.
+   then becomes monotone by construction and the width becomes a width again. What that buys and
+   what it does not: the anchors and every restored turn become identical, and the two pools then
+   differ only by hits ranked below every hit of the narrow pool. Those can still **outrank the
+   deepest restored turns** (`0.5 x anchor` from a deep anchor is below the pool's floor), so the
+   invariant is exact for any budget whose cut lies above the narrow pool's last hit -- which
+   includes the registered one (73 delivered of a 256-wide pool) -- and approximate below it. The
+   repair owes a test at the registered shape, not a claim about every budget.
 2. **Union the pools.** Build the pool at the registered width and at the widest supported one and
-   take the union. Monotone by construction as well, at the cost of a second retrieval pass.
+   take the union. Monotone by construction as well, at the cost of a second retrieval pass -- and
+   not the same experiment: a union keeps the wider pool's extra anchors *in addition*, so it
+   delivers the displaced anchor's neighbourhood rather than the displacing one's. On the fixture
+   that is 15 restored turns instead of 9, which is more evidence and a different prompt.
+
+The two are not equally cheap and they do not point the same way: (1) is free and buys the invariant
+at the registered shape, while (2) spends a second retrieval pass to *keep* the evidence that (1)
+gives up. What the fixture cannot say is which is better on `MR`, and that is the only thing worth
+spending a run on.
 
 Both are registered here only as *candidates*. Neither is dispatched: §13.279 is in flight, and a
 second treatment in the same artifact would make its `MR` delta unattributable. The order is
