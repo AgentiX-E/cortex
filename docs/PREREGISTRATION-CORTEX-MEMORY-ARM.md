@@ -30592,3 +30592,112 @@ than a better scorer.
 Which is testable here without adopting anything: a set-level objective's ceiling on this population
 is "does every question's gold fit", and `tools/gold-room.py` computes exactly that once `goldTurns`
 is on the artifact. §13.269 is the run that puts it there.
+
+## 13.272 Result: seven of seven, the audit is silent, and the room calculation names its own population
+
+`42177443765` (`5492088d`, the registered default) landed and passed every gate §13.269 registered
+before the dispatch:
+
+| # | quantity | reading | verdict |
+| ---: | --- | --- | --- |
+| 1 | the artifact's own audit | every check passes | **PASS** |
+| 2 | `MR` against `42013256884` | 78.51% → 80.17% (+1.65 over 121; 5 won, 3 lost; p = 0.73) | **PASS** |
+| 3 | every other capability | `ABS` 0/0, `IE` 1/1, `KU` 0 won 1 lost (−1.39), `TR` 3 won 1 lost (+1.57) — worst −1.39 against a bar of 3 | **PASS** |
+| 4 | `llmUsage.calls` | 5,690 (bar: ≤ 5,900) | **PASS** |
+| 5 | `llmUsage.promptTokens` | 31,103,964 (bar: ≤ 32,000,000) | **PASS** |
+| 6 | `goldOverlap.goldTurns` | 500 of 500 records, **7,516 turns recorded** | **PASS** |
+| 7 | `bareRetry.attempted` | 75 (bar: ≥ 60) | **PASS** |
+
+The shape change is inert as registered. Total accuracy reads 90.80% (454/500) against the control's
+90.20%, which is +0.6 points on a population where the resolution is nine questions; `MR` moved +1.65
+with a discordance of 8, and p = 0.73 says the move is indistinguishable from the floor. The three
+fields that were supposed to disappear did: `audit` is absent from the report, and **0 of 500 records**
+carry `auditConsultations` or `auditChanges`.
+
+`goldTurns` adds 7,516 turns and 5.5 MB to an 81 MB artifact -- 6.8%, against §13.267.5's estimate of
+"under 5 KB per record and ~2.4 MB". The estimate was low by a factor of two and the reason is
+ordinary: a gold turn renders at the full turn length, not at the 400-character render cap, and the
+estimate used the cap.
+
+### 13.272.1 The room calculation's first real reading, and the half of it that is empty
+
+`tools/gold-room.py` on this artifact:
+
+| capability | n | full | partial | had the choice | fits | room |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ABS` | 30 | 2 | 28 | 14 | **14** | 0 |
+| `IE` | 150 | 75 | 75 | 49 | **49** | 0 |
+| `KU` | 72 | 5 | 67 | 45 | **45** | 0 |
+| `MR` | 121 | 87 | 34 | **0** | 0 | 0 |
+| `TR` | 127 | 90 | 37 | **0** | 0 | 0 |
+
+Two statements, and they are different:
+
+**For `ABS`, `IE` and `KU` the answer is unambiguous: every partial question whose missing gold the
+ranking actually surfaced would have fitted inside 48,000 characters, all 108 of them.** Zero are
+limited by room. On those three capabilities the budget is not the constraint and never was; the
+selector is, entirely.
+
+**For `MR` and `TR` the column is zero because the population is zero, not because the answer is
+no.** At `top_k = 256` not one partial question in either capability has all of its *missing* gold
+inside the ranking -- which is §13.268.1's 264 never-surfaced turns seen per question. The room
+question cannot be asked of a selector that was never offered the choice.
+
+So the room axis is answered for three capabilities and blocked for the two that matter, and what
+blocks it is exactly one variable: the pool width. §13.268.1 measured that widening it to 512 takes
+never-surfaced from 264 to 2. §13.272.2 is why that run could not answer this question.
+
+### 13.272.2 No artifact has both halves, and that is what fixes the next dispatch
+
+The room calculation needs two things from two different runs:
+
+| what it needs | which artifact has it |
+| --- | --- |
+| `goldTurns` on every record | `42177443765` -- the run at `5492088d`, `top_k = 256` |
+| the missing gold inside the ranking | `42161343457` -- the run at `c1f8fb85`, `top_k = 512` |
+
+Neither has both, and `42161343457` cannot be recomputed: it predates the field by one commit. So the
+next dispatch is not a new hypothesis. It is `top_k = 512` at HEAD, and it exists to make one table
+computable for `MR` and `TR`.
+
+### 13.272.3 The instrument had the defect it was built to refuse, one level down
+
+The first version of `gold-room.py` required **every** gold turn to be inside the pool before it would
+call a question one where "the selector had the choice". On this artifact that produced the table
+above's zeros, and the zeros are what exposed it: `MR` and `TR` reporting *no candidates at all* while
+`ABS` reported 14 of 28.
+
+The condition is wrong, and wrong in the direction that empties a population silently. The room
+calculation asks what a selector could have done differently, and the only turns it could have treated
+differently are the **missing** ones -- a gold turn that arrived is not a turn anybody chose against. A
+question naming thirty gold turns essentially never has all thirty inside a 256-deep ranking, so the
+strict condition was not a filter, it was a guarantee of zero.
+
+§13.268.7 records the same failure one level up: an absent list summed to zero and every question
+looked reachable. That was a refusal problem. This is a **scope** problem -- the tool refused correctly
+and then asked the wrong question -- and it is the more dangerous of the two, because the output was
+well formed, plausible, and empty only in the rows that mattered.
+
+Three tests hold the corrected condition: a delivered gold outside the pool must not disqualify its
+question, a missing gold outside the pool must, and a `goldDelivered` list whose length disagrees with
+`total` is refused rather than truncated.
+
+### 13.272.4 The restore population on the new artifact, with the characters in it
+
+`tools/restore-population.py` on `42177443765`: **12 partial failures, 22 partial successes, 11 pairs,
+1 unmatched.**
+
+| | range over the 22 questions |
+| --- | --- |
+| characters the intervention adds | **158 - 1,195** |
+| as a share of the 48,000-character budget | **0.33% - 2.49%** |
+
+That is the number the restore counterfactual needed and could not have: reinstating a question's
+missing gold costs at most 1,195 characters, which is 2.5% of the budget. There is no version of this
+intervention that is expensive, and no version where the budget is what stops it.
+
+Twelve failures against twenty-two successes restates §13.271.1 on a second run and does not confirm
+it: that section read 22 of 32 (**68.8%**) on the k=512 artifact and this one reads 22 of 34
+(**64.7%**), because the two runs have different partial populations. The instrument's prior is
+therefore a band rather than a point -- roughly two thirds of partial-evidence `MR` questions are
+answered correctly anyway -- and it is still the thing the counterfactual has to beat.
