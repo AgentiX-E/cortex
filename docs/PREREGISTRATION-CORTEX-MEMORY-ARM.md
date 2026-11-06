@@ -31939,12 +31939,22 @@ More room, finer grain, five times as many cuts, and 7.64 points lower. The orde
 experiments follows without another census: **shape before size**, and the shape that wins is the one the
 competitor with less room is using.
 
-**§13.284 (candidate, not dispatched).** Session-shaped evidence at the reference's room: `relevanceUnits:
-session-fill` on the anchored signal, `maxPromptChars` 20,000, no per-turn cap on the multi-session route.
-Its predictions are cheap to state and each is checkable: `MR` at least level with this run's reading;
-`deliveredPromptChars` down ~58% on `MR`, which is the first change in this campaign that is expected to
-**save** tokens and gain points at once; and gold-turn recall on `MR` no lower than this run's 97.11%,
-because `session-fill` allocates whole sessions. It is registered here as a candidate rather than as gates
-because two treatments in one queue would make neither attributable, and §13.283 has to be read first:
-if its coverage gate moves, the room is not the constraint at 48,000 and a 20,000-character room becomes a
-much sharper test than it is today.
+**§13.284 (candidate, not dispatched).** The reference's **shape** at this arm's registered room:
+`relevanceUnits: session-fill` on the anchored signal, `maxPromptChars` and the per-turn cap untouched.
+One variable, and `chooseEvidence` already dispatches on it for any signal (`sessionOf` is the only
+precondition), so the dispatch is a value rather than a code change -- unlike §13.34, where the same value
+was read under `retrieval-hybrid` and the pool admitted every session anyway.
+
+Predictions, each checkable from the artifact: `MR` at least level with §13.283's reading; gold-turn recall
+on `MR` no lower than 97.11%, because `session-fill` allocates whole sessions and skips the ones that do not
+fit; and `windowComposition.turns` **down**, since a session costs what it costs.
+
+**§13.285 (candidate, after §13.284).** The reference's **room**: `maxPromptChars` 20,000 and no per-turn cap
+on the multi-session route, at whatever unit §13.284 leaves in place. This is the increment that is expected
+to **save** tokens and gain points at once -- about 58% less prefill on `MR` -- and it is deliberately second,
+because a room change and a unit change in one run would make neither attributable, and the campaign has paid
+for that lesson four times (§13.104, §13.124, §13.279, §13.282).
+
+Both stay behind §13.283 for the same reason: if its coverage gate moves, the room is not the constraint at
+48,000 and §13.285 becomes a sharper test than it is today; if it does not, the constraint is the unit and
+§13.284 is the one to read.
