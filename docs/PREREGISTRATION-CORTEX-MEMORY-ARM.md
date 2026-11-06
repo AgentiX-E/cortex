@@ -30918,3 +30918,196 @@ retrieval axis in this campaign is dead -- which is worth knowing at the price o
 failing would mean restoring evidence breaks answers that were right, and would make the intervention
 unsafe in a way no classification could repair. Gates 6–8 failing mean the run is not the experiment,
 and the cause is in the harness.
+
+## 13.276 Reading: eight of eight, and the ceiling the counterfactual puts on every retrieval axis
+
+`42219514040` ran the counterfactual §13.275 registered: 22 questions from `42190193540` -- 12
+partial-evidence `MR` failures and their 10 matched controls -- each re-asked four times with its
+missing gold turns reinstated above the `QUESTION:` line.
+
+### 13.276.1 The gates
+
+| # | quantity | reading | threshold | verdict |
+| --- | --- | ---: | ---: | --- |
+| 1 | failures correct under restore | **4 of 12** | ≥ 4 | **PASS** |
+| 2 | controls wrong under restore | **1 of 10** | ≤ 1 | **PASS** |
+| 3 | residual share among the failures | **0.67** | reported | — |
+| 4 | prompts grown by other than the restored text | **0** | 0 | **PASS** |
+| 5 | reader calls (decorated side) | **88** | ≤ 400 | **PASS** |
+| 6 | `memoryArmConfig` fields that moved | **0** | 0 | **PASS** |
+| 7 | planned questions never asked | **0** | 0 | **PASS** |
+| 8 | calls matching no planned question | **0** | 0 | **PASS** |
+
+Gate 1 passes on the nose and gate 2 on the nose. Gate 4 is the one that says the experiment is the
+experiment: every prompt grew by exactly `calls × restoredChars`, so nothing but the intervention
+touched the bytes the reader was sent. Gate 6 says the restore run reproduced `42190193540`'s
+configuration field for field, which is the checkpoint the hand-written workflow needed.
+
+Gate 5 reads 88 rather than 176 because the ledger decorates **one side**. The arm's baseline side ran
+unadorned, as §13.275.1 said it would.
+
+### 13.276.2 The two strata are softer than they were drawn, and by exactly two questions
+
+The classifier reads both sides as a majority of four passes and reports where that disagrees with the
+single-pass field the population was drawn on. It disagrees twice:
+
+| question | plan's `recordedOutcome` | four-pass majority | what it means |
+| --- | --- | --- | --- |
+| `gpt4_2ba83207` | incorrect | **correct** | it was never a failure |
+| `3a704032` | correct | **incorrect** | it was never a control |
+
+So the conservative tabulation, which is the one the classifier's own rule implies, is:
+
+| | as registered (`recordedOutcome`) | corrected by the four-pass majority |
+| --- | ---: | ---: |
+| genuine failures | 12 | **11** |
+| converted by restore | 4 | **3** |
+| residual | 8 (0.67) | **8 (0.73)** |
+| genuine controls | 10 | **9** |
+| broken by restore | 1 | **0** |
+
+Both are reported because they answer different questions: the registration asked whether four of the
+twelve it drew would convert, and four did. The correction asks whether four of the *actual* failures
+converted, and three did -- 27%, below the third the registration called "the smallest share worth a
+mechanism".
+
+The corrected control column is the better news and it is not a rescue: the one question the registered
+gate counted as broken was already wrong in the source. **Restoring evidence broke nothing.**
+
+### 13.276.3 The residual share is 0.67–0.73, which is the published number
+
+*What Eviction Destroys* (arXiv 2609.08279) measures the irreversible share of oracle-answerable errors
+at **0.67–0.73** on an 80k budget. This run measures **0.67 by the registered strata and 0.73 by the
+corrected ones** -- on a different corpus, a different reader and a different budget.
+
+That agreement is worth more than the point estimate: it says the instrument is measuring the thing
+the literature measures, and it means the number is not an artifact of how this population was drawn.
+Two thirds of partial-evidence failures are **not** repaired by the evidence they were missing.
+
+### 13.276.4 The ceiling this puts on every retrieval axis
+
+`MR` had 29 failures at `top_k = 512` (121 questions, 92 correct on the single pass). Twelve of them
+had incomplete evidence; **seventeen had every gold turn delivered and were still wrong**.
+
+| population | count | what could fix it | ceiling on `MR` |
+| --- | ---: | --- | ---: |
+| incomplete evidence, repaired by restore | **4** | selection | **+3.31 points** |
+| incomplete evidence, not repaired | 8 | nothing upstream | 0 |
+| complete evidence, still wrong | **17** | the reader, and only the reader | **+14.05 points** |
+
+A perfect selector -- one that delivered every missing gold turn to every question that had one --
+would recover at most the 12 partial questions, and this experiment says four of those actually
+convert. **+4 questions is +3.31 points on `MR`.** The gap to the reference pipeline is 6 to 11.5
+questions depending on which aggregate is read (§13.276.5).
+
+So **selection cannot close the gap on its own**, and that is a quantitative statement rather than an
+opinion: the mechanism that was the only remaining candidate on the retrieval side is worth at most a
+third of the distance.
+
+The 17 questions are the find. `MR` is not a retrieval problem at two thirds of its failures; it is a
+reading problem, and the reference pipeline -- the same DeepSeek reader, the same 500 questions, the
+same judge, a **smaller** window -- reads 85.33% to 85.95% on the same capability. Whatever it is doing
+that this arm is not, it is doing it in the prompt.
+
+### 13.276.5 The two aggregates, stated so that nobody has to guess which one a number came from
+
+| run | `top_k` | cortex `MR`, ablation average | reference `MR`, ablation average | single-pass readings the gate table uses |
+| --- | ---: | ---: | ---: | --- |
+| `42177443765` | 256 | **79.34%** (96.0/121) | 85.33% (103.25/121) | 80.17% → reference 84.30% |
+| `42190193540` | 512 | **76.45%** (92.5/121) | 85.95% (104.0/121) | 76.03% |
+
+The gate table compares `questions[].correct` -- one pass -- on both sides, which is what makes its
+delta paired. The ablation averages are means over four passes and are the better estimate of the
+capability, but they are not paired question-by-question and so are not what a McNemar test can use.
+The campaign has quoted both; this table is the record of which is which, and the earlier "84.30%" is
+the single-pass reading of the same capability that reads 85.33% by average.
+
+The gap is therefore **5.99 points (7.25 questions) at `top_k = 256` and 9.50 points (11.5 questions)
+at `top_k = 512`** by the averages, or -4.13 to -8.27 points by the single-pass readings. Neither
+version is closable by selection alone.
+
+### 13.276.6 Refutation, and what each outcome licensed
+
+| outcome | reading | what it licensed |
+| --- | --- | --- |
+| gate 1 fails | evidence does not convert | every retrieval axis dead; go to the reader |
+| gate 1 passes, gate 2 fails | evidence converts and also breaks | the intervention is unsafe; the classification is unusable |
+| both pass, conversion low | this | selection is worth ≤ +3.31 points; the reader is worth +14.05 |
+| both pass, conversion high | not observed | set-level selection as the next mechanism |
+
+What happened is the third row, and it is the informative one. The next experiment is not the
+set-level selector -- it would be buying a third of the distance at the price of a mechanism -- it is
+the prompt contract, and §13.246 already names what to compare: the reference's multi-session builder
+enumerates under a fixed `item | verb | session date` schema, states the arithmetic in Step 2, and
+terminates on an `Answer:` cue. This arm renders a different schema, a different Step 2 and no
+terminator, on the same reader, and loses 6 to 9.5 points for it.
+
+## 13.277 Registration: the contract, ported whole, as the next single-variable experiment
+
+§13.276.6 named where the gap is and what to compare. This registers the comparison.
+
+### 13.277.1 The three differences, and why the whole contract rather than one of them
+
+`acceptance.ts`'s S8 row already carries the audit: the reference pipeline's multi-session builder
+enumerates under a fixed `item | verb | session date` schema, states the arithmetic of Step 2 in the
+question's own terms, and terminates on `Answer: <final answer>`; this arm renders a different schema,
+a different Step 2 and no terminator.
+
+Porting one of the three would be a smaller experiment and a worse one. The three are not independent
+knobs -- the schema is what makes the enumeration checkable, Step 2 is what turns a list into an
+answer, and the terminator is what tells the reader the list is finished. A run that ported the
+terminator alone would answer "does the terminator help" and leave the other two unmeasured, and this
+campaign has spent enough runs on single knobs with sub-resolution effects.
+
+So the treatment is the **whole instruction set**, and the registration is a single variable:
+`memoryArmConfig.promptContract`.
+
+### 13.277.2 What changes, and what deliberately does not
+
+| item | value |
+| --- | --- |
+| treatment | a new contract name that renders the multi-session route under the reference's instruction set |
+| control | `42177443765` — same tree family, same reader, same budget, `promptContract = abstention-evidence-blocks`, `top_k = 256` |
+| unchanged | reader, temperature, thinking routes, embedding, budget (48,000 / 400), ranking signal and width, all five gates of §10.3 |
+| reach | **multi-session only.** Every other route renders exactly what it renders today, so `IE`, `KU`, `TR` and `ABS` are the internal control |
+
+The reach is the design. If `MR` moves and the other four do not, the difference is the contract and
+nothing else; if the other four move too, the contract leaked out of the route it was written for and
+the run measures a different question than the one registered.
+
+### 13.277.3 The gates
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | the artifact's own audit | **every check passes** |
+| 2 | `memoryArmConfig.promptContract` | **equals the new name** — a departure that did not take measures nothing |
+| 3 | `MR` accuracy against `42177443765` | **Δ ≥ +3 points** with the resolution printed |
+| 4 | `IE`, `KU`, `TR`, `ABS` against `42177443765` | **no loss ≥ 3 points** — the internal control for the reach |
+| 5 | `llmUsage.calls` | **≤ 5,900** against 5,690 |
+| 6 | `llmUsage.promptTokens` | **≤ 34,000,000** against 31,103,964, **+9.3%**. The reference's instruction block is longer than this arm's, so the bar allows for it; a run above the bar is a contract that costs more than the instruction it adds |
+| 7 | `bareRetry.attempted` | **≥ 60** |
+
+Gate 3's bar is **+3**, well below the 9.5-point gap, and deliberately so: the gap is measured against a
+pipeline that differs in more than the prompt (its window is composed differently and its session
+grouping is its own), so the contract is only part of it. A run that moves `MR` by 3 or more has shown
+the contract is load-bearing; how much of the gap it explains is then a second subtraction, not this
+gate.
+
+### 13.277.4 Refutation
+
+- **`MR` does not move.** The contract is not the difference. The next candidate is the **window
+  composition** -- what the reference puts in its smaller window and this arm does not -- and the
+  experiment for that is a per-record diff of the two prompts on the same question, which costs no
+  provider call at all.
+- **`MR` moves and another capability moves too.** The contract leaked out of its route, and the run
+  answers a question nobody registered. The cause is in the rendering switch, not in the contract.
+- **`MR` moves by more than 9.5 points.** Then the arm beats the reference on its own contract, which
+  would mean the reference's advantage was never the contract and the two are not comparable in the way
+  §13.276.5 says. That is the outcome that would require re-deriving the whole comparison.
+
+### 13.277.5 What this does not decide
+
+It does not test multi-step retrieval (MemCog's family). §13.276.6 says so explicitly, and the reason is
+mechanical rather than a priority: a second and third retrieval step changes the arm's structure -- it
+needs an intermediate answer before the next query exists -- and folding it into this run would make one
+artifact carry two treatments. It is the experiment after this one if this one lands.
