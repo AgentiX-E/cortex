@@ -1,0 +1,255 @@
+# The restore counterfactual (§13.267), as a run of its own.
+#
+# ## Why a second workflow rather than an input on the arm's
+#
+# `benchmark-cortex-memory.yml` declares 24 inputs against GitHub's ceiling of 25, and
+# `test_dispatch_inputs.py` refuses a workflow that reaches the ceiling -- so "add one more input" is
+# not available, and the file's own instruction for that case is to split rather than to remove a
+# knob. This is the split.
+#
+# It is also the right shape independently: this is not a dispatch of the arm. It runs **22
+# questions** under a configuration it does not choose, reading a population and a configuration from
+# an artifact that already exists. A run whose inputs are "which finished run" is a different kind of
+# thing from a run whose inputs are the treatment.
+#
+# ## Why the configuration is written out here instead of read from the artifact
+#
+# Reading `memoryArmConfig` out of the source artifact and translating it into `CORTEX_MEMORY_*`
+# variables would make the two runs agree by construction -- and would be a second, invisible
+# definition of the mapping, living in a script nobody reviews against the workflow that owns the
+# variables. So the configuration is written here, in the open, from `42190193540`'s own config block,
+# and the fidelity is **checked instead of assumed**: `tools/restore-classify.py` compares this run's
+# `memoryArmConfig` against the source's, field for field, and refuses to classify if any of them
+# moved. A duplicated value that is verified is a checkpoint; a duplicated value that is generated is
+# a second source of truth.
+#
+# ## Why `limit` is 0
+#
+# `LIMIT` samples the *first* n instances of the file. The plan names 22 questions spread across all
+# 500, so any non-zero limit would silently drop the later ones -- and `restrictDatasetToPlan` would
+# then refuse, which is the good outcome, but only after the dataset download. 0 means "every
+# instance", and the plan is what narrows the run.
+name: Restore counterfactual (cortex-memory)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'The finished arm run whose artifact holds the population (its `goldOverlap.goldTurns` is the evidence that gets reinstated). The artifact must still exist'
+        required: true
+        type: string
+      capability:
+        description: 'The capability to take the population from. `MR` is the one §13.267 registered; the population is chosen by `tools/restore-population.py` before any call'
+        required: false
+        default: 'MR'
+        type: string
+      runs:
+        description: 'Repetitions per question, per side. 4 is the arm scale and the pre-registered value: a one-repetition answer cannot separate a conversion from a sampling draw'
+        required: false
+        default: '4'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  # `gh run download` authenticates with this, and nothing else in the job needs it.
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+  SOURCE_CAPABILITY: ${{ inputs.capability }}
+  # The arm's own rerank variables, at the values the source run carried. `none` below means the
+  # stage is off, and these three are unreachable while it is -- they are here because the arm reads
+  # them unconditionally at startup and a missing base URL with a named model would be a different
+  # failure than the one this job is looking for.
+  CORTEX_MEMORY_RERANK_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+  CORTEX_MEMORY_RERANK_MODEL: rerank
+  CORTEX_MEMORY_RERANK_MAX_DOCUMENTS: '128'
+  CORTEX_MEMORY_RERANK_MAX_DOCUMENT_CHARS: '4096'
+  RERANK_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+  CORTEX_MEMORY_BUDGET_MINUTES: '60'
+  CORTEX_LLM_MIN_INTERVAL_MS: ${{ vars.CORTEX_LLM_MIN_INTERVAL_MS }}
+  CORTEX_LLM_RETRY_BUDGET_MS: ${{ vars.CORTEX_LLM_RETRY_BUDGET_MS }}
+
+jobs:
+  restore:
+    name: restore counterfactual
+    runs-on: ubuntu-latest
+    # 22 questions x 4 repetitions x 2 sides = 176 answers, plus judge calls and one embedding pass
+    # over 22 haystacks. The arm's own 500-question dispatch takes 305-335 minutes for 4,000 answers,
+    # so 176 answers is minutes of pacing; 60 is generous and is a hang detector rather than a
+    # schedule.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Download LongMemEval-S
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+          # The digest file, not the corpus, and this line is not decoration: the cache key below
+          # reads `data/dataset.sha256`, and `tools/__tests__/test_embedding_cache_key.py` refuses a
+          # workflow that keys on it without writing it. A missing file hashes to the empty string,
+          # so the key would resolve to `longmemeval-embedding--<run id>`, never match the entry the
+          # main benchmark wrote, and re-embed every turn while reporting a cache miss as normal.
+          # Written identically to `benchmark.yml` and `benchmark-cortex-memory.yml` so all three land
+          # on one entry: whichever runs first pays for the vectors and the others find them.
+          ACTUAL_SHA="$(sha256sum "${{ github.workspace }}/data/longmemeval_s_cleaned.json" | cut -d' ' -f1)"
+          echo "corpus sha256: $ACTUAL_SHA"
+          printf '%s  longmemeval_s_cleaned.json\n' "$ACTUAL_SHA" > "${{ github.workspace }}/data/dataset.sha256"
+
+      # The vectors are the one part of this run that is not the measurement. 22 haystacks are about
+      # five thousand turns, which is affordable to re-embed and pointless to re-embed: the same
+      # turns were embedded by the run this one is a counterfactual of, and the cache key is the
+      # dataset hash. Restoring on the prefix rather than the exact key is the pattern
+      # `benchmark-cortex-memory.yml` documents; a miss costs quota, not correctness.
+      - name: Restore embedding cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-
+            longmemeval-embedding-
+
+      # The population is chosen here, from the artifact alone, before a single call is made -- and by
+      # the tool §13.270 registered for it rather than by an inline `jq`. The plan is uploaded with
+      # the rest of the run so a reader can check the population against the table in §13.270.
+      - name: Fetch the source artifact and choose the population
+        run: |
+          set -euo pipefail
+          mkdir -p restore-input
+          gh run download "${SOURCE_RUN_ID}" --name longmemeval-s-report --dir restore-input
+          ls -la restore-input
+          test -f restore-input/benchmark-cortex-memory-ablation-report.json || {
+            echo "::error::the source run's report is not in its artifact. The run may have died"
+            echo "::error::before writing one, or the artifact may have expired."
+            exit 1
+          }
+          python3 tools/restore-population.py \
+            restore-input/benchmark-cortex-memory-ablation-report.json \
+            --capability "${SOURCE_CAPABILITY}" \
+            --plan \
+            --source "${SOURCE_RUN_ID}" \
+            > restore-plan.json
+          python3 -c "import json,sys; d=json.load(open('restore-plan.json')); print('plan:', len(d['entries']), 'question(s)'); print('incorrect:', sum(1 for e in d['entries'] if e['recordedOutcome']=='incorrect')); print('control:', sum(1 for e in d['entries'] if e['recordedOutcome']=='correct'))"
+
+      - name: Run the restore counterfactual
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
+          # Absolute: `pnpm --filter` runs the script from the package directory, which is the
+          # mistake `41740721672` made with a relative path.
+          CORTEX_RESTORE_PLAN: ${{ github.workspace }}/restore-plan.json
+          # The population is 22 questions out of 500, so the sample size is "all of them" and the
+          # plan is what narrows it.
+          LIMIT: '0'
+          ABLATION_RUNS: ${{ inputs.runs }}
+          TEMPERATURE: '0'
+          DEEPSEEK_MODEL: deepseek-chat
+          # `multi-session+temporal` rather than `enabled`: the source run carried thinking on those
+          # two routes and on no others, and `readThinkingReach` rejects a comma here on purpose.
+          DEEPSEEK_THINKING: multi-session+temporal
+          EMBEDDING_BATCH_INTERVAL_MS: '0'
+          CORTEX_MEMORY: '1'
+          CORTEX_MEMORY_THRESHOLD: '0'
+          CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '0'
+          CORTEX_MEMORY_SESSION_BUDGET: ''
+          CORTEX_MEMORY_SOURCE_TRUST: '0.5'
+          CORTEX_MEMORY_CONFIDENCE: 'none'
+          CORTEX_MEMORY_PROMPT_CONTRACT: abstention-evidence-blocks
+          CORTEX_MEMORY_ASK: verbatim
+          CORTEX_MEMORY_REVIEW_PASS: bare
+          CORTEX_MEMORY_SELF_CONSISTENCY: 'none'
+          CORTEX_MEMORY_QUERY_EXPANSION: 'none'
+          CORTEX_MEMORY_RELEVANCE: retrieval-anchored
+          CORTEX_MEMORY_RELEVANCE_TOP_K: '512'
+          CORTEX_MEMORY_RELEVANCE_UNITS: turn
+          CORTEX_MEMORY_MAX_TURN_CHARS: '400'
+          CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: multi-session,temporal
+          CORTEX_MEMORY_MAX_PROMPT_CHARS: '48000'
+          CORTEX_MEMORY_EVIDENCE_ROLES: user
+          CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: multi-session,temporal
+          CORTEX_MEMORY_RERANK: 'none'
+          CORTEX_MEMORY_EVIDENCE_TURNS: '256'
+          CORTEX_MEMORY_WORKERS: ${{ vars.CORTEX_MEMORY_WORKERS }}
+        run: pnpm --filter @agentix-e/cortex-memory bench
+
+      # Whatever this run embedded, published under a key of its own.
+      #
+      # A run_id-keyed entry cannot contend with another run's save, which is the failure
+      # `benchmark-cortex-memory.yml` records twice ("another job may be creating this cache"). On a
+      # cache hit there is nothing new to write and this stores what it restored.
+      - name: Save embedding cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload the counterfactual
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-counterfactual
+          path: |
+            restore-plan.json
+            restore-input/benchmark-cortex-memory-ablation-report.json
+            packages/cortex-memory/benchmark-*.md
+            packages/cortex-memory/benchmark-*.json
+            packages/cortex-memory/benchmark-error.log
+            packages/cortex-memory/restore-calls.json
+          retention-days: 90
+
+      # The verdict, printed into the job log and written beside the artifact. It is a step rather
+      # than a downstream habit because §13.267.3's gates were registered before the harness existed:
+      # a counterfactual whose pass condition is applied after the replies arrive is one shaped to
+      # its answer, and the only defence is a program that was written first and runs unmodified.
+      - name: Classify and evaluate the registered gates
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f packages/cortex-memory/benchmark-cortex-memory-ablation-report.json || {
+            echo "::warning::no report was written, so there is nothing to classify"
+            exit 0
+          }
+          python3 tools/restore-classify.py \
+            --restore packages/cortex-memory/benchmark-cortex-memory-ablation-report.json \
+            --source restore-input/benchmark-cortex-memory-ablation-report.json \
+            --plan restore-plan.json \
+            --ledger packages/cortex-memory/restore-calls.json \
+            --out restore-verdict.md
+          cat restore-verdict.md
+
+      - name: Upload the verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-verdict
+          path: restore-verdict.md
+          if-no-files-found: warn
+          retention-days: 90

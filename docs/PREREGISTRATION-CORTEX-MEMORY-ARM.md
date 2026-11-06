@@ -30747,3 +30747,174 @@ Dispatched against `1369fb8f` with one declared departure, `cortex_memory_releva
 `42190193540`. The departure is the registration: `memoryArmConfig.relevanceTopK` reads 512 on the
 artifact and gate 2 fails if it does not, which is the check §13.262.7 introduced after a dispatch that
 silently did not take.
+
+## 13.274 Reading: seven of eight, the room is zero everywhere, and the residual is selection
+
+The run landed. `42190193540` is `top_k = 512` at `1369fb8f`, and the reference is `42177443765` at
+`5492088d` with `top_k = 256`.
+
+### 13.274.1 The comparison is clean, and that is the first thing to establish
+
+`git diff --stat 5492088d..1369fb8f` touches **six files, none of them under `packages/`** -- the
+pre-registration, the two new tools, their tests and the gate table. Nothing in the pipeline moved
+between the two runs, so this is the first width comparison in the campaign whose only difference is
+the width. §13.268 compared two trees; this compares one.
+
+| # | quantity | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | the artifact's own audit | every check passes | **PASS** |
+| 2 | `memoryArmConfig.relevanceTopK` | 512, as registered | **PASS** |
+| 3 | `goldOverlap.goldTurns` | 500 of 500 records, 7,516 turns | **PASS** |
+| 4 | `llmUsage.calls` | 5,650 against a bar of 5,900 | **PASS** |
+| 5 | `llmUsage.promptTokens` | 31,010,483 against 31,103,964 — **−0.3%** | **PASS** |
+| 6 | `MR` against `42177443765` | 80.17% → **76.03%**, **−4.13** over 121, 2 won 7 lost, p = 0.1797 | **FAIL** |
+| 7 | every other capability | `ABS` ±0, `IE` ±0, `KU` +1.39, `TR` −0.79 — worst −0.79 | **PASS** |
+| 8 | `bareRetry.attempted` | 67 against a bar of 60 | **PASS** |
+
+Gate 6 was registered as a null with a three-point tolerance and the reading is 4.13. The gate did
+what it was written to do: it refused to let "the width is free" stand on a run that moved the number
+it was supposed to leave alone.
+
+### 13.274.2 What the failure means, and what it does not
+
+Five questions net, seven lost to two won, on a p of 0.18 -- inside the resolution the campaign has
+measured for this dataset (§13.268.6: nine questions). So the honest reading is not "the width hurts".
+It is that **the width has now been measured twice at fixed code and the two readings point in
+opposite directions**: +0.83 at `c1f8fb85`'s comparison, −4.13 here, and the discordant pairs pooled
+(7 won, 10 lost) give p ≈ 0.63. Neither is a signal.
+
+That changes what the width *is*. It was registered in §13.273 as a run to make a table computable, and
+that is precisely what it turned out to be: the cost is 0.3% of the prompt tokens and the accuracy
+effect is noise in both directions, so what the run bought was not points. It bought §13.274.3.
+
+The one claim that does change: "width is free" (§13.268.2) is a claim about **tokens**, and this gate
+is the record that says so. Any future reading of that phrase as "free in accuracy" is refuted here.
+
+### 13.274.3 The room table, complete: nothing fails for lack of room
+
+`tools/gold-room.py` on the k=512 artifact. `offered` means the ranking surfaced every *missing* gold
+turn, so a selector had the choice; `fits` means the gold plus the record's measured overhead is inside
+48,000 characters.
+
+| capability | n | full | partial | offered | fits | **room** |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ABS` | 30 | 2 | 28 | 27 | 25 | **2** |
+| `IE` | 150 | 75 | 75 | 75 | 75 | **0** |
+| `KU` | 72 | 5 | 67 | 67 | 67 | **0** |
+| `MR` | 121 | 89 | **32** | **31** | **31** | **0** |
+| `TR` | 127 | 93 | **34** | **34** | **34** | **0** |
+
+The two rows that were blank in §13.272.2 are the two that mattered, and both come back **zero**:
+every partial-`MR` question but one has its missing gold inside the 512-turn ranking, and every one of
+those fits inside the budget. `TR` is unanimous -- 34 of 34 offered, 34 of 34 fit.
+
+So the budget axis closes on **both** of its arguments, and they were different arguments:
+
+- §13.268.3's coverage-versus-depth curve priced it in turns, and 99% coverage costs 2.1× to 6.0×
+  the budget -- unpayable at 31M → 65–190M tokens;
+- this table prices it in **characters**, and says the turns are already affordable; the budget is not
+  what stopped them.
+
+A failure that is neither out of room nor out of pool is a failure of **order**. That is now the only
+mechanism the residual can be attributed to, and it is what makes the next experiment the next
+experiment rather than a hypothesis.
+
+The two `ABS` rows that do not fit are the abstention questions whose gold is the evidence that
+nothing was said -- they are not the population any selector can repair, and they are reported rather
+than counted as reachable.
+
+### 13.274.4 The restore population on the wider pool
+
+`tools/restore-population.py` on `42190193540`: **12 partial failures, 20 partial successes, 10 pairs,
+2 unmatched.** Every row reports `offered = True` -- on this artifact the missing gold is inside the
+ranking for both sides of every pair, which is the condition §13.272.3 corrected the tool to require
+and the first time it has held.
+
+The two unmatched failures are the largest interventions -- six and five missing turns -- and they are
+not dropped: §13.267.5's plan carries them, unpaired.
+
+## 13.275 Registration: the restore counterfactual, before the harness ran
+
+§13.267 registered the instrument and its gates; this registers the **run**, with the population now
+known and the harness now written. The gates below are §13.267.3's, restated with the numbers this
+artifact supplies, plus three instrument gates that the harness made necessary.
+
+| item | value |
+| --- | --- |
+| population | `42190193540`'s 12 partial-`MR` failures and their 10 matched controls — **22 questions** |
+| intervention | each question's missing gold turns, inserted above the `QUESTION:` line |
+| injection point | the reader (`LLM`), decorated — the product is not modified and does not know |
+| reader | `deepseek-chat`, thinking on `multi-session+temporal`, temperature 0 — the source run's identity |
+| repetitions | 4 per question per side, the arm's scale |
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | failures correct under restore | **≥ 4 of 12** |
+| 2 | controls wrong under restore | **≤ 1 of 10** |
+| 3 | `residual` share among the failures | **reported, not gated** |
+| 4 | prompts grown by other than the restored text | **0** |
+| 5 | reader calls | **≤ 400** |
+| 6 | `memoryArmConfig` fields that moved from the source run | **0** |
+| 7 | planned questions never asked | **0** |
+| 8 | calls that matched no planned question | **0** |
+
+### 13.275.1 The amendment to gate 5, written before the run
+
+§13.267.3 registered `≤ 120` calls as "24 questions × 4 repetitions plus the retry allowance". That
+arithmetic assumes **one side**. The harness that was built runs the arm as it exists, and the arm's
+pair is the feature against the reference pipeline in one `runAblationReport` call -- so 22 questions ×
+4 repetitions × 2 sides is 176 answers before the judge, and 120 is not reachable by any faithful
+implementation.
+
+The number is therefore **400**, and the reason it is stated here rather than discovered later is that
+a ceiling adjusted after the replies arrive is a ceiling chosen by them. The spare 224 is the judge's
+share and the retry ladder's, and it is deliberately loose: this gate exists to catch a run that
+restored into five hundred questions, not to ration a run of twenty-two.
+
+The alternative -- teaching the arm to run one side -- was refused. The baseline side is waste here,
+and it is waste that buys the thing the whole campaign insists on: one `runAblationReport` call, one
+process, one clock, and an artifact whose two sides are the same measurement.
+
+### 13.275.2 The two outcomes, and why both sides are a majority of four
+
+`42190193540` answered every question four times, and `questions[].correct` is **one** of them -- on
+that artifact it disagrees with the fourth pass on **14 questions**. So a population split on that
+field is a population split on a draw.
+
+Both sides are therefore read the same way, and the rule is written before the run: **a question is
+correct when at least three of its four passes were**. The plan's `recordedOutcome` is the single-pass
+field the population was drawn on; `tools/restore-classify.py` counts the disagreements between the two
+and prints them rather than reconciling them, because a large count is a fact about the instrument that
+the classification cannot repair.
+
+### 13.275.3 Three instrument gates, and the two defects they were written after
+
+Gates 6–8 are not about the mechanism. They exist because building the harness produced two defects of
+the class this campaign keeps finding, and neither would have thrown:
+
+1. **the workflow keyed the cache on a digest it never wrote.** `restore-counterfactual.yml` read
+   `hashFiles('data/dataset.sha256')` and no step wrote that file, so the key resolved to the empty
+   hash and the restore would have missed every entry the main benchmark wrote -- re-embedding 5,000
+   turns while reporting a cache miss as an ordinary event. `tools/__tests__/test_embedding_cache_key.py`
+   caught it before any dispatch, which is the second time that guard has paid for itself.
+2. **the question line can be truncated.** `prompt.ts` truncates the `QUESTION: <question>` line when
+   the evidence leaves it no room, and those are exactly the questions whose windows are full -- the
+   population this instrument exists for. An equality-only match would have reported them unmatched,
+   and gate 8 would have failed on the run rather than on the code. The matcher now accepts a unique
+   prefix of at least 24 characters and refuses an ambiguous one instead of choosing.
+
+Gate 6 is the third: the workflow writes the arm's configuration **out by hand** rather than
+translating the source artifact's `memoryArmConfig` back into `CORTEX_MEMORY_*` variables. Generating
+it would make the two runs agree by construction and would put a second, unreviewed definition of the
+mapping in the tree. Writing it out means it can be wrong -- so it is **checked**, field for field,
+before any number is classified. A duplicated value that is verified is a checkpoint; one that is
+generated is a second source of truth.
+
+### 13.275.4 Refutation
+
+Gate 1 failing is the interesting outcome and not a disappointment: if four of twelve failures do not
+convert with the missing evidence in front of them, the residual is the **reader**, and every remaining
+retrieval axis in this campaign is dead -- which is worth knowing at the price of 176 answers. Gate 2
+failing would mean restoring evidence breaks answers that were right, and would make the intervention
+unsafe in a way no classification could repair. Gates 6–8 failing mean the run is not the experiment,
+and the cause is in the harness.

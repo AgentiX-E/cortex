@@ -58,6 +58,9 @@ def _record(
     return {
         'questionId': identifier,
         'capability': capability,
+        # Carried because the harness plan matches a prompt on the question line; a fixture without
+        # one would let a plan builder that dropped the text pass every test here.
+        'question': f'question asked by {identifier}?',
         'correct': correct,
         'goldOverlap': overlap,
     }
@@ -203,6 +206,106 @@ class PairingTest(unittest.TestCase):
         self.assertEqual(payload['pairs'][0]['failure']['questionId'], 'f')
         self.assertEqual(payload['pairs'][0]['control']['questionId'], 'c')
         self.assertEqual(payload['unmatched'], [])
+
+
+class PlanTest(unittest.TestCase):
+    """The plan is the selection, rendered in the form the harness reads -- not a second selection."""
+
+    def _plan(self, records: list[dict], *extra: str) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'artifact.json'
+            path.write_text(json.dumps({'questions': records}))
+            return subprocess.run(
+                [sys.executable, str(TOOL), str(path), '--plan', *extra],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    def test_the_plan_carries_the_failures_then_the_paired_controls(self) -> None:
+        result = self._plan(
+            [
+                _record('f', total=4, carried=3, correct=False, turns=['a', 'b', 'c', 'd']),
+                _record('c', total=4, carried=3, correct=True, turns=['w', 'x', 'y', 'z']),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        self.assertEqual([entry['questionId'] for entry in plan['entries']], ['f', 'c'])
+        self.assertEqual([entry['recordedOutcome'] for entry in plan['entries']], ['incorrect', 'correct'])
+        # The missing turn is the one `goldDelivered` marks false -- the last, at `carried=3` of 4.
+        self.assertEqual(plan['entries'][0]['turns'], ['d'])
+        self.assertEqual(plan['entries'][1]['turns'], ['z'])
+        self.assertIn('question asked by f?', plan['entries'][0]['question'])
+
+    def test_a_partial_success_that_is_not_a_control_is_not_in_the_plan(self) -> None:
+        # Twelve partial successes and ten pairs would otherwise put twenty controls in the run, each
+        # one a question the analysis has no pair for.
+        result = self._plan(
+            [
+                _record('f', total=4, carried=3, correct=False, turns=['a', 'b', 'c', 'd']),
+                _record('c', total=4, carried=3, correct=True, turns=['w', 'x', 'y', 'z']),
+                _record('extra', total=4, carried=3, correct=True, turns=['w', 'x', 'y', 'z']),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        self.assertEqual([entry['questionId'] for entry in plan['entries']], ['f', 'c'])
+
+    def test_an_unmatched_failure_is_still_in_the_plan(self) -> None:
+        # It has no control, which costs the pairing a row. Leaving it out would make the instrument
+        # quietest about the largest interventions, which are exactly the ones with no partner.
+        result = self._plan([_record('lonely', total=9, carried=3, correct=False, turns=['t'] * 9)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        self.assertEqual([entry['questionId'] for entry in plan['entries']], ['lonely'])
+        self.assertEqual(len(plan['entries'][0]['turns']), 6)
+
+    def test_the_source_defaults_to_the_artifact_and_can_be_labelled(self) -> None:
+        default = self._plan([_record('f', total=4, carried=3, correct=False, turns=['a', 'b', 'c', 'd'])])
+        self.assertEqual(json.loads(default.stdout)['source'].endswith('artifact.json'), True)
+        labelled = self._plan(
+            [_record('f', total=4, carried=3, correct=False, turns=['a', 'b', 'c', 'd'])],
+            '--source',
+            'run-42190193540',
+        )
+        self.assertEqual(json.loads(labelled.stdout)['source'], 'run-42190193540')
+
+    def test_a_plan_without_gold_turn_text_is_refused(self) -> None:
+        # `turns` absent is the §13.268.7 shape: the sum is zero, every question looks like it needs
+        # nothing, and the run reports a clean null.
+        result = self._plan([_record('f', total=4, carried=3, correct=False)])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('does not carry both `goldTurns` and `goldDelivered`', result.stderr)
+
+    def test_a_plan_whose_two_lists_are_not_aligned_is_refused(self) -> None:
+        record = _record('f', total=4, carried=3, correct=False, turns=['a', 'b'])
+        result = self._plan([record])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('aligned by construction', result.stderr)
+
+    def test_a_question_with_nothing_missing_is_refused_rather_than_restored_empty(self) -> None:
+        record = _record('f', total=4, carried=3, correct=False, turns=['a', 'b', 'c', 'd'])
+        record['goldOverlap']['goldDelivered'] = [True, True, True, True]
+        result = self._plan([record])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('nothing is missing', result.stderr)
+
+    def test_a_record_without_a_question_text_is_refused(self) -> None:
+        # The decorator matches a prompt on the question line. A plan entry with no text would match
+        # nothing, and the run would report a complete intervention that never happened.
+        record = _record('f', total=4, carried=3, correct=False, turns=['a', 'b', 'c', 'd'])
+        record['question'] = ''
+        result = self._plan([record])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('no question text', result.stderr)
+
+    def test_an_empty_gold_turn_is_refused(self) -> None:
+        record = _record('f', total=4, carried=3, correct=False, turns=['a', 'b', 'c', 'd'])
+        record['goldOverlap']['goldTurns'] = ['a', 'b', 'c', '']
+        result = self._plan([record])
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('empty gold turn', result.stderr)
 
 
 if __name__ == '__main__':

@@ -53,6 +53,18 @@ rule changed after the answers exist would be selection on the outcome.
 It issues no call and it does not read `goldTurns` to build a prompt. It selects; the harness that
 reinstates is a separate step, and keeping them apart is what lets this list be reviewed before
 anything is spent.
+
+## `--plan`: the same selection, in the harness's input format
+
+`--plan` renders the population as the JSON that `cortex-memory/bench/run-ablation.ts` reads (§13.274).
+It is the same selection as the table and not a second one -- `plan_entries` consumes the output of
+`census`, so a plan that named a different population than the table would be a plan nobody reviewed.
+
+The turn texts come from `goldOverlap.goldTurns`, which is aligned to `goldDelivered`, so the missing
+turns are `zip(turns, delivered)` where the flag is false. **Every entry must carry at least one turn
+and the two lists must be the same length**, and the tool exits 2 when they are not. That refusal is
+the lesson of §13.268.7 and of `gold-room.py`'s first draft: a list that is absent, short or empty
+sums to zero, and zero reads as "nothing to restore" -- a clean, plausible, entirely false result.
 """
 
 from __future__ import annotations
@@ -194,11 +206,91 @@ def _chars(value: int | None) -> str:
     return '?' if value is None else f'{value:,}'
 
 
+def _refuse(reason: str) -> None:
+    print(f'restore plan refused: {reason}', file=sys.stderr)
+    raise SystemExit(2)
+
+
+def plan_entries(report: dict, result: dict, source: str) -> dict:
+    """The harness plan: every failure plus every paired control, with the turns to reinstate.
+
+    The population is taken from `result`, which is `census`'s output, rather than recomputed here.
+    Two computations of one population is how a plan and the table it was reviewed against come to
+    disagree.
+
+    Failures include the **unmatched** ones. They have no control, which costs the pairing a row, but
+    they are still questions whose evidence was incomplete and whose answer was wrong -- dropping them
+    would make the instrument quietest about the largest interventions (five and six missing turns at
+    `42190193540`).
+    """
+    records = {record.get('questionId'): record for record in report.get('questions') or []}
+    entries: list[dict] = []
+    groups = (
+        ('incorrect', result['failures']),
+        ('correct', [pair['control'] for pair in result['pairs']]),
+    )
+    for outcome, group in groups:
+        for item in group:
+            question_id = item['questionId']
+            record = records.get(question_id)
+            if record is None:
+                _refuse(f'{question_id} was selected but is not among the artifact\'s questions')
+            question = record.get('question')
+            if not isinstance(question, str) or question.strip() == '':
+                _refuse(f'{question_id} carries no question text, so no prompt could be matched to it')
+            overlap = record.get('goldOverlap')
+            if not isinstance(overlap, dict):
+                _refuse(f'{question_id} carries no goldOverlap block')
+            turns = overlap.get('goldTurns')
+            delivered = overlap.get('goldDelivered')
+            if not isinstance(turns, list) or not isinstance(delivered, list):
+                _refuse(
+                    f'{question_id} does not carry both `goldTurns` and `goldDelivered`; '
+                    'the missing turns cannot be computed from a list that is not there'
+                )
+            if len(turns) != len(delivered):
+                _refuse(
+                    f'{question_id} has {len(turns)} gold turn(s) and {len(delivered)} delivery '
+                    'flag(s); the two lists are aligned by construction and a mismatch means one of '
+                    'them is not the list this tool thinks it is'
+                )
+            missing = [text for text, flag in zip(turns, delivered) if flag is False]
+            if not missing:
+                _refuse(
+                    f'{question_id} was selected as incomplete but nothing is missing from it, so '
+                    'the intervention would change nothing while reporting that it ran'
+                )
+            for text in missing:
+                if not isinstance(text, str) or text == '':
+                    _refuse(f'{question_id} has an empty gold turn, which cannot be reinstated')
+            entries.append(
+                {
+                    'questionId': question_id,
+                    'question': question,
+                    'turns': missing,
+                    'recordedOutcome': outcome,
+                }
+            )
+    if not entries:
+        _refuse('the selection is empty, so the run would measure nothing')
+    return {'source': source, 'entries': entries}
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('artifact', type=Path, help='a cortex-memory ablation artifact')
     parser.add_argument('--capability', default='MR', help='the capability to pair within (default MR)')
     parser.add_argument('--json', action='store_true', help='print the selection instead of a table')
+    parser.add_argument(
+        '--plan',
+        action='store_true',
+        help='print the harness plan (CORTEX_RESTORE_PLAN) instead of a table',
+    )
+    parser.add_argument(
+        '--source',
+        default='',
+        help='what the plan names as its origin; defaults to the artifact path',
+    )
     arguments = parser.parse_args(argv)
 
     report = load(arguments.artifact)
@@ -210,7 +302,10 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 2
-    if arguments.json:
+    if arguments.plan:
+        source = arguments.source or str(arguments.artifact)
+        print(json.dumps(plan_entries(report, result, source), indent=2))
+    elif arguments.json:
         print(json.dumps({'capability': arguments.capability, **result}, indent=2))
     else:
         print(render(result, arguments.capability))

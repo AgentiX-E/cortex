@@ -495,6 +495,21 @@ export {
 
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 
+// §13.274's restore counterfactual. The decorator, the plan parser and the dataset restriction are
+// exported because the bench entry point in `cortex-memory` is the only caller and it cannot reach
+// into this package's module paths; the analysis reads `RestoreCall[]` off the ledger the same way.
+// The four functions `bench/run-ablation.ts` calls plus the shape of the ledger it writes. Everything
+// else in the module stays module-local -- the parser, the banner, the variable name and the three
+// types -- because the census refuses an export with no caller, and an export added so a test can
+// reach it is an export the package does not support.
+export {
+  readRestorePlanFromEnv,
+  restoringReader,
+  restoreBlock,
+  restrictDatasetToPlan,
+  type RestoreCall,
+} from './restore-plan.js';
+
 // `withTemperature` stays module-private: `llm-factory` is its only consumer, and an exported
 // decorator with one in-package caller is an export the census reports as an orphan. The reader
 // is `readTemperature`, which `bench/run.ts` needs so the `default` sentinel does not arrive as

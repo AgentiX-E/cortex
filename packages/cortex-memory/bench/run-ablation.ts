@@ -91,6 +91,14 @@ import {
   sampleInstances,
   toMemoryArmConfig,
   toRerankRecord,
+  // §13.274's restore counterfactual. The four calls are the whole of the intervention on this
+  // side: parse the plan, narrow the dataset, decorate the feature-side readers, and let the ledger
+  // fall out of the decorator. Every decision behind them is in `cortex-eval/src/restore-plan.ts`,
+  // where a test can reach it.
+  readRestorePlanFromEnv,
+  restoringReader,
+  restoreBlock,
+  restrictDatasetToPlan,
   type BenchmarkProgress,
   type EmbeddingPreflight,
   type ExpansionTarget,
@@ -98,6 +106,7 @@ import {
   type RelevanceIndex,
   type RelevanceIndexOptions,
   type QuestionExpansion,
+  type RestoreCall,
 } from '@agentix-e/cortex-eval';
 import {
   CortexMemory,
@@ -256,7 +265,27 @@ async function main(): Promise<void> {
   }
   const limit = Number(process.env['LIMIT'] ?? 0);
   const sampled = sampleInstances(parsed as never, limit);
-  const dataset = loadLongMemEval(sampled as never);
+  const fullDataset = loadLongMemEval(sampled as never);
+  // §13.274's restore counterfactual narrows the run to the population the plan names.
+  //
+  // The restriction is applied to the dataset rather than to the arm because both consumers of the
+  // questions -- the relevance index and the graded passes -- read this value, and a run whose
+  // index was built over 500 questions while the arm graded 22 would report a pool the questions
+  // never had. `readRestorePlanFromEnv` answers `null` for an ordinary run, so an unset variable
+  // leaves every number below byte-identical to the run before it.
+  const restorePlan = readRestorePlanFromEnv(process.env, (path) => readFileSync(path, 'utf8'));
+  const dataset =
+    restorePlan === null ? fullDataset : restrictDatasetToPlan(fullDataset, restorePlan);
+  if (restorePlan !== null) {
+    // Printed before the fingerprint line, because the fingerprint describes the FILE and this
+    // describes the run: two runs of the same file, one of 500 and one of 22, share a digest and
+    // differ in what they measured.
+    console.log(
+      `Restore plan: ${restorePlan.entries.length} question(s) from ${restorePlan.source} ` +
+        `(${restorePlan.entries.filter((entry) => entry.recordedOutcome === 'incorrect').length} ` +
+        'recorded incorrect, the rest are the control)',
+    );
+  }
   // Printed as well as recorded, because the two cross-check each other: the log is what
   // a triage reader sees while the job still exists, and the artifact is what survives it.
   // Printing the file's instance count beside the digest is what distinguishes a 500-question
@@ -273,6 +302,26 @@ async function main(): Promise<void> {
   if (readerByRoute !== undefined) {
     console.log(`Route-scoped reader: ${Object.keys(readerByRoute).sort().join(',')}`);
   }
+
+  // §13.274's intervention, on the feature side only.
+  //
+  // `restoreCalls` is one ledger shared by every decorated reader, so a run that resolves a second
+  // client per route still produces one record. The baseline keeps the undecorated `llm` on
+  // purpose and for the reason the line above gives: this arm's pair is the product against the
+  // reference pipeline, and decorating both would restore evidence into a system that is not the
+  // treatment.
+  const restoreCalls: RestoreCall[] = [];
+  const featureLlm =
+    restorePlan === null ? llm : restoringReader(llm, restorePlan, restoreCalls).llm;
+  const featureReaderByRoute =
+    restorePlan === null || readerByRoute === undefined
+      ? readerByRoute
+      : Object.fromEntries(
+          Object.entries(readerByRoute).map(([route, reader]) => [
+            route,
+            restoringReader(reader, restorePlan, restoreCalls).llm,
+          ]),
+        );
   // A second client for the scoring instrument, on the same identity and the same pace, with the
   // pair a one-token verdict needs (§13.236). Logged because it is the pipe the verdicts travelled
   // through: `41585013786` died on a judge call and no line in its log said what that call had
@@ -559,7 +608,9 @@ async function main(): Promise<void> {
   // client, the relevance table).
   const buildFeature = (): CortexMemory =>
     new CortexMemory({
-      llm,
+      // Decorated only when the run restores (§13.274). `featureLlm` IS `llm` otherwise, so an
+      // ordinary run constructs the identical object it always did.
+      llm: featureLlm,
       // Hoisted out of the object literal so every worker's instance agrees: `now` participates in
       // the gate's decay arithmetic, and two instances built milliseconds apart would make the
       // workers disagree about the clock rather than about the questions.
@@ -627,7 +678,7 @@ async function main(): Promise<void> {
       // configuration every archived artifact was produced under, and a present-but-empty map would
       // read as configured to the `!== undefined` check `#readerFor` performs while resolving no route
       // at all -- an artifact then claiming a treatment the product never administered.
-      ...(readerByRoute === undefined ? {} : { readerByRoute }),
+      ...(featureReaderByRoute === undefined ? {} : { readerByRoute: featureReaderByRoute }),
       // §13.153. Same conditional shape and for the same reason: absent is the shipped behaviour, and a
       // present-but-empty reader pair would read as configured to a `!== undefined` check while resolving
       // no window at all -- an artifact then claiming a treatment the product never administered.
@@ -931,6 +982,54 @@ async function main(): Promise<void> {
     },
   );
   writeFileSync('benchmark-cortex-memory-ablation-report.json', `${written.json}\n`);
+
+  // §13.274's ledger, written beside the report and never inside it.
+  //
+  // Inside would put an instrument's bookkeeping into the artifact schema, where every gate that
+  // reads `questions[].promptChars` would start seeing a run whose prompts were edited after the
+  // product built them -- and the gates that exist to notice that would be right to fail. A
+  // separate file says the same thing without teaching the report a new shape: this run's prompts
+  // grew by exactly these many characters, on these questions.
+  //
+  // Written only when the run restored, because an empty ledger on an ordinary run would be a
+  // record of an experiment that was not administered.
+  if (restorePlan !== null) {
+    const matched = restoreCalls.filter((call) => call.questionId !== null);
+    const perQuestion = new Map<string, { calls: number; grewBy: number }>();
+    for (const call of matched) {
+      if (call.questionId === null) continue;
+      const current = perQuestion.get(call.questionId) ?? { calls: 0, grewBy: 0 };
+      perQuestion.set(call.questionId, {
+        calls: current.calls + 1,
+        grewBy: current.grewBy + (call.afterChars - call.beforeChars),
+      });
+    }
+    const ledger = {
+      source: restorePlan.source,
+      entries: restorePlan.entries.map((entry) => {
+        const seen = perQuestion.get(entry.questionId);
+        return {
+          questionId: entry.questionId,
+          recordedOutcome: entry.recordedOutcome,
+          restoredTurns: entry.turns.length,
+          restoredChars: restoreBlock(entry).length,
+          // Absent rather than zero when the question was never asked: the same rule the artifact
+          // follows, and the one §13.268.7 cost this campaign a table to learn.
+          ...(seen === undefined ? {} : { calls: seen.calls, grewBy: seen.grewBy }),
+        };
+      }),
+      // A non-zero count is an instrument defect, not a result: some prompt reached the provider
+      // without a question line this plan could name, so its answer is not part of the intervention
+      // and cannot be told apart from one that is.
+      unmatchedCalls: restoreCalls.filter((call) => call.questionId === null).length,
+      calls: restoreCalls.length,
+    };
+    writeFileSync('restore-calls.json', `${JSON.stringify(ledger, null, 2)}\n`);
+    console.log(
+      `Restore ledger: ${ledger.calls} call(s) over ${perQuestion.size} of ` +
+        `${restorePlan.entries.length} planned question(s), ${ledger.unmatchedCalls} unmatched`,
+    );
+  }
 
   // Stated on the console as well as in the artifact, for §10.8's reason: the log
   // is what survives when the artifact is not collected, and a reader of the log
