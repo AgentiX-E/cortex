@@ -30475,3 +30475,58 @@ The two instruments this artifact unblocks, and the order they run in:
 2. **the restore counterfactual** of §13.267 — the 12 partial failures plus 12 matched controls, the
    same reader, the gold turns appended verbatim, the outcome classified recoverable, irreversible or
    residual. Under 120 calls, which is one fiftieth of a dispatch.
+
+## 13.270 The restore population, chosen before any answer exists
+
+§13.267 registered the counterfactual and §13.267.5 found it blocked on one field. The field landed.
+The remaining risk is not the classification -- that is arithmetic once the answers exist -- but the
+**population**, because choosing it after seeing which questions convert is selection on the outcome
+and no result it produced could be believed.
+
+`tools/restore-population.py` produces the list from the artifact alone, before any call, and prints
+the rule that produced it.
+
+### 13.270.1 The rule, and the number that chose between two rules
+
+Pairs are matched on `missing = total - carried`, the size of the intervention, because both sides of a
+pair have to receive the same intervention for the control to price that intervention. `total` is
+minimised inside the stratum rather than demanded, and ties break on `questionId` so two runs of the
+tool produce one population.
+
+The first version matched on `total` exactly. Against `42161343457` it produced **3 pairs and 7
+unmatched failures**: gold counts on that run run from 10 to 30 while partial successes cluster at the
+small end, so a rule that reads as conservative on paper discards seventy per cent of the population --
+including the questions that failed hardest.
+
+Matching on `missing` produces **8 pairs and 2 unmatched** on the same artifact:
+
+| | count |
+| --- | ---: |
+| `MR` partial failures | 10 |
+| `MR` partial successes | 22 |
+| pairs | **8** |
+| unmatched failures | 2 (`1a8a66a6` missing 6, `gpt4_ab202e7f` missing 5) |
+
+Sixteen questions at two arms is **32 calls**, against the 120 §13.267 budgeted.
+
+The yield is a design fact and not an outcome: it was read from the artifact's counts before any
+restore ran, and no question's answer entered the choice. That is what makes it legitimate to prefer
+one rule over another -- and it is written down because a rule changed after the answers existed would
+not be.
+
+### 13.270.2 What the population says before anything is spent
+
+All ten `MR` partial failures on `42161343457` carry `all_offered: true` -- every gold turn reached the
+ranking. That is §13.268.1 seen from the other side: at k=512 the ranking is no longer what removes
+evidence, so a restore counterfactual run on this artifact measures **allocation and nothing else**.
+Had the population contained questions whose gold never entered the pool, the same classification
+would have conflated two mechanisms.
+
+That is also why the tool records `all_offered` per record and prints it: the day the column stops
+being all true, the population has changed meaning and the classification needs a fourth class.
+
+### 13.270.3 What is deliberately not in this step
+
+No prompt is assembled and no call is issued. Building the reinstated prompt is a separate step, and
+keeping the selection reviewable on its own is the point: a list of sixteen question ids can be read
+and disagreed with in a way a table of conversion rates cannot.
