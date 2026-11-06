@@ -31827,6 +31827,14 @@ than sufficient -- it says the room exists, not that the next turns in the rank 
 ones -- which is exactly why gate 8 asks for **+20 of 500** against an arithmetic ceiling of 109 and not for
 the ceiling.
 
+**A refinement read off the same field, and it changes what the prediction means.** On `MR` the delivered
+count already **exceeds** the ranked pool -- 1,779 gold turns delivered against 1,753 that the ranking
+surfaced -- so this route's recall is produced by restoration rather than by ranking depth. Every one of the
+53 missing turns carries `goldRanks = -1`, the marker for "the ranking never surfaced it": they are not
+candidates a wider `top_k` would find, they are neighbours of an anchor that sits below the character cut.
+The freed room therefore acts on precisely the population the deficit is in, and a run that answered this by
+widening the pool would be answering a different question.
+
 The same records give the retrieval-side quantity `LongMemEval` scores and publishes, so the arm can be
 compared on it: **gold-turn recall**, the fraction of the labelled evidence turns that reached the prompt.
 It has never been printed for this arm, and it is the number the coverage gap actually moves:
