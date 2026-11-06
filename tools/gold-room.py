@@ -95,6 +95,17 @@ def classify(record: dict, budget: int, cap: int | None) -> dict | None:
             'refused': 'goldTurns',
             'total': total,
         }
+    if len(overlap.get('goldDelivered') or []) != total:
+        # The flags say which turns are missing, and the whole of the calculation is about those
+        # turns. A flag list of the wrong length is not a partially known answer; it is a producer
+        # that wrote one list against another's count, which is the class of defect the audit's
+        # digest check exists for and this tool cannot price.
+        return {
+            'questionId': record.get('questionId'),
+            'capability': record.get('capability'),
+            'refused': 'goldDelivered',
+            'total': total,
+        }
     overhead = overhead_of(record)
     if overhead is None:
         return {
@@ -105,15 +116,24 @@ def classify(record: dict, budget: int, cap: int | None) -> dict | None:
         }
     ranks = overlap.get('goldRanks') or []
     delivered = overlap.get('goldDelivered') or []
+    # Only the **missing** turns have to have been offered, because only they are what a selector
+    # could have chosen differently. Requiring every gold turn to be in the pool asks a question the
+    # room calculation never asks, and on the first real artifact it emptied the population: at
+    # `top_k = 256` a question naming thirty gold turns essentially never has all thirty inside a
+    # 256-deep ranking, so `MR` and `TR` reported zero candidates while their gold was two turns from
+    # fitting. The first version of this line required all of them.
+    missing = [index for index, flag in enumerate(delivered) if flag is False]
+    missing_offered = bool(ranks) and all(
+        isinstance(ranks[index], int) and ranks[index] >= 0 for index in missing if index < len(ranks)
+    )
     return {
         'questionId': record.get('questionId'),
         'capability': record.get('capability'),
         'total': total,
         'carried': overlap.get('carried'),
-        # Every gold turn reached the ranking. When false the selector never had the choice, and a
-        # question in that state is a pool question rather than a selection question -- §13.268.1
-        # closed that population at k=512, so it should be near empty and is printed when it is not.
         'all_offered': bool(ranks) and all(isinstance(rank, int) and rank >= 0 for rank in ranks),
+        # What the room calculation actually conditions on: the turns it would have to reinstate.
+        'missing_offered': missing_offered,
         'delivered_flags': len(delivered),
         'need_uncapped': sum(len(turn) for turn in turns) + overhead,
         'need_capped': sum(min(len(turn), cap) for turn in turns) + overhead if cap else None,
@@ -145,7 +165,7 @@ def summarise(rows: list[dict], budget: int, cap: int | None) -> dict[str, dict[
             bucket['full'] += 1
             continue
         bucket['partial'] += 1
-        if row['all_offered']:
+        if row['missing_offered']:
             bucket['partial_all_offered'] += 1
         else:
             bucket['partial_not_offered'] += 1
@@ -179,7 +199,7 @@ def render(summary: dict[str, dict[str, int]], refused: list[dict], budget: int,
             f'{bucket.get("irreducible", 0):>6}'
         )
     lines.append('')
-    lines.append('  `offered`  the ranking surfaced every gold turn, so the selector had the choice')
+    lines.append('  `offered`  the ranking surfaced every *missing* gold turn, so the selector had the choice')
     lines.append('  `fits`     every gold turn plus the measured overhead is inside the budget (uncapped text)')
     lines.append('  `fits@cap` the same arithmetic with each turn at the render cap; a judgement, not a finding')
     lines.append('  `room`     does not fit: no ordering helps and the fix has to be denser evidence')

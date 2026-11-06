@@ -158,5 +158,41 @@ class StratumTest(unittest.TestCase):
         self.assertRegex(result.stdout, r'MR\s+1\s+0\s+1\s+1\s+0\s+1\s+1')
 
 
+class ChoiceTest(unittest.TestCase):
+    """What "the selector had the choice" means, which the first version of this tool got wrong.
+
+    The room calculation asks what a selector could have done differently, and the only turns it
+    could have treated differently are the ones that did not arrive. Requiring every gold turn to be
+    inside the pool instead asks a question the calculation never asks -- and on the first real
+    artifact it emptied the population: at `top_k = 256` a question naming thirty gold turns
+    essentially never has all thirty inside a 256-deep ranking, so `MR` and `TR` reported zero
+    candidates while their missing gold was two turns from fitting.
+    """
+
+    def test_a_delivered_gold_outside_the_pool_does_not_disqualify_the_question(self) -> None:
+        # `a` was delivered and never scored (the beyond-the-pool regime of 13.214); `b` is the one
+        # that did not arrive, and it is in the pool. The selector had the choice about `b`.
+        record = _record('q1', gold=['a', 'b'], carried=1, ranks=[-1, 5])
+        record['goldOverlap']['goldDelivered'] = [True, False]
+        result = _run(_artifact([record]))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r'MR\s+1\s+0\s+1\s+1\s+1\s+0\s+0')
+
+    def test_a_missing_gold_outside_the_pool_still_puts_the_question_in_the_pool_stratum(self) -> None:
+        # The other direction: nothing a selector could have done, because the turn was never offered
+        # and its text is 2,000 characters, so the answer is room anyway -- but for two reasons.
+        record = _record('q1', gold=['a' * 2_000], carried=0, ranks=[-1])
+        result = _run(_artifact([record]))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r'MR\s+1\s+0\s+1\s+0\s+0\s+0\s+0')
+
+    def test_a_flag_list_of_the_wrong_length_is_refused_not_truncated(self) -> None:
+        record = _record('q1', gold=['a', 'b'], carried=1, ranks=[0, 1])
+        record['goldOverlap']['goldDelivered'] = [False]
+        result = _run(_artifact([record]))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('cannot price', result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()
