@@ -30421,9 +30421,20 @@ A first draft of the room calculation in §13.268.3 was computed against this ar
 every partial question as reachable under a perfect selector, because `sum(len(t) for t in goldTurns)`
 over an absent field is zero and the sum then compared only the overhead against the cap. The reading
 was wrong in the one direction that matters — it said the budget was ample when the budget is the
-binding constraint — and it was wrong for the fourth time in this campaign for the same reason. The
-tool that will do this measurement refuses on an absent field rather than summing it; that refusal is
-the point, and it is registered in §13.269 gate 6.
+binding constraint — and it was wrong for the fourth time in this campaign for the same reason.
+
+`tools/gold-room.py` is that draft made into an instrument, and its first property is the refusal:
+run against `42161343457` it exits 2 and names all five hundred records rather than printing a table.
+Three more refusals are tested beside it — a gold list shorter than `total`, a record with no
+`deliveredPromptChars − promptChars` pair to measure the overhead from, and an artifact with no
+`maxPromptChars` to price against — because each of them, left to arithmetic, would have produced a
+number that reads as a finding.
+
+The arithmetic itself is `sum(len(gold turn)) + (deliveredPromptChars − promptChars)` against the
+budget, where the second term is the overhead **measured on that same record** rather than estimated.
+Both readings of the character cap are printed: `goldTurns` holds uncapped text while the delivery was
+capped at `maxTurnChars`, so the uncapped sum over-states the cost and a question it calls fitting
+certainly fits. The conservative column decides; the capped one is labelled a judgement.
 
 ## 13.269 Registration: the re-instrumentation run, at the shipped configuration
 
