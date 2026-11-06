@@ -30246,3 +30246,221 @@ One new assertion is the one worth naming: a gold turn **that was not delivered*
 record, in `total` order alongside `goldDelivered` and `goldRanks`, so index `i` means the same gold
 turn in all three. That is the property §13.267.5 was written for, and it is now pinned by a test
 rather than by a paragraph.
+
+## 13.268 Result: the width is free, the pool is not the constraint, and the audit was publishing a zero
+
+`42161343457` (`c1f8fb85`, `relevance_top_k = 512`) landed and was read against `42013256884` on the
+seven gates §13.266 registered before the dispatch.
+
+| # | quantity | reading | verdict |
+| ---: | --- | --- | --- |
+| 1 | `MR` accuracy | 78.51% → 79.34% (+0.83 over 121; 7 won, 6 lost; p = 1) | **PASS** |
+| 2 | every other capability | `ABS` 100.00 → 100.00 (0/0); `IE` 95.33 → 95.33 (2/2); `KU` 87.50 → 86.11 (2/3); `TR` 94.49 → 94.49 (3/3) — worst −1.39 against a bar of 3 | **PASS** |
+| 3 | `MR` questions reaching every gold turn | 89/121 against 87/121 (**+2**; bar: ≥ +20) | **FAIL** |
+| 4 | `llmUsage.calls` | 5,671 (bar: ≤ 6,400) | **PASS** |
+| 5 | `llmUsage.promptTokens` | 31,047,070 (bar: ≤ 38,000,000) | **PASS** |
+| 6 | `memoryArmConfig.relevanceTopK` | 512 (registered: 512) | **PASS** |
+| 7 | `bareRetry.attempted` | 68 (bar: ≥ 60) | **PASS** |
+
+Six pass and gate 3 fails, which is the outcome §13.266 called "the pool never bound" — and the
+sentence it wrote for that case, "`relevance-index.ts` is where to look", turns out to be wrong. The
+pool bound, it was emptied, and the constraint moved rather than disappeared.
+
+### 13.268.1 The gold was partitioned, and the partition moved instead of shrinking
+
+`goldOverlap.goldRanks` and `goldDelivered` are indexed by the same gold turns, so each of the 7,516
+gold turns on the 500 questions is in exactly one of three states per run. Counted on both artifacts:
+
+| where the gold went | `42013256884` (k=256) | `42161343457` (k=512) |
+| --- | ---: | ---: |
+| reached the reader | 6,476 | 6,522 |
+| the ranking never surfaced it (`rank = −1`) | **264** | **2** |
+| the ranking surfaced it and the budget did not buy it | 732 | **992** |
+| arrived from outside the pool, which is the §13.214 regime | 44 | 0 |
+
+Widening the pool did exactly what §13.265.8 predicted, and the effect is almost total: the ranking
+went from missing 264 gold turns to missing 2. **Every one of those 262 rescued turns was then cut by
+the budget** — the cut count rose by 260, from 732 to 992, and the net arrival rose by 46.
+
+This is the cleanest single-variable result the campaign has. The signal problem and the allocation
+problem are not two descriptions of one defect: they are two defects, the first is now closed, and
+closing it converted itself into the second at a one-to-one rate. Any future claim that "retrieval
+cannot find the evidence" has to be measured against this run, where it can no longer be said.
+
+It also retires §13.265.8. That section's "133 of 241 partial questions have a gold turn that never
+entered the pool" was true at k=256 and is 2 at k=512. The 133 were the pool cut, exactly as
+registered; the reason widening it did not raise accuracy is not that the reading was wrong but that
+the budget stood directly behind it.
+
+### 13.268.2 Width is free, which is a second finding and not a footnote
+
+The treatment issued 5,671 calls against the control's 5,668, and **31,047,070 prompt tokens against
+31,076,815** — 29,745 fewer, with twice the pool. The registered ceiling allowed +22%; the run spent
+−0.1%.
+
+The reason is the one §13.230.2 got wrong once and this artifact settles: the offer is not the
+delivery. On a partial `MR` question the admitted offer is `evidenceChars = 64,665` and the delivered
+evidence is `promptChars = 45,741`, inside a whole prompt of `deliveredPromptChars = 47,786` against a
+48,000 cap. The pool can grow all it likes; the delivered bytes are fixed by the budget, and the
+ranking only decides *which* bytes they are.
+
+So the width axis is closed on cost as well as on effect: it cannot be blamed for tokens, and it did
+not buy accuracy. It is nonetheless the right platform to leave the arm on for the next axis, because
+it is the only configuration in which the ranking's own misses are 2 instead of 264 — a selection
+experiment run at k=256 would be measuring the pool and calling it selection. That is a change of
+default, and defaults are not changed by a failed gate, so §13.269 registers it rather than assuming
+it.
+
+### 13.268.3 The budget is not one turn short; it is 2.1 to 6 times short
+
+`tools/evidence-depth.py` turns `goldRanks` into a coverage-versus-depth curve for depths the run did
+not use, because the curve is a property of the selection and costs no call. On `42161343457`:
+
+| route | delivered depth | chars/turn | coverage at that depth | room for 95% | room for 99% | multiple of 48,000 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| multi-session | 175 | 254 | 90.8% | 63,700 | 100,000 | **2.1×** |
+| temporal | 182 | 250 | 88.0% | 70,500 | 104,900 | **2.2×** |
+| knowledge-update | 62 | 717 | 78.3% | 143,400 | 239,500 | **5.0×** |
+| flat | 61 | 723 | 84.7% | 152,600 | 290,000 | **6.0×** |
+| abstention | 72 | 596 | 66.4% | 178,900 | 250,400 | **5.2×** |
+
+The missing gold is not sitting just below the cut. At `multi-session` — the capability with the
+largest headroom and the most partial failures — the last nine points of coverage are 2.1 times the
+current budget away, and on `flat` they are six times away. A reordering that promotes the next few
+turns cannot reach them, because there is no "next few": the curve is shallow past the cut by
+construction.
+
+Combined with §13.268.1 this closes the second axis too. Buying the budget would take prompt tokens
+from 31.0M to somewhere between 65M and 190M. The registered ceiling for a diagnostic was +22%. There
+is no version of this that is affordable, and no version of it that is measured.
+
+### 13.268.4 What is left to measure, and why nothing else is worth measuring first
+
+Two axes are now closed by measurement — the pool is empty of misses, the budget is 2.1× to 6× short
+— and neither closure says anything about whether the gold would have helped. That question is the
+one §13.267 registered the instrument for, and it is now the only question standing between this
+campaign and a defensible next step:
+
+- if restored gold converts wrong answers to right ones at a high rate, the axis is evidence
+  **density** — packing more of the offer into 48,000 characters — and the budget stands still;
+- if it converts at a low rate, the reader cannot use evidence it is given, and every axis that moves
+  evidence is worthless until that is fixed.
+
+The prior for the second is not zero. §13.265.6 measured a manipulation on this population that fixed
+**0** and broke **10**, and `accFull = 90.6%` against `accPart = 66.7%` on `multi-session` is a
+difference between two populations rather than a effect of adding a turn.
+
+### 13.268.5 The arm audit failed the run, and it was right
+
+`42161343457`'s benchmark job exited 1 on check 7b:
+
+```text
+FAIL  audit   reviewPass=bare, so neither a tally nor a per-question count may be published
+              -- a zeroed census here would claim a mechanism that never ran
+```
+
+The artifact carried `audit: { attempted: 0, changed: 0 }` and `auditConsultations: 0` with
+`auditChanges: 0` on all 500 records, under `memoryArmConfig.reviewPass: "bare"`. The check is correct
+and the product was wrong.
+
+The cause is one line of intent that the code did not honour. `CortexMemory.auditCensus()` returned
+`{ attempted: 0, changed: 0 }` unconditionally, and both readers — `auditOf` for the run-level tally
+and `traceCensus` for the per-question delta — faithfully recorded what it said. A test already
+existed for this and asserted the zero, with the justification written into its comment:
+
+> Zeroed rather than absent on the product side, because the product always carries the accessor; the
+> artifact omits the field, and that omission is what says "this build has no audit".
+
+**The artifact did not omit the field.** The test's fixture had no accessor at all, which is a shape
+the product never has, so the assertion passed against a system nobody ships. That is the fifth
+instance of the shape §13.181 named — a producer field with no reader — arriving this time as a test
+whose fixture diverged from the product.
+
+The repair makes absence a property of the mechanism, because the mechanism is the only thing that
+knows: `auditCensus()` now returns `null` unless `reviewPass === 'audit'`. A configured pass that
+declined every list still reports `{ attempted: 0, changed: 0 }`, because that is a measurement. Three
+tests hold it:
+
+- `review-pass.test.ts` — a bare build reports `null`, and the same file's decline case still reports
+  a genuine zero;
+- `audit-census.test.ts` — a system whose census answers `null` publishes neither the tally nor the
+  per-question pair, which is the fixture shape the product actually has;
+- the existing no-accessor test stands, now as the second of three distinct shapes rather than as the
+  only one.
+
+`traceCensus` also grew an explicit `reading === null` branch. It already took that path by way of a
+`TypeError` caught by the fault handler, which is a behaviour nobody reading the function could see,
+and "the product said it has no mechanism" is not a fault.
+
+### 13.268.6 The gate table was data that nothing validated
+
+The seven-gate readout died on `KeyError: 'max_loss_points'` before printing anything, because
+`tools/gates/13.266.json` said `at_most_loss_points`. The implementation and its sibling table
+`13.262.7.json` both say `max_loss_points`; one of the two files was wrong and the suite could not
+tell, because the consistency test compares the `quantity` and `threshold` cells against the
+document's table and those cells were right.
+
+A registration is data, and a table whose only failure mode is a crash halfway through a readout has
+not been validated — a typo that the kind *ignores* would have been worse, setting no bar and printing
+a pass.
+
+`registered-gates.py` now carries `GATE_SCHEMA`, beside `KINDS`: the required keys and the permitted
+extra keys per kind, with `GATE_COMMON` for the printed cells and the documentation cells. A gate now
+fails as a malformed table — exit 2, naming the key, before any artifact is loaded — and the suite
+holds `GATE_SCHEMA` and `KINDS` to the same key set so a kind cannot be added without one. Six tests
+cover it, including the exact spelling that broke this readout and the case of an unknown key, which
+is the same defect arriving silently.
+
+### 13.268.7 What this round did not do
+
+The restore counterfactual did not run, and the reason is mechanical rather than a choice: `goldTurns`
+landed in `3f6eeed1`, and `42161343457` was produced at `c1f8fb85`, before it. The artifact carries
+`goldOverlap` with `carried`, `total`, `pool`, `goldRanks` and `goldDelivered`, and no text.
+
+A first draft of the room calculation in §13.268.3 was computed against this artifact and reported
+every partial question as reachable under a perfect selector, because `sum(len(t) for t in goldTurns)`
+over an absent field is zero and the sum then compared only the overhead against the cap. The reading
+was wrong in the one direction that matters — it said the budget was ample when the budget is the
+binding constraint — and it was wrong for the fourth time in this campaign for the same reason. The
+tool that will do this measurement refuses on an absent field rather than summing it; that refusal is
+the point, and it is registered in §13.269 gate 6.
+
+## 13.269 Registration: the re-instrumentation run, at the shipped configuration
+
+The next dispatch is not a hypothesis about accuracy. It exists to produce one artifact that the arm
+audit accepts and that carries the field the next two instruments need, at the configuration the
+product actually ships.
+
+| item | value |
+| --- | --- |
+| configuration | the registered default, unchanged: `reviewPass = bare`, `relevanceTopK = 256`, 48,000 prompt chars, anchors 4/3/0.5 |
+| control | `42013256884`, which is the same configuration |
+| what changes in the artifact | `audit` and the per-record audit pair are **absent**, and `goldOverlap.goldTurns` is present on every record with gold |
+| what this is not | a test of any mechanism. No mechanism moves, so a delta here is the noise floor, and it is reported as one |
+
+Gates, written before the dispatch:
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | the artifact's own audit | **all twelve checks pass**, including 7b — the run that this registration exists to make green |
+| 2 | `MR` accuracy against `42013256884` | **Δ ≥ −3 points**, and the net reported beside its resolution. The bar is a null, not a win: nothing was supposed to move |
+| 3 | every other capability against `42013256884` | no loss **≥ 3 points** |
+| 4 | `llmUsage.calls` | **≤ 5,900** against 5,668 — a shape change must not cost a call |
+| 5 | `llmUsage.promptTokens` | **≤ 32,000,000** against 31,076,815, i.e. **+3%** — an absent field and a present one are the whole of the difference |
+| 6 | `goldOverlap.goldTurns` | **present with `length === total` on every record that names gold**, and absent on the records that do not. This is the field the room calculation and the restore counterfactual both read, and a zero-length list would make the first of them report every question reachable |
+| 7 | `bareRetry.attempted` | **≥ 60** |
+
+Refutation is asymmetric and both directions are readings. If gate 1 fails, the absence repair is
+wrong and the shape has to be re-derived from the failing check rather than from the intent. If gates
+2–5 fail, the shape change is not inert: an absent `audit` block is not supposed to cost anything, and
+a run that loses accuracy to it has found a consumer of the field that nobody documented.
+
+The two instruments this artifact unblocks, and the order they run in:
+
+1. **the room calculation** — for each partial question, `sum(len(goldTurns)) + overhead` against
+   `maxPromptChars`, where `overhead` is the measured `deliveredPromptChars − promptChars` on that
+   same record rather than an estimate. It converts §13.268.3's curve into a count: how many of the
+   partial questions could a perfect selector have completed inside 48,000 characters.
+2. **the restore counterfactual** of §13.267 — the 12 partial failures plus 12 matched controls, the
+   same reader, the gold turns appended verbatim, the outcome classified recoverable, irreversible or
+   residual. Under 120 calls, which is one fiftieth of a dispatch.
