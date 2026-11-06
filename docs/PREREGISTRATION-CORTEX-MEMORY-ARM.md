@@ -30530,3 +30530,65 @@ being all true, the population has changed meaning and the classification needs 
 No prompt is assembled and no call is issued. Building the reinstated prompt is a separate step, and
 keeping the selection reviewable on its own is the point: a list of sixteen question ids can be read
 and disagreed with in a way a table of conversion rates cannot.
+
+## 13.271 The residual is one gold turn, at rank 382, and the budget delivers 175
+
+§13.268.3 priced the budget with a curve and §13.268.1 partitioned the gold. Neither says what a single
+partial question is missing, and the answer decides which repair is even expressible.
+
+On `42161343457`'s 32 partial `MR` questions, counted from `goldRanks` and `goldDelivered` alone:
+
+| how many gold turns the question is missing | questions |
+| --- | ---: |
+| 1 | **21** |
+| 2 | 5 |
+| 3 | 3 |
+| 4 | 1 |
+| 5 | 1 |
+| 6 | 1 |
+
+And where those 55 missing turns sit in the ranking:
+
+| | value |
+| --- | ---: |
+| median rank of a missing turn | **382** |
+| median turns delivered on those questions | **175** |
+| lowest rank among them | 275 |
+| never surfaced (`rank = −1`) | **1** of 55 |
+
+So the deficit is not diffuse. Two thirds of the partial questions are missing **exactly one** gold
+turn, and that turn sits about **207 positions below the cut**. The ranking is not failing to find the
+evidence -- it delivered between 17 and 29 of the 9 to 30 gold turns each question names. It is failing
+to put **one** of them inside the depth the budget buys.
+
+### 13.271.1 The number that constrains the counterfactual, and it is not the failure count
+
+Of those 32 partial questions, **22 are answered correctly anyway** and 10 are not. So the base rate of
+"a missing gold turn did not prevent a correct answer" on this population is **68.8%**.
+
+That is the prior §13.267's instrument has to beat. A restore that fixed every one of the ten failures
+would move `MR` from 79.34% to 87.60% -- **+8.26 points, 10 of 121**, which is just above the 9-question
+resolution §13.268 reports. A restore that converts half moves it 4.1 points, which is below it. The
+counterfactual is therefore correctly sized: it can distinguish "the evidence matters" from "it does
+not" only if the conversion rate is high, and if the rate is low the answer is that the axis is dead
+rather than underpowered.
+
+### 13.271.2 Why a set-level objective is the only repair this shape admits
+
+Put beside §13.268.3, this closes an argument that neither instrument makes alone:
+
+* the gold for one question costs **tens of turns**, not hundreds -- a selector that knew which turns
+  were gold would fit them inside 48,000 characters with room to spare, so the budget is not what
+  makes the delivery impossible;
+* but **no prefix** of the ranking reaches them, because the last one sits at rank 382 while the
+  budget buys 175.
+
+A prefix cannot be repaired by widening it (2.1x to 6.0x, §13.268.3) and cannot be repaired by
+reordering it either, unless the reordering is allowed to **skip** -- an item-level objective that
+takes the top `k` by relevance has no term that says "this question's need is not yet covered". That
+is the shift arXiv 2610.09348 names, and the reason its FCA-based sufficient-subset step exists rather
+than a better scorer.
+
+Which is testable here without adopting anything: a set-level objective's ceiling on this population
+is "does every question's gold fit", and `tools/gold-room.py` computes exactly that once `goldTurns`
+is on the artifact. §13.269 is the run that puts it there.
