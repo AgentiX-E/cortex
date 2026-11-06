@@ -808,10 +808,22 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   finally reaches the request: it was declared, forwarded and never read from §10.3's first
   dispatch until then, so every reading before §13.119 was served at the provider's default
   sampling. The number did not move; it started being true.
-- `promptContract: abstention-evidence-blocks` — **held from §12.5 while §13's ask is
-  reverted by §13.9.** It stays in this list because §13's comparison is two-axis: the
-  ask moved and the rendering did not, so a run that dropped back to the baseline
-  rendering as well would move both at once and attribute the result to neither.
+- `promptContract: evidence-blocks-instruction-first` — **registered by §13.279, replacing
+  `abstention-evidence-blocks`, which §12.5 registered and every run from `37804673104` to
+  `42190193540` carried.** The contract names the same sourced rendering and selects one further
+  property: the multi-session prompt's sections are joined in the reference pipeline's order --
+  instruction block above the evidence, question after it, the block's closing `Answer:` cue last.
+  It is a contract name rather than a new dispatch input because the workflow sits at GitHub's
+  25-input ceiling, and because this is the axis that already carries "how this run renders".
+  **The treatment is a permutation and nothing else**: `prompt-assembly.test.ts` asserts that the
+  two prompts' `\n\n`-separated segments are equal as multisets at three budgets, so a movement on
+  this arm's `MR` is a fact about order. §13.279 registers the gates, and the reach is one route --
+  `buildSessionPrompt` is the only builder that takes `PromptOptions.assembly`, and `buildPrompt`
+  does not carry it, so the other five capabilities are the internal control.
+  **Why the rendering did not move with it:** §13.276.6 read §13.246's audit row and concluded the
+  reference's schema, Step 2 and terminator were still missing from this arm. They are not --
+  §13.248 adopted `ask=verbatim`, which is that block verbatim, and §13.278 records the stale
+  premise and the dispatch it would have wasted.
 - `ask: verbatim` — **registered by §13.248, replacing `operands+operand-gap`.** The value is the
   reference pipeline's aggregation contract migrated whole: `buildAggregationQaPrompt`'s text, unabridged,
   with the `item | verb | session date` schema, four per-form Step 2 lines, the "combining is NOT a reason
@@ -31044,6 +31056,12 @@ terminator, on the same reader, and loses 6 to 9.5 points for it.
 
 ## 13.277 Registration: the contract, ported whole, as the next single-variable experiment
 
+> **Superseded by §13.278 before dispatch.** This registration was written from §13.246's audit row,
+> which described the arm as it stood before §13.248 adopted `ask=verbatim`. The contract it names is
+> already this arm's, and the render recorded in §13.278.1 says so. The section is kept rather than
+> deleted because the reasoning about *which* three properties matter is still the right reasoning --
+> it was aimed at a prompt that no longer exists. §13.279 registers what replaced it.
+
 §13.276.6 named where the gap is and what to compare. This registers the comparison.
 
 ### 13.277.1 The three differences, and why the whole contract rather than one of them
@@ -31111,3 +31129,222 @@ It does not test multi-step retrieval (MemCog's family). §13.276.6 says so expl
 mechanical rather than a priority: a second and third retrieval step changes the arm's structure -- it
 needs an intermediate answer before the next query exists -- and folding it into this run would make one
 artifact carry two treatments. It is the experiment after this one if this one lands.
+
+## 13.278 The next experiment was registered against a prompt this arm no longer renders
+
+§13.277 registers "the contract, ported whole". At HEAD that contract is already ported, and the
+sentence naming it as missing is §13.246's audit row quoted without the adoption that superseded it.
+This section records the contradiction, the render that settles it, and the four censuses the
+archived artifacts could already answer -- run because the registration had to be checked before it
+was dispatched rather than after.
+
+### 13.278.1 The contradiction, and the render that decides it
+
+§13.276.6 and §13.277.1 both say:
+
+> this arm renders a different schema, a different Step 2 and no terminator
+
+That was true when §13.246 wrote it. It stopped being true at §13.248.7, which **adopted**
+`ask=verbatim`: the reference pipeline's `buildAggregationQaPrompt`, line for line, held to line
+equality by `ask-verbatim.test.ts`, which renders the reference builder out of `cortex-eval` and
+compares it against this package's constant.
+
+The artifact says so in its own configuration. `42177443765` records:
+
+```json
+"ask": "verbatim", "askRoutes": ["multi-session", "flat", "temporal", "abstention"]
+```
+
+And a render at HEAD, with the control arm's options (`ask=verbatim`, `rendering=sourced`,
+`maxChars=48000`), carries all three of the properties §13.277 registers as missing:
+
+| property §13.277 registers as absent | marker in the rendered prompt | present |
+| --- | --- | --- |
+| the fixed `item \| verb \| session date` schema | `<item> \| <exact action verb from the question>` | **yes** |
+| Step 2's arithmetic in the question's own terms | `how many hours/days/weeks/months in total` | **yes** |
+| the `Answer: <final answer>` terminator | the prompt's last non-empty line is `Answer:` | **yes** |
+
+So dispatching §13.277 as written would have re-administered `41860773768` and cost a full dispatch
+-- roughly **5,690 reader calls, 31.1M prompt tokens and 85 minutes** -- to re-measure a treatment
+already measured at **+1.8 questions with the gap intact** (§13.248.4).
+
+### 13.278.2 How the sentence survived four sections, and the rule it adds
+
+The chain is short and worth writing down, because it is a new failure mode rather than a new
+instance of an old one:
+
+| section | what it did | what it left behind |
+| --- | --- | --- |
+| §13.246 | audited the difference between the two pipelines | a row stating the three properties are missing |
+| §13.248 | migrated the block, measured +1.8, **adopted** it | the row is now historical |
+| §13.276 | read the eight gates of the restore counterfactual | quoted §13.246's row in §13.276.6, unqualified |
+| §13.277 | registered the next experiment from that quote | a treatment that no longer exists |
+
+Every number in the chain is correct. Nothing was mismeasured, mis-transcribed or mis-attributed to
+another run, which is what makes it different from the four "a real number attached to the wrong
+run" defects §13.248.6 catalogued. It is a **stale premise**: a sentence that was true at the
+revision it was written against and was never re-read after the section that answered it.
+
+The rule this adds is one line, and it is a rule about reading rather than about writing: **an audit
+row is a claim about a revision, and an adoption section supersedes it; a later section may quote an
+audit row only with the adopting section's id in the same sentence.** §13.248.6 already forced
+"one id per sentence" for numbers. This is the same discipline applied to *states*: the id that
+matters is the one where the state last changed, not the one where it was first described.
+
+The correction is cheap and it is applied here rather than in a rewrite: §13.277 is **superseded**,
+not deleted, and `acceptance.ts`'s S8 row -- the artefact this section was reading -- carries a
+sentence saying which section closed it. A row that quietly changed its mind would leave the next
+reader to repeat exactly this.
+
+### 13.278.3 What the archived artifacts can already answer, measured before spending anything
+
+Four censuses over `42177443765` (`top_k=256`) and `42190193540` (`top_k=512`). All four cost zero
+provider calls: they read `ablation.featurePromptTexts` -- the exact prompts sent -- and the
+per-question records.
+
+**(a) The residual is reading, not retrieval, and by a wider margin than §13.276.4 could see.**
+
+| population (`MR`, `42190193540`) | count |
+| --- | ---: |
+| failures | 29 |
+| ...whose gold value is a substring of the delivered prompt | **24** |
+| ...whose gold value is absent from the prompt | 5 |
+
+§13.276.4 said 17 of 29 failures had "every gold turn delivered", measured against the dataset's
+gold-turn annotation. This says 24 of 29 have the *value itself* in the bytes the reader read, which
+is a stronger statement about a larger population: on the failure set, delivery is not the problem
+for four fifths of it.
+
+**(b) The derivation-shaped questions are not the weak population.** §13.277 would have inherited
+the assumption that they are, because the reference routes them to a different builder
+(`buildDerivationQaPrompt`) and this arm does not:
+
+| `MR` by question shape | `42177443765` | `42190193540` |
+| --- | ---: | ---: |
+| derivation (27 questions) | **24/27 = 88.89%** | 23/27 = 85.19% |
+| enumeration (94 questions) | **73/94 = 77.66%** | 69/94 = 73.40% |
+
+The `operands` block this arm adopted for derivation questions (§13.166, §13.193) is **11.2 points
+better** than its enumeration block on the same run. Porting the reference's derivation builder is
+therefore aiming at the arm's best-performing population: even a flawless port buys at most three
+questions, and the evidence says there are none to buy. That experiment is retired before it was
+registered.
+
+**(c) The provenance prefix is 14% of the window, and it is not the mechanism.**
+
+| quantity (`MR`) | median |
+| --- | ---: |
+| turns in the delivered prompt | 175 |
+| session headers | 45 |
+| characters spent on `N. [uuid] ` prefixes | 6,650 |
+| prompt characters | 47,859 |
+| provenance share of the prompt | **14.0%** |
+
+Every turn carries a 36-character memory id because the sourced rendering does. At 175 turns that
+is 6,650 characters -- about 25 turns' worth of room -- spent on provenance nothing in the reader's
+answer uses. It is a real cost and it has never been registered as a variable, but the census says
+it is not what the failures are made of: accuracy does not fall as the window fills (the four
+turn-count quartiles read 0.63 / 0.80 / 0.73 / 0.87 on `42190193540`), and the per-turn 400-character
+cap -- the other silent filter in the same rendering -- removes the gold value on exactly **one**
+question of 121, which that question answered correctly anyway.
+
+**(d) Width is not free on `MR`, and the paired test says so.** §13.268 read the 256 → 512 widening
+as free on the aggregate (p = 0.18) and §13.276.5 recorded `MR` falling 79.34% → 76.45% without a
+paired test. The artifacts carry one:
+
+| comparison | `b+f-` | `b-f+` | exact McNemar |
+| --- | ---: | ---: | ---: |
+| `MR`, arm vs reference, `42177443765` (`k=256`) | 13 | 8 | p = 0.383 |
+| `MR`, arm vs reference, `42190193540` (`k=512`) | **18** | **7** | **p = 0.043** |
+
+And the direction is not only "the reference is better at 512". Seven questions flipped correct →
+wrong against two the other way, and one of them (`1a8a66a6`) lost gold coverage while the pool was
+being *widened*: 22/22 → 16/22. A wider candidate pool changed which turns the ranker delivered.
+That is a ranking-stability question rather than a budget one, and it is the only paired-significant
+effect this round found.
+
+### 13.278.4 What that changes about the order of work
+
+1. **The contract port is retired**, and §13.277 with it. It was measured in §13.248 and adopted.
+2. **The derivation port is retired** before being registered: census (b) prices it at ≤ 3 questions
+   aimed at the arm's strongest population.
+3. **The turn cap and the provenance prefix are not the mechanism**: census (c) prices the cap at
+   one question and shows no size-accuracy relation.
+4. **Order is the one prompt-side difference left** that has never been measured, and it is now the
+   only difference between this arm's multi-session prompt and the reference's that is not the
+   evidence itself. §13.279 registers it.
+5. **Ranking stability under pool width** is entered as the next candidate behind it, with census
+   (d) as its evidence and `1a8a66a6` as its worked example.
+
+## 13.279 Registration: the assembly order, against `42177443765`
+
+§13.278.4 leaves one prompt-side difference unmeasured. This registers it.
+
+### 13.279.1 The one difference, and why it is an order rather than a rewrite
+
+§13.246 closed its migration with a paragraph naming what it deliberately did not port:
+
+> The reference emits its instruction block *above* the context and ends the prompt with `Answer:`.
+> This arm's assembly puts the instruction block last.
+
+That sentence has been in the document since §13.246 and has never been a variable. The reference's
+multi-session prompt is `[instruction][context][question][Answer:]`; this arm's is
+`[evidence][note][question][instruction]`, whose last line is also `Answer:` -- the cue arrives at
+the end in both, but in this arm it arrives after ~2,000 characters of instruction rather than
+immediately after the question.
+
+The treatment moves the block above the evidence and re-attaches the cue after the question. **The
+two prompts' segments are the same strings**: `prompt-assembly.test.ts` splits both on `\n\n` and
+asserts the multisets are equal at three budgets, so the treatment cannot have changed a word
+without failing a test. A rewrite would have been a second variable; a permutation is not.
+
+### 13.279.2 What changes, and what deliberately does not
+
+| item | value |
+| --- | --- |
+| treatment | `promptContract = evidence-blocks-instruction-first` |
+| what the contract names | the control's sourced rendering **plus** `assembly = instruction-first` |
+| control | `42177443765` -- same tree family, same reader, `top_k=256`, `ask=verbatim`, `maxChars=48,000` |
+| unchanged | reader, temperature, thinking routes, embedding, budget, ranking signal and width, the derived builder on derivation questions, all five gates of §10.3 |
+| reach | **multi-session only.** `buildSessionPrompt` is the only builder that takes `PromptOptions.assembly`; `buildPrompt` does not carry the option, so `IE`, `KU`, `TR` and `ABS` are the internal control |
+
+### 13.279.3 The gates
+
+| # | quantity | threshold |
+| --- | --- | ---: |
+| 1 | the artifact's own audit | **every check passes** |
+| 2 | `memoryArmConfig.promptContract` / `promptAssembly` / `assemblyRoutes` | **`evidence-blocks-instruction-first` / `instruction-first` / `["multi-session"]`** |
+| 3 | `MR` accuracy against `42177443765` | **Δ ≥ +3 points** with the resolution printed |
+| 4 | `IE`, `KU`, `TR`, `ABS` against `42177443765` | **no loss ≥ 3 points** |
+| 5 | `promptDigest` on the 379 non-MR questions | **identical to the control's, 379 of 379** |
+| 6 | `llmUsage.calls` | **≤ 5,900** against 5,690 |
+| 7 | `llmUsage.promptTokens` | **≤ 32,000,000** against 31,103,964, **+2.9%** |
+| 8 | `bareRetry.attempted` | **≥ 60** |
+
+Gate 5 is the strongest statement of the reach the campaign has yet had in a gate table: a digest
+equality on every question outside the changed route says the treatment did not leak, without
+reading a single answer. Gate 7's bar is tighter than §13.277's because a permutation has no reason
+to cost tokens at all -- the block is the same text, and the cue moves 2,000 characters closer to
+the question rather than further away. A run above +2.9% would mean the assembly is not the
+permutation the test asserts it is.
+
+### 13.279.4 Refutation
+
+- **`MR` moves by less than 3.** Order is not the difference either, and the remaining prompt-side
+  differences are exhausted: the block, its rendering and its position are all the reference's. The
+  next candidate is then 13.278.4's item 5 -- ranking stability under pool width -- and the
+  experiment is the same question diffed across the two pool widths, which costs no call.
+- **`MR` moves and gates 4 or 5 fail.** The order leaked out of its route. The cause is in the
+  resolution path (`ASSEMBLY_BY_CONTRACT` through `#promptOptions`), not in the assembly.
+- **Gate 7 fails.** The treatment is not a permutation in the assembled prompt even though it is in
+  the builder, which would mean the budget path re-spends room differently under the new order. That
+  is a defect in this increment and it would be repaired before the result is read.
+- **`MR` moves by more than 9.5 points.** The arm beats the reference on the reference's own order,
+  which would mean the reference's advantage was its evidence after all and the comparison in
+  §13.276.5 has to be re-derived for a third time.
+
+### 13.279.5 What this does not decide
+
+It does not test multi-step retrieval (MemCog's family) and does not test a second reader. §13.277.5
+said the same, and the reason has not changed: both change the arm's structure rather than a field,
+and one artifact may carry one treatment.

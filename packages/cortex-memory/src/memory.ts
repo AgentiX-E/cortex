@@ -31,6 +31,7 @@ import {
   type AdmittedTurn,
 } from './admission.js';
 import {
+  ASSEMBLY_BY_CONTRACT,
   RENDERING_BY_CONTRACT,
   buildAuditPrompt,
   buildPrompt,
@@ -1576,6 +1577,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // which is where `readPromptContract` already rejects it.
     const named = this.#options.promptContract;
     const rendering = named === undefined ? undefined : RENDERING_BY_CONTRACT[named];
+    // The second property a contract can name, resolved in the same place and for the same
+    // reason: an option resolved at a call site is an option a route can miss. Only
+    // `buildSessionPrompt` reads it, so the reach is the multi-session route by construction --
+    // which is what makes the other five an internal control rather than a second treatment.
+    const assembly = named === undefined ? undefined : ASSEMBLY_BY_CONTRACT[named];
     // The ask is a second, independent axis and is resolved the same way, in the same
     // place, for the same reason. §13 requires them to move separately: the ask
     // experiment holds the rendering at whatever the run named.
@@ -1605,6 +1611,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
           }),
       ...(rendering === undefined ? {} : { rendering }),
       ...(ask === undefined ? {} : { ask }),
+      ...(assembly === undefined ? {} : { assembly }),
       // Forwarded here rather than at each `#prompt*` call site, so the three routes
       // cannot disagree about whether the budget is spent on relevant turns -- the
       // same argument `#admit` makes for applying the session budget in one place.

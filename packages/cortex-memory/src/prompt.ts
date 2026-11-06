@@ -18,7 +18,8 @@ export type PromptContract =
   | 'temporal'
   | 'assistant'
   | 'knowledge-update'
-  | 'abstention-evidence-blocks';
+  | 'abstention-evidence-blocks'
+  | 'evidence-blocks-instruction-first';
 
 /**
  * The contracts a run may name, in the order they are worth reading.
@@ -27,7 +28,11 @@ export type PromptContract =
  * the arm's error message can list what exists. See
  * `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §12.5.
  */
-export const PROMPT_CONTRACTS = ['abstention', 'abstention-evidence-blocks'] as const;
+export const PROMPT_CONTRACTS = [
+  'abstention',
+  'abstention-evidence-blocks',
+  'evidence-blocks-instruction-first',
+] as const;
 
 /**
  * The contract a caller gets when it names none.
@@ -55,6 +60,43 @@ export const DEFAULT_PROMPT_CONTRACT: PromptContract = 'abstention';
  */
 export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRendering>> = {
   'abstention-evidence-blocks': 'sourced',
+  'evidence-blocks-instruction-first': 'sourced',
+};
+
+/**
+ * Which contracts select an assembly, and which deliberately do not.
+ *
+ * The one value, `'instruction-first'`, is the reference pipeline's assembly: the instruction
+ * block above the context, the question after it, and the block's closing `Answer:` cue after the
+ * question. The shipped assembly puts the whole block -- cue included -- after the question, so
+ * the reader's last read before answering is the block's closing warning rather than the question
+ * it is meant to answer.
+ *
+ * ## Why this is an ordering and not a rewrite
+ *
+ * The two assemblies are the same `\n\n`-separated segments in a different order: the block is
+ * split at its final separator into the body and the cue, and the cue is re-attached after the
+ * question. That is the whole treatment, and it is what lets §13.279 read a movement as a fact
+ * about order. A version that also edited the block's wording would have made the two
+ * indistinguishable, which is the confound §13.104 and §13.124 each cost a dispatch to learn.
+ *
+ * ## Why only the multi-session route
+ *
+ * `buildSessionPrompt` is the only builder that takes `PromptOptions.assembly`, and the four flat
+ * contracts render through `buildPrompt`, whose signature does not carry it. The reach is
+ * therefore a property of the signatures rather than of a table a future edit could update
+ * without the render following it -- the failure `enumerated` shipped once already.
+ *
+ * A partial map for the reason `RENDERING_BY_CONTRACT` is one: "this contract does not move the
+ * order" is a real answer and has to be distinguishable from "this contract was forgotten". The
+ * control contract is deliberately absent -- its job is to reproduce `42177443765` byte for byte.
+ *
+ * The value is written as a literal rather than through a named alias because the census rejects
+ * an export nothing calls, and an alias private to this module cannot appear in the emitted
+ * declaration for the exported `PromptOptions` field that carries it.
+ */
+export const ASSEMBLY_BY_CONTRACT: Partial<Record<PromptContract, 'instruction-first'>> = {
+  'evidence-blocks-instruction-first': 'instruction-first',
 };
 
 /**
@@ -655,6 +697,19 @@ export type PromptOptions = {
    * window; the reference pipeline completes it and scores 86.78% on MR.
    */
   relevanceUnits?: RelevanceUnits;
+  /**
+   * Which order the multi-session prompt's sections are joined in. Absent is the shipped order.
+   *
+   * Read by `buildSessionPrompt` alone. The other five routes render through `buildPrompt`, whose
+   * signature does not carry the option, so passing it to them is inert by construction rather
+   * than by a branch nobody exercises -- which is the property §13.279's internal control needs.
+   *
+   * `'instruction-first'` is the reference pipeline's order (see {@link ASSEMBLY_BY_CONTRACT}), and
+   * the treatment is a permutation of the shipped segments: the instruction block's cue is detached
+   * and re-attached after the question, and the block's body moves above the evidence. No wording
+   * changes, which is what makes a movement attributable to order.
+   */
+  assembly?: 'instruction-first';
 };
 
 /** The unit the evidence room is spent in. */
@@ -798,6 +853,17 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
       `If no evidence supports an answer, reply exactly ${ABSTAIN_TOKEN}.`,
       `Otherwise reply with the answer alone.`,
     ].join('\n'),
+
+  /**
+   * The same block as the control, by reference rather than by a second copy.
+   *
+   * §13.279's treatment is the **order** of the sections, and an entry written out again here
+   * would be a second statement of the wording that a later edit could move without moving the
+   * control's. Delegating makes "the text is identical" a property of the object graph: there is
+   * one function, and both names point at it.
+   */
+  'evidence-blocks-instruction-first': (...parameters) =>
+    CONTRACT_INSTRUCTIONS['abstention-evidence-blocks'](...parameters),
 
   temporal: (date) =>
     [
@@ -1861,6 +1927,46 @@ function contentFor(
 const CUT_MARKER = '…';
 
 /**
+ * Join the multi-session prompt's sections in the order the run asked for.
+ *
+ * ## What `'instruction-first'` does, in one paragraph
+ *
+ * The reference pipeline emits its instruction block above the context, puts the question after
+ * the context, and ends the prompt on the block's own `Answer:` cue. This arm has always emitted
+ * the block last, cue included, so the last text before the reply is the block's closing warning.
+ * The treatment detaches the final cue from the block, moves the block's body above the evidence,
+ * and re-attaches the cue after the question: the same segments, the same `\n\n` separator, a
+ * different order. `prompt-assembly.test.ts` asserts the permutation rather than the prose.
+ *
+ * ## Why the cue is detached by its own test rather than by index
+ *
+ * The block is caller-supplied text. A contract whose last segment spans lines is not ending on a
+ * cue, and splicing the middle of a paragraph to the end of the prompt would be a rewrite
+ * masquerading as an ordering. So the final segment is only treated as a cue when it is a single
+ * line, which is what `Answer:` is and what a trailing instruction sentence is not.
+ *
+ * ## Why the degenerate path is not permuted
+ *
+ * `fitToBudget` returns before this function when the room cannot hold more than the instruction
+ * and the question. Those prompts carry no evidence, so there is nothing to order and the cue's
+ * position is the only segment order there is; permuting them would move a prompt that has one
+ * arrangement, and the budget sweep pins that arrangement across every budget.
+ */
+function assembleSections(
+  sections: readonly string[],
+  instruction: string,
+  assembly: 'instruction-first' | undefined,
+): string {
+  const SEPARATOR = '\n\n';
+  if (assembly !== 'instruction-first') return [...sections, instruction].join(SEPARATOR);
+  const at = instruction.lastIndexOf(SEPARATOR);
+  const tail = at === -1 ? '' : instruction.slice(at + SEPARATOR.length);
+  const isCue = at !== -1 && tail.trim().length > 0 && !tail.includes('\n');
+  const body = isCue ? instruction.slice(0, at) : instruction;
+  return isCue ? [body, ...sections, tail].join(SEPARATOR) : [body, ...sections].join(SEPARATOR);
+}
+
+/**
  * How far back a word boundary may be and still be worth taking, as a fraction of the cap.
  *
  * A back-off with no floor is worse than no back-off: one early space would let the cap render
@@ -2384,6 +2490,7 @@ function fitToBudget(
   plan: EvidencePlan,
   maxChars: number,
   header: string,
+  assembly?: 'instruction-first',
 ): AssembledPrompt {
   const SEPARATOR = '\n\n';
 
@@ -2451,7 +2558,7 @@ function fitToBudget(
   const sections = noteText.length === 0 ? [head] : [head, noteText];
 
   return {
-    prompt: [...sections, questionLine, instruction].join(SEPARATOR),
+    prompt: assembleSections([...sections, questionLine], instruction, assembly),
     evidenceChars: evidence.length,
     carried: ordered,
   };
@@ -2897,20 +3004,19 @@ export function buildSessionPrompt(
   // the whole prompt fitted, so every over-budget multi-session prompt reached the
   // model with boundaries drawn and no sentence explaining them -- the state the
   // paragraph below calls worse than being told. See `fitToBudget`.
-  const sections = [
-    `EVIDENCE:\n${body}`,
-    SESSION_NOTE,
-    `QUESTION: ${question}`,
-    // MR's own ask IS `extractive`, so the ask option is a no-op on this route by
-    // construction -- and that is worth stating rather than leaving to be rediscovered,
-    // because §13 dispatches the ask change precisely to MR and TR. A no-op here means
-    // MR's prompt under `ask: 'extractive'` is byte-identical to its shipped prompt, so
-    // a movement on MR cannot be attributed to the ask. The reach report records which
-    // routes the ask actually changed for exactly this reason.
-    instruction,
-  ];
+  const sections = [`EVIDENCE:\n${body}`, SESSION_NOTE, `QUESTION: ${question}`];
 
-  const full = sections.join('\n\n');
+  // The instruction block is a section like the other three, and its position is the only thing
+  // `assembly` moves. It is passed separately rather than appended here so that both assembly
+  // sites -- this one and `fitToBudget`'s -- state the order through one function. §13.13 is the
+  // record of what two sites stating the same rule separately costs.
+  //
+  // MR's own ask IS `extractive`, so the ask option is a no-op on this route by construction --
+  // and that is worth stating rather than leaving to be rediscovered, because §13 dispatches the
+  // ask change precisely to MR and TR. A no-op here means MR's prompt under `ask: 'extractive'`
+  // is byte-identical to its shipped prompt, so a movement on MR cannot be attributed to the ask.
+  // The reach report records which routes the ask actually changed for exactly this reason.
+  const full = assembleSections(sections, instruction, options.assembly);
   if (full.length <= maxChars) {
     // The placeholder is a sentence about evidence, not evidence, so an empty
     // session list reports zero carried characters. That path cannot reach the
@@ -2937,6 +3043,7 @@ export function buildSessionPrompt(
     },
     maxChars,
     'EVIDENCE:\n',
+    options.assembly,
   );
   // `body` is the placeholder on an empty list, and `fitToBudget` cannot tell
   // that from evidence, so the correction is made here where the list length is

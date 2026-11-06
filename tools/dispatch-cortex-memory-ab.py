@@ -266,7 +266,18 @@ INPUTS = {
     # `retrievalThreshold` stays, because that one gates whether admitted evidence may be answered from.
     "cortex_memory_retrieval_threshold": "0",
     "cortex_memory_source_trust": "0.5",
-    "cortex_memory_prompt_contract": "abstention-evidence-blocks",
+    # §13.279. The same sourced rendering plus the reference pipeline's assembly: the instruction
+    # block above the evidence, the question after it, and the block's closing `Answer:` cue last.
+    #
+    # The value replaces `abstention-evidence-blocks`, which §12.5 registered and every run from
+    # `37804673104` to `42190193540` carried. What moves is the order and nothing else -- the
+    # segments are the same strings, asserted as a multiset in `prompt-assembly.test.ts` -- so the
+    # run's `MR` delta is a fact about order rather than about wording.
+    #
+    # §13.278 records why this is not the contract port §13.277 registered: that one was registered
+    # against §13.246's audit row, which still described the pre-§13.248 state. The block has been
+    # this arm's since `41860773768`; the only remaining positional difference is this one.
+    "cortex_memory_prompt_contract": "evidence-blocks-instruction-first",
     # §13.34: `computed` plus the two-step enumeration contract on multi-session alone.
     #
     # §13.203 replaced the value with `operands+operand-gap`. Two facts made that a registration

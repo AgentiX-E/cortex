@@ -1101,6 +1101,13 @@ const PROMPT_CONTRACTS = {
   abstention: 'abstention',
   /** §12.5's candidate: every turn labelled with the memory it came from. */
   'abstention-evidence-blocks': 'abstention-evidence-blocks',
+  /**
+   * §13.279's candidate: the same rendering, assembled in the reference pipeline's order.
+   *
+   * A contract rather than a new dispatch input because the workflow sits at GitHub's 25-input
+   * ceiling, and because the contract is already the axis that carries "how this run renders".
+   */
+  'evidence-blocks-instruction-first': 'evidence-blocks-instruction-first',
 } as const;
 
 /**
@@ -1145,6 +1152,46 @@ const RENDERING_ROUTES: Record<string, readonly string[]> = {
     'assistant',
     'flat',
   ],
+  // The same six, because the contract also selects the sourced rendering: §13.279's treatment
+  // is additively "the adopted rendering plus a different order", so the evidence text is
+  // identical to the control's and only the multi-session order moves.
+  'evidence-blocks-instruction-first': [
+    'abstention',
+    'multi-session',
+    'temporal',
+    'knowledge-update',
+    'assistant',
+    'flat',
+  ],
+};
+
+/**
+ * The routes each contract's assembly reaches, restated for the report.
+ *
+ * One entry, and its emptiness for the other two is the point: the shipped order is the baseline,
+ * so a run that named a contract without an assembly administered no order change and reporting
+ * one would claim a treatment nobody received.
+ *
+ * The reach is one route because `buildSessionPrompt` is the only builder that takes
+ * `PromptOptions.assembly`; the five flat routes render through `buildPrompt`, whose signature
+ * does not carry it. That is why §13.279's fourth gate can read their movement as leakage.
+ */
+const ASSEMBLY_ROUTES: Record<string, readonly string[]> = {
+  abstention: [],
+  'abstention-evidence-blocks': [],
+  'evidence-blocks-instruction-first': ['multi-session'],
+};
+
+/**
+ * The assembly each contract names, restated for the report.
+ *
+ * `undefined` rather than a default string for the two contracts that name none: `'shipped'`
+ * would be a value, and a value is indistinguishable in an artifact from a run that chose it.
+ */
+const ASSEMBLY_BY_CONTRACT: Record<string, string | undefined> = {
+  abstention: undefined,
+  'abstention-evidence-blocks': undefined,
+  'evidence-blocks-instruction-first': 'instruction-first',
 };
 
 /**
@@ -2125,6 +2172,13 @@ export function toMemoryArmConfig(
     // defect this field was added to close, and claiming one that was is merely a
     // missing list.
     renderingRoutes: RENDERING_ROUTES[options.promptContract] ?? [],
+    // §13.279. Spread conditionally in both halves: an absent assembly is the shipped order and
+    // the control's own state, so an always-present `assemblyRoutes: []` would be a claim the
+    // pre-§13.279 artifacts cannot make either.
+    ...(ASSEMBLY_BY_CONTRACT[options.promptContract] === undefined
+      ? {}
+      : { promptAssembly: ASSEMBLY_BY_CONTRACT[options.promptContract] as string }),
+    assemblyRoutes: ASSEMBLY_ROUTES[options.promptContract] ?? [],
     ask: options.ask,
     reviewPass: options.reviewPass ?? 'none',
     // Recorded unconditionally rather than only when true: "the control ran" and "the field predates the run" are

@@ -242,6 +242,11 @@ class TestTheRealArtifact:
             # difference in -- would make this test describe a run with four departures while its name
             # and its three assertions say three.
             "cortex_memory_relevance": "retrieval-hybrid",
+            # §13.279 moved the registered contract to `evidence-blocks-instruction-first`. The
+            # artifact ran `abstention-evidence-blocks`, which was the registered value on the day,
+            # so the table is put back for the same reason the two above are: the fixture is the
+            # artifact and the table is the changing half.
+            "cortex_memory_prompt_contract": "abstention-evidence-blocks",
         }
         text, failures = module.registration_section(report(REAL_41222844945), [])
         assert failures == 3, text
@@ -251,6 +256,13 @@ class TestTheRealArtifact:
 
     def test_declaring_them_makes_the_run_an_experiment_with_a_registration(self) -> None:
         module = _module()
+        inputs = dict(module.dispatch_inputs())
+        # §13.279 moved the registered contract after this artifact ran; the run's own value was the
+        # registered one at the time, so it is not a departure and must not be counted as one.
+        module.dispatch_inputs = lambda: {
+            **inputs,
+            "cortex_memory_prompt_contract": "abstention-evidence-blocks",
+        }
         text, failures = module.registration_section(report(REAL_41222844945), DEPARTS_41222844945)
         assert failures == 0, text
         assert "every one of them is declared" in text
@@ -269,6 +281,11 @@ class TestTheRealArtifact:
         """`renderingRoutes` is assembled by the arm from the reach table and has no dispatch input.
         Counting it would make every run a departure from a registration that never named it."""
         module = _module()
+        inputs = dict(module.dispatch_inputs())
+        module.dispatch_inputs = lambda: {
+            **inputs,
+            "cortex_memory_prompt_contract": "abstention-evidence-blocks",
+        }
         config = {**REAL_41222844945, "renderingRoutes": ["flat", "multi-session"]}
         text, failures = module.registration_section(report(config), DEPARTS_41222844945)
         assert failures == 0, text
@@ -289,6 +306,10 @@ class TestTheCleanRun:
             # Read from the table rather than written here: §13.260.7 moved the registered ranking, and
             # a second copy of the value is the copy that will be stale next time it moves.
             "relevanceSignal": inputs["cortex_memory_relevance"],
+            # The contract, read from the table for the same reason and not written here: §13.279
+            # moved it after this artifact ran, and a literal would be the second copy that goes
+            # stale at the next move.
+            "promptContract": inputs["cortex_memory_prompt_contract"],
         }
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
@@ -373,6 +394,9 @@ class TestAbsentIsNotNull:
             "maxPromptChars": 48000,
             "turnCutMarker": "none",
             "relevanceSignal": module.dispatch_inputs()["cortex_memory_relevance"],
+            # §13.279's contract, from the table: this test is about the two absences in
+            # `reader.thinkingRoutes` and must not acquire a second subject.
+            "promptContract": module.dispatch_inputs()["cortex_memory_prompt_contract"],
         }
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
@@ -406,6 +430,7 @@ class TestTheDefaultReportCarriesTheVerdict:
             # Read from the table rather than written here: §13.260.7 moved the registered ranking, and
             # a second copy of the value is the copy that will be stale next time it moves.
             "relevanceSignal": inputs["cortex_memory_relevance"],
+            "promptContract": inputs["cortex_memory_prompt_contract"],
         }
         assert module.congruence_note(report(config)) == ""
 

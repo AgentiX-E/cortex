@@ -103,7 +103,13 @@ describe('the prompt-contract switch', () => {
   });
 
   it('enumerates the contracts a run may name', () => {
-    expect(PROMPT_CONTRACTS).toEqual(['abstention', 'abstention-evidence-blocks']);
+    // §13.279 appended a third name rather than replacing one, and the order is the order a
+    // reader should consider them in: the baseline, the adopted rendering, then the assembly.
+    expect(PROMPT_CONTRACTS).toEqual([
+      'abstention',
+      'abstention-evidence-blocks',
+      'evidence-blocks-instruction-first',
+    ]);
   });
 
   it('renders the evidence differently under the new contract', () => {

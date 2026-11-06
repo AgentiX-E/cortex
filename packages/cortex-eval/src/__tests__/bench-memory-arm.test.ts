@@ -980,6 +980,7 @@ describe('source trust reaches the artifact', () => {
       maxTurnCharsRoutes: ALL_ROUTES,
       evidenceRolesRoutes: ALL_ROUTES,
       renderingRoutes: [],
+      assemblyRoutes: [],
       ask: 'route',
       askRoutes: [],
       turnCutMarker: 'none',
@@ -1270,6 +1271,7 @@ describe('runCortexMemoryArm', () => {
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         relevanceUnits: 'turn',
         renderingRoutes: [],
+        assemblyRoutes: [],
         ask: 'route',
         askRoutes: [],
         reviewPass: 'none',
@@ -1491,6 +1493,7 @@ describe('runCortexMemoryArm', () => {
         relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
         relevanceUnits: 'turn',
         renderingRoutes: [],
+        assemblyRoutes: [],
         ask: 'route',
         askRoutes: [],
         turnCutMarker: 'none',
@@ -1936,6 +1939,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       maxTurnCharsRoutes: ALL_ROUTES,
       evidenceRolesRoutes: ALL_ROUTES,
       renderingRoutes: [],
+      assemblyRoutes: [],
       ask: 'route',
       askRoutes: [],
       turnCutMarker: 'none',
@@ -2060,13 +2064,14 @@ describe('the contract list agrees with the product layer', () => {
     const arrayBody = arrayMatch?.[1] ?? '';
     const productContracts = [...arrayBody.matchAll(/'([^']+)'/g)].map((m) => m[1] ?? '').sort();
 
-    const accepted: string[] = [];
-    for (const candidate of ['abstention', 'abstention-evidence-blocks']) {
-      accepted.push(
+    // The candidates are the product's own list rather than a second literal: a hand-kept copy
+    // here is the drift the assertion exists to catch, and §13.279 added a third contract to a
+    // line that would otherwise have gone on checking two.
+    const accepted = productContracts.map(
+      (candidate) =>
         cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_PROMPT_CONTRACT: candidate })
           .promptContract,
-      );
-    }
+    );
     expect(accepted.sort()).toEqual(productContracts);
   });
 
@@ -2263,6 +2268,81 @@ describe('the rendering reach the artifact reports agrees with the product layer
     // because the baseline's reach is measured and known to be zero.
     const baseline = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
     expect(baseline.renderingRoutes).toEqual([]);
+  });
+});
+
+describe('the assembly order reaches the artifact, and reaches one route', () => {
+  it('records the order and the route the contract sends it to', () => {
+    // §13.279's second gate is this field. The treatment is an order, so it leaves no trace
+    // in the prompt's length, its segment set or its token count -- an artifact that named
+    // only the contract could describe an arm whose builder ignored the option.
+    const config = toMemoryArmConfig(
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_PROMPT_CONTRACT: 'evidence-blocks-instruction-first',
+      }),
+    );
+    expect(config.promptContract).toBe('evidence-blocks-instruction-first');
+    expect(config.promptAssembly).toBe('instruction-first');
+    expect(config.assemblyRoutes).toEqual(['multi-session']);
+  });
+
+  it('records no order for the control, whose bytes are the comparison', () => {
+    // `undefined` and `[]` are different claims, for the reason `renderingRoutes` draws: the
+    // control administers no order change, and that is measured rather than unknown.
+    const control = toMemoryArmConfig(
+      cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        CORTEX_MEMORY_PROMPT_CONTRACT: 'abstention-evidence-blocks',
+      }),
+    );
+    expect(control.promptAssembly).toBeUndefined();
+    expect(control.assemblyRoutes).toEqual([]);
+  });
+
+  it('renders both lines into the Markdown, so the artifact carries its own reach', async () => {
+    const { report } = await runCortexMemoryArm(
+      twoQuestionDataset(),
+      constantSystem('reference-pipeline', 'one'),
+      constantSystem('cortex-memory', 'one'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: toMemoryArmConfig(
+          cortextMemoryArmOptions({
+            CORTEX_MEMORY: '1',
+            CORTEX_MEMORY_PROMPT_CONTRACT: 'evidence-blocks-instruction-first',
+          }),
+        ),
+      },
+    );
+    const markdown = formatAblationReport(report);
+    expect(markdown).toContain('Prompt assembly: `instruction-first`');
+    expect(markdown).toContain('Prompt assembly reached: 1 route(s) — `multi-session`');
+  });
+
+  it('reaches only the builder that takes the option', () => {
+    // The structural half of the reach: `buildSessionPrompt` reads `PromptOptions.assembly`
+    // and `buildPrompt` does not take it, which is what makes the other five routes an
+    // internal control rather than a second treatment. Read from the product's source because
+    // the layering forbids the import.
+    const source = readFileSync(
+      new URL('../../../cortex-memory/src/prompt.ts', import.meta.url),
+      'utf-8',
+    );
+    const from = source.indexOf('export function buildSessionPrompt(');
+    const to = source.indexOf('export function buildAuditPrompt(');
+    expect(from, 'buildSessionPrompt not found in the product source').toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    expect(source.slice(from, to)).toContain('options.assembly');
+    // And the flat builder, which serves the other five routes, does not take it: the option is
+    // absent from its signature rather than ignored inside it.
+    const flatFrom = source.indexOf('export function buildPrompt(');
+    const flatTo = source.indexOf('export function buildSessionPrompt(');
+    expect(flatFrom).toBeGreaterThan(-1);
+    expect(flatTo).toBeGreaterThan(flatFrom);
+    expect(source.slice(flatFrom, flatTo)).not.toContain('options.assembly');
   });
 });
 

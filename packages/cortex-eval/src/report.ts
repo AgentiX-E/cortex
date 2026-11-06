@@ -703,6 +703,24 @@ export type MemoryArmConfig = {
    */
   readonly askRoutes?: readonly string[] | undefined;
   /**
+   * The assembly order §13.279 dispatched, when the run named one.
+   *
+   * Recorded because the treatment is an **order**, and an order leaves no trace in the prompt's
+   * length or its segment set: a run that named the contract but whose builder ignored the option
+   * would produce a prompt with the same characters as the control and the same tokens, and every
+   * other field of this config would agree too. The name is the only field that can say the run
+   * asked, and {@link assemblyRoutes} is the only field that can say the asking arrived.
+   */
+  readonly promptAssembly?: string | undefined;
+  /**
+   * The routes whose assembly moved, restated from the product's table.
+   *
+   * `[]` when the run named no assembly, and absent when the artifact predates the field -- the
+   * same distinction `renderingRoutes` draws, for the same reason: `[]` is a claim about a run
+   * that administered nothing, and `undefined` is the absence of a claim.
+   */
+  readonly assemblyRoutes?: readonly string[] | undefined;
+  /**
    * Which per-turn relevance signal the prompt budget was spent under.
    *
    * Written even at its default (`none`), for the reason every other field here is:
@@ -1443,6 +1461,27 @@ export function formatAblationReport(report: AblationReport): string {
       lines.push(
         `- Evidence ask reached: ${askReached.length} route(s) — ` +
           askReached.map((route) => `\`${route}\``).join(', '),
+      );
+    }
+
+    // §13.279's axis, rendered beside the other two for the reason all three are rendered:
+    // a treatment whose artifact cannot say which route it reached is a claim, not a
+    // measurement. The assembly is the hardest of the three to see -- reordering leaves the
+    // prompt's length and its segment set unchanged -- so the pair of lines below is the only
+    // place a reader can check that the run that produced the numbers is the run the
+    // registration described.
+    if (memoryArm.promptAssembly !== undefined) {
+      lines.push(`- Prompt assembly: \`${memoryArm.promptAssembly}\``);
+    }
+    const assemblyReached = memoryArm.assemblyRoutes;
+    if (assemblyReached === undefined) {
+      lines.push(`- Prompt assembly reach: \`not recorded\` (artifact predates the field)`);
+    } else if (assemblyReached.length === 0) {
+      lines.push(`- Prompt assembly reached: \`none\` (the shipped order is unchanged)`);
+    } else {
+      lines.push(
+        `- Prompt assembly reached: ${assemblyReached.length} route(s) — ` +
+          assemblyReached.map((route) => `\`${route}\``).join(', '),
       );
     }
   }
