@@ -29854,3 +29854,78 @@ python3 tools/registered-gates.py tools/gates/13.262.7.json \
 
 It does not judge whether the registration was right. A gate that is evaluated correctly can still be
 the wrong gate, and that argument belongs in §13.262.7 where it was made.
+
+## 13.264 The residual is selection, seven to two, and the population that can move is thirty
+
+§13.262.8 retired a deterministic tally over the reader's own list on the strength of three records:
+`eeda8a6d` should have summed (`10 + 5 + 1 + 1`), `80ec1f4f` should have counted distinct venues, and
+`6d550036` excluded every candidate and answered `0` against a gold of `2`. Three anecdotes is not a
+distribution, and the next axis turns on which class dominates: a deterministic **aggregation**
+executor can only repair answers whose item list is already right, while **event specification** is
+what repairs a list that never held the event.
+
+`tools/mr-residual-census.py` separates them on every record, from the artifact, with no model calls.
+
+### 13.264.1 The classification, and why it is computed
+
+A wrong answer is classified by comparing three integers the record already contains:
+
+| class | test | what it means |
+| --- | --- | --- |
+| `contract` | the answer is not a number | the reply never committed to a count |
+| `selection` | the answer **equals** the number of items it kept, and that number is not the gold | its arithmetic is faithful to its own list; the list is wrong |
+| `aggregation` | the answer is not the number of items it kept | it applied an operation to its own list |
+
+`selection` is split by sign, because `under` and `over` are different defects: `under` is an event
+that is absent or was excluded, `over` is an item the predicate should have removed.
+
+The parser reads **both** shapes of rejection, and that is the reason this exists in code. `6d550036`
+lists six candidate projects and marks all six excluded inline, so a reader that only understood the
+block form (`Excluded candidates:` then bullets) would count six kept items against an answer of `0`
+and call it an `aggregation` error where the reader had made a **selection** decision. The tool's
+answer would then depend on which shape a model happened to produce.
+
+### 13.264.2 The reading, on the reference arm
+
+`42013256884`, the shipped arm, `MR`, golds in `[2, 10]` — the window §13.92 corrected the campaign
+to, where a gold is a set of items and not a balance:
+
+| reading | count |
+| --- | ---: |
+| count-shaped golds in the window | **30** of 121 `MR` questions |
+| correct | 21 |
+| wrong | **9** |
+| wrong, `selection/under` | **6** |
+| wrong, `selection/over` | 1 |
+| wrong, `aggregation/operation` | 2 |
+| wrong, `contract` | 0 |
+| wrong answers that rejected at least one candidate | **7 of 9** (29 rejections) |
+
+Seven to two. The reader's arithmetic is faithful to its own list in seven of the nine failures, and
+in seven of nine the list is wrong *because items were rejected*: `6d550036` rejected 6 of 6 and
+answered `0` against a gold of `2`, `gpt4_15e38248` rejected 6 of 9 and answered `3` against `4`,
+`4f54b7c9` rejected 4 of 6 and answered `2` against `5`.
+
+The two `aggregation` rows are `bf659f65` (kept 3, answered `2`) and `c18a7dc8` (kept 0, answered
+`10` against a gold of `7` — the record with no list at all, which the renderer flags rather than
+classifies silently).
+
+### 13.264.3 Three consequences, written before the mechanism exists
+
+**The axis is event specification.** A deterministic operation over the reader's own list can reach at
+most the 2 aggregation rows here, and §13.262.8 already measured that such an operation applied
+wholesale would break **15** currently correct answers and fix **1**. The 7 selection rows are what a
+ledger of events, with a schema for what counts as an item and what a legitimate exclusion is, is for.
+
+**The population is thirty, and the ceiling has to be stated.** `MR` is 121 questions and only 30 of
+them have a count-shaped gold; the other 91 ask for names, dates or lists. Repairing every one of the
+30 moves `MR` by `21/121 = +17.4` points and the whole arm by `21/500 = +4.2`. Any expectation of a
+double-digit overall gain from aggregation work is arithmetically impossible, which is the kind of
+ceiling this campaign has had to write down before (§13.9's admission cap, §13.79's pool width).
+
+**An audited run cannot be censused, and the tool says so.** On `42054107910` every wrong record
+reports `kept 0`, because `rawOutput` holds the review's reply rather than the enumeration that came
+before it. The census prints a warning and names the cause instead of publishing a distribution that
+would read as six aggregation errors. Making an audited run censusable needs the first pass's item
+list on the record — a field, and therefore a registration of its own — and it is not part of this
+axis.
