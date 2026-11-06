@@ -539,3 +539,34 @@ reported. That sentence belongs in every table in this file.
 5. **One comparability rule tightened.** BFR reports judged accuracy and Turn Hit; this arm reports exact match.
    No figure from §4.10 may be set beside an `S` row here without the metric named, for the same reason
    arXiv 2609.08279 refuses cross-regime budget comparisons.
+
+## 11. What changed on 2026-11-06 with the assembly round, and which competitor each entry prices
+
+Four censuses over the archived artifacts, none of which called a provider, and one experiment whose premise
+they retired. The entries below replace readings that were in this file.
+
+1. **The reference pipeline and this arm now differ in one prompt property, not three.** §13.246 named the
+   schema, Step 2 and the terminator; §13.248 adopted all three, and §13.278 records that the sections citing
+   them as missing were reading a superseded audit row. What is left is the **order** of the same segments --
+   reference above the context, this arm below the evidence -- and §13.279 measures it. This matters for §4
+   because it means the reference's 5.99–9.50 point `MR` lead, the only same-reader same-corpus comparison in
+   this file, has exactly one unmeasured cause left on the prompt side.
+2. **The derivation route is not where the reference wins.** The reference classifies `MR` questions and sends
+   derivation shapes to `buildDerivationQaPrompt`; this arm sends them to `operands`. Measured at `top_k=256`,
+   the arm reads **88.89%** on derivation shapes against **77.66%** on enumeration ones (85.19% / 73.40% at 512).
+   A port therefore aims at the arm's strongest subpopulation, and its ceiling is three questions. The
+   `operands` block (§13.166/§13.193) is doing more than the reference's split does for us.
+3. **MemCog's family is not refuted, and its target moved.** With 24 of 29 `MR` failures carrying the gold value
+   inside the delivered prompt, a second and third retrieval step cannot be justified by reach on this failure
+   set. It has to be justified by what the reader does with what it already has -- which is a claim about
+   *reading*, and the paper's own numbers do not separate the two. §4.10's ordering stands, with its
+   justification rewritten.
+4. **A wider top-k is not free on `MR`, and the failure is ranking stability.** §13.268 read 256 → 512 as free
+   on the aggregate; the paired flip counts are **7 down / 2 up, exact McNemar p = 0.039**, and `1a8a66a6` lost
+   gold coverage (22/22 → 16/22) *while the pool was being widened*. This is the same shape xMemory describes
+   for near-duplicate dilution, arriving here as a delivery loss rather than as a token cost, so §4's argument
+   against width no longer rests on that citation alone.
+5. **One comparison rule this file has been violating.** The arm-versus-reference `MR` gap is **13:8 (p = 0.383)
+   at `top_k=256`** and **18:7 (p = 0.043) at `top_k=512`**. The campaign has quoted the gap as a fact since
+   §13.243; on the narrower pool it is not distinguishable from noise. Every table in this file that sets cortex
+   beside the reference must say which pool the pair was drawn from.
