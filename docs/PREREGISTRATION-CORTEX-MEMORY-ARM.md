@@ -30701,3 +30701,42 @@ it: that section read 22 of 32 (**68.8%**) on the k=512 artifact and this one re
 (**64.7%**), because the two runs have different partial populations. The instrument's prior is
 therefore a band rather than a point -- roughly two thirds of partial-evidence `MR` questions are
 answered correctly anyway -- and it is still the thing the counterfactual has to beat.
+
+## 13.273 Registration: the width again, at HEAD, to make one table computable
+
+This dispatch has no accuracy hypothesis. §13.272.1 answered the room question for `ABS`, `IE` and
+`KU` and could not ask it of `MR` or `TR`, and §13.272.2 named why: the field and the width live in
+different artifacts and one of the two cannot be recomputed.
+
+So the run is `top_k = 512` at HEAD, and its gates are about the artifact rather than about the
+mechanism. That distinction is the whole of the registration: none of these numbers is supposed to
+move, and a run that moved one would have found something nobody registered.
+
+| item | value |
+| --- | --- |
+| configuration | §13.269's configuration with `cortex_memory_relevance_top_k = 512` |
+| control | `42177443765` — the same tree, the same reader, the same budget, `top_k = 256` |
+| what changes | `memoryArmConfig.relevanceTopK` and the ranking that follows from it |
+| what this is not | a test that width buys accuracy. §13.268 closed that: +0.83 points against a resolution of 9 |
+
+| # | quantity | threshold |
+| --- | ---: | --- |
+| 1 | the artifact's own audit | **all twelve checks pass** |
+| 2 | `memoryArmConfig.relevanceTopK` | **equals 512** — a departure that did not take measures nothing |
+| 3 | `goldOverlap.goldTurns` | **present with `length === total` on every record that names gold** |
+| 4 | `llmUsage.calls` | **≤ 5,900** against 5,690 — a wider pool must not cost a call |
+| 5 | `llmUsage.promptTokens` | **≤ 32,000,000** against 31,103,964, i.e. **+2.9%**. §13.268.2 measured −0.1% for the same change at `c1f8fb85`, so the bar is slack on purpose: it is set to catch a regime change, not to price this one |
+| 6 | `MR` accuracy against `42177443765` | **Δ ≥ −3 points**, with the resolution printed. The bar is a null |
+| 7 | every other capability against `42177443765` | no loss **≥ 3 points** |
+| 8 | `bareRetry.attempted` | **≥ 60** |
+
+What the run is for, stated so that a reader can hold it to this and nothing else:
+
+- `gold-room` becomes answerable for `MR` and `TR`, which is the population §13.271 measured as missing
+  one gold turn at median rank 382;
+- `restore-population`'s pairs become pairs whose missing gold is inside the ranking, which is the
+  condition §13.272.3 corrected the tool to require.
+
+Refutation: if gate 1 or 3 fails the artifact is not a reading and the cause is in the writer, not the
+arm. If gates 4–7 fail the wider pool costs something it did not cost at `c1f8fb85`, which would make
+§13.268.2's "width is free" a reading about one tree rather than about the change.

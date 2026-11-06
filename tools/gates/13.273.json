@@ -1,0 +1,102 @@
+{
+  "registration": "13.273",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "The width again, at HEAD, to make one table computable",
+  "controls": {
+    "reference": {
+      "run": 42177443765,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the same tree at the shipped pool width, so the pool is the only variable and nothing is supposed to move"
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "artifact_audit",
+      "quantity": "the artifact's own audit",
+      "threshold": "**all twelve checks pass**",
+      "numbers": []
+    },
+    {
+      "id": 2,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.relevanceTopK",
+      "equals": 512,
+      "quantity": "`memoryArmConfig.relevanceTopK`",
+      "threshold": "**equals 512** — a departure that did not take measures nothing",
+      "numbers": [
+        512
+      ]
+    },
+    {
+      "id": 3,
+      "kind": "gold_text_complete",
+      "quantity": "`goldOverlap.goldTurns`",
+      "threshold": "**present with `length === total` on every record that names gold**",
+      "numbers": []
+    },
+    {
+      "id": 4,
+      "kind": "field_at_most",
+      "field": "llmUsage.calls",
+      "at_most": 5900,
+      "quantity": "`llmUsage.calls`",
+      "threshold": "**≤ 5,900** against 5,690 — a wider pool must not cost a call",
+      "numbers": [
+        5900,
+        5690
+      ]
+    },
+    {
+      "id": 5,
+      "kind": "field_at_most",
+      "field": "llmUsage.promptTokens",
+      "at_most": 32000000,
+      "quantity": "`llmUsage.promptTokens`",
+      "threshold": "**≤ 32,000,000** against 31,103,964, i.e. **+2.9%**. §13.268.2 measured −0.1% for the same change at `c1f8fb85`, so the bar is slack on purpose: it is set to catch a regime change, not to price this one",
+      "numbers": [
+        32000000,
+        31103964,
+        3
+      ]
+    },
+    {
+      "id": 6,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": -3,
+      "quantity": "`MR` accuracy against `42177443765`",
+      "threshold": "**Δ ≥ −3 points**, with the resolution printed. The bar is a null",
+      "numbers": [
+        -3
+      ]
+    },
+    {
+      "id": 7,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "excluding": [
+        "MR"
+      ],
+      "max_loss_points": 3,
+      "quantity": "every other capability against `42177443765`",
+      "threshold": "no loss **≥ 3 points**",
+      "numbers": [
+        3
+      ]
+    },
+    {
+      "id": 8,
+      "kind": "field_at_least",
+      "field": "bareRetry.attempted",
+      "at_least": 60,
+      "quantity": "`bareRetry.attempted`",
+      "threshold": "**≥ 60**",
+      "numbers": [
+        60
+      ]
+    }
+  ]
+}
