@@ -31791,10 +31791,23 @@ per-turn copy of a per-session fact, the boundary it was introduced to draw is a
 it occupies is the room §13.281 found to be the binding constraint: the median question sits **239
 characters** below the 48,000 cap.
 
-**The reference pipeline pays none of it.** Its aggregation prompt renders numbered session blocks, so on
-the axis where this arm trails by 7.64 points (§13.282.2) it has been comparing a pipeline that spends its
-whole room on evidence against one that spends a seventh of it on provenance. That is the fair-comparison
-defect this registration closes, and it is worth stating plainly: the deficit was not all mechanism.
+**The reference pipeline pays none of it.** Its aggregation prompt renders session blocks and carries no
+per-turn marker at all, so on the axis where this arm trails by 7.64 points (§13.282.2) it has been comparing
+a pipeline that spends its whole room on evidence against one that spends a seventh of it on provenance.
+
+**And it does so at less than half the room, which is the part that has to be written down before the
+readout rather than after it.** `NaturalLanguageMemorySystem` is constructed by the arm with `embedding`,
+`llm`, `enableAbstention` and the two caches -- no budget options -- so `answerSessions` runs at the defaults:
+**2,000 characters per session, 20,000 for the whole aggregation context**, against this arm's 48,000. It
+reaches 85.95% on `MR` with 41% of our evidence room, at a coarser grain, with no per-turn cap.
+
+So the tax this registration removes is real and this treatment is free evidence for the same money, but it
+**cannot explain the gap**: a pipeline with 2.4x the room does not lose by 7.64 points because of a 13.8%
+overhead inside it. What the two configurations differ in is **shape** -- 20,000 characters of
+session-complete evidence against 48,000 characters of turn-scattered fragments cut at 400 each. That is
+§13.34's reading of the same artifact and SeCom's finding (arXiv:2502.05589) arrived at from the other side,
+and it is what §13.283.6 registers next. The correction matters because the tempting read of this whole round
+is "we were paying a tax and now we are not", which would close the gap in a document and not in a run.
 
 ### 13.283.1 What the treatment is, and the two things held fixed
 
@@ -31906,3 +31919,32 @@ Three branches, and each names the increment that follows rather than a retry:
 - **Multi-step retrieval** (MemCog's family). It changes what is retrieved rather than how it is rendered,
   and it is the axis §13.282.3 leaves standing.
 - **A second provider.** Nothing here touches the reader.
+
+### 13.283.6 The comparison this treatment does not fix, and the increment it points at
+
+The reference arm is constructed with no budget options (`run-ablation.ts`), so it runs at
+`DEFAULT_MAX_AGGREGATION_CHARS = 20,000` and `DEFAULT_MAX_SESSION_CHARS = 2,000`, and it delivers **whole
+sessions** joined by `\n\n` with no numbering, no dates and no per-turn cap. This arm runs at 48,000 with
+400-character turns.
+
+| | `reference-pipeline` | `cortex-memory` |
+| --- | ---: | ---: |
+| room | **20,000** chars | **48,000** chars |
+| unit | session, whole | turn, with a score and a neighbourhood |
+| per-item cut | 2,000 chars per **session** | 400 chars per **turn** |
+| per-turn markers | none | 13.83% of the prompt, until this registration |
+| `MR` | **85.95%** | 77.69% |
+
+More room, finer grain, five times as many cuts, and 7.64 points lower. The order of the next two
+experiments follows without another census: **shape before size**, and the shape that wins is the one the
+competitor with less room is using.
+
+**§13.284 (candidate, not dispatched).** Session-shaped evidence at the reference's room: `relevanceUnits:
+session-fill` on the anchored signal, `maxPromptChars` 20,000, no per-turn cap on the multi-session route.
+Its predictions are cheap to state and each is checkable: `MR` at least level with this run's reading;
+`deliveredPromptChars` down ~58% on `MR`, which is the first change in this campaign that is expected to
+**save** tokens and gain points at once; and gold-turn recall on `MR` no lower than this run's 97.11%,
+because `session-fill` allocates whole sessions. It is registered here as a candidate rather than as gates
+because two treatments in one queue would make neither attributable, and §13.283 has to be read first:
+if its coverage gate moves, the room is not the constraint at 48,000 and a 20,000-character room becomes a
+much sharper test than it is today.
