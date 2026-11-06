@@ -31546,9 +31546,11 @@ added region and nothing in it can leave. The lengths are in the two artifacts:
 | delivered turns, **max** | **232** | **238** |
 | questions delivering more than 256 | **0** | **0** |
 
-So for all 500 questions the window is narrower than the narrow pool, and the discrepancy §13.280.1
-counted disappears by construction rather than by measurement. That is why repair one needs no
-dispatch: its acceptance criterion is an **equality**, not a level.
+So for all 500 questions the window is narrower than the narrow pool, and nothing the anchor walk
+chooses can be pushed out of it by a wider pool. That is why repair one needs no dispatch: its
+acceptance criterion is an **equality**, not a level -- on the pool. §13.280.8 restricts what the
+equality covers: delivery draws turns the ranking never scored on 243 of 500 questions, and that
+dependence on width survives this repair.
 
 **The defect is sharper than "the set reorders".** The invariance test was written before the fix and
 five of its six assertions failed; the one that matters most is containment. Pre-fix, the wide pool
@@ -31581,13 +31583,93 @@ on record and all three are falsifiable without a new treatment, by the next run
 | --- | --- |
 | `MR` ablation average 79.34% at 256, **76.45%** at 512 (§13.276.5) | within noise of the 256 figure: the width cost was the anchor walk, and the walk no longer reads the width |
 | paired `MR` 7 down / 2 up across the widths, exact McNemar **p = 0.039** (§13.278.3 d) | sign test no longer rejects: the discordant pairs were the displaced anchors |
-| 63 of 500 questions delivering a different gold set, 28 down / 35 up (§13.280.1) | **0** of 500, and the digests are equal: `anchor-width-invariance.test.ts` is the same claim at unit scale |
+| 63 of 500 questions delivering a different gold set, 28 down / 35 up (§13.280.1) | **31 to 0** among the 257 questions that delivered no unscored turn; the other 243 are out of scope for this repair (§13.280.8) |
 
-The third is the check with no resolution question attached -- it is an equality, so it either holds
-or the proof in §13.280.6 is wrong somewhere the artifacts did not show. The first two carry the
+The third is an equality on the population the repair covers. §13.280.8 restricts it: the repair makes the
+*pool* width-invariant, and 243 of the 500 questions deliver turns the pool never scored, which is a second
+width dependence this increment does not touch. The first two carry the
 noise floor this campaign has measured twice (**3.2%** on byte-identical dispatches, **3.49%** on
 the round-ten pair), so a 512 run that lands within about three points of 79.3% is consistent with
 the prediction and a run that reproduces 76.45% refutes it.
 
 None of this needs a dispatch of its own. It is what the next 512 run means, whichever experiment
 that run is.
+
+## 13.281 The room is exhausted, so the anchor-budget question is a substitution question
+
+SOTA-LANDSCAPE §12 ends with "raise `ANCHOR_COUNT` toward 60 and price the room first". Pricing it is a
+read of an artifact, and the answer closes the experiment as it was stated.
+
+| | `42177443765`, 500 questions |
+| --- | ---: |
+| `deliveredPromptChars`, minimum | 38,292 |
+| **median** | **47,761** |
+| p90 | 47,953 |
+| **maximum** | **47,999** |
+| `maxPromptChars` | **48,000** |
+
+Half the questions sit **239 characters** below the cap -- about half of one turn at `maxTurnChars =
+400` -- and the largest is one character under it. The prompt is not nearly full on the questions
+where room would help; it is full, which is the same finding §13.274.3 reached from the other
+direction ("nothing fails for lack of room" was about gold availability, and this is about the
+budget that would carry it).
+
+So a larger anchor budget cannot add evidence. Every restored turn that enters the window does so by
+outranking a hit that was already there, and `0.5 x anchor` puts it mid-pack rather than at the tail
+-- it evicts a mid-ranked *retrieved* turn, not the weakest one. The experiment is therefore not "does
+more restoration help" but **"is a restored neighbour better evidence than the retrieved turn it
+displaces"**, and it has a shape that can be checked before it is dispatched:
+
+- delivered turn count should stay where it is (median 129) and `deliveredPromptChars` should stay at
+  the cap -- if either moves, the run did not test substitution;
+- `windowComposition.offered` should rise toward `windowComposition.turns`, because the turns that
+  enter are restored and a restored turn is by construction in the pool -- it reads 73 of 73 on the
+  sampled question above, so the field is already near its ceiling and the prediction is that it
+  stays there while the *composition* underneath it changes;
+- the displaced turns are identifiable: they are the hits whose text is in `42177443765`'s delivered
+  set and not in the treatment's, and their retrieval rank is known from the treatment's own pool.
+
+That last line is why this cannot be answered by the width experiment or by anything else in flight:
+it needs a treatment artifact, and it needs the ordering question stated first. It also re-prices
+CoD's 60 anchors: their configuration carries an evidence budget of about 200 delivered turns and
+restores up to 240 candidates into it, which is the same substitution at a larger scale, not a
+larger prompt.
+
+What this does **not** say is that the anchor budget is right at 4. It says the budget is not the
+binding constraint on evidence *quantity*, and that the honest version of the comparison is about
+rank -- which is the same axis §13.280.6 just repaired.
+
+### 13.280.8 The pin's equality is a pool equality, and the delivery has a second width dependence
+
+§13.280.6 said the delivered prompt becomes byte-identical across widths, and §13.280.7 put "0 of
+500" in a prediction table. Both were too strong, and the artifact says so in a field the argument had
+not read: `windowComposition.offered`, the count of delivered turns the ranking scored.
+
+| reading | 256 | 512 | cross-run |
+| --- | ---: | ---: | ---: |
+| questions delivering at least one turn the ranking never scored | **243 / 500** | **0 / 500** | -- |
+| questions whose **delivered text set** differs across the two runs | -- | -- | **274 / 500** |
+| ...of those, with no unscored turn at 256 | -- | -- | **31** |
+| ...of those, with at least one | -- | -- | **243** |
+| questions whose `goldOverlap.carried` differs | -- | -- | 63 |
+| ...of those, in the padded population | -- | -- | **55** (30.6 expected by chance) |
+
+Two populations, and the pin addresses one of them.
+
+**All 243 questions that delivered an unscored turn at `top_k = 256` deliver a different set at 512**,
+because at 512 the ranking scores turns it previously did not -- the delivery is not a prefix of the
+pool (it draws session neighbours the ranker never saw), so widening the pool reclassifies those
+neighbours and can reorder them. The anchor walk does not enter that at all. **Among the 257 questions
+with no unscored turn, 31 (12.1%) changed**, and that population is the one §13.280.3's mechanism can
+explain and §13.280.6's repair addresses.
+
+So the claim the repair supports is: *the pool's anchors, restored turns and order prefix become
+width-invariant*, which is what `anchor-width-invariance.test.ts` asserts and what the inequality in
+§13.280.6 proves. The prompt-level equality needs a second property this increment does not provide:
+delivery as a function of the pool. §13.280.7's third row is withdrawn to the number it can carry --
+**31 to 0 among the unpadded, with the 243 out of scope** -- and the gold-level 63 can only be
+attributed to the mechanism up to its **8** members that had no padding at 256.
+
+This is the same defect the round began with, one layer down: a claim that a repair removes a cause,
+written before the artifact was asked which population the cause covered. It is corrected here rather
+than at the readout because the readout would have blamed the repair.

@@ -122,9 +122,16 @@ const ANCHOR_DECAY = 0.5;
  * dispatched run, and it is what makes the pool a function of the question and the retrieval ranking
  * alone. Two widths then differ only by hits ranked below every hit of the narrower pool, and since
  * the delivered window is narrower than that pool in every archived record (largest 232 at `top_k =
- * 256`, 238 at 512) neither a hit nor a restored turn can be pushed out of it: the delivered prompt
- * becomes byte-identical across widths, which is the property `anchor-width-invariance.test.ts`
- * asserts.
+ * 256`, 238 at 512) neither a hit nor a restored turn can be pushed out of it.
+ *
+ * ## What this does not make invariant
+ *
+ * The **pool** becomes width-invariant; the **prompt** does not, and §13.280.8 measured the gap. A
+ * delivery is not a prefix of the pool: on 243 of 500 questions at `top_k = 256` it carries turns the
+ * ranking never scored, and widening the pool scores them, which reclassifies and can reorder them
+ * without the anchor walk being involved at all. So `anchor-width-invariance.test.ts` asserts the
+ * pool property -- anchors, restored count, order prefix -- and a byte-identical prompt needs a
+ * second property this module does not provide.
  *
  * Not an environment variable, for the reason `ANCHOR_COUNT` gives: a bound a dispatch could move
  * would make two artifacts differ by a number the configuration line cannot state in a name.
