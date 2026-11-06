@@ -30740,3 +30740,10 @@ What the run is for, stated so that a reader can hold it to this and nothing els
 Refutation: if gate 1 or 3 fails the artifact is not a reading and the cause is in the writer, not the
 arm. If gates 4–7 fail the wider pool costs something it did not cost at `c1f8fb85`, which would make
 §13.268.2's "width is free" a reading about one tree rather than about the change.
+
+### 13.273.1 Dispatch record
+
+Dispatched against `1369fb8f` with one declared departure, `cortex_memory_relevance_top_k`, run
+`42190193540`. The departure is the registration: `memoryArmConfig.relevanceTopK` reads 512 on the
+artifact and gate 2 fails if it does not, which is the check §13.262.7 introduced after a dispatch that
+silently did not take.
