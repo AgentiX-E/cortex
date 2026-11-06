@@ -570,3 +570,50 @@ they retired. The entries below replace readings that were in this file.
    at `top_k=256`** and **18:7 (p = 0.043) at `top_k=512`**. The campaign has quoted the gap as a fact since
    §13.243; on the narrower pool it is not distinguishable from noise. Every table in this file that sets cortex
    beside the reference must say which pool the pair was drawn from.
+
+## 12. Chain on Demand's own configuration, read against our port, and what it says about the repair
+
+The mechanism this arm's ranking layer is ported from is arXiv:2611.02480, and until now this file cited it
+by name and by its reported accuracies without reading its allocation section. Read, it prices three things
+it was not printing: our anchor budget is **15x smaller** than theirs, our stability question is one their
+limitation section explicitly declines, and their one experiment on how to protect a ranking prefix does not
+mean what a reader will assume it means here.
+
+| | CoD (arXiv:2611.02480, §4.1 and App. A.2) | cortex (`retrieval-anchored`) |
+| --- | --- | --- |
+| candidate pool | `K_cand = 200`, fixed | `top_k` 256 or 512 |
+| anchor budget | **60** | **4** (`ANCHOR_COUNT`) |
+| reconstruction window | 2 turns each side, from the **full memory** `M`, not from the pool | 3 each side, from the flat context |
+| restored turns, upper bound | 240 | **24** |
+| selection rule | additive: `R + 0.06 D + 0.10 C`, recomputed after every pick | **lexicographic**: coverage, then score, then novelty, then rank |
+| pool-size ablation | **none**; §7 lists the fixed pool as a limitation | §13.280: 63 of 500 questions changed their delivered gold set |
+| anchor stability under a changing pool | **not studied** | measured, then repaired (§13.280.6) |
+
+Three consequences.
+
+1. **The anchor budget is the largest unexplained difference between the two, and it is a capability gap, not a
+   stability question.** CoD allocates 60 anchors and restores up to 240 turns; this arm allocates 4 and restores
+   at most 24, against a delivered window whose median is 129 turns. Their evidence budget is roughly what a
+   60-anchor restoration produces. That is a 15x difference in the mechanism's own parameter, and no archived
+   reading of this arm isolates it: every dispatch since `41990597116` held `ANCHOR_COUNT` at 4.
+2. **Their rule is why they do not see our defect, and they do not see it by accident.** With `R` in `[0, 1]` and
+   `beta = 0.10`, a newly covered query term can only promote a candidate over one that leads on relevance when
+   the two are within a tenth of a point -- their coverage term reorders near-ties. Our lexicographic order makes
+   coverage dominate *absolutely*, so a rank-300 hit naming two question terms displaces a rank-3 hit naming one,
+   and the displaced anchor's neighbourhood leaves the window. CoD is not immune to width-dependence (a deep
+   candidate within 0.10 of `R` still wins a slot); it has simply never measured it, which §7 states outright:
+   *"We do not systematically study how these choices scale with longer histories or different evidence
+   budgets."*
+3. **Their Table 13 is not a refutation of the repair, and the difference has to be stated or it will be read as
+   one.** CoD's *protected coverage* variant (72.0%) and *protected D+C* (73.0%) keep a prefix of the dense
+   ranking as mandatory anchors and spend the remaining budget with the extra criteria; both lose to the
+   unprotected rule (77.0%). That is a statement about **allocation quality at a fixed pool**. The repair here
+   bounds the **scan** at the registered width, where it is a no-op by construction (`min(256, 256)`), so it
+   changes no allocation at `top_k = 256` and its purpose is to stop a *wider* pool from reallocating. The two
+   experiments share a word and nothing else -- but the resemblance predicts that if this arm ever widens the
+   pinned scan, CoD's result says the extra slots may not buy accuracy.
+
+What that changes in §4's ordering: nothing about which competitor sets the `MR` ceiling (MemCog, 92.5%, still
+does), and one new entry above the anchor-count experiment -- **raise `ANCHOR_COUNT` toward 60 and price the room
+before dispatching**, because their configuration says the mechanism has been run at a fifteenth of its own
+budget for every reading this campaign has published.
