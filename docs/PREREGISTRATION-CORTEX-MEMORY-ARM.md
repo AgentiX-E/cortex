@@ -31673,3 +31673,81 @@ attributed to the mechanism up to its **8** members that had no padding at 256.
 This is the same defect the round began with, one layer down: a claim that a repair removes a cause,
 written before the artifact was asked which population the cause covered. It is corrected here rather
 than at the readout because the readout would have blamed the repair.
+
+## 13.282 Reading: nine of ten, the order is not the difference, and the prompt side is exhausted
+
+Artifact `42237543941`, 500 questions, 121 of them multi-session. Reference `42177443765`.
+
+| # | quantity | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | the artifact's own audit | every check passes | **PASS** |
+| 2 | `memoryArmConfig.promptContract` | `evidence-blocks-instruction-first` | **PASS** |
+| 3 | `memoryArmConfig.promptAssembly` | `instruction-first` | **PASS** |
+| 4 | `memoryArmConfig.assemblyRoutes` | `['multi-session']` | **PASS** |
+| 5 | `MR` against `42177443765` | 80.17% -> **77.69%** (-2.48 over 121; **1 won, 4 lost**; p = 0.375) | **FAIL** |
+| 6 | `IE`, `KU`, `TR`, `ABS` against it | IE -2.67 (1 won, 5 lost), KU **+2.78** (3 won, 1 lost), TR -1.57 (0 won, 2 lost), ABS 0.00 | **PASS** |
+| 7 | `promptDigest` on the 379 non-`MR` questions | **379/379** agree | **PASS** |
+| 8 | `llmUsage.calls` | 5,622 against 5,690 | **PASS** |
+| 9 | `llmUsage.promptTokens` | 30,991,956 against 31,103,964 (**-0.36%**) | **PASS** |
+| 10 | `bareRetry.attempted` | 74 | **PASS** |
+
+### 13.282.1 The instrument did exactly what it was built to do
+
+**All 121 multi-session digests changed and none of the other 379 did.** That is the route scope of
+the treatment measured on the delivered bytes: 121/121 inside, 0/379 outside, and the two fields this
+increment added -- `promptAssembly` and `assemblyRoutes` -- are the reason the artifact can say the
+run *asked* for the order and that the asking arrived. Gate 7 is what turns the ablation from an
+average into a reach statement, and it is the first gate in this campaign decided entirely on prompt
+bytes.
+
+The permutation also cost nothing measurable: calls 5,690 -> 5,622, prompt tokens -0.36%, and
+`deliveredPromptChars` unchanged at a median of 47,761 -- the same text, in a different order.
+
+### 13.282.2 What the failure means
+
+§13.279.4's first refutation branch, verbatim: *"`MR` moves by less than 3. Order is not the
+difference either, and the remaining prompt-side differences are exhausted."* The move is -2.48 with
+**1 win and 4 losses** -- indistinguishable from noise on 121 questions (p = 0.375) and, if anything,
+pointing the wrong way. The four-pass averages say the same thing more quietly: feature 79.34% ->
+77.48%, reference 85.33% -> 85.12% on the same artifact, so the arm-versus-reference gap widens from
+-5.99 to **-7.64** points and the reference is stable through the change.
+
+That is the third prompt-side lever to come back null, and the pattern is now a finding rather than a
+run of bad luck:
+
+| lever | dispatch | `MR` |
+| --- | --- | ---: |
+| the evidence contract, ported whole (§13.248) | `41860773768` | +1.8 questions |
+| anchor restoration as a mechanism, first dispatch (§13.257) | `41990597116` | 5 won / 18 lost |
+| the assembly order (§13.279) | `42237543941` | **1 won / 4 lost** |
+
+Three mechanisms aimed at the presentation side, three results inside the noise band -- the third
+one with a paired count that points the wrong way. What they share is that each changed *how the same
+evidence is presented* (the restoration row changed where the pool stops, but its prompt delta was 54
+characters out of 46,816); none changed *which evidence the reader gets*. The gap is therefore not in
+the prompt's shape, and the campaign can stop looking there.
+
+### 13.282.3 What this closes, and what it does not
+
+**Closed: the prompt-side lever list.** Every degree of freedom this campaign enumerated on the
+presentation side has now been measured -- the contract, the ask, the rendering, the order -- and the
+best of them is worth +1.8 questions with a null on the last two. §13.277.2's "what deliberately does
+not change" list was the last one; it is empty now.
+
+**Not closed, and now the whole remaining argument:**
+
+| axis | state |
+| --- | --- |
+| ranking stability under pool width | **repaired this round** (§13.280.6), prediction pending a 512 run (§13.280.8) |
+| anchor budget 4 against CoD's 60 | measured as a **substitution** question, not a room question (§13.281) |
+| multi-step retrieval (MemCog family) | not started; §13.278.4's item 3 |
+| a second provider | not started |
+
+The reading also settles the order of those four by elimination rather than by preference: three of
+them change which evidence arrives, and the one that has just failed changed only how it is
+presented.
+
+**Cost of the negative:** 5,622 model calls and 30.99M prompt tokens. That is what a decisive
+refutation costs on this arm, and it is worth stating beside the result -- the campaign spent the same
+order of magnitude to find out that the order is not the difference, which is cheaper than the two
+further levers it would otherwise have been stacked behind.
