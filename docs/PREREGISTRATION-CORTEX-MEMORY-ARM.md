@@ -32657,7 +32657,7 @@ What it is **not**:
 - not a change to the window, the unit, the room, the cap, the reader or the contract. Gate 6 holds
   `relevanceUnits` at `turn` for exactly this reason.
 
-#### 13.290.2 The twelve gates
+#### 13.290.2 The thirteen gates
 
 `tools/gates/13.290.json`, control `42310779222`. Gates 3 and 4 are the pair that separates a null result
 from a treatment the product never received, and gate 4 is stronger here than in §13.288 because the
@@ -32677,10 +32677,17 @@ branch **delegates** to `verbatim` rather than falling through to the shipped bl
 | 10 | `MR` questions delivering every gold turn, against 98 | **no fewer than 98** — the line changes which mentions count, not which turns are delivered |
 | 11 | `llmUsage.promptTokens` | **≤ 29,000,000** against 27,308,598 — the swap adds ~480 characters to 121 prompts, so a larger bill is a different prompt than the one registered |
 | 12 | `bareRetry.attempted` | **≥ 60** |
+| 13 | the six questions whose failure in `42310779222` is a stated verb-identity exclusion | **≥ 4 of 6 flip to correct** — the attribution clause: a delta carried by other questions is the churn §13.291 measured, not this rule |
 
-Dry run against the control as its own treatment: gates 1, 2, 3 and 8 fail (a run cannot pass "the rewrite
-reached the product" by comparing an artifact with itself) and the other eight read values. That is the
-shape a correctly-armed registration has.
+Dry run against the control as its own treatment: gates 1, 2, 3, 8 and 13 fail (a run cannot pass "the
+rewrite reached the product", or attribute a gain to itself, by comparing an artifact with itself) and the
+other eight read values. That is the shape a correctly-armed registration has.
+
+**Gate 13 was added after `42328499107` reported, and §13.291.5 is why.** A three-point `MR` gain is
+reachable by the churn that run measured — twelve of 121 verdicts moved when only the evidence changed —
+so a bare delta cannot attribute anything. The six ids are the control's verb-exclusion population, picked
+before the treatment exists; under a prompt-only change nothing else can move them, and with six targets
+the noise floor of 1.3% predicts 0.08 flips rather than 4.
 
 #### 13.290.3 Predictions, in reading order
 
@@ -32691,9 +32698,17 @@ shape a correctly-armed registration has.
    eighteen and only weakly produced the four, so a net gain is what a correctly-calibrated rule would
    show. The reading is taken per question, not from the headline: the run's `MR` delta says whether the
    calibration was right, and the population counts say whether the **mechanism** was.
-2. **Gate 8's bar is 3.3 points of recovery.** Eight of the eighteen below-gold failures have their
-   exclusion stated in the reply and two of them close arithmetically (`50 + 20 = 70`, `$5,250 + $600 =
-   $5,850`). Four recovered questions is +3.3 points; the bar is set at four because two would be
+   **The ceiling is arithmetic and it is not eighteen.** Of the eighteen below-gold failures, six exclude
+   on the **verb or the role** — which this line moves — and three exclude on the **date window**, which
+   it does not: `3a704032` rejects two plants as *"acquired two weeks prior in May, not last month"* and
+   `gpt4_731e37d7` rejects a $500 workshop as *"dated after the session date"*. The rest are a mixture.
+   So the reachable population is about six questions, or **+5.0 points**, and the bar at four is 80% of
+   it. A run that clears the bar has taken the population this line addresses; a run that recovers all
+   six is the arithmetic working exactly; and a run that recovers more than six has moved something that
+   was not registered.
+2. **Gate 8's bar is 3.3 points of recovery.** Every one of the eighteen below-gold failures states its
+   exclusion in the reply; six of those exclusions are on the verb or the role, and two of the six close
+   arithmetically (`50 + 20 = 70`, `$5,250 + $600 = $5,850`). Four recovered questions is +3.3 points; the bar is set at four because two would be
    indistinguishable from a reader-side fluctuation at 121 questions.
 3. **The four above-gold failures should not move, or should move by less than the below-gold ones.** If
    the relaxation converts an over-count *and* an under-count in equal number, the mechanism is
@@ -32737,3 +32752,122 @@ second and this run to first, on three measurements:
 
 The critique stays second because it is the refutation branch of this run, and a refutation branch is
 worth running only after the thing it refutes has been measured.
+
+### 13.291 `session-fill` reads out: complete gold evidence on 120 of 121 questions, and the score does not move
+
+Read of `42328499107` (`session-fill`, `b299fdd2`, 91 minutes) against `42310779222`, the eleven gates of
+§13.288. Ten pass. Gate 7 fails with a delta of exactly zero.
+
+#### 13.291.1 The eleven gates
+
+| # | quantity | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | the artifact's own audit | every artifact check passes | **PASS** |
+| 2 | `memoryArmConfig.relevanceUnits` | `session-fill` | **PASS** |
+| 3 | `MR` deliveries whose prompt bytes differ from the control | **121 of 121** (bar ≥ 110) | **PASS** |
+| 4 | the four capabilities outside the unit's reach | **379 of 379 agree** | **PASS** |
+| 5 | `memoryArmConfig.promptContract` | `evidence-blocks-unsourced` | **PASS** |
+| 6 | per-turn source markers | 0 of 500 prompts, 0 markers | **PASS** |
+| 7 | `MR` accuracy | 77.69% → **77.69%**, +0.00, **6 won / 6 lost**, p = 1 | **FAIL** |
+| 8 | `IE`, `KU`, `TR`, `ABS` | worst **−1.39** (`KU` 88.89 → 87.50) | **PASS** |
+| 9 | `MR` questions delivering every gold turn | **98 → 120** (+22) | **PASS** |
+| 10 | `llmUsage.promptTokens` | **27,065,486** against 27,308,598 | **PASS** |
+| 11 | `bareRetry.attempted` | 67 | **PASS** |
+
+Gate 1 passing is worth one line of its own: `42310779222`'s audit failed `reach`, that was our report
+table rather than the run (§13.287.4), the table was fixed and five assertions were added, and this is the
+first run since to pass its own audit.
+
+#### 13.291.2 The shape moved, in the direction §13.288.5 predicted, and by less
+
+`tools/delivered-shape.py --capability MR` on both artifacts:
+
+| | `turn` (control) | `session-fill` |
+| --- | ---: | ---: |
+| sessions per question | 45 | **38** |
+| turns per question | 199 | 198 |
+| evidence characters per question | 45,754 | 45,763 |
+| **turns per session** | 5 | **6** |
+| characters per session | 966 | **1,259** |
+| sessions holding one turn | 11.0% | 5.9% |
+| sessions under 400 characters | 17.4% | 10.5% |
+
+The unit bought **30% more per session and 16% fewer sessions at an identical total** — 45,754 against
+45,763 characters, 199 against 198 turns. §13.288.6 predicted the run would be "nearly the same shape";
+it was 5 → 6 turns per session rather than 5 → 8, and the reason is arithmetic: a whole session at this
+pool holds about six admitted turns, so `session-fill` had nothing larger to hand over. That is a fact
+about the pool, and it is the number §13.288.6 could only estimate.
+
+#### 13.291.3 The result is not "no effect"; it is a null on a population that moved
+
+Gate 7's `+0.00` is the least interesting way to state it. The interesting statements are three, and they
+are ordered by how much they close off:
+
+1. **Twenty-three questions went from partial to complete gold coverage, and nine of them were wrong in the
+   control. Zero of the nine were repaired.** Two of the twenty-three were correct in the control and broke.
+   So on the population a wider window is supposed to serve — "the reader did not have the evidence" — the
+   repair rate is **0 of 9**. §13.287.4 priced this at "two thirds of the errors have full evidence"; after
+   this run the population is 120 of 121 fully covered, so essentially **all** of them do, and the score is
+   the same to two decimals.
+2. **The reader's error structure is conserved.** `tools/mr-error-direction.py` prices every failure against
+   its gold, and the two runs produce the same census:
+
+   | bucket | `turn` | `session-fill` | shared ids |
+   | --- | ---: | ---: | ---: |
+   | below the gold | 18 | **18** | **14** |
+   | above the gold | 4 | **4** | 2 |
+   | declined | 1 | 2 | 1 |
+   | echo | 2 | 1 | 1 |
+   | unpriced | 2 | 1 | 0 |
+   | equal | 0 | 1 | 0 |
+
+   Eighteen below against four above, twice, on two deliveries that share no session's composition. The
+   members churn (four leave the below bucket, four join it) and the **sizes do not move at all**. A
+   quantity that is invariant under a 30% change in evidence per session is a property of the reader.
+3. **Twelve of 121 verdicts flipped, six each way.** That is real movement, not noise: the four capabilities
+   whose prompts were **byte-identical** flipped 5 of 379 (1.3%, ≈ 1.6 per 121), so the unit reshuffled
+   `MR` at roughly seven times the reader's own instability and netted exactly zero.
+
+The six that were repaired are `3a704032`, `7024f17c`, `gpt4_2ba83207`, `e3038f8c`, `60159905`, `bc149d6b`
+— every one of them on §13.289.4's failure list. The six that broke are `d851d5ba`, `1a8a66a6`, `7405e8b1`,
+`a4996e51`, `a08a253f`, `8e91e7d9` — none of them was failing before. **The repairs and the breaks are
+disjoint in a way that names nothing**: the four below-gold questions that left are not the four that
+joined (`1a8a66a6`, `8e91e7d9`, `a08a253f`, `a4996e51` are new failures that also land below the gold), so
+the unit did not repair the below-gold class, it swapped members between two populations of the same size.
+
+#### 13.291.4 §13.288's refutation branch fired, and the reason is the pool rather than the room
+
+§13.288.4 wrote: *"if the run is flat, the reading is 'the unit is inert at a saturated room', which is a
+fact about the room, not about session units."* That is what happened, with one correction the prediction
+did not have: the unit is not inert — it changed 30% of the per-session allocation and 12 verdicts — it is
+**inert with respect to accuracy**, because the pool has no more session to deliver. Six turns per session
+is what this arm's admission leaves in a session, so "whole sessions" and "the best five turns of each
+session" are almost the same prompt.
+
+So the next variable is not the unit, and it is not the room either: §13.289.4's 0-of-9 result closes the
+room, and this run closes the unit. What is left is the **reader**, and the only question left about the
+reader is what it does with the mentions it already has.
+
+#### 13.291.5 What has to change in how this arm is registered from here
+
+Three consequences, and the second one is the uncomfortable one.
+
+1. **Completeness is no longer a variable worth a run.** Any registration whose mechanism is "the reader did
+   not have it" now has 0-of-9 evidence against it at the population level and 120-of-121 coverage at the
+   arm level. That retires the queued per-session cap + 20,000-character room, and it retires it on
+   measurement rather than on the shape argument §13.289 made.
+2. **`MR`'s per-question verdict churns by about 10% under a change that leaves the prompt's *wording*
+   untouched.** The four verb-exclusion failures this campaign was about to attribute to a prompt edit moved
+   by two in a run that did not touch the prompt at all. A registration that reads a three-point `MR` delta
+   as evidence for its mechanism is therefore reading churn. **Every registration from here needs an
+   attribution clause** — a named population, fixed before the run, that must be the one that moved — which
+   is why `questions_flipped` was added to the gate tool and gate 13 to §13.290.
+3. **Equal accuracy at lower cost is not an adoption case.** `session-fill` is 0.9% cheaper in prompt tokens
+   and 22 questions more complete, and it loses 1.39 points on `KU` and 0.79 on `TR` — inside the bar and
+   inside the noise, but in the wrong direction twice. The arm stays on `turn`. What `session-fill` earns is
+   a different role: it is the better **experimental** arm for reader-side changes, because on it the
+   evidence is not a confounder — which is the argument for a future registration, not this one's.
+
+What §13.288 got right, recorded because it is the part that made this run cheap: §13.288.5 amended its own
+depth prediction from arithmetic before the artifact existed, §13.288.6 rewrote its own first draft for
+being circular, and both of those left the run's outcome readable in one pass instead of three.
