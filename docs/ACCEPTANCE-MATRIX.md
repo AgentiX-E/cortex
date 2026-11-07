@@ -139,6 +139,24 @@ number with its run id.
 The same run also settles two other rows in the stale direction: `S4` (temporal) reads **96.06%** against a
 85% threshold, and `S2`/`S5` read 88.89% and 100%. Those are not promoted either, for the same reason.
 
+### 2.1.1 Two rows already are generated, and that is the difference
+
+`C1` and `C2` no longer have this problem, and the way they stopped having it is the shape the repair should
+take for `S1`. Both are written by a tool from a report artifact, with the run id in the file:
+
+```
+python3 tools/cost-ledger.py       <artifact> --json --write evidence/longmemeval/cost.json --run 42355323615
+python3 tools/evidence-budget.py   <artifact> --json --write evidence/longmemeval/evidence-budget.json --run 42355323615
+```
+
+`--write` refuses without `--run`, so a file that cannot name its provenance cannot exist. Regenerating both this
+round moved `C1` from 12,105 to **12,137** and produced `C2`'s denominator for the first time; neither number was
+touched by hand.
+
+`S1`/`S2`/`S4` come from `evidence/longmemeval/summary.json`, which is still written by a different path with no
+`--run` discipline. The distance between the two is one script, and it is the script `13.298.4` specified. Until
+it exists, the staleness above stands.
+
 `P1` also carries an empty competitor field on purpose. Every published portability claim in this field is a
 sentence ("works with any model"), a sentence is not a value, and a fabricated row would be worse than the gap.
 
