@@ -32112,8 +32112,13 @@ Predictions, in reading order:
    trading anchors for neighbours and the trade is wrong at 48,000 characters.
 2. **MR accuracy rises**, because §13.283.1's arithmetic says all 53 missing MR turns sit inside the room a
    13.83% tax was consuming (upper bound +109 fully-covered questions).
-3. **`windowComposition.turns` falls on MR while `promptChars` stays bounded.** A window is five turns; the
-   room buys fewer, larger units. If carried turns rise, the pass is not pricing the shared turns once.
+3. **The number of sessions the prompt shows falls sharply on MR, while the carried turn count
+   stays near the room's capacity.** Measured on `42237543941`: MR delivers a median of **173 turns
+   over 44 sessions — 3.9 turns per session, 252 characters per turn** — i.e. it already touches
+   roughly every session and reads each to about a quarter. A five-turn window per anchor is most of
+   a short session, so the same room must buy **fewer, deeper** sessions. If the session count does
+   not fall, or the carried count falls with it, the pass is not pricing shared neighbours once and
+   the room is being spent on the accounting rather than on evidence.
 4. **`TR` and `KU` do not move more than three points either way**, since both are already above 96% on
    recall and neither's residue is a neighbour.
 
@@ -32121,3 +32126,34 @@ Refutation: if the carried count falls, accuracy is flat and recall is flat, the
 constraint and §13.283.6's "shape before size" ordering is wrong — the next variable would be the reader, not
 the selection. If recall rises and accuracy does not, the ceiling is downstream of the window and the second
 provider (§13.282.3's last item) is the increment.
+
+### 13.286.6 The counterfactual the existing artifact can already answer, and the risk it names
+
+No new run is needed to ask where the missing gold turns live relative to what the prompt showed.
+`42237543941` records, per question, the full delivered roster (`turns`), the gold set, and
+`goldDelivered` per gold turn. Grouping both by the rendered timestamp — which this corpus stamps once
+per session, so it is the session key, and the grouping is an **inference from the prompt bytes** rather
+than from the harness's `string[][]` (that corpus is not reachable from this sandbox: the Hugging Face
+host is blocked, so the exact ±2 distance is left to the dispatch) — gives:
+
+| | value |
+| --- | ---: |
+| gold turns not delivered (all 500 questions) | **996** |
+| …whose **session the prompt already showed** | **985 (98.9%)** |
+| delivered turns in that session, p25 / p50 / p75 | **4 / 6 / 8** |
+| of the 996, on `MR` | 53, **all 53 in a shown session** |
+
+So the missing evidence is not in unseen sessions. It is in sessions the reader was already reading and
+did not finish — which is what §13.283 inferred from `goldRanks = -1` and what this measures directly.
+The `session` unit could not fix that (it pays 24 turns for 3, and lost); a window around the anchors that
+session already supplied is the cheaper way to finish it.
+
+**And the risk, stated before the run rather than after it.** The same measurement says MR's prompt
+currently shows a median of **44 sessions** — very close to the number of sessions the corpus gives those
+questions at all. So the arm is not failing to find the right sessions; it is reading every session it
+could reach to a quarter. A deeper unit must therefore **give up breadth to buy depth**, and the
+prediction that accuracy follows is the same claim §13.26 measured (accuracy rising 14.3 → 66.7% across
+coverage bands). If a five-turn window makes MR *worse*, it is because these questions need one turn from
+many sessions rather than several turns from one — and that would refute §13.283.6's "shape before size"
+ordering, not merely this parameter. A result that reversed it would be the most informative outcome
+available, which is why the registration states it in this direction rather than as a hope.
