@@ -1112,7 +1112,7 @@ function readConfidenceSignal(raw: string | undefined): string {
  * `cortex-memory` exports, so a name added or removed on the product side fails a test
  * here instead of silently becoming an accepted-but-unimplemented value.
  */
-const PROMPT_CONTRACTS = {
+export const PROMPT_CONTRACTS = {
   /** The baseline rendering: numbered turns, blank-line separated. */
   abstention: 'abstention',
   /** §12.5's candidate: every turn labelled with the memory it came from. */
@@ -1187,10 +1187,31 @@ const RENDERING_ROUTES: Record<string, readonly string[]> = {
     'assistant',
     'flat',
   ],
-  // Empty, and the emptiness is the treatment: this contract administers the same instruction in the
-  // same order and withholds the per-turn source id on every route. Reporting the six would claim a
-  // rendering the run did not draw (§13.283).
-  'evidence-blocks-unsourced': [],
+  // The same six, and the entry that stood here said `[]` -- which was wrong, and run `42310779222`'s
+  // own audit said so: `FAIL reach  ask=verbatim touches ['multi-session', 'flat', 'temporal',
+  // 'abstention'], of which all four never rendered`.
+  //
+  // The mistake was reading this table as "which routes draw a **sourced** rendering" and answering
+  // "none" -- true, and not what the field means. `[]` is the baseline's answer and the baseline's
+  // alone: `abstention` administers no rendering, so naming routes would claim a treatment the control
+  // never received. Every other contract here **is** administered on every route, because
+  // `instructionsFor` returns the contract's own block (`const own = CONTRACT_INSTRUCTIONS[contract]`)
+  // for every route an ask does not override -- with `ask=verbatim` that is all of them. What
+  // `unsourced` administers on those six routes is the withholding of the id, and §13.283 measures it
+  // against `42237543941`, which drew the id on the same six.
+  //
+  // So `[]` here was a false claim in the one direction that matters: it read as the §12.8 defect
+  // (an artifact naming a contract four of five capabilities never received) when the run had
+  // administered it everywhere. The audit is the check that exists for that defect and it fired
+  // correctly -- the artifact was what was wrong.
+  'evidence-blocks-unsourced': [
+    'abstention',
+    'multi-session',
+    'temporal',
+    'knowledge-update',
+    'assistant',
+    'flat',
+  ],
 };
 
 /**
