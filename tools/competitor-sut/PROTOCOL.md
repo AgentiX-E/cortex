@@ -78,3 +78,26 @@ ledger, and it is what lets a run be refused before it starts: a `llm` system on
 
 The driver decides its own class and says so. A parent that guessed would be guessing about someone else's
 architecture.
+
+## Resolution: the name is not the product
+
+A competitor's name is a search key, not an address. Two of the four runners in the availability census cannot be
+installed by name, and one of them installs something else entirely:
+
+| what you ask for | what you get, 2026-11-07 | the consequence |
+| --- | --- | --- |
+| `pip install letta` | **Letta Code** 0.34.12 — module `letta_code`, a terminal agent from `letta-ai/letta-code` | a run of the wrong product, reported under the name of the one MemStrata measured at 438/500 |
+| `pip install letta-nightly` | the V1 memory server (0.11.5 on PyPI), which is not `main` either | a second, different shipped state |
+| `github.com/letta-ai/letta` @ `main` | 15 files of documentation pointing at `letta-code` | nothing to build |
+| `github.com/letta-ai/letta` @ tag `0.16.8` | the retired V1 API server (`letta/server/rest_api/…`) | **the only tree that contains what the published arm ran** |
+
+So every driver names an artifact rather than a package: a tag, a commit or a version pin, in the manifest's
+`notes`. `letta_driver.py` additionally refuses at startup when the endpoint has no `/v1/archives/` route, because
+that is the successor product's shape and a number from it is not comparable with a number from the archived one.
+Refusing to run is the correct outcome: a run of the wrong system is worse than no run, since the number survives
+the mistake and the confession does not.
+
+The same rule caught `frdel/agent-zero` earlier — a general agent framework that a search for "Agent Zero Memory"
+returns, and that is not the system reporting 95.60%. Two name collisions in one census is not bad luck; it is
+what a field with no registry looks like, and it is why `manifest` is mandatory and why its `version` is quoted
+beside every score.

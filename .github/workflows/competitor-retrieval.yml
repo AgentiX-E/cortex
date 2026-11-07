@@ -49,7 +49,7 @@ on:
         default: '10'
         type: string
       sut:
-        description: 'System under test to run as one more arm (empty = none; `mem0` runs its own code, `reference` is the offline floor)'
+        description: 'System under test to run as one more arm (empty = none; `mem0` and `letta` run their own code, `reference` is the offline floor). `letta` installs the archived V1 server at tag 0.16.8 rather than `pip install letta`, which now resolves to Letta Code — a different product — see tools/competitor-sut/PROTOCOL.md'
         required: false
         default: ''
         type: string
@@ -114,6 +114,53 @@ jobs:
           python3 -m pip install "mem0ai==2.2.1" faiss-cpu
           python3 -c 'import mem0, faiss; print("mem0", mem0.__version__, "faiss ok")'
 
+      # §13.304. Letta is installed **by tag**, and that is not a preference.
+      #
+      # `pip install letta` resolves to 0.34.12 today — Letta Code, a terminal agent whose module is `letta_code`
+      # — and `letta-ai/letta`'s `main` branch is fifteen documentation files pointing at `letta-code`, with the V1
+      # API server retired to the `archive` branch. The only tree that contains the server MemStrata ran as a
+      # matched-reader arm (438/500) is the tag below, so the tag is what gets installed. A run of the successor
+      # product would produce a number filed under the archived one's name, which is the failure
+      # `tools/competitor-sut/PROTOCOL.md` ("Resolution: the name is not the product") exists to prevent.
+      - name: Install the system under test (letta, pinned to the measured server)
+        if: inputs.sut == 'letta'
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "letta @ git+https://github.com/letta-ai/letta@0.16.8"
+          python3 -c 'import letta.server.rest_api.app; print("letta V1 server present")'
+
+      # The server, then a health check that fails the job rather than the measurement.
+      #
+      # `build: embedding` is only true if the arm never routes a request through an agent: the driver uses
+      # archives (`/v1/archives/...`) and the passage search route, so passages are embedded and no model is asked
+      # anything. `OPENAI_API_KEY` is the Zhipu key because Letta's OpenAI embedding client reads the key from that
+      # variable and takes its base URL from the archive's `embedding_config` — which is the vector space every
+      # other arm in this repository reads the corpus in.
+      - name: Start the archived Letta server
+        if: inputs.sut == 'letta'
+        env:
+          OPENAI_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+        run: |
+          set -o pipefail
+          letta server --port 8283 > letta-server.log 2>&1 &
+          server_pid=$!
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8283/v1/health > /dev/null; then
+              echo "letta server up after ${attempt} attempt(s)"
+              curl -fsS http://127.0.0.1:8283/v1/health
+              exit 0
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "the server exited before answering; its log follows"
+              tail -n 200 letta-server.log
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "the server did not answer /v1/health within 180 seconds; its log follows"
+          tail -n 200 letta-server.log
+          exit 1
+
       - name: Download LongMemEval-S
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -169,6 +216,11 @@ jobs:
           # The driver's embedder. Zhipu's `embedding-3` through Mem0's own OpenAI client, so the competitor reads
           # the corpus in the same vector space the repository's arms do.
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          # For `letta`: the server was started above on this port, and the batch is 32 because that is the batch
+          # the repository's own embedding client uses — a competitor read in a different request shape would be a
+          # second variable inside the arm that is supposed to vary only the store.
+          LETTA_BASE_URL: http://127.0.0.1:8283
+          LETTA_PASSAGE_BATCH: '32'
         run: |
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \

@@ -46,6 +46,12 @@ const SUT_DIR = join(HERE, 'competitor-sut');
 const DRIVERS = {
   reference: { script: 'stub_driver.py', name: 'reference/lexical' },
   mem0: { script: 'mem0_driver.py', name: 'mem0' },
+  // §13.304. The one competitor with a same-reader, same-question, published number (MemStrata's matched-reader
+  // arm, 438/500). It is a server rather than a library, so the driver speaks HTTP to a process this repository
+  // does not start: `letta_driver.py` refuses to run unless the endpoint behaves like the archived V1 server,
+  // because the name `letta` now installs a different product (the terminal agent `letta-code`) and the
+  // framework's own `main` branch is a pointer README.
+  letta: { script: 'letta_driver.py', name: 'letta' },
 };
 
 /** The default patience for one operation. Ingest of a five-hundred-turn haystack is minutes, not seconds. */
