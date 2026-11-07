@@ -32871,3 +32871,114 @@ Three consequences, and the second one is the uncomfortable one.
 What §13.288 got right, recorded because it is the part that made this run cheap: §13.288.5 amended its own
 depth prediction from arithmetic before the artifact existed, §13.288.6 rewrote its own first draft for
 being circular, and both of those left the run's outcome readable in one pass instead of three.
+
+### 13.292 The gate tool could not read a pair that lives in one artifact, and writing the missing kind priced 13.115
+
+Done while `42337560027` (`ask=verbatim-acts`) runs. Three pieces of work, and the second one changed a plan.
+
+#### 13.292.1 Sixteen kinds, and the one that was missing
+
+`tools/registered-gates.py` had fifteen gate kinds and **every one of them compares two artifacts**. That is
+the right shape when the treatment is a separate dispatch and the wrong shape for `runAblation`, which builds
+both arms inside one invocation: same windows, same reader, same judge, same embedding cache, one file.
+
+Handed that file twice, `capability_delta` calls `_by_id` on both sides, gets the same records back, and
+reports **`+0.00` on a run that moved**. The failure is silent and it looks exactly like a null result, which
+is the class of defect this file spends its length preventing.
+
+`paired_capability_delta` reads `ablation.perCapability.<cap>` instead — `total`, `baselineCorrect`,
+`featureCorrect`, the two discordant counts and the run's own McNemar p are already there as numbers. Two
+refusals: an absent block is `UNEVALUABLE`, and so is a block whose counts are not integers or whose `total`
+is zero. Defaulting a missing count to zero would read a run whose writer had changed as a treatment that
+moved nothing.
+
+Six tests, no mocks. The two that matter: `94 → 101` passes a `+3` bar, and `94 → 96` (1.65 points, the
+shaking §13.291 measured at 12 flips of 121) fails it.
+
+#### 13.292.2 The first thing it read was our own oldest conclusion
+
+Tried on `42310779222`:
+
+```
+`MR` 103/121 → 94/121 = 85.12% → 77.69% (-7.44 points, bar >= -20.00); the pair moved +9/-18, McNemar p = 0.1221
+```
+
+`baseline.name` is `reference-pipeline` and `feature.name` is `cortex-memory`, so the "pair" in every archived
+artifact is **ours against the reference pipeline**, not two configurations of ours. The `-7.44` is §1.40's
+finding and the `p = 0.1221` is §13.288's `0.122`. A new instrument reading an old number correctly is
+cheaper evidence that the instrument works than any test can be.
+
+#### 13.292.3 What writing the gate taught us about 13.115: it is two dispatches, not one
+
+§13.115 says the reranking increment is *"paired within one invocation"*. That sentence is right about the
+mechanism and wrong about the control. Our `baseline` is **always** `reference-pipeline` — it has its own
+builder and its own window, and `memoryArmConfig` describes the feature arm alone. So "the same run with
+`rerank: none`" is **not** the other half of one artifact: it is a second dispatch.
+
+The execution shape is therefore:
+
+1. **control** — `cortex_memory_relevance_top_k=128`, `rerank=none`. A **new baseline**, because the
+   registered pool is 256 and 128 is the Zhipu `/rerank` per-call document limit (and RAW-RAG's own `k`). It
+   has an independent reading: what narrowing the pool from 256 to 128 costs.
+2. **treatment** — the same, plus `rerank=on`. One variable.
+
+And the order is not a preference: **control first**. Reversed, the treatment would have no comparable
+baseline and `256 -> 128` would be read as the reranker's effect — which is §13.233's defect exactly, where a
+`+6.7` turned out to be thinking's `+6.25` plus a four-field bundle's `+0.60`.
+
+`paired_capability_delta` does not serve this experiment, then. It earns its place on the *next* one that
+genuinely carries its own control, and §13.292.1's defect would have bitten whichever came first.
+
+#### 13.292.4 Cost becomes a row on the acceptance matrix
+
+`C1` is new: `prompt tokens the reader is billed for, per question`, `at-most 6000`, `aim`, `unrun`.
+
+Why `unrun` and not wired, and this is arithmetic rather than scheduling: `llmUsage.promptTokens` is a
+four-repetition total over 500 questions **and** over the bare-decline retries. Dividing it by
+`questionCount x runs` gives **12,105**; the calls-normalised division §13.287.2 used gives **11,690**. Two
+defensible choices, 3.5% apart, and a row has to say which — so the row waits for a generator that says it,
+rather than accepting a number somebody typed.
+
+The threshold is the cheapest published competitor point rounded up: Zep 4.4 K, Mem0 6.8 K, Maximem 7.4 K.
+The arm bills ≈11.7 K, so the row is an `aim`. Its `onMiss` states the two things a miss must not be read as:
+not a licence to shrink the window (§13.291's 120-of-121 delivered every gold turn for +0.00), and not
+comparable to any row above 6.8 K without the same reader.
+
+#### 13.292.5 The external board, which is the first that prices context
+
+Written up in `SOTA-LANDSCAPE.md` §14. Four facts from it that change what we can say:
+
+1. **Maximem Synap 95.6% at 7.4 K tokens; Zep 90.2% at 4.4 K; Mem0 94.4% at 6.8 K.** We are 90.20% mixed /
+   83.45% S1 at **11.7 K**. This is the first board on which we are dominated on **both** axes, and it is the
+   direct motivation for `C1`.
+2. **Two of the top four numbers are self-admitted test-set fitting.** AgentMemory's 96.2 states *"46 tuning
+   iterations on the test set, no held-out split"*; OmegaMax's 95.4 states eight iterations targeting failure
+   modes; Supermemory's `~99` is published as a **parody** of boards that omit cost. Any "we are 12 points
+   behind" reading has to discount for that, and this is the first round where the discount is quantified by
+   the claimants themselves.
+3. **Membase reproduced our §13.291 diagnosis independently.** 99.95% retrieval recall, all gold sessions
+   present on 99.8% of questions, **all 37 errors attributed to the reading stage**, first named failure mode
+   *cross-session aggregation*. Two systems, two datasets, one conclusion.
+4. **Three papers name what §13.93 could only describe.** `arXiv:2608.01000` measures judging at **+0.29 to
+   +0.34 F1 over enumeration** across a 24x parameter range, with a control at **F1 ≈ 0.99 when asked for the
+   predicate instead of its extension**, and an omission-to-over-inclusion ratio of **10:1** in production
+   (ours is 18:4). IEEE 11737128 names the *accuracy-completeness scissors* and concludes *"the failure is one
+   of aggregation, not retrieval"*. The design rule that follows is theirs: *"structural extraction, a stated
+   count, and model self-assessment are not interchangeable, and only the first two hold up when the model is
+   miscalibrated."*
+
+#### 13.292.6 What this changes about the queue, and what it does not
+
+- **Unchanged:** the next reading is `42337560027`. Gate 13 (the six verb-exclusion questions) and gate 8
+  (`MR >= +3`) must both hold, and §13.290.4's refutation branch stands.
+- **Promoted:** if §13.290 fails, the next mechanism is **judgement-shaped, not enumeration-shaped** —
+  present each candidate turn and ask for a verdict, so the reader judges a given turn rather than
+  enumerating a region. §13.93's sentence (*"limited by what it recognises as an instance of the question's
+  action"*) and `arXiv:2608.01000`'s control are the same finding from two directions. `sweep` failed because
+  each of its 44 lines still required the model to **generate** that session's candidates first.
+- **Scheduled:** §13.115's control dispatch (`relevance_top_k=128`, `rerank=none`) is the next bench slot
+  after `42337560027`, because it closes two acceptance rows (S6, S7) that have been `unrun` since the rows
+  were written, and it is the only mechanism in `SOTA-LANDSCAPE` §4.9 this arm has never had at all.
+- **Not changed:** cortex is not SOTA. 90.20% mixed / 83.45% S1 sits below Maximem, Mastra, Hindsight, Mem0,
+  Honcho and Zep on published numbers and above Supermemory. What changed this round is that the reason has
+  three independent places — evidence delivery, the reader's aggregation, and the model class's omission bias.
