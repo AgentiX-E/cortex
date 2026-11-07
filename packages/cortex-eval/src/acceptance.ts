@@ -71,9 +71,18 @@ export type Kind = 'gate' | 'aim';
  */
 export type Source =
   /** One arm of the controlled contradiction set, evaluated on the spot. */
-  | { readonly kind: 'arm'; readonly arm: 'flat' | 'annotated' | 'gated' }
+  | { readonly kind: 'arm'; readonly arm: 'no-memory' | 'flat' | 'annotated' | 'gated' }
   /** How far the ledger arm is ahead of the same ranking without it, in accuracy points. */
   | { readonly kind: 'gap' }
+  /**
+   * What an append-only store is worth against no store at all, in accuracy points.
+   *
+   * The one reading on this fixture that can be **negative**, and the sign is the whole point: a store that
+   * keeps superseded evidence can score below a deployment that never remembered anything, because a reader
+   * with nothing declines and a reader with the wrong thing answers. TEPA (`arXiv:2608.07429`) measured
+   * exactly that, append-only `0.210` against no memory `0.309`.
+   */
+  | { readonly kind: 'floor' }
   /** Facts served although the ledger had retired them, summed over the set. Must be zero. */
   | { readonly kind: 'leak' }
   /** The gap between the `gated` arm and the same set with one mechanism removed. */
@@ -234,6 +243,40 @@ export const CRITERIA: readonly Criterion[] = [
       'Any leak is a defect in `assemble` rather than a threshold too tight. The exclusion is supposed to happen before ranking, so a leak means a path bypassed it.',
   },
 
+  // ---- the comparison the fixture never had a floor for -------------------------------------------
+  //
+  // Every arm on the controlled set was compared to another arm, so the set could price a mechanism and
+  // could never price *memory itself*. TEPA (`arXiv:2608.07429`) is the paper that makes that a defect
+  // rather than an omission: during full reversal, append-only and last-write-wins both score `0.210`
+  // while **no memory at all** scores `0.309`, because a reader with nothing declines and a reader handed
+  // the superseded value answers. A store below the floor is not a weak store; it is a store that makes
+  // the product worse than not having one, and nothing on this page could have shown that.
+  //
+  // The arm is the product with an empty candidate list, not a second implementation of "answer from
+  // nothing" -- `resolve` passes `ranked: []` down the same `assemble` call every other arm uses, so a
+  // difference between the floor and an arm is a difference the product would also show.
+  {
+    id: 'V1',
+    capability: 'memory pollution',
+    metric: 'accuracy points an append-only store is worth against no store at all',
+    dataset: 'controlled contradiction set, 17 cases, `flat` minus `no-memory`',
+    comparator: 'at-least',
+    threshold: 0,
+    unit: 'points',
+    kind: 'gate',
+    source: { kind: 'floor' },
+    competitors: [
+      {
+        name: 'TEPA, append-only against no memory',
+        value: -0.099,
+        grade: 'B',
+        recipe:
+          'the paper\u2019s controlled hidden-regime drift, 50 seeds, full-reversal phase: append-only 0.210, last-write-wins 0.210, no memory 0.309, so the difference is \u22120.099. Same shape as this row and the same unit -- two accuracies subtracted -- measured on its own synthetic drift rather than on this fixture, which is why it is a B and not an A',
+      },
+    ],
+    onMiss:
+      'The reading is the sign, and a negative one is a finding rather than a broken fixture. It means the loses column outgrew the gains column: the store still answers questions whose gold is a fact, but it answers questions whose gold is "unknown" with a superseded fact, and the second is what memory pollution *is*. At zero the store is worth exactly nothing on a set built to contain contradictions, which is the honest description of an append-only design and the reason revocation is a mechanism rather than a tidy-up. The repair for a negative reading is revocation, never deletion: TEPA keeps revoked precedents in an archive for audit, and a store that forgets to fix a score is a store that cannot answer a dated question -- `h-city-as-of-january` and `c-city-as-of-march` are in this same set and both need the superseded fact to still exist.',
+  },
   // ---- temporality and the plan lifecycle (step 30) ----------------------------------------------
   {
     id: 'T1',
@@ -858,6 +901,13 @@ export const CRITERIA: readonly Criterion[] = [
         recipe:
           'the benchmark paper\u2019s own ablation: 60.6 to 64.0 on the S variant, 87.0 to 92.4 on the oracle variant — a reading-side change on a fixed corpus, which is the same shape as this row',
       },
+      {
+        name: 'Agent Zero Memory, eight-backbone range (a bound, not a pair)',
+        value: 0.034,
+        grade: 'B',
+        recipe:
+          'arXiv:2608.29606 section 5.3: with the memory, retriever and control logic held fixed and only the backbone varied across eight model families, LongMemEval accuracy spans **3.4 points** while per-query cost spans about 30x. Recorded as a *range* and not as a pair, and that is the reading: the largest reader effect the strongest published system can find, on its own harness, is the same size as this row\u2019s threshold \u2014 so +3.0 here is at the top of the field\u2019s entire observed spread rather than comfortably inside it',
+      },
     ],
     onMiss:
       'Three points is above this arm\u2019s measured noise floor (1.6–2.2) and far below the +10.64 the outside world reports, so a miss is a defect rather than a tight threshold. Two known causes, in the order they should be checked. First, the prompt contract: `AUDIT-READER-THINKING-REVERSES.md` found that the same knob measured −12 questions in section 13.197 and +23.50 in the pair above, on byte-identical prompts, which means the *routes* the thinking is enabled on decide the sign — a reasoning reader applied to extraction is a reasoning reader spending tokens on reformatting. Second, the decline licence: if the stronger reader declines less, `R1` reopens. A negative delta is not a reason to lower the threshold; it is a reason to read the per-category table before the aggregate.',
@@ -878,12 +928,21 @@ export const CRITERIA: readonly Criterion[] = [
         '`AUDIT-MODEL-PORTABILITY.md` section 7 has the ratio this needs — between-provider variance against within-provider variance — and states that it has never been measured. Until it is, portability is an architectural claim with a test design and no reading',
     },
     competitors: [
-      // No competitor row, deliberately. Every published portability claim in this field is a vendor
-      // sentence ("works with any model"), and a sentence is not a value. A row with a fabricated number
-      // would be worse than an empty field, so the field stays empty and the criterion stays honest.
+      // This field was empty for two rounds on the argument that every published portability claim in this
+      // field is a vendor sentence ("works with any model") and a sentence is not a value. That argument
+      // held until a paper published the pair: `arXiv:2610.05343` reports its own second-provider reading
+      // on byte-identical packets, which is the same shape as this row and the same unit. The argument is
+      // recorded rather than deleted, because the next person to look will make it again.
+      {
+        name: 'MemStrata, GLM 5.3 flash against its reference reader',
+        value: -0.002,
+        grade: 'B',
+        recipe:
+          'arXiv:2610.05343: on identical packets, `462` against `463` of 500 \u2014 one question, \u22120.2 points \u2014 with the paper\u2019s own non-inferiority bound of 3 points, and a second provider (`Muse Spark 1.3`) that did **not** show non-inferiority on 269 questions. Grade B because the packets are the paper\u2019s own and the reader class is not stated in a form this arm can rebuild',
+      },
     ],
     onMiss:
-      'The row exists because "provider-agnostic" is a property of the interface and not of the score, and the gap between those two has been the whole subject of `AUDIT-MODEL-PORTABILITY.md`. Two mechanisms make a miss survivable without making it silent: the 12-probe capability set (no ground truth, 30–60 calls) classifies a new reader before it is used, and the one-way degradation guard downgrades on observable signals and never upgrades. A miss with both in place is a *known* degradation; a miss with neither is a deployment that is worse and cannot say so.',
+      'The bar is now calibrated against two published readings rather than against a wish: one provider swap worth \u22120.2 points, and one that failed a 3-point non-inferiority bound on 269 questions. A miss above 2.0 is therefore not "variance" \u2014 it is the larger of the two published outcomes, which says the prompt contract is carrying a provider assumption somewhere. The row exists because "provider-agnostic" is a property of the interface and not of the score, and the gap between those two has been the whole subject of `AUDIT-MODEL-PORTABILITY.md`. Two mechanisms make a miss survivable without making it silent: the 12-probe capability set (no ground truth, 30–60 calls) classifies a new reader before it is used, and the one-way degradation guard downgrades on observable signals and never upgrades. A miss with both in place is a *known* degradation; a miss with neither is a deployment that is worse and cannot say so.',
   },
 ];
 
@@ -914,8 +973,9 @@ export type Evaluation = {
 export type Resolvers = {
   readonly probe: (reading: string) => number | undefined;
   readonly artifact: (path: string, key: string) => number | undefined;
-  readonly arm: (arm: 'flat' | 'annotated' | 'gated') => number;
+  readonly arm: (arm: 'no-memory' | 'flat' | 'annotated' | 'gated') => number;
   readonly gap: () => number;
+  readonly floor: () => number;
   readonly leak: () => number;
   readonly ablation: (removed: string) => number | undefined;
 };
@@ -932,6 +992,8 @@ export function currentOf(criterion: Criterion, resolve: Resolvers): number | un
       return resolve.arm(source.arm);
     case 'gap':
       return resolve.gap();
+    case 'floor':
+      return resolve.floor();
     case 'leak':
       return resolve.leak();
     case 'ablation':
@@ -983,6 +1045,8 @@ export function describe(source: Source): string {
       return `arm:${source.arm}`;
     case 'gap':
       return 'gap:gated-flat';
+    case 'floor':
+      return 'floor:flat-no-memory';
     case 'leak':
       return 'leak:served-not-current';
     case 'ablation':

@@ -33,7 +33,12 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 import { CRITERIA, currentOf, verdictOf } from '../packages/cortex-eval/dist/acceptance.js';
-import { ablate, buildCases, scoreArm } from '../packages/cortex-eval/dist/assumption-ablation.js';
+import {
+  ablate,
+  buildCases,
+  pollutionGap,
+  scoreArm,
+} from '../packages/cortex-eval/dist/assumption-ablation.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -107,6 +112,7 @@ const resolve = {
     const { cases } = controlledSet();
     return scoreArm(cases, 'gated').accuracy - scoreArm(cases, 'flat').accuracy;
   },
+  floor: () => pollutionGap(controlledSet().cases),
   leak: () => scoreArm(controlledSet().cases, 'gated').retiredServed,
   ablation: (removed) => controlledSet().rows.find((row) => row.removed === removed)?.accuracy,
 };

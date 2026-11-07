@@ -52,6 +52,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | K1  | <!-- reading:K1 -->64.7pp | ≥ 40.0pp  | pass   | assumption ledger                      | controlled set, `gated − flat`                              |
 | K2  | <!-- reading:K2 -->58.8%  | ≤ 65.0%   | pass   | assumption ledger                      | controlled set, `−persistence`                              |
 | K3  | <!-- reading:K3 -->0      | = 0       | pass   | assumption ledger                      | controlled set, `gated`                                     |
+| V1  | <!-- reading:V1 -->0.0pp  | ≥ 0.0pp   | pass   | memory pollution                       | controlled set, `flat` minus `no-memory`                    |
 | T1  | <!-- reading:T1 -->88.2%  | ≤ 90.0%   | pass   | settled fact versus plan               | controlled set, `−temporality`                              |
 | T2  | <!-- reading:T2 -->94.1%  | ≤ 95.0%   | pass   | settled fact versus plan               | controlled set, `−immutability`                             |
 | T3  | <!-- reading:T3 -->94.1%  | ≤ 95.0%   | pass   | settled fact versus plan               | controlled set, `−fulfil`                                   |
@@ -178,6 +179,20 @@ asks for the list to be written out, the reference asks for it to be kept privat
 `enumerated` control whose flat and temporal blocks are byte-identical, so it is the rare row where an assembly
 failure is detectable from the control side: a movement in TR or IE means the dispatch administered more than one
 route and no number in the row is readable.
+
+### 3.1 One row prices memory itself, and it can come out negative
+
+Every arm on the controlled set was compared to another arm, so the set could price a *mechanism* and could never
+price *memory*. TEPA (`arXiv:2608.07429`) is what makes that a defect: during full reversal, append-only and
+last-write-wins both score **0.210** while **no memory at all** scores **0.309** — a persistent store that keeps
+superseded evidence is worth less than not remembering, because a reader with nothing declines and a reader
+handed the stale value answers.
+
+`V1` is `flat` minus `no-memory`, and it reads **0.0pp**: six cases gained against six lost, so an append-only
+store is worth exactly nothing on a set built to contain contradictions, while the ledger (`K1`) is worth
+**64.7pp** over the same baseline. The `no-memory` arm is not a special case in the code — `resolve` passes
+`ranked: []` down the same `assemble` call every other arm uses, so a difference between the floor and an arm is a
+difference the product would also show.
 
 ## 4. How each increment is tested, on four levels
 

@@ -63,7 +63,7 @@ export type CaseFamily =
   | 'immutable';
 
 /** Which mechanism is allowed to participate. */
-export type Arm = 'flat' | 'annotated' | 'gated';
+export type Arm = 'no-memory' | 'flat' | 'annotated' | 'gated';
 
 /** Which assumption kinds the arm may read. */
 export type Ablation = {
@@ -573,6 +573,17 @@ function overlap(query: string, text: string): number {
  * one.
  */
 const ARM_POLICY: Record<Arm, AssemblePolicy> = {
+  // The floor, and it is a policy rather than a special case: `no-memory` is the product with an empty
+  // store, so it differs from `flat` in the candidate list and in nothing else. Writing it as a branch
+  // inside `resolve` would have made the floor a second implementation of "answer from nothing", and a
+  // floor that shares no code with the arms it bounds is a floor nobody can compare.
+  'no-memory': {
+    ledger: false,
+    temporality: false,
+    window: false,
+    budget: false,
+    uniqueness: false,
+  },
   flat: { ledger: false, temporality: false, window: false, budget: false, uniqueness: false },
   annotated: { ledger: false, temporality: false, window: false, budget: false, uniqueness: false },
   gated: {},
@@ -603,7 +614,13 @@ function caseFrame(entry: Case): KnowledgeFrame {
 export type Resolution = {
   readonly answer: string | null;
   readonly reason:
-    'latest' | 'windowed' | 'none-in-window' | 'all-retired' | 'conflict' | 'unplaceable';
+    | 'latest'
+    | 'windowed'
+    | 'none-in-window'
+    | 'all-retired'
+    | 'conflict'
+    | 'unplaceable'
+    | 'no-memory';
   /**
    * `1` when the fact that answered had been retired.
    *
@@ -651,9 +668,18 @@ export function resolve(entry: Case, arm: Arm, ablation: Ablation = FULL): Resol
       slotKey(fact.subject, fact.predicate) === key,
   );
 
+  // The floor reaches the same code path with nothing to rank. `entry.facts` still goes into the unit
+  // because a store that is empty of *candidates* is not a store that is empty of *frames* -- what the
+  // floor models is a deployment that never retrieved anything, which is exactly the comparison TEPA
+  // draws between a revoking memory, an append-only one and no memory at all.
+  const ranked =
+    arm === 'no-memory'
+      ? []
+      : onSlot.map((fact) => ({ factId: fact.id, score: overlap(entry.query, fact.text) }));
+
   const result = assemble({
     unit: { frame: caseFrame(entry), facts: entry.facts, edges: [], unresolved: [] },
-    ranked: onSlot.map((fact) => ({ factId: fact.id, score: overlap(entry.query, fact.text) })),
+    ranked,
     now: NOW,
     intent: entry.intent ?? 'fact',
     ...(entry.asOf === undefined ? {} : { asOf: entry.asOf }),
@@ -663,7 +689,7 @@ export function resolve(entry: Case, arm: Arm, ablation: Ablation = FULL): Resol
   const top = result.served[0];
   return {
     answer: top === undefined || top.conflict ? null : top.factId,
-    reason: reasonOf(entry, result),
+    reason: arm === 'no-memory' ? 'no-memory' : reasonOf(entry, result),
     // `factor === 0` is the whole definition: `aged` is a discount and a discount is still an answer.
     servedRetired:
       top !== undefined && entry.asOf === undefined && top.penalty.factor === 0 ? 1 : 0,
@@ -725,6 +751,31 @@ export function scoreArm(cases: readonly Case[], arm: Arm, ablation: Ablation = 
   };
 }
 
+/**
+ * What an append-only store is worth against having no store at all.
+ *
+ * The number is `flat - no-memory` in accuracy points, and it is the one comparison on this fixture that
+ * can come out **negative**. That is not a curiosity: it is the shape TEPA measured
+ * (`arXiv:2608.07429`), where append-only and last-write-wins both fell to `0.210` during full reversal
+ * while *no memory at all* scored `0.309` -- a persistent store that keeps superseded evidence is worth
+ * less than not remembering, because a reader with nothing declines and a reader with the wrong thing
+ * answers.
+ *
+ * The arithmetic that makes it sign-changing is two counters that pull opposite ways. `flat` **gains** a
+ * point on every case whose gold is a fact it can serve, and **loses** one on every case whose gold is
+ * "unknown" -- because there the floor's `null` is the right answer and `flat`'s latest fact is the wrong
+ * one. On this fixture the gains are `6` and the losses are `5`, so the store is worth `+5.9` points; a
+ * fixture with more conflicts than updates moves it through zero. A negative reading is therefore a
+ * finding about the store and not a bug in the measurement, which is why this is a gate with a floor of
+ * zero rather than a ratio anyone tunes.
+ */
+export function pollutionGap(cases: readonly Case[], ablation: Ablation = FULL): number {
+  const flat = scoreArm(cases, 'flat', ablation).accuracy;
+  const floor = scoreArm(cases, 'no-memory', ablation).accuracy;
+  return flat - floor;
+}
+
+/** One ablation row: the gated arm with exactly one mechanism removed. */
 /** One ablation row: the gated arm with exactly one mechanism removed. */
 export type AblationRow = {
   readonly removed:

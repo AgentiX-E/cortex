@@ -226,6 +226,64 @@ this pipeline. And the hit rate is a **harness** property, measured across eight
 roughly a 7x spread in cost per task -- which is the outside evidence for requirement 8 being about prompt
 structure rather than prompt wording.
 
+## 3.4 MemStrata: the packet is a *selection* under a token ceiling, and attribution is paid for
+
+`arXiv:2610.05343` keeps a retrieval backbone and adds **non-duplicated, dated, speaker-attributed source spans**,
+with the whole rendered packet — provenance headers included — required to fit **24,000 tokens under the pinned
+reader tokenizer**. The arms are the useful part, because each one is a single variable:
+
+| arm | score (reference-only) | what it isolates |
+| --- | ---: | --- |
+| CL1, the bounded packet | 463/500 = 92.6% | the system |
+| keyword-only selection, same budget | 425/500 = 85.0% | **ranking is worth 7.6 points** |
+| matched-reader Letta | 438/500 = 87.6% | a competing memory design on the same reader |
+| full-history control, ~4.7x evidence | 464/500 = 92.8% | **volume is worth +0.2, i.e. nothing** |
+
+Two mechanisms are directly comparable to decisions this repository has already taken, and they point in
+opposite directions, which is why they are recorded together rather than as one lesson.
+
+1. **Attribution is part of their packet, and we removed ours.** §13.283 withheld the per-turn source id and read
+   the freed characters as capacity, on a census showing the reader reproduces an id in 4 of 500 answers and 0 of
+   121 on `MR`. MemStrata *adds* date and speaker attribution and reaches 92.6% at 24k tokens; this arm reaches
+   91.95% at 12.1k tokens. Both are true, and the difference is the price: they spend about 2x the budget on
+   attribution, we spend nothing. A future arm that adds attribution back at a *fixed* budget would be a
+   single-variable test of whether the attribution is what the extra tokens buy — and nobody has run it.
+2. **The ceiling is stated in tokens under the reader's tokenizer, and ours is stated in characters.** Their
+   24,000 is a token budget; our 48,000 is a character budget, which is 11,680 tokens at the measured 4.11
+   characters per token. A reader comparing the two numbers directly concludes we run at 2x their budget when we
+   run at 0.51x. §13.287.2 registered the unit change; this is the second independent reason for it.
+
+## 3.5 Agent Zero Memory: three parallel stores, a citation lock, and an intent gate
+
+`arXiv:2608.29606` runs an **episodic timeline**, an **entity-event knowledge graph** and a **citation-locked
+documentary memory** in parallel, with a retrieval turn that runs an intent gate (self-contained turns add no
+latency), a source router, and three concurrent agentic searches over hybrid embedding + lexical retrieval. Its
+retrieval-channel ablation is the cleanest published reading of what each channel is worth:
+
+| channel exposed | accuracy | delta |
+| --- | ---: | ---: |
+| embedding + lexical | 95.20% | — |
+| embedding only | 94.00% | −1.20 |
+| grep only | 93.60% | −1.60 |
+| lexical only | 93.40% | −1.80 |
+
+Three mechanisms are worth naming against our design, and only one of them is a candidate.
+
+- **The citation lock** — "every answer may cite only evidence its reader actually opened" — is a *structural*
+  anti-fabrication guarantee, not a score. This project has the same information (`sources`, `evidenceRoles`,
+  the B7 annotation channel) and no equivalent rule, and the reason is honest: our reader is not asked to cite,
+  so there is nothing to lock. It becomes a mechanism the moment an answer carries references, and it should be
+  built then rather than now.
+- **The intent gate** — self-contained turns skip retrieval entirely — is a **cost** mechanism with no accuracy
+  cost, and it is the one candidate here. This arm routes by question shape already (§13.34 and the `ask`
+  family), but it routes the *prompt*, not the *retrieval*: every question pays a 256-wide pool. A gate that
+  recognised a self-contained question would cut `C1` on the subset it catches and is measurable inside the
+  existing artifact (`relevanceTopK` per question).
+- **Three parallel stores** is the one thing here this project should **not** copy. Our ledger is one store with
+  an explicit validity state, and `V1` reads 0.0pp for the append-only version against +64.7pp for the ledger —
+  the specialisation Agent Zero buys with three stores is bought here with one state field, on a fixture that
+  can tell the difference.
+
 ## 4. What changes, what does not
 
 | finding | consequence |
@@ -235,6 +293,9 @@ structure rather than prompt wording.
 | The leader's mechanism is compression with a cacheable prefix, not retrieval | **candidate mechanism.** Cache-hit share becomes a criterion candidate; the budget's unit stays characters until `C2` has a measurement |
 | Consolidation is externally evidenced to hurt operation order | **refusal with a source.** Any Observer/Reflector work is cost-motivated and `C2`-gated |
 | Mem0 removed the graph and trails by 15 on the temporal subtask | **positioning.** Per-category tables are where our claims have to live |
+| Ranking is worth 7.6 points at a fixed budget; volume is worth 0.2 | **confirmation with a number.** `C2`'s cut is priced by a published ablation for the first time (§13.301.2), and the *cut* side is still unmeasured by anyone |
+| The intent gate is a cost mechanism with no accuracy cost | **candidate mechanism**, gated behind `C2` — it changes retrieval, not the prompt, so it needs its own dispatch |
+| The citation lock is structural anti-fabrication | **deferred with a trigger.** It becomes buildable when an answer carries references; today it does not |
 
 **Nothing here is a score.** Every number in this document comes from a vendor or from a paper reporting its
 own run. `T3` is still the only gap this project can defend, and this document does not move it.

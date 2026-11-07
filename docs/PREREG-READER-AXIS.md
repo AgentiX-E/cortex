@@ -94,3 +94,57 @@ default, so the only field that differs between them is `model`: `deepseek-chat`
 `deepseek-v4-pro` (treatment). Same provider, same key, same endpoint, so a difference cannot be an
 availability artefact. A reader arm that also changed `ask` or the budget would be the same defect this round
 already paid for once.
+
+## 7. Amendment: this file says 5 points, the matrix registers 3, and both were written in good faith
+
+`docs/ACCEPTANCE-MATRIX.md` row `M1` reads `≥ 3.0pp`. Section 2 of this file reads "**≥ 5 points**". They are
+the same criterion, so one of them is wrong, and until now nothing read this paragraph and nothing compared
+the two -- which is the failure the matrix was built to end, arriving in the one direction the matrix cannot
+see: it checks prose it is generated from, not prose written before it existed.
+
+### 7.1 Which number wins, and why it is the looser one
+
+The row wins, and the reason is not that it is easier. `M1`'s threshold is a field in
+`packages/cortex-eval/src/acceptance.ts` that `tools/acceptance-check.mjs` evaluates, that
+`tools/docs-crosscheck.mjs` re-derives on every check, and that a build can fail on. This section is a
+paragraph. A number that is checked beats a number that is quoted, and the repair for a quote that disagrees
+is to amend the quote -- not to weaken the check so the quote stays true.
+
+That direction needs justifying rather than announcing, because the value that survived is the one that is
+easier to pass, and "the checked copy happens to be the lenient one" is exactly what a reader should distrust.
+
+Three facts make it defensible:
+
+1. **The prereg's 5 was never read against a run.** No dispatch was ever evaluated as "did it clear 5". The
+   number was written as an intention and then a second number was written as a check, and the two were never
+   in the same room.
+2. **The pair that exists read +4.70** (`41222844945` at 85.75% against `41254359622` at 90.45%, prompts
+   byte-identical). It is not a reading of this row's configuration, and it is the only pair the project has,
+   and it sits *between* the two thresholds. So neither number has been contradicted by a measurement and the
+   choice between them cannot be made on evidence from our own runs.
+3. **`3.4` is the entire observed reader spread of the strongest published system.** Agent Zero Memory
+   (`arXiv:2608.29606` §5.3) varies the backbone across eight model families with the memory, retriever and
+   control logic held fixed, and LongMemEval accuracy moves **3.4 points** while per-query cost moves about
+   30x. A 5-point bar therefore asks this pipeline to be *more* reader-sensitive than the state of the art is,
+   and reader-insensitivity is the property that paper argues is the *good* one: "quality is retrieval-
+   dominated" is its central claim, and it is the claim this campaign has been trying to earn. A row that
+   rewards a reader for moving the number five points is a row that rewards the opposite.
+
+Point 3 is the one that decides it, and it arrived after both numbers were written.
+
+### 7.2 What the row still binds
+
+The threshold moved by two points and the *interpretation* of a miss moved by more. Section 3's `R3` -- the
+abstention route must not move by more than one question -- is the load-bearing part of this registration and
+it is unchanged: a reader swap that buys accuracy by declining less is a calibration change on a benchmark
+whose `ABS` gold *is* a decline. `M1`'s `onMiss` now also splits by sign, because the outside evidence splits:
+a delta between `0` and `+3` is the retrieval-dominated signature the field reports, and a *negative* delta is
+the prompt-contract defect `AUDIT-READER-THINKING-REVERSES.md` documents. Treating those two outcomes the
+same is what a single threshold with one paragraph of prose did.
+
+### 7.3 The general repair, so this does not recur
+
+Every `PREREG-*.md` that states a numeric threshold must have a row in `acceptance.ts` carrying the same
+number, or a sentence saying why it is deliberately not a row. The check that enforces it reads this file for a
+`≥ N points` pattern and the table for `M1`'s threshold, and fails when they disagree -- which means the
+amendment above is the last one that can be made by hand.
