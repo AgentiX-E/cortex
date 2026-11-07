@@ -356,6 +356,23 @@ export type CortexMemoryOptions = {
    */
   relevanceUnits?: RelevanceUnits;
   /**
+   * How many same-session turns on each side of an anchor `'anchor-window'` buys.
+   *
+   * Defaults to `2`, which is the reference implementation's frozen value
+   * (`cod/expand.py`, `expand window ±2`), so naming the unit without naming a radius
+   * reproduces the published configuration rather than an untested default.
+   *
+   * A property of **one** unit and inert on the other three, which is asserted rather
+   * than assumed: see `anchor-window.test.ts`, "the radius is inert on the units it does
+   * not belong to". A global radius applied to `'session'` would spend the room twice
+   * and a silently ignored one would let an artifact report a window it never used.
+   *
+   * Rejected rather than clamped when it is not a non-negative integer: a fractional or
+   * negative radius names no neighbourhood, and a clamp would make a dispatched
+   * configuration describe a window the run did not use -- the §7.3 side-channel defect.
+   */
+  windowRadius?: number;
+  /**
    * Overrides the contract the **abstention route** uses, without touching the others.
    *
    * Exists for §12.5's registered experiment. §12.4 measured that the feature side

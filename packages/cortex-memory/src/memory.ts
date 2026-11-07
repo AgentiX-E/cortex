@@ -1629,6 +1629,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...(this.#options.relevanceUnits === undefined
         ? {}
         : { relevanceUnits: this.#options.relevanceUnits }),
+      // The radius one unit needs, forwarded from here for the same reason and with the same
+      // reach: it is read inside the anchor rule and nowhere else, so it is inert on the five
+      // routes that reach `buildPrompt` and on the session rules that do not read it.
+      ...(this.#options.windowRadius === undefined
+        ? {}
+        : { windowRadius: this.#options.windowRadius }),
     };
   }
 }

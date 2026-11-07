@@ -590,6 +590,22 @@ const RELEVANCE_UNITS = {
   session: 'session',
   /** The same, skipping a session that does not fit instead of ending the pass on it. */
   'session-fill': 'session-fill',
+  /**
+   * The budget buys an anchor and its same-session neighbourhood, `±2` turns on each side.
+   *
+   * §13.286. Distinct from `retrieval-anchored`, which also restores neighbourhoods, and the
+   * difference is where they land: that signal puts restored turns **into the pool**, where they
+   * compete on a decayed fraction of their anchor's score and displace hits the retriever ranked
+   * above them (§13.257 lost eight MR questions that way). Here the neighbourhood is bought
+   * **with** the anchor, indivisibly, so the neighbours are never ranked and cannot displace
+   * anything -- which is the whole point, because §13.283 measured that the MR turns still
+   * missing carry `goldRanks = -1`: they were never ranked to begin with.
+   *
+   * The radius is not an input, deliberately. It is the reference implementation's frozen
+   * `expand window ±2` (`cod/expand.py`), the workflow is at its dispatch-input ceiling, and a
+   * radius axis would be a second variable in a dispatch whose value is that it has one.
+   */
+  'anchor-window': 'anchor-window',
 } as const;
 
 /** The unit a run gets when it does not name one. */

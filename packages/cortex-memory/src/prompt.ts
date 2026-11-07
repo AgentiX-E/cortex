@@ -707,6 +707,15 @@ export type PromptOptions = {
    */
   relevanceUnits?: RelevanceUnits;
   /**
+   * How many same-session turns on each side of an anchor `'anchor-window'` buys.
+   *
+   * Defaults to `2`, the reference implementation's frozen window. Inert on the other three
+   * units by construction -- the radius is read inside the anchor rule and nowhere else -- so
+   * a value passed alongside `'session'` cannot change a prompt, which
+   * `anchor-window.test.ts` asserts rather than trusts.
+   */
+  windowRadius?: number;
+  /**
    * Which order the multi-session prompt's sections are joined in. Absent is the shipped order.
    *
    * Read by `buildSessionPrompt` alone. The other five routes render through `buildPrompt`, whose
@@ -722,7 +731,7 @@ export type PromptOptions = {
 };
 
 /** The unit the evidence room is spent in. */
-export type RelevanceUnits = 'turn' | 'session' | 'session-fill';
+export type RelevanceUnits = 'turn' | 'session' | 'session-fill' | 'anchor-window';
 
 /**
  * Whether a turn the per-turn cap cut says so.
@@ -2462,6 +2471,14 @@ type EvidencePlan = {
   /** The unit the room is spent in. See `PromptOptions.relevanceUnits`. */
   readonly relevanceUnits?: RelevanceUnits;
   /**
+   * The window `'anchor-window'` buys on each side of an anchor, when it names one.
+   *
+   * On the plan for the same reason `relevanceUnits` is: the plan is the last place that
+   * knows both the turns and the boundaries, and a radius read from the caller at the point
+   * of use could disagree with the list it is indexing into.
+   */
+  readonly windowRadius?: number;
+  /**
    * How the selected set is ordered before its final rendering. Absent is arrival order.
    *
    * On the plan rather than on the call so that the stage has one position: the budget decides the
@@ -2639,10 +2656,10 @@ function wholeTurnsIn(plan: EvidencePlan, evidenceChars: number): readonly Admit
  *
  * ## Why a named function rather than a nested conditional
  *
- * The option has three values and two of them share a precondition -- a route that draws
+ * The option has four values and three of them share a precondition -- a route that draws
  * session boundaries. Written inline, that precondition is tested once per session rule, and
  * a second copy of a precondition is how one branch ends up applying a session rule to a
- * route that has none. Here it is tested once and both rules sit behind it.
+ * route that has none. Here it is tested once and every rule sits behind it.
  *
  * ## Why the unsignalled case is the first branch
  *
@@ -2666,6 +2683,16 @@ function chooseEvidence(
     }
     if (plan.relevanceUnits === 'session-fill') {
       return selectBySessionFill(question, plan, sessionOf, plan.relevanceFor, room);
+    }
+    if (plan.relevanceUnits === 'anchor-window') {
+      return selectByAnchorWindow(
+        question,
+        plan,
+        sessionOf,
+        plan.relevanceFor,
+        room,
+        validateWindowRadius(plan.windowRadius),
+      );
     }
   }
   return selectByRelevance(question, plan, plan.relevanceFor, room);
@@ -2934,6 +2961,165 @@ function chronologicalOf(ranking: SessionRanking, sessions: readonly number[]): 
     .map((entry) => entry.turn);
 }
 
+/** The reference implementation's frozen window, used when the unit is named without one. */
+const DEFAULT_WINDOW_RADIUS = 2;
+
+/**
+ * The radius to spend, or a refusal.
+ *
+ * Clamping is the alternative and it is the wrong one here: a run that was dispatched with
+ * `windowRadius: 1.5` and silently spent `1` would publish an artifact describing a window it
+ * never used, and the next run that *did* use `1.5` -- after someone relaxed the clamp -- would
+ * be indistinguishable from it in the configuration line. Only the configuration line
+ * distinguishes experiments, so it has to be exact.
+ */
+function validateWindowRadius(radius: number | undefined): number {
+  if (radius === undefined) return DEFAULT_WINDOW_RADIUS;
+  if (!Number.isInteger(radius) || radius < 0) {
+    throw new Error(
+      `windowRadius must be a non-negative integer, received ${String(radius)}: ` +
+        'a fractional or negative radius names no neighbourhood, and clamping would make ' +
+        'the dispatched configuration describe a window the run did not use',
+    );
+  }
+  return radius;
+}
+
+/**
+ * Every turn scored once, ranked, and indexed by its position inside its own session.
+ *
+ * The position is what makes a neighbourhood expressible: `sessionOf` says which session a
+ * turn belongs to but not where inside it, and `AdmittedTurn.ordinal` cannot answer either --
+ * it is the position inside the turn's *own* session, so it is a position only by accident of
+ * `admitSessions` numbering one session at a time, and reading it here would be a coupling
+ * that a change to admission would break silently.
+ */
+type AnchorWalk = {
+  /** Highest relevance first, ties by arrival -- the turn unit's own comparator. */
+  readonly ranked: readonly { arrival: number; relevance: number }[];
+  /** Position of each arrival inside its session, indexed by arrival. */
+  readonly positions: readonly number[];
+  /** Each session's arrivals, ascending -- so a window is a slice and cannot wrap. */
+  readonly bySession: ReadonlyMap<number, readonly number[]>;
+};
+
+function anchorWalk(
+  question: string,
+  plan: EvidencePlan,
+  sessionOf: readonly number[],
+  relevanceFor: RelevanceFor,
+): AnchorWalk {
+  const positions: number[] = [];
+  const bySession = new Map<number, number[]>();
+  plan.turns.forEach((_, arrival) => {
+    const session = sessionOf[arrival]!;
+    const owned = bySession.get(session);
+    positions.push(owned === undefined ? 0 : owned.length);
+    if (owned === undefined) bySession.set(session, [arrival]);
+    else owned.push(arrival);
+  });
+
+  const ranked = plan.turns
+    .map((turn, arrival) => ({
+      arrival,
+      relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
+    }))
+    .sort((a, b) => b.relevance - a.relevance || a.arrival - b.arrival);
+
+  return { ranked, positions, bySession };
+}
+
+/**
+ * Spend the evidence room on **anchors plus their same-session neighbourhoods**.
+ *
+ * ## Where this shape comes from
+ *
+ * §13.283 measured this arm's gold-turn recall for the first time -- 6,520 of 7,516 annotated
+ * turns (86.75%), MR at 97.11% -- and the residue is not a ranking failure: all 53 MR turns
+ * still missing across 34 questions carry `goldRanks = -1`, so the signal never scored them.
+ * They are the **neighbours** of anchors that did score, sitting on the far side of the
+ * character cut. A prefix cannot buy them at any width, because widening a prefix buys more
+ * *ranked* turns, and these were never ranked.
+ *
+ * The reference implementation solves it structurally. Its source (`cod/sde.py`,
+ * `cod/expand.py`, `cod/selector.py`) ranks a **bounded anchor set**, restores each anchor's
+ * same-session neighbourhood of `±window` turns, and only then answers: `seeds K=60`,
+ * `pool K=200`, `expand window ±2`, `λ=0.06`, `β=0.10`. It never extends a prefix and never
+ * takes a whole session, and this rule is that shape with this arm's character room in place
+ * of its fixed anchor count.
+ *
+ * ## Why the ladder, and what a strict prefix would cost
+ *
+ * A window is several turns, so the first anchor whose neighbourhood does not fit would end a
+ * strict prefix pass with **no evidence at all** in the prompt. The pass therefore shrinks the
+ * window and never the anchor -- `radius`, `radius - 1`, ..., then the anchor alone -- and
+ * stops only when the anchor itself does not fit. The last rung is exactly the turn unit's own
+ * decision, so under a tight budget this rule can never carry less than the turn unit would.
+ *
+ * ## Why radius zero is the control
+ *
+ * With a window of zero every neighbourhood is the anchor, the ladder has one rung, and the
+ * walk visits the same anchors the prefix rule keeps in the same order -- so the delivered set
+ * is the turn unit's set, character for character. That equality is what makes the radius the
+ * only variable in a dispatch of this unit; `anchor-window.test.ts` asserts it against the
+ * turn unit rather than against this function's own arithmetic.
+ *
+ * ## Why an already-bought neighbourhood costs nothing and does not stop the pass
+ *
+ * Two anchors two turns apart share most of their windows. Charging for the shared turns again
+ * would spend the room twice, and stopping on them would end the pass on the one case where it
+ * is free. Only the turns not yet kept are priced, and an anchor that adds none is admitted
+ * without a render.
+ *
+ * ## Presentation stays chronological
+ *
+ * Selection is by relevance, delivery is by arrival. A log printed in rank order makes
+ * relative-time and knowledge-update questions unanswerable, which is the defect
+ * `selectBySession` already records for sessions; here it would be the same defect one unit in.
+ */
+function selectByAnchorWindow(
+  question: string,
+  plan: EvidencePlan,
+  sessionOf: readonly number[],
+  relevanceFor: RelevanceFor,
+  room: number,
+  windowRadius: number,
+): { evidence: string; carried: readonly AdmittedTurn[] } {
+  const walk = anchorWalk(question, plan, sessionOf, relevanceFor);
+  const kept = new Set<number>();
+
+  for (const anchor of walk.ranked) {
+    const arrivals = walk.bySession.get(sessionOf[anchor.arrival]!)!;
+    const position = walk.positions[anchor.arrival]!;
+    let admitted = false;
+
+    for (let radius = windowRadius; radius >= 0; radius -= 1) {
+      const start = Math.max(0, position - radius);
+      const stop = Math.min(arrivals.length, position + radius + 1);
+      const additions: number[] = [];
+      for (let at = start; at < stop; at += 1) {
+        const arrival = arrivals[at]!;
+        if (!kept.has(arrival)) additions.push(arrival);
+      }
+      if (additions.length === 0) {
+        admitted = true;
+        break;
+      }
+      const candidate = [...kept, ...additions].sort((a, b) => a - b);
+      if (plan.render(candidate.map((arrival) => plan.turns[arrival]!)).length <= room) {
+        for (const arrival of additions) kept.add(arrival);
+        admitted = true;
+        break;
+      }
+    }
+
+    if (!admitted) break;
+  }
+
+  const carried = [...kept].sort((a, b) => a - b).map((arrival) => plan.turns[arrival]!);
+  return { evidence: carried.length === 0 ? '' : plan.render(carried), carried };
+}
+
 /**
  * Validate a relevance, naming the turn it was computed for.
  *
@@ -3065,6 +3251,10 @@ export function buildSessionPrompt(
       note: SESSION_NOTE,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
       ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
+      // Forwarded at both construction sites, deliberately: the two differ in which session plan
+      // they build, not in which option they honour, and a radius threaded at one site only would
+      // make the unit behave differently depending on which caller reached it.
+      ...(options.windowRadius === undefined ? {} : { windowRadius: options.windowRadius }),
       // The boundary the selection needs and the renderer does not. Built here rather
       // than passed in because `flat` is built here too, so the two cannot disagree
       // about how many turns there are -- an index array of the wrong length would
@@ -3173,6 +3363,10 @@ export function buildAuditPrompt(
       note: SESSION_NOTE,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
       ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
+      // Forwarded at both construction sites, deliberately: the two differ in which session plan
+      // they build, not in which option they honour, and a radius threaded at one site only would
+      // make the unit behave differently depending on which caller reached it.
+      ...(options.windowRadius === undefined ? {} : { windowRadius: options.windowRadius }),
       sessionOf: sessions.flatMap((session, index) => session.turns.map(() => index)),
     },
     maxChars,
