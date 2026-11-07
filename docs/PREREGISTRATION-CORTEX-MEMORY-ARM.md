@@ -31949,6 +31949,15 @@ Predictions, each checkable from the artifact: `MR` at least level with §13.283
 on `MR` no lower than 97.11%, because `session-fill` allocates whole sessions and skips the ones that do not
 fit; and `windowComposition.turns` **down**, since a session costs what it costs.
 
+**And the room may not need to be 20,000 at all.** `usageBySide` on `42237543941` reads **977 prompt tokens
+per call on the reference side against 13,570 on ours** -- a 14x difference, against a 20,000-character cap
+the reference never approaches. Converting at this arm's own measured 0.297 tokens per character, the
+reference's answering prompt is of order **3,300 characters**, i.e. a sixteenth of ours. So `maxPromptChars`
+on the multi-session route is a **sweep** rather than a value: the shape may be worth more at 8,000 than at
+20,000, and the artifact can decide it. §13.285 is written as one value because a registration needs one, and
+4,000 is the number the observed usage suggests -- but the honest form of the question is "how small can the
+room be before session-shaped evidence stops fitting", and that is what the sweep answers.
+
 **§13.285 (candidate, after §13.284).** The reference's **room**: `maxPromptChars` 20,000 and no per-turn cap
 on the multi-session route, at whatever unit §13.284 leaves in place. This is the increment that is expected
 to **save** tokens and gain points at once -- about 58% less prefill on `MR` -- and it is deliberately second,
