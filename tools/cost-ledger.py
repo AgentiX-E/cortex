@@ -46,6 +46,19 @@ because the window is set to 48,000 characters", and only the second one is chea
 therefore reports the cap and the implied density -- `maxPromptChars / perCall`, which lands at ~4.1
 characters per token on English prose when the arm is filling its window. The reading is labelled
 `inferred`, because the band it is compared against is a property of the language and not of the run.
+
+## Why a fourth number exists beside the three readings, and is not one of them
+
+`AlphaDiana` (`arXiv:2610.20675`) measured a thing this ledger could not express: when accuracy falls,
+**output tokens per correct answer rise even though output per execution falls**. A run that spends less
+per question and answers fewer of them right is not cheaper per useful answer, and "we cut 25% of the
+tokens" is a claim about the bill only if the accuracy held.
+
+So the ledger also reports **prompt tokens per correct answer** = `perQuestionPerRun / accuracy`. It is
+kept out of `readings` on purpose: `readings` is three divisions of one number, and this is a ratio of
+two measurements -- folding it in would change the spread between readings, which is the number that
+justifies the primary. It is also the only figure here that a *lower* accuracy can make worse, which is
+why it is printed with the accuracy it was divided by rather than on its own.
 """
 
 from __future__ import annotations
@@ -170,6 +183,54 @@ def cap_reading(report: dict, per_call: float) -> dict | None:
     return reading
 
 
+def efficiency(report: dict, per_question_per_run: float) -> dict:
+    """Prompt tokens per correct answer, or why that ratio cannot be stated.
+
+    Three states rather than one number with a fallback, for the reason every refusal in this file
+    exists: an artifact written before the arm's metrics block was recorded cannot answer the
+    question, and a `0` accuracy makes the ratio infinite -- an arm that answered nothing right has
+    no cost per right answer, which is a finding and not a price.
+
+    The accuracy is returned beside the ratio because the ratio is a function of it: comparing two
+    runs' cost-per-correct-answer without their accuracies is comparing two products of two numbers.
+    """
+    feature = report.get('feature')
+    metrics = feature.get('metrics') if isinstance(feature, dict) else None
+    if not isinstance(metrics, dict):
+        return {
+            'state': 'absent',
+            'note': 'the artifact carries no `feature.metrics`, so no correct-answer count exists',
+        }
+    accuracy = metrics.get('accuracy')
+    # `True` is an `int` in Python: a boolean accuracy would price a run at exactly its per-question
+    # cost and look like a perfect ratio, so it is refused by type rather than by value.
+    if isinstance(accuracy, bool) or not isinstance(accuracy, (int, float)):
+        return {
+            'state': 'absent',
+            'note': '`feature.metrics.accuracy` is missing or not a number',
+        }
+    if not 0 <= accuracy <= 1:
+        return {
+            'state': 'absent',
+            'note': f'`feature.metrics.accuracy`={accuracy!r} is not a fraction in [0, 1]',
+        }
+    correct = metrics.get('correct')
+    correct_count = correct if isinstance(correct, int) and not isinstance(correct, bool) else None
+    if accuracy == 0:
+        return {
+            'state': 'undefined',
+            'accuracy': 0.0,
+            'correct': correct_count,
+            'note': 'no correct answers, so tokens per correct answer is infinite rather than large',
+        }
+    return {
+        'state': 'measured',
+        'accuracy': float(accuracy),
+        'correct': correct_count,
+        'perCorrectAnswerPromptTokens': per_question_per_run / float(accuracy),
+    }
+
+
 def ledger(report: dict) -> dict:
     """The three readings, or a refusal naming what the artifact did not carry."""
     side = report.get('usageBySide')
@@ -215,6 +276,9 @@ def ledger(report: dict) -> dict:
         # same shape: they are not, and 3.5% of the difference is our retries.
         'comparableTo': 'prompt tokens delivered for one question, one repetition',
         'cap': cap_reading(report, readings['perCall']),
+        # Not one of `readings`: those are three divisions of one number, and this is a ratio of two
+        # measurements. Folding it in would move the spread that justifies the primary.
+        'efficiency': efficiency(report, readings['perQuestionPerRun']),
     }
 
 
@@ -260,6 +324,21 @@ def render(result: dict) -> str:
         if 'caveat' in cap:
             lines += ['', f"  ceiling, not measurement: {cap['caveat']}"]
     lines += ['', f"  comparable to              {result['comparableTo']}"]
+    efficiency_block = result.get('efficiency')
+    if isinstance(efficiency_block, dict):
+        lines.append('')
+        if efficiency_block['state'] == 'measured':
+            lines += [
+                f"  per correct answer        {efficiency_block['perCorrectAnswerPromptTokens']:>12,.0f}"
+                '   prompt tokens',
+                f"  at accuracy               {efficiency_block['accuracy'] * 100:>11.2f}%"
+                f"   ({efficiency_block.get('correct') if efficiency_block.get('correct') is not None else 'n/a'} correct)",
+            ]
+        else:
+            lines.append(
+                f"  per correct answer        {'not stated':>12}   ({efficiency_block['state']}: "
+                f"{efficiency_block['note']})"
+            )
     return '\n'.join(lines)
 
 

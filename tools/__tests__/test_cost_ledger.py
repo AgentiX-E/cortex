@@ -362,3 +362,81 @@ class TestTheAcceptanceRowItServes:
         result = ledger_tool.ledger(report_with_cap())
         assert result['cap']['reading'] == 'at-cap'
         assert result['readings']['perQuestionPerRun'] > 2 * 6_000
+
+
+# ------------------------------------------------------------- prompt tokens per correct answer
+
+def report_with_metrics(accuracy: object = 0.92, correct: object = 460) -> dict:
+    """`report()` with the arm's metrics block, which is where the correct-answer count lives.
+
+    Separate from `report()` rather than a default, because the artifacts written before the metrics
+    block was recorded are still read by this tool and the absence is a state it has to survive.
+    """
+    data = report()
+    data['feature'] = {'name': 'cortex-memory', 'metrics': {'total': 500, 'accuracy': accuracy, 'correct': correct}}
+    return data
+
+
+class TestPromptTokensPerCorrectAnswer:
+    """`AlphaDiana` (`arXiv:2610.20675`): a cheaper run that answers fewer right is not cheaper.
+
+    The reading is `perQuestionPerRun / accuracy` -- prompt tokens spent per question, divided by
+    the share of questions answered correctly -- because that is the ratio the paper measured moving
+    in the opposite direction to per-execution cost. It is kept OUT of `readings`: those three are
+    divisions of one number and their spread is what justifies the primary.
+    """
+
+    def test_a_measured_accuracy_prices_the_correct_answers(self):
+        result = ledger_tool.ledger(report_with_metrics(accuracy=0.92))
+        efficiency = result['efficiency']
+        assert efficiency['state'] == 'measured'
+        assert efficiency['accuracy'] == pytest.approx(0.92)
+        assert efficiency['perCorrectAnswerPromptTokens'] == pytest.approx(12_104.988 / 0.92, abs=1)
+
+    def test_the_ratio_is_not_one_of_the_three_readings(self):
+        # Folding it in would change `spread`, which is the number that says why `perQuestionPerRun`
+        # is primary. A reading that is a ratio of two measurements is not a fourth division.
+        result = ledger_tool.ledger(report_with_metrics())
+        assert set(result['readings']) == {'perCall', 'perQuestionPerRun', 'perQuestion'}
+        assert 'perCorrectAnswer' not in result['readings']
+
+    def test_lower_accuracy_raises_the_cost_of_a_correct_answer(self):
+        # The whole point: cutting tokens while losing accuracy can make each correct answer MORE
+        # expensive. Two runs 10% apart on cost and 4 points apart on accuracy, where the cheaper one
+        # is not cheaper per correct answer.
+        lean = ledger_tool.ledger(report_with_metrics(accuracy=0.88))['efficiency']
+        rich = ledger_tool.ledger(report_with_metrics(accuracy=0.92))['efficiency']
+        assert lean['perCorrectAnswerPromptTokens'] > rich['perCorrectAnswerPromptTokens']
+
+    def test_zero_accuracy_is_undefined_rather_than_enormous(self):
+        # An arm that answered nothing right has no cost per right answer. Printing `inf` would be a
+        # number; printing nothing would hide that the run happened.
+        efficiency = ledger_tool.ledger(report_with_metrics(accuracy=0.0, correct=0))['efficiency']
+        assert efficiency['state'] == 'undefined'
+        assert 'perCorrectAnswerPromptTokens' not in efficiency
+        assert 'infinite' in efficiency['note']
+
+    def test_a_missing_metrics_block_is_absent_rather_than_zero(self):
+        efficiency = ledger_tool.ledger(report())['efficiency']
+        assert efficiency['state'] == 'absent'
+        assert 'perCorrectAnswerPromptTokens' not in efficiency
+
+    def test_a_percentage_accuracy_is_refused_rather_than_divided_by(self):
+        # `92` instead of `0.92` would price a correct answer at 132 tokens -- a hundredfold
+        # understatement that looks like a triumph.
+        efficiency = ledger_tool.ledger(report_with_metrics(accuracy=92))['efficiency']
+        assert efficiency['state'] == 'absent'
+        assert 'not a fraction' in efficiency['note']
+
+    def test_a_boolean_accuracy_is_refused(self):
+        # `True` is an `int` in Python; dividing by it would price a correct answer at exactly the
+        # per-question cost and read as a flawless ratio.
+        efficiency = ledger_tool.ledger(report_with_metrics(accuracy=True))['efficiency']
+        assert efficiency['state'] == 'absent'
+
+    def test_the_rendered_line_says_which_accuracy_it_was_divided_by(self):
+        # A ratio of two numbers quoted without both is a claim a reader cannot check.
+        text = ledger_tool.render(ledger_tool.ledger(report_with_metrics(accuracy=0.92, correct=460)))
+        assert 'per correct answer' in text
+        assert '92.00%' in text
+        assert '460' in text

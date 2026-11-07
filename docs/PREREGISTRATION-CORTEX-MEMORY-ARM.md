@@ -34103,3 +34103,81 @@ Two more conditions, because a control that is read loosely is not a control:
 | **S4** | `promptDigest` for the first repetition is compared against `42355323615`'s and reported, whatever it says | a prompt that moved means S0 was wrong and the run must be read as a second treatment |
 
 `S4` is the one that costs nothing and is skipped most often: the control's whole value is that the packet is the one the baseline saw, and this campaign has already recorded a run where a "control" differed in a field nobody declared.
+
+### 13.306 The reader's deadline stops being a constant, and a loss stops being a pass
+
+`42381840503` (the §13.303 arm B, `deepseek-v4-pro`) is the run that made this a defect rather than a tuning question. It answered 291 of 500 and died on
+
+```text
+{"url":"https://api.deepseek.com/v1/chat/completions","attempts":2,"retried":1,
+ "rateLimited":0,"elapsedMs":601000,"attemptsMs":[299999,300001],"timeoutMs":300000,
+ "retryBudgetMs":420000,"cause":"The operation was aborted due to timeout"}
+```
+
+Two facts in that object, and they are the whole registration:
+
+1. **`attemptsMs[i] == timeoutMs` on both attempts.** The bound fired; the network did not fail. A loss of this shape is a fact about one question's latency.
+2. **The bound was 300,000 ms because the thinking mode is `enabled` on two of six routes and that is what the module constant says.** Nothing in a dispatch could move it, and nothing in the artifact stated it.
+
+#### 13.306.1 Two classes, disjoint by construction
+
+| class | signature | decision | why |
+| --- | --- | --- | --- |
+| deadline loss | **every** attempt reached the deadline within 1% | record `''`, count, keep the pass | the arm has no output for one question, which is one question's cost |
+| transport fault | any attempt shorter than the deadline | **throw** | a dead endpoint fails every question; deciding one of them produces a number for a run that did not happen |
+
+The 1% tolerance is not decoration: the recorded pair is `299999` and `300001` against a `300000` bound, so an exact comparison would classify the clearest deadline loss in the campaign as a wire fault.
+
+`''` and not `null`, for the reason §13.303's refusal repair states: `null` is "the arm declined", which `judgeScorer` scores **CORRECT** against an unanswerable gold, so a stall recorded as a decline would hand the abstention column a free pass.
+
+#### 13.306.2 The ceiling, and why one loss is not one loss too many
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `T0` | a pass tolerates up to **2%** of its questions lost to deadlines (10 of 500, floor of 1) | a pass that throws at 10 of 500 is below the registered line |
+| `T1` | the 11th loss **throws**, naming the bound to raise | a pass that continues past it and publishes an accuracy is the defect |
+| `T2` | the ceiling is printed on the gate line as `deadlineLossCeiling=10` | a ceiling enforced and not printed is §13.306's own complaint about the deadline |
+| `T3` | a deadline loss is **never** counted as a provider refusal | a loss that also appears in `providerRefusals()` makes "the filter refused it" a false statement |
+
+`T3` exists because the first implementation of this repair violated it. The catch was a guard clause followed by the refusal body, so a deadline loss fell through: it was recorded twice and counted as a moderation decision. **Mutation testing found it** — changing `record('', index)` to `record(null, index)` broke no test, because the second write overwrote the first. The catch is now `if`/`else`, and a test asserts `providerRefusals()` does not move when a pass loses a question to a deadline.
+
+#### 13.306.3 The bound becomes declared, and the declaration becomes evidence
+
+`CORTEX_READER_TIMEOUT_MS` overrides the deadline the thinking mode implies. Three consequences, each registered:
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `D0` | the retry ceiling follows a declared deadline (`deadline + 120 s`), because a ceiling at or below one attempt is a ladder that can never retry | a declared 600 s deadline running under the 420 s ceiling leaves every attempt single-shot — `41393748964` on a new number |
+| `D1` | `0` is refused: `AbortSignal.timeout(0)` fires before the request leaves | a run that declares 0 and reports 500 provider failures |
+| `D2` | the declared value reaches the artifact as a `/deadline=` clause on the reader line | a bound that lives only in a job log is §13.110 on a new field |
+| `D3` | the run prints `reader transport: deadlineMs=… deadlineSource=…` before the first question, for both thinking modes | a bound that first appears in the error object of the question that reached it |
+
+`D3`'s second half is the one this campaign needed: the run that died had **two** deadlines (300 s on two routes, 60 s on four) and its log named neither.
+
+#### 13.306.4 Why the framing is a censoring problem and not a timeout problem
+
+The frontier literature has a name for what happened. A thinking budget is any harness-enforceable bound on inference before a scored answer, and a **wall-clock deadline is the same bound denominated in a second currency** — one that imports the deployment's hardware into the construct. When realized usage presses against the mandate, the item is **censored**: the score at that bound mixes genuine inability with amputation.
+
+| source | finding it contributes |
+| --- | --- |
+| thinking-budget sensitivity (2026) | token cap, wall-clock deadline, round bound, sample bound and effort parameter are **five different knobs** with five different failure modes; "record the knob, record the realized usage, treat the difference as a first-class finding" |
+| `AlphaDiana` (`2610.20675`) | harness is an **experimental condition**; 50.0% of agent failures are budget/call-limit, 28.7% truncation, **5.5% a genuine wrong conclusion** |
+| Terminal-Bench harness note (2026) | strict 3-minute timeouts **penalize deep-reasoning models**, which spend compute before emitting |
+
+Under that vocabulary `42381840503` lost its pass to a censor on 1 question of 291 (0.34%), which is far below the 28.7% truncation rate those studies report — and it still destroyed the measurement, because the harness treated a censored item as a fatal error rather than as a censored item.
+
+### 13.307 `M1` re-registered: same reader axis, one instrument on both arms
+
+§13.303 registered `M1` with arm A at `deepseek-flash` and arm B at `deepseek-v4-pro`, and arm B never produced a number. The axis is unchanged; what changes is that **both arms now run under the same declared deadline**.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `R0` | all 500 `promptDigest` values agree between the two arms, checked before any accuracy is compared | one disagreement means the arms differ in the packet and the accuracy difference is not the reader's |
+| `R1` | arm B ≥ arm A + **3.0** points | a smaller gap leaves requirement 12's upper half unproven at this size |
+| `R2` | arm B's per-question deltas are **not** systematically negative on `ABS` or `IE` | a negative sign on the capabilities a stronger reader should not hurt is a wiring defect, not a model property |
+| `R3` | the gate line of both arms names `readerTimeoutMs=600000` | an undeclared asymmetry makes the comparison an instrument comparison |
+| `R4` | `deadline losses: 0` on both, or the count is disclosed beside the accuracy | a loss recorded as wrong is a conservative bias against the arm that took it |
+
+`R3` is the one this round bought: the previous attempt compared arms whose bounds could not be read from the artifacts, so the difference between an arm that died and an arm that was never given the room would have been indistinguishable from a model property.
+
+`R4`'s asymmetry argument is deliberate: one lost question costs at most 0.2 points, so it cannot manufacture `R1`'s 3.0, but it can shave it, and a reader is entitled to the number.
