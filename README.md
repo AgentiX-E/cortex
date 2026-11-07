@@ -48,6 +48,11 @@ by similarity). Cortex solves the "mind" problem:
 > now **assembled and pre-registered** — see
 > [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md).
 > The dispatch is the remaining step; a pre-registration is a prediction, not a result.
+> **The sentence above is about `cortex-core`, and it is easy to read as "the product
+> is not connected". Split it by layer instead:** `cortex-memory`'s **prompt contract**
+> is live in every published run — `instructionsFor` chooses the block and an edit to
+> it shows up byte-for-byte in the artifact (94 of 94 reachable `MR` prompts, run
+> `42337560027`) — while its **value gates** are the layer the A/B has yet to measure.
 > Three documented capabilities remain unwired: optimal-transport distillation
 > (`sinkhorn`, exported but uncalled), TD(λ) credit assignment (not implemented), and
 > fact **derivation** history (not implemented — `Fact` carries origin, trust and both

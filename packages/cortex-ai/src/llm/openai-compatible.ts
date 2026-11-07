@@ -70,18 +70,32 @@ export class OpenAICompatibleLLM implements LLM {
   async complete(prompt: string, opts: CompleteOptions = {}): Promise<string> {
     const body = buildChatBody(this.options.model, prompt, opts, this.options.thinking);
     const res = await this.post('/chat/completions', body);
-    const json = (await res.json()) as {
+    // A `null` or unparsable body is a legal outcome here, and run `42347151147` is why this
+    // signature admits it: the provider answered `200` with the four-character body `null`, so
+    // `res.json()` returned `null` and the `json.usage` read below threw a `TypeError` at
+    // question 88 of 500, 135 seconds in. One empty answer discarded a whole dispatch.
+    //
+    // An empty completion is deliberately NOT an exception, and the reason is the accounting
+    // rather than the tolerance: `parseUsage(undefined)` returns `undefined`, `recordUsage`
+    // counts that as an UNPRICED call, and `report.ts` prints `PARTIAL: N of M calls reported no
+    // usage` whenever any call went unpriced. A provider answering with empty bodies is therefore
+    // visible in the artifact and cannot be read as a free run, while a single such answer costs
+    // one question instead of one dispatch.
+    const json = (await res.json().catch(() => null)) as {
       choices?: { message?: { content?: string } }[];
       usage?: unknown;
-    };
+    } | null;
     // Recorded HERE rather than at the call sites, and that placement is the repair
     // rather than a convenience: this is the one hop every provider request in the
     // repository passes through, and the ten call sites above it are ten places a
     // counter could be forgotten. The block is passed on unparsed so `parseUsage`
     // owns every decision about what counts as a usable one -- including the decision
     // that a response without a block is an UNPRICED call rather than a free one.
-    recordUsage(parseUsage(json.usage));
-    return json.choices?.[0]?.message?.content ?? '';
+    recordUsage(parseUsage(json?.usage));
+    const content = json?.choices?.[0]?.message?.content;
+    // `typeof` rather than `??`: a body whose `content` is a number is a proxy rewriting the
+    // response, and returning it would hand `parseAnswer` a value it never expects.
+    return typeof content === 'string' ? content : '';
   }
 
   async completeStructured<T>(

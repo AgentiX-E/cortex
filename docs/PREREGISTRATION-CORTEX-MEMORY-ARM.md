@@ -33308,3 +33308,209 @@ and this run delays it by one dispatch. The reason to spend that dispatch here i
 to be **the configuration that ships**: if `verbatim-acts` is adopted on a confounded +4.13 and the reader is then
 measured on top of it, neither number can be read afterwards. Certifying the rule first costs 90 minutes and
 buys two interpretable results instead of one ambiguous pair.
+
+### 13.296 The 13.295 dispatch died on an empty provider body, and the repair costs one question instead of one dispatch
+
+`42347151147` was dispatched at 06:28Z to run §13.295 and failed at 06:31Z. The partial artifact is
+35,029 bytes against the archive's usual tens of megabytes, and `benchmark-error.log` holds one line:
+
+```
+progress: died on cortex-memory run=1 q=88/500 id=2e6d26dc at +135.2s
+TypeError: Cannot read properties of null (reading 'usage')
+    at OpenAICompatibleLLM.complete (packages/cortex-ai/src/llm/openai-compatible.ts:83:33)
+```
+
+#### 13.296.1 What the provider did, and why the ladder could not help
+
+The provider answered **HTTP 200** with the four-character body `null`. `res.json()` returns `null`
+for that input, and the next line read `json.usage`. Three properties made this unrecoverable:
+
+| property | consequence |
+| --- | --- |
+| `null` is a successful parse | a guard written as `if (res.status !== 200)` never sees it |
+| `res.json()` on an empty body **throws** `SyntaxError` | a guard written as `if (json === null)` handles the `null` case and still dies on the empty one |
+| `retryableFetchWithStats` retries on status, network errors and per-attempt deadlines | a `200` is a success to it, so the ladder has already returned and holds no knowledge that the body was unusable |
+
+The third is the one worth naming as a design fact rather than a bug: **the retry layer cannot see
+response bodies**, because a `Response` body can be read once and the ladder has to hand the response
+back to whichever caller wants it. So "the provider returned no completion" is not expressible as a
+retry, and a guard at that layer would not have prevented this.
+
+#### 13.296.2 The repair, and the reason it returns an empty answer rather than throwing
+
+`complete` now reads the body as `… | null`, catches a parse failure to `null`, uses `json?.usage`,
+and returns `''` unless `content` is a string.
+
+Returning the empty answer is a deliberate choice and its justification is the accounting, not
+tolerance: `parseUsage(undefined)` returns `undefined`, `recordUsage` counts that as an **unpriced**
+call, and `report.ts` prints `PARTIAL: N of M calls reported no usage` whenever any call went
+unpriced. A provider answering every request with `null` therefore produces an artifact that says so,
+which is the condition for accepting a single empty answer. Throwing would trade one measurable miss
+(1 of 2,000 question-runs is 0.05 points) for one unmeasurable total loss (135 seconds to 90 minutes,
+plus the dispatch's opportunity cost).
+
+`typeof content === 'string'` rather than `?? ''` because a proxy that rewrites `content` as a number
+is a second failure on top of the first, and handing `parseNumber`-style consumers a number is how a
+class of parse defect starts.
+
+#### 13.296.3 The tests, and the check that they are tests
+
+`packages/cortex-ai/src/__tests__/openai-compatible-empty-body.test.ts` — **8 passed**, no mocks (the
+transport is the production `fetchFn` option):
+
+| trap | the test |
+| --- | --- |
+| `null` is not absent | a `null` body returns `''` |
+| an empty body throws rather than returns `null` | a zero-length body returns `''` |
+| a missing `choices` is not an answer | `{"usage":…}` returns `''` |
+| a non-string `content` is not an answer | `{"content":42}` returns `''` |
+| the control | a normal completion still returns `Alice` |
+| empty is unpriced, not free | `usageDelta` reads `calls 1 / unpricedCalls 1 / promptTokens 0` |
+| priced is priced | the same delta on a real completion reads `promptTokens 11` |
+| the ladder cannot see this | a `200` is fetched **once**, so the guard could not have lived one layer up |
+
+The suite was checked against the defect before being trusted: putting `json!.usage` back turns
+**4 of 8 red** and the failure message is the production one, `Cannot read properties of null
+(reading 'usage')`. A test suite that has never seen the bug fail is a suite that describes the fix
+rather than the defect.
+
+#### 13.296.4 What this changes about the archive
+
+Every artifact in the archive was taken through this path. None of them died on an empty body, which
+means this was not a latent failure that had been happening silently — it is a failure that had a
+1-in-N chance per call across roughly 19,700 calls per A/B, and `42347151147` is the draw that landed.
+The count is unmeasurable from here: the archive records what each run *cost*, not how many calls
+returned an empty body, so the honest statement is that the rate was low enough to survive ~20 rounds
+and high enough to appear on round 26.
+
+§13.295 is re-dispatched unchanged. The registration is not edited: a run that died before producing
+a reading has not tested its own gates, so there is nothing to correct in them.
+
+### 13.297 The target changes from "overall SOTA" to three decidable lines, and MEME waits behind three settlements
+
+Three external reviews arrived on 2026-11-07 and the adjudication is in `docs/DECISION-MEME-AND-TARGETS.md`.
+This section is the part of that decision that is a **queue change**, because a decision that does not
+move the queue is a paragraph.
+
+#### 13.297.1 Why the target moves
+
+`SOTA-BASELINE.md` records, as a P0 defect, "citing a frozen number as the current score". The
+programme-level review finds the same defect at the level above it: a per-round KPI of *"are we SOTA"*
+whose answer the project has itself proven it cannot compute, because `--gap` refuses to rank systems
+whose six-tuple differs. A required field that cannot be computed will be filled with prose, and it
+was, in every round report.
+
+The replacement is three lines with comparison rules attached:
+
+| line | reading | status |
+| --- | --- | --- |
+| T1 reproducible A-grade first | 90.15% against memoricai 85.8% | **met** |
+| T2 parity at the same reader grade | 90.15 / 90.40 against Recallium 90.2 | **met** (judge differs; "not behind") |
+| T3 `MR` inside the reference pair | 81.82% against 85.12%, **−3.30** | **open** |
+
+T3 is the only line where the project is behind something it controls end to end — one artifact, one
+reader, one judge, one question set — and the only one that can move without a new arena. The
+campaign's weight moves onto it.
+
+#### 13.297.2 The two numbers the review had that are now wrong
+
+Both are corrections this round produces rather than receives:
+
+- **The `MR` gap is −3.30, not −7.43.** The review read 76.86–77.69% against 85.12–86.78%.
+  `42337560027` moved `MR` to 81.82% (§13.294.4). A decision taken on −7.43 would have put roughly
+  twice the effort onto this line as it deserves — and the second half of the gap is what §13.295 is
+  measuring.
+- **Per-question cost is 12,105, not 14.1K.** `42310779222` through `tools/cost-ledger.py`, with the
+  other two divisions at 11,690 and 48,420 (§13.293.1).
+
+#### 13.297.3 The prescription that has to be re-pointed: the prompt layer is already connected
+
+The review says the product and the evaluation are two implementations and recommends connecting them.
+Verified: `bench-memory-arm.ts` imports `cortex-memory` **type-only** under the acyclicity rule (its
+own comments at lines 422 and 450), and the `CortexMemory` instance is injected by
+`cortex-memory/bench/run-ablation.ts`. But the **prompt-contract layer is live**: `instructionsFor`
+(`cortex-memory/src/prompt.ts:1855`) chooses the block, and when `VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION`
+(line 1594) changed, 94 of 94 reachable `MR` prompts in `42337560027` came out with new bytes.
+
+So the sentence "the cognitive layer is not connected to the score" is false as stated, and true in a
+narrower form: **the value gates are not measured.** The prompt contract is measured every round. The
+action is therefore to dispatch the A/B that is already assembled, not to rebuild a pipeline that is
+half-connected — and `README.md`'s Status paragraph, which caused the confusion, is corrected in
+`cortex-docs` §22.42.
+
+#### 13.297.4 MEME's entry conditions, and the slice's specification
+
+MEME is **not** entered this round. Three settlements come first, and each is cheaper than the slice
+and changes what the slice would mean:
+
+1. §13.295's reading — the last unsettled variable on T3.
+2. `A8` (`gated` context against the current context). `MEASURE-ASSUMPTION-ABLATION.md` §4 predicts a
+   null; a null is a result and it would say the value gates earn nothing on real corpora.
+3. The `cortex-memory` product A/B — the one question this campaign has been avoiding.
+
+Then the slice, specified before it is run so that it cannot become a campaign:
+
+| | |
+| --- | --- |
+| size | 10–20 episodes, `nofiller` and `filler32k` variants only |
+| graph | **none** — existing raw-turn retrieval, chronological assembly |
+| what it measures | whether Cas / Abs reproduce the phase-visible-oracle order of magnitude (≈82 / ≈92) |
+| if it reproduces | assembly is already a strong baseline and the DAG's marginal value is small — **do not build it** |
+| if it does not | check phase order and coverage first; the graph is the third suspect, not the first |
+
+The `≈82 / ≈92` hook is second-hand coverage of `arXiv:2610.30755` in both upstream documents. It is
+carried as a hypothesis with a cheap test and not as a finding, and the slice is designed so that the
+hypothesis is what dies if it is wrong.
+
+#### 13.297.5 What is refused, with the reason attached
+
+| refused | reason |
+| --- | --- |
+| the five-phase MEME campaign | its own §五 says check coverage and reader input shape first; §六's P0 does the opposite. Five phases across six benchmarks is months, against a budget stated in weeks |
+| `derivedFrom` / `DerivationStore` as a first action | the shape is settled (`ARCHITECTURE.md:91`, `DECISION-PROVENANCE-NODE.md` §3.1) and nothing consumes it yet; a field with no reader is what `AUDIT-UNREFERENCED-*` exists to catch |
+| `DerivationStore` **as a source of facts** | it may hold rule id, version, premise bindings and evidence spans. It may not decide whether a fact exists. That boundary is what separates proof from the deleted sibling |
+| moving to BEAM-10M now | at 1M–10M tokens the binding constraint is the window and retrieval cost, neither measured here; and 28.17% is one self-reported number on a board this project ruled unrankable |
+| the `meme_dependency_engine.py` prototype as evidence | the file is in neither repository, so 16 passing assertions cannot be re-run |
+| editing `tools/gates/13.290.json` after its reading | §13.294.2 — the correction lives in `13.295.json`, which is the whole point of the format |
+
+#### 13.297.6 The stop rule, with numbers
+
+Both reviews propose a stop rule. Neither proposes one that can be evaluated, so:
+
+- **Three consecutive mechanism dispatches with zero or negative gain** on the primary measure, each
+  read against its own registered gate, stops point-buying on LongMemEval-S. The count resets on any
+  dispatch whose delta exceeds the noise floor (1.6–2.2 points), because that is a hit rather than a
+  miss.
+- **Any new module names its consumer before its interface.** "No consumer" has been the failure mode
+  of `ProvenanceNode`, of the unreferenced audit suite, and of the storage layer the audits found
+  write-only.
+- **Any first place obtained by changing arena carries its six-tuple.** A first without a six-tuple is
+  target drift, which is the failure this section exists to end.
+
+The first rule's counter is at **0 of 3**. §13.295 is a mechanism dispatch and its reading will move
+it to 0 or 1 depending on whether it clears its own `MR >= +3` bar.
+
+#### 13.297.7 The cost axis, and the one number that keeps it from being prose
+
+The programme review's fifth recommendation is that cost becomes a first-class axis. `C1` is the part
+of it that exists: 12,105 prompt tokens per question per repetition, read from a generated evidence
+file (§13.293). Two things follow, and both are sequenced rather than announced.
+
+**The budget's unit is the next change, not its size.** §13.293.2 measured `48000 / 11690 = 4.11`
+characters per token — the density of English prose — which means the delivery fills its character
+cap and `C1` currently prices a configuration constant. A budget written in characters and billed in
+tokens cannot be 4.11x wrong about itself. That is the change; "lower the cap" is not, because
+§13.291 moved every gold turn into the `MR` prompts and bought **+0.00**, which is evidence that
+adding evidence does not help and **not** evidence that removing it is free.
+
+**The adaptive-budget criterion is `C2`, and it is an aim with no reading**, for the same reason
+`C1` was: the measurement it needs — the median evidence tokens per question across two arms — does
+not exist yet. The criterion is the one §14.52 already wrote from the external board: overall
+accuracy at or above the registered configuration **and** median evidence tokens per question down by
+at least 30%. It is registered as an aim so that the next increment touching the budget has to say
+what it did to that number, and it is not wired because a hand-typed median would be the same defect
+`C1` was written to avoid.
+
+Neither change is dispatched this round. The reason is the same one that orders the whole queue: a
+cap or unit change moves `C1` in the table without moving `T3`, and `T3` is the line the campaign is
+about.

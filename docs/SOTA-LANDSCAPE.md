@@ -968,3 +968,89 @@ accuracy, and more evidence did not either. Hindsight at 43.6K for 94.6% is the 
 on which this arm is 83.45%; 91.20 is therefore not comparable to Zep's 90.2 or Mastra's 84.23 and is not entered
 in the table. The delta is what the run supports, and even the delta is not yet attributable to the rule: that run
 also changed the delivered evidence on all 94 questions it reached (§13.294.3), which is what §13.295 re-runs.
+
+## 15. MEME at its actual evidence grade, and what the target is now
+
+Three external reviews on 2026-11-07 proposed MEME as the next arena. The adjudication is in
+`docs/DECISION-MEME-AND-TARGETS.md`; this section records the two things that belong in a landscape
+document — what MEME's numbers are worth, and what the project now compares itself against.
+
+### 15.1 What MEME measures, and how low the floor is
+
+MEME (`arXiv:2605.12477v1`) defines six tasks on two axes, entity scope and temporal dynamics, and its
+multi-entity evolving quadrant is `Cas` (propagate an upstream change under a rule) and `Abs` (answer
+"unknown" when no rule applies). Data is 100 controlled episodes generated from two hand-built DAGs,
+with `trivial-pass` filtering so that a system which remembers nothing cannot be scored as having
+updated correctly.
+
+Under one `gpt-4.1-mini` reader across six systems and three paradigms:
+
+| | score |
+| --- | --- |
+| Cascade, mean across systems | **0.03** |
+| Absence, mean across systems | **0.01** |
+| static entity retrieval, mean | 0.62 |
+| best MD-flat | 0.06 / 0.05 |
+| MD-flat with Claude Opus 4.7 as the **internal memory LLM**, 20-episode ablation | 0.32 / 0.59, at ≈70x baseline cost, with ER and Tr falling |
+
+The two readings a decision has to survive: **the floor is 3% and 1%**, which is a genuinely
+unsaturated arena; and **the only published improvement came from paying 70x for a stronger model
+inside the write path**, not from a stronger answering model. The mechanism story is that a reader can
+re-derive `A→B→C` from raw context only when the raw context is there, so query-time reasoning
+substitutes for missing materialisation only while the evidence is present.
+
+### 15.2 Why it is not a title, and why the coverage band was misquoted
+
+The aggregated board for MEME carries eight rows and **all eight are self-reported**; the current top
+is another system's flat baseline. Whoever runs first is first. That is the same defect §14.1 was
+written to avoid, and it is why MEME cannot be entered for a title.
+
+The direction card caught a real error here, and it is worth recording because it was our own number
+being used the wrong way round. `cortex-docs/docs/05-competitor-analysis.md` §1.17.4 already said:
+
+> 论文说的那个"覆盖不足"的区间（19%–76%）我们已经走出了，而我们还差 4 分——所以剩下的 4 分不在覆盖率上，在排序质量上
+
+Our coverage, from `tools/evidence-depth.py`, is **69.7%–100%** with three of five routes above 84%.
+So `35.69–76.35%` is **the other systems'** coverage in the MEME paper. It is not a statement that
+MEME is unsaturated for us, and a roadmap that cites it as the reason to change arenas has the
+direction of the inference backwards. §1.17.5 states the rule that was broken: the expected gain of
+one mechanism cannot be carried between two coverage bands.
+
+### 15.3 The one external hook, at its grade
+
+RAW-RAG's phase-visible oracle is quoted at **82.32 / 91.54** for DeepSeek-V4-Flash and **1.83 /
+36.15** for GPT-4o-mini on Cas / Abs. If that is true it says MEME's floor is an assembly-and-reader
+problem, not a graph problem — and the cortex reader is in the DeepSeek family.
+
+It is second-hand coverage of `arXiv:2610.30755` in both upstream documents, so it enters this
+document as **a hypothesis with a cheap test**: 10–20 episodes, existing raw-turn retrieval,
+chronological assembly, no graph. That test is specified in §13.297.4 and it is not run until three
+settlements complete, because each of the three is cheaper and each changes what the test would mean.
+
+### 15.4 What the project compares itself against now
+
+| line | reading | status | rule |
+| --- | --- | --- | --- |
+| **T1** reproducible A-grade first | 90.15% vs memoricai 85.8% | **met** | same-harness, A grade only |
+| **T2** parity at the same reader grade | 90.15 / 90.40 vs Recallium 90.2 (GPT-4o) | **met** | judge differs — "not behind", not "ahead" |
+| **T3** `MR` inside the reference-pipeline pair | 81.82% vs 85.12%, **−3.30** | **open** | one artifact, one reader, one judge, one question set |
+
+T1 and T2 are met and were already met when the reviews were written; neither review noticed, because
+both measured against the self-reported headline rather than against the grade. T3 is the only line
+where this project is behind something it controls end to end, and it is where the campaign's weight
+now sits.
+
+What this retires is the per-round required field "are we SOTA". It could not be computed — `--gap`
+refuses to rank across differing six-tuples, which the project wrote itself — and a required field
+that cannot be computed gets filled with prose.
+
+### 15.5 The two numbers the reviews had that are now stale
+
+Recorded here rather than only in the decision doc, because a landscape document that a later round
+quotes will be quoted with these figures:
+
+- **`MR` gap: −7.43 is now −3.30.** `42337560027` (`ask=verbatim-acts`) moved `MR` from 77.69% to
+  81.82% against the same 85.12% reference (§13.294.4).
+- **per-question cost: 14.1K is now 12,105.** `42310779222` through `tools/cost-ledger.py`, three
+  divisions at 11,690 / 12,105 / 48,420 (§13.293.1). The 4.14x spread is why the denominator has to be
+  named before the number is compared with Zep's 4.4K.
