@@ -67,6 +67,11 @@ unrun    no value could be computed — reported, never counted as a pass
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
 | C1  | <!-- reading:C1 -->12105  | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
+| B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
+| B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
+| C2  | <!-- reading:C2 -->—      | ≤ 70.0%   | unrun  | cost                                   | LongMemEval-S, paired, median evidence tokens per question   |
+| M1  | <!-- reading:M1 -->—      | ≥ 3.0pp   | unrun  | reader strength                        | LongMemEval-S, one dispatch, two readers, prompt bytes held  |
+| P1  | <!-- reading:P1 -->—      | ≤ 2.0pp   | unrun  | provider portability                   | LongMemEval-S, one dispatch, two providers, prompt bytes held |
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
@@ -93,6 +98,32 @@ And the cap is not a free win: §13.291 measured that adding every gold turn mov
 which is evidence that more room does not help, not evidence that less room is free. Cache hits are also not
 a discount here — 18,933,570 of the 24,209,976 prompt tokens were cache hits, which changes the bill and not
 the context the reader had to read.
+
+Five rows were added on 2026-11-07, and they are of three different kinds because the page had three different
+holes. `LANDSCAPE-CONTROLLED-BOARD.md` §7 is the argument; this is the record of what changed.
+
+- **`B1` and `B2` are the first rows with a value on the browser axis**, and they cost nothing: the readings
+  (`packages/cortex-storage/test/browser/last-run.json` and its Firefox twin) were already committed and are
+  already regenerated in CI. They read `summary.failed` rather than `summary.passed` because a `passed: 24`
+  threshold hard-codes the suite's size, so the next person to add a check would either break a gate or edit a
+  threshold — and both are indistinguishable from lowering the bar. Requirement 9 puts product maturity ahead
+  of the SOTA chase, and until these rows "maturity" was the number 24/24 typed into three documents.
+- **`C2` exists because a document said it did.** `PREREGISTRATION` §13.297.7 states that "the adaptive-budget
+  criterion is `C2` … registered as an aim". It was not registered; `acceptance.ts` had no such row. That is
+  the matrix's own failure mode one level up — not a number drifting from its code, but a *criterion* living
+  only in prose, where nothing can read it. Its unit is a **fraction of our own window**, which is why it
+  carries no competitor figure: 4,400 tokens is 36% of 12,105 and 0% of whatever a reader assumed, so an
+  absolute external number cannot be placed in that column. The absolute figures stay on `C1`.
+- **`M1` and `P1` price requirements 11 and 12**, which until now were properties the architecture was said to
+  have. `M1` is the paired reader-strength gain (≥ 3.0 points, against a measured noise floor of 1.6–2.2 and an
+  external +10.64); `P1` is the cross-provider loss (≤ 2.0 points). Both are `unrun` and the reason is written
+  into the row: a pair exists for `M1` on an **older** configuration (`41222844945` 85.75% against
+  `41254359622` 90.45%, +4.70, every prompt byte-identical), and using it would be quoting a reading of a
+  system this row does not gate. For `P1`, `AUDIT-MODEL-PORTABILITY.md` §7 names the ratio the criterion needs
+  and states it has never been measured — so the row makes the omission a list item instead of a footnote.
+
+`P1` also carries an empty competitor field on purpose. Every published portability claim in this field is a
+sentence ("works with any model"), a sentence is not a value, and a fabricated row would be worse than the gap.
 
 `S6` and `S7` are `unrun` for the same reason and became rows before the run that fills them, which is the point
 of writing a criterion early: `S6` is a **gate on the instrument** rather than on accuracy — the number of
