@@ -33819,3 +33819,89 @@ Unchanged in order, and one line sharper about price:
 | now | the 20-question smoke at `ablation_runs=1` (`42367594269`), to verify the provider answers at all and to price one call |
 | if it answers | `P1` at the full 500 questions, `ablation_runs=2`, gate `<= 2.0` points against the reference provider |
 | if it does not | the answer is a quota fact, not a mechanism finding, and `P1` stays `unrun` with a reason that names the vendor rather than the product |
+
+### 13.301 The room is halved, and the prediction is written before the meter runs
+
+`C1` reads **12,137** prompt tokens per question against a threshold of **6,000**, and `C2` has an instrument,
+a denominator and no numerator: the only artifact `tools/evidence-budget.py` can read is the registered arm at
+the registered room, so its ratio is `1.0000` by construction. Both rows are priced by **one** dispatch, and
+this section is the prediction that dispatch is read against. It is written before the meter runs because a
+prediction written afterwards is a description.
+
+#### 13.301.1 The single variable
+
+| | control `42355323615` | this arm |
+| --- | --- | --- |
+| `cortex_memory_max_prompt_chars` | `48000` (scalar, §10.3) | **`24000`** |
+| every other input | §10.3 | §10.3, unchanged |
+| repetitions | 4 | **2** (§13.300.2's affordance) |
+| reader | `deepseek-chat`, thinking on `multi-session+temporal` | identical |
+
+One field moves. The other five routes in the control read `48000` because no scalar was recorded and
+`PROMPT_ROOM_DEFAULT` is `48000` (§13.299); `multi-session` read `48460` because that dispatch wrote a map
+instead of a scalar. This arm writes the **scalar**, so all six routes resolve to 24,000 and
+`memoryArmConfig.effectivePromptChars` prints one number rather than a six-entry map -- which is itself a
+check on §13.299's repair: an arm whose room renders as six values would mean the scalar path is still not
+being read.
+
+#### 13.301.2 What the outside world says, and the direction it does not cover
+
+MemStrata (`arXiv:2610.05343`) reports the closest published experiment to this one: on the same 500-question
+set, with the same reader and the same 24,000-**token** ceiling, a **full-history control carrying about 4.7x
+the evidence** scores `464/500` reference-only against `463/500` for the bounded packet, and `470/500`
+source-aware against `475/500`. Four point seven times the evidence is worth **minus one to plus one
+question**, and the paper calls neither difference decisive.
+
+That is the strongest available evidence that evidence *volume* is not what accuracy on this benchmark is
+made of, and it is the same conclusion this arm reached from the inside at §13.291: delivering every gold
+turn moved the roster by exactly **+0.00**.
+
+**It is not evidence that a cut is safe, and the difference matters.** "More buys nothing" is an upper
+boundary being flat; "less costs nothing" is the same curve being read on the other side of the vertex, and a
+curve that is flat above the vertex can still fall below it. Nothing in the published record cuts the packet
+by half with the reader held, so this dispatch is the first reading of that side rather than a confirmation.
+
+#### 13.301.3 The downside, counted rather than feared
+
+`tools/gold-room.py --max-chars 24000` prices every question's gold against the smaller room with no provider
+call. The column that matters is `room` -- the questions where **no ordering helps**, because the gold turns
+plus the measured overhead do not fit:
+
+| capability | n | `room` at 48,000 | `room` at 32,000 | `room` at 24,000 |
+| --- | ---: | ---: | ---: | ---: |
+| ABS | 30 | 0 | 3 | **9** |
+| IE | 150 | 0 | 0 | **2** |
+| KU | 72 | 0 | 11 | **38** |
+| MR | 121 | 0 | 0 | **0** |
+| TR | 127 | 0 | 0 | **0** |
+
+So the exposure is **49 questions out of 500**, all of it in three capabilities, and **none** in the two that
+hold the gap. The worst case is therefore bounded and named: if every one of the 49 currently answers
+correctly *because* of a turn the smaller room cannot carry, the arm loses 9.8 points. The realistic case is
+much smaller, because 66 of 72 KU questions are already `partial` at 48,000 -- the answer survives on part of
+the gold today, which is the only reason a partial-coverage question can read 87.2% -- and a question that
+answers from one turn does not stop answering when the other four leave.
+
+`tools/evidence-budget.py` measured the median evidence at **46,926 characters of a 48,000 room**, 98.70%
+utilisation, so 24,000 is a **0.50x** cut and not a nominal one: the room is filled, so the room is the
+evidence.
+
+#### 13.301.4 The registration
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| **C2** | median evidence tokens per question falls to **at most 0.70x** the control | a ratio above 0.70 means the room was not the binding constraint and the prefix rule is filling something else |
+| **C1** | prompt tokens per question fall to **at most 6,000** | a reading above 6,000 at a 24,000-character room means the overhead is larger than the 1.41% §13.299 measured, which would be its own finding |
+| **A** | overall accuracy is **not more than 2.0 points below** the control (>= 89.4 on the 91.40 first repetition) | a fall larger than 2.0 -- the top of this arm's own 1.6-2.2 noise band -- means the room is load-bearing, and the repair for `C1` becomes **denser evidence** (extractive summarisation of a turn) rather than a smaller window, which is a different roadmap item |
+| **B** | the fall, if any, is **concentrated in ABS, IE and KU** | a fall in MR or TR contradicts 13.301.3, which says their gold fits at 24,000 by arithmetic, so a loss there is a defect in the arm and not a cost of the room |
+| **C** | the abstention route does not gain | ABS is 30 questions whose gold **is** a decline; a room cut that raises ABS means the reader was declining for lack of room and is now declining for lack of evidence, and those are different mechanisms |
+
+**A** is the one that decides whether `C1` is reachable by budget alone. **C** is the one that decides whether
+the reading means anything: volume removed from a reader that declines turns abstention into a confound, so a
+large ABS movement makes the accuracy comparison a calibration comparison (§3 of `PREREG-READER-AXIS.md`).
+
+#### 13.301.5 Stop rule
+
+One dispatch. No redraw, no peeking, no second room at 32,000 to find a friendlier draw. A miss on **A** is
+recorded as a miss and moves the `C1` repair from size to density; a pass on all five is the first reading in
+this campaign where a cost row is met by measurement rather than by argument.
