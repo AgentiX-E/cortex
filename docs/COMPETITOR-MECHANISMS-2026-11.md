@@ -167,6 +167,65 @@ Two readings:
 
 ---
 
+## 3.1 TEPA: append-only memory scores below no memory at all
+
+`arXiv:2608.07429` makes validity an explicit state of memory -- observations become keyed precedents, and a
+fresh statement conflicting with an active precedent **under the same key** revokes the old one, which is kept
+for audit and excluded from retrieval. The measurement that matters is the reversal table:
+
+| design | full reversal, 50 seeds | real file-backed drift |
+| --- | ---: | ---: |
+| append-only | 0.210 | 0.203 |
+| last-write-wins | 0.210 | -- |
+| **no memory at all** | **0.309** | 0.298 |
+| keyed revocation | **0.950** | 0.950 |
+
+The third row is the finding. Append-only and last-write-wins do not merely fail to help; they land **below
+storing nothing**, because a stale value that is still retrievable is worse than an absence the reader can see.
+That is the strongest external support this project's thesis has, and it is support for the *question* rather
+than for our implementation: `K3` (retired facts served: 0) and `T4` (`-lapse` arm: 100% on 16 cases) measure
+that a retired fact is not delivered, which is necessary and not the same quantity. TEPA's 0.950 is the success
+rate **after the world reversed**.
+
+The controlled set has no reversal case. Building one is cheap in the way that matters: a key, two values, one
+reversal, no generation, no reader -- so it is a set `S2` could read directly. Recorded and not built, because
+the only dispatch capacity this round is `P1`.
+
+## 3.2 A frozen resolver answers 80.25% of MemoryAgentBench's conflict split
+
+`arXiv:2610.09193` (NeurIPS 2026 IAB workshop) executes the benchmark's own rule -- the newest statement about a
+fact wins -- as a **zero-learning resolver**, and reads the result per item:
+
+| | |
+| --- | ---: |
+| answered by the rule under the official metric | **80.25%** (74.5% on the three held-out lists) |
+| items whose released gold the last-write graph cannot reach | **67** (a third of the 262K multi-hop questions) |
+| two long-context models on the items the rule solves | 84.7% / 82.6% |
+| the same models on those 67 | **10.4% / 11.9%** |
+
+The conclusion is the sentence this repository should adopt verbatim: *the per-item split, not the aggregate, is
+the unit at which a score here can be read*. Two prohibitions follow. Do not adopt that split's aggregate as a
+criterion, because most of it is a rule that needs no memory. And do not compare against it without a
+reachability split -- reachable-by-rule, unreachable-gold, remainder.
+
+It also explains why TEPA ties last-write-wins at 0.890 on clean single-hop data: with a clean stream, taking
+the newest value *is* the correct mechanism, so revocation adds nothing. The increment only appears under
+reversal.
+
+## 3.3 The cache number, calibrated
+
+`13.298.4` read 96.0% of prompt tokens as a prefix-cache hit and treated it as a stability signal against 78.2%
+two dispatches earlier. DeepSeek's own published figure is that **96% of all input tokens are cache hits**, and
+the retention behind it is 3 days for agent traffic against the ~5 minutes a typical provider offers. So 96.0%
+is the mean, not an advantage: the honest claim is that this arm does not break its prefix, and there is nothing
+yet to say about doing better.
+
+Two consequences worth carrying. A broken prefix costs **10x** on the input side (cache hit $0.006 against
+$0.30 per million on V4.1-Flash), which makes prefix stability the most valuable and least measured property in
+this pipeline. And the hit rate is a **harness** property, measured across eight harnesses on one model at
+roughly a 7x spread in cost per task -- which is the outside evidence for requirement 8 being about prompt
+structure rather than prompt wording.
+
 ## 4. What changes, what does not
 
 | finding | consequence |
