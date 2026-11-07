@@ -101,3 +101,32 @@ class TestTheTwoRendersAgree:
         for row in ratios:
             assert markers[row["id"]].endswith("%")
             assert len(markers[row["id"]].split(".")[-1]) == 2  # "83.5%": one decimal, one percent sign
+
+
+class TestTheJsonDocumentSurvivesThePipe:
+    def test_the_checker_writes_its_json_with_an_exit_code_rather_than_process_exit(self):
+        # A write to a pipe is asynchronous in node, so `process.exit(0)` can terminate while the
+        # `--json` document is still in flight: the exit code is right and the output is truncated
+        # mid-string, which a consumer reports as malformed JSON rather than as a check that failed.
+        # This was intermittent -- the document usually flushed in time -- and it surfaced here as an
+        # occasional `Unterminated string` while every gate was passing.
+        text = CHECKER.read_text()
+        assert "process.exitCode = " in text
+        # Comment lines are stripped first: the file explains this rule in prose, and a test that
+        # forbade the string outright would forbid the explanation of why it is forbidden.
+        code = "\n".join(
+            line for line in text.splitlines() if not line.strip().startswith("//")
+        )
+        assert "process.exit(" not in code, (
+            "an explicit exit can truncate a piped JSON document; set `process.exitCode` and let the "
+            "process end when stdout drains"
+        )
+
+    def test_a_piped_document_parses(self):
+        out = subprocess.run(
+            [_node(), str(CHECKER), "--json"],
+            capture_output=True, text=True, cwd=REPO,
+        )
+        assert out.returncode == 0, out.stderr[-400:]
+        # Parsed rather than counted: the defect was a truncated string, which only a parse sees.
+        assert len(json.loads(out.stdout)) > 0

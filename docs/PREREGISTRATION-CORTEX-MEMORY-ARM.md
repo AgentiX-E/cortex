@@ -33105,3 +33105,206 @@ Unchanged, and stated because it was tempting to change it: the next reading is 
 story and no measurement, and a cap change would move `C1` in the table without moving the number the campaign
 is actually about. It is registered as the first experiment to run *after* the reader changes, so that the
 cap's effect is measured on a reader that is not the one that produced the 83.45%.
+
+### 13.294 `verbatim-acts` reads out: 11 of 13 gates, +4.13 on `MR` and +1.00 overall, and the instruction rents its room from the evidence
+
+Read of `42337560027` (`ask=verbatim-acts`, `e5c94f0f`, 87 minutes) against `42310779222` — the shipped
+`ask=verbatim` arm that every one of `C1`'s numbers and §13.291's transitions also come from.
+
+#### 13.294.1 The thirteen gates
+
+| # | quantity | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | the artifact's own audit | every artifact check passes | **PASS** |
+| 2 | `memoryArmConfig.ask` | `verbatim-acts` (registered) | **PASS** |
+| 3 | `MR` deliveries whose prompt bytes differ from `42310779222` | **94 of 121** (bar ≥ 110) | **FAIL** |
+| 4 | the four capabilities outside the ask's change set | **379/379 agree** | **PASS** |
+| 5 | `memoryArmConfig.promptContract` | `evidence-blocks-unsourced` (held) | **PASS** |
+| 6 | `memoryArmConfig.relevanceUnits` | `turn` (held) | **PASS** |
+| 7 | per-turn source markers across the 500 delivered prompts | 0 of 500 prompts, 0 markers | **PASS** |
+| 8 | `MR` accuracy against `42310779222` | 77.69% → **81.82%**, **+4.13**, **8 won / 3 lost**, p = 0.2266 | **PASS** |
+| 9 | `IE`, `KU`, `TR`, `ABS` against `42310779222` | worst **−0.79** (`TR` 95.28 → 94.49); `IE` +0.67, `KU` 0, `ABS` 0 | **PASS** |
+| 10 | `MR` questions delivering every gold turn, against 98 | **96 of 121** (−2) | **FAIL** |
+| 11 | `llmUsage.promptTokens` | 27,207,570 against 27,308,598 | **PASS** |
+| 12 | `bareRetry.attempted` | 66 | **PASS** |
+| 13 | the six registered verb-exclusion questions | **4 of 6** flipped: `2ce6a0f2`, `129d1232`, `60159905`, `bc149d6b` | **PASS** |
+
+Headline on the artifact's own scale: **90.20% → 91.20%** (451 → 456 of 500), which is the highest overall
+this campaign has recorded and is **not** the `S1` row's 83.45% — that row is the official judge's reading of a
+different artifact, and the two scales are not interchangeable. What this run supports is the delta.
+
+#### 13.294.2 Gate 3 failed on a threshold that was wrong, and the claim it tested is verified another way
+
+Gate 3 asked for ≥ 110 of 121 `MR` prompts to differ, and 94 did. The registration assumed every `MR` question
+reads the aggregation contract. **It does not.** §13.290.1 said so in a parenthesis — *"on a derivation
+question the change set is `[]`"* — and 27 of the 121 are derivation questions, which read the `operands` block
+and never see the line this run replaced.
+
+Measured from the two artifacts' `ablation.featurePromptTexts`, classifying each of the 121 prompts by which
+skeleton it carries:
+
+| | treatment | control | digests differ |
+| --- | ---: | ---: | ---: |
+| aggregation contract | **94** | 0 (all `verbatim`) | **94 of 94** |
+| `operands` block | 27 | 27 | **0 of 27** |
+
+So the rewrite reached **100% of the population it can reach**, and the gate's bar was 110 against a
+denominator of 94 that the document itself had described. This is a registration defect of the same class as
+§13.262.1's gate 6 and §13.278's stale premise: a threshold written from a belief about the population rather
+than from the population. It is recorded here rather than fixed in `tools/gates/13.290.json`, because editing a
+gate after the number exists is the exact failure the file format was adopted to prevent. §13.295 carries the
+corrected bar, `≥ 94`, and gates the 27 as byte-identical.
+
+#### 13.294.3 Gate 10 failed for a reason that is worth more than the gate: the instruction is paid for out of the evidence
+
+Gate 10 is the one that failed honestly. Two `MR` questions lost one gold turn each (`b5ef892d` 18/18 → 17/18,
+`b3c15d39` 12/12 → 11/12, both still correct), so the delivery was not the same delivery.
+
+The cause is arithmetic. The replaced line is **145 characters**; the two lines that replaced it are 268 and
+336, so the instruction grew **+460**. Every one of the 94 aggregation prompts then came out **shorter**:
+
+| quantity, over the 94 aggregation prompts | reading |
+| --- | ---: |
+| `promptChars` change | −232 to −810, mean **−472** |
+| delivered turns change | −1 to −5, mean **−1.82** (94 of 94 changed, 0 unchanged) |
+| control's totals | 18,680 turns |
+| treatment's totals | 18,509 turns |
+| `evidenceTurns` / `evidenceChars` (what retrieval offered) | **identical**, 257 turns and 66,101 characters on the question inspected |
+
+The retrieval did not change; the **packing** did, and it moved the wrong way for the naive reading: a *longer*
+instruction produced a *shorter* prompt with *fewer* turns. The two effects are consistent in characters —
++460 of instruction, −472 of prompt, i.e. **≈932 characters of evidence displaced, mean 1.82 turns** — and they
+are what a character cap does when the instruction and the evidence are paid for from the same budget and the
+allocator re-decides the boundary. The two lost gold turns are that boundary moving.
+
+**This is the same window that `C1` priced this round.** `C1` measured that the arm fills its 48,000-character
+cap (4.11 characters per token); this run measured what filling it costs — an instruction edit is silently an
+evidence edit, at an exchange rate of 1:1 in characters. §13.290.3's prediction 4 (*"`TR`, `IE`, `KU`, `ABS` do
+not move at all"*) passed on those four routes precisely because they are byte-identical; inside `MR` nothing was
+byte-identical except the 27 the rule does not reach.
+
+#### 13.294.4 What actually moved, and the one flip that argues against attributing it
+
+| | control | treatment | Δ |
+| --- | ---: | ---: | ---: |
+| overall (artifact scale) | 451/500 = 90.20% | 456/500 = **91.20%** | **+1.00** |
+| `MR` | 94/121 = 77.69% | 99/121 = **81.82%** | **+4.13** (8 won, 3 lost) |
+| `IE` | 142/150 | 143/150 | +0.67 |
+| `KU` | 64/72 | 64/72 | 0 |
+| `TR` | 121/127 | 120/127 | −0.79 |
+| `ABS` | 30/30 | 30/30 | 0 |
+
+The eight wins are the four registered questions plus `3a704032`, `gpt4_15e38248`, `gpt4_7fce9456` and
+`gpt4_2ba83207`; the three losses are `0a995998`, `46a3abf7` and `d851d5ba`.
+
+Two facts, and they point in opposite directions:
+
+1. **`3a704032` should not have moved.** §13.290.3 names it explicitly as the counter-example the line *cannot*
+   reach: *"`3a704032` rejects two plants as 'acquired two weeks prior in May, not last month'"* — a date-window
+   exclusion, and this rule is about verbs. It flipped to correct.
+2. **No won question's gold coverage changed.** All eight carry the same `carried/total` before and after
+   (`3a704032` 18/18 → 18/18, `2ce6a0f2` 22/23 → 22/23, and so on), and the three losses likewise. So the flips
+   cannot be explained by a question gaining or losing a gold turn — they are reading the same gold facts.
+
+Fact 2 is why the result is not nothing, and fact 1 is why it is not attribution. `3a704032` sits in the 94
+whose *evidence* changed by 1–5 turns; its gold coverage is unchanged, but a dropped distractor is exactly what
+a "stop over-counting" improvement would need.
+
+#### 13.294.5 Verdict, and the two sentences that may and may not be written
+
+- **May be written:** with `ask=verbatim-acts` the arm gained **+4.13 on `MR`** (8/3, p = 0.2266) and **+1.00
+  overall**, recovering four of the six registered questions, with no loss the registration watched for.
+- **May not be written:** that the rule did it. The run changed the evidence on 94 questions, and the one flip
+  the registration named as unreachable is the one that most looks like an evidence effect. p = 0.2266 is not
+  significant at 0.05 either; the direction is what is being reported, not a significance claim.
+
+This is `§13.294.3`'s consequence rather than a hedge: inside this harness the instruction is not a free
+variable, so a prompt-only experiment is not expressible at a fixed room. **The fix is one number, not a
+different experiment** — and §13.295 registers it.
+
+#### 13.294.6 §13.295: the same rule with its room paid back
+
+The compensation is arithmetic: `maxPromptChars` goes from 48,000 to **48,460** on the multi-session route,
+which is the +460 the instruction costs. Nothing else moves — same reader, same budget unit, same retrieval,
+same assembly order, same contract, and the same `ask`.
+
+Why the room and not a padded instruction: padding the prose would make the two instruction texts equal in
+length while adding words the rule does not need, and the run would then be a test of two prose blocks rather
+than of one rule. Paying the room back keeps the rule exactly as registered and changes a number that the
+artifact records.
+
+The design has one honest weakness and it is gated rather than argued: a character budget is filled at
+turn granularity, so +460 characters may not restore the *same* turns — it may restore different ones. Gate 4
+therefore says **no `MR` question carries fewer gold turns than it carried at 48,000**, and gate 5 says the
+`≥ 98` bar that gate 10 failed. If both hold, the rule is judged at constant coverage; if they do not, the
+answer is that this harness re-packs at any room and the honest conclusion is §13.294.5's — an unattributable
+gain — rather than a fourth attempt.
+
+Gate 8 keeps the registered bar at `≥ +3`: if the +4.13 was the evidence reduction, restoring the evidence takes
+the delta below the bar, and that is the experiment's most likely informative outcome.
+
+### 13.295 The same rule with its room paid back: `verbatim-acts` at 48,460
+
+Registered before dispatch, and derived from §13.294.3 rather than from a plan: the instruction is paid for out
+of the same character budget as the evidence, so the run that measured the rule also shrank the window by
+1.82 turns per question. This run buys the room back and changes nothing else.
+
+#### 13.295.1 The variable
+
+`ask = verbatim-acts` (unchanged from `42337560027`) with `cortex_memory_max_prompt_chars` set to
+`multi-session:48460`. The 460 is not a preference: the replaced line is 145 characters and the two that
+replace it are 268 and 336, so the instruction costs +460, and the room that pays for it should be the same 460.
+The route map is used so that the four capabilities the change set does not reach keep the product's 48,000 and
+their prompts stay byte-identical — gate 4 of §13.290 measured 379 of 379 for exactly that reason and this run
+has to keep it.
+
+#### 13.295.2 The eleven gates
+
+| # | quantity | threshold |
+| --- | --- | --- |
+| 1 | the artifact's own audit | **every check passes** |
+| 2 | `memoryArmConfig.ask` | **`verbatim-acts`** — the same rule as `42337560027`, so the only difference between the two treatment runs is the room |
+| 3 | `MR` deliveries whose prompt bytes differ from `42310779222` | **≥ 94 of 121** — the whole reachable population, which §13.294.2 measured; the other 27 read the `operands` block and must stay byte-identical |
+| 4 | `goldOverlap.carried` per `MR` question against `42337560027` | **no question carries fewer gold turns than it carried at 48,000** — this is the compensation claim: the 460 extra characters of room restore the delivery the instruction displaced |
+| 5 | `MR` questions delivering every gold turn, against 98 | **no fewer than 98** — the same bar gate 10 of §13.290 set and failed; a compensated room has to clear it or the rule cannot be judged at constant evidence |
+| 6 | `memoryArmConfig.promptContract` | **held at §13.283's value** |
+| 7 | per-turn source markers across the 500 delivered prompts | **0** — §13.287.2's saving is only attributable if it is still withheld |
+| 8 | `MR` accuracy against `42310779222` | **Δ ≥ +3 points** with the resolution printed — the attribution test: if the +4.13 was the evidence reduction, restoring the evidence takes this back below the bar |
+| 9 | `IE`, `KU`, `TR`, `ABS` against `42310779222` | **no loss ≥ 3 points** — these routes read `verbatim` byte for byte, so a loss here is a dispatch defect rather than a result |
+| 10 | the six questions whose failure in `42310779222` is a stated verb-identity exclusion | **≥ 4 of 6 flip to correct** — the attribution clause, now on the compensated run: four flips at constant evidence is the rule, four flips at reduced evidence was the bundle |
+| 11 | `llmUsage.promptTokens` | **≤ 29,000,000** against 27,207,570 — 460 extra characters on 94 prompts is about 43,000 tokens, so a bill above this is a different prompt than the one registered |
+
+#### 13.295.3 Predictions, in reading order
+
+1. **Gate 4 and gate 5 both hold.** The compensation is the run's premise; a treatment that fails them is not a
+   test of the rule and will be reported as such rather than as a null result.
+2. **The `MR` delta lands between 0 and +4.13.** Two mechanisms are separable here: if the rule is worth the
+   whole gain, the compensated run reproduces ≈ +4; if the reduced evidence carried it, the compensated run
+   loses most of it. A delta *above* +4.13 would be evidence that the two effects reinforce rather than overlap,
+   and would need the per-question transition table before being believed.
+3. **`3a704032` returns to incorrect, or stays correct for a reason visible in its reply.** §13.294.4 named it
+   as the flip the rule cannot reach. If it stays correct with the evidence restored, the line reaches further
+   than §13.290.3's arithmetic said, which is a finding about the rule rather than about this run.
+4. **The four flips among the registered six survive.** They are the population the rule was written for, all
+   four are evidence-stable in gold coverage, and three of the four state a verb exclusion in the control's
+   reply.
+5. **`IE`, `KU`, `TR`, `ABS` are byte-identical again** — gate 9 is a dispatch check, not a result.
+
+#### 13.295.4 Refutation
+
+- **Both compensation gates pass and the delta falls below +3:** the gain was the evidence, the rule is worth
+  less than the bar, and the next variable is the window rather than the wording. That would also re-price
+  `C1`: if 1.82 fewer turns per question is worth +4 on `MR`, the room is a mechanism and not just a bill.
+- **Gate 4 fails:** the packer re-decides at any room and this harness cannot hold evidence fixed across an
+  instruction edit. The rule then stays unadopted behind §13.294.5's sentence, and the campaign's next
+  experiment is the reader — where a different model is a different reader and no prompt is being edited.
+- **Gate 3 fails:** the rule stopped reaching the product on a run whose only other change is a number, which
+  would point at the route map rather than at the ask.
+
+#### 13.295.5 Why this and not the reader
+
+The reader is still the largest outside price in the campaign (+8 to +13 on four independent systems, §13.292.6),
+and this run delays it by one dispatch. The reason to spend that dispatch here is that the reader's control has
+to be **the configuration that ships**: if `verbatim-acts` is adopted on a confounded +4.13 and the reader is then
+measured on top of it, neither number can be read afterwards. Certifying the rule first costs 90 minutes and
+buys two interpretable results instead of one ambiguous pair.

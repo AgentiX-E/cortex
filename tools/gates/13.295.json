@@ -1,0 +1,129 @@
+{
+  "registration": "13.295",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "The same rule with its room paid back: +460 characters of instruction displaced 932 characters of evidence, so the rule gets a run that does not also shrink the window",
+  "controls": {
+    "reference": {
+      "run": 42310779222,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the shipped arm: `ask=verbatim`, the verb-identity line intact, the same reader, budget, unit, assembly and contract. The rule is judged against this one."
+    },
+    "prior": {
+      "run": 42337560027,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the same rule at the unmodified 48,000-character room, which is the run §13.294 read: +4.13 on `MR` with 1.82 fewer evidence turns per question on average. The compensation is judged against this one, because it is the delivery that has to come back."
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "artifact_audit",
+      "quantity": "the artifact's own audit",
+      "threshold": "**every check passes**"
+    },
+    {
+      "id": 2,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.ask",
+      "equals": "verbatim-acts",
+      "quantity": "`memoryArmConfig.ask`",
+      "threshold": "**`verbatim-acts`** \u2014 the same rule as `42337560027`, so the only difference between the two treatment runs is the room"
+    },
+    {
+      "id": 3,
+      "kind": "digest_disagreement",
+      "field": "promptDigest",
+      "control": "reference",
+      "capability": "MR",
+      "at_least": 94,
+      "quantity": "`MR` deliveries whose prompt bytes differ from `42310779222`",
+      "threshold": "**\u2265 94 of 121** \u2014 the whole reachable population, which \u00a713.294.2 measured; the other 27 read the `operands` block and must stay byte-identical"
+    },
+    {
+      "id": 4,
+      "kind": "coverage_monotone",
+      "control": "prior",
+      "reaches": {
+        "numerator": "carried",
+        "denominator": "total"
+      },
+      "quantity": "`goldOverlap.carried` per `MR` question against `42337560027`",
+      "threshold": "**no question carries fewer gold turns than it carried at 48,000** \u2014 this is the compensation claim: the 460 extra characters of room restore the delivery the instruction displaced"
+    },
+    {
+      "id": 5,
+      "kind": "coverage_gain",
+      "control": "reference",
+      "reaches": {
+        "numerator": "carried",
+        "denominator": "total"
+      },
+      "capability": "MR",
+      "at_least_gain": 0,
+      "quantity": "`MR` questions delivering every gold turn, against 98",
+      "threshold": "**no fewer than 98** \u2014 the same bar gate 10 of \u00a713.290 set and failed; a compensated room has to clear it or the rule cannot be judged at constant evidence"
+    },
+    {
+      "id": 6,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.promptContract",
+      "equals": "evidence-blocks-unsourced",
+      "quantity": "`memoryArmConfig.promptContract`",
+      "threshold": "**held at \u00a713.283's value**"
+    },
+    {
+      "id": 7,
+      "kind": "source_marker_absence",
+      "prompt_field": "ablation.featurePromptTexts",
+      "at_most": 0,
+      "quantity": "per-turn source markers across the 500 delivered prompts",
+      "threshold": "**0** \u2014 \u00a713.287.2's saving is only attributable if it is still withheld"
+    },
+    {
+      "id": 8,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": 3,
+      "quantity": "`MR` accuracy against `42310779222`",
+      "threshold": "**\u0394 \u2265 +3 points** with the resolution printed \u2014 the attribution test: if the +4.13 was the evidence reduction, restoring the evidence takes this back below the bar"
+    },
+    {
+      "id": 9,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "max_loss_points": 3,
+      "excluding": [
+        "MR"
+      ],
+      "quantity": "`IE`, `KU`, `TR`, `ABS` against `42310779222`",
+      "threshold": "**no loss \u2265 3 points** \u2014 these routes read `verbatim` byte for byte, so a loss here is a dispatch defect rather than a result"
+    },
+    {
+      "id": 10,
+      "kind": "questions_flipped",
+      "control": "reference",
+      "questionIds": [
+        "88432d0a",
+        "2ce6a0f2",
+        "129d1232",
+        "gpt4_ab202e7f",
+        "60159905",
+        "bc149d6b"
+      ],
+      "at_least": 4,
+      "quantity": "the six questions whose failure in `42310779222` is a stated verb-identity exclusion",
+      "threshold": "**\u2265 4 of 6 flip to correct** \u2014 the attribution clause, now on the compensated run: four flips at constant evidence is the rule, four flips at reduced evidence was the bundle"
+    },
+    {
+      "id": 11,
+      "kind": "field_at_most",
+      "field": "llmUsage.promptTokens",
+      "at_most": 29000000,
+      "quantity": "`llmUsage.promptTokens`",
+      "threshold": "**\u2264 29,000,000** against 27,207,570 \u2014 460 extra characters on 94 prompts is about 43,000 tokens, so a bill above this is a different prompt than the one registered"
+    }
+  ]
+}

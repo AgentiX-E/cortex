@@ -253,6 +253,9 @@ if (asJson) {
 
 const failed = evaluations.filter((entry) => entry.evaluation.blocking).length;
 const missing = evaluations.filter((entry) => entry.evaluation.status === 'unrun').length;
-if (failed > 0) process.exit(1);
-if (strictUnrun && missing > 0) process.exit(2);
-process.exit(0);
+// `process.exitCode`, never `process.exit()`. A write to a pipe is asynchronous in node, so an explicit exit
+// can terminate while `--json`'s document is still in flight: the exit code is the same and the output is
+// truncated mid-string, which a consumer reports as malformed JSON rather than as a check that failed. It was
+// intermittent -- small documents usually flushed in time -- and `test_reading_render.py` caught it as an
+// occasional `Unterminated string` while every gate was passing.
+process.exitCode = failed > 0 ? 1 : strictUnrun && missing > 0 ? 2 : 0;

@@ -961,3 +961,10 @@ The honest sentence for the board is that this arm is **mid-table on cost and be
 and that the two facts are connected by §13.291 rather than by the cost number: the tokens are not buying
 accuracy, and more evidence did not either. Hindsight at 43.6K for 94.6% is the row that keeps "cheaper" and
 "better" from being read as the same axis.
+
+**A number that is not on this table and must not be added to it.** `42337560027` (`ask=verbatim-acts`) reads
+**91.20% overall** on the artifact's own `correct` scale against 90.20% for the shipped arm — a +1.00 gain, with
+`MR` 77.69% → 81.82% (§13.294). The figures in §14.1 are the official judge's readings of a different artifact,
+on which this arm is 83.45%; 91.20 is therefore not comparable to Zep's 90.2 or Mastra's 84.23 and is not entered
+in the table. The delta is what the run supports, and even the delta is not yet attributable to the rule: that run
+also changed the delivered evidence on all 94 questions it reached (§13.294.3), which is what §13.295 re-runs.
