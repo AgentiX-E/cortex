@@ -78,6 +78,7 @@ import {
   type WindowComposition,
 } from './question-record.js';
 import {
+  attachCostEfficiency,
   attachLlmUsage,
   attachTransport,
   attachUsageBySide,
@@ -3158,10 +3159,17 @@ export async function runCortexMemoryArm(
   // call site: it cannot be tested, so it cannot be wrong out loud.
   // The split is attached after the total, so the section that renders both reads them from one
   // place and the two cannot disagree about which run they describe.
-  const withUsage = attachUsageBySide(attachLlmUsage(reported, usage), {
-    baseline: usageLedger.baseline.snapshot(),
-    feature: usageLedger.feature.snapshot(),
-  });
+  //
+  // §13.308: the price of a correct answer follows the split, because it divides the split's feature
+  // column by an accuracy the ablation already computed. Attaching it here rather than inside the
+  // renderer is the same argument the two calls above record: a reading produced at render time
+  // describes the moment of rendering, and the JSON and the Markdown must describe one reading.
+  const withUsage = attachCostEfficiency(
+    attachUsageBySide(attachLlmUsage(reported, usage), {
+      baseline: usageLedger.baseline.snapshot(),
+      feature: usageLedger.feature.snapshot(),
+    }),
+  );
   // §13.216: read after everything that talks to a provider has finished, and attached
   // unconditionally -- see `attachTransport` for why this field does not use the absence rule
   // the two above do. Snapshotted here rather than inside the renderer so the JSON and the

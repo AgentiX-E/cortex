@@ -4,7 +4,13 @@
  */
 import type { UsageSnapshot } from '@agentix-e/cortex-ai';
 
-import type { AblationResult, BenchmarkDataset, MemorySystem, Metrics } from './types.js';
+import type {
+  AblationResult,
+  AggregateStats,
+  BenchmarkDataset,
+  MemorySystem,
+  Metrics,
+} from './types.js';
 import type { CohortCoverage } from './datasets/sampling.js';
 import type { EvidenceReduction, QuestionRecord } from './question-record.js';
 import { runAblation, type AblationOptions, type AblationPool } from './ablation.js';
@@ -16,7 +22,13 @@ import type { TransportRetryReport } from './retrieval-diagnostics.js';
 import { passShapeLines, passShapeReport, type PassShape } from './pass-shape.js';
 import type { ReaderPacing } from './reader-transport.js';
 import type { EndpointCheck, ReaderProviderId } from './reader-provider.js';
-import { bothSides, residualUsage, type UsageBySide } from './usage-by-side.js';
+import {
+  bothSides,
+  costEfficiencyFrom,
+  residualUsage,
+  type CostEfficiency,
+  type UsageBySide,
+} from './usage-by-side.js';
 import { dominantFlow } from './answer-transition.js';
 import type { AnswerTransition } from './types.js';
 
@@ -242,6 +254,19 @@ export type AblationReport = {
    * no split, and that absence must not read as "both sides spent nothing".
    */
   usageBySide?: UsageBySide | undefined;
+  /**
+   * What one correct answer cost, and which population its accuracy came from.
+   *
+   * §13.308. `usageBySide` prices a question; this prices a question **answered correctly**, which
+   * is the only version of the number that cannot be improved by answering less. The numerator is
+   * the same spend the split reports; the denominator is the mean accuracy over every repetition,
+   * so the two populations agree.
+   *
+   * Absent for four reasons the artifact can really be in, each of which a number would misreport:
+   * no side split, no question or repetition count, a run that spent nothing, and a run that
+   * answered nothing right. `costEfficiencyFrom` states each refusal at the point it is decided.
+   */
+  costEfficiency?: CostEfficiency | undefined;
   /**
    * What the transport layer saw: attempts, retries, and how many were `429`.
    *
@@ -1269,8 +1294,20 @@ export async function runAblationReport(
   };
 }
 
+/**
+ * `0.9195` → `91.95%`.
+ *
+ * Lifted out of `formatAblationReport` by §13.308 so the two renderers that are not that
+ * function's body — the spread row and the cost-per-correct-answer line — format a fraction the
+ * same way it does. Two decimals because a denominator a reader cannot recompute is a number a
+ * reader has to trust, and the whole point of carrying the denominator in the artifact is that
+ * nobody has to.
+ */
+function pct(x: number): string {
+  return `${(x * 100).toFixed(2)}%`;
+}
+
 export function formatAblationReport(report: AblationReport): string {
-  const pct = (x: number): string => `${(x * 100).toFixed(2)}%`;
   const ab = report.ablation;
   const lines: string[] = [
     // The arm goes in the title because two workflows write this document for two
@@ -1584,8 +1621,8 @@ export function formatAblationReport(report: AblationReport): string {
     '',
     '| System | min | avg | max | median |',
     '|---|---|---|---|---|',
-    `| ${report.baseline.name} | ${pct(ab.baselineAggregate.min)} | ${pct(ab.baselineAggregate.avg)} | ${pct(ab.baselineAggregate.max)} | ${pct(ab.baselineAggregate.median)} |`,
-    `| ${report.feature.name} | ${pct(ab.featureAggregate.min)} | ${pct(ab.featureAggregate.avg)} | ${pct(ab.featureAggregate.max)} | ${pct(ab.featureAggregate.median)} |`,
+    spreadRow(report.baseline.name, ab.baselineAggregate),
+    spreadRow(report.feature.name, ab.featureAggregate),
     '',
     `- Δ accuracy (feature − baseline): **${(ab.delta >= 0 ? '+' : '') + pct(ab.delta)}**`,
     `- Baseline 95% Wilson CI: **[${pct(ab.baselineConfidence.lower)}–${pct(ab.baselineConfidence.upper)}]**`,
@@ -1724,7 +1761,15 @@ export function formatAblationReport(report: AblationReport): string {
   // census) each vanished from a re-rendered artifact, and a reader with the JSON and no
   // Markdown could not tell a free run from an unmeasured one.
   if (report.llmUsage !== undefined) {
-    lines.push(...llmUsageLines(report.llmUsage, report.usageBySide));
+    lines.push(
+      ...llmUsageLines(report.llmUsage, report.usageBySide, report.costEfficiency, report.runs),
+    );
+  } else if (report.costEfficiency !== undefined) {
+    // §13.308. The price of a correct answer is computable from the side split alone, so a report
+    // that has a split but no total bill can still state it. Leaving this out would make the field
+    // depend on a section it does not use -- and `attachCostEfficiency` reads `usageBySide`, not
+    // `llmUsage`, so the two absences are genuinely independent.
+    lines.push(...costEfficiencyLines(report.costEfficiency, report.runs));
   }
   // Directly beside the bill, because the two together are what a run cost: the spend
   // section counts the calls that RETURNED, and this one counts the requests that were
@@ -2265,6 +2310,72 @@ export function attachUsageBySide(report: AblationReport, bySide: UsageBySide): 
 }
 
 /**
+ * Attach the price of one correct answer, on the same absence rule and one layer downstream.
+ *
+ * §13.308. This exists because the ratio had no owner. `tools/cost-ledger.py` computed it from an
+ * artifact by dividing `usageBySide.feature.promptTokens / (questionCount × runs)` -- an
+ * **all-repetitions** mean -- by `feature.metrics.accuracy`, which is **one repetition**. On the
+ * §13.305 pair that is a 0.60% overcharge on the arm whose first repetition was its worst and a
+ * 0.06% undercharge on the arm whose first repetition was its best, and the pair's cost gap reads
+ * 0.57% where the honest figure is 1.23%.
+ *
+ * The two accuracies are both in the artifact, so nothing had to be measured to fix this -- the
+ * division simply used the wrong one, in a tool, once. A ratio that every consumer recomputes is a
+ * ratio every consumer can get differently right, so the run writes it down: `costEfficiency`
+ * carries the ratio, the numerator, the denominator, and **which population the denominator came
+ * from**. Reading `featureAggregate.avg` is the whole fix; naming it in the artifact is what makes
+ * the fix checkable a year later.
+ *
+ * ## Why `featureAggregate` and not `feature.metrics`
+ *
+ * Numerator and denominator have to describe the same repetitions, and the numerator is a sum over
+ * all of them. `featureAggregate.avg` is the unweighted mean of each repetition's accuracy; every
+ * repetition grades the same questions, so it equals the pooled proportion. When the field is
+ * absent -- an artifact written before the spread existed, or one that only ever had a single
+ * repetition -- the two populations coincide, and `accuracySource` says `first-repetition` rather
+ * than letting a coincidence pass for a measurement.
+ *
+ * ## Why the guard is here and not in the type
+ *
+ * `AblationResult.featureAggregate` is required, and the artifacts this reader must survive are
+ * JSON. A required field is a claim about what this build writes; it is not a claim about what a
+ * file on disk contains.
+ */
+export function attachCostEfficiency(report: AblationReport): AblationReport {
+  const feature = report.usageBySide?.feature;
+  if (feature === undefined || report.usageBySide === undefined) return report;
+  // `runs` absent is not one repetition. A four-repetition artifact that lost the field would be
+  // priced at a quarter of its spend, so the count is required exactly as `questionCount` is.
+  if (report.runs === undefined) return report;
+  // A split that does not close is not a split. `residualUsage` refuses when the two sides claim
+  // more than the run reported, which means the tallies did not come from one ledger -- and the
+  // renderer already declines to print a per-arm column in that case. This reading is computed
+  // from that column, so it declines for the same reason: an absent ratio reads as "not measured"
+  // while a wrong one reads as a measurement. Conditional on the total because `llmUsage` and
+  // `usageBySide` attach independently, and requiring one to check the other would make a report
+  // that carries only the split unpriceable for no reason.
+  if (report.llmUsage !== undefined) {
+    try {
+      residualUsage(report.llmUsage, report.usageBySide);
+    } catch {
+      return report;
+    }
+  }
+  const aggregate = report.ablation.featureAggregate;
+  const accuracy = aggregate === undefined ? report.feature.metrics.accuracy : aggregate.avg;
+  const efficiency = costEfficiencyFrom({
+    promptTokens: feature.promptTokens,
+    questionCount: report.questionCount,
+    runs: report.runs,
+    accuracy,
+    accuracySource: aggregate === undefined ? 'first-repetition' : 'all-runs',
+  });
+  // `null` is a state, not a failure: the report is returned unchanged so absence means "not
+  // measured" and a consumer cannot mistake a refused division for a zero-cost one.
+  return efficiency === null ? report : { ...report, costEfficiency: efficiency };
+}
+
+/**
  * Attach what the transport layer saw, unconditionally.
  *
  * ## Why this does not follow the absence rule the two above use
@@ -2285,6 +2396,45 @@ export function attachTransport(
   transport: TransportRetryReport,
 ): AblationReport {
   return { ...report, transportRetry: transport };
+}
+
+/**
+ * One row of the ablation spread table, or dashes when the artifact never held a spread.
+ *
+ * §13.308. A reader that survives an artifact written before `featureAggregate` existed must not
+ * crash on it, and `—` is not `0.00%`: the same `null`-versus-`0` rule this file applies to retry
+ * counters and to the token columns, one table up. The dash says the repetitions were never spread
+ * because there was only one of them, which is a fact about the run and not a stability result.
+ */
+function spreadRow(name: string, spread: AggregateStats | undefined): string {
+  if (spread === undefined) return `| ${name} | — | — | — | — |`;
+  return (
+    `| ${name} | ${pct(spread.min)} | ${pct(spread.avg)} | ` +
+    `${pct(spread.max)} | ${pct(spread.median)} |`
+  );
+}
+
+/**
+ * The price of one correct answer, rendered with the denominator it was divided by.
+ *
+ * §13.308. The sentence carries three facts because the ratio is unusable without two of them: the
+ * divisor's value, and **which population it came from**. `all-runs` and `first-repetition` coincide
+ * on a one-repetition arm and differ on a four-repetition one, so a bare ratio would let two
+ * artifacts be compared on denominators that describe different populations -- which is the
+ * defect this field replaced, moved from the tool into the reader's head.
+ */
+function costEfficiencyLines(efficiency: CostEfficiency, runs?: number): string[] {
+  const repetitions = runs === undefined ? '' : ` over ${runs} repetition${runs === 1 ? '' : 's'}`;
+  return [
+    '',
+    `- \`feature\` arm costs **${efficiency.perCorrectAnswerPromptTokens.toLocaleString('en-US', {
+      maximumFractionDigits: 0,
+    })} prompt tokens per correct answer** — ` +
+      `${efficiency.promptTokensPerQuestion.toLocaleString('en-US', {
+        maximumFractionDigits: 0,
+      })} per question ÷ ${pct(efficiency.accuracy)} accuracy ` +
+      `(\`${efficiency.accuracySource}\`${repetitions}).`,
+  ];
 }
 
 /**
@@ -2311,7 +2461,12 @@ export function attachTransport(
  * its prefix cache. That share is the quantity that prices a prompt-ordering change, and
  * a run that reports it makes the next dispatch's cost predictable before it is paid.
  */
-function llmUsageLines(usage: UsageSnapshot, bySide?: UsageBySide): string[] {
+function llmUsageLines(
+  usage: UsageSnapshot,
+  bySide?: UsageBySide,
+  efficiency?: CostEfficiency,
+  reportRuns?: number,
+): string[] {
   const hitShare = usage.promptTokens === 0 ? 0 : usage.cacheHitPromptTokens / usage.promptTokens;
   const lines = [
     '',
@@ -2370,6 +2525,9 @@ function llmUsageLines(usage: UsageSnapshot, bySide?: UsageBySide): string[] {
           `${residual.promptTokens.toLocaleString('en-US')} prompt tokens)`,
       );
     }
+  }
+  if (efficiency !== undefined) {
+    lines.push(...costEfficiencyLines(efficiency, reportRuns));
   }
   if (usage.unpricedCalls === usage.calls) {
     // Every call unpriced is the strongest warning this section can carry and it is not

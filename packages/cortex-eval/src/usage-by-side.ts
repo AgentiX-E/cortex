@@ -191,3 +191,79 @@ export function traceUsage(
   }
   return traced;
 }
+
+/**
+ * §13.308 — what one correct answer cost, with the population its denominator came from.
+ *
+ * ## Why this is written by the run and not recomputed by a reader
+ *
+ * The ratio is one division, so every consumer that needs it can perform it — and that is the
+ * problem. `tools/cost-ledger.py` performed it as `perQuestionPerRun / accuracy`, where the
+ * numerator is the token total **over every repetition** divided by `questions × runs`, and the
+ * only accuracy any artifact offered was `feature.metrics.accuracy`, which the Markdown renderer
+ * labels *"first repetition"* for the reason §13.122 records. An all-repetitions numerator over a
+ * one-repetition denominator is not a price; it is a price of a run that did not happen.
+ *
+ * On the §13.305 pair the two candidates are far enough apart to see: the baseline's first
+ * repetition was its worst (91.40% against a 91.95% mean) and the control's was its best (90.80%
+ * against 90.75%), so the shipped division charged the baseline 0.60% too much and the control
+ * 0.06% too little and turned a 1.20 pp accuracy gap into a **0.57%** cost gap where the honest
+ * figure is **1.23%**. Repetition order is arbitrary, so the error's sign is arbitrary too — which
+ * is why the fix cannot be "divide by the better number in the tool".
+ *
+ * ## `accuracySource` is the field, and the ratio is its shadow
+ *
+ * `all-runs` and `first-repetition` are the same number on a one-repetition arm and different
+ * numbers on a four-repetition one. A reader comparing two artifacts is entitled to know which
+ * population it is holding, and an artifact that quietly picked one has answered a question nobody
+ * can check. So the population travels with the ratio, and a run with no `featureAggregate` (one
+ * written before the spread existed, or one that never had more than a single repetition) says so
+ * rather than presenting the coincidence as a measurement.
+ */
+export type CostEfficiency = {
+  /** This field's reason to exist: prompt tokens spent per question answered correctly. */
+  readonly perCorrectAnswerPromptTokens: number;
+  /** The numerator before the division, so the ratio can be rechecked without the artifact. */
+  readonly promptTokensPerQuestion: number;
+  /** The denominator, carried beside the ratio because the ratio is a function of it. */
+  readonly accuracy: number;
+  /** Which population `accuracy` came from. Never inferred by a reader from the value alone. */
+  readonly accuracySource: 'all-runs' | 'first-repetition';
+};
+
+/**
+ * `null` rather than `Infinity`, `0`, or a thrown error, for four different absences.
+ *
+ * Each one is a state the artifact can really be in, and each would be misreported by a number:
+ * a run that answered nothing right has an **infinite** cost per correct answer rather than a large
+ * one; a run that spent nothing is an **unmeasured** run rather than a free one (the rule
+ * `attachLlmUsage` states one layer up); and a run whose question count or repetition count is
+ * unknown cannot produce a per-question figure at all — dividing by a guessed repetition count is
+ * the same defect `perQuestionPerRun` was introduced to avoid.
+ *
+ * The four inputs are inlined rather than named as an exported parameter type: the export census
+ * reads a type whose only occurrence is a signature as an orphan, and a name that nothing calls is
+ * a name a reader has to look up to learn it means "the four values the ratio needs".
+ */
+export function costEfficiencyFrom(input: {
+  readonly promptTokens: number;
+  readonly questionCount: number;
+  readonly runs: number;
+  readonly accuracy: number;
+  readonly accuracySource: 'all-runs' | 'first-repetition';
+}): CostEfficiency | null {
+  const { promptTokens, questionCount, runs, accuracy, accuracySource } = input;
+  if (!Number.isFinite(promptTokens) || promptTokens <= 0) return null;
+  if (!Number.isFinite(questionCount) || questionCount <= 0) return null;
+  if (!Number.isFinite(runs) || runs <= 0) return null;
+  // A boolean or a percentage is not a fraction in (0, 1]. `92` would price a correct answer at
+  // 1/92nd of its cost and read like a triumph; `NaN` would poison the ratio silently.
+  if (!Number.isFinite(accuracy) || accuracy <= 0 || accuracy > 1) return null;
+  const promptTokensPerQuestion = promptTokens / (questionCount * runs);
+  return {
+    perCorrectAnswerPromptTokens: promptTokensPerQuestion / accuracy,
+    promptTokensPerQuestion,
+    accuracy,
+    accuracySource,
+  };
+}

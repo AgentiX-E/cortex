@@ -440,3 +440,199 @@ class TestPromptTokensPerCorrectAnswer:
         assert 'per correct answer' in text
         assert '92.00%' in text
         assert '460' in text
+
+
+# --------------------------------------------------- §13.308 the denominator and its population
+
+def report_with_spread(*, first_repetition: float, average: float, accuracy_source: dict | None = None) -> dict:
+    """The §13.305 pair's shape: `feature.metrics` is ONE repetition, `featureAggregate` is all.
+
+    Both numbers are in the same artifact, which is why the defect needed no new measurement to
+    find -- only a reader who asked which population the numerator came from.
+    """
+    data = report_with_metrics(accuracy=first_repetition)
+    data['ablation'] = {'featureAggregate': {'min': 0.9, 'avg': average, 'max': 0.95, 'median': average}}
+    if accuracy_source is not None:
+        data['costEfficiency'] = accuracy_source
+    return data
+
+
+class TestTheDenominatorMustMatchTheNumerator:
+    """§13.308: `perQuestionPerRun` is a sum over every repetition, so the divisor must be too.
+
+    The tool shipped dividing that all-repetition numerator by `feature.metrics.accuracy`, which
+    the Markdown labels *"first repetition"*. On the §13.305 pair the baseline's first repetition
+    was its worst (91.40% against a 91.95% mean) and the control's was its best (90.80% against
+    90.75%), so the shipped division charged the baseline 0.60% too much and the control 0.06% too
+    little: a 1.20 pp accuracy gap read as a **0.57%** cost gap where the honest figure is 1.23%.
+    Repetition order is arbitrary, so the sign of the error is arbitrary too.
+    """
+
+    def test_the_all_runs_mean_is_preferred_when_the_artifact_carries_it(self):
+        efficiency = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.914, average=0.9195)
+        )['efficiency']
+        assert efficiency['state'] == 'measured'
+        assert efficiency['accuracy'] == pytest.approx(0.9195)
+        assert efficiency['accuracySource'] == 'all-runs'
+
+    def test_the_first_repetition_is_used_only_when_there_is_no_spread(self):
+        efficiency = ledger_tool.ledger(report_with_metrics(accuracy=0.914))['efficiency']
+        assert efficiency['state'] == 'measured'
+        assert efficiency['accuracy'] == pytest.approx(0.914)
+        assert efficiency['accuracySource'] == 'first-repetition'
+
+    def test_the_reading_does_not_move_when_the_repetition_order_does(self):
+        # The invariant: permutation changes `feature.metrics.accuracy` and nothing else. A reader
+        # that divides by it returns two prices for one run.
+        worst_first = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.914, average=0.9195)
+        )['efficiency']
+        best_first = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.932, average=0.9195)
+        )['efficiency']
+        assert worst_first['perCorrectAnswerPromptTokens'] == pytest.approx(
+            best_first['perCorrectAnswerPromptTokens']
+        )
+
+    def test_the_shipped_division_overcharges_the_arm_whose_first_run_was_worst(self):
+        # A named number rather than a direction, so a regression that reintroduces the old
+        # division fails with the size of the error in the message.
+        shipped = ledger_tool.ledger(report_with_metrics(accuracy=0.914))['efficiency']
+        honest = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.914, average=0.9195)
+        )['efficiency']
+        ratio = shipped['perCorrectAnswerPromptTokens'] / honest['perCorrectAnswerPromptTokens']
+        assert ratio == pytest.approx(1.006018, abs=1e-6)
+
+    def test_an_artifact_authored_reading_wins_over_recomputation(self):
+        # The run knows both inputs at the moment it writes; a consumer that recomputes can only
+        # agree with it or be wrong, so it defers.
+        authored = {
+            'state': 'measured',
+            'accuracy': 0.9195,
+            'correct': 459,
+            'perCorrectAnswerPromptTokens': 13199.43,
+            'accuracySource': 'all-runs',
+        }
+        efficiency = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.914, average=0.9195, accuracy_source=authored)
+        )['efficiency']
+        assert efficiency['perCorrectAnswerPromptTokens'] == pytest.approx(13199.43)
+        assert efficiency['accuracySource'] == 'artifact'
+
+    def test_an_authored_reading_of_the_wrong_shape_is_refused_rather_than_trusted(self):
+        # `costEfficiency` is a field a future build could get wrong. A percentage, a boolean or a
+        # missing ratio must not be adopted just because it is present.
+        for broken in (
+            {'state': 'measured', 'accuracy': 92, 'perCorrectAnswerPromptTokens': 100},
+            {'state': 'measured', 'accuracy': 0.9, 'perCorrectAnswerPromptTokens': '100'},
+            {'state': 'measured', 'accuracy': 0.9},
+            {'state': 'absent'},
+            'not-a-dict',
+        ):
+            efficiency = ledger_tool.ledger(
+                report_with_spread(first_repetition=0.914, average=0.9195, accuracy_source=broken)
+            )['efficiency']
+            assert efficiency['state'] == 'measured'
+            assert efficiency['accuracy'] == pytest.approx(0.9195), broken
+            assert efficiency['accuracySource'] == 'all-runs', broken
+
+    def test_a_zero_accuracy_of_zero_in_the_spread_cannot_be_used(self):
+        # The spread is a number in a file like any other. A `0` there is not a denominator.
+        efficiency = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.914, average=0.0)
+        )['efficiency']
+        assert efficiency['state'] == 'measured'
+        assert efficiency['accuracy'] == pytest.approx(0.914)
+        assert efficiency['accuracySource'] == 'first-repetition'
+
+    def test_the_rendered_line_names_the_population_even_when_it_is_the_first_repetition(self):
+        text = ledger_tool.render(ledger_tool.ledger(report_with_metrics(accuracy=0.92, correct=460)))
+        assert 'first-repetition' in text
+
+    def test_the_rendered_line_names_the_population_when_the_spread_was_used(self):
+        text = ledger_tool.render(
+            ledger_tool.ledger(report_with_spread(first_repetition=0.914, average=0.9195))
+        )
+        assert 'all-runs' in text
+        assert '91.95%' in text
+
+
+class TestASplitThatDoesNotCloseCannotPriceAnAnswer:
+    """§13.308, second instance: the numerator has to come from a column that adds up.
+
+    `usageBySide` carries two independently accumulated tallies. When they claim more prompt tokens
+    than the run reported, the two snapshots did not come from one ledger -- `residualUsage` refuses
+    to name a residual, and `report.ts` renders `SPLIT UNAVAILABLE` instead of a per-arm column. A
+    ratio computed from that column inherits the doubt, and an absent ratio reads as "not measured"
+    while a wrong one reads as a measurement.
+
+    The check is one-sided on purpose: an artifact that carries no total, or a total that is not an
+    integer, cannot prove anything either way and must not be refused for the absence of a witness.
+    """
+
+    def _pad(self, ) -> dict:
+        data = report_with_spread(first_repetition=0.914, average=0.9195)
+        # Less than either side alone, so no reading of the total can make the parts fit.
+        data['llmUsage'] = {'promptTokens': 1_000_000, 'calls': 4_805}
+        return data
+
+    def test_the_reading_is_refused_when_the_parts_exceed_the_whole(self):
+        efficiency = ledger_tool.ledger(self._pad())['efficiency']
+        assert efficiency['state'] == 'absent'
+        assert 'does not close' in efficiency['note']
+
+    def test_a_report_without_a_total_is_not_refused_for_the_absence(self):
+        data = report_with_spread(first_repetition=0.914, average=0.9195)
+        del data['llmUsage']
+        efficiency = ledger_tool.ledger(data)['efficiency']
+        assert efficiency['state'] == 'measured'
+
+    def test_a_total_that_is_not_an_integer_is_not_a_witness(self):
+        data = report_with_spread(first_repetition=0.914, average=0.9195)
+        data['llmUsage']['promptTokens'] = '27069177'
+        efficiency = ledger_tool.ledger(data)['efficiency']
+        assert efficiency['state'] == 'measured'
+
+    def test_a_side_block_with_no_token_count_is_skipped_rather_than_counted_as_zero(self):
+        data = report_with_spread(first_repetition=0.914, average=0.9195)
+        del data['usageBySide']['baseline']['promptTokens']
+        efficiency = ledger_tool.ledger(data)['efficiency']
+        assert efficiency['state'] == 'measured'
+
+    def test_the_refusal_names_what_it_could_not_divide(self):
+        text = ledger_tool.render(ledger_tool.ledger(self._pad()))
+        assert 'not stated' in text
+        assert 'does not close' in text
+
+
+class TestTheCorrectCountBelongsToOneRepetition:
+    """§13.308 on the third field: `correct` and `accuracy` must be the same population too.
+
+    Real artifact `42387911305`: the all-runs mean is 90.75% and `feature.metrics.correct` is 454,
+    which is 90.80% of 500 -- the first repetition. Printing `(454 correct, all-runs)` puts two
+    populations in one parenthesis and invites a reader to divide them, and the quotient is a
+    number that describes no run. The count is therefore withheld when the denominator is a mean
+    over repetitions, for the same reason the ratio carries `accuracySource` at all.
+    """
+
+    def test_an_all_runs_denominator_does_not_quote_one_runs_count(self):
+        efficiency = ledger_tool.ledger(
+            report_with_spread(first_repetition=0.914, average=0.9195)
+        )['efficiency']
+        assert efficiency['accuracySource'] == 'all-runs'
+        assert efficiency['correct'] is None
+
+    def test_the_single_repetition_case_still_quotes_its_count(self):
+        efficiency = ledger_tool.ledger(report_with_metrics(accuracy=0.92, correct=460))['efficiency']
+        assert efficiency['accuracySource'] == 'first-repetition'
+        assert efficiency['correct'] == 460
+
+    def test_the_rendered_line_does_not_print_a_count_it_cannot_pair(self):
+        text = ledger_tool.render(
+            ledger_tool.ledger(report_with_spread(first_repetition=0.914, average=0.9195))
+        )
+        # 0.914 x 500 = 457, the first repetition's own count. It must not appear beside 91.95%.
+        assert '457' not in text
+        assert '91.95%' in text
