@@ -32,7 +32,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { cortextMemoryArmOptions, PROMPT_CONTRACTS, toMemoryArmConfig } from '../bench-memory-arm.js';
+import {
+  cortextMemoryArmOptions,
+  PROMPT_CONTRACTS,
+  toMemoryArmConfig,
+} from '../bench-memory-arm.js';
 
 /** The config a run with this contract would publish, built the way a dispatch builds it. */
 function configFor(contract: string) {
