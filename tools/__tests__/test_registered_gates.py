@@ -941,5 +941,87 @@ class DigestDisagreementTest(unittest.TestCase):
         self.assertEqual(result['verdict'], 'UNEVALUABLE')
 
 
+class CapabilityDeltaTest(unittest.TestCase):
+    """`capability_delta`: the paired movement, and the form that compares every shared question.
+
+    The kind had no test until the overall form was added, which is the reason it gets two here:
+    a gate that reads `gate['capability']` could not express "the reader answers better overall",
+    and a reader experiment is exactly the one whose claim is not per-capability.
+    """
+
+    def _verdict(self, gate: dict, treatment: dict, control: dict) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {'reference': {'run': 1}},
+            'gates': [dict({'id': 1, 'quantity': 'q', 'threshold': 't'}, **gate)],
+        }
+        return _module().evaluate(spec, treatment, {'reference': control})[0]
+
+    def _report(self, rows: list[tuple[str, str, bool]]) -> dict:
+        return {
+            'questions': [
+                {'questionId': qid, 'capability': cap, 'correct': correct}
+                for qid, cap, correct in rows
+            ]
+        }
+
+    def test_a_capability_gains_above_the_bar(self) -> None:
+        control = self._report([('a', 'MR', False), ('b', 'MR', False), ('c', 'MR', True)])
+        treatment = self._report([('a', 'MR', True), ('b', 'MR', True), ('c', 'MR', True)])
+        result = self._verdict(
+            {'kind': 'capability_delta', 'capability': 'MR', 'control': 'reference', 'at_least_points': 60},
+            treatment,
+            control,
+        )
+        self.assertEqual(result['verdict'], 'PASS')
+        self.assertEqual(result['detail']['wins'], 2)
+
+    def test_a_capability_below_the_bar_fails_and_prints_the_resolution(self) -> None:
+        control = self._report([('a', 'MR', False), ('b', 'MR', True)])
+        treatment = self._report([('a', 'MR', True), ('b', 'MR', True)])
+        result = self._verdict(
+            {'kind': 'capability_delta', 'capability': 'MR', 'control': 'reference', 'at_least_points': 60},
+            treatment,
+            control,
+        )
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertIn('50.00%', result['reading'])
+
+    def test_without_a_capability_every_shared_question_is_paired(self) -> None:
+        # The reader's claim, and the only form in which one gate can state it.
+        control = self._report([('a', 'MR', False), ('b', 'TR', False), ('c', 'IE', True)])
+        treatment = self._report([('a', 'MR', True), ('b', 'TR', True), ('c', 'IE', True)])
+        result = self._verdict(
+            {'kind': 'capability_delta', 'control': 'reference', 'at_least_points': 30},
+            treatment,
+            control,
+        )
+        self.assertEqual(result['verdict'], 'PASS')
+        self.assertEqual(result['detail']['shared'], 3)
+        self.assertIn('`ALL`', result['reading'])
+
+    def test_questions_present_on_one_side_only_are_excluded_rather_than_assumed(self) -> None:
+        control = self._report([('a', 'MR', True), ('b', 'MR', True)])
+        treatment = self._report([('a', 'MR', True)])
+        result = self._verdict(
+            {'kind': 'capability_delta', 'capability': 'MR', 'control': 'reference', 'at_least_points': 0},
+            treatment,
+            control,
+        )
+        self.assertEqual(result['detail']['shared'], 1)
+
+    def test_no_shared_question_refuses(self) -> None:
+        control = self._report([('a', 'MR', True)])
+        treatment = self._report([('z', 'MR', True)])
+        result = self._verdict(
+            {'kind': 'capability_delta', 'capability': 'MR', 'control': 'reference', 'at_least_points': 0},
+            treatment,
+            control,
+        )
+        self.assertEqual(result['verdict'], 'UNEVALUABLE')
+
+
 if __name__ == '__main__':
     unittest.main()

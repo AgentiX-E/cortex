@@ -165,7 +165,7 @@ def _paired(treatment: dict, control: dict, capability: str) -> tuple[list[str],
 
 
 def _delta_line(
-    capability: str,
+    capability: str | None,
     shared: list[str],
     treatment_correct: int,
     control_correct: int,
@@ -177,13 +177,18 @@ def _delta_line(
     after = _points(treatment_correct, total)
     before = _points(control_correct, total)
     return (
-        f'`{capability}` {before:.2f}% \u2192 {after:.2f}% '
+        f'`{capability or "ALL"}` {before:.2f}% \u2192 {after:.2f}% '
         f'({after - before:+.2f} over {total}; {wins} won, {losses} lost; p = {p_value:.4g})'
     )
 
 
 def gate_capability_delta(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
-    capability = gate['capability']
+    # Absent means every shared question, which is the one reading a **reader** experiment needs:
+    # a different model is claimed to answer better overall, and a per-capability gate cannot say
+    # that without five of them agreeing by construction. Stated as an absent key rather than a
+    # sentinel value, because a sentinel would be a capability name no artifact carries and the
+    # next reader would have to learn it from the implementation.
+    capability = gate.get('capability')
     control = controls[gate['control']]
     shared, after_correct, before_correct, wins, losses = _paired(treatment, control, capability)
     if not shared:
@@ -679,8 +684,8 @@ KINDS = {
 #: structural rather than remembered.
 GATE_SCHEMA: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     'capability_delta': (
-        frozenset({'capability', 'control', 'at_least_points'}),
-        frozenset({'requires_nonsignificance'}),
+        frozenset({'control', 'at_least_points'}),
+        frozenset({'capability', 'requires_nonsignificance'}),
     ),
     'capability_nonloss': (frozenset({'control', 'max_loss_points'}), frozenset({'excluding'})),
     'field_at_least': (frozenset({'field', 'at_least'}), frozenset()),
