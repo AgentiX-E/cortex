@@ -1098,3 +1098,77 @@ class QuestionsFlippedTest(unittest.TestCase):
     def test_naming_nothing_attributes_nothing(self):
         side = self._side({'a': True})
         self.assertEqual(self._verdict(side, side, [])['verdict'], 'UNEVALUABLE')
+
+
+class PairedCapabilityDeltaTest(unittest.TestCase):
+    """`paired_capability_delta`: the delta read from the pair one artifact carries.
+
+    §13.115's reranking increment pairs the stage against its own absence inside one invocation, so
+    the control is not an earlier run. Passing that artifact twice to `capability_delta` returns the
+    same records on both sides and reports a delta of exactly zero on a run that moved -- which is
+    why this kind reads `ablation.perCapability` instead.
+    """
+
+    def _verdict(
+        self, block: dict | None, at_least: float = 3.0, capability: str = 'MR', stored: str | None = None
+    ) -> dict:
+        # `stored` names the key the block is written under, so a test can ask about a capability the
+        # artifact does not carry rather than one whose block it deliberately left out.
+        report: dict = {'ablation': {}}
+        if block is not None:
+            report['ablation'] = {'perCapability': {stored or capability: block}}
+        gate = {
+            'id': 1,
+            'kind': 'paired_capability_delta',
+            'quantity': 'q',
+            'threshold': 't',
+            'capability': capability,
+            'at_least_points': at_least,
+        }
+        return _module().gate_paired_capability_delta(gate, report, {}, 0.05)
+
+    @staticmethod
+    def _block(before: int, after: int, wins: int = 0, losses: int = 0, p: float = 1.0) -> dict:
+        return {
+            'total': 121,
+            'baselineCorrect': before,
+            'featureCorrect': after,
+            'baselineIncorrectFeatureCorrect': wins,
+            'baselineCorrectFeatureIncorrect': losses,
+            'mcnemarPValue': p,
+        }
+
+    def test_a_gain_over_the_bar_passes(self):
+        gate = self._verdict(self._block(94, 101), at_least=3.0)
+        self.assertEqual(gate['verdict'], 'PASS')
+        self.assertAlmostEqual(gate['detail']['delta_points'], 100.0 * 7 / 121, places=6)
+
+    def test_a_gain_under_the_bar_fails(self):
+        # Two questions out of 121 is 1.65 points, which is the size §13.291 showed the arm's own
+        # churn can produce. The bar exists to refuse it.
+        self.assertEqual(self._verdict(self._block(94, 96), at_least=3.0)['verdict'], 'FAIL')
+
+    def test_a_loss_fails_however_the_bar_is_written(self):
+        self.assertEqual(self._verdict(self._block(103, 94), at_least=-20.0)['verdict'], 'PASS')
+        self.assertEqual(self._verdict(self._block(103, 94), at_least=0.0)['verdict'], 'FAIL')
+
+    def test_the_reading_names_both_sides_the_pair_and_the_p(self):
+        gate = self._verdict(self._block(94, 101, wins=9, losses=2, p=0.011))
+        self.assertIn('94/121', gate['reading'])
+        self.assertIn('101/121', gate['reading'])
+        self.assertIn('+9/\u22122', gate['reading'])
+        self.assertIn('p = 0.011', gate['reading'])
+
+    def test_an_absent_capability_block_is_unevaluable(self):
+        # The artifact did not report the pair, which is not the same statement as "it did not move".
+        self.assertEqual(self._verdict(None)['verdict'], 'UNEVALUABLE')
+        self.assertEqual(
+            self._verdict(self._block(94, 101), capability='ZZ', stored='MR')['verdict'], 'UNEVALUABLE'
+        )
+
+    def test_a_non_integer_or_empty_block_is_unevaluable(self):
+        for block in ({'total': 0, 'baselineCorrect': 0, 'featureCorrect': 0},
+                      {'total': 121, 'baselineCorrect': None, 'featureCorrect': 5},
+                      {'total': '121', 'baselineCorrect': 1, 'featureCorrect': 2}):
+            with self.subTest(block=block):
+                self.assertEqual(self._verdict(block)['verdict'], 'UNEVALUABLE')

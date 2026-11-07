@@ -205,6 +205,77 @@ def gate_capability_delta(gate: dict, treatment: dict, controls: dict[str, dict]
     return _result(gate, verdict, reading, {'delta_points': delta, 'p_value': p_value, 'wins': wins, 'losses': losses, 'shared': len(shared)})
 
 
+def gate_paired_capability_delta(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """Whether a capability moved, read from the pair the artifact itself carries.
+
+    ## Why this kind exists when `capability_delta` already does
+
+    `capability_delta` compares two artifacts, which is the right shape when the treatment is a
+    separate dispatch. It is the wrong shape for §13.115's reranking increment, and the reason is
+    structural rather than convenient: that registration pairs the stage against its own absence
+    **inside one invocation** (`runAblation` builds both arms on the same windows, the same reader,
+    the same judge and the same embedding cache), so the control is not an earlier run and there is
+    no second file to pass. Handed the same artifact twice, `_by_id` returns the same records and the
+    gate would report a delta of exactly zero on a run that moved.
+
+    `ablation.perCapability.<cap>` is where that pair already lives as numbers: `baselineCorrect`,
+    `featureCorrect`, `total`, the two discordant counts and the run's own McNemar p. Reading them
+    rather than re-deriving them from records is the point -- the records describe one side only,
+    and a second copy of the arithmetic would be a second answer the first time the writer changed.
+
+    ## What it refuses to read
+
+    A missing block, a non-integer count, or a zero total is `UNEVALUABLE` rather than a pass, for
+    the reason the module states everywhere: an artifact that did not report the pair cannot support
+    a claim about it. The alternative -- defaulting the counts to zero -- would read a run whose
+    writer had been changed as a treatment that moved nothing, which is the §13.107 failure in a new
+    place.
+    """
+    capability = gate['capability']
+    block = _dotted(treatment, f'ablation.perCapability.{capability}')
+    if not isinstance(block, dict):
+        return _result(
+            gate,
+            UNEVALUABLE,
+            f'the artifact carries no `ablation.perCapability.{capability}` block, so there is no pair to read',
+        )
+    total = block.get('total')
+    before = block.get('baselineCorrect')
+    after = block.get('featureCorrect')
+    if not all(isinstance(value, int) for value in (total, before, after)) or total <= 0:
+        return _result(
+            gate,
+            UNEVALUABLE,
+            f'`ablation.perCapability.{capability}` does not carry integer `total`/`baselineCorrect`/`featureCorrect` '
+            f'(got {total!r}, {before!r}, {after!r})',
+        )
+    delta = _points(after - before, total)
+    at_least = float(gate['at_least_points'])
+    wins = block.get('baselineIncorrectFeatureCorrect')
+    losses = block.get('baselineCorrectFeatureIncorrect')
+    p_value = block.get('mcnemarPValue')
+    reading = (
+        f'`{capability}` {before}/{total} \u2192 {after}/{total} = '
+        f'{_points(before, total):.2f}% \u2192 {_points(after, total):.2f}% '
+        f'({delta:+.2f} points, bar \u2265 {at_least:+.2f})'
+    )
+    if isinstance(wins, int) and isinstance(losses, int):
+        reading += f'; the pair moved +{wins}/\u2212{losses}'
+    if isinstance(p_value, float):
+        reading += f', McNemar p = {p_value:.4g}'
+    detail = {
+        'capability': capability,
+        'total': total,
+        'baseline_correct': before,
+        'feature_correct': after,
+        'delta_points': delta,
+        'wins': wins,
+        'losses': losses,
+        'p_value': p_value,
+    }
+    return _result(gate, PASS if delta >= at_least - _EPSILON else FAIL, reading, detail)
+
+
 def gate_questions_flipped(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
     """Whether the registered questions and no others are what carried the delta.
 
@@ -712,6 +783,7 @@ KINDS = {
     'source_marker_absence': gate_source_marker_absence,
     'coverage_monotone': gate_coverage_monotone,
     'questions_flipped': gate_questions_flipped,
+    'paired_capability_delta': gate_paired_capability_delta,
 }
 
 #: The keys every gate of a kind carries, and the keys a gate may additionally carry.
@@ -733,6 +805,7 @@ GATE_SCHEMA: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     ),
     'capability_nonloss': (frozenset({'control', 'max_loss_points'}), frozenset({'excluding'})),
     'questions_flipped': (frozenset({'control', 'questionIds', 'at_least'}), frozenset()),
+    'paired_capability_delta': (frozenset({'capability', 'at_least_points'}), frozenset()),
     'field_at_least': (frozenset({'field', 'at_least'}), frozenset()),
     'field_at_most': (frozenset({'field', 'at_most'}), frozenset()),
     'audit_identity': (
