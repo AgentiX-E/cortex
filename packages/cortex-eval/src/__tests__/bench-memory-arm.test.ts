@@ -89,6 +89,15 @@ const ALL_ROUTES = [
   'assistant',
 ];
 
+/**
+ * The room each route assembles under when no budget was dispatched.
+ *
+ * §13.299 made this field unconditional, so the three exhaustive `toEqual` assertions below carry
+ * it. Spelling the six routes once means a future change to the default moves one literal rather
+ * than three, which is the same argument that put `ALL_ROUTES` above.
+ */
+const DEFAULT_ROOMS = Object.fromEntries(ALL_ROUTES.map((route) => [route, 48_000]));
+
 const GATE = {
   threshold: 0,
   retrievalThreshold: 0,
@@ -834,6 +843,38 @@ describe('relevance signal', () => {
     expect(config.relevanceTopK).toBe(12);
   });
 
+  it('renders the room each route assembled under, and says which number the default was', () => {
+    // §13.299. The line is what a reader of the Markdown has, and the field it gained exists
+    // because the artifact could otherwise describe a run at 48,000 and a run at 24,000 with the
+    // same bytes. Collapsed to one value when all six agree -- six copies of 48,000 is a field
+    // people stop reading -- and a map when they do not, because a collapsed `room=48000` on a run
+    // that redistributed would be a lie about that run.
+    const render = (budget?: string) =>
+      formatAblationReport({
+        dataset: 'fixture',
+        questionCount: 0,
+        baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+        feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+        ablation: emptyAblation('cortex-memory'),
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: toMemoryArmConfig(
+          cortextMemoryArmOptions({
+            CORTEX_MEMORY: '1',
+            ...(budget === undefined ? {} : { CORTEX_MEMORY_MAX_PROMPT_CHARS: budget }),
+          }),
+        ),
+      });
+
+    expect(render()).toContain('room=48000');
+    expect(render()).not.toContain('room=multi-session');
+
+    const redistributed = render('multi-session:48460');
+    expect(redistributed).toContain('room=multi-session:48460');
+    // The five routes that took the default are printed rather than left to the reader: this is
+    // the shape of `42355323615`, whose unstated default is the defect the field closes.
+    expect(redistributed).toContain('temporal:48000');
+  });
+
   it('renders the signal on the config line', () => {
     // The config line is what a reader of the Markdown has, and a ranking whose
     // presence is only visible in the JSON is the side channel §7.4 records. The
@@ -988,6 +1029,7 @@ describe('source trust reaches the artifact', () => {
       reviewBareDecline: false,
       queryExpansion: 'none',
       selfConsistency: 'none',
+      effectivePromptChars: DEFAULT_ROOMS,
     });
   });
 
@@ -1501,6 +1543,7 @@ describe('runCortexMemoryArm', () => {
         reviewBareDecline: false,
         queryExpansion: 'none',
         selfConsistency: 'none',
+        effectivePromptChars: DEFAULT_ROOMS,
       });
     });
   });
@@ -1947,6 +1990,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       reviewBareDecline: false,
       queryExpansion: 'none',
       selfConsistency: 'none',
+      effectivePromptChars: DEFAULT_ROOMS,
     });
   });
 });

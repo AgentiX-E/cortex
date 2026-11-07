@@ -806,9 +806,9 @@ export const CRITERIA: readonly Criterion[] = [
     unit: 'ratio',
     kind: 'aim',
     source: {
-      kind: 'unrun',
-      reason:
-        'the measurement is the median evidence tokens per question across two arms, and no tool produces it: `tools/cost-ledger.py` sums prompt tokens per question per run, which is a total and not a median over evidence, and a hand-typed median would be the same defect `C1` was written to avoid',
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/evidence-budget.json',
+      key: 'ratio.ratio',
     },
     // No competitor row: this criterion's unit is a *fraction of our own window*, so an absolute token
     // figure from another system cannot be placed in it — 4,400 tokens is 36% of 12,105 and 0% of the
@@ -816,7 +816,8 @@ export const CRITERIA: readonly Criterion[] = [
     // as tokens, and the one comparison that matters here (ours against ours at two budgets) has no
     // external counterpart because no vendor publishes a paired budget ablation.
     onMiss:
-      'Registered so that the next increment touching the budget has to state what it did to this number, not so that it can be met by cutting. The precondition is the first half of the sentence: overall accuracy at or above the registered configuration on the same 500 questions. A 30% cut that costs two questions is a miss, not a pass, and the honest reading of that outcome is section 13.291 — delivering every gold turn bought +0.00, so evidence *volume* is not what the missing points are made of, which makes a cut safe in principle and unmeasured in fact. The unit change (characters, 13.293.2) is the prerequisite: a budget written in characters and billed in tokens is 4.11x wrong about itself, and it cannot be priced by this row until that is fixed.',
+      'Registered so that the next increment touching the budget has to state what it did to this number, not so that it can be met by cutting. The precondition is the first half of the sentence: overall accuracy at or above the registered configuration on the same 500 questions. A 30% cut that costs two questions is a miss, not a pass, and the honest reading of that outcome is section 13.291 — delivering every gold turn bought +0.00, so evidence *volume* is not what the missing points are made of, which makes a cut safe in principle and unmeasured in fact. ' +
+      'The unit change section 13.293.2 asked for is done, in the sense that matters: `tools/evidence-budget.py` reads the per-question records (`promptChars` against `deliveredPromptChars`), measures the characters-to-tokens factor from the artifact instead of inferring it from the cap (4.06 on `42355323615`, against the 4.11 the cap implied), and reports the median evidence in tokens. What the row still lacks is the *numerator*: the artifact it reads is one arm at the registered configuration, so the ratio is 1.0000 by construction and the file records `paired: false`. A ratio of one is a denominator, not a result — it says the registered budget is 100% of itself and that the 0.70 bar is unmet, and it cannot say anything about a reduced arm until one is dispatched. Reading the two claims apart matters: this row moved from "no instrument" to "instrument, denominator, named arm", and it has not moved at all on the quantity it measures.',
   },
 
   // ---- two rows the product needs and the campaign has never measured ------------------------------
