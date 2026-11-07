@@ -349,8 +349,18 @@ INPUTS = {
     # session ranking and stopped at the first session that did not fit, which left half the
     # room unread; `session-fill` skips it and keeps scanning. Sent explicitly rather than
     # left to the default so the run cannot arrive through the `''`-to-default path.
-    # §13.34 holds the selection unit at the shipped default: the variable is the ask, so
-    # §13.26 is the comparison and the room, the signal and the unit all stay as they were.
+    # §13.288. Held at the shipped default, because `INPUTS` is the **adopted** configuration and
+    # §10.3 describes it; the experiment overrides with
+    # `--set cortex_memory_relevance_units=session-fill`.
+    #
+    # The experiment is the first reading this value has ever had. §13.286.2 found `session-fill`
+    # parsed by the arm, projected into the artifact's configuration line, and never forwarded to
+    # the product, so §13.34's "spends the room and changes nothing" is a sentence about the `turn`
+    # unit. The mechanism is §13.31's repair of §13.27's rule: whole sessions ordered by their
+    # best-scoring turn, skipping one that does not fit rather than ending the pass on it. The
+    # reference pipeline -- 7.43 points ahead on MR with the same reader on the same dataset -- pays
+    # 2,000 characters a session and 20,000 in total, i.e. roughly ten complete sessions; this arm
+    # currently spends 48,000 characters on fragments of 45.
     "cortex_memory_relevance_units": "turn",
     # §13.67/§13.68's variable. `none` is the registered value and is sent explicitly rather
     # than left blank: it is the state every archived prompt was produced under, and the

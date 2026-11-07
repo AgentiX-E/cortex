@@ -854,5 +854,92 @@ class ThresholdUnitTest(unittest.TestCase):
         self.assertIn('worst -0.50 points', completed.stdout)
 
 
+class DigestDisagreementTest(unittest.TestCase):
+    """`digest_disagreement`: the treatment arrived where it was registered.
+
+    §13.286.2's defect is a value the arm parsed, wrote into the artifact's configuration line and
+    never forwarded. Every gate in a table can pass on that run -- nothing lost, digests agreeing,
+    calls under the bar -- because agreement is exactly what a run that administered nothing
+    produces. This is the gate that separates a null result from a missing treatment, and it is
+    scoped to one capability so that the pair with `digest_agreement`/`excluding` is two-sided.
+    """
+
+    def _verdict(self, treatment: dict, control: dict | None, capability: str = 'MR') -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {'reference': {'run': 1}},
+            'gates': [
+                {
+                    'id': 1,
+                    'kind': 'digest_disagreement',
+                    'quantity': 'q',
+                    'threshold': 't',
+                    'field': 'promptDigest',
+                    'control': 'reference',
+                    'capability': capability,
+                    'at_least': 2,
+                }
+            ],
+        }
+        controls = {} if control is None else {'reference': control}
+        return _module().evaluate(spec, treatment, controls)[0]
+
+    def _report(self, digests: list[str], capability: str = 'MR', prefix: str = 'q') -> dict:
+        return {
+            'questions': [
+                {
+                    'questionId': f'{prefix}{index}',
+                    'capability': capability,
+                    'promptDigest': digest,
+                }
+                for index, digest in enumerate(digests)
+            ]
+        }
+
+    def test_two_differing_deliveries_pass(self) -> None:
+        result = self._verdict(self._report(['a', 'b', 'c']), self._report(['a', 'x', 'y']))
+        self.assertEqual(result['verdict'], 'PASS')
+        self.assertEqual(result['detail']['differ'], 2)
+
+    def test_a_run_that_administered_nothing_fails(self) -> None:
+        # The defect, as an artifact: identical bytes everywhere. This is `42310779222`'s shape had
+        # the unit not been forwarded, and every other gate in that table would have passed.
+        result = self._verdict(self._report(['a', 'b']), self._report(['a', 'b']))
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertIn('0 of 2', result['reading'])
+
+    def test_another_capability_does_not_count(self) -> None:
+        treatment = self._report(['a', 'b'])
+        treatment['questions'].extend(
+            self._report(['c', 'd'], capability='TR', prefix='t')['questions']
+        )
+        control = self._report(['a', 'b'])
+        control['questions'].extend(
+            self._report(['y', 'z'], capability='TR', prefix='t')['questions']
+        )
+        result = self._verdict(treatment, control)
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertEqual(result['detail']['compared'], 2)
+
+    def test_a_record_without_the_field_is_excluded_rather_than_counted(self) -> None:
+        treatment = self._report(['a', 'b', 'c'])
+        control = self._report(['a', 'b', 'c'])
+        del treatment['questions'][0]['promptDigest']
+        result = self._verdict(treatment, control)
+        self.assertEqual(result['verdict'], 'FAIL')
+        self.assertEqual(result['detail']['compared'], 2)
+
+    def test_a_missing_control_artifact_refuses(self) -> None:
+        result = self._verdict(self._report(['a']), None)
+        self.assertEqual(result['verdict'], 'UNEVALUABLE')
+        self.assertIn('reference', result['reading'])
+
+    def test_no_shared_question_in_that_capability_refuses(self) -> None:
+        result = self._verdict(self._report(['a']), self._report(['a'], capability='TR'))
+        self.assertEqual(result['verdict'], 'UNEVALUABLE')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,109 @@
+{
+  "registration": "13.288",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "The session-fill unit, dispatched for the first time, against 42310779222",
+  "controls": {
+    "reference": {
+      "run": 42310779222,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the id-withheld run the unit is registered against: same reader, same budget, same ask, same assembly, same contract, and the same turn-level delivery the unit replaces"
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "artifact_audit",
+      "quantity": "the artifact's own audit",
+      "threshold": "**every check passes**"
+    },
+    {
+      "id": 2,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.relevanceUnits",
+      "equals": "session-fill",
+      "quantity": "`memoryArmConfig.relevanceUnits`",
+      "threshold": "**`session-fill`**"
+    },
+    {
+      "id": 3,
+      "kind": "digest_disagreement",
+      "field": "promptDigest",
+      "control": "reference",
+      "capability": "MR",
+      "at_least": 110,
+      "quantity": "`MR` deliveries whose prompt bytes differ from `42310779222`",
+      "threshold": "**≥ 110 of 121** — the value reached the product, which is the check `38828538851` failed"
+    },
+    {
+      "id": 4,
+      "kind": "digest_agreement",
+      "field": "promptDigest",
+      "control": "reference",
+      "denominator": 379,
+      "excluding": ["MR"],
+      "quantity": "the four capabilities outside the unit's reach",
+      "threshold": "**379 of 379 agree** — a unit that leaked past `multi-session` would make every judgment about it a judgment about two changes"
+    },
+    {
+      "id": 5,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.promptContract",
+      "equals": "evidence-blocks-unsourced",
+      "quantity": "`memoryArmConfig.promptContract`",
+      "threshold": "**held at §13.283's value**"
+    },
+    {
+      "id": 6,
+      "kind": "source_marker_absence",
+      "prompt_field": "ablation.featurePromptTexts",
+      "at_most": 0,
+      "quantity": "per-turn source markers across the 500 delivered prompts",
+      "threshold": "**0** — §13.287.2's saving is only attributable if it is still withheld"
+    },
+    {
+      "id": 7,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": 3,
+      "quantity": "`MR` accuracy against `42310779222`",
+      "threshold": "**Δ ≥ +3 points** with the resolution printed"
+    },
+    {
+      "id": 8,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "max_loss_points": 3,
+      "excluding": ["MR"],
+      "quantity": "`IE`, `KU`, `TR`, `ABS` against `42310779222`",
+      "threshold": "**no loss ≥ 3 points**"
+    },
+    {
+      "id": 9,
+      "kind": "coverage_gain",
+      "control": "reference",
+      "reaches": { "numerator": "carried", "denominator": "total" },
+      "capability": "MR",
+      "at_least_gain": 0,
+      "quantity": "`MR` questions delivering every gold turn, against 98",
+      "threshold": "**no fewer than 98** — buying whole sessions must not deliver less of the gold set than fragments did"
+    },
+    {
+      "id": 10,
+      "kind": "field_at_most",
+      "field": "llmUsage.promptTokens",
+      "at_most": 33000000,
+      "quantity": "`llmUsage.promptTokens`",
+      "threshold": "**≤ 33,000,000** against 27,308,598 — the unit may cost up to 20% more, and a run that costs more than that is buying depth it is not reporting"
+    },
+    {
+      "id": 11,
+      "kind": "field_at_least",
+      "field": "bareRetry.attempted",
+      "at_least": 60,
+      "quantity": "`bareRetry.attempted`",
+      "threshold": "**≥ 60**"
+    }
+  ]
+}

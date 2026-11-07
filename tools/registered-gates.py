@@ -359,6 +359,56 @@ def gate_digest_agreement(gate: dict, treatment: dict, controls: dict[str, dict]
     return _result(gate, verdict, f'{agree}/{expected} agree', {'agree': agree, 'compared': len(compared)})
 
 
+def gate_digest_disagreement(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """At least N questions' delivery digests differ from the control's, inside one capability.
+
+    The mirror of `digest_agreement`, and it exists because "the treatment reached the product" and
+    "the treatment did nothing" are the same artifact otherwise. §13.286.2 is the case: a value the
+    arm parsed, projected into the artifact's configuration line and never forwarded. Every downstream
+    gate read `PASS` on that run -- no capability lost, the digests agreed with the control, the call
+    count was under the bar -- and the agreement was the defect, because agreement was what a run that
+    administered nothing produces. §13.267.3 named the shape: a table of gates is only as strong as
+    the one that can tell a null result from a missing treatment.
+
+    Scoped to one capability on purpose. A unit that changes `MR` and leaves the other four byte
+    identical is what the arm's reach claims, and the pair (this gate on `MR`, `digest_agreement`
+    with `excluding: [MR]` over the rest) is a two-sided statement: the treatment arrived where it
+    was registered *and* nowhere else. Either one alone is satisfiable by a run that did nothing.
+
+    Refused rather than failed when either artifact lacks the field, for `digest_agreement`'s reason:
+    a record cannot testify about bytes it did not fingerprint, and counting it as a disagreement
+    would let a missing field manufacture the arrival.
+    """
+    control_report = controls.get(gate['control'])
+    if control_report is None:
+        return _result(gate, UNEVALUABLE, f'the `{gate["control"]}` artifact was not supplied')
+    field = gate['field']
+    capability = gate['capability']
+    bar = int(gate['at_least'])
+    after = _by_id(treatment)
+    before = _by_id(control_report)
+    shared = [
+        key
+        for key in sorted(set(after) & set(before))
+        if before[key].get('capability') == capability and after[key].get('capability') == capability
+    ]
+    compared = [
+        key
+        for key in shared
+        if isinstance(after[key].get(field), str) and isinstance(before[key].get(field), str)
+    ]
+    if not compared:
+        return _result(gate, UNEVALUABLE, f'no `{capability}` question carries a `{field}` on both sides')
+    differ = sum(1 for key in compared if after[key][field] != before[key][field])
+    verdict = PASS if differ >= bar else FAIL
+    return _result(
+        gate,
+        verdict,
+        f'`{capability}`: {differ} of {len(compared)} deliveries differ from the control (bar: \u2265 {bar})',
+        {'differ': differ, 'compared': len(compared)},
+    )
+
+
 def gate_field_equals(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
     """One field of the artifact against an expected value, for the "the dispatch took" check.
 
@@ -607,6 +657,7 @@ KINDS = {
     'sides_within_total': gate_sides_within_total,
     'digest_agreement': gate_digest_agreement,
     'field_equals': gate_field_equals,
+    'digest_disagreement': gate_digest_disagreement,
     'coverage_gain': gate_coverage_gain,
     'artifact_audit': gate_artifact_audit,
     'gold_text_complete': gate_gold_text_complete,
@@ -644,6 +695,7 @@ GATE_SCHEMA: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({'excluding'}),
     ),
     'field_equals': (frozenset({'field', 'equals'}), frozenset()),
+    'digest_disagreement': (frozenset({'field', 'control', 'capability', 'at_least'}), frozenset()),
     'coverage_gain': (frozenset({'reaches', 'at_least_gain'}), frozenset({'capability', 'control'})),
     'artifact_audit': (frozenset(), frozenset()),
     'gold_text_complete': (frozenset(), frozenset()),
