@@ -34055,3 +34055,51 @@ A pass makes `M1` the first reader-axis reading in this campaign and removes one
 whose code does not exist. What it would establish is the weaker and more useful claim — that this
 pipeline's accuracy **responds to the reader**, which is the property a product needs before it can
 promise anything about model choice.
+
+### 13.304 The per-route room, read: the cost prediction held to 1.3% and the accuracy prediction missed by 1.20 points
+
+`42383171765` is the arm §13.302 registered, and it is the first reading on this campaign where the two halves of one prediction can be compared to each other rather than to a previous run.
+
+| id | registered | measured | verdict |
+| --- | ---: | ---: | --- |
+| `A` accuracy ≥ 90.5 | 91.00 | **89.80** (89.40 / 90.20, 2 runs) | fail, 0.70 short |
+| `B` MR and TR each ≤ 1.0 | — | MR **−6.61**, TR −1.57 | fail |
+| `C` IE/KU/ABS each ≤ 1.5 | — | +0.67 / −1.39 / 0.00 | pass |
+| `D` `C1` ≤ 6,000 | pre-registered as an expected miss | **9,149** | miss, as registered |
+| `E` config line renders six rooms | required | rendered in the order registered | pass |
+
+Cost: feature-side prompt tokens **9,148,866 / 1,000 = 9,149 per question**, against 12,137 for the 48,000 baseline — **0.754x**. The registration said **0.741x**. The error is **1.3%**, and it is the second time a cost prediction has landed inside 2% (the first was §13.301's 0.487 against 0.49).
+
+Accuracy: registered **91.00 (−0.40)**, measured **89.80 (−1.60)**. The direction was right and the magnitude was not, which is the same failure shape as §13.301.4 — the gold-coverage model still understates what a smaller room costs an aggregation capability.
+
+#### 13.304.1 The number that needs an adjudication before it is a finding
+
+`MR` reads **93/121 on both arms**: 24,000 at 13:24 and the per-route arm at 15:34, where the multi-session room is 48,000. The 48,000 baseline read 101.5/121 at 10:00. Two explanations fit the data completely and no third is needed:
+
+| | claim | what it predicts |
+| --- | --- | --- |
+| **H1** | the per-route room does not reach the multi-session assembly path | MR equals the 24,000 arm — observed |
+| **H2** | the model name drifted by about six points between 10:00 and 13:24 | both later arms read ~93 regardless of room — also observed |
+
+`TR` does not separate them: 91.34 (24,000) → 94.49 (per-route) → 96.06 (48,000) is monotone in room, which is what H1 would predict for the temporal path and also what H2 would predict if the drift were capability-specific.
+
+So the honest state is that **"the per-route room costs MR 6.61 points" is not yet a finding**, and §13.305 is the cheapest experiment that decides it.
+
+### 13.305 The same-day control, registered before it is dispatched
+
+A run of the registered configuration at the current time, and nothing else. The purpose is to price time rather than to test a mechanism.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| **S0** | every config field except the clock matches `42355323615` | any difference makes it a different experiment, not a control |
+| **S1** | `MR ≤ 97/121` reads as **drift**, and the MR deltas of §13.302 and §13.301 move from "room" to "time" | `MR ≥ 101/121` refutes H2 and leaves H1 standing as a code defect |
+| **S2** | if S1 reads drift, every sentence of the form "the per-route room costs MR 6.61" is **withdrawn from every document**, not annotated | a sentence that survives with a footnote is the §7.3 defect in prose |
+
+Two more conditions, because a control that is read loosely is not a control:
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| **S3** | the reading is taken on **the same reader** and the same `thinking` routes | a reader change makes the run an `M1` arm |
+| **S4** | `promptDigest` for the first repetition is compared against `42355323615`'s and reported, whatever it says | a prompt that moved means S0 was wrong and the run must be read as a second treatment |
+
+`S4` is the one that costs nothing and is skipped most often: the control's whole value is that the packet is the one the baseline saw, and this campaign has already recorded a run where a "control" differed in a field nobody declared.

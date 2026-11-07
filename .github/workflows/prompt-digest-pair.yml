@@ -1,0 +1,107 @@
+# R0 of the reader axis, checked where the artifacts already are.
+#
+# `M1` (§13.303) registers that all 500 `promptDigest` values must be identical between its two arms before their
+# accuracies may be compared. Both arms are separate runs, so no single job holds both artifacts -- and the
+# development sandbox transfers a 25 MB artifact at roughly 4 KB/s, which makes the check two hours of download to
+# read twelve kilobytes of digests. That is the instrument being the bottleneck, and the fix is to run the
+# comparison on a runner, where a second artifact is one API call away in the same datacentre.
+#
+# The gate is the job's exit code: `node tools/prompt-digest-pair.mjs` exits 1 unless every question on both sides
+# carries a digest and the two agree. A green job here means the accuracy comparison is between two readers on one
+# packet; a red one means it is not, and the summary says which capabilities moved.
+#
+# It reads reports and never accuracy, deliberately: a tool that also summarised the answer would be run after
+# someone had already looked, which inverts the order the registration fixes.
+name: Prompt digest pair (R0)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_a:
+        description: 'Run id of side A (the arm as dispatched first)'
+        required: true
+        type: string
+      run_b:
+        description: 'Run id of side B (the arm that moved one field)'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Artifact to read on both runs'
+        required: false
+        default: 'longmemeval-s-report'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: prompt-digest-pair-${{ github.event.inputs.run_a }}-${{ github.event.inputs.run_b }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch both artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_A: ${{ github.event.inputs.run_a }}
+          RUN_B: ${{ github.event.inputs.run_b }}
+          ARTIFACT: ${{ github.event.inputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          for side in a b; do
+            case "$side" in
+              a) run="$RUN_A" ;;
+              b) run="$RUN_B" ;;
+            esac
+            id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run}/artifacts" \
+              --jq ".artifacts[] | select(.name == \"${ARTIFACT}\") | .id" | head -n 1)
+            if [ -z "$id" ]; then
+              echo "run ${run} has no artifact named ${ARTIFACT}; the runs listed are:"
+              gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run}/artifacts" --jq '.artifacts[].name'
+              exit 1
+            fi
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" > "side-${side}.zip"
+            unzip -o -q "side-${side}.zip" -d "side-${side}"
+            echo "side-${side}: $(du -h "side-${side}.zip" | cut -f1)"
+          done
+
+      - name: Locate the report on each side
+        run: |
+          set -euo pipefail
+          for side in a b; do
+            found=$(find "side-${side}" -name 'benchmark-cortex-memory-ablation-report.json' | head -n 1)
+            if [ -z "$found" ]; then
+              echo "side-${side} carries no ablation report; it holds:"
+              find "side-${side}" -type f | head -n 40
+              exit 1
+            fi
+            printf '%s\n' "$found" > "report-${side}.path"
+            echo "side-${side}: ${found} ($(du -h "$found" | cut -f1))"
+          done
+
+      - name: Compare the digests
+        run: |
+          set -euo pipefail
+          node tools/prompt-digest-pair.mjs \
+            --a "$(cat report-a.path)" \
+            --b "$(cat report-b.path)" | tee digest-pair.md
+          node tools/prompt-digest-pair.mjs \
+            --a "$(cat report-a.path)" \
+            --b "$(cat report-b.path)" --json > digest-pair.json
+
+      - name: Upload the comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-digest-pair
+          path: |
+            digest-pair.md
+            digest-pair.json
+          if-no-files-found: warn
+          retention-days: 30
