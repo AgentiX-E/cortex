@@ -9,7 +9,7 @@ import type {
   RetrievedTurns,
   SessionAwareMemorySystem,
 } from './types.js';
-import { ProviderContentRefusal } from '@agentix-e/cortex-ai';
+import { ProviderContentRefusal, type RetryExhaustion } from '@agentix-e/cortex-ai';
 import { scoreEvaluation, type AnswerScorer, type ScoredEvaluation } from './metrics.js';
 
 /**
@@ -77,6 +77,142 @@ export function describeProviderRefusals(records: readonly ProviderRefusalRecord
     .map(([capability, count]) => `${capability} ${count}`)
     .join(', ');
   return `provider refusals: ${records.length} (${spread}) — counted as unanswered, kept in the denominator`;
+}
+
+/**
+ * One question lost because every attempt reached the per-attempt deadline.
+ *
+ * ## The run this exists for
+ *
+ * `42381840503` read 291 of 500 questions on a reasoning reader and then died on
+ * `{"attempts":2,"retried":1,"elapsedMs":601000,"attemptsMs":[299999,300001],"timeoutMs":300000}`.
+ * Both attempts reached the bound; the throw unwound `Promise.all`; the pass produced an
+ * `INCOMPLETE` partial with no delta. **One question's latency destroyed 209 other questions'
+ * measurements and the comparison they were for** -- the same shape as `42368550937`'s moderation
+ * refusal one round earlier, and the same repair: a fact about one question is decided per question.
+ *
+ * ## Why the record carries the deadline and the attempt durations
+ *
+ * Because the only other place they appear is the `retryExhausted` object attached to an error that
+ * is thrown away once the question is decided. `timeoutMs` beside `attemptsMs` is what separates
+ * "the deadline fired on a slow answer" from "the socket died twice at 3 s" -- two losses that look
+ * identical in a count and call for opposite responses (raise the bound vs. re-dispatch the run).
+ */
+type TransportLossRecord = {
+  readonly questionId: string;
+  readonly capability: string;
+  readonly questionType: string | null;
+  readonly run: number;
+  /** Requests issued before the loss, including the first attempt. */
+  readonly attempts: number;
+  /** The per-attempt deadline those attempts were given. */
+  readonly timeoutMs: number;
+  /** Wall-clock milliseconds from the first attempt to the last deadline. */
+  readonly elapsedMs: number;
+};
+
+/**
+ * Every deadline loss this process has decided, in arrival order.
+ *
+ * Process-wide like `refusals`, and for the same reason: the arm that prints the line is several
+ * frames above the worker that produces it. The ceiling below is per pass, not per process, because
+ * one process serves several runs and a shared counter would refuse a fourth run for the first
+ * three's losses.
+ */
+const transportLosses: TransportLossRecord[] = [];
+
+/** A copy, so a caller cannot mutate the record it was handed. */
+export function lostToDeadline(): readonly TransportLossRecord[] {
+  return transportLosses.map((record) => ({ ...record }));
+}
+
+/**
+ * The share of a pass that may be lost to deadlines before the pass stops being a measurement.
+ *
+ * ## Why a ceiling exists at all, when a loss is recorded as a wrong answer
+ *
+ * Recording a loss as `''` is conservative -- it fails every channel of the scorer -- so a single
+ * loss cannot flatter an arm. A **hundred** losses are a different claim: an endpoint that stopped
+ * answering, or a deadline smaller than any of this reader's real answers, produces 500 empty
+ * strings and an accuracy near zero that is arithmetically indistinguishable from a memory system
+ * that forgot everything. The pass has to stop being a number at the point where it stops describing
+ * the system, and 2% is where this campaign has put that line: ten questions of five hundred, which
+ * is larger than any single-question stall observed (`42381840503` lost one in 291) and smaller than
+ * any outage (a stalled endpoint loses four per deadline period, one per worker).
+ */
+const MAX_DEADLINE_LOSS_FRACTION = 0.02;
+
+/**
+ * How many questions a pass of `total` may lose to deadlines before it stops being a measurement.
+ *
+ * Exported rather than left inside the catch because the entry point prints it on the gate line: a
+ * ceiling a run enforces and a reader cannot see is the same defect as a bound that only appears in
+ * the error object of the question that reached it (§13.306). At 500 questions it is ten, and the
+ * arithmetic is here rather than in a `console.log` so the printed number and the enforced one are
+ * one expression.
+ *
+ * The floor of one is what makes a smoke dispatch readable: 2% of 20 questions rounds to nothing,
+ * and a pass that can tolerate zero losses would die on the first one -- which for a 20-question
+ * smoke of a reader with a heavy tail is a dispatch that never produces a number.
+ */
+export function deadlineLossCeiling(total: number): number {
+  return Math.max(1, Math.ceil(total * MAX_DEADLINE_LOSS_FRACTION));
+}
+
+/**
+ * The exhaustion object, when every attempt of a call reached the per-attempt deadline.
+ *
+ * ## Why "every" and not "any"
+ *
+ * A call whose first attempt hit the deadline and whose retry died on a reset socket has a mixed
+ * cause, and classifying it as a deadline loss would let a broken network be reported as a slower
+ * model. The all-attempts condition is the narrow reading, and the wide one buys nothing: a genuine
+ * deadline loss on this reader reached the bound on both attempts (299,999 and 300,001 ms).
+ *
+ * The tolerance is 1% of the deadline because `AbortSignal` fires on a timer and the recorded
+ * duration is measured around it -- the second attempt above is *one millisecond over* its own
+ * deadline, and an exact comparison would classify the clearest loss in the campaign as a wire
+ * fault.
+ */
+function deadlineExhaustion(err: unknown): RetryExhaustion | null {
+  if (!(err instanceof Error)) return null;
+  const exhaustion = (err as { readonly retryExhausted?: RetryExhaustion }).retryExhausted;
+  if (exhaustion === undefined || exhaustion.attemptsMs.length === 0) return null;
+  const reached = exhaustion.attemptsMs.every(
+    (attemptMs) => attemptMs >= exhaustion.timeoutMs * 0.99,
+  );
+  return reached ? exhaustion : null;
+}
+
+/**
+ * One line naming how many questions a deadline took, and where.
+ *
+ * Printed on every run, for the reason `describeProviderRefusals` is: `0` is a statement, and a
+ * line that appears only on failure leaves "no losses" and "this log predates the counter"
+ * indistinguishable. The deadline is in the line because it is the number the reader would have to
+ * change, and the cause is in the line because a loss on a 300 s bound is a different finding from a
+ * loss on a bound the dispatch declared.
+ */
+export function describeDeadlineLosses(records: readonly TransportLossRecord[]): string {
+  if (records.length === 0) {
+    return 'deadline losses: 0';
+  }
+  const byCapability = new Map<string, number>();
+  for (const record of records) {
+    byCapability.set(record.capability, (byCapability.get(record.capability) ?? 0) + 1);
+  }
+  const spread = [...byCapability.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([capability, count]) => `${capability} ${count}`)
+    .join(', ');
+  const bounds = [...new Set(records.map((record) => record.timeoutMs))]
+    .sort((a, b) => a - b)
+    .map((ms) => `${ms} ms`)
+    .join(', ');
+  return (
+    `deadline losses: ${records.length} (${spread}) at ${bounds} — recorded as no output, ` +
+    'kept in the denominator'
+  );
 }
 
 /** True when the system opts into session-boundary-aware answering. */
@@ -496,6 +632,10 @@ export async function runBenchmark(
   // pass's critical path and would make the index/worker binding invisible in the artifact.
   let next = 0;
   const claim = (): number => next++;
+  // Per pass, not per process: one process answers several runs, and a process-wide counter would
+  // refuse a fourth run for the first three's losses. Incremented under the same single-threaded
+  // claim rule as `next`.
+  let deadlineLosses = 0;
 
   const runWorker = async (worker: number): Promise<void> => {
     const workerSystem = pool === undefined ? system : pool.systemFor(worker);
@@ -561,10 +701,21 @@ export async function runBenchmark(
       // fail identically on all 500 questions, and catching them would turn a broken arm into a
       // quiet accuracy number.
       //
-      // The refused question is recorded as `null` -- the arm produced no answer -- and is counted
-      // in `providerRefusals()`, never dropped from the denominator. Dropping it would be the
-      // favourable half of a selection: the questions a filter refuses are not a random sample,
-      // so removing them would raise the score of an arm that answered fewer questions.
+      // A second class is decided here, for a reason the first one's round did not have to state:
+      // `42381840503` answered 291 questions and then lost the pass to
+      // `attemptsMs=[299999,300001], timeoutMs=300000` -- **both** attempts reached the deadline, so
+      // the loss was the deadline's, not the network's, and the arm's third of a suite was thrown
+      // away on a bound that lived in a module constant. A deadline that one question reaches and
+      // the other 499 do not is a fact about that question's latency; the transport is fine and the
+      // arm is fine.
+      //
+      // Both classes record `''` -- the arm produced no answer -- and both stay in the denominator.
+      // Dropping either would be the favourable half of a selection: the questions a filter refuses
+      // or a deadline eats are not a random sample, so removing them would raise the score of an arm
+      // that answered fewer questions. `''` and not `null` for both: `null` is this repository's word
+      // for "the arm declined", which `judgeScorer` scores CORRECT against an unanswerable gold, so
+      // a refusal or a stall recorded as a decline would hand the abstention column a free pass on
+      // exactly the questions that fail hardest.
       try {
         if (
           isSessionAware(workerSystem) &&
@@ -628,31 +779,84 @@ export async function runBenchmark(
           record(await workerSystem.answer(q.question, q.context, q.sessions), index);
         }
       } catch (err) {
-        if (!isProviderContentRefusal(err)) {
-          throw err;
+        // Two classes are decided here and the shapes are deliberately disjoint: a `if`/`else` rather
+        // than a guard clause, because the first version of this block let a deadline loss fall
+        // through into the refusal branch -- so one timeout was counted twice, as a loss and as a
+        // provider refusal, and `providerRefusals()` would have reported a filter that never fired.
+        // The mutation that caught it was `record('', index)` -> `record(null, index)`: nothing
+        // failed, because the second write overwrote the first.
+        if (isProviderContentRefusal(err)) {
+          // Not retried, by design: the same prompt against the same filter is the same decision, so
+          // an attempt is certain waste.
+          //
+          // `record('')` and not `record(null)`, and the difference is worth a paragraph because it
+          // is four points of a column. `null` is this repository's word for **the arm declined**,
+          // and `judgeScorer` scores a declined answer against an `expected === null` question as
+          // CORRECT -- correct, because declining an unanswerable question is what the abstention
+          // gold asks for. A moderation refusal is not a decline: the arm never produced anything.
+          // Recording it as a decline would hand the `ABS` column a free pass on exactly the
+          // questions most likely to be filtered, which are the personal ones, which is the column
+          // `ABS` is made of. The empty string is the honest third state -- no output -- and it
+          // fails every channel of `judgeScorer` on its own terms rather than by a special case
+          // bolted onto the scorer.
+          //
+          // The artifact keeps the distinction visible: `null` and `''` are different values in the
+          // answers vector, so a later reader can tell a refusal from a decline without the log.
+          refusals.push({
+            questionId: q.id,
+            capability: q.capability,
+            questionType: q.questionType ?? null,
+            providerCode: err instanceof ProviderContentRefusal ? err.providerCode : null,
+          });
+          record('', index);
+        } else {
+          const exhaustion = deadlineExhaustion(err);
+          if (exhaustion === null) {
+            throw err;
+          }
+          // Recorded before the ceiling is checked, so the record names every loss including the one
+          // that ended the pass.
+          transportLosses.push({
+            questionId: q.id,
+            capability: q.capability,
+            questionType: q.questionType ?? null,
+            run,
+            attempts: exhaustion.attempts,
+            timeoutMs: exhaustion.timeoutMs,
+            elapsedMs: exhaustion.elapsedMs,
+          });
+          deadlineLosses += 1;
+          // `''` for the reason the refusal above records `''`, and it is the same reason twice: a
+          // stall produced no output, and `null` would be read as a decline.
+          record('', index);
+          // ## Why the pass ends at a share rather than at one loss
+          //
+          // One loss is conservative: it is scored as a wrong answer. Ten are a different claim --
+          // an endpoint that stopped answering, or a bound smaller than every answer this reader
+          // gives, produces 500 empty strings and an accuracy near zero that is arithmetically
+          // indistinguishable from a memory system that forgot everything. Past the share the pass
+          // is no longer describing the system under test, so it throws and the entry point writes
+          // the partial record the workflow reads.
+          //
+          // `>` rather than `>=`: the ceiling is the number of losses tolerated, not the first one
+          // that is fatal. At 500 questions that is ten, and a pass that dies on the eleventh is
+          // telling the truth about the endpoint; a pass that died on the first would be a smoke
+          // run killed by the tail its own reader has.
+          const ceiling = deadlineLossCeiling(total);
+          if (deadlineLosses > ceiling) {
+            throw new Error(
+              `deadline losses reached ${deadlineLosses} of ${total} (ceiling ${ceiling}, ` +
+                `${Math.round(MAX_DEADLINE_LOSS_FRACTION * 100)}%): at this share the pass measures ` +
+                'the endpoint rather than the system under test. The bound on this loss was ' +
+                `${exhaustion.timeoutMs} ms — raise CORTEX_READER_TIMEOUT_MS if the reader needs ` +
+                'longer, and re-dispatch rather than reading the number this pass would produce.',
+            );
+          }
+          // No `continue` and no skip: the prompt for this question **was** built and sent, and the
+          // capture below is what proves the two arms sent the same bytes on it. Skipping it would
+          // leave the prompt-digest vector short by exactly the questions a slow reader lost, which
+          // is the comparison `R0` exists to make.
         }
-        // Not retried, by design: the same prompt against the same filter is the same decision, so an
-        // attempt is certain waste.
-        //
-        // `record('')` and not `record(null)`, and the difference is worth a paragraph because it is
-        // four points of a column. `null` is this repository's word for **the arm declined**, and
-        // `judgeScorer` scores a declined answer against an `expected === null` question as CORRECT --
-        // correct, because declining an unanswerable question is what the abstention gold asks for.
-        // A moderation refusal is not a decline: the arm never produced anything. Recording it as a
-        // decline would hand the `ABS` column a free pass on exactly the questions most likely to be
-        // filtered, which are the personal ones, which is the column `ABS` is made of. The empty
-        // string is the honest third state -- no output -- and it fails every channel of
-        // `judgeScorer` on its own terms rather than by a special case bolted onto the scorer.
-        //
-        // The artifact keeps the distinction visible: `null` and `''` are different values in the
-        // answers vector, so a later reader can tell a refusal from a decline without the log.
-        refusals.push({
-          questionId: q.id,
-          capability: q.capability,
-          questionType: q.questionType ?? null,
-          providerCode: err instanceof ProviderContentRefusal ? err.providerCode : null,
-        });
-        record('', index);
       }
       // Captured HERE, at the end of the iteration that produced the answer, and not after
       // the loop. Reading the accessor once at the end would report the last question's text

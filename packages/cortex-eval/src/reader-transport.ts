@@ -64,12 +64,44 @@ const MIN_INTERVAL_VARIABLE = 'CORTEX_LLM_MIN_INTERVAL_MS';
 /** The variable the per-call retry allowance arrives in. */
 const RETRY_BUDGET_VARIABLE = 'CORTEX_LLM_RETRY_BUDGET_MS';
 
-/** What the environment said about the reader's transport. Both absent means "the defaults". */
+/**
+ * The variable the reader's per-attempt deadline arrives in.
+ *
+ * ## The run this exists for
+ *
+ * `42381840503` answered 291 of 500 questions and then died on
+ * `{"attempts":2,"retried":1,"elapsedMs":601000,"attemptsMs":[299999,300001],"timeoutMs":300000}`:
+ * **both** attempts reached the 300 s deadline the thinking path is built with. The deadline is a
+ * module constant chosen for a chat model on a large context, and a reasoning reader on the same
+ * prompt has a heavier tail than that constant describes -- so "dispatch a stronger reader" failed
+ * at 58% of the suite on a transport bound rather than on an answer.
+ *
+ * ## Why the repair is a declared variable rather than a bigger constant
+ *
+ * A constant sized for the slowest model in the family would make every fast model wait out a
+ * deadline it never approaches, and one sized for the fastest is what killed that run. The number
+ * that is right depends on the reader and on the prompt budget, both of which a dispatch knows and
+ * neither of which this module can infer. So the deadline becomes something a run **declares**, and
+ * `readReaderIdentity` carries the declaration into the artifact: a bound that is only in a job log
+ * is the §13.110 defect on a new field.
+ */
+const READER_TIMEOUT_VARIABLE = 'CORTEX_READER_TIMEOUT_MS';
+
+/** What the environment said about the reader's transport. All absent means "the defaults". */
 export type ReaderPacing = {
   /** Minimum gap between request starts in milliseconds; `0` when the deployment paced nothing. */
   readonly minIntervalMs: number | undefined;
   /** Wall-clock ceiling on one call's retry sequence, replacing the adapter's default. */
   readonly retryBudgetMs: number | undefined;
+  /**
+   * The per-attempt deadline this run declared, or absent to keep the one the thinking mode implies.
+   *
+   * Separate from `retryBudgetMs` because the two are different questions: the deadline says how
+   * long one request may take, the ceiling says how long a call may keep trying. A deployment that
+   * raises the first without the second builds a ladder that cannot make its first retry, which is
+   * why `resolveReaderTransport` refuses that pair instead of accepting it.
+   */
+  readonly timeoutMs: number | undefined;
 };
 
 /**
@@ -106,7 +138,30 @@ export function readReaderPacing(env: LlmEnv): ReaderPacing {
   return {
     minIntervalMs: readMilliseconds(env, MIN_INTERVAL_VARIABLE),
     retryBudgetMs: readMilliseconds(env, RETRY_BUDGET_VARIABLE),
+    timeoutMs: readDeadline(env),
   };
+}
+
+/**
+ * Read the declared deadline, refusing the one value that cannot mean what it looks like.
+ *
+ * `0` is accepted for the interval (it is "do not pace") and for the retry ceiling (it is "do not
+ * retry"), because both are decisions with a coherent meaning. For a deadline it is neither: an
+ * `AbortSignal.timeout(0)` fires before the request leaves, so a run that set it would lose every
+ * question to a bound it declared itself, and would report that as a provider failure. The refusal
+ * says which variable and which quantity, because the operator's next action is to type a larger
+ * number and the message is the only place that tells them how large is plausible.
+ */
+function readDeadline(env: LlmEnv): number | undefined {
+  const declared = readMilliseconds(env, READER_TIMEOUT_VARIABLE);
+  if (declared === 0) {
+    throw new Error(
+      `${READER_TIMEOUT_VARIABLE}=0 aborts every request before it is sent: a per-attempt ` +
+        'deadline of zero milliseconds is not "no deadline". Give a number of milliseconds, or ' +
+        'leave the variable unset to keep the deadline the thinking mode implies.',
+    );
+  }
+  return declared;
 }
 
 /**
@@ -184,11 +239,15 @@ export function resolveReaderTransport(
   thinking: ThinkingMode,
   pacing: ReaderPacing,
 ): ReaderTransport {
-  const timeoutMs = resolveTimeoutMs(thinking);
+  // A declared deadline beats the one the thinking mode implies, because the thinking mode is a
+  // request field we send and the deadline a claim about how long the endpoint may take -- and the
+  // run that made this a variable (`42381840503`) had the flag set correctly and still died on the
+  // bound the flag implied.
+  const timeoutMs = pacing.timeoutMs ?? resolveTimeoutMs(thinking);
   // The adapter's own default, read from the package that owns it: a second copy of 60 000 here
   // would be a second thing to keep in step with `DEFAULT_RETRY_TIMEOUT_MS`.
   const deadlineMs = timeoutMs ?? DEFAULT_RETRY_TIMEOUT_MS;
-  const budgetMs = pacing.retryBudgetMs ?? resolveRetryBudgetMs(thinking);
+  const budgetMs = pacing.retryBudgetMs ?? defaultRetryBudgetMs(deadlineMs, thinking);
   if (
     pacing.retryBudgetMs !== undefined &&
     pacing.retryBudgetMs > 0 &&
@@ -206,6 +265,54 @@ export function resolveReaderTransport(
     ...(budgetMs !== undefined ? { retryBudgetMs: budgetMs } : {}),
     ...(pacing.minIntervalMs !== undefined ? { minIntervalMs: pacing.minIntervalMs } : {}),
   };
+}
+
+/**
+ * The allowance the ladder gets when the deployment stated a deadline and no ceiling.
+ *
+ * ## Why the ceiling follows the deadline
+ *
+ * Because it is measured from the first attempt: a ceiling at or below one attempt is spent by that
+ * attempt, so the ladder can never make its first retry. `resolveRetryBudgetMs` states that rule for
+ * the pair the code chooses (300 s of thinking plus the standard 120 s); this states it for the pair
+ * a dispatch chooses, which is why it takes the effective deadline rather than a mode. Without it a
+ * declared 600 s deadline would inherit a 420 s ceiling and every attempt on the slow reader would
+ * be single-shot -- the same `41393748964` failure on a number nobody had looked at yet.
+ *
+ * Below the standard window the adapter's own default is already larger than the deadline, so the
+ * mode-derived answer stands and no second number is invented here.
+ */
+function defaultRetryBudgetMs(deadlineMs: number, thinking: ThinkingMode): number | undefined {
+  return deadlineMs >= DEFAULT_RETRY_BUDGET_MS
+    ? deadlineMs + DEFAULT_RETRY_BUDGET_MS
+    : resolveRetryBudgetMs(thinking);
+}
+
+/**
+ * The reader's transport as one log line, beside the judge's.
+ *
+ * ## Why this is printed at all
+ *
+ * `describeJudgeTransport` exists because a run died on an instrument whose bounds nobody had
+ * written down. The reader has the same failure and a worse consequence: `42381840503` lost a
+ * 500-question pass to a 300 s deadline that was in a module constant, and the only place it
+ * appeared in the record was the exhaustion object attached to the error -- after the loss. A line
+ * printed before the first question is the difference between a bound a reader can see and one they
+ * can only reconstruct from a failure.
+ *
+ * The budget is printed as the adapter would apply it: `default` means "no ceiling from us", which
+ * is the non-thinking reader's state and is a different fact from a number equal to the default.
+ */
+export function describeReaderTransport(thinking: ThinkingMode, pacing: ReaderPacing): string {
+  const transport = resolveReaderTransport(thinking, pacing);
+  const derived = resolveTimeoutMs(thinking);
+  return (
+    `reader transport: deadlineMs=${transport.timeoutMs ?? `${DEFAULT_RETRY_TIMEOUT_MS} (adapter)`}` +
+    ` retryBudgetMs=${transport.retryBudgetMs ?? 'default'}` +
+    ` minIntervalMs=${transport.minIntervalMs ?? 'none'}` +
+    ` deadlineSource=${pacing.timeoutMs === undefined ? (derived === undefined ? 'adapter' : 'thinking') : READER_TIMEOUT_VARIABLE}` +
+    ` thinking=${thinking.type}`
+  );
 }
 
 /**

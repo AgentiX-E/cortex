@@ -45,6 +45,16 @@ import {
   createJudgeFromEnv,
   createReadersFromEnv,
   describeJudgeTransport,
+  // §13.306. The reader's bound is printed before the first question for the reason the judge's is:
+  // `42381840503` lost a 500-question pass to a 300 s deadline that appeared in no line of its log,
+  // and the loss it produced named the bound only after it had already ended the arm.
+  describeReaderTransport,
+  describeDeadlineLosses,
+  // §13.306's ceiling, printed on the gate line: a bound the pass enforces and a reader cannot see
+  // is the same defect as the deadline that only appeared in the error object of the question that
+  // reached it.
+  deadlineLossCeiling,
+  lostToDeadline,
   createMemoryArmReranker,
   resolveReaderIdentity,
   resolveRerankBounds,
@@ -377,7 +387,18 @@ async function main(): Promise<void> {
   // through: `41585013786` died on a judge call and no line in its log said what that call had
   // been given.
   const judgeLlm = createJudgeFromEnv(process.env);
+  // Read once, here, and shared by the two transport lines below and by the arm further down: a
+  // second read is a second answer to "what deadline did this run have", and the file's own rule for
+  // the pace (§13.227) is that one function is what makes the log and the client agree.
+  const pacing = readReaderPacing(process.env);
   console.log(describeJudgeTransport());
+  // The subject's bound beside the instrument's, in the order the run meets them. Printed for both
+  // thinking modes because the reader that died was the base one: the thinking routes had 300 s and
+  // the four others had less, and a single line naming both is what makes that visible before the
+  // first question rather than in the error object of the two-hundredth.
+  for (const mode of ['disabled', 'enabled'] as const) {
+    console.log(describeReaderTransport({ type: mode }, pacing));
+  }
   const runs = Number(process.env['ABLATION_RUNS'] ?? 4);
 
   // Constructed and logged before any question is graded. The embedding backend is
@@ -832,7 +853,6 @@ async function main(): Promise<void> {
   const baseline0 = buildBaseline();
   const feature0 = buildFeature();
   const workers = readWorkers(process.env);
-  const pacing = readReaderPacing(process.env);
   const pool =
     workers === 1
       ? undefined
@@ -906,7 +926,15 @@ async function main(): Promise<void> {
       // that finished and one that died at question 55, and `41553176719` left no trace of which
       // pace it had run at because there was none to have.
       `, minIntervalMs=${pacing.minIntervalMs ?? 'none'}` +
-      `, retryBudgetMs=${pacing.retryBudgetMs ?? 'default'}`,
+      `, retryBudgetMs=${pacing.retryBudgetMs ?? 'default'}` +
+      // §13.306, on the same line for the same reason: the deadline is the third transport number
+      // and the only one whose absence is invisible -- a run that took the implied 300 s and one
+      // that declared 600 s produced the same bytes before this clause existed.
+      `, readerTimeoutMs=${pacing.timeoutMs ?? 'implied'}` +
+      // How many questions this pass may lose to a deadline before it stops being a measurement.
+      // Computed through the same function the ceiling check uses, so the printed number and the
+      // enforced one cannot be two answers.
+      `, deadlineLossCeiling=${deadlineLossCeiling(dataset.questions.length)}`,
   );
 
   const result = await runCortexMemoryArm(dataset, baseline0, feature0, {
@@ -1133,6 +1161,7 @@ async function main(): Promise<void> {
   // rather than a stack, and so that a reader of the number can see the denominator it was computed
   // over is the denominator it claims.
   console.log(`=== ${describeProviderRefusals(providerRefusals())} ===`);
+  console.log(`=== ${describeDeadlineLosses(lostToDeadline())} ===`);
 
   console.log('=== cortex-memory ablation ===');
   console.log(result.markdown);

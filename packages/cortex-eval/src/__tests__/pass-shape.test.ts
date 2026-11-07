@@ -39,24 +39,30 @@ describe('passShapeReport keeps "nobody said" apart from "said zero"', () => {
     expect(
       passShapeReport({
         workers: 1,
-        pacing: { minIntervalMs: undefined, retryBudgetMs: undefined },
+        pacing: { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: undefined },
       }),
     ).toEqual({ workers: 1, minIntervalMs: null, retryBudgetMs: null });
   });
 
   it('keeps a stated zero as zero', () => {
-    expect(passShapeReport({ workers: 4, pacing: { minIntervalMs: 0, retryBudgetMs: 0 } })).toEqual(
-      {
+    expect(
+      passShapeReport({
         workers: 4,
-        minIntervalMs: 0,
-        retryBudgetMs: 0,
-      },
-    );
+        pacing: { minIntervalMs: 0, retryBudgetMs: 0, timeoutMs: undefined },
+      }),
+    ).toEqual({
+      workers: 4,
+      minIntervalMs: 0,
+      retryBudgetMs: 0,
+    });
   });
 
   it('carries the width, which is the one of the three that changes what a duration means', () => {
     expect(
-      passShapeReport({ workers: 8, pacing: { minIntervalMs: 6_000, retryBudgetMs: 600_000 } }),
+      passShapeReport({
+        workers: 8,
+        pacing: { minIntervalMs: 6_000, retryBudgetMs: 600_000, timeoutMs: undefined },
+      }),
     ).toEqual({ workers: 8, minIntervalMs: 6_000, retryBudgetMs: 600_000 });
   });
 });
@@ -114,7 +120,7 @@ describe('the report carries the shape from the option that configured the clien
       {
         runs: 1,
         scorer: exactMatchScorer,
-        readerPacing: { minIntervalMs: 6_000, retryBudgetMs: 600_000 },
+        readerPacing: { minIntervalMs: 6_000, retryBudgetMs: 600_000, timeoutMs: undefined },
         pool: createAblationPool({
           workers: 4,
           first: { baseline: fixedSystem('base', 'a'), feature: fixedSystem('feat', 'a') },
@@ -149,7 +155,7 @@ describe('the report carries the shape from the option that configured the clien
       {
         runs: 1,
         scorer: exactMatchScorer,
-        readerPacing: { minIntervalMs: 6_000, retryBudgetMs: undefined },
+        readerPacing: { minIntervalMs: 6_000, retryBudgetMs: undefined, timeoutMs: undefined },
       },
     );
     const markdown = formatAblationReport(report);

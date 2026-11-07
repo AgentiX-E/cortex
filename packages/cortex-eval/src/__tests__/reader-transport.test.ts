@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   describeJudgeTransport,
+  describeReaderTransport,
   readReaderPacing,
   resolveJudgeTransport,
   resolveReaderTransport,
   resolveRetryBudgetMs,
   resolveTimeoutMs,
 } from '../reader-transport.js';
+import { createJudgeFromEnv, createLlmFromEnv, resolveReaderIdentity } from '../llm-factory.js';
 import { DEFAULT_RETRY_BUDGET_MS, DEFAULT_RETRY_TIMEOUT_MS } from '@agentix-e/cortex-ai';
 
 /**
@@ -25,7 +27,11 @@ import { DEFAULT_RETRY_BUDGET_MS, DEFAULT_RETRY_TIMEOUT_MS } from '@agentix-e/co
  */
 describe('readReaderPacing reads the two transport variables', () => {
   it('reports both absent when neither is set', () => {
-    expect(readReaderPacing({})).toEqual({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    expect(readReaderPacing({})).toEqual({
+      minIntervalMs: undefined,
+      retryBudgetMs: undefined,
+      timeoutMs: undefined,
+    });
   });
 
   it('treats a blank value as unset, like every other reader variable', () => {
@@ -65,7 +71,7 @@ describe('readReaderPacing reads the two transport variables', () => {
 });
 
 describe('resolveReaderTransport composes the pace with the deadline it already had', () => {
-  const noPacing = { minIntervalMs: undefined, retryBudgetMs: undefined };
+  const noPacing = { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: undefined };
 
   it('keeps the non-thinking reader on the adapter defaults', () => {
     // Nothing is passed at all. The absent-key discipline is the same one `resolveRetryBudgetMs`
@@ -88,7 +94,7 @@ describe('resolveReaderTransport composes the pace with the deadline it already 
     expect(
       resolveReaderTransport(
         { type: 'disabled' },
-        { minIntervalMs: undefined, retryBudgetMs: 600_000 },
+        { minIntervalMs: undefined, retryBudgetMs: 600_000, timeoutMs: undefined },
       ),
     ).toEqual({ retryBudgetMs: 600_000 });
   });
@@ -97,7 +103,10 @@ describe('resolveReaderTransport composes the pace with the deadline it already 
     // The one value the inequality below must not reject: a deployment that wants no retries is
     // asking for one request per call, which is achievable and is not the unreachable ladder.
     expect(
-      resolveReaderTransport({ type: 'disabled' }, { minIntervalMs: undefined, retryBudgetMs: 0 }),
+      resolveReaderTransport(
+        { type: 'disabled' },
+        { minIntervalMs: undefined, retryBudgetMs: 0, timeoutMs: undefined },
+      ),
     ).toEqual({ retryBudgetMs: 0 });
   });
 
@@ -108,13 +117,13 @@ describe('resolveReaderTransport composes the pace with the deadline it already 
     expect(() =>
       resolveReaderTransport(
         { type: 'disabled' },
-        { minIntervalMs: undefined, retryBudgetMs: 30_000 },
+        { minIntervalMs: undefined, retryBudgetMs: 30_000, timeoutMs: undefined },
       ),
     ).toThrow(new RegExp(`greater than the ${DEFAULT_RETRY_TIMEOUT_MS} ms`));
     expect(() =>
       resolveReaderTransport(
         { type: 'enabled' },
-        { minIntervalMs: undefined, retryBudgetMs: 200_000 },
+        { minIntervalMs: undefined, retryBudgetMs: 200_000, timeoutMs: undefined },
       ),
     ).toThrow(/greater than the 300000 ms/);
   });
@@ -125,7 +134,7 @@ describe('resolveReaderTransport composes the pace with the deadline it already 
     expect(
       resolveReaderTransport(
         { type: 'disabled' },
-        { minIntervalMs: 6_000, retryBudgetMs: undefined },
+        { minIntervalMs: 6_000, retryBudgetMs: undefined, timeoutMs: undefined },
       ),
     ).toEqual({ minIntervalMs: 6_000 });
   });
@@ -153,13 +162,16 @@ describe('the factory hands the transport to the adapter', () => {
     expect(source).toContain('...resolveReaderTransport(');
   });
 
-  it('reads the environment once per entry point, and there are three of them now', () => {
+  it('reads the environment once per entry point, and there are four of them now', () => {
     // Two reader entry points, because a read at only one of them would pace the feature arm and
     // not the baseline, and the A/B would differ by a transport property. The third is the judge
     // (§13.236): it reads the same variables, so a judge built from a literal would be a second
     // copy of the deployment's pace -- and the one client whose pace nobody would think to check.
+    // The fourth is `resolveReaderIdentity` (§13.306), which reads them to put the declared
+    // deadline on the artifact: the recorder is not a constructor, so it reads its own declaration
+    // rather than making each of the three constructors read the transport twice to hand it one.
     const reads = source.match(/readReaderPacing\(env\)/g) ?? [];
-    expect(reads.length).toBe(3);
+    expect(reads.length).toBe(4);
   });
 
   it('gives the judge its own pair rather than the reader spread', () => {
@@ -178,7 +190,11 @@ describe('the factory hands the transport to the adapter', () => {
  */
 describe('resolveJudgeTransport sizes the instrument separately from the subject', () => {
   it('gives the judge many attempts by keeping the ceiling far above the deadline', () => {
-    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    const judge = resolveJudgeTransport({
+      minIntervalMs: undefined,
+      retryBudgetMs: undefined,
+      timeoutMs: undefined,
+    });
     expect(judge.timeoutMs).toBe(30_000);
     expect(judge.retryBudgetMs).toBe(300_000);
     // The relationship the reader's guard enforces, asserted for the pair that bypasses it: a
@@ -189,13 +205,17 @@ describe('resolveJudgeTransport sizes the instrument separately from the subject
   });
 
   it('is shorter than the reader on the deadline and longer on the ceiling', () => {
-    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    const judge = resolveJudgeTransport({
+      minIntervalMs: undefined,
+      retryBudgetMs: undefined,
+      timeoutMs: undefined,
+    });
     // The reader's pair for a non-thinking arm is the adapter's own defaults -- the resolver
     // omits both fields rather than restating them, which is why the comparison is against the
     // defaults and not against the resolver's return value.
     const reader = resolveReaderTransport(
       { type: 'disabled' },
-      { minIntervalMs: undefined, retryBudgetMs: undefined },
+      { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: undefined },
     );
     expect('timeoutMs' in reader).toBe(false);
     expect(judge.timeoutMs!).toBeLessThan(DEFAULT_RETRY_TIMEOUT_MS);
@@ -203,21 +223,206 @@ describe('resolveJudgeTransport sizes the instrument separately from the subject
   });
 
   it('inherits the pace, which belongs to the provider rather than to the workload', () => {
-    const judge = resolveJudgeTransport({ minIntervalMs: 6000, retryBudgetMs: undefined });
+    const judge = resolveJudgeTransport({
+      minIntervalMs: 6000,
+      retryBudgetMs: undefined,
+      timeoutMs: undefined,
+    });
     expect(judge.minIntervalMs).toBe(6000);
   });
 
   it('does not carry a pacing field when the deployment stated none', () => {
-    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    const judge = resolveJudgeTransport({
+      minIntervalMs: undefined,
+      retryBudgetMs: undefined,
+      timeoutMs: undefined,
+    });
     expect('minIntervalMs' in judge).toBe(false);
   });
 
   it('describes the pair it builds, so the log cannot drift from the client', () => {
-    const judge = resolveJudgeTransport({ minIntervalMs: undefined, retryBudgetMs: undefined });
+    const judge = resolveJudgeTransport({
+      minIntervalMs: undefined,
+      retryBudgetMs: undefined,
+      timeoutMs: undefined,
+    });
     const line = describeJudgeTransport();
     expect(line).toContain(`deadlineMs=${String(judge.timeoutMs)}`);
     expect(line).toContain(`retryBudgetMs=${String(judge.retryBudgetMs)}`);
     // The one property of a judge that is not a number and cannot be read off the transport.
     expect(line).toContain('thinking=disabled');
+  });
+});
+
+/**
+ * §13.306: the reader's per-attempt deadline became a declared number.
+ *
+ * ## The run behind it
+ *
+ * `42381840503` (the `M1` arm B, `deepseek-v4-pro`) answered 291 of 500 and died on
+ * `{"attempts":2,"retried":1,"elapsedMs":601000,"attemptsMs":[299999,300001],"timeoutMs":300000}`.
+ * The bound was a module constant sized for a chat model, and nothing in the dispatch could move it
+ * -- so the arm that was supposed to test whether a stronger reader scores higher never produced a
+ * number, and the failure was a transport fact rather than an answer.
+ *
+ * ## What these tests hold
+ *
+ * Three separate claims: the variable is parsed with the same grammar as its two neighbours (so
+ * `''` stays "unset" and `0` is refused rather than silently disabling the run); a declared deadline
+ * beats the implied one in **both** thinking modes, with the retry ceiling following it; and the
+ * line a run prints names which of the three sources the number came from, because "300 s because
+ * we chose it" and "300 s because nobody said" are different configurations that used to render the
+ * same bytes.
+ */
+describe('§13.306 the declared reader deadline', () => {
+  const undeclared = { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: undefined };
+
+  it('reads the deadline, and treats a blank as unset', () => {
+    expect(readReaderPacing({ CORTEX_READER_TIMEOUT_MS: '600000' }).timeoutMs).toBe(600_000);
+    // The blank case is the one `41431790794` made mandatory: a workflow that interpolates an unset
+    // variable passes `''`, and `Number('')` is 0 -- which for this variable would be a deadline
+    // that fires before the request leaves.
+    expect(readReaderPacing({ CORTEX_READER_TIMEOUT_MS: '' }).timeoutMs).toBeUndefined();
+    expect(readReaderPacing({ CORTEX_READER_TIMEOUT_MS: '  ' }).timeoutMs).toBeUndefined();
+  });
+
+  it('refuses zero, which is not "no deadline" but "abort before sending"', () => {
+    // The interval accepts 0 (do not pace) and the ceiling accepts 0 (do not retry). A deadline of
+    // zero has no such reading: `AbortSignal.timeout(0)` fires immediately, so a run that set it
+    // would lose every question to a bound it declared itself and report that as a provider failure.
+    expect(() => readReaderPacing({ CORTEX_READER_TIMEOUT_MS: '0' })).toThrow(
+      /CORTEX_READER_TIMEOUT_MS=0 aborts every request before it is sent/,
+    );
+  });
+
+  it('beats the implied deadline in both thinking modes', () => {
+    const declared = { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: 600_000 };
+    // `enabled` would otherwise take 300 s:
+    expect(resolveReaderTransport({ type: 'enabled' }, declared).timeoutMs).toBe(600_000);
+    // and `disabled` would otherwise take the adapter's 60 s, which is the pair that killed the
+    // four non-thinking routes in the run that inspired this. A reasoning reader is slow on those
+    // routes too; nothing about the flag predicts the endpoint's latency.
+    expect(resolveReaderTransport({ type: 'disabled' }, declared).timeoutMs).toBe(600_000);
+  });
+
+  it('moves the retry ceiling with the deadline, or the ladder cannot retry once', () => {
+    // The rule `resolveRetryBudgetMs` states for the pair the code chooses, applied to the pair a
+    // dispatch chooses. Without it a declared 600 s deadline would inherit the 420 s ceiling and
+    // every slow attempt would be single-shot -- `41393748964` on a number nobody had looked at.
+    expect(
+      resolveReaderTransport(
+        { type: 'enabled' },
+        { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: 600_000 },
+      ).retryBudgetMs,
+    ).toBe(600_000 + DEFAULT_RETRY_BUDGET_MS);
+    expect(
+      resolveReaderTransport(
+        { type: 'disabled' },
+        { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: 600_000 },
+      ).retryBudgetMs,
+    ).toBe(600_000 + DEFAULT_RETRY_BUDGET_MS);
+    // Below the standard window the adapter's own ceiling is already larger than the deadline, so
+    // the mode-derived answer stands and no second number is invented.
+    expect(
+      resolveReaderTransport(
+        { type: 'disabled' },
+        { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: 30_000 },
+      ),
+    ).toEqual({ timeoutMs: 30_000 });
+  });
+
+  it('refuses a stated ceiling the declared deadline would consume', () => {
+    expect(() =>
+      resolveReaderTransport(
+        { type: 'disabled' },
+        { minIntervalMs: undefined, retryBudgetMs: 300_000, timeoutMs: 600_000 },
+      ),
+    ).toThrow(/greater than the 600000 ms/);
+  });
+
+  it('names the source of the deadline on the line a run prints', () => {
+    // Three states, three spellings. A run that declared 600 s and a run that took the implied
+    // 300 s were indistinguishable in every log line before this, which is why the arm that died
+    // could be re-read only from the error object of the question that killed it.
+    expect(describeReaderTransport({ type: 'enabled' }, undeclared)).toContain(
+      'deadlineSource=thinking',
+    );
+    expect(describeReaderTransport({ type: 'disabled' }, undeclared)).toContain(
+      'deadlineSource=adapter',
+    );
+    const declared = describeReaderTransport(
+      { type: 'enabled' },
+      { minIntervalMs: undefined, retryBudgetMs: undefined, timeoutMs: 600_000 },
+    );
+    expect(declared).toContain('deadlineSource=CORTEX_READER_TIMEOUT_MS');
+    expect(declared).toContain('deadlineMs=600000');
+    expect(declared).toContain(`retryBudgetMs=${String(600_000 + DEFAULT_RETRY_BUDGET_MS)}`);
+    expect(declared).toContain('thinking=enabled');
+  });
+
+  it('describes the pair it builds, so the log cannot drift from the client', () => {
+    // The same guarantee `describeJudgeTransport` carries: the line must be a reading of the
+    // resolver, not a second literal beside it.
+    const pacing = {
+      minIntervalMs: 6_000,
+      retryBudgetMs: undefined,
+      timeoutMs: 600_000,
+    };
+    const transport = resolveReaderTransport({ type: 'disabled' }, pacing);
+    const line = describeReaderTransport({ type: 'disabled' }, pacing);
+    expect(line).toContain(`deadlineMs=${String(transport.timeoutMs)}`);
+    expect(line).toContain(`retryBudgetMs=${String(transport.retryBudgetMs)}`);
+    expect(line).toContain(`minIntervalMs=${String(transport.minIntervalMs)}`);
+  });
+
+  it('carries the declared deadline into the artifact identity', () => {
+    // §13.110's rule on the newest field: a bound that appears only in a job log expires with the
+    // log. `resolveReaderIdentity` is the function the artifact is written from, so it is where the
+    // declaration has to arrive -- and absent has to stay absent, or every archived artifact's
+    // rendered line would acquire a clause it never had.
+    expect(
+      resolveReaderIdentity({ DEEPSEEK_API_KEY: 'k', CORTEX_READER_TIMEOUT_MS: '600000' })
+        .deadlineMs,
+    ).toBe(600_000);
+    expect(resolveReaderIdentity({ DEEPSEEK_API_KEY: 'k' }).deadlineMs).toBeUndefined();
+  });
+});
+
+describe('§13.306 the judge and reader entry points are constructible from a bare environment', () => {
+  // Why this exists: the gate is 95% per dimension for the package, and `createJudgeFromEnv` was the
+  // one export in `llm-factory` that nothing constructed -- every test built a judge from a stub, so
+  // the factory that a dispatch actually uses was the one path no test ran. A 3-line check that the
+  // two entry points build without a network call is the whole difference between "the factory is
+  // plausible" and "the factory runs".
+  const env = { DEEPSEEK_API_KEY: 'test-key', DEEPSEEK_MODEL: 'deepseek-chat' };
+
+  it('builds the judge with its own pair, never with thinking on', () => {
+    const judge = createJudgeFromEnv(env);
+    expect(typeof judge.complete).toBe('function');
+  });
+
+  it('wraps the judge in the temperature when the environment names one', () => {
+    // The same wrapper the reader gets (§13.119): a judge that dropped a stated temperature would
+    // be measuring with a different instrument than the reader it scores.
+    const judge = createJudgeFromEnv({ ...env, TEMPERATURE: '0' });
+    expect(typeof judge.complete).toBe('function');
+  });
+
+  it('builds the single reader, and refuses a route-scoped thinking value', () => {
+    expect(typeof createLlmFromEnv(env).complete).toBe('function');
+    expect(() => createLlmFromEnv({ ...env, DEEPSEEK_THINKING: 'multi-session+temporal' })).toThrow(
+      /cannot be administered by a single reader/,
+    );
+  });
+
+  it('carries the declared deadline into the client it builds', () => {
+    // The wiring claim: the parser above is not the thing that runs. `CORTEX_READER_TIMEOUT_MS` has
+    // to reach `OpenAICompatibleLLM`, and the only evidence is the reader that came out of the
+    // factory -- which is why this asserts on a real construction rather than on the resolver.
+    const reader = createLlmFromEnv({ ...env, CORTEX_READER_TIMEOUT_MS: '600000' });
+    expect(typeof reader.complete).toBe('function');
+    expect(resolveReaderIdentity({ ...env, CORTEX_READER_TIMEOUT_MS: '600000' }).deadlineMs).toBe(
+      600_000,
+    );
   });
 });

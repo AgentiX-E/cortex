@@ -219,6 +219,18 @@ env:
   # passes, and this line must stay conditional.
   CORTEX_LLM_MIN_INTERVAL_MS: ${{ startsWith(inputs.model, 'zhipu:') && vars.CORTEX_LLM_MIN_INTERVAL_MS || '' }}
   CORTEX_LLM_RETRY_BUDGET_MS: ${{ vars.CORTEX_LLM_RETRY_BUDGET_MS }}
+  # §13.306. The third transport number, and the only one whose absence used to be invisible.
+  # `42381840503` (`deepseek-v4-pro`) answered 291 of 500 and died on
+  # `attemptsMs=[299999,300001], timeoutMs=300000`: the thinking routes carried a 300 s bound that was
+  # a module constant, the four others carried the adapter's 60 s, and no dispatch could move either.
+  # A reasoning reader's latency distribution is not the chat reader's, so the bound has to be
+  # declared by the run that dispatches it -- and recorded, which is why the artifact's reader line
+  # now carries a `deadline=` clause when one was declared.
+  #
+  # Through `vars` and not a 25th input, for the reason the pace is: the input list sits one below
+  # GitHub's ceiling, and an unset variable renders as `''`, which this parser reads as "unset"
+  # rather than as zero (§13.227's `41431790794`).
+  CORTEX_READER_TIMEOUT_MS: ${{ vars.CORTEX_READER_TIMEOUT_MS }}
 
 jobs:
   cortex-memory-ablation:
