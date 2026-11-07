@@ -33905,3 +33905,90 @@ large ABS movement makes the accuracy comparison a calibration comparison (§3 o
 One dispatch. No redraw, no peeking, no second room at 32,000 to find a friendlier draw. A miss on **A** is
 recorded as a miss and moves the `C1` repair from size to density; a pass on all five is the first reading in
 this campaign where a cost row is met by measurement rather than by argument.
+
+### 13.302 The room becomes a per-route decision, because the cost is not spread evenly
+
+`42373407439` reported the five registrations of §13.301 and two of them failed, in a way that names
+the next arm. The full reading is `docs/PROMPT-ROOM-IS-LOAD-BEARING.md`; what matters here is the
+shape it refuted.
+
+#### 13.302.1 What the previous prediction got wrong, in its own terms
+
+§13.301.3 priced the cut with `tools/gold-room.py --max-chars 24000`, which counts the questions where
+**the gold turns plus the measured overhead do not fit**, and reported `ABS 9, IE 2, KU 38, MR 0,
+TR 0`. The registration then wrote its own falsifier:
+
+> a fall in MR or TR contradicts 13.301.3, which says their gold fits at 24,000 by arithmetic, so a
+> loss there is a defect in the arm and not a cost of the room
+
+The fall was `MR -6.61` and `TR -4.72`, against `ABS 0.00`, `IE -0.67`, `KU -1.39`. The three
+capabilities the instrument named lost **2.1 points combined**; the two it cleared lost **11.3**.
+
+The instrument was not misread, it was the wrong instrument. Between the two artifacts, every
+capability lost about half its delivered turns (`MR 199 -> 102`, `TR 205 -> 109`, `IE 64 -> 32`), and
+only two lost accuracy. So "less evidence" is not the mechanism. The mechanism is the **shape of the
+question**: `IE`, `KU` and `ABS` ask for one fact in one turn and half a packet still holds that turn;
+`MR` and `TR` ask for a **count over turns**, and a count over a sample is not the count. The artifact
+carries the signature — `gpt4_a56e767c` answers `3` against four festivals, `gpt4_2fce9456` answers `5`
+against four properties — every one off by roughly the number of turns the cut removed.
+
+**A gold-coverage model is therefore a sufficient risk model for a single-turn question and an
+irrelevant one for an aggregation**, because an aggregation's requirement is not its gold turn but the
+complete set of turns the gold counts. `gold-room.py`'s `room` column is a lower bound on exposure.
+
+#### 13.302.2 The single variable
+
+`memoryArmConfig` already resolves a room per rendering route (§13.299). This arm sets it:
+
+| route | room | capabilities that render through it |
+| --- | ---: | --- |
+| `abstention` | 24,000 | ABS |
+| `assistant` | 24,000 | IE (`single-session-assistant`) |
+| `flat` | 24,000 | IE (everything else) |
+| `knowledge-update` | 24,000 | KU |
+| `multi-session` | **48,000** | MR |
+| `temporal` | **48,000** | TR |
+
+One input moves: `cortex_memory_max_prompt_chars_by_route`, from unset to the map above. Every other
+field of §10.3 stands, the reader is the same, the judge is the same, and the repetitions are 2.
+
+#### 13.302.3 The prediction, and it is arithmetic over measured cells rather than a model
+
+Every cell below is a measured number from the two arms already read, which is the difference between
+this registration and §13.301's:
+
+| capability | n | 24,000 (measured) | 48,000 (measured) | this arm |
+| --- | ---: | ---: | ---: | ---: |
+| ABS | 30 | 100.00% | 100.00% | 24,000 → 100.00% |
+| IE | 150 | 92.67% | 93.33% | 24,000 → 92.67% |
+| KU | 72 | 87.50% | 88.89% | 24,000 → 87.50% |
+| MR | 121 | 76.86% | 83.47% | 48,000 → 83.47% |
+| TR | 127 | 91.34% | 96.06% | 48,000 → 96.06% |
+
+Weighted: `(30/30 + 139/150 + 63/72 + 101/121 + 122/127)` = `455/500` = **91.00%**, against the
+control's 91.40% — a predicted **-0.40**. The cells are counts rather than rounded percentages, so the
+sum is the same arithmetic the run will do.
+
+Tokens: `(252 x 22,830 + 248 x 46,926) / 500 = 34,782` characters per question, or **8,567 tokens** at
+the measured 4.06 characters per token, against the control's 11,558 — a predicted **0.741x**.
+
+#### 13.302.4 The registration
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| **A** | overall accuracy is **at least 90.5%** | a reading below 90.5 is 0.5 points under the prediction and outside what the cells can absorb, which would mean the two rooms interact rather than compose |
+| **B** | **MR and TR do not move by more than 1.0 point** each | they are read at the same room the control read, so any movement is the arm's own noise leaking into routes it did not touch — and a movement there is a defect in the per-route resolution, which is the exact class §13.299 repaired |
+| **C** | **IE, KU and ABS do not move by more than 1.5 points** each | they moved `-0.67`, `-1.39` and `0.00` between the two endpoint arms, so a larger movement here means the map is not being applied per route |
+| **D** | **`C1` reads at most 6,000 tokens per question** | the arithmetic says 8,556, so this one is *expected to miss* and is registered as a miss in advance: the point of registering it is that a hit would mean the character median is not the arithmetic the cells imply |
+| **E** | the configuration line renders **six rooms, not one** | `memoryArmConfig.effectivePromptChars` (§13.299) must print a per-route map here. A single number means the map path is not being read, which is the defect that started the whole line of work |
+
+**D** is deliberately registered as an expected miss. A registration that only contains predictions it
+expects to hit is a registration that cannot be falsified, and `C1`'s 6,000 is not reachable from
+11,558 by cutting the routes that are already cheap — the arithmetic says so before the dispatch does.
+
+#### 13.302.5 Stop rule
+
+One dispatch. A pass on **A**, **B**, **C** and **E** makes the per-route room the registered
+configuration and moves `C1` to 8,556 with a named remainder rather than an unmeasured one. A miss on
+**B** sends the arm back to §13.299's resolution path rather than to a bigger room, because a movement
+in an untouched route cannot be caused by the size of the routes that were touched.

@@ -137,9 +137,13 @@ export class OpenAICompatibleLLM implements LLM {
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '');
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
-      throw new Error(
-        `LLM request failed: ${res.status} ${res.statusText}${detail}${describeRefusal(outcome.refusal)}`,
-      );
+      const message = `LLM request failed: ${res.status} ${res.statusText}${detail}${describeRefusal(outcome.refusal)}`;
+      if (isContentRefusal(res.status, bodyText)) {
+        // Thrown before the generic branch so that the type, and not the wording, is what the
+        // caller keys on. See `ProviderContentRefusal` for the pass this cost.
+        throw new ProviderContentRefusal(message, res.status, providerErrorCode(bodyText));
+      }
+      throw new Error(message);
     }
     return res;
   }
@@ -160,6 +164,87 @@ export class OpenAICompatibleLLM implements LLM {
  * Absent when the call was served, so a message for a refused request reads identically to what
  * it read before this function existed.
  */
+/**
+ * The provider declined the **prompt**, not the request.
+ *
+ * ## Why this is a named class and not a message a caller greps
+ *
+ * Run `42368550937` is the reason. A 500-question pass had been running for 1,003 seconds and had
+ * answered 83 questions when Zhipu returned
+ *
+ * ```text
+ * 400 Bad Request — {"contentFilter":[{"level":1,"role":"user"}],
+ *                   "error":{"code":"1301","message":"... sensitive content ..."}}
+ * ```
+ *
+ * on `gpt4_2f8be40d`. The transport did the right thing -- a 400 is not retryable, so it did not
+ * retry -- and then rethrew, `runWorker`'s promise rejected, `Promise.all` rejected, and the pass
+ * ended. Two hours of a four-worker pass were discarded, no report was written, and the run
+ * reported `failure` with `reached 83`. **One question's prompt contained text the provider
+ * refuses to read, and that destroyed 499 other questions' measurements.**
+ *
+ * The class exists so that the caller can distinguish this from every other `!res.ok` with a type
+ * rather than with a substring search over a message that this file is free to reword. The one
+ * thing a caller may do with it is *decide the question*, never retry it: the same prompt asks the
+ * same question of the same filter and gets the same answer, so an attempt is certain waste.
+ *
+ * ## Why the detection is narrow
+ *
+ * A bare `400` is a defect in the request body and must keep crashing the pass -- a malformed body
+ * fails on every question and repairing it is not something a per-question catch can do. So the
+ * class is thrown only when the body carries a **provider-side moderation marker**: Zhipu's
+ * `contentFilter` array or its `1301` code, or the wording the endpoint returns for the same
+ * condition in English. Anything else stays an ordinary `Error`.
+ */
+export class ProviderContentRefusal extends Error {
+  /** HTTP status the provider answered with (400 on Zhipu, 422 on some compatible gateways). */
+  readonly status: number;
+  /** The provider's own code for the refusal, when it published one (`'1301'` on Zhipu). */
+  readonly providerCode: string | null;
+
+  constructor(message: string, status: number, providerCode: string | null) {
+    super(message);
+    this.name = 'ProviderContentRefusal';
+    this.status = status;
+    this.providerCode = providerCode;
+  }
+}
+
+/**
+ * Markers a provider uses to say "I will not read this prompt".
+ *
+ * Kept as data rather than as a regular expression so that a reviewer can add a provider by adding
+ * a row, and so that the `1301` code is matched as a *quoted* token: `1301` is a plausible number
+ * to find in an unrelated error body (a byte offset, an id), and a bare substring test would refuse
+ * a genuine transport failure.
+ */
+const CONTENT_FILTER_MARKERS: readonly string[] = [
+  'contentFilter',
+  '"code":"1301"',
+  '"code": "1301"',
+  'sensitive content',
+];
+
+/** Extract the provider's own error code, when the body publishes one. */
+function providerErrorCode(body: string): string | null {
+  const match = /"code"\s*:\s*"?([A-Za-z0-9_.-]+)"?/.exec(body);
+  return match === null ? null : (match[1] ?? null);
+}
+
+/**
+ * True when a refused response is a moderation decision rather than a malformed request.
+ *
+ * `status` is constrained to the two codes moderation gateways use, because a `429` body that
+ * happened to quote a marker would be a throttling event and treating it as a refusal would turn a
+ * wait into a lost measurement.
+ */
+function isContentRefusal(status: number, body: string): boolean {
+  if (status !== 400 && status !== 422) {
+    return false;
+  }
+  return CONTENT_FILTER_MARKERS.some((marker) => body.includes(marker));
+}
+
 function describeRefusal(refusal: RetryRefusal | undefined): string {
   if (refusal === undefined) {
     return '';

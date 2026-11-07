@@ -33,6 +33,14 @@ export {
 } from './profile.js';
 export {
   OpenAICompatibleLLM,
+  /**
+   * Exported because a benchmark has to decide a question the provider will not read.
+   *
+   * The consumer is `cortex-eval`'s worker: it catches exactly this class and records the question
+   * as refused, and it must catch this class rather than a message because a substring guard over a
+   * reworded message is the failure mode `bench-failure.ts` documents.
+   */
+  ProviderContentRefusal,
   buildChatBody,
   parseJson,
   sanitizePrompt,

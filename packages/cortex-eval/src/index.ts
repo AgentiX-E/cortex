@@ -38,6 +38,26 @@ export {
   type BenchmarkProgressCallback,
   type BenchmarkWorkerPool,
 } from './benchmark.js';
+// The second grading protocol has no barrel surface yet, and the census is what decided that. It was
+// exported whole, `tools/export-census.mjs` reported four new orphans, and the reading of that report is
+// the honest one: **a protocol with no dispatch is a module, not a stage**.
+//
+// The chain that would make it a stage is three links long -- `sourceAwareScorer` needs an audit cache,
+// the cache needs a 500-call generation pass, and that pass needs the dataset file the artifact
+// deliberately does not carry. Two of the three do not exist. Exporting the four names anyway would let
+// the census go green while the protocol still never runs, which is worse than the debt, because the
+// debt is visible in `tools/export-census-baseline.json` under
+// `source-aware-protocol-awaiting-its-dispatch` and a green check would not be.
+//
+// What does exist is the half that needs no model: `tools/source-aware-audit.mjs` screens an existing
+// artifact for lexical reachability and reports the reader/retrieval split, and
+// `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` carries the reading it produced on its first run. The four names
+// move here in the commit that gives them a caller.
+// The two readings and not the record type: `bench/run-ablation.ts` calls `providerRefusals()` and hands
+// the result straight to `describeProviderRefusals`, so nothing outside this package ever names the shape
+// -- and an exported type with no caller is the orphan the census reported. It stays exported from
+// `benchmark.ts`, which is where the record is built and where the test imports it from.
+export { describeProviderRefusals, providerRefusals } from './benchmark.js';
 export { readWorkers } from './worker-pool.js';
 export { describeFailure } from './bench-failure.js';
 export { drawUnjudged, type Draw, type DrawableRow } from './a3-draw.js';

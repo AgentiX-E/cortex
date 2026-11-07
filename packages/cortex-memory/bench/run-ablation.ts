@@ -125,7 +125,9 @@ import {
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
   REDUCED_TURNS_MARKER,
+  describeProviderRefusals,
   describeScorerChannels,
+  providerRefusals,
   scorerChannelStats,
   serializeReportOrReduce,
 } from '@agentix-e/cortex-eval';
@@ -1124,6 +1126,14 @@ async function main(): Promise<void> {
   // judge. §13.40.9 registers this line as the fix.
   console.log(`=== ${describeScorerChannels(scorerChannelStats())} ===`);
 
+  // How many questions a provider's moderation gate refused, printed beside the number it affects.
+  //
+  // Run `42368550937` died instead of printing this: one refusal was one throw and the pass ended at
+  // 83 of 500. The line exists so the next such run reports `provider refusals: 1 (IE 1)` and a score
+  // rather than a stack, and so that a reader of the number can see the denominator it was computed
+  // over is the denominator it claims.
+  console.log(`=== ${describeProviderRefusals(providerRefusals())} ===`);
+
   console.log('=== cortex-memory ablation ===');
   console.log(result.markdown);
 }
@@ -1189,6 +1199,7 @@ main().catch((error: unknown) => {
   // artifact to reconstruct it from, and this is the only record of which scorer the
   // answers it did grade went through.
   console.error(`=== ${describeScorerChannels(scorerChannelStats())} ===`);
+  console.error(`=== ${describeProviderRefusals(providerRefusals())} ===`);
   console.error('=== transport retry accounting (process-wide) ===');
   console.error(JSON.stringify(retryStats()));
   console.error(summary);
