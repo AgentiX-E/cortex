@@ -717,9 +717,13 @@ publishes them.
 
 Three facts this table states that §2's did not:
 
-1. **Our own 11.7K tokens is more than Mem0's 6.8K and Zep's 4.4K, at 7 to 10 points lower.** The
-   character-denominated budget (§13.287.2: 2.62× density) is why. This is the first board on which we are
-   dominated on **both** axes rather than only accuracy, and it is the costliest single fact in this section.
+1. **The table is not one board, it is two.** Seven of the eight rows above run a reasoning-class reader
+   (gpt-5-mini, gpt-5.5, Gemini 3.x, Opus 5.5) and this arm runs `deepseek-chat`, which is not one. §14.6
+   re-groups it by reader, and the re-grouping changes the conclusion: against a same-class reader this arm is
+   **0.78 points behind the strongest observational-memory system on the board**, not 12. Quoting the headline
+   number against ours is a comparison between two different readers, and §14.2 measures what that difference
+   is worth. What survives unambiguously is the **cost** half: 11.7K against Mem0's 6.8K and Zep's 4.4K is a
+   real deficit on a comparable axis, and §13.292.4 turns it into acceptance row `C1`.
 2. **The two self-declared "leaderboard parodies" are a real methodological warning.** Supermemory published
    `~99` explicitly labelled a parody of boards that omit cost and latency; AgentMemory's 96.2 is self-flagged
    as **46 tuning iterations on the test set with no held-out split**, and OmegaMax's 95.4 as **eight
@@ -846,8 +850,78 @@ Three consequences, ordered by how soon they bind.
    one they were scored against, i.e. the transcript contained the gold and the reply's own closing line did
    not. A gate that asks a reader "did you get them all" would report complete on that run.
 
-**What this round does not change.** It does not move the SOTA claim: our 90.20% mixed / 83.45% S1 is below
-Maximem (95.6), Mastra (94.87), Hindsight (94.6), Mem0 (94.4), Honcho (90.4) and Zep (90.2) on published
-numbers, and above Supermemory (85.2). **cortex is not SOTA.** What changed is that the *reason* is now
-attributable in three independent places rather than one: evidence delivery (§13.291), the reader's
-aggregation (§14.3), and the model class's omission bias (§14.4.1).
+**What this round does not change.** It does not move the SOTA claim: on published numbers our 90.20% mixed /
+83.45% S1 is below Maximem (95.6), Mastra (94.87), Hindsight (94.6), Mem0 (94.4), Honcho (90.4) and Zep
+(90.2), and above Supermemory (85.2). **cortex is not SOTA.** What changed is that the reason is now
+attributable in three independent places rather than one — evidence delivery (§13.291), the reader's
+aggregation (§14.3), and the model class's omission bias (§14.4.1) — and that §14.6 separates the part of the
+gap that is a mechanism from the part that is a reader.
+
+### 14.6 The same board grouped by reader, which is the only grouping that compares anything
+
+§14.1's table puts seven reasoning-class readers in one column and `deepseek-chat` in another. Mastra publishes
+the missing half of that comparison, and it is decisive: **their Observational Memory reads 84.23% with gpt-4o
+and 94.87% with gpt-5-mini.** Same memory, same observer model (`gemini-2.5-flash`), same 500 questions, only
+the answering model changes. That is §14.2's axis measured on the system we are compared against.
+
+So the board splits:
+
+| reader class | system | accuracy | context |
+| --- | --- | ---: | ---: |
+| **non-reasoning** | Recallium (GPT-4o, 3.8 results/question) | 90.2% | 3.8 items |
+| | **Mastra OM (gpt-4o)** | **84.23%** | ~30K |
+| | **cortex (`deepseek-chat`)** | **83.45% S1 / 90.20% mixed** | **11.7K** |
+| | EmergenceMem Simple (gpt-4o) | 82.40% | not stated |
+| | oracle (gpt-4o, gold sessions only) | 82.40% | 1–3 sessions |
+| | Mastra RAG topK-20 (gpt-4o) | 80.05% | — |
+| | Zep (gpt-4o, 2025) | 71.20% | — |
+| | full context (gpt-4o) | 60.20% | 115K |
+| reasoning | Mastra OM (gpt-5-mini) | 94.87% | ~30K |
+| | Hindsight (Gemini 3 Pro) | 91.40% | ~43.6K |
+| | Supermemory (Gemini 3 Pro) | 85.20% | — |
+
+**In the non-reasoning class this arm is 0.78 points behind the strongest observational-memory system on the
+board, and inside the run-to-run spread that Mastra itself says the oracle gap falls in.** Against the oracle
+row we are +1.05, against the gpt-4o full-context baseline +23.25, against Mastra's own RAG arm +3.40, against
+Zep 2025 +12.25.
+
+Per category, with the caveat that the two datasets are partitioned differently (we use 5 capabilities
+IE 150 / MR 121 / KU 72 / TR 127 / ABS 30; they use 6 categories 156 / 133 / 78 / 133 / — / 30), so only the
+totals are strictly comparable and the rows below are indicative:
+
+| category | Mastra OM (gpt-4o) | cortex (`deepseek-chat`) | reading |
+| --- | ---: | ---: | --- |
+| multi-session | 79.7% | **77.69%** | −2.0, and this is our worst capability |
+| temporal-reasoning | 85.7% | **95.28%** | **+9.6**, our second strongest |
+| knowledge-update | 85.9% | **88.89%** | +3.0 |
+| single-session | 82.1–98.6% | 94.67% (IE) | partition differs |
+
+Three consequences, and the third is a plan change rather than an observation.
+
+1. **The memory mechanism is not where the gap is.** Two systems with entirely different designs — one streams
+   every message through an observer and a reflector and shows the actor a compressed observation log; the
+   other retrieves individual turns into a character budget — land within 0.78 points at the same reader class.
+   §13.291's 0-of-9 and §13.93's `sweep` null say the same thing from inside: what the arm does with the
+   evidence stopped mattering before this round began.
+2. **The cost half is a real deficit on a comparable axis, and it is the opposite direction from the accuracy
+   half.** 11.7K against their ~30K is **39% of their bill** for the same reader class and the same accuracy.
+   So the arm is cheaper than the system it is level with and more expensive than two systems it beats. That is
+   a defensible position and `C1` is the row that keeps it from drifting.
+3. **The reader is the whole remaining gap, and it is now a procurement question rather than a design one.**
+   Mastra's +10.64 from gpt-5-mini, Membase's +13.0 on LongMemEval, Recallium's +8.2, Perpetuity's ceiling of
+   22.6 — every one says the same thing, and this arm cannot act on it by designing better memory. It can act
+   on it in exactly one way: **find a reader it can call that is both stronger and compliant, and check that
+   compliance did not get traded for strength.** `deepseek-v4-pro` was stronger and non-compliant (−7.20,
+   §13.192); the route-scoped thinking switch was the same reader made compliant and bought +6.25 (§13.232).
+
+   That makes `zhipu:glm-4.6` the highest-value remaining reader experiment, above reranking. Reranking's
+   outside price is RAW-RAG's −3.92 ablation on their own corpus; the reader's outside price is +8 to +13 on
+   four independent systems. §13.115 stays queued because it closes two acceptance rows and is the one
+   published mechanism this arm lacks, but it is no longer the next dispatch.
+
+**What this section corrects.** An earlier draft of §14.1 read the headline column against our number and
+concluded we are "dominated on both axes". That comparison used a reasoning-class reader for them and a
+non-reasoning one for us, which is §14.2's own subject. The corrected statement is narrower and more useful:
+**on accuracy this arm is level with the best system it can be fairly compared to, and on cost it is cheaper
+than that system and dearer than two it beats.** The SOTA claim does not change — 95.6% at 7.4K exists and is
+not ours — but the reason it is not ours is now a single named quantity, and it is not memory.

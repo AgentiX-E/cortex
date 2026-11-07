@@ -32949,8 +32949,11 @@ comparable to any row above 6.8 K without the same reader.
 Written up in `SOTA-LANDSCAPE.md` §14. Four facts from it that change what we can say:
 
 1. **Maximem Synap 95.6% at 7.4 K tokens; Zep 90.2% at 4.4 K; Mem0 94.4% at 6.8 K.** We are 90.20% mixed /
-   83.45% S1 at **11.7 K**. This is the first board on which we are dominated on **both** axes, and it is the
-   direct motivation for `C1`.
+   83.45% S1 at **11.7 K**. The board is **two boards**, though, and §14.6 is the correction: seven of the eight
+   rows run a reasoning-class reader and ours does not. Mastra publishes both halves of that axis —
+   **84.23% with gpt-4o, 94.87% with gpt-5-mini, same memory** — and against the gpt-4o half this arm is
+   **0.78 points behind** at 39% of their context. So the cost half is a real deficit (`C1`), the accuracy half
+   is a reader difference, and the first draft of this paragraph read them as one thing.
 2. **Two of the top four numbers are self-admitted test-set fitting.** AgentMemory's 96.2 states *"46 tuning
    iterations on the test set, no held-out split"*; OmegaMax's 95.4 states eight iterations targeting failure
    modes; Supermemory's `~99` is published as a **parody** of boards that omit cost. Any "we are 12 points
@@ -32976,9 +32979,18 @@ Written up in `SOTA-LANDSCAPE.md` §14. Four facts from it that change what we c
   enumerating a region. §13.93's sentence (*"limited by what it recognises as an instance of the question's
   action"*) and `arXiv:2608.01000`'s control are the same finding from two directions. `sweep` failed because
   each of its 44 lines still required the model to **generate** that session's candidates first.
-- **Scheduled:** §13.115's control dispatch (`relevance_top_k=128`, `rerank=none`) is the next bench slot
-  after `42337560027`, because it closes two acceptance rows (S6, S7) that have been `unrun` since the rows
-  were written, and it is the only mechanism in `SOTA-LANDSCAPE` §4.9 this arm has never had at all.
+- **Promoted to next:** `zhipu:glm-4.6` as the reader. §14.6 re-prices the two queued experiments against
+  outside evidence: reranking's published price is RAW-RAG's −3.92 ablation on their own corpus, while the
+  reader's is **+8 to +13 on four independent systems** (Mastra +10.64, Membase +13.0, Recallium +8.2,
+  Perpetuity's ceiling 22.6). This arm is level with the best observational-memory system at the same reader
+  class and 0.78 points behind it, so the remaining gap is a procurement question before it is a design one.
+  `zhipu:glm-4.6` is registered in `reader-provider.ts`, dispatchable as `--set model=zhipu:glm-4.6`, and is
+  the only reader this campaign can call that it has never measured. Its risk is the one §13.111 named:
+  strength is not compliance, and a second non-compliant strong reader would be a second −7.20.
+- **Scheduled:** §13.115's control dispatch (`relevance_top_k=128`, `rerank=none`) moves behind it. It still
+  closes two acceptance rows (S6, S7) that have been `unrun` since they were written, and it is still the only
+  mechanism in `SOTA-LANDSCAPE` §4.9 this arm has never had at all — but at +3.92 of outside price against the
+  reader's +8 to +13, it is no longer the next dispatch.
 - **Not changed:** cortex is not SOTA. 90.20% mixed / 83.45% S1 sits below Maximem, Mastra, Hindsight, Mem0,
   Honcho and Zep on published numbers and above Supermemory. What changed this round is that the reason has
   three independent places — evidence delivery, the reader's aggregation, and the model class's omission bias.
