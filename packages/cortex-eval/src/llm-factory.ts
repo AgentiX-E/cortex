@@ -177,8 +177,22 @@ export function resolveReaderIdentity(env: LlmEnv): {
   readonly thinking: 'enabled' | 'disabled';
   readonly thinkingRoutes: readonly string[] | undefined;
   readonly temperature: number | null;
+  /**
+   * The per-attempt deadline this run declared, or absent when the thinking mode's own applies.
+   *
+   * Read here rather than inside `describeReader` so that each entry point still reads the
+   * environment once: the constructor needs the transport and the recorder needs the identity, and
+   * a shared `describeReader` that read both would make three entry points read the variables
+   * twice each. Absent stays absent, so every artifact written before the variable existed renders
+   * the bytes it always rendered and the difference is visible as a missing clause rather than as a
+   * number that pretends to have been declared.
+   */
+  readonly deadlineMs: number | undefined;
 } {
-  return describeReader(env, resolveReaderProvider(env));
+  return {
+    ...describeReader(env, resolveReaderProvider(env)),
+    deadlineMs: readReaderPacing(env).timeoutMs,
+  };
 }
 
 /**
@@ -259,7 +273,10 @@ function requireKey(env: LlmEnv, provider: ReturnType<typeof resolveReaderProvid
  * of a run would then differ by two request fields instead of the one the registration names.
  */
 function buildReader(
-  identity: ReturnType<typeof resolveReaderIdentity>,
+  // `describeReader`'s identity rather than `resolveReaderIdentity`'s: the latter adds the declared
+  // deadline, which is a fact for the artifact, and a constructor that required it would make the
+  // three entry points read the transport twice to satisfy a parameter none of them reads.
+  identity: ReturnType<typeof describeReader>,
   apiKey: string,
   mode: 'enabled' | 'disabled',
   pacing: ReaderPacing,

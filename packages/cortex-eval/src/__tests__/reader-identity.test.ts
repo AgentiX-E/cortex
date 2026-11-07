@@ -236,3 +236,62 @@ describe('the reader reaches the artifact', () => {
     expect(pinned.temperature).toBe(0);
   });
 });
+
+describe('§13.306 the declared deadline on the rendered line', () => {
+  const metrics = {
+    total: 0,
+    correct: 0,
+    accuracy: 0,
+    abstentionRate: 0,
+    abstentionCorrectRate: 0,
+    abstentionAwareAccuracy: 0,
+    perCapability: {},
+  } as never;
+  const line = (reader: ReturnType<typeof resolveReaderIdentity>): string =>
+    formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics },
+      feature: { name: 'cortex-memory', metrics },
+      ablation: {
+        feature: 'cortex-memory',
+        baselineAggregate: { min: 0, max: 0, avg: 0, median: 0 },
+        featureAggregate: { min: 0, max: 0, avg: 0, median: 0 },
+        delta: 0,
+        pValue: Number.NaN,
+        significant: false,
+        effectSize: Number.NEGATIVE_INFINITY,
+        baselineConfidence: { lower: 0, upper: 0 },
+        featureConfidence: { lower: 0, upper: 0 },
+        mcnemarPValue: 1,
+        mcnemarSignificant: false,
+        discordant: { baselineCorrectFeatureIncorrect: 0, baselineIncorrectFeatureCorrect: 0 },
+        discordantQuestions: {
+          baselineCorrectFeatureIncorrect: [],
+          baselineIncorrectFeatureCorrect: [],
+        },
+        baselineMetrics: metrics,
+        featureMetrics: metrics,
+        featureCorrect: [],
+        perCapability: {},
+      } as never,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: toMemoryArmConfig(GATE, undefined, undefined, reader),
+    });
+
+  it('adds the clause only when the run declared a deadline', () => {
+    // The rule every optional clause on this line follows: absent renders no bytes, so the four
+    // archived artifacts that quote this line keep quoting it.
+    expect(line(resolveReaderIdentity({}))).not.toContain('/deadline=');
+    expect(line(resolveReaderIdentity({ CORTEX_READER_TIMEOUT_MS: '600000' }))).toContain(
+      '/deadline=600000',
+    );
+  });
+
+  it('keeps the clause after the temperature, so a reader can parse the line left to right', () => {
+    const rendered = line(
+      resolveReaderIdentity({ TEMPERATURE: '0', CORTEX_READER_TIMEOUT_MS: '600000' }),
+    );
+    expect(rendered).toContain('/temp=0/deadline=600000`');
+  });
+});

@@ -58,6 +58,9 @@ export {
 // -- and an exported type with no caller is the orphan the census reported. It stays exported from
 // `benchmark.ts`, which is where the record is built and where the test imports it from.
 export { describeProviderRefusals, providerRefusals } from './benchmark.js';
+// §13.306's second class, exported for the same reason and with the same shape: the arm at the top
+// prints the count, and the count has to come from the module that decided the questions.
+export { deadlineLossCeiling, describeDeadlineLosses, lostToDeadline } from './benchmark.js';
 export { readWorkers } from './worker-pool.js';
 export { describeFailure } from './bench-failure.js';
 export { drawUnjudged, type Draw, type DrawableRow } from './a3-draw.js';
@@ -432,6 +435,10 @@ export {
   // reason the numbers above are read through one function: a literal in a `console.log` is a
   // second copy of a constant, and it is the copy nobody checks.
   describeJudgeTransport,
+  // §13.306's reader bound. The description is exported for the reason the judge's is: `42381840503`
+  // lost a 500-question pass to a deadline that no line of its log stated, and a literal in a
+  // `console.log` would be the second copy of it.
+  describeReaderTransport,
   type ReaderPacing,
 } from './reader-transport.js';
 export {

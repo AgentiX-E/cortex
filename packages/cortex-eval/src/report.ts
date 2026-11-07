@@ -909,6 +909,20 @@ export type MemoryArmConfig = {
          */
         readonly thinkingRoutes?: readonly string[] | undefined;
         readonly temperature: number | null;
+        /**
+         * The per-attempt deadline the run declared, or absent when it took the implied one.
+         *
+         * §13.306. `42381840503` answered 291 of 500 and died with
+         * `attemptsMs=[299999,300001], timeoutMs=300000` -- two attempts, both reaching a bound that
+         * lived in a module constant. A reader of that artifact could learn the deadline only from
+         * the failure object inside the error, which is the §13.110 shape on a different field: the
+         * fact existed and the artifact did not state it.
+         *
+         * Absent rather than a default, because the deadline a run did not declare is a different
+         * claim from one it declared at the value the code would have chosen, and every archived
+         * artifact must keep rendering the bytes it rendered.
+         */
+        readonly deadlineMs?: number | undefined;
       }
     | undefined;
   /**
@@ -981,6 +995,7 @@ function renderReader(reader: {
   readonly thinking: 'enabled' | 'disabled';
   readonly thinkingRoutes?: readonly string[] | undefined;
   readonly temperature: number | null;
+  readonly deadlineMs?: number | undefined;
 }): string {
   // `new URL` throws on a malformed string, and a rendered report is not the place to throw:
   // the identity is still worth stating without its host, and a crash here would destroy the
@@ -995,7 +1010,10 @@ function renderReader(reader: {
     `reader=${reader.providerId}:${reader.model}@${host}` +
     `${reader.endpoint === 'overridden' ? '/endpoint=override' : ''}` +
     `${renderThinking(reader)}` +
-    `/temp=${reader.temperature === null ? 'default' : String(reader.temperature)}`
+    `/temp=${reader.temperature === null ? 'default' : String(reader.temperature)}` +
+    // §13.306. Printed only when the run declared one, so every archived line keeps its bytes and
+    // a missing clause is the honest statement that the deadline was whatever the code implied.
+    `${reader.deadlineMs === undefined ? '' : `/deadline=${reader.deadlineMs}`}`
   );
 }
 
