@@ -157,6 +157,42 @@ describe('the per-turn source id', () => {
     expect(roomyControl.prompt.length - roomyTreated.prompt.length).toBe(1_404);
   });
 
+  it('holds at the production budget, which is the one the dispatch runs at', () => {
+    // The fixture above is 7,200 characters, so every budget in it is small. This one is a corpus
+    // the size of a real question's (about 120,000 characters of turns) at `DEFAULT_MAX_PROMPT_CHARS`,
+    // because "the room is spent" is only a claim about the registered configuration if it is
+    // measured there: 48,000 is the number every published reading was taken at, and a rendering
+    // that overflowed it would be a different product.
+    const large: AdmittedSession[] = [0, 1, 2, 3, 4, 5].map((session) => ({
+      index: session,
+      size: 40,
+      turns: Array.from({ length: 40 }, (_, turn) => ({
+        ...createMemory({
+          content:
+            `s${session}t${turn}: ` +
+            'we spent the afternoon sorting the garage out, kept the tools, and drove the rest ' +
+            'to the recycling centre before it closed, which took longer than expected.',
+        }),
+        ordinal: turn,
+      })),
+    }));
+    const at = (rendering: 'numbered' | 'sourced') =>
+      buildSessionPrompt(QUESTION, large, {
+        ask: 'verbatim',
+        rendering,
+        maxTurnChars: 400,
+        assembly: 'instruction-first',
+      }).prompt;
+    const treated = at('numbered');
+    const control = at('sourced');
+    expect(treated.length).toBeLessThanOrEqual(48_000);
+    expect(control.length).toBeLessThanOrEqual(48_000);
+    // Strictly more evidence for strictly fewer characters per turn: at this size the cut binds
+    // under both renderings, so both prompts are full and only their turn counts differ.
+    const turnsOf = (text: string) => (text.match(/^\d+\. /gm) ?? []).length;
+    expect(turnsOf(treated)).toBeGreaterThan(turnsOf(control));
+  });
+
   it('cannot remove a turn the control delivered', () => {
     // The containment: a cheaper per-item rendering admits a weakly longer prefix of one order, so
     // every turn the control carries is carried here. §13.283's seventh gate reads this as "no
