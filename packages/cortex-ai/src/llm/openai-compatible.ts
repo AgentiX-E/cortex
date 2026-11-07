@@ -5,7 +5,7 @@
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { parseJson } from '../json.js';
 import { sharedRequestGate, type RequestPacer } from '../pacing.js';
-import { retryableFetchWithStats, type RetryRefusal } from '../retry.js';
+import { retryableFetchWithStats, withExhaustion, type RetryRefusal } from '../retry.js';
 import { parseUsage, recordUsage } from '../usage.js';
 
 /** DeepSeek thinking-mode toggle (also honoured by compatible providers). */
@@ -143,7 +143,14 @@ export class OpenAICompatibleLLM implements LLM {
         // caller keys on. See `ProviderContentRefusal` for the pass this cost.
         throw new ProviderContentRefusal(message, res.status, providerErrorCode(bodyText));
       }
-      throw new Error(message);
+      // A call whose retry ladder ran out returns its last response rather than throwing, so the
+      // measurements the ladder took -- attempts, attempt durations, the per-attempt deadline --
+      // reach here on `outcome.exhausted` and would otherwise be dropped with `outcome`. Attached
+      // rather than folded into the message because the benchmark classifies on the object, and a
+      // message is not something a caller can key on without matching prose.
+      throw outcome.exhausted === undefined
+        ? new Error(message)
+        : withExhaustion(new Error(message), outcome.exhausted);
     }
     return res;
   }

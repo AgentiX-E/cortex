@@ -183,3 +183,70 @@ def test_the_pure_counting_is_importable() -> None:
     assert reading['agrees'] == 1
     assert reading['p'] == 1.0
     assert reading['mr'] == {'n': 2, 'flips': 1, 'rate': 0.5}
+
+
+def preference_artifact(tmp_path: Path) -> Path:
+    """Two gradable questions, one of each gold shape.
+
+    The preference gold is a real LongMemEval one: it describes what a good answer should do
+    ("The user would prefer responses that ..."), which is a criterion rather than an answer, so it
+    can never be matched and always reaches the judge. Separating it is what lets a regrade say
+    whether the judge's variance lives in the question type whose verdict is least mechanical.
+    """
+    questions = [
+        {
+            'questionId': 'q-pref',
+            'question': 'Any tips for keeping my kitchen clean?',
+            'capability': 'IE',
+            'questionType': None,
+            'groundTruth': 'The user would prefer responses that acknowledge their existing efforts.',
+            'answer': 'Clean your utensil holder regularly.',
+            'correct': True,
+        },
+        {
+            'questionId': 'q-fact',
+            'question': 'Where did I put the keys?',
+            'capability': 'IE',
+            'questionType': 'single-session-user',
+            'groundTruth': 'in the drawer',
+            'answer': 'In the kitchen drawer.',
+            'correct': True,
+        },
+    ]
+    path = tmp_path / 'preference.json'
+    path.write_text(json.dumps({'questions': questions}), encoding='utf-8')
+    return path
+
+
+def gradable_count(stdout: str) -> int:
+    """The `questions N` line, read rather than pattern-matched, so spacing is not the assertion."""
+    for line in stdout.splitlines():
+        if line.startswith('questions'):
+            return int(line.split()[1])
+    raise AssertionError(f'no question count in:\n{stdout}')
+
+
+def test_preference_only_selects_the_criterion_golds(tmp_path: Path) -> None:
+    out = run('--artifact', str(preference_artifact(tmp_path)), '--plan-only', '--preference-only')
+    assert out.returncode == 0, out.stderr
+    assert gradable_count(out.stdout) == 1
+
+
+def test_non_preference_only_is_the_complement(tmp_path: Path) -> None:
+    """The two filters must partition the list, not merely both be non-empty.
+
+    A filter that overlapped or dropped would make the two readings incomparable while both looked
+    plausible, which is the defect shape this file already pins for eligibility.
+    """
+    artifact_path = str(preference_artifact(tmp_path))
+    both = gradable_count(run('--artifact', artifact_path, '--plan-only').stdout)
+    preference = gradable_count(run('--artifact', artifact_path, '--plan-only', '--preference-only').stdout)
+    rest = gradable_count(
+        run('--artifact', artifact_path, '--plan-only', '--non-preference-only').stdout
+    )
+    assert preference + rest == both
+
+
+def test_no_filter_flag_keeps_every_gradable_question(tmp_path: Path) -> None:
+    out = run('--artifact', str(preference_artifact(tmp_path)), '--plan-only')
+    assert gradable_count(out.stdout) == 2

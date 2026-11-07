@@ -56,7 +56,24 @@ function flag(name) {
  * Excluding it would understate the flips on the one capability whose gold is an explanation and
  * whose verdict is therefore the least mechanical.
  */
-export function gradableFrom(questions, limit) {
+/**
+ * The opening LongMemEval gives a gold that describes a **criterion** rather than an answer.
+ *
+ * `The user would prefer responses that build upon their existing efforts to organize their
+ * kitchen` cannot be matched, only judged, so this question type is the one whose verdict is least
+ * mechanical -- and on the `M1` pair it was 5.8% of the dataset and 42% of the gap between two
+ * readers. `tools/arm-delta-decomposition.py` carries the same constant for the same reason, and
+ * the two must agree: a filter that disagrees with the decomposition would select a different
+ * population than the one whose gap is being explained.
+ */
+export const PREFERENCE_OPENING = 'The user would prefer';
+
+/** True when the gold states what a good answer should do, rather than the answer. */
+export function isPreferenceGold(gold) {
+  return typeof gold === 'string' && gold.startsWith(PREFERENCE_OPENING);
+}
+
+export function gradableFrom(questions, limit, only) {
   const eligible = questions.filter(
     (question) =>
       typeof question.question === 'string' &&
@@ -65,7 +82,15 @@ export function gradableFrom(questions, limit) {
       typeof question.answer === 'string' &&
       question.answer.trim().length > 0,
   );
-  return eligible.slice(0, limit).map((question) => ({
+  // `only` selects a sub-population, and it is applied before `limit` so a bounded run reads the
+  // population it names rather than the first N questions that happen to be in it.
+  const selected =
+    only === 'preference'
+      ? eligible.filter((question) => isPreferenceGold(question.groundTruth))
+      : only === 'non-preference'
+        ? eligible.filter((question) => !isPreferenceGold(question.groundTruth))
+        : eligible;
+  return selected.slice(0, limit).map((question) => ({
     questionId: String(question.questionId),
     question: String(question.question),
     gold: String(question.groundTruth),
@@ -123,7 +148,10 @@ export function tally(rows) {
     byCapability: Object.fromEntries(
       [...byCapability.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([key, value]) => [key, { ...value, rate: value.n === 0 ? 0 : value.flips / value.n }]),
+        .map(([key, value]) => [
+          key,
+          { ...value, rate: value.n === 0 ? 0 : value.flips / value.n },
+        ]),
     ),
     flippedIds: flips.map((row) => row.questionId),
   };
@@ -133,7 +161,8 @@ async function main() {
   const artifactPath = flag('--artifact');
   if (!artifactPath) {
     console.error(
-      'usage: judge-regrade.mjs --artifact <report.json> [--passes 2] [--limit 500] [--out <file>] [--plan-only]',
+      'usage: judge-regrade.mjs --artifact <report.json> [--passes 2] [--limit 500] [--out <file>] ' +
+        '[--plan-only] [--preference-only | --non-preference-only]',
     );
     return 2;
   }
@@ -146,7 +175,14 @@ async function main() {
   const report = JSON.parse(readFileSync(artifactPath, 'utf8'));
   if (!Array.isArray(report.questions)) throw new Error(`${artifactPath} has no questions array`);
 
-  const sources = gradableFrom(report.questions, limit);
+  // Two flags rather than one valued argument, because they are mutually exclusive readings of the
+  // same list and a `--population x` would let a typo select everything.
+  const only = process.argv.includes('--preference-only')
+    ? 'preference'
+    : process.argv.includes('--non-preference-only')
+      ? 'non-preference'
+      : undefined;
+  const sources = gradableFrom(report.questions, limit, only);
   if (sources.length === 0) {
     console.error('no gradable questions: the artifact has no answer with a gold');
     return 1;
@@ -176,9 +212,7 @@ async function main() {
     clearJudgeCache();
     for (let index = 0; index < sources.length; index += 1) {
       const source = sources[index];
-      verdicts[index].push(
-        await grade(source.question, source.answer, source.gold, source.type),
-      );
+      verdicts[index].push(await grade(source.question, source.answer, source.gold, source.type));
     }
     console.log(`pass ${pass + 1}/${passes} done`);
   }
@@ -197,7 +231,9 @@ async function main() {
     `  ${reading.flips}/${reading.judged} = ${percent(reading.rate)}   ` +
       `up ${reading.up} / down ${reading.down}   exact sign test p = ${reading.p.toFixed(3)}`,
   );
-  console.log(`  first pass agrees with the artifact on ${reading.agreesWithArtifact}/${reading.judged}`);
+  console.log(
+    `  first pass agrees with the artifact on ${reading.agreesWithArtifact}/${reading.judged}`,
+  );
   for (const [capability, entry] of Object.entries(reading.byCapability)) {
     console.log(
       `  ${capability.padEnd(6)} n=${String(entry.n).padStart(3)} flips=${String(entry.flips).padStart(2)} = ${percent(entry.rate).padStart(6)}`,
