@@ -25,6 +25,8 @@ from importlib import import_module
 
 budget = import_module("job-budget")
 
+REPO = pathlib.Path(__file__).resolve().parents[2]
+
 
 # --------------------------------------------------------------------------- the per-pass scope
 
@@ -387,3 +389,44 @@ class TestTheShippedPaceIsScopedToTheProviderThatNeedsIt:
             "its eight passes"
         )
 
+
+
+class TestTheWorkflowReadsTheGradedCount:
+    """The wiring defect that made every smoke dispatch illegal.
+
+    `42366809734` was a 20-question smoke at `model=zhipu:glm-4.6`, and it never reached a model: the
+    budget guard computed its pacing floor from the literal `--questions 500` and refused to start,
+    because 500 questions x 8 passes x 6,000 ms is a 400-minute floor against a 340-minute budget.
+
+    The consequence is larger than one refused dispatch. A new provider cannot be priced cheaply --
+    the only legal shape is a three-hour run -- so a vendor whose quota is exhausted is discovered
+    after the budget rather than before the run, and the whole portability axis (requirement 11) has
+    an entrance fee of a full dispatch.
+    """
+
+    def test_the_graded_count_is_not_a_literal(self):
+        text = (REPO / '.github' / 'workflows' / 'benchmark-cortex-memory.yml').read_text()
+        assert '--questions 500' not in text, (
+            'the budget guard computes its floor from a literal 500, so a smoke dispatch is refused '
+            'before it starts'
+        )
+        assert '--questions "$GRADED_QUESTIONS"' in text
+
+    def test_the_graded_count_comes_from_the_dispatch(self):
+        text = (REPO / '.github' / 'workflows' / 'benchmark-cortex-memory.yml').read_text()
+        assert 'GRADED_QUESTIONS: ${{ inputs.limit' in text, (
+            'the guard has to read the count the dispatch graded, or the two disagree about the run'
+        )
+
+    def test_a_smoke_fits_where_the_full_suite_does_not(self):
+        # The arithmetic the refusal printed, both sides of it: 20 x 8 x 6,000 ms is 16 minutes and
+        # 500 x 8 x 6,000 ms is 400, against the same 340-minute budget.
+        assert budget.can_complete(questions=500, passes=8, min_interval_ms=6_000, budget_minutes=340) is False
+        assert budget.can_complete(questions=20, passes=8, min_interval_ms=6_000, budget_minutes=340) is True
+
+    def test_the_full_suite_is_affordable_at_two_repetitions(self):
+        # What a provider swap has to do if it wants the full 500 at the 6-second pace: 500 x 4 x
+        # 6,000 ms is 200 minutes. Stated here because the first P1 plan assumed four repetitions and
+        # would have been refused for the same reason the smoke was.
+        assert budget.can_complete(questions=500, passes=4, min_interval_ms=6_000, budget_minutes=340) is True
+        assert budget.can_complete(questions=500, passes=8, min_interval_ms=6_000, budget_minutes=340) is False

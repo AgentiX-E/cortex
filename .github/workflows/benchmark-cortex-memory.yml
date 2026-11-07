@@ -289,17 +289,24 @@ jobs:
         env:
           RUNS: ${{ inputs.ablation_runs }}
           PACE_MS: ${{ env.CORTEX_LLM_MIN_INTERVAL_MS }}
+          # The graded count, not the suite's size. `limit=0` means the full 500 and anything else is
+          # a smoke. This was the literal `500`, which made every smoke dispatch illegal: at the
+          # `zhipu:` pace of 6,000 ms a 20-question smoke computes a 400-minute floor against a
+          # 340-minute budget and is refused before it starts. That is what happened to
+          # `42366809734`, the first attempt to price a second provider, and the reason this campaign
+          # has never been able to smoke-test a provider before buying a three-hour run.
+          GRADED_QUESTIONS: ${{ inputs.limit == '0' && '500' || inputs.limit }}
         run: |
           set -euo pipefail
           passes=$(( 2 * ${RUNS:-4} ))
           if [ -n "${PACE_MS:-}" ]; then
             python3 tools/job-budget.py \
               --workflow .github/workflows/benchmark-cortex-memory.yml \
-              --questions 500 --passes "$passes" --min-interval-ms "$PACE_MS"
+              --questions "$GRADED_QUESTIONS" --passes "$passes" --min-interval-ms "$PACE_MS"
           else
             python3 tools/job-budget.py \
               --workflow .github/workflows/benchmark-cortex-memory.yml \
-              --questions 500 --passes "$passes"
+              --questions "$GRADED_QUESTIONS" --passes "$passes"
           fi
 
       - name: Setup pnpm
