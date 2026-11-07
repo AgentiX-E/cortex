@@ -32391,3 +32391,82 @@ prompt changed", which no run that failed to forward the value can satisfy.
   sessions"* and its Step 1 asks for a `<session date>` per item). That would make §13.286's
   `anchor-window` a different experiment than the one registered, and the registration for it would be
   rewritten before dispatch rather than after.
+
+### 13.288.5 Amendment, written before the artifact exists: the prediction above was wrong about depth
+
+`42328499107` was dispatched at `b299fdd2` and is running. Before any answer record exists, the
+arithmetic below shows prediction 1 in §13.288.3 was stated backwards, and it is corrected here rather
+than after the reading — the point of writing predictions first is that a correction has a timestamp.
+
+**The measurement, on `42310779222`'s own artifact, no calls spent.** `ablation.featureRetrievedContexts`
+holds the turns the reader was shown, and the rendered timestamp groups them into sessions:
+
+| | `MR`, median |
+| --- | ---: |
+| sessions in the retrieved context | **45** |
+| turns in the retrieved context | **199** |
+| delivered turns (`turns`) | **189** |
+| turns the plan held (`evidenceTurns`) | **243** |
+| rendered size of the whole context, at `maxTurnChars=400` | **44,753 chars** |
+| rendered size of one session | **956 chars** |
+
+So the room is **48,000 and the whole pool renders to 44,753**. `session-fill` will therefore admit
+roughly 44 of 45 sessions and deliver about 194 turns, against the `turn` unit's 189 — *more* turns, not
+fewer, and not fewer sessions either.
+
+**What the dispatch therefore tests, stated correctly.** Not "depth against breadth". It tests whether a
+session that is **complete** reads differently from a session that is 78% complete: the turn unit spends
+the room on the 189 highest-scoring turns of the 243 the plan held, which cuts each session's tail; the
+session unit spends it on whole sessions and skips the one that does not fit. The reference pipeline's
+advantage, if it is the session boundary rather than the volume, has to show up under exactly this
+comparison.
+
+**The refutation branch this makes sharper, not weaker.** If `MR` is flat with 44 complete sessions
+against 45 partial ones, then fragmentation at this granularity is not the mechanism, and the reference's
+7.43 points must come from something the room cannot express — its 2,000-character truncation, which
+*deliberately* keeps sessions partial but bounded, or its `parseAggregationAnswer`, or the critique pass
+it does not enable. That is a different and more useful question than the one §13.288.4 was written for,
+and §13.288.4's third branch already anticipated the shape of it.
+
+**What is unchanged.** Gates 1–11 stand as registered: the unit either reaches the prompts (gate 3), stays
+inside `multi-session` (gate 4), and moves `MR` without costing the other four (gates 7, 8), or it does
+not. Only prediction 1's mechanism sentence is withdrawn.
+
+### 13.288.6 The room is saturated on `MR`, and that is a structural reason the selection axis has been quiet
+
+Same artifact, same zero calls. For each capability, the delivered prompt against the rendered size of
+the turns it delivered, both medians:
+
+| capability | `promptChars` | rendered evidence | turns in the context | delivered turns | the plan held | room binds |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `MR` | 45,838 | **44,753** | 199 | **199** | 243 | **no — the whole context is in the prompt** |
+| `TR` | 47,158 | 46,236 | 205 | 205 | 242 | no |
+| `IE` | 46,710 | 17,361 | 64 | 64 | 495 | not readable from this field |
+| `KU` | 46,878 | 17,506 | 67 | 67 | 488 | not readable from this field |
+| `ABS` | 46,722 | 18,558 | 76 | 76 | 506 | not readable from this field |
+
+`MR` and `TR` are the two session-built routes, and for them `promptChars` is the rendered context plus
+the instruction block and nothing else. **Every turn the retrieval delivered reached the reader.** The
+room is at 93% of its cap and the 44 turns the plan held and the prompt did not carry were cut by the
+evidence bound above it, not by a second selection.
+
+Three consequences, and the third is the one that matters for the plan:
+
+1. **A selection unit cannot move `MR` by much at this room.** Both `turn` and `session-fill` deliver
+   about 90% of the same pool; the difference is which ~10% is left outside. That is why §13.288.5 had to
+   rewrite prediction 1, and it is why the dispatch is registered with a refutation rather than a hope.
+2. **The three flat capabilities are not readable from `featureRetrievedContexts`** — 17-18k of rendered
+   evidence against a 46.7k prompt means the field does not record what the flat builder delivered.
+   Naming it is the honest move: a field that is a faithful record on two routes and not on three is a
+   field whose absences must not be read as measurements. The composition block (`windowComposition`)
+   is the flat route's record, and it reads `turns` 199 for `MR` against 64-76 for the flat routes.
+3. **The lever on `MR` is upstream of the unit.** The arm holds 243 turns of a ~550-turn, ~500,000-character
+   haystack, renders 199 of them, and has no room left. Changing *how* those 199 are chosen cannot change
+   *which* 44 were excluded, because only 44 were excluded. What can change the answer is which turns
+   the **retrieval** offers — and §13.265.8's counterfactual already measured that the retrieval never
+   offered the gold turn in 133 of 241 failures.
+
+That third point is the one that redirects the next registration, and it is worth stating before
+`42328499107` reports rather than after: if the run is flat, the reading is "the unit is inert at a
+saturated room", which is a fact about the room, not about session units. The registration that follows
+it must move the pool or the room's *allocation per session*, not the unit.
