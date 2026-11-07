@@ -324,6 +324,10 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // So four routes differ from `route` and one — the multi-session one — differs from the control.
   // `evidence-ask-reach.test.ts` measures the first and `ask-changes.test.ts` the second.
   verbatim: ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.290. `verbatim`'s reach exactly, because it is `verbatim`'s block with one line rewritten: the
+  // routes that read the reference's contract keep reading it, and the routes that delegate keep
+  // delegating. A narrower reach would make the change set unreadable against the control.
+  'verbatim-acts': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**
@@ -400,6 +404,11 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   // adopted arm's derivation questions read `operands`, so against `enumerated` this ask would move
   // those questions from `operands` to the reference's contract as a second, unregistered change.
   verbatim: 'operands+operand-gap',
+  // §13.290. `verbatim`, which is the arm's own adopted value: the comparison is one line of the
+  // reference's aggregation contract, so the control is the contract rather than the shipped block.
+  // Naming `operands+operand-gap` would make the control the *parent* of the arm being read and put
+  // two variables between the two renders.
+  'verbatim-acts': 'verbatim',
 };
 
 /**
@@ -447,6 +456,9 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // half of that statement lives in `ASK_CHANGES_WHEN_DERIVATION`, where an empty set says the
   // derivation population reads the adopted `operands` block byte for byte.
   verbatim: ['multi-session'],
+  // §13.290. The same single route, for the same reason and on both question shapes: the line being
+  // rewritten is inside the block the multi-session route alone reads.
+  'verbatim-acts': ['multi-session'],
 };
 
 /**
@@ -529,7 +541,8 @@ export type EvidenceAsk =
   | 'operand-gap'
   | 'operands+operand-gap'
   | 'candidates'
-  | 'verbatim';
+  | 'verbatim'
+  | 'verbatim-acts';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -1494,6 +1507,97 @@ const VERBATIM_MULTI_SESSION_INSTRUCTION = [
 ].join('\n');
 
 /**
+ * The line `verbatim-acts` rewrites, anchored on its own opening words.
+ *
+ * ## Why the derivation is a rewrite of the reference's block rather than a new block
+ *
+ * §13.246 migrated the reference pipeline's aggregation contract into this arm *verbatim*, and
+ * `ask-verbatim.test.ts` holds it to **line equality** against a copy of the reference's text. That
+ * equality is the value of the migration: it is what makes "the two pipelines read the same
+ * instruction" a checked fact rather than a hope.
+ *
+ * So this ask may not edit the block. It replaces **one line of it** and states the replacement, which
+ * leaves the other twenty lines byte-identical by construction and makes the diff the whole claim.
+ * A copy of the block with one line changed would have been the same experiment with a much worse
+ * property: an edit to the reference's text would reach one copy and not the other, and the run would
+ * then be measuring the drift.
+ *
+ * ## What the replaced line does, measured
+ *
+ * The line is *"Do NOT substitute or infer a different verb: for example \"participated\",
+ * \"presented\", \"planned\", and \"working on\" are NOT \"led\" or \"leading\"."* It was written for a
+ * real failure — without it the reader substitutes a similar verb and counts acts the question did not
+ * name — and §13.289 measures what it costs at this arm's shape. Of `MR`'s 27 failures on `42310779222`,
+ * 18 land **below** the gold and 4 above, and eight of the eighteen below are explained, in the reply's
+ * own words, by an exclusion this rule licensed:
+ *
+ * | question | gold | the reply's stated exclusion | what it lost |
+ * | --- | --- | --- | --- |
+ * | `bc149d6b` | `70 pounds` | *"excluded because the exact action in the question is \"purchased\", not \"bought\""* | the 20-pound bag |
+ * | `129d1232` | `$5,850` | *"helped organize — excluded because the action is not \"participated\""* | the $600 |
+ * | `88432d0a` | `4` | *"excluded: verb is \"made\", not \"baked\""* (twice) | two bakings |
+ * | `2ce6a0f2` | `4` | *"volunteered at (not \"attended\")"*, *"went on (not \"attended\")"* | two events |
+ * | `gpt4_15e38248` | `4` | *"excluded because the context says \"ordered\", not \"bought\""* | the mattress |
+ * | `3a704032` | `3` | *"excluded: acquired two weeks prior in May, not last month"* (twice) | two plants |
+ * | `6d550036` | `2` | eight mentions, every one excluded on the verb | both projects |
+ * | `21d02d0d` | `2` | *"excluded because they are unspecified"* | the second run |
+ *
+ * The arithmetic closes on the first two without any interpretation: 50 + 20 = 70, and
+ * $5,250 + $600 = $5,850. The rule is not wrong; it is **mis-calibrated against this arm**, where the
+ * error is one-sided toward omission.
+ *
+ * ## Why the replacement keeps a rule at all
+ *
+ * Dropping the sentence would be a licence to infer acts the evidence never describes, which is the
+ * failure it was written for and the direction the 4 above-gold failures sit in. So the replacement
+ * keeps an exclusion: the act must be absent, or a different kind of act. What it removes is
+ * *verb identity* as the test, because a synonym is not a different act.
+ *
+ * The clock distinction (planned but not done) and the role distinction (attended vs organised) are
+ * named in the table above as the two the gold does NOT respect, so they are named in the replacement
+ * as counting — stated explicitly rather than left to be inferred from "same act", because
+ * `7024f17c`'s reply excluded a yoga session on *"\"used to\" does not match \"did\""* and a replacement
+ * that left tense to interpretation would license it again.
+ */
+const SUBSTITUTION_RULE_PREFIX = '  - Do NOT substitute or infer a different verb:';
+
+/**
+ * What `verbatim-acts` says instead of the verb rule.
+ *
+ * Two lines rather than one, because the licence and its bound are different claims and the block's
+ * other lines are one claim each. The second line is what stops "same act" from becoming "any act".
+ */
+const ACT_RULE_LINES: readonly string[] = [
+  '  - A mention counts when the evidence describes the same ACT under a different verb: "bought" is "purchased", "made" is "baked", "went on" or "volunteered at" is "attended", "helped organise" is "participated". Write the verb the evidence used, beside the question\'s.',
+  "  - Exclude a mention only when the act itself is missing or is a different kind of act: hoped for but not done is not done, and a past habit the evidence says the speaker stopped is not an act of the period asked about. Do not exclude one because its verb differs from the question's, and do not add one the evidence does not describe.",
+];
+
+/**
+ * Replace the single line that starts with `prefix`.
+ *
+ * Absent means unchanged, and that is deliberate rather than defensive: this runs at module load, so a
+ * throw here would take the package down over a prompt wording. The two properties that matter are
+ * asserted in `verbatim-acts.test.ts` instead — that the anchor matches exactly one line of the
+ * reference's block, and that the rendered block differs from `verbatim` by that line and nothing else.
+ */
+function replaceLine(text: string, prefix: string, replacements: readonly string[]): string {
+  return text
+    .split('\n')
+    .flatMap((line) => (line.startsWith(prefix) ? [...replacements] : [line]))
+    .join('\n');
+}
+
+/**
+ * The multi-session block under `verbatim-acts`: the reference's aggregation contract, one line out and
+ * two in. See {@link SUBSTITUTION_RULE_PREFIX} for the measurement that motivates the swap.
+ */
+const VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION = replaceLine(
+  VERBATIM_MULTI_SESSION_INSTRUCTION,
+  SUBSTITUTION_RULE_PREFIX,
+  ACT_RULE_LINES,
+);
+
+/**
  * The reply shape the flat route never had — §13.124.
  *
  * ## Why a shape and not a length
@@ -1723,6 +1827,9 @@ export const ASK_CHANGES_WHEN_DERIVATION: Partial<Record<EvidenceAsk, readonly s
   // fail on the derivation render. Empty states the measurement -- a derivation question is not what
   // the reference's aggregation prompt was written for, so this ask leaves it on `operands`.
   verbatim: [],
+  // §13.290. Empty for the same reason: a derivation question keeps the adopted `operands` block, so
+  // the line this ask rewrites is not in its prompt and the change set is empty rather than absent.
+  'verbatim-acts': [],
 };
 
 /**
@@ -1885,6 +1992,16 @@ function instructionsFor(
       return VERBATIM_MULTI_SESSION_INSTRUCTION;
     }
     return instructionsFor(contract, date, 'operands+operand-gap', scope, shape);
+  }
+  if (ask === 'verbatim-acts') {
+    // §13.290. One line of the reference's aggregation contract, on the route that reads it and on the
+    // question shape it was written for. Everything else delegates to `verbatim` rather than to `own`,
+    // for the reason that branch states: `own` is the *shipped* block, which is not the adopted arm's
+    // block on five of six routes, and returning it has cost questions twice in this file's history.
+    if (scope === 'multi-session' && contract === 'extractive' && shape !== 'derivation') {
+      return VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION;
+    }
+    return instructionsFor(contract, date, 'verbatim', scope, shape);
   }
   if (ask === 'operands') {
     // §13.166. One branch, two questions, and the enumeration half is `enumerated`'s block **by

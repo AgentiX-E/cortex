@@ -171,8 +171,14 @@ describe('every ask changes exactly the routes it declares', () => {
     // `ASK_CHANGES_WHEN_DERIVATION` is an override, so an entry for an ask whose block does not read
     // the question would be a claim with no render behind it. The loop above would catch that as a
     // mismatch; this states the reason the table has one key rather than growing quietly.
+    //
+    // §13.290 adds the third, and it earns the entry for a different reason than the other two: it does
+    // not read the question either, but its block is only reachable on an **enumeration** question, so
+    // its change set on a derivation question is the empty set rather than the one route `ASK_CHANGES`
+    // names. Absent would claim the route moves on both shapes, which is false and would be a delta
+    // about nothing.
     const shapeSpecific = Object.keys(ASK_CHANGES_WHEN_DERIVATION) as EvidenceAsk[];
-    expect(shapeSpecific).toEqual(['operands', 'verbatim']);
+    expect(shapeSpecific).toEqual(['operands', 'verbatim', 'verbatim-acts']);
     for (const ask of shapeSpecific) expect(asks).toContain(ask);
   });
 

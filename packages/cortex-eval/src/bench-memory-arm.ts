@@ -1370,6 +1370,23 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // Four routes, because the reach is measured against the shipped block and this ask is composed on
   // the registered arm: the three routes `operands`/`operand-gap` moved stay moved.
   verbatim: ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.290's value: `verbatim` with **one line of it replaced**, on the question shape that line was
+  // written for. Same reach, because the block is the same block; the change set is the multi-session
+  // route alone, which is where the reference's aggregation contract is read.
+  //
+  // Why the line and not the block: §13.289 classified `MR`'s twenty-seven failures on `42310779222` and
+  // found eighteen **below** the gold against four above — a one-sided error, which is the signature of
+  // a missing item rather than a wrong computation. Eight of the eighteen carry the exclusion that cost
+  // them in their own reply, and every one of those exclusions is licensed by one sentence of this
+  // contract: *"Do NOT substitute or infer a different verb"*. `bc149d6b` excluded a 20-pound bag because
+  // the question said "purchased" and the evidence said "bought"; 50 + 20 = the gold's 70. `129d1232`
+  // excluded a $600 event because the evidence said "helped organize"; $5,250 + $600 = the gold's $5,850.
+  //
+  // The rule is not wrong — it was written for a real over-counting failure — it is mis-calibrated
+  // against an arm whose error is one-sided toward omission, and the only way to find out is to move it
+  // alone. The replacement keeps a rule (the act must be absent, or a different kind of act) so the four
+  // above-gold failures are not licensed by the fix.
+  'verbatim-acts': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**
