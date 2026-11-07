@@ -33514,3 +33514,115 @@ what it did to that number, and it is not wired because a hand-typed median woul
 Neither change is dispatched this round. The reason is the same one that orders the whole queue: a
 cap or unit change moves `C1` in the table without moving `T3`, and `T3` is the line the campaign is
 about.
+
+### 13.298 The room was never rented: 13/13 gates pass, `MR` reads 83.47 against 84.30, and the departure list names a field the run did not move
+
+`42355323615` finished in 97 minutes and succeeded — the first success after `42347151147` died at 135 seconds on
+`null` provider bodies (§13.296). It produced the highest overall reading this arm has ever had, a **null** on the
+line it was dispatched for, and a registration verdict that says the thing the dispatch was meant to test was
+never administered.
+
+#### 13.298.1 The reading
+
+| | |
+| --- | --- |
+| feature (`cortex-memory`), 500 questions, 4 repetitions | **91.40 / 91.95 / 93.20** (first / mean / max) |
+| correct on the first repetition | **457 of 500** |
+| reference pipeline, same artifact | 219 of 500 = 43.80% |
+| Δ overall | **+48.50 points**, McNemar p = 1.36e-60, Cohen's d 74.5 |
+| prompt tokens | 27,178,561, of which **26,084,414 (96.0%) were prefix-cache hits** |
+| calls | 5,644 total; feature side 2,071, reference side 2,697, 876 outside both (the judge) |
+
+Per capability, feature against reference:
+
+| capability | feature | reference | delta | reference abstentions |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 140/150 = **93.33%** | 1/150 = 0.67% | +92.67 | 136 |
+| MR | 101/121 = **83.47%** | 102/121 = 84.30% | **−0.83** | 3 |
+| KU | 64/72 = **88.89%** | 0/72 | +88.89 | 58 |
+| TR | 122/127 = **96.06%** | 86/127 = 67.72% | +28.35 | 20 |
+| ABS | 30/30 = **100.00%** | 30/30 | 0.00 | 0 |
+
+The reference's 43.80% is not a weak reader; it is a **declining** one. It refuses 136 of 150 extraction
+questions and 58 of 72 knowledge-update questions, and where it does not decline — `MR` (3 abstentions), `TR`
+(20), `ABS` (0) — it is competitive. So the +48.50 is mostly the price of a decline licence, and the honest
+per-capability comparison is the three routes where both systems answer.
+
+#### 13.298.2 The line this run was dispatched for, and it is a null
+
+| | before (§13.294.4, `42337560027`) | now (`42355323615`) |
+| --- | ---: | ---: |
+| `MR` | 81.82% | **83.47%** |
+| reference `MR` | 85.12% | 84.30% |
+| **gap (T3)** | **−3.30** | **−0.83** |
+
+The gap closed by **2.47 points** and did not close. The paired contrast inside the artifact is
+**84.30 against 83.47, 10 flips one way and 9 the other, p = 1.000** — a coin. And the registered bar was
+`MR ≥ +3` over the reference, so this dispatch **misses its own gate**.
+
+Two readings of that, and only one of them is available:
+
+- **Available:** the mechanism under test did not produce a detectable effect. `p = 1.000` on 121 questions is
+  the definition of nothing, and the crossing of 10 against 9 is what a null looks like at this n.
+- **Not available:** "the idea is wrong." The dispatch did not administer the idea (§13.298.3), so it cannot
+  refute it. A null from an untested treatment is not evidence about the treatment.
+
+Under §13.297.6 this is a mechanism dispatch with zero gain on the primary measure, read against its own
+registered gate, so **the stop-rule counter moves 0 → 1 of 3.**
+
+#### 13.298.3 The registration verdict, which is the real finding
+
+The last gate in the workflow compares the artifact's configuration against the registration and prints a
+verdict. It said:
+
+```
+declared  ask: "verbatim" (registered) -> "verbatim-acts" (ran)
+declared but unchanged: ['cortex_memory_max_prompt_chars'] -- the departure names a field this run did not move
+verdict: 1 field(s) departed and every one of them is declared
+```
+
+The dispatch was registered as *renting more room on the multi-session route*:
+`cortex_memory_max_prompt_chars` from `48000` to `multi-session:48460`. The environment carried that value, and
+the artifact's own config line records it as `maxPromptChars=default, maxPromptCharsByRoute=multi-session:48460`
+— i.e. the variable set a **per-route override** while the field the departure named (`maxPromptChars`) stayed
+at `default`. The gate reported exactly that, in the one sentence that matters: **the departure names a field
+this run did not move.**
+
+So §13.295's question — *does the multi-session route earn its extra room?* — is **not answered by this run**,
+and the honest status of "rent the room" is **untested**, not **refuted**.
+
+This is the third time this campaign has been saved by a gate that reads the artifact against its own
+registration rather than against a hope. The first was §13.278's stale premise. The second was §13.294.2's
+rule that a correction lives in the next gate file. This one is cheaper and more embarrassing: a run that
+reported 13 of 13 audit gates passing, on a departure that changed nothing.
+
+#### 13.298.4 What the numbers say that the dispatch did not ask for
+
+**`bareRetry` attempted 71 and answered 71.** That is the exact surplus in `AUDIT-LLM-CALL-BUDGET.md`: 2,071
+calls against a floor of 2,000, 830,000 prompt tokens, 3.4% of the bill — for a mechanism whose own criterion
+(`R1`) reads net −1. The artifact confirms the count from the inside, so the paired dispatch that document
+specifies now has a baseline reading rather than an estimate.
+
+**96.0% of prompt tokens were prefix-cache hits** (26,084,414 of 27,178,561), against 78.2% in `42310779222`.
+That is the stability number `LANDSCAPE-CONTROLLED-BOARD.md` §2.2 says the cost axis actually needs, and it
+moved 18 points in the direction that costs less — while the accuracy rose. `C1`'s 12,105 was a snapshot of a
+less stable prefix, which is a second reason that row is an `aim` and not a verdict.
+
+**The overall number is 8 points above the one the acceptance matrix carries.** `S1` reads 83.5% from
+`cortex-docs/evidence/longmemeval/summary.json`, a reading of a **thinking-disabled** configuration. This run
+enabled `DEEPSEEK_THINKING` on `multi-session+temporal` and reads 91.40 on its first repetition. Both numbers
+are real; they are readings of different systems. The matrix is therefore **stale, not wrong**, and correcting
+it requires a generator that turns a report artifact into an evidence file — the same rule that made `C1` read
+`tools/cost-ledger.py`'s output instead of a typed number. Hand-editing `summary.json` would reproduce the
+defect the row exists to prevent, so the row keeps its old reading and this section records the new one, with
+the run id, until the generator exists.
+
+#### 13.298.5 What is dispatched next, and what is explicitly not
+
+| | |
+| --- | --- |
+| next | `A8` (`gated` context against the current context), as §13.297.4 ordered |
+| then | the `cortex-memory` product A/B, then the MEME slice |
+| now added, cheap and first | the `bareRetry` removal paired dispatch (`AUDIT-LLM-CALL-BUDGET.md` §4): calls 2,071 → 2,000, tokens −3.4%, accuracy not lower by more than the floor |
+| not re-dispatched | the room. A second attempt at `multi-session` characters needs the field it names to be the field it moves, which is a one-line registration change and not a hypothesis |
+| not built | anything from `LANDSCAPE-CONTROLLED-BOARD.md` §7 or `COMPETITOR-MECHANISMS-2026-11.md` §2.3; both are gated behind `T3` and `C2` |

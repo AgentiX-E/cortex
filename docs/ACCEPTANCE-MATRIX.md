@@ -122,6 +122,23 @@ holes. `LANDSCAPE-CONTROLLED-BOARD.md` §7 is the argument; this is the record o
   system this row does not gate. For `P1`, `AUDIT-MODEL-PORTABILITY.md` §7 names the ratio the criterion needs
   and states it has never been measured — so the row makes the omission a list item instead of a footnote.
 
+### 2.1 One row is known stale, and it says so here rather than in a footnote
+
+`S1` reads 83.5% from `cortex-docs/evidence/longmemeval/summary.json`, which is a reading of a
+**thinking-disabled** configuration. Run `42355323615` (2026-11-07) reads **91.40%** on its first repetition
+and 91.95% over four, with `DEEPSEEK_THINKING` enabled on the `multi-session` and `temporal` routes. Both are
+real readings of different systems, so the row is **stale, not wrong**.
+
+It is not being edited to match, because the repair for a stale artifact is a **generator** that turns a report
+artifact into an evidence file — the rule that made `C1` read `tools/cost-ledger.py`'s output instead of a
+number somebody typed. Hand-editing `summary.json` would reproduce exactly the defect this page exists to
+prevent. Until the generator exists, `S1`'s threshold comparison is against the old configuration and every
+document that quotes 83.5% must say which configuration it means. `PREREGISTRATION` §13.298.4 records the new
+number with its run id.
+
+The same run also settles two other rows in the stale direction: `S4` (temporal) reads **96.06%** against a
+85% threshold, and `S2`/`S5` read 88.89% and 100%. Those are not promoted either, for the same reason.
+
 `P1` also carries an empty competitor field on purpose. Every published portability claim in this field is a
 sentence ("works with any model"), a sentence is not a value, and a fabricated row would be worse than the gap.
 
