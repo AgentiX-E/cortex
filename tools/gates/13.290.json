@@ -41,7 +41,9 @@
       "field": "promptDigest",
       "control": "reference",
       "denominator": 379,
-      "excluding": ["MR"],
+      "excluding": [
+        "MR"
+      ],
       "quantity": "the four capabilities outside the ask's change set",
       "threshold": "**379 of 379 agree** — the branch delegates to `verbatim` rather than falling through to the shipped block, and this is the measurement of that claim"
     },
@@ -83,7 +85,9 @@
       "kind": "capability_nonloss",
       "control": "reference",
       "max_loss_points": 3,
-      "excluding": ["MR"],
+      "excluding": [
+        "MR"
+      ],
       "quantity": "`IE`, `KU`, `TR`, `ABS` against `42310779222`",
       "threshold": "**no loss ≥ 3 points** — these routes read `verbatim` byte for byte, so a loss here is a dispatch defect rather than a result"
     },
@@ -91,7 +95,10 @@
       "id": 10,
       "kind": "coverage_gain",
       "control": "reference",
-      "reaches": { "numerator": "carried", "denominator": "total" },
+      "reaches": {
+        "numerator": "carried",
+        "denominator": "total"
+      },
       "capability": "MR",
       "at_least_gain": 0,
       "quantity": "`MR` questions delivering every gold turn, against 98",
@@ -112,6 +119,22 @@
       "at_least": 60,
       "quantity": "`bareRetry.attempted`",
       "threshold": "**≥ 60**"
+    },
+    {
+      "id": 13,
+      "kind": "questions_flipped",
+      "control": "reference",
+      "questionIds": [
+        "88432d0a",
+        "2ce6a0f2",
+        "129d1232",
+        "gpt4_ab202e7f",
+        "60159905",
+        "bc149d6b"
+      ],
+      "at_least": 4,
+      "quantity": "the six questions whose failure in `42310779222` is a stated verb-identity exclusion",
+      "threshold": "**≥ 4 of 6 flip to correct** — the attribution clause: a delta carried by other questions is the churn §13.291 measured, not this rule"
     }
   ]
 }

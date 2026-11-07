@@ -1025,3 +1025,76 @@ class CapabilityDeltaTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class QuestionsFlippedTest(unittest.TestCase):
+    """`questions_flipped`: the gain came from the questions the registration named.
+
+    §13.291 measured the arm's churn for the first time: moving the evidence delivery and nothing else
+    flipped twelve of `MR`'s 121 verdicts. So a three-point delta is not by itself evidence that the
+    registered change produced it, and this gate is the attribution clause — a named population, picked
+    before the run, has to be the one that moved.
+    """
+
+    def _verdict(self, treatment: dict, control: dict, ids: list[str], at_least: int = 2) -> dict:
+        spec = {
+            'registration': 'test',
+            'title': 't',
+            'document': 'x',
+            'controls': {'reference': {'run': 1}},
+            'gates': [
+                {
+                    'id': 1,
+                    'kind': 'questions_flipped',
+                    'quantity': 'q',
+                    'threshold': 't',
+                    'control': 'reference',
+                    'questionIds': ids,
+                    'at_least': at_least,
+                }
+            ],
+        }
+        return _module().evaluate(spec, treatment, {'reference': control})[0]
+
+    @staticmethod
+    def _side(correct: dict[str, bool]) -> dict:
+        return {
+            'questions': [
+                {'questionId': qid, 'capability': 'MR', 'correct': value, 'answer': 'x'}
+                for qid, value in correct.items()
+            ]
+        }
+
+    def test_the_named_questions_carrying_the_gain_is_a_pass(self):
+        control = self._side({'a': False, 'b': False, 'c': True})
+        treatment = self._side({'a': True, 'b': True, 'c': True})
+        gate = self._verdict(treatment, control, ['a', 'b'])
+        self.assertEqual(gate['verdict'], 'PASS')
+        self.assertEqual(gate['detail']['flipped'], ['a', 'b'])
+
+    def test_a_gain_from_elsewhere_fails(self):
+        # The delta is real and the named population did not move: that is the churn case, and the gate
+        # exists to refuse it rather than to score the delta twice.
+        control = self._side({'a': False, 'b': False, 'other': False})
+        treatment = self._side({'a': False, 'b': False, 'other': True})
+        self.assertEqual(self._verdict(treatment, control, ['a', 'b'])['verdict'], 'FAIL')
+
+    def test_a_question_already_correct_is_not_a_flip(self):
+        control = self._side({'a': True, 'b': False})
+        treatment = self._side({'a': True, 'b': True})
+        gate = self._verdict(treatment, control, ['a', 'b'], at_least=2)
+        self.assertEqual(gate['verdict'], 'FAIL')
+        self.assertEqual(gate['detail']['flipped'], ['b'])
+
+    def test_an_id_absent_from_either_side_is_unevaluable(self):
+        # A shorter roster is not a miss: counting it as one would fail a gate about a treatment the run
+        # never received, and counting it as a pass would do the mirror.
+        control = self._side({'a': False, 'b': False})
+        treatment = self._side({'a': True})
+        gate = self._verdict(treatment, control, ['a', 'b'])
+        self.assertEqual(gate['verdict'], 'UNEVALUABLE')
+        self.assertEqual(gate['detail']['missing'], ['b'])
+
+    def test_naming_nothing_attributes_nothing(self):
+        side = self._side({'a': True})
+        self.assertEqual(self._verdict(side, side, [])['verdict'], 'UNEVALUABLE')

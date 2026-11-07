@@ -205,6 +205,49 @@ def gate_capability_delta(gate: dict, treatment: dict, controls: dict[str, dict]
     return _result(gate, verdict, reading, {'delta_points': delta, 'p_value': p_value, 'wins': wins, 'losses': losses, 'shared': len(shared)})
 
 
+def gate_questions_flipped(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
+    """Whether the registered questions and no others are what carried the delta.
+
+    ## Why a delta is not an attribution
+
+    §13.291 measured the arm's stability for the first time: changing the **evidence delivery** and
+    nothing else flipped twelve of `MR`'s 121 verdicts, and four of the eighteen below-gold failures
+    changed membership twice over. So a `MR` gain of three points is not by itself evidence that the
+    thing registered produced it — a delta of that size is reachable by the same churn that produced
+    those twelve flips.
+
+    This gate states the mechanism as a population: a registration that claims "the six questions whose
+    failure is a verb exclusion will be repaired by relaxing the verb rule" passes only if four of those
+    six are repaired. The named ids are part of the registration, so the attribution is decided on
+    questions picked before the run rather than on whichever ones moved.
+
+    ## Why an absent id is `UNEVALUABLE` rather than a miss
+
+    A named id missing from either artifact means the roster changed, and then the gate is being asked
+    about questions one of the two runs did not answer. Counting them as misses would let a shorter
+    roster fail a gate about a treatment it never received; counting them as passes would let it pass one.
+    """
+    control = controls[gate['control']]
+    named = list(gate['questionIds'])
+    if not named:
+        return _result(gate, UNEVALUABLE, 'the gate names no questions, so it attributes nothing')
+
+    after = _by_id(treatment)
+    before = _by_id(control)
+    missing = [qid for qid in named if qid not in after or qid not in before]
+    flips = [
+        qid for qid in named if qid in after and qid in before and after[qid].get('correct') is True and before[qid].get('correct') is not True
+    ]
+    at_least = int(gate['at_least'])
+    reading = f'{len(flips)} of {len(named)} registered question(s) flipped to correct (bar: \u2265 {at_least})'
+    if flips:
+        reading += f': {", ".join(flips)}'
+    detail = {'flipped': flips, 'named': len(named), 'missing': missing}
+    if missing:
+        return _result(gate, UNEVALUABLE, f'{reading} \u2014 {len(missing)} named id(s) absent from a side: {", ".join(missing)}', detail)
+    return _result(gate, PASS if len(flips) >= at_least else FAIL, reading, detail)
+
+
 def gate_capability_nonloss(gate: dict, treatment: dict, controls: dict[str, dict], alpha: float) -> dict:
     """Every capability the control measured, except the one gates 1 and 2 own, loses under the bar.
 
@@ -668,6 +711,7 @@ KINDS = {
     'gold_text_complete': gate_gold_text_complete,
     'source_marker_absence': gate_source_marker_absence,
     'coverage_monotone': gate_coverage_monotone,
+    'questions_flipped': gate_questions_flipped,
 }
 
 #: The keys every gate of a kind carries, and the keys a gate may additionally carry.
@@ -688,6 +732,7 @@ GATE_SCHEMA: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({'capability', 'requires_nonsignificance'}),
     ),
     'capability_nonloss': (frozenset({'control', 'max_loss_points'}), frozenset({'excluding'})),
+    'questions_flipped': (frozenset({'control', 'questionIds', 'at_least'}), frozenset()),
     'field_at_least': (frozenset({'field', 'at_least'}), frozenset()),
     'field_at_most': (frozenset({'field', 'at_most'}), frozenset()),
     'audit_identity': (
