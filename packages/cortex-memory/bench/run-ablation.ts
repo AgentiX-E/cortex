@@ -113,6 +113,7 @@ import {
   confidenceFromLength,
   type EvidenceAsk,
   type PromptContract,
+  type RelevanceUnits,
   type ReviewPass,
   type TurnCapRoute,
   // Named at this boundary rather than inferred from the literal below: the two readers are the product's
@@ -222,6 +223,53 @@ function readBudgetMs(env: NodeJS.ProcessEnv): number | undefined {
     );
   }
   return minutes * 60_000;
+}
+
+/**
+ * The unit each arm-level name forwards to the product, or `undefined` for the shipped default.
+ *
+ * ## Why this is a table keyed by the product's union instead of a comparison
+ *
+ * Because the comparison was wrong, it ran, and nothing could see it. This forwarding used to read
+ *
+ *     armOptions.relevanceUnits === 'session' ? { relevanceUnits: 'session' } : {}
+ *
+ * which accepted `session-fill` at the arm's parser, projected `relevanceUnits=session-fill` into the
+ * artifact's configuration line, and then ran the **turn** unit. Run `38828538851` was registered as
+ * §13.32 and read as §13.34's "`session-fill` spends the room and changes nothing" -- a sentence
+ * about the turn unit, which is exactly why it agreed with the turn unit to within a question.
+ *
+ * `Record<RelevanceUnits, ...>` is the repair rather than a test, because the failure mode
+ * is **omission** and `bench/**` is excluded from coverage: a fifth unit added to the product's union
+ * fails to compile here until this table names it, and the compiler runs on every commit. A test
+ * would have to read the source to notice, and the source was the thing that was wrong -- the same
+ * shape as the four "the comment claims a check" defects `bench-memory-arm.test.ts` records.
+ */
+const RELEVANCE_UNIT_FORWARDING: Record<RelevanceUnits, RelevanceUnits | undefined> = {
+  turn: undefined,
+  session: 'session',
+  'session-fill': 'session-fill',
+  'anchor-window': 'anchor-window',
+};
+
+/**
+ * The value to forward, refusing a name this table does not know.
+ *
+ * `undefined` and "not in the table" are different states and the index alone cannot separate them,
+ * which is the bug above repeated one layer down: an unlisted name would index to `undefined`, forward
+ * nothing, and behave exactly like `turn`. The `in` check makes that loud. It should be unreachable --
+ * `readRelevanceUnits` throws first -- and it is here because "should be unreachable" is what the
+ * guard at the other end always says.
+ */
+function relevanceUnitToForward(units: string): RelevanceUnits | undefined {
+  if (!(units in RELEVANCE_UNIT_FORWARDING)) {
+    throw new Error(
+      `relevanceUnits ${JSON.stringify(units)} has no forwarding rule. Add it to ` +
+        'RELEVANCE_UNIT_FORWARDING; forwarding nothing would run the turn unit under a ' +
+        'configuration line that names another one, which is the §13.286.2 defect.',
+    );
+  }
+  return RELEVANCE_UNIT_FORWARDING[units as RelevanceUnits];
 }
 
 function onProgress(progress: BenchmarkProgress): void {
@@ -581,6 +629,11 @@ async function main(): Promise<void> {
   // rather than here: two reads of the same field cannot disagree about whether the mechanism was on.
   const windowReorder = armOptions.queryExpansion === 'window';
 
+  // §13.286.2. Resolved once, next to the option block it feeds, so the value the product receives and
+  // the value the artifact reports come from the same read -- the defect was not that they disagreed
+  // but that one of them was never consulted.
+  const forwardedUnit = relevanceUnitToForward(armOptions.relevanceUnits);
+
   // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
   // configuration hands the product nothing it could reorder by.
   //
@@ -707,7 +760,7 @@ async function main(): Promise<void> {
       // validates against the product's own list at parse time -- `readRelevanceUnits`
       // throws on anything unrecognised -- so by the time execution reaches here the value
       // IS one of the union's members.
-      ...(armOptions.relevanceUnits === 'session' ? { relevanceUnits: 'session' as const } : {}),
+      ...(forwardedUnit === undefined ? {} : { relevanceUnits: forwardedUnit }),
       // §13.67's single variable, spread conditionally for the reason the three above are:
       // no cap IS the shipped behaviour and is expressed by NOT passing the key, so a run that
       // names no cap reproduces the previous prompt byte for byte. This is the one line in the

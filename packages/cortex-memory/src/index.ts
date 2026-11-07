@@ -96,6 +96,10 @@ export {
   // time, and casts at the boundary -- so the union has to be nameable from outside for that cast
   // to be a statement about a real type rather than about `string`.
   type TurnCutMarker,
+  // Named for the same reason: `run-ablation.ts` forwards this value at one boundary and the
+  // forwarding table is keyed by this union, so a unit added here has to be a compile error there
+  // rather than a silently-omitted forward. See `RELEVANCE_UNIT_FORWARDING`.
+  type RelevanceUnits,
 } from './prompt.js';
 
 // parse
