@@ -31967,3 +31967,157 @@ for that lesson four times (§13.104, §13.124, §13.279, §13.282).
 Both stay behind §13.283 for the same reason: if its coverage gate moves, the room is not the constraint at
 48,000 and §13.285 becomes a sharper test than it is today; if it does not, the constraint is the unit and
 §13.284 is the one to read.
+
+## 13.286 The competitor's selection, read from its source, and the unit that reading implies
+
+Until this iteration the Chain on Demand comparison in this document cited a paper. The repository it
+belongs to is public (`github.com/Renkiroo/chainondemand`, linked from the paper's own abstract), and
+reading it changes two things: what its pipeline actually does at each step, and — separately — what one of
+our own archived conclusions was actually about.
+
+### 13.286.1 What the code does, step by step
+
+The main entry (`cod/run_cod.py:150`) is four calls, and every parameter is a CLI default rather than a
+tuned value: `--pool-k 200`, `--final-k 60`, `lambda_div=0.06`, `beta_ent=0.10`, `expand_window=2`.
+
+| Step | Code | What it does |
+| --- | --- | --- |
+| pool | `store.search_memory(cid, question, 200)` | dense top-200 from raw utterances; no session pre-selection |
+| seeds | `select_greedy_unprotected` (`cod/selector.py`) | 60 picks, each scored `dense + 0.06·(1 − max Jaccard to S) + 0.10·(uncovered query terms this hit covers)`, **recomputed after every pick** |
+| restoration | `expand_seeds` → `store.expand_context(±2)` (`cod/expand.py`, `cod/store.py:161`) | each seed's same-session neighbours, `index ± 2`, **clamped to that session** — `entries` is filtered to `entry_position(id)[0] == target_session` before the slice, so a window cannot cross a boundary |
+| assembly | `merge_evidence(seeds, expanded)` (`cod/controller.py:50`) | seeds in **score order** first, then each seed's window in arrival order; deduped by id; **never re-sorted globally** |
+| answer | `ANSWER_USER_PROMPT` (`cod/prompts.py`) | one line per utterance, `timestamp speaker: utterance`, no ids, no numbering, plus "resolve relative dates against the utterance timestamp" and an explicit premise-mismatch instruction |
+
+Two mechanisms in the file are **not** used by the main entry and should not be cited as if they were:
+`select_with_seed_protection` (replace a dense top-k seed only when a later candidate outscores it) and
+`select_seeds_rescue` (keep `core_k`, then take `rescue_k` from a **mid-rank window** `[lo, hi]`, skipping
+the ranks immediately below the core — [11, 30] in their smoke test). The rescue rule is the more
+interesting of the two: it encodes the claim that the hits just under a cut are near-duplicates of the ones
+above it, so the informative candidates sit further down. It is a *cheaper* answer to the same problem this
+section is about, and it is worth a dispatch of its own after §13.286 is read.
+
+So the shape is: **bounded anchor set + local restoration**, with the budget spent on *anchors* and the
+neighbourhoods arriving for free. Ours, until now, has been: budget spent on *ranked turns*, prefix rule,
+neighbourhoods either unranked (invisible to the cut) or admitted to the pool where they compete on a
+decayed fraction of their anchor's score (§13.257, which lost eight MR questions to displacement).
+
+### 13.286.2 The defect this wiring found, and what it invalidates
+
+While adding the fourth unit to the forwarding chain, `run-ablation.ts` was found to forward **one** of the
+three units that existed:
+
+```ts
+...(armOptions.relevanceUnits === 'session' ? { relevanceUnits: 'session' as const } : {}),
+```
+
+`session-fill` was accepted by the arm's parser, projected into the artifact's configuration line as
+`relevanceUnits=session-fill`, and then **never passed to the product** — the run executed the `turn` unit.
+The single construction site (`run-ablation.ts:610`) and the single forwarding line make this exhaustive: no
+other path could have reached `CortexMemoryOptions.relevanceUnits`.
+
+**What this does not invalidate.** `session` was forwarded, so §13.27's dispatch of it measured what it
+says it measured, and §13.282.3's reading of `38753835652` — whole sessions, MR 12.40% against the turn
+unit's 42.15% — stands. The claim that a session unit loses is unaffected.
+
+**What it does invalidate.** §13.32's dispatch `38828538851` and §13.34's reading of it. That section's
+finding — "`session-fill` spends the room and changes nothing" — is a sentence about the **turn** unit, and
+the tell is in §13.34's own table: the treated arm agrees with the turn arm to within one question on MR and
+three across the other four capabilities. A configuration whose whole claim is "the same ranking, a repaired
+search" agreeing with the control exactly is the signature of the control. `session-fill` is therefore
+**unrun**, not negative, and the candidate §13.284 stays open — with the caveat that its own prediction
+(watch `MR`'s room usage) can no longer be read from an existing artifact.
+
+**The repair, and why it is compile-time.** A test cannot see this class of failure: `bench/**` is excluded
+from coverage, and the failure is an **omission** — a value nobody wrote a line for. The forwarding is now a
+table typed `Record<RelevanceUnits, RelevanceUnits | undefined>`, so a fifth unit added to the product's
+union fails to compile until the table names it. Injected for proof: adding `| 'injected'` to
+`RelevanceUnits` and rebuilding produces
+
+```
+bench/run-ablation.ts(248,7): error TS2741: Property 'injected' is missing in type
+'{ turn: undefined; session: "session"; 'session-fill': "session-fill"; 'anchor-window': "anchor-window"; }'
+but required in type 'Record<RelevanceUnits, RelevanceUnits | undefined>'.
+```
+
+The resolver additionally refuses a name the table does not contain, because an index miss returns
+`undefined` and would reproduce the same silent fall-through one layer down.
+
+### 13.286.3 The unit neither existing unit could be
+
+| unit | what the room buys | why it cannot answer §13.283's residue |
+| --- | --- | --- |
+| `turn` | the highest-scoring turns, wherever they live | the missing MR turns have `goldRanks = -1`; no width of a ranked prefix reaches them |
+| `session` | every turn of a session, prefix rule | one gold turn costs a whole session — MR's median gold session is 24 turns against a room of about 23, so the first session over the line ends the pass (§13.27, measured, lost) |
+| `session-fill` | the same, skipping sessions that do not fit | still buys whole sessions, so it pays for 24 turns to read 3 (unrun — see above) |
+| **`anchor-window`** | **an anchor and its `±window` same-session neighbours, indivisibly** | the neighbours are bought *with* the anchor, so they are never ranked and cannot displace anything |
+
+`relevanceUnits: 'anchor-window'`, `windowRadius` defaulting to **2** — the reference's frozen
+`expand_window`. Three properties are what make it a unit and not a heuristic:
+
+1. **Radius 0 is the control.** With `windowRadius: 0` every neighbourhood is its anchor, the ladder has one
+   rung, and the walk visits the same anchors the prefix rule keeps in the same order — so the delivered set
+   is the turn unit's, character for character. Asserted as an equality against `relevanceUnits: 'turn'`
+   rather than against the implementation's own arithmetic, which is what makes the radius the only variable
+   in a dispatch of this unit.
+2. **The ladder shrinks the window, never the anchor.** A window is several turns, so a strict prefix pass
+   over windows would end the pass with **no evidence at all** the first time one did not fit. The pass tries
+   `radius`, then `radius − 1`, … then the anchor alone, and stops only when the anchor itself does not fit.
+   The last rung is the turn unit's own decision, so under a tight budget this unit can never carry less than
+   the turn unit would — asserted as a for-all over a 30-point budget sweep.
+3. **The neighbourhood is session-local by construction.** The per-session arrival index makes a window a
+   slice, so it cannot wrap from a session's last turn into the next session's first — the boundary the
+   session routes exist to respect, and the one a naive `arrival ± radius` would cross, since the flat list
+   is the concatenation.
+
+Presentation stays chronological. This is the one place the reference disagrees with us and we are not
+following it: CoD prints anchors in score order and restores windows after them, relying on a timestamp on
+every line. Ours prints arrival order, because a log in rank order makes relative-time and
+knowledge-update questions unanswerable — the rule `selectSession` already records, and TR is 96.04% on the
+arrival-order prompt.
+
+### 13.286.4 Verification
+
+`packages/cortex-memory/src/__tests__/anchor-window.test.ts`, twelve tests, no mocks:
+
+- the control leaves `a3`'s neighbours behind under the same budget, and a **band assertion** pins the
+  fixture at four to seven carried turns so a change to the instruction block fails by naming the budget
+  rather than by looking like a selection bug;
+- radius 0 equals the turn unit exactly; radius 2 completes `a1..a5`; `a0` and `a6` stay out (the radius is
+  bounded, so a window that ignored it and took the session would fail); the default is 2;
+- the window clamps at both ends of a session and never reaches into the next one (B's turns score nothing
+  in that fixture, so their absence is evidence of the clamp rather than of the ranking);
+- the anti-starvation for-all, the budget ceiling at radii `0, 1, 2, 3, 5, 50`, and rejection of
+  `−1, 1.5, NaN, Infinity`;
+- `windowRadius` is inert on the other three units, which is what lets a dispatch of it stay single-variable.
+
+The arm-side guard fired on cue: adding `'anchor-window'` to the product's union failed
+`bench-memory-arm.test.ts`'s both-directions table comparison (`expected [ 'session', 'session-fill', 'turn' ]
+to deeply equal [ 'anchor-window', 'session', … ]`) until `RELEVANCE_UNITS` named it.
+
+### 13.286.5 What it is registered to move, once §13.283 has been read
+
+Not dispatched this iteration: `42310779222` is still running, and a second variable in flight would make
+neither attributable. The registration, written now so that it cannot be fitted to the result:
+
+| Field | Value | Note |
+| --- | --- | --- |
+| `cortex_memory_relevance_units` | **`anchor-window`** | the variable — now actually forwarded |
+| `cortex_memory_relevance` | `retrieval` | held at §13.283's value; the anchored signal is *not* used, because pool-side restoration is the mechanism §13.257 refuted |
+| everything else | §13.283's values | held |
+
+Predictions, in reading order:
+
+1. **MR gold-turn recall does not fall below 97.11%.** The mechanism buys the residents of turns that already
+   scored, so it can only add to the delivered gold set at a fixed room — if recall falls, the ladder is
+   trading anchors for neighbours and the trade is wrong at 48,000 characters.
+2. **MR accuracy rises**, because §13.283.1's arithmetic says all 53 missing MR turns sit inside the room a
+   13.83% tax was consuming (upper bound +109 fully-covered questions).
+3. **`windowComposition.turns` falls on MR while `promptChars` stays bounded.** A window is five turns; the
+   room buys fewer, larger units. If carried turns rise, the pass is not pricing the shared turns once.
+4. **`TR` and `KU` do not move more than three points either way**, since both are already above 96% on
+   recall and neither's residue is a neighbour.
+
+Refutation: if the carried count falls, accuracy is flat and recall is flat, then the neighbours were not the
+constraint and §13.283.6's "shape before size" ordering is wrong — the next variable would be the reader, not
+the selection. If recall rises and accuracy does not, the ceiling is downstream of the window and the second
+provider (§13.282.3's last item) is the increment.

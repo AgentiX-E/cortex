@@ -633,11 +633,11 @@ it. None of them measures our quantity, and two of them cut against the naive ve
 
 Three consequences for the roadmap.
 
-1. **Granularity is the axis SeCom already won on, and this arm has only ever tested its two endpoints.** §13.34
-   retired `session-fill` under `retrieval-hybrid`; it has never been run under `retrieval-anchored`, where the
-   pool behaves differently. SeCom's result says the right unit is a topical segment, which is neither of our two
-   values -- so the honest next step after this increment is `session-fill` on the anchored signal, and only then
-   a segment-level unit.
+1. **Granularity is the axis SeCom already won on, and this arm has only ever tested its two endpoints.**
+   §13.34 reported `session-fill` as retired, but §13.286.2 found that the value never reached the product —
+   the runner forwarded `session` and nothing else, so that dispatch ran the **turn** unit under a
+   session-shaped label. `session-fill` is therefore unrun rather than refuted, and the segment-level unit
+   SeCom argues for is a third value again, not the same experiment twice.
 2. **Recall is the quantity to publish against them.** `LongMemEval` scores retrieval with `Recall@k`/`NDCG@k`
    against labelled evidence turns, and this arm has never printed the equivalent. It reads **86.75%** overall
    (6,520 of 7,516 gold turns), 97.11% on `MR`. Any claim that this arm is competitive has to be made on that
@@ -647,3 +647,48 @@ Three consequences for the roadmap.
    the two published numbers above this arm, and both differ from it on *which* evidence arrives. That is the
    same conclusion §13.282.2 reached from three null results, now with three external results pointing the same
    way.
+
+### 12.1 The same question answered from the source instead of the paper
+
+§12 priced this arm against CoD's *reported* configuration. The repository is public
+(`github.com/Renkiroo/chainondemand`), and reading `cod/` changes three of the rows above and adds one
+mechanism the paper does not foreground.
+
+**Main entry, verbatim.** `run_cod.py:150` is `select_greedy_unprotected(pool, question, final_k)` followed by
+`expand_seeds(store, cid, seeds, expand_window)`; the CLI defaults are `--pool-k 200`, `--final-k 60`,
+`lambda_div=0.06`, `beta_ent=0.10`; `config.cod.yaml` fixes `expand_window: 2`. So the additive rule is
+**recomputed after every pick** over the whole remaining pool — not a re-ranking of a fixed shortlist — and
+the window is exactly two turns each side.
+
+**Their window is cut at the session boundary by construction.** `store.expand_context` filters entries to the
+seed's session *before* slicing `index ± window` (`cod/store.py:161`), so a window cannot cross into the next
+session. Ours restores from the flat context, where the concatenation makes that crossing possible.
+
+**Their assembly is not chronological.** `merge_evidence(seeds, expanded)` puts the anchors first in **score
+order** and appends each seed's window afterwards; the prompt carries a timestamp per line so the reader can
+reconstruct order. We print arrival order and rely on it, because TR's relative-date questions are the ones a
+rank-ordered log costs. This is the one place §12's comparison row was flattering to us by omission: we are
+not "the same shape with a different tie rule", we differ on presentation too, and the divergence is
+deliberate.
+
+**A mechanism the paper omits.** `select_seeds_rescue` keeps `core_k` anchors and fills the rest from a
+**mid-rank window** `[rescue_rank_lo, rescue_rank_hi]` — `[11, 30]` in `cod/tests/test_seed_rescue.py` —
+deliberately **skipping** the ranks immediately below the core. The stated reason is in the test: the hits
+just under a cut are near-duplicates of the ones above it, so the informative ones sit further down. That is
+a cheaper answer to the same problem as their ±2 restoration and worth its own dispatch, because it costs
+four slots of room rather than a window per anchor.
+
+**What this changes in §12's table.**
+
+| row | as reported | as implemented |
+| --- | --- | --- |
+| restored turns, upper bound | 240 | `≤ 5 × 60 = 300` raw, deduped by id; 240 is the observed figure, not a bound |
+| reconstruction window | 2 turns each side | same, and **session-clamped** — it cannot enter the neighbouring session |
+| selection rule | additive, recomputed per pick | same, over the full remaining pool (`greedy_unprotected`), with two alternative selectors in the file that the main entry does not use |
+| presentation | not stated | anchors in score order, windows after them; **not** chronological |
+
+The consequence for our own next increment is §13.286: the shape to copy is *bounded anchors plus local
+restoration, budget spent on the anchor*, not "sessions" and not "a wider prefix". `retrieval-anchored` was
+the pool-side half of that idea — restore into the pool and let the neighbours compete — and §13.257 is the
+record of what competition costs. The unit-side half, where neighbours are bought **with** their anchor and
+never ranked, is the part that had not been built.
