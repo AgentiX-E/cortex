@@ -34276,9 +34276,73 @@ That last figure is the one this arm was dispatched to produce, and it says some
 
 The reason is worth registering because it bounds what this instrument can ever say. A weaker reader does not send shorter prompts: the packet is the same 48,000-character window with the same evidence, and `perQuestionPerRun` is a property of the packet rather than of the model. What a cheaper model buys is a lower **rate per token**, and this repository measures tokens, not currency — `cortex-ai/src/usage.ts` states the reason a price would need a rate card it does not own. So the honest reading is: **token efficiency does not improve with a weaker reader, and the case for a stronger one has no cost headwind on this instrument.** Whether the rate card makes `deepseek-flash` cheaper in money is a question this campaign cannot answer and must not imply.
 
-`R0`, `R1` and `R2` need arm B. `42391516675` was dispatched one minute before arm A and was still `in_progress` five hours later with a `CORTEX_MEMORY_BUDGET_MINUTES=340` guard, so the honest state is that **the strong-reader half of requirement 12 is still unmeasured at this size**, and a stronger reader has still not been shown to score better on this harness.
+`R0`, `R1` and `R2` need arm B, and arm B arrived while this section was being written.
+
 
 **One observation that must not become a finding**: the two repetitions produced the *same* total correct count (453 of 500) while `KU` and `TR` swapped one question each (62/123 and 63/122). `featureAggregate.min == max` here is therefore not a stability claim — it is two capability-level moves that cancelled, and the per-capability spread columns are what say so. A renderer that printed only the total would have reported a perfectly stable run.
+
+#### 13.307.2 Arm B: the strong reader is worse, and the shape of the loss names the cause
+
+`42391516675` finished `success` at 18:06Z after 5 h 37 min — 1 h 37 min inside its
+`CORTEX_MEMORY_BUDGET_MINUTES=340` guard, so the guard did its job and the declared 600 s deadline
+never fired (`deadline losses: 0`, `provider refusals: 0`, prefix-cache share 95.18%).
+
+| criterion | measurement | verdict |
+| --- | --- | --- |
+| `R3` | `reader transport: deadlineMs=600000 retryBudgetMs=720000 deadlineSource=CORTEX_READER_TIMEOUT_MS` printed for both thinking modes before question 1 | **holds** |
+| `R4` | `deadline losses: 0` | **holds** |
+| `R1` | arm B **85.90%** against arm A's 90.60% — a **−4.70 pp** gap where the registration required **+3.0** | **refuted**, and in the opposite direction |
+| `R2` | `IE` −15 questions (144 → 129), `KU` −5 (63 → 58), `TR` −3 (122 → 119), `MR` −2 (94 → 92), `ABS` 0 | **fires**: the sign is systematically negative on the capability a stronger reader must not hurt |
+
+| capability | arm A (`deepseek-flash`) | arm B (`deepseek-v4-pro`) | delta |
+| --- | --- | --- | --- |
+| `IE` | 96.00% (144/150) | 86.00% (129/150) | **−15** |
+| `MR` | 77.69% (94/121) | 76.86% (92/121) | −2 |
+| `KU` | 87.50% (63/72) | 80.56% (58/72) | −5 |
+| `TR` | 96.06% (122/127) | 93.70% (119/127) | −3 |
+| `ABS` | 100.00% (30/30) | 100.00% (30/30) | 0 |
+| overall | 90.60% | **85.90%** (min 85.80, max 86.00) | **−4.70 pp** |
+| per correct answer | 13,359 | **14,084** | **+5.4%** |
+
+`R2` was written for exactly this: *"a negative sign on the capabilities a stronger reader should
+not hurt is a wiring defect, not a model property"*. `IE` at −15 of 150 is the largest movement
+this campaign has recorded on a capability, and it moved **down** when the reader got stronger.
+
+The three counters that localise it:
+
+| counter | arm A | arm B | reading |
+| --- | --- | --- | --- |
+| `exact` channel | 525 | **476** | **−49** deterministic matches |
+| `structural` channel | 567 | 536 | −31 |
+| `judge` channel (fallback) | 741 (37.0%) | **815 (40.8%)** | +74 |
+| `unjudged` | 0 | 0 | the judge finished every fallback |
+| `llm` abstentions | 69 | 71 | +2, i.e. **not** a refusal difference |
+| feature-side completion tokens | 1,131,636 | **1,598,096** | **+41.2%** |
+
+**−47 questions of accuracy against −49 lost `exact` matches.** The loss is not the model
+answering worse; it is the model answering in a shape the deterministic channels no longer
+recognise, falling to the LLM judge, and being scored wrong there. A reasoning reader emits more
+text (+41% completion at a *smaller* prompt budget: 12,098 against 12,103 prompt tokens per
+question), and this harness's `structural` and `exact` matchers are the first two rungs.
+
+So `R1`'s refutation is **not** evidence that `deepseek-v4-pro` is a weaker reader, and it must
+not be reported as one. It is evidence that this pipeline has a **contract defect**: the answer
+shape a reasoning model produces is outside what the scorer accepts without a judge.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `R5` | the loss is in the **scorer contract**, not in the reader: normalising the answer shape before `structural`/`exact` restores arm B's deterministic-channel count to arm A's (~525 of 2,000 calls) | a normalised arm whose `exact` count stays near 476 |
+| `R6` | if `R5` holds, arm B's accuracy rises by at least **4 of the 4.70 points** it lost, because −47 accuracy against −49 lost `exact` matches is 0.96 of the gap | a post-normalisation gap smaller than 4 points |
+| `R7` | the judge is **not** stricter on arm B: for the fallback population, exact and judge agree at the same rate on both arms | a judge that rejects arm B's fallbacks more often on the same gold |
+
+`R5` is the cheapest experiment in the queue. It is also the one requirement 12 needs: the
+requirement says a stronger reader must score better, and the honest current state is that **the
+harness cannot see the stronger reader's answer**. `R7` guards the other explanation — a judge
+that is right and an `exact` matcher that is too generous on arm A — which would make the finding
+a scorer-fairness result rather than a contract result.
+
+`R5`/`R6`/`R7` are registered, not run. Nothing in this section may be quoted as "the strong
+model is worse" until either `R5` is measured or the scorer contract is shown to be sound.
 
 ### 13.308 A correct answer's price, and the population its denominator came from
 
