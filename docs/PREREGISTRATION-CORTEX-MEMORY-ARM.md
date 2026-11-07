@@ -32471,3 +32471,139 @@ be:
 What is unchanged: `42328499107` tests whether a complete session reads differently from a 78%-complete
 one, and its refutation branch ("fragmentation at this granularity is not the mechanism") is now the
 branch most likely to fire, because 956 characters per session is not enough for a session to read as one.
+
+### 13.289 The reader is shown 45 conversations of five turns each, and the twenty-seven failures are all one item short
+
+A zero-cost reading of `42310779222`, taken while `42328499107` runs. It exists because §13.288.6 priced
+the next variable from a number (`956 characters per session`) that had been carried in prose across
+several sections and never derived from the artifact. It is derived now, and the derivation changes what
+§13.288 is a test of.
+
+#### 13.289.1 Where the shape comes from, and why not from the fields that look like they already have it
+
+`evidenceTurns`, `turns` and `windowComposition` describe the **plan**: the roster the arm built, the
+count it believed it carried, the room it believed it spent. The reader was handed a string. Between
+those two sit a renderer, a character budget, a per-turn cap and an ordering stage, and §13.283's defect
+lived in exactly that gap — a table that stated one thing while the dispatch did another.
+
+So the shape is parsed out of `ablation.featurePromptTexts`, and the parser is checked rather than
+trusted: its turn count is compared against `windowComposition.turns` on every record, and it agrees on
+**121 of 121** `MR` records. `tools/delivered-shape.py` is the tool, `test_delivered_shape.py` is its
+test, and the check is the reason the first draft of the parser is in that test file as a named defect:
+keyed on `^\d+\. ` it counts the assistant's own numbered lists as turns and reports 155 turns per
+question where the artifact records 199.
+
+#### 13.289.2 The shape
+
+| quantity | median | note |
+| --- | ---: | --- |
+| sessions per question | **45** | mean 44.94, min 36, max 52 |
+| turns per question | **199** | equals `windowComposition.turns` on 121 of 121 |
+| evidence characters per question | **45,754** | against a room of 48,000 |
+| turns per session | **5** | p90 6, max 37 |
+| characters per session | **966** | p10 251, p90 1,854, max 3,903 |
+| characters per turn | **213** | p90 399, max 404 |
+
+Three properties the medians hide:
+
+1. **11.0% of sessions hold one turn**, 17.4% are under 400 characters, 5.7% are over 2,000. The
+   distribution is not a shape with a typical member; it is forty-five attempts at a session, most of
+   them fragments.
+2. `maxTurnChars=400` binds: **10.9% of delivered turns are 390 characters or longer** and the observed
+   maximum is 404. The cap is not a theoretical guard — it is the edge a tenth of the evidence is pressed
+   against.
+3. The whole prompt is 47,868 characters against 45,754 of evidence, so **4.4% of the room is
+   instructions, headers and the question**. The room is not leaving evidence on the floor for want of
+   space; it is spending it on breadth.
+
+#### 13.289.3 The same shape on the questions that failed
+
+| outcome | n | sessions | turns | chars/session | turns/session |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| correct | 94 | 45 | 200 | 973 | 5 |
+| incorrect | 27 | 45 | 197 | 945 | 5 |
+
+The two rows are the same measurement. This is the first thing a shape invites a reader to conclude and
+it is worth stating flatly: **the composition of the delivery is a constant of the room, not a property
+of the answer.** A question the reader got right and a question it got wrong were handed the same number
+of conversations of the same length. Under `relevanceUnits=turn` there is no shape signal to find, and
+any registration that proposes to move the shape has to say in advance which direction of *shift* it
+expects, because moving it cannot separate a success from a failure it already does not separate.
+
+It also disposes of one reading of the reference pipeline's lead. Its `MR` allocation is about ten
+sessions of up to 2,000 characters; ours is forty-five of 966. That is not "more evidence" against
+"less" — 45,754 characters is more than its 20,000 — it is **breadth against depth at the same total**,
+and this arm has never once run the depth side.
+
+#### 13.289.4 The twenty-seven failures, and the one direction they all point
+
+Every `MR` failure of `42310779222`, classified by the relation between the answer and the gold:
+
+| relation to gold | count | examples |
+| --- | ---: | --- |
+| **below the gold** | **18** | `2→0`, `3→1`, `4→3`, `4→2`, `$5,850→$5,250`, `$495→$375`, `70→50 lb`, `1,998→1,456`, `23→22`, `10→8` |
+| above the gold | 4 | `99→100`, `100→"300 points"`, `three→6`, `four→5` |
+| declined | 4 | 3 prose ("the evidence does not state …"), 1 sentinel |
+| wrong pick | 1 | `Thrive Market→Walmart` (an argmax over per-store totals) |
+
+**Twenty-six of the twenty-seven are counting questions** — twenty-one with a numeric gold, five with a
+number word — and the one exception is an argmax over sums, which is a count with a comparison on top.
+
+Two facts follow, and the second is the one that matters:
+
+- **18 of 27 land below.** A one-sided error is the signature of a missing item, not of a wrong
+  computation: a reader that miscomputed would land on either side.
+- **Zero of the 18 "evidently-complete" failures in §13.287.4 had the answer cut out of the text.** That
+  is now checked rather than assumed: of those 18 records, the gold string appears literally in the
+  delivered prompt on 7, appears in the gold turn but **not** in the prompt on **0**, and appears in
+  neither on 11 — and "neither" is what a count looks like, because a total never appears as a string.
+  So the per-turn cap and the character budget are not eating answers. There is nothing for a wider room
+  to recover.
+
+Hand-read, the below-gold class is one mechanism wearing eighteen faces: `7024f17c`'s reply lists the
+yoga session in Step 1 and then writes `excluded: "used to" does not match "did"`; `d6062bb9` returns
+`1,456`, a single video's view count, where the question asked for the total; `6d550036` finds 0 of at
+most 2 qualifying mentions among 14. The reader **screens, and stops one item early**. That is §13.204's
+finding exactly, and it survived `enumerated`, `candidates` and `verbatim` — three asks that all vary how
+the screen is *written*.
+
+#### 13.289.5 What this does to §13.288, whose artifact does not exist yet
+
+§13.288.6 concluded that `session-fill` would keep about 44 of 45 sessions and ~194 turns, i.e. nearly
+the `turn` unit's own shape, and that its most likely outcome was the refutation branch. The shape above
+does not contradict that arithmetic, but it changes what the run is a test of.
+
+At `relevanceUnits=session-fill` the constraint moves from "which turns" to "which conversations", and a
+whole session carries **every admitted turn it has**, not the five the ranking happened to like. If the
+below-gold class is a screening failure, the items it is missing are overwhelmingly *in a session it
+already has* — the mention is in the same conversation as a mention it listed. So the read of
+`42328499107` is now specific, and it is written here before the artifact exists:
+
+1. If `session-fill` raises turns per session toward the session's admitted size (5 → 8 or more) and
+   `MR` gains, the above-gold and below-gold populations should move **in opposite directions**: whole
+   conversations supply the missing item (below-gold repairs) while the extra text should not manufacture
+   items that are not there (above-gold unchanged). A gain carried entirely by the above-gold class is a
+   refutation of the screening reading, not a confirmation of it.
+2. If turns per session stays at 5, the unit is inert at this room and the reading is a fact about the
+   room, not about units — §13.288.6.3's conclusion stands and the next variable is the room or the
+   allocation per session, in that order.
+3. Either way, `delivered-shape.py` runs on the new artifact first, because the number that decides is
+   turns per session and no field on the record reports it.
+
+#### 13.289.6 What this reading cannot say, including one thing it nearly said wrongly
+
+It cannot measure **completeness**: `Session 3` names a position in the admission order, not a row of the
+dataset, and the report carries no corpus. So "966 characters per session" is a fact about the delivery;
+whether the session it came from was 1,000 or 20,000 characters is not on the artifact. That is the gap
+in `windowComposition` that `evidence-completeness.py` already names, and it is why §13.288.6 had to
+reason about per-session volume from a rounded figure instead of measuring it.
+
+It cannot separate the room from the ranking: 45 × 5 is what 48,000 characters buys at this pool, and the
+same arm at 20,000 would print a different shape whose difference is the room.
+
+And one claim was withdrawn before it reached this file. `37f165cf` has an **empty** `answer` and a
+`rawOutput` whose first 400 characters end mid-word (`… 2023/05/27 (Ses`), which reads as a reply cut at
+the token limit — the arm records no `finish_reason`, so a truncated reply and a reply that said nothing
+are the same record. The full text ends `Answer: INSUFFICIENT_EVIDENCE`. There is no truncation anywhere
+in the run, and the instrument that would have been built for it, built on that evidence, would have been
+built for a defect that does not exist.
