@@ -75,25 +75,99 @@ def _non_negative_int(value: object) -> int | None:
     return value if isinstance(value, int) and value >= 0 else None
 
 
-def cap_reading(report: dict, per_call: float) -> dict | None:
-    """Whether the delivered context is the window or a selection from it, or `None` if uncapped.
+ROOM_FIELDS = ('effectivePromptChars', 'maxPromptChars', 'maxPromptCharsByRoute')
 
-    `None` when the artifact does not record `memoryArmConfig.maxPromptChars`, which is not the same as
-    a run that was not capped: absence is reported as absence.
+
+def prompt_rooms(report: dict) -> tuple[dict[str, int], str] | None:
+    """The room each route assembled under, and the field that supplied it.
+
+    Three fields can name a room and they are not alternative spellings of one another:
+
+    - `effectivePromptChars` (§13.299) is the resolved room, per route, always present on artifacts
+      written after it existed. It is authoritative and it is the only one that survives the default
+      moving -- `DEFAULT_MAX_PROMPT_CHARS` was 24,000 until §13.82 and 48,000 after.
+    - `maxPromptChars` is the scalar a dispatch asked for, absent when the run took the default.
+    - `maxPromptCharsByRoute` is the redistribution, and a run that set *only* this left every other
+      route on the default. `42355323615` is that run: `{multi-session: 48460}` and no scalar, so the
+      first version of this function read a run that delivered 47,830 of 48,460 characters as
+      **uncapped** -- a silent false negative on the row whose purpose is to say whether the window
+      filled.
+
+    So the fallback chain is not a convenience, it is the repair: the per-route map is read as a map
+    rather than discarded, and the field that supplied each room is reported so a reader can tell a
+    resolved artifact from an inferred one.
     """
     config = report.get('memoryArmConfig')
-    cap = _positive_int(config.get('maxPromptChars')) if isinstance(config, dict) else None
-    if cap is None:
+    if not isinstance(config, dict):
         return None
-    implied = cap / per_call
+
+    effective = config.get('effectivePromptChars')
+    if isinstance(effective, dict):
+        rooms = {str(route): _positive_int(width) for route, width in effective.items()}
+        if rooms and all(width is not None for width in rooms.values()):
+            return {route: int(width) for route, width in rooms.items()}, 'effectivePromptChars'
+
+    scalar = _positive_int(config.get('maxPromptChars'))
+    if scalar is not None:
+        return {'*': scalar}, 'maxPromptChars'
+
+    by_route = config.get('maxPromptCharsByRoute')
+    if isinstance(by_route, dict):
+        rooms = {str(route): _positive_int(width) for route, width in by_route.items()}
+        if rooms and all(width is not None for width in rooms.values()):
+            return {route: int(width) for route, width in rooms.items()}, 'maxPromptCharsByRoute'
+
+    return None
+
+
+def cap_reading(report: dict, per_call: float) -> dict | None:
+    """Whether the delivered context is the window or a selection from it, or `None` if unrecorded.
+
+    `None` when no field in the artifact names a room, which is not the same as a run that was not
+    capped: absence is reported as absence.
+
+    ## Why the narrowest room is the test, and the widest is printed beside it
+
+    A redistribution gives each route a different room while `per_call` is one mean over all of them,
+    so "the window filled" is only well defined one-sidedly: if the delivery fills the **narrowest**
+    room, it filled every route. Testing against the mean would let a run that deepened one route and
+    starved another read `at-cap`; testing against the widest would let the reverse pass. Both numbers
+    are printed because the gap between them is the redistribution, which is a fact about the run.
+    """
+    resolved = prompt_rooms(report)
+    if resolved is None:
+        return None
+    rooms, source = resolved
+    narrowest = min(rooms.values())
+    widest = max(rooms.values())
+    # A route map names only the routes it moved. The rest took the product default, and the default
+    # has changed once, so an artifact with a map and no `effectivePromptChars` does not say what the
+    # unnamed routes used. Reading the fill at the *widest* named room is then a ceiling on it rather
+    # than a measurement -- conservative in the only direction that matters here, because a run that
+    # is `below-cap` at the widest room is below it everywhere.
+    resolved_artifact = source == 'effectivePromptChars' or source == 'maxPromptChars'
+    test_room = narrowest if resolved_artifact else widest
+    implied = test_room / per_call
     low, high = CAP_DENSITY_BAND
-    return {
-        'maxPromptChars': cap,
+    reading = {
+        'maxPromptChars': widest,
+        'minRoom': narrowest,
+        'maxRoom': widest,
+        'rooms': rooms if source == 'effectivePromptChars' else {source: rooms},
+        'roomSource': source,
         'impliedCharsPerToken': round(implied, 2),
         'reading': 'at-cap' if low <= implied <= high else 'below-cap',
         'band': f'{low}-{high} characters per token, English prose',
         'status': 'inferred',
     }
+    if not resolved_artifact:
+        reading['caveat'] = (
+            'the routes this map does not name took the product default, which the artifact does '
+            'not record; the fill is computed at the widest named room and is therefore a ceiling '
+            'on it rather than a measurement. Artifacts written after §13.299 carry '
+            '`effectivePromptChars` and do not have this limitation.'
+        )
+    return reading
 
 
 def ledger(report: dict) -> dict:
@@ -162,13 +236,29 @@ def render(result: dict) -> str:
     spread = max(readings.values()) / min(readings.values())
     lines.append(f"  spread between readings   {spread:>12.2f}x")
     cap = result['cap']
-    if cap is not None:
+    if cap is None:
         lines += [
             '',
-            f"  maxPromptChars (cap)      {cap['maxPromptChars']:>12,}",
-            f"  implied chars per token   {cap['impliedCharsPerToken']:>12.2f}",
+            '  no room recorded           (the artifact names no budget on any field;',
+            '                              this is not the same as a run that carried none)',
+        ]
+    else:
+        basis = 'narrowest' if 'caveat' not in cap else 'widest named'
+        room = cap['minRoom'] if basis == 'narrowest' else cap['maxRoom']
+        lines += [
+            '',
+            f"  room ({basis} route)".ljust(27) + f"{room:>12,}   from {cap['roomSource']}",
+        ]
+        if cap['minRoom'] != cap['maxRoom']:
+            lines += [
+                f"  room (widest route)       {cap['maxRoom']:>12,}   redistribution",
+            ]
+        lines += [
+            f"  implied chars per token   {cap['impliedCharsPerToken']:>12.2f}   at the {basis} room",
             f"  window fill               {cap['reading']:>12}  (inferred, band {cap['band']})",
         ]
+        if 'caveat' in cap:
+            lines += ['', f"  ceiling, not measurement: {cap['caveat']}"]
     lines += ['', f"  comparable to              {result['comparableTo']}"]
     return '\n'.join(lines)
 

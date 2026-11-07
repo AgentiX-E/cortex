@@ -58,7 +58,7 @@ import { readToggle } from './env-toggle.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds, RerankIdentity } from './rerank-factory.js';
 import { promptDigest } from './prompt-digest.js';
-import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
+import { ALL_TURN_CAP_ROUTES, PROMPT_ROOM_DEFAULT, TURN_CAP_ROUTES } from './turn-cap-routes.js';
 import type {
   AblationReport,
   AbstentionReasons as ReportAbstentionReasons,
@@ -429,7 +429,12 @@ export type CortexMemoryArmOptions = {
    */
   turnCutMarker?: string | undefined;
   /**
-   * The evidence budget in UTF-16 code units, or absent for the product default (24,000).
+   * The evidence budget in UTF-16 code units, or absent for the product default.
+   *
+   * What the default *is* has moved (24,000 before §13.82, 48,000 after), which is why an absent
+   * field is no longer the whole statement: `effectivePromptChars` on the artifact records the room
+   * every route assembled under, so a reader never has to resolve the default at the time of the
+   * run from a constant that has since changed.
    *
    * A separate axis from `maxTurnChars`, and the pair is what §13.80 separated: the cap decides how
    * much of one turn is shown, the budget decides how many turns fit. Lowering the cap buys room by
@@ -702,9 +707,10 @@ const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
  * **"Every run used it" stopped being true when this variable was added**, and the sentence stayed
  * in this comment for long enough that it misdescribed the archive: of the seventeen artifacts on
  * disk, ten ran at 48,000, six at 96,000 and one at the default. Absent still means the product
- * default — an artifact without this field is a run at 24,000 rather than an unrecorded budget —
- * but the default is now the exception rather than the rule, and the gap between the two is the
- * subject of `AUDIT-BENCHMARK-WALLCLOCK.md` §7.
+ * default — and the default is now the exception rather than the rule, which is why the resolved
+ * room is written down per route as `effectivePromptChars` instead of being left to this field's
+ * absence. The gap between the default and the dispatched widths is the subject of
+ * `AUDIT-BENCHMARK-WALLCLOCK.md` §7.
  */
 const MAX_PROMPT_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_PROMPT_CHARS';
 
@@ -1742,7 +1748,7 @@ function readRelevanceTopK(raw: string | undefined): number {
 }
 
 /**
- * Read the evidence budget, defaulting to the product's 24,000.
+ * Read the evidence budget, defaulting to the product's own default (`PROMPT_ROOM_DEFAULT`).
  *
  * ## Why a smaller budget is accepted but zero is not
  *
@@ -2292,8 +2298,9 @@ export function toMemoryArmConfig(
     // configured to every `!== undefined` check downstream and as pre-dating-the-field to a
     // reader of the JSON.
     ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
-    // §13.81. Absent means the product's 24,000, which is what every archived run used, so the
-    // absence is a fact about the run rather than a missing field.
+    // §13.81. Absent means the product default, which is what every archived run used, so the
+    // absence is a fact about the run rather than a missing field -- but which default is a
+    // question the bytes do not answer, and `effectivePromptChars` below answers it.
     ...(options.maxPromptChars === undefined ? {} : { maxPromptChars: options.maxPromptChars }),
     // §13.239. Absent means one room for every route, which is what every archived run used, so the
     // absence is a fact about the run rather than a missing field -- and a reader who wanted to know
@@ -2301,6 +2308,26 @@ export function toMemoryArmConfig(
     ...(options.maxPromptCharsByRoute === undefined
       ? {}
       : { maxPromptCharsByRoute: options.maxPromptCharsByRoute }),
+    // §13.299. Always present, and the only field here that is computed rather than projected.
+    //
+    // The two fields above describe how the room was *requested*; neither describes the room the
+    // prompt was *assembled under*, because the resolution has a third term the artifact cannot
+    // see -- the product default -- and that term moved from 24,000 to 48,000 in §13.82. So an
+    // artifact whose only room field is `maxPromptCharsByRoute` describes a run at 48,000 and a
+    // run at 24,000 with the same bytes, and `42355323615` is exactly that shape: five routes took
+    // the default and one took 48,460, while the artifact recorded `{multi-session: 48460}` and
+    // nothing else. `tools/cost-ledger.py` read that as *uncapped*, in the row whose whole purpose
+    // is to say whether the window was filled.
+    //
+    // Resolved here through the same three-term expression the product's `#promptCharsFor` uses,
+    // rather than by reading `DEFAULT_MAX_PROMPT_CHARS` after the fact, so the artifact states the
+    // room each of the six routes assembled under and a reader does not have to reconstruct it.
+    effectivePromptChars: Object.fromEntries(
+      ALL_TURN_CAP_ROUTES.map((route) => [
+        route,
+        options.maxPromptCharsByRoute?.[route] ?? options.maxPromptChars ?? PROMPT_ROOM_DEFAULT,
+      ]),
+    ),
     // §13.73. Always present, unlike the width: the reach is a statement about the run's intent
     // that survives the cap being absent, and a reader comparing two artifacts needs to see that
     // the second one reached two routes where the first reached six.

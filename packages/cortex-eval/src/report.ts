@@ -472,13 +472,30 @@ export type MemoryArmConfig = {
    */
   readonly maxTurnChars?: number | undefined;
   /**
-   * The evidence budget in UTF-16 code units, or absent for the product default (24,000).
+   * The evidence budget in UTF-16 code units, or absent for the product default.
    *
    * Recorded because it is the one input that changes the room without changing any turn: §13.80
    * showed the room cannot be bought by truncating, so a run that raises the budget and a run that
    * lowers the cap are different experiments with the same coverage and different text.
+   *
+   * Absent is not the same statement it was before §13.299: the default itself moved (24,000 to
+   * 48,000), so this field's absence names a resolution rule and not a number. `effectivePromptChars`
+   * carries the number.
    */
   readonly maxPromptChars?: number | undefined;
+  /**
+   * The room each of the six routes actually assembled a prompt under, always present.
+   *
+   * §13.299. `maxPromptChars` and `maxPromptCharsByRoute` record how the room was *requested*; the
+   * third term in the resolution is the product default, which the artifact cannot otherwise see.
+   * `42355323615` is the case that made the difference load-bearing: five routes took the default
+   * and `multi-session` took 48,460, the artifact recorded only `{multi-session: 48460}`, and the
+   * cost instrument -- whose row exists to say whether the window filled -- read it as uncapped.
+   *
+   * Recorded for every run rather than only when a route was named, because the artifact that most
+   * needed it was the one that named a route and quietly left five alone.
+   */
+  readonly effectivePromptChars?: Readonly<Record<string, number>> | undefined;
   /**
    * The evidence budget per route, or absent for one room for every route.
    *
@@ -1331,8 +1348,21 @@ export function formatAblationReport(report: AblationReport): string {
         // spelled "none" here and the field is absent there.
         `, \`maxTurnChars=${memoryArm.maxTurnChars ?? 'none'}\`` +
         // `default` rather than `none`: there is always a budget, and the absent state means the
-        // product's 24,000 -- the value every archived run used.
+        // product default. The rendered room itself comes from `effectivePromptChars` below, so the
+        // line never asks a reader to know what the default was on the day of the run.
         `, \`maxPromptChars=${memoryArm.maxPromptChars ?? 'default'}\`` +
+        // §13.299, beside the two fields it resolves: the room every route actually assembled under.
+        // Collapsed to one number when all six agree -- which is every run that never redistributed
+        // -- because six copies of the same value is a line a reader stops reading.
+        (memoryArm.effectivePromptChars === undefined
+          ? ''
+          : `, \`room=${
+              new Set(Object.values(memoryArm.effectivePromptChars)).size === 1
+                ? String(Object.values(memoryArm.effectivePromptChars)[0])
+                : Object.entries(memoryArm.effectivePromptChars)
+                    .map(([route, width]) => `${route}:${width}`)
+                    .join('+')
+            }\``) +
         // §13.239, rendered only when a redistribution was dispatched: the absent state is one room
         // for every route, which is what every archived artifact used, so spelling it on every line
         // would make the 30 artifacts that predate the field indistinguishable from the ones that

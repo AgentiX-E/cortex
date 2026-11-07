@@ -88,9 +88,13 @@ class TestTheTwoRendersAgree:
         if cost["current"] is None:
             pytest.skip("the cost evidence file is not in this checkout")
         assert cost["current"] != round(cost["current"]), "the cost reading became an integer; retest"
-        assert markers["C1"] == "12105"
-        # And the number a document may cite is the integer, so a marker copied out of the checker's
-        # table (`12105`) is the same string as the one the cross-check expects.
+        # The number itself is **not** pinned here, and this line is the reason: a literal in a test
+        # is the same defect `C1` was written to remove from the documents -- a figure typed by hand
+        # that agrees with the artifact only until the artifact is regenerated. It was `12105` while
+        # the reading came from `42310779222` and `12137` once the evidence file was regenerated from
+        # `42355323615`, and the only thing the change proved was that a test can go red for a reason
+        # that is not a defect. What the rule needs pinned is the *relationship*: the marker equals
+        # the rounded value, whatever the evidence file holds.
         assert f"{round(cost['current']):d}" == markers["C1"]
 
     def test_a_ratio_still_keeps_one_decimal_in_both(self, matrix, markers):

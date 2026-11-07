@@ -33626,3 +33626,141 @@ the run id, until the generator exists.
 | now added, cheap and first | the `bareRetry` removal paired dispatch (`AUDIT-LLM-CALL-BUDGET.md` §4): calls 2,071 → 2,000, tokens −3.4%, accuracy not lower by more than the floor |
 | not re-dispatched | the room. A second attempt at `multi-session` characters needs the field it names to be the field it moves, which is a one-line registration change and not a hypothesis |
 | not built | anything from `LANDSCAPE-CONTROLLED-BOARD.md` §7 or `COMPETITOR-MECHANISMS-2026-11.md` §2.3; both are gated behind `T3` and `C2` |
+
+### 13.299 The room had two spellings and one reader: a capped run that read as uncapped, and the 1,247 characters a question that the prefix rule throws away
+
+`42355323615` was dispatched with `cortex_memory_max_prompt_chars=multi-session:48460`. That syntax does not
+set a scalar; it sets a **route map**, so the artifact recorded `{maxPromptCharsByRoute: {multi-session:
+48460}}` and no `maxPromptChars` at all. Five routes then took the product default. Three readers existed for
+that field and every one of them was blind to the same half of it.
+
+#### 13.299.1 The defect, in the two places it was already visible
+
+| reader | what it did | why it was wrong |
+| --- | --- | --- |
+| `tools/cost-ledger.py` `cap_reading` | read `maxPromptChars`, found nothing, returned `None` | the run **did** have a room: it delivered 47,830 of 48,460 characters, 98.7% of the window, in the row whose entire purpose is to say whether the window filled |
+| the registration gate (§13.298.3) | `declared but unchanged: ['cortex_memory_max_prompt_chars']` | true and misleading at once -- the input moved and the field it names did not |
+| a human reading the JSON | had to know the default was 24,000 before §13.82 and 48,000 after | four docstrings in `cortex-eval` still said 24,000, including the one on the field that records the room |
+
+The same artifact produced two of those, and §13.298 recorded the second as *the* finding of that round. It is
+one root cause: **a quantity with two spellings where only one is read.** The third is the same root cause at
+the level of prose -- the default *has* two spellings, and the artifact records neither.
+
+#### 13.299.2 The repair: record the room, then read all three
+
+`memoryArmConfig.effectivePromptChars` (§13.299, `packages/cortex-eval/src/report.ts`) carries the room each
+of the six routes assembled under, resolved through the same three-term expression the product's
+`#promptCharsFor` uses:
+
+```
+byRoute[route] ?? maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS
+```
+
+Always present, and computed rather than projected, because the third term is the one the artifact cannot
+otherwise see. On a run that named a route and left five alone it is the only field that says what the five
+used. `42355323615` reads `{multi-session: 48460, temporal: 48000, flat: 48000, knowledge-update: 48000,
+abstention: 48000, assistant: 48000}`.
+
+`tools/cost-ledger.py` now resolves in the opposite order -- `effectivePromptChars`, then `maxPromptChars`,
+then `maxPromptCharsByRoute` -- through one function, `prompt_rooms`, that `tools/evidence-budget.py` also
+calls. A map with no resolved field is reported as a **ceiling** rather than a measurement, because the routes
+it does not name took a default this artifact does not record:
+
+```
+room (widest named route)      48,460   from maxPromptCharsByRoute
+implied chars per token          4.13   at the widest named room
+window fill                     at-cap  (inferred, band 3.5-4.7 characters per token, English prose)
+
+ceiling, not measurement: the routes this map does not name took the product default, …
+```
+
+A resolved artifact is read at the **narrowest** room instead, which is the one-sided test a redistribution
+allows: filling the narrowest room fills every route. Testing the mean would let a run that deepened one route
+and starved another read `at-cap`.
+
+#### 13.299.3 The instrument `C2` was missing, and its first four numbers
+
+`C2` asks for the median evidence per question in tokens. The per-question split exists in every artifact --
+`promptChars` is the evidence the prompt carried, `deliveredPromptChars` is the whole prompt -- and no tool
+took a median of it, which is why the row read `unrun` with a reason rather than a number.
+
+`tools/evidence-budget.py` takes it. On `42355323615`:
+
+| | |
+| --- | --- |
+| median evidence | 46,926 chars = **11,558 tokens** a question |
+| median whole prompt | 47,830 chars = 11,781 tokens a question |
+| instruction share of the median question | **1.41%** (1.89% by ratio-of-medians) |
+| characters per token, **measured** | **4.06** (47,542 chars over 11,721 tokens per call) |
+| room utilisation | **98.70%**, 630 characters unspent |
+| characters per evidence turn | 110 (418 turns in the median prompt) |
+
+The density matters on its own: §13.293.2 derived 4.11 from `48000 / 11690`, a ratio of *the cap* to *a mean*,
+i.e. an inference. The measured value is 4.06 and agrees to 1.2%, which is what makes the inferred figure
+usable rather than merely plausible. The tool refuses to convert anything outside 2.5-6.0 characters per token,
+and the refusal names the failure that produced it: the first draft divided one repetition of characters into
+four repetitions of tokens, printed **0.98**, and would have converted every median below by 4.14x.
+
+`C2` now reads `ratio.ratio` from `cortex-docs/evidence/longmemeval/evidence-budget.json`. With one artifact
+the arm is its own reference, so the ratio is **1.0000** and the file records `paired: false`. **That is a
+denominator, not a result.** It says the registered budget is 100% of itself and that the 0.70 bar is unmet; it
+says nothing about a reduced arm until one is dispatched. The row therefore moves from `unrun` to `aim` with a
+reading of 100.0% and **does not move on the quantity it measures**.
+
+#### 13.299.4 The finding the instrument was not built for
+
+`chooseEvidence` takes the **largest prefix of the relevance order that fits** -- a turn larger than the
+remaining room ends the selection rather than being skipped past (`prompt.ts`, `selectByRelevance`). The room
+that turn would have used is lost. Unspent room, per capability, on `42355323615`:
+
+| capability | median unspent | worst |
+| --- | ---: | ---: |
+| MR | **126** | 386 |
+| TR | 610 | 852 |
+| ABS | 884 | 4,363 |
+| KU | 974 | 3,491 |
+| IE | **1,247** | **11,533** |
+
+MR is where `maxTurnChars: 400` reaches, and it is the only route whose slack is smaller than the per-turn
+width. TR is the second route the cap reaches and it sits between the two groups, which the extra non-evidence
+the temporal block carries would explain. The four routes the cap does **not** reach leave 7x to 10x as much
+room unspent, and the worst question throws away **11,533 characters -- 24% of its window** -- because one
+over-sized turn blocked a prefix.
+
+Two consequences, and the order between them matters:
+
+1. **`maxTurnChars` is not only a truncation.** It also decides how far the prefix advances, because a capped
+   turn is a turn that fits. That is a second channel for a knob §13.80 measured on the first channel, and this
+   campaign has never stated it.
+2. **The cheap test is to extend the cap to all six routes**, one variable
+   (`cortex_memory_max_turn_chars_routes`), with the gate written before the run:  unspent room on the four
+   uncovered routes falls toward the capped routes' levels, and `MR`/`TR` stay where they are. Accuracy is
+   *not* the primary measure here -- the code that spends the freed room already exists and §13.291 showed
+   adding gold turns buys +0.00, so the prediction is a coverage effect with an accuracy effect too small for
+   this n. Dispatch readiness over accuracy, per requirement 9.
+
+Neither is dispatched this round: `P1` is ($13.299.6).
+
+#### 13.299.5 Tests, and the regression each one closes
+
+| file | count | trap |
+| --- | ---: | --- |
+| `packages/cortex-eval/src/__tests__/prompt-room-recorded.test.ts` | 6 | the six routes are all recorded; a scalar reaches all six; the `{multi-session: 48460}` shape records 48,000 on the other five; the field is present on every run; the rendered line collapses when the rooms agree and does not when they differ |
+| `tools/__tests__/test_prompt_room_resolution.py` | 13 | the resolved field wins; a scalar is one room; **a map alone is not `None`** (the regression this round exists for); a map is a ceiling and says so; a resolved artifact carries no caveat; no field at all is absence reported as absence; a zero, a negative, a boolean and a string are not rooms; the mirrored default equals the product's; no source file still calls the default 24,000 |
+| `tools/__tests__/test_evidence_budget.py` | 14 | the conversion is one measured factor; a retry enters both means identically; **4x the tokens is refused, not corrected**; a truncated record set is refused; a record without the split is refused; unspent room is reported per capability; an unresolved room is marked unresolved; the ratio is 1.0 **and** `paired: false` |
+| `tools/__tests__/test_cost_ledger.py` | 37 | unchanged, and still green with the new resolution |
+
+Two of those were verified by breaking the code and watching them go red: the stale-claim scan was restored to
+`product's 24,000` and reported the exact file and line; `json!.usage` in the §13.296 fix was reverted and took
+4 of 8 with it.
+
+#### 13.299.6 Queue
+
+| | |
+| --- | --- |
+| next | **`P1`**: `deepseek:deepseek-chat` against `zhipu:glm-4.6`, same 500 questions, same prompts, same judge |
+| why it is next | it is a release blocker (product face has `M1` and `P1` unrun) and it is one variable |
+| the covariate it inherits | the GLM arm runs at `ask=verbatim-acts`, the same ask as `42355323615`, and the only other departure is the MR room (48,460 against 48,000). That departure's effect **has been measured**: §13.298.2 reads 10 flips one way and 9 the other, p = 1.000. It cannot explain a 2-point provider delta |
+| then | `M1` (reasoning reader, paired), which needs a second provider-side variable and therefore a second dispatch |
+| then | the width cap, §13.299.4 |
+| not this round | the reduced-budget arm `C2` needs. `P1` and `C2` cannot ride one dispatch: two variables make both readings unattributable |
