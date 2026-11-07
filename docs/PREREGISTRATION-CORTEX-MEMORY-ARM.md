@@ -32560,6 +32560,19 @@ Two facts follow, and the second is the one that matters:
   So the per-turn cap and the character budget are not eating answers. There is nothing for a wider room
   to recover.
 
+The table above was hand-read once and is now a tool: `tools/mr-error-direction.py` prices each failure
+against its gold and reproduces this classification **exactly** — 18 below, 4 above, 0 equal, 1 declined,
+2 echoes, 2 unpriced, 27 total. Two details the tool is careful about, and both change the reading if
+they are done differently: a gold in words (`three weddings`) is a count and skipping it would leave five
+of the eighteen unpriced; and an answer that is an evidence turn copied back (`1. [2023/…] user: …`) starts
+with a figure, so pricing before looking would file it as `below` when it is a reply-shape failure.
+
+That last bucket is worth one more sentence, because it is not entirely the reader's: on `d905b33f` and
+`c18a7dc8` the reply ends in prose — *"the evidence does not state …"* — and the record's `answer` is the
+Step 1 list, which is what the judge scored. Those two are declines whose extraction kept the screen
+instead of the conclusion. Neither would score if extracted correctly (both golds are numbers), so the
+classification does not move, but the diagnosis does: **2 of the 27 are not the reader's arithmetic.**
+
 Hand-read, the below-gold class is one mechanism wearing eighteen faces: `7024f17c`'s reply lists the
 yoga session in Step 1 and then writes `excluded: "used to" does not match "did"`; `d6062bb9` returns
 `1,456`, a single video's view count, where the question asked for the total; `6d550036` finds 0 of at
@@ -32672,7 +32685,9 @@ shape a correctly-armed registration has.
 #### 13.290.3 Predictions, in reading order
 
 1. **The below-gold population shrinks and the above-gold population grows, and the first moves more.**
-   §13.289.4's table is 18 below against 4 above. The line being replaced is the one that produced the
+   §13.289.4's table is 18 below against 4 above, and `tools/mr-error-direction.py --capability MR` prints
+   the same six buckets for the new artifact, so this prediction is a diff between two runs of one tool
+   rather than two hand counts. The line being replaced is the one that produced the
    eighteen and only weakly produced the four, so a net gain is what a correctly-calibrated rule would
    show. The reading is taken per question, not from the headline: the run's `MR` delta says whether the
    calibration was right, and the population counts say whether the **mechanism** was.
