@@ -34104,6 +34104,64 @@ Two more conditions, because a control that is read loosely is not a control:
 
 `S4` is the one that costs nothing and is skipped most often: the control's whole value is that the packet is the one the baseline saw, and this campaign has already recorded a run where a "control" differed in a field nobody declared.
 
+#### 13.305.1 The reading, and why `S0` convicted itself before `S1` could be applied
+
+`42387911305` finished `success` at 17:12Z. `S0` is the first thing to check, and it fails:
+
+| field | `42355323615` (baseline) | `42387911305` (called a control) |
+| --- | --- | --- |
+| `maxPromptChars` | `default` | **`48000`** |
+| `maxPromptCharsByRoute` | `multi-session:48460` | **absent** |
+| `room` (rendered) | `48460` on two routes | **`48000` on every route** |
+| reader | `deepseek-chat`, `thinking` on `multi-session+temporal` | identical |
+| everything else | — | identical |
+
+So this is not the registered control. It is a **different treatment**: the per-route room was collapsed into one room for every route, 460 characters (0.95%) narrower on the two routes that had the larger one and 48,000 wider on the four that had `default`. `S1` therefore has no population to apply to — the two thresholds were written for a run whose only change was the clock.
+
+That is `S0` working as designed. A control whose config moved is not a control, and the campaign has already paid once for reading a run as one (the `§13.305` paragraph above records the class). The finding is that **the judgement, not the run, was under-specified**: `S1` is a two-valued test (`≤ 97` drift, `≥ 101` code defect) on a quantity whose observed value is `97.3`.
+
+| reading | baseline `42355323615` | `42387911305` | delta |
+| --- | --- | --- | --- |
+| accuracy (4-run mean) | 91.95% (min 91.40, max 93.20) | 90.75% (min 90.20, max 91.00) | **−1.20 pp** |
+| `MR` | 83.47% (101/121), mean 101.5 | 80.99% (95/121), mean **97.3** | **−4.2 questions** |
+| `IE` | 93.33% (140/150) | 94.67% (141/150) | +0.7 questions |
+| `KU` | 88.89% (62/72) | 87.50% (62/72) | 0 |
+| `TR` | 96.06% (120/127) | 95.28% (120/127) | 0 |
+| prompt tokens | 27,178,561 | 27,178,563 | **+2** |
+| completion tokens | 2,294,764 | 2,214,126 | −80,638 (−3.51%) |
+| feature-side prompt tokens | 24,273,758 | 24,252,638 | −21,120 (−0.09%) |
+| feature-side completion tokens | 2,223,850 | 2,141,529 | −82,321 (−3.70%) |
+| prefix-cache share | 95.97% | 96.09% | +0.12 pp |
+| **prompt tokens per correct answer** | **13,199** | **13,362** | **+1.23%** |
+
+Two things in that table are worth registering rather than explaining away.
+
+**The prompt total is identical to two tokens.** 27,178,561 against 27,178,563 over 2,000 question-passes is not a coincidence and not a saving: the two rooms are 48,460 and 48,000 characters, both far above what any prompt in this dataset fills, so the cap was never reached and the treatment changed nothing about what was sent. The −21,120 on the feature side is the same spend attributed differently, not spend avoided. **A room change that never binds cannot be tested by a run whose prompts never reach the room**, and the campaign's own `cap` reading already said so: 4.11 characters per token of the 48,000 window.
+
+**The completion side moved 3.70% without any prompt change**, which is the reader varying between dispatches at `temp=0`. That is the size of the day-to-day noise this campaign has been attributing to configuration, and it is larger than the 0.09% prompt movement it was supposed to isolate.
+
+`S1` is replaced by a three-valued reading, because the two-valued one has a gap exactly where the data landed:
+
+| id | band | reading |
+| --- | --- | --- |
+| `S1a` | `MR mean ≤ 97` | **drift**: the §13.301/§13.302 MR deltas are time, and every "the room costs MR 6.61" sentence is withdrawn under `S2` |
+| `S1b` | `97 < MR mean < 101` | **unresolved**, and no sentence may cite the room as the cause in either direction |
+| `S1c` | `MR mean ≥ 101` | the `H2` refutation stands and `H1` remains a code defect |
+
+`97.3` is `S1b`. The value is one question above the drift threshold and four below the defect threshold, so the honest sentence is that **the room explanation is neither confirmed nor excluded**, and `§13.301`/`§13.302` still say "costs MR 6.61 points" without a control behind them. `S2` fires at `S1a` only, and `S1a` did not happen; what fires instead is a weaker obligation, recorded here: no document may state the 6.61 as a mechanism until `42391516675` (the `M1` arm B) or a genuine `S0`-clean control produces a band.
+
+#### 13.305.2 What the run is, now that it is not a control
+
+It is a legitimate experiment and should be registered as one rather than discarded:
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `S5` | collapsing the per-route room to `48000` documents its own **inertness**, because no prompt in this dataset reaches either room | an artifact whose delivered prompts are at the cap, i.e. a `cap` reading that is a window rather than a selection |
+| `S6` | the 1.20 pp accuracy drop and the 4.2-question MR drop are **not** attributed to the room, because `S5` leaves the room with no mechanism | any document that connects the two |
+
+`S6` exists because the numbers invite the wrong reading. A 1.20 pp drop that arrives with a 3.70% completion-token drop and a two-token prompt difference is a reader-variance observation, and the next dispatch that wants to price the room must first produce prompts that reach it.
+
+
 ### 13.306 The reader's deadline stops being a constant, and a loss stops being a pass
 
 `42381840503` (the §13.303 arm B, `deepseek-v4-pro`) is the run that made this a defect rather than a tuning question. It answered 291 of 500 and died on
@@ -34138,6 +34196,12 @@ The 1% tolerance is not decoration: the recorded pair is `299999` and `300001` a
 | `T1` | the 11th loss **throws**, naming the bound to raise | a pass that continues past it and publishes an accuracy is the defect |
 | `T2` | the ceiling is printed on the gate line as `deadlineLossCeiling=10` | a ceiling enforced and not printed is §13.306's own complaint about the deadline |
 | `T3` | a deadline loss is **never** counted as a provider refusal | a loss that also appears in `providerRefusals()` makes "the filter refused it" a false statement |
+
+The wall clock the ceiling implies is worth stating, because it is the price of a larger bound: a
+declared 600 s deadline with its 720 s ceiling allows up to 1,200 s for one question (a full attempt
+plus the truncated retry the budget permits), so eleven losses on four workers is **at most 55
+minutes** of a pass spent proving the endpoint is dead. The job's own `CORTEX_MEMORY_BUDGET_MINUTES`
+is the outer guard; this number is why it does not need to be lowered.
 
 `T3` exists because the first implementation of this repair violated it. The catch was a guard clause followed by the refusal body, so a deadline loss fell through: it was recorded twice and counted as a moderation decision. **Mutation testing found it** — changing `record('', index)` to `record(null, index)` broke no test, because the second write overwrote the first. The catch is now `if`/`else`, and a test asserts `providerRefusals()` does not move when a pass loses a question to a deadline.
 
@@ -34181,3 +34245,121 @@ Under that vocabulary `42381840503` lost its pass to a censor on 1 question of 2
 `R3` is the one this round bought: the previous attempt compared arms whose bounds could not be read from the artifacts, so the difference between an arm that died and an arm that was never given the room would have been indistinguishable from a model property.
 
 `R4`'s asymmetry argument is deliberate: one lost question costs at most 0.2 points, so it cannot manufacture `R1`'s 3.0, but it can shave it, and a reader is entitled to the number.
+
+#### 13.307.1 Arm A's reading, and the two criteria that are already decided
+
+`42391635411` finished `success` at 17:18Z, 48 minutes after dispatch, on `deepseek-flash` with `ABLATION_RUNS=2`. Two of the five criteria are settled and neither needed the other arm:
+
+| criterion | evidence | verdict |
+| --- | --- | --- |
+| `R3` | `cortex-memory gate: ... readerTimeoutMs=600000, deadlineLossCeiling=10` on the gate line, and `reader transport: deadlineMs=600000 retryBudgetMs=720000 minIntervalMs=none deadlineSource=CORTEX_READER_TIMEOUT_MS` printed twice, once per thinking mode | **holds**, for arm A |
+| `R4` | `=== deadline losses: 0 ===` and `=== provider refusals: 0 ===` | **holds**, for arm A |
+
+`R3`'s second half is the one `§13.306` registered as `D3` and it is satisfied literally: the transport line appears **before the first question**, so a run that dies on its bound no longer carries a bound nobody can name.
+
+Arm A's numbers, with the same reading the baseline gets:
+
+| capability | accuracy (first repetition) | total | min | mean | max |
+| --- | --- | --- | --- | --- | --- |
+| `IE` | 96.00% | 150 | 144 | 144.0 | 144 |
+| `MR` | 77.69% | 121 | 94 | 94.0 | 94 |
+| `KU` | 87.50% | 72 | 62 | 62.5 | 63 |
+| `TR` | 96.06% | 127 | 122 | 122.5 | 123 |
+| `ABS` | 100.00% | 30 | 30 | 30.0 | 30 |
+
+- Overall accuracy: **90.60%** on both repetitions (`min 90.60%, max 90.60%`).
+- `MR` against the baseline's 83.47%: **−4.4 questions**, the same order as the `§13.305` pair's −4.2 — which is the second independent sign that the `MR` delta of this week is not the reader model.
+- prompt tokens **14,508,996** over 2,000 question-passes; completion **1,182,360**; prefix-cache share **95.78%**.
+- `prompt tokens per correct answer`: feature side **12,102,818 / 1,000 / 0.9060 = 13,359**.
+
+That last figure is the one this arm was dispatched to produce, and it says something the `M1` hypothesis did not predict: **the cheaper model is not cheaper per correct answer.** Against the `deepseek-chat` baseline's 13,199 at 91.95%, `deepseek-flash` spends **1.2% more** token per correct answer **and** answers **1.35 pp fewer** correctly — a double loss, not a trade.
+
+The reason is worth registering because it bounds what this instrument can ever say. A weaker reader does not send shorter prompts: the packet is the same 48,000-character window with the same evidence, and `perQuestionPerRun` is a property of the packet rather than of the model. What a cheaper model buys is a lower **rate per token**, and this repository measures tokens, not currency — `cortex-ai/src/usage.ts` states the reason a price would need a rate card it does not own. So the honest reading is: **token efficiency does not improve with a weaker reader, and the case for a stronger one has no cost headwind on this instrument.** Whether the rate card makes `deepseek-flash` cheaper in money is a question this campaign cannot answer and must not imply.
+
+`R0`, `R1` and `R2` need arm B. `42391516675` was dispatched one minute before arm A and was still `in_progress` five hours later with a `CORTEX_MEMORY_BUDGET_MINUTES=340` guard, so the honest state is that **the strong-reader half of requirement 12 is still unmeasured at this size**, and a stronger reader has still not been shown to score better on this harness.
+
+**One observation that must not become a finding**: the two repetitions produced the *same* total correct count (453 of 500) while `KU` and `TR` swapped one question each (62/123 and 63/122). `featureAggregate.min == max` here is therefore not a stability claim — it is two capability-level moves that cancelled, and the per-capability spread columns are what say so. A renderer that printed only the total would have reported a perfectly stable run.
+
+### 13.308 A correct answer's price, and the population its denominator came from
+
+`§13.305.1`'s last row is where this started. `prompt tokens per correct answer` was being computed by `tools/cost-ledger.py` as `perQuestionPerRun / accuracy`, and the two operands describe different populations:
+
+- `perQuestionPerRun` = `usageBySide.feature.promptTokens / (questionCount × runs)` — a sum over **every repetition**.
+- `accuracy` = `feature.metrics.accuracy` — **one repetition**, which `report.ts` renders as *"accuracy (first repetition)"* for the reason `§13.122` records at length.
+
+On the `§13.305` pair the two arms' first repetitions sit on opposite sides of their means: the baseline's is its worst (91.40% against 91.95%) and the treatment's is its best (90.80% against 90.75%). The shipped division therefore charged the baseline 0.60% more than it spent and the treatment 0.06% less, and read a **1.20 pp** accuracy gap as a **0.57%** cost gap where the matching denominator gives **1.23%** — the arm that answered fewer questions correctly looked 54% cheaper than it was.
+
+Repetition order is arbitrary, so the sign of that error is arbitrary too. That is what makes it a defect rather than a tuning choice, and it is why the repair is not "divide by the better number in the tool".
+
+#### 13.308.1 The reading moves into the artifact, with its denominator named
+
+A ratio every consumer recomputes is a ratio every consumer can get differently right, so the run writes it down. `AblationReport.costEfficiency` carries four fields, and the third one is the fix:
+
+| field | why it is a field and not something a reader derives |
+| --- | --- |
+| `perCorrectAnswerPromptTokens` | the reading itself |
+| `promptTokensPerQuestion` | the numerator, so the division can be rechecked without the artifact's other blocks |
+| `accuracy` | the denominator, because the ratio is a function of it and a price quoted alone is a product of two numbers with one hidden |
+| `accuracySource` | **`all-runs` or `first-repetition`** — the two coincide on a one-repetition arm and differ on a four-repetition one, and a reader comparing two artifacts is entitled to know which population it is holding |
+
+The computation reads `ablation.featureAggregate.avg`, the unweighted mean of each repetition's accuracy. Every repetition grades the same questions, so it equals the pooled proportion the numerator is built from. When the field is absent — an artifact written before the spread existed, or one that only ever had a single repetition — the fallback is `feature.metrics.accuracy` and `accuracySource` says `first-repetition` rather than letting a coincidence pass for a measurement.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `E0` | the price is invariant to **which repetition ran first**: reordering four repetitions changes `feature.metrics.accuracy` and nothing else in the artifact, so the reading must not move | two prices for one run |
+| `E1` | a report with `featureAggregate` prices from `all-runs`; one without prices from `first-repetition` and says so | an artifact that picked one silently |
+| `E2` | the ratio is **absent**, never `0`, `Infinity` or a thrown error, for four states: no side split, no question count, no repetition count, a run that spent nothing | a number where the division is undefined |
+| `E3` | a run that answered nothing right is **absent** and not enormous | `inf` rendered as a price |
+| `E4` | a side split that does not close cannot price an answer | a ratio computed from a column the renderer itself calls `SPLIT UNAVAILABLE` |
+| `E5` | the rendered line names the population `all-runs | first-repetition | artifact` beside the accuracy | a ratio quoted without its denominator |
+| `E6` | the correct-answer count is **not** quoted beside an all-runs mean, because it is one repetition's count | `(454 correct, all-runs)` against 90.75% -- two populations in one parenthesis, and 454/500 = 90.80% describes no run |
+
+`E0` is the one a code review cannot check, because both divisions look correct in isolation. It is asserted directly: two artifacts differing only in `feature.metrics.accuracy` must return the **same** float.
+
+#### 13.308.2 The same defect, second instance: a split that does not close
+
+`E4` exists because the numerator is a column of `usageBySide`, and that block carries two independently accumulated tallies. When `baseline + feature` claims more prompt tokens than `llmUsage` reported, `residualUsage` refuses to name a residual and `render.ts` prints `SPLIT UNAVAILABLE` instead of a per-arm column. A price computed from that column inherits the doubt, and an absent ratio reads as "not measured" while a wrong one reads as a measurement — the `null`-versus-`0` rule this campaign applies to retry counters and to token columns, one field further out.
+
+The guard is conditional on the total existing, because `llmUsage` and `usageBySide` attach independently and requiring one to check the other would make a report that carries only the split unpriceable for no reason. The `tools/cost-ledger.py` side implements the same rule for artifacts it reads rather than wrote.
+
+#### 13.308.3 Two readers, one rule
+
+`tools/cost-ledger.py` now prefers the artifact's own `costEfficiency` and adopts it only when its shape can be divided — a percentage, a boolean or a missing ratio is refused rather than trusted, because a field a future build writes is not a field this build may assume. When the artifact has no such field the tool computes the ratio itself, with the same denominator selection and the same `accuracySource` label.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `V0` | an authored reading wins over recomputation | a consumer that disagrees with the run that produced both inputs |
+| `V1` | an authored reading of the wrong shape is refused, and the tool falls back to computing | `accuracy: 92` adopted as a fraction |
+| `V2` | the tool's fallback picks the same denominator the run would have | two artifacts, one with `costEfficiency` and one without, read as two different prices for one run |
+| `V3` | the rendered line names the population in all three cases (`artifact`, `all-runs`, `first-repetition`) | a text reading that cannot say which population it used |
+
+#### 13.308.4 A reader that survives an old artifact must not crash on one
+
+Writing the `first-repetition` case exposed a live defect in the renderer. `formatAblationReport` read `ab.featureAggregate.min` unguarded, so an artifact written before the spread existed — the exact artifact `E1`'s fallback exists to price — threw `TypeError: Cannot read properties of undefined` instead of rendering. The spread table now renders `—` per row and the dash is documented as "the repetitions were never spread", which is a fact about the run and not a stability result.
+
+This is the third time in this campaign that a rule about absence lived in a conditional whose absence case was never executed. It is now covered by the same file that covers the rule.
+
+#### 13.308.5 The reading, on two real artifacts
+
+Two artifacts from this week still predate the field, so both exercise the fallback path — which is the path a reader of an old file actually takes.
+
+| artifact | `feature.metrics.accuracy` (first) | `featureAggregate.avg` | old division | new division |
+| --- | --- | --- | --- | --- |
+| `42387911305` | 90.80% | 90.75% | 13,355 | **13,362** |
+| `42391635411` | 90.60% | 90.60% | 13,359 | **13,359** |
+
+`42391635411` cannot distinguish the two — its repetitions happen to agree — and that is exactly why the pair was worth running both halves of. `42387911305` moves by 0.05 pp on the denominator and 7 tokens on the price, and the tool now prints
+
+```text
+  per correct answer              13,362   prompt tokens
+  at accuracy                     90.75%   (no count, the mean spans runs, all-runs)
+```
+
+#### 13.308.6 A third field in the same parenthesis, and a third population
+
+`42387911305`'s first rendering attempt read `(454 correct, all-runs)` against a denominator of 90.75%. `454/500` is 90.80% — the first repetition's count, printed beside the all-runs mean. A reader who divides the two numbers in one bracket gets a third number that describes no run at all.
+
+That is the same defect as `E0`, one field over, and it is registered as `E6`: the count is withheld when the denominator is a mean over repetitions, because the artifact holds no count for that population. The rendered line says so rather than printing `n/a`, since "the mean spans runs" is a reason and `n/a` is a shrug.
+
+The Python side withholds it; the TypeScript side never carried it, because `costEfficiency` was designed with four fields and a count is not one of them. The two readers therefore agree on the sentence as well as on the number.
+
