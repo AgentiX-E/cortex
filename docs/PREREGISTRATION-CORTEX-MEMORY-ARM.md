@@ -33764,3 +33764,58 @@ Two of those were verified by breaking the code and watching them go red: the st
 | then | `M1` (reasoning reader, paired), which needs a second provider-side variable and therefore a second dispatch |
 | then | the width cap, §13.299.4 |
 | not this round | the reduced-budget arm `C2` needs. `P1` and `C2` cannot ride one dispatch: two variables make both readings unattributable |
+
+### 13.300 The provider swap had a three-hour entrance fee, and the guard that charged it was reading a literal
+
+`42366809734` was a 20-question smoke at `model=zhipu:glm-4.6`, the first attempt to price a second reader.
+It never reached a model. The budget guard refused to start:
+
+```
+job 360 min, 8 passes, 340 min per run
+  the ceiling permits 341 min of run (0.95x the job) -> it binds
+pacing floor 400 min (500 questions x 1 call(s) x 8 passes x 6000 ms), budget 340
+  -> THE RUN CANNOT FINISH: the budget fires 60 min before the last question is asked
+```
+
+Two facts in that output, and the second is the expensive one.
+
+#### 13.300.1 The literal
+
+`--questions 500` was typed into the workflow, so the guard planned a full suite for a 20-question dispatch.
+The floor is `questions x passes x interval`, and only the first term is a property of the dispatch.
+
+The consequence is not one refused run. **The entrance fee for the entire portability axis was a three-hour
+run**, so a vendor whose quota is exhausted is discovered after the budget rather than before it -- which is
+precisely the state this campaign is in with Zhipu *embeddings*, and nobody had noticed the same argument
+applies to a Zhipu *reader*. `GRADED_QUESTIONS` now comes from `inputs.limit`, the same way the run does.
+
+#### 13.300.2 The arithmetic, which changes what `P1` can be
+
+At the `zhipu:` pace of 6,000 ms per request:
+
+| repetitions | passes | floor | fits the 340-minute budget |
+| --- | ---: | ---: | --- |
+| 4 | 8 | **400 min** | no -- and not inside the 360-minute job either |
+| 3 | 6 | 300 min | yes, with 40 minutes of margin |
+| 2 | 4 | 200 min | yes |
+
+So a provider swap at the full 500 questions **cannot run four repetitions**, and that is a property of the
+vendor's rate limit rather than of this arm. `P1` therefore runs at **two repetitions** and says so in its
+registration. The pairing against `42355323615` stays legitimate for the reason §13.298.5 already records: the
+same 500 questions, the same prompts, the same judge, and a first repetition that is a complete 500-question
+reading. What two repetitions buy is the mean and the agreement rate, not the sampling check the four-pass arm
+was built for -- so `M1`, which asks for a paired per-question gain, keeps its four and needs a different
+provider-side variable.
+
+Four tests pin the wiring, and one of them states the arithmetic above rather than the code: a 20-question smoke
+fits where 500 does not, and the full suite is affordable at two repetitions and not at four.
+
+#### 13.300.3 Where this leaves the queue
+
+Unchanged in order, and one line sharper about price:
+
+| | |
+| --- | --- |
+| now | the 20-question smoke at `ablation_runs=1` (`42367594269`), to verify the provider answers at all and to price one call |
+| if it answers | `P1` at the full 500 questions, `ablation_runs=2`, gate `<= 2.0` points against the reference provider |
+| if it does not | the answer is a quota fact, not a mechanism finding, and `P1` stays `unrun` with a reason that names the vendor rather than the product |
