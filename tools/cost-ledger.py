@@ -183,6 +183,91 @@ def cap_reading(report: dict, per_call: float) -> dict | None:
     return reading
 
 
+def _split_closes(report: dict) -> bool:
+    """Can the artifact prove its two per-arm tallies came from one ledger?
+
+    §13.308's second instance. `usageBySide` is two independently accumulated tallies, and when
+    they claim more prompt tokens than the run reported, `residualUsage` refuses to name a residual
+    and `report.ts` renders `SPLIT UNAVAILABLE` rather than a per-arm column. A ratio computed from
+    that column inherits the doubt, and an absent ratio reads as "not measured" while a wrong one
+    reads as a measurement.
+
+    One-sided on purpose. An artifact with no total, a total that is not an integer, or a side block
+    with no token count cannot prove anything either way, and refusing those would convict a report
+    for the absence of a witness.
+    """
+    total = report.get('llmUsage')
+    side = report.get('usageBySide')
+    if not isinstance(total, dict) or not isinstance(side, dict):
+        return True
+    whole = total.get('promptTokens')
+    if isinstance(whole, bool) or not isinstance(whole, int):
+        return True
+    parts = 0
+    for name in ('baseline', 'feature'):
+        block = side.get(name)
+        if not isinstance(block, dict):
+            continue
+        part = block.get('promptTokens')
+        if isinstance(part, bool) or not isinstance(part, int):
+            continue
+        parts += part
+    return parts <= whole
+
+
+def _authored_efficiency(report: dict) -> dict | None:
+    """Adopt the reading the run itself wrote, when it wrote one this tool can divide by.
+
+    §13.308. A run knows both inputs at the moment it writes its artifact, so recomputing its
+    ratio can only agree with it or be wrong. The shape check is not ceremony: `costEfficiency` is
+    a field a future build can get wrong, and adopting a percentage or a string because it happens
+    to be present would make this tool's refusals depend on another repository's type discipline.
+    """
+    authored = report.get('costEfficiency')
+    if not isinstance(authored, dict):
+        return None
+    if authored.get('state') != 'measured':
+        return None
+    ratio = authored.get('perCorrectAnswerPromptTokens')
+    accuracy = authored.get('accuracy')
+    if isinstance(ratio, bool) or not isinstance(ratio, (int, float)) or ratio <= 0:
+        return None
+    if isinstance(accuracy, bool) or not isinstance(accuracy, (int, float)):
+        return None
+    if not 0 < accuracy <= 1:
+        return None
+    correct = authored.get('correct')
+    return {
+        'state': 'measured',
+        'accuracy': float(accuracy),
+        'correct': correct if isinstance(correct, int) and not isinstance(correct, bool) else None,
+        'perCorrectAnswerPromptTokens': float(ratio),
+        'accuracySource': 'artifact',
+    }
+
+
+def _denominator(report: dict, metrics: dict) -> tuple[object, str]:
+    """The population the numerator came from, and the name of that population.
+
+    §13.308. `perQuestionPerRun` sums the prompt tokens of **every repetition** and divides by
+    `questionCount x runs`, so the divisor has to describe the same repetitions. `feature.metrics`
+    is one of them -- `report.ts` renders it as *"accuracy (first repetition)"* for the reason
+    §13.122 records -- and `ablation.featureAggregate.avg` is the mean over all of them. On the
+    §13.305 pair the first is 91.40% against a 91.95% mean on one arm and 90.80% against 90.75% on
+    the other, so the shipped division moved 0.60% of cost onto the arm whose first repetition
+    happened to be its worst. Repetition order is arbitrary; the error's sign was too.
+
+    A spread value that is `0`, a boolean or out of range is not a denominator, and the fallback is
+    named rather than silent so the rendered line says which population was used.
+    """
+    ablation = report.get('ablation')
+    spread = ablation.get('featureAggregate') if isinstance(ablation, dict) else None
+    average = spread.get('avg') if isinstance(spread, dict) else None
+    if not isinstance(average, bool) and isinstance(average, (int, float)) and 0 < average <= 1:
+        return float(average), 'all-runs'
+    return metrics.get('accuracy'), 'first-repetition'
+
+
 def efficiency(report: dict, per_question_per_run: float) -> dict:
     """Prompt tokens per correct answer, or why that ratio cannot be stated.
 
@@ -193,7 +278,22 @@ def efficiency(report: dict, per_question_per_run: float) -> dict:
 
     The accuracy is returned beside the ratio because the ratio is a function of it: comparing two
     runs' cost-per-correct-answer without their accuracies is comparing two products of two numbers.
+    `accuracySource` names the population beside the number, because `all-runs` and
+    `first-repetition` coincide on a one-repetition arm and differ on a four-repetition one -- and a
+    reader comparing two artifacts is entitled to know which one it is holding.
     """
+    authored = _authored_efficiency(report)
+    if not _split_closes(report):
+        return {
+            'state': 'absent',
+            'note': (
+                'the side split does not close: baseline + feature claim more prompt tokens than '
+                '`llmUsage` reported, so the two tallies did not come from one ledger and no '
+                'per-arm column can be divided'
+            ),
+        }
+    if authored is not None:
+        return authored
     feature = report.get('feature')
     metrics = feature.get('metrics') if isinstance(feature, dict) else None
     if not isinstance(metrics, dict):
@@ -201,7 +301,7 @@ def efficiency(report: dict, per_question_per_run: float) -> dict:
             'state': 'absent',
             'note': 'the artifact carries no `feature.metrics`, so no correct-answer count exists',
         }
-    accuracy = metrics.get('accuracy')
+    accuracy, accuracy_source = _denominator(report, metrics)
     # `True` is an `int` in Python: a boolean accuracy would price a run at exactly its per-question
     # cost and look like a perfect ratio, so it is refused by type rather than by value.
     if isinstance(accuracy, bool) or not isinstance(accuracy, (int, float)):
@@ -216,16 +316,24 @@ def efficiency(report: dict, per_question_per_run: float) -> dict:
         }
     correct = metrics.get('correct')
     correct_count = correct if isinstance(correct, int) and not isinstance(correct, bool) else None
+    # §13.308's third field, and the same rule as the first two: `correct` is one repetition's
+    # count, so it cannot sit in the same parenthesis as an all-runs mean. Real artifact
+    # `42387911305` would print `(454 correct, all-runs)` against 90.75% while 454/500 is 90.80% --
+    # two populations in one bracket, and the quotient describes no run.
+    if accuracy_source == 'all-runs':
+        correct_count = None
     if accuracy == 0:
         return {
             'state': 'undefined',
             'accuracy': 0.0,
+            'accuracySource': accuracy_source,
             'correct': correct_count,
             'note': 'no correct answers, so tokens per correct answer is infinite rather than large',
         }
     return {
         'state': 'measured',
         'accuracy': float(accuracy),
+        'accuracySource': accuracy_source,
         'correct': correct_count,
         'perCorrectAnswerPromptTokens': per_question_per_run / float(accuracy),
     }
@@ -328,11 +436,19 @@ def render(result: dict) -> str:
     if isinstance(efficiency_block, dict):
         lines.append('')
         if efficiency_block['state'] == 'measured':
+            correct = efficiency_block.get('correct')
+            source = efficiency_block.get('accuracySource', 'unknown')
+            if correct is not None:
+                population = f'{correct} correct'
+            elif source == 'all-runs':
+                population = 'no count, the mean spans runs'
+            else:
+                population = 'n/a correct'
             lines += [
                 f"  per correct answer        {efficiency_block['perCorrectAnswerPromptTokens']:>12,.0f}"
                 '   prompt tokens',
                 f"  at accuracy               {efficiency_block['accuracy'] * 100:>11.2f}%"
-                f"   ({efficiency_block.get('correct') if efficiency_block.get('correct') is not None else 'n/a'} correct)",
+                f"   ({population}, {source})",
             ]
         else:
             lines.append(
