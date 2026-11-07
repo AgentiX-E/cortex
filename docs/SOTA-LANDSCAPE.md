@@ -1162,3 +1162,72 @@ The per-round question "is cortex SOTA" has one honest answer per axis and no si
 No cell in this table is a SOTA claim, and four of the seven are `unrun`. That is the state of the project, and
 it is a better state than the previous round, because three of the cells now have a number where they had a
 sentence.
+
+## 17. The cost axis has a number, and the number is bought with an accuracy row
+
+Round 28's §16.4 marked cost as `not SOTA` with an unmeasured cut behind it. `42373407439` measured it,
+and the result is the first two-sided reading on this board: both cost rows clear their thresholds and
+the accuracy registration beside them refuses the same run.
+
+### 17.1 The two rows, and the row that says no
+
+| row | threshold | 48,000 room (`42355323615`) | 24,000 room (`42373407439`) | verdict |
+| --- | --- | ---: | ---: | --- |
+| `C1` prompt tokens per question | ≤ 6,000 | 11,558 | **5,623** | met at the smaller room |
+| `C2` median evidence ratio | ≤ 0.70 | 1.000 (denominator) | **0.487** | **pass** |
+| `A` accuracy within 2.0 of the control | ≥ 89.4 | 91.40 | **88.20** | **fail**, by 1.20 |
+
+So the bar that `C1` and `C2` aim at is reachable, and the price is `-3.20`. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md`
+has the whole reading; the number this page needs is that **cost is no longer unmeasured** — it is
+measured and it is expensive at the whole-window setting.
+
+Against the board, the smaller room is the closest this product has come to a cost win:
+
+| | cortex at 24,000 | MemStrata CL1 | difference |
+| --- | ---: | ---: | ---: |
+| accuracy, original protocol | **88.20%** | 92.6% | **-4.40** |
+| evidence per question | **5,623 tokens** | 24,000-token ceiling | **0.23x** |
+
+Twenty-three percent of the evidence for four and a half points. That is not a win, and it is the first
+time the trade is a number rather than an argument.
+
+### 17.2 `B` failed in the direction that matters, and it named the repair
+
+The registration predicted the loss would land in `ABS`, `IE` and `KU` — the three capabilities
+`tools/gold-room.py` priced as exposed — and that `MR` and `TR` would be free. The measurement is the
+mirror image: `ABS 0.00`, `IE -0.67`, `KU -1.39`, against **`MR -6.61` and `TR -4.72`**.
+
+The mechanism is in the two artifacts and needs no model call to see. Every capability lost about half
+its delivered turns (`MR 199 → 102`, `TR 205 → 109`, `IE 64 → 32`, `KU 67 → 28`). Only the two that
+**aggregate** lost accuracy, because `IE`, `KU` and `ABS` ask for one fact in one turn and half a packet
+still holds that turn, while `MR` and `TR` ask for a count over turns — and a count over a sample is not
+the count. The failure signature is literal: `gpt4_a56e767c` answers `3` against four festivals,
+`gpt4_7fce9456` answers `5` against four properties.
+
+**Therefore `tools/gold-room.py`'s `room` column is a lower bound on exposure, not an estimate of it.**
+A gold-coverage model is sufficient for a single-turn question and irrelevant for an aggregation,
+because an aggregation's requirement is not its gold turn but the complete set of turns the gold counts.
+This is the fourth instrument in this campaign to predict safety and be contradicted, and the first whose
+*model* rather than whose *reading* was the defect.
+
+### 17.3 What the board looks like now, per axis
+
+| axis | cortex | leader | verdict |
+| --- | ---: | --- | --- |
+| accuracy · original protocol · same 500 | **91.40%** (1 rep) / 91.95% (4-rep mean of the previous batch) | MemStrata **92.6%** at 24k tokens | **not SOTA, not behind** — inside the leader's own 7.5–11.5-question label noise, at 0.51x the evidence |
+| accuracy · source-aware grading | **screened, not scored** | MemStrata **95.0%** | **still unmeasured**, but the screen now exists: `tools/source-aware-audit.mjs` splits reader from retrieval on any artifact, and `auditReference` is the protocol. This moved from "no implementation" to "implementation, dispatch pending" |
+| accuracy · self-reported headline | 91.40% | **Recallium 98.4%**, ContextStream 96.8%, Agent Zero 95.60% | **not SOTA**, and none of the three has public code (§`COMPETITOR-CODE-AVAILABILITY.md`) |
+| cost per question | **11,558** registered / **5,623** at the smaller room | Zep ~4,400 published; MemStrata 24,000 | **not SOTA**; the trade is now quantified at `-3.20` for `0.487x` |
+| memory pollution | `V1` 0.0pp, `K1` +64.7pp | TEPA **-9.9pp** append-only | at least as good as the field's counter-example, on 17 cases rather than a 50-seed stream |
+| provider portability | `P1` **no reading** | MemStrata -0.2pp | **unmeasured**; the run that would have read it (`42368550937`) died on a provider content filter and that defect is fixed (`ProviderContentRefusal`) |
+| reader strength | `M1` unmeasured | Agent Zero 3.4pp / 8 backbones | **unmeasured** |
+
+Four of seven cells still carry no number, and `P1`'s run is now known to have died for a reason that
+had nothing to do with the arm — which is the second thing this round changed: the pass is 5 hours and
+one refused prompt used to destroy it.
+
+### 17.4 The one number that changed the plan
+
+`252 questions whose answer lives in one turn` read `92.86%` at 48,000 and `92.06%` at 24,000. The
+`248 that aggregate` read `89.92%` and `84.27%`. That split is the whole product roadmap for cost: the
+free half is half the questions, and no published competitor has reported a per-route budget at all.

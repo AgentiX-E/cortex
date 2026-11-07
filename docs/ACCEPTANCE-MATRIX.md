@@ -70,7 +70,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | C1  | <!-- reading:C1 -->12137  | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
-| C2  | <!-- reading:C2 -->100.0% | ≤ 70.0%   | aim    | cost                                   | LongMemEval-S, paired, median evidence tokens per question   |
+| C2  | <!-- reading:C2 -->48.7%  | ≤ 70.0%   | pass   | cost                                   | LongMemEval-S, paired, median evidence tokens per question   |
 | M1  | <!-- reading:M1 -->—      | ≥ 3.0pp   | unrun  | reader strength                        | LongMemEval-S, one dispatch, two readers, prompt bytes held  |
 | P1  | <!-- reading:P1 -->—      | ≤ 2.0pp   | unrun  | provider portability                   | LongMemEval-S, one dispatch, two providers, prompt bytes held |
 
@@ -193,6 +193,29 @@ store is worth exactly nothing on a set built to contain contradictions, while t
 **64.7pp** over the same baseline. The `no-memory` arm is not a special case in the code — `resolve` passes
 `ranked: []` down the same `assemble` call every other arm uses, so a difference between the floor and an arm is a
 difference the product would also show.
+
+### 3.2 The budget was met by halving the room, and the halving is not free
+
+`42373407439` is `42355323615` with `max_prompt_chars` moved from 48,000 to 24,000 and nothing else.
+`C1` reads **5,623** tokens per question on it and `C2` reads **0.487**, so both cost rows clear their
+bars for the first time — and `A`, the accuracy registration written beside them, refuses the result.
+
+| capability | n | 48,000 | 24,000 | delta | `gold-room.py` predicted |
+| --- | ---: | ---: | ---: | ---: | --- |
+| ABS | 30 | 100.00% | 100.00% | 0.00 | 9 exposed |
+| IE | 150 | 93.33% | 92.67% | -0.67 | 2 exposed |
+| KU | 72 | 88.89% | 87.50% | -1.39 | 38 exposed |
+| MR | 121 | 83.47% | 76.86% | **-6.61** | 0 exposed |
+| TR | 127 | 96.06% | 91.34% | **-4.72** | 0 exposed |
+
+The instrument named three capabilities and the loss was in the other two. Every capability lost about
+half its delivered turns; only the two that **aggregate** lost accuracy. `IE`, `KU` and `ABS` ask for one
+fact in one turn and half a packet still holds it; `MR` and `TR` ask for a count over turns and a count
+over a sample is not the count. `tools/gold-room.py`'s `room` column is therefore a **lower bound on
+exposure**: a gold-coverage model is sufficient for a single-turn question and irrelevant for an
+aggregation. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` has the whole reading; §13.302 registers the arm the
+asymmetry licenses — 24,000 on four routes and 48,000 on the two that aggregate, predicted at `-0.36`
+points for `-26%` tokens, every cell of it a measured number rather than a model.
 
 ## 4. How each increment is tested, on four levels
 

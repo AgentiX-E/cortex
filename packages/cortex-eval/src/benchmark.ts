@@ -9,7 +9,75 @@ import type {
   RetrievedTurns,
   SessionAwareMemorySystem,
 } from './types.js';
+import { ProviderContentRefusal } from '@agentix-e/cortex-ai';
 import { scoreEvaluation, type AnswerScorer, type ScoredEvaluation } from './metrics.js';
+
+/**
+ * One question a provider's moderation gate refused to read.
+ *
+ * Carries the capability and question type because the count alone cannot say whether the loss is
+ * spread or concentrated: a filter that refuses three `ABS` questions has moved the abstention
+ * column by three and left the accuracy comparison alone, while three `MR` refusals move the column
+ * the gap is stated in. `providerCode` is the provider's own word for the refusal, kept so a later
+ * reader can tell a Zhipu `1301` from a gateway's `content_policy_violation` without the log.
+ */
+type ProviderRefusalRecord = {
+  readonly questionId: string;
+  readonly capability: string;
+  readonly questionType: string | null;
+  readonly providerCode: string | null;
+};
+
+/**
+ * Every refusal this process has decided, in arrival order.
+ *
+ * Process-wide and cumulative, mirroring `scorerChannelStats` and for the same reason: the arm that
+ * observes the count is three frames above the worker that produces it, and one process serves one
+ * run. Tests assert the CHANGE between two reads rather than a zeroed counter, which is the stronger
+ * assertion -- a counter that could be cleared could satisfy the weaker one.
+ */
+const refusals: ProviderRefusalRecord[] = [];
+
+/** A copy, so a caller cannot mutate the record it was handed. */
+export function providerRefusals(): readonly ProviderRefusalRecord[] {
+  return refusals.map((record) => ({ ...record }));
+}
+
+/**
+ * Narrowing predicate for the one error class a per-question catch may decide.
+ *
+ * `instanceof` alone is not enough across a workspace where a package can be resolved twice, so the
+ * name is checked as a fallback -- the same shape `cortex-ai`'s retry layer uses for its own refusal
+ * object, and the reason `ProviderContentRefusal` sets `name` in its constructor.
+ */
+function isProviderContentRefusal(err: unknown): err is ProviderContentRefusal {
+  return (
+    err instanceof ProviderContentRefusal ||
+    (err instanceof Error && err.name === 'ProviderContentRefusal')
+  );
+}
+
+/**
+ * One line naming how many questions the provider refused, and where.
+ *
+ * Printed on every run rather than only when non-zero: `0` is the statement that every question
+ * reached the model, and a line that appears only on failure leaves a reader unable to tell "no
+ * refusals" from "this log predates the counter".
+ */
+export function describeProviderRefusals(records: readonly ProviderRefusalRecord[]): string {
+  if (records.length === 0) {
+    return 'provider refusals: 0';
+  }
+  const byCapability = new Map<string, number>();
+  for (const record of records) {
+    byCapability.set(record.capability, (byCapability.get(record.capability) ?? 0) + 1);
+  }
+  const spread = [...byCapability.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([capability, count]) => `${capability} ${count}`)
+    .join(', ');
+  return `provider refusals: ${records.length} (${spread}) — counted as unanswered, kept in the denominator`;
+}
 
 /** True when the system opts into session-boundary-aware answering. */
 function isSessionAware(system: MemorySystem): system is SessionAwareMemorySystem {
@@ -481,63 +549,110 @@ export async function runBenchmark(
         questionId: q.id,
         elapsedMs: performance.now() - startedAt,
       });
-      if (
-        isSessionAware(workerSystem) &&
-        q.capability === 'MR' &&
-        q.sessions &&
-        q.sessions.length > 0
-      ) {
-        // Multi-session questions aggregate evidence across sessions.
-        record(await workerSystem.answerSessions(q.question, q.sessions), index);
-      } else if (
-        isSessionAware(workerSystem) &&
-        q.capability === 'TR' &&
-        workerSystem.answerTemporal
-      ) {
-        // Temporal questions need the question date as the reference point for
-        // "how long ago" reasoning, plus a dedicated date-reading prompt.
-        record(
-          await workerSystem.answerTemporal(q.question, q.context, q.questionDate, q.sessions),
-          index,
-        );
-      } else if (
-        isSessionAware(workerSystem) &&
-        q.capability === 'ABS' &&
-        workerSystem.answerAbstention
-      ) {
-        // Abstention questions are answered with a conservative prompt so the model
-        // recognizes the absence of an answer instead of being pushed to choose a
-        // candidate. Routed before the assistant check because an ABS question may
-        // carry a single-session-assistant type.
-        record(await workerSystem.answerAbstention(q.question, q.context, q.sessions), index);
-      } else if (
-        isSessionAware(workerSystem) &&
-        q.questionType === 'single-session-assistant' &&
-        workerSystem.answerAssistant
-      ) {
-        // The evidence for single-session-assistant questions lives in an assistant
-        // turn, so route to a path that includes assistant turns.
-        record(await workerSystem.answerAssistant(q.question, q.context, q.sessions), index);
-      } else if (
-        isSessionAware(workerSystem) &&
-        q.questionType === 'single-session-preference' &&
-        workerSystem.answerPreference
-      ) {
-        // Preference/recommendation questions ask for a suggestion that reflects the
-        // user's stated preferences, not a single extracted fact. The extractive answer
-        // path would abstain on them, so route to a generative path instead.
-        record(await workerSystem.answerPreference(q.question, q.context, q.sessions), index);
-      } else if (
-        isSessionAware(workerSystem) &&
-        q.questionType === 'knowledge-update' &&
-        workerSystem.answerKnowledgeUpdate
-      ) {
-        // Knowledge-update questions ask which value a time qualifier selects
-        // (previous vs currently), which the generic extractive prompt does not
-        // make explicit. Route to the time-qualifier-aware prompt instead.
-        record(await workerSystem.answerKnowledgeUpdate(q.question, q.context, q.sessions), index);
-      } else {
-        record(await workerSystem.answer(q.question, q.context, q.sessions), index);
+      // One question's prompt is not one question's measurement.
+      //
+      // Run `42368550937` answered 83 of 500 in 1,003 seconds, then Zhipu refused
+      // `gpt4_2f8be40d`'s prompt with `400 ... "contentFilter"` and the throw unwound the pass:
+      // two hours of a four-worker run discarded, no report written, `failure` with `reached 83`.
+      // The transport was right (a 400 is not retryable) and the arm was right; what was missing
+      // is that a provider's moderation decision is a fact about **that question**, not about the
+      // pass. So exactly that one class is decided here and everything else still crashes: a
+      // malformed body, a bad key, a schema error and an exhausted retry ladder are defects that
+      // fail identically on all 500 questions, and catching them would turn a broken arm into a
+      // quiet accuracy number.
+      //
+      // The refused question is recorded as `null` -- the arm produced no answer -- and is counted
+      // in `providerRefusals()`, never dropped from the denominator. Dropping it would be the
+      // favourable half of a selection: the questions a filter refuses are not a random sample,
+      // so removing them would raise the score of an arm that answered fewer questions.
+      try {
+        if (
+          isSessionAware(workerSystem) &&
+          q.capability === 'MR' &&
+          q.sessions &&
+          q.sessions.length > 0
+        ) {
+          // Multi-session questions aggregate evidence across sessions.
+          record(await workerSystem.answerSessions(q.question, q.sessions), index);
+        } else if (
+          isSessionAware(workerSystem) &&
+          q.capability === 'TR' &&
+          workerSystem.answerTemporal
+        ) {
+          // Temporal questions need the question date as the reference point for
+          // "how long ago" reasoning, plus a dedicated date-reading prompt.
+          record(
+            await workerSystem.answerTemporal(q.question, q.context, q.questionDate, q.sessions),
+            index,
+          );
+        } else if (
+          isSessionAware(workerSystem) &&
+          q.capability === 'ABS' &&
+          workerSystem.answerAbstention
+        ) {
+          // Abstention questions are answered with a conservative prompt so the model
+          // recognizes the absence of an answer instead of being pushed to choose a
+          // candidate. Routed before the assistant check because an ABS question may
+          // carry a single-session-assistant type.
+          record(await workerSystem.answerAbstention(q.question, q.context, q.sessions), index);
+        } else if (
+          isSessionAware(workerSystem) &&
+          q.questionType === 'single-session-assistant' &&
+          workerSystem.answerAssistant
+        ) {
+          // The evidence for single-session-assistant questions lives in an assistant
+          // turn, so route to a path that includes assistant turns.
+          record(await workerSystem.answerAssistant(q.question, q.context, q.sessions), index);
+        } else if (
+          isSessionAware(workerSystem) &&
+          q.questionType === 'single-session-preference' &&
+          workerSystem.answerPreference
+        ) {
+          // Preference/recommendation questions ask for a suggestion that reflects the
+          // user's stated preferences, not a single extracted fact. The extractive answer
+          // path would abstain on them, so route to a generative path instead.
+          record(await workerSystem.answerPreference(q.question, q.context, q.sessions), index);
+        } else if (
+          isSessionAware(workerSystem) &&
+          q.questionType === 'knowledge-update' &&
+          workerSystem.answerKnowledgeUpdate
+        ) {
+          // Knowledge-update questions ask which value a time qualifier selects
+          // (previous vs currently), which the generic extractive prompt does not
+          // make explicit. Route to the time-qualifier-aware prompt instead.
+          record(
+            await workerSystem.answerKnowledgeUpdate(q.question, q.context, q.sessions),
+            index,
+          );
+        } else {
+          record(await workerSystem.answer(q.question, q.context, q.sessions), index);
+        }
+      } catch (err) {
+        if (!isProviderContentRefusal(err)) {
+          throw err;
+        }
+        // Not retried, by design: the same prompt against the same filter is the same decision, so an
+        // attempt is certain waste.
+        //
+        // `record('')` and not `record(null)`, and the difference is worth a paragraph because it is
+        // four points of a column. `null` is this repository's word for **the arm declined**, and
+        // `judgeScorer` scores a declined answer against an `expected === null` question as CORRECT --
+        // correct, because declining an unanswerable question is what the abstention gold asks for.
+        // A moderation refusal is not a decline: the arm never produced anything. Recording it as a
+        // decline would hand the `ABS` column a free pass on exactly the questions most likely to be
+        // filtered, which are the personal ones, which is the column `ABS` is made of. The empty
+        // string is the honest third state -- no output -- and it fails every channel of
+        // `judgeScorer` on its own terms rather than by a special case bolted onto the scorer.
+        //
+        // The artifact keeps the distinction visible: `null` and `''` are different values in the
+        // answers vector, so a later reader can tell a refusal from a decline without the log.
+        refusals.push({
+          questionId: q.id,
+          capability: q.capability,
+          questionType: q.questionType ?? null,
+          providerCode: err instanceof ProviderContentRefusal ? err.providerCode : null,
+        });
+        record('', index);
       }
       // Captured HERE, at the end of the iteration that produced the answer, and not after
       // the loop. Reading the accessor once at the end would report the last question's text
