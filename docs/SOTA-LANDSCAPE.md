@@ -692,3 +692,162 @@ restoration, budget spent on the anchor*, not "sessions" and not "a wider prefix
 the pool-side half of that idea — restore into the pool and let the neighbours compete — and §13.257 is the
 record of what competition costs. The unit-side half, where neighbours are bought **with** their anchor and
 never ranked, is the part that had not been built.
+
+## 14. The October 2026 board, the reader axis priced from outside, and three papers that name our failure
+
+Gathered on 2026-11-07 while §13.290 runs. Two things make this round different from §2's table: the board now
+has a **cost column** that changes what "ahead" means, and one competitor published a diagnosis of its own
+failures that is **structurally identical to §13.291's**.
+
+### 14.1 The board, with context length beside the score
+
+LongMemEval-S, all 500 questions, answer accuracy, gpt-4o judge unless stated. Figures as each vendor
+publishes them.
+
+| system | accuracy | context per question | reader | honesty flags |
+| --- | ---: | ---: | --- | --- |
+| Maximem Synap | **95.6%** | **7.4K** | Gemini 3.8 Flash | run data + harness public |
+| Mastra Observational Memory | **94.87%** | ~30K (4.1×) | gpt-5-mini | harness public, run data not found |
+| Hindsight | 94.6% | ~43.6K (5.9×) | Gemini 3.1 Pro | judge is Gemini 2.5 Flash-Lite, not the official one |
+| Mem0 (managed) | 94.4% | **6.8K (0.9×)** | not stated | run data not public; open-source SDK measures ~32% |
+| Honcho | 90.4% | ~11.6K | Claude Haiku 4.5 | run data public |
+| Zep | 90.2% | **4.4K (0.6×)** | gpt-5.4 | run data and harness not public |
+| Supermemory | 85.2% | not published | Gemini 3 Pro | — |
+| **cortex (this arm)** | **90.20% mixed / 83.45% S1** | **11.7K** | deepseek-chat | every artifact public |
+
+Three facts this table states that §2's did not:
+
+1. **Our own 11.7K tokens is more than Mem0's 6.8K and Zep's 4.4K, at 7 to 10 points lower.** The
+   character-denominated budget (§13.287.2: 2.62× density) is why. This is the first board on which we are
+   dominated on **both** axes rather than only accuracy, and it is the costliest single fact in this section.
+2. **The two self-declared "leaderboard parodies" are a real methodological warning.** Supermemory published
+   `~99` explicitly labelled a parody of boards that omit cost and latency; AgentMemory's 96.2 is self-flagged
+   as **46 tuning iterations on the test set with no held-out split**, and OmegaMax's 95.4 as **eight
+   iterations on the test set targeting failure modes**. Two of the top four numbers on the board are the
+   authors' own admissions of test-set fitting. Any plan that reads "we are 12 points behind" without that
+   discount is reading a benchmark that does not exist.
+3. **The oracle ceiling is 82.4%** (gpt-4o, evidence sessions only). Our S1 83.45% exceeds it, and the reason
+   is not that we beat an oracle: it is a different reader and a different judge. Recorded because the
+   coincidence is exactly the kind of number that gets quoted without its condition.
+
+### 14.2 The reader axis, priced five times over, from outside
+
+§13.192 priced this arm's reader at **−7.20** (§13.192: `deepseek-v4-pro` against `deepseek-chat`), and
+§13.232 priced the compliant half at **+6.25**. Five independent parties now publish the same axis:
+
+| source | same memory, reader changed | movement |
+| --- | --- | ---: |
+| Perpetuity (own axis, stated) | Sonnet 5 → Opus 5, same code and frame | +2.6 |
+| Perpetuity (own summary) | "up to **22.6 points** on identical memory in our own axis" | ≤ +22.6 |
+| Mastra OM | gpt-4o → gpt-5-mini | **+10.64** |
+| Membase, LongMemEval 100-question sample | gpt-4.1-mini → gpt-5.5, **fixed stores** | **+13.0** |
+| Membase, LoCoMo | the same swap, same stores | **+0.06** |
+| Recallium | GPT-4o → Claude Opus 5.5 | **+8.2** |
+
+The Membase pair is the one that constrains us, because it is the only **controlled** substitution: **the same
+reader change is worth +13.0 on one workload and +0.06 on another.** Their own conclusion is that this "argues
+for diagnosing answer failures on the intended workload before allocating more computation to either retrieval
+or generation" — i.e. a reader axis has no portable sign.
+
+That is what this arm measured and did not have a name for. `deepseek-v4-pro` lost 7.20 here (§13.192) while
+`gpt-5-mini` gains 10.64 for Mastra. **The difference is not the model's strength, it is compliance with the
+contract** — and §13.111 had already written the sentence for our own case: *"reader strength and reader
+compliance are different quantities and the second dominates here."* The external board cannot adjudicate that distinction, which is why it is written
+here rather than inferred from a ranking: the latest published scores say a stronger reader helps, and this
+arm's own −7.20 says a stronger reader hurt. Both are true of the contract each was measured under.
+
+Recallium's per-category table is the one number in this round that points somewhere specific:
+
+| category | GPT-4o | Opus 5.5 | Δ |
+| --- | ---: | ---: | ---: |
+| multi-session | 85.0 | 98.5 | **+13.5** |
+| temporal-reasoning | 88.0 | 96.2 | +8.2 |
+| abstention (inside type) | 76.7 | 93.3 | **+16.6** |
+| single-session-preference | 80.0 | 100.0 | +20.0 |
+| knowledge-update | 94.9 | 100.0 | +5.1 |
+| **overall** | **90.2** | **98.4** | +8.2 |
+
+Our `MR` is 77.69% and their GPT-4o is 85.0% on the same category: **7.3 points below a model we do not use**,
+before any reader upgrade. `ABS` is our strongest capability (30/30) and theirs is 76.7% — so the one category
+where a better reader buys 16.6 points for them is the one where we have nothing to gain. **The categories
+where a reader swap pays most are, for us, already closed by the contract.** That is a claim this table can
+support and §13.232's −16-on-`IE` result independently confirms from the other side.
+
+### 14.3 Membase published our diagnosis, independently and first
+
+Their full LongMemEval_S run reports **99.95% retrieval recall** and **all gold sessions present for 99.8% of
+questions**, and attributes **all 37 incorrect answers to the reading stage with gold evidence in context**.
+The three failure modes they name: *cross-session aggregation*, *distinguishing a user action from an assistant
+suggestion*, *temporal calculations*.
+
+Against §13.291:
+
+| | Membase | cortex (§13.291) |
+| --- | --- | --- |
+| gold evidence delivered | 99.8% of questions | **120 of 121** |
+| errors attributed to reading | 37 of 37 | 9 of 9 newly-complete failures repaired: **0** |
+| first named failure mode | cross-session aggregation | 26 of 27 failures are counting questions |
+
+Two independent systems, two datasets, one conclusion: **once the gold evidence is in the window, the score is
+decided at the reader, and the largest single class is aggregation.** This is the strongest external support
+this campaign has had for a negative result, and it is worth stating plainly because §13.291's 0-of-9 is
+otherwise a lonely number.
+
+### 14.4 Three papers that name the mechanism §13.93 could only describe
+
+§13.93 falsified `sweep` with a mechanism sentence: *"the reader's enumeration is not limited by how much of the
+document it looks at. It is limited by what it recognises as an instance of the question's action."* Three
+2026 results say what that is and what to do about it.
+
+**1. Judging is not enumerating (`arXiv:2608.01000`).** Across four reference constructions, models **judge**
+membership far better than they **author** the set: +0.34 to +0.29 F1 on an algorithmic construction over a
+**24× parameter range, and the gap does not close**. The control is the finding: *"asked to emit the predicate
+rather than its extension, the same models reach F1 about 0.99."* So the deficit is not knowledge and not
+specification — it is **materialising the region a specification induces**.
+
+And the asymmetry that makes it hard to fix: models detect planted **over-inclusions 6–7× more often** than
+planted omissions, because *"an over-inclusion is a token a reviewer can challenge, a missing member an absence
+whose discovery is the authoring problem itself."* A production deployment of 43,227 items failed
+omission-first at **10:1**.
+
+Our census is **18 below the gold against 4 above**. That is 4.5:1 on the same side, on a different task,
+produced by a different reader. §13.289 measured the direction; this paper says the direction is a property of
+the class of models, not of `deepseek-chat`.
+
+**2. When agents stop counting (IEEE 11737128).** A deterministic benchmark over paginated aggregation with an
+exact programmatic oracle: accuracy **collapses as N grows**, and **self-reported completeness does not fall
+with it** — "*agents keep asserting they covered every page while silently miscounting*". They name the shape
+the **"accuracy–completeness scissors"**, and the conclusion is the one §13.291 reached from the other end:
+*"because agents fetch every page yet still miscount, the failure is one of aggregation, not retrieval."*
+
+**3. Exhaustive retrieval for listing questions (agentpatterns.ai, 2026).** The design rule that follows, in
+their words: *"Structural extraction, a stated count, and model self-assessment are **not interchangeable**, and
+only the first two hold up when the model is miscalibrated."* Their working example uses a **cardinality cue** —
+a document that states its own count — to decide whether to loop; neither run *"asked the model to certify its
+own completeness"*.
+
+### 14.5 What this round changes, and the one increment it names
+
+Three consequences, ordered by how soon they bind.
+
+1. **§13.290's mechanism now has a name and a published magnitude.** Its replacement rule is exactly "emit the
+   predicate, not the extension" applied to one line: *a mention counts when the evidence describes the same
+   act under a different verb.* The paper's +0.29–0.34 F1 is the outside estimate of what that class of change
+   is worth, and §13.290's registered ceiling of +5.0 points (six reachable questions of 121) is well inside it.
+2. **The next increment after it is judgement-shaped, not enumeration-shaped.** If §13.290's six questions do
+   not convert, the evidence says the reader still cannot *materialise* the extension — and the fix is to stop
+   asking it to. `sweep` failed because each of its 44 lines still required the model to **generate** the
+   candidates for that session before judging them. The shape that has not been tried is the one the paper's
+   control used: **present each candidate and ask for a verdict**, so the model judges a given turn rather than
+   enumerating a region. §13.290.4's refutation branch already names "a second consultation that re-reads the
+   evidence against its own list"; this is the same mechanism with the cost priced.
+3. **No self-assessment anywhere, ever.** All three sources agree, and this arm has one measurement of its own
+   that agrees: `--final` (§13.93.5) found 4 of 22 correct `sweep` answers ending on a different number than the
+   one they were scored against, i.e. the transcript contained the gold and the reply's own closing line did
+   not. A gate that asks a reader "did you get them all" would report complete on that run.
+
+**What this round does not change.** It does not move the SOTA claim: our 90.20% mixed / 83.45% S1 is below
+Maximem (95.6), Mastra (94.87), Hindsight (94.6), Mem0 (94.4), Honcho (90.4) and Zep (90.2) on published
+numbers, and above Supermemory (85.2). **cortex is not SOTA.** What changed is that the *reason* is now
+attributable in three independent places rather than one: evidence delivery (§13.291), the reader's
+aggregation (§14.3), and the model class's omission bias (§14.4.1).
