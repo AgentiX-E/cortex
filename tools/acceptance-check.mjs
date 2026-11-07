@@ -164,6 +164,9 @@ if (asJson) {
         metric: criterion.metric,
         dataset: criterion.dataset,
         comparator: criterion.comparator,
+        // The unit travels with the number so a consumer can format it rather than guess: `C1` is a count
+        // and rendering it as a ratio would put 12105% in a table.
+        unit: criterion.unit,
         threshold: criterion.threshold,
         source: describe(criterion.source),
         current: evaluation.current,
@@ -236,8 +239,12 @@ if (asJson) {
       // two values rendered into one field.
       const nameWidth = Math.max(26, ...criterion.competitors.map((peer) => peer.name.length + 2));
       for (const peer of criterion.competitors) {
+        // The unit belongs to the criterion, not to the figure: `C1` is a count and its competitors are
+        // written in tokens, so the ratio formatter turned Zep's 4,400 tokens into `440000.0%` the first
+        // time that row had a value. `show` already knows the rule; the competitor column was the one place
+        // that did not ask it.
         process.stdout.write(
-          `    ${pad(`[${peer.grade}]`, 5)}${pad(peer.name, nameWidth)}${pad(pct(peer.value), 8)}${peer.recipe}\n`,
+          `    ${pad(`[${peer.grade}]`, 5)}${pad(peer.name, nameWidth)}${pad(show(criterion, peer.value), 8)}${peer.recipe}\n`,
         );
       }
     }

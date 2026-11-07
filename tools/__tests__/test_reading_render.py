@@ -1,0 +1,103 @@
+"""The two tools that print an acceptance reading must print the same number.
+
+`tools/acceptance-check.mjs` renders the matrix a person reads; `tools/docs-crosscheck.mjs` renders the
+value a document is allowed to carry in a `<!-- reading:X -->` marker. They were two copies of one rule
+until `C1` arrived with a mean for a value: the checker wrote `12105` and the cross-check wrote
+`12104.99`, so whichever document a reader opened, the other one looked wrong — and the disagreement was
+about the formatter, not about the measurement.
+
+The tests below hold the two renders to one rule for every row this checkout can read, and they say
+which rule: a `count` is a whole number. There is no fractional prompt token, and a mean quoted to two
+decimals claims a precision the division does not have (24,209,976 / 2,000 is 12,104.988, which is
+12,105 to any number of digits that means anything).
+
+Every test skips rather than fails when the prerequisites are absent — no `node`, no built `dist`, no
+sibling `cortex-docs` checkout — because a missing prerequisite is not a disagreement, and a test that
+cannot tell the two apart gets deleted the first time CI is red for an unrelated reason.
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import shutil
+import subprocess
+
+import pytest
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
+DIST = REPO / "packages" / "cortex-eval" / "dist" / "acceptance.js"
+CHECKER = REPO / "tools" / "acceptance-check.mjs"
+CROSSCHECK = REPO / "tools" / "docs-crosscheck.mjs"
+
+
+def _node() -> str:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    if not DIST.exists():
+        pytest.skip("packages/cortex-eval/dist is not built")
+    return node
+
+
+@pytest.fixture(scope="module")
+def matrix() -> list[dict]:
+    out = subprocess.run(
+        [_node(), str(CHECKER), "--json"],
+        capture_output=True, text=True, cwd=REPO, check=True,
+    )
+    return json.loads(out.stdout)
+
+
+@pytest.fixture(scope="module")
+def markers() -> dict[str, str]:
+    """`id -> the text after the marker`, as the cross-check itself renders it."""
+    out = subprocess.run(
+        [_node(), str(CROSSCHECK), "--list"],
+        capture_output=True, text=True, cwd=REPO, check=True,
+    )
+    rendered: dict[str, str] = {}
+    for line in out.stdout.splitlines()[1:]:
+        if not line.strip():
+            continue
+        # `id  value  status  <!-- reading:id -->value`
+        _, _, _, tail = line.split(maxsplit=3)
+        marker, _, shown = tail.partition("-->")
+        rendered[marker.split(":")[1].strip()] = shown
+    return rendered
+
+
+class TestTheTwoRendersAgree:
+    def test_every_row_the_checker_prints_is_in_the_cross_check(self, matrix, markers):
+        # One list, two printers: a row missing from either is a row a document cannot cite.
+        assert {row["id"] for row in matrix} == set(markers)
+
+    def test_a_count_is_printed_as_a_whole_number_in_both(self, matrix, markers):
+        counts = [row for row in matrix if row["unit"] == "count" and row["current"] is not None]
+        assert counts, "no countable row has a value in this checkout, so the rule is untested"
+        for row in counts:
+            shown = markers[row["id"]]
+            assert shown == f"{round(row['current']):d}", (
+                f"{row['id']} renders as {shown!r} in the cross-check; a count is a whole number"
+            )
+
+    def test_the_cost_row_is_the_case_that_exposed_the_two_rules(self, matrix, markers):
+        # `C1` is the row that arrived with a mean, and it is the only count whose value is not an
+        # integer, so it is the only row that could have caught this by reporting a difference.
+        cost = next(row for row in matrix if row["id"] == "C1")
+        if cost["current"] is None:
+            pytest.skip("the cost evidence file is not in this checkout")
+        assert cost["current"] != round(cost["current"]), "the cost reading became an integer; retest"
+        assert markers["C1"] == "12105"
+        # And the number a document may cite is the integer, so a marker copied out of the checker's
+        # table (`12105`) is the same string as the one the cross-check expects.
+        assert f"{round(cost['current']):d}" == markers["C1"]
+
+    def test_a_ratio_still_keeps_one_decimal_in_both(self, matrix, markers):
+        # The rule being unified is about counts. A ratio rendered as an integer would round 83.45% to
+        # 83% and lose the 0.45 that the whole S1 discussion turns on.
+        ratios = [row for row in matrix if row["unit"] == "ratio" and row["current"] is not None]
+        assert ratios
+        for row in ratios:
+            assert markers[row["id"]].endswith("%")
+            assert len(markers[row["id"]].split(".")[-1]) == 2  # "83.5%": one decimal, one percent sign

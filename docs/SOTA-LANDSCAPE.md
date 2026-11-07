@@ -925,3 +925,39 @@ non-reasoning one for us, which is §14.2's own subject. The corrected statement
 **on accuracy this arm is level with the best system it can be fairly compared to, and on cost it is cheaper
 than that system and dearer than two it beats.** The SOTA claim does not change — 95.6% at 7.4K exists and is
 not ours — but the reason it is not ours is now a single named quantity, and it is not memory.
+
+### 14.7 Our own column on that table, and the unit it is written in
+
+`C1` was `unrun` while §14.1 was written, so the board had a cost column for seven competitors and none for
+this arm. It is no longer empty: **12,105 prompt tokens per question per repetition** on `42310779222`
+(`tools/cost-ledger.py`, evidence at `cortex-docs/evidence/longmemeval/cost.json`).
+
+**The unit had to be chosen before the number meant anything.** One token count, three defensible divisions,
+4.14x apart — 11,690 per call, 12,105 per question per repetition, 48,420 per question across all four
+repetitions. The primary is the per-question one because the competitor recipes in `acceptance.ts` are written
+per question ("about 4.4K context tokens per question", "about 6.8K tokens per question", "about 7.4K memory
+tokens per question"), and the 3.5% between it and the per-call reading is this arm's 71 retries — a cost of
+answering that question rather than of a separate one.
+
+| | prompt tokens per question | accuracy | ours |
+| --- | ---: | ---: | --- |
+| **cortex (this arm)** | **12,105** | 83.45% | — |
+| Zep | 4,400 | 90.2% | 2.75x the context, 6.75 points behind |
+| Mem0 (managed) | 6,800 | 94.4% | 1.78x the context, 10.95 behind |
+| Maximem Synap | 7,400 | 95.6% | 1.64x the context, 12.15 behind |
+| Mastra OM (gpt-4o reader) | ~30,000 | 84.23% | **0.39x the context, 0.78 behind** |
+| Hindsight | 43,600 | 94.6% | 0.28x the context, the counter-example |
+
+**What the reading actually measures is the window.** The arm ran under `maxPromptChars: 48000` and
+`48000 / 11690 = 4.11 characters per token`, the density of English prose — the delivery fills its character
+cap. So this row currently prices a configuration constant rather than a retrieval selection: improving
+retrieval will not move it, changing the cap will. §13.291 is the measurement that cuts against the obvious
+repair: bringing every gold turn into the `MR` prompts (98 of 121 questions to 120 of 121) moved accuracy by
+**+0.00**, which is evidence that *adding* evidence to a full window buys nothing — **not** evidence that
+removing it is free. No run has taken the cap down and looked, so the cap experiment is registered behind the
+reader change rather than in front of it.
+
+The honest sentence for the board is that this arm is **mid-table on cost and behind the leaders on accuracy**,
+and that the two facts are connected by §13.291 rather than by the cost number: the tokens are not buying
+accuracy, and more evidence did not either. Hindsight at 43.6K for 94.6% is the row that keeps "cheaper" and
+"better" from being read as the same axis.

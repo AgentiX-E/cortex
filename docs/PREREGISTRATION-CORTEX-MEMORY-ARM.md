@@ -32994,3 +32994,114 @@ Written up in `SOTA-LANDSCAPE.md` §14. Four facts from it that change what we c
 - **Not changed:** cortex is not SOTA. 90.20% mixed / 83.45% S1 sits below Maximem, Mastra, Hindsight, Mem0,
   Honcho and Zep on published numbers and above Supermemory. What changed this round is that the reason has
   three independent places — evidence delivery, the reader's aggregation, and the model class's omission bias.
+
+### 13.293 `C1` stops being `unrun`: the division is named, and the reading turns out to be the window
+
+`C1` was written this round as an aim with no value and a reason that said why: one token count, three
+defensible divisions, 4.14x apart. That reason ended with a promise — *"the generator that would state it does
+not exist yet"* — and `tools/cost-ledger.py` is that generator. Reading `42310779222` through it produced a
+number and a second finding that matters more than the number.
+
+#### 13.293.1 The three readings, and why the primary is the per-question one
+
+| reading | arithmetic | `42310779222` | what it answers |
+| --- | --- | --- | --- |
+| per call | `promptTokens / calls` | **11,690** | how big is one context the reader was handed |
+| per question per run | `promptTokens / (questionCount x runs)` | **12,105** | what one question costs, retries included |
+| per question, all runs | `promptTokens / questionCount` | **48,420** | what a four-pass evaluation spends |
+
+**The primary is `perQuestionPerRun`, and the first draft of the tool had it wrong.** That draft made
+`perCall` primary on comparability grounds — the argument being that Zep's 4.4K and Mem0's 6.8K are
+single-context sizes. Reading the competitor recipes in `acceptance.ts` again, all three say *per question*
+("about 4.4K context tokens per question", "about 6.8K tokens per question", "about 7.4K memory tokens per
+question"). The row's own metric says per question. So the tool was about to make the row's prose and its
+number disagree by 3.5% — small enough to look like rounding and exactly the kind of difference a wrong
+denominator hides. The difference is the retries: 2,071 calls for 2,000 question-runs, 71 extra calls, and a
+retried call is a cost of answering *that* question rather than a separate question. `perCall` is kept and
+printed because it is the only reading in the file that is not per question, and because "how big is the
+prompt" is the question a reader actually asks.
+
+`perQuestion` across all runs is printed for the opposite reason: it is the number a reader would reach for
+to make us look 8x worse than Zep, and the factor between it and the primary is the repetition count, which is
+a property of the harness rather than of the product.
+
+#### 13.293.2 The finding: 11,690 is the window, not a selection from it
+
+`42310779222`'s feature arm ran under `maxPromptChars: 48000`. The per-call reading is 11,690 tokens, so
+`48000 / 11690 = **4.11 characters per token**` — the density of English prose. The delivery is therefore
+filling its character cap, which means:
+
+- **`C1` is currently measuring a configuration constant.** It says *"the window is set to 48,000
+  characters"* and not *"retrieval selected 12,105 tokens of evidence"*. Retrieval improving will not move it;
+  changing the cap will.
+- **The number is cheap to move and the move has to be earned.** §13.291 is the relevant measurement and it
+  cuts both ways: bringing every gold turn into the prompt on `MR` questions — 98 of 121 questions to 120 of
+  121 — moved accuracy by **exactly +0.00**, with `llmUsage.promptTokens` 27,065,486 against 27,308,598 (gate
+  10, PASS). So *adding* evidence to a full window did not help, which is evidence that the room is not where
+  the missing points are. It is **not** evidence that *removing* evidence is free: nobody has run the cap down
+  and looked. The tool prints the cap precisely so that this distinction stays visible, and any cap change
+  gets its own registration rather than being read off §13.291.
+- **The repair §13.287.2 pointed at is still the right one.** The budget is written in characters and the
+  reader is billed in tokens; at 4.11 characters per token the same character budget is 4.11x the token number
+  it reads as, which is the mechanism behind the 2.62x density difference already recorded. A budget written
+  in the unit the bill uses cannot be 4.11x wrong about itself.
+
+#### 13.293.3 What changed in the table
+
+| | before | after |
+| --- | --- | --- |
+| `C1.source` | `unrun`, with a 600-word reason | `artifact` at `cortex-docs/evidence/longmemeval/cost.json#readings.perQuestionPerRun` |
+| `C1.metric` | "prompt tokens the reader is billed for, per question" | "prompt tokens delivered to the reader for one question, one repetition, retries included" |
+| `C1` reading | — | **12,105** against `<= 6000`, i.e. 2.02x the threshold and 2.75x Zep's 4.4K |
+| rows with no value | 5 (`D1`, `S6`, `S7`, `S8`, `C1`) | **4** (`D1`, `S6`, `S7`, `S8`) |
+
+The metric text moved because the old one named a quantity without naming its denominator. It now carries the
+rep-unit and the retry treatment in the row itself, so the row cannot be read two ways even by someone who
+never opens the ledger. The evidence file carries `run: "42310779222"`, and `--write` refuses without `--run`
+for that reason: an evidence file whose provenance is not in the file is a number nobody can re-derive.
+
+`C1` stays an `aim` and the miss stays non-blocking. That is not a softening: the row was written as an aim
+because nothing had been reached, and it is now reached-in-the-wrong-direction, which is what an aim is for.
+
+#### 13.293.4 Tests, and the traps they close
+
+`tools/__tests__/test_cost_ledger.py` — **37 passed**, no mocks, every number checkable by hand:
+
+| trap | the test |
+| --- | --- |
+| the total is not a side | a report whose `llmUsage` is present and whose split is absent refuses, and the message says why: a fallback totals two systems |
+| half-priced is not priced | dropping `questionCount` or `runs` refuses even though `perCall` is still computable |
+| a boolean is not a count | `calls: True` refuses, because `isinstance(True, int)` would price the run at 1 token per call |
+| a missing cache counter is not a cold cache | `None` and `0` are different readings, and the counter does not change any of the three |
+| a reading at the cap is a reading of the cap | 48,000 / 11,690 = 4.11 lands in the printed band and reads `at-cap`; the same cap at 2,400 tokens per call reads `below-cap` |
+| `perQuestion` is `perCall x runs` when nothing retries | pinned as arithmetic, so the primary cannot be switched back without moving a number |
+| an evidence file must name its run | `--write` without `--run` exits non-zero, prints the reason, and writes nothing |
+
+`packages/cortex-eval/src/__tests__/acceptance.test.ts` — **37 passed**: the row is an aim wired to the
+artifact, the metric contains *one question*, *one repetition* and *retries*, the key is explicitly not
+`readings.perCall`, and `verdictOf` reads 12,105 as `fail`/non-blocking and 5,000 as `pass`. The `null` case
+still reads `unrun` with the note `no value at cortex-docs/evidence/longmemeval/cost.json#readings.perQuestionPerRun`,
+which is what a CI checkout without the sibling repository sees.
+
+#### 13.293.5 Where the cost dimension stands against the board
+
+| | per-question prompt tokens | accuracy | grade | ours is |
+| --- | --- | --- | --- | --- |
+| **cortex (this arm)** | **12,105** | 83.45% | measured | — |
+| Zep | 4,400 | 90.2% | C | 2.75x the context, 6.75 points behind |
+| Mem0 (managed) | 6,800 | 94.4% | C | 1.78x the context, 10.95 points behind |
+| Maximem Synap | 7,400 | 95.6% | C | 1.64x the context, 12.15 points behind |
+| Hindsight | 43,600 | 94.6% | C | 0.28x the context — the counter-example that stops this being read as "accuracy costs nothing" |
+
+The honest sentence is that this arm is **mid-table on cost and below the leaders on accuracy**, and that the
+two facts are connected by the finding in §13.293.2 rather than by the cost number: the tokens are not buying
+accuracy, and §13.291 shows more evidence does not buy it either. Hindsight at 43.6K is the row that makes
+"cheaper" and "better" independent rather than opposed.
+
+#### 13.293.6 Queue
+
+Unchanged, and stated because it was tempting to change it: the next reading is still `42337560027`, then
+`zhipu:glm-4.6` as the reader. The cap experiment is **not** promoted, because §13.291 gives it a plausible
+story and no measurement, and a cap change would move `C1` in the table without moving the number the campaign
+is actually about. It is registered as the first experiment to run *after* the reader changes, so that the
+cap's effect is measured on a reader that is not the one that produced the 83.45%.

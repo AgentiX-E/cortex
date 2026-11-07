@@ -111,11 +111,19 @@ const resolve = {
   ablation: (removed) => controlledSet().rows.find((row) => row.removed === removed)?.accuracy,
 };
 
-/** How a criterion writes its own number. The document must use the same form, or the comparison is a guess. */
+/**
+ * How a criterion writes its own number. The document must use the same form, or the comparison is a guess.
+ *
+ * A `count` is written as a whole number, matching `tools/acceptance-check.mjs`. The two renders existed as
+ * two rules until `C1` arrived with a mean for a value: the checker printed `12105` and this file printed
+ * `12104.99`, so one of the two documents in a checkout was always "wrong" and the disagreement was about
+ * the formatter rather than about the measurement. A fractional count is not a reading -- there is no
+ * fractional prompt token, and a mean quoted to two decimals implies a precision the division does not have.
+ */
 function render(criterion, value) {
   if (criterion.unit === 'ratio') return `${(100 * value).toFixed(1)}%`;
   if (criterion.unit === 'points') return `${(100 * value).toFixed(1)}pp`;
-  return String(Number.isInteger(value) ? value : value.toFixed(2));
+  return value.toFixed(0);
 }
 
 const readings = new Map();

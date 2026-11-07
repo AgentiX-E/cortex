@@ -66,7 +66,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
-| C1  | —                         | ≤ 6,000   | unrun  | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
+| C1  | <!-- reading:C1 -->12105  | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
@@ -77,13 +77,22 @@ the record of what happens when they are.
 prompt, and no such run exists. A row with no value is the honest form of "we have not measured this".
 
 `C1` was added on 2026-11-07, when the October board became the first that prints context length beside
-accuracy. It is `unrun` for an arithmetic reason rather than a scheduling one: every artifact carries the
-inputs, but `llmUsage.promptTokens` is a four-repetition total over 500 questions **and** over the
-bare-decline retries, and the two defensible divisions of it give 12,105 (`÷ questionCount × runs`) and
-11,690 (calls-normalised, §13.287.2) — 3.5% apart. An acceptance row has to state which one it means, so
-the row waits for a generator instead of accepting a hand-typed number. Its threshold of 6,000 is the
-cheapest published competitor point rounded up (Zep 4.4K, Mem0 6.8K): the arm bills about 11.7K today, so
-the row is an `aim` and not a `gate`.
+accuracy. It was `unrun` for an arithmetic reason rather than a scheduling one: `llmUsage.promptTokens` is a
+four-repetition total over 500 questions **and** over the bare-decline retries, and its three defensible
+divisions give 11,690 (per call), 12,105 (per question per repetition) and 48,420 (per question across all
+four) — a 4.14x spread from one number. The row now reads a generated evidence file instead of carrying a
+hand-typed figure: `tools/cost-ledger.py` names the division (per question, retries included, §13.293.1) and
+writes `cortex-docs/evidence/longmemeval/cost.json` with the run id it came from. The reading is **12,105**,
+2.02x the threshold, so the row is an `aim` and not a `gate` — 6,000 is the cheapest published competitor
+point rounded up (Zep 4.4K, Mem0 6.8K) and nothing there has been reached.
+
+Two things the reading itself settles. It is **not** a selection from the window: the arm ran under
+`maxPromptChars: 48000` and 48,000 / 11,690 = 4.11 characters per token, i.e. the delivery fills its cap, so
+the row currently measures a configuration constant and retrieval improving will not move it (§13.293.2).
+And the cap is not a free win: §13.291 measured that adding every gold turn moved accuracy by exactly +0.00,
+which is evidence that more room does not help, not evidence that less room is free. Cache hits are also not
+a discount here — 18,933,570 of the 24,209,976 prompt tokens were cache hits, which changes the bill and not
+the context the reader had to read.
 
 `S6` and `S7` are `unrun` for the same reason and became rows before the run that fills them, which is the point
 of writing a criterion early: `S6` is a **gate on the instrument** rather than on accuracy — the number of

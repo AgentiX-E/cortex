@@ -292,22 +292,51 @@ describe('the table is well formed', () => {
     expect(graded.some((peer) => peer.grade === 'A')).toBe(true);
   });
 
-  it('keeps the cost row an aim with no value, because no cost target has been reached', () => {
+  it('wires the cost row to the ledger, with the division named in the row itself', () => {
     // The 2026-10 board is the first that prints context length beside accuracy, and it says this arm bills
     // more tokens than Zep (4.4K) and Mem0 (6.8K) at a lower score. A `gate` here would be a number the
-    // project has already reached, and it has reached none, so the row is an aim by construction. It is also
-    // `unrun` rather than wired, because the artefact carries a four-repetition total over 500 questions and
-    // the retries, and dividing it two defensible ways gives numbers 3.5% apart (§13.287.2 records the split).
+    // project has already reached, and it has reached none, so the row is an aim by construction.
+    //
+    // It was `unrun` while the arithmetic was undecided: one token count, three defensible divisions,
+    // 4.14x apart. `tools/cost-ledger.py` now names one and writes it to evidence, so the row reads the
+    // file rather than carrying a hand-typed figure -- and the metric text states the division that was
+    // named, because a row whose prose and whose file disagree is the same defect one layer down.
     const cost = CRITERIA.find((criterion) => criterion.id === 'C1');
     expect(cost).toBeDefined();
     expect(cost?.capability).toBe('cost');
     expect(cost?.kind).toBe('aim');
     expect(cost?.comparator).toBe('at-most');
-    expect(cost?.source.kind).toBe('unrun');
-    expect(cost?.source.kind === 'unrun' && cost.source.reason.length).toBeGreaterThan(200);
+    expect(cost?.threshold).toBe(6000);
+    expect(cost?.source).toEqual({
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/cost.json',
+      key: 'readings.perQuestionPerRun',
+    });
+    // The denominator, the unit of repetition and the treatment of retries, all in the row.
+    expect(cost?.metric).toContain('one question');
+    expect(cost?.metric).toContain('one repetition');
+    expect(cost?.metric).toContain('retries');
+    // The key has to be the per-question reading and not the per-call one: they are 3.5% apart on the
+    // artifact, which is inside the noise of every other row here and therefore exactly the kind of
+    // difference a wrong key would hide.
+    expect(cost?.source.kind === 'artifact' && cost.source.key).not.toBe('readings.perCall');
     expect((cost?.competitors ?? []).length).toBeGreaterThanOrEqual(4);
-    // `null` is the value of a criterion with no reading; the checker is what turns an `unrun` source into one.
-    expect(verdictOf(cost as Criterion, null).status).toBe('unrun');
+  });
+
+  it('reads the cost row as a measured miss and a pass, without either of them blocking a build', () => {
+    const cost = CRITERIA.find((criterion) => criterion.id === 'C1') as Criterion;
+    // The value the ledger produced on `42310779222`: 24,209,976 prompt tokens over 500 questions and
+    // four repetitions. An aim that misses is the work, not a regression.
+    const missed = verdictOf(cost, 12_104.988);
+    expect(missed.status).toBe('fail');
+    expect(missed.blocking).toBe(false);
+    expect(verdictOf(cost, 5_000).status).toBe('pass');
+    // And `null` is the value of a criterion with no reading: the file is in the sibling repository, so
+    // a checkout without it reports the row as unrun rather than as met.
+    expect(verdictOf(cost, null).status).toBe('unrun');
+    expect(verdictOf(cost, null).note).toBe(
+      'no value at cortex-docs/evidence/longmemeval/cost.json#readings.perQuestionPerRun',
+    );
   });
 
   it('lists the rows without a value rather than leaving them to be discovered', () => {
