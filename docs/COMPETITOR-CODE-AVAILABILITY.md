@@ -96,3 +96,41 @@ exist rather than as gaps.
    and a track added before the first one is calibrated is two ways to be uncertain.
 
 `memobase` is skipped: ten months without a push means a result that describes a build nobody runs.
+
+## 6. The 2026-11-07 re-check: four new systems, none of them raceable, and one dataset that is
+
+The week's papers were re-checked for a repository field the same way the rows above were, and the
+answer is the same shape: the score is published, the code is not.
+
+| system | claim | repository field | verdict |
+| --- | --- | --- | --- |
+| `Reglos` (`arXiv:2611.06049`, 2026-11-04) | LongMemEval-S **87.2%** (GPT-5.6 Luna reader) / 84.0% (Qwen3.8-27B); PersonaMem-v2 **61.3%** | a project website, **no repository** | read; the highest *same-backbone* LME-S number on our axis |
+| `TrackMem` (`arXiv:2611.02001`, 2026-11-01) | `FinLoCoMo` 73.9% macro vs 69.4% best baseline; revised-figure questions 86.5% vs 73.4% | none | read; **its dataset is the usable part** |
+| `AppMem` (`arXiv:2611.00191`, 2026-11-03) | `MemU-Bench` SPL 15.7% → **66.9%** on GPT-5.5 | "code released" claimed on the index page, not resolvable on 2026-11-07 | read; the **metric** is the usable part |
+| `MemCompile` (`arXiv:2610.23313`) | LoCoMo 80.52% judge accuracy | none | read (already in §1.49.4) |
+
+Two of those four contribute something better than a number:
+
+1. **`FinLoCoMo` is a dataset, and datasets do not need a repository field to be usable.** 15 long-horizon
+   investment conversations, 765 questions, two splits (LoCoMo categories, and four failure modes), with
+   "revised figures" broken out as its own class. That class is our `knowledge-update` capability, and a
+   benchmark that isolates it turns our `KU` delta from a line in a table into a price. Registered as the
+   **third external set** behind `letta`'s arm, because a set that prices one capability is worth less than
+   an arm that can be compared to a published number.
+2. **`SPL` is a metric, and metrics travel.** `MemU-Bench` reports success *weighted by path length* so that an
+   agent which succeeds by exhaustively searching is distinguishable from one that remembers. Our browser
+   axis has no path-length term at all, which means it currently cannot tell those two apart — the same defect
+   `LME-V2`'s `LAFS` exposed on the latency axis (§1.49.7). Registered: the browser axis's first gate is
+   `(success rate, SPL)`, not success rate alone.
+
+**The one number that changes a table.** `Reglos`'s `87.2%` is measured with the *same backbone writing memory
+for every system*, so "you must have used a stronger reader" does not dissolve it the way it dissolves a
+vendor table. It is below our `91.95%` and above our `89.80%`, i.e. it sits **inside the band our two cost
+configurations bracket**. That is the most useful placement a competitor can have: it means our cost arm is
+the one that needs to move, and it is the arm §13.302 already measured at 0.754x.
+
+**Why none of them is dispatched this round.** The queue is ordered by what a reading would settle, and
+`letta` settles more than any of these: it is the only system with a published number *on this benchmark at a
+matched reader* (`438/500`), so it calibrates the whole competitor path. A `Reglos` reproduction would
+reproduce a protocol we do not share (their `S` split, their reader, their prompt), which is the definition of
+a number that cannot be compared.
