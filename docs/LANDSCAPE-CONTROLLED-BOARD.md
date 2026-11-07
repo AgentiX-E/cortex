@@ -27,7 +27,8 @@ score claim does.
 | past.dev BEAM leaderboard | past.dev | collected vendor results **plus** its own run with one model answering and judging | BEAM, all four tiers |
 
 Two of them are same-harness (OmniMemEval, AMB's own rows). Three are collected. **All five are run by a
-participant**, and in three of the five the owner leads its own board. That is not an accusation — it is a
+participant**, and in four of the five the owner’s own system leads its board
+(AMB’s collected section carries higher external rows; its own runs cover one system). That is not an accusation — it is a
 description of the only available evidence, and it is why the grade column in `ACCEPTANCE-MATRIX.md` is a
 field of the criterion rather than a footnote.
 
