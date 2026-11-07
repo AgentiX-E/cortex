@@ -1054,3 +1054,111 @@ quotes will be quoted with these figures:
 - **per-question cost: 14.1K is now 12,105.** `42310779222` through `tools/cost-ledger.py`, three
   divisions at 11,690 / 12,105 / 48,420 (§13.293.1). The 4.14x spread is why the denominator has to be
   named before the number is compared with Zep's 4.4K.
+
+## 16. Two 2026 papers that move the board without moving any score
+
+Round 27 went looking for mechanisms and came back with something more useful: a **measurement** result. A
+paper that reports its own numbers under two grading protocols, and a paper that ablates the reader across
+eight backbones with everything else held fixed. Between them they re-price three rows on this page, and one of
+them — `C1` — was being read against the wrong competition.
+
+### 16.1 MemStrata: 2.4 points of the "gap" is the protocol, inside one paper's own artifact
+
+`arXiv:2610.05343` (MemStrata, Oct 2026) evaluates the same 500 questions twice: once with the benchmark's
+original reference-only grading, and once with **source-aware** grading, in which the judge checks the reference
+against the full source before assessing a system-blinded answer. Same answers, same system, same reader.
+
+| reading | reference-only | source-aware | delta |
+| --- | ---: | ---: | ---: |
+| MemStrata CL1 | 463/500 = **92.6%** | 475/500 = **95.0%** | **+2.4** |
+| its full-history control (4.7x evidence) | 464/500 = 92.8% | 470/500 = **94.0%** | **+1.2** |
+
+Two things follow, and the second is the one that costs.
+
+1. **A 2.4-point difference between two published "LongMemEval scores" can be a judge-side change with no
+   system change at all.** Every vendor row above 95% on this page is quoted as if the number were a property
+   of the system. On this paper's own evidence, roughly two points of it is a property of the adjudication.
+2. **The direction is not always favourable, and the paper says so**: under source-aware grading the
+   full-history control *loses* five questions to the bounded packet (470 against 475), while under
+   reference-only it *gains* one (464 against 463). The system ordering flips between protocols. A leaderboard
+   that mixes them is not a leaderboard.
+
+### 16.2 The number this project actually has to beat, and it is not 95
+
+MemStrata's bounded packet reads **463/500 at a 24,000-token ceiling** under the original protocol, with a
+local `Qwen 3.8 27B Q4_K_M` reader. The registered `cortex-memory` configuration reads **457 / 466 / 457 / 459**
+across four repetitions — mean **459.75/500 = 91.95%**, first repetition 91.40% — at **12,137 prompt tokens per
+question**.
+
+| | cortex | MemStrata CL1 | difference |
+| --- | ---: | ---: | ---: |
+| accuracy, original protocol | 91.95% (mean of 4) | 92.6% (1 run) | **−0.65** |
+| evidence per question | 12,137 tokens | 24,000-token ceiling | **0.51x** |
+| reader | DeepSeek `deepseek-chat` | Qwen 3.8 27B Q4_K_M, local | — |
+
+**−0.65 points is three questions, and the same paper measures its own label noise at 1.5–2.3% of 500 on a
+same-seed replay of unchanged requests — 7.5 to 11.5 questions.** So the only defensible statement is that the
+two are **indistinguishable at half the evidence**, and that neither is distinguishable from the other on this
+axis at this sample size. That is a better position than any previous round could claim, and it is *not* a SOTA
+claim: 95.0% source-aware, 95.60% (Agent Zero), 96.8% (ContextStream) and 98.4% (Recallium) all sit above it,
+and none of them is on the same protocol as our number.
+
+Three of MemStrata's other arms are worth recording because they bound what selection is worth at a fixed budget:
+
+| arm | score | what it prices |
+| --- | ---: | --- |
+| keyword-only selection, same budget | 425/500 = 85.0% | ranking is worth **7.6 points** over lexical matching |
+| matched-reader Letta | 438/500 = 87.6% | a whole competing memory design, same reader, **−4.4** against the packet |
+| full-history, 4.7x evidence | 464/500 = 92.8% | evidence volume is worth **+0.2**, i.e. nothing |
+
+The third row is the one `C2` is read against (§13.301.2), with the caveat recorded there: a curve that is flat
+*above* the vertex can still fall below it, and nobody has published the cut side.
+
+### 16.3 Agent Zero Memory: quality is retrieval-dominated, and that re-prices `M1`
+
+`arXiv:2608.29606` reports **95.60%** on LongMemEval and a controlled backbone study: eight model families, the
+memory, retriever and control logic held fixed, and
+
+| quantity | spread across eight backbones |
+| --- | --- |
+| LongMemEval accuracy | **3.4 points** |
+| per-query cost | **~30x** |
+
+with `deepseek-v4-pro` within 3.4 points of the best system at about **1/20 the cost**, and `glm5.2fast` the
+fastest at 6.16 s median latency. Its own reading of that result is the sentence this campaign has spent
+twenty-seven rounds trying to earn: *"quality is retrieval-dominated"* — once the right provenance-tagged
+evidence is surfaced, compact backbones answer correctly.
+
+That has three consequences here.
+
+1. **`M1`'s threshold is re-priced, and `PREREG-READER-AXIS.md` §7 records the amendment.** A 5-point bar asks
+   this pipeline to be *more* reader-sensitive than the strongest published system's entire eight-backbone
+   spread. The row reads 3.0 and now carries this number as a competitor row — as a **bound, not a pair**, and
+   the recipe says so.
+2. **`P1` stops having an empty competitor field.** MemStrata reports its own second-provider reading on
+   byte-identical packets: `GLM 5.3 flash` at **462 against 463** — one question, −0.2 points — with a stated
+   non-inferiority bound of 3 points, and a second provider (`Muse Spark 1.3`) that **failed** that bound on 269
+   questions. So portability is now a value with a recipe, not a vendor sentence, and `P1`'s 2.0-point bar sits
+   between the success and the failure.
+3. **A cost claim and an accuracy claim are the same claim only at a fixed reader.** Agent Zero's 30x cost
+   spread at 3.4 points of accuracy means any "cheaper than X" sentence has to name the reader, or it is
+   comparing two different economic objects.
+
+### 16.4 The board, per axis, with the competition named
+
+The per-round question "is cortex SOTA" has one honest answer per axis and no single answer, which is what
+`§15.4` established. Restated with this round's readings:
+
+| axis | cortex | leader | verdict |
+| --- | ---: | --- | --- |
+| accuracy, original protocol, same 500 | 91.95% (mean of 4) | MemStrata **92.6%** at 24k tokens | **not SOTA, and not behind** — inside the leader's own label noise, at 0.51x the evidence |
+| accuracy, source-aware grading | not measured | MemStrata **95.0%** | **unmeasured** — we do not report this protocol, so the comparison does not exist |
+| accuracy, self-reported headline | 91.95% | Recallium **98.4%** (Claude Opus 5.5), ContextStream **96.8%**, Agent Zero **95.60%** | **not SOTA**, and none of the three is a grade-A comparison |
+| cost per question | 12,137 tokens | Zep ~4,400 published, MemStrata 24,000 | **not SOTA**; `C1` aims at 6,000 and `C2` is dispatched to price the cut |
+| memory pollution (reversal) | `V1` 0.0pp, `K1` +64.7pp | TEPA **−9.9pp** for append-only, 0.950 with revocation | **at least as good as the field's counter-example**, on a 17-case fixture rather than a 50-seed stream |
+| provider portability | `P1` unrun | MemStrata −0.2pp, bound 3 | **unmeasured** |
+| reader strength | `M1` unrun | Agent Zero 3.4pp across 8 backbones | **unmeasured**, and the bar is now calibrated against that bound |
+
+No cell in this table is a SOTA claim, and four of the seven are `unrun`. That is the state of the project, and
+it is a better state than the previous round, because three of the cells now have a number where they had a
+sentence.

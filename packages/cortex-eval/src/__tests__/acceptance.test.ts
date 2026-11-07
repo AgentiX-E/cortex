@@ -148,6 +148,10 @@ describe('currentOf: one dispatch per kind, and no row reads a resolver it did n
         calls.push('gap');
         return 4;
       },
+      floor: () => {
+        calls.push('floor');
+        return 7;
+      },
       leak: () => {
         calls.push('leak');
         return 5;
@@ -167,6 +171,7 @@ describe('currentOf: one dispatch per kind, and no row reads a resolver it did n
       [{ kind: 'artifact', path: 'a/b.json', key: 'c.d' }, 'artifact:a/b.json#c.d', 2],
       [{ kind: 'arm', arm: 'annotated' }, 'arm:annotated', 3],
       [{ kind: 'gap' }, 'gap', 4],
+      [{ kind: 'floor' }, 'floor', 7],
       [{ kind: 'leak' }, 'leak', 5],
       [{ kind: 'ablation', removed: 'persistence' }, 'ablation:persistence', 6],
     ];
@@ -229,6 +234,7 @@ describe('currentOf: one dispatch per kind, and no row reads a resolver it did n
       artifact: 2,
       arm: 3,
       gap: 4,
+      floor: 7,
       leak: 5,
       ablation: 6,
       unrun: undefined,

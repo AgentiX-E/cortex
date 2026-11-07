@@ -16,6 +16,7 @@
 import {
   ablate,
   buildCases,
+  pollutionGap,
   scoreArm,
   TARGETS,
 } from '../packages/cortex-eval/dist/assumption-ablation.js';
@@ -24,8 +25,14 @@ const argv = process.argv.slice(2);
 const verbose = argv.includes('--verbose');
 const asJson = argv.includes('--json');
 
-const cases = buildCases(true);
-const arms = ['flat', 'annotated', 'gated'].map((arm) => scoreArm(cases, arm));
+// `buildCases(true)` used to sit here, and it was a defect of exactly the kind this file is written to
+// catch: `options.cascade === true` reads a property off a boolean, so `cascade` was `undefined`, the
+// headline table ran with the cascade mechanism OFF, and the ablation's own `none` row -- which builds
+// with cascade on -- printed `+5.9pp` against a baseline that was a different fixture. The two tables
+// disagreed and neither said so. Passing the object makes the headline the registered configuration,
+// which is what `ablate()`'s `none` row builds and therefore what the delta column is against.
+const cases = buildCases({ cascade: true });
+const arms = ['no-memory', 'flat', 'annotated', 'gated'].map((arm) => scoreArm(cases, arm));
 
 if (asJson) {
   process.stdout.write(
@@ -48,20 +55,32 @@ for (const report of arms) {
   );
 }
 
+process.stdout.write(
+  `\nappend-only store against no store at all: ${(100 * pollutionGap(cases)).toFixed(1)}pp` +
+    '  (negative is memory pollution)\n',
+);
+
 const families = Object.keys(arms[0].byFamily);
-process.stdout.write(`\n${pad('family', 14)}${pad('flat', 10)}${pad('annotated', 10)}gated\n`);
+process.stdout.write(
+  `\n${pad('family', 14)}${pad('none', 10)}${pad('flat', 10)}${pad('annotated', 10)}gated\n`,
+);
 for (const family of families) {
   const cells = arms.map(
     (report) => `${report.byFamily[family].correct}/${report.byFamily[family].n}`,
   );
-  process.stdout.write(`${pad(family, 14)}${pad(cells[0], 10)}${pad(cells[1], 10)}${cells[2]}\n`);
+  // `slice(1)` skips the floor: it carries no signal on a family whose gold is a fact, every cell of it is
+  // `0/n` there by construction, and printing it beside the arms invites reading the columns as four
+  // mechanisms rather than three mechanisms and a bound.
+  process.stdout.write(
+    `${pad(family, 14)}${pad(`${cells[0]}`, 10)}${pad(cells[1], 10)}${pad(cells[2], 10)}${cells[3]}\n`,
+  );
 }
 
 process.stdout.write('\nablation (gated arm, one mechanism removed)\n');
 process.stdout.write(
   `${pad('removed', 16)}${pad('accuracy', 10)}${pad('delta', 9)}targeted families\n`,
 );
-const base = arms[2].accuracy;
+const base = arms[3].accuracy;
 for (const row of ablate()) {
   const delta = row.accuracy - base;
   const sign = delta > 0 ? '+' : '';

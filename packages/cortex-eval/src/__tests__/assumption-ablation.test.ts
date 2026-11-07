@@ -22,6 +22,7 @@ import {
 import {
   ablate,
   buildCases,
+  pollutionGap,
   resolve,
   scoreArm,
   TARGETS,
@@ -425,7 +426,7 @@ describe('ablate: one mechanism at a time', () => {
 
   it('accepts each arm name without throwing', () => {
     const cases = buildCases({ cascade: true });
-    for (const arm of ['flat', 'annotated', 'gated'] as Arm[]) {
+    for (const arm of ['no-memory', 'flat', 'annotated', 'gated'] as Arm[]) {
       expect(scoreArm(cases, arm).n).toBe(cases.length);
     }
   });
@@ -552,5 +553,126 @@ describe('ablate: the two axes and the lifecycle', () => {
     // stays `pending`, the question about what happened excludes it, and the answer is "unknown".
     const without = rows.find((row) => row.removed === 'fulfil')!;
     expect(without.byFamily.plan.correct).toBeLessThan(full.byFamily.plan.correct);
+  });
+});
+
+/**
+ * The floor: what the product scores with nothing in the store.
+ *
+ * The arm exists because every comparison this fixture could make was between two kinds of memory, and the
+ * question TEPA asks is about memory as such -- an append-only store scored `0.210` against `0.309` for no
+ * memory at all during full reversal, so a persistent store can be worse than an amnesiac one. A set that
+ * cannot express that comparison cannot report pollution, however many mechanisms it prices.
+ */
+describe('no-memory: the floor every arm is worth measuring against', () => {
+  const cases = buildCases({ cascade: true });
+
+  it('answers nothing, on every case, whatever the question', () => {
+    const report = scoreArm(cases, 'no-memory');
+    expect(report.n).toBe(cases.length);
+    for (const outcome of report.outcomes) {
+      expect(outcome.answer, outcome.caseId).toBeNull();
+    }
+  });
+
+  it('is correct exactly on the cases whose gold is a decline', () => {
+    // The floor is not a straw man with a zero on it: on this fixture "unknown" is the right answer five
+    // times, so an empty store scores five of seventeen and any arm below that is worse than amnesia.
+    const report = scoreArm(cases, 'no-memory');
+    const declineCases = cases.filter((entry) => entry.expect === null).length;
+    expect(report.correct).toBe(declineCases);
+    expect(report.accuracy).toBeCloseTo(declineCases / cases.length, 10);
+  });
+
+  it('never serves a retired fact, because it serves nothing', () => {
+    expect(scoreArm(cases, 'no-memory').retiredServed).toBe(0);
+  });
+
+  it('reports the reason as its own, not as an unplaceable fact', () => {
+    // `unplaceable` is what `assemble` says when it was handed candidates and could not place any of them.
+    // The floor never handed it one, and collapsing the two states would hide a mis-wired arm as a floor.
+    const entry = cases.find((candidate) => candidate.expect !== null)!;
+    expect(resolve(entry, 'no-memory').reason).toBe('no-memory');
+  });
+
+  it('shares the flat arm policy, so the difference between them is the candidate list', () => {
+    // Stated as a behaviour rather than read off `ARM_POLICY`: if the two arms ever diverged in policy, the
+    // floor would stop bounding the append-only store and the comparison would be between two designs.
+    const asOfFree = cases.filter((entry) => entry.asOf === undefined);
+    for (const entry of asOfFree) {
+      const floor = resolve(entry, 'no-memory');
+      const flat = resolve(entry, 'flat');
+      expect(floor.census.served, entry.id).toBe(0);
+      expect(floor.census.served).toBeLessThanOrEqual(flat.census.served);
+    }
+  });
+
+  it('prices the append-only store at exactly zero on this fixture, which is the finding', () => {
+    // Six cases gained against six lost. The number is asserted rather than bounded because it is the
+    // headline of the comparison: an append-only store on a contradiction-bearing corpus is worth nothing,
+    // and a fixture change that moves it is a change to the claim.
+    expect(pollutionGap(cases)).toBeCloseTo(0, 10);
+  });
+
+  it('can go negative, which is why the criterion is falsifiable', () => {
+    // The synthetic set below is a store that only ever loses: two conflicts and no update. If `pollutionGap`
+    // could not move below zero there would be no criterion here worth gating on, only a constant.
+    const CITY = { subject: 'user', predicate: 'city' };
+    const conflicting = (id: string, text: string): KnowledgeFact => ({
+      id,
+      frameId: id,
+      text,
+      type: 'state',
+      polarity: 'positive',
+      modality: 'actual',
+      futurity: 'present',
+      certainty: 'factual',
+      sourceSpan: { start: 0, end: text.length },
+      references: [],
+      ...CITY,
+      at: T0,
+      assumptions: deriveAssumptions(
+        {
+          id,
+          frameId: id,
+          text,
+          type: 'state',
+          polarity: 'positive',
+          modality: 'actual',
+          futurity: 'present',
+          certainty: 'factual',
+          sourceSpan: { start: 0, end: text.length },
+          references: [],
+          ...CITY,
+          at: T0,
+        },
+        frameOf(id, T0, text),
+      ),
+    });
+    const onlyConflicts: Case[] = [
+      {
+        id: 'synthetic-conflict',
+        family: 'conflict',
+        query: 'Where does the user live?',
+        slot: CITY,
+        facts: [conflicting('x1', 'I live in London.'), conflicting('x2', 'I live in Paris.')],
+        expect: null,
+      },
+    ];
+    const revised = reviseLedger(onlyConflicts[0]!.facts, { cascade: true }).facts;
+    const set: Case[] = [{ ...onlyConflicts[0]!, facts: revised }];
+    // The floor is right (it declines) and the append-only store is wrong (it serves one of two values that
+    // claim the same instant), so the store is worth minus one case out of one.
+    expect(pollutionGap(set)).toBeCloseTo(-1, 10);
+  });
+
+  it('is the baseline the ablation table is a delta from', () => {
+    // `tools/assumption-ablation.mjs` printed `gated 94.1%` above a `none +5.9pp` row, because the headline
+    // built its cases with `buildCases(true)` -- a boolean read as an options object, so `cascade` was
+    // undefined and the two tables ran different fixtures. The regression is asserted here rather than left
+    // to the tool: the headline arm of the registered configuration equals the ablation's own `none` row.
+    const rows = ablate();
+    const none = rows.find((row) => row.removed === 'none')!;
+    expect(scoreArm(cases, 'gated').accuracy).toBeCloseTo(none.accuracy, 10);
   });
 });
