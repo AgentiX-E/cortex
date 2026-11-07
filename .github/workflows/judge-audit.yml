@@ -42,6 +42,11 @@ on:
         required: false
         default: '2'
         type: string
+      population:
+        description: 'Regrade only: all, preference, or non-preference. A preference gold states what a good answer should do rather than the answer, so its verdict is never mechanical; section 13.310 registers the split because that 5.8% of the dataset carried 42% of one reader-vs-reader gap'
+        required: false
+        default: 'all'
+        type: string
 
 permissions:
   contents: read
@@ -76,6 +81,9 @@ jobs:
       # would produce a number whose two halves are not the same quantity.
       MODE: ${{ inputs.mode }}
       PASSES: ${{ inputs.passes }}
+      # Derived once, here, so the plan step and the reading step cannot grade different populations.
+      POPULATION_FLAG: ${{ inputs.population == 'preference' && '--preference-only' || (inputs.population == 'non-preference' && '--non-preference-only' || '') }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -144,7 +152,8 @@ jobs:
           set -o pipefail
           node tools/judge-regrade.mjs \
             --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
-            --limit "$LIMIT" --passes "$PASSES" --plan-only 2>&1 | tee readings/regrade-plan.txt
+            --limit "$LIMIT" --passes "$PASSES" $POPULATION_FLAG --plan-only \
+            2>&1 | tee readings/regrade-plan.txt
 
       - name: Regrade the recorded answers
         if: env.MODE == 'regrade'
@@ -152,7 +161,7 @@ jobs:
           set -o pipefail
           node tools/judge-regrade.mjs \
             --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
-            --limit "$LIMIT" --passes "$PASSES" \
+            --limit "$LIMIT" --passes "$PASSES" $POPULATION_FLAG \
             --out readings/judge-regrade.json 2>&1 | tee readings/judge-regrade.txt
 
       - name: Upload readings

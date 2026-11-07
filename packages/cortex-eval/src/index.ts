@@ -60,7 +60,7 @@ export {
 export { describeProviderRefusals, providerRefusals } from './benchmark.js';
 // §13.306's second class, exported for the same reason and with the same shape: the arm at the top
 // prints the count, and the count has to come from the module that decided the questions.
-export { deadlineLossCeiling, describeDeadlineLosses, lostToDeadline } from './benchmark.js';
+export { deadlineLossCeiling, describeTransportLosses, lostToTransport } from './benchmark.js';
 export { readWorkers } from './worker-pool.js';
 export { describeFailure } from './bench-failure.js';
 export { drawUnjudged, type Draw, type DrawableRow } from './a3-draw.js';

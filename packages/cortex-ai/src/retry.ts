@@ -299,6 +299,25 @@ export type RetryOutcome = RetryStats & {
    * that does cannot mistake a served call for a refused one.
    */
   refusal?: RetryRefusal;
+  /**
+   * The full exhaustion object, when the attempt count ran out and the caller needs to classify it.
+   *
+   * ## Why this is here and not reconstructed one layer up
+   *
+   * A call that ends on `attempts-exhausted` is a **returned** outcome, not a thrown error, so the
+   * adapter that turns a `!res.ok` into an `Error` has only `RetryStats` -- attempts, retries,
+   * rate-limited -- and no `attemptsMs`, `timeoutMs` or `elapsedMs`. The benchmark layer classifies
+   * transport losses by reading `retryExhausted`, and before this field existed the only losses that
+   * carried one were the ones a **thrown** transport error produced. Run `42381702081` is the cost:
+   * every attempt answered `429`, nine attempts spent, a returned 429, a bare `Error` from the
+   * adapter, and 500 questions discarded because the classification could not see what the ladder
+   * had already measured.
+   *
+   * Reconstructing it in the adapter was the alternative and it is refused: the three fields above
+   * live only in this loop, and filling them with a placeholder to satisfy a shape is fabricating the
+   * numbers a reader would then reason from.
+   */
+  exhausted?: RetryExhaustion;
 };
 
 /**
@@ -840,15 +859,34 @@ export async function retryableFetchWithStats(
       // The count ran out on a status we would have retried. That is a refusal like any
       // other -- the call was answered and not served -- so it is counted and reported the
       // same way rather than as a clean completion.
-      return withRefusal(res, stats, {
-        reason: 'attempts-exhausted',
-        attempts: stats.attempts,
-        retried: stats.retried,
-        retryAfterMs: retryAfterMs(res),
-        remainingMs: budgetEnforced
-          ? Math.max(0, retryBudgetMs + pacedMs - (Date.now() - sequenceStart))
-          : null,
-      });
+      //
+      // The exhaustion object travels with it for the reason `RetryOutcome.exhausted` gives: this
+      // is a returned outcome, and without it the only caller that can classify the loss is the one
+      // that received a thrown transport error.
+      return withRefusal(
+        res,
+        stats,
+        {
+          reason: 'attempts-exhausted',
+          attempts: stats.attempts,
+          retried: stats.retried,
+          retryAfterMs: retryAfterMs(res),
+          remainingMs: budgetEnforced
+            ? Math.max(0, retryBudgetMs + pacedMs - (Date.now() - sequenceStart))
+            : null,
+        },
+        {
+          url,
+          attempts: stats.attempts,
+          retried: stats.retried,
+          rateLimited: stats.rateLimited,
+          elapsedMs: Date.now() - sequenceStart,
+          attemptsMs,
+          timeoutMs,
+          retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
+          cause: `${String(res.status)} ${res.statusText}`.trim(),
+        },
+      );
     }
     resFromLastAttempt = res;
   }
@@ -884,7 +922,7 @@ export async function retryableFetchWithStats(
  * be an arm no input can reach, which is the shape §57.6 removed elsewhere -- and the
  * branch-coverage gate would be the thing that found it.
  */
-function withExhaustion(error: Error, exhaustion: RetryExhaustion): Error {
+export function withExhaustion(error: Error, exhaustion: RetryExhaustion): Error {
   (error as { retryExhausted?: RetryExhaustion }).retryExhausted = exhaustion;
   return error;
 }
@@ -941,8 +979,16 @@ function withResponse(response: Response, stats: RetryStats): RetryOutcome {
  * a reader of the artifact has to be able to tell "every request was served" from "one request
  * was answered 'not now' and we stopped asking".
  */
-function withRefusal(response: Response, stats: RetryStats, refusal: RetryRefusal): RetryOutcome {
-  const outcome: RetryOutcome = { ...stats, response, refusal };
+function withRefusal(
+  response: Response,
+  stats: RetryStats,
+  refusal: RetryRefusal,
+  exhausted?: RetryExhaustion,
+): RetryOutcome {
+  const outcome: RetryOutcome =
+    exhausted === undefined
+      ? { ...stats, response, refusal }
+      : { ...stats, response, refusal, exhausted };
   processRetryStats.recordRefused(outcome);
   return outcome;
 }

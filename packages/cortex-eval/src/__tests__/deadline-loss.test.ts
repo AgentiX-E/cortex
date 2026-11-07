@@ -39,8 +39,8 @@ import { OpenAICompatibleLLM, resetRetryStats } from '@agentix-e/cortex-ai';
 
 import {
   deadlineLossCeiling,
-  describeDeadlineLosses,
-  lostToDeadline,
+  describeTransportLosses,
+  lostToTransport,
   providerRefusals,
   runBenchmark,
 } from '../benchmark.js';
@@ -132,7 +132,7 @@ const permissiveJudge: AnswerJudge = async (_question, predicted) => predicted.t
 describe('a deadline loss is one question, not one pass', () => {
   it('records an empty answer, counts the loss, and finishes the other questions', async () => {
     resetRetryStats();
-    const before = lostToDeadline().length;
+    const before = lostToTransport('deadline').length;
     const answers = await runBenchmark(datasetOf(20), stallingSystem([3]));
 
     expect(answers).toHaveLength(20);
@@ -143,7 +143,7 @@ describe('a deadline loss is one question, not one pass', () => {
     expect(answers[0]).toBe('answer-0');
     expect(answers[19]).toBe('answer-19');
 
-    const records = lostToDeadline();
+    const records = lostToTransport('deadline');
     expect(records.length - before).toBe(1);
     expect(records.at(-1)?.questionId).toBe('q3');
     expect(records.at(-1)?.capability).toBe('IE');
@@ -234,7 +234,7 @@ describe('a deadline loss is one question, not one pass', () => {
     // an endpoint rather than a memory system, and the message says which number to raise.
     resetRetryStats();
     await expect(runBenchmark(datasetOf(20), stallingSystem([1, 2]))).rejects.toThrow(
-      /deadline losses reached 2 of 20/,
+      /transport losses reached 2 of 20/,
     );
     await expect(runBenchmark(datasetOf(20), stallingSystem([1, 2]))).rejects.toThrow(
       /CORTEX_READER_TIMEOUT_MS/,
@@ -252,33 +252,38 @@ describe('a deadline loss is one question, not one pass', () => {
   });
 });
 
-describe('describeDeadlineLosses', () => {
+describe('§13.309 describeTransportLosses on the deadline kind', () => {
   it('prints 0 on every run, so "none" is distinguishable from "this log predates the counter"', () => {
-    expect(describeDeadlineLosses([])).toBe('deadline losses: 0');
+    expect(describeTransportLosses([], 500)).toContain('transport losses: 0');
   });
 
   it('names the capability spread and the bound, which are the two facts a reader needs', () => {
-    const line = describeDeadlineLosses([
-      {
-        questionId: 'a',
-        capability: 'MR',
-        questionType: null,
-        run: 0,
-        attempts: 2,
-        timeoutMs: 300_000,
-        elapsedMs: 601_000,
-      },
-      {
-        questionId: 'b',
-        capability: 'IE',
-        questionType: null,
-        run: 0,
-        attempts: 2,
-        timeoutMs: 300_000,
-        elapsedMs: 600_500,
-      },
-    ]);
-    expect(line).toContain('deadline losses: 2');
+    const line = describeTransportLosses(
+      [
+        {
+          questionId: 'a',
+          capability: 'MR',
+          questionType: null,
+          run: 0,
+          kind: 'deadline' as const,
+          attempts: 2,
+          timeoutMs: 300_000,
+          elapsedMs: 601_000,
+        },
+        {
+          questionId: 'b',
+          capability: 'IE',
+          questionType: null,
+          run: 0,
+          kind: 'deadline' as const,
+          attempts: 2,
+          timeoutMs: 300_000,
+          elapsedMs: 600_500,
+        },
+      ],
+      500,
+    );
+    expect(line).toContain('deadline 2');
     // Ties are ordered by capability name, not by arrival: the line has to be stable across runs so
     // two artifacts can be compared as text.
     expect(line).toContain('IE 1, MR 1');
@@ -295,17 +300,18 @@ describe('describeDeadlineLosses', () => {
       capability: 'TR',
       questionType: null,
       run: 0,
+      kind: 'deadline' as const,
       attempts: 2,
       timeoutMs,
       elapsedMs: timeoutMs * 2,
     });
-    const line = describeDeadlineLosses([record(600_000), record(60_000)]);
+    const line = describeTransportLosses([record(600_000), record(60_000)], 500);
     expect(line).toContain('60000 ms, 600000 ms');
   });
 });
 
-describe('lostToDeadline', () => {
+describe('lostToTransport', () => {
   it('returns a copy, so a caller cannot rewrite the record the report is derived from', () => {
-    expect(lostToDeadline()).not.toBe(lostToDeadline());
+    expect(lostToTransport('deadline')).not.toBe(lostToTransport('deadline'));
   });
 });

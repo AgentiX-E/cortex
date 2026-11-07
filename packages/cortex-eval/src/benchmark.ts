@@ -103,6 +103,16 @@ type TransportLossRecord = {
   readonly capability: string;
   readonly questionType: string | null;
   readonly run: number;
+  /**
+   * Which exhaustion the provider produced.
+   *
+   * The two kinds are one family -- the quota ran out, on the clock or on the rate -- and they are
+   * kept apart because their **repairs differ**: a deadline loss is answered by
+   * `CORTEX_READER_TIMEOUT_MS`, a rate-limit loss by `CORTEX_LLM_MIN_INTERVAL_MS` or a larger
+   * quota. A single counter would send a reader to the wrong knob, and the wrong knob is
+   * indistinguishable from no advice at all.
+   */
+  readonly kind: 'deadline' | 'rate-limit';
   /** Requests issued before the loss, including the first attempt. */
   readonly attempts: number;
   /** The per-attempt deadline those attempts were given. */
@@ -112,7 +122,7 @@ type TransportLossRecord = {
 };
 
 /**
- * Every deadline loss this process has decided, in arrival order.
+ * Every transport loss this process has decided, in arrival order.
  *
  * Process-wide like `refusals`, and for the same reason: the arm that prints the line is several
  * frames above the worker that produces it. The ceiling below is per pass, not per process, because
@@ -121,9 +131,24 @@ type TransportLossRecord = {
  */
 const transportLosses: TransportLossRecord[] = [];
 
-/** A copy, so a caller cannot mutate the record it was handed. */
-export function lostToDeadline(): readonly TransportLossRecord[] {
-  return transportLosses.map((record) => ({ ...record }));
+/**
+ * A copy of the losses, optionally of one kind.
+ *
+ * ## Why one accessor with a filter instead of three functions
+ *
+ * The two kinds share one list, because they share one ceiling, so `lostToDeadline` and
+ * `lostToRateLimit` were filters over this function rather than arrays of their own -- and a filter
+ * only a test calls is an export with no caller, which is what `tools/export-census.mjs` refuses.
+ * It was right to refuse: three names for one list invites a fourth kind to arrive as a fourth
+ * function. The parameter says the shape of the question instead.
+ *
+ * A copy, so a caller cannot mutate the record the report is derived from.
+ */
+export function lostToTransport(
+  kind?: TransportLossRecord['kind'],
+): readonly TransportLossRecord[] {
+  const all = transportLosses.map((record) => ({ ...record }));
+  return kind === undefined ? all : all.filter((record) => record.kind === kind);
 }
 
 /**
@@ -185,33 +210,101 @@ function deadlineExhaustion(err: unknown): RetryExhaustion | null {
 }
 
 /**
- * One line naming how many questions a deadline took, and where.
+ * The exhaustion object, when every attempt of a call was answered `429`.
+ *
+ * ## Why this is the deadline rule's twin
+ *
+ * `deadlineExhaustion` reads the same `retryExhausted` object and asks a structurally identical
+ * question: **did every attempt fail for the same external reason?** There it is "the clock reached
+ * the bound on all of them"; here it is "the provider refused on all of them". Both are facts about
+ * the endpoint's allowance rather than about the system under test, and both are therefore one
+ * question's loss rather than the pass's.
+ *
+ * ## Why mixed causes are still fatal
+ *
+ * `rateLimited === attempts` is the narrow reading, deliberately. A call whose first attempt was
+ * answered `429` and whose retry died on a reset socket has two causes and neither explains it;
+ * classifying that as a quota loss would let a broken network be reported as a busy provider, which
+ * is the same class of error `deadlineExhaustion` refuses by requiring `every`.
+ *
+ * ## Why the run that prompted this had to be re-read to find it
+ *
+ * `42381702081` reports `attempts: 1613, rateLimited: 28` at the process level and then dies of
+ * `attempts-exhausted` on one call. The process totals are not the discriminator and never were: 28
+ * throttled requests out of 1,613 is a healthy arm, and the loss is that **one call** collected nine
+ * of them in a row. A rule written on the process share would have called this a defect; the rule
+ * written on one call's vector calls it what it is.
+ */
+function rateLimitExhaustion(err: unknown): RetryExhaustion | null {
+  if (!(err instanceof Error)) return null;
+  const exhaustion = (err as { readonly retryExhausted?: RetryExhaustion }).retryExhausted;
+  if (exhaustion === undefined || exhaustion.attempts === 0) return null;
+  return exhaustion.rateLimited === exhaustion.attempts ? exhaustion : null;
+}
+
+/**
+ * One line naming how many questions the transport took, split by kind, with the ceiling in it.
  *
  * Printed on every run, for the reason `describeProviderRefusals` is: `0` is a statement, and a
  * line that appears only on failure leaves "no losses" and "this log predates the counter"
- * indistinguishable. The deadline is in the line because it is the number the reader would have to
- * change, and the cause is in the line because a loss on a 300 s bound is a different finding from a
- * loss on a bound the dispatch declared.
+ * indistinguishable.
+ *
+ * ## Why the ceiling is a parameter and not a recomputation
+ *
+ * A renderer that called `deadlineLossCeiling(total)` itself would be a second implementation of
+ * the number the catch enforces, and the two could disagree — visibly only on a failed run, which
+ * is the run nobody re-reads. The caller passes the value it enforced.
+ *
+ * ## Why each kind names its own knob
+ *
+ * The whole reason `kind` exists in the record. A single sentence ("raise the bound") would be
+ * wrong for half the losses it described, and advice that is wrong half the time is worse than no
+ * advice: it is a dispatch someone makes twice.
  */
-export function describeDeadlineLosses(records: readonly TransportLossRecord[]): string {
+export function describeTransportLosses(
+  records: readonly TransportLossRecord[],
+  total: number,
+): string {
+  const ceiling = deadlineLossCeiling(total);
   if (records.length === 0) {
-    return 'deadline losses: 0';
+    return `transport losses: 0 (ceiling ${ceiling} of ${total}) — every question was answered`;
   }
-  const byCapability = new Map<string, number>();
-  for (const record of records) {
-    byCapability.set(record.capability, (byCapability.get(record.capability) ?? 0) + 1);
-  }
-  const spread = [...byCapability.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([capability, count]) => `${capability} ${count}`)
-    .join(', ');
-  const bounds = [...new Set(records.map((record) => record.timeoutMs))]
-    .sort((a, b) => a - b)
-    .map((ms) => `${ms} ms`)
-    .join(', ');
+  const spreadOf = (kind: TransportLossRecord['kind']): string | null => {
+    const ofKind = records.filter((record) => record.kind === kind);
+    if (ofKind.length === 0) return null;
+    const byCapability = new Map<string, number>();
+    for (const record of ofKind) {
+      byCapability.set(record.capability, (byCapability.get(record.capability) ?? 0) + 1);
+    }
+    const spread = [...byCapability.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([capability, count]) => `${capability} ${count}`)
+      .join(', ');
+    const label = kind === 'deadline' ? 'deadline' : 'rate limit';
+    // The bound is rendered for deadlines only, and it is not decoration: `300000 ms` is the
+    // thinking default and `600000 ms` is a declared `CORTEX_READER_TIMEOUT_MS`, so the number tells
+    // a reader whether the loss came from the knob they were tuning or from one they never set. A
+    // rate-limit loss has no bound to name -- `timeoutMs` on that record is the per-attempt deadline
+    // the request was given, which is not what ran out.
+    if (kind === 'rate-limit') {
+      return `${label} ${ofKind.length} (${spread})`;
+    }
+    const bounds = [...new Set(ofKind.map((record) => record.timeoutMs))]
+      .sort((a, b) => a - b)
+      .map((ms) => `${ms} ms`)
+      .join(', ');
+    return `${label} ${ofKind.length} (${spread}) at ${bounds}`;
+  };
+  const parts = [spreadOf('deadline'), spreadOf('rate-limit')].filter(
+    (part): part is string => part !== null,
+  );
+  const knobs = [
+    records.some((record) => record.kind === 'deadline') ? 'CORTEX_READER_TIMEOUT_MS' : null,
+    records.some((record) => record.kind === 'rate-limit') ? 'CORTEX_LLM_MIN_INTERVAL_MS' : null,
+  ].filter((knob): knob is string => knob !== null);
   return (
-    `deadline losses: ${records.length} (${spread}) at ${bounds} — recorded as no output, ` +
-    'kept in the denominator'
+    `transport losses: ${records.length} of ${total} (ceiling ${ceiling}) — ${parts.join('; ')} — ` +
+    `recorded as no output, kept in the denominator; the knobs are ${knobs.join(' and ')}`
   );
 }
 
@@ -634,8 +727,9 @@ export async function runBenchmark(
   const claim = (): number => next++;
   // Per pass, not per process: one process answers several runs, and a process-wide counter would
   // refuse a fourth run for the first three's losses. Incremented under the same single-threaded
-  // claim rule as `next`.
-  let deadlineLosses = 0;
+  // claim rule as `next`. One counter for both kinds of transport loss, because the ceiling they
+  // share is a statement about the pass rather than about which knob ran out.
+  let transportLossCount = 0;
 
   const runWorker = async (worker: number): Promise<void> => {
     const workerSystem = pool === undefined ? system : pool.systemFor(worker);
@@ -806,14 +900,33 @@ export async function runBenchmark(
             questionId: q.id,
             capability: q.capability,
             questionType: q.questionType ?? null,
-            providerCode: err instanceof ProviderContentRefusal ? err.providerCode : null,
+            // `err` is narrowed by the guard above, so `instanceof` here was a second test of a
+            // fact already established -- and its `: null` arm was unreachable by construction: a
+            // value the guard rejects never reaches this line. The branch showed up as the last
+            // two uncovered branches in this file, which is what an unreachable arm looks like.
+            providerCode: err.providerCode,
           });
           record('', index);
         } else {
-          const exhaustion = deadlineExhaustion(err);
+          // Three classes are decided in this function and these two are the same family: the
+          // provider's allowance ran out, on the clock or on the rate. Both are facts about the
+          // endpoint rather than about the system under test, so both are one question's loss.
+          //
+          // `deadline` is tested first and `rateLimit` only when it is null, which is not an
+          // optimisation: an object that satisfies both is one whose attempts each reached the
+          // deadline AND were answered `429`, and the deadline reading is the narrower claim --
+          // a request that was aborted on the clock never saw the provider's answer at all.
+          const deadline = deadlineExhaustion(err);
+          const rateLimit = deadline === null ? rateLimitExhaustion(err) : null;
+          const exhaustion = deadline ?? rateLimit;
           if (exhaustion === null) {
+            // Everything else still crashes, by design: a malformed body, a bad key and a schema
+            // error fail identically on all 500 questions, and catching them would turn a broken
+            // arm into a quiet accuracy number. A **mixed** exhaustion is here too -- one attempt
+            // throttled and one dead on the wire has two causes and neither explains it.
             throw err;
           }
+          const kind: TransportLossRecord['kind'] = deadline === null ? 'rate-limit' : 'deadline';
           // Recorded before the ceiling is checked, so the record names every loss including the one
           // that ended the pass.
           transportLosses.push({
@@ -821,11 +934,12 @@ export async function runBenchmark(
             capability: q.capability,
             questionType: q.questionType ?? null,
             run,
+            kind,
             attempts: exhaustion.attempts,
             timeoutMs: exhaustion.timeoutMs,
             elapsedMs: exhaustion.elapsedMs,
           });
-          deadlineLosses += 1;
+          transportLossCount += 1;
           // `''` for the reason the refusal above records `''`, and it is the same reason twice: a
           // stall produced no output, and `null` would be read as a decline.
           record('', index);
@@ -842,14 +956,28 @@ export async function runBenchmark(
           // that is fatal. At 500 questions that is ten, and a pass that dies on the eleventh is
           // telling the truth about the endpoint; a pass that died on the first would be a smoke
           // run killed by the tail its own reader has.
+          //
+          // **One ceiling for both kinds.** The question the ceiling answers is "is this pass still
+          // describing the system under test", and half the entries lost to the clock plus half to
+          // the quota is the same answer as all of them lost to one. Two ceilings would also create
+          // a pass that could lose 4% of its entries while each counter stayed under its own bound.
           const ceiling = deadlineLossCeiling(total);
-          if (deadlineLosses > ceiling) {
+          if (transportLossCount > ceiling) {
+            // The advice is per kind, because the repairs differ and advice that is wrong half the
+            // time is worse than none: a reader who raised `CORTEX_READER_TIMEOUT_MS` against a
+            // quota problem would re-dispatch and lose the next pass the same way.
+            const guidance =
+              kind === 'rate-limit'
+                ? `The last loss was a rate limit: every one of its ${exhaustion.attempts} attempts ` +
+                  'was answered 429. Raise CORTEX_LLM_MIN_INTERVAL_MS, or use an account with a ' +
+                  'larger quota, and re-dispatch rather than reading the number this pass would produce.'
+                : `The last loss was a deadline at ${exhaustion.timeoutMs} ms — raise ` +
+                  'CORTEX_READER_TIMEOUT_MS if the reader needs longer, and re-dispatch rather than ' +
+                  'reading the number this pass would produce.';
             throw new Error(
-              `deadline losses reached ${deadlineLosses} of ${total} (ceiling ${ceiling}, ` +
+              `transport losses reached ${transportLossCount} of ${total} (ceiling ${ceiling}, ` +
                 `${Math.round(MAX_DEADLINE_LOSS_FRACTION * 100)}%): at this share the pass measures ` +
-                'the endpoint rather than the system under test. The bound on this loss was ' +
-                `${exhaustion.timeoutMs} ms — raise CORTEX_READER_TIMEOUT_MS if the reader needs ` +
-                'longer, and re-dispatch rather than reading the number this pass would produce.',
+                `the endpoint rather than the system under test. ${guidance}`,
             );
           }
           // No `continue` and no skip: the prompt for this question **was** built and sent, and the

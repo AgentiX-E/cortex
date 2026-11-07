@@ -49,12 +49,12 @@ import {
   // `42381840503` lost a 500-question pass to a 300 s deadline that appeared in no line of its log,
   // and the loss it produced named the bound only after it had already ended the arm.
   describeReaderTransport,
-  describeDeadlineLosses,
+  describeTransportLosses,
   // §13.306's ceiling, printed on the gate line: a bound the pass enforces and a reader cannot see
   // is the same defect as the deadline that only appeared in the error object of the question that
   // reached it.
   deadlineLossCeiling,
-  lostToDeadline,
+  lostToTransport,
   createMemoryArmReranker,
   resolveReaderIdentity,
   resolveRerankBounds,
@@ -1161,7 +1161,10 @@ async function main(): Promise<void> {
   // rather than a stack, and so that a reader of the number can see the denominator it was computed
   // over is the denominator it claims.
   console.log(`=== ${describeProviderRefusals(providerRefusals())} ===`);
-  console.log(`=== ${describeDeadlineLosses(lostToDeadline())} ===`);
+  // §13.309. One line for both kinds of transport loss, because they share the ceiling; the kinds
+  // are named apart because their repairs differ, and a reader sent to `CORTEX_READER_TIMEOUT_MS`
+  // over a quota problem would re-dispatch and lose the next pass the same way.
+  console.log(`=== ${describeTransportLosses(lostToTransport(), dataset.questions.length)} ===`);
 
   console.log('=== cortex-memory ablation ===');
   console.log(result.markdown);
