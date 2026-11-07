@@ -33992,3 +33992,66 @@ One dispatch. A pass on **A**, **B**, **C** and **E** makes the per-route room t
 configuration and moves `C1` to 8,556 with a named remainder rather than an unmeasured one. A miss on
 **B** sends the arm back to §13.299's resolution path rather than to a bigger room, because a movement
 in an untouched route cannot be caused by the size of the routes that were touched.
+
+### 13.303 The reader axis, dispatched as two arms of one provider
+
+`M1` has been `unrun` since it was registered, and the reason it stayed there was a belief rather than
+a check: "swap the reader for a stronger model" was assumed to need a second vendor, and a second
+vendor meant a second key, a second endpoint and a second quota. The endpoint publishes its supported
+model names when it rejects one, and `42379829090` is the run that read them:
+
+```text
+The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed glm-4.6.
+```
+
+So the axis is measurable **inside one provider**, which removes the confound a cross-vendor swap would
+have carried: `deepseek-flash` and `deepseek-v4-pro` are served by the same infrastructure, the same
+tokenizer family and the same cache, so a difference between them is a difference in the model.
+
+#### 13.303.1 The two arms, and the one field that moves
+
+| | arm A | arm B |
+| --- | --- | --- |
+| `model` | **`deepseek-flash`** | **`deepseek-v4-pro`** |
+| room | 48,000 (§10.3) | 48,000 |
+| every other input | §10.3 | §10.3 |
+| repetitions | 2 | 2 |
+| run | `42381717349` | dispatched immediately after |
+
+`thinking` stays `multi-session+temporal` on both, because §13.234 registered that the thinking route
+is part of the product configuration and turning it off for one arm would make this two changes.
+
+#### 13.303.2 Why `promptDigest` is the control and not a promise
+
+`M1`'s claim is about the **reader**, so the packet must be identical. Every per-question record carries
+`promptDigest`, so the two artifacts can be compared question by question **before** the accuracy is
+compared: 500 of 500 digests must match. A mismatch means the arm moved something it did not declare,
+and the accuracy comparison is then between two packets rather than between two readers — which is not
+a weaker version of this measurement, it is a different one that nobody registered.
+
+That check is the first thing to run when both artifacts land, and it costs nothing. It is registered
+here because the cheaper mistake is to read the accuracy first.
+
+#### 13.303.3 The registration
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| **R0** | all 500 `promptDigest` values are identical between the arms | any difference voids the accuracy reading, whatever it says |
+| **R1** | the stronger reader is **at least 3.0 points ahead** on the same 500 | a reading below 3.0 is `M1`'s miss, and the honest reading of it is Agent Zero's own result: `3.4` points is the **entire** observed spread across eight model families, so a delta under 3 says this pipeline is more retrieval-dominated than the field's strongest system, not that the reader is broken |
+| **R2** | a **negative** delta is a defect, not noise | a stronger model scoring lower on an identical packet is the prompt-contract defect `AUDIT-READER-THINKING-REVERSES.md` documents, and it is repaired in the prompt rather than in the model choice |
+| **R3** | the abstention route does not move by more than one question | `ABS` gold **is** a decline, so a reader swap that buys accuracy by declining less is a calibration change; `PREREG-READER-AXIS.md` §3 registers this and it is unchanged |
+| **R4** | cost per question is **reported for both arms**, not only accuracy | the arms differ in model price, and a comparison that reports accuracy and hides the bill is the comparison `C1` exists to refuse |
+
+**R1's bar of 3.0 was chosen before this dispatch and is not moved by it** — `PREREG-READER-AXIS.md` §7
+records why the looser of two written numbers survived, and the reasoning there (a 5-point bar asks this
+pipeline to be more reader-sensitive than the state of the art is) applies to the dispatch as much as to
+the document.
+
+#### 13.303.4 What a pass would and would not mean
+
+A pass makes `M1` the first reader-axis reading in this campaign and removes one of the two remaining
+`unrun` rows on the product surface. It does **not** make the pipeline SOTA: a 3-point gain on top of
+91.40 is 94.4, which is still under MemStrata's 95.0 source-aware and under three vendor headlines
+whose code does not exist. What it would establish is the weaker and more useful claim — that this
+pipeline's accuracy **responds to the reader**, which is the property a product needs before it can
+promise anything about model choice.
