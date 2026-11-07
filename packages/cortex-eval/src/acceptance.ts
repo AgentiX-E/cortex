@@ -685,6 +685,55 @@ export const CRITERIA: readonly Criterion[] = [
     onMiss:
       "Section 13.246 corrects what this row is aiming at. The stage was registered as *the reference pipeline's ask*, and the dispatch that measured it (`silent`) administered an ask the reference does not use: `conInstruction` is the single-SESSION skeleton, and the multi-session path calls `buildAggregationQaPrompt`, which enumerates in writing. So a miss here retires *silence*, not the reference's contract, and `silent`'s -26 is re-read as the price of removing the written list. The corrected target is `ask=verbatim`, the aggregation builder migrated whole, with its own predictions in §13.246.6; the assembly check below still applies unchanged. Given a clean pair on `verbatim` — which `41860773768` supplied at +1.8 questions, and section 13.248.4 reads as exhausting the wording — the axis it leaves is the assembly: section 13.279 dispatches the reference order with the same block, and gate 5 (prompt digests on the 379 questions outside the route) is what stops a movement there being read as a leak. Beyond that the evidence axis stands: — section 13.243.2's partial-coverage band reads 48.7% where the full band reads 89.0%, and the reference never produces that band because it retrieves sessions and truncates per session. If MR does not move and declines rise, the reference's decline licence is the mechanism rather than its enumeration.",
   },
+
+  // ---- the cost dimension, which had no row until the 2026-10 board printed a context column -------
+  {
+    id: 'C1',
+    capability: 'cost',
+    metric: 'prompt tokens the reader is billed for, per question',
+    dataset: 'LongMemEval-S, 500 questions, four repetitions, feature arm only',
+    comparator: 'at-most',
+    threshold: 6000,
+    unit: 'count',
+    kind: 'aim',
+    source: {
+      kind: 'unrun',
+      reason:
+        'No cost ledger exists. The number is derivable from every artifact and cannot be read off one, and the difference is the reason this row is `unrun` rather than wired: `llmUsage.promptTokens` is a four-repetition total over all 500 questions AND over the bare-decline retries, so dividing it by `questionCount x runs` gives 12,105 while section 13.287.2 quotes 11,690 from a calls-normalised division. Two arithmetic choices, 3.5% apart, and the acceptance row has to state one of them rather than let each reader pick. The generator that would state it does not exist yet; until it does, this row records the gap instead of presenting a hand-typed number as a measurement.',
+    },
+    competitors: [
+      {
+        name: 'Zep',
+        value: 4400,
+        grade: 'C',
+        recipe:
+          'vendor figures as published 2026-10: 90.2% accuracy at about 4.4K context tokens per question (0.6x the 115K corpus). Run data and harness are not public, so the token figure is a claim rather than a reproduction — quoted because it is the cheapest published point on the board and therefore the bar any cost claim has to clear',
+      },
+      {
+        name: 'Mem0 (managed)',
+        value: 6800,
+        grade: 'C',
+        recipe:
+          'vendor memory-benchmarks repository: 94.4% at a top-200 retrieval budget, about 6.8K tokens per question. Reader and judge are not stated at claim level and the open-source package measures about 32% on the same suite, so the token figure travels with a configuration this arm cannot rebuild',
+      },
+      {
+        name: 'Maximem Synap',
+        value: 7400,
+        grade: 'C',
+        recipe:
+          'vendor page 2026-10-28: 95.6% (478 of 500) at about 7.4K memory tokens per question, Gemini 3.8 Flash reader, public per-question run data — the highest published accuracy at a published cost, and the row that makes 11.7K indefensible',
+      },
+      {
+        name: 'Hindsight',
+        value: 43600,
+        grade: 'C',
+        recipe:
+          'vendor comparison page: about 43.6K tokens per retrieval against under 7K for Mem0, i.e. the accuracy leader near the top of this table buys its 94.6% with 5.9x the context. Included because it is the counter-example that stops this row being read as "accuracy costs nothing"',
+      },
+    ],
+    onMiss:
+      'This is an aim and not a gate, deliberately: a gate is a number the project has already reached, and no cost target has been reached — the arm bills about 11.7K tokens per question against 4.4K at a higher accuracy. Two things must not be read off a miss. First, it is not a reason to shrink the window: section 13.291 measured that delivering every gold turn (120 of 121 questions) moved accuracy by exactly zero, so the tokens are buying nothing, and the repair is the budget UNIT (characters, section 13.287.2, 2.62x denser in tokens than the figure the budget is written in) rather than the budget size. Second, it is not comparable to any competitor row above 6.8K unless the reader is the same, and none of them is: a stronger reader that also declines to be terse can spend more tokens and score lower, which is section 13.232 IE result in the other direction. The row exists so that the next increment that changes the room has to say what it did to this number.',
+  },
 ];
 
 /** What the checker found for one criterion. Filled in by the runner, never by hand. */

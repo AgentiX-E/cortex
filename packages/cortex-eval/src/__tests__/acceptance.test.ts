@@ -292,6 +292,24 @@ describe('the table is well formed', () => {
     expect(graded.some((peer) => peer.grade === 'A')).toBe(true);
   });
 
+  it('keeps the cost row an aim with no value, because no cost target has been reached', () => {
+    // The 2026-10 board is the first that prints context length beside accuracy, and it says this arm bills
+    // more tokens than Zep (4.4K) and Mem0 (6.8K) at a lower score. A `gate` here would be a number the
+    // project has already reached, and it has reached none, so the row is an aim by construction. It is also
+    // `unrun` rather than wired, because the artefact carries a four-repetition total over 500 questions and
+    // the retries, and dividing it two defensible ways gives numbers 3.5% apart (§13.287.2 records the split).
+    const cost = CRITERIA.find((criterion) => criterion.id === 'C1');
+    expect(cost).toBeDefined();
+    expect(cost?.capability).toBe('cost');
+    expect(cost?.kind).toBe('aim');
+    expect(cost?.comparator).toBe('at-most');
+    expect(cost?.source.kind).toBe('unrun');
+    expect(cost?.source.kind === 'unrun' && cost.source.reason.length).toBeGreaterThan(200);
+    expect((cost?.competitors ?? []).length).toBeGreaterThanOrEqual(4);
+    // `null` is the value of a criterion with no reading; the checker is what turns an `unrun` source into one.
+    expect(verdictOf(cost as Criterion, null).status).toBe('unrun');
+  });
+
   it('lists the rows without a value rather than leaving them to be discovered', () => {
     const missing = unrun();
     for (const criterion of missing) {
@@ -303,7 +321,7 @@ describe('the table is well formed', () => {
   it('keeps a row for every mechanism this repository shipped, including the null results', () => {
     // A null result with no row is a null result that gets quietly re-litigated every few months.
     const ids = new Set(CRITERIA.map((criterion) => criterion.id));
-    for (const id of ['K1', 'K2', 'T1', 'T2', 'T3', 'T4', 'G1', 'G2']) {
+    for (const id of ['K1', 'K2', 'T1', 'T2', 'T3', 'T4', 'G1', 'G2', 'C1']) {
       expect(ids.has(id)).toBe(true);
     }
     expect(CRITERIA.find((criterion) => criterion.id === 'R1')?.accepted).toBe(true);

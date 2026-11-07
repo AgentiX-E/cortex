@@ -66,6 +66,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
+| C1  | —                         | ≤ 6,000   | unrun  | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
@@ -74,6 +75,15 @@ the record of what happens when they are.
 
 `D1` is `unrun` and that is stated rather than hidden: the distillation reading needs an A3 run with a fresh
 prompt, and no such run exists. A row with no value is the honest form of "we have not measured this".
+
+`C1` was added on 2026-11-07, when the October board became the first that prints context length beside
+accuracy. It is `unrun` for an arithmetic reason rather than a scheduling one: every artifact carries the
+inputs, but `llmUsage.promptTokens` is a four-repetition total over 500 questions **and** over the
+bare-decline retries, and the two defensible divisions of it give 12,105 (`÷ questionCount × runs`) and
+11,690 (calls-normalised, §13.287.2) — 3.5% apart. An acceptance row has to state which one it means, so
+the row waits for a generator instead of accepting a hand-typed number. Its threshold of 6,000 is the
+cheapest published competitor point rounded up (Zep 4.4K, Mem0 6.8K): the arm bills about 11.7K today, so
+the row is an `aim` and not a `gate`.
 
 `S6` and `S7` are `unrun` for the same reason and became rows before the run that fills them, which is the point
 of writing a criterion early: `S6` is a **gate on the instrument** rather than on accuracy — the number of
