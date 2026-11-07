@@ -1003,7 +1003,14 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   and for the reason §13.79.5 gives — a 121-turn room is not expressible on a 64-wide pool. Sent explicitly rather than
   left blank for the reason `sourceTrust` is: a value that never reaches the environment is
   a value this guard cannot compare against the registration.
-- `relevanceUnits: turn` — **added by §13.27, refuted by §13.31, and held at the shipped
+- `relevanceUnits: turn` — **the adopted value**, and §13.288 is the experiment that overrides it
+  with `--set cortex_memory_relevance_units=session-fill`, which is the first reading that value has
+  ever had. §13.34 read `session-fill` as "spends the room and changes nothing"; §13.286.2
+  found that the value never reached the product, so that reading was a sentence about the `turn`
+  unit and `session-fill` has no prior reading at all. The unit is unchanged since §13.31: whole
+  sessions ordered by their best-scoring turn, **skipping** one that does not fit and continuing down
+  the ranking, which is what distinguishes it from §13.27's rule that stopped at the first rejection.
+  The prior text, kept because §13.31's refutation and repair are both stated against it: **added by §13.27, refuted by §13.31, and held at the shipped
   default by §13.34** because the variable of that dispatch is the ask: §13.26 is its
   comparison, so the signal, the width, the room and the unit all stay where that run left
   them. §13.31's `session-fill` remains the repaired form of §13.27's rule and remains the
@@ -32157,3 +32164,230 @@ coverage bands). If a five-turn window makes MR *worse*, it is because these que
 many sessions rather than several turns from one — and that would refute §13.283.6's "shape before size"
 ordering, not merely this parameter. A result that reversed it would be the most informative outcome
 available, which is why the registration states it in this direction rather than as a hope.
+
+## 13.287 Reading: eight of ten, the id was 22% of the tokens, and eleven MR questions became complete without one of them changing
+
+`42310779222` ran §13.283's treatment — the same instruction, the same order, no per-turn source id —
+against `42237543941`, which drew the id on the same six routes.
+
+### 13.287.1 The gates
+
+| # | quantity | reading | threshold | verdict |
+| --- | --- | ---: | ---: | --- |
+| 1 | the artifact's own audit | **`reach` failed**: four ask routes, none reported rendered | every check passes | **FAIL** |
+| 2 | `memoryArmConfig.promptContract` | `evidence-blocks-unsourced` | the same | **PASS** |
+| 3 | `memoryArmConfig.promptAssembly` | `instruction-first` | the same | **PASS** |
+| 4 | per-turn source markers across 500 prompts | **0 of 500**, 0 markers in total | 0 | **PASS** |
+| 5 | `MR` accuracy | 77.69% → **77.69%** (+0.00; 6 won, 6 lost; p = 1) | Δ ≥ +3 points | **FAIL** |
+| 6 | `IE`, `KU`, `TR`, `ABS` | IE 92.67→94.67 (+2.00), TR 94.49→95.28 (+0.79), KU 0, ABS 0 | no loss ≥ 3 | **PASS** |
+| 7 | `goldOverlap.carried`, per question | **500 of 500** carry at least as many gold turns | none fewer | **PASS** |
+| 8 | questions delivering every gold turn | **285 of 500** against 259 (+26) | ≥ 279 | **PASS** |
+| 9 | `llmUsage.promptTokens` | **27,308,598** against 30,991,956 | ≤ 31,400,000 | **PASS** |
+| 10 | `bareRetry.attempted` | **71** | ≥ 60 | **PASS** |
+
+Gate 1 failed, and the failure was ours rather than the run's: `RENDERING_ROUTES['evidence-blocks-unsourced']`
+was `[]`, which is the *baseline's* answer — "this contract administers no rendering" — and no other
+contract's. §13.287.5 records the repair and the test that would have caught it for free.
+
+Gate 5 is the negative, and it is the informative one.
+
+### 13.287.2 The tax was 9.91% of the characters and 22.41% of the tokens
+
+The id is 38 characters plus a space, drawn once per delivered turn. Across the 500 reference prompts
+that is **60,312 markers and 2,352,168 characters**, 9.91% of 23,723,712. The prompt sizes are otherwise
+identical — mean 47,447 characters before, 47,430 after — because the prefix rule reinvests every freed
+character, which is the inclusion property §13.283.3 proved and gate 7 confirmed per question.
+
+What is *not* identical is what the tokens say:
+
+| | reference | treatment | Δ |
+| --- | ---: | ---: | ---: |
+| feature-side prompt tokens | 28,149,919 | **24,209,976** | **−14.00%** |
+| feature-side calls | 2,074 | 2,071 | — |
+| prompt tokens per call | 13,573 | **11,690** | **−13.9%** |
+| characters per prompt | 47,447 | 47,430 | −0.04% |
+
+Two numbers cannot both be right unless the *density* changed, and it did. Taking the treatment's rate as
+the pure-evidence rate (0.2464 tokens per character), the reference's excess over it is 1,883 tokens
+per prompt, carried by 4,703 characters of id — **0.6466 tokens per character, 2.62× the density of the
+evidence the id displaced**. Excluding the displaced evidence, the id is **22.41% of the prompt's token
+cost while being 9.91% of its characters**.
+
+That is the first finding of this round and it is a defect in the *instrument*: this arm denominates its
+budget in **characters**, so the number of tokens a prompt costs depends on what is rendered into it, and
+a 38-character marker that costs 2.6× the tokens of 38 characters of prose makes the budget report a
+full prompt while buying 14% less of everything else. §13.283 called it a 13.83% tax because it measured
+characters; in tokens it was 22.41%.
+
+### 13.287.3 The coverage rose and the answers did not move
+
+The freed room admitted evidence, and it admitted the right evidence:
+
+| | reference | treatment |
+| --- | ---: | ---: |
+| gold turns carried, all 500 | 6,434 | **6,520** |
+| questions delivering every gold turn | 259 | **285** |
+| — of which `MR` | 87 | **98** |
+| — of which `TR` | 90 | **104** |
+| — of which `KU` | 5 | 6 |
+
+`MR` gained **eleven** complete questions and lost none. Then:
+
+| question | was it right? |
+| --- | --- |
+| the eleven newly complete `MR` questions | **9 were already correct, 2 were already wrong — none flipped** |
+
+Eleven questions went from "the reader was missing evidence" to "the reader had all of it", and the
+verdict changed zero times. The six `MR` flips this run does have (6 won, 6 lost, p = 1) are elsewhere
+and cancel.
+
+### 13.287.4 The decomposition, and the number that bounds the next axis
+
+Classifying every `MR` record by whether the prompt delivered all of its gold turns:
+
+| | n | correct | accuracy | 95% Wilson |
+| --- | ---: | ---: | ---: | --- |
+| `MR`, every gold turn delivered | 98 | 80 | **81.63%** | [72.82, 88.05] |
+| `MR`, at least one gold turn missing | 23 | 14 | **60.87%** | [40.79, 77.84] |
+| `MR`, all | 121 | 94 | 77.69% | [69.48, 84.19] |
+
+So **18 of `MR`'s 27 errors are questions whose prompt held every gold turn**, and the coverage-bound
+remainder is 9. That is the same split §13.276 measured from the other direction — restoring the missing
+turns converted 3 of 12 failures, a residual of 0.73 — arrived at without spending a call.
+
+Two consequences, stated as arithmetic rather than as opinion:
+
+1. **Perfection of coverage is worth at most 5 points on `MR`.** If every one of the 23 partial questions
+   were made complete and answered at the complete population's rate, `MR` would read 81.63%; the
+   interval's top is 88.05%, so a coverage-only world is not *excluded* from reaching CoD's 86.6%, but
+   the point estimate leaves 5.0 points unexplained and the interval leaves it unresolved rather than
+   closed. What is excluded is the stronger claim that coverage is the mechanism: eleven questions
+   gained completeness here and none changed.
+2. **The reference's 7.43-point `MR` lead is not significant on 121 questions.** 18 discordant pairs one
+   way against 9 the other is McNemar p = 0.122, in the same artifact that reports the delta. The lead is
+   real in the direction it points and is worth chasing; it is not a resolved measurement, and treating
+   it as one would be the error §13.261.3 exists to prevent.
+
+### 13.287.5 The defect the audit found, and the test that would have found it for free
+
+`RENDERING_ROUTES['evidence-blocks-unsourced']` was written as `[]` on the reading that the field means
+"which routes draw a **sourced** rendering" — for this contract, none. The field does not mean that. Its
+own docblock says otherwise two paragraphs above the entry: *"The baseline contract reaches nothing: it
+administers no rendering, so reporting it as covering routes would claim a treatment the control arm did
+not receive."* Every other contract is administered on every route, because `instructionsFor` begins with
+`const own = CONTRACT_INSTRUCTIONS[contract](date)` and returns it wherever an ask does not override —
+with `ask=verbatim` that is all six.
+
+The consequence was a false claim in the one direction that matters: the artifact read as §12.8's defect
+(a contract named, four of five capabilities never reached) when the run had administered it everywhere.
+The audit caught it. **The audit was right and the artifact was wrong**, and the entry is now the six
+routes with the mistake written into the comment rather than deleted.
+
+`rendering-reach.test.ts` (5 tests) is the check that costs a second instead of a run. It asserts the
+**relations** the wrong value violated rather than a literal list, because a literal would have been
+edited in the same commit as the mistake:
+
+| assertion | what it pins |
+| --- | --- |
+| `[]` for exactly one contract, and it is `abstention` | the baseline's answer is the baseline's alone |
+| every other contract reports the identical six | the block is a fallthrough, so a subset is impossible |
+| `assemblyRoutes ⊆ renderingRoutes` | **the invariant `42310779222` violated** |
+| the four `verbatim` routes are rendered by every non-control contract | no contract can be dispatched under the shipped ask and leave one unrendered |
+| `assemblyRoutes` non-empty ⟺ `promptAssembly` present | a reach the artifact cannot name |
+
+Injected for proof: restoring `[]` fails **four of the five**.
+
+### 13.287.6 What this round did not do, and what it costs
+
+- **No dispatch.** `42310779222` was the only run in flight; §13.288 registers the next one below.
+- **The `session-fill` unit still has no reading.** §13.286.2 found it never reached the product; the
+  forwarding is repaired and the unit is now dispatchable, which is what §13.288 spends its run on.
+- **The token axis has no instrument yet.** The finding in §13.287.2 is that the budget's unit is wrong,
+  not that the budget is too large. A token-denominated room is a product change with its own design
+  question (which tokeniser, and what to do when the reader changes), and it is not attempted here.
+
+## 13.288 Registration: the unit that never ran, against the run that removed the id
+
+§13.286.2 found `session-fill` never reached the product. §13.287 then measured the prompt side from
+every other angle available and closed them: order (no), the id (a cost win and an accuracy null), room
+content (285 of 500 questions now hold every gold turn, and eleven newly-complete `MR` questions changed
+zero verdicts). What is left is **what the room is spent on**, and there is exactly one value of that
+axis with no reading at all.
+
+### 13.288.1 The variable, and what it is not
+
+| | value | note |
+| --- | --- | --- |
+| `cortex_memory_relevance_units` | **`session-fill`** | the variable |
+| `cortex_memory_relevance` | `retrieval-anchored` | held at §13.260.7's adoption |
+| `cortex_memory_relevance_top_k` | `256` | held |
+| `cortex_memory_max_prompt_chars` | `48000` | held — **this is why the dispatch is single-variable** |
+| `cortex_memory_prompt_contract` | `evidence-blocks-unsourced` | held at §13.283's value |
+| `cortex_memory_ask` | `verbatim` | held at §13.248's adoption |
+| everything else | as `42310779222` | the registration matches it field for field |
+
+The unit is unchanged since §13.31: whole sessions ordered by their best-scoring turn, and a session that
+does not fit is **skipped** rather than ending the pass. §13.27's rule stopped at the first rejection and
+left half the room unread; that is the one thing this value is not.
+
+**What it must not be reported as.** The reference pipeline leads this arm by 7.43 points on `MR` with
+the same reader on the same dataset, and its evidence is *sessions, truncated to 2,000 characters each,
+20,000 in total*. This dispatch buys the **session unit at this arm's own room**, not the reference's
+shape: no per-session cap exists here, and the room stays at 48,000. So a gain here is evidence for the
+unit; it is not a replication of the reference, and a null is not a refutation of the reference's shape.
+The two-knob replication (per-session cap plus the 20,000 room) is a separate registration that only
+becomes worth writing if this one moves.
+
+### 13.288.2 The eleven gates
+
+`tools/gates/13.288.json`, control `42310779222`. Every gate is an invariant of a legitimate run, and the
+two that can distinguish a null result from a missing treatment are gates 3 and 4.
+
+| # | quantity | threshold |
+| --- | --- | --- |
+| 1 | the artifact's own audit | **every check passes** |
+| 2 | `memoryArmConfig.relevanceUnits` | **`session-fill`** |
+| 3 | `MR` deliveries whose prompt bytes differ from `42310779222` | **≥ 110 of 121** — the value reached the product, which is the check `38828538851` failed |
+| 4 | the four capabilities outside the unit's reach | **379 of 379 agree** — a unit that leaked past `multi-session` would make every judgment about it a judgment about two changes |
+| 5 | `memoryArmConfig.promptContract` | **held at §13.283's value** |
+| 6 | per-turn source markers across the 500 delivered prompts | **0** — §13.287.2's saving is only attributable if it is still withheld |
+| 7 | `MR` accuracy against `42310779222` | **Δ ≥ +3 points** with the resolution printed |
+| 8 | `IE`, `KU`, `TR`, `ABS` against `42310779222` | **no loss ≥ 3 points** |
+| 9 | `MR` questions delivering every gold turn, against 98 | **no fewer than 98** — buying whole sessions must not deliver less of the gold set than fragments did |
+| 10 | `llmUsage.promptTokens` | **≤ 33,000,000** against 27,308,598 — the unit may cost up to 20% more, and a run that costs more than that is buying depth it is not reporting |
+| 11 | `bareRetry.attempted` | **≥ 60** |
+
+Gate 3's bar is 110 rather than 121 because a unit that delivers the same set for a question whose gold
+sits entirely in one session is a legitimate no-op on that question; the bar says "essentially every `MR`
+prompt changed", which no run that failed to forward the value can satisfy.
+
+### 13.288.3 Predictions, in reading order
+
+1. **`MR` prompts show far fewer sessions and about as many turns.** Today `MR` shows a median of **45**
+   sessions at 3.9 turns each — the breadth is already saturated against a haystack of 45-52 sessions, so
+   the only direction left is depth. A median above 30 sessions means the unit did not change the shape,
+   and gate 3 would have to have passed some other way.
+2. **`MR` gold coverage rises, and §13.287.4 says what that is worth.** Complete sessions should carry
+   more gold; the arithmetic from the last round caps the accuracy reward of coverage alone at about five
+   points. If coverage rises and accuracy does not, the session unit is the third shape that changes what
+   the reader sees without changing what it concludes — and the axis closes with it.
+3. **`TR` does not move.** It shows 45 date-stamped sessions in its prompt too, but it is built by
+   `#promptWithDate` from a flat turn list, so `sessionOf` is absent and the unit cannot reach it. A `TR`
+   movement of more than three points is evidence that the unit reaches further than the single call site
+   says it does, which would be the more important finding.
+4. **Tokens stay within 20% of the control.** Whole sessions carry the same evidence with fewer per-turn
+   decorations, so the plausible direction is *down*.
+
+### 13.288.4 Refutation
+
+- **`MR` flat, coverage flat, sessions unchanged.** The unit did not change the shape and gate 3 will have
+  been satisfied by something else; the next check is the agent-side read of `featurePromptTexts`, which
+  records the delivered bytes.
+- **`MR` falls.** Depth bought at the cost of breadth is wrong at 48,000, and the reading is that these
+  questions need one turn from many sessions — which refutes §13.286.5's "shape before size" ordering and
+  makes the per-session cap the next variable rather than the room.
+- **`MR` rises with coverage flat.** The unit is doing something other than delivering gold: the session
+  boundary itself is information (the reference's contract says *"based on MULTIPLE conversation
+  sessions"* and its Step 1 asks for a `<session date>` per item). That would make §13.286's
+  `anchor-window` a different experiment than the one registered, and the registration for it would be
+  rewritten before dispatch rather than after.

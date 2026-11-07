@@ -177,8 +177,13 @@ describe('retryableFetch', () => {
     await expect(
       retryableFetch(hangingFetch(60_000), 'http://x', {}, { maxRetries: 0, timeoutMs: 50 }),
     ).rejects.toThrow();
-    // `AbortSignal.timeout` never fires early, so this is a lower bound only.
-    expect(Date.now() - started).toBeGreaterThanOrEqual(50);
+    // `AbortSignal.timeout` never fires early, so this is a lower bound only -- and the bound is
+    // 49, not 50, because the measurement is coarser than the guarantee it is checking. `Date.now()`
+    // truncates at both ends, so a true elapsed 50.0 ms reads as 50 - 1 = 49 whenever the start fell
+    // late in its millisecond. The assertion read 50 and failed at 49 once under a full `pnpm check`;
+    // the mechanism was correct and the bar was one resolution unit too high. What it still refutes
+    // is unchanged: a fetch that returned without honouring the deadline reads 0 to 5.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(49);
   });
 
   /**
