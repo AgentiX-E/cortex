@@ -32607,3 +32607,118 @@ the token limit — the arm records no `finish_reason`, so a truncated reply and
 are the same record. The full text ends `Answer: INSUFFICIENT_EVIDENCE`. There is no truncation anywhere
 in the run, and the instrument that would have been built for it, built on that evidence, would have been
 built for a defect that does not exist.
+
+### 13.290 One line of the reference's aggregation contract, replaced: the exclusion keyed on the act instead of the verb
+
+Registered while `42328499107` runs, and derived from §13.289's classification rather than from a plan.
+It is not the experiment §13.288.6 named as next, and §13.290.5 says why the ordering changed.
+
+#### 13.290.1 The variable, and what it is not
+
+`ask: 'verbatim-acts'` — §13.246's migration of the reference pipeline's aggregation contract, with
+**one line of it replaced by two**. Everything else in the block is byte-identical by construction
+(`VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION` is `replaceLine(VERBATIM_MULTI_SESSION_INSTRUCTION, …)`, not a
+copy), and `ask-verbatim-acts.test.ts` asserts the diff as a diff: one line removed, two added, every
+surviving line in its original position.
+
+The line that leaves:
+
+> `- Do NOT substitute or infer a different verb: for example "participated", "presented", "planned", and "working on" are NOT "led" or "leading".`
+
+The two that arrive: a mention counts when the evidence describes **the same act under a different verb**
+(`bought`/`purchased`, `made`/`baked`, `went on` or `volunteered at`/`attended`, `helped organise`/
+`participated`), and an exclusion is licensed only when **the act itself is missing or is a different kind
+of act** — hoped for but not done, or a past habit the evidence says stopped, is not an act of the period
+asked about.
+
+What it is **not**:
+
+- not a new block. The reference's text is untouched, and `buildAggregationQaPrompt` still contains the
+  sentence this ask replaces — asserted, because editing the migration in place would have been the same
+  experiment with the migration check quietly weakened;
+- not a widened reach. `ASK_ROUTES['verbatim-acts'] === ASK_ROUTES.verbatim` (four routes) and
+  `ASK_CHANGES['verbatim-acts'] === ['multi-session']`; on a derivation question the change set is
+  `[]` rather than absent, because that population reads the adopted `operands` block;
+- not a licence to invent acts. The replacement keeps a bound and the bound is asserted, because the
+  four above-gold failures are the direction an unbounded relaxation moves in;
+- not a change to the window, the unit, the room, the cap, the reader or the contract. Gate 6 holds
+  `relevanceUnits` at `turn` for exactly this reason.
+
+#### 13.290.2 The twelve gates
+
+`tools/gates/13.290.json`, control `42310779222`. Gates 3 and 4 are the pair that separates a null result
+from a treatment the product never received, and gate 4 is stronger here than in §13.288 because the
+branch **delegates** to `verbatim` rather than falling through to the shipped block.
+
+| # | quantity | threshold |
+| --- | --- | --- |
+| 1 | the artifact's own audit | **every check passes** |
+| 2 | `memoryArmConfig.ask` | **`verbatim-acts`** — the value reached the run, not a default |
+| 3 | `MR` deliveries whose prompt bytes differ from `42310779222` | **≥ 110 of 121** — the rewrite reached the product |
+| 4 | the four capabilities outside the ask's change set | **379 of 379 agree** — the branch delegates to `verbatim` rather than falling through to the shipped block, and this is the measurement of that claim |
+| 5 | `memoryArmConfig.promptContract` | **held at §13.283's value** |
+| 6 | `memoryArmConfig.relevanceUnits` | **held at `turn`** — this run moves the instruction text and nothing else |
+| 7 | per-turn source markers across the 500 delivered prompts | **0** — §13.287.2's saving is only attributable if it is still withheld |
+| 8 | `MR` accuracy against `42310779222` | **Δ ≥ +3 points** with the resolution printed — recovering four of the eighteen below-gold failures is 3.3 points |
+| 9 | `IE`, `KU`, `TR`, `ABS` against `42310779222` | **no loss ≥ 3 points** — these routes read `verbatim` byte for byte, so a loss here is a dispatch defect rather than a result |
+| 10 | `MR` questions delivering every gold turn, against 98 | **no fewer than 98** — the line changes which mentions count, not which turns are delivered |
+| 11 | `llmUsage.promptTokens` | **≤ 29,000,000** against 27,308,598 — the swap adds ~480 characters to 121 prompts, so a larger bill is a different prompt than the one registered |
+| 12 | `bareRetry.attempted` | **≥ 60** |
+
+Dry run against the control as its own treatment: gates 1, 2, 3 and 8 fail (a run cannot pass "the rewrite
+reached the product" by comparing an artifact with itself) and the other eight read values. That is the
+shape a correctly-armed registration has.
+
+#### 13.290.3 Predictions, in reading order
+
+1. **The below-gold population shrinks and the above-gold population grows, and the first moves more.**
+   §13.289.4's table is 18 below against 4 above. The line being replaced is the one that produced the
+   eighteen and only weakly produced the four, so a net gain is what a correctly-calibrated rule would
+   show. The reading is taken per question, not from the headline: the run's `MR` delta says whether the
+   calibration was right, and the population counts say whether the **mechanism** was.
+2. **Gate 8's bar is 3.3 points of recovery.** Eight of the eighteen below-gold failures have their
+   exclusion stated in the reply and two of them close arithmetically (`50 + 20 = 70`, `$5,250 + $600 =
+   $5,850`). Four recovered questions is +3.3 points; the bar is set at four because two would be
+   indistinguishable from a reader-side fluctuation at 121 questions.
+3. **The four above-gold failures should not move, or should move by less than the below-gold ones.** If
+   the relaxation converts an over-count *and* an under-count in equal number, the mechanism is
+   "the rule was arbitrary" rather than "the rule was biased", and the net is zero — which is a different
+   finding and is stated in advance so it cannot be read as a confirmation.
+4. **`TR`, `IE`, `KU`, `ABS` do not move at all** — not "not much". Gate 4 is 379 of 379 byte-identical,
+   so any movement there is a bug in the branch, and the delta on those routes would then be a
+   measurement of the bug.
+
+#### 13.290.4 Refutation
+
+- If `MR` is flat **and** the below-gold population is flat, the exclusions are not the binding
+  constraint. The eighteen are then genuinely never enumerated — the reader does not see the mention it
+  did not list — and the next variable is a second consultation that re-reads the evidence against its
+  own list. That is a new mechanism class for this arm: `reviewPass` has `none`, `audit`, `recover` and
+  `bare`, and **all three non-trivial values target declines**, while all eighteen of these are answers.
+- If the below-gold population shrinks and `MR` still does not move, the newly counted mentions are
+  landing on questions that fail for another reason, and the calibration argument was right about the
+  mechanism and irrelevant to the score. That is worth knowing and it is not a win: the next variable
+  would be the room, and §13.289.4 has already priced it at zero recoverable answers.
+- If gate 3 fails, the ask never reached the renderer and **every other gate is a statement about a null
+  run** — `38828538851`'s failure, which is why the pair exists.
+
+#### 13.290.5 Why this and not the three that were queued ahead of it
+
+§13.288.6 named "the allocation per session" as the next variable, §14.64 named the per-session cap plus a
+20,000-character room as second, and the aggregation critique as third. §13.289 moved the critique to
+second and this run to first, on three measurements:
+
+1. **The shape cannot separate a success from a failure.** 94 correct and 27 incorrect questions arrive
+   with the same 45 sessions of 5 turns and 973 against 945 characters per session. A variable whose
+   value is identical on both populations has to work through something other than the shape, and the
+   registration that moves it therefore has to name that something. Neither queued item did.
+2. **No answer was cut out of the text.** Of the eighteen "evidently complete" failures, zero have the
+   gold string in the gold turn but not in the prompt. A wider room or a deeper session has nothing to
+   recover on that population, which is where two thirds of the errors are.
+3. **The exclusions are in the replies, stated, and arithmetic.** This is the first failure class in this
+   campaign where the artifact contains the mechanism's own signature rather than a correlation: the
+   reader writes *"excluded because the exact action in the question is 'purchased', not 'bought'"*, and
+   the missing 20 pounds is the difference between its answer and the gold.
+
+The critique stays second because it is the refutation branch of this run, and a refutation branch is
+worth running only after the thing it refutes has been measured.

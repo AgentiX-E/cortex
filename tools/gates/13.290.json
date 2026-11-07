@@ -1,0 +1,117 @@
+{
+  "registration": "13.290",
+  "document": "docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md",
+  "title": "One line of the reference's aggregation contract, replaced: the exclusion keyed on the act instead of the verb",
+  "controls": {
+    "reference": {
+      "run": 42310779222,
+      "relevanceTopK": 256,
+      "reviewPass": "bare",
+      "note": "the same arm the line is registered against: same reader, same budget, same unit, same assembly, same contract, and the same `ask=verbatim` with its verb rule intact"
+    }
+  },
+  "gates": [
+    {
+      "id": 1,
+      "kind": "artifact_audit",
+      "quantity": "the artifact's own audit",
+      "threshold": "**every check passes**"
+    },
+    {
+      "id": 2,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.ask",
+      "equals": "verbatim-acts",
+      "quantity": "`memoryArmConfig.ask`",
+      "threshold": "**`verbatim-acts`** — the value reached the run, not a default"
+    },
+    {
+      "id": 3,
+      "kind": "digest_disagreement",
+      "field": "promptDigest",
+      "control": "reference",
+      "capability": "MR",
+      "at_least": 110,
+      "quantity": "`MR` deliveries whose prompt bytes differ from `42310779222`",
+      "threshold": "**≥ 110 of 121** — the rewrite reached the product"
+    },
+    {
+      "id": 4,
+      "kind": "digest_agreement",
+      "field": "promptDigest",
+      "control": "reference",
+      "denominator": 379,
+      "excluding": ["MR"],
+      "quantity": "the four capabilities outside the ask's change set",
+      "threshold": "**379 of 379 agree** — the branch delegates to `verbatim` rather than falling through to the shipped block, and this is the measurement of that claim"
+    },
+    {
+      "id": 5,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.promptContract",
+      "equals": "evidence-blocks-unsourced",
+      "quantity": "`memoryArmConfig.promptContract`",
+      "threshold": "**held at §13.283's value**"
+    },
+    {
+      "id": 6,
+      "kind": "field_equals",
+      "field": "memoryArmConfig.relevanceUnits",
+      "equals": "turn",
+      "quantity": "`memoryArmConfig.relevanceUnits`",
+      "threshold": "**held at `turn`** — this run moves the instruction text and nothing else"
+    },
+    {
+      "id": 7,
+      "kind": "source_marker_absence",
+      "prompt_field": "ablation.featurePromptTexts",
+      "at_most": 0,
+      "quantity": "per-turn source markers across the 500 delivered prompts",
+      "threshold": "**0** — §13.287.2's saving is only attributable if it is still withheld"
+    },
+    {
+      "id": 8,
+      "kind": "capability_delta",
+      "capability": "MR",
+      "control": "reference",
+      "at_least_points": 3,
+      "quantity": "`MR` accuracy against `42310779222`",
+      "threshold": "**Δ ≥ +3 points** with the resolution printed — recovering four of the eighteen below-gold failures is 3.3 points"
+    },
+    {
+      "id": 9,
+      "kind": "capability_nonloss",
+      "control": "reference",
+      "max_loss_points": 3,
+      "excluding": ["MR"],
+      "quantity": "`IE`, `KU`, `TR`, `ABS` against `42310779222`",
+      "threshold": "**no loss ≥ 3 points** — these routes read `verbatim` byte for byte, so a loss here is a dispatch defect rather than a result"
+    },
+    {
+      "id": 10,
+      "kind": "coverage_gain",
+      "control": "reference",
+      "reaches": { "numerator": "carried", "denominator": "total" },
+      "capability": "MR",
+      "at_least_gain": 0,
+      "quantity": "`MR` questions delivering every gold turn, against 98",
+      "threshold": "**no fewer than 98** — the line changes which mentions count, not which turns are delivered"
+    },
+    {
+      "id": 11,
+      "kind": "field_at_most",
+      "field": "llmUsage.promptTokens",
+      "at_most": 29000000,
+      "quantity": "`llmUsage.promptTokens`",
+      "threshold": "**≤ 29,000,000** against 27,308,598 — the swap adds ~480 characters to 121 prompts, so a larger bill is a different prompt than the one registered"
+    },
+    {
+      "id": 12,
+      "kind": "field_at_least",
+      "field": "bareRetry.attempted",
+      "at_least": 60,
+      "quantity": "`bareRetry.attempted`",
+      "threshold": "**≥ 60**"
+    }
+  ]
+}
