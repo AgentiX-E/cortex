@@ -660,3 +660,108 @@ def test_a_run_that_did_not_pin_its_judge_is_reported_as_having_followed_its_rea
     result = run('--artifact', str(report), '--plan-only')
     assert result.returncode == 1
     assert 'no gradable questions' in result.stderr
+
+
+def exact_artifact(tmp_path: Path) -> Path:
+    """One question the scorer can decide without a model, and one it cannot.
+
+    The pair is what makes `--scorer full` observable: an exact match costs no request and a
+    near-miss costs one, so the request count discriminates between the two instruments.
+    """
+    questions = [
+        {
+            'questionId': 'q-exact',
+            'question': 'Where did I put the keys?',
+            'capability': 'IE',
+            'questionType': 'single-session-user',
+            # Identical after `normalizeAnswer`, which trims and lower-cases and does not strip
+            # punctuation -- so a trailing full stop on one side would make this a judged question.
+            'groundTruth': 'In the drawer',
+            'answer': 'in the drawer',
+            'correct': True,
+        },
+        {
+            'questionId': 'q-judged',
+            'question': 'Where did I put the keys?',
+            'capability': 'IE',
+            'questionType': 'single-session-user',
+            'groundTruth': 'in the drawer',
+            'answer': 'In the kitchen drawer.',
+            'correct': True,
+        },
+    ]
+    path = tmp_path / 'exact-report.json'
+    path.write_text(json.dumps({'questions': questions}), encoding='utf-8')
+    return path
+
+
+def test_full_scorer_decides_an_exact_match_without_asking_the_judge(tmp_path: Path) -> None:
+    """`--scorer full` is what turns a re-grade into an arm score instead of a judge reading.
+
+    `J8` registered the distinction because the judge channel alone is not an arm's accuracy: for the
+    five non-preference capabilities an answer `exact` would have accepted is submitted to the model
+    instead, so a judge-channel reading can disagree with the artifact about questions the artifact
+    never asked a model about.
+
+    The difference is observable on the wire rather than in the prose: `judgeScorer` short-circuits a
+    normalized string equality, so an answer that IS its gold costs no request. Two questions, one of
+    them exact, two passes -- two requests, not four.
+    """
+    with judge_stub('YES') as (base_url, recorded):
+        result = run_with(
+            judge_env(base_url),
+            '--artifact',
+            str(exact_artifact(tmp_path)),
+            '--passes',
+            '2',
+            '--scorer',
+            'full',
+        )
+    assert result.returncode == 0, result.stderr
+    assert len(recorded) == 2, 'the exact match must not reach the endpoint, once per pass'
+    assert 'scorer channels:' in result.stdout, 'a full reading has to print its channel split'
+    assert 'exact 2' in result.stdout, 'one exact verdict per pass'
+
+
+def test_the_judge_channel_is_still_the_default(tmp_path: Path) -> None:
+    """The default must not change under a reader who did not ask for it.
+
+    Every archived reading in this campaign was taken with the judge channel, and a default that moved
+    would silently re-label them: the same numbers would describe a different instrument.
+    """
+    with judge_stub('YES') as (base_url, recorded):
+        result = run_with(
+            judge_env(base_url), '--artifact', str(exact_artifact(tmp_path)), '--passes', '2'
+        )
+    assert result.returncode == 0, result.stderr
+    assert len(recorded) == 4, 'the judge channel asks about every question, exact match or not'
+    assert 'scorer channels:' not in result.stdout
+
+
+def test_an_unknown_scorer_is_refused_with_the_two_that_exist(tmp_path: Path) -> None:
+    """A typo must not silently select the instrument the caller was trying to replace."""
+    result = run('--artifact', str(exact_artifact(tmp_path)), '--scorer', 'exact')
+    assert result.returncode == 2
+    assert 'judge' in result.stderr and 'full' in result.stderr
+
+
+def test_the_workflow_forwards_the_scorer_and_defaults_to_the_archived_instrument() -> None:
+    """A dispatch input with no forward is the failure this file exists to prevent, one level up.
+
+    The workflow is the only way this tool is run for a reading, so an input the job does not pass to
+    the command line is a dispatch that names an instrument nobody built -- and the artifact would
+    then describe the other one. The default is `judge` on purpose: it is what every archived reading
+    was taken with.
+    """
+    text = WORKFLOW.read_text(encoding='utf-8')
+    assert 'SCORER: ${{ inputs.scorer }}' in text
+    assert text.count('--scorer "$SCORER"') == 2, 'both the plan and the reading have to name it'
+    assert "default: 'judge'" in text
+
+
+def test_the_usage_line_names_the_two_instruments() -> None:
+    """`--plan-only` is what a reader reviews before spending credits, so its usage line is the place
+    a third instrument would be discovered to be missing."""
+    result = run()
+    assert result.returncode == 2
+    assert '--scorer judge|full' in result.stderr

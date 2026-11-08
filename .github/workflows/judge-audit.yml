@@ -47,6 +47,11 @@ on:
         required: false
         default: 'all'
         type: string
+      scorer:
+        description: 'Regrade only: judge (the judge channel alone) or full (judgeScorer, the instrument the artifact itself used). The default is judge because every archived regrade reading in this campaign was taken with it, and a different instrument under the same name would silently re-label them. Use full when the reading is an ARM comparison rather than a judge-variance measurement: for the five non-preference capabilities the channel alone submits answers to the model that `exact` would have decided, so it is not the artifact accuracy (section 13.312.8, J8)'
+        required: false
+        default: 'judge'
+        type: string
 
 permissions:
   contents: read
@@ -93,6 +98,7 @@ jobs:
       PASSES: ${{ inputs.passes }}
       # Derived once, here, so the plan step and the reading step cannot grade different populations.
       POPULATION_FLAG: ${{ inputs.population == 'preference' && '--preference-only' || (inputs.population == 'non-preference' && '--non-preference-only' || '') }}
+      SCORER: ${{ inputs.scorer }}
 
     steps:
       - name: Checkout
@@ -165,7 +171,7 @@ jobs:
           set -o pipefail
           node tools/judge-regrade.mjs \
             --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
-            --limit "$LIMIT" --passes "$PASSES" $POPULATION_FLAG --plan-only \
+            --limit "$LIMIT" --passes "$PASSES" $POPULATION_FLAG --scorer "$SCORER" --plan-only \
             2>&1 | tee readings/regrade-plan.txt
 
       - name: Regrade the recorded answers
@@ -174,7 +180,7 @@ jobs:
           set -o pipefail
           node tools/judge-regrade.mjs \
             --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
-            --limit "$LIMIT" --passes "$PASSES" $POPULATION_FLAG \
+            --limit "$LIMIT" --passes "$PASSES" $POPULATION_FLAG --scorer "$SCORER" \
             --out readings/judge-regrade.json 2>&1 | tee readings/judge-regrade.txt
 
       - name: Upload readings

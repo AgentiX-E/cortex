@@ -68,6 +68,9 @@ import {
   clearJudgeCache,
   createJudgeFromEnv,
   createLlmJudge,
+  describeScorerChannels,
+  judgeScorer,
+  scorerChannelStats,
   toJudgeQuestionType,
 } from '../packages/cortex-eval/dist/index.js';
 import {
@@ -132,6 +135,10 @@ export function gradableFrom(questions, limit, only) {
     answer: String(question.answer),
     ...(typeof question.capability === 'string' ? { capability: question.capability } : {}),
     recorded: question.correct === true,
+    // The raw dataset tag as well as the mapped one. `judgeScorer` derives its template from the tag
+    // (`_abs` on the end is how LongMemEval marks an abstention question), so handing it the already
+    // mapped value would map it twice and grade a preference question with the default template.
+    rawType: String(question.questionType ?? ''),
     type: toJudgeQuestionType(String(question.questionType ?? ''), question.capability === 'ABS'),
   }));
 }
@@ -233,7 +240,7 @@ async function main() {
   if (!artifactPath) {
     console.error(
       'usage: judge-regrade.mjs --artifact <report.json> [--passes 2] [--limit 500] [--out <file>] ' +
-        '[--plan-only] [--preference-only | --non-preference-only]',
+        '[--scorer judge|full] [--plan-only] [--preference-only | --non-preference-only]',
     );
     return 2;
   }
@@ -258,6 +265,11 @@ async function main() {
     console.error('no gradable questions: the artifact has no answer with a gold');
     return 1;
   }
+  const scorer = flag('--scorer') ?? 'judge';
+  if (scorer !== 'judge' && scorer !== 'full') {
+    console.error(`--scorer must be judge or full, got ${scorer}`);
+    return 2;
+  }
   const identity = artifactJudgeIdentity(report);
   const judgeEnv = judgeEnvFor(report, process.env);
   const matches = judgeMatchesArtifact(report, judgeEnv);
@@ -274,6 +286,7 @@ async function main() {
     `artifact judge  model=${selectionFor(identity.provider, identity.model) ?? 'unrecorded'} ` +
       `temperature=${identity.temperature ?? 'unrecorded'}`,
   );
+  console.log(`re-grade scorer ${scorer}`);
   console.log(
     `re-grade judge  model=${judgeEnv[JUDGE_MODEL_VARIABLE] ?? '(provider default)'} ` +
       `temperature=${judgeEnv.TEMPERATURE ?? 'default'} ` +
@@ -297,14 +310,34 @@ async function main() {
   }
 
   const judge = createJudgeFromEnv(judgeEnv);
-  const grade = createLlmJudge(judge);
+  // Two instruments, named rather than implied, because they answer different questions about the
+  // same bytes. `judge` is the judge channel: one question to a model per answer, which is the
+  // whole verdict for a preference question (no gold string exists) and is NOT an arm's accuracy for
+  // the other five capabilities -- an answer `exact` would have accepted is submitted to the model
+  // instead. `full` is `judgeScorer`: the artifact's own instrument, deterministic channels first,
+  // the model only where they cannot decide (`J8`).
+  const judgeOneAnswer = createLlmJudge(judge);
+  const grade =
+    scorer === 'full'
+      ? (source) =>
+          judgeScorer(judgeOneAnswer)(
+            {
+              id: source.questionId,
+              capability: source.capability ?? 'IE',
+              questionType: source.rawType,
+              question: source.question,
+              expected: source.gold,
+              context: [],
+            },
+            source.answer,
+          )
+      : (source) => judgeOneAnswer(source.question, source.answer, source.gold, source.type);
   const verdicts = sources.map(() => []);
   for (let pass = 0; pass < passes; pass += 1) {
     // The line that makes this a measurement rather than a memoised read. See the header.
     clearJudgeCache();
     for (let index = 0; index < sources.length; index += 1) {
-      const source = sources[index];
-      verdicts[index].push(await grade(source.question, source.answer, source.gold, source.type));
+      verdicts[index].push(await grade(sources[index]));
     }
     console.log(`pass ${pass + 1}/${passes} done`);
   }
@@ -339,6 +372,13 @@ async function main() {
     );
   }
 
+  // Only under `full`, because only that instrument has channels: printing `judge <n>/<n>` under the
+  // judge channel would be a true statement that reads as a finding. The split is what says whether a
+  // re-graded number is an arm score -- a reading where `judge` is 500 of 500 is the judge channel
+  // again, wearing the full scorer's name.
+  const channels = scorerChannelStats();
+  if (scorer === 'full') console.log(`  ${describeScorerChannels(channels)}`);
+
   const out = flag('--out');
   if (out) {
     const payload = {
@@ -346,6 +386,10 @@ async function main() {
       artifact: artifactPath,
       generatedAt: new Date().toISOString(),
       passes,
+      scorer,
+      // The channel split, and only for the instrument that has channels. `null` under the judge
+      // channel is the absence of a claim rather than a zero.
+      channels: scorer === 'full' ? channels : null,
       // The instrument, in the reading's own file. A flip rate without it is a number about an
       // unnamed model at an unnamed temperature, which is what §13.312 had to reconstruct from a
       // job log before it could be read at all.
