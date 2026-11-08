@@ -35468,3 +35468,42 @@ its test count from 904 to 908.
   as `not-instrumented` because Node has no `Worker`, `OPFS` or `IndexedDB`, and a shim would assert the shim.
   They are covered by `test/browser/probe.mjs`, which runs the **built** package in a real Chromium twice across
   a restart and asserts named checks. That measurement exists; it is simply not one this report can hold.
+
+## 13.326 `E11a` holds: a third draw of the same bytes moved 16 questions, and the noise floor is now an interval
+
+`42467392736`, dispatched at the tag `s0-control-7692f20` (`7692f204`, the commit `42355323615` ran), with
+the twenty-two inputs of `42452904894` and the same two declared departures
+(`cortex_memory_ask=verbatim-acts`, `cortex_memory_max_prompt_chars=multi-session:48460`). `conclusion=success`.
+First reading 90.80% (454 of 500), four-repetition mean 91.05% (min 90.80, max 91.60).
+
+Paired against `42452904894` question by question:
+
+| reading | value |
+| --- | --- |
+| `promptDigest` identical | **500 / 500** |
+| churn (first pass against first pass) | **16 questions, 6 up / 10 down** |
+| net | −4 questions = −0.8 pt (91.60% → 90.80%) |
+| exact sign-flip test | **p = 0.4545** |
+| churn rate, Wilson 95% | 3.20% [1.98, 5.13] |
+
+`E11a`'s falsifier was churn outside `(15, 35)`. **16 is inside it**, and the pair before this one read 23
+(9 up / 14 down, p = 0.38), also inside. Two same-configuration draws, byte-identical packets, and 16 to 23 of
+500 questions answered differently — with no direction, which is what 6 against 10 at p = 0.45 says.
+
+The consequence is the part worth writing down: the noise floor is now an **interval**, and it is larger than
+most effects this campaign chased. The 4-to-6.6-question claims parked as `S1b` sit underneath a same-config
+churn of 16 to 23 questions, so they cannot be resolved by another draw at this sample size — only by a design
+that pairs the two arms inside one run, or by a larger question set. `E11a` was written to convert a single
+draw into a band; it did, and the band retires the small-effect line rather than confirming it.
+
+Three things this does not say:
+
+- **It does not say the provider is at fault.** 500/500 identical prompt bytes is a statement about what was
+  sent; the movement is downstream of the packet, which places it in the reader's sampling rather than in this
+  repository's rendering. That is the same reading §13.323 established for the first pair.
+- **It does not license a fourth draw to narrow the interval.** Two draws already disagree on the churn rate
+  (3.2% against 4.6%) by more than their overlap, which is what a rate estimated from 500 binary decisions looks
+  like; another draw would move the estimate without moving what it means.
+- **It does not say the feature arm is unstable in a way a customer would see.** Accuracy under both draws is
+  90.80% and 91.60%, and the four-repetition means sit inside 0.8 points of each other. What is unstable is the
+  identity of the questions, not the level.
