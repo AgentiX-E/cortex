@@ -150,11 +150,17 @@ export function relationMarkers(text: string): readonly RelationMarker[] {
     }
   }
 
-  candidates.sort((left, right) => {
-    if (left.start !== right.start) return left.start - right.start;
-    if (left.end !== right.end) return right.end - left.end;
-    return left.token < right.token ? -1 : left.token > right.token ? 1 : 0;
-  });
+  // Position first, then length: at one position the longer span has to be read first so that `so that`
+  // survives and the `so` inside it is dropped by the overlap filter below.
+  //
+  // There is no third key, and the reason is an invariant rather than an omission. Two candidates can
+  // share a start and an end only if two tokens with the same text occupy one span, which needs the same
+  // token in two classes -- `MARKER_TOKENS` is a partition and its own test asserts that. Even if the
+  // table broke that rule, the two would overlap and the `kept` loop would keep exactly one of them, so
+  // the choice between them could not reach the output. The comparison this replaced was a three-way
+  // token tie-break that no input could reach; it was deleted rather than covered by a test, and
+  // `Array.prototype.sort` is stable, so equal keys still sort in table order.
+  candidates.sort((left, right) => left.start - right.start || right.end - left.end);
 
   const kept: RelationMarker[] = [];
   for (const candidate of candidates) {

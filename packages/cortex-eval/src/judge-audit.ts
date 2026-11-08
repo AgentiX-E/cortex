@@ -288,7 +288,10 @@ function planNumberSwap(source: AuditSource): AuditCase | null {
     String(Math.round(n)),
   );
   const replacement = candidates.find(
-    (candidate) => !mentions(source.conversation, candidate) && !source.gold.includes(candidate),
+    (candidate) =>
+      !mentions(source.conversation, candidate) &&
+      !mentions(source.question, candidate) &&
+      !source.gold.includes(candidate),
   );
   if (replacement === undefined) return null;
   const answer = substitute(source, original, replacement);
@@ -315,6 +318,11 @@ function planEntitySwap(source: AuditSource, pool: readonly string[]): AuditCase
     (entity) =>
       entity !== original &&
       !mentions(source.conversation, entity) &&
+      // The question counts as context the instrument cannot control: a question that names the entity
+      // ("Did Marcus help Rachel move?") makes the substituted answer potentially correct, and the
+      // assertion below would abort the whole audit for it. Excluding it here refuses one case; leaving
+      // it out threw on the corpus.
+      !mentions(source.question, entity) &&
       !source.gold.includes(entity),
   );
   if (candidates.length === 0) return null;
@@ -359,10 +367,16 @@ function planCrossGold(source: AuditSource, sources: readonly AuditSource[]): Au
   const borrowed = others[index === -1 ? 0 : index]!;
   const token =
     entitiesIn(borrowed.gold).find(
-      (entity) => !mentions(source.conversation, entity) && !source.gold.includes(entity),
+      (entity) =>
+        !mentions(source.conversation, entity) &&
+        !mentions(source.question, entity) &&
+        !source.gold.includes(entity),
     ) ??
     numbersIn(borrowed.gold).find(
-      (n) => !mentions(source.conversation, n) && !source.gold.includes(n),
+      (n) =>
+        !mentions(source.conversation, n) &&
+        !mentions(source.question, n) &&
+        !source.gold.includes(n),
     );
   if (token === undefined) return null;
   return {

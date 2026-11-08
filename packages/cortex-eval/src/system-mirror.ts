@@ -52,8 +52,14 @@ export function mirrorMembers(system: MemorySystem): MemorySystem {
         // wrapper, which is the same defect in a second form.
         // Built field by field because the project sets `exactOptionalPropertyTypes`: passing `get:
         // undefined` explicitly is a different type from omitting it, and the compiler is right to say so.
-        const mirrored: PropertyDescriptor = { configurable: true };
-        if (descriptor.enumerable !== undefined) mirrored.enumerable = descriptor.enumerable;
+        const mirrored: PropertyDescriptor = {
+          configurable: true,
+          // `=== true` rather than `if (descriptor.enumerable !== undefined) mirrored.enumerable = ...`.
+          // A descriptor from `getOwnPropertyDescriptors` always carries `enumerable`, so the guard's
+          // false arm could not run and the assignment was dead code dressed as caution -- and the two
+          // spellings define the same property, because an absent `enumerable` defaults to false.
+          enumerable: descriptor.enumerable === true,
+        };
         if (descriptor.get !== undefined) mirrored.get = () => descriptor.get?.call(system);
         if (descriptor.set !== undefined) {
           mirrored.set = (value: unknown) => descriptor.set?.call(system, value);

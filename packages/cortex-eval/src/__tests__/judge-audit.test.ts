@@ -143,6 +143,171 @@ describe('the plan is a function of the corpus and nothing else', () => {
     expect(planned).toHaveLength(1);
     expect(planned[0]!.introduced).toBe('155');
   });
+
+  it('appends the introduced token when the answer never contained the gold verbatim', () => {
+    // `substitute` replaces inside the gold and then splices the perturbed gold back into the answer, and
+    // when the answer does not quote the gold at all there is nothing to splice. Appending a sentence is
+    // the only honest way to introduce the token there, and it is the arm the corpus above never reaches:
+    // every one of those answers repeats its gold word for word.
+    const paraphrased: AuditSource[] = [
+      source({
+        questionId: 'para',
+        question: 'Where did Rachel move?',
+        gold: 'Rachel moved to Berlin.',
+        conversation: 'Rachel said she was leaving Lisbon for a new job.',
+        answer: 'Somewhere further east, for work.',
+      }),
+      // The pool is built from the corpus, so a substitution needs a name that some *other* gold states.
+      // Without this second source the only candidates are `Rachel` and `Berlin`, and both are in this
+      // question's own gold -- which is what the earlier "supports nothing" test relies on.
+      source({
+        questionId: 'other',
+        question: 'Which book did Marcus finish?',
+        gold: 'Marcus finished Dune.',
+        conversation: 'Marcus mentioned reading on the train.',
+        answer: 'Marcus finished Dune.',
+      }),
+    ];
+    const planned = planAudit(paraphrased).filter(
+      (auditCase) => auditCase.kind === 'entity-swap' && auditCase.questionId === 'para',
+    );
+    expect(planned).toHaveLength(1);
+    // The case still destroys the gold by construction: the answer ends with a sentence stating the
+    // replacement, and no longer contains the entity the gold named.
+    expect(planned[0]!.answer).toBe(
+      `Somewhere further east, for work. That is ${planned[0]!.introduced}.`,
+    );
+    // `original` is the answer as the artifact recorded it, so it is a prefix of the perturbed answer by
+    // construction. The token that has to be absent is the **gold**, and the substituted entity with it.
+    expect(planned[0]!.answer).not.toContain(planned[0]!.gold);
+    expect(planned[0]!.answer).not.toContain('Rachel');
+  });
+
+  it('refuses a gold number too large to represent, rather than multiplying infinity', () => {
+    // `Number('9'.repeat(400))` is `Infinity`, and `Infinity * 7 + 13` stringifies to "Infinity" -- a
+    // replacement that appears in no conversation and would be emitted as a case. The finiteness check is
+    // one line and it is the difference between "no case" and a case whose wrong answer is a word.
+    const astronomic: AuditSource[] = [
+      source({ questionId: 'big', gold: `${'9'.repeat(400)} days`, answer: 'a very long time' }),
+    ];
+    expect(planAudit(astronomic).filter((case_) => case_.kind === 'number-swap')).toEqual([]);
+  });
+
+  it('emits no number-swap when all three candidate values are already spoken for', () => {
+    // The candidate ladder is 7n + 13, 3n + 101, n + 4289. A conversation that happens to contain all
+    // three leaves no value that is verifiably absent, and an introduced value the conversation states
+    // could be another true fact -- which would make a "yes" right for a reason the instrument cannot see.
+    const saturated: AuditSource[] = [
+      source({
+        questionId: 'sat',
+        gold: '18 days',
+        conversation: 'They mentioned 139, then 155, and finally 4307.',
+        answer: '18 days',
+      }),
+    ];
+    expect(planAudit(saturated).filter((case_) => case_.kind === 'number-swap')).toEqual([]);
+  });
+
+  it('replaces the bare token when the answer states the entity without the full gold sentence', () => {
+    // The third arm of `substitute`: the answer contains the token but not the gold sentence it came from,
+    // so there is no gold to splice. Replacing the token in place is what destroys the answer here, and
+    // falling through to the append would double the entity instead.
+    const terse: AuditSource[] = [
+      source({
+        questionId: 'terse',
+        question: 'Where did Rachel move?',
+        gold: 'Rachel moved to Berlin.',
+        conversation: 'Rachel said she was leaving Lisbon for a new job.',
+        answer: 'Rachel is settling in.',
+      }),
+      source({
+        questionId: 'other',
+        question: 'Which book did Marcus finish?',
+        gold: 'Marcus finished Dune.',
+        conversation: 'Marcus mentioned reading on the train.',
+        answer: 'Marcus finished Dune.',
+      }),
+    ];
+    const planned = planAudit(terse).filter(
+      (auditCase) => auditCase.kind === 'entity-swap' && auditCase.questionId === 'terse',
+    );
+    expect(planned).toHaveLength(1);
+    expect(planned[0]!.answer).toBe(`${planned[0]!.introduced} is settling in.`);
+  });
+
+  it('refuses a substitution the question itself states, instead of aborting the whole audit', () => {
+    // THE BUG THIS CAUGHT. The planners filtered a candidate against the conversation and the gold, and
+    // not against the question -- so a question that mentions another gold's name ("Did Marcus help Rachel
+    // move?") picked that name up from the pool, and `assertWrongByConstruction` then threw. The assertion
+    // was right and the planner was wrong: one such question in 500 aborts the entire audit, and the failure
+    // arrives as a crash rather than as one skipped case. The candidate is now refused where it is chosen.
+    const questionStatesIt: AuditSource[] = [
+      source({
+        questionId: 'a',
+        question: 'Did Marcus help Rachel move?',
+        gold: 'Rachel moved to Berlin.',
+        conversation: 'Rachel left Lisbon.',
+        answer: 'Rachel moved to Berlin.',
+      }),
+      source({
+        questionId: 'b',
+        question: 'Which book did he finish?',
+        gold: 'Marcus finished Dune.',
+        conversation: 'He mentioned reading on the train.',
+        answer: 'Marcus finished Dune.',
+      }),
+    ];
+    expect(() => planAudit(questionStatesIt)).not.toThrow();
+    for (const auditCase of planAudit(questionStatesIt)) {
+      expect(auditCase.question).not.toContain(auditCase.introduced);
+    }
+  });
+
+  it('emits no entity-swap when every name in the pool is already spoken for', () => {
+    // The pool is every capitalised name in every gold. Here the only two names are the one being replaced
+    // and the two the conversation already mentions, so no substitution can be made without introducing a
+    // fact the conversation states -- which would make a "yes" right for a reason the instrument cannot see.
+    const crowded: AuditSource[] = [
+      source({
+        questionId: 'a',
+        question: 'Where did Rachel move?',
+        gold: 'Rachel moved to Berlin.',
+        conversation: 'Rachel left Lisbon; Berlin was rainy.',
+        answer: 'Rachel moved to Berlin.',
+      }),
+      source({
+        questionId: 'b',
+        question: 'How is Lisbon?',
+        gold: 'Berlin is fine.',
+        conversation: 'Lisbon came up once, and Rachel agreed.',
+        answer: 'Berlin is fine.',
+      }),
+    ];
+    expect(planAudit(crowded).filter((case_) => case_.kind === 'entity-swap')).toEqual([]);
+  });
+
+  it('emits no cross-gold when the borrowed gold offers no token this question has not already used', () => {
+    // `cross-gold` needs a name or number in the borrowed gold that this question's gold and conversation
+    // both lack. Without one the borrowed answer would be wrong but the invariant unverifiable, so the case
+    // is refused rather than emitted with an empty `introduced`.
+    const overlapping: AuditSource[] = [
+      source({
+        questionId: 'a',
+        question: 'Where did Rachel move?',
+        gold: 'Lisbon is where she went.',
+        conversation: 'Rachel mentioned Lisbon twice.',
+        answer: 'Lisbon is where she went.',
+      }),
+      source({
+        questionId: 'b',
+        question: 'Really?',
+        gold: 'Lisbon again.',
+        conversation: 'nothing useful',
+        answer: 'Lisbon again.',
+      }),
+    ];
+    expect(planAudit(overlapping).filter((case_) => case_.kind === 'cross-gold')).toEqual([]);
+  });
 });
 
 describe('the reading is arithmetic on verdicts, and refuses a partial one', () => {

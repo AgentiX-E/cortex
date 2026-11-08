@@ -205,6 +205,28 @@ describe('the summary separates flapping from durable, which a spread cannot', (
   it('reports the repetition count once, so a reader knows what "always" means', () => {
     expect(summarisePaired(cases).runs).toBe(4);
   });
+
+  it('orders capabilities that arrive in descending order, not only ascending ones', () => {
+    // The comparator has three arms and a two-capability fixture reaches one of them: `Array.sort` on two
+    // elements compares them once, in the order the rows arrived. A table whose row order came from the
+    // artifact would then be sorted only when the artifact happened to be ascending -- which is the bug
+    // this test exists to make impossible, and it is invisible until a dispatch reorders its questions.
+    const one = (capability: string, questionId: string): Case =>
+      q({
+        questionId,
+        capability,
+        baseline: [true, true, true, true],
+        feature: [true, true, true, true],
+      });
+    const reading = summarisePaired([one('TR', 'z1'), one('MR', 'z2'), one('IE', 'z3')]);
+    expect(reading.capabilities.map((entry) => entry.capability)).toEqual(['IE', 'MR', 'TR']);
+  });
+
+  it('refuses an empty artifact rather than reporting a reading of nothing', () => {
+    // Zero rows would otherwise produce `runs: undefined` and a table with no denominator, which reads
+    // as "no gap" everywhere it is quoted.
+    expect(() => summarisePaired([])).toThrow(/no questions to pair/);
+  });
 });
 
 describe('the ceiling this makes computable, which is the point of the instrument', () => {

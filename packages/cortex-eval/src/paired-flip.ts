@@ -112,17 +112,11 @@ type PairedReading = {
  * through the summary is also the stronger test — it is the path the tool takes.
  */
 function classifyPaired(baseline: readonly boolean[], feature: readonly boolean[]): PairedVerdict {
-  if (baseline.length !== feature.length) {
-    throw new Error(
-      `the two sides were measured a different number of times (${baseline.length} and ` +
-        `${feature.length}), and a paired verdict needs the same repetition on both sides`,
-    );
-  }
-  if (baseline.length === 0) {
-    throw new Error(
-      'no repetition at all is not a repetition that agreed: a verdict needs at least one',
-    );
-  }
+  // The two guards that used to stand here -- equal lengths, and at least one repetition -- were
+  // unreachable: `summarisePaired` refuses both shapes before it calls this, and it refuses them with
+  // better messages, because it is the function that knows a question id. Keeping a second copy of a
+  // check the caller already made is dead code that reads as protection; the contract is stated here
+  // and enforced one function up.
   const baselineRuns = baseline.filter(Boolean).length;
   const featureRuns = feature.filter(Boolean).length;
   const runs = baseline.length;
@@ -180,9 +174,17 @@ export function summarisePaired(cases: readonly PairedCase[]): PairedReading {
   }
 
   const capabilities: CapabilityPaired[] = [...byCapability.keys()]
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    // Default sort, which for strings is code-unit order -- exactly what the comparator this replaces
+    // computed. That comparator had three arms and the third (`a === b`, returning 0) could not run,
+    // because the keys it sorts come from a map and are distinct by construction. An arm that cannot
+    // run is not safety; it is a claim that two capabilities may share a name, which would be a defect
+    // somewhere else entirely.
+    .sort()
     .map((capability) => {
-      const group = byCapability.get(capability) ?? [];
+      // `?? []` stood here and could not run: the keys are iterated from this same map, so the lookup
+      // always resolves. The fallback read as tolerance and was a second, quieter way to say "the code
+      // I just wrote is wrong". `!` says that instead.
+      const group = byCapability.get(capability)!;
       const baselinePerRun = Array.from(
         { length: runs },
         (_, run) => group.filter((row) => row.baseline[run] === true).length,
@@ -206,7 +208,10 @@ export function summarisePaired(cases: readonly PairedCase[]): PairedReading {
         total: group.length,
         baselinePerRun,
         featurePerRun,
-        gapPerRun: baselinePerRun.map((count, run) => count - (featurePerRun[run] ?? 0)),
+        // `featurePerRun[run] ?? 0` was the same shape as the fallback above: both arrays are built
+        // with `{ length: runs }`, so the index is always present. Written as a subtraction of two
+        // numbers rather than of a number and a possibility.
+        gapPerRun: baselinePerRun.map((count, run) => count - featurePerRun[run]!),
         baselineOnlyPerRun,
         featureOnlyPerRun,
         durableMiss: group

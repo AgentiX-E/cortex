@@ -227,7 +227,11 @@ export class LexicalProvider implements MemoryProvider {
   async search(query: string, options: SearchOptions): Promise<readonly SearchHit[]> {
     const asked = new Set(contentWords(query));
     if (asked.size === 0) return [];
-    const scored: SearchHit[] = [];
+    // Typed with a required score rather than as `SearchHit[]`, whose `score` is optional for the other
+    // providers. Every hit below is built by this function with a number, so `right.score ?? 0` was a
+    // fallback for a state this code cannot produce; the local type says so and the comparator compares
+    // two numbers.
+    const scored: { text: string; score: number; at: number }[] = [];
     for (const session of this.#sessions) {
       if (options.asOf !== undefined && session.at > options.asOf) continue;
       const text = session.turns.map((turn) => turn.content).join(' ');
@@ -237,9 +241,7 @@ export class LexicalProvider implements MemoryProvider {
       if (hits === 0) continue;
       scored.push({ text, score: hits / asked.size, at: session.at });
     }
-    return scored
-      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
-      .slice(0, options.limit);
+    return scored.sort((left, right) => right.score - left.score).slice(0, options.limit);
   }
 
   async reset(): Promise<void> {

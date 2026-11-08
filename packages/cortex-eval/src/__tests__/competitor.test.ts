@@ -167,6 +167,37 @@ describe('toSessions: the benchmark history as ingestable sessions', () => {
     expect(sessions).toEqual([]);
     expect(undated).toBe(0);
   });
+
+  it('reads an instance that omits the history fields entirely, not only one that empties them', () => {
+    // An empty array and an absent key are different JSON, and the type calls every history field optional.
+    // `?? []` therefore has a reachable arm that the empty-array fixture above never takes -- and a census
+    // of "we handle a dataset with no history" that only ever ran the defined case is a claim, not a test.
+    const bare = toSessions({
+      question_id: 'q9',
+      question_type: 'multi-session',
+      question: 'how many?',
+      answer: '2',
+    });
+    expect(bare).toEqual({ sessions: [], undated: 0 });
+  });
+
+  it('counts every session as undated when the dates array is the one that is missing', () => {
+    // The parallel-array shape is what makes this possible: sessions present, timestamps absent. Each one is
+    // unplaceable, so each one is counted and dropped, and none is stamped with the ingest time.
+    const { sessions, undated } = toSessions({
+      question_id: 'q8',
+      question_type: 'multi-session',
+      question: 'how many?',
+      answer: '2',
+      haystack_session_ids: ['s1', 's2'],
+      haystack_sessions: [
+        [{ role: 'user', content: 'I have one cat.' }],
+        [{ role: 'user', content: 'We adopted a second cat.' }],
+      ],
+    });
+    expect(undated).toBe(2);
+    expect(sessions).toEqual([]);
+  });
 });
 
 describe('the reference provider: a pipeline that runs with no model', () => {
@@ -224,6 +255,15 @@ describe('the reference provider: a pipeline that runs with no model', () => {
     const provider = new LexicalProvider();
     await provider.ingest(sessions);
     expect(await provider.search('a of to', { limit: 5 })).toEqual([]);
+  });
+
+  it('returns nothing for a question with no letters at all, which is the other empty vocabulary', async () => {
+    // `match` answers `null`, not `[]`, when nothing matched -- so the vocabulary is empty for a second
+    // reason and takes a different arm. The distinction matters because a reader debugging "why did this
+    // question retrieve nothing" is looking at one of these two lines and they mean different things.
+    const provider = new LexicalProvider();
+    await provider.ingest(sessions);
+    expect(await provider.search('??? 123', { limit: 5 })).toEqual([]);
   });
 
   it('returns nothing before anything was ingested', async () => {

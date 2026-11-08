@@ -30,6 +30,26 @@ class System {
   }
 }
 
+/** A system with a getter and no setter: the accessor descriptor reports `set: undefined`. */
+class ReadOnly {
+  get readable(): string {
+    return 'read-only';
+  }
+}
+
+/** A system with a setter and no getter, plus a way to prove a write arrived. */
+class WriteOnly {
+  #value = '';
+
+  set sink(value: string) {
+    this.#value = value;
+  }
+
+  get stored(): string {
+    return this.#value;
+  }
+}
+
 describe('mirroring a system', () => {
   it('calls a method with `this` set to the instance, so a private field is readable', () => {
     // The prototype chain alone sets `this` to the wrapper, and a wrapper derived from an instance
@@ -54,5 +74,26 @@ describe('mirroring a system', () => {
     expect((mirrorMembers(new System() as unknown as MemorySystem) as unknown as System).name).toBe(
       'probe',
     );
+  });
+
+  it('mirrors a getter with no setter without inventing one', () => {
+    // `Object.getOwnPropertyDescriptors` reports `set: undefined` rather than omitting the key, so the
+    // accessor path has four arms and the fixture above -- a getter/setter pair -- only ever takes two.
+    // Half a mirror is the interesting half: a `set` defined over a getter-only property would let a
+    // caller write to the wrapper and say nothing about it.
+    const wrapper = mirrorMembers(new ReadOnly() as unknown as MemorySystem) as unknown as ReadOnly;
+    expect(wrapper.readable).toBe('read-only');
+    expect(Object.getOwnPropertyDescriptor(wrapper, 'readable')?.set).toBeUndefined();
+  });
+
+  it('mirrors a setter with no getter, and the write reaches the instance', () => {
+    // The mirror image, and the one with a symptom: reading a setter-only property is `undefined`
+    // either way, so the only observable difference is whether the write landed on the instance. A
+    // wrapper that copied the accessor would swallow it.
+    const instance = new WriteOnly();
+    const wrapper = mirrorMembers(instance as unknown as MemorySystem) as unknown as WriteOnly;
+    wrapper.sink = 'written through the wrapper';
+    expect(instance.stored).toBe('written through the wrapper');
+    expect(Object.getOwnPropertyDescriptor(wrapper, 'sink')?.get).toBeUndefined();
   });
 });
