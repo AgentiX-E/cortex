@@ -226,22 +226,36 @@ Three facts follow, and the third is the round's real product:
 
 ### 7.4 The taxonomy of the 35 questions the reader loses
 
-The mechanical half of this table is a presence test with a stated limit: `present` means the gold's
-numeral appears somewhere in the delivered evidence, which is **necessary and not sufficient** for the
-question to be answerable. It is used only to separate "the reader had the number and gave another" from
-"the number the gold asks for is nowhere in the text".
+Every one of the 35 was read. The mechanical half of the table carries its own limit: "numeral present"
+means the gold's numeral appears somewhere in the delivered evidence, which is **necessary and not
+sufficient** for the question to be answerable. It is used only to separate "the reader had the number and
+gave another" from "the number the gold asks for is nowhere in the text".
 
-| Class                                                | Count | What it looks like                                                                                                                           | What can fix it                                                                                             |
-| ---------------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Count/enumeration miss, numeral present              | 11    | `1` for `2` (`6d550036`), `2` for `3` (`46a3abf7`), `3` for `4` (`8e91e7d9`), `22` for `23` (`gpt4_2f91af09`), `7` for `5` (`gpt4_ab202e7f`) | a screen that makes an omission visible — `candidates` asked for exactly this and was falsified (`§13.205`) |
-| Aggregation over stated operands, total never stated | 5     | `$700` for `$720`, `$375` for `$495`, `8` years for `10`, `1,998` views, `856` pages                                                         | arithmetic the prompt cannot do by quotation; the operand shape already reads the `operands` block          |
-| Gold stated as a phrase, not a numeral               | 3     | "I visited three different doctors" answered `2`                                                                                             | same as row 1                                                                                               |
-| Shape failure: a list of quotes instead of an answer | 2     | `d905b33f`, `c18a7dc8` returned numbered quotations                                                                                          | the answer-line guard, on the route that does not have it                                                   |
-| Declined with the answer in the window               | 3     | "Not specified in the evidence" (`a4996e51`), "Cannot be determined" (`d6062bb9`), `None` (`60bf93ed`, `37f165cf`)                           | truncation-aware evidence (the `a4996e51` turn is cut at `maxTurnChars`) and a commitment rule              |
+| Class | n | Routes | Examples | What it would take |
+| --- | --- | --- | --- | --- |
+| **Declined with the answer in the window** | **8** | `MR 4, IE 3, TR 1` | "Not specified in the evidence" (`a4996e51`, where the turn is cut at `maxTurnChars`), "Cannot be determined" (`d6062bb9`), `None` (`60bf93ed`, `37f165cf`, `75832dbd`, `778164c6`), "No items in the evidence match" (`0edc2aef`, `71017277`) | a commitment rule and truncation-aware evidence; the reader's own refusal rate is 6.8% and the abstention route is 30/30, so the instrument is not miscalibrated — these are the cases where it is wrong |
+| **Count/enumeration miss, numeral present** | **8** | `MR` | `1` for `2` (`6d550036`), `2` for `3` (`46a3abf7`), `3` for `4` (`8e91e7d9`), `5` for `4` (`gpt4_7fce9456`), `22` for `23` (`gpt4_2f91af09`), `8` years for `10` | a screen that makes an omission visible — `candidates` asked for exactly this and was falsified (`§13.205`) |
+| **Shape failure: a list of quotations instead of an answer** | **6** | `MR 2, IE 4` | `d905b33f`, `c18a7dc8`, `09d032c9`, `57f827a0`, `d6233ab6`, `1da05512` | a reply-shape guard on the routes that lack one (`answer-line` exists for the flat route) |
+| **Knowledge update not applied: the superseded value won** | **5** | `KU` | `$350,000` for `$400,000` (`852ce960`), `30` for `20` dozen (`ed4ddc30`), `7:00 pm` for `6:00 pm` (`59524333`), `37` for `38` (`69fee5aa`), "under my bed" for "in a shoe rack in my closet" (`07741c45`) | the `KU` route has no date frame; `temporal` does. Five of five KU misses are one mechanism, and it is not counting |
+| **Count where the gold is stated as a phrase** | **3** | `MR` | "I visited three different doctors" answered `2` (`gpt4_f2262a51`), "three weddings" answered `4`, "five items" answered `7` | as the count row — the phrase names the answer, the window does not contain the numeral |
+| **Aggregation over operands, total never stated** | **2** | `MR` | `$700` for `$720` (`gpt4_731e37d7`), `$375` for `$495` (`2b8f3739`) | arithmetic the prompt cannot do by quotation |
+| **Partial answer: the qualifier was dropped** | **1** | `IE` | "Dark Souls 3" for "Dark Souls 3 DLC" (`a82c026e`) | nothing structural; one question |
+| **Unit conversion** | **1** | `TR` | 81 days / 11 weeks for 15 weeks (`370a8ff4`) | the answer was computed correctly in the wrong unit |
+| **Preference answered as a suggestion, judged against the rubric** | **1** | `IE` | `a89d7624` | preference questions are 29 of 500 and 22 are correct on the flat route, so this is the tail of a route that mostly works |
 
-`MR` holds 19 of the 35. **`MR` remains where the loss is; what changed is whose loss it is** — §4's
-band-1 consequence says the _retrieval_ campaign on `MR` stops, and this table says why it must: two of
-`MR`'s 19 wrong answers are attributable to retrieval and 17 to the reader.
+Two readings dominate, and neither is the one this project has been building toward for ten rounds:
+
+1. **14 of the 35 (40%) are not reasoning failures.** Eight refusals and six quotation dumps are the reader
+   declining to commit or failing to take a shape, and both have deterministic repairs that do not touch the
+   instruction content.
+2. **`KU`'s five misses are one mechanism** — the superseded value wins on all five — and `KU` is the route
+   that has no date frame. That is a route contract, not a prompt-wording question.
+
+`MR` holds 19 of the 35 and only 2 of those are attributable to retrieval. §4's band-1 consequence says the
+*retrieval* campaign on `MR` stops; this table says why, and it also says `MR` is not where the cheapest
+points are: 8 of its 19 are enumeration, which is the axis with the most falsified attempts in this
+repository's history, while `KU`'s 5 are a missing frame and the shape/commitment 14 are ceilings on how the
+reader replies.
 
 ### 7.5 `E1`: the room is load-bearing
 
@@ -302,3 +316,36 @@ how many gold turns survived the cut, so the run answers "what is the ranker's r
 or not it answers the accuracy question. Falsifier: if `goldOverlap.carried/total` at 32 turns is above
 90% while accuracy falls by more than 15 questions, then the gold turns were not the binding evidence and
 §7.3's precision reading is a coincidence rather than a cause.
+
+### 7.7 The confirmation draw, and what it says about the floor
+
+`42521885948` is the same condition on the same commit, re-dispatched after the gate learned to
+declare `evidenceSource`. It is green end to end, and the gate now says what it could not say before:
+
+```
+  registration: 21 field(s) compared, 2 derived, 3 harness, 1 presence
+  same         20 field(s)
+    declared    evidenceSource: "corpus" (registered) -> "gold-sessions" (ran)
+  verdict: 1 field(s) departed and every one of them is declared — the run is an experiment whose
+           registration is its departure list
+```
+
+The number:
+
+| Draw | Mean of 4 | Pass 1 | Per capability (mean of 4) |
+| --- | --- | --- | --- |
+| `42500412709` | 92.90% (92.40–93.60) | 465/500 | `IE 141.8 MR 103.5 KU 66.0 TR 123.3 ABS 30` |
+| `42521885948` | **92.90%** (92.20–93.60) | 468/500 | `IE 140.5 MR 102.8 KU 66.8 TR 124.5 ABS 30` |
+
+Two independent dispatches agree to **0.0 points** on the mean, and their pass-1 answers agree on
+**491 of 500 questions** (`both 462, only-draw-1 3, only-draw-2 6, neither 29`, 98.2% agreement). The
+9 discordant questions are the reader's own sampling, and they are the number §7.1's band should be
+read against: **a 5-question difference between `C` and `S` is smaller than the 9-question
+disagreement between two runs of `C`**, which is a second and independent reason not to call
+retrieval "better than it looks" on the strength of this measurement.
+
+It also puts a bound on how conservative the 17-question floor is. That floor was derived for
+comparing two *different* configurations one draw each; two draws of the *same* configuration
+disagree on 9 questions. Neither number licenses a smaller experiment — they measure different
+things — but a reader who wants to know how much of a 5-question difference is machinery now has an
+answer from the same artifact pair, and it is "none of it is resolvable at this n".
