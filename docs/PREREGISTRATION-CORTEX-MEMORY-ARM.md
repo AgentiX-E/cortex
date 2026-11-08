@@ -35146,3 +35146,41 @@ capabilities arriving in descending order, an empty corpus, and the substitution
 `judge-audit.ts` is the one file that is not at 100, and the three arms it leaves are the assertion's own
 failure paths. They are reachable only through a planner defect, which is the definition of an assertion; the
 `J12` row above is how they earn their keep.
+
+## 13.322 `J8` implemented, and the two `J9` readings dispatched
+
+`J8` was registered as an instrument requirement and not built: `judge-regrade.mjs` asked the judge about
+every answer, which is the whole verdict for a preference question and is **not** an arm's accuracy for the
+other five capabilities. `--scorer full` now runs `judgeScorer` — the artifact's own instrument, deterministic
+channels first and the model only where they cannot decide. `--scorer judge` stays the default, because every
+archived regrade reading in this campaign was taken with it and a different instrument under the same name
+would silently re-label them.
+
+Three implementation details, each of which would have produced a plausible wrong number:
+
+| detail | what happens if it is skipped |
+| --- | --- |
+| `judgeScorer` takes the judge **function**, not the judge object | `judge is not a function`, thrown inside `metrics.ts` at the first non-exact answer |
+| the template selector is derived from the **raw** dataset tag (`_abs` suffix marks abstention) | the mapped value is mapped twice, and a preference question is graded with the default template |
+| the channel split is printed only under `full` | under `judge` it reads `judge 500/500`, a true statement that looks like a finding |
+
+The workflow input is pinned to the command line by a test in both directions, because an input with no forward
+is a dispatch that names an instrument nobody built.
+
+### 13.322.1 The two dispatches
+
+`42455987377` re-reads arm A (`42391635411`) and `42455991234` re-reads arm B (`42391516675`), both
+`mode=regrade population=all scorer=full passes=2 limit=500 model=deepseek:deepseek-v4-pro`. The judge is named
+on both for the reason `J9` exists: the two artifacts were graded by **different** judges — `deepseek-flash` at 0
+for A and `deepseek-v4-pro` at 0 for B — and the 2 × 2 in §13.312.8 priced that difference at 29 points, larger
+than the 10-question arm gap it was being used to explain. A common judge is the only arrangement in which the
+remaining difference is about the arms.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `J9a` | under one judge the `M1` arm difference is smaller than the 10 questions the per-arm judges produced | a difference of 10 or more under a common judge, which restores §13.310's reading and requirement 12's evidence |
+| `J9b` | the judge-decided share is reported beside it, because `50.4%` of A's verdicts and `57.2%` of B's were the judge's rather than a deterministic channel | a reading published without the channel split, which would make "the judge accounts for more than the preference column" unfalsifiable |
+| `J9c` | an exact-match answer costs no request under `full`, which is what makes the reading cheaper than the judge channel over the same 500 | a request count equal to the judge channel's, which would mean the deterministic channels were not consulted |
+
+`J9c` is checked on the wire rather than in the artifact: the tool's own tests assert it against a stub
+endpoint, and the run's log prints the channel split, so the two have to agree.
