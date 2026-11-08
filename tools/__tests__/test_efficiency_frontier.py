@@ -72,6 +72,8 @@ def artifact(
     drop_metrics: bool = False,
     drop_usage: bool = False,
     bare_metrics: bool = False,
+    questions: list | None = None,
+    arm_config: dict | None = None,
 ) -> dict:
     """One ablation report, in the shape `report.ts` actually writes."""
     document: dict = {
@@ -88,6 +90,10 @@ def artifact(
     # the prompt spend shrinks the hits with it: a fixed hit count over a smaller total is a share
     # above 1, which `profileOf` refuses and which a real artifact cannot produce.
     hits = int(prompt_tokens * 0.782) if cache_hits is None else cache_hits
+    if questions is not None:
+        document['questions'] = questions
+    if arm_config is not None:
+        document['memoryArmConfig'] = arm_config
     if not drop_usage:
         document['usageBySide'] = {
             'baseline': {'calls': 0, 'promptTokens': 0, 'cacheHitPromptTokens': 0},
@@ -342,3 +348,238 @@ def test_the_tool_is_not_a_model_call(tmp_path: Path) -> None:
         timeout=120,
     )
     assert result.returncode == 0, result.stderr
+
+
+def questions(wrong: set[int] = frozenset(), capability: str = 'MR', n: int = 500) -> list:
+    """Per-question records, in the shape `report.ts` writes them.
+
+    `capability` is uniform because the paired buckets are only formed when the two artifacts agree on
+    a question's capability; a fixture that varied it would be testing the join twice.
+    """
+    return [
+        {
+            'questionId': f'q{index:03d}',
+            'capability': capability,
+            'correct': index not in wrong,
+        }
+        for index in range(n)
+    ]
+
+
+def test_unequal_repetition_counts_exclude_the_bill_and_keep_the_other_two_axes(tmp_path: Path) -> None:
+    """Refusing the whole comparison threw away two valid readings to protect one.
+
+    The bill is the only axis `runs` confounds, and `compareEfficiency` already encodes that with
+    `billComparable`. The tool's job is to say so, not to exit 2: a 4-vs-2 pair still has an accuracy
+    reading and a context reading, and they are the two that decide whether the cut was worth it.
+    """
+    reference = write(tmp_path, 'window.json', artifact(runs=4))
+    squeezed = write(
+        tmp_path, 'squeezed.json', artifact(name='squeezed', runs=2, prompt_tokens=6_077_000)
+    )
+    result = run(tmp_path, str(reference), str(squeezed))
+    assert result.returncode == 0, result.stderr
+    assert 'the artifacts ran 4 and 2 repetitions' in result.stderr
+    assert 'bill NOT comparable' in result.stdout
+    # The context ratio survives, which is the axis the refusal used to destroy.
+    assert 'context 0.501x' in result.stdout
+
+
+def test_a_paired_pair_is_read_through_the_question_records(tmp_path: Path) -> None:
+    """The instrument the campaign needed and did not have: 27 lost to 11 won is p = 0.0139.
+
+    The fixture is **self-consistent**, and that is the part that has to be got right: a paired test
+    whose discordant counts disagree with the marginals is two numbers rather than one measurement.
+    The control is wrong on questions 0-39 (40, so 460 correct) and the arm is wrong on 11-39 (the 29
+    shared) plus 100-126 (27 it alone lost, against 11 it alone won) — 56 wrong, 444 correct.
+    """
+    reference = write(tmp_path, 'window.json', artifact(questions=questions(wrong=set(range(40)))))
+    squeezed = write(
+        tmp_path,
+        'squeezed.json',
+        artifact(
+            name='squeezed',
+            correct=444,
+            prompt_tokens=6_077_000,
+            runs=4,
+            questions=questions(wrong=set(range(11, 40)) | set(range(100, 127))),
+        ),
+    )
+    result = run(tmp_path, str(reference), str(squeezed))
+    assert result.returncode == 0, result.stderr
+    assert '11 won / 27 lost over 38 discordant pair(s)' in result.stdout
+    assert 'exact p = 0.0139' in result.stdout
+    assert '-- resolved' in result.stdout
+    assert 'blocked on overall' in result.stdout
+    # And the reverse direction is the same pair, so it must be reported with the counts swapped.
+    reversed_result = run(tmp_path, str(squeezed), str(reference))
+    assert reversed_result.returncode == 0, reversed_result.stderr
+    assert '27 won / 11 lost over 38 discordant pair(s)' in reversed_result.stdout
+
+
+def test_an_artifact_without_question_records_still_produces_a_reading(tmp_path: Path) -> None:
+    """Degrading to unpaired is honest; degrading to a guessed pairing is not."""
+    reference = write(tmp_path, 'window.json', artifact())
+    economy = write(tmp_path, 'economy.json', artifact(name='economy', prompt_tokens=17_000_000))
+    result = run(tmp_path, str(reference), str(economy))
+    assert result.returncode == 0, result.stderr
+    assert 'unpaired: no per-question records on both sides' in result.stdout
+    assert 'economy vs window: **dominates**' in result.stdout
+
+
+def test_a_question_record_without_an_id_is_refused(tmp_path: Path) -> None:
+    """Without the id the pairing would be positional, which is a claim about question order."""
+    anonymous = questions()
+    del anonymous[3]['questionId']
+    reference = write(tmp_path, 'window.json', artifact(questions=questions()))
+    broken = write(tmp_path, 'broken.json', artifact(name='broken', questions=anonymous))
+    result = run(tmp_path, str(reference), str(broken))
+    assert result.returncode == 2
+    assert 'without a questionId' in result.stderr
+
+
+def test_the_pairing_is_a_join_on_the_id_and_not_on_the_position(tmp_path: Path) -> None:
+    """Two runs that ordered their questions differently are still one paired reading."""
+    reference = write(tmp_path, 'window.json', artifact(questions=questions()))
+    shuffled = questions(wrong={0, 1, 2})
+    shuffled.reverse()
+    arm = write(
+        tmp_path, 'arm.json', artifact(name='arm', correct=457, prompt_tokens=24_274_000, questions=shuffled)
+    )
+    result = run(tmp_path, str(reference), str(arm))
+    assert result.returncode == 0, result.stderr
+    # Three questions lost, none won, whatever order the file holds them in.
+    assert '0 won / 3 lost over 3 discordant pair(s)' in result.stdout
+
+
+def test_the_cache_alone_cannot_make_one_arm_dominate(tmp_path: Path) -> None:
+    """Two dispatches of one system, 78.21% and 98.34% hits: a 0.156x bill on a 1.003x context."""
+    reference = write(
+        tmp_path, 'plain.json', artifact(name='plain', prompt_tokens=24_209_976, cache_hits=18_933_570)
+    )
+    cached = write(
+        tmp_path,
+        'cached.json',
+        artifact(
+            name='cached',
+            correct=462,
+            prompt_tokens=24_273_758,
+            cache_hits=23_870_370,
+            questions=questions(),
+        ),
+    )
+    result = run(tmp_path, str(reference), str(cached))
+    assert result.returncode == 0, result.stderr
+    assert 'billed 0.156x' in result.stdout
+    assert 'cached vs plain: **incomparable**' in result.stdout
+
+
+ARM_CONFIG = {
+    'threshold': 0,
+    'ask': 'verbatim',
+    'promptContract': 'evidence-blocks-unsourced',
+    'renderingRoutes': ['flat'],
+    'maxPromptChars': 48000,
+    'reader': {'providerId': 'deepseek', 'model': 'deepseek-chat', 'temperature': 0},
+}
+
+
+def test_a_single_variable_pair_is_named_as_one(tmp_path: Path) -> None:
+    """The 24,000-character cut against the arm that differs in exactly one field."""
+    reference = write(tmp_path, 'window.json', artifact(arm_config=ARM_CONFIG))
+    squeezed = write(
+        tmp_path,
+        'squeezed.json',
+        artifact(
+            name='squeezed',
+            correct=441,
+            prompt_tokens=6_077_000,
+            arm_config={**ARM_CONFIG, 'maxPromptChars': 24000},
+        ),
+    )
+    result = run(tmp_path, str(reference), str(squeezed))
+    assert result.returncode == 0, result.stderr
+    assert 'config: single variable -- maxPromptChars' in result.stdout
+
+
+def test_a_two_variable_pair_is_reported_and_cannot_certify_anything(tmp_path: Path) -> None:
+    """`42355323615` against the cut: `ask` moved with the window, and the difference is the pair.
+
+    This is the error the check exists to make impossible. `MR -6.61` was published as the window's
+    cost; it belongs to a pair of two variables, and against the one-variable control `MR` is `-0.83`.
+    """
+    reference = write(tmp_path, 'window.json', artifact(arm_config=ARM_CONFIG))
+    arm = write(
+        tmp_path,
+        'arm.json',
+        artifact(
+            name='arm',
+            correct=444,
+            prompt_tokens=6_077_000,
+            arm_config={**ARM_CONFIG, 'maxPromptChars': 24000, 'ask': 'verbatim-acts'},
+        ),
+    )
+    result = run(tmp_path, str(reference), str(arm))
+    assert result.returncode == 0, result.stderr
+    assert 'NOT a single-variable pair, differs on ask, maxPromptChars' in result.stdout
+    # The arithmetic still runs and still prints; what it cannot do is promote the arm.
+    assert 'arm vs window: **incomparable**' in result.stdout
+
+
+def test_a_derived_field_is_not_a_variable(tmp_path: Path) -> None:
+    """`renderingRoutes` is computed from `promptContract`; counting it would report one as three."""
+    reference = write(tmp_path, 'window.json', artifact(arm_config=ARM_CONFIG))
+    same = write(
+        tmp_path,
+        'same.json',
+        artifact(
+            name='same',
+            correct=470,
+            prompt_tokens=17_000_000,
+            arm_config={**ARM_CONFIG, 'renderingRoutes': ['flat', 'abstention']},
+        ),
+    )
+    result = run(tmp_path, str(reference), str(same))
+    assert result.returncode == 0, result.stderr
+    assert 'config: identical, so this pair measures a run and not a variable' in result.stdout
+    # And with the configs identical the promotion stands, because nothing else moved.
+    assert 'same vs window: **dominates**' in result.stdout
+
+
+def test_an_artifact_with_no_arm_config_cannot_be_admitted(tmp_path: Path) -> None:
+    reference = write(tmp_path, 'window.json', artifact())
+    arm = write(tmp_path, 'arm.json', artifact(name='arm', prompt_tokens=17_000_000))
+    result = run(tmp_path, str(reference), str(arm))
+    assert result.returncode == 0, result.stderr
+    assert 'neither artifact records a memoryArmConfig' in result.stdout
+
+
+def test_accuracy_is_read_from_the_repetition_mean_when_the_artifact_records_one(tmp_path: Path) -> None:
+    """The rule `report.ts` already states, applied to the tool that was not applying it.
+
+    `feature.metrics` is the first repetition; `ablation.featureAggregate.avg` is the mean over all of
+    them, and it is the right population because every cost ratio's numerator is a sum over every
+    repetition. `42310779222` reads 90.20% on its first repetition and **90.85%** averaged over four.
+    """
+    document = artifact()
+    document['ablation'] = {'featureAggregate': {'avg': 0.9085, 'min': 0.902, 'max': 0.92}}
+    reference = write(tmp_path, 'window.json', document)
+    economy = write(tmp_path, 'economy.json', artifact(name='economy', prompt_tokens=17_000_000))
+    result = run(tmp_path, '--json', str(reference), str(economy))
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    window = next(arm for arm in payload['arms'] if arm['arm'] == 'window')
+    # 0.9085 x 500 = 454.25, and the type holds counts: 454 is 90.80%, not the 92.0% the first
+    # repetition happened to read.
+    assert abs(window['overall']['value'] - 0.908) < 1e-9
+    assert window['accuracySource'] == 'repetition-mean'
+
+
+def test_an_artifact_without_a_repetition_mean_says_which_population_it_used(tmp_path: Path) -> None:
+    """`first-repetition` has to be named, because it is the number that looks like the other one."""
+    reference = write(tmp_path, 'window.json', artifact())
+    economy = write(tmp_path, 'economy.json', artifact(name='economy', prompt_tokens=17_000_000))
+    result = run(tmp_path, '--json', str(reference), str(economy))
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert all(arm['accuracySource'] == 'first-repetition' for arm in payload['arms'])

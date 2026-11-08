@@ -57,9 +57,26 @@
  * The numbers that come out of this are uncomfortable and are meant to be: the aggregate can support a
  * 2.5-point non-inferiority claim at n = 500, and **no capability subset can support one at n = 121 or
  * n = 72**. `S3`'s aim of 85% on 121 questions has a ±8-point interval at its own threshold, so the row
- * cannot distinguish 85 from 77 with an unpaired reading. The consequence for the roadmap is stated in
- * `docs/DESIGN-EFFICIENCY-FRONTIER.md`: capability-level claims have to be **paired**, where the
- * discordant-pair count rather than the marginal rate sets the resolution.
+ * cannot distinguish 85 from 77 with an unpaired reading.
+ *
+ * ## Which is why the paired test is the second instrument and not an improvement on the first
+ *
+ * `compareEfficiency` takes optional `PairedEvidence` — how many questions each arm won that the other
+ * lost — and runs an exact McNemar test on it. Where it is supplied, it is the **only** instrument for
+ * that label; where it is not, the margin rule runs as above and the outcome can be `underpowered`.
+ * The two are not interchangeable and the difference is not academic:
+ *
+ * | comparison | design | verdict |
+ * | --- | --- | --- |
+ * | `42355323615 → 42373407439` | 500 paired questions, 27 lost to 11 won | **p = 0.0139**, a certified loss |
+ * | the same pair, unpaired | ±2.47-point Wilson interval, 2.5-point margin | −3.20 points, "not resolved" |
+ *
+ * The unpaired reading of that pair was published as `incomparable` and the loss was described as
+ * inside the instrument's resolution. It is not: 38 questions moved and 27 of them moved against the
+ * arm. The interval answers "how well is the rate known", the paired test answers "did the arms
+ * disagree", and on a design where every question was asked twice the second question is the one being
+ * asked. That misreading is why the module now has `PairedEvidence` instead of a note in a design
+ * document saying capability claims have to be paired.
  *
  * ## Billed tokens are a separate field, and are never a context win
  *
@@ -69,6 +86,12 @@
  * would let this project claim to be cheaper than it is in the only unit the field publishes.
  */
 import { wilsonScoreInterval } from '@agentix-e/cortex-core';
+
+// Re-exported so `tools/efficiency-frontier.mjs` can reach it through the built module it documents
+// as its entry point; the implementation lives in `paired-test.ts` and only there.
+import { mcnemarExact } from './paired-test.js';
+
+export { mcnemarExact };
 
 import type { Capability } from './types.js';
 
@@ -149,8 +172,53 @@ export type EfficiencyProfile = {
 export type EfficiencyPolicy = {
   readonly margin: number;
   readonly tokenTolerance: number;
+  /**
+   * The level a **paired** accuracy claim has to reach, when the comparison is given paired evidence.
+   *
+   * It is a separate number from `margin` because they are different instruments and neither can be
+   * expressed in the other's units. `margin` is a non-inferiority bound that has to survive an unpaired
+   * interval; `alpha` is a significance level on the discordant pairs, whose resolution depends on how
+   * many questions the two arms disagree about and not on the marginal rate. Run
+   * `42355323615 → 42373407439` is the case that makes the difference concrete: 38 discordant pairs,
+   * 27 lost to 11 won, **exact p = 0.0139** — a certified loss that the ±2.47-point unpaired interval
+   * could not express, because it is not a bound on a difference, it is a test of one.
+   */
+  readonly alpha: number;
   /** Capabilities the margin must hold on. Defaults to every capability the point carries. */
   readonly gated?: readonly Capability[];
+};
+
+/**
+ * What the two arms did question by question, for the labels they were both read on.
+ *
+ * This is the only input in the module that describes a **pair** rather than an arm, which is why it is
+ * an argument to `compareEfficiency` instead of a field on `EfficiencyPoint`. A point cannot carry it:
+ * agreement is not a property of one arm, and a type that allowed it would let a caller attach one
+ * arm's discordant counts with another arm's answers.
+ */
+export type PairedEvidence = readonly {
+  readonly label: ReadingLabel;
+  /** Questions `a` answered correctly and `b` did not. */
+  readonly wonByA: number;
+  /** The reverse. */
+  readonly wonByB: number;
+}[];
+
+/** One label's paired test, reported whichever way it came out. */
+export type PairedReading = {
+  readonly label: ReadingLabel;
+  readonly wonByA: number;
+  readonly wonByB: number;
+  /** Exact two-sided McNemar p over the discordant pairs. 1 when there are none. */
+  readonly pValue: number;
+  /**
+   * Whether `pValue < alpha`, i.e. whether this pair licenses a directional claim on this label.
+   *
+   * `false` is a **resolved tie** rather than an absence of power: the discordant pairs were counted
+   * and they did not favour either arm. That is a stronger statement than `unresolvable`, which says
+   * the instrument cannot see the difference at all, and the two must not be reported as one.
+   */
+  readonly resolved: boolean;
 };
 
 /**
@@ -164,6 +232,7 @@ export type EfficiencyPolicy = {
 export const DEFAULT_EFFICIENCY_POLICY: EfficiencyPolicy = {
   margin: 0.025,
   tokenTolerance: 0.05,
+  alpha: 0.05,
 };
 
 /** `overall`, or one capability. Named so a blocking reason can say which. */
@@ -193,9 +262,12 @@ export type EfficiencyComparison = {
    * The same over the **bill**. Below 1 means `a` costs less to run.
    *
    * Reported separately because it is not a restatement of `tokenRatio`: an arm can read half the
-   * context and pay more, if the smaller prompt stops being served from the prefix cache. An arm is
-   * only cheaper when both are below 1 — and only when `billComparable` is true, which is the field
-   * that exists because the first version of this ratio read a 6.90x that was the repetition count.
+   * context and pay more, if the smaller prompt stops being served from the prefix cache.
+   *
+   * It **cannot promote an arm**, only refuse one. Every bit of information it carries beyond
+   * `tokenRatio` is the cache-hit share, and that share moved 20 points between two four-repetition
+   * dispatches of one arm (78.21% against 98.34%), which prices as a 0.156x bill on a 1.003x context.
+   * A term that can produce that on its own is a veto and not a vote; see `compareEfficiency`.
    */
   readonly billedTokenRatio: number;
   /**
@@ -210,6 +282,17 @@ export type EfficiencyComparison = {
   readonly blocking: readonly ReadingLabel[];
   /** Readings where the margin is smaller than the sample's resolution. */
   readonly unresolvable: readonly ReadingLabel[];
+  /**
+   * Every paired test that was run, whichever way it came out.
+   *
+   * Reported rather than folded into `blocking`, because the two instruments answer different
+   * questions and a reader has to be able to see which one produced the verdict: a label in `blocking`
+   * with a `paired` entry was **certified** worse, and one without was worse than a margin the sample
+   * could barely resolve. The campaign spent a round learning that difference.
+   */
+  readonly paired: readonly PairedReading[];
+  /** Whether any paired test was supplied at all. False means every label was read unpaired. */
+  readonly pairedUsed: boolean;
 };
 
 function readingOf(correct: number, total: number): EfficiencyReading {
@@ -302,6 +385,7 @@ export function compareEfficiency(
   a: EfficiencyProfile,
   b: EfficiencyProfile,
   policy: EfficiencyPolicy = DEFAULT_EFFICIENCY_POLICY,
+  paired?: PairedEvidence,
 ): EfficiencyComparison {
   if (a.arm === b.arm) {
     throw new Error(`compareEfficiency needs two arms, got ${a.arm} on both sides`);
@@ -314,6 +398,42 @@ export function compareEfficiency(
       `the token tolerance must be a non-negative number, got ${policy.tokenTolerance}`,
     );
   }
+  if (!Number.isFinite(policy.alpha) || policy.alpha <= 0 || policy.alpha >= 1) {
+    throw new Error(`the paired alpha must sit strictly inside (0, 1), got ${policy.alpha}`);
+  }
+
+  const pairedReadings: PairedReading[] = [];
+  const pairedByLabel = new Map<ReadingLabel, PairedReading>();
+  for (const entry of paired ?? []) {
+    if (pairedByLabel.has(entry.label)) {
+      throw new Error(`paired evidence names ${entry.label} twice`);
+    }
+    if (
+      entry.wonByA < 0 ||
+      entry.wonByB < 0 ||
+      !Number.isInteger(entry.wonByA) ||
+      !Number.isInteger(entry.wonByB)
+    ) {
+      throw new Error(
+        `paired evidence for ${entry.label} is not a pair of counts: ` +
+          `${entry.wonByA} / ${entry.wonByB}`,
+      );
+    }
+    const pValue = mcnemarExact(entry.wonByA, entry.wonByB);
+    const reading: PairedReading = {
+      label: entry.label,
+      wonByA: entry.wonByA,
+      wonByB: entry.wonByB,
+      pValue,
+      // No discordant pair means no evidence *and no test*: two arms that agreed on all 500 questions
+      // are a tie, and a p-value of 1 on zero pairs must not be reported as "resolved, no difference"
+      // in the same voice as a tie established by 38 pairs.
+      resolved: entry.wonByA + entry.wonByB > 0 && pValue < policy.alpha,
+    };
+    pairedByLabel.set(entry.label, reading);
+    pairedReadings.push(reading);
+  }
+
   const tokenRatio = a.promptTokensPerQuestion / b.promptTokensPerQuestion;
   const billComparable = a.runs === b.runs;
   const billedTokenRatio = a.billedPromptTokensPerQuestion / b.billedPromptTokensPerQuestion;
@@ -323,9 +443,30 @@ export function compareEfficiency(
   for (const label of labelsOf(b, policy)) {
     const reference = readingFor(b, label);
     const candidate = readingFor(a, label);
-    if (policy.margin > 0 && reference.halfWidth > policy.margin) unresolvable.push(label);
+    const delta = candidate.value - reference.value;
+    // The two instruments are combined **asymmetrically**, and the asymmetry is the design.
+    //
+    // *Demoting* takes the union: an arm is blocked if either the paired test certifies a loss or the
+    // margin rule says the drop is bigger than the project agreed to call a tie. Both are evidence
+    // against, so a rule that needs only one is strictly more conservative, and the alternative —
+    // requiring both — is the falsification that a first draft of this change produced: against one
+    // control the window cut's aggregate is 13 won to 23 lost at p = 0.1325, so a rule that demoted
+    // only on a significant pair read a −3.20-point arm as "not worse" and then promoted it on the
+    // 0.50x context. Absence of a significant pair is not evidence of no effect.
+    //
+    // *Promoting* takes the intersection, i.e. the strongest instrument alone: a certified win needs
+    // the paired test, and the margin rule cannot substitute for it. That is the same asymmetry the
+    // `underpowered` outcome already encodes one level up — demotion cannot overstate as the interval
+    // widens, promotion can.
     if (reference.value - candidate.value > policy.margin) blocking.push(label);
+    const test = pairedByLabel.get(label);
+    if (test !== undefined) {
+      if (test.resolved && delta < 0) blocking.push(label);
+      if (test.resolved && delta > 0) leading.push(label);
+      continue;
+    }
     if (candidate.value - reference.value > policy.margin) leading.push(label);
+    if (policy.margin > 0 && reference.halfWidth > policy.margin) unresolvable.push(label);
   }
 
   // Three objectives, one order. Accuracy goes up, the context goes down, the bill goes down, and
@@ -334,9 +475,9 @@ export function compareEfficiency(
   //
   // It has to be all three, and the third one is the one that nearly became a false finding: a rule
   // with only the context axis called `42373407439` cheaper at 0.50x, and the bill said 1.07x and then
-  // 6.90x depending on which control it was paired with. Both bill figures were the repetition count
-  // (4 against 2, cache share 98.34% against 51.07%) rather than the system, which is why
-  // `billComparable` exists and why the tool refuses the comparison outright.
+  // 6.90x depending on which control it was paired with. Equal `runs` is necessary for the bill but
+  // **not sufficient** — `42310779222` and `42355323615` both ran four and read 78.21% and 98.34%
+  // hits — which is why the bill is reported with `billComparable` beside it rather than trusted.
   //
   // Strict on both sides of 1 as well as on the tolerance, so a policy with `tokenTolerance: 0` still
   // cannot call an unchanged count an improvement.
@@ -347,60 +488,53 @@ export function compareEfficiency(
   // term that can neither promote nor demote. That is the correct handling of a confounded axis:
   // `withinTolerance` and `cheaperOn` are replaced by their neutral element rather than by a guess.
   const billNoWorse = (ratio: number): boolean => !billComparable || withinTolerance(ratio);
-  const billBetter = (ratio: number): boolean => billComparable && cheaperOn(ratio);
 
+  // The bill can **block** and can never **promote**, and the reason is not caution.
+  //
+  // `billedTokenRatio` equals `tokenRatio` whenever the two arms cache alike, so every bit of
+  // information the bill carries beyond the context ratio comes from the cache-hit share — and that
+  // share is a property of how the walk was run, not of the system. Two dispatches of one arm at four
+  // repetitions each read **78.21%** and **98.34%** hits with the same 24.2M prompt tokens; priced at
+  // 2% of a miss that is a 0.156x bill on a 1.003x context, i.e. a dominance claim manufactured
+  // entirely by the prefix cache. It was manufactured: this rule as first written reported `dominates`
+  // for that pair, and the paired instrument is what surfaced it.
+  //
+  // So the term keeps its veto (`aNotWorse`, `bNotWorse`) and loses its vote. A bill that went up can
+  // refuse a context saving, which is the direction that cannot overstate; a bill that went down can
+  // never be the reason an arm is called better, because the only thing that would have to be true for
+  // it — a stable cache — is the thing the two artifacts disprove.
   const aNotWorse =
     blocking.length === 0 && withinTolerance(tokenRatio) && billNoWorse(billedTokenRatio);
-  const aBetterSomewhere =
-    leading.length > 0 || cheaperOn(tokenRatio) || billBetter(billedTokenRatio);
+  const aBetterSomewhere = leading.length > 0 || cheaperOn(tokenRatio);
   const bNotWorse =
     leading.length === 0 && withinTolerance(1 / tokenRatio) && billNoWorse(1 / billedTokenRatio);
-  const bBetterSomewhere =
-    blocking.length > 0 || cheaperOn(1 / tokenRatio) || billBetter(1 / billedTokenRatio);
+  const bBetterSomewhere = blocking.length > 0 || cheaperOn(1 / tokenRatio);
 
-  if (aNotWorse && aBetterSomewhere) {
-    // The power check applies to the **promotion** and to nothing else. Certifying that an arm won is
-    // a claim that it did not lose accuracy, and a margin finer than the sample resolves cannot
-    // support that claim — so the honest outcome is neither a pass nor a fail. Demoting an arm is the
-    // other direction and needs no power: "the reference is not worse and costs no more" only becomes
-    // easier to establish as the interval widens, so it cannot overstate.
-    if (b.overall.halfWidth > policy.margin) {
-      return {
-        outcome: 'underpowered',
-        tokenRatio,
-        billedTokenRatio,
-        billComparable,
-        blocking,
-        unresolvable,
-      };
-    }
-    return {
-      outcome: 'dominates',
-      tokenRatio,
-      billedTokenRatio,
-      billComparable,
-      blocking,
-      unresolvable,
-    };
-  }
-  if (bNotWorse && bBetterSomewhere) {
-    return {
-      outcome: 'dominated',
-      tokenRatio,
-      billedTokenRatio,
-      billComparable,
-      blocking,
-      unresolvable,
-    };
-  }
-  return {
-    outcome: 'incomparable',
+  // The power check applies to the **promotion** and to nothing else. Certifying that an arm won is a
+  // claim that it did not lose accuracy, and a margin finer than the sample resolves cannot support
+  // that claim — so the honest outcome is neither a pass nor a fail. Demoting an arm is the other
+  // direction and needs no power: "the reference is not worse and costs no more" only becomes easier
+  // to establish as the interval widens, so it cannot overstate.
+  //
+  // A paired test on the aggregate replaces the check rather than passing it: the interval is not the
+  // instrument once the discordant pairs have been counted, and applying both would be asking a
+  // question the design already answered.
+  const underpowered = !pairedByLabel.has('overall') && b.overall.halfWidth > policy.margin;
+
+  const verdict = (outcome: EfficiencyComparison['outcome']): EfficiencyComparison => ({
+    outcome,
     tokenRatio,
     billedTokenRatio,
     billComparable,
     blocking,
     unresolvable,
-  };
+    paired: pairedReadings,
+    pairedUsed: pairedReadings.length > 0,
+  });
+
+  if (aNotWorse && aBetterSomewhere) return verdict(underpowered ? 'underpowered' : 'dominates');
+  if (bNotWorse && bBetterSomewhere) return verdict('dominated');
+  return verdict('incomparable');
 }
 
 /** The frontier over a set of arms, plus who ended each arm. */

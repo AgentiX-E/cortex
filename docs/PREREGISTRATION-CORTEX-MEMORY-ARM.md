@@ -34796,3 +34796,99 @@ which is the only route this dataset offers.
 `A1`–`A4` and the racing-versus-porting rule are in `docs/PLAN-COMPETITOR-ABLATION.md`; the composite design is
 in `docs/DESIGN-EFFICIENCY-FRONTIER.md`; the external review this round answered is
 `docs/REVIEW-EXTERNAL-2026-11-08.md`.
+
+---
+
+## 13.314 Three corrections to §13.313, and the checks that make each one unavailable
+
+§13.313 registered a three-axis order and then read it once, on a pair. This section is the audit of that
+reading: **all three of its numbers were wrong, each on a different population**, and the tooling now
+refuses the shape rather than relying on a resolution to be careful.
+
+**1. The control.** §13.313 used `42355323615` as the control for the 24,000-character window cut. It is
+the wrong control for that question and the right one for its own: the same dispatch that shrank the room
+moved `ask` from `verbatim` to `verbatim-acts` and replaced the flat room with a route map. Against the arm
+that differs in **one** field (`42310779222`), the cut is smaller on every capability except `TR`:
+
+| | `42310779222` (1 field) | `42355323615` (2 variables) |
+| --- | ---: | ---: |
+| overall | **−2.65** | −3.20 |
+| `IE` | −2.33 | −0.67 |
+| `MR` | **−2.27** | **−6.61** |
+| `KU` | −1.74 | −1.39 |
+| `TR` | −4.53 | −4.72 |
+| `ABS` | 0.00 | 0.00 |
+
+Both columns are true measurements of two different questions. Only the left one is about
+`max_prompt_chars`, and `MR`'s 4.3-point difference between them is the size of the error a two-variable
+control produces.
+
+**2. The population.** Both columns are now read from `ablation.featureAggregate.avg`, the mean over
+repetitions, rather than `feature.metrics`, which is the **first** repetition. `report.ts` states the rule
+in `costEfficiency`'s `accuracySource` doc and gives the reason: every cost ratio's numerator is a sum over
+every repetition, so the denominator has to describe the same repetitions. The first repetition happened to
+be the worst in both artifacts:
+
+| run | first repetition | four-repetition mean | spread |
+| --- | ---: | ---: | --- |
+| `42310779222` | 90.20% | **90.85%** | 90.20–92.00 |
+| `42355323615` | 91.40% | **91.95%** | 91.40–93.20 |
+| `42373407439` (2 runs) | 88.20% | **88.20%** | 88.20 |
+
+**3. The bill.** Equal `runs` is necessary and **not sufficient**. `42310779222` and `42355323615` both ran
+four repetitions over the same 24.2M prompt tokens and read **78.21%** and **98.34%** cache hits, which
+prices as **0.156x the bill on 1.003x the context**. The order as registered in §13.313 reported
+`dominates` for that pair — a dominance claim manufactured entirely by the prefix cache, between two
+dispatches of one system. The bill is therefore a **veto and not a vote**: a risen bill can refuse a context
+saving, a fallen bill can never be the reason an arm is called better.
+
+### 13.314.1 The paired instrument, and the asymmetry that is its design
+
+`compareEfficiency` takes `PairedEvidence` — questions `a` won that `b` lost, and the reverse — and runs an
+**exact** two-sided McNemar test over them (exact rather than χ² because the comparisons that decide
+adoptions carry 20–40 discordant pairs, where the approximation is not conservative; the implementation
+reproduces the `p = 2.039e-56` this document recorded in §10.9 from an independent calculation).
+
+The two directions are combined **asymmetrically**, and the first draft got it wrong in the direction that
+matters:
+
+| direction | rule | the failure it prevents |
+| --- | --- | --- |
+| demote | margin **or** certified paired loss | a first draft demoted only on a significant pair, called a −3.20-point arm "not worse" at p = 0.1325, and promoted it on the 0.50x context |
+| promote | certified paired win **only** | a margin is not a test; promotion is the direction that can overstate |
+
+**Absence of a significant pair is not evidence of no effect.** That sentence is the reason demotion takes
+the union.
+
+### 13.314.2 What the pairs actually say
+
+| comparison | design | certified? |
+| --- | --- | --- |
+| `42373407439` vs `42310779222` | 500 paired, 13 won / 23 lost, exact **p = 0.132** | no |
+| `42373407439` vs `42310779222`, `TR` | 0 won / **5 lost**, exact **p = 0.0625** | no — but five of five moved one way |
+| `42355323615` vs `42310779222` | 12 won / 6 lost, exact **p = 0.238** | no |
+| `42355323615` vs `42310779222`, `MR` | 9 won / 2 lost, exact **p = 0.0654** | no — closest thing to a signal in the set |
+
+The `MR` row is the one finding in here that is not a correction: `ask: verbatim-acts` plus a route room is
+**+9 won / 2 lost on `MR`** at p = 0.065, the strongest single-capability signal this arm has produced, and it
+is not certified at n = 121. Registered as a confirmatory dispatch rather than adopted on a p-value nobody
+declared in advance.
+
+### 13.314.3 The gap to the board, restated on the corrected numbers
+
+| system | public | this arm (mean of 4) | gap |
+| --- | ---: | ---: | ---: |
+| MemStrata | 92.6% | 91.95% | **−0.65**, inside ±2.47 |
+| Letta | 87.6% | 91.95% | **+4.35** |
+| Reglos | 87.2% | 91.95% | **+4.75** |
+
+Against MemStrata the gap is now **0.65 points** rather than the 1.2 §13.313 quoted, and it is still inside
+the interval this instrument resolves — so "not distinguishable from zero at n = 500 on this reader" stands,
+and it stands on a better number.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `E4` | a pair differing in more than one configuration field cannot license a dominance claim, and the tool forces `incomparable` on it | a two-variable pair that dominates, which would mean the single-variable rule is too strict to be useful |
+| `E5` | equal `runs` is not sufficient for the bill: a same-system pair can move the hit share by 20 points | a same-system pair whose hit shares agree to within 2 points at equal `runs`, which would make the 78.21/98.34 pair an outlier rather than the norm |
+| `E6` | `featureAggregate.avg` and `feature.metrics` differ by less than the 2.5-point margin on a future four-repetition dispatch | a first repetition that is the *best* of four by more than a margin, which would mean the direction of the bias is not fixed and the first-repetition reading is not conservative in either direction |
+| `E7` | `ask: verbatim-acts` plus a route room is worth ≥ 3 `MR` questions, paired, at 500 questions and four repetitions | a paired `MR` delta below 3 questions with the discordant count at least 15, which would retire §13.314.2's only non-correction |
