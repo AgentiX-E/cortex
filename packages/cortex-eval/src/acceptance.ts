@@ -854,11 +854,15 @@ export const CRITERIA: readonly Criterion[] = [
     // registered arm's self-ratio (1.0000 by construction, `paired: false`) to a file that names both
     // runs, so the number on this row is now a comparison rather than a denominator.
     //
-    // It is a pass with a cost that another row refuses, and the row must not be read alone. Overall
-    // accuracy fell **3.20** points, `A` refused it, and the fall was entirely in the two capabilities
-    // `gold-room.py` had priced at zero exposure. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` records the
-    // whole reading; the sentence this row needs is that a met budget with a named accuracy cost is a
-    // boundary, not a licence.
+    // It is a pass with a cost that another row refuses, and the row must not be read alone. The first
+    // version of that cost sentence said **3.20 points** and named two capabilities, and both halves
+    // were wrong for the same reason: the control it was read against (`42355323615`) moves `ask` as
+    // well as the window, so the deltas belonged to the pair. Against the arm that differs in exactly
+    // one field (`42310779222`), and on the population `report.ts` says to read
+    // (`ablation.featureAggregate.avg`, not `feature.metrics`), the cut reads **-2.65 overall** and
+    // **TR -4.53**; `IE -2.33` and `MR -2.27` sit inside the 2.5-point margin and only those two block. `room-cut.json` now carries both pairings and says which
+    // question each answers; `tools/efficiency-frontier.mjs` refuses to certify a pair that differs in
+    // more than one field, which is the check that makes the mistake unavailable rather than regrettable.
     source: {
       kind: 'artifact',
       path: 'cortex-docs/evidence/longmemeval/room-cut.json',
@@ -872,6 +876,38 @@ export const CRITERIA: readonly Criterion[] = [
     onMiss:
       'Registered so that the next increment touching the budget has to state what it did to this number, not so that it can be met by cutting. The precondition is the first half of the sentence: overall accuracy at or above the registered configuration on the same 500 questions. A 30% cut that costs two questions is a miss, not a pass, and the honest reading of that outcome is section 13.291 — delivering every gold turn bought +0.00, so evidence *volume* is not what the missing points are made of, which makes a cut safe in principle and unmeasured in fact. ' +
       'The unit change section 13.293.2 asked for is done, in the sense that matters: `tools/evidence-budget.py` reads the per-question records (`promptChars` against `deliveredPromptChars`), measures the characters-to-tokens factor from the artifact instead of inferring it from the cap (4.06 on `42355323615`, against the 4.11 the cap implied), and reports the median evidence in tokens. What the row still lacks is the *numerator*: the artifact it reads is one arm at the registered configuration, so the ratio is 1.0000 by construction and the file records `paired: false`. A ratio of one is a denominator, not a result — it says the registered budget is 100% of itself and that the 0.70 bar is unmet, and it cannot say anything about a reduced arm until one is dispatched. Reading the two claims apart matters: this row moved from "no instrument" to "instrument, denominator, named arm", and it has not moved at all on the quantity it measures.',
+  },
+
+  // ---- the shipping decision, made by the same instrument that reads the arms ----------------------
+  //
+  // The frontier was a report and is now a gate. `C1`-`C3` price a *candidate*; nothing priced the
+  // answer to "should the candidate replace what we ship", which is the only decision the frontier
+  // exists to inform. `42310779222`, `42355323615` and `42373407439` are the three arms this project has
+  // read at full 500 with four or two repetitions, and none of them dominates the configuration on the
+  // order; on 2026-11-08 that is a fact about how much has been tried, and the gate is what makes the
+  // next arm that *does* dominate it block a release until it is adopted.
+  //
+  // The count, not the verdict list, because a gate reads a number. `summary.dominating` is computed by
+  // `tools/efficiency-frontier.mjs` from the artifacts rather than typed here, and it is 0 only while
+  // every measured arm is either worse on a blocking reading or incomparable.
+  {
+    id: 'C4',
+    capability: 'cost',
+    metric: 'measured arms that dominate the shipping configuration on the three-axis order',
+    dataset:
+      'every full-500 arm this project has read, compared against the newest four-repetition artifact',
+    comparator: 'equals',
+    threshold: 0,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/frontier.json',
+      key: 'summary.dominating',
+    },
+    onMiss:
+      'A non-zero count is not a measurement problem, it is a shipping problem: an arm that answers at least as well on every gated capability, reads less, and does not cost more has been built and is not the one on the box. The repair is to adopt it or to state in this row what it does not do that the shipping arm does. ' +
+      'Two things this row cannot see, stated so it is not read as more than it is. It counts only arms this project has dispatched, so it says nothing about a competitor. And it inherits the pair rule: `tools/efficiency-frontier.mjs` forces `incomparable` when the two artifacts differ in more than one configuration field, so an arm that would dominate on a two-variable comparison is counted as zero here — the count is conservative, which is the direction a gate may err in.',
   },
 
   // ---- the third cost axis: what the saving costs to run -------------------------------------------
@@ -896,13 +932,13 @@ export const CRITERIA: readonly Criterion[] = [
     source: {
       kind: 'artifact',
       path: 'cortex-docs/evidence/longmemeval/frontier.json',
-      key: 'verdicts.0.billedTokenRatio',
+      key: 'summary.matched.billedTokenRatio',
     },
     onMiss:
-      'The criterion is registered and the reading is **blocked**, which is the state this row is in rather than a value. The only reduced-budget arm that exists (`42373407439`, 6,077 context tokens per question) ran **two** repetitions against a control that ran **four**, and the cache-hit share is a function of the repetition count: one repetition misses, the rest hit. The two artifacts read 51.07% against 98.34%, and 51.07% is what "one miss, one hit, equal-sized prompts" produces. So the bill they imply is a measurement of `runs` wearing the name of a cost, and `tools/efficiency-frontier.mjs` now **refuses** the comparison rather than printing a column a reader would quote. ' +
-      "That refusal is the round's finding and it was the round's own first mistake: the pair as first read said 1.074x, then 6.90x on the right pairing, and both numbers were artefacts. The axis itself is not in doubt — the bill is `promptTokens x (hit x 0.02 + (1 - hit))`, which is the provider arithmetic for `V4.1-Flash` ($0.006 against $0.30 per million input tokens) — and the confound is one field, so the reading costs one dispatch rather than a design. " +
-      "What unblocks three things at once: `A3` (`docs/PLAN-COMPETITOR-ABLATION.md`) dispatched with **four repetitions**, which makes `C3` readable, makes `C2`'s 0.70 bar reachable at a room the accuracy registration accepts, and gives the accuracy axis a paired partner at equal `runs`. Until then the honest statement is that this project does not know whether its cheaper-looking configuration is cheaper, and it knows exactly why it does not. " +
-      'Two things this row does not claim. It is not comparable to a competitor: no vendor publishes a cache-hit share, so `Zep 4.4K` is a context figure and stays on `C1` where it is one. And a met `C2` with a missed `C3` is not a contradiction — they price different things, and the pair that satisfies one and not the other is the pair worth dispatching.',
+      'The criterion is registered and the reading is **blocked**, which is the state this row is in rather than a value. The only reduced-budget arm that exists (`42373407439`, 6,077 context tokens per question) ran **two** repetitions against a control that ran **four**, and the cache-hit share is a function of the repetition count: one repetition misses, the rest hit. The two artifacts read 51.07% against 98.34%, and 51.07% is what "one miss, one hit, equal-sized prompts" produces. So the bill they imply is a measurement of `runs` wearing the name of a cost, and `tools/efficiency-frontier.mjs` excludes it (the library reports `billComparable: false`) rather than printing a column a reader would quote. ' +
+      'Equal `runs` is necessary and **not sufficient**, and that is this round finding rather than a caveat. `42310779222` and `42355323615` both ran four repetitions over the same 24.2M prompt tokens and read **78.21%** and **98.34%** hits, which prices as a **0.156x bill on a 1.003x context**. The three-axis order as first written read that pair as `dominates`: a dominance claim manufactured entirely by the prefix cache, on two dispatches of one system. The bill therefore keeps its veto and loses its vote — a risen bill can refuse a context saving, and a fallen bill can never be the reason an arm is called better, because the only thing that would have to be true for it is a stable cache, which those two artifacts disprove. ' +
+      'What unblocks the reading is one dispatch: `A3` (`docs/PLAN-COMPETITOR-ABLATION.md`) at **four repetitions**, which makes `C3` readable, makes `C2` sharp at a room the accuracy registration accepts, and gives the accuracy axis a paired partner at equal `runs`. Until then the honest statement is that this project does not know whether its cheaper-looking configuration is cheaper, and it knows exactly why it does not. ' +
+      'One thing this row does not claim. It is not comparable to a competitor: no vendor publishes a cache-hit share, so `Zep 4.4K` is a context figure and stays on `C1` where it is one.',
   },
 
   // ---- two rows the product needs and the campaign has never measured ------------------------------

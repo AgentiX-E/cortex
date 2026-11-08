@@ -20,9 +20,11 @@ import {
   DEFAULT_EFFICIENCY_POLICY,
   compareEfficiency,
   efficiencyFrontier,
+  mcnemarExact,
   profileOf,
   type EfficiencyPoint,
   type EfficiencyPolicy,
+  type PairedEvidence,
 } from '../efficiency-frontier.js';
 
 /** The registered arm: the reading every other point is compared against. */
@@ -210,6 +212,39 @@ describe('compareEfficiency', () => {
     expect(() => profileOf(windowArm({ runs: 2.5 }))).toThrow(/no repetition count/);
   });
 
+  it('refuses a dominance claim that rests on the cache alone', () => {
+    // `42310779222` and `42355323615` are two dispatches of one arm, four repetitions each, the same
+    // 24.2M prompt tokens, and 78.21% against 98.34% cache hits. Priced at 2% of a miss that is
+    // **0.156x the bill on 1.003x the context** with accuracy tied, and the rule as first written
+    // called it `dominates`. Nothing about the system changed between those two runs.
+    const cached = windowArm({
+      arm: 'cached',
+      promptTokensPerQuestion: 12_173,
+      cacheHitShare: 0.9834,
+      overall: { correct: 462, total: 500 },
+    });
+    const plain = windowArm({ arm: 'plain', cacheHitShare: 0.7821 });
+    const verdict = compareEfficiency(profileOf(cached), profileOf(plain));
+    expect(verdict.billedTokenRatio).toBeLessThan(0.2);
+    expect(verdict.tokenRatio).toBeCloseTo(12_173 / 12_137, 6);
+    // The accuracy axis does not block and does not lead: 462 against 460 is inside the margin. The
+    // only thing that moves is the cache, and the cache is not a system.
+    expect(verdict.blocking).toEqual([]);
+    expect(verdict.outcome).toBe('incomparable');
+  });
+
+  it('keeps the veto though the bill has lost its vote', () => {
+    // The same cache collapse in the direction that can only overstate if it were ignored: a fifth of
+    // the context and a bill that went up. `incomparable`, and the saving is not certified either.
+    const cut = squeezedArm({ cacheHitShare: 0.5107, promptTokensPerQuestion: 6_077 });
+    const verdict = compareEfficiency(
+      profileOf(cut),
+      profileOf(windowArm({ cacheHitShare: 0.9834 })),
+    );
+    expect(verdict.billedTokenRatio).toBeGreaterThan(1);
+    expect(verdict.outcome).toBe('incomparable');
+  });
+
   it('orders a twin only when both the context and the bill fall', () => {
     const cut = squeezedArm({ cacheHitShare: 0.7821, promptTokensPerQuestion: 6_077 });
     const verdict = compareEfficiency(
@@ -233,7 +268,7 @@ describe('compareEfficiency', () => {
   });
 
   it('refuses to certify when the pre-registered margin is finer than the sample', () => {
-    const tight: EfficiencyPolicy = { margin: 0.01, tokenTolerance: 0.05 };
+    const tight: EfficiencyPolicy = { margin: 0.01, tokenTolerance: 0.05, alpha: 0.05 };
     const verdict = compareEfficiency(profileOf(cheaperTwin()), profileOf(windowArm()), tight);
     expect(verdict.outcome).toBe('underpowered');
   });
@@ -247,7 +282,7 @@ describe('compareEfficiency', () => {
   });
 
   it('does not treat an unchanged token count as a saving when the tolerance is zero', () => {
-    const policy: EfficiencyPolicy = { margin: 0.025, tokenTolerance: 0 };
+    const policy: EfficiencyPolicy = { margin: 0.025, tokenTolerance: 0, alpha: 0.05 };
     const identical = windowArm({ arm: 'identical' });
     const verdict = compareEfficiency(profileOf(identical), profileOf(windowArm()), policy);
     expect(verdict.outcome).toBe('incomparable');
@@ -261,14 +296,24 @@ describe('compareEfficiency', () => {
       overall: { correct: 460, total: 500 },
       perCapability: [windowArm().perCapability[0]!],
     });
-    const policy: EfficiencyPolicy = { margin: 0.025, tokenTolerance: 0.05, gated: ['IE'] };
+    const policy: EfficiencyPolicy = {
+      margin: 0.025,
+      tokenTolerance: 0.05,
+      alpha: 0.05,
+      gated: ['IE'],
+    };
     const verdict = compareEfficiency(profileOf(cheap), profileOf(windowArm()), policy);
     expect(verdict.outcome).toBe('dominates');
   });
 
   it('refuses a gate on a capability the reference never measured', () => {
     const noKu = windowArm({ arm: 'no-ku', perCapability: [windowArm().perCapability[0]!] });
-    const policy: EfficiencyPolicy = { margin: 0.025, tokenTolerance: 0.05, gated: ['KU'] };
+    const policy: EfficiencyPolicy = {
+      margin: 0.025,
+      tokenTolerance: 0.05,
+      alpha: 0.05,
+      gated: ['KU'],
+    };
     expect(() => compareEfficiency(profileOf(noKu), profileOf(noKu))).toThrow(/two arms/);
     expect(() => compareEfficiency(profileOf(cheaperTwin()), profileOf(noKu), policy)).toThrow(
       /pass by being absent/,
@@ -286,15 +331,24 @@ describe('compareEfficiency', () => {
     const profile = profileOf(windowArm());
     expect(() => compareEfficiency(profile, profile)).toThrow(/two arms/);
     expect(() =>
-      compareEfficiency(profileOf(cheaperTwin()), profile, { margin: -0.1, tokenTolerance: 0.05 }),
+      compareEfficiency(profileOf(cheaperTwin()), profile, {
+        margin: -0.1,
+        tokenTolerance: 0.05,
+        alpha: 0.05,
+      }),
     ).toThrow(/accuracy margin/);
     expect(() =>
-      compareEfficiency(profileOf(cheaperTwin()), profile, { margin: 0.025, tokenTolerance: -1 }),
+      compareEfficiency(profileOf(cheaperTwin()), profile, {
+        margin: 0.025,
+        tokenTolerance: -1,
+        alpha: 0.05,
+      }),
     ).toThrow(/token tolerance/);
     expect(() =>
       compareEfficiency(profileOf(cheaperTwin()), profile, {
         margin: Number.NaN,
         tokenTolerance: 0.05,
+        alpha: 0.05,
       }),
     ).toThrow(/accuracy margin/);
   });
@@ -315,7 +369,7 @@ describe('efficiencyFrontier', () => {
   });
 
   it('counts the pairs whose margin the sample could not resolve', () => {
-    const tight: EfficiencyPolicy = { margin: 0.01, tokenTolerance: 0.05 };
+    const tight: EfficiencyPolicy = { margin: 0.01, tokenTolerance: 0.05, alpha: 0.05 };
     const frontier = efficiencyFrontier([windowArm(), cheaperTwin()], tight);
     // **One** direction, not two. Only the promotion is refused for want of power; the demotion in
     // the other direction is a claim that gets no stronger as the interval tightens, so it is made.
@@ -356,5 +410,159 @@ describe('the default policy', () => {
     // 2.38 points of resolution against a 2.5-point margin: the gate is reachable, barely.
     expect(profile.overall.halfWidth).toBeLessThan(DEFAULT_EFFICIENCY_POLICY.margin);
     expect(profile.overall.halfWidth).toBeGreaterThan(0.023);
+  });
+});
+
+describe('mcnemarExact', () => {
+  it('reproduces the p-value this campaign already published from an independent implementation', () => {
+    // §10.9 recorded `retrievalThreshold: 0.25` losing 186 questions and winning none at
+    // `p = 2.039e-56`, computed when the gate was first measured. Agreement to three significant
+    // figures is the check that the exact tail here is the same quantity and not a lookalike.
+    expect(mcnemarExact(186, 0) / 2.039e-56).toBeCloseTo(1, 2);
+  });
+
+  it('is symmetric in its two counts, because the test is two-sided', () => {
+    expect(mcnemarExact(27, 11)).toBeCloseTo(mcnemarExact(11, 27), 12);
+    expect(mcnemarExact(3, 40)).toBeCloseTo(mcnemarExact(40, 3), 12);
+  });
+
+  it('reads 27 lost to 11 won as significant and 6 lost to 12 won as not', () => {
+    // The two real pairs: the window cut, and the `ask` + route-room change. One is a result and the
+    // other is a redraw, and the difference between them is what the paired instrument is for.
+    expect(mcnemarExact(27, 11)).toBeCloseTo(0.013853, 5);
+    expect(mcnemarExact(6, 12)).toBeCloseTo(0.23788, 5);
+  });
+
+  it('returns 1 for no discordant pair, and 1 for a perfectly even split', () => {
+    expect(mcnemarExact(0, 0)).toBe(1);
+    expect(mcnemarExact(5, 5)).toBe(1);
+  });
+
+  it('refuses counts that are not non-negative integers', () => {
+    expect(() => mcnemarExact(-1, 4)).toThrow(/non-negative integers/);
+    expect(() => mcnemarExact(2.5, 4)).toThrow(/non-negative integers/);
+  });
+});
+
+describe('compareEfficiency with paired evidence', () => {
+  /** `a` is the reduced-window arm and `b` the registered one, both at four repetitions. */
+  const pair = (): [ReturnType<typeof profileOf>, ReturnType<typeof profileOf>] => [
+    profileOf(squeezedArm({ runs: 4, cacheHitShare: 0.9834, promptTokensPerQuestion: 6_077 })),
+    profileOf(windowArm({ cacheHitShare: 0.9834 })),
+  ];
+
+  it('certifies a loss the unpaired interval called unresolvable', () => {
+    const [reduced, window] = pair();
+    const unpaired = compareEfficiency(reduced, window);
+    // The reading this module shipped first: −3.20 points against a ±2.47-point interval, reported as
+    // `incomparable` with nothing certified. That is the answer the interval can give and it is not
+    // the answer the design supports.
+    expect(unpaired.outcome).toBe('incomparable');
+    expect(unpaired.pairedUsed).toBe(false);
+
+    const evidence: PairedEvidence = [{ label: 'overall', wonByA: 11, wonByB: 27 }];
+    const paired = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, evidence);
+    expect(paired.pairedUsed).toBe(true);
+    expect(paired.paired[0]!.pValue).toBeCloseTo(0.013853, 5);
+    expect(paired.paired[0]!.resolved).toBe(true);
+    // 27 questions the reduced arm lost that the control kept, against 11 it won: a certified loss.
+    expect(paired.blocking).toContain('overall');
+    expect(paired.outcome).toBe('incomparable');
+  });
+
+  it('reads a non-significant pair as a resolved tie rather than as missing power', () => {
+    const [reduced, window] = pair();
+    const evidence: PairedEvidence = [{ label: 'overall', wonByA: 12, wonByB: 6 }];
+    const verdict = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, evidence);
+    expect(verdict.paired[0]!.resolved).toBe(false);
+    // The distinction the outcome type exists for: `unresolvable` would say the instrument cannot see
+    // the difference, and here it looked at 18 discordant pairs and found nothing.
+    expect(verdict.unresolvable).not.toContain('overall');
+    // It still blocks, and that is the asymmetry rather than a slip: the point estimate is 3.8 points
+    // below the reference, the margin is 2.5, and a drop beyond the margin is evidence against whatever
+    // the pair significance is. A rule that demoted only on a significant pair promoted a −3.20-point
+    // arm once, which is why demotion takes the union of the two instruments and promotion takes the
+    // paired test alone.
+    expect(verdict.blocking).toContain('overall');
+  });
+
+  it('does not treat zero discordant pairs as a tie the data established', () => {
+    const [reduced, window] = pair();
+    const verdict = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
+      { label: 'overall', wonByA: 0, wonByB: 0 },
+    ]);
+    expect(verdict.paired[0]!.pValue).toBe(1);
+    expect(verdict.paired[0]!.resolved).toBe(false);
+  });
+
+  it('replaces the power check instead of passing it, so a paired promotion can be certified', () => {
+    // A full-window arm two questions better at fewer tokens: the unpaired rule refuses to promote it
+    // because the aggregate resolves 2.47 points and the margin is 2.5. With the discordant pairs
+    // counted, the same data licenses the promotion — and both readings are asserted, because the
+    // point is that they differ.
+    // The counts have to agree with the marginals or the fixture would be two numbers rather than one
+    // measurement: 14 won to 3 lost is a net +11 questions, so the point reads 471 where the control
+    // reads 460. 471/500 at a 20% narrower window is a real promotion, and the margin is set to 2.0
+    // points so that the unpaired rule cannot certify it — 471 against 460 resolves ±2.47.
+    const better = windowArm({
+      arm: 'better',
+      overall: { correct: 471, total: 500 },
+      promptTokensPerQuestion: 11_000,
+    });
+    const evidence: PairedEvidence = [{ label: 'overall', wonByA: 14, wonByB: 3 }];
+    const policy: EfficiencyPolicy = { margin: 0.02, tokenTolerance: 0.05, alpha: 0.05 };
+    const unpaired = compareEfficiency(profileOf(better), profileOf(windowArm()), policy);
+    expect(unpaired.outcome).toBe('underpowered');
+    const paired = compareEfficiency(profileOf(better), profileOf(windowArm()), policy, evidence);
+    expect(paired.paired[0]!.resolved).toBe(true);
+    expect(paired.outcome).toBe('dominates');
+  });
+
+  it('gives the paired instrument sole authority on a label it covers', () => {
+    // `MR` is significantly worse and the aggregate is not: the label blocks on its own pairs, and the
+    // gap is not re-read through the margin rule afterwards.
+    const [reduced, window] = pair();
+    const verdict = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
+      { label: 'MR', wonByA: 3, wonByB: 15 },
+    ]);
+    expect(verdict.blocking).toContain('MR');
+    expect(verdict.paired.map((entry) => entry.label)).toEqual(['MR']);
+    // `MR` is covered by the pairs, so it is not also reported as unresolvable — the two labels mean
+    // different things and a label cannot be both. The subsets nobody paired still are.
+    expect(verdict.unresolvable).not.toContain('MR');
+    expect(verdict.unresolvable).toContain('KU');
+  });
+
+  it('refuses paired evidence that names one label twice', () => {
+    const [reduced, window] = pair();
+    expect(() =>
+      compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
+        { label: 'overall', wonByA: 1, wonByB: 2 },
+        { label: 'overall', wonByA: 3, wonByB: 4 },
+      ]),
+    ).toThrow(/names overall twice/);
+  });
+
+  it('refuses a discordant count that is not a count', () => {
+    const [reduced, window] = pair();
+    expect(() =>
+      compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
+        { label: 'overall', wonByA: -1, wonByB: 2 },
+      ]),
+    ).toThrow(/not a pair of counts/);
+    expect(() =>
+      compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
+        { label: 'overall', wonByA: 1.5, wonByB: 2 },
+      ]),
+    ).toThrow(/not a pair of counts/);
+  });
+
+  it('refuses an alpha outside the open unit interval', () => {
+    const [reduced, window] = pair();
+    for (const alpha of [0, 1, -0.05, Number.NaN]) {
+      expect(() =>
+        compareEfficiency(reduced, window, { margin: 0.025, tokenTolerance: 0.05, alpha }),
+      ).toThrow(/paired alpha/);
+    }
   });
 });

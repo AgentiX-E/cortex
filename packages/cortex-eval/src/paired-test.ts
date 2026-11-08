@@ -60,6 +60,19 @@ export type PairedResult = {
  * happened.
  */
 export function mcnemarExact(improved: number, regressed: number): number {
+  // Validated rather than assumed. A negative or fractional count does not have a p-value, and the
+  // arithmetic below returns `1` for it — a wrong answer wearing the look of "no evidence", which is the
+  // one outcome a significance test must never produce by accident.
+  if (
+    !Number.isInteger(improved) ||
+    !Number.isInteger(regressed) ||
+    improved < 0 ||
+    regressed < 0
+  ) {
+    throw new Error(
+      `discordant counts must be non-negative integers, got ${improved} and ${regressed}`,
+    );
+  }
   const discordant = improved + regressed;
   if (discordant === 0) return 1;
   const smaller = Math.min(improved, regressed);

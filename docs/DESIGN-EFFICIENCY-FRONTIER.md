@@ -13,67 +13,85 @@ taken, off two archived artifacts, and it is not the reading the project expecte
 
 ## 1. What the matrix could not see, in one pair
 
-Two dispatches of the same arm, one field apart (`max_prompt_chars` 48,000 → 24,000), same 500 questions,
-same reader, same judge, paired by `room-cut.json`:
+Two dispatches, one configuration field apart (`max_prompt_chars` 48,000 → 24,000), same 500 questions,
+same reader, same judge:
 
-| | `42355323615` (control) | `42373407439` (reduced) | delta |
+| | `42310779222` (control) | `42373407439` (reduced) | delta |
 | --- | ---: | ---: | ---: |
-| overall accuracy | 457/500 = **91.40%** | 441/500 = **88.20%** | **−3.20 pp** |
-| `MR` | 101/121 = 83.47% | 93/121 = 76.86% | **−6.61 pp** |
-| `TR` | 122/127 = 96.06% | 116/127 = 91.34% | **−4.72 pp** |
-| `KU` | 64/72 = 88.89% | 63/72 = 87.50% | −1.39 pp |
-| `IE` | 140/150 = 93.33% | 139/150 = 92.67% | −0.67 pp |
-| `ABS` | 30/30 = 100% | 30/30 = 100% | 0.00 pp |
-| **context tokens / question** | **12,137** | **6,077** | **0.501x** |
-| repetitions | 4 | **2** | — |
-| cache-hit share | 98.34% | 51.07% | **not admissible** |
-| billed tokens / question | 440 | 3,036 | **not admissible** |
+| overall accuracy | 90.85% (mean of 4) | **88.20%** (mean of 2) | **−2.65 pp** |
+| `IE` | 142.5/150 | 139/150 | −2.33 |
+| `MR` | 95.75/121 | 93/121 | −2.27 |
+| `KU` | 63.75/72 | 63/72 | −1.74 |
+| `TR` | 122.25/127 | 116/127 | **−4.53** |
+| `ABS` | 30/30 | 30/30 | 0.00 |
+| **context tokens / question** | **12,105** | **6,077** | **0.502x** |
+| repetitions | 4 | 2 | — |
+| cache-hit share | 78.21% | 51.07% | **not admissible** |
 
-Three facts a reader needs, and before this document the matrix could carry only the first two:
+Three facts a reader needs, and before this document the matrix could carry none of them jointly:
 
-1. **The saving is real on context.** 0.501x, from 12,137 tokens to 6,077 — `C1`'s 6,000 threshold is
+1. **The saving is real on context.** 0.502x, from 12,105 tokens to 6,077 — `C1`'s 6,000 threshold is
    **1.013x** away on this arm, i.e. the aim that row has carried since 2026-11-07 is reachable.
-2. **The accuracy loss is not where the total says it is.** The aggregate lost 3.20 points; `MR` lost 6.61
-   and `TR` 4.72, against `ABS` 0.00 and `IE` −0.67. `C2`'s sentence named the aggregate number, and the
+2. **The loss is not where the total says it is.** `TR` loses 4.53 and blocks; `IE` and `MR` lose about
+   2.3 each and sit inside the margin; `ABS` does not move. `C2`'s sentence named the aggregate, and the
    aggregate is the number that hides a part-level loss.
-3. **The bill cannot be read from this pair at all**, and that is the finding this round produced rather
-   than the one it set out to produce — see §1.1.
+3. **The bill cannot be read from this pair at all**, and that is the finding that produced `C3`'s
+   `unrun` rather than a value — see §1.1.
 
-The verdict the instrument returns for the two arms that *can* be compared (accuracy and context, with the
-bill excluded) is **`incomparable`**, blocking on `overall`, `MR` and `TR`. That is the correct answer: one
-arm reads less and answers less, and a reader who wants one of them has to say which axis the product
-optimises. Saying that out loud is the point.
+The verdict is **`incomparable`**, blocking on `overall` and `TR`. That is the correct answer: one arm
+reads less and answers less, and a reader who wants one of them has to say which axis the product
+optimises. Saying it out loud is the point.
 
-### 1.1 The bill was the reading, and the reading was wrong
+### 1.1 Three corrections, and the shape they have in common
 
-The first version of this instrument read the same pair and reported **1.074x** on the bill, and the finding
-was going to be that halving the window costs 7.4% more because it breaks the prefix cache. It does not say
-that. The two arms ran **4 and 2 repetitions**, and **the cache-hit share is a function of the repetition
-count**: a prompt run four times can hit on three, a prompt run twice can hit on one. 51.07% is what one
-miss and one hit over equal-sized prompts produces, and 98.34% is what a near-resident prefix produces —
-neither number is about the window.
+This section was wrong three times before it was right, and each correction is the same mistake wearing a
+different coat: **a number was read on a population that is not the one the sentence claims.**
 
-Both artefacts were caught the same way, and the second one is worse than the first:
+| # | what was read | what was wrong | the reading it gave |
+| --- | --- | --- | --- |
+| 1 | the bill, against `42355323615` | `runs` 4 against 2, and the cache-hit share moves with it | 6.90x on a 0.50x context |
+| 2 | the accuracy, against `42355323615` | `ask` moved alongside the window in the same dispatch | −3.20 overall, `MR −6.61`, `TR −4.72` |
+| 3 | the accuracy, from `feature.metrics` | that field is **one repetition**; `featureAggregate.avg` is the mean | 90.20% against a mean of 90.85% |
 
-| pairing | context | bill | why it is not a reading |
-| --- | ---: | ---: | --- |
-| `42310779222` vs `42373407439` | 0.502x | 1.07x | 4 repetitions against 2, cache share 78.21% vs 51.07% |
-| `42355323615` vs `42373407439` | 0.501x | **6.90x** | 4 against 2, cache share 98.34% vs 51.07% |
+**1. The bill.** A cache hit is charged at 2% of a miss, so the bill is
+`promptTokens × (hit × 0.02 + (1 − hit))` and moves with the hit share. A prompt run four times can hit on
+three; run twice, on one. The first version of this instrument reported 1.074x against one control and
+6.90x against the right one, on a 0.501x context, and neither number is a cost effect. Equal `runs` is
+**necessary** — and, it turned out, **not sufficient**:
 
-A 6.90x bill on a 0.50x context is not a plausible cost effect; it is the repetition count. So the tool now
-**refuses** the comparison outright — unequal `runs` is exit 2 with the reason — and `compareEfficiency`
-reports `billComparable: false` and drops the term from both the promotion and the demotion clause, because a
-confounded axis can neither prove nor disprove anything.
+| pairing | context | bill | cache share | runs |
+| --- | ---: | ---: | ---: | --- |
+| `42310779222` / `42373407439` | 0.502x | 1.074x | 78.21% / 51.07% | 4 / 2 |
+| `42355323615` / `42373407439` | 0.501x | 6.90x | 98.34% / 51.07% | 4 / 2 |
+| **`42310779222` / `42355323615`** | **1.003x** | **0.156x** | **78.21% / 98.34%** | **4 / 4** |
 
-**What survives**: the three-axis order (it was designed for exactly this kind of confound and it is what
-made the artefact visible), the accuracy and context readings above, and `C3` as a criterion with an `unrun`
-value and a named blocker. **What does not**: any claim that this arm is cheaper or dearer to run. It costs
-one dispatch at four repetitions to settle, which is `A3` in `docs/PLAN-COMPETITOR-ABLATION.md`.
+The third row is two dispatches of **one system** with the same 24.2M prompt tokens. A term that can price
+a 20-point cache difference as an 84% saving on a 0.3% context difference is not a cost measurement; it is
+a reading of how the walk was shaped. So the bill **keeps its veto and loses its vote** — a risen bill can
+refuse a context saving, a fallen bill can never be the reason an arm is called better. That rule was
+found by running the first version: it reported `dominates` for that row.
 
-The general lesson is worth one line because it will recur: **an axis that moves with the configuration
-rather than with the system has to be checked for the same confound the accuracy axis has.** A token counter
-looks exact and is not — it is exact per configuration, and the cache makes the bill a function of how the
-run was shaped.
+**2. The control.** `42355323615` was used as the control for the window cut and it is the wrong control:
+it moves `ask` (`verbatim` → `verbatim-acts`) and the room representation *in the same dispatch* that
+shrank the room. Against the arm that differs in exactly one field, the cut's `MR` loss is −2.27 rather
+than −6.61, and its overall loss is −2.65 rather than −3.20. Both are true measurements of two different
+questions, and only the second is about `max_prompt_chars`. The tool now **diffs the two
+`memoryArmConfig`s**, collapses the aliases (`maxPromptChars` and `maxPromptCharsByRoute.*` are one
+variable; `*Routes` and `effectivePromptChars.*` are renderings rather than variables), and forces
+`incomparable` when more than one field moved — the arithmetic still prints and may not promote anything.
+
+**3. The population.** `feature.metrics.correct` is the **first repetition**; `ablation.featureAggregate.avg`
+is the unweighted mean over all of them, and `report.ts` already states why the second is the one to read:
+every cost ratio's numerator is a sum over every repetition, so the denominator has to describe the same
+repetitions or the ratio is two populations. This tool read the first field and therefore published
+90.20% for an arm that averages 90.85%, and 91.40% for one that averages 91.95% — in both cases the first
+repetition, which happened to be the worst. The correction is the repository's own documented rule, which
+is the part worth writing down: **the field was named, and the tool still read the other one.**
+
+The general lesson is one line and it recurs: **an axis that moves with the configuration rather than with
+the system has to be checked for the same confound the accuracy axis has.** A token counter looks exact and
+is not; an accuracy field looks like *an* accuracy and there are two of them; a configuration looks like
+one variable and the dispatch moved two.
 
 ## 2. Why not one weighted score
 
@@ -146,7 +164,8 @@ The policy, pre-registered in code (`DEFAULT_EFFICIENCY_POLICY`):
 
 ```ts
 { margin: 0.025,        // accuracy drop tolerated as a tie, in proportion
-  tokenTolerance: 0.05  // smallest relative movement treated as movement at all
+  tokenTolerance: 0.05, // smallest relative movement treated as movement at all
+  alpha: 0.05           // level a *paired* accuracy claim has to reach
 }
 ```
 
@@ -156,6 +175,21 @@ The policy, pre-registered in code (`DEFAULT_EFFICIENCY_POLICY`):
 | `dominated` | the same statement with `a` and `b` exchanged |
 | `underpowered` | the promotion condition holds but the reference's half-width exceeds the margin, so the sample cannot support the claim — reported as neither a pass nor a fail |
 | `incomparable` | everything else, including a genuine tie and a trade-off in either direction |
+
+**Two instruments, combined asymmetrically.** `compareEfficiency` takes optional `PairedEvidence` — how
+many questions each arm won that the other lost — and runs an exact two-sided McNemar test on it. Where it
+is supplied:
+
+| direction | rule | why |
+| --- | --- | --- |
+| demote (`blocking`) | margin rule **or** a certified paired loss | both are evidence against, so needing only one is strictly more conservative |
+| promote (`leading`) | a certified paired win **only** | promotion can overstate as the interval widens; a margin is not a test |
+
+The asymmetry is not caution, it is the falsification of a first draft that used the paired test alone. Against
+one control the window cut reads 13 won to 23 lost at p = 0.1325, so a rule that demoted only on a significant
+pair called a −3.20-point arm "not worse" and promoted it on the 0.50x context. **Absence of a significant pair
+is not evidence of no effect**, and a rule built to be strict about evidence has to be strict in the direction
+that costs something.
 
 Four properties are deliberate and each has a reason:
 
@@ -168,51 +202,75 @@ Four properties are deliberate and each has a reason:
    ±7.35 pp), and a criterion that can never be green is the failure `ACCEPTANCE-MATRIX.md` §2 refuses.
    The subsets' resolutions are still reported, in `unresolvable`, because an aggregate-level test does not
    license a capability-level claim and a reader is entitled to see which labels that applies to.
-3. **Blocking on a subset errs toward demotion.** `TR` dropped 3.94 pp against a 3.87 pp subset
-   resolution — the drop is inside the noise of that subset and still blocks, because blocking denies a
-   claim rather than making one.
-4. **A cache hit is a bill, never a context.** `billedPromptTokensPerQuestion` exists beside
-   `promptTokensPerQuestion` and is documented as incomparable to any competitor's context figure. No vendor
-   publishes a cache-hit share, so `Zep 4.4K` is a context number and stays on `C1` where it is one.
-   Conflating the two would let this project claim to be cheaper than it is in the only unit the field
-   publishes.
+3. **Blocking on a subset errs toward demotion.** `TR` dropped 4.53 pp against a 3.60 pp subset
+   resolution, and its paired record is **0 won to 5 lost at p = 0.0625** — five questions moved and every
+   one moved against the arm, which is a clean sweep the significance level has not yet licensed and the
+   margin rule blocks anyway, because blocking denies a claim rather than making one.
+4. **A cache hit is a bill, never a context, and the bill is a veto rather than a vote.**
+   `billedPromptTokensPerQuestion` exists beside `promptTokensPerQuestion` and is documented as incomparable
+   to any competitor's context figure — no vendor publishes a cache-hit share, so `Zep 4.4K` is a context
+   number and stays on `C1` where it is one. It may also never be the sole basis of a promotion: its only
+   independent content is the cache, and the cache moved 20 points between two four-repetition dispatches of
+   one arm (§1.1, row 3).
 
 ---
 
-## 5. What the first reading licenses, and what it refuses
+## 5. What the reading licenses, and what it refuses
 
 **Licensed.** `42373407439` at 6,077 context tokens per question is **1.013x** `C1`'s 6,000 threshold, so the
-aim that row has carried since 2026-11-07 is reachable on this corpus — by a configuration whose `MR` fell
-6.61 points and whose `TR` fell 4.72. Both halves are now on the page, and neither was before.
+aim that row has carried since 2026-11-07 is reachable on this corpus — by a configuration whose overall
+accuracy fell 2.65 points and whose `TR` fell 4.53. Both halves are on the page.
 
-**Refused.** Reading `C2`'s met budget as a cost win. The order says `incomparable` and blocks on three
-readings; `C2` keeps its 0.487 and gains a neighbour that says what the cut cost.
+**Refused.** Reading `C2`'s met budget as a cost win. The order says `incomparable` and blocks on `overall`
+and `TR`; `C2` keeps its 0.487 and gains a neighbour that says what the cut cost.
 
 **Blocked, with the reason.** `C3`. Unequal repetition counts. Registered rather than estimated, and the
 blocker is one field.
 
-**Still open, and named here so it is not discovered later.** The `ABS` subset is 30 questions with a
-±5.68 pp interval and reads 100% on both arms: it cannot detect anything, and its `0.00` contribution is a
-zero over 30 items rather than a demonstration. The same is true of every capability-level claim at this
-sample size until it is **paired**: `paired-flip.ts` and McNemar over discordant pairs have resolution that
-depends on the discordant count rather than on the marginal rate, and that is the only route to a
-capability-level claim this dataset supports. Registered, not built.
+**Settled, in the direction that removes a claim.** `42310779222` against `42355323615` is **1.003x the
+context and 0.156x the bill** on identical token totals, i.e. two dispatches of one system. Before this round
+the order reported `dominates` for that pair. It is now `incomparable`, and the reason is a property of the
+instrument rather than of the arms.
+
+**A capability-level claim is still unavailable, and the missing piece is no longer McNemar.** The paired test
+exists now; what it lacks is a paired record of the *repetition mean*. The artifact stores **one answer per
+question**, so the paired counts are first-repetition answers while the marginals are four-repetition means —
+two populations again, in the one place the instrument cannot avoid it. `TR`'s 0 won to 5 lost is therefore a
+first-repetition statement, and a confirmatory dispatch that records one answer per question per repetition
+would make the same test available on the mean. Registered, not built.
+
+**Still open, and named here so it is not discovered later.** The `ABS` subset is 30 questions with a ±5.68 pp
+interval and reads 100% on both arms: it cannot detect anything, and its `0.00` contribution is a zero over 30
+items rather than a demonstration.
 
 ## 6. The interface, and how the reading is reproduced
 
 ```bash
-node tools/efficiency-frontier.mjs \
-  --label window --label squeezed \
+node tools/efficiency-frontier.mjs --json \
+  --label registered --label route-room --label reduced \
   run-42310779222/benchmark-cortex-memory-ablation-report.json \
+  run-42355323615/longmemeval-s-report/benchmark-cortex-memory-ablation-report.json \
   run-42373407439/benchmark-cortex-memory-ablation-report.json
 ```
 
-The tool reads `questionCount`, `runs`, `feature.metrics` (or `metrics`) and `usageBySide.feature` (or
-`usage`), and refuses by name on anything absent rather than defaulting — a missing ledger defaulted to zero
-would report a 99.9% saving. `--json` is the format `C3`'s evidence file
-(`cortex-docs/evidence/longmemeval/frontier.json`) will be written in, so the row cannot carry a typed value;
-the file is **absent today** because the only candidate pair is not bill-comparable (§1.1) and the tool refuses
-to emit one.
+The tool reads `questionCount`, `runs`, `ablation.featureAggregate.avg` (falling back to
+`feature.metrics`, and saying which it used), `memoryArmConfig`, `questions[]` and `usageBySide.feature`
+(or `usage`). It refuses by name on anything absent rather than defaulting — a missing ledger defaulted to
+zero would report a 99.9% saving — and it will not pair on position: a record without a `questionId` is an
+error rather than a guess about question order.
+
+`--json` is what `C3` and `C4` read. `summary.matched.billedTokenRatio` is `null` when the single-variable
+pair's arms ran different repetition counts, which is why `C3` is `unrun` rather than 107.4%; and
+`summary.dominating` is the number `C4` gates on. Neither can be typed into a table, which is the point.
+
+Four refusals are part of the reading rather than the plumbing:
+
+| refusal | what it prevents |
+| --- | --- |
+| unequal `runs` → bill excluded | a 6.90x "cost" that is the repetition count |
+| a pair differing in >1 config field → `incomparable` | `MR −6.61` published as the window's cost when it belonged to a two-variable pair |
+| a cache difference → the bill cannot promote | a 0.156x bill on a 1.003x context, i.e. a dominance claim manufactured by the prefix cache |
+| a non-significant pair → not a demotion | the first draft promoted a −3.20-point arm for want of a p-value |
 
 The three divisions that `C1` documents are preserved: `usageBySide.feature.promptTokens` is a total over
 **every** repetition, so the divisor is `questionCount × runs`. `§13.308` is the record of a reading that
@@ -231,3 +289,7 @@ that a wrong divisor fails there rather than in a matrix row.
   a paired budget cut. `C3` reads the bill. Three rows, three quantities, and the matrix prints all three.
 - **It does not make the accuracy axis informative.** It makes it honest about being uninformative, which is
   the most a ±2.47 pp instrument can do at n = 500.
+- **It does not resolve which artifact "the registered arm" is.** `42310779222` and `42355323615` are both
+  described that way in the record, and they differ by `ask` and a route room — 0.26% on context, 1.2 points
+  on accuracy. Every row picks one of them and none says so. `provenance` in the evidence file records the
+  duplication; resolving it needs a dispatch at equal repetitions, not an edit.
