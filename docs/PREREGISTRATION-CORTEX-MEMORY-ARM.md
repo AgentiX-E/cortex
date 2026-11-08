@@ -35315,3 +35315,46 @@ The repair is a restatement, not a rerun:
 
 `E11a` needs one more clean rerun — the third — and that is now the cheapest experiment in the queue, because it
 prices the quantity every other claim is measured against.
+
+## 13.324 `J9d` paid: under one judge the `M1` difference is 10 questions, p = 0.13
+
+Two re-dispatches with the vector written (`42457818343` for arm A, `42457823477` for arm B), same
+`deepseek:deepseek-v4-pro` judge, same `scorer=full`, `passes=2`, `limit=500`. They also re-price the
+instrument: A reads 406 and B reads 396 where the first pair read 405 and 397, so a regrade of one artifact
+reproduces within **one question of 466**.
+
+Paired over the 464 questions both artifacts carry a gradable verdict for:
+
+| | |
+| --- | ---: |
+| A correct / B correct | **405 / 395** |
+| agree | 420 |
+| A-only | **27** |
+| B-only | **17** |
+| `signFlipExact` | **0.1317** |
+| `mcnemarExact` | 0.1742 |
+
+| reading of the `M1` pair | gap | significant |
+| --- | ---: | --- |
+| artifacts as produced (A by `deepseek-flash`, B by `deepseek-v4-pro`) | 24 questions = 5.15 pt | the reading §13.310 was built on |
+| both re-read by `deepseek-v4-pro`, full scorer | **10 questions = 2.16 pt** | **no, p = 0.13** |
+
+`J9a` holds twice over: the difference does not survive a common judge at the same size, and at the size that
+does survive it is not distinguishable from zero. **`J9e` now applies** — no document may state an `M1` arm
+effect, and §13.310's 24-question reading is a judge difference with an arm component of at most 10 questions
+that this sample cannot resolve.
+
+Two things this does not say, both of them tempting:
+
+- **It does not say the arms are equivalent.** p = 0.13 is not evidence of no difference; the 95% interval on a
+  27-versus-17 discordant split includes differences larger than the 4-to-6.6-question claims this campaign has
+  made elsewhere. What it excludes is the *24-question* reading.
+- **It does not license re-reading the old artifacts under the lenient judge to recover the gap.** The choice of
+  common judge is a parameter, and `524` of the 932 verdicts on A were the judge's; picking the judge after
+  seeing both arms is the selection defect §13.312 identified, one level up. The judge here was named before the
+  dispatch, in §13.322.1, on the ground that it is the stricter of the two.
+
+The instrument cost is worth recording because it is the reusable part: **428 of 932 verdicts were decided by
+`exact` (350) or `numeric` (78)**, so the endpoint saw 504 requests where the judge channel would have sent 932,
+and the reading is 45.9% cheaper than the instrument it replaces — while being the instrument the artifact's own
+accuracy uses.
