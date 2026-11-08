@@ -125,6 +125,31 @@ def registered_reader(module) -> dict:  # noqa: ANN001 - the tool module, import
     return reader
 
 
+def registered_room(config: dict, raw: str) -> None:
+    """Put the table's budget into `config` in the shape the arm records for it.
+
+    §13.295 moved the registered budget from one room for every route to a route-scoped map, and the
+    arm records whichever shape it was given: `maxPromptChars` for a scalar, `maxPromptCharsByRoute`
+    for the map. A fixture that hard-coded `int(inputs[...])` read the map as an integer and failed
+    for a reason with nothing to do with what it tests.
+
+    Both keys are cleared before one is written, because an artifact cannot carry both: the map is
+    the request, the scalar is the request, and an artifact holding one of each would be a run this
+    arm cannot make -- so leaving the `REAL_41222844945` fixture's `maxPromptChars: 96000` in place
+    would manufacture the very departure the test asserts is absent.
+    """
+    config.pop("maxPromptChars", None)
+    config.pop("maxPromptCharsByRoute", None)
+    if ":" not in raw:
+        config["maxPromptChars"] = int(raw)
+        return
+    rooms: dict[str, int] = {}
+    for part in raw.split(","):
+        route, _, chars = part.partition(":")
+        rooms[route.strip()] = int(chars)
+    config["maxPromptCharsByRoute"] = rooms
+
+
 def report(config: dict, **overrides: object) -> dict:
     block = dict(config)
     block.update(overrides)
@@ -247,6 +272,11 @@ class TestTheRealArtifact:
             # so the table is put back for the same reason the two above are: the fixture is the
             # artifact and the table is the changing half.
             "cortex_memory_prompt_contract": "abstention-evidence-blocks",
+            # §13.295 moved the registered budget from one room to a route map, so the scalar is put
+            # back for the same reason the three above are: this artifact ran 96,000 against a
+            # registered 48,000, and a map on the table's side would make the difference a shape
+            # mismatch rather than the value difference this test names.
+            "cortex_memory_max_prompt_chars": "48000",
         }
         text, failures = module.registration_section(report(REAL_41222844945), [])
         assert failures == 3, text
@@ -299,7 +329,6 @@ class TestTheCleanRun:
         config = {
             **REAL_41222844945,
             "ask": inputs["cortex_memory_ask"],
-            "maxPromptChars": int(inputs["cortex_memory_max_prompt_chars"]),
             "turnCutMarker": "none",
             "askRoutes": ["multi-session"],
             "reader": registered_reader(module),
@@ -311,6 +340,7 @@ class TestTheCleanRun:
             # stale at the next move.
             "promptContract": inputs["cortex_memory_prompt_contract"],
         }
+        registered_room(config, inputs["cortex_memory_max_prompt_chars"])
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
         assert "is the registered configuration, field for field" in text
@@ -354,7 +384,10 @@ class TestWhatIsCounted:
         module = _module()
         text, _ = module.registration_section(report(REAL_41222844945), [])
         assert "registration: 20 field(s) compared" in text
-        assert "1 derived" in text
+        # Two since §13.327: `maxPromptCharsByRoute` is derived on an artifact that carries the
+        # scalar, exactly as `maxPromptChars` is derived on one that carries the map. Counted rather
+        # than dropped, which is what the header exists to do.
+        assert "2 derived" in text
         assert "3 harness" in text
         assert "1 presence" in text
 
@@ -387,7 +420,14 @@ class TestAbsentIsNotNull:
         expressible, and the comparison has to treat its two absences as one state."""
         module = _module()
         inputs = dict(module.dispatch_inputs())
-        module.dispatch_inputs = lambda: {**inputs, "thinking": "disabled"}
+        module.dispatch_inputs = lambda: {
+            **inputs,
+            "thinking": "disabled",
+            # §13.295 moved the registered budget to a route map. The subject here is the two
+            # absences in `reader.thinkingRoutes`, so the scalar registered on the day is put back
+            # rather than the fixture being rebuilt around a second change of subject.
+            "cortex_memory_max_prompt_chars": "48000",
+        }
         config = {
             **REAL_41222844945,
             "ask": module.dispatch_inputs()["cortex_memory_ask"],
@@ -423,7 +463,6 @@ class TestTheDefaultReportCarriesTheVerdict:
         config = {
             **REAL_41222844945,
             "ask": inputs["cortex_memory_ask"],
-            "maxPromptChars": int(inputs["cortex_memory_max_prompt_chars"]),
             "turnCutMarker": "none",
             "askRoutes": ["multi-session"],
             "reader": registered_reader(module),
@@ -432,6 +471,7 @@ class TestTheDefaultReportCarriesTheVerdict:
             "relevanceSignal": inputs["cortex_memory_relevance"],
             "promptContract": inputs["cortex_memory_prompt_contract"],
         }
+        registered_room(config, inputs["cortex_memory_max_prompt_chars"])
         assert module.congruence_note(report(config)) == ""
 
     def test_names_the_condition_when_a_field_moved_without_being_declared(self) -> None:

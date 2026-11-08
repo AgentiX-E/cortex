@@ -300,7 +300,21 @@ INPUTS = {
     # with the full/partial coverage composition identical to the control (75/46 in both) and the
     # full band moving 84.00% -> 89.33%. It is the first ask on this arm whose reading is attributable
     # because the population it is read on did not move.
-    "cortex_memory_ask": "verbatim",
+    #
+    # §13.327. `verbatim-acts`, adopted by §13.318.3, where this line said `verbatim` and §10.3 said
+    # `verbatim` too. That agreement is the whole defect: every 500-question run from `42337560027`
+    # onwards sent `--set cortex_memory_ask=verbatim-acts`, so the document and the table agreed with
+    # each other and disagreed with the runs, and `test_preregistration_config.py` -- whose entire
+    # subject is that pair -- could not see it. §10.3's own `ask` bullet describes this exact class
+    # and was written when the value was `enumerated` and the runs were `operands`; the third
+    # instance landed four concepts later, inside the paragraph naming it. `42355323615` read 91.95%
+    # overall against 90.85% with `MR` 83.88% against 79.13% at this value, and `E11`/`E11a`
+    # (`42452904894`, `42467392736`) redrew it twice with 500 of 500 `promptDigest` identical.
+    #
+    # The mechanism that closes the class is `tools/arm-config-record.py`, whose baseline is the
+    # artifact's own `memoryArmConfig` projected onto these input names: three columns, where before
+    # there were two that a maintainer edits by hand.
+    "cortex_memory_ask": "verbatim-acts",
     # §13.64's adopted ranking: dense cosine fused with a rare-keyword channel by reciprocal
     # rank. This line said `retrieval` for six sections after that adoption, because §10.3
     # held BOTH the adoption bullet and §13.17's original one and the registration parser
@@ -378,7 +392,14 @@ INPUTS = {
     # nine questions to the roster, so this line and §10.3 move together. Sent explicitly for
     # the reason every other registered value is: a run's room should not depend on a constant that
     # lives in another package.
-    "cortex_memory_max_prompt_chars": "48000",
+    #
+    # §13.295/§13.318.3. A route map rather than a scalar, because `verbatim-acts` writes 460 more
+    # characters of instruction on multi-session and §13.295 paid that back instead of letting the
+    # rule rent its room from the evidence: 48,460 there, the product's 48,000 on the other five.
+    # A scalar input still means one room for every route -- the arm's parser decides on the colon,
+    # not on a heuristic -- so the two shapes cannot be confused, and this line names the map
+    # because the scalar describes a run this arm is not making.
+    "cortex_memory_max_prompt_chars": "multi-session:48460",
     # §13.84's adopted filter. `all` was the state every run before it was in; `39298662801` took
     # MR from 83 to 90 and TR from 93 to 98 with no capability regressed, so these two lines move
     # with §10.3. The reach stays scoped: the three untouched capabilities reproduce their control

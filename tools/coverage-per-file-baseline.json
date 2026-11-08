@@ -272,11 +272,11 @@
     },
     "cortex-ai/src/retry.ts": {
       "statements": [
-        137,
-        137
+        143,
+        143
       ],
       "branches": [
-        94,
+        96,
         96
       ],
       "functions": [
@@ -284,8 +284,8 @@
         21
       ],
       "lines": [
-        135,
-        135
+        142,
+        142
       ]
     },
     "cortex-ai/src/usage.ts": {

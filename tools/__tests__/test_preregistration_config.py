@@ -82,7 +82,14 @@ CONCEPT_TO_INPUT = {
     # §13.73's reach: a route list rather than a number, and `all` is the registered state.
     "maxTurnCharsRoutes": "cortex_memory_max_turn_chars_routes",
     # §13.81's budget: the one input that changes the room without changing a turn.
-    "maxPromptChars": "cortex_memory_max_prompt_chars",
+    #
+    # The concept is the **map** and not the scalar as of §13.327. A scalar is still expressible in
+    # the arm -- `maxPromptChars` survives there for one room on every route -- but the shipping
+    # configuration is a route map, and a mapping keyed on the scalar would compare `48000` against
+    # `multi-session:48460` and call both of them "the room". §13.299 records what that conflation
+    # cost once already: an artifact whose only room field was the map described a 48,000-character
+    # run and a 24,000-character run with the same bytes.
+    "maxPromptCharsByRoute": "cortex_memory_max_prompt_chars",
     # §13.83's filter and its reach: the two inputs that decide which turns may enter the room at
     # all. Registered at the identity (`all`/`all`), because the experiment that narrows them is
     # the section's own dispatch and the adopted state has to be on the record meanwhile.

@@ -1405,6 +1405,32 @@ describe('an exhausted retry reports itself', () => {
     expect(record!.attempts).toBe(0);
     expect(record!.cause).toBe('');
   });
+
+  it('reports no ceiling at all when the caller disabled both the budget and the retries', async () => {
+    // The other half of the zero-attempt state. `maxRetries: -1` reached the pre-loop guard as of
+    // §13.327, and the ceiling it reports there has two arms like every other report of
+    // `retryBudgetMs`: a disabled budget prints `null` rather than `-1`, because the field's
+    // contract is "how long the ceiling was" and a negative number is not a duration. Both arms
+    // are caller-reachable, and this is the one the arm's own suite never took.
+    const fetchFn = (async () => new Response('{}')) as unknown as typeof fetch;
+    const thrown = await retryableFetch(
+      fetchFn,
+      'http://x',
+      {},
+      {
+        maxRetries: -1,
+        retryBudgetMs: -1,
+      },
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    const record = exhaustionOf(thrown);
+    expect(record).toBeDefined();
+    expect(record!.attempts).toBe(0);
+    expect(record!.retryBudgetMs).toBeNull();
+  });
 });
 
 /**

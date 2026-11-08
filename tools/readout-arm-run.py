@@ -4161,6 +4161,18 @@ def reach_section(questions: list[dict]) -> tuple[str, int]:
 # self-consistency run, which is the shape of check that teaches a reader to skip the output.
 RUNTIME_CONFIG_FIELDS = frozenset({'voteCounts'})
 
+# Fields that stay whole even though they are objects, because the object **is** the value.
+#
+# `maxPromptCharsByRoute` is one budget carried as a map (`{multi-session: 48460}`), and the
+# flattening above would turn it into `maxPromptCharsByRoute.multi-session` and make every
+# comparison per-route. That reads well until the registration has to be parsed: the dispatch sends
+# the whole map as one string, `multi-session:48460`, so a per-route path has no registered value to
+# be compared with and the tool falls through to `coerce_to_artifact("multi-session:48460", 48460)`
+# -- `int()` on a colon. §13.327 is where that was found: `test_preregistration_config.py` compared
+# §10.3 with the table, the two agreed, and this tool -- the only one that reads an artifact -- had
+# no shape for the value the arm has been shipping since §13.295.
+ATOMIC_CONFIG_FIELDS = frozenset({'maxPromptCharsByRoute'})
+
 # What the dispatch calls a field, and the artifact field or fields it writes.
 #
 # Most entries are one-to-one. The ones that are not are why the table exists:
@@ -4189,7 +4201,11 @@ DISPATCH_FIELD_ALIASES = {
     'cortex_memory_relevance_top_k': ('relevanceTopK',),
     'cortex_memory_relevance_units': ('relevanceUnits',),
     'cortex_memory_search_unit': ('relevanceUnits',),
-    'cortex_memory_max_prompt_chars': ('maxPromptChars',),
+    # One input, two shapes: a scalar for one room on every route, a map for the route-scoped room
+    # §13.295 adopted. Both are listed, and whichever the artifact carries is compared while the
+    # other is counted as derived -- because an artifact cannot carry both, and requiring a writer
+    # to declare the shape they did not run would teach them to paste it in.
+    'cortex_memory_max_prompt_chars': ('maxPromptChars', 'maxPromptCharsByRoute'),
     'cortex_memory_max_turn_chars': ('maxTurnChars', 'turnCutMarker'),
     'cortex_memory_max_turn_chars_routes': ('maxTurnCharsRoutes',),
     'cortex_memory_evidence_roles': ('evidenceRoles',),
@@ -4237,6 +4253,8 @@ def _flatten_config(config: dict, prefix: str = '') -> tuple[dict, dict]:
         path = f'{prefix}{key}'
         if key in RUNTIME_CONFIG_FIELDS and not prefix:
             runtime[path] = value
+        elif key in ATOMIC_CONFIG_FIELDS:
+            configuration[path] = value
         elif isinstance(value, dict) and value:
             nested_config, nested_runtime = _flatten_config(value, f'{path}.')
             configuration.update(nested_config)
@@ -4456,7 +4474,40 @@ def coerce_to_artifact(raw: str, target: object):
         return float(raw)
     if isinstance(target, list):
         return [part.strip() for part in raw.split(',') if part.strip()]
+    if isinstance(target, dict):
+        # The route room. `readPromptBudget` sends `route:chars` pairs in one string and the artifact
+        # holds the map, so the registered value is read back into the map's shape. A scalar
+        # registration against a map artifact reaches here too and is refused by the `int()` below,
+        # which is correct: the two are different configurations, not two spellings of one.
+        rooms = {}
+        for part in raw.split(','):
+            route, _, chars = part.partition(':')
+            rooms[route.strip()] = int(chars)
+        return rooms
     return raw
+
+
+def _shape_disagrees(raw: str, target: object) -> bool:
+    """The registered string and the artifact's value are different *shapes*, not different types.
+
+    Since §13.327 one input carries two shapes: `cortex_memory_max_prompt_chars` is a scalar for one
+    room on every route and a `route:chars` map for the route-scoped room. A run that registered the
+    map and executed the scalar has **departed**, and that verdict is the whole point of this
+    section -- but the coercion below cannot reach it, because `int("multi-session:48460")` fails and
+    a failed coercion is reserved for a value the field cannot hold at all. Those are two different
+    situations and this is the boundary between them:
+
+    | registered | artifact | verdict |
+    | --- | --- | --- |
+    | `multi-session:48460` | `96000` | departure -- the two are different requests |
+    | `big` | `96000` | refusal -- nothing in the artifact could hold `big` |
+    | `48000` | `{multi-session: 48460}` | departure -- the same, in the other direction |
+    """
+    if isinstance(target, (int, float)) and ":" in raw:
+        return True
+    if isinstance(target, dict) and ":" not in raw:
+        return True
+    return False
 
 
 def registration_section(report: dict, departed: list[str]) -> tuple[str, int]:
@@ -4513,6 +4564,11 @@ def registration_section(report: dict, departed: list[str]) -> tuple[str, int]:
                 derived.append((name, alias))
                 continue
             for path in paths:
+                if _shape_disagrees(raw, flat[path]):
+                    # Compared as text so the difference is printed with both values. Coercing
+                    # first would turn a departure into a refusal to run.
+                    compared.append((name, path, raw, flat[path]))
+                    continue
                 try:
                     expected = coerce_to_artifact(raw, flat[path])
                 except ValueError:

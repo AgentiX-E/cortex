@@ -1,0 +1,114 @@
+{
+  "adoptedBy": "13.318.3",
+  "commit": "7692f204",
+  "dataset": "longmemeval",
+  "datasetFingerprint": "sha256:d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+  "dispatch": {
+    "ablation_runs": "4",
+    "cortex_memory_ask": "verbatim-acts",
+    "cortex_memory_evidence_roles": "user",
+    "cortex_memory_evidence_roles_routes": "multi-session,temporal",
+    "cortex_memory_max_prompt_chars": "multi-session:48460",
+    "cortex_memory_max_turn_chars": "400",
+    "cortex_memory_max_turn_chars_routes": "multi-session,temporal",
+    "cortex_memory_prompt_contract": "evidence-blocks-unsourced",
+    "cortex_memory_query_expansion": "none",
+    "cortex_memory_relevance": "retrieval-anchored",
+    "cortex_memory_relevance_top_k": "256",
+    "cortex_memory_relevance_units": "turn",
+    "cortex_memory_rerank": "none",
+    "cortex_memory_retrieval_threshold": "0",
+    "cortex_memory_review_pass": "bare",
+    "cortex_memory_self_consistency": "none",
+    "cortex_memory_source_trust": "0.5",
+    "model": "deepseek-chat",
+    "temperature": "0",
+    "thinking": "multi-session+temporal"
+  },
+  "generatedAt": "2026-11-08T11:01:07.625Z",
+  "memoryArmConfig": {
+    "anchors": {
+      "count": 4,
+      "decay": 0.5,
+      "radius": 3
+    },
+    "ask": "verbatim-acts",
+    "askRoutes": [
+      "multi-session",
+      "flat",
+      "temporal",
+      "abstention"
+    ],
+    "assemblyRoutes": [
+      "multi-session"
+    ],
+    "confidenceSignal": "none",
+    "embedding": {
+      "dimensions": 1024,
+      "model": "embedding-3",
+      "preflight": "ok",
+      "provider": "openai-compatible"
+    },
+    "evidenceRoles": [
+      "user"
+    ],
+    "evidenceRolesRoutes": [
+      "multi-session",
+      "temporal"
+    ],
+    "maxPromptCharsByRoute": {
+      "multi-session": 48460
+    },
+    "maxTurnChars": 400,
+    "maxTurnCharsRoutes": [
+      "multi-session",
+      "temporal"
+    ],
+    "promptAssembly": "instruction-first",
+    "promptContract": "evidence-blocks-unsourced",
+    "queryExpansion": "none",
+    "reader": {
+      "baseUrl": "https://api.deepseek.com/v1",
+      "endpoint": "matches",
+      "model": "deepseek-chat",
+      "providerId": "deepseek",
+      "temperature": 0,
+      "thinking": "enabled",
+      "thinkingRoutes": [
+        "multi-session",
+        "temporal"
+      ]
+    },
+    "relevanceSignal": "retrieval-anchored",
+    "relevanceTopK": 256,
+    "relevanceUnits": "turn",
+    "renderingRoutes": [
+      "abstention",
+      "multi-session",
+      "temporal",
+      "knowledge-update",
+      "assistant",
+      "flat"
+    ],
+    "rerank": {
+      "provider": "none"
+    },
+    "retrievalThreshold": 0,
+    "reviewBareDecline": true,
+    "reviewPass": "bare",
+    "selfConsistency": "none",
+    "sessionBudget": null,
+    "sourceTrust": 0.5,
+    "threshold": 0,
+    "turnCutMarker": "none"
+  },
+  "passShape": {
+    "minIntervalMs": null,
+    "retryBudgetMs": null,
+    "workers": 4
+  },
+  "questionCount": 500,
+  "run": "42467392736",
+  "runs": 4,
+  "why": "the E11a redraw of the adopted configuration, whose config is identical to 42355323615's and whose artifact is the one on disk"
+}

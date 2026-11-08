@@ -658,6 +658,18 @@ export async function retryableFetch(
 }
 
 /**
+ * What the previous attempt did, as one of two things and never neither.
+ *
+ * Declared rather than inlined because the type *is* the invariant §13.327 removed two nullable
+ * variables to obtain: an attempt either threw or answered, so a state that holds neither is not
+ * representable. The `undefined` the loop actually carries is a third thing and is kept outside
+ * this union -- it means "no attempt has been made", which is the first iteration and nothing else.
+ */
+type LastAttempt =
+  | { readonly kind: 'thrown'; readonly error: Error }
+  | { readonly kind: 'answered'; readonly response: Response };
+
+/**
  * {@link retryableFetch}, reporting what the call observed.
  *
  * Kept as a separate export rather than a fifth parameter on `RetryOptions` so
@@ -700,20 +712,58 @@ export async function retryableFetchWithStats(
   // of the sequence. Measuring from the first retry would let a slow initial
   // attempt (up to `timeoutMs`) be spent outside the budget entirely.
   const sequenceStart = Date.now();
-  let lastError: Error | undefined;
-  // The most recent retryable response, held so it can be returned when a retry
-  // is unaffordable or the budget runs out. Without it the budget path would
-  // have nothing to return and would have to fabricate a status.
-  let resFromLastAttempt: Response | undefined;
+  // ## One field for the last attempt's outcome, because two nullable fields were a sum type
+  //
+  // Until §13.327 this was `lastError: Error | undefined` beside `resFromLastAttempt: Response |
+  // undefined`, with an invariant that no comment stated and no type enforced: **they are never
+  // both absent.** An attempt either throws -- setting the error and clearing the response -- or
+  // answers, setting the response and leaving the error. Encoding a sum type as a product forces
+  // every site that reads one to re-derive the other's state, and two of those derivations were
+  // arms no input could reach: `lastError ?? new Error(...)` and
+  // `cause: lastError === undefined ? '' : lastError.message`, both inside a block whose own
+  // condition (`resFromLastAttempt === undefined`) already proves the error is there. The branch
+  // gate reported `retry.ts` at 94/96 and they were recorded rather than repaired, because the
+  // repair is this: make the invariant the type.
+  //
+  // `pending` also absorbs the loop counter's meaning. "Is this a retry?" and "is there a previous
+  // outcome?" are the same question -- the old body asked it twice, as `attempt > 0` and as
+  // `resFromLastAttempt === undefined` -- and asking it once is what makes the `undefined` arm
+  // reachable on the first attempt and only there.
+  let pending: LastAttempt | undefined;
   const stats: RetryStats = {
     attempts: 0,
     retried: 0,
     rateLimited: 0,
     retryAfterHonoured: 0,
   };
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const fromHeader = retryAfterMs(resFromLastAttempt);
+  // ## Zero attempts is a state, and it used to be an accident of the loop bound
+  //
+  // `maxRetries: -1` asks this function not to touch the network. Until §13.327 that request was
+  // honoured by `for (let attempt = 0; attempt <= maxRetries; ...)` never running its body, and the
+  // reply fell out of the loop into a throw whose `lastError` was absent only because of that. Two
+  // facts were reading as one: "no attempt was made" and "the last attempt threw" shared both a
+  // code path and the `??` that distinguished them, which is why the branch gate could not tell
+  // which arm of it a reader was looking at. Stated here, the two are separated, and the answer
+  // keeps the shape the record already promised: `attempts: 0` and an empty `cause`, because a
+  // call that never reached the network has no transport error to attribute.
+  if (maxRetries < 0) {
+    processRetryStats.recordExhausted(stats);
+    throw withExhaustion(new Error(`fetch failed after ${stats.attempts} attempts`), {
+      url,
+      attempts: stats.attempts,
+      retried: stats.retried,
+      rateLimited: stats.rateLimited,
+      elapsedMs: Date.now() - sequenceStart,
+      attemptsMs,
+      timeoutMs,
+      retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
+      cause: '',
+    });
+  }
+  let attempt = 0;
+  for (;;) {
+    if (pending !== undefined) {
+      const fromHeader = retryAfterMs(pending.kind === 'answered' ? pending.response : undefined);
       const computed = baseDelayMs * 2 ** (attempt - 1);
       // What is left of the budget, read fresh at every retry: the ceiling is measured
       // from the first attempt, and every attempt before this one has spent some of it.
@@ -752,7 +802,7 @@ export async function retryableFetchWithStats(
             // (`remaining !== null`), so the `budgetEnforced ?` arm it used to carry was unreachable.
             remainingMs: Math.max(0, remaining),
           };
-          if (resFromLastAttempt === undefined) {
+          if (pending.kind === 'thrown') {
             // ## Never invent a status
             //
             // This path used to `return new Response(null, { status: 429 })`, and run
@@ -769,21 +819,18 @@ export async function retryableFetchWithStats(
             // rethrown with the counts attached, on the same contract the exhaustion path
             // uses one branch below.
             processRetryStats.recordExhausted(stats);
-            throw withExhaustion(
-              lastError ?? new Error(`fetch failed after ${stats.attempts} attempts`),
-              {
-                url,
-                attempts: stats.attempts,
-                retried: stats.retried,
-                rateLimited: stats.rateLimited,
-                elapsedMs: Date.now() - sequenceStart,
-                attemptsMs,
-                timeoutMs,
-                // Enforced here for the same reason as `remainingMs` above.
-                retryBudgetMs,
-                cause: lastError === undefined ? '' : lastError.message,
-              },
-            );
+            throw withExhaustion(pending.error, {
+              url,
+              attempts: stats.attempts,
+              retried: stats.retried,
+              rateLimited: stats.rateLimited,
+              elapsedMs: Date.now() - sequenceStart,
+              attemptsMs,
+              timeoutMs,
+              // Enforced here for the same reason as `remainingMs` above.
+              retryBudgetMs,
+              cause: pending.error.message,
+            });
           }
           // Unaffordable. Returning the real response rather than sleeping past the
           // deadline: the caller inspects `res.ok` and raises the provider's own status,
@@ -794,7 +841,7 @@ export async function retryableFetchWithStats(
           // never made, so recording it would report a request the provider never
           // received. `refusedCalls` is what says the call was declined rather than served,
           // and the refusal travels with the outcome so the caller can name the reason.
-          return withRefusal(resFromLastAttempt, stats, refusal);
+          return withRefusal(pending.response, stats, refusal);
         }
         waitMs = remaining;
       }
@@ -850,14 +897,37 @@ export async function retryableFetchWithStats(
       attemptsMs.push(Date.now() - attemptStart);
     } catch (err) {
       attemptsMs.push(Date.now() - attemptStart);
-      lastError = err instanceof Error ? err : new Error(String(err));
-      // A transport failure carries no response, so there is no header to read
-      // on the next iteration and the computed backoff applies.
+      const thrown = err instanceof Error ? err : new Error(String(err));
+      // ## Every attempt failed on transport, and the accounting is recorded HERE
+      //
+      // This block used to fall out of the loop and throw from below it, and the move is a repair
+      // rather than a taste: a call that died on every attempt used to leave no trace in the
+      // aggregate at all, so the counters described the calls that recovered and not the one that
+      // did not. Recording it on the path that knows is what puts the terminal throw where the
+      // error is in scope -- which is also what lets `pending` be a sum type instead of a pair of
+      // nullable fields with a `??` no input could reach.
       //
       // Deliberately not counted as `rateLimited`: no status was received, so a
       // 429 count incremented here would attribute a network fault to the
       // provider's rate limiter.
-      resFromLastAttempt = undefined;
+      if (attempt >= maxRetries) {
+        processRetryStats.recordExhausted(stats);
+        throw withExhaustion(thrown, {
+          url,
+          attempts: stats.attempts,
+          retried: stats.retried,
+          rateLimited: stats.rateLimited,
+          elapsedMs: Date.now() - sequenceStart,
+          attemptsMs,
+          timeoutMs,
+          retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
+          cause: thrown.message,
+        });
+      }
+      // A transport failure carries no response, so there is no header to read
+      // on the next iteration and the computed backoff applies.
+      pending = { kind: 'thrown', error: thrown };
+      attempt += 1;
       continue;
     }
     if (res.status === 429) {
@@ -866,7 +936,7 @@ export async function retryableFetchWithStats(
     if (res.ok || !isRetryableStatus(res.status)) {
       return withResponse(res, stats);
     }
-    if (attempt === maxRetries) {
+    if (attempt >= maxRetries) {
       // The count ran out on a status we would have retried. That is a refusal like any
       // other -- the call was answered and not served -- so it is counted and reported the
       // same way rather than as a clean completion.
@@ -899,24 +969,9 @@ export async function retryableFetchWithStats(
         },
       );
     }
-    resFromLastAttempt = res;
+    pending = { kind: 'answered', response: res };
+    attempt += 1;
   }
-  // Every attempt failed on transport. The accounting is recorded HERE rather than only
-  // on the returning paths, and that is a repair rather than symmetry: a call that died
-  // on every attempt used to leave no trace in the aggregate at all, so the counters
-  // described the calls that recovered and not the one that did not.
-  processRetryStats.recordExhausted(stats);
-  throw withExhaustion(lastError ?? new Error(`fetch failed after ${stats.attempts} attempts`), {
-    url,
-    attempts: stats.attempts,
-    retried: stats.retried,
-    rateLimited: stats.rateLimited,
-    elapsedMs: Date.now() - sequenceStart,
-    attemptsMs,
-    timeoutMs,
-    retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
-    cause: lastError === undefined ? '' : lastError.message,
-  });
 }
 
 /**
@@ -929,9 +984,10 @@ export async function retryableFetchWithStats(
  *
  * The parameter is an `Error` rather than `unknown`, and that is not a narrowing for
  * convenience: the loop above converts a non-Error throw into an `Error` at the point it
- * is caught, so `lastError` is always one. A `typeof error === 'object'` guard here would
- * be an arm no input can reach, which is the shape §57.6 removed elsewhere -- and the
- * branch-coverage gate would be the thing that found it.
+ * is caught, and `LastAttempt` carries that converted value in its `thrown` arm, so what
+ * arrives here is an `Error` by construction rather than by check. A `typeof error ===
+ * 'object'` guard would be an arm no input can reach, which is the shape §57.6 removed
+ * elsewhere -- and the branch-coverage gate would be the thing that found it.
  */
 export function withExhaustion(error: Error, exhaustion: RetryExhaustion): Error {
   (error as { retryExhausted?: RetryExhaustion }).retryExhausted = exhaustion;

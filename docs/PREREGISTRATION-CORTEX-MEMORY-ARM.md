@@ -707,21 +707,33 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   expressible at all, and it dropped MR's never-surfaced gold from 28.1% to **5.0%** while `beyond the pool`
   fell to zero. §13.54's refutation of this width was measured under a 26-turn room and is narrowed, not
   overturned: a wide pool is useless when the room is narrow, and necessary when it is not.
-- `maxPromptChars: 48000` — **the evidence budget, adopted by §13.82** (registered at the product's 24,000 by
-  §13.81 and raised by that section's run). It is written down because §13.80 showed the room cannot be bought
-  by truncating: at a 200-character cap the room reached 100 turns and MR fell to 29 of 121. The budget is the
-  only lever that grows the room without touching a turn, and a value a run depends on should not live in
-  another package's constant. At 48,000 the window holds **144 turns on MR and 151 on TR** against 68 and 74,
-  delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403**; the run is `39260774611` and
-  §13.82.3 states what its two failed predictions do to the step hypothesis.
-  **As-of record, added by §13.202.6 on §13.192.7.3's request:** the arm has **not** been running this value.
-  Every 500-question run from `41144910162` onwards sends `--set cortex_memory_max_prompt_chars=96000` and
+- `maxPromptCharsByRoute: multi-session:48460` — **the evidence budget, adopted by §13.82 as one flat room and
+  re-registered as a route map by §13.295 and §13.318.3.** §13.81 registered 24,000 and §13.82 raised it to
+  48,000, because §13.80 showed the room cannot be bought by truncating: at a 200-character cap the room reached
+  100 turns and MR fell to 29 of 121. At 48,000 the window held **144 turns on MR and 151 on TR** against 68 and
+  74, delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403** (`39260774611`; §13.82.3
+  states what its two failed predictions do to the step hypothesis).
+  **The concept is the map and not the scalar because the arm no longer runs one room.** `verbatim-acts` writes
+  460 more characters of instruction on the multi-session route, and §13.295 paid that back rather than letting
+  the rule rent its room from the evidence: the route gets 48,460 and the other five stay at the product's
+  48,000. §13.318.3 adopted the pair, and `42355323615` read **91.95%** overall against 90.85% with `MR` 83.88%
+  against 79.13%, context unchanged at 1.003x.
+  **A scalar is still expressible and still means one room for every route** — `maxPromptChars` survives in the
+  artifact for that shape, and the parser decides between them on whether the input contains a colon rather than
+  on a heuristic. The registration names the map because a scalar here would describe a run this arm is not
+  making, which is the defect §13.327 records: §10.3 and the table both said `48000` from §13.295 until that
+  section, and the artifact said `{multi-session: 48460}`.
+  **What the six routes actually assemble under is `effectivePromptChars`**, computed through the same
+  three-term expression the product's `#promptCharsFor` uses (§13.299). The map alone cannot say it: a route
+  absent from the map takes a product default that moved from 24,000 to 48,000 in §13.82, so an artifact whose
+  only room field is the map describes a 48,000-character run and a 24,000-character run with the same bytes.
+  `tools/cost-ledger.py` read `42355323615` as *uncapped* before the field existed.
+  **As-of record, kept from §13.202.6 because its lesson outlives the value it was written about:** every
+  500-question run from `41144910162` sent `--set cortex_memory_max_prompt_chars=96000` and
   `--set cortex_memory_max_turn_chars=400:ellipsis`, and neither override was ever registered as an adoption —
   96,000 was **declined** on a one-variable pair by §13.118.6, and `ellipsis` was registered as a treatment by
-  §13.188 whose result has never been adopted. So this line is the *adopted* configuration and those runs are
-  experiments whose controls sit at 96,000; a run that intends 96,000 must name itself in its own registration and
-  carry `readout-arm-run.py --config --treatment cortex_memory_max_prompt_chars` as the check that it moved only
-  the field it meant to move.
+  §13.188 whose result has never been adopted. The record was written to say so rather than to fix it, which is
+  why it stayed true of the *documents* and false of the *runs* for 125 sections. §13.327 is the fix.
 - `evidenceRoles: user` — **registered by §13.83 at the identity and adopted at `user` by §13.84, on mechanism
   and mean; §13.87 corrected the magnitude.** The filter exists because §13.82 measured the composition rather
   than the size of the 48,000-character room: 51.9% of multi-session's rendered characters were assistant turns,
@@ -830,7 +842,17 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   reference's schema, Step 2 and terminator were still missing from this arm. They are not --
   §13.248 adopted `ask=verbatim`, which is that block verbatim, and §13.278 records the stale
   premise and the dispatch it would have wasted.
-- `ask: verbatim` — **registered by §13.248, replacing `operands+operand-gap`.** The value is the
+- `ask: verbatim-acts` — **adopted by §13.318.3, replacing `verbatim`, which §13.248 registered.**
+  The value is `verbatim`'s aggregation contract with the reference's two-step *acts* form: on multi-session it
+  rewrites the line that carries the verb rule and adds the reference's statement of what "how many" means when
+  the answer is spread over turns. `ASK_ROUTES['verbatim-acts'] === ASK_ROUTES.verbatim` (the same four routes),
+  `ASK_CHANGES['verbatim-acts'] === ['multi-session']`, and on a derivation question the change set is empty —
+  so the diff is one route, three lines, and `ask-verbatim-acts.test.ts` asserts it as a diff rather than as a
+  present string. §13.294 read it at **MR +4.13 and +1.00 overall** (11 of 13 gates); §13.295 then paid its
+  460-character rent back through the room above rather than through the evidence, and §13.318.3 adopted the
+  pair on a 1.10-point gain that is the sum of two individually sub-significant steps in the same direction.
+  **The paragraph that follows is `verbatim`'s history and is kept because it is the measurement
+  `verbatim-acts` is read against.** §13.248's value is the
   reference pipeline's aggregation contract migrated whole: `buildAggregationQaPrompt`'s text, unabridged,
   with the `item | verb | session date` schema, four per-form Step 2 lines, the "combining is NOT a reason
   to abstain" licence and the `Answer:` terminal. Run `41860773768` measured it at MR **96 of 121** (first
@@ -35507,3 +35529,262 @@ Three things this does not say:
 - **It does not say the feature arm is unstable in a way a customer would see.** Accuracy under both draws is
   90.80% and 91.60%, and the four-repetition means sit inside 0.8 points of each other. What is unstable is the
   identity of the questions, not the level.
+
+## 13.327 The registration named a configuration no run was making, for the third time, inside the paragraph that names the class
+
+### 13.327.1 Two documents that agree are not a measurement
+
+`tools/__tests__/test_preregistration_config.py` compares §10.3 with the dispatch table. Its own
+docstring names the blind spot and calls it the fourth form of the §7.3 side-channel defect:
+
+> In form 4 every layer works. The run succeeds, the log line prints, the artifact records a
+> configuration -- just not the registered one.
+
+§10.3's `ask` bullet then records the run that taught it, and the lesson is the same sentence one level up:
+
+> §13.193 called `41185512391` "the registered, `operands`" in one table while §10.3 said `enumerated`
+> in another. Nothing failed, because `test_preregistration_config.py` compares §10.3 with the
+> dispatch table and **both** said `enumerated` — the disagreement was between the documents and the
+> runs, which no check could see.
+
+That paragraph was written when the value was `enumerated` and the runs said `operands`. It is the
+**third instance**, and it was sitting four concepts lower the whole time:
+
+| column | `ask` | the room | who edits it |
+| --- | --- | --- | --- |
+| §10.3 | `verbatim` | `48000` | a maintainer |
+| `INPUTS` in `dispatch-cortex-memory-ab.py` | `verbatim` | `48000` | a maintainer |
+| every 500-question run from `42337560027` onwards | `verbatim-acts` | `multi-session:48460` | the arm |
+
+§13.294 read `verbatim-acts` at +4.13 on `MR` and +1.00 overall; §13.295 paid its 460-character
+instruction rent back through the room; §13.318.3 adopted the pair as the shipping arm at **91.95%**.
+Two documents said otherwise for four sections, and the mechanism that was supposed to notice is the
+one comparing them to each other.
+
+§13.320 states the consequence in prose, in the dispatch of `42452904894`:
+
+> The inputs are the dispatch table as that commit held it, with the two values the baseline artifact
+> records and **the table now does not**: `cortex_memory_ask=verbatim-acts` and
+> `cortex_memory_max_prompt_chars=multi-session:48460`.
+
+A hand-written override list is the signature of this defect. It says: the table cannot express the
+arm, so the operator will supply the difference from memory, in a place that is not compared to
+anything.
+
+### 13.327.2 The third column, and why it is not a third copy
+
+A third document would have the same failure mode. What closes the class is a column that is not a
+document: the `memoryArmConfig` a real artifact carries. `tools/arm-config-record.py` projects one
+artifact's block onto the dispatch's input names and writes `tools/arm-config-baseline.json` —
+twenty inputs, the run id, the commit, the dataset fingerprint, and the section that adopted the values.
+`pnpm registration:check` re-runs the comparison inside `pnpm check`, so it costs nothing and needs no
+87 MB download.
+
+The projection is a **partition**, and the partition is what keeps it from becoming a report nobody
+reads:
+
+| class | count | what it means |
+| --- | ---: | --- |
+| `PROJECTED` | 17 | the field is the artifact's record of a dispatch input, so it can be compared |
+| `UNPROJECTED` | 11 | not an input; the entry says whether it is `derived`, `constant`, or `identity` |
+
+`--record` **refuses** an artifact carrying a field in neither class. Without that refusal a new arm
+option lands in the artifact, is absent from both classes, and the projection keeps passing over a
+value nobody has decided about — which is exactly how `ask` got here.
+
+Two inputs are exempted with reasons rather than silently skipped, and the list is asserted to be
+exactly two: `cortex_memory` (the arm's switch, not a configuration value) and `limit` (§10.3's `0` is
+the whole set while the artifact records the resolved count, so the comparison would report a defect
+on every green run). An exemption whose key the table stops sending is itself a violation, because
+otherwise the explanation outlives its subject.
+
+`tools/__tests__/test_arm_config_baseline.py` pins it with nineteen tests: the partition in both
+directions, a stale table reported with **both** values and the input's name, a value the projection
+lost, a key the table stopped sending, a section that does not exist, the renderers' grammar (`+` for
+`thinking`, fixed order for route rooms, `0.0` read as `0`), and the gate's own exit code through
+`main` on a drifted table written to a temporary file.
+
+### 13.327.3 The same class turned up in the tool that reads artifacts
+
+`readout-arm-run.py --registration` compares an artifact against the table, and its map said
+`cortex_memory_max_prompt_chars -> ('maxPromptChars',)`. On the shipping configuration that field does
+not exist — the artifact carries `maxPromptCharsByRoute` — so the tool would have reported the arm as
+departing on the one input the arm follows exactly. Three repairs, each the same shape as the defect:
+
+1. `DISPATCH_FIELD_ALIASES` gains `'maxPromptCharsByRoute'`, so the input maps to both shapes and the
+   shape that did not run is counted as **derived** rather than as a departure.
+2. `_flatten_config` gains `ATOMIC_CONFIG_FIELDS`, because flattening the map into
+   `maxPromptCharsByRoute.multi-session` leaves no path a registered string can be parsed into.
+3. `coerce_to_artifact` learns the map shape, and `_shape_disagrees` separates **a different
+   configuration** (`multi-session:48460` registered, `96000` ran) from **a value the field cannot
+   hold** (`big`). The first is a departure to report; the second is a refusal to run. Conflating them
+   turned a readable verdict into an exception.
+
+On `42467392736` the tool now prints what it has not printed since the drift began:
+
+> verdict: this run is the registered configuration, field for field, so its numbers are quotable as
+> the arm's and need no line in §10.3
+
+### 13.327.4 What this does not say
+
+- **It does not say §10.3 was wrong about the past.** Every value it named was the value that was
+  adopted when the bullet was written. The defect is that adoption and registration were two
+  hand-edits with nothing comparing them to a run, and the third column is only as good as the last
+  baseline recorded — a new adoption plus a stale baseline fails, which is the point, but a new
+  adoption plus a *re-recorded* baseline passes without anybody arguing for it. That argument lives in
+  the adopting section, and `adoptedBy` is checked only for existence.
+- **It does not cover the workflow's own defaults.** Both inputs ship `default: ''`, and an empty
+  default means "leave the product's default alone" — which for `cortex_memory_ask` is `verbatim` and
+  for the room is 48,000. A button-run therefore executes the retired configuration and produces an
+  artifact the gate would flag, while `test_preregistration_config.py`'s defaults class skips empty
+  strings by design. Recorded here rather than repaired: naming the values in the workflow would
+  change every arm that dispatches through this workflow, which is a decision with a blast radius
+  larger than this round's subject.
+- **It does not make the numbers comparable across it.** The next section reads two artifacts that
+  were both produced under this configuration; nothing in this one licenses subtracting a number from
+  before §13.283 from one after it.
+
+## 13.328 The gap to the reference, read from the two artifacts already on disk: five and eight questions
+
+### 13.328.1 The claim that was wrong
+
+`03-execution-plan.md` §14.2 and §14.3 have said, since they were written, that this arm's
+multi-session reading is **10.7 to 12.4 points below its own memory-less reference arm**, and called
+that "more serious than any cross-harness comparison, because its four variables are identical". The
+parenthetical is right — that comparison is the hard one — and the number was two to three times too
+large.
+
+The four variables are identical because both sides run in **one job**, through one
+`runAblationReport` call: same 500 questions, same reader, same judge, same commit. `baseline` and
+`feature` are in the same artifact. So the paired reading needs no new dispatch and no new money —
+only that somebody read the block that was already there.
+
+### 13.328.2 The two draws
+
+| | `42452904894` | `42467392736` |
+| --- | ---: | ---: |
+| `promptDigest` identical to the other | — | **500 / 500** |
+| **feature**, first repetition | **91.60%** | **90.80%** |
+| feature, four-repetition mean | 91.65% (90.6–92.2) | 91.05% (90.8–91.6) |
+| **reference**, first repetition | **45.00%** | **43.60%** |
+| reference, four-repetition mean | 44.75% (44.4–45.0) | 43.70% (43.6–44.0) |
+| discordant (reference wrong / feature wrong) | 248 / 15 | 250 / 14 |
+| McNemar | p = 1.456e-55 | p = 4.609e-57 |
+
+Per capability, first repetition of each draw:
+
+| capability | n | reference A | cortex A | Δ A | reference B | cortex B | Δ B |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `IE` | 150 | 1 (0.67%) | 144 (96.00%) | **+143** | 1 (0.67%) | 141 (94.00%) | **+140** |
+| `MR` | 121 | 107 (88.43%) | 99 (81.82%) | **−8** | 105 (86.78%) | 100 (82.64%) | **−5** |
+| `KU` | 72 | 0 (0.00%) | 64 (88.89%) | **+64** | 0 (0.00%) | 64 (88.89%) | **+64** |
+| `TR` | 127 | 87 (68.50%) | 121 (95.28%) | **+34** | 82 (64.57%) | 119 (93.70%) | **+37** |
+| `ABS` | 30 | 30 (100.00%) | 30 (100.00%) | 0 | 30 (100.00%) | 30 (100.00%) | 0 |
+
+The reference pipeline is not a weak arm — it is a *specialist*. It abstains on all 30 `ABS`
+questions and gets them all right, it answers 1 of 150 `IE` and none of 72 `KU` because it has no
+memory to answer them from, and it is **stronger than this arm on `MR`** because `MR`'s questions are
+answerable from one session and the reference completes the session behind every hit while this arm
+spends its room on 121 fragments of 45.
+
+`MR`'s deficit is therefore **5 and 8 questions**, i.e. −4.13 and −6.61 points, not −10.7 to −12.4.
+Both draws put the arm ahead on three capabilities by between +34 and +143 questions and the overall
+delta at +46.60 and +47.20.
+
+### 13.328.3 What changed, and what did not
+
+The reference's own two draws read 88.43% and 86.78% on `MR`, against the 82.6–84.3% §14.2 recorded,
+so the reference moved as well; its overall reading (43.60–45.00% against the recorded 44.2%) did not.
+That is what a two-question difference on 121 questions looks like from 500.
+
+So the honest statement of the change is not "we gained six points". It is:
+
+- **§14.2's row is stale and cannot be subtracted from.** Between it and these two draws the arm
+  moved `promptContract` (§13.283), `ask` (§13.294) and the room (§13.295), and the harness moved the
+  turn id derivation and the answer cache (§9.131). A difference across that is a difference between
+  two configurations and two codebases, and §13.163's comparability key forbids the subtraction.
+- **The paired reading is the one that is comparable**, and it is comparable within each draw, not
+  across the two. `E11a` exists precisely to measure how far two draws of one configuration move:
+  16 of 500 questions (§13.326). On 121 questions that is roughly 4, so the difference between
+  −4.13 and −6.61 is **inside** the noise and only their sign and rough size mean anything.
+- **The sign does mean something.** It is the only capability where the reference wins, in both
+  draws, and §14.3's decomposition already found the shape: 17 stable failures against 4 stable
+  leads.
+
+### 13.328.4 Where the `MR` failures are, which is new
+
+`readout-arm-run.py`'s taxonomy on `42467392736`'s 21 `MR` failures splits them by answer shape, and
+the split is the useful part:
+
+| class | count |
+| --- | ---: |
+| `numeric_mismatch` | **15** |
+| `abstention` | 2 |
+| `soft_refusal` | 1 |
+| `other` | 3 |
+
+Fifteen of twenty-one are counts and sums, and the errors are *near* rather than absent: `2` against
+`1` (projects led), `5` against `3` (weddings), `$8,750` against `$3,750` (difference exactly
+$5,000, one donation counted twice), `23` against `22`, `1,456` against `1,998`. That is not a
+retrieval failure — §13.328.5 shows the gold was in the window — it is an aggregation failure over a
+set whose membership the arm got slightly wrong in both directions.
+
+### 13.328.5 The instrument says the evidence was never missing
+
+`goldOverlap` is recorded per question. Over all 500, **no question carried none of its gold turns**.
+On `MR`:
+
+| | gold fully carried | gold partly carried |
+| --- | ---: | ---: |
+| answered correctly (99) | 87 | 12 |
+| answered wrongly (22) | 13 | 9 |
+
+Full gold carriage reads **87.0%** correct against **57.1%** on partial, so partial carriage costs
+about thirty points — and 13 of the 22 failures had all of their gold in the window. `MR`'s deficit is
+therefore not "the retriever lost it". It is either an assembly that puts the right turns in front of
+a reader that miscounts them (the fifteen numeric failures) or a partial window (the nine). Those are
+different repairs and the taxonomy separates them: `numeric_mismatch` on a full-gold question is the
+first, and it is 15 of 21.
+
+This is also the constraint on the next dispatch. §14.3's registered criterion is *move at least
+three of the seventeen stable failures and lose at most one stable lead, counted on the mask* — and
+the mask now has a second axis, because "the gold was there and the count was wrong" and "the gold was
+partly there" are not the same question to a mechanism.
+
+## 13.329 `retry.ts`'s two recorded branch arms were two nullable fields encoding a sum type
+
+The coverage gate recorded `cortex-ai/src/retry.ts` at 94 of 96 branches since §13.325, and §13.325.5
+said why it was recorded rather than repaired: the repair is a state refactor, and the round's rule is
+that a branch is either reached by a test or deleted. This is the refactor.
+
+`lastError: Error | undefined` sat beside `resFromLastAttempt: Response | undefined` with an invariant
+that no comment stated and no type enforced: **they are never both absent.** An attempt either throws
+— setting the error and clearing the response — or answers, setting the response and leaving the error
+alone. Two nullable fields encode a sum type as a product, so every site reading one has to re-derive
+the other's state, and two of those derivations could not be reached:
+
+```ts
+throw withExhaustion(lastError ?? new Error(`fetch failed after ${stats.attempts} attempts`), { … })
+//                    ^^^^^^^^^^ inside `if (resFromLastAttempt === undefined)`, which proves it
+cause: lastError === undefined ? '' : lastError.message,
+//     ^^^^^^^^^^^^^^^^^^^^^^^ the same, twice
+```
+
+One field of `{ kind: 'thrown'; error: Error } | { kind: 'answered'; response: Response }` makes the
+invariant the type. The same change absorbs the loop counter's meaning: "is this a retry?" and "is
+there a previous outcome?" are one question, and the old body asked it twice — as `attempt > 0` and as
+`resFromLastAttempt === undefined` — so the `undefined` arm is now reachable on the first iteration and
+only there.
+
+The refactor also found a state that the two-variable form had been hiding. `maxRetries: -1` issues no
+request at all, and that request was being honoured as an accident of the loop bound: `for (let attempt
+= 0; attempt <= maxRetries; …)` never ran its body and the code fell out into the same throw, where
+`lastError` was absent only because of that. **"No attempt was made" and "the last attempt threw" were
+sharing a path and the `??` that distinguished them**, which is why neither could be read off the
+coverage report. Stated as a guard of its own, the two are separated, and the answer keeps the shape
+the record already promised — `attempts: 0`, `cause: ''`, `retryBudgetMs: null` — with a test for the
+second arm, which is a caller disabling both the budget and the retries.
+
+`cortex-ai` reads **100.00 / 100.00 / 100.00 / 100.00** over 14 files, 326 tests, and the ratchet
+records it. `retry.ts` alone moved 94/96 → **96/96**, and the two arms were removed rather than
+annotated.
