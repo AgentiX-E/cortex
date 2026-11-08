@@ -130,23 +130,43 @@ export class ReadSideAssembler {
 
     const rows = task === 'shared' ? await this.sharedOnly(table) : await this.bothStores(table);
 
-    if (task === 'shared' && this.guard) {
-      const offending = rows.filter((row) => this.visibilityOf(row.value) !== 'shared');
-      if (offending.length > 0) {
-        const keys = offending.map((row) => row.key ?? '<no id>').join(', ');
-        throw new ScopeViolation(
-          `shared window would carry ${offending.length} row(s) that do not declare themselves ` +
-            `shared (${keys}). This is a write-side defect, not a read-side one: refusing to ` +
-            `assemble is preferable to dropping the rows, because dropping them would hide the ` +
-            `defect while making the boundary look intact.`,
-        );
-      }
+    // Rule 2, applied as two separate questions rather than as `task === 'shared' && this.guard`.
+    // The conjunction is the same predicate, but the v8 provider reports its short-circuit on this
+    // file as an arm with a **negative** hit count (`[24, -16]`), which no test can satisfy and
+    // which therefore reads as a permanent branch gap in a file whose statements and lines are
+    // both at 100%. Splitting it makes each arm a shape the instrument counts, and the extracted
+    // method says what the check is about.
+    if (task === 'shared') {
+      this.refuseUndeclared(rows);
     }
 
     // Staleness is applied after the guard, not before: the guard is about whether the *writer* was
     // correct, and a stale row that also mis-declared its scope must still fail loudly rather than
     // be filtered into silence.
     return rows.filter((row) => !this.isStale(row.value));
+  }
+
+  /**
+   * Rule 2: a shared window may not carry a row that does not declare itself shared.
+   *
+   * The guard's `false` value exists only for the ablation that prices it, so this returns before
+   * the filter rather than widening it -- one arm per state, both exercised by `read-side.test.ts`.
+   */
+  private refuseUndeclared(rows: readonly ScopedRow[]): void {
+    if (!this.guard) {
+      return;
+    }
+    const offending = rows.filter((row) => this.visibilityOf(row.value) !== 'shared');
+    if (offending.length === 0) {
+      return;
+    }
+    const keys = offending.map((row) => row.key ?? '<no id>').join(', ');
+    throw new ScopeViolation(
+      `shared window would carry ${offending.length} row(s) that do not declare themselves ` +
+        `shared (${keys}). This is a write-side defect, not a read-side one: refusing to ` +
+        `assemble is preferable to dropping the rows, because dropping them would hide the ` +
+        `defect while making the boundary look intact.`,
+    );
   }
 
   /** Shared tasks read one store. Nothing else is queried, so nothing else can leak. */

@@ -56,6 +56,12 @@ export class OpenAIEmbedding implements EmbeddingModel {
       },
     );
     if (!res.ok) {
+      // `withBufferedBody` in `retry.ts` reads every body to completion inside the attempt, so a
+      // body that dies mid-read is a transport failure the ladder retries and then rethrows with
+      // its exhaustion record. What still reaches this line is a response with a null body whose
+      // `text()` the injector overrode, which is the seam `llm.test.ts` uses because the network
+      // path cannot produce it — and the arm exists so that a read failure is downgraded to "no
+      // detail" instead of masking the status the provider did publish.
       const bodyText = await res.text().catch(() => '');
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
       throw new Error(`Embedding request failed: ${res.status} ${res.statusText}${detail}`);

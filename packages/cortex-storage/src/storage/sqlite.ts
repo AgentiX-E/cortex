@@ -44,7 +44,12 @@ class BetterSqliteSession implements SqlSession {
   }
 
   async close(): Promise<void> {
-    if (this.db.open) this.db.close();
+    // No `db.open` guard. `SqlStorage.close` already returns early on its own `#closed` flag, which
+    // it sets synchronously before the first await, so this method cannot be reached twice for one
+    // handle -- and better-sqlite3 throws on a second `close()`. A guard here would therefore never
+    // report anything; worse, it would silently swallow the double-close it looks like it handles,
+    // which is the one way a leaked handle becomes invisible.
+    this.db.close();
   }
 }
 

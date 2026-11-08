@@ -307,6 +307,21 @@ describe.each(ARMS)('SqlStorage over $name', ({ open }) => {
   });
 });
 
+describe('SqliteStorage close', () => {
+  it('is idempotent, because a shutdown path can reach it twice', () => {
+    // `close` is called from `afterAll` hooks and from a process handler, and both can fire. The
+    // idempotence lives in `SqlStorage`'s own `#closed` flag -- set synchronously before the first
+    // await, so a second call cannot reach the driver -- and this asserts it at the seam a caller
+    // uses. The session's own `db.open` guard was deleted for the same reason: it could never be
+    // reached, and it would have hidden the double close it appeared to handle.
+    const storage = new SqliteStorage();
+    return storage
+      .close()
+      .then(() => storage.close())
+      .then(() => undefined);
+  });
+});
+
 describe('SqliteStorage', () => {
   it('is the same behaviour over the shipped engine', async () => {
     const storage = new SqliteStorage({ filename: ':memory:' });

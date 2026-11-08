@@ -164,6 +164,64 @@ describe('reviseLedger: a time anchor gives way to an explicit time', () => {
   });
 });
 
+describe('reviseLedger: an anchor, a missing ledger, and two facts at one instant', () => {
+  it('refutes an anchor when the supersession is an edge and the newer fact is dated', () => {
+    // The derived path covers the same outcome through the *slot* pass, so this case has to be
+    // built differently to be about something: an anchor on the older fact plus an explicit
+    // `supersedes` edge is the only shape that reaches the edge pass's own anchor clause.
+    const undated = factOf({
+      id: 'k1',
+      frameId: 'f1',
+      text: 'I live in London.',
+      subject: 'user',
+      predicate: 'city',
+    });
+    expect(undated.assumptions?.some((assumption) => assumption.kind === 'time-anchor')).toBe(true);
+
+    const result = reviseLedger([undated, BERLIN], {
+      edges: [
+        { id: 'supersedes:k2>k1', from: 'k2', to: 'k1', type: 'supersedes', origin: 'derived' },
+      ],
+    });
+
+    const anchored = result.facts.find((fact) => fact.id === 'k1')!;
+    expect(assumptionOf(anchored, 'time-anchor')?.status).toBe('refuted');
+    // The anchor's refutation names the fact that dates the slot, not the edge.
+    expect(result.revisions.find((each) => each.kind === 'time-anchor')?.byFactId).toBe('k2');
+  });
+
+  it('records a revision against a fact whose ledger is empty, and invents no assumption', () => {
+    // `apply` returns the fact unchanged when it does not carry the kind, and the revision is
+    // still recorded -- the ledger's job is to say what was observed, not only what changed. A
+    // version that appended the assumption instead would give a fact a premise it never had.
+    // `assumptions` is optional on `KnowledgeFact`, and a unit read back from storage may omit it
+    // entirely rather than carrying an empty array. The destructure is how that shape is built:
+    // under `exactOptionalPropertyTypes` an explicit `undefined` is a different type from absence.
+    const { assumptions: _omitted, ...bare } = LONDON;
+    const result = reviseLedger([bare, BERLIN]);
+
+    // Absent stays absent: the ledger says what was observed, and a fact with no ledger does not
+    // gain one by being looked at.
+    expect(result.facts.find((fact) => fact.id === 'k1')!.assumptions).toBeUndefined();
+    expect(
+      result.revisions.some((each) => each.factId === 'k1' && each.verdict === 'refuted'),
+    ).toBe(true);
+  });
+
+  it('orders two facts at one instant by id, so the ledger is stable across input orders', () => {
+    const sameInstant = (id: string, text: string) =>
+      factOf({ id, frameId: `f-${id}`, text, subject: 'user', predicate: 'city', at: T0 });
+    const zulu = sameInstant('z1', 'I live in Oslo.');
+    const alpha = sameInstant('a1', 'I live in Rome.');
+
+    const forwards = reviseLedger([zulu, alpha]).revisions.map((each) => each.factId);
+    const backwards = reviseLedger([alpha, zulu]).revisions.map((each) => each.factId);
+
+    expect(forwards).toEqual(backwards);
+    expect(forwards.length).toBeGreaterThan(0);
+  });
+});
+
 describe('reviseLedger: the cascade is a switch, and its off state is the default', () => {
   const dependent = factOf({
     id: 'd1',
@@ -178,6 +236,18 @@ describe('reviseLedger: the cascade is a switch, and its off state is the defaul
     text: 'The deposit is two months of rent.',
     references: [{ token: 'flat', sourceId: 'f3' }],
     at: T0 + 6 * DAY,
+  });
+
+  it('walks a fact with no ledger without inventing one, when the cascade is on', () => {
+    // The cascade asks each fact which frames it borrowed from. A fact that arrived from storage
+    // without an `assumptions` key borrows from none, which is the same answer as an empty ledger --
+    // and the difference between `undefined` and `[]` must not be a crash in the one pass that runs
+    // over every fact in the unit.
+    const { assumptions: _omitted, ...bare } = LONDON;
+    const result = reviseLedger([bare, BERLIN], { cascade: true });
+
+    expect(result.stale).toEqual([]);
+    expect(result.facts.find((fact) => fact.id === 'k1')!.stale).toBeUndefined();
   });
 
   it('marks nothing stale when it is off', () => {
@@ -235,6 +305,34 @@ describe('reviseLedger: determinism and the input order', () => {
     ).toBe('refuted');
   });
 
+  it('ignores an edge whose endpoints are not in the unit', () => {
+    // `edges` is caller-supplied, so an id in it can name a fact this call was not given -- an edge
+    // list held across a delete, or one assembled from a larger unit. The pass skips the edge
+    // instead of writing through `record`, which would look the id up in the same map and either
+    // throw or invent an entry that has no assumptions and no text.
+    const manual = reviseLedger([LONDON, BERLIN], {
+      edges: [
+        {
+          id: 'supersedes:ghost>k1',
+          from: 'ghost',
+          to: 'k1',
+          type: 'supersedes',
+          origin: 'derived',
+        },
+        {
+          id: 'supersedes:k2>ghost',
+          from: 'k2',
+          to: 'ghost',
+          type: 'supersedes',
+          origin: 'derived',
+        },
+      ],
+    });
+
+    expect(manual.revisions).toEqual([]);
+    expect(manual.facts.map((fact) => fact.id).sort()).toEqual(['k1', 'k2']);
+  });
+
   it('ignores a non-supersedes edge rather than reading it as a replacement', () => {
     const manual = reviseLedger([LONDON, BERLIN], {
       edges: [
@@ -250,6 +348,51 @@ describe('reviseLedger: determinism and the input order', () => {
       ],
     });
     expect(manual.revisions).toEqual([]);
+  });
+});
+
+describe('reviseLedger: the shapes that take part in nothing', () => {
+  it('keeps a fact with no slot out of every pass', () => {
+    // `groupBySlot` is the door to four of the five passes, and a fact without both `subject` and
+    // `predicate` has no slot to be grouped by. It must still appear in the output: the ledger
+    // returns the facts it was given, and dropping one would lose a memory to a missing field.
+    //
+    // The keys are **omitted**, not set to `undefined`: `subject` and `predicate` are optional under
+    // `exactOptionalPropertyTypes`, so `subject: undefined` is a different type from an absent key and
+    // would be a fact that claims a slot while holding nothing.
+    const { subject: _subject, predicate: _predicate, ...unslotted } = LONDON;
+    const slottedFree: KnowledgeFact = { ...unslotted, id: 'n1' };
+    const result = reviseLedger([slottedFree, BERLIN]);
+
+    expect(result.facts.map((fact) => fact.id).sort()).toEqual(['k2', 'n1']);
+  });
+
+  it('leaves a slot with no dated fact alone, because an anchor needs a witness', () => {
+    const undated = (id: string, text: string) =>
+      factOf({ id, frameId: `f-${id}`, text, subject: 'user', predicate: 'job' });
+    const first = undated('u1', 'I work as an engineer.');
+    const second = undated('u2', 'I work as a manager.');
+
+    const result = reviseLedger([first, second]);
+
+    expect(result.revisions.filter((each) => each.kind === 'time-anchor')).toEqual([]);
+  });
+
+  it('skips an undated fact that carries no anchor when a dated witness exists', () => {
+    const noLedger: KnowledgeFact = {
+      ...factOf({
+        id: 'b1',
+        frameId: 'f-b1',
+        text: 'I live in Berlin.',
+        subject: 'user',
+        predicate: 'city',
+      }),
+      assumptions: [],
+    };
+
+    const result = reviseLedger([noLedger, BERLIN]);
+
+    expect(result.revisions.filter((each) => each.kind === 'time-anchor')).toEqual([]);
   });
 });
 
@@ -302,6 +445,37 @@ describe('reviseLedger: a declared invalidation is bookkeeping, not inference', 
     const declarer = result.facts.find((fact) => fact.id === 'c1')!;
     expect(assumptionOf(declarer, 'persistence')!.status).not.toBe('refuted');
     expect(result.revisions.every((entry) => entry.byFactId === 'c1')).toBe(true);
+  });
+
+  it('ignores a declaration that names a fact the unit does not hold', () => {
+    // The pair is identifiers, and a caller assembling them from a diff can name something that has
+    // since been deleted. The pass skips such a pair rather than creating a fact by looking it up --
+    // `record` writes through the same map it read from, so a missing id would either throw or, with
+    // a lenient lookup, invent an entry with no assumptions and no text.
+    const result = reviseLedger([RENT, CITY], {
+      invalidations: [
+        ['c1', 'ghost'],
+        ['ghost', 'r1'],
+      ],
+    });
+
+    expect(result.revisions).toEqual([]);
+    expect(result.facts.map((fact) => fact.id).sort()).toEqual(['c1', 'r1']);
+  });
+
+  it('refutes persistence alone when the retired fact carries no uniqueness claim', () => {
+    // A fact whose ledger has no `uniqueness` entry describes no slot claim, so a declaration can
+    // only retire its persistence. Writing a uniqueness refutation anyway would record a belief the
+    // fact never held.
+    const { assumptions, ...rent } = RENT;
+    const withoutUniqueness: KnowledgeFact = {
+      ...rent,
+      assumptions: assumptions!.filter((assumption) => assumption.kind !== 'uniqueness'),
+    };
+
+    const result = reviseLedger([withoutUniqueness, CITY], { invalidations: [['c1', 'r1']] });
+
+    expect(result.revisions.map((entry) => entry.kind)).toEqual(['persistence']);
   });
 
   it('ignores a declaration that points backwards in time', () => {

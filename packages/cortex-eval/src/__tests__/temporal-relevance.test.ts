@@ -317,3 +317,23 @@ describe('the census the signal publishes', () => {
     expect(index.temporal).toEqual({ scored: 0, total: 2 });
   });
 });
+
+describe('a turn that appears twice', () => {
+  it('keeps the instant that makes it most relevant, whichever order the two arrive in', () => {
+    // `context` is the reader's window, and the same text can appear at two positions -- a repeated
+    // "thanks", a quoted sentence. The lookup is keyed by text, so one affinity has to stand for
+    // both, and the contract is the MAXIMUM: the signal describes the text as the reader will see
+    // it, and dropping to the later occurrence's lower score would penalise a turn for being
+    // repeated. Both orders are asserted because a `>` that should have been `<` passes one of them.
+    const older = ASKED - 120 * DAY;
+    const newer = ASKED;
+
+    const best = (dates: readonly number[]): number =>
+      temporalBoosts({ context: ['turn', 'turn'], turnDates: dates, askedAt: ASKED }).affinityFor(
+        'turn',
+      );
+
+    expect(best([older, newer])).toBe(best([newer, older]));
+    expect(best([older, newer])).toBe(1);
+  });
+});

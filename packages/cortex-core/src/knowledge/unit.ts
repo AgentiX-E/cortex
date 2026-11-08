@@ -97,6 +97,18 @@ function sameBorrowing(recorded: readonly BorrowedWord[], found: readonly Borrow
   return shape(recorded) === shape(found);
 }
 
+/**
+ * The tokens of a borrowing list, as the JSON a refusal quotes.
+ *
+ * One definition rather than a `.map(…).map(…)` pair inside one template literal: the two maps
+ * were textually identical, and the v8 provider attributed both to a single function range and
+ * reported the second as uncovered while the string it builds was demonstrably produced. A helper
+ * is also where the "a borrowing is reported by token alone, not by source" decision belongs.
+ */
+function quotedTokens(words: readonly BorrowedWord[]): string {
+  return JSON.stringify(words.map((word) => word.token));
+}
+
 /** Whether some fact's own text carries the marker, which scopes it to that fact. */
 function foldedInto(marker: RelationMarker, facts: readonly KnowledgeFact[]): boolean {
   const token = marker.token.toLowerCase();
@@ -156,8 +168,8 @@ export function buildKnowledgeUnit(input: BuildUnitInput): UnitResult {
         problem: {
           problem: 'unrecorded-borrowing',
           detail:
-            `fact ${JSON.stringify(fact.id)} borrowed ${JSON.stringify(grounding.borrowed.map((word) => word.token))} ` +
-            `but recorded ${JSON.stringify(fact.references.map((word) => word.token))}`,
+            `fact ${JSON.stringify(fact.id)} borrowed ${quotedTokens(grounding.borrowed)} ` +
+            `but recorded ${quotedTokens(fact.references)}`,
         },
       };
     }

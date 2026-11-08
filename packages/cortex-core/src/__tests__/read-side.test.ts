@@ -169,6 +169,32 @@ describe('read-side assembler', () => {
     );
   });
 
+  it('treats a non-string visibility as not declaring itself shared', async () => {
+    // The guard reads a field the writer is trusted to set. A number, a null or a nested object is
+    // not the word `shared`, and the whole point of rule 2 is that "does not declare itself" has to
+    // fail loudly rather than be coerced into a pass by a truthiness test.
+    const { federation } = newWorld();
+    await federation.put('shared/facts', 'odd', { id: 'odd', text: 'x', visibility: 42 });
+
+    await expect(new ReadSideAssembler(federation).assemble({ task: 'shared' })).rejects.toThrow(
+      /would carry 1 row\(s\) that do not declare themselves shared \(odd\)/,
+    );
+  });
+
+  it('keeps a row whose id is not a string, rather than keying on it', async () => {
+    // `id` is read off an `unknown` value. A numeric id is not an identity this layer can dedupe
+    // on -- two rows with ids `7` and `"7"` are not provably the same fact -- so the row travels
+    // without a key and the merge treats it as unkeyed, which is the conservative choice.
+    const { federation } = newWorld();
+    await federation.put('private/facts', 'n', { id: 7, text: 'numeric id' });
+
+    const rows = await new ReadSideAssembler(federation).assemble({ task: 'private' });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.key).toBeUndefined();
+    expect(rows[0]?.origin).toBe('private');
+  });
+
   it('refuses an unknown task scope', async () => {
     const { federation } = newWorld();
     await expect(

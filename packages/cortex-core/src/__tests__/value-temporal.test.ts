@@ -66,6 +66,31 @@ describe('bitemporal facts', () => {
     expect(findContradictions(facts).length).toBe(1);
   });
 
+  it('keeps the stronger fact when a weaker one arrives later', () => {
+    // The comparison is confidence * sourceTrust, not arrival order. The existing test asserts the
+    // higher-confidence fact wins when it comes SECOND, which passes for a reader that simply keeps
+    // the last row; this one puts the weaker fact last, so "last wins" and "strongest wins" give
+    // different answers and only one of them is the documented rule.
+    const current = currentValue(
+      [
+        fact({ id: 'a', object: 'manager', confidence: 0.9 }),
+        fact({ id: 'b', object: 'engineer', confidence: 0.8 }),
+      ],
+      'user',
+      'job',
+      100,
+    );
+    expect(current?.object).toBe('manager');
+  });
+
+  it('reports no contradiction when two facts on one predicate agree', () => {
+    // A group of facts sharing (subject, predicate) is only a contradiction if their objects
+    // differ. Reporting agreement as a conflict would put every duplicated assertion through the
+    // resolver, which is where a value gets overwritten for no reason.
+    const facts = [fact({ id: 'a', object: 'engineer' }), fact({ id: 'b', object: 'engineer' })];
+    expect(findContradictions(facts)).toEqual([]);
+  });
+
   it('returns undefined when no current value exists', () => {
     const current = currentValue([fact({ subject: 'other' })], 'user', 'job', 100);
     expect(current).toBeUndefined();

@@ -159,8 +159,10 @@ export function selectSessionBudget(
   }
 
   if (chosen.length === 0) {
-    const [first] = ranked;
-    if (first !== undefined) chosen.push(first.session);
+    // `ranked` is `sessions` mapped and sorted, and an empty `sessions` returned above, so the first
+    // entry exists. The guard this replaces tested a condition that could not hold, and the v8 provider
+    // reported its false arm as the file's only uncovered branch.
+    chosen.push(ranked[0]!.session);
   }
 
   return chosen.sort((a, b) => a.index - b.index);
@@ -341,17 +343,18 @@ export function selectTurnsWithinBudget(
   if (chosen.length === 0) {
     // Nothing fits. Answering from no evidence is worse than exceeding the budget, so the single most relevant
     // turn is taken -- a fragment of one session rather than an empty context.
-    const [first] = scored;
-    if (first !== undefined) {
-      const best = [...first.turns].sort(
-        (a, b) => b.relevance - a.relevance || a.turn.ordinal - b.turn.ordinal,
-      )[0];
-      if (best !== undefined) {
-        chosen.push({ index: first.session.index, size: 1, turns: [best.turn] });
-        spent = best.cost;
-        trimmed += 1;
-      }
-    }
+    //
+    // Both lookups below are total, which is why neither is guarded. Reaching this block means the first entry
+    // failed `spent + total <= budget` with `spent` still `0`, so every session's total cost exceeds a positive
+    // budget; a turn's cost is validated non-negative and a session with no turns totals `0`, so the first
+    // session has at least one turn. A guarded version of this produced the file's other two uncovered arms.
+    const first = scored[0]!;
+    const best = [...first.turns].sort(
+      (a, b) => b.relevance - a.relevance || a.turn.ordinal - b.turn.ordinal,
+    )[0]!;
+    chosen.push({ index: first.session.index, size: 1, turns: [best.turn] });
+    spent = best.cost;
+    trimmed += 1;
   }
 
   return {

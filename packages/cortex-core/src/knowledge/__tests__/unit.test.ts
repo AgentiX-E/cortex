@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildKnowledgeUnit, censusOf, type BuildUnitInput } from '../unit.js';
+import { buildKnowledgeUnit, censusOf, type BuildUnitInput, type KnowledgeUnit } from '../unit.js';
 import type { KnowledgeEdge } from '../edge.js';
 import type { KnowledgeFact, KnowledgeFrame } from '../frame.js';
 
@@ -278,6 +278,25 @@ describe('censusOf: what a unit contains', () => {
       edgesByType: { causes: 1 },
       unresolved: 0,
     });
+  });
+
+  it('counts an edge by its type only when the type is in the closed set', () => {
+    // `KnowledgeUnit` types `type` as `EdgeType`, so an unknown value cannot arrive through
+    // `buildKnowledgeUnit`. It can arrive through a *deserialised* unit — a row written by an older
+    // version, or hand-edited JSON — and the census is the function a report is rendered from. The
+    // closed set is what keeps two units comparable by eye, so an invented type must be absent from
+    // the breakdown rather than appear as a row nothing else has.
+    const unit = {
+      frame: G04,
+      facts: [],
+      edges: [{ id: 'invented-edge', type: 'invented', from: 'a', to: 'b' }],
+      unresolved: [],
+    } as unknown as KnowledgeUnit;
+
+    const census = censusOf(unit);
+
+    expect(census.edges).toBe(1);
+    expect(census.edgesByType).toEqual({});
   });
 
   it('counts nothing for an empty unit', () => {

@@ -205,6 +205,50 @@ describe('describeFailure', () => {
     expect(text).not.toContain('url=');
   });
 
+  it('prints the attempt vector with no deadline and no budget, because the ladder had neither', () => {
+    // `retryBudgetMs: null` is the documented way to say "no ceiling", and it is a different fact
+    // from a budget that was never reported: the first must render `budget=none`, the second must
+    // render nothing at all. `timeoutMs` absent means no per-attempt deadline was enforced, and
+    // `elapsedMs` absent means the waits cannot be computed -- three omissions, one line.
+    const error = new Error('boom') as Error & { retryExhausted?: unknown };
+    error.retryExhausted = { attempts: 2, attemptsMs: [40, 60] };
+
+    const text = describeFailure({ progress: undefined, error });
+
+    expect(text).toContain('retry: attemptsMs=[40,60]');
+    expect(text).not.toContain('deadline=');
+    expect(text).not.toContain('budget=');
+    expect(text).not.toContain('waited=');
+  });
+
+  it('renders a budget of "none" as a stated fact, not as an absence', () => {
+    // `null` and "not reported" are different facts about the ladder, and they were conflated once
+    // already: defaulting a missing budget to `0` would report a ladder that could not retry at all.
+    const error = new Error('boom') as Error & { retryExhausted?: unknown };
+    error.retryExhausted = { attempts: 1, attemptsMs: [10], retryBudgetMs: null };
+
+    expect(describeFailure({ progress: undefined, error })).toContain(
+      'attemptsMs=[10] budget=none',
+    );
+  });
+
+  it('splits elapsed time into attempt time and waiting, which is the quantity that names the cause', () => {
+    const error = new Error('boom') as Error & { retryExhausted?: unknown };
+    error.retryExhausted = {
+      attempts: 2,
+      attemptsMs: [250, 250],
+      timeoutMs: 250,
+      retryBudgetMs: 5_000,
+      elapsedMs: 900,
+    };
+
+    const text = describeFailure({ progress: undefined, error });
+
+    // 900 elapsed against 500 spent leaves 400 that belong to the ladder and the pacer, not to any
+    // attempt -- the distinction the second line exists for.
+    expect(text).toContain('deadline=250ms budget=5000ms waited=400ms');
+  });
+
   it('gives up on a self-referential cause chain instead of looping', () => {
     // A `cause` chain is caller-supplied data, so it can be a cycle -- a wrapped error whose
     // wrapper is itself the cause is easy to build by accident when two layers each attach

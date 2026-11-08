@@ -135,6 +135,12 @@ export class OpenAICompatibleLLM implements LLM {
     );
     const res = outcome.response;
     if (!res.ok) {
+      // The `.catch` is not defensive padding. `withBufferedBody` reads every body to completion
+      // inside the attempt, so a body that dies mid-read never reaches this line as a response --
+      // unless the caller supplied a `fetchFn` whose response has a null body and an overridden
+      // `text()`, which is the seam `llm.test.ts` uses because the network path cannot produce it.
+      // What the arm guarantees is that a read failure is DOWNGRADED to "no detail": letting it
+      // escape would replace a diagnosable status with an opaque stream error.
       const bodyText = await res.text().catch(() => '');
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
       const message = `LLM request failed: ${res.status} ${res.statusText}${detail}${describeRefusal(outcome.refusal)}`;
@@ -234,8 +240,12 @@ const CONTENT_FILTER_MARKERS: readonly string[] = [
 
 /** Extract the provider's own error code, when the body publishes one. */
 function providerErrorCode(body: string): string | null {
-  const match = /"code"\s*:\s*"?([A-Za-z0-9_.-]+)"?/.exec(body);
-  return match === null ? null : (match[1] ?? null);
+  // `exec(...)?.[1] ?? null` rather than a ternary over `match === null` plus a `?? null` inside:
+  // the inner fallback could only fire if a **mandatory** capture group were absent, which is a
+  // state the regex cannot produce. Folding the two into one optional chain keeps the one branch
+  // that can actually go both ways, and `??` is still needed because the index is typed
+  // `string | undefined` under `noUncheckedIndexedAccess`.
+  return /"code"\s*:\s*"?([A-Za-z0-9_.-]+)"?/.exec(body)?.[1] ?? null;
 }
 
 /**

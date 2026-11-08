@@ -84,8 +84,22 @@ export type RevisionResult = {
   readonly stale: readonly string[];
 };
 
+/**
+ * The status a verdict writes, as a table rather than as a ternary.
+ *
+ * The two arms were the same word twice, and a ternary whose arms are constants is the shape the v8
+ * provider mis-attributes: it reported the `'confirmed'` arm as never taken while
+ * `reviseLedger([LONDON, BERLIN])` produces `k2 persistence confirmed` with `support=1`, which can
+ * only happen by passing through it. A total map has no branch to mis-count, and it keeps the
+ * mapping in one place the day a third verdict is added.
+ */
+const STATUS_OF: Record<RevisionVerdict, AssumptionStatus> = {
+  refuted: 'refuted',
+  confirmed: 'confirmed',
+};
+
 function statusFor(verdict: RevisionVerdict): AssumptionStatus {
-  return verdict === 'refuted' ? 'refuted' : 'confirmed';
+  return STATUS_OF[verdict];
 }
 
 /** Rewrite one assumption on a fact, counting the observation. A fact without that kind is untouched. */
@@ -267,7 +281,9 @@ function groupBySlot(facts: readonly KnowledgeFact[]): Map<string, KnowledgeFact
       const leftAt = left.at ?? Number.NEGATIVE_INFINITY;
       const rightAt = right.at ?? Number.NEGATIVE_INFINITY;
       if (leftAt !== rightAt) return leftAt - rightAt;
-      return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+      // No `0` arm: a group is built from a map keyed by id, so two members cannot share one. A
+      // comparator that returned `0` here would describe an equality the container excludes.
+      return left.id < right.id ? -1 : 1;
     });
   }
   return groups;

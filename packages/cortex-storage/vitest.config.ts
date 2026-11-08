@@ -5,7 +5,7 @@ import { configDefaults, defineConfig } from 'vitest/config';
  * the rationale. This package previously had no config at all, so it inherited
  * vitest's defaults and enforced nothing.
  *
- * ## Reading under vitest 5: 100 / 99.12 / 100 / 100
+ * ## Reading under vitest 5: 100 / 100 / 100 / 100
  *
  * The `} finally {` counters this file used to argue about no longer appear at all. `pg.ts` and
  * `sql-storage.ts` both read 100 / 100 / 100 / 100, so the two residual branch points are gone
@@ -13,12 +13,22 @@ import { configDefaults, defineConfig } from 'vitest/config';
  * spent so long on: they were the old provider's mapping, not the code. The section stays as the
  * record of how that was established, not as a claim that is still true.
  *
- * One branch remains, at `sqlite.ts:47`, and it is a different kind of thing: `close()` guards
- * `if (this.db.open)` to satisfy `SqlSession`'s documented idempotence. `BetterSqliteSession` is
- * not exported and `SqlStorage.close()` calls it exactly once, so the false arm cannot be reached
- * through the public API. It is kept rather than deleted because it encodes a contract at the
- * engine boundary, and recorded rather than annotated because a reader of the number deserves to
- * know which of the two situations they are looking at.
+ * ## The last branch, and why it is now a deletion rather than a reading
+ *
+ * This paragraph used to record one branch at `sqlite.ts:47`: `close()` guarded `if (this.db.open)`
+ * on the argument that it encoded idempotence at the engine boundary. The argument did not survive
+ * inspection. `SqlStorage.close` returns early on its own `#closed` flag, set synchronously before
+ * the first await, so `BetterSqliteSession.close` cannot be reached twice for one handle -- which
+ * makes the guard unreachable, and an unreachable guard is not a contract, it is a comment that
+ * costs a branch. Worse, the one behaviour it looked like it handled (a double close) is the one
+ * behaviour it would have hidden: better-sqlite3 throws on a second `close()`, and swallowing that
+ * is how a leaked handle stays invisible.
+ *
+ * So the guard is gone, with the reasoning written at the method (`src/storage/sqlite.ts`), and this
+ * package reads 100 / 100 / 100 / 100 with no branch left to explain. The rule this repository
+ * applies to annotations applies to kept-for-the-number branches too: **a branch is either reached
+ * by a test or deleted**. Recording a permanent gap and calling it a contract is a third option that
+ * only looks like rigour.
  *
  * Two tests were added alongside this reading, for gaps the new instrument exposed as real:
  * `sql-storage.test.ts` now covers `close()` after a rejected schema (the one path where the eager

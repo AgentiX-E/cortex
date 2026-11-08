@@ -2117,10 +2117,15 @@ function assembleSections(
   const SEPARATOR = '\n\n';
   if (assembly !== 'instruction-first') return [...sections, instruction].join(SEPARATOR);
   const at = instruction.lastIndexOf(SEPARATOR);
-  const tail = at === -1 ? '' : instruction.slice(at + SEPARATOR.length);
+  // No `at === -1` arm on the slice below. `isCue` already requires `at !== -1`, and `tail` is read
+  // only where `isCue` holds, so a ternary here would state one condition twice and its false arm
+  // could never be entered -- which is what it measured: 0 of 31. Stated once, it is not a branch.
+  const tail = instruction.slice(at + SEPARATOR.length);
+  // The cue is a cue only if it is the **last segment and one line**: a multi-line tail is the
+  // instruction's own closing prose, and moving it would reorder prose rather than move a cue.
   const isCue = at !== -1 && tail.trim().length > 0 && !tail.includes('\n');
-  const body = isCue ? instruction.slice(0, at) : instruction;
-  return isCue ? [body, ...sections, tail].join(SEPARATOR) : [body, ...sections].join(SEPARATOR);
+  if (!isCue) return [instruction, ...sections].join(SEPARATOR);
+  return [instruction.slice(0, at), ...sections, tail].join(SEPARATOR);
 }
 
 /**

@@ -371,6 +371,67 @@ describe('OpenAICompatibleLLM (real local server)', () => {
     await expect(emb.embed(['emptyfail'])).rejects.toThrow(/Embedding request failed/);
   });
 
+  it('reports a body that dies mid-read as a transport failure, not as a status', async () => {
+    // A provider that answers 502 and then drops the connection while the body is arriving. The
+    // ladder reads every body to completion *inside* the attempt (`withBufferedBody`, which is what
+    // closed the abort-at-`res.json()` class of loss in `38941095220`), so this never reaches the
+    // adapter's `!res.ok` branch at all: it is a transport error, and it carries the exhaustion
+    // record rather than a status.
+    //
+    // That is the correct shape. A half-arrived body has no detail to report, and inventing a
+    // `502` for it would state something the provider did send only in part.
+    const broken = (async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new Error('socket hang up'));
+          },
+        }),
+        { status: 502 },
+      )) as unknown as typeof fetch;
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://provider.invalid/v1',
+      apiKey: 'test',
+      model: 'm',
+      dimensions: 3,
+      maxRetries: 0,
+      fetchFn: broken,
+    });
+
+    const failure = await emb.embed(['hello']).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    );
+    expect((failure as Error).message).toBe('socket hang up');
+    expect(
+      (failure as Error & { retryExhausted?: { attempts: number } }).retryExhausted?.attempts,
+    ).toBe(1);
+  });
+
+  it('downgrades an unreadable error body to no detail, keeping the status', async () => {
+    // The embedding mirror of the LLM case above, and it exists for the same reason: the two
+    // adapters carry the same `res.text().catch(() => '')`, and only the LLM side had a test
+    // reaching the catch. A `Response` with a null body passes through `withBufferedBody`
+    // untouched, so this is the one shape that can still arrive with a `text()` that rejects.
+    const unreadable = new Response(null, { status: 400, statusText: 'Bad Request' });
+    Object.defineProperty(unreadable, 'text', {
+      value: () => Promise.reject(new Error('stream closed')),
+    });
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://provider.invalid/v1',
+      apiKey: 'test',
+      model: 'm',
+      dimensions: 3,
+      maxRetries: 0,
+      fetchFn: (async () => unreadable) as unknown as typeof fetch,
+    });
+
+    await expect(emb.embed(['hello'])).rejects.toThrow(
+      /Embedding request failed: 400 Bad Request$/,
+    );
+    await expect(emb.embed(['hello'])).rejects.not.toThrow(/stream closed/);
+  });
+
   it('returns an empty list when the response has no data field', async () => {
     const emb = new OpenAIEmbedding({ baseUrl, apiKey: 'test', model: 'm', dimensions: 3 });
     expect(await emb.embed(['emptydata'])).toEqual([]);

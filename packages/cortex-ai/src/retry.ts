@@ -717,11 +717,19 @@ export async function retryableFetchWithStats(
       const computed = baseDelayMs * 2 ** (attempt - 1);
       // What is left of the budget, read fresh at every retry: the ceiling is measured
       // from the first attempt, and every attempt before this one has spent some of it.
+      //
+      // `null` rather than `Number.POSITIVE_INFINITY` when the ceiling is disabled (a negative
+      // `retryBudgetMs`). The infinity worked arithmetically -- nothing is greater than it, so the
+      // affordability guard below never fired -- but it made three separate expressions carry a
+      // `budgetEnforced ?` arm that no input could reach, and a branch that claims an impossible
+      // state is indistinguishable from one that handles a real one. With `null` the unbounded case
+      // is a distinct shape the guard skips explicitly, and every value inside the guard is a
+      // number.
       const remaining = budgetEnforced
         ? retryBudgetMs + pacedMs - (Date.now() - sequenceStart)
-        : Number.POSITIVE_INFINITY;
+        : null;
       let waitMs = fromHeader ?? computed;
-      if (waitMs > remaining) {
+      if (remaining !== null && waitMs > remaining) {
         // Two refusals live here, and they are different decisions.
         //
         // The server's own window (`Retry-After`) is an instruction: either it is honoured
@@ -740,7 +748,9 @@ export async function retryableFetchWithStats(
             attempts: stats.attempts,
             retried: stats.retried,
             retryAfterMs: fromHeader,
-            remainingMs: budgetEnforced ? Math.max(0, remaining) : null,
+            // A number, not `number | null`: this branch is only reachable when the ceiling exists
+            // (`remaining !== null`), so the `budgetEnforced ?` arm it used to carry was unreachable.
+            remainingMs: Math.max(0, remaining),
           };
           if (resFromLastAttempt === undefined) {
             // ## Never invent a status
@@ -769,7 +779,8 @@ export async function retryableFetchWithStats(
                 elapsedMs: Date.now() - sequenceStart,
                 attemptsMs,
                 timeoutMs,
-                retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
+                // Enforced here for the same reason as `remainingMs` above.
+                retryBudgetMs,
                 cause: lastError === undefined ? '' : lastError.message,
               },
             );

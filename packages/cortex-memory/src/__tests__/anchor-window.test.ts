@@ -41,10 +41,13 @@
  * less than the turn unit would under a tight budget.
  */
 import { describe, expect, it } from 'vitest';
+import { createMemory } from '@agentix-e/cortex-core';
 import type { LLM } from '@agentix-e/cortex-core';
 
 import { CortexMemory } from '../memory.js';
+import { buildAuditPrompt } from '../prompt.js';
 import type { RelevanceUnits } from '../prompt.js';
+import type { AdmittedSession } from '../sessionize.js';
 import type { CortexMemoryOptions } from '../types.js';
 
 const NOW = 1_759_470_000_000;
@@ -298,6 +301,91 @@ describe('the radius is inert on the units it does not belong to', () => {
       const without = await run({ relevanceUnits });
       const withRadius = await run({ relevanceUnits, windowRadius: 3 });
       expect(withRadius.carried).toEqual(without.carried);
+    }
+  });
+});
+
+describe('the review pass re-selects under the same unit and radius', () => {
+  /**
+   * Six turns, one decisive anchor and two neighbours that only a window can reach.
+   *
+   * `a2` is the highest-scoring turn; `a1` and `a3` are its neighbours in the same session and carry
+   * no relevance of their own, so they are reachable by a radius and by nothing else. That is the
+   * shape the reference restores and the reason the radius exists.
+   */
+  const TEXTS = [
+    'a0 the blazer is at the dry cleaner',
+    'a1 an unrelated line about a garden',
+    'a2 the boots need returning to the shop',
+    'a3 another unrelated line about a garden',
+    'a4 the coat is at the tailor',
+    'a5 a last unrelated line about a garden',
+  ];
+
+  const SESSIONS: AdmittedSession[] = [
+    {
+      index: 0,
+      size: TEXTS.length,
+      turns: TEXTS.map((content, ordinal) => ({ ...createMemory({ content }), ordinal })),
+    },
+  ];
+
+  const relevanceFor = (_question: string, text: string): number =>
+    text.includes('boots') ? 1 : text.includes('blazer') ? 0.8 : 0.1;
+
+  /** The first pass the audit is shown, short so the room goes to the evidence. */
+  const FIRST_PASS = 'Step 1 —\n- boots\n\nStep 2 — 1';
+
+  /**
+   * A budget the audit prompt cannot meet without re-selecting.
+   *
+   * The whole audit prompt is 1,309 characters with this fixture, so this takes the `fitToBudget`
+   * path -- which is the only path where the radius can be forwarded or dropped -- and it is spent
+   * on a window rather than on a prefix: the sizes differ between the two radii here (three turns
+   * either way, different turn sets), which is what makes the assertion below a distinction rather
+   * than a smaller prompt.
+   */
+  const BUDGET = 1_200;
+
+  function audit(windowRadius: number): string[] {
+    return buildAuditPrompt('How many errands?', SESSIONS, FIRST_PASS, {
+      relevanceUnits: 'anchor-window',
+      relevanceFor,
+      windowRadius,
+      maxTurnChars: 400,
+      maxChars: BUDGET,
+    }).carried.map((turn) => turn.content.split(' ')[0]!);
+  }
+
+  it('carries a neighbour the anchor-only selection cannot reach', () => {
+    // `buildAuditPrompt` states the forwarding in a comment ("the two differ in which session plan
+    // they build, not in which option they honour"), and a comment is not a measurement: before this
+    // test the spread that forwards `windowRadius` on the audit's fit path was never entered by any
+    // run. A dropped option here would make the review pass read a **different turn set** from the
+    // one it reviews, which is the two-paths-allocate-differently failure §13.13 records -- and it
+    // would be invisible, because the audit prompt would still look like a prompt.
+    const narrowed = audit(0);
+    const widened = audit(2);
+
+    expect(widened).toContain('a3');
+    expect(narrowed).not.toContain('a3');
+    // The radius widens the window rather than the budget: the anchor is carried under both.
+    expect(narrowed).toContain('a2');
+    expect(widened).toContain('a2');
+  });
+
+  it('stays inside the budget it was given, at either radius', () => {
+    // The re-selection honours the room as well as the unit; a window that overflowed would be a
+    // prompt whose evidence is clipped mid-turn, which is the state `fitToBudget` exists to prevent.
+    for (const windowRadius of [0, 2]) {
+      const built = buildAuditPrompt('How many errands?', SESSIONS, FIRST_PASS, {
+        relevanceUnits: 'anchor-window',
+        relevanceFor,
+        windowRadius,
+        maxTurnChars: 400,
+        maxChars: BUDGET,
+      });
+      expect(built.prompt.length).toBeLessThanOrEqual(BUDGET);
     }
   });
 });

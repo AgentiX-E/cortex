@@ -17,7 +17,14 @@
  * told us nothing was spent" are different facts about the run.
  */
 import { describe, expect, it } from 'vitest';
-import { llmUsage, observeUsage, parseUsage, recordUsage, usageDelta } from '../usage.js';
+import {
+  createUsageTally,
+  llmUsage,
+  observeUsage,
+  parseUsage,
+  recordUsage,
+  usageDelta,
+} from '../usage.js';
 
 describe('parseUsage', () => {
   it('reads the OpenAI-compatible shape', () => {
@@ -240,5 +247,59 @@ describe('the observer a per-side split installs', () => {
 
     expect(first).toEqual([]);
     expect(second).toEqual([5]);
+  });
+});
+
+describe('a ledger of its own', () => {
+  /**
+   * `createUsageTally` is the export a per-side split needs, and until this block existed it was
+   * reached only from `cortex-eval`'s suite — which meant this package's own gate never exercised
+   * it, and `tools/coverage-per-file.mjs` reported `createUsageTally` uncovered at 90.00% functions.
+   * A package that cannot demonstrate its own public API is a package whose API is tested somewhere
+   * else, by accident.
+   */
+  it('starts at zero rather than at the process ledger', () => {
+    recordUsage({ promptTokens: 1_000, completionTokens: 100, cacheHitPromptTokens: 0 });
+
+    expect(createUsageTally().snapshot()).toEqual({
+      calls: 0,
+      unpricedCalls: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheHitPromptTokens: 0,
+    });
+  });
+
+  it('accumulates into itself and leaves the process ledger alone', () => {
+    const tally = createUsageTally();
+    const before = llmUsage();
+    tally.record({ promptTokens: 300, completionTokens: 30, cacheHitPromptTokens: 120 });
+    tally.record(undefined);
+
+    expect(tally.snapshot()).toEqual({
+      calls: 2,
+      unpricedCalls: 1,
+      promptTokens: 300,
+      completionTokens: 30,
+      cacheHitPromptTokens: 120,
+    });
+    // The whole point of a separate ledger: a side's spend and the run's spend are two readings, so
+    // the run's must not move when a side is credited.
+    expect(usageDelta(before, llmUsage())).toEqual({
+      calls: 0,
+      unpricedCalls: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      cacheHitPromptTokens: 0,
+    });
+  });
+
+  it('returns a copy, so a side cannot be made to look cheaper by editing its own reading', () => {
+    const tally = createUsageTally();
+    tally.record({ promptTokens: 10, completionTokens: 1, cacheHitPromptTokens: 0 });
+    const reading = tally.snapshot() as { promptTokens: number };
+    reading.promptTokens = 0;
+
+    expect(tally.snapshot().promptTokens).toBe(10);
   });
 });

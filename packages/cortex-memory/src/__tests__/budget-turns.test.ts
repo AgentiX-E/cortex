@@ -70,6 +70,24 @@ describe('selectTurnsWithinBudget: trim instead of drop', () => {
     expect(whole).toHaveLength(1);
   });
 
+  it('takes one turn when no turn fits at all, because an empty context is worse than an overflowing one', () => {
+    // The last-resort arm: every turn's cost exceeds the whole budget, so the trim loop keeps nothing
+    // for every session and `chosen` stays empty. Returning an empty plan would answer the question
+    // from no evidence, which is the one outcome that is scored as a wrong answer rather than a
+    // partial one -- so the single most relevant turn is taken even though it overflows.
+    const sessions = [session(0, ['nothing relevant', 'the berlin answer'])];
+    const plan = selectTurnsWithinBudget(sessions, 1, {
+      relevance: relevanceOf('berlin'),
+      cost: () => 5,
+    });
+
+    expect(plan.sessions).toHaveLength(1);
+    expect(plan.sessions[0]!.turns.map((t) => t.content)).toEqual(['the berlin answer']);
+    // `spent` reports what the fallback actually cost, not the budget it overran.
+    expect(plan.spent).toBe(5);
+    expect(plan.trimmed).toBe(1);
+  });
+
   it('takes the most relevant turn when trimming, not the first', () => {
     const sessions = [session(0, ['nothing here', 'nothing here either', 'the berlin answer'])];
     const question = 'berlin';

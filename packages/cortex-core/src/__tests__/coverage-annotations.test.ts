@@ -199,10 +199,12 @@ const ROOT = repoRoot();
  * stronger claim and is worth reviewing on its own.
  */
 const EXPECTED: Record<string, { count: number; reason: string }> = {
-  'cortex-core: graph/memory-graph.ts': {
-    count: 2,
-    reason: 'Defensive guards on graph traversal invariants that the public API cannot violate.',
-  },
+  // `cortex-core: graph/memory-graph.ts` used to be declared here with `count: 2`: the two
+  // `?? []` fallbacks on `adjacency.get(...)` inside `spreadingActivation` and `shortestPath`.
+  // Both are gone, and the removal is a deletion rather than a test, because the lookup cannot
+  // miss: `activation` is seeded only for ids the adjacency map has, every neighbour added to it
+  // came from an adjacency key, and the BFS queue starts at a node whose presence was checked.
+  // What the annotation said was "unreachable via valid inputs"; what the code says now is why.
   // `cortex-core: math/stats.ts` used to be declared here with `count: 6`, and its
   // removal is worth a note because the count went to zero rather than changing.
   //
@@ -525,6 +527,16 @@ describe('the coverage-ignore annotation set is pinned', () => {
       string,
       { s: Record<string, number> }
     >;
+
+    // A **filtered** invocation writes a report for the subset it ran: `vitest run <one file>
+    // --coverage.include='src/knowledge/unit.ts'` leaves a report containing one entry, and the
+    // assertions below would then measure that subset while claiming to measure the package --
+    // failing on the `>= 4` floor for a reason that has nothing to do with annotations. The barrel
+    // `src/index.ts` is in every full run and in no subset, so its absence identifies the case.
+    // Skipping is the right response: the coverage gate is what guarantees the full report exists.
+    if (!Object.keys(raw).some((file) => file.endsWith('/src/index.ts'))) {
+      return;
+    }
 
     let typeOnlyFilesChecked = 0;
     let untestedFilesFound = 0;

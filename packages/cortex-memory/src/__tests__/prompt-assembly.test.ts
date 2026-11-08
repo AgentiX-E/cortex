@@ -255,6 +255,53 @@ describe('the assembly-order variable', () => {
     expect(flat.trimEnd().endsWith('INSUFFICIENT_EVIDENCE.')).toBe(true);
   });
 
+  it('moves an instruction that ends without a one-line cue, and splits nothing off it', () => {
+    // The assembly moves a **cue**, not an instruction. `isCue` is true only when the block's last
+    // `\n\n`-segment is a single line; every ask other than `verbatim` ends its block on closing
+    // prose instead, so the whole block moves and nothing is separated out. Without this the false
+    // arm of `isCue` is a branch no run enters -- it read `0` of `31` before this test existed --
+    // and a treatment that reordered prose would be indistinguishable from one that moved a cue.
+    const render = (assembly: 'instruction-first' | undefined): string =>
+      buildSessionPrompt(QUESTION, SESSIONS, {
+        ask: 'enumerated',
+        rendering: 'sourced',
+        maxTurnChars: 400,
+        ...(assembly === undefined ? {} : { assembly }),
+      }).prompt;
+
+    const control = render(undefined);
+    const treated = render('instruction-first');
+    const controlSegments = segmentsOf(control);
+    const treatedSegments = segmentsOf(treated);
+
+    // A permutation of the same segments, as on the cue path: the order is the only difference.
+    expect([...treatedSegments].sort()).toEqual([...controlSegments].sort());
+    // The whole block is one segment, first under the treatment and last under the control. A cue
+    // separated out would split `Answer the question using only …` away from its closing lines.
+    expect(treatedSegments[0]!.startsWith('Answer the question using only')).toBe(true);
+    expect(controlSegments.at(-1)!.startsWith('Answer the question using only')).toBe(true);
+    // And the question is left where the control put it, one segment from the end of the block.
+    expect(treatedSegments.at(-1)).toBe(`QUESTION: ${QUESTION}`);
+  });
+
+  it('keeps the arm’s instruction text a reference to the control’s, not a copy', () => {
+    // §13.279's single-variable claim has a second half that the permutation test above cannot
+    // reach: the two names must read **one** function. They do, by delegation, and this is what
+    // says so -- `buildPrompt` never takes `assembly`, so a contract name whose only effect is an
+    // order has no way to change the flat prompt unless its instruction text was written out a
+    // second time. A copy would be invisible today (identical strings) and would make the next edit
+    // to the control's block a two-variable run.
+    const turns = SESSIONS.flatMap((session) => session.turns);
+    const control = buildPrompt(QUESTION, turns, CONTROL_CONTRACT).prompt;
+
+    expect(buildPrompt(QUESTION, turns, ARM_CONTRACT).prompt).toBe(control);
+    expect(buildPrompt(QUESTION, turns, 'evidence-blocks-unsourced').prompt).toBe(control);
+
+    // A positive control, so the two equalities cannot be satisfied by a builder that ignores the
+    // contract argument: `temporal` reads its own block and must differ.
+    expect(buildPrompt(QUESTION, turns, 'temporal').prompt).not.toBe(control);
+  });
+
   it('reaches the product route the contract is dispatched to', async () => {
     // The end-to-end half: a `CortexMemory` built with the contract must send the reference's
     // order. Asserting the table alone would pass on an arm whose builder ignored it, which is

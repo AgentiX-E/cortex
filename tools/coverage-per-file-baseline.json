@@ -1,0 +1,2650 @@
+{
+  "policy": {
+    "floor": 95,
+    "dimensions": [
+      "statements",
+      "branches",
+      "functions",
+      "lines"
+    ],
+    "note": "Counts, not rates: the gate compares covered/total by cross-multiplication so no comparison goes through a float. Regenerate with tools/coverage-per-file.mjs --write-baseline, which refuses to lower a recorded rate or admit new debt without being told to."
+  },
+  "exempt": {
+    "cortex-ai/src/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The Node entry point, and it is `export ... from` only. A re-export statement produces no counter under the v8 provider, so the file reports 0/0 while every module it names is measured on its own entry."
+    },
+    "cortex-ai/src/local/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The `./local` entry point: re-exports the ONNX-backed embedder and nothing else. It exists as a separate entry so a Node service does not link the runtime, which `tools/entry-guard.mjs` asserts over the import closure."
+    },
+    "cortex-ai/src/web/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The `./web` entry point: re-exports the browser's built-in model. Re-exports only, so there is nothing to execute."
+    },
+    "cortex-core/src/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The package root: `export ... from` statements and no runtime code of its own. Every module it names has its own measured entry in this baseline; a barrel has nothing to execute."
+    },
+    "cortex-core/src/interfaces/embedding.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "Declaration-only: `EmbeddingModel` and its option types. No runtime export, so the instrumenter records no statement."
+    },
+    "cortex-core/src/interfaces/llm.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "Declaration-only: the `LLM` contract, `CompleteOptions` and `JsonSchema`. No runtime export."
+    },
+    "cortex-core/src/interfaces/storage.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "Declaration-only: `Storage`, `StorageTransaction`, `PutOptions` and `QueryPredicate`. No runtime export."
+    },
+    "cortex-core/src/interfaces/vector.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "Declaration-only: `VectorIndex`, `VectorHit` and `VectorFilter`. No runtime export."
+    },
+    "cortex-eval/src/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The package root: re-exports only, so no counter of its own. The harness modules behind it are each measured."
+    },
+    "cortex-eval/src/types.ts": {
+      "kind": "not-instrumented",
+      "reason": "Excluded in `vitest.config.ts` and declaration-only in fact: every export is a `type` or an `interface`, and the file's own header records that a runtime export would void the exclusion. Absent from the report rather than uncovered."
+    },
+    "cortex-memory/src/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The package root: re-exports only. `index.test.ts` imports it to prove the entry surface resolves, which is a different claim from a counter moving -- and this record is what stops the 0/0 from being read as 'covered by that test'."
+    },
+    "cortex-storage/src/browser/idb.ts": {
+      "kind": "not-instrumented",
+      "reason": "Needs `IndexedDB`, which Node does not have. Excluded from the Node run and covered by `test/browser/probe.mjs`, which runs the built package in a real Chromium twice across a restart and asserts named checks -- a measurement this report cannot hold."
+    },
+    "cortex-storage/src/browser/opfs-worker.ts": {
+      "kind": "not-instrumented",
+      "reason": "Runs inside a `Worker`, which the Node run has no honest stand-in for. Covered by the same Chromium probe as `idb.ts`."
+    },
+    "cortex-storage/src/browser/opfs.ts": {
+      "kind": "not-instrumented",
+      "reason": "Needs OPFS access handles, which Node does not have; a shim would assert the shim. Covered by the same Chromium probe as `idb.ts`."
+    },
+    "cortex-storage/src/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The root exports nothing on purpose (`export {}`), so importing the package root cannot link a native addon or a socket client; each backend is its own subpath. Zero statements by design, not a gap."
+    }
+  },
+  "files": {
+    "cortex-ai/src/embedding/openai.ts": {
+      "statements": [
+        16,
+        16
+      ],
+      "branches": [
+        12,
+        12
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        14,
+        14
+      ]
+    },
+    "cortex-ai/src/json.ts": {
+      "statements": [
+        8,
+        8
+      ],
+      "branches": [
+        7,
+        7
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        8,
+        8
+      ]
+    },
+    "cortex-ai/src/llm/openai-compatible.ts": {
+      "statements": [
+        50,
+        50
+      ],
+      "branches": [
+        36,
+        36
+      ],
+      "functions": [
+        13,
+        13
+      ],
+      "lines": [
+        47,
+        47
+      ]
+    },
+    "cortex-ai/src/local/embedding.ts": {
+      "statements": [
+        15,
+        15
+      ],
+      "branches": [
+        6,
+        6
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        13,
+        13
+      ]
+    },
+    "cortex-ai/src/local/llm.ts": {
+      "statements": [
+        20,
+        20
+      ],
+      "branches": [
+        22,
+        22
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        18,
+        18
+      ]
+    },
+    "cortex-ai/src/local/pipelines.ts": {
+      "statements": [
+        46,
+        46
+      ],
+      "branches": [
+        29,
+        29
+      ],
+      "functions": [
+        13,
+        13
+      ],
+      "lines": [
+        38,
+        38
+      ]
+    },
+    "cortex-ai/src/pacing.ts": {
+      "statements": [
+        16,
+        16
+      ],
+      "branches": [
+        9,
+        9
+      ],
+      "functions": [
+        3,
+        3
+      ],
+      "lines": [
+        14,
+        14
+      ]
+    },
+    "cortex-ai/src/profile.ts": {
+      "statements": [
+        41,
+        41
+      ],
+      "branches": [
+        44,
+        44
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        38,
+        38
+      ]
+    },
+    "cortex-ai/src/rerank/cross-encoder.ts": {
+      "statements": [
+        15,
+        15
+      ],
+      "branches": [
+        16,
+        16
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        14,
+        14
+      ]
+    },
+    "cortex-ai/src/rerank/llm-reranker.ts": {
+      "statements": [
+        57,
+        57
+      ],
+      "branches": [
+        27,
+        27
+      ],
+      "functions": [
+        12,
+        12
+      ],
+      "lines": [
+        53,
+        53
+      ]
+    },
+    "cortex-ai/src/rerank/rerank.ts": {
+      "statements": [
+        51,
+        51
+      ],
+      "branches": [
+        36,
+        36
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        50,
+        50
+      ]
+    },
+    "cortex-ai/src/retry.ts": {
+      "statements": [
+        137,
+        137
+      ],
+      "branches": [
+        94,
+        96
+      ],
+      "functions": [
+        21,
+        21
+      ],
+      "lines": [
+        135,
+        135
+      ]
+    },
+    "cortex-ai/src/usage.ts": {
+      "statements": [
+        34,
+        34
+      ],
+      "branches": [
+        18,
+        18
+      ],
+      "functions": [
+        10,
+        10
+      ],
+      "lines": [
+        34,
+        34
+      ]
+    },
+    "cortex-ai/src/web/platform-language-model.ts": {
+      "statements": [
+        50,
+        50
+      ],
+      "branches": [
+        46,
+        46
+      ],
+      "functions": [
+        9,
+        9
+      ],
+      "lines": [
+        48,
+        48
+      ]
+    },
+    "cortex-core/src/consolidation/consolidate.ts": {
+      "statements": [
+        24,
+        24
+      ],
+      "branches": [
+        11,
+        11
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        24,
+        24
+      ]
+    },
+    "cortex-core/src/context/assemble.ts": {
+      "statements": [
+        117,
+        118
+      ],
+      "branches": [
+        104,
+        108
+      ],
+      "functions": [
+        13,
+        13
+      ],
+      "lines": [
+        103,
+        103
+      ]
+    },
+    "cortex-core/src/contradiction/resolve.ts": {
+      "statements": [
+        38,
+        38
+      ],
+      "branches": [
+        14,
+        14
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        38,
+        38
+      ]
+    },
+    "cortex-core/src/domain/fact.ts": {
+      "statements": [
+        3,
+        3
+      ],
+      "branches": [
+        9,
+        9
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        3,
+        3
+      ]
+    },
+    "cortex-core/src/domain/memory.ts": {
+      "statements": [
+        3,
+        3
+      ],
+      "branches": [
+        22,
+        22
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        3,
+        3
+      ]
+    },
+    "cortex-core/src/export-census.ts": {
+      "statements": [
+        249,
+        255
+      ],
+      "branches": [
+        146,
+        153
+      ],
+      "functions": [
+        44,
+        44
+      ],
+      "lines": [
+        213,
+        216
+      ]
+    },
+    "cortex-core/src/federation/federated-storage.ts": {
+      "statements": [
+        44,
+        44
+      ],
+      "branches": [
+        19,
+        19
+      ],
+      "functions": [
+        21,
+        21
+      ],
+      "lines": [
+        41,
+        41
+      ]
+    },
+    "cortex-core/src/federation/read-side.ts": {
+      "statements": [
+        52,
+        52
+      ],
+      "branches": [
+        41,
+        43
+      ],
+      "functions": [
+        14,
+        14
+      ],
+      "lines": [
+        45,
+        45
+      ]
+    },
+    "cortex-core/src/graph/memory-graph.ts": {
+      "statements": [
+        88,
+        88
+      ],
+      "branches": [
+        39,
+        40
+      ],
+      "functions": [
+        12,
+        12
+      ],
+      "lines": [
+        87,
+        87
+      ]
+    },
+    "cortex-core/src/knowledge/assumption.ts": {
+      "statements": [
+        49,
+        50
+      ],
+      "branches": [
+        43,
+        44
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        43,
+        43
+      ]
+    },
+    "cortex-core/src/knowledge/edge.ts": {
+      "statements": [
+        61,
+        61
+      ],
+      "branches": [
+        53,
+        54
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        56,
+        56
+      ]
+    },
+    "cortex-core/src/knowledge/frame.ts": {
+      "statements": [
+        57,
+        57
+      ],
+      "branches": [
+        32,
+        32
+      ],
+      "functions": [
+        13,
+        13
+      ],
+      "lines": [
+        52,
+        52
+      ]
+    },
+    "cortex-core/src/knowledge/markers.ts": {
+      "statements": [
+        36,
+        36
+      ],
+      "branches": [
+        10,
+        10
+      ],
+      "functions": [
+        11,
+        11
+      ],
+      "lines": [
+        30,
+        30
+      ]
+    },
+    "cortex-core/src/knowledge/revision.ts": {
+      "statements": [
+        125,
+        125
+      ],
+      "branches": [
+        82,
+        82
+      ],
+      "functions": [
+        15,
+        15
+      ],
+      "lines": [
+        101,
+        101
+      ]
+    },
+    "cortex-core/src/knowledge/taxonomy.ts": {
+      "statements": [
+        17,
+        17
+      ],
+      "branches": [
+        12,
+        12
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        16,
+        16
+      ]
+    },
+    "cortex-core/src/knowledge/temporality.ts": {
+      "statements": [
+        62,
+        62
+      ],
+      "branches": [
+        53,
+        53
+      ],
+      "functions": [
+        10,
+        10
+      ],
+      "lines": [
+        51,
+        51
+      ]
+    },
+    "cortex-core/src/knowledge/unit.ts": {
+      "statements": [
+        60,
+        60
+      ],
+      "branches": [
+        28,
+        28
+      ],
+      "functions": [
+        15,
+        15
+      ],
+      "lines": [
+        54,
+        54
+      ]
+    },
+    "cortex-core/src/math/fsrs.ts": {
+      "statements": [
+        19,
+        19
+      ],
+      "branches": [
+        6,
+        6
+      ],
+      "functions": [
+        3,
+        3
+      ],
+      "lines": [
+        19,
+        19
+      ]
+    },
+    "cortex-core/src/math/ot.ts": {
+      "statements": [
+        62,
+        62
+      ],
+      "branches": [
+        18,
+        18
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        50,
+        50
+      ]
+    },
+    "cortex-core/src/math/stats.ts": {
+      "statements": [
+        123,
+        123
+      ],
+      "branches": [
+        61,
+        61
+      ],
+      "functions": [
+        13,
+        13
+      ],
+      "lines": [
+        121,
+        121
+      ]
+    },
+    "cortex-core/src/math/vector.ts": {
+      "statements": [
+        35,
+        35
+      ],
+      "branches": [
+        10,
+        10
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        31,
+        31
+      ]
+    },
+    "cortex-core/src/retrieval/fuse.ts": {
+      "statements": [
+        32,
+        32
+      ],
+      "branches": [
+        10,
+        10
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        28,
+        28
+      ]
+    },
+    "cortex-core/src/retrieval/rerank.ts": {
+      "statements": [
+        45,
+        45
+      ],
+      "branches": [
+        23,
+        23
+      ],
+      "functions": [
+        9,
+        9
+      ],
+      "lines": [
+        43,
+        43
+      ]
+    },
+    "cortex-core/src/retrieval/typed.ts": {
+      "statements": [
+        62,
+        62
+      ],
+      "branches": [
+        55,
+        57
+      ],
+      "functions": [
+        12,
+        12
+      ],
+      "lines": [
+        54,
+        54
+      ]
+    },
+    "cortex-core/src/temporal/bitemporal.ts": {
+      "statements": [
+        23,
+        23
+      ],
+      "branches": [
+        17,
+        17
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        21,
+        21
+      ]
+    },
+    "cortex-core/src/triage/card.ts": {
+      "statements": [
+        138,
+        138
+      ],
+      "branches": [
+        84,
+        84
+      ],
+      "functions": [
+        26,
+        26
+      ],
+      "lines": [
+        122,
+        122
+      ]
+    },
+    "cortex-core/src/triage/claims.ts": {
+      "statements": [
+        33,
+        33
+      ],
+      "branches": [
+        14,
+        14
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        27,
+        27
+      ]
+    },
+    "cortex-core/src/triage/echo-corpus.ts": {
+      "statements": [
+        112,
+        112
+      ],
+      "branches": [
+        37,
+        37
+      ],
+      "functions": [
+        12,
+        12
+      ],
+      "lines": [
+        91,
+        91
+      ]
+    },
+    "cortex-core/src/triage/grounding.ts": {
+      "statements": [
+        83,
+        84
+      ],
+      "branches": [
+        48,
+        50
+      ],
+      "functions": [
+        22,
+        22
+      ],
+      "lines": [
+        73,
+        73
+      ]
+    },
+    "cortex-core/src/triage/output-guard.ts": {
+      "statements": [
+        129,
+        129
+      ],
+      "branches": [
+        87,
+        88
+      ],
+      "functions": [
+        16,
+        16
+      ],
+      "lines": [
+        105,
+        105
+      ]
+    },
+    "cortex-core/src/triage/proposer.ts": {
+      "statements": [
+        144,
+        145
+      ],
+      "branches": [
+        106,
+        110
+      ],
+      "functions": [
+        24,
+        25
+      ],
+      "lines": [
+        128,
+        129
+      ]
+    },
+    "cortex-core/src/triage/release.ts": {
+      "statements": [
+        17,
+        17
+      ],
+      "branches": [
+        8,
+        8
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        16,
+        16
+      ]
+    },
+    "cortex-core/src/triage/rules.ts": {
+      "statements": [
+        28,
+        28
+      ],
+      "branches": [
+        27,
+        27
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        25,
+        25
+      ]
+    },
+    "cortex-core/src/triage/writer.ts": {
+      "statements": [
+        82,
+        82
+      ],
+      "branches": [
+        76,
+        77
+      ],
+      "functions": [
+        14,
+        14
+      ],
+      "lines": [
+        77,
+        77
+      ]
+    },
+    "cortex-core/src/value/value.ts": {
+      "statements": [
+        10,
+        10
+      ],
+      "branches": [
+        4,
+        4
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        10,
+        10
+      ]
+    },
+    "cortex-core/src/vector/brute-force.ts": {
+      "statements": [
+        18,
+        18
+      ],
+      "branches": [
+        10,
+        10
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        16,
+        16
+      ]
+    },
+    "cortex-eval/src/a3-draw.ts": {
+      "statements": [
+        8,
+        8
+      ],
+      "branches": [
+        2,
+        2
+      ],
+      "functions": [
+        3,
+        3
+      ],
+      "lines": [
+        6,
+        6
+      ]
+    },
+    "cortex-eval/src/a3.ts": {
+      "statements": [
+        91,
+        91
+      ],
+      "branches": [
+        49,
+        49
+      ],
+      "functions": [
+        14,
+        14
+      ],
+      "lines": [
+        79,
+        79
+      ]
+    },
+    "cortex-eval/src/ablation-skip.ts": {
+      "statements": [
+        11,
+        11
+      ],
+      "branches": [
+        4,
+        4
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        11,
+        11
+      ]
+    },
+    "cortex-eval/src/ablation.ts": {
+      "statements": [
+        168,
+        170
+      ],
+      "branches": [
+        116,
+        121
+      ],
+      "functions": [
+        27,
+        27
+      ],
+      "lines": [
+        153,
+        155
+      ]
+    },
+    "cortex-eval/src/acceptance.ts": {
+      "statements": [
+        43,
+        43
+      ],
+      "branches": [
+        45,
+        45
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        41,
+        41
+      ]
+    },
+    "cortex-eval/src/anchor-recall.ts": {
+      "statements": [
+        123,
+        123
+      ],
+      "branches": [
+        69,
+        69
+      ],
+      "functions": [
+        16,
+        16
+      ],
+      "lines": [
+        98,
+        98
+      ]
+    },
+    "cortex-eval/src/answer-transition.ts": {
+      "statements": [
+        33,
+        33
+      ],
+      "branches": [
+        22,
+        22
+      ],
+      "functions": [
+        2,
+        2
+      ],
+      "lines": [
+        27,
+        27
+      ]
+    },
+    "cortex-eval/src/assumption-ablation.ts": {
+      "statements": [
+        160,
+        161
+      ],
+      "branches": [
+        101,
+        104
+      ],
+      "functions": [
+        18,
+        18
+      ],
+      "lines": [
+        146,
+        146
+      ]
+    },
+    "cortex-eval/src/b7-cohort.ts": {
+      "statements": [
+        88,
+        88
+      ],
+      "branches": [
+        60,
+        60
+      ],
+      "functions": [
+        16,
+        16
+      ],
+      "lines": [
+        71,
+        71
+      ]
+    },
+    "cortex-eval/src/bench-arm-options.ts": {
+      "statements": [
+        6,
+        6
+      ],
+      "branches": [
+        27,
+        28
+      ],
+      "functions": [
+        2,
+        2
+      ],
+      "lines": [
+        4,
+        4
+      ]
+    },
+    "cortex-eval/src/bench-failure.ts": {
+      "statements": [
+        34,
+        34
+      ],
+      "branches": [
+        56,
+        56
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        30,
+        30
+      ]
+    },
+    "cortex-eval/src/bench-memory-arm.ts": {
+      "statements": [
+        476,
+        484
+      ],
+      "branches": [
+        420,
+        431
+      ],
+      "functions": [
+        90,
+        92
+      ],
+      "lines": [
+        420,
+        422
+      ]
+    },
+    "cortex-eval/src/benchmark.ts": {
+      "statements": [
+        148,
+        148
+      ],
+      "branches": [
+        157,
+        158
+      ],
+      "functions": [
+        37,
+        37
+      ],
+      "lines": [
+        135,
+        135
+      ]
+    },
+    "cortex-eval/src/candidate-context.ts": {
+      "statements": [
+        234,
+        234
+      ],
+      "branches": [
+        130,
+        131
+      ],
+      "functions": [
+        41,
+        41
+      ],
+      "lines": [
+        183,
+        183
+      ]
+    },
+    "cortex-eval/src/candidate-discrimination.ts": {
+      "statements": [
+        39,
+        39
+      ],
+      "branches": [
+        24,
+        24
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        36,
+        36
+      ]
+    },
+    "cortex-eval/src/competitor-reader.ts": {
+      "statements": [
+        19,
+        19
+      ],
+      "branches": [
+        20,
+        20
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        18,
+        18
+      ]
+    },
+    "cortex-eval/src/competitor.ts": {
+      "statements": [
+        51,
+        51
+      ],
+      "branches": [
+        28,
+        28
+      ],
+      "functions": [
+        14,
+        14
+      ],
+      "lines": [
+        40,
+        40
+      ]
+    },
+    "cortex-eval/src/dataset-fingerprint.ts": {
+      "statements": [
+        1,
+        1
+      ],
+      "branches": [
+        0,
+        0
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        1,
+        1
+      ]
+    },
+    "cortex-eval/src/datasets/longmemeval-loader.ts": {
+      "statements": [
+        35,
+        35
+      ],
+      "branches": [
+        21,
+        21
+      ],
+      "functions": [
+        10,
+        10
+      ],
+      "lines": [
+        31,
+        31
+      ]
+    },
+    "cortex-eval/src/datasets/longmemeval-mini.ts": {
+      "statements": [
+        4,
+        4
+      ],
+      "branches": [
+        2,
+        2
+      ],
+      "functions": [
+        3,
+        3
+      ],
+      "lines": [
+        4,
+        4
+      ]
+    },
+    "cortex-eval/src/datasets/sampling.ts": {
+      "statements": [
+        31,
+        31
+      ],
+      "branches": [
+        14,
+        14
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        30,
+        30
+      ]
+    },
+    "cortex-eval/src/datasets/synthetic-benchmark.ts": {
+      "statements": [
+        42,
+        42
+      ],
+      "branches": [
+        14,
+        14
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        39,
+        39
+      ]
+    },
+    "cortex-eval/src/efficiency-frontier.ts": {
+      "statements": [
+        151,
+        153
+      ],
+      "branches": [
+        140,
+        142
+      ],
+      "functions": [
+        17,
+        17
+      ],
+      "lines": [
+        128,
+        129
+      ]
+    },
+    "cortex-eval/src/embedding-factory.ts": {
+      "statements": [
+        21,
+        21
+      ],
+      "branches": [
+        21,
+        21
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        21,
+        21
+      ]
+    },
+    "cortex-eval/src/embedding-memory.ts": {
+      "statements": [
+        23,
+        23
+      ],
+      "branches": [
+        14,
+        14
+      ],
+      "functions": [
+        3,
+        3
+      ],
+      "lines": [
+        23,
+        23
+      ]
+    },
+    "cortex-eval/src/embedding-preflight.ts": {
+      "statements": [
+        11,
+        11
+      ],
+      "branches": [
+        6,
+        6
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        11,
+        11
+      ]
+    },
+    "cortex-eval/src/embedding.ts": {
+      "statements": [
+        25,
+        25
+      ],
+      "branches": [
+        8,
+        8
+      ],
+      "functions": [
+        9,
+        9
+      ],
+      "lines": [
+        21,
+        21
+      ]
+    },
+    "cortex-eval/src/env-toggle.ts": {
+      "statements": [
+        4,
+        4
+      ],
+      "branches": [
+        3,
+        3
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        4,
+        4
+      ]
+    },
+    "cortex-eval/src/fact-memory.ts": {
+      "statements": [
+        44,
+        44
+      ],
+      "branches": [
+        34,
+        35
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        44,
+        44
+      ]
+    },
+    "cortex-eval/src/fact-store.ts": {
+      "statements": [
+        33,
+        33
+      ],
+      "branches": [
+        31,
+        31
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        33,
+        33
+      ]
+    },
+    "cortex-eval/src/failure-census.ts": {
+      "statements": [
+        26,
+        26
+      ],
+      "branches": [
+        10,
+        10
+      ],
+      "functions": [
+        3,
+        3
+      ],
+      "lines": [
+        26,
+        26
+      ]
+    },
+    "cortex-eval/src/harness.ts": {
+      "statements": [
+        95,
+        95
+      ],
+      "branches": [
+        83,
+        83
+      ],
+      "functions": [
+        17,
+        17
+      ],
+      "lines": [
+        81,
+        81
+      ]
+    },
+    "cortex-eval/src/judge-audit.ts": {
+      "statements": [
+        99,
+        102
+      ],
+      "branches": [
+        65,
+        68
+      ],
+      "functions": [
+        29,
+        29
+      ],
+      "lines": [
+        81,
+        84
+      ]
+    },
+    "cortex-eval/src/judge.ts": {
+      "statements": [
+        37,
+        37
+      ],
+      "branches": [
+        29,
+        29
+      ],
+      "functions": [
+        10,
+        10
+      ],
+      "lines": [
+        37,
+        37
+      ]
+    },
+    "cortex-eval/src/ledger.ts": {
+      "statements": [
+        35,
+        35
+      ],
+      "branches": [
+        10,
+        10
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        35,
+        35
+      ]
+    },
+    "cortex-eval/src/llm-factory.ts": {
+      "statements": [
+        65,
+        65
+      ],
+      "branches": [
+        32,
+        32
+      ],
+      "functions": [
+        11,
+        11
+      ],
+      "lines": [
+        62,
+        62
+      ]
+    },
+    "cortex-eval/src/metrics.ts": {
+      "statements": [
+        154,
+        154
+      ],
+      "branches": [
+        116,
+        118
+      ],
+      "functions": [
+        27,
+        27
+      ],
+      "lines": [
+        150,
+        150
+      ]
+    },
+    "cortex-eval/src/model-portability.ts": {
+      "statements": [
+        69,
+        69
+      ],
+      "branches": [
+        36,
+        36
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        61,
+        61
+      ]
+    },
+    "cortex-eval/src/mr-entity-recheck.ts": {
+      "statements": [
+        26,
+        26
+      ],
+      "branches": [
+        14,
+        14
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        22,
+        22
+      ]
+    },
+    "cortex-eval/src/natural-language-memory.ts": {
+      "statements": [
+        430,
+        430
+      ],
+      "branches": [
+        386,
+        386
+      ],
+      "functions": [
+        99,
+        99
+      ],
+      "lines": [
+        418,
+        418
+      ]
+    },
+    "cortex-eval/src/numeric-recheck.ts": {
+      "statements": [
+        42,
+        42
+      ],
+      "branches": [
+        31,
+        31
+      ],
+      "functions": [
+        10,
+        10
+      ],
+      "lines": [
+        35,
+        35
+      ]
+    },
+    "cortex-eval/src/paired-flip.ts": {
+      "statements": [
+        61,
+        61
+      ],
+      "branches": [
+        36,
+        36
+      ],
+      "functions": [
+        25,
+        25
+      ],
+      "lines": [
+        49,
+        49
+      ]
+    },
+    "cortex-eval/src/paired-readout.ts": {
+      "statements": [
+        4,
+        4
+      ],
+      "branches": [
+        8,
+        8
+      ],
+      "functions": [
+        2,
+        2
+      ],
+      "lines": [
+        4,
+        4
+      ]
+    },
+    "cortex-eval/src/paired-test.ts": {
+      "statements": [
+        79,
+        79
+      ],
+      "branches": [
+        40,
+        40
+      ],
+      "functions": [
+        11,
+        11
+      ],
+      "lines": [
+        64,
+        64
+      ]
+    },
+    "cortex-eval/src/pass-shape.ts": {
+      "statements": [
+        4,
+        4
+      ],
+      "branches": [
+        8,
+        8
+      ],
+      "functions": [
+        2,
+        2
+      ],
+      "lines": [
+        4,
+        4
+      ]
+    },
+    "cortex-eval/src/prompt-digest.ts": {
+      "statements": [
+        3,
+        3
+      ],
+      "branches": [
+        2,
+        2
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        2,
+        2
+      ]
+    },
+    "cortex-eval/src/query-expansion.ts": {
+      "statements": [
+        61,
+        61
+      ],
+      "branches": [
+        26,
+        26
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        51,
+        51
+      ]
+    },
+    "cortex-eval/src/question-record.ts": {
+      "statements": [
+        104,
+        104
+      ],
+      "branches": [
+        100,
+        102
+      ],
+      "functions": [
+        29,
+        29
+      ],
+      "lines": [
+        86,
+        86
+      ]
+    },
+    "cortex-eval/src/reader-provider.ts": {
+      "statements": [
+        44,
+        44
+      ],
+      "branches": [
+        33,
+        33
+      ],
+      "functions": [
+        9,
+        9
+      ],
+      "lines": [
+        38,
+        38
+      ]
+    },
+    "cortex-eval/src/reader-temperature.ts": {
+      "statements": [
+        20,
+        20
+      ],
+      "branches": [
+        16,
+        16
+      ],
+      "functions": [
+        5,
+        5
+      ],
+      "lines": [
+        19,
+        19
+      ]
+    },
+    "cortex-eval/src/reader-transport.ts": {
+      "statements": [
+        32,
+        32
+      ],
+      "branches": [
+        43,
+        43
+      ],
+      "functions": [
+        10,
+        10
+      ],
+      "lines": [
+        31,
+        31
+      ]
+    },
+    "cortex-eval/src/recall-curve.ts": {
+      "statements": [
+        77,
+        77
+      ],
+      "branches": [
+        58,
+        58
+      ],
+      "functions": [
+        12,
+        12
+      ],
+      "lines": [
+        73,
+        73
+      ]
+    },
+    "cortex-eval/src/relevance-index.ts": {
+      "statements": [
+        60,
+        60
+      ],
+      "branches": [
+        61,
+        64
+      ],
+      "functions": [
+        10,
+        10
+      ],
+      "lines": [
+        56,
+        56
+      ]
+    },
+    "cortex-eval/src/replay-system.ts": {
+      "statements": [
+        33,
+        34
+      ],
+      "branches": [
+        27,
+        28
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        32,
+        33
+      ]
+    },
+    "cortex-eval/src/report-write.ts": {
+      "statements": [
+        49,
+        49
+      ],
+      "branches": [
+        48,
+        48
+      ],
+      "functions": [
+        12,
+        12
+      ],
+      "lines": [
+        42,
+        42
+      ]
+    },
+    "cortex-eval/src/report.ts": {
+      "statements": [
+        268,
+        269
+      ],
+      "branches": [
+        299,
+        312
+      ],
+      "functions": [
+        36,
+        36
+      ],
+      "lines": [
+        256,
+        257
+      ]
+    },
+    "cortex-eval/src/rerank-census.ts": {
+      "statements": [
+        32,
+        32
+      ],
+      "branches": [
+        17,
+        17
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        29,
+        29
+      ]
+    },
+    "cortex-eval/src/rerank-factory.ts": {
+      "statements": [
+        79,
+        80
+      ],
+      "branches": [
+        62,
+        62
+      ],
+      "functions": [
+        17,
+        17
+      ],
+      "lines": [
+        76,
+        77
+      ]
+    },
+    "cortex-eval/src/restore-plan.ts": {
+      "statements": [
+        97,
+        98
+      ],
+      "branches": [
+        63,
+        64
+      ],
+      "functions": [
+        21,
+        21
+      ],
+      "lines": [
+        83,
+        83
+      ]
+    },
+    "cortex-eval/src/retrieval-attribution.ts": {
+      "statements": [
+        38,
+        38
+      ],
+      "branches": [
+        10,
+        10
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        35,
+        35
+      ]
+    },
+    "cortex-eval/src/retrieval-diagnostics.ts": {
+      "statements": [
+        123,
+        123
+      ],
+      "branches": [
+        76,
+        77
+      ],
+      "functions": [
+        19,
+        19
+      ],
+      "lines": [
+        112,
+        112
+      ]
+    },
+    "cortex-eval/src/retrieval.ts": {
+      "statements": [
+        456,
+        459
+      ],
+      "branches": [
+        160,
+        164
+      ],
+      "functions": [
+        60,
+        60
+      ],
+      "lines": [
+        416,
+        419
+      ]
+    },
+    "cortex-eval/src/review-page.ts": {
+      "statements": [
+        65,
+        65
+      ],
+      "branches": [
+        46,
+        46
+      ],
+      "functions": [
+        13,
+        13
+      ],
+      "lines": [
+        57,
+        57
+      ]
+    },
+    "cortex-eval/src/runner.ts": {
+      "statements": [
+        159,
+        161
+      ],
+      "branches": [
+        158,
+        161
+      ],
+      "functions": [
+        32,
+        32
+      ],
+      "lines": [
+        152,
+        152
+      ]
+    },
+    "cortex-eval/src/session-relevance.ts": {
+      "statements": [
+        50,
+        50
+      ],
+      "branches": [
+        27,
+        27
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        44,
+        44
+      ]
+    },
+    "cortex-eval/src/source-aware.ts": {
+      "statements": [
+        71,
+        71
+      ],
+      "branches": [
+        44,
+        44
+      ],
+      "functions": [
+        12,
+        12
+      ],
+      "lines": [
+        70,
+        70
+      ]
+    },
+    "cortex-eval/src/system-mirror.ts": {
+      "statements": [
+        25,
+        25
+      ],
+      "branches": [
+        14,
+        14
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        20,
+        20
+      ]
+    },
+    "cortex-eval/src/temporal-engine.ts": {
+      "statements": [
+        180,
+        180
+      ],
+      "branches": [
+        132,
+        132
+      ],
+      "functions": [
+        33,
+        33
+      ],
+      "lines": [
+        179,
+        179
+      ]
+    },
+    "cortex-eval/src/temporal-relevance.ts": {
+      "statements": [
+        22,
+        22
+      ],
+      "branches": [
+        18,
+        18
+      ],
+      "functions": [
+        4,
+        4
+      ],
+      "lines": [
+        18,
+        18
+      ]
+    },
+    "cortex-eval/src/temporal.ts": {
+      "statements": [
+        7,
+        7
+      ],
+      "branches": [
+        5,
+        5
+      ],
+      "functions": [
+        2,
+        2
+      ],
+      "lines": [
+        7,
+        7
+      ]
+    },
+    "cortex-eval/src/tr-failure-class.ts": {
+      "statements": [
+        37,
+        37
+      ],
+      "branches": [
+        22,
+        22
+      ],
+      "functions": [
+        7,
+        7
+      ],
+      "lines": [
+        36,
+        36
+      ]
+    },
+    "cortex-eval/src/turn-cap-routes.ts": {
+      "statements": [
+        3,
+        3
+      ],
+      "branches": [
+        0,
+        0
+      ],
+      "functions": [
+        0,
+        0
+      ],
+      "lines": [
+        3,
+        3
+      ]
+    },
+    "cortex-eval/src/turn-clock.ts": {
+      "statements": [
+        50,
+        50
+      ],
+      "branches": [
+        42,
+        42
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        50,
+        50
+      ]
+    },
+    "cortex-eval/src/usage-by-side.ts": {
+      "statements": [
+        43,
+        43
+      ],
+      "branches": [
+        28,
+        29
+      ],
+      "functions": [
+        11,
+        11
+      ],
+      "lines": [
+        35,
+        35
+      ]
+    },
+    "cortex-eval/src/variance.ts": {
+      "statements": [
+        83,
+        83
+      ],
+      "branches": [
+        27,
+        28
+      ],
+      "functions": [
+        13,
+        13
+      ],
+      "lines": [
+        76,
+        76
+      ]
+    },
+    "cortex-eval/src/worker-pool.ts": {
+      "statements": [
+        12,
+        12
+      ],
+      "branches": [
+        9,
+        9
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        12,
+        12
+      ]
+    },
+    "cortex-memory/src/abstention-recovery.ts": {
+      "statements": [
+        46,
+        46
+      ],
+      "branches": [
+        28,
+        28
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        35,
+        35
+      ]
+    },
+    "cortex-memory/src/admission.ts": {
+      "statements": [
+        46,
+        46
+      ],
+      "branches": [
+        26,
+        26
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        40,
+        40
+      ]
+    },
+    "cortex-memory/src/confidence.ts": {
+      "statements": [
+        2,
+        2
+      ],
+      "branches": [
+        0,
+        0
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        2,
+        2
+      ]
+    },
+    "cortex-memory/src/disclosure/session.ts": {
+      "statements": [
+        47,
+        47
+      ],
+      "branches": [
+        34,
+        34
+      ],
+      "functions": [
+        17,
+        17
+      ],
+      "lines": [
+        43,
+        43
+      ]
+    },
+    "cortex-memory/src/memory.ts": {
+      "statements": [
+        218,
+        218
+      ],
+      "branches": [
+        141,
+        141
+      ],
+      "functions": [
+        53,
+        53
+      ],
+      "lines": [
+        192,
+        192
+      ]
+    },
+    "cortex-memory/src/parse.ts": {
+      "statements": [
+        69,
+        69
+      ],
+      "branches": [
+        49,
+        49
+      ],
+      "functions": [
+        11,
+        11
+      ],
+      "lines": [
+        62,
+        62
+      ]
+    },
+    "cortex-memory/src/prompt.ts": {
+      "statements": [
+        397,
+        397
+      ],
+      "branches": [
+        302,
+        302
+      ],
+      "functions": [
+        76,
+        76
+      ],
+      "lines": [
+        359,
+        359
+      ]
+    },
+    "cortex-memory/src/provider.ts": {
+      "statements": [
+        46,
+        46
+      ],
+      "branches": [
+        28,
+        28
+      ],
+      "functions": [
+        16,
+        16
+      ],
+      "lines": [
+        40,
+        40
+      ]
+    },
+    "cortex-memory/src/question-shape.ts": {
+      "statements": [
+        2,
+        2
+      ],
+      "branches": [
+        2,
+        2
+      ],
+      "functions": [
+        1,
+        1
+      ],
+      "lines": [
+        2,
+        2
+      ]
+    },
+    "cortex-memory/src/relevance.ts": {
+      "statements": [
+        34,
+        34
+      ],
+      "branches": [
+        12,
+        12
+      ],
+      "functions": [
+        2,
+        2
+      ],
+      "lines": [
+        27,
+        27
+      ]
+    },
+    "cortex-memory/src/sessionize.ts": {
+      "statements": [
+        93,
+        93
+      ],
+      "branches": [
+        49,
+        49
+      ],
+      "functions": [
+        22,
+        22
+      ],
+      "lines": [
+        78,
+        78
+      ]
+    },
+    "cortex-memory/src/types.ts": {
+      "statements": [
+        1,
+        1
+      ],
+      "branches": [
+        0,
+        0
+      ],
+      "functions": [
+        0,
+        0
+      ],
+      "lines": [
+        1,
+        1
+      ]
+    },
+    "cortex-storage/src/browser/rpc.ts": {
+      "statements": [
+        94,
+        94
+      ],
+      "branches": [
+        51,
+        51
+      ],
+      "functions": [
+        16,
+        16
+      ],
+      "lines": [
+        86,
+        86
+      ]
+    },
+    "cortex-storage/src/storage/pg.ts": {
+      "statements": [
+        51,
+        51
+      ],
+      "branches": [
+        27,
+        27
+      ],
+      "functions": [
+        17,
+        17
+      ],
+      "lines": [
+        50,
+        50
+      ]
+    },
+    "cortex-storage/src/storage/sql-storage.ts": {
+      "statements": [
+        69,
+        69
+      ],
+      "branches": [
+        11,
+        11
+      ],
+      "functions": [
+        23,
+        23
+      ],
+      "lines": [
+        64,
+        64
+      ]
+    },
+    "cortex-storage/src/storage/sql.ts": {
+      "statements": [
+        30,
+        30
+      ],
+      "branches": [
+        20,
+        20
+      ],
+      "functions": [
+        9,
+        9
+      ],
+      "lines": [
+        27,
+        27
+      ]
+    },
+    "cortex-storage/src/storage/sqlite.ts": {
+      "statements": [
+        7,
+        7
+      ],
+      "branches": [
+        3,
+        3
+      ],
+      "functions": [
+        6,
+        6
+      ],
+      "lines": [
+        7,
+        7
+      ]
+    }
+  }
+}

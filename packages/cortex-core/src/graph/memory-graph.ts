@@ -119,8 +119,11 @@ export class MemoryGraph {
         if (act < threshold) {
           continue;
         }
-        /* c8 ignore next -- defensive guard, unreachable via valid inputs */
-        for (const [neighbor, attrs] of this.adjacency.get(id) ?? []) {
+        // `id` is always a key of `adjacency`: the map is seeded with `has(seed)` and every
+        // neighbour added below came from an adjacent key, so the lookup cannot miss. The
+        // The `?? []` that used to be here, and the coverage annotation above it, were covering a
+        // state the invariant excludes -- the shape this campaign deletes rather than exempts.
+        for (const [neighbor, attrs] of this.adjacency.get(id)!) {
           next.set(neighbor, (next.get(neighbor) ?? 0) + act * attrs.weight);
         }
       }
@@ -148,8 +151,9 @@ export class MemoryGraph {
       if (current === b) {
         break;
       }
-      /* c8 ignore next -- defensive guard, unreachable via valid inputs */
-      for (const neighbor of this.adjacency.get(current)?.keys() ?? []) {
+      // Same invariant as `spreadingActivation`: `current` is either the start node, whose
+      // presence was checked above, or a neighbour pushed from an adjacency key.
+      for (const neighbor of this.adjacency.get(current)!.keys()) {
         if (!visited.has(neighbor)) {
           visited.add(neighbor);
           prev.set(neighbor, current);

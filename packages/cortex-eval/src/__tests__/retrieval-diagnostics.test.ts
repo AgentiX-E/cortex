@@ -616,6 +616,65 @@ describe('retrieval diagnostics over degenerate instances', () => {
     expect(diag.answerableQuestions).toBe(0);
   });
 
+  it('records a session-level miss when the top session is not the answer session', async () => {
+    // A question whose nearest session is a distractor is the only way to reach the `missScores`
+    // side of the session diagnostic, and the whole reason that field exists: the hit distribution
+    // alone cannot say whether a cut separates anything.
+    //
+    // The embedding is scripted rather than hashed so the ordering is a fact about this test. The
+    // miss instance carries **eight** sessions: seven distractors at cos 0.8 and the answer at
+    // cos 0.6. With `topK = 5` the answer is outside the returned window, which is the second thing
+    // a miss can mean -- "ranked badly" and "not retrieved at all" are different defects, and
+    // `recallAtK` is the field that tells them apart.
+    //
+    // Two hit instances are included beside the two misses, because the hit and miss vectors are
+    // both sorted and a sort over one element never calls its comparator.
+    const scripted: EmbeddingModel = {
+      dimension: () => 2,
+      embed: async (texts: string[]) =>
+        texts.map((text) => {
+          if (text.includes('DISTRACTOR')) return new Float64Array([0.8, 0.6]);
+          // The two answer markers differ on purpose: the same turn text cannot be both the
+          // highest-scoring session in one instance and an outranked one in another.
+          if (text.includes('ANSWER_HIGH')) return new Float64Array([0.9, 0.4358898943540674]);
+          if (text.includes('ANSWER_LOW')) return new Float64Array([0.6, 0.8]);
+          return new Float64Array([1, 0]);
+        }),
+    };
+    const instanceWith = (id: string, sessions: LongMemEvalTurn[][]): LongMemEvalInstance => ({
+      question_id: id,
+      question_type: 'multi-session',
+      question: 'Where did I put the keys?',
+      answer: 'x',
+      haystack_sessions: sessions,
+    });
+    const hit = (id: string) =>
+      instanceWith(id, [
+        [{ role: 'user', content: 'ANSWER_HIGH the keys are on the hook', has_answer: true }],
+      ]);
+    const miss = (id: string) =>
+      instanceWith(id, [
+        ...Array.from({ length: 7 }, (_, index) => [
+          { role: 'user' as const, content: `DISTRACTOR ${index} chatter about the weather` },
+        ]),
+        [{ role: 'user', content: 'ANSWER_LOW the keys are on the hook', has_answer: true }],
+      ]);
+
+    const diag = await computeSessionRetrievalDiagnostics(
+      [hit('h1'), hit('h2'), miss('m1'), miss('m2')],
+      scripted,
+      5,
+    );
+
+    expect(diag.answerableQuestions).toBe(4);
+    // Two of four found at rank one, and the same two at rank five: for the misses the answer
+    // session is not retrieved at all, so this pair of numbers says "ranked badly" is not the shape.
+    expect(diag.recallAt1).toBe(0.5);
+    expect(diag.recallAtK).toBe(0.5);
+    expect(diag.hitScores).toHaveLength(2);
+    expect(diag.missScores).toHaveLength(2);
+  });
+
   it('mixes answerable and unanswerable instances at session level', async () => {
     const diag = await computeSessionRetrievalDiagnostics(
       [

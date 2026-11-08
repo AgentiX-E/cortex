@@ -35358,3 +35358,113 @@ The instrument cost is worth recording because it is the reusable part: **428 of
 `exact` (350) or `numeric` (78)**, so the endpoint saw 504 requests where the judge channel would have sent 932,
 and the reading is 45.9% cheaper than the instrument it replaces — while being the instrument the artifact's own
 accuracy uses.
+
+## 13.325 The coverage gate moved from the package mean to the file, and the first reading was four defects
+
+### 13.325.1 What a package mean cannot say
+
+Every package's `vitest.config.ts` carried `thresholds: { statements: 95, branches: 95, functions: 95, lines: 95 }`,
+and those four numbers are compared against the **package mean**. On the first read of this campaign,
+`@agentix-e/cortex-ai` reported 98.38 / 97.55 / 96.55 / 98.48 and passed — while
+`src/llm/openai-compatible.ts`, the adapter every remote provider goes through, read
+**86.27 / 84.21 / 84.62 / 85.42**. Sixteen files were below the floor on some dimension and the gate said `PASS`.
+A mean is an average over files, so one file at 60% and forty at 100% clears it with room to spare.
+
+The mean hid the **denominator** as well. `cortex-core`'s report on disk once held one file while its `src/` held
+forty-one, and the mean over that report was `100.00` on all four dimensions. Nothing could have caught it: the
+missing files are not in the arithmetic. And an entry with zero statements, zero branches, zero functions and
+zero lines — a barrel of `export … from`, an interfaces-only module — renders as `100%` in every reporter, which
+is the same rendering a silently failed instrumenter produces. Only a record can tell those two apart.
+
+### 13.325.2 The four rules, and why the arithmetic is integers
+
+`tools/coverage-per-file.mjs` replaces the threshold, and `pnpm coverage:gate` runs it inside `pnpm check`:
+
+1. **Census.** Every `src/**` TypeScript file the package ships must appear in the report, or be recorded in
+   `tools/coverage-per-file-baseline.json` with a `kind` and a reason. A file that is absent cannot fail a
+   threshold, so absence is the violation.
+2. **`0/0` is not a pass.** A `0/0` entry must be recorded as `nothing-to-execute` with its reason. An exemption
+   that outlives its cause — the file now has code — is itself a violation, and so is one for a file that no
+   longer exists.
+3. **Floor.** Every file, on every dimension, at `>= 95`.
+4. **Ratchet.** A file may not fall below the rate the baseline records for it. Without this, every repair is
+   free to be undone by the next commit that touches the file.
+
+Rates are compared as `covered / total` against `covered / total` by cross-multiplication (`c1 * t2 < c2 * t1`),
+never by converting to a float first. `98.455` against a recorded `98.45` is a comparison of two roundings of two
+different rationals, and the winner then depends on the third decimal of a number nobody printed. The baseline
+stores counts, so every printed percentage is re-derivable by hand — which is what `verify.yml`'s stance asks for.
+
+The gate's own rules are pinned by `tools/__tests__/test_coverage_per_file.py` (twelve tests on a miniature
+repository, through the real entry point): a below-floor file named with its dimension, a ratchet rejecting
+99 of 100 against a recorded 100, `0/0` not counted as a pass, a missing file failing, a stale exemption failing,
+an untyped exemption rejected, both `--write-baseline` refusals, and the counting semantics themselves (branch
+arms summed, lines derived from `statementMap` with two statements on one line counting once).
+
+### 13.325.3 What the first reading was
+
+Thirty-seven violations before any repair, of which sixteen were legitimate exemptions awaiting a record, one was
+a real below-floor file, and the rest were the two shapes a package mean hides. Four of the repairs are worth
+naming, because each one is a claim that had stopped being true rather than a missing test:
+
+- **`cortex-memory/src/types.ts` was excluded from coverage on a premise that had gone false.** The exclusion
+  said "pure type declarations: it emits no runtime code". It exports `TURN_CAP_ROUTES`, a real array literal
+  evaluated at import that `index.ts` re-exports and the prompt builder routes on. The exclusion is **removed**
+  rather than narrowed: an `exclude` entry is a claim nobody re-checks, and the file measures 100% once it is
+  measured at all.
+- **Three guards in `sessionize.ts` could not take their false arm.** `const [first] = ranked; if (first !==
+  undefined)` — `ranked` is `sessions` mapped and sorted, and an empty `sessions` returned four lines earlier.
+  The same shape appeared twice in the fall-through that takes the single most relevant turn, where reaching the
+  block means the first session's total exceeded a positive budget, which a session with no turns cannot do
+  (`0 <= budget` would have pushed it). All three are **deleted**, not annotated: the file went from 94.54% on
+  branches to 100% on all four dimensions, and no test was written to satisfy a condition that cannot hold.
+- **Two exported contract arms had never been executed.** `evidence-blocks-instruction-first` and
+  `evidence-blocks-unsourced` delegate to the control's instruction function — the delegation is what makes "the
+  treatment is the order and not the wording" a property of the object graph rather than of two identical
+  strings. Their bodies read `0` of `31` calls. They are now pinned, with a positive control
+  (`buildPrompt(…, 'temporal')` must differ), because an equality asserted over a builder that ignored its
+  argument would pass on the defect it is meant to prevent.
+- **`buildAuditPrompt` forwards `windowRadius` on the audit pass's fit path**, and the comment at that spread
+  says so ("the two differ in which session plan they build, not in which option they honour"). No run had ever
+  entered it. On a six-turn session a 1,200-character budget now distinguishes radius `0`
+  (`a0, a1, a2` — the turn unit's prefix) from radius `2` (`a1, a2, a3` — the anchor's neighbourhood), so a
+  dropped option would fail rather than produce a plausible-looking prompt that re-selects a different turn set
+  from the one the review is reviewing.
+
+A fifth is a deletion rather than a test: `sqlite.ts`'s `close()` guarded `if (this.db.open)`, and
+`packages/cortex-storage/vitest.config.ts` recorded it as "a contract at the engine boundary". It is
+unreachable — `SqlStorage.close` sets `#closed` synchronously before its first await — and the one behaviour it
+looked like it handled, a double close, is the one it would have hidden, since better-sqlite3 throws on a second
+`close()`. The guard is gone and the paragraph that recorded it now records the deletion.
+
+### 13.325.4 The reading after the campaign
+
+| package | files gated | statements | branches | functions | lines |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `cortex-memory` | 12 | 100.00 | 100.00 | 100.00 | 100.00 |
+| `cortex-storage` | 5 | 100.00 | 100.00 | 100.00 | 100.00 |
+| `cortex-ai` | 14 | 100.00 | 99.50 | 100.00 | 100.00 |
+| `cortex-core` | 36 | 99.56 | 98.20 | 99.74 | 99.80 |
+| `cortex-eval` | 76 | 99.57 | 98.60 | 99.81 | 99.73 |
+
+143 files gated on four dimensions, 15 recorded exemptions, and **33 files below 100** recorded with their
+counts — which is the part that matters for the next increment: the gate prints every one of them, by dimension,
+as a worklist rather than a mood. `cortex-memory`'s own reading moved 94.54 → 100 on branches in this round and
+its test count from 904 to 908.
+
+### 13.325.5 What this does not say
+
+- **It does not say a file at 100% is tested.** Coverage measures which statements ran, not which failures would
+  be caught; a test that calls a function and asserts nothing moves every counter in it. What the gate buys is
+  that the *absence* of execution can no longer be invisible, which is the failure mode the package mean had.
+- **It does not say the 33 recorded files are acceptable.** The ratchet makes them a floor, not a target: they
+  can never regress, and they do not have to improve. Two of them (`cortex-ai/src/retry.ts` at `94/96` branches)
+  are the same class of defect this round deleted elsewhere — an exhaustion path carrying `lastError ?? new
+  Error(…)` and `cause: lastError === undefined ? '' : …` where the transport error is guaranteed, because
+  `resFromLastAttempt` being undefined means every attempt threw — and they are recorded rather than repaired
+  here because the repair is a state refactor (one discriminated `lastError | resFromLastAttempt` outcome) rather
+  than a deletion, and this round's rule is that a branch is either reached by a test or deleted, not annotated.
+- **It does not say the three browser files are untested.** `opfs.ts`, `opfs-worker.ts` and `idb.ts` are recorded
+  as `not-instrumented` because Node has no `Worker`, `OPFS` or `IndexedDB`, and a shim would assert the shim.
+  They are covered by `test/browser/probe.mjs`, which runs the **built** package in a real Chromium twice across
+  a restart and asserts named checks. That measurement exists; it is simply not one this report can hold.
