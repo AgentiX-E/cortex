@@ -240,8 +240,7 @@ async function main() {
   if (!artifactPath) {
     console.error(
       'usage: judge-regrade.mjs --artifact <report.json> [--passes 2] [--limit 500] [--out <file>] ' +
-        '[--verdicts <file>] [--scorer judge|full] [--plan-only] ' +
-        '[--preference-only | --non-preference-only]',
+        '[--scorer judge|full] [--plan-only] [--preference-only | --non-preference-only]',
     );
     return 2;
   }
@@ -379,23 +378,6 @@ async function main() {
   // again, wearing the full scorer's name.
   const channels = scorerChannelStats();
   if (scorer === 'full') console.log(`  ${describeScorerChannels(channels)}`);
-
-  // `J9d`. The vector `tally` builds and throws away. Two re-grades of two arms are a paired
-  // comparison, and the aggregate file has no pairing in it: the flips are counts and the ids are only
-  // the ones that moved, so a paired test over two `--out` files would have to reconstruct which
-  // question each verdict belonged to. Written beside the summary rather than instead of it, because
-  // the summary is what a reader quotes and this is what an instrument reads.
-  const verdictsPath = flag('--verdicts');
-  if (verdictsPath) {
-    const vector = rows.map((row) => ({
-      questionId: row.questionId,
-      ...(row.capability === undefined ? {} : { capability: row.capability }),
-      recorded: row.recorded,
-      verdicts: row.verdicts,
-    }));
-    writeFileSync(verdictsPath, `${JSON.stringify(vector, null, 2)}\n`);
-    console.log(`wrote ${verdictsPath} (${vector.length} question(s))`);
-  }
 
   const out = flag('--out');
   if (out) {

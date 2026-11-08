@@ -181,8 +181,7 @@ jobs:
           node tools/judge-regrade.mjs \
             --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json \
             --limit "$LIMIT" --passes "$PASSES" $POPULATION_FLAG --scorer "$SCORER" \
-            --out readings/judge-regrade.json --verdicts readings/judge-verdicts.json \
-            2>&1 | tee readings/judge-regrade.txt
+            --out readings/judge-regrade.json 2>&1 | tee readings/judge-regrade.txt
 
       - name: Upload readings
         if: always()
