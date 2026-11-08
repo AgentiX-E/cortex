@@ -35184,3 +35184,45 @@ remaining difference is about the arms.
 
 `J9c` is checked on the wire rather than in the artifact: the tool's own tests assert it against a stub
 endpoint, and the run's log prints the channel split, so the two have to agree.
+
+### 13.322.2 The reading: two thirds of the `M1` gap was the judge's identity
+
+Both dispatches succeeded. `466` of the 500 questions carry both a gold and a non-empty answer, and that is the
+gradable population for both arms, so the two are compared on the same 466.
+
+| | judge that graded the artifact | recorded | re-graded under `deepseek-v4-pro` | judge-decided share |
+| --- | --- | ---: | ---: | ---: |
+| arm A (`42391635411`) | `deepseek-flash` @ 0 | 423 / 466 = **90.77%** | 405 / 466 = **86.91%** | 504 / 932 = 54.1% |
+| arm B (`42391516675`) | `deepseek-v4-pro` @ 0 | 399 / 466 = **85.62%** | 397 / 466 = **85.19%** | 572 / 932 = 61.4% |
+| arm gap | | **24 questions = 5.15 pt** | **8 questions = 1.72 pt** | |
+
+`J9a` holds: the difference does not survive a common judge at the same size. It falls by **two thirds** — 16
+of the 24 questions were the judge, and the direction is the one §13.312.8 predicted from the 29-question
+preference population: the lenient judge graded A (`deepseek-flash`, which revoked nothing and rescued nothing),
+the strict judge graded B, and re-reading A with B's judge costs A 16 questions while re-reading B costs it 2.
+
+`J9b` holds with a correction to its own numbers: the judge-decided share is **54.1%** on A and **61.4%** on B,
+not the 50.4% and 57.2% registered, because those were the judge-channel-only readings over the 500 and these
+are the full scorer's channel split over the 466. The direction is unchanged and the size is larger, which means
+the judge carries more of each arm's score than the earlier reading credited it with.
+
+`J9c` holds: on A the deterministic channels decided 350 exact + 78 numeric = 428 of 932 verdicts, so the
+endpoint saw 504 requests where the judge channel alone would have sent 932. The saving is 45.9% and it is
+exactly the population `exact` and `numeric` can prove.
+
+Two things this reading does **not** give, both of which are registered rather than glossed:
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `J9d` | the residual 8-question gap cannot be given a p-value from these files, because `judge-regrade.mjs` writes aggregates and not the per-question verdict vector | a paired test computed from two `judge-regrade.json` files as they stand, which would have to invent the pairing |
+| `J9e` | the gap that remains is a hypothesis about the arms and not a result, and no document may state an `M1` arm effect until `J9d`'s vector exists | a sentence that quotes 1.72 points without the missing p-value beside it |
+
+The flips are worth recording because they price the *other* explanation: 2 of 466 on A and 1 of 466 on B
+(`0.4%` and `0.2%`, exact sign test p = 1.000 on both). The judge is close to deterministic on this population,
+which is what makes the earlier "ten answers rescued" incident an identity difference rather than variance —
+and is the reason `J9d` is about the pairing and not about re-asking more times.
+
+The registered next step is therefore concrete: `judge-regrade.mjs` gains a `--verdicts <file>` that writes
+`[{questionId, capability, recorded, verdicts}]`, which is the same vector `tally` already builds and throws
+away. With it, two readings become a paired comparison under `paired-test.ts`, and the 8-question residual gets
+an interval instead of a direction.
