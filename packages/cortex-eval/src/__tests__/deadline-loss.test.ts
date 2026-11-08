@@ -62,8 +62,29 @@ function datasetOf(count: number): BenchmarkDataset {
   };
 }
 
-/** The deadline these fixtures give the reader, in milliseconds. Short, because the test is. */
-const DEADLINE_MS = 30;
+/**
+ * The deadline these fixtures give the reader, in milliseconds.
+ *
+ * Short, because the test is -- but **not 30**, and the reason is the classification's own
+ * arithmetic rather than taste. `deadlineExhaustion` calls an attempt "reached the deadline" when
+ * `attemptMs >= timeoutMs * 0.99`, and `attemptMs` is `Date.now()` at two points, so each endpoint
+ * truncates to a whole millisecond. At `timeoutMs = 30` the tolerance is 0.3 ms while the
+ * measurement's error is up to 2 ms: `42434630875` recorded `attemptsMs: [31, 29]` against a 30 ms
+ * bound, the second attempt fell outside the tolerance by a tenth of a millisecond, the exhaustion
+ * was classified as **mixed** and therefore fatal by design, and the pass threw instead of recording
+ * one lost question. The same run passed on four-core machines and failed on the two-core runner,
+ * which is what a fixture sitting inside its own clock's resolution looks like.
+ *
+ * 250 ms puts the 2 ms error at 0.8% against a 1% tolerance, and the production deadlines this rule
+ * was written for -- 60 s and 300 s -- sit at 0.003% and 0.0007%. The rule is not what was wrong;
+ * asking it to resolve a 30 ms window was.
+ *
+ * The cost is wall clock, and it is paid three times: a stalled call is two attempts at the bound,
+ * so 500 ms. That is why the ceiling fixture below carries an explicit timeout -- it runs a whole
+ * pass twice to prove the *second* loss is the one that ends it, and at 30 ms it was proving it for
+ * a hundredth of the price.
+ */
+const DEADLINE_MS = 250;
 
 /**
  * A `fetchFn` that honours the abort signal and never answers.
@@ -239,7 +260,9 @@ describe('a deadline loss is one question, not one pass', () => {
     await expect(runBenchmark(datasetOf(20), stallingSystem([1, 2]))).rejects.toThrow(
       /CORTEX_READER_TIMEOUT_MS/,
     );
-  });
+    // Two passes over two stalls at 500 ms each, plus the pass that never started: the default 5 s
+    // is a bound on the machine rather than on what this asserts.
+  }, 30_000);
 
   it('registers the share it enforces, so the ceiling is a claim rather than a constant', () => {
     // 2% of 500 is ten, and the entry point prints the same function's answer. Written as an
