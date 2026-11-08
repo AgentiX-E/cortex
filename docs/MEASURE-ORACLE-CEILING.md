@@ -149,3 +149,156 @@ mechanism is over-provisioned on both axes. Neither number alone says that.
 
 One dispatch each, no peeking, no re-running for a better draw. A run that dies on transport is
 cancelled and re-dispatched once; a run that completes is final even if the number is unflattering.
+## 7. The reading
+
+### 7.1 Three numbers, and the band they land in
+
+| Run           | Condition                                                                   | Accuracy (mean of 4)     | Pass 1           | Per capability (pass 1)             |
+| ------------- | --------------------------------------------------------------------------- | ------------------------ | ---------------- | ----------------------------------- |
+| `42500867182` | **`S`** — the registered configuration, shipped corpus                      | **91.90%** (91.40–92.40) | 92.00% (460/500) | `IE 144 MR 100 KU 63 TR 123 ABS 30` |
+| `42500412709` | **`C`** — the same configuration, gold sessions                             | **92.90%** (92.40–93.60) | 93.00% (465/500) | `IE 141 MR 102 KU 67 TR 125 ABS 30` |
+| `42500965819` | `E1` — the registered configuration at 12,000 characters on `multi-session` | 88.85% (88.60–89.20)     | 88.60% (443/500) | `IE 142 MR 84 TR 119` at pass 1     |
+
+`C − S = 5 questions` (465 against 460 on the paired pass, 1.00 point on the means), which is **band 1**:
+retrieval is nearly lossless. The paired table is `both 449, oracle-only 16, control-only 11, neither 24`,
+McNemar exact `p = 0.44` — the difference is _not_ significant, and that is consistent with band 1 rather
+than an objection to it. Band 1's claim is about size, and it holds in the only direction that survives
+the ceiling's optimism: both asymmetries in §2.1 inflate `C`, so a ceiling within 5 questions of `S` cannot
+be read as "retrieval has room left".
+
+The decomposition the measurement was built for:
+
+|                            | Questions | Points |
+| -------------------------- | --------- | ------ |
+| Retrieval's loss (`C − S`) | **5**     | 1.00   |
+| Reader's loss (`100 − C`)  | **35.5**  | 7.10   |
+
+### 7.2 Perfect evidence redistributes rather than lifts
+
+`IE` **fell** three questions with strictly better evidence (`144 → 141`), while `KU` gained four and `MR`
+and `TR` two each. Only one reading explains a route getting worse when its input gets strictly better:
+the shipped arm is not delivering _less_ evidence than the gold sessions, it is delivering _ranked_
+evidence, and the ranking is doing work that the oracle condition removes. §7.3 prices that work.
+
+The per-capability paired table, which is what the next round's route choice has to be made from:
+
+| Capability | `S` | `C` | Δ      | gained by oracle | lost by oracle | reading                                                                 |
+| ---------- | --- | --- | ------ | ---------------- | -------------- | ----------------------------------------------------------------------- |
+| `IE`       | 144 | 141 | **−3** | 2                | 5              | ranking is load-bearing here; the gold session is longer than what wins |
+| `MR`       | 100 | 102 | +2     | 6                | 4              | retrieval is not `MR`'s problem                                         |
+| `KU`       | 63  | 67  | +4     | 5                | 1              | newest-fact selection survives better on a clean pool                   |
+| `TR`       | 123 | 125 | +2     | 3                | 1              | near ceiling either way                                                 |
+| `ABS`      | 30  | 30  | 0      | 0                | 0              | saturated; 30/30 on both sides                                          |
+
+### 7.3 What the reader is actually fed, measured on the same two artifacts
+
+`goldOverlap` was built as a self-check on the transform. It is also a **precision** measurement of the
+shipped arm, because the same field on the corpus side says how much of what the reader read came from a
+session the dataset names as containing the answer.
+
+| Arm          | Gold turns available | Carried (recall) | Turns delivered | **Precision** | Delivered per question |
+| ------------ | -------------------- | ---------------- | --------------- | ------------- | ---------------------- |
+| corpus (`S`) | 7,516                | 6,608 (87.9%)    | 185,520         | **3.6%**      | **371.0**              |
+| oracle (`C`) | 7,516                | 7,503 (99.8%)    | 7,516           | 99.8%         | 15.0                   |
+
+Per route on the corpus side, which is where the asymmetry lives:
+
+| Capability | Recall    | Precision | Delivered per question | Gold per question |
+| ---------- | --------- | --------- | ---------------------- | ----------------- |
+| `IE`       | 84.7%     | **1.9%**  | 499.2                  | 11.4              |
+| `ABS`      | 66.5%     | 3.0%      | 504.8                  | 22.4              |
+| `KU`       | 79.0%     | 3.8%      | 488.9                  | 23.4              |
+| `MR`       | **98.4%** | **6.1%**  | 242.4                  | 15.1              |
+| `TR`       | 97.6%     | 5.1%      | 243.7                  | 12.7              |
+
+Three facts follow, and the third is the round's real product:
+
+1. **The reader is robust.** 96.4% of its input comes from sessions the dataset says are irrelevant, and
+   removing all of it is worth one point. Any mechanism proposed on the grounds that "the model is
+   distracted by noise" has to explain this table first.
+2. **Retrieval's recall is not the problem on `MR`/`TR`** (98.4% / 97.6%): the gold turns are already in
+   the window on almost every question. It is on `IE`/`KU`/`ABS` (84.7 / 79.0 / 66.5) where turns are
+   actually missing — and those three routes are the ones with ~500 delivered turns each, i.e. the room is
+   full and the ranker still did not surface them.
+3. **The cost axis has a measured 24.7× redundancy**: 371 turns per question to carry 13, at **12,137
+   prompt tokens per question** against **2,940** for the 15-turn oracle pool. The 9,197 tokens per
+   question between them buy `−1.0` point.
+
+### 7.4 The taxonomy of the 35 questions the reader loses
+
+The mechanical half of this table is a presence test with a stated limit: `present` means the gold's
+numeral appears somewhere in the delivered evidence, which is **necessary and not sufficient** for the
+question to be answerable. It is used only to separate "the reader had the number and gave another" from
+"the number the gold asks for is nowhere in the text".
+
+| Class                                                | Count | What it looks like                                                                                                                           | What can fix it                                                                                             |
+| ---------------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Count/enumeration miss, numeral present              | 11    | `1` for `2` (`6d550036`), `2` for `3` (`46a3abf7`), `3` for `4` (`8e91e7d9`), `22` for `23` (`gpt4_2f91af09`), `7` for `5` (`gpt4_ab202e7f`) | a screen that makes an omission visible — `candidates` asked for exactly this and was falsified (`§13.205`) |
+| Aggregation over stated operands, total never stated | 5     | `$700` for `$720`, `$375` for `$495`, `8` years for `10`, `1,998` views, `856` pages                                                         | arithmetic the prompt cannot do by quotation; the operand shape already reads the `operands` block          |
+| Gold stated as a phrase, not a numeral               | 3     | "I visited three different doctors" answered `2`                                                                                             | same as row 1                                                                                               |
+| Shape failure: a list of quotes instead of an answer | 2     | `d905b33f`, `c18a7dc8` returned numbered quotations                                                                                          | the answer-line guard, on the route that does not have it                                                   |
+| Declined with the answer in the window               | 3     | "Not specified in the evidence" (`a4996e51`), "Cannot be determined" (`d6062bb9`), `None` (`60bf93ed`, `37f165cf`)                           | truncation-aware evidence (the `a4996e51` turn is cut at `maxTurnChars`) and a commitment rule              |
+
+`MR` holds 19 of the 35. **`MR` remains where the loss is; what changed is whose loss it is** — §4's
+band-1 consequence says the _retrieval_ campaign on `MR` stops, and this table says why it must: two of
+`MR`'s 19 wrong answers are attributable to retrieval and 17 to the reader.
+
+### 7.5 `E1`: the room is load-bearing
+
+| Reading                    | Registered verdict                                               | Measured                           |
+| -------------------------- | ---------------------------------------------------------------- | ---------------------------------- |
+| 12,000 loses ≤ 2 questions | half the tokens bought nothing; the budget becomes a cost axis   |                                    |
+| 12,000 loses 3–9           | the knee is between them; refine at 18,000                       |                                    |
+| 12,000 loses **≥ 10**      | **the room is load-bearing and the cost axis is closed for now** | **−15.2 questions (−3.04 points)** |
+
+The loss is almost entirely `MR` (`−14.5`), with `TR −1.0`, `IE +0.3`, `KU 0`. That is the mechanism
+behaving as described: multi-session questions are the ones whose answers live across sessions, so the
+route whose room was cut is the route that paid.
+
+This replicates `42373407439` (`§` efficiency frontier: 6,077 prompt tokens per question against 12,137,
+`−3.20` overall and `MR −6.61`) under the registered configuration and with four repetitions. Two
+independent cuts, same direction, same route. **Truncation is not a cost lever for this mechanism**, and
+§7.3 says why: the turns are not redundant, they are _unranked_.
+
+### 7.6 Why the oracle run was red, and why that is not the measurement's fault
+
+`42500412709` produced a complete 500-question artifact and then failed its post-run gate with
+_`--departs names ['oracleEvidence'], which the dispatch table does not send`_. The dispatcher had
+declared the repository variable's name, which appears in no artifact. The gate was right — and the
+defect it exposed is worse than the declaration: with the name removed, all twenty field comparisons
+agreed and the gate would have printed _"this run is the registered configuration, field for field, so
+its numbers are quotable as the arm's"_ about the one artifact whose number means something different
+from the arm's, because `evidenceSource` was in **neither** the dispatch table nor any comparison.
+
+The repair is a fourth comparison category, `REGISTERED_CONDITIONS`: a value the registration implies, that
+no dispatch input carries, and that changes what the number means rather than what the run did. It is
+compared on every artifact and declareable by the name of the artifact's field. Absence reads as `corpus`
+and that is a dated claim rather than an assumption — `toMemoryArmConfig` has written the field on every
+run since `0ed3541` and the transform cannot produce an artifact that omits it, so an oracle artifact can
+never be silent about being one.
+
+The numbers in §7.1 are from the artifact that run produced. A second dispatch of the same condition
+(`42521885948`, same commit, now declaring `evidenceSource`) is the confirmation draw; if it lands more
+than the 17-question floor away from 92.90%, §7.1's band is revisited rather than averaged.
+
+## 8. `E2`: the precision probe, registered before the run
+
+§7.3 is the reason this exists. The arm carries 13 gold turns inside 371 and pays 12,137 prompt tokens per
+question for it; the oracle arm carries 15 turns for 2,940 and scores one point higher. The room cannot be
+shrunk (§7.5), so the only remaining cost lever is **selection**: deliver fewer turns, chosen better.
+
+`relevanceTopK=32` against the registered configuration, one variable, 500 questions, four repetitions,
+both sides. 32 is two times the oracle pool's 15 turns — a number the ceiling run measured rather than
+guessed.
+
+| Reading                                | Verdict                                                                                                                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| loses **≤ 5 questions** against 91.90% | 87% of the delivered evidence was dead weight; adopt, and the arm ships at roughly an eighth of its prompt tokens for the same accuracy                                 |
+| loses **6–15**                         | the frontier moves and there is no dominance: read `goldOverlap` recall at 32 turns from the same artifact and decide whether to invest in the ranker or in compression |
+| loses **≥ 16**                         | volume _is_ the mechanism. Selection at 32 cannot substitute for it, and the cost axis has to be attacked by compressing turns rather than by dropping them             |
+
+The free measurement inside that judgement is the recall column: the artifact's own `goldOverlap` reports
+how many gold turns survived the cut, so the run answers "what is the ranker's recall at 32 turns" whether
+or not it answers the accuracy question. Falsifier: if `goldOverlap.carried/total` at 32 turns is above
+90% while accuracy falls by more than 15 questions, then the gold turns were not the binding evidence and
+§7.3's precision reading is a coincidence rather than a cause.
