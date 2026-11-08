@@ -1,8 +1,25 @@
-# Cortex — Internal Design Documents
+# Cortex — design and audit records
 
-This directory holds Cortex's internal design and audit records. Per repository
-convention, **all content here is English**; user-facing documentation lives in
-[`AgentiX-E/cortex-docs`](https://github.com/AgentiX-E/cortex-docs).
+Two surfaces live in this repository, and the difference decides where a new document belongs.
+
+**The published surface** is what a user or an integrator reads first, and it is gated: every
+TypeScript example in it is compiled by `pnpm manual:check` against the built declarations, and its
+two option tables are compared against the option types in both directions.
+
+| published document | what it is |
+| --- | --- |
+| [`../ARCHITECTURE.md`](../ARCHITECTURE.md) | The layer map, the two flows, the interfaces you extend, and the honest status table |
+| [`USER-MANUAL.md`](USER-MANUAL.md) | Install, providers, storage, every option, cost control, troubleshooting |
+
+**The research record** is everything below this paragraph: measurement records, audits, designs,
+decisions and verdicts. They are English, they are kept because a decision without its measurement is
+a decision nobody can revisit, and they are **not** the user-facing description of behaviour — the
+manual is. A record here that contradicts the manual is a bug in whichever of the two is stale, and
+`pnpm manual:check` can only catch the half that is executable.
+
+Product positioning, competitive analysis, the whitepaper, the forward plan and the progress reports
+live in [`AgentiX-E/cortex-docs`](https://github.com/AgentiX-E/cortex-docs), which also mirrors what
+this directory records at a higher level.
 
 | Document                                                                                 | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

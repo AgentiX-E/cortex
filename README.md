@@ -74,38 +74,32 @@ by similarity). Cortex solves the "mind" problem:
 ## Quick Start
 
 ```ts
-import {
-  BruteForceVectorIndex,
-  MemoryGraph,
-  decideWrite,
-  decideRetrieval,
-  defaultValueFunction,
-} from '@agentix-e/cortex-core';
+import { decideRetrieval, decideWrite, defaultValueFunction } from '@agentix-e/cortex-core';
+import type { MemoryValue } from '@agentix-e/cortex-core';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 
-// 1. Pluggable storage (embedded SQLite).
-const storage = new SqliteStorage({ filename: ':memory:' });
+// A memory is a value judgement, not a similarity score.
+declare const candidate: MemoryValue;
 
-// 2. Vector index for similarity search.
-const index = new BruteForceVectorIndex();
-
-// 3. Associative memory graph for multi-hop retrieval.
-const graph = new MemoryGraph();
-
-// 4. Value-driven write decision.
-const candidate = { /* a candidate memory */ };
-const decision = decideWrite(candidate, defaultValueFunction, 0.5);
-if (decision.write) {
+const write = decideWrite(candidate, defaultValueFunction, 0.5);
+if (write.write) {
+  const storage = new SqliteStorage({ filename: './cortex.db' });
   await storage.put('memories', candidate.id, candidate);
+  await storage.close();
 }
 
-// 5. Abstention-aware retrieval.
-const retrieved = await index.search(embedding, 10);
-const answer = decideRetrieval(retrieved, defaultValueFunction, 0.5);
-if (!answer.retrieve) {
-  // Stay silent instead of hallucinating.
+// The read side may decline. `retrieve: false` is an answer, and silence beats a guess.
+const read = decideRetrieval([candidate], defaultValueFunction, 0.5);
+if (!read.retrieve) {
+  console.log(`silent at confidence ${read.confidence.toFixed(2)}`);
 }
 ```
+
+The full path — admission, session budgeting, prompt assembly, per-route rooms, parsing, abstention —
+is in the **[user manual](docs/USER-MANUAL.md)**, where every example is compiled against the built
+declarations by `pnpm manual:check` and both option tables are compared against the option types in
+both directions. For the layer map and an honest status table, read
+**[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
 ## Requirements
 
