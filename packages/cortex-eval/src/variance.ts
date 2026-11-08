@@ -36,6 +36,7 @@
  * appears, not in advance of one.
 */
 
+import { wilsonUpper } from './judge-audit.js';
 import type { Capability } from './types.js';
 
 /** One run's observed correctness counts, per capability and overall. */
@@ -71,6 +72,15 @@ export type VarianceStats = {
   spreadPp: number;
   /** Accuracy on the pooled sample; the single-point summary. */
   accuracy: number;
+  /**
+   * Graded questions in one run, taken as the **smallest** sample across the
+   * observations.
+   *
+   * Carried because a floor stated in questions is a rate times a denominator, and
+   * the Wilson bound below needs the denominator explicitly. `spreadPp` already
+   * divides by this number; until §13.330 nothing could read it back out.
+   */
+  sampleSize: number;
 };
 
 export type VarianceSummary = {
@@ -143,6 +153,38 @@ export type CapabilityRequirement = {
    * by a stable score and an unstable roster.
    */
   rosterChanged: number;
+  /**
+   * The same bar, derived from the **95% upper bound** on the churn rate rather
+   * than from the churn that happened to be observed.
+   *
+   * ## Why the observed count is not a floor
+   *
+   * `rosterChanged` is a point estimate: 16 of 500 questions flipped between two
+   * config-identical runs, so the churn rate is measured as 3.2% and the implied
+   * floor is 16 questions. But two runs estimate a rate poorly, and the interval
+   * around 16/500 reaches 27 questions at 95%. An arm that moved 20 questions
+   * would clear the observed floor and sit inside the interval the same two runs
+   * are compatible with -- the reading would be a verdict about this pair of runs
+   * presented as a verdict about the endpoint.
+   *
+   * The direction is deliberate. This number is always at least
+   * `minQuestionsStrictlyGreaterThan`, so adopting it can only raise a bar. It is
+   * reported beside the point estimate rather than replacing it, because a
+   * reader comparing against a published verdict needs the number that verdict
+   * was judged against.
+   */
+  minQuestionsAtNinetyFive: number;
+  /**
+   * Which population the roster movement behind this bar was measured on.
+   *
+   * `capability` means the caller supplied a per-capability movement, so the bar
+   * is the noise of the questions the claim is about. `overall` means it did not,
+   * and the whole-sample movement was substituted -- the pre-§13.330 behaviour,
+   * which is conservative for a capability whose own churn is smaller than the
+   * corpus's and, for exactly that reason, incapable of certifying a small real
+   * effect on it.
+   */
+  floorBasis: 'capability' | 'overall';
 };
 
 /**
@@ -163,6 +205,17 @@ export type CapabilityRequirement = {
 type PairwiseMovement = {
   /** Questions whose correctness differed between the pair -- `changed`. */
   changed: number;
+  /**
+   * The same figure restricted to each capability, when the caller computed it.
+   *
+   * `changed` is a sum over capabilities, and a bar derived from the sum answers
+   * "how noisy is this benchmark?". A claim about MR is a claim about MR, so the
+   * bar it must clear is MR's own movement. Supplying this map is what lets the
+   * summary answer that question instead of the other one; omitting it keeps the
+   * whole-sample figure, which is the conservative direction and the only one
+   * available before this field existed.
+   */
+  perCapability?: Partial<Record<Capability, number>> | undefined;
 };
 
 /** Counts of correct answers, used to build a `VarianceStats`. */
@@ -218,6 +271,7 @@ function statsFrom(counts: readonly number[], sampleSizes: readonly number[]): V
     // A zero-question run has accuracy 0; `sampleSizes` always carries the graded
     // sample size, which is 1 or more for every real benchmark.
     accuracy: totalCorrect / total,
+    sampleSize: smallestSample,
   };
 }
 
@@ -244,8 +298,15 @@ function collectSeries(observations: readonly RunObservation[]): {
     overall.counts.push(observation.correct ?? sumBucketCorrect(observation));
     overall.sampleSizes.push(observation.total);
     for (const [capability, bucket] of Object.entries(observation.perCapability) as Array<
-      [Capability, { correct: number; total: number }]
+      [Capability, { correct: number; total: number } | undefined]
     >) {
+      // A partial record can carry the key and no value -- an artifact written by
+      // a producer that fills every capability slot, or a caller spreading a
+      // template over the measured ones. `sumBucketCorrect` has guarded this shape
+      // since it was written; this loop did not, and its failure mode was a
+      // `TypeError` from inside the summary of two runs that are otherwise fine.
+      // Skipping matches the absent key exactly: not measured, not zero.
+      if (bucket === undefined) continue;
       let series = perCapability.get(capability);
       if (series === undefined) {
         series = { counts: [], sampleSizes: [] };
@@ -289,6 +350,151 @@ export function summarizeVariance(observations: readonly RunObservation[]): Vari
     perCapability: perCapabilityStats,
     overall: statsFrom(overall.counts, overall.sampleSizes),
     series: { perCapability: perCapabilitySeries, overall: [...overall.counts] },
+  };
+}
+
+/** One question's correctness across the repetitions of ONE run. */
+type RepetitionCase = {
+  readonly questionId: string;
+  readonly capability: Capability;
+  /** One boolean per repetition, in repetition order. */
+  readonly correct: readonly boolean[];
+  /** Whether the run's final (post-vote) verdict counted this question correct. */
+  readonly decidedCorrect: boolean;
+};
+
+/** How many questions one population's repetitions failed to agree on. */
+type RepetitionStats = {
+  readonly total: number;
+  /** Repetitions did not all agree: the code does not decide this question. */
+  readonly unstable: number;
+  /** Every repetition agreed, right or wrong: the code decides it. */
+  readonly unanimous: number;
+  /** Unstable questions the final verdict gets RIGHT -- won by the vote, not the reader. */
+  readonly settledCorrect: number;
+  /** Unstable questions the final verdict gets WRONG -- confirmed noise. */
+  readonly settledWrong: number;
+  /** `unstable / total`, or 0 for an empty population. */
+  readonly unstableRate: number;
+};
+
+type RepetitionReading = {
+  readonly repetitions: number;
+  readonly overall: RepetitionStats;
+  readonly perCapability: Partial<Record<Capability, RepetitionStats>>;
+  /** Unstable questions in roster order, so a reader can open them by id. */
+  readonly unstableIds: readonly string[];
+};
+
+/**
+ * How much of a run is decided by sampling rather than by the code.
+ *
+ * ## Why this is a different measurement from the cross-run floor
+ *
+ * The noise floor answers "how far can the *verdict* move if I re-run the whole
+ * benchmark?". This answers "how many questions does the *reader* not decide?".
+ * They are not the same population and neither bounds the other. On the two
+ * config-identical 500-question runs of `§13.331`, 16 of 500 verdicts moved
+ * between runs, while **30 and 28 of 500** questions had repetitions that
+ * disagreed with each other -- and on MR the split is starker: 7 verdicts moved,
+ * 15 and 16 questions were unsettled. The vote absorbs about half of the
+ * instability, which is why the floor understates what can move.
+ *
+ * ## Why it is the right product metric
+ *
+ * A question every repetition answers the same way is a question the code decides.
+ * A question whose repetitions disagree is a coin the vote happened to land on,
+ * and it will land differently in the next run. That makes `unstableRate` a
+ * quantity the product can be held to without an A/B at all: it is measured
+ * inside one artifact, needs no control arm, and moves only when the reader gets
+ * more decisive. MR's 13.2% against IE's 4.0% is the gap this names.
+ *
+ * ## What `settledCorrect` is for
+ *
+ * The two settled subsets are different problems. `settledWrong` is a ceiling of
+ * the harness -- the vote confirmed a wrong answer -- and no stability work can
+ * recover it. `settledCorrect` is a question the product currently gets right by
+ * luck: it is the headroom, and it is the population an arm that stabilises the
+ * reader would hand back as durable wins rather than as flips.
+ */
+export function repetitionInstability(cases: readonly RepetitionCase[]): RepetitionReading {
+  if (cases.length === 0) {
+    throw new Error('repetitionInstability requires at least one case');
+  }
+  const repetitions = cases[0]!.correct.length;
+  if (repetitions === 0) {
+    throw new Error('repetitionInstability requires at least one repetition per case');
+  }
+
+  const byCapability = new Map<
+    Capability,
+    { unstable: number; total: number; settledCorrect: number; settledWrong: number }
+  >();
+  const unstableIds: string[] = [];
+  let unstable = 0;
+  let settledCorrect = 0;
+  let settledWrong = 0;
+  let total = 0;
+
+  for (const one of cases) {
+    // A case whose repetition count disagrees with the first means two different
+    // runs were folded into one reading, and a summary that took the first count
+    // would truncate the longer vector without saying so.
+    if (one.correct.length !== repetitions) {
+      throw new Error(
+        `repetitionInstability got ${one.correct.length} repetition(s) for ${one.questionId} ` +
+          `but ${repetitions} for ${cases[0]!.questionId}. One reading must describe one run.`,
+      );
+    }
+    const settled = one.correct.every((value) => value === one.correct[0]);
+    const bucket = byCapability.get(one.capability) ?? {
+      unstable: 0,
+      total: 0,
+      settledCorrect: 0,
+      settledWrong: 0,
+    };
+    bucket.total += 1;
+    total += 1;
+    if (!settled) {
+      unstable += 1;
+      bucket.unstable += 1;
+      unstableIds.push(one.questionId);
+      if (one.decidedCorrect) {
+        settledCorrect += 1;
+        bucket.settledCorrect += 1;
+      } else {
+        settledWrong += 1;
+        bucket.settledWrong += 1;
+      }
+    }
+    byCapability.set(one.capability, bucket);
+  }
+
+  const perCapability: Partial<Record<Capability, RepetitionStats>> = {};
+  for (const capability of [...byCapability.keys()].sort()) {
+    const bucket = byCapability.get(capability)!;
+    perCapability[capability] = {
+      total: bucket.total,
+      unstable: bucket.unstable,
+      unanimous: bucket.total - bucket.unstable,
+      settledCorrect: bucket.settledCorrect,
+      settledWrong: bucket.settledWrong,
+      unstableRate: bucket.unstable / bucket.total,
+    };
+  }
+
+  return {
+    repetitions,
+    overall: {
+      total,
+      unstable,
+      unanimous: total - unstable,
+      settledCorrect,
+      settledWrong,
+      unstableRate: unstable / total,
+    },
+    perCapability,
+    unstableIds,
   };
 }
 
@@ -359,6 +565,7 @@ export function compareQuestionVectors(
 function requirementFrom(
   stats: VarianceStats,
   rosterChanged: number | undefined,
+  basis: 'capability' | 'overall',
 ): CapabilityRequirement {
   // The bar is the LARGER of two measurements of the same thing, because they
   // can disagree and the disagreement is not symmetric.
@@ -376,11 +583,19 @@ function requirementFrom(
   // an older caller that supplies no roster is under-cautious rather than wrong.
   const movement = rosterChanged ?? 0;
   const floorQuestions = Math.max(stats.rangeQuestions, movement);
+  // The same floor with the churn rate replaced by the upper end of its interval.
+  // `wilsonUpper` is the identical function the judge audit uses for "0 false
+  // accepts of 80", and reusing it is the point: two intervals for one word is
+  // how the audit's bound and a noise bound would come to disagree about what
+  // "95%" means in this repository.
+  const boundQuestions = Math.ceil(wilsonUpper(movement, stats.sampleSize) * stats.sampleSize);
   return {
     rangeQuestions: stats.rangeQuestions,
     floorPp: stats.spreadPp,
     minQuestionsStrictlyGreaterThan: Math.max(1, floorQuestions + 1),
     rosterChanged: movement,
+    minQuestionsAtNinetyFive: Math.max(1, Math.max(stats.rangeQuestions, boundQuestions) + 1),
+    floorBasis: basis,
   };
 }
 
@@ -423,17 +638,37 @@ export function requiredEffectSize(
   for (const [capability, stats] of Object.entries(summary.perCapability) as Array<
     [Capability, VarianceStats]
   >) {
-    // Per-capability bars take the OVERALL roster movement, not a per-capability
-    // one. The comparison that produced the figure is over whole questions, and
-    // attributing a flip to a capability would need a second pass this module
-    // does not have. Using the overall movement is the conservative direction:
-    // it can only raise a capability's bar, never lower it.
-    perCapability[capability] = requirementFrom(stats, rosterChanged);
+    // Per-capability bars used to take the OVERALL roster movement. The stated
+    // reason was that attributing a flip to a capability needed a second pass this
+    // module did not have. `PairwiseMovement.perCapability` is that pass, and the
+    // substitution turns out to cost more than it was thought to: on two
+    // config-identical 500-question runs the whole sample moved 16 questions while
+    // MR moved 7 and ABS moved 0. A single flat bar of 17 therefore rejected every
+    // MR effect below 17 -- including the 5-question MR lead the reference pipeline
+    // was credited with -- and simultaneously could not certify a KU or ABS effect
+    // that the corpus-wide churn had no bearing on.
+    //
+    // Falling back to the overall figure when the caller supplies no map keeps
+    // every older caller on exactly the number it had, and `floorBasis` names
+    // which of the two a reader is looking at. The basis is decided by whether the
+    // map CARRIES this capability, not by whether a number came out of the
+    // expression: a per-pair fallback to `m.changed` always yields a number, so
+    // deciding on that would label every unmeasured capability as measured.
+    const supplied =
+      movements !== undefined && movements.some((m) => m.perCapability?.[capability] !== undefined);
+    const capabilityMovement = supplied
+      ? Math.max(...movements.map((m) => m.perCapability?.[capability] ?? m.changed))
+      : undefined;
+    perCapability[capability] = requirementFrom(
+      stats,
+      capabilityMovement ?? rosterChanged,
+      capabilityMovement === undefined ? 'overall' : 'capability',
+    );
   }
 
   return {
     basedOnObservations: summary.n,
-    overall: requirementFrom(summary.overall, rosterChanged),
+    overall: requirementFrom(summary.overall, rosterChanged, 'overall'),
     perCapability,
     rosterChanged,
   };

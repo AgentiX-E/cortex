@@ -15,7 +15,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { compareQuestionVectors, requiredEffectSize, summarizeVariance } from '../variance.js';
+import {
+  compareQuestionVectors,
+  repetitionInstability,
+  requiredEffectSize,
+  summarizeVariance,
+} from '../variance.js';
 import type { RunObservation } from '../variance.js';
 
 /** Build an observation from a compact "which questions are correct" spec. */
@@ -470,5 +475,222 @@ describe('requiredEffectSize', () => {
     ]);
 
     expect(requiredEffectSize(summary).basedOnObservations).toBe(2);
+  });
+
+  it('measures a capability bar on that capability’s own movement', () => {
+    // THE CORRECTION. Until §13.330 every capability inherited the whole-sample
+    // roster movement, so a capability that never moved still carried the corpus's
+    // churn. On the two config-identical 500-question runs that motivated this the
+    // whole sample moved 16 while ABS moved 0 and MR moved 7 -- and a flat bar of
+    // 17 is why the reference pipeline's 5-question MR lead was never readable.
+    //
+    // IE moves one question here and TR moves two. The two capabilities must get
+    // DIFFERENT bars, and both must be lower than the three-question bar the
+    // whole-sample movement would impose.
+    const summary = summarizeVariance([
+      observation('r1', {
+        IE: [true, false, false],
+        TR: [true, true, false],
+      }),
+      observation('r2', {
+        IE: [false, false, false],
+        TR: [false, false, false],
+      }),
+    ]);
+
+    const required = requiredEffectSize(summary, [{ changed: 3, perCapability: { IE: 1, TR: 2 } }]);
+
+    expect(required.overall.minQuestionsStrictlyGreaterThan).toBe(4);
+    expect(required.perCapability.IE!.minQuestionsStrictlyGreaterThan).toBe(2);
+    expect(required.perCapability.TR!.minQuestionsStrictlyGreaterThan).toBe(3);
+    expect(required.perCapability.IE!.floorBasis).toBe('capability');
+    expect(required.perCapability.TR!.floorBasis).toBe('capability');
+    // The overall bar is still measured on the whole roster, not on a fold over
+    // the per-capability map: a fold would let a caller shrink the bar by
+    // supplying a map whose entries do not partition the sample.
+    expect(required.overall.floorBasis).toBe('overall');
+  });
+
+  it('keeps the whole-sample movement for a capability the caller did not break out', () => {
+    // A partial map must not silently become a zero. An absent capability means
+    // the caller did not measure it, which is not the same as measuring it as
+    // stable -- and treating it as stable is the failure that would make an
+    // unmeasured capability look certifiable.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, false], KU: [false, false] }),
+      observation('r2', { IE: [false, false], KU: [false, false] }),
+    ]);
+
+    const required = requiredEffectSize(summary, [{ changed: 1, perCapability: { IE: 1 } }]);
+
+    expect(required.perCapability.IE!.rosterChanged).toBe(1);
+    expect(required.perCapability.IE!.floorBasis).toBe('capability');
+    // KU never moved, but nothing measured that, so it inherits the sample's one.
+    expect(required.perCapability.KU!.rosterChanged).toBe(1);
+    expect(required.perCapability.KU!.floorBasis).toBe('overall');
+  });
+
+  it('reports a 95% upper bound that is never below the observed floor', () => {
+    // The observed count is a point estimate of a rate measured on two runs, and
+    // two runs estimate a rate poorly. Of four questions one moved; the interval
+    // the same data is compatible with allows three, so an arm that moved two has
+    // cleared the observation and not the uncertainty.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, true, true, false] }),
+      observation('r2', { IE: [true, true, false, false] }),
+    ]);
+
+    const required = requiredEffectSize(summary, [{ changed: 1 }]);
+
+    // Observed: one moved, so the bar is two.
+    expect(required.overall.minQuestionsStrictlyGreaterThan).toBe(2);
+    // Bound: at most three of the four could plausibly be unstable, so four.
+    expect(required.overall.minQuestionsAtNinetyFive).toBe(4);
+  });
+
+  it('widens the bound as the sample shrinks, and never narrows below the floor', () => {
+    // The bound is a property of the rate AND the denominator. Two samples with
+    // the same observed rate give the same floor and different bounds, which is
+    // the reason a 30-question capability cannot be certified on "zero moved".
+    const small = summarizeVariance([
+      observation('r1', { ABS: [true, false, false, false] }),
+      observation('r2', { ABS: [true, false, false, false] }),
+    ]);
+    const large = summarizeVariance([
+      observation('r1', { ABS: Array.from({ length: 40 }, () => true) }),
+      observation('r2', { ABS: Array.from({ length: 40 }, () => true) }),
+    ]);
+
+    const smallBar = requiredEffectSize(small, [{ changed: 0 }]).overall;
+    const largeBar = requiredEffectSize(large, [{ changed: 0 }]).overall;
+
+    expect(smallBar.minQuestionsStrictlyGreaterThan).toBe(1);
+    expect(largeBar.minQuestionsStrictlyGreaterThan).toBe(1);
+    // 4 stable questions can hide 2 unstable ones; 40 stable questions can hide 4.
+    expect(smallBar.minQuestionsAtNinetyFive).toBe(3);
+    expect(largeBar.minQuestionsAtNinetyFive).toBe(5);
+    expect(smallBar.minQuestionsAtNinetyFive).toBeLessThan(largeBar.minQuestionsAtNinetyFive);
+  });
+
+  it('falls back per pair when only some pairs carry a capability map', () => {
+    // A caller that measured the split for one pair and not another is not wrong,
+    // it is incomplete, and the incomplete pair must contribute the whole-sample
+    // figure rather than a zero. Three observations have three pairs; the middle
+    // one supplies no map at all.
+    const summary = summarizeVariance([
+      observation('r1', { IE: [true, true, false, false] }),
+      observation('r2', { IE: [false, true, false, false] }),
+      observation('r3', { IE: [false, false, true, false] }),
+    ]);
+
+    const required = requiredEffectSize(summary, [
+      { changed: 1, perCapability: { IE: 1 } },
+      { changed: 2 },
+      { changed: 2, perCapability: {} },
+    ]);
+
+    // The largest of {1, 2, 2} -- the pairs with no figure contribute their
+    // whole-sample movement, so the bar is not lowered by the omission.
+    expect(required.perCapability.IE!.rosterChanged).toBe(2);
+    expect(required.perCapability.IE!.floorBasis).toBe('capability');
+  });
+
+  it('sums a bucket map that names a capability the run did not measure', () => {
+    // `perCapability` is a partial record, so an entry can be present and
+    // undefined. Counting that as a zero would understate the sample and shrink
+    // the interval built from it, which is the direction that certifies noise.
+    const partial = {
+      runId: 'r1',
+      perCapability: { IE: { correct: 2, total: 3 }, TR: undefined },
+      total: 3,
+    } as unknown as RunObservation;
+    const summary = summarizeVariance([partial, { ...partial, runId: 'r2' }]);
+
+    expect(summary.overall.meanCorrect).toBe(2);
+    expect(summary.overall.sampleSize).toBe(3);
+    expect(summary.perCapability.TR).toBeUndefined();
+  });
+});
+
+describe('repetitionInstability', () => {
+  /**
+   * Cases built as plain rows, then handed over in the parameter type the function
+   * declares. The case type is deliberately not exported (§13.331): the only consumer
+   * is this file, and an exported type no module imports is what the census calls an
+   * orphan. The cast is the price of that, paid once, here.
+   */
+  const casesOf = (
+    rows: readonly (readonly [string, string, readonly boolean[], boolean])[],
+  ): Parameters<typeof repetitionInstability>[0] =>
+    rows.map(([questionId, capability, correct, decidedCorrect]) => ({
+      questionId,
+      capability,
+      correct,
+      decidedCorrect,
+    })) as Parameters<typeof repetitionInstability>[0];
+
+  it('separates the questions the code decides from the ones the vote decides', () => {
+    // Four repetitions. `u` is unanimous in both runs so the code decides it; the
+    // two settled questions are the ones that will land differently next time.
+    const reading = repetitionInstability(
+      casesOf([
+        ['a', 'MR', [true, true, true, true], true],
+        ['b', 'MR', [true, false, true, false], true],
+        ['c', 'MR', [false, false, true, false], false],
+        ['d', 'IE', [false, false, false, false], false],
+      ]),
+    );
+
+    expect(reading.repetitions).toBe(4);
+    expect(reading.overall.total).toBe(4);
+    expect(reading.overall.unstable).toBe(2);
+    expect(reading.overall.unanimous).toBe(2);
+    expect(reading.overall.settledCorrect).toBe(1);
+    expect(reading.overall.settledWrong).toBe(1);
+    expect(reading.overall.unstableRate).toBe(0.5);
+    // The roster, not the count: a reader has to be able to open the questions.
+    expect(reading.unstableIds).toEqual(['b', 'c']);
+  });
+
+  it('partitions the reading by capability and sorts the keys', () => {
+    const reading = repetitionInstability(
+      casesOf([
+        ['t', 'TR', [true, false], true],
+        ['a', 'ABS', [true, true], true],
+        ['i', 'IE', [true, true], true],
+      ]),
+    );
+
+    expect(Object.keys(reading.perCapability)).toEqual(['ABS', 'IE', 'TR']);
+    expect(reading.perCapability.ABS!.unstable).toBe(0);
+    expect(reading.perCapability.TR!.unstable).toBe(1);
+    expect(reading.perCapability.TR!.settledCorrect).toBe(1);
+    expect(reading.perCapability.ABS!.unstableRate).toBe(0);
+  });
+
+  it('refuses an empty reading rather than reporting a perfect one', () => {
+    // `0/0` is not 0%. A reading over no questions has no rate, and printing one
+    // would be indistinguishable from a code that decides everything.
+    expect(() => repetitionInstability(casesOf([]))).toThrow(/at least one case/);
+  });
+
+  it('refuses a case with no repetitions', () => {
+    expect(() => repetitionInstability(casesOf([['a', 'IE', [], true]]))).toThrow(
+      /at least one repetition/,
+    );
+  });
+
+  it('refuses cases that were folded from different runs', () => {
+    // Two vectors of different lengths means at least one case came from another
+    // run, and a summary that took the first length would truncate the other
+    // without saying so.
+    expect(() =>
+      repetitionInstability(
+        casesOf([
+          ['a', 'IE', [true, false], true],
+          ['b', 'IE', [true, false, true], true],
+        ]),
+      ),
+    ).toThrow(/One reading must describe one run/);
   });
 });

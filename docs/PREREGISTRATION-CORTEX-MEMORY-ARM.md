@@ -35788,3 +35788,325 @@ second arm, which is a caller disabling both the budget and the retries.
 `cortex-ai` reads **100.00 / 100.00 / 100.00 / 100.00** over 14 files, 326 tests, and the ratchet
 records it. `retry.ts` alone moved 94/96 → **96/96**, and the two arms were removed rather than
 annotated.
+
+## 13.330 The per-capability bar was the whole sample's churn, and it was four times too high for `KU`
+
+Two configuration-identical 500-question runs (`42452904894`, `42467392736`) have been on disk since
+§13.326 and were read there as one number: **16 of 500 verdicts moved**, 6 into correct and 10 out,
+`p = 0.4545`. The tool that produces that number,
+`tools/quantify-endpoint-noise.mjs`, also printed a per-capability floor — and every row of it read
+`minQuestionsStrictlyGreaterThan: 17`. That is not a per-capability figure.
+
+`requiredEffectSize` substituted the whole-sample roster movement into every capability's bar, with a
+comment defending it: *"attributing a flip to a capability would need a second pass this module does
+not have. Using the overall movement is the conservative direction: it can only raise a capability's
+bar, never lower it."* Both sentences are true and the conclusion does not follow. A bar that only
+rises is safe against false positives and **blind to true effects**: it asks "is this MR effect larger
+than the churn of a corpus that is 76% not-MR?", which is a different question from "is this MR effect
+larger than MR's own churn?".
+
+### 13.330.1 The second pass
+
+`PairwiseMovement` now carries `perCapability`, filled by the tool from the same
+`compareQuestionVectors` call, over the id subsets the capabilities partition. The subsets are handed
+to the comparison rather than tallied in the tool, so there is still exactly one implementation of
+"how many of these moved". On the pair above the split is:
+
+| capability | n | moved | rate |
+| --- | ---: | ---: | ---: |
+| `ABS` | 30 | 0 | 0.0% |
+| `IE` | 150 | 5 | 3.3% |
+| `KU` | 72 | 2 | 2.8% |
+| `MR` | 121 | 7 | 5.8% |
+| `TR` | 127 | 2 | 1.6% |
+| overall | 500 | 16 | 3.2% |
+
+`MR` is the least stable capability and `ABS` the most, which is the opposite ordering from anything the
+campaign had recorded: the capability whose gold is a *decline* is the one the reader decides every time,
+and the capability that has to count across thirty sessions is the one it does not.
+
+`CapabilityRequirement` gained `floorBasis`, so the printout says which population a bar came from —
+`capability` when the map carries that capability, `overall` when it does not. A capability the caller
+did not break out keeps the whole-sample figure and is **labelled** as substituted rather than silently
+promoted; a per-pair fallback to `m.changed` always produces a number, so the basis is decided by
+`map.has` and not by whether an expression returned something.
+
+### 13.330.2 The observed count is not a floor
+
+16 of 500 is a point estimate of a rate, measured on two runs. `minQuestionsAtNinetyFive` is the same
+bar built from the **Wilson upper bound** of that rate — the identical `wilsonUpper` the judge audit
+uses for `0 false accepts of 80`, reused rather than reimplemented, because two intervals for one word
+is how two documents come to disagree about what 95% means here.
+
+| | observed floor | at 95% |
+| --- | ---: | ---: |
+| `ABS` (0/30) | 1 | 5 |
+| `IE` (5/150) | 6 | 13 |
+| `KU` (2/72) | 3 | 8 |
+| `MR` (7/121) | 8 | 15 |
+| `TR` (2/127) | 3 | 9 |
+| overall (16/500) | 17 | 27 |
+
+Two readers of this table, and only one of them is comfortable. The 95% column is the number a claim
+must clear to be a verdict: a 20-question arm sitting inside "as many as 26 could have moved" is a
+statement about this pair of runs, not about the endpoint. The observed column is what a published
+number was judged against, and it is retained beside the bound for that reason — silently replacing
+16 with 26 would invalidate every archived verdict without saying which ones.
+
+### 13.330.3 What this retires, and what it explicitly does not
+
+`§13.328.3` recorded the gap to the reference pipeline as **8 questions on one draw and 5 on the other**,
+both on `MR`. Against the corrected bar — 8 observed, 15 at 95% — neither is a **delta of score** that
+clears the endpoint's own movement, which is why three rounds of "the reference wins `MR` by five to
+eight" never converted into a mechanism.
+
+The distinction this section turns on has to be stated or the correction over-retires:
+
+| claim shape | what it must clear | why |
+| --- | --- | --- |
+| a **net delta** in correct answers | the roster churn — 17 observed / 27 at 95% corpus, 8 / 15 on `MR` | a difference of counts is indistinguishable from re-running, unless it is larger than what re-running moves |
+| a **paired, one-directional** movement | the discordant pair count: `k` conversions against `0` losses is binomial, so 6-0 is `p = 0.031` and 8-0 is `p = 0.008` | McNemar conditions on the discordant pairs; the questions both arms got right, and the ones both got wrong, carry no information about the difference |
+
+The two are not interchangeable and the campaign has used them loosely. `§13.328.2`'s McNemar p-values
+(`1.456e-55`, `4.609e-57`) are paired statistics over **the whole corpus**, where the arms differ by 248
+and 250 questions — they say nothing about `MR`. A five-question `MR` movement with 12 discordant one way
+and 7 the other is `p ≈ 0.36` and is nothing at all. The same five questions as a 5-0 would be `p = 0.062`
+and would still be short.
+
+So the rule this section installs is: **an `MR` claim is registered as a paired movement with its
+discordant counts, and it is readable at ≥ 6-0**, not at "≥ 15 questions". The 15 is the bar for the
+other shape, the net delta, and it stays the bar for the corpus headline.
+
+### 13.330.4 A crash the change exposed
+
+Adding the field surfaced a latent one. `sumBucketCorrect` has guarded `bucket !== undefined` since it
+was written; the loop in `collectSeries` that reads the same partial record did not, and its failure mode
+was a `TypeError` from inside the summary of two otherwise valid runs. Both now skip: a key that is
+present and undefined is not a measurement, and skipping matches an absent key exactly. `variance.ts`
+reads **100 / 100 / 100 / 100** after the change, `cortex-eval` 135 files green.
+
+## 13.331 A run already contains four samples of itself, and nothing was reading them
+
+### 13.331.1 The measurement that was sitting in the artifact
+
+Every dispatched run since §13.118 grades each question four times with a byte-identical prompt and
+stores `ablation.featureCorrectByRun`: four `0`/`1` masks of 500 characters. `paired-flip.ts` reads them
+for A/B verdicts. **Nothing read them for noise.** `quantify-endpoint-noise.mjs` derived the endpoint's
+own movement from `questions[].correct`, which is the post-vote verdict — so the campaign's floor was
+measured on the vote's output while the vote's *input* was lying in the same file.
+
+`repetitionInstability` computes it: per question, did the repetitions agree? and if not, is the verdict
+that settled it correct (won by the vote) or wrong (noise the harness confirmed)?
+
+| run | unstable | settled correct | settled wrong |
+| --- | ---: | ---: | ---: |
+| `42452904894` | 30 / 500 (6.00%) | 15 | 15 |
+| `42467392736` | 28 / 500 (5.60%) | 13 | 15 |
+
+and per capability, the two runs read:
+
+| capability | `42452…` | `42467…` |
+| --- | ---: | ---: |
+| `ABS` | 0 / 30 (0.00%) | 0 / 30 (0.00%) |
+| `IE` | 7 / 150 (4.67%) | 6 / 150 (4.00%) |
+| `KU` | 3 / 72 (4.17%) | 1 / 72 (1.39%) |
+| `MR` | **15 / 121 (12.40%)** | **16 / 121 (13.22%)** |
+| `TR` | 5 / 127 (3.94%) | 5 / 127 (3.94%) |
+
+### 13.331.2 What the two readings are, and are not
+
+They answer different questions and neither bounds the other:
+
+- the **floor** answers "how far can the verdict move if I re-run the benchmark?" — 16 questions, and
+  it is what a claim is judged against;
+- **instability** answers "how many questions does the reader fail to decide?" — 30, and it is what a
+  mechanism can be built against.
+
+The vote absorbs roughly half. `MR` is where the absorption is most expensive: 15 and 16 questions are
+undecided, and 7 verdicts still moved between runs. So `MR`'s churn is not 7 because the reader is
+decisive — it is 7 because the vote hid eight of them, and they will land differently next time.
+
+### 13.331.3 Why this is a product metric and not only an instrument
+
+`unstableRate` needs no control arm, no second run and no judge: it is computed inside one artifact from
+four samples the harness already paid for. That makes it the first quality figure in this repository that
+can be held without an A/B at all, and it names a target the campaign has been circling for thirty
+rounds without a number: **`MR`'s 12.4% and 13.2% against `ABS`'s 0.00%**. A change that stabilises
+`MR` is measurable at 15-16 questions of headroom, which is above the 15-question bar §13.330.2 derived —
+the first time an `MR` mechanism has had a readable ceiling.
+
+`settledCorrect` is the half that matters for the mechanism: 15 and 13 questions the product gets right
+by luck. They are not wins yet; they are the ones a stabilising change converts into durable wins rather
+than into flips. `settledWrong` (15 and 15) is a harness ceiling and no stability work recovers it.
+
+### 13.331.4 What the tool refuses
+
+A one-repetition artifact reports `NOT MEASURED`, never `0 unstable`: one sample cannot demonstrate
+stability, and `unstable 0/121` would be read as a reader that decides every question — the same error
+as a floor derived from one run, which is the error this whole tool exists to prevent. A mask whose
+length disagrees with the roster is a hard error, because the masks are indexed by roster position and a
+length mismatch aligns unrelated questions.
+
+## 13.332 The literature moved under `MR`: TallyMem separates *what to count* from *counting*
+
+### 13.332.1 The refreshed landscape, with the metric traps named
+
+| system | `LongMemEval` | setting | caveat |
+| --- | ---: | --- | --- |
+| Maximem Synap (vendor, 2026-10-28) | **95.6% (478/500)** | ~7.4K memory tokens, Gemini 3.8 Flash | the row this repository's ledger already carries, with public per-question data |
+| Agent Zero Memory (Zero Labs, arXiv 2608.29606, Aug 2026) | **95.60%** | 500 q, judge model unnamed | reports the *same* 478-of-500 figure, is **single run**, and says so |
+| Mastra Observational Memory (Feb 2026) | 94.87% | `_S`, gpt-5-mini | 84.23% with gpt-4o — the backbone moves it 10.6 points |
+| Mem0 managed (Apr 2026) | 94.4% (472/500) | `_S`, top-200, GPT-5 answer | proprietary optimisations the OSS SDK lacks; the package measures ~32% on the same suite |
+| Hindsight (Dec 2025) | 91.40% | `_S` | graded with GPT-OSS-120B, not the specified gpt-4o; ~43.6K tokens per retrieval |
+| EmergenceMem (2026) | 86.00% | — | — |
+| Supermemory (May 2026) | **97%** | `_S` | **Recall@20, not answer accuracy** — not the same scale |
+| Zep (Jan 2025) | 71.20% | `_S`, gpt-4o | predates the Sep-2025 cleaned file |
+
+Three traps, all of which this campaign has been exposed to: the **answer model** moves the same memory
+system 10.6 points (Mastra's own two rows), the **judge** changes between rows, and one row's 97% is a
+retrieval metric printed next to answer accuracies. The 4.0-5.4 point gap §14.68.5 quoted against
+`95.6%` stands, and two independent vendors now report the same 478-of-500 — one as a vendor page this
+repository already prices, one as an arXiv result whose authors state it is **single run**. At
+§13.330.2's 27-question bar on our side, a single-run 95.6% is the same category of unreadability we are
+fixing in our own numbers, which is why §12's rule still holds: read a competitor at the same bar, never
+from its published point estimate.
+
+### 13.332.2 What this does and does not add to §13.264
+
+This axis is **not new to this repository**. `§13.262.8` retired a deterministic tally applied to the
+reader's *own list* on a measured count — **15 currently correct answers broken against 1 fixed** — and
+`§13.264.2` then read the residual on the shipped arm and split it 7 *selection* : 2 *aggregation* on the
+30 count-shaped golds of `MR`. The paper's own residual after deterministic aggregation is also event
+*selection*, so the two readings agree about where the error lives.
+
+What the refresh adds is only the size of the effect on the other side of the interface, and the single
+number that had not been carried: **100% correct at 14 events, 80% at 53**. That is the same shape as
+`§13.92`'s census from a different instrument — the reader's list is a recollection, not a walk, and its
+fidelity degrades with how many items the question spans. It also prices the interface difference
+precisely: the retired version executed an operation over a list the reader produced, while `TallyMem`
+executes over a **ledger built before the question is asked**, which is why its residual is selection
+rather than the 15-broken-vs-1-fixed collapse.
+
+### 13.332.3 What it therefore does not license
+
+It does not license re-running the retired mechanism under a new name. The difference that would matter
+is *where the events come from* — a ledger with a schema for what counts as an item and what a legitimate
+exclusion is, versus the reader's prose. That distinction was already written down in `§13.264.3` and
+this section does not change it. What §13.333 changes is the **prize**, which turns out to be smaller
+than the round that registered it assumed.
+
+## 13.332 The literature moved under `MR`: TallyMem separates *what to count* from *counting*
+
+### 13.332.1 The refreshed landscape, with the metric traps named
+
+| system | `LongMemEval` | setting | caveat |
+| --- | ---: | --- | --- |
+| Maximem Synap (vendor, 2026-10-28) | **95.6% (478/500)** | ~7.4K memory tokens, Gemini 3.8 Flash | the row this repository's ledger already carries, with public per-question data |
+| Agent Zero Memory (Zero Labs, arXiv 2608.29606, Aug 2026) | **95.60%** | 500 q, judge model unnamed | reports the *same* 478-of-500 figure, is **single run**, and says so |
+| Mastra Observational Memory (Feb 2026) | 94.87% | `_S`, gpt-5-mini | 84.23% with gpt-4o — the backbone moves it 10.6 points |
+| Mem0 managed (Apr 2026) | 94.4% (472/500) | `_S`, top-200, GPT-5 answer | proprietary optimisations the OSS SDK lacks; the package measures ~32% on the same suite |
+| Hindsight (Dec 2025) | 91.40% | `_S` | graded with GPT-OSS-120B, not the specified gpt-4o; ~43.6K tokens per retrieval |
+| EmergenceMem (2026) | 86.00% | — | — |
+| Supermemory (May 2026) | **97%** | `_S` | **Recall@20, not answer accuracy** — not the same scale |
+| Zep (Jan 2025) | 71.20% | `_S`, gpt-4o | predates the Sep-2025 cleaned file |
+
+Three traps, all of which this campaign has been exposed to: the **answer model** moves the same memory
+system 10.6 points (Mastra's own two rows), the **judge** changes between rows, and one row's 97% is a
+retrieval metric printed next to answer accuracies. The 4.0-5.4 point gap §14.68.5 quoted against
+`95.6%` stands, and two independent vendors now report the same 478-of-500 — one as a vendor page this
+repository already prices, one as an arXiv result whose authors state it is **single run**. At
+§13.330.2's 27-question bar on our side, a single-run 95.6% is the same category of unreadability we are
+fixing in our own numbers, which is why §12's rule still holds: read a competitor at the same bar, never
+from its published point estimate.
+
+### 13.332.2 The mechanism `MR` has been missing
+
+*Beyond Retrieval: Evidence Access and Event Aggregation in Agent Memory* (arXiv 2610.19474, Oct 2026)
+separates two bottlenecks this campaign has measured but never separated mechanically:
+
+- **evidence access** — does the reader see the relevant steps;
+- **event aggregation** — can it combine them.
+
+Their controlled probe is the sentence that should have been in §13.204: reading a fully visible history
+answers the same count correctly for **100% of trajectories at 14 events and 80% at 53**. Aggregation
+error is a function of *load*, not of retrieval — which is exactly what our own census says from the
+other side (`§13.328.5`: 13 of 22 `MR` failures carried all of their gold; the fifteen `numeric_mismatch`
+are counting errors over a window whose evidence is present).
+
+`TallyMem`'s mechanism: a model writes a **typed query** — scope, event predicate, operation (count,
+list, first/last, group-count, timeline) — and a **deterministic executor** runs it over a reusable event
+ledger. The model never counts. Measured: **+13.8 points exact match** on 99 held-out MINTEval
+repositories, **+11.0** on the controlled probe, **+1.3** on the full AMA-Bench, with the residual error
+category being *specification* — the model naming the wrong events — which is inspectable because the
+plan and the matched step ids come back with the answer.
+
+MINTEval itself (arXiv 2605.18565) prices the same axis independently: multi-target aggregation is the
+worst category at **26.5%** across seven systems, against 47.5% for latest-state questions, and the
+authors name retrieval/memory construction as the primary bottleneck while *also* reporting that even
+when the needed information is present the systems fail to pull it in.
+
+### 13.332.3 Why this is the right next `MR` registration and not another ask
+
+Every `MR` ask this campaign dispatched — `enumerated`, `sweep`, `aggregation`, `silent`, `operands`,
+`candidates` — asked the *reader* to do the counting, and §13.96 records three attempts that each
+lengthened the list and none that raised accuracy. `TallyMem`'s result is the reason: making the list
+better does not make the count right, because the count is still a model operation over a long context.
+
+## 13.333 The prize this axis was registered for is nine questions, and §13.264.3 overstated it by twenty-one
+
+`§13.264.3` wrote the ceiling of aggregation work as *"repairing every one of the 30 moves `MR` by
+`21/121 = +17.4` points and the whole arm by `21/500 = +4.2`"*. That sentence treats the 30 count-shaped
+golds as if all 30 were wrong, and `§13.264.2`'s own table — four paragraphs above it — says **21 are
+correct and 9 are wrong**. The maximum movement this population can produce is therefore **9 questions**:
+`9/121 = +7.4` points on `MR`, `9/500 = +1.8` points on the arm. The 21 already-correct answers can only
+move down.
+
+The error is the campaign's oldest one in a new place: a population was counted, then a ceiling was
+quoted from the population size instead of from the failure count. It is worth writing down because the
+wrong number makes the axis look four times more valuable than it is, and the wrong number is the one a
+reader would have carried into the next dispatch.
+
+### 13.333.1 Which of the two counts is the count
+
+Two classifiers in this repository report `MR` counting failures and they disagree, so the registration
+cannot cite either without saying which:
+
+| instrument | population | `42467392736` | `42013256884` |
+| --- | --- | ---: | ---: |
+| `numeric_mismatch` (failure census) | any `MR` failure whose gold states a number and whose answer states a different one | **15 of 21** | — |
+| `mr-residual-census` (§13.264.2) | golds in `[2, 10]`, i.e. a *set of items* whose size is asked | — | **9 of 30** |
+
+They are not two readings of one population. The first includes balances, durations and percentages
+(`$3,750`, `720 minutes`, `99 posts`) where the "items" are operands, not members, and where the failure
+is an operand drop rather than a membership decision. The second is the only one of the two that is
+about a *set*, which is the population the `TallyMem` axis addresses. A registration that quotes 15 while
+placing the mechanism on sets is quoting the wrong instrument, and vice versa.
+
+### 13.333.2 What the corrected ceiling does to the registration
+
+| field | value |
+| --- | --- |
+| mechanism | a ledger of events built before the question, with a schema for *what counts as an item* and *what is a legitimate exclusion*; the reader writes the scope, the predicate and the operation, and the count is executed rather than narrated |
+| population | the **9** count-shaped `MR` failures of `§13.264.2`'s classifier, of which **7 are selection** and 2 aggregation |
+| criterion | paired movement on the 4-repetition mask: **≥ 6 conversions against ≤ 1 loss** (`6-0` is `p = 0.031`, `8-0` is `0.008`); the net-delta bar of §13.330.2 does **not** apply to this axis and never will |
+| guard | the four capabilities that do not read the tally route reproduce to the character (`promptChars`, `promptDigest`); and the 91 non-count-shaped `MR` questions may lose at most 2 — the 2-sigma band `§13.203.4` measured |
+| falsifier | the 9 convert and the corpus delta is silent: that is the *expected* outcome and it is not evidence the mechanism failed. The failure criterion is the paired counts, stated above |
+| corpus consequence | **+1.8 points at absolute perfection.** This axis cannot reach 95.6%, cannot close the 20-23 question gap, and must not be dispatched as if it could |
+
+### 13.333.3 Why this is still worth doing, and what it forbids
+
+Nine questions is small in the corpus and decisive on `MR`: `MR` is the only capability where this arm
+trails its own reference pipeline, the only one whose repetition instability is 12-13% (`§13.331.2`),
+and the only one where a published competitor's `MR` number (MemCog 92.5%) sits above ours at all. Nine
+durable conversions take `MR` from 81.8% to 89.3%, which is above every published `MR` figure this
+repository has priced.
+
+What it forbids is the arithmetic that has been done three times in this campaign: quoting a mechanism's
+population as its ceiling, then expecting the corpus headline to move. On the corrected numbers, an
+aggregation mechanism that works perfectly is worth **1.8 points**, which is inside the 4.0-5.4 points
+the arm trails `Maximem Synap` by — so it cannot be the *only* thing between here and SOTA, and the
+dispatch that follows it must be chosen for a population that is larger than nine.
+
+It is registered and not built this round, because §13.330 and §13.331 changed the bar every previous
+`MR` verdict was read against, and a mechanism dispatched in the same round as a change of measure is
+attributable to neither.

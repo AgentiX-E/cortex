@@ -46,6 +46,7 @@ import { join } from 'node:path';
 import {
   summarizeVariance,
   compareQuestionVectors,
+  repetitionInstability,
   requiredEffectSize,
 } from '../packages/cortex-eval/dist/variance.js';
 import {
@@ -136,7 +137,54 @@ function loadReport(path) {
     goldOverlap: q.goldOverlap ?? null,
   }));
   const records = buildQuestionRecords(inputs);
-  return { path, records, featureConfig: raw.featureConfig };
+  return {
+    path,
+    records,
+    featureConfig: raw.featureConfig,
+    repetitions: readRepetitions(path, raw, records),
+  };
+}
+
+/**
+ * One run's per-repetition correctness, as cases `repetitionInstability` reads.
+ *
+ * ## Why the artifact already answers a question the floor cannot
+ *
+ * Every dispatched run since §13.118 grades each question `repetitions` times with a
+ * byte-identical prompt, and stores one `0`/`1` mask per repetition. The floor this
+ * tool computes is built from `questions[].correct` -- the post-vote verdict -- so it
+ * measures how far the VERDICT moves between runs. The masks measure how often the
+ * READER fails to decide, which is a different population: on the two
+ * config-identical runs of §13.331 the verdict moved on 16 of 500 while 30 and 28
+ * questions had repetitions that disagreed with each other, and on MR the pair is 7
+ * against 15 and 16.
+ *
+ * ## What is refused rather than repaired
+ *
+ * A single repetition is returned as `undefined`, not as zero instability: one sample
+ * cannot demonstrate stability, and a reported `0` would be read as a code that
+ * decides every question. A mask whose length disagrees with the roster is a hard
+ * error for the same reason `compareQuestionVectors` throws -- index i of one file is
+ * index i of another only while the files agree about what i means.
+ */
+function readRepetitions(path, raw, records) {
+  const masks = raw.ablation?.featureCorrectByRun;
+  if (!Array.isArray(masks) || masks.length < 2) return undefined;
+  for (const mask of masks) {
+    if (typeof mask !== 'string' || mask.length !== records.length) {
+      throw new Error(
+        `${path}: a repetition mask is ${typeof mask === 'string' ? `${mask.length} character(s)` : 'not a string'} ` +
+          `but the roster has ${records.length} question(s). The masks are indexed by roster ` +
+          'position, so a length that disagrees with the roster aligns unrelated questions.',
+      );
+    }
+  }
+  return records.map((record, index) => ({
+    questionId: record.questionId,
+    capability: record.capability,
+    correct: masks.map((mask) => mask[index] === '1'),
+    decidedCorrect: record.correct,
+  }));
 }
 
 /**
@@ -195,8 +243,53 @@ function pairwiseMovements(referenceIds, reports) {
         vectorOf(reports[i].records),
         vectorOf(reports[j].records),
       );
-      movements.push({ changed: comparison.changed });
+      movements.push({
+        changed: comparison.changed,
+        perCapability: capabilityMovements(referenceIds, reports[i], reports[j]),
+      });
     }
+  }
+  return movements;
+}
+
+/**
+ * The same pair's movement, restricted to each capability's questions.
+ *
+ * ## Why the sum is not enough
+ *
+ * A bar stated in questions answers "how noisy is this benchmark?". A claim about
+ * MR is a claim about MR. On the two config-identical runs of `§13.326` the whole
+ * sample moved 16 questions while MR moved 7 and ABS moved 0, and the flat bar of
+ * 17 that the summary derived from the total could certify nothing below 17 in any
+ * capability -- which is why the 5-question MR lead credited to the reference
+ * pipeline was never a readable number.
+ *
+ * ## Why this is still one comparison, not a second one
+ *
+ * The subset is handed to `compareQuestionVectors` rather than tallied here. Two
+ * implementations of "how many of these moved" would disagree about the pair order
+ * or the alignment, and the disagreement would present as a per-capability bar that
+ * does not sum to the overall one. The subsets partition the reference ids, so they
+ * do sum -- and `requiredEffectSize` is the only consumer, which keeps the overall
+ * figure derived from the whole roster rather than from a fold over this map.
+ */
+function capabilityMovements(referenceIds, first, second) {
+  const byCapability = new Map();
+  for (const [index, record] of first.records.entries()) {
+    const ids = byCapability.get(record.capability) ?? [];
+    ids.push(index);
+    byCapability.set(record.capability, ids);
+  }
+  const firstVector = vectorOf(first.records);
+  const secondVector = vectorOf(second.records);
+  const movements = {};
+  for (const [capability, indices] of byCapability) {
+    const comparison = compareQuestionVectors(
+      indices.map((index) => referenceIds[index]),
+      indices.map((index) => firstVector[index]),
+      indices.map((index) => secondVector[index]),
+    );
+    movements[capability] = comparison.changed;
   }
   return movements;
 }
@@ -405,16 +498,52 @@ function main() {
       `  ${capability.padEnd(4)} n=${String(stats.n).padStart(2)}  ` +
         `min ${stats.minCorrect}, max ${stats.maxCorrect}, ` +
         `range: ${stats.rangeQuestions} questions (${stats.spreadPp.toFixed(2)} pp)  ` +
-        `minQuestionsStrictlyGreaterThan: ${req.minQuestionsStrictlyGreaterThan}`,
+        `roster: ${req.rosterChanged} (${req.floorBasis})  ` +
+        `minQuestionsStrictlyGreaterThan: ${req.minQuestionsStrictlyGreaterThan}  ` +
+        `at95: ${req.minQuestionsAtNinetyFive}`,
+    );
+  }
+
+  // Instability inside each run, which is the population the floor's movement can
+  // only ever come from. Printed before the verdict so the verdict is read beside
+  // it: a floor of 16 over a population of 30 unsettled questions is a statement
+  // about the vote, not about the reader.
+  const withRepetitions = reports.filter((report) => report.repetitions !== undefined);
+  if (withRepetitions.length > 0) {
+    console.log('');
+    console.log('--- repetition instability (questions the vote decided, not the reader) ---');
+    for (const report of withRepetitions) {
+      const reading = repetitionInstability(report.repetitions);
+      console.log(
+        `${report.path}: ${reading.repetitions} repetition(s), ` +
+          `unstable ${reading.overall.unstable}/${reading.overall.total} ` +
+          `(${(reading.overall.unstableRate * 100).toFixed(2)}%), ` +
+          `settled correct ${reading.overall.settledCorrect}, ` +
+          `settled wrong ${reading.overall.settledWrong}`,
+      );
+      for (const capability of Object.keys(reading.perCapability).sort()) {
+        const stats = reading.perCapability[capability];
+        console.log(
+          `  ${capability.padEnd(4)} unstable ${String(stats.unstable).padStart(2)}/${String(stats.total).padStart(3)} ` +
+            `(${(stats.unstableRate * 100).toFixed(2)}%)  ` +
+            `unanimous ${stats.unanimous}  settled correct ${stats.settledCorrect}, wrong ${stats.settledWrong}`,
+        );
+      }
+    }
+  } else {
+    console.log('');
+    console.log(
+      '--- repetition instability: NOT MEASURED. No input carries two or more ' +
+        'per-repetition masks, and one repetition cannot demonstrate stability.',
     );
   }
 
   console.log('');
-  console.log('--- required effect size ---');
-  console.log(
+  console.log('--- required effect size ---');  console.log(
     `basedOnObservations: ${requirement.basedOnObservations}  ` +
       `minQuestionsStrictlyGreaterThan: ${requirement.overall.minQuestionsStrictlyGreaterThan}  ` +
-      `floorPp: ${requirement.overall.floorPp.toFixed(2)}`,
+      `floorPp: ${requirement.overall.floorPp.toFixed(2)}  ` +
+      `at95: ${requirement.overall.minQuestionsAtNinetyFive}`,
   );
 
   // Which of the two measurements set the bar. Stated rather than left to the

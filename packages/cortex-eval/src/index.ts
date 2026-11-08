@@ -473,6 +473,7 @@ export {
 export { countedRerank, type CountedRerank, type RerankCensus } from './rerank-census.js';
 export {
   compareQuestionVectors,
+  repetitionInstability,
   requiredEffectSize,
   summarizeVariance,
   type CapabilityRequirement,

@@ -2306,20 +2306,20 @@
     },
     "cortex-eval/src/variance.ts": {
       "statements": [
-        83,
-        83
+        124,
+        124
       ],
       "branches": [
-        27,
-        28
+        52,
+        52
       ],
       "functions": [
-        13,
-        13
+        17,
+        17
       ],
       "lines": [
-        76,
-        76
+        114,
+        114
       ]
     },
     "cortex-eval/src/worker-pool.ts": {

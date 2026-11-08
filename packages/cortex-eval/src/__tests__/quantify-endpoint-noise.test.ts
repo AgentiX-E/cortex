@@ -233,6 +233,48 @@ describe('the tool breaks the movement down per capability', () => {
     // inheriting the overall figure.
     expect(out).toMatch(/ABS\s+.*\b0\b/);
   });
+
+  it('prints the basis and the 95% bound beside every bar', () => {
+    // §13.330. The bar a per-capability claim is judged against used to be the
+    // whole sample's movement, and the tool printed one number for it with no
+    // indication of which population it came from. Two runs whose IE moved and
+    // whose ABS never did must show `capability` for both, a zero roster for ABS,
+    // and a bound above the point estimate -- otherwise a reader cannot tell a
+    // measured bar from a substituted one, or a point estimate from an interval.
+    const make = (name: string, pattern: Array<[string, boolean]>): string => {
+      const path = join(dir, name);
+      writeFileSync(
+        path,
+        JSON.stringify({
+          questions: pattern.map(([cap, correct], i) => record(`q${i}`, correct, cap)),
+        }),
+      );
+      return path;
+    };
+    const x = make('basis-x.json', [
+      ['IE', true],
+      ['IE', true],
+      ['ABS', false],
+      ['ABS', false],
+    ]);
+    const y = make('basis-y.json', [
+      ['IE', false],
+      ['IE', true],
+      ['ABS', false],
+      ['ABS', false],
+    ]);
+    const out = run([x, y]);
+
+    expect(out).toMatch(/IE\s+.*roster: 1 \(capability\)/);
+    expect(out).toMatch(/ABS\s+.*roster: 0 \(capability\)/);
+    // ABS never moved, so its observed bar is one question -- not the two the
+    // whole-sample movement of one would impose.
+    expect(out).toMatch(/ABS\s+.*minQuestionsStrictlyGreaterThan: 1/);
+    // Every capability line carries the interval, and the overall line does too.
+    expect(out).toMatch(/IE\s+.*at95: \d+/);
+    expect(out).toContain('at95:');
+    expect(out).toMatch(/minQuestionsStrictlyGreaterThan: 2\s+floorPp: .*at95: \d+/);
+  });
 });
 
 describe('the tool refuses to fabricate a floor', () => {
@@ -440,5 +482,115 @@ describe('the tool refuses to present a cross-configuration comparison as a floo
     const out = run([a, b]);
 
     expect(out).toContain('retrievalSides');
+  });
+});
+
+describe('repetition instability, which the floor cannot see', () => {
+  /** A report carrying the per-repetition masks a dispatched run writes. */
+  function writeRepeated(
+    name: string,
+    roster: readonly {
+      readonly id: string;
+      readonly capability: string;
+      readonly correct: boolean;
+    }[],
+    masks: readonly string[],
+  ): string {
+    const path = join(dir, name);
+    writeFileSync(
+      path,
+      JSON.stringify({
+        dataset: 'longmemeval',
+        questionCount: roster.length,
+        questions: roster.map((entry) => record(entry.id, entry.correct, entry.capability)),
+        ablation: { featureCorrectByRun: masks },
+      }),
+    );
+    return path;
+  }
+
+  it('counts the questions the repetitions did not agree on, per capability', () => {
+    // Two repetitions. `q0` is right in both, `q1` is wrong in both, `q2` is right
+    // in the first repetition and wrong in the second -- so `q2` is the one
+    // question this arm does not decide, and the vote happens to get it right.
+    const roster = [
+      { id: 'q0', capability: 'IE', correct: true },
+      { id: 'q1', capability: 'IE', correct: false },
+      { id: 'q2', capability: 'MR', correct: true },
+    ] as const;
+    const a = writeRepeated('inst-a.json', roster, ['101', '100']);
+    const b = writeRepeated('inst-b.json', roster, ['101', '100']);
+    const out = run([a, b]);
+
+    expect(out).toContain('--- repetition instability');
+    expect(out).toContain('unstable 1/3 (33.33%), settled correct 1, settled wrong 0');
+    expect(out).toMatch(/IE\s+unstable\s+0\/\s*2/);
+    expect(out).toMatch(/MR\s+unstable\s+1\/\s*1/);
+  });
+
+  it('separates a question won by the vote from one it confirmed as wrong', () => {
+    // The two settled subsets are different problems: `settledWrong` is a ceiling
+    // of the harness and no stability work recovers it, while `settledCorrect` is
+    // the headroom. Folding them into one count loses exactly that distinction.
+    const roster = [
+      { id: 'q0', capability: 'MR', correct: true },
+      { id: 'q1', capability: 'MR', correct: false },
+    ] as const;
+    const a = writeRepeated('settle-a.json', roster, ['10', '10']);
+    const b = writeRepeated('settle-b.json', roster, ['10', '10']);
+    const out = run([a, b]);
+
+    // q0: 1,1 -> unanimous correct. q1: 0,0 -> unanimous wrong. Neither settled.
+    expect(out).toContain('unstable 0/2 (0.00%), settled correct 0, settled wrong 0');
+
+    // The same shape with the second question RIGHT in the final verdict but
+    // answered only on the second repetition: the vote won it.
+    const won = [
+      { id: 'q0', capability: 'MR', correct: true },
+      { id: 'q1', capability: 'MR', correct: true },
+    ] as const;
+    const c = writeRepeated('settle-c.json', won, ['10', '11']);
+    const d = writeRepeated('settle-d.json', won, ['10', '11']);
+    const out2 = run([c, d]);
+    expect(out2).toContain('unstable 1/2 (50.00%), settled correct 1, settled wrong 0');
+
+    // And the mirror: right in the first repetition, wrong in the second, and the
+    // verdict lands wrong -- instability the harness confirmed.
+    const lost = [
+      { id: 'q0', capability: 'MR', correct: false },
+      { id: 'q1', capability: 'MR', correct: false },
+    ] as const;
+    const e = writeRepeated('settle-e.json', lost, ['10', '11']);
+    const f = writeRepeated('settle-f.json', lost, ['10', '11']);
+    expect(run([e, f])).toContain('unstable 1/2 (50.00%), settled correct 0, settled wrong 1');
+  });
+
+  it('refuses to report zero instability from a single repetition', () => {
+    // One sample cannot demonstrate stability. Reporting `0 unstable` from a
+    // one-repetition artifact is the same error as a floor derived from one run.
+    const roster = [{ id: 'q0', capability: 'IE', correct: true }] as const;
+    const a = writeRepeated('one-a.json', roster, ['1']);
+    const b = writeRepeated('one-b.json', roster, ['1']);
+    const out = run([a, b]);
+
+    expect(out).toContain('repetition instability: NOT MEASURED');
+    expect(out).toContain('one repetition cannot demonstrate stability');
+    expect(out).not.toContain('unstable 0/1');
+  });
+
+  it('refuses a mask whose length disagrees with the roster', () => {
+    // The masks are indexed by roster position. A mask of the wrong length was
+    // produced from a different roster, and comparing it by index would align
+    // unrelated questions.
+    const roster = [
+      { id: 'q0', capability: 'IE', correct: true },
+      { id: 'q1', capability: 'IE', correct: true },
+    ] as const;
+    const a = writeRepeated('short-a.json', roster, ['1', '1']);
+    const b = writeRepeated('short-b.json', roster, ['11', '11']);
+    const { status, stderr } = runExpectingFailure([a, b]);
+
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('indexed by roster position');
   });
 });
