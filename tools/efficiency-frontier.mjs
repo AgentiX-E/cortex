@@ -68,14 +68,14 @@ function accuracyOf(artifact, path, metrics, capability) {
   if (capability === undefined) {
     const avg = aggregate?.featureAggregate?.avg;
     if (Number.isFinite(avg)) {
-      return { correct: Math.round(avg * metrics.total), source: 'repetition-mean' };
+      return { correct: avg * metrics.total, source: 'repetition-mean' };
     }
     return { correct: metrics.correct, source: 'first-repetition' };
   }
   const avg = aggregate?.featureByCapability?.[capability]?.avg;
   const entry = metrics.perCapability?.[capability];
   if (Number.isFinite(avg) && entry !== undefined) {
-    return { correct: Math.round(avg), source: 'repetition-mean' };
+    return { correct: avg, source: 'repetition-mean' };
   }
   return { correct: entry?.correct ?? null, source: 'first-repetition' };
 }
@@ -87,7 +87,9 @@ function metricsOf(artifact, path) {
     fail(`${path} carries no metrics (looked for feature.metrics and metrics)`);
   }
   if (!Number.isInteger(metrics.correct) || !Number.isInteger(metrics.total)) {
-    fail(`${path} carries metrics without integer correct/total counts: ${JSON.stringify(metrics)}`);
+    fail(
+      `${path} carries metrics without integer correct/total counts: ${JSON.stringify(metrics)}`,
+    );
   }
   return metrics;
 }
@@ -227,6 +229,20 @@ function configDelta(reference, arm) {
   return [...differing].sort();
 }
 
+/**
+ * A p-value, with the floor named rather than printed as zero.
+ *
+ * `toPrecision(3)` on 1e-96 renders `1.00e-96` and on a saturated normal tail renders `0.00`, and a printed
+ * zero is a probability the arithmetic does not support: the exact fold returns an integer tail out of
+ * `2^n`, so the smallest value it can return is `2^-n`, and the normal fallback saturates near 1e-16. Both
+ * are far below any threshold the policy can set, which makes the reader's question "how far below" rather
+ * than "is it zero".
+ */
+function showP(value) {
+  if (value === 0) return '< 1e-16 (tail saturated)';
+  return value < 1e-4 ? value.toExponential(2) : value.toPrecision(3);
+}
+
 function percent(value) {
   return `${(value * 100).toFixed(2)}%`;
 }
@@ -245,7 +261,8 @@ function policyFrom(argv) {
     if (index === -1) return fallback;
     const raw = argv[index + 1];
     const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0) fail(`${flag} needs a non-negative number, got ${raw}`);
+    if (!Number.isFinite(value) || value < 0)
+      fail(`${flag} needs a non-negative number, got ${raw}`);
     return value;
   };
   return {
@@ -256,54 +273,184 @@ function policyFrom(argv) {
 }
 
 /**
- * How many questions each arm won that the other lost, per label -- the only input that describes the
- * pair rather than the arms.
+ * Per-question repetition counts, or `undefined` when the artifact predates the masks.
  *
- * The artifacts carry `questions[]` with `questionId` and `correct`, so the pairing is a join on the id
- * and not an assumption that the two runs asked in the same order. An arm that does not carry the array
- * returns `undefined` and the comparison stays unpaired, which is the honest degradation: the margin
- * rule still runs and still reports `underpowered` where the sample cannot support a claim. Matching on
- * position instead would be a silent substitute for the join and would pair two different questions.
+ * `ablation.featureCorrectByRun` is one correctness mask per repetition, indexed like `questions[]`, and it
+ * has been written since §13.88 — which means the data a repetition-mean paired test needs has been in every
+ * four-repetition artifact this project produced, and the reader that ran on repetition 0 was discarding it.
+ * A mask is a string of `'1'`/`'0'`; a boolean array is accepted too, because the field is a persisted
+ * format and a future writer that emits booleans should not silently downgrade every reader to unpaired.
+ */
+function repetitionCounts(artifact, path) {
+  const aggregate = artifact?.ablation;
+  const masks = aggregate?.featureCorrectByRun;
+  const questions = artifact?.questions;
+  if (!Array.isArray(masks) || masks.length === 0) return undefined;
+  if (!Array.isArray(questions) || questions.length === 0) return undefined;
+  for (const mask of masks) {
+    // A mask is a string of `'1'`/`'0'` in every artifact written so far, and an array of booleans is
+    // accepted because the field is a persisted format: a future writer that emits booleans must not
+    // silently downgrade every reader to the unpaired fallback.
+    const usable = typeof mask === 'string' || Array.isArray(mask);
+    if (!usable || mask.length !== questions.length) {
+      fail(
+        `${path} carries a correctness mask of ${mask?.length} against ${questions.length} questions; ` +
+          'the two arrays index the same population or the pairing is positional',
+      );
+    }
+  }
+  const counts = new Map();
+  for (let index = 0; index < questions.length; index += 1) {
+    const id = questions[index]?.questionId;
+    if (typeof id !== 'string') {
+      fail(
+        `${path} carries a question record without a questionId; the pairing would be positional`,
+      );
+    }
+    let right = 0;
+    for (const mask of masks) {
+      const cell = mask[index];
+      if (cell === '1' || cell === true || cell === 1) right += 1;
+    }
+    counts.set(id, right);
+  }
+  return { counts, runs: masks.length };
+}
+
+/**
+ * What the two arms did question by question, for the labels they were both read on.
  *
- * A capability bucket is only formed when both records agree on the capability, because the two
- * artifacts are allowed to have regrouped their questions and a bucket spanning two capabilities would
- * be a paired test of a population that is not the capability.
+ * Two shapes come out of here and the library treats them differently:
+ *
+ * - `series` when **both** artifacts carry per-repetition masks. Each question becomes "`a` right in 3 of
+ *   4, `b` in 1 of 4" and the exact sign-flip test runs on the integer differences.
+ * - `discordant` when either artifact stores only one answer per question. The single answer is the
+ *   evidence there is, and inventing repetitions for it would divide a p-value by a factor nothing measured.
+ *
+ * The join is on `questionId` and never on position, for the reason the first version of this function
+ * already gave: two dispatches may enumerate in different orders, and a positional join would pair two
+ * different questions while looking correct.
  */
 function pairedOf(pathA, pathB, artifactA, artifactB) {
   const questionsA = Array.isArray(artifactA?.questions) ? artifactA.questions : undefined;
   const questionsB = Array.isArray(artifactB?.questions) ? artifactB.questions : undefined;
   if (questionsA === undefined || questionsB === undefined) return undefined;
+
+  const seriesA = repetitionCounts(artifactA, pathA);
+  const seriesB = repetitionCounts(artifactB, pathB);
+  const canPair = seriesA !== undefined && seriesB !== undefined;
+
   const byId = new Map();
   for (const record of questionsA) {
     if (typeof record?.questionId !== 'string') {
-      fail(`${pathA} carries a question record without a questionId; the pairing would be positional`);
+      fail(
+        `${pathA} carries a question record without a questionId; the pairing would be positional`,
+      );
     }
-    if (typeof record.correct !== 'boolean') {
+    if (!canPair && typeof record.correct !== 'boolean') {
       fail(`${pathA} carries ${record.questionId} without a boolean correct field`);
     }
     byId.set(record.questionId, record);
   }
-  const counters = new Map([['overall', { wonByA: 0, wonByB: 0 }]]);
+
+  const counters = new Map([['overall', { wonByA: 0, wonByB: 0, questions: [] }]]);
+  const bucketFor = (label) => {
+    if (!counters.has(label)) counters.set(label, { wonByA: 0, wonByB: 0, questions: [] });
+    return counters.get(label);
+  };
   let joined = 0;
   for (const record of questionsB) {
     const twin = byId.get(record?.questionId);
     if (twin === undefined) continue;
-    if (typeof record.correct !== 'boolean') {
-      fail(`${pathB} carries ${record.questionId} without a boolean correct field`);
-    }
     joined += 1;
-    const winner = twin.correct === record.correct ? null : twin.correct ? 'wonByA' : 'wonByB';
-    if (winner !== null) counters.get('overall')[winner] += 1;
+    let a;
+    let b;
+    if (canPair) {
+      a = seriesA.counts.get(record.questionId);
+      b = seriesB.counts.get(record.questionId);
+      if (a === undefined || b === undefined) continue;
+    } else {
+      if (typeof record.correct !== 'boolean') {
+        fail(`${pathB} carries ${record.questionId} without a boolean correct field`);
+      }
+      a = twin.correct === true ? 1 : 0;
+      b = record.correct === true ? 1 : 0;
+    }
+    if (a > b) bucketFor('overall').wonByA += 1;
+    if (b > a) bucketFor('overall').wonByB += 1;
+    bucketFor('overall').questions.push({ a, b });
+    // A capability bucket is only formed when both records agree on the capability: the two artifacts are
+    // allowed to have regrouped their questions, and a bucket spanning two capabilities would be a paired
+    // test of a population that is not the capability.
     if (twin.capability !== record.capability) continue;
-    if (typeof record.capability !== 'string' || !CAPABILITIES.includes(record.capability)) continue;
-    if (!counters.has(record.capability)) counters.set(record.capability, { wonByA: 0, wonByB: 0 });
-    if (winner !== null) counters.get(record.capability)[winner] += 1;
+    if (typeof record.capability !== 'string' || !CAPABILITIES.includes(record.capability))
+      continue;
+    const bucket = bucketFor(record.capability);
+    if (a > b) bucket.wonByA += 1;
+    if (b > a) bucket.wonByB += 1;
+    bucket.questions.push({ a, b });
   }
   if (joined === 0) return undefined;
-  return [...counters.entries()].map(([label, counter]) => ({ label, ...counter }));
+
+  const runs = canPair ? Math.max(seriesA.runs, seriesB.runs) : 1;
+  return [...counters.entries()].map(([label, bucket]) =>
+    canPair
+      ? { kind: 'series', label, runs, questions: bucket.questions }
+      : { kind: 'discordant', label, wonByA: bucket.wonByA, wonByB: bucket.wonByB },
+  );
 }
 
-const VALUED_FLAGS = new Set(['--margin', '--tolerance', '--alpha', '--label']);
+const VALUED_FLAGS = new Set(['--margin', '--tolerance', '--alpha', '--label', '--ship']);
+
+/**
+ * How far one dispatch's own repetitions move — the floor every promotion has to clear.
+ *
+ * ## Why this is measured per artifact and not between two dispatches
+ *
+ * The tempting null control is "run the same configuration twice and see how far apart the two land", and
+ * this project has none: of the five full-500 artifacts, the only pair whose fields nearly match differs in
+ * `relevanceUnits` (`turn` against `session-fill`), which is a substantive change and not a rerun. A first
+ * version of this function accepted that pair and reported a 0.65-point floor off it — a number with the
+ * shape of a measurement and the content of a confound.
+ *
+ * What every artifact does carry is its own repetitions: `ablation.featureCorrectByRun` is four passes of
+ * **one** configuration, so the spread of their four accuracies is a direct reading of how much the runner
+ * moves on its own. On `42310779222` those four read 451, 452, 460 and 454 correct — a standard deviation of
+ * **0.81 points** and a standard error of **0.40** — and on `42337560027` the same figure is 0.85 and 0.43.
+ *
+ * ## Why the standard error and not the standard deviation
+ *
+ * The quantity being promoted is the **mean of the repetitions**, because that is the accuracy every other
+ * row reads. The uncertainty of that mean is `sd / sqrt(runs)`. Reporting the `sd` instead would make every
+ * arm with more repetitions look noisier, which is backwards.
+ *
+ * ## What it is not
+ *
+ * A **lower bound** on dispatch-to-dispatch noise. Two runs on different days with a cold prefix cache, a
+ * different runner image and a provider that routes to another shard move more than four passes of one
+ * process do. Nothing in the artifacts measures that, so the floor here is honest about being the part that
+ * is measurable and the reader is left with the direction of the error rather than a false precision.
+ */
+function repetitionSpreadOf(artifact, path) {
+  const masks = artifact?.ablation?.featureCorrectByRun;
+  const questions = artifact?.questions;
+  if (!Array.isArray(masks) || masks.length < 2) return undefined;
+  if (!Array.isArray(questions) || questions.length === 0) return undefined;
+  const accuracies = masks.map((mask) => {
+    let right = 0;
+    for (let index = 0; index < questions.length; index += 1) {
+      const cell = mask[index];
+      if (cell === '1' || cell === true || cell === 1) right += 1;
+    }
+    return right / questions.length;
+  });
+  const runs = accuracies.length;
+  const mean = accuracies.reduce((total, value) => total + value, 0) / runs;
+  const variance =
+    accuracies.reduce((total, value) => total + (value - mean) * (value - mean), 0) / (runs - 1);
+  const sd = Math.sqrt(variance);
+  return { runs, mean, sd, se: sd / Math.sqrt(runs), accuracies };
+}
 
 function main(argv) {
   const json = argv.includes('--json');
@@ -316,15 +463,39 @@ function main(argv) {
     if (argv[index - 1] === '--label') acc.push(argument);
     return acc;
   }, []);
+  const shipIndex = argv.indexOf('--ship');
+  const shipLabel = shipIndex === -1 ? undefined : argv[shipIndex + 1];
   if (paths.length < 2) {
     fail('needs at least two artifact paths: the reference first, then the arms compared to it');
   }
   const policy = policyFrom(argv);
+  const artifacts = paths.map((path) => readArtifact(path));
+  const points = paths.map((path, index) => pointOf(path, index, labels));
+  // The floor is the widest per-arm standard error among the arms being compared, because a promotion has
+  // to clear the noisiest side of the pair it is read from. With no per-repetition masks anywhere it stays
+  // absent, and `compareEfficiency` treats absent as "not measured" rather than as zero.
+  const spreads = artifacts
+    .map((artifact, index) => repetitionSpreadOf(artifact, paths[index]))
+    .filter((spread) => spread !== undefined);
+  if (spreads.length > 0) {
+    const widest = spreads.reduce((left, right) => (right.se > left.se ? right : left));
+    policy.noiseFloor = {
+      delta: widest.se,
+      source: `per-repetition spread across ${widest.runs} repetitions, standard error of the mean`,
+      points: { sd: widest.sd, se: widest.se, runs: widest.runs },
+    };
+    if (widest.se > policy.margin) {
+      process.stderr.write(
+        `efficiency-frontier: one dispatch's own repetitions move ${(100 * widest.se).toFixed(2)} points ` +
+          `(standard error), which is wider than the ${(100 * policy.margin).toFixed(1)}-point margin; no ` +
+          'promotion on this population can clear both floors at once, and that is the finding rather ' +
+          'than a misconfiguration.\n',
+      );
+    }
+  }
   if (labels.length > 0 && labels.length !== paths.length) {
     fail(`--label was given ${labels.length} time(s) for ${paths.length} artifact(s)`);
   }
-  const artifacts = paths.map((path) => readArtifact(path));
-
   // Unequal repetition counts used to be a refusal, and that was one axis too many. The bill is the
   // only reading `runs` confounds -- `82355323615`'s own pair showed the share is not even a stable
   // function of it -- so refusing the whole comparison threw away a valid accuracy reading and a valid
@@ -336,7 +507,9 @@ function main(argv) {
   // `42355323615` both ran four repetitions and read 78.21% and 98.34% cache hits, so the bill stays a
   // reported figure with an admissibility flag rather than a trusted one.
   const runCounts = new Set(
-    artifacts.map((artifact) => (Number.isInteger(artifact.runs) && artifact.runs > 0 ? artifact.runs : 1)),
+    artifacts.map((artifact) =>
+      Number.isInteger(artifact.runs) && artifact.runs > 0 ? artifact.runs : 1,
+    ),
   );
   const runsEqual = runCounts.size === 1;
   if (!runsEqual) {
@@ -347,7 +520,6 @@ function main(argv) {
     );
   }
 
-  const points = paths.map((path, index) => pointOf(path, index, labels));
   const profiles = points.map(profileOf);
   const reference = profiles[0];
 
@@ -355,9 +527,11 @@ function main(argv) {
   // The argument order is the comparison's order -- the arm first, the reference second -- because
   // `wonByA` means "`a` answered it and `b` did not", and passing them the other way round leaves every
   // `resolved` flag correct (McNemar is symmetric) while inverting the sentence a reader quotes.
-  const pairedByArm = profiles.slice(1).map((profile, index) =>
-    pairedOf(paths[index + 1], paths[0], artifacts[index + 1], artifacts[0]),
-  );
+  const pairedByArm = profiles
+    .slice(1)
+    .map((profile, index) =>
+      pairedOf(paths[index + 1], paths[0], artifacts[index + 1], artifacts[0]),
+    );
   const verdicts = profiles.slice(1).map((profile, index) => {
     const verdict = compareEfficiency(profile, reference, policy, pairedByArm[index]);
     const delta = configDelta(artifacts[0].memoryArmConfig, artifacts[index + 1].memoryArmConfig);
@@ -365,15 +539,49 @@ function main(argv) {
     // still arithmetic and is still printed -- but it may not promote an arm, because the difference it
     // would promote is not attributable to the variable the comparison is named after.
     const matched = delta === undefined || delta.length <= 1;
+    // A multi-field pair gets its own word. It was `incomparable` for a round, which conflated two findings
+    // that call for different work: "the instrument cannot tell these apart" is answered by more repetitions,
+    // and "this pair is better but two things moved" is answered by a step that moves one. `confounded` says
+    // the second, and the `ladder` block is where the steps are.
     return {
       arm: profile.arm,
       ...verdict,
       configDelta: delta ?? null,
       matched,
-      outcome: matched ? verdict.outcome : 'incomparable',
+      outcome: matched ? verdict.outcome : 'confounded',
     };
   });
   const frontier = efficiencyFrontier(points, policy);
+
+  // Every pair in the set that differs in exactly one substantive field, whichever two arms it joins.
+  //
+  // The verdict list above only pairs each arm with the reference, and a chain of single-variable steps does
+  // not usually run through the reference: `42310779222 (verbatim) -> 42337560027 (verbatim-acts) -> 42355323615
+  // (route room)` is one field at a time and neither step touches a third arm. Reporting only reference pairs
+  // hides that, and a multi-field comparison then looks unattributable when the attribution exists one row
+  // down. This block is what makes the additive check possible: if two single-variable steps read +0.50 and
+  // +0.60 and the pair that combines them reads +1.10, the three numbers are consistent and the pair is
+  // attributable after all.
+  const ladder = [];
+  for (let left = 0; left < paths.length; left += 1) {
+    for (let right = left + 1; right < paths.length; right += 1) {
+      const fields = configDelta(artifacts[left].memoryArmConfig, artifacts[right].memoryArmConfig);
+      if (fields === undefined || fields.length !== 1) continue;
+      const paired = pairedOf(paths[right], paths[left], artifacts[right], artifacts[left]);
+      const verdict = compareEfficiency(profiles[right], profiles[left], policy, paired);
+      ladder.push({
+        from: points[left].arm,
+        to: points[right].arm,
+        variable: fields[0],
+        deltaPoints: profiles[right].overall.value - profiles[left].overall.value,
+        tokenRatio: verdict.tokenRatio,
+        outcome: verdict.outcome,
+        blocking: verdict.blocking,
+        belowNoise: verdict.belowNoise,
+        paired: verdict.paired,
+      });
+    }
+  }
 
   if (json) {
     process.stdout.write(
@@ -396,13 +604,22 @@ function main(argv) {
             dominating: verdicts.filter((verdict) => verdict.outcome === 'dominated').length,
             dominated: verdicts.filter((verdict) => verdict.outcome === 'dominates').length,
             incomparable: verdicts.filter((verdict) => verdict.outcome === 'incomparable').length,
+            confounded: verdicts.filter((verdict) => verdict.outcome === 'confounded').length,
             underpowered: verdicts.filter((verdict) => verdict.outcome === 'underpowered').length,
+            belowNoise: verdicts.filter((verdict) => verdict.belowNoise.length > 0).length,
             matchedPairs: verdicts.filter((verdict) => verdict.matched).length,
             // The one single-variable pair, and its bill **only if the bill is admissible**. `null` is
             // the reading `C3` needs when the arms ran different repetition counts: the row can then be
             // `unrun` with a named blocker instead of quoting a ratio that is the repetition count.
             matched: (() => {
-              const single = verdicts.find((verdict) => verdict.matched);
+              // The **cheaper** single-variable arm, not simply the first one. `C3` asks what the bill is at
+              // a reduced budget, so a one-field pair that did not reduce anything (`fill-base`, 0.998x) is a
+              // single variable and not this variable. The first version of this block took the first
+              // `matched` verdict and, as soon as a fifth arm was added, pointed `C3` at the arm that left
+              // the budget alone.
+              const single = verdicts.find(
+                (verdict) => verdict.matched && verdict.tokenRatio < 1 - policy.tokenTolerance,
+              );
               if (single === undefined) return null;
               return {
                 arm: single.arm,
@@ -414,6 +631,23 @@ function main(argv) {
             pairedPairs: verdicts.filter((verdict) => verdict.pairedUsed).length,
           },
           frontier,
+          ladder,
+          // Which arm this project would ship, and the reading that would have to move if it stopped being
+          // the best one. Written as one object so `S1` can read `shipping.accuracy` with an attestation on
+          // `shipping.accuracySource` and `shipping.runs` — a criterion bound to a *label* rather than to a
+          // path cannot go stale, because the label is resolved to an artifact on every run.
+          shipping: (() => {
+            if (shipLabel === undefined) return null;
+            const index = labels.indexOf(shipLabel);
+            if (index === -1) fail(`--ship names ${shipLabel}, which is not one of --label`);
+            return {
+              arm: shipLabel,
+              accuracy: profiles[index].overall.value,
+              accuracySource: points[index].accuracySource,
+              runs: points[index].runs,
+              promptTokensPerQuestion: profiles[index].promptTokensPerQuestion,
+            };
+          })(),
           // Which artifact the comparison is against, and why that is not the same question as "which
           // arm do we ship". The reference is the arm each candidate differs from in the fewest fields,
           // so that a single-variable reading exists at all; `C1` reads a *different* artifact
@@ -421,9 +655,21 @@ function main(argv) {
           // the window-cut control. The two are 0.26% apart on context and 1.2 points apart on accuracy,
           // and no row says which one "the registered arm" is -- recorded here instead of resolved,
           // because resolving it means a dispatch rather than an edit.
+          // What the set is and what it is not. The reference is the first path, and every arm is compared
+          // to it; the `ladder` above is the block that carries attribution when the reference is not the
+          // arm a given candidate differs from in one field.
           provenance: {
-            referenceArmsTheProjectCallsRegistered: ['42310779222', '42355323615'],
-            whyTwo: 'the second adopts `ask: verbatim-acts` and a route room on top of the first, and no dispatch has measured the pair at equal repetitions with a one-field difference',
+            referenceArm: points[0].arm,
+            armOrder: points.map((point) => point.arm),
+            accuracySource: points[0].accuracySource,
+            whyTheReferenceIsTheReference:
+              'the first path on the command line, and the only arm every other one is read against; ' +
+              'a candidate that differs from it in two fields is `confounded` rather than incomparable, ' +
+              'and its attribution is the ladder one row down',
+            whatTheLadderIsNot:
+              'not a path. Two single-variable steps only add up when nothing interacts, and the check is ' +
+              'arithmetic rather than an assumption: 0.50 for `ask` plus 0.60 for the room is 1.10, which ' +
+              'is what the pair that moves both reads',
           },
         },
         null,
@@ -460,8 +706,20 @@ function main(argv) {
     lines.push(
       'read on: accuracy is the mean over repetitions where the artifact records one; the interval is',
       'still the single-run Wilson at 500 questions, which over-covers rather than under-covers.',
-      'The paired counts are first-repetition answers -- the artifact stores one answer per question,',
-      'so a paired test of the repetition mean is not available from it and is not claimed.',
+      'Where both artifacts carry `ablation.featureCorrectByRun`, the paired test reads the same',
+      'repetition means the accuracy does — a question is "right in three of four" and the test is exact',
+      'sign-flip over the integer differences. Where one side stores only one answer per question, the',
+      'pairing falls back to that answer and the test is McNemar; the two are labelled per label.',
+      '',
+    );
+  }
+  if (policy.noiseFloor !== undefined) {
+    const floor = policy.noiseFloor.points;
+    lines.push(
+      `noise floor: one dispatch's own ${floor.runs} repetitions differ by a standard deviation of ` +
+        `${(100 * floor.sd).toFixed(2)} points, so the mean it reports carries a standard error of ` +
+        `${(100 * floor.se).toFixed(2)} points. A promotion must clear this and the significance level; ` +
+        'a demotion is not protected by it.',
       '',
     );
   }
@@ -473,12 +731,15 @@ function main(argv) {
         (verdict.blocking.length === 0 ? '' : `, blocked on ${verdict.blocking.join(', ')}`) +
         (verdict.unresolvable.length === 0
           ? ''
-          : `, unresolvable on ${verdict.unresolvable.join(', ')}`),
+          : `, unresolvable on ${verdict.unresolvable.join(', ')}`) +
+        (verdict.belowNoise.length === 0
+          ? ''
+          : `, ahead but under the noise floor on ${verdict.belowNoise.join(', ')}`),
     );
     for (const entry of verdict.paired) {
       lines.push(
-        `  ${entry.label}: ${entry.wonByA} won / ${entry.wonByB} lost over ` +
-          `${entry.wonByA + entry.wonByB} discordant pair(s), exact p = ${entry.pValue.toPrecision(3)}` +
+        `  ${entry.label}: ${entry.wonByA} won / ${entry.wonByB} lost over ${entry.pairs} ` +
+          `disagreeing question(s) [${entry.test}], exact p = ${showP(entry.pValue)}` +
           (entry.resolved ? ' -- resolved' : ' -- not significant'),
       );
     }
@@ -486,7 +747,9 @@ function main(argv) {
       lines.push('  unpaired: no per-question records on both sides, so the margin rule decides');
     }
     if (verdict.configDelta === null) {
-      lines.push('  config: neither artifact records a memoryArmConfig, so the pair is not admissible');
+      lines.push(
+        '  config: neither artifact records a memoryArmConfig, so the pair is not admissible',
+      );
     } else if (verdict.configDelta.length === 0) {
       lines.push('  config: identical, so this pair measures a run and not a variable');
     } else if (verdict.configDelta.length === 1) {
@@ -497,6 +760,28 @@ function main(argv) {
           'the difference is the pair and not the variable, so nothing is certified',
       );
     }
+  }
+  lines.push('');
+  lines.push('single-variable steps in this set');
+  if (ladder.length === 0) {
+    lines.push('  (none: no two arms differ in exactly one field)');
+  }
+  for (const step of ladder) {
+    const pairs = step.paired
+      .filter((entry) => entry.label === 'overall')
+      .map(
+        (entry) =>
+          `${entry.wonByA} won / ${entry.wonByB} lost over ${entry.pairs} disagreeing question(s), ` +
+          `p = ${showP(entry.pValue)}`,
+      );
+    lines.push(
+      `  ${step.from} -> ${step.to} [${step.variable}]: ${(100 * step.deltaPoints).toFixed(2)} points, ` +
+        `context ${step.tokenRatio.toFixed(3)}x, ${step.outcome}` +
+        (pairs.length > 0 ? ` (${pairs.join('; ')})` : ' (unpaired)') +
+        (step.belowNoise.length > 0
+          ? `, ahead but under the noise floor on ${step.belowNoise.join(', ')}`
+          : ''),
+    );
   }
   lines.push('');
   lines.push(`frontier: ${frontier.front.join(', ') || '(none)'}`);

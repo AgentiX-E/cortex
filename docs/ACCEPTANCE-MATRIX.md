@@ -59,7 +59,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | T4  | <!-- reading:T4 -->100.0% | = 100.0%  | pass   | settled fact versus plan               | controlled set, `−lapse`                                    |
 | D1  | —                         | ≤ 45.0%   | unrun  | extraction fidelity                    | A3 round 2, verbatim share                                  |
 | R1  | <!-- reading:R1 -->-1     | ≥ 1       | accept | abstention recovery                    | LongMemEval-S, 500 questions                                |
-| S1  | <!-- reading:S1 -->83.5%  | ≥ 85.0%   | aim    | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
+| S1  | <!-- reading:S1 -->92.0%  | ≥ 85.0%   | aim    | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
 | S2  | <!-- reading:S2 -->87.2%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 questions                                 |
 | S3  | <!-- reading:S3 -->71.7%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 questions                                |
 | S4  | <!-- reading:S4 -->78.3%  | ≥ 85.0%   | aim    | temporal reasoning                     | LongMemEval-S, 127 questions                                |
@@ -125,22 +125,32 @@ holes. `LANDSCAPE-CONTROLLED-BOARD.md` §7 is the argument; this is the record o
   system this row does not gate. For `P1`, `AUDIT-MODEL-PORTABILITY.md` §7 names the ratio the criterion needs
   and states it has never been measured — so the row makes the omission a list item instead of a footnote.
 
-### 2.1 One row is known stale, and it says so here rather than in a footnote
+### 2.1 `S1` read a stale artifact for three rounds, and the repair is an attestation
 
-`S1` reads 83.5% from `cortex-docs/evidence/longmemeval/summary.json`, which is a reading of a
-**thinking-disabled** configuration. Run `42355323615` (2026-11-07) reads **91.40%** on its first repetition
-and 91.95% over four, with `DEEPSEEK_THINKING` enabled on the `multi-session` and `temporal` routes. Both are
-real readings of different systems, so the row is **stale, not wrong**.
+`S1` used to read **83.45%** from `cortex-docs/evidence/longmemeval/summary.json` while the arm it names
+measured **90.85%** on the same 500 questions. The file was not wrong: it is four *independent dispatches* of a
+**thinking-disabled** configuration that no longer ships. The row was therefore correctly labelled, in a
+footnote, as stale — and a footnote is not a status. Three rounds of documents quoted 83.45% and the matrix
+printed it in the `current` column with nothing beside it.
 
-It is not being edited to match, because the repair for a stale artifact is a **generator** that turns a report
-artifact into an evidence file — the rule that made `C1` read `tools/cost-ledger.py`'s output instead of a
-number somebody typed. Hand-editing `summary.json` would reproduce exactly the defect this page exists to
-prevent. Until the generator exists, `S1`'s threshold comparison is against the old configuration and every
-document that quotes 83.5% must say which configuration it means. `PREREGISTRATION` §13.298.4 records the new
-number with its run id.
+The repair is not an edit to the figure. `S1` now reads `frontier.json#shipping.accuracy`, a file that
+`tools/efficiency-frontier.mjs --ship route-room` writes from the artifacts, and it carries three
+**attestations** that the reading describes the system this build ships:
 
-The same run also settles two other rows in the stale direction: `S4` (temporal) reads **96.06%** against a
-85% threshold, and `S2`/`S5` read 88.89% and 100%. Those are not promoted either, for the same reason.
+| clause | why it is needed |
+| --- | --- |
+| `shipping.accuracySource == repetition-mean` | `feature.metrics` is one repetition and read 90.20% where the four-repetition mean read 90.85% |
+| `shipping.runs == 4` | a two-repetition mean carries twice the standard error of the mean, so it is not the same reading |
+| `shipping.arm == route-room` | the shipping arm is a **label** the tool resolves to an artifact on every run, so a label that stops existing cannot silently resolve to an older file |
+
+A clause that fails produces a fourth status, **`stale`**, which is neither `pass` nor `fail`: nothing was
+compared, because the number describes something else. It is listed with the missing rows, it counts toward
+`--strict-unrun`, and it is never counted as a pass. `eval` on a clean checkout with no `frontier.json` gives
+`S1 = unrun`; a `frontier.json` from a different configuration gives `S1 = stale`; only the current
+configuration gives a number.
+
+The old reading stays in `summary.json` with its configuration named, because deleting a real measurement to
+avoid a stale warning is the opposite of the fix.
 
 ### 2.1.1 Two rows already are generated, and that is the difference
 
@@ -156,9 +166,11 @@ python3 tools/evidence-budget.py   <artifact> --json --write evidence/longmemeva
 round moved `C1` from 12,105 to **12,137** and produced `C2`'s denominator for the first time; neither number was
 touched by hand.
 
-`S1`/`S2`/`S4` come from `evidence/longmemeval/summary.json`, which is still written by a different path with no
-`--run` discipline. The distance between the two is one script, and it is the script `13.298.4` specified. Until
-it exists, the staleness above stands.
+`S1` moved to that shape this round: `tools/efficiency-frontier.mjs --ship route-room` writes
+`evidence/longmemeval/frontier.json`, and the row reads `shipping.accuracy` out of it with the three
+attestations above. `S2`/`S4`/`S5` still come from `evidence/longmemeval/summary.json`, which is written by a
+different path with no `--run` discipline and no attestation — the distance between the two is one script, and
+it is the script `13.298.4` specified.
 
 `P1` also carries an empty competitor field on purpose. Every published portability claim in this field is a
 sentence ("works with any model"), a sentence is not a value, and a fabricated row would be worse than the gap.
@@ -310,7 +322,7 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | oracle context, GPT-4o           | 82.4%                    | B     | one oracle configuration — **not a ceiling**, see consequence 3                                                                    |
 | **Raw-RAG (naive, GPT-4o-mini)** | **87.5%**                | B     | timestamps, chunking, dense retrieval, reranking over raw turns — no extraction, no rewriting                                      |
 | StateMem (DeepSeek reader)       | 65.6%                    | B     | state-tracking memory; the only published DeepSeek-reader figure on this benchmark                                                 |
-| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->83.5% | —     | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256`                                   |
+| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->92.0% | —     | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256`                                   |
 | Mastra OM, GPT-4o                | 84.2%                    | B     | vendor research page, observational memory, GPT-4o reader and judge                                                                |
 | Mem0 OSS, reproduced             | 32.4%                    | B     | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not        |
 | no-memory baseline               | 57.6%                    | B     | benchd.ai: the whole history in the window, no memory system                                                                       |

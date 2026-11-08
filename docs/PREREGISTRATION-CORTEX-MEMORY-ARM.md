@@ -34892,3 +34892,154 @@ and it stands on a better number.
 | `E5` | equal `runs` is not sufficient for the bill: a same-system pair can move the hit share by 20 points | a same-system pair whose hit shares agree to within 2 points at equal `runs`, which would make the 78.21/98.34 pair an outlier rather than the norm |
 | `E6` | `featureAggregate.avg` and `feature.metrics` differ by less than the 2.5-point margin on a future four-repetition dispatch | a first repetition that is the *best* of four by more than a margin, which would mean the direction of the bias is not fixed and the first-repetition reading is not conservative in either direction |
 | `E7` | `ask: verbatim-acts` plus a route room is worth ≥ 3 `MR` questions, paired, at 500 questions and four repetitions | a paired `MR` delta below 3 questions with the discordant count at least 15, which would retire §13.314.2's only non-correction |
+
+---
+
+## 13.315 The pairing read repetition 0, and the data for four was already in the artifact
+
+### 13.315.1 The defect, stated as a pair of numbers
+
+§13.314.2 reported this arm's only non-correction as a paired `MR` signal of **2 won to 9 lost, p = 0.0654**,
+and §13.314.1 attributed the weakness to the sample. Both were wrong about the cause. The tool paired on
+`questions[].correct`, which is **one repetition's** answer, one round after §13.308 had already established
+that the accuracy has to be read from `ablation.featureAggregate.avg` — the mean over all repetitions. The
+accuracy moved; the pairing did not.
+
+`ablation.featureCorrectByRun` has been written since §13.88: one correctness mask per repetition, indexed like
+`questions[]`, with the stated reason that "a per-capability count that only ever existed for one pass is the
+unit defect". Every four-repetition artifact this project produced therefore already carried the data a
+repetition-mean paired test needs, and one consumer read the other field.
+
+| pairing of `42310779222 → 42355323615` | `MR` | aggregate |
+| --- | --- | --- |
+| repetition 0, exact McNemar | 2 won / 9 lost, **p = 0.0654** | 6 won / 12 lost, p = 0.238 |
+| four-repetition means, exact sign-flip | **16 won / 5 lost, p = 0.0044** | **22 won / 12 lost, p = 0.0211** |
+
+### 13.315.2 Two instruments, separated by data shape and not by preference
+
+`PairedEvidence` is now a union, because the artifacts have two shapes and neither can be expressed as the
+other:
+
+- **`discordant`** — one repetition per question. Exact McNemar on the counts that moved in each direction.
+- **`series`** — `k` repetitions per question, so a question is "three of four". Exact **sign-flip** on the
+  integer differences `a − b`, folded over reachable sums. Thirty-four non-zero pairs carrying six distinct
+  magnitudes cost 273 states rather than `2³⁴` assignments, and the weights are integers out of `2ⁿ` so the
+  fold is exact below forty pairs.
+
+Collapsing a `series` to one repetition is the defect above. **Expanding a `discordant` into `k` copies would
+be worse**: it divides a p-value by roughly `k` while the evidence is unchanged, which is §13.316.
+
+The integers, not the means, are the input. A mean of `1/3` would put a rounding error into every state of the
+table and make "exact" a claim about the code rather than about the arithmetic; a common scale factor cancels
+out of the sign-flip distribution, so the count carries the same information exactly.
+
+### 13.315.3 The check that would have caught it
+
+`signFlipExact` on one-repetition differences must equal `mcnemarExact` on the same counts — asserted at four
+real pairs. That is the test that pins the two instruments to each other at the point where they overlap, so a
+future edit cannot move one without the other.
+
+## 13.316 Four repetitions are one observation, not four
+
+The obvious use of four repetitions is to pool them: 500 questions × 4 = 2,000 pairs, 26 won against 48 lost,
+**p = 0.0141**. That number is false precision, and it is false in the direction that manufactures findings.
+
+| aggregation | pairs | won / lost | p |
+| --- | ---: | --- | ---: |
+| pooled over repetitions | 2,000 | 26 / 48 | 0.0141 |
+| one pair per question, majority vote, ties dropped | 485 | **1 / 4** | **0.375** |
+| repetition 0 only | 500 | 6 / 12 | 0.238 |
+
+On this dataset only **28 of 500** questions change their answer at all across four repetitions of one arm
+(27 for the comparison arm), so the 2,000 "pairs" are 500 observations counted about four times. Majority vote
+per question leaves one win and four losses, which is a tie. The same data is "significant" when pooled and a
+tie when aggregated, and the aggregation is the honest one.
+
+**The rule: a repetition buys reliability information, not sample size.** What it tells us here is that the
+answers are nearly deterministic — which is useful, because it means the paired test's power comes from the
+questions and **cannot be bought by running more passes**. `E10` registers the falsifier.
+
+## 13.317 There is no null control, so the floor was measured from the repetitions themselves
+
+### 13.317.1 The pair that looked like a null control and was not
+
+`42310779222` (90.85%) against `42328499107` (90.20%) looks like a rerun: same `ask`, same 48,000-character
+room, same four repetitions. It is not. `relevanceUnits` moves `turn → session-fill`, which is a mechanism
+change worth **−0.65 points** (35 pairs, p = 0.156) on its own. A first version of `tools/efficiency-frontier.mjs`
+accepted the pair as a floor and reported **0.65 points of runner noise** — a number with the shape of a
+measurement and the content of a confound. The tool now refuses it by name.
+
+### 13.317.2 The floor that is measurable
+
+Every artifact carries its own repetitions, and their spread is a direct reading of runner noise:
+
+| arm | four repetition accuracies | sd | standard error of the mean |
+| --- | --- | ---: | ---: |
+| `42310779222` | 451, 452, 460, 454 | 0.81 pt | **0.40 pt** |
+| `42337560027` | 457, 466, 457, 459 | 0.85 pt | **0.43 pt** |
+
+`EfficiencyPolicy.noiseFloor.delta` is the widest of those standard errors — the standard error and not the
+standard deviation, because the quantity being promoted is the **mean**, which is what every other row reads.
+Reporting the `sd` would make an arm with more repetitions look noisier, which is backwards.
+
+It is a **lower bound** on dispatch-to-dispatch noise: a cold prefix cache, a different runner image and a
+different provider shard all move more than four passes of one process do. Nothing in the artifacts measures
+that part, and the floor says which half it is rather than implying completeness.
+
+The floor **only blocks a promotion**, for the same reason the bill only keeps a veto — a noisy floor cannot
+make a loss look smaller than it is, and can make a win look larger.
+
+## 13.318 The ladder: attribution without a single-variable reference
+
+### 13.318.1 The reading §13.314 missed
+
+§13.314 called `42355323615` unattributable because it differs from the reference in two fields, and stopped
+there. The set contains one-field steps that do not run through the reference, and reporting only
+reference-pairs hid them:
+
+| step | variable | overall | context | exact p |
+| --- | --- | ---: | ---: | ---: |
+| `42310779222 → 42337560027` | `ask` (`verbatim` → `verbatim-acts`) | **+0.50 pt** | 0.998x | 0.354 |
+| `42337560027 → 42355323615` | `maxPromptChars` (48,000 → route room) | **+0.60 pt** | 1.005x | 0.170 |
+| `42310779222 → 42355323615` | both | **+1.10 pt** | 1.003x | **0.0211** |
+| `42310779222 → 42373407439` | `maxPromptChars` (48,000 → 24,000) | **−2.65 pt** | 0.502x | < 1e-16 |
+| `42310779222 → 42328499107` | `relevanceUnits` (`turn` → `session-fill`) | −0.65 pt | 0.998x | 0.156 |
+
+`0.50 + 0.60 = 1.10`. The two single-variable steps account for the combined pair exactly, so there is no
+interaction to explain and **the combined reading is attributable after all** — not because a two-variable pair
+became admissible, but because each variable was measured on its own elsewhere. The additive check is the whole
+of the argument and it is arithmetic, which is why the tool prints the ladder rather than leaving it to a
+reader.
+
+### 13.318.2 What changes in the verdict vocabulary
+
+A multi-field pair is now **`confounded`** rather than `incomparable`. The two words were one for a round and
+they call for different work: "the instrument cannot tell these apart" is answered by more repetitions, and
+"this pair is better but two things moved" is answered by a step that moves one. Conflating them is how a
+3.1-point certified `MR` gain read as "nothing established".
+
+`EfficiencyComparison.leading` reports the labels an arm was certified ahead on **whichever way the whole
+comparison came out**, for the same reason: an arm can be ahead on `MR` at p = 0.0044 and still be `confounded`
+overall, and a reader who only sees `outcome` discards the gain.
+
+### 13.318.3 The shipping configuration
+
+`42355323615` is adopted as the shipping arm: `ask: verbatim-acts` plus the route room, **91.95%** overall
+against **90.85%**, `MR` 83.88% against 79.13%. The 1.10-point gain is a combination of two steps that are each
+individually below significance, which is a normal and honest shape — two small effects in the same direction
+cross the line together, and the additive check is what makes the combination interpretable. The context is
+unchanged at 1.003x, so this is not accuracy bought with tokens.
+
+## 13.319 The criteria for the next round
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `E8` | a repetition-mean paired test and a first-repetition paired test agree in direction whenever the repetition-mean test is significant | a future artifact where the two disagree in sign, which would mean the repetitions are not measuring one system |
+| `E9` | `signFlipExact` on one-repetition differences equals `mcnemarExact` on the same counts | any disagreement, at any pair, which would mean one of the two exact folds is wrong |
+| `E10` | pooling four repetitions multiplies the apparent pair count by `runs` while the number of questions that actually disagree stays fixed | a future dispatch where the disagreement count grows with `runs`, which would make pooling legitimate and this section wrong |
+| `E11` | the noise floor measured from repetitions is a lower bound: a real rerun of one configuration moves at least as far | a genuine rerun (same `relevanceUnits`) that lands closer than the floor, which would mean the repetitions overstate runner noise |
+| `E12` | `S1` reads `stale` rather than a number whenever `frontier.json` comes from a different configuration | an attestation that passes on a file any document says is out of date, which would mean the clauses do not cover what makes a reading about this system |
+
+The dispatch `E11` needs is the one this round could not make: **two runs of `42355323615`'s exact
+configuration**. It is the only measurement that turns the floor from a lower bound into a bound, and it is the
+cheapest remaining experiment in the queue.

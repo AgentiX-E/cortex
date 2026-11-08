@@ -74,6 +74,8 @@ def artifact(
     bare_metrics: bool = False,
     questions: list | None = None,
     arm_config: dict | None = None,
+    masks: list | None = None,
+    aggregate: float | None = None,
 ) -> dict:
     """One ablation report, in the shape `report.ts` actually writes."""
     document: dict = {
@@ -92,6 +94,12 @@ def artifact(
     hits = int(prompt_tokens * 0.782) if cache_hits is None else cache_hits
     if questions is not None:
         document['questions'] = questions
+    if masks is not None:
+        document['ablation'] = {'featureCorrectByRun': masks}
+        if aggregate is not None:
+            document['ablation']['featureAggregate'] = {'avg': aggregate, 'min': 0, 'max': 1}
+    elif aggregate is not None:
+        document['ablation'] = {'featureAggregate': {'avg': aggregate, 'min': 0, 'max': 1}}
     if arm_config is not None:
         document['memoryArmConfig'] = arm_config
     if not drop_usage:
@@ -407,14 +415,14 @@ def test_a_paired_pair_is_read_through_the_question_records(tmp_path: Path) -> N
     )
     result = run(tmp_path, str(reference), str(squeezed))
     assert result.returncode == 0, result.stderr
-    assert '11 won / 27 lost over 38 discordant pair(s)' in result.stdout
+    assert '11 won / 27 lost over 38 disagreeing question(s) [mcnemar]' in result.stdout
     assert 'exact p = 0.0139' in result.stdout
     assert '-- resolved' in result.stdout
     assert 'blocked on overall' in result.stdout
     # And the reverse direction is the same pair, so it must be reported with the counts swapped.
     reversed_result = run(tmp_path, str(squeezed), str(reference))
     assert reversed_result.returncode == 0, reversed_result.stderr
-    assert '27 won / 11 lost over 38 discordant pair(s)' in reversed_result.stdout
+    assert '27 won / 11 lost over 38 disagreeing question(s) [mcnemar]' in reversed_result.stdout
 
 
 def test_an_artifact_without_question_records_still_produces_a_reading(tmp_path: Path) -> None:
@@ -449,7 +457,7 @@ def test_the_pairing_is_a_join_on_the_id_and_not_on_the_position(tmp_path: Path)
     result = run(tmp_path, str(reference), str(arm))
     assert result.returncode == 0, result.stderr
     # Three questions lost, none won, whatever order the file holds them in.
-    assert '0 won / 3 lost over 3 discordant pair(s)' in result.stdout
+    assert '0 won / 3 lost over 3 disagreeing question(s) [mcnemar]' in result.stdout
 
 
 def test_the_cache_alone_cannot_make_one_arm_dominate(tmp_path: Path) -> None:
@@ -523,7 +531,10 @@ def test_a_two_variable_pair_is_reported_and_cannot_certify_anything(tmp_path: P
     assert result.returncode == 0, result.stderr
     assert 'NOT a single-variable pair, differs on ask, maxPromptChars' in result.stdout
     # The arithmetic still runs and still prints; what it cannot do is promote the arm.
-    assert 'arm vs window: **incomparable**' in result.stdout
+    # `confounded`, not `incomparable`. The two were one word for a round and they call for different work:
+    # "the instrument cannot tell these apart" is answered by more repetitions, and "this pair is better but
+    # two things moved" is answered by a step that moves one -- which is what the ladder block prints.
+    assert 'arm vs window: **confounded**' in result.stdout
 
 
 def test_a_derived_field_is_not_a_variable(tmp_path: Path) -> None:
@@ -569,9 +580,10 @@ def test_accuracy_is_read_from_the_repetition_mean_when_the_artifact_records_one
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     window = next(arm for arm in payload['arms'] if arm['arm'] == 'window')
-    # 0.9085 x 500 = 454.25, and the type holds counts: 454 is 90.80%, not the 92.0% the first
-    # repetition happened to read.
-    assert abs(window['overall']['value'] - 0.908) < 1e-9
+    # 0.9085 x 500 = 454.25, and the reading keeps the quarter: 454 is 90.80% and 454.25 is the 90.85% the
+    # artifact's own `featureAggregate` states. Rounding here was a systematic half-question against every
+    # even repetition count, so the exact value is asserted rather than a rounded one.
+    assert abs(window['overall']['value'] - 0.9085) < 1e-9
     assert window['accuracySource'] == 'repetition-mean'
 
 
@@ -583,3 +595,84 @@ def test_an_artifact_without_a_repetition_mean_says_which_population_it_used(tmp
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert all(arm['accuracySource'] == 'first-repetition' for arm in payload['arms'])
+
+
+def test_repetition_masks_are_read_as_one_pairing_per_question(tmp_path: Path) -> None:
+    """The masks were in every four-repetition artifact and the reader ran on repetition 0.
+
+    `ablation.featureCorrectByRun` has been written since §13.88, so a paired test of the repetition mean
+    never needed a new dispatch — it needed a reader that used the field. This fixture is small enough to
+    check by hand: three questions, `a` right in 4/4/0 and `b` right in 0/4/4. The differences are +4, 0 and
+    −4, so the sign-flip statistic is 0 and the two-sided p is 1 — an exact tie established by looking at
+    every repetition, which is a different statement from "no data".
+    """
+    questions = [
+        {'questionId': f'q{index}', 'correct': True, 'capability': 'MR'} for index in range(3)
+    ]
+    # One mask per repetition, each indexed by question: `'110'` is "questions 0 and 1 right, 2 wrong in
+    # this pass". Four of them, because four is what the repetition-mean reading is defined on.
+    masks_a = ['110', '110', '110', '110']
+    masks_b = ['011', '011', '011', '011']
+    a = write(
+        tmp_path,
+        'a.json',
+        artifact(name='a', questions=questions, masks=masks_a, aggregate=2 / 3),
+    )
+    b = write(
+        tmp_path,
+        'b.json',
+        artifact(name='b', questions=questions, masks=masks_b, aggregate=2 / 3),
+    )
+    result = run(tmp_path, str(a), str(b))
+    assert result.returncode == 0, result.stderr
+    assert 'overall: 1 won / 1 lost over 2 disagreeing question(s) [sign-flip]' in result.stdout
+    assert 'exact p = 1' in result.stdout
+    # Two of the three questions tie exactly (4-4 and 0-0), and they are not counted as evidence.
+    assert 'over 3 disagreeing' not in result.stdout
+    # `a` is 4/4/0 and `b` is 0/4/4 correct across the four repetitions, so the middle question is a 4-4 tie and the
+    # other two cancel: a tie established by looking at every repetition, not an absence of data.
+    assert 'p = 1' in result.stdout
+
+
+def test_the_ladder_names_a_step_that_does_not_run_through_the_reference(tmp_path: Path) -> None:
+    """Attribution when the pair in question is not the pair against the reference.
+
+    Three arms, one field apart each: `verbatim` -> `verbatim-acts` -> `verbatim-acts` at a route room. The
+    reference is the first, so the third differs from it in two fields and is `confounded`; the second step is
+    still a single-variable reading and the ladder is the only place it appears. Without the block, the set
+    would have no attribution at all beyond the first step.
+    """
+    base = {'ask': 'verbatim', 'maxPromptChars': 48000}
+    middle = {'ask': 'verbatim-acts', 'maxPromptChars': 48000}
+    top = {'ask': 'verbatim-acts', 'maxPromptCharsByRoute': {'multi-session': 48000}}
+    reference = write(tmp_path, 'a.json', artifact(name='a', arm_config=base, aggregate=0.9))
+    step = write(tmp_path, 'b.json', artifact(name='b', arm_config=middle, aggregate=0.907))
+    top_arm = write(tmp_path, 'c.json', artifact(name='c', arm_config=top, aggregate=0.913))
+    result = run(tmp_path, '--json', str(reference), str(step), str(top_arm))
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    variables = sorted(entry['variable'] for entry in payload['ladder'])
+    assert variables == ['ask', 'maxPromptChars'], variables
+    assert payload['summary']['confounded'] == 1
+    # The two one-field steps are reported; the two-field pair is not a step.
+    assert len(payload['ladder']) == 2
+
+
+def test_the_shipping_block_carries_the_attestation_the_matrix_reads(tmp_path: Path) -> None:
+    """`S1` reads `shipping.accuracy` and checks three fields; this is where they are written."""
+    reference = write(tmp_path, 'a.json', artifact(name='a', masks=['111', '111', '111'], aggregate=1.0))
+    shipped = write(tmp_path, 'b.json', artifact(name='shipped', masks=['111', '111', '111'], aggregate=1.0))
+    result = run(tmp_path, '--json', '--label', 'a', '--label', 'shipped', '--ship', 'shipped', str(reference), str(shipped))
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload['shipping']['arm'] == 'shipped'
+    assert payload['shipping']['accuracySource'] == 'repetition-mean'
+    assert payload['shipping']['runs'] == 4
+
+
+def test_a_ship_label_that_is_not_an_arm_is_refused(tmp_path: Path) -> None:
+    reference = write(tmp_path, 'a.json', artifact(name='a'))
+    other = write(tmp_path, 'b.json', artifact(name='b'))
+    result = run(tmp_path, '--json', '--ship', 'shipped', str(reference), str(other))
+    assert result.returncode == 2
+    assert 'which is not one of --label' in result.stderr

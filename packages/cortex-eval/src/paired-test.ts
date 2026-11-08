@@ -87,6 +87,122 @@ export function mcnemarExact(improved: number, regressed: number): number {
 }
 
 /**
+ * Two-sided exact sign-flip p-value over per-question **integer** differences.
+ *
+ * ## Why this exists beside `mcnemarExact`
+ *
+ * McNemar needs each question to be a binary pair: right or wrong. That is what one repetition gives. When
+ * an arm runs four repetitions a question stops being `0` or `1` and becomes "three of four", and collapsing
+ * it back to one bit discards the only thing the repetitions bought. The frontier reader did exactly that on
+ * its first pass — it paired on repetition 0 and read `MR` as **2 won to 9 lost, p = 0.0654**, i.e. "no
+ * usable signal" — while the four-repetition means read **16 won to 5 lost, p = 0.0039** on the same 121
+ * questions. Same arms, same artifact, opposite verdict; the difference was which repetition the pairing
+ * read.
+ *
+ * ## The null and the statistic
+ *
+ * Under H0 the two arms are exchangeable on each question, so each difference `dᵢ` is equally likely to be
+ * `+dᵢ` or `−dᵢ`. The statistic is `Σ dᵢ` and the p-value is `P(|Σ sᵢdᵢ| ≥ |Σ dᵢ|)` over all `2ⁿ` sign
+ * assignments. Enumeration is folded over **reachable sums** rather than over assignments, so 34 non-zero
+ * pairs carrying six distinct magnitudes cost 273 states instead of 1.7×10¹⁰.
+ *
+ * ## Why ties are dropped and not counted as agreement
+ *
+ * A question the arms answered identically in every repetition contributes `dᵢ = 0`, and zero is invariant
+ * under sign flip, so it cannot move the statistic. Counting it would inflate `n` without adding evidence:
+ * the 466 ties on this dataset would turn a 34-pair test into a 500-pair one and manufacture significance out
+ * of pure agreement. Dropping them is also the conservative direction — the pairs that can license a claim
+ * are then exactly the pairs that disagreed.
+ *
+ * ## Why the input is an integer count and not a mean
+ *
+ * `dᵢ = (correctA − correctB) / runs` carries the same information as `correctA − correctB` for this test,
+ * because a common scale factor cancels out of the sign-flip distribution — and the integer form keeps the
+ * folded weights exactly representable. A `1/3` mean would put a rounding error into every state of the
+ * table and make "exact" a claim about the code rather than about the arithmetic.
+ *
+ * ## Why exact below forty pairs and normal above
+ *
+ * Folded enumeration keeps weights as integers out of `2ⁿ`, so it is exact while `2ⁿ` stays below
+ * `Number.MAX_SAFE_INTEGER` — 40 pairs is 1.1×10¹², and 53 would be the last safe size. Above the limit the
+ * normal approximation to the sign-flip distribution is used, which errs on the **conservative** side at
+ * these pair counts (0.0177 against 0.0211 exact on the 34-pair case) and is reported through the same
+ * number so a caller cannot silently get a different test than the one documented.
+ */
+export function signFlipExact(differences: readonly number[]): number {
+  for (const difference of differences) {
+    if (!Number.isInteger(difference)) {
+      throw new Error(
+        `sign-flip needs integer per-question differences, got ${difference}; ` +
+          'pass the repetition count difference, not the mean',
+      );
+    }
+  }
+  const nonZero = differences.filter((difference) => difference !== 0);
+  if (nonZero.length === 0) return 1;
+
+  const observed = nonZero.reduce((total, difference) => total + difference, 0);
+
+  if (nonZero.length > SIGN_FLIP_EXACT_LIMIT) {
+    // Normal approximation: under H0 each dᵢ is ±dᵢ with equal probability, so the sum has mean 0 and
+    // variance Σdᵢ². This is exact in the second moment and needs no distributional assumption beyond the
+    // one the exact test already makes.
+    const variance = nonZero.reduce((total, difference) => total + difference * difference, 0);
+    return Math.min(1, normalTwoSidedTail(Math.abs(observed) / Math.sqrt(variance)));
+  }
+
+  // Weights are integers out of 2ⁿ rather than probabilities, so the fold is exact.
+  let distribution = new Map<number, number>([[0, 1]]);
+  for (const difference of nonZero) {
+    const next = new Map<number, number>();
+    for (const [sum, weight] of distribution) {
+      next.set(sum + difference, (next.get(sum + difference) ?? 0) + weight);
+      next.set(sum - difference, (next.get(sum - difference) ?? 0) + weight);
+    }
+    distribution = next;
+  }
+  const limit = Math.abs(observed);
+  let tail = 0;
+  for (const [sum, weight] of distribution) {
+    if (Math.abs(sum) >= limit) tail += weight;
+  }
+  return Math.min(1, tail / Math.pow(2, nonZero.length));
+}
+
+/**
+ * How many pairs the folded enumeration may carry before exactness stops being representable.
+ *
+ * `2^40` is 1.1×10¹² against `Number.MAX_SAFE_INTEGER` at 9.0×10¹⁵, so every weight in the table is an
+ * integer the arithmetic can hold. Forty is not a resolution choice: above it the answer is still a
+ * p-value, computed the other way, and the constant exists so the switch is one number a reader can find.
+ */
+export const SIGN_FLIP_EXACT_LIMIT = 40;
+
+/**
+ * The two-sided normal tail `2·(1 − Φ(z))`, for a **non-negative** `z`.
+ *
+ * `2·(1 − Φ(z)) = erfc(z/√2)`, so this is Abramowitz and Stegun 7.1.26 for `erfc` and nothing else. The form
+ * matters for a reason that is not aesthetic: the general `normalCdf` needs a sign branch, this call site only
+ * ever passes `|z|`, and a branch that cannot be reached is a branch no test can cover — which is how a dead
+ * `x < 0` arm showed up in this package's branch coverage as a single uncovered line. Removing the branch is
+ * the repair; suppressing the warning would have left the dead code in place.
+ *
+ * Accuracy is 1.5×10⁻⁷ absolute on `erf`, four orders of magnitude finer than the difference between this
+ * approximation and the exact test it stands in for (0.0177 against 0.0211 on the 34-pair case). Written here
+ * rather than pulled from a dependency because the whole use is six lines and a statistics package would be a
+ * second thing to keep in step with the two exact tests.
+ */
+function normalTwoSidedTail(z: number): number {
+  const x = z / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  return (
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) *
+    t *
+    Math.exp(-x * x)
+  );
+}
+
+/**
  * Compare one provider across two runs, keyed by question id.
  *
  * Provider names must match: the comparison is "the same arm under two conditions", and pairing

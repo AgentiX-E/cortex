@@ -87,11 +87,11 @@
  */
 import { wilsonScoreInterval } from '@agentix-e/cortex-core';
 
-// Re-exported so `tools/efficiency-frontier.mjs` can reach it through the built module it documents
-// as its entry point; the implementation lives in `paired-test.ts` and only there.
-import { mcnemarExact } from './paired-test.js';
+// Re-exported so `tools/efficiency-frontier.mjs` can reach them through the built module it documents as
+// its entry point; the implementations live in `paired-test.ts` and only there.
+import { mcnemarExact, signFlipExact } from './paired-test.js';
 
-export { mcnemarExact };
+export { mcnemarExact, signFlipExact };
 
 import type { Capability } from './types.js';
 
@@ -116,7 +116,18 @@ export type EfficiencyReading = {
 /** One arm, on both axes. */
 export type EfficiencyPoint = {
   readonly arm: string;
-  /** Correct count over the whole measured population. */
+  /**
+   * Correct count over the whole measured population.
+   *
+   * `correct` is a **count**, and after four repetitions it is a fractional one: 454.25 of 500 is what
+   * "the mean of four repetitions" arithmetically is, and requiring an integer here rounded it to 454 and
+   * printed 90.80% for an arm whose own artifact says 90.85%. The half-question is not a measurement, but
+   * the rounding is a **systematic** half-question in one direction on every arm that ran an even number
+   * of repetitions, and it is the same class of defect as reading one repetition instead of four: a
+   * reading whose precision is thrown away before anyone looks at it.
+   *
+   * `total` stays an integer, because it is a number of questions.
+   */
   readonly overall: { readonly correct: number; readonly total: number };
   /**
    * The same for each capability the arm was read on.
@@ -184,6 +195,25 @@ export type EfficiencyPolicy = {
    * could not express, because it is not a bound on a difference, it is a test of one.
    */
   readonly alpha: number;
+  /**
+   * The spread two dispatches of **one configuration** produced, and the bound it puts on any promotion.
+   *
+   * This is the instrument the paired test does not replace, and it exists because the paired test's null
+   * hypothesis is not the only source of variation. Two dispatches of the same arm — same fields, same
+   * reader, same judge, four repetitions each — read **90.85% and 90.20%**, with **35 of 500 questions**
+   * flipping direction. A comparison between two *different* configurations disagreed on **34**. Fewer
+   * disagreements between different systems than between one system and itself is the whole argument: at
+   * this population the per-question flips are dominated by dispatch noise, and a promotion whose
+   * disagreement count does not clear the self-comparison is a claim about the runner.
+   *
+   * `delta` is in the same units as `margin` (a share of the population), and it only ever **blocks a
+   * promotion**. Demotion keeps the union rule above: "the reference is not worse" cannot be overstated by
+   * a noisy floor, "the candidate is better" can.
+   *
+   * Absent means no floor was measured, which is reported rather than assumed to be zero — a policy with a
+   * floor of zero is a policy that has not looked.
+   */
+  readonly noiseFloor?: { readonly delta: number; readonly source: string } | undefined;
   /** Capabilities the margin must hold on. Defaults to every capability the point carries. */
   readonly gated?: readonly Capability[];
 };
@@ -191,25 +221,65 @@ export type EfficiencyPolicy = {
 /**
  * What the two arms did question by question, for the labels they were both read on.
  *
- * This is the only input in the module that describes a **pair** rather than an arm, which is why it is
- * an argument to `compareEfficiency` instead of a field on `EfficiencyPoint`. A point cannot carry it:
- * agreement is not a property of one arm, and a type that allowed it would let a caller attach one
- * arm's discordant counts with another arm's answers.
+ * Two shapes, because the artifacts have two shapes and the test is a function of the data, not of a
+ * preference:
+ *
+ * - **`discordant`** — one repetition, so a question is right or wrong and the count of questions that
+ *   moved in each direction is the whole of the evidence. Exact McNemar.
+ * - **`series`** — `k` repetitions, so a question is "three of four" and the difference is a count in
+ *   `[-k, k]`. Exact sign-flip over the folded sums.
+ *
+ * They are not interchangeable and the union is what says so. Collapsing a `series` to `discordant` throws
+ * away the repetitions — that is how `MR` read **2 won to 9 lost, p = 0.0654** on repetition 0 and
+ * **16 won to 5 lost, p = 0.0039** on the four-repetition means, the same 121 questions and opposite
+ * verdicts. Expanding a `discordant` into a `series` would be worse: it would invent `k` copies of one
+ * observation and divide the p by roughly `k`.
  */
-export type PairedEvidence = readonly {
-  readonly label: ReadingLabel;
-  /** Questions `a` answered correctly and `b` did not. */
-  readonly wonByA: number;
-  /** The reverse. */
-  readonly wonByB: number;
-}[];
+export type PairedEvidence = readonly (
+  | {
+      readonly kind: 'discordant';
+      readonly label: ReadingLabel;
+      /** Questions `a` answered correctly and `b` did not. */
+      readonly wonByA: number;
+      /** The reverse. */
+      readonly wonByB: number;
+    }
+  | {
+      readonly kind: 'series';
+      readonly label: ReadingLabel;
+      /** How many repetitions each question carries. Every entry must be in `[0, runs]`. */
+      readonly runs: number;
+      /**
+       * One entry per question, in any order: how many of its `runs` repetitions each arm answered right.
+       *
+       * Order does not matter because the test is over the **marginal** distribution of differences, and
+       * pairing is positional only in the sense that entry `i` of `a` is the same question as entry `i` of
+       * `b` — a property the builder has to guarantee, which is why `tools/efficiency-frontier.mjs` joins on
+       * `questionId` instead of on index.
+       */
+      readonly questions: readonly { readonly a: number; readonly b: number }[];
+    }
+)[];
 
 /** One label's paired test, reported whichever way it came out. */
 export type PairedReading = {
   readonly label: ReadingLabel;
+  /** Which instrument ran, so a reader never has to infer it from the magnitudes. */
+  readonly test: 'mcnemar' | 'sign-flip';
+  /** Questions `a` won that `b` lost, on the same repetition-mean reading the accuracy uses. */
   readonly wonByA: number;
+  /** The reverse. */
   readonly wonByB: number;
-  /** Exact two-sided McNemar p over the discordant pairs. 1 when there are none. */
+  /**
+   * Questions that disagreed at all, which is the population the test is computed over.
+   *
+   * Not `wonByA + wonByB` for a `series`: a question the arms split 2–2 across four repetitions is a tie
+   * and contributes nothing, while one split 4–2 is a win and is counted once. This number is what makes
+   * the two instruments comparable at a glance — 34 on the aggregate and 21 on `MR` is a resolution
+   * statement, and `500` would be a fiction.
+   */
+  readonly pairs: number;
+  /** Exact two-sided p. 1 when the arms never disagreed. */
   readonly pValue: number;
   /**
    * Whether `pValue < alpha`, i.e. whether this pair licenses a directional claim on this label.
@@ -280,8 +350,28 @@ export type EfficiencyComparison = {
   readonly billComparable: boolean;
   /** Readings where `a` falls below `b` by more than the margin. */
   readonly blocking: readonly ReadingLabel[];
+  /**
+   * Readings `a` was certified ahead on, whichever way the whole comparison came out.
+   *
+   * Reported because the two can disagree and the disagreement is the finding. `42355323615` against
+   * `42310779222` is ahead on `MR` at **p = 0.0044** and blocked nowhere, and it is still not a dominated
+   * verdict — the two arms differ in two fields, so what was certified is that *this pair* is better, not
+   * that either variable is. A caller that only read `outcome` would see `incomparable` and conclude nothing
+   * had been established, which discards a 3.1-point certified gain on a 121-question capability.
+   */
+  readonly leading: readonly ReadingLabel[];
   /** Readings where the margin is smaller than the sample's resolution. */
   readonly unresolvable: readonly ReadingLabel[];
+  /**
+   * Readings where `a` was ahead but not by more than two dispatches of one configuration disagree.
+   *
+   * A fifth list rather than a silent filter, and separate from `unresolvable` because the two have
+   * different repairs: `unresolvable` means the sample is too small for the margin, `belowNoise` means the
+   * sample is large enough and the **runner** moves more than the effect does. Reporting it as
+   * `incomparable` would lose the direction, which is the part a reader needs to decide whether the next
+   * experiment is worth its tokens.
+   */
+  readonly belowNoise: readonly ReadingLabel[];
   /**
    * Every paired test that was run, whichever way it came out.
    *
@@ -296,7 +386,7 @@ export type EfficiencyComparison = {
 };
 
 function readingOf(correct: number, total: number): EfficiencyReading {
-  if (!Number.isInteger(correct) || !Number.isInteger(total)) {
+  if (!Number.isFinite(correct) || !Number.isInteger(total)) {
     throw new Error(`an efficiency reading needs counts, got ${correct}/${total}`);
   }
   if (total <= 0) {
@@ -305,6 +395,10 @@ function readingOf(correct: number, total: number): EfficiencyReading {
   if (correct < 0 || correct > total) {
     throw new Error(`an efficiency reading is out of range: ${correct} of ${total}`);
   }
+  // `correct` may be fractional, and only the repetition mean makes it so. `wilsonScoreInterval` already
+  // accepts a continuous proportion — it takes `correct / total` and never rounds — so the interval stays
+  // the Wilson interval; what it is an interval *on* is the mean of `runs` binomials rather than one, and
+  // that interval is conservative rather than wrong, because averaging `k` repetitions cannot widen it.
   const { lower, upper } = wilsonScoreInterval(correct, total);
   return { value: correct / total, lower, upper, halfWidth: (upper - lower) / 2 };
 }
@@ -380,6 +474,21 @@ function readingFor(profile: EfficiencyProfile, label: ReadingLabel): Efficiency
  * difference. Using one arm's half-width is conservative against the paired difference the artifacts
  * actually carry (a paired test on discordant pairs is sharper), which is the right direction for a
  * number that gates a claim.
+ *
+ * ## The two instruments are combined asymmetrically, and the asymmetry is the design
+ *
+ * *Demoting* takes the **union**: an arm is blocked if either the paired test certifies a loss or the margin
+ * rule says the drop is bigger than the project agreed to call a tie. Both are evidence against, so a rule
+ * that needs only one is strictly more conservative — and the alternative, requiring both, is a
+ * falsification this change produced on its first draft: against one control the window cut's aggregate is
+ * 13 won to 23 lost at `p = 0.1325`, so a rule that demoted only on a significant pair read a −3.20-point arm
+ * as "not worse" and then promoted it on the 0.50x context. Absence of a significant pair is not evidence of
+ * no effect.
+ *
+ * *Promoting* takes the **intersection of every floor**: a certified win needs the paired test, a margin
+ * above the resolution, and a difference wider than two dispatches of one configuration produce. The
+ * `underpowered` outcome already encodes half of that one level up — demotion cannot overstate as the
+ * interval widens, promotion can — and `noiseFloor` is the other half, measured rather than assumed.
  */
 export function compareEfficiency(
   a: EfficiencyProfile,
@@ -408,27 +517,70 @@ export function compareEfficiency(
     if (pairedByLabel.has(entry.label)) {
       throw new Error(`paired evidence names ${entry.label} twice`);
     }
-    if (
-      entry.wonByA < 0 ||
-      entry.wonByB < 0 ||
-      !Number.isInteger(entry.wonByA) ||
-      !Number.isInteger(entry.wonByB)
-    ) {
-      throw new Error(
-        `paired evidence for ${entry.label} is not a pair of counts: ` +
-          `${entry.wonByA} / ${entry.wonByB}`,
-      );
+    let wonByA: number;
+    let wonByB: number;
+    let pairs: number;
+    let pValue: number;
+    if (entry.kind === 'discordant') {
+      for (const [name, count] of [
+        ['wonByA', entry.wonByA],
+        ['wonByB', entry.wonByB],
+      ] as const) {
+        if (!Number.isInteger(count) || count < 0) {
+          throw new Error(
+            `paired evidence for ${entry.label} is not a pair of counts: ` +
+              `${name} is ${count}, which is not a non-negative integer`,
+          );
+        }
+      }
+      wonByA = entry.wonByA;
+      wonByB = entry.wonByB;
+      pairs = wonByA + wonByB;
+      pValue = mcnemarExact(entry.wonByA, entry.wonByB);
+    } else {
+      if (!Number.isInteger(entry.runs) || entry.runs <= 0) {
+        throw new Error(
+          `paired series for ${entry.label} has no repetition count: runs is ${entry.runs}`,
+        );
+      }
+      // A series with no questions is an absence of evidence and not a tie, so it is refused rather than
+      // turned into `p = 1`: a caller that joined on the wrong key would otherwise get a clean result.
+      if (entry.questions.length === 0) {
+        throw new Error(`paired series for ${entry.label} carries no questions`);
+      }
+      const differences: number[] = [];
+      wonByA = 0;
+      wonByB = 0;
+      for (const question of entry.questions) {
+        for (const [name, count] of [
+          ['a', question.a],
+          ['b', question.b],
+        ] as const) {
+          if (!Number.isInteger(count) || count < 0 || count > entry.runs) {
+            throw new Error(
+              `paired series for ${entry.label} has ${name} = ${count} against ${entry.runs} ` +
+                'repetitions; a question cannot be right more often than it was asked',
+            );
+          }
+        }
+        differences.push(question.a - question.b);
+        if (question.a > question.b) wonByA += 1;
+        if (question.b > question.a) wonByB += 1;
+      }
+      pairs = wonByA + wonByB;
+      pValue = signFlipExact(differences);
     }
-    const pValue = mcnemarExact(entry.wonByA, entry.wonByB);
     const reading: PairedReading = {
       label: entry.label,
-      wonByA: entry.wonByA,
-      wonByB: entry.wonByB,
+      test: entry.kind === 'discordant' ? 'mcnemar' : 'sign-flip',
+      wonByA,
+      wonByB,
+      pairs,
       pValue,
-      // No discordant pair means no evidence *and no test*: two arms that agreed on all 500 questions
-      // are a tie, and a p-value of 1 on zero pairs must not be reported as "resolved, no difference"
-      // in the same voice as a tie established by 38 pairs.
-      resolved: entry.wonByA + entry.wonByB > 0 && pValue < policy.alpha,
+      // No disagreement means no evidence *and no test*: two arms that agreed on all 500 questions are a
+      // tie, and a p-value of 1 on zero pairs must not be reported as "resolved, no difference" in the same
+      // voice as a tie established by 38 pairs.
+      resolved: pairs > 0 && pValue < policy.alpha,
     };
     pairedByLabel.set(entry.label, reading);
     pairedReadings.push(reading);
@@ -440,32 +592,47 @@ export function compareEfficiency(
   const blocking: ReadingLabel[] = [];
   const leading: ReadingLabel[] = [];
   const unresolvable: ReadingLabel[] = [];
+  const belowNoise: ReadingLabel[] = [];
+  const noiseFloor = policy.noiseFloor?.delta ?? 0;
   for (const label of labelsOf(b, policy)) {
     const reference = readingFor(b, label);
     const candidate = readingFor(a, label);
     const delta = candidate.value - reference.value;
-    // The two instruments are combined **asymmetrically**, and the asymmetry is the design.
+    // A promotion has to clear **both** floors: the significance level on the pairs and the spread two
+    // dispatches of one configuration show. The second one is not a second significance test — it is the
+    // same test asked against the right null. Where it fails the direction is kept in `belowNoise` rather
+    // than dropped, because "ahead by less than the runner moves" and "level" are different findings and
+    // only one of them argues for another experiment.
     //
-    // *Demoting* takes the union: an arm is blocked if either the paired test certifies a loss or the
-    // margin rule says the drop is bigger than the project agreed to call a tie. Both are evidence
-    // against, so a rule that needs only one is strictly more conservative, and the alternative —
-    // requiring both — is the falsification that a first draft of this change produced: against one
-    // control the window cut's aggregate is 13 won to 23 lost at p = 0.1325, so a rule that demoted
-    // only on a significant pair read a −3.20-point arm as "not worse" and then promoted it on the
-    // 0.50x context. Absence of a significant pair is not evidence of no effect.
-    //
-    // *Promoting* takes the intersection, i.e. the strongest instrument alone: a certified win needs
-    // the paired test, and the margin rule cannot substitute for it. That is the same asymmetry the
-    // `underpowered` outcome already encodes one level up — demotion cannot overstate as the interval
-    // widens, promotion can.
+    // Demotion reads neither floor: `blocking` below is built from the margin rule and a resolved loss,
+    // and a noisy floor cannot make a loss look smaller than it is.
     if (reference.value - candidate.value > policy.margin) blocking.push(label);
     const test = pairedByLabel.get(label);
     if (test !== undefined) {
-      if (test.resolved && delta < 0) blocking.push(label);
-      if (test.resolved && delta > 0) leading.push(label);
+      // One label, one entry. The margin rule and the paired test both fire on the same loss by construction
+      // whenever the loss is real, and without this the verdict lists `overall, overall, IE, MR, KU, TR, TR`
+      // for one arm — a duplicated list that reads as a counting bug and buries the labels that are single.
+      if (test.resolved && delta < 0 && !blocking.includes(label)) blocking.push(label);
+      // Ahead, but not by enough to claim it -- and there are two distinct reasons, both of which belong in
+      // `belowNoise` rather than in a silent gap. Either the pairs did not separate (`+0.50 at p = 0.354` on
+      // the `ask` step) or they did and the margin is narrower than one dispatch's own repetitions move. A
+      // label that is ahead and absent from every list would read as agreement, which is the one thing it is
+      // not.
+      if (delta > 0) {
+        if (test.resolved && delta > noiseFloor) leading.push(label);
+        else belowNoise.push(label);
+      }
       continue;
     }
-    if (candidate.value - reference.value > policy.margin) leading.push(label);
+    if (candidate.value - reference.value > policy.margin) {
+      if (delta > noiseFloor) leading.push(label);
+      else belowNoise.push(label);
+    } else if (delta > 0) {
+      // Ahead, unpaired, and inside the margin: a tie by the rule, and the direction is still worth printing.
+      // An earlier version dropped it here, so a +0.5-point step on the `ask` change appeared in no list at
+      // all and read as agreement with the reference.
+      belowNoise.push(label);
+    }
     if (policy.margin > 0 && reference.halfWidth > policy.margin) unresolvable.push(label);
   }
 
@@ -527,7 +694,9 @@ export function compareEfficiency(
     billedTokenRatio,
     billComparable,
     blocking,
+    leading,
     unresolvable,
+    belowNoise,
     paired: pairedReadings,
     pairedUsed: pairedReadings.length > 0,
   });
