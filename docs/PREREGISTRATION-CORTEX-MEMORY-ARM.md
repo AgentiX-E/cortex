@@ -35226,3 +35226,92 @@ The registered next step is therefore concrete: `judge-regrade.mjs` gains a `--v
 `[{questionId, capability, recorded, verdicts}]`, which is the same vector `tally` already builds and throws
 away. With it, two readings become a paired comparison under `paired-test.ts`, and the 8-question residual gets
 an interval instead of a direction.
+
+## 13.323 The `S0` reading: the packet was identical, and 23 questions still moved
+
+`42452904894` finished `success`. Read in the registered order.
+
+| id | check | outcome |
+| --- | --- | --- |
+| `S0a` | `memoryArmConfig` field for field against `42355323615`, and `head_sha` | **holds** — zero differing fields, `7692f204` in the checkout line |
+| `S0b` | the two declared departures are the two the baseline carried | **holds** — preflight prints `asked 23, 22 registered, 2 departed, 2 declared ['cortex_memory_ask', 'cortex_memory_max_prompt_chars'] — match` |
+| `S4` | `promptDigest` for repetition 1 equals the baseline's | **holds, exactly** — 500 of 500 questions, byte-identical packets |
+
+So this is the control the campaign did not have: same code, same inputs, same packets, different clock.
+
+| reading | `42355323615` (baseline) | `42452904894` (`S0`) | delta |
+| --- | ---: | ---: | ---: |
+| accuracy, 4-run mean | 91.95% | **91.65%** | **−0.30 pt** |
+| range over the 4 runs | 91.40 – 93.20 | 90.60 – 92.20 | — |
+| `MR` (mean of 4 runs / 121) | 101.50 | 100.25 | −1.25 questions |
+| `IE` (mean / 150) | 142.50 | 143.25 | +0.75 |
+| `KU` (mean / 72) | 63.75 | 63.50 | −0.25 |
+| `TR` (mean / 127) | 122.00 | 121.25 | −0.75 |
+| `ABS` (mean / 30) | 30.00 | 30.00 | 0 |
+| paired, 4 repetitions (`signFlipExact`) | — | — | **23 moved (9 up / 14 down), net −6 of 2,000, p = 0.3805** |
+
+### 13.323.1 What the number is, and it is not 0.30 points
+
+The headline delta is small and that is the least interesting thing in the table. The rate is:
+
+> **23 of 500 questions answer differently between two dispatches of the same configuration, from
+> byte-identical prompts, at temperature 0.** 4.6% of the question set. Net −6 passes out of 2,000,
+> p = 0.38 — which is what "the same system twice" should read.
+
+The two halves of that table are the finding, and they disagree in a way worth stating precisely:
+
+- **per question, 23 of 500 verdicts changed** — 4.6% of the set;
+- **per capability, no mean moved by more than 1.25 questions** — `IE` +0.75, `MR` −1.25, `TR` −0.75, `KU`
+  −0.25, `ABS` 0.
+
+So the churn is large and the drift is small, because the flips cancel: this is a symmetric reshuffle of
+individual verdicts, not a capability that got worse. A campaign that only ever looked at capability means would
+have called the 1.25-question `MR` movement "stable" and been right about the direction by luck, while a
+question-level comparison shows 23 verdicts that a second run stands behind differently.
+
+### 13.323.2 `S1` reads `S1b`, for the second time, and this time the band is not the interesting part
+
+`MR` mean **100.3** sits inside (97, 101), so `S1b` applies: **unresolved**. `S1a` (drift) did not happen and
+`S1c` (the `H2` refutation) did not happen either, so §13.301 and §13.302 still may not state the room as a
+mechanism in either direction.
+
+What changes is what a claimed effect has to be compared against, and the control gives two different answers
+depending on the comparison:
+
+| quantity | size |
+| --- | --- |
+| claimed `MR` effect (§13.301, §13.302) | **4 to 6.6 questions** |
+| observed `MR` movement between two identical dispatches | **1.25 questions** |
+| observed **per-question** movement between the same two | **23 of 500** |
+
+A 4-to-6.6-question claim is five times the observed net drift *and* a fifth of the observed churn, so the two
+comparisons point in opposite directions and neither is decisive. What settles it is the pairing: the rerun's
+own `signFlipExact` over 500 questions and 4 repetitions is **p = 0.3805** on a net of −6 of 2,000 passes, so a
+paired test does exist for this population and it is what a room claim has to be run through. `S1b` stands, and
+the sentence it forbids — "the room costs `MR` 6.61 points" — is forbidden for a sharper reason than in §13.305:
+not because the control failed to be a control, but because the control ran and the claim was never paired.
+
+### 13.323.3 `E11`, and the falsifier that was under-specified rather than satisfied
+
+`E11` claimed the repetition-derived floor is a **lower** bound: a real rerun moves at least as far. The floor is
+0.43 points; the rerun moved 0.30. A literal application says the falsifier fired.
+
+It did not, and the reason is a defect in how `E11` was written rather than in the measurement:
+
+- the floor is the **standard error of a 4-run mean within one dispatch** — how far one arm's mean sits from its
+  own expectation;
+- a between-dispatch difference is a difference of **two** such means, so under the very model `E11` assumes its
+  standard deviation is `sqrt(2) x 0.43 = 0.61`, and an observed |difference| of 0.30 is an ordinary draw;
+- `E11`'s falsifier compares one draw against the floor with `>=`, which is a threshold on a random variable. It
+  can fire under the model it is meant to test, and it would have "refuted" a correct floor here.
+
+The repair is a restatement, not a rerun:
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `E11a` | the per-question flip rate between two identical dispatches is **23/500**, and it is the quantity an arm difference should be judged against rather than a multiple of the repetition spread | a second clean rerun whose moved count is below 15 or above 35, which would make 23 a coincidence of one pair |
+| `E11b` | the repetition-derived floor is a **lower** bound on the difference of two dispatches only in the sense that `sd(difference) = sqrt(2) x floor`; a single difference below the floor is expected roughly half the time | a difference of two reruns whose distribution is wider than `sqrt(2) x 0.43`, which would make the repetitions understate dispatch noise |
+| `E11c` | no future document quotes a delta of fewer than 23 moved questions on this dataset as an effect without a paired control beside it | one that does |
+
+`E11a` needs one more clean rerun — the third — and that is now the cheapest experiment in the queue, because it
+prices the quantity every other claim is measured against.
