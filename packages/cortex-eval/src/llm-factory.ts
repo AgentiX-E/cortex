@@ -45,6 +45,31 @@ export type { LlmEnv };
 /** The variable `thinking` arrives in. Named once, because four messages state it. */
 const THINKING_VARIABLE = 'DEEPSEEK_THINKING';
 
+/**
+ * The variable a dispatch pins the **judge** in, independently of the reader.
+ *
+ * ## Why this variable exists, and why it is not `DEEPSEEK_MODEL`
+ *
+ * §13.312. The judge took its identity from the reader, defended on the grounds that a judge on a
+ * different model would make the campaign's numbers incomparable to its own history. That is right
+ * about history and wrong about **arms**: when the treatment being compared *is* the reader, a judge
+ * that follows the reader is a judge that moves with the treatment. M1's arms were graded by
+ * `deepseek-v4-pro` and `deepseek-flash`, and on the 29 preference questions -- whose golds are
+ * criteria, so the verdict is entirely the judge's opinion -- one rejected 10 answers the other
+ * accepted. A capability difference of 34.5 points was reported for a round and it was an instrument
+ * swap.
+ *
+ * A separate variable rather than a second meaning for `DEEPSEEK_MODEL`, because that one already
+ * names the *reader*, and a dispatch that pinned its judge by pointing `DEEPSEEK_MODEL` at it would
+ * silently change the thing under test. Two roles, two variables; the grammar they share lives in
+ * `readModelSelection`.
+ *
+ * Unset means "follow the reader", which is the state every archived artifact was produced in and is
+ * recorded as such (`source: 'reader'`), so a later reader can tell a pinned judge from a followed
+ * one without knowing when the variable was introduced.
+ */
+const JUDGE_MODEL_VARIABLE = 'CORTEX_JUDGE_MODEL';
+
 /** The spellings that mean "no thinking anywhere". */
 const DISABLED_SPELLINGS: ReadonlySet<string> = new Set(['disabled', 'off', 'false']);
 /** The spellings that mean "thinking everywhere". */
@@ -368,6 +393,32 @@ export function createReadersFromEnv(env: LlmEnv): {
 }
 
 /**
+ * Which judge a process will use, and whether that was decided or inherited.
+ *
+ * `source: 'reader'` means no dispatch pinned one, which is the state of every archived artifact;
+ * `source: 'pinned'` means `CORTEX_JUDGE_MODEL` named it. The field is not decoration: a comparison
+ * across two arms is only a comparison if both say `pinned` with the same value, and a reader of two
+ * artifacts can check that without reconstructing either dispatch.
+ *
+ * The provider travels with the identity because a judge on another vendor needs that vendor's
+ * credential and endpoint, and because `providerId` is what the artifact can be held to (§13.212).
+ */
+export function resolveJudgeIdentity(env: LlmEnv): ReturnType<typeof describeReader> & {
+  readonly provider: ReturnType<typeof resolveReaderProvider>;
+  readonly source: 'reader' | 'pinned';
+} {
+  const pinned = (env[JUDGE_MODEL_VARIABLE] ?? '').trim();
+  if (pinned === '') {
+    const provider = resolveReaderProvider(env);
+    return { ...describeReader(env, provider), provider, source: 'reader' };
+  }
+  // The pin is a selection in the same grammar as `DEEPSEEK_MODEL`, resolved through the same
+  // reader so the two selections cannot disagree about what `zhipu:glm-4.6` means.
+  const provider = resolveReaderProvider(env, JUDGE_MODEL_VARIABLE);
+  return { ...describeReader(env, provider), provider, source: 'pinned' };
+}
+
+/**
  * The LLM the scorer's judge uses.
  *
  * ## Why this is a separate reader and not the run's `llm`
@@ -384,16 +435,24 @@ export function createReadersFromEnv(env: LlmEnv): {
  * instrument that can destroy the thing it measures has the wrong transport or the wrong
  * tolerance, and this is the transport half.
  *
- * ## Why the identity and the temperature are the reader's
+ * ## Why the identity is the reader's unless a dispatch pins it (§13.312)
  *
  * Because the verdict is a measurement, and a judge that ran on a different model or a different
  * temperature than the archived readings would make this campaign's numbers incomparable to its
  * own history. Only the pipe changes here -- the same distinction §13.227 drew for the pacer.
+ *
+ * But that argument is about **one arm over time**, and it fails for **two arms at one time**: when
+ * the treatment is the reader, a judge that follows the reader moves with the treatment. So the
+ * identity is `resolveJudgeIdentity`'s -- the reader's unless `CORTEX_JUDGE_MODEL` names another --
+ * and both the choice and its source are recorded in the artifact.
  */
 export function createJudgeFromEnv(env: LlmEnv): LLM {
-  const provider = resolveReaderProvider(env);
-  const apiKey = requireKey(env, provider);
-  const identity = describeReader(env, provider);
+  const identity = resolveJudgeIdentity(env);
+  // The credential follows the **judge's** provider, not the reader's: a run that pinned `zhipu:`
+  // and kept reading `DEEPSEEK_API_KEY` would send one vendor's key to another and collect a 401 on
+  // every question of a 500-question pass. The original environment is read for it, because a
+  // credential does not depend on which model the selection names.
+  const apiKey = requireKey(env, identity.provider);
   const llm = new OpenAICompatibleLLM({
     baseUrl: identity.baseUrl,
     apiKey,

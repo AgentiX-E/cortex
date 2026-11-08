@@ -30,6 +30,16 @@
  * unanswerable, so substituting a name or a number does not make the answer wrong — it would produce
  * cases that measure nothing while looking like a rate. Their gold is an explanation, not a value.
  *
+ * ## The judge is the run's judge, and it is rebuilt from the artifact
+ *
+ * This tool used to build its judge with `createLlmFromEnv` — the *reader* factory — from a workflow
+ * that named the model in `CORTEX_LLM_MODEL`, a variable no factory in `cortex-eval` reads, at a
+ * temperature nobody sent. Three silent substitutions; §13.312 registers what they cost. The judge
+ * now comes from `createJudgeFromEnv` (the factory `run-ablation.ts` builds the graded judge with)
+ * over `judgeEnvFor(report, process.env)`, which fills the artifact's own provider, model and
+ * temperature in wherever a dispatch leaves them blank. Both identities are printed with the plan,
+ * because a false-accept rate about an unnamed model is not a rate.
+ *
  * ## The gate
  *
  * Exit 1 when the false-accept upper bound exceeds **5%**. The threshold is not arbitrary: the
@@ -42,12 +52,18 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 import {
-  createLlmFromEnv,
+  createJudgeFromEnv,
   createLlmJudge,
   planAudit,
   summariseAudit,
   toJudgeQuestionType,
 } from '../packages/cortex-eval/dist/index.js';
+import {
+  JUDGE_MODEL_VARIABLE,
+  artifactJudgeIdentity,
+  judgeEnvFor,
+  selectionFor,
+} from './judge-identity.mjs';
 
 function flag(name) {
   const index = process.argv.indexOf(name);
@@ -113,9 +129,22 @@ async function main() {
     console.error('no auditable cases: the artifact has no accepted answer with a swappable token');
     return 1;
   }
+  const identity = artifactJudgeIdentity(report);
+  const judgeEnv = judgeEnvFor(report, process.env);
   console.log(`artifact        ${artifactPath}`);
   console.log(`accepted answers audited   ${sources.length}`);
   console.log(`cases planned              ${cases.length}`);
+  // The judge, beside the cases it will be asked about. A false-accept rate is a property of one
+  // model at one temperature, so a run that does not print them has produced a number about an
+  // unnamed instrument -- §13.312's defect, in this tool rather than in the re-grade.
+  console.log(
+    `artifact judge  model=${selectionFor(identity.provider, identity.model) ?? 'unrecorded'} ` +
+      `temperature=${identity.temperature ?? 'unrecorded'}`,
+  );
+  console.log(
+    `audit judge     model=${judgeEnv[JUDGE_MODEL_VARIABLE] ?? '(provider default)'} ` +
+      `temperature=${judgeEnv.TEMPERATURE ?? 'default'}`,
+  );
   for (const kind of ['number-swap', 'entity-swap', 'cross-gold']) {
     console.log(`  ${kind.padEnd(14)} ${cases.filter((auditCase) => auditCase.kind === kind).length}`);
   }
@@ -135,7 +164,7 @@ async function main() {
     return 0;
   }
 
-  const llm = createLlmFromEnv(process.env);
+  const llm = createJudgeFromEnv(judgeEnvFor(report, process.env));
   const grade = createLlmJudge(llm);
   // The template follows the question the case came from, because the artifact was graded with it.
   // Grading a temporal question with the default template would measure a harsher judge than the one

@@ -45,6 +45,8 @@ import {
   createJudgeFromEnv,
   createReadersFromEnv,
   describeJudgeTransport,
+  // §13.312: the judge's identity, read by the same function the client above was built from.
+  resolveJudgeIdentity,
   // §13.306. The reader's bound is printed before the first question for the reason the judge's is:
   // `42381840503` lost a 500-question pass to a 300 s deadline that appeared in no line of its log,
   // and the loss it produced named the bound only after it had already ended the arm.
@@ -387,6 +389,9 @@ async function main(): Promise<void> {
   // through: `41585013786` died on a judge call and no line in its log said what that call had
   // been given.
   const judgeLlm = createJudgeFromEnv(process.env);
+  // Read once, beside the client it describes, and handed to the report rather than re-read there:
+  // two readings of one environment are two chances to name a judge the run did not use.
+  const judgeIdentity = resolveJudgeIdentity(process.env);
   // Read once, here, and shared by the two transport lines below and by the arm further down: a
   // second read is a second answer to "what deadline did this run have", and the file's own rule for
   // the pace (§13.227) is that one function is what makes the log and the client agree.
@@ -975,6 +980,17 @@ async function main(): Promise<void> {
       // 'none'` for the control -- so an artifact written from here never leaves "dispatched the
       // control" and "predates the field" as the same bytes.
       rerankRecord,
+      // §13.312: which judge **graded**, which is not the same question as which reader answered
+      // and was the same answer for so long that no artifact could tell them apart. Resolved by the
+      // function `createJudgeFromEnv` itself calls, so the model that scores and the model this
+      // record names cannot be two readings of one environment -- the same rule the reader line
+      // above follows, applied to the object that moved.
+      {
+        providerId: judgeIdentity.providerId,
+        model: judgeIdentity.model,
+        temperature: judgeIdentity.temperature,
+        source: judgeIdentity.source,
+      },
     ),
     // §13.153's mechanism is recorded beside the flag that says the arm ran at all, because the two
     // artifacts this dispatch compares differ by exactly this entry: the config line is the only place

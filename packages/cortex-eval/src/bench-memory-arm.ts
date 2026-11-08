@@ -2234,6 +2234,16 @@ export function toMemoryArmConfig(
    * ambiguity §13.115 exists to remove -- an artifact naming a model it may never have consulted.
    */
   rerank?: MemoryArmConfig['rerank'],
+  /**
+   * Which judge graded this run, when the caller knows it.
+   *
+   * A parameter for the reason `reader` is one: this module never constructs a judge, so only
+   * `bench/run-ablation.ts` can say which model scored the answers. §13.312 is the section that made
+   * the fact necessary -- two artifacts graded by two judges, compared as if one instrument had
+   * produced both, with a 34.5-point difference between the verdicts on the question type whose gold
+   * is a criterion rather than an answer.
+   */
+  judge?: MemoryArmConfig['judge'],
 ): MemoryArmConfig {
   return {
     threshold: options.threshold,
@@ -2359,6 +2369,10 @@ export function toMemoryArmConfig(
     // an artifact without this key is one written before §13.115 rather than a run that declined the
     // stage -- which is why the field is not defaulted here.
     ...(rerank === undefined ? {} : { rerank }),
+    // Same rule once more (§13.312). The arm always passes one, so an artifact without this key is
+    // one written before the judge's identity was recorded -- and that absence is itself the fact
+    // that made the `M1` pair unreadable rather than a missing nicety.
+    ...(judge === undefined ? {} : { judge }),
   };
 }
 

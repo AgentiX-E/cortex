@@ -34594,3 +34594,99 @@ The instrument is `tools/judge-regrade.mjs`, which re-judges recorded answers `-
 ### 13.311.4 Dispatched, not read
 
 Two dispatches, one per M1 arm, `mode=regrade`, `passes=5`, `population=preference`, `limit=500`: 29 questions × 5 passes × 2 arms = 290 judgments. The reading is not in this registration; §13.312 will carry it, and until then **nothing in §13.310 may be read as "arm B is worse on preference questions"**. What §13.310 establishes is the size and the location of the gap, and where it is not.
+
+## 13.312 The preference gap was the instrument: three silent substitutions in the judge
+
+§13.311 dispatched two re-grades and predicted what each of four readings would mean. This section carries what came back, and it is not one of the four: **the two re-grades did not run the judge that graded the artifacts**, so `J0`–`J3` were never tested. What the round produced instead is a defect in the campaign's instrument that is larger than the effect the campaign was measuring.
+
+### 13.312.1 The reading
+
+Two dispatches, `mode=regrade`, `passes=5`, `population=preference`, `limit=500`, one per `M1` arm. 29 preference questions per arm, 145 judgments per arm.
+
+| run | arm | artifact said correct | flips over 5 passes | agreed with the artifact | majority re-grade | direction |
+| --- | --- | --- | --- | --- | --- | --- |
+| `42428350939` | B (`deepseek-v4-pro`) | 13 / 29 | **0 / 29 = 0.0%** | 19 / 29 | **23 / 29** | `re-grade-only` 10 |
+| `42428353518` | A (`deepseek-flash`) | 23 / 29 | 1 / 29 = 3.4% | 28 / 29 | 22 / 29 | `artifact-only` 1 |
+
+Read at face value this says the artifacts were wrong about arm B by ten questions and about arm A by one — the artifacts' own judge being strict on B and, by one question, lenient on A. §13.311 would then have been answered in the direction of explanation 1 ("arm B's answers are worse"), inverted: B is not worse, the judge was. That was the reading taken for one round, and it is wrong.
+
+### 13.312.2 What the audits actually ran
+
+Both jobs print their whole environment block before the first step, and it says:
+
+```
+CORTEX_LLM_MODEL: deepseek-chat
+MODE: regrade
+PASSES: 5
+POPULATION_FLAG: --preference-only
+```
+
+`CORTEX_LLM_MODEL` is `cortex-ai`'s profile variable (`packages/cortex-ai/src/profile.ts`), read by `resolveLlmProfile` in the other generation path. The factory these tools called — `createLlmFromEnv` — resolves its model from `DEEPSEEK_MODEL`, with `CORTEX_READER_MODEL` as the declaration's fallback. Neither name is `CORTEX_LLM_MODEL`. The `model` input of `judge-audit.yml` was therefore decoration: **every judge audit ever dispatched graded with the declaration's default model**, whatever the dispatch said, because an unset variable is not an error.
+
+Three defects, and each one is invisible in every number the tools printed:
+
+| # | defect | consequence |
+| --- | --- | --- |
+| 1 | the judge was built by `createLlmFromEnv`, the **reader** factory, while `run-ablation.ts` and `regrade-partial.ts` both call `createJudgeFromEnv` | four callers, two instruments. The reader factory also **refuses** a route-scoped `DEEPSEEK_THINKING`, which both `M1` arms were dispatched under (`memoryArmConfig.reader.thinkingRoutes = [multi-session, temporal]`) — so on the two artifacts the campaign is arguing about it either threw or graded something else |
+| 2 | the workflow named the model in a variable the factory does not read | the re-grade graded with `deepseek-chat` while the artifacts were graded by `deepseek-v4-pro` and `deepseek-flash` |
+| 3 | `TEMPERATURE` was never set in the audit job | `withTemperature` was never applied, so the judge ran at the provider's default temperature while every artifact it re-read had been graded at `0` |
+
+The artifacts are not blameless either, and this is the deeper half: **`createJudgeFromEnv` takes its identity from the reader**, deliberately, and its own docblock defends the choice on the grounds that a judge on a different model "would make this campaign's numbers incomparable to its own history". The argument is right about one arm over time and wrong about two arms at one time: when the treatment being compared *is* the reader, a judge that follows the reader is a judge that moves with the treatment. `M1` compared `deepseek-flash` against `deepseek-v4-pro` and, on the 29 questions whose golds are criteria rather than answers, compared two judges to each other.
+
+### 13.312.3 The status of `J0`–`J3`
+
+| id | claim | status |
+| --- | --- | --- |
+| `J0` | the preference flip rate is higher than the answer-gold rate | **unestablished.** The measured preference flip rate is 0.0% on B and 3.4% on A — not higher than the answer-gold rate, but measured on a judge the artifacts did not use, so it is a reading about `deepseek-chat` rather than about the instrument under test |
+| `J1` | at least half the preference gap is instability | **unestablished**, and the measurement points away from it: five passes with 0 and 1 flips is a stable instrument. A stable instrument can still be wrong, which is `J2`'s question |
+| `J2` | consistent but not valid | **unestablished as stated.** What was observed is neither instability nor the paper's paradox but a third thing: two *models* disagreeing 10 times in 29 on identical bytes, each stably |
+| `J3` | `T` is lower on preference | **not computed.** `T` = retest × gold agreement, and the gold-agreement term requires a judge whose identity is known |
+
+None of the four is refuted. All four are unmeasurable with the instrument that produced the reading, which is a different verdict and has to be stated as one.
+
+### 13.312.4 What survives from §13.310
+
+The measurements of the **answers** survive, because they never consulted a judge:
+
+* the two arms' answers on the preference questions differ (Jaccard 0.372, no pair above 0.75);
+* length is not the mechanism (arm B's median is 649 characters against arm A's 954, and the ten questions run both ways);
+* the gap is located in `IE` and concentrated in preference golds — 29 of 500 questions, 5.8% of the dataset.
+
+What does **not** survive is the size of the preference gap itself. `79.3%` against `44.8%` are two numbers from two judges, so their difference is a statement about `deepseek-flash` versus `deepseek-v4-pro` as graders as much as about the readers that produced the answers. §13.310's sentence "the gap is real and its location is preference" now reads: **the answers differ, and how much of the difference a judge credits is a further question that had never been separated from it.**
+
+### 13.312.5 The finding that replaces the hypothesis
+
+Swap the judge on identical bytes and 10 of 29 preference verdicts move: **34.5 points**, on the 5.8% of the dataset whose verdict is entirely the judge's opinion. On the other five capabilities the same swap would move almost nothing, because `exact`, `numeric` and `structural` decide most verdicts without asking a model — which is why the effect is concentrated exactly where the campaign was looking and why it looked like a capability difference.
+
+Two properties make this a measurement rather than a suspicion. It is **not variance**: five passes at each judge produced 0 and 1 flips, so both judges are reproducible and they reproducibly disagree. And it is **not the golds**: all 29 questions reach the judge channel on both arms (no numeric gate firing), so both readings are about the same 29 prompts.
+
+The consequence for the campaign is larger than the preference column. Every cross-dispatch comparison in this repository was produced by runs whose judges were their own readers, so **the judge was a treatment variable in all of them**. Within one dispatch the ablation delta is unaffected — one process, one judge, both sides — and that is the number §10.1 exists to publish. But "arm A of dispatch 1 versus arm B of dispatch 2", which is what requirement 12's evidence is made of, carries the confound wherever the two arms' readers differ and their verdicts are decided by a model.
+
+### 13.312.6 The repair, in three parts
+
+**One factory.** `judge-regrade.mjs` and `judge-audit.mjs` now build their judge with `createJudgeFromEnv`, the factory the runs themselves use. Four callers, one instrument.
+
+**One variable, one role.** `CORTEX_JUDGE_MODEL` pins the judge, independent of the reader, and `resolveJudgeIdentity` reports which of the two it used:
+
+| `source` | meaning | comparable across arms? |
+| --- | --- | --- |
+| `'reader'` | no dispatch pinned a judge; it followed the arm's reader | no — the arm *is* the reader |
+| `'pinned'` | `CORTEX_JUDGE_MODEL` named it | yes, when both artifacts name the same value |
+| absent | the artifact predates the field | reconstructable only from two environments |
+
+The variable is not `DEEPSEEK_MODEL`, which names the reader: pinning a judge by repointing the reader would change the thing under test, which is the defect this section is about arriving by a different road. Its errors name `CORTEX_JUDGE_MODEL`, because an error that names the variable an operator did not set is the same class of substitution.
+
+**One source of truth for a re-reading.** `tools/judge-identity.mjs` reads `memoryArmConfig.judge` (falling back to `.reader` for older artifacts) and fills the judge's provider, model and temperature from it, so a re-grade describes the artifact's judge **by construction** rather than by an operator remembering. A dispatch can still name a different judge — "what would `deepseek-chat` say about arm B's answers" is a legitimate and useful measurement — but the two identities are printed side by side, `matchesArtifact` is recorded in the reading's own JSON, and a mismatch prints a warning that the reading is about a judge rather than a correction of an artifact.
+
+`measure-models.yml` is deliberately untouched: it uses `CORTEX_LLM_*` throughout and builds its reader with `resolveLlmProfile`, so its variables are correct for *its* factory. The defect was one file mixing two conventions, and the repair is a guard rather than a rename: the audit job prints the resolved judge before spending credits.
+
+### 13.312.7 The criteria for the next round
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `J4` | re-grading arm B's 29 preference answers with **its own** judge (`deepseek-v4-pro`, temperature 0, thinking disabled, judge transport) reproduces the artifact: at least 26 of 29 verdicts agree, and the correct count is 13 ± 1 | agreement below 26 — which would mean the artifact's judge was something else again, and the identity recorded in it is not the identity that produced it |
+| `J5` | under one pinned judge, the `M1` preference difference is under 5 of 29 | a difference of 10 or more that survives a common judge: the gap is then a real capability difference and §13.310's reading stands |
+| `J6` | pinning the judge does not move a **within-dispatch** ablation delta by more than one question | a delta that moves, which would mean the judge is interacting with the feature flag rather than with the answers |
+| `J7` | the absolute preference accuracy moves by **more** than 5 points when the judge is swapped, which is the finding this section states | a swap that moves it by less, which would make `deepseek-v4-pro` and `deepseek-chat` interchangeable graders and put the 10-question difference down to the specific answers rather than to the judges |
+
+`J4` is the one that decides whether this section's explanation is complete. If the artifact reproduces, the three substitutions account for the whole discrepancy and the `M1` pair has to be re-read under a pinned judge before requirement 12's evidence means anything. If it does not, then the artifact's own judge was a fourth unknown and the campaign's oldest number — the `M1` accuracy pair itself — has to be rebuilt rather than reinterpreted.

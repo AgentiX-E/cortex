@@ -20,9 +20,9 @@
  * commit whose message was about documentation.
  */
 import { describe, it, expect } from 'vitest';
-import { createLlmFromEnv, resolveReaderIdentity } from '../llm-factory.js';
+import { createLlmFromEnv, resolveJudgeIdentity, resolveReaderIdentity } from '../llm-factory.js';
 import { toMemoryArmConfig } from '../bench-memory-arm.js';
-import { formatAblationReport } from '../report.js';
+import { formatAblationReport, type MemoryArmConfig } from '../report.js';
 import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
 
 const GATE = {
@@ -39,6 +39,55 @@ const GATE = {
   relevanceUnits: 'turn',
   evidenceTurnsPerRecord: 256,
 } as const;
+
+/**
+ * A report whose only interesting field is the configuration line.
+ *
+ * Extracted when §13.312 added a second identity to that line: a `formatAblationReport` call needs
+ * eleven fields that no assertion here reads, and a second copy of them would be a second thing to
+ * update whenever the report shape moves.
+ */
+function reportWith(memoryArmConfig: MemoryArmConfig): string {
+  const metrics = {
+    total: 0,
+    correct: 0,
+    accuracy: 0,
+    abstentionRate: 0,
+    abstentionCorrectRate: 0,
+    abstentionAwareAccuracy: 0,
+    perCapability: {},
+  } as never;
+  return formatAblationReport({
+    dataset: 'fixture',
+    questionCount: 0,
+    baseline: { name: 'reference-pipeline', metrics },
+    feature: { name: 'cortex-memory', metrics },
+    ablation: {
+      feature: 'cortex-memory',
+      baselineAggregate: { min: 0, max: 0, avg: 0, median: 0 },
+      featureAggregate: { min: 0, max: 0, avg: 0, median: 0 },
+      delta: 0,
+      pValue: Number.NaN,
+      significant: false,
+      effectSize: Number.NEGATIVE_INFINITY,
+      baselineConfidence: { lower: 0, upper: 0 },
+      featureConfidence: { lower: 0, upper: 0 },
+      mcnemarPValue: 1,
+      mcnemarSignificant: false,
+      discordant: { baselineCorrectFeatureIncorrect: 0, baselineIncorrectFeatureCorrect: 0 },
+      discordantQuestions: {
+        baselineCorrectFeatureIncorrect: [],
+        baselineIncorrectFeatureCorrect: [],
+      },
+      baselineMetrics: metrics,
+      featureMetrics: metrics,
+      featureCorrect: [],
+      perCapability: {},
+    } as never,
+    generatedAt: '1970-01-01T00:00:00.000Z',
+    memoryArmConfig,
+  });
+}
 
 describe('resolveReaderIdentity', () => {
   it('names the shipped defaults when the environment says nothing', () => {
@@ -129,46 +178,8 @@ describe('the reader reaches the artifact', () => {
   });
 
   it('renders the identity on the config line a reader of the Markdown actually sees', () => {
-    const metrics = {
-      total: 0,
-      correct: 0,
-      accuracy: 0,
-      abstentionRate: 0,
-      abstentionCorrectRate: 0,
-      abstentionAwareAccuracy: 0,
-      perCapability: {},
-    } as never;
     const line = (reader: ReturnType<typeof resolveReaderIdentity> | undefined): string =>
-      formatAblationReport({
-        dataset: 'fixture',
-        questionCount: 0,
-        baseline: { name: 'reference-pipeline', metrics },
-        feature: { name: 'cortex-memory', metrics },
-        ablation: {
-          feature: 'cortex-memory',
-          baselineAggregate: { min: 0, max: 0, avg: 0, median: 0 },
-          featureAggregate: { min: 0, max: 0, avg: 0, median: 0 },
-          delta: 0,
-          pValue: Number.NaN,
-          significant: false,
-          effectSize: Number.NEGATIVE_INFINITY,
-          baselineConfidence: { lower: 0, upper: 0 },
-          featureConfidence: { lower: 0, upper: 0 },
-          mcnemarPValue: 1,
-          mcnemarSignificant: false,
-          discordant: { baselineCorrectFeatureIncorrect: 0, baselineIncorrectFeatureCorrect: 0 },
-          discordantQuestions: {
-            baselineCorrectFeatureIncorrect: [],
-            baselineIncorrectFeatureCorrect: [],
-          },
-          baselineMetrics: metrics,
-          featureMetrics: metrics,
-          featureCorrect: [],
-          perCapability: {},
-        } as never,
-        generatedAt: '1970-01-01T00:00:00.000Z',
-        memoryArmConfig: toMemoryArmConfig(GATE, undefined, undefined, reader),
-      });
+      reportWith(toMemoryArmConfig(GATE, undefined, undefined, reader));
 
     expect(line(identity)).toContain(
       '`reader=deepseek:deepseek-chat@api.deepseek.com/thinking=disabled/temp=default`',
@@ -293,5 +304,96 @@ describe('§13.306 the declared deadline on the rendered line', () => {
       resolveReaderIdentity({ TEMPERATURE: '0', CORTEX_READER_TIMEOUT_MS: '600000' }),
     );
     expect(rendered).toContain('/temp=0/deadline=600000`');
+  });
+});
+
+/**
+ * §13.312: the artifact must name the judge, and say whether it was chosen or inherited.
+ *
+ * ## What the `M1` pair cost
+ *
+ * Two arms, two artifacts, one question — did the stronger reader answer better? — and the judge
+ * that decided it was each arm's own reader, because `createJudgeFromEnv` takes its identity from
+ * the reader on purpose ("a judge on a different model would make this campaign's numbers
+ * incomparable to its own history"). On the 29 preference questions, whose golds are criteria rather
+ * than answers, one judge rejected 10 that the other accepted. The pair was read as a 34.5-point
+ * capability gap for a round; it was an instrument swap.
+ *
+ * ## Why the field has three states rather than two
+ *
+ * `source: 'reader'` is comparable **within** a dispatch (the ablation delta is unaffected — one
+ * process, one judge, both sides) and not **across** dispatches, because the arm is the reader.
+ * `source: 'pinned'` is comparable both ways. An artifact with no `judge` block predates the
+ * distinction and cannot be compared across arms at all without reconstructing two environments.
+ * Three states, three different claims, and only the first field of the block can tell them apart.
+ */
+describe('§13.312 the judge reaches the artifact, and says where it came from', () => {
+  const reader = resolveReaderIdentity({});
+
+  it('projects the judge into the arm config, with the source that makes it comparable', () => {
+    const judge = {
+      providerId: 'deepseek' as const,
+      model: 'deepseek-chat',
+      temperature: 0,
+      source: 'pinned' as const,
+    };
+    expect(toMemoryArmConfig(GATE, undefined, undefined, reader, undefined, judge).judge).toEqual(
+      judge,
+    );
+  });
+
+  it('records a judge that followed its reader as following it, not as pinned', () => {
+    // The distinction the whole section turns on. A run that pinned nothing is still a valid
+    // measurement *within* itself, and saying so is what lets a later reader refuse to compare it
+    // with a different arm instead of assuming the two are comparable.
+    const followed = resolveJudgeIdentity({});
+    expect(followed.source).toBe('reader');
+    expect(
+      toMemoryArmConfig(GATE, undefined, undefined, reader, undefined, {
+        providerId: followed.providerId,
+        model: followed.model,
+        temperature: followed.temperature,
+        source: followed.source,
+      }).judge,
+    ).toEqual({
+      providerId: 'deepseek',
+      model: 'deepseek-chat',
+      temperature: null,
+      source: 'reader',
+    });
+  });
+
+  it('omits the field entirely when the caller recorded no judge', () => {
+    // The rule every other block in the type follows: an artifact that predates the field must read
+    // as predating it, not as a run that declined to say.
+    expect('judge' in toMemoryArmConfig(GATE, undefined, undefined, reader)).toBe(false);
+  });
+
+  it('renders a pinned judge on the config line, and stays silent while it follows the reader', () => {
+    const pinned = reportWith(
+      toMemoryArmConfig(GATE, undefined, undefined, reader, undefined, {
+        providerId: 'deepseek',
+        model: 'deepseek-chat',
+        temperature: 0,
+        source: 'pinned',
+      }),
+    );
+    expect(pinned).toContain('judge=deepseek:deepseek-chat/temp=0`');
+    // A run that pinned nothing already states its judge through the reader clause, and an
+    // unconditional clause would move the bytes of every archived line to repeat it — the rule the
+    // `endpoint=override` clause follows one field up.
+    const followed = reportWith(
+      toMemoryArmConfig(GATE, undefined, undefined, reader, undefined, {
+        providerId: 'deepseek',
+        model: 'deepseek-chat',
+        temperature: null,
+        source: 'reader',
+      }),
+    );
+    expect(followed).not.toContain('judge=');
+    // And the same absence for an artifact that predates the block.
+    expect(reportWith(toMemoryArmConfig(GATE, undefined, undefined, reader))).not.toContain(
+      'judge=',
+    );
   });
 });

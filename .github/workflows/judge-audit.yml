@@ -28,9 +28,9 @@ on:
         default: '120'
         type: string
       model:
-        description: 'DeepSeek model id — the same judge the artifact was graded with, or the audit measures a different one'
+        description: 'Judge to grade with, as `provider:model` or a bare model id. EMPTY (the default) means the artifact records it: the re-grade then describes the judge that graded the artifact, which is the only reading this workflow was built for. Naming one is a judge-sensitivity experiment, not a correction, and the reading says so'
         required: false
-        default: 'deepseek-chat'
+        default: ''
         type: string
       mode:
         description: 'false-accept (perturb answers the judge accepted, measure bias) or regrade (re-ask about the same answers, measure variance). The two readings are different quantities and are never summed'
@@ -74,7 +74,17 @@ jobs:
       # passed — which is the one failure mode a configuration mistake produces here that a reader
       # could mistake for the audit finding nothing.
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      CORTEX_LLM_MODEL: ${{ inputs.model }}
+      # `CORTEX_JUDGE_MODEL`, not `CORTEX_LLM_MODEL`. The latter is `cortex-ai`'s profile variable
+      # (`packages/cortex-ai/src/profile.ts`), read by `resolveLlmProfile` in the *other* generation
+      # path; the factory this workflow builds its judge from reads the reader's selection and its own
+      # pin, and neither is `CORTEX_LLM_MODEL`. So every audit dispatched before this line existed
+      # graded with the default model whatever the input said -- an unset variable is not an error,
+      # which is exactly why the mistake survived three rounds of readings (§13.312).
+      #
+      # Left empty, `tools/judge-identity.mjs` fills it from the artifact's own
+      # `memoryArmConfig.judge` (or `.reader` for artifacts written before the two were separate), so
+      # the re-grade cannot describe a judge the artifact did not use.
+      CORTEX_JUDGE_MODEL: ${{ inputs.model }}
       GH_TOKEN: ${{ github.token }}
       # Two readings of one artifact, never one run of both: `false-accept` perturbs answers to price
       # the judge's bias, `regrade` re-asks about unchanged answers to price its variance. Adding them
@@ -113,6 +123,9 @@ jobs:
             exit 1
           fi
           echo "credential present (length ${#DEEPSEEK_API_KEY}); value never printed"
+          # The judge's name is not a credential, so it is printed. An unnamed judge is the defect
+          # §13.312 registers, and the one place it can be caught before spending credits is here.
+          echo "judge requested: ${CORTEX_JUDGE_MODEL:-<the judge this artifact recorded>}"
 
       - name: Fetch the artifact under audit
         run: |

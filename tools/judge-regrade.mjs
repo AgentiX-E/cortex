@@ -31,6 +31,34 @@
  * No reader, no retrieval, no prompt building, no embedding. Every request this makes is a judge
  * request over a string that is already in the artifact, which is what makes the flip rate
  * attributable to the judge alone.
+ *
+ * ## Why the judge is rebuilt from the artifact rather than from the dispatch (§13.312)
+ *
+ * The first two readings this tool produced were taken with **a different judge than the one that
+ * produced the artifacts**, and nothing said so. Three independent causes, each silent:
+ *
+ *  * the judge was built by `createLlmFromEnv`, the *reader* factory. `run-ablation.ts` and
+ *    `regrade-partial.ts` both call `createJudgeFromEnv`, so two of the four callers were measuring
+ *    an instrument the other two had never measured. The reader factory also **refuses** a
+ *    route-scoped `DEEPSEEK_THINKING` -- which both M1 arms were dispatched under -- so on the two
+ *    artifacts this campaign is arguing about, it either threw or graded something else;
+ *  * the workflow passed the model in `CORTEX_LLM_MODEL`, which is `cortex-ai`'s profile variable.
+ *    The factory reads `DEEPSEEK_MODEL`. Every audit ever dispatched therefore graded with
+ *    `deepseek-chat`, whatever the input said, because an unset variable is not an error;
+ *  * `TEMPERATURE` was never set, so `withTemperature` was never applied and the judge ran at the
+ *    provider's default temperature while every artifact it re-read was graded at `0`.
+ *
+ * The consequence is not hypothetical. Re-reading arm B's 29 preference answers with
+ * `deepseek-chat` at the default temperature rescued 10 of them that `deepseek-v4-pro` at `0` had
+ * rejected, with 0 flips across 5 passes and 0 unjudged verdicts in the artifact -- a 34.5-point
+ * move on the one question type whose verdict is entirely the judge's opinion. That was read as
+ * "the artifact was wrong about arm B", and it was an instrument swap.
+ *
+ * So the identity is no longer an input somebody may forget. `memoryArmConfig.reader` records the
+ * provider, the model and the temperature a run was graded at, and this tool reads it back. A
+ * dispatch may still name a different judge -- that is a legitimate experiment about the *judge* --
+ * but it can no longer do so by accident, because the two identities are printed side by side and
+ * the reading records whether they match.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -38,10 +66,17 @@ import process from 'node:process';
 
 import {
   clearJudgeCache,
-  createLlmFromEnv,
+  createJudgeFromEnv,
   createLlmJudge,
   toJudgeQuestionType,
 } from '../packages/cortex-eval/dist/index.js';
+import {
+  JUDGE_MODEL_VARIABLE,
+  artifactJudgeIdentity,
+  judgeEnvFor,
+  judgeMatchesArtifact,
+  selectionFor,
+} from './judge-identity.mjs';
 
 function flag(name) {
   const index = process.argv.indexOf(name);
@@ -223,12 +258,33 @@ async function main() {
     console.error('no gradable questions: the artifact has no answer with a gold');
     return 1;
   }
+  const identity = artifactJudgeIdentity(report);
+  const judgeEnv = judgeEnvFor(report, process.env);
+  const matches = judgeMatchesArtifact(report, judgeEnv);
   console.log(`artifact        ${artifactPath}`);
   console.log(`questions       ${sources.length}`);
   console.log(`passes          ${passes}`);
   console.log(
     `recorded correct ${sources.filter((source) => source.recorded).length} / ${sources.length}`,
   );
+  // Two lines rather than one, because the reading is about the difference between them: a single
+  // "judge model" line would be the same shape that let three versions of this identity disagree
+  // without any of them being wrong (§13.312).
+  console.log(
+    `artifact judge  model=${selectionFor(identity.provider, identity.model) ?? 'unrecorded'} ` +
+      `temperature=${identity.temperature ?? 'unrecorded'}`,
+  );
+  console.log(
+    `re-grade judge  model=${judgeEnv[JUDGE_MODEL_VARIABLE] ?? '(provider default)'} ` +
+      `temperature=${judgeEnv.TEMPERATURE ?? 'default'} ` +
+      `matchesArtifact=${matches === null ? 'unknown' : String(matches)}`,
+  );
+  if (matches === false) {
+    console.log(
+      'WARNING: this reading describes a different judge than the one that graded the artifact. ' +
+        'It is a measurement of that judge, not a correction of the artifact.',
+    );
+  }
 
   if (process.argv.includes('--plan-only')) {
     // The reviewable form: no key, no request, and the same list a real run would grade.
@@ -240,7 +296,7 @@ async function main() {
     return 0;
   }
 
-  const judge = createLlmFromEnv(process.env);
+  const judge = createJudgeFromEnv(judgeEnv);
   const grade = createLlmJudge(judge);
   const verdicts = sources.map(() => []);
   for (let pass = 0; pass < passes; pass += 1) {
@@ -290,6 +346,22 @@ async function main() {
       artifact: artifactPath,
       generatedAt: new Date().toISOString(),
       passes,
+      // The instrument, in the reading's own file. A flip rate without it is a number about an
+      // unnamed model at an unnamed temperature, which is what §13.312 had to reconstruct from a
+      // job log before it could be read at all.
+      judge: {
+        artifact: {
+          provider: identity.provider,
+          model: identity.model,
+          temperature: identity.temperature,
+        },
+        regrade: {
+          selection: judgeEnv[JUDGE_MODEL_VARIABLE] ?? null,
+          temperature: judgeEnv.TEMPERATURE ?? null,
+          thinking: 'disabled',
+        },
+        matchesArtifact: matches,
+      },
       reading,
     };
     writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`);

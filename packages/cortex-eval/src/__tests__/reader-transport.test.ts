@@ -10,7 +10,12 @@ import {
   resolveRetryBudgetMs,
   resolveTimeoutMs,
 } from '../reader-transport.js';
-import { createJudgeFromEnv, createLlmFromEnv, resolveReaderIdentity } from '../llm-factory.js';
+import {
+  createJudgeFromEnv,
+  createLlmFromEnv,
+  resolveJudgeIdentity,
+  resolveReaderIdentity,
+} from '../llm-factory.js';
 import { DEFAULT_RETRY_BUDGET_MS, DEFAULT_RETRY_TIMEOUT_MS } from '@agentix-e/cortex-ai';
 
 /**
@@ -423,6 +428,88 @@ describe('§13.306 the judge and reader entry points are constructible from a ba
     expect(typeof reader.complete).toBe('function');
     expect(resolveReaderIdentity({ ...env, CORTEX_READER_TIMEOUT_MS: '600000' }).deadlineMs).toBe(
       600_000,
+    );
+  });
+});
+
+/**
+ * §13.312: the judge is a property of the comparison, not of the arm.
+ *
+ * ## Why pinning is not a convenience
+ *
+ * `createJudgeFromEnv` takes its identity from the reader, and its docblock defends that choice on
+ * the grounds that a judge on a different model "would make this campaign's numbers incomparable to
+ * its own history". The argument is right about history and wrong about **arms**: when the treatment
+ * being compared *is* the reader, a judge that follows the reader is a judge that moves with the
+ * treatment. M1's two arms were graded by `deepseek-v4-pro` and `deepseek-flash` respectively, and
+ * on the 29 preference questions -- whose golds are criteria, so the verdict is entirely the judge's
+ * opinion -- one judge rejected 10 answers the other accepted. That was read as a capability
+ * difference between the readers for a round.
+ *
+ * So the identity becomes pinnable, and this block is the pin: a variable that names the judge,
+ * independent of the reader, with the reader's identity as the documented default so every archived
+ * artifact's judge stays exactly where it was.
+ *
+ * ## Why the assertions are about resolution and refusals rather than about requests
+ *
+ * A construction cannot show which model a client would send; the python half of this instrument
+ * (`tools/__tests__/test_judge_regrade.py`) reads the request bodies against a stub endpoint for that.
+ * What can be shown here is that the pin is *read*, that it moves the provider as well as the model,
+ * and that a pin naming a provider without a credential fails at construction rather than at the
+ * first verdict — which is the one failure a run cannot afford.
+ */
+describe('§13.312 the judge identity can be pinned, and pins the provider too', () => {
+  const env = { DEEPSEEK_API_KEY: 'test-key', DEEPSEEK_MODEL: 'deepseek-chat' };
+
+  it('follows the reader when nothing pins it, and says so', () => {
+    const identity = resolveJudgeIdentity(env);
+    expect(identity.source).toBe('reader');
+    expect(identity.model).toBe('deepseek-chat');
+    expect(identity.providerId).toBe('deepseek');
+  });
+
+  it('takes the pinned model over the reader it would otherwise follow', () => {
+    const identity = resolveJudgeIdentity({ ...env, CORTEX_JUDGE_MODEL: 'deepseek-v4-pro' });
+    expect(identity.source).toBe('pinned');
+    expect(identity.model).toBe('deepseek-v4-pro');
+    // The reader is untouched: the pin is about the instrument, not about the arm.
+    expect(resolveReaderIdentity({ ...env, CORTEX_JUDGE_MODEL: 'deepseek-v4-pro' }).model).toBe(
+      'deepseek-chat',
+    );
+  });
+
+  it('reads a provider prefix out of the pin, so a judge can be another vendor', () => {
+    const identity = resolveJudgeIdentity({ ...env, CORTEX_JUDGE_MODEL: 'zhipu:glm-4.6' });
+    expect(identity.providerId).toBe('zhipu');
+    expect(identity.model).toBe('glm-4.6');
+  });
+
+  it('treats a blank pin as no pin, like every other reader variable', () => {
+    // A workflow input left empty arrives as `''`; parsing it as a model would name a judge called
+    // the empty string and fail every call with a 400 rather than running the default.
+    const identity = resolveJudgeIdentity({ ...env, CORTEX_JUDGE_MODEL: '   ' });
+    expect(identity.source).toBe('reader');
+    expect(identity.model).toBe('deepseek-chat');
+  });
+
+  it('builds the pinned judge against the pinned provider, and refuses without its credential', () => {
+    // The behavioural half: the pin reaches the *constructor*, not only the resolver. A run that
+    // pinned `zhipu:` and kept reading `DEEPSEEK_API_KEY` would send a DeepSeek key to Zhipu and get
+    // a 401 on every question of a 500-question pass.
+    expect(() => createJudgeFromEnv({ ...env, CORTEX_JUDGE_MODEL: 'zhipu:glm-4.6' })).toThrow(
+      /ZHIPU_LLM_API_KEY is required/,
+    );
+    expect(() =>
+      createJudgeFromEnv({ ...env, CORTEX_JUDGE_MODEL: 'zhipu:glm-4.6', ZHIPU_LLM_API_KEY: 'zk' }),
+    ).not.toThrow();
+  });
+
+  it('refuses a pin whose prefix is not a provider, naming the variable the operator set', () => {
+    // The message is the assertion. `readModelSelection` can be asked to read either variable, and an
+    // error that reported `DEEPSEEK_MODEL` here would send an operator to set a variable that has
+    // nothing to do with the failure -- one silent substitution repaired by introducing another.
+    expect(() => createJudgeFromEnv({ ...env, CORTEX_JUDGE_MODEL: 'openai:gpt-4o' })).toThrow(
+      /^CORTEX_JUDGE_MODEL="openai:gpt-4o" names "openai" before its first colon/,
     );
   });
 });
