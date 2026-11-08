@@ -13,7 +13,6 @@ import {
   attestationOf,
   currentOf,
   describe as describeSource,
-  unrun,
   verdictOf,
   type Criterion,
   type Resolvers,
@@ -346,12 +345,24 @@ describe('the table is well formed', () => {
     );
   });
 
-  it('lists the rows without a value rather than leaving them to be discovered', () => {
-    const missing = unrun();
-    for (const criterion of missing) {
-      expect(criterion.source.kind).toBe('unrun');
-    }
+  it('names the rows with no source at all, and there are fewer of them than rows', () => {
+    // `unrun` used to be an exported convenience for this. It was deleted rather than kept: only this test
+    // called it, the checker filters on `verdict.status` because a source can now be `stale` as well, and an
+    // export whose only caller is a test is an orphan export by this project's own census rule.
+    const missing = CRITERIA.filter((criterion) => criterion.source.kind === 'unrun');
     expect(missing.length).toBeLessThan(CRITERIA.length);
+
+    // The exact list, because "some rows are unrun" is a statement that cannot regress. Naming them means a
+    // row quietly losing its source is a failure here rather than a row that stops appearing in a report.
+    //   D1 -- no artifact: the A3 extraction-fidelity verdict lives in a review page, not in evidence/.
+    //   M1 -- no pair on the current configuration: the only reader ablation predates the feature aggregate.
+    //   P1 -- never measured: the portability ratio has a design and no run.
+    expect(missing.map((criterion) => criterion.id)).toEqual(['D1', 'M1', 'P1']);
+    for (const criterion of missing) {
+      if (criterion.source.kind !== 'unrun') throw new Error('unreachable: filtered on the kind');
+      // A reason of one word is the same as no reason; these strings are what a reader is left with.
+      expect(criterion.source.reason.length).toBeGreaterThan(60);
+    }
   });
 
   it('keeps a row for every mechanism this repository shipped, including the null results', () => {

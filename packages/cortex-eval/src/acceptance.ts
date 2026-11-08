@@ -1247,8 +1247,3 @@ export function describe(source: Source): string {
       return 'unrun';
   }
 }
-
-/** The criteria that currently have no value, so the gap is a list rather than an impression. */
-export function unrun(criteria: readonly Criterion[] = CRITERIA): readonly Criterion[] {
-  return criteria.filter((criterion) => criterion.source.kind === 'unrun');
-}
