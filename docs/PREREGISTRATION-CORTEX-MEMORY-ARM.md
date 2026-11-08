@@ -34427,3 +34427,170 @@ That is the same defect as `E0`, one field over, and it is registered as `E6`: t
 
 The Python side withholds it; the TypeScript side never carried it, because `costEfficiency` was designed with four fields and a count is not one of them. The two readers therefore agree on the sentence as well as on the number.
 
+
+---
+
+## 13.309 A quota that runs out is one question's loss, and the ladder's measurements were being discarded
+
+### 13.309.1 The run, and the 1.7% that cost everything
+
+`42381702081` is `P1`, the second-provider arm: `glm-4.6` through Zhipu, 500 questions, four workers, a 340-minute budget. It ran 5 h 42 min and ended `failure` with **no report at all**. The record it left is a partial measurement that cannot be graded, and the whole of it is one call:
+
+```text
+LLM request failed: 429 Too Many Requests — {"error":{"code":1302,
+  "message":"您的账户已达到速率限制，请您控制请求频率"}}
+  — not retried (attempts-exhausted) after 9 attempt(s) and 160 s was left
+```
+
+The transport accounting from the same run, taken minutes earlier, reads `attempts: 1613, rateLimited: 28`. **Twenty-eight of sixteen hundred requests** — 1.7% — and one call collected nine of them in a row, which is more than its ladder allowed.
+
+The counting matters because it rules out the obvious repair: the arm was not throttling itself, the pacing floor was 6,000 ms, and 1.7% is not a quota problem at the process level. It is one question's weather, and it destroyed 500.
+
+### 13.309.2 What the catch classified, and the family it left out
+
+§13.306 taught this layer that an exhaustion which happens **on every attempt** is a fact about the endpoint rather than about the system under test, and that such a loss is one entry scored as unanswered rather than the end of the pass. That repair classified exactly one shape:
+
+| class | predicate | disposition |
+| --- | --- | --- |
+| moderation refusal | `ProviderContentRefusal` | record `''`, continue |
+| deadline exhaustion | every attempt reached `timeoutMs × 0.99` | record `''`, continue, count against a 2% ceiling |
+| everything else | — | **throw** |
+
+A retry ladder that ends with every attempt answered `429` satisfies **neither** of the first two: `429` returns immediately, so no attempt reaches the deadline. It fell into "everything else" and ended the pass. The two are one family — the endpoint's allowance ran out, on the clock or on the rate — and the predicate is structurally identical: *did every attempt fail for the same external reason?*
+
+`rateLimitExhaustion` is therefore the twin of `deadlineExhaustion`, reading the same `retryExhausted` object with `rateLimited === attempts` in place of the duration test. The mixed case still throws: one attempt throttled and one dead on the wire has two causes and neither explains it, and classifying it per question would let a broken network be reported as a busy provider.
+
+### 13.309.3 The defect underneath: the ladder's measurements were thrown away with the outcome
+
+The first implementation of the classifier matched nothing, and the reason is a real defect one layer down rather than a mistake in the predicate.
+
+`retryableFetchWithStats` has two ways to end badly. A transport failure is **thrown**, with a `RetryExhaustion` attached. An exhausted retry count is **returned** — the loop hands back the last response and a `RetryRefusal` whose reason is `attempts-exhausted`. `post` then sees `!res.ok`, renders the refusal into a message, and raises a bare `Error`. The `RetryOutcome` — attempts, retried, rate-limited, and inside it the per-attempt durations — went out of scope with the stack frame.
+
+So the adapter could not attach an exhaustion object even if it wanted to, and reconstructing one there was refused: `attemptsMs`, `timeoutMs` and `elapsedMs` live only in the retry loop, and filling them with placeholders would fabricate the three numbers a reader would then reason from.
+
+`RetryOutcome.exhausted` now carries the measured object on the `attempts-exhausted` path, and the adapter attaches it with the same `withExhaustion` helper the thrown path uses.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `Q0` | a call whose every attempt was `429` is recorded as one entry, and the pass continues | a pass that dies on the first throttled question |
+| `Q1` | that entry is counted against **one** ceiling with deadline losses, not a second ceiling of its own | a pass that could lose 4% while each counter stayed under its own bound |
+| `Q2` | a mixed exhaustion still throws | a run that reports a network fault as a quota |
+| `Q3` | the record names which kind it was, and the advice names the knob that answers it | a message that sends a reader to `CORTEX_READER_TIMEOUT_MS` over a quota |
+| `Q4` | `lostToTransport(kind?)` partitions rather than overlaps: the parts sum to the whole | a third kind arriving without a name |
+
+`Q3` is not cosmetic. §13.306's message named `CORTEX_READER_TIMEOUT_MS` because that was the only kind; advice that is wrong half the time is worse than none, because it is a dispatch someone makes twice.
+
+### 13.309.4 One dead branch removed rather than covered
+
+`benchmark.ts`'s refusal branch read `err instanceof ProviderContentRefusal ? err.providerCode : null`. The guard above it is `err is ProviderContentRefusal`, so the `null` arm was unreachable **by construction** — it showed up as the last uncovered branch in the file, which is what an unreachable arm looks like when it is written as a fallback. Removed. A branch that cannot execute is not defence in depth; it is a coverage hole that reads like safety.
+
+---
+
+## 13.310 The M1 gap, decomposed — and the retraction of `R5`
+
+### 13.310.1 A marginal count cannot say what happened to the questions it counted
+
+§13.307.2 concluded from two numbers that the strong reader's loss was a **scorer-contract defect**: `exact` verdicts fell from 175 to 134 while accuracy fell from 90.60% to 85.80%, so the matcher had "stopped seeing" arm B's answers. The arithmetic is right and the inference is wrong, and the way it is wrong is worth a registration of its own.
+
+Both artifacts carry the per-question records, so the two arms can be joined on `questionId`. That join says:
+
+| | A right | A wrong |
+| --- | --- | --- |
+| **B right** | 419 | 10 |
+| **B wrong** | 34 | 37 |
+
+Of the **53** questions where arm A matched exactly and arm B did not, **arm B was still scored correct on 47**. The judge rescued them. The migration was real — `exact` did fall 41 on the margin — and it cost **six** questions net, not twenty-four.
+
+The marginal readings are not wrong; they answer a different question. *"How many verdicts left by the exact door"* is a property of one arm. *"What happened to the questions that moved"* requires both. A decomposition read off marginal counts is a decomposition of nothing.
+
+### 13.310.2 The 24 questions, by cause
+
+| cause | questions | share | what it is |
+| --- | --- | --- | --- |
+| preference questions | **10** | 42% | the judge disagrees with itself about a gold that is a criterion |
+| `exact` migration not rescued | **6** | 25% | arm B's answer shape moved a question to the judge and the judge said no |
+| genuine answer-quality difference | **8** | 33% | arm B counted wrong, dropped a qualifier, or declined |
+
+The last row is not a defect and must not be reported as one: `gold 2` against arm B's `1` on a question whose own `rawOutput` enumerates two bicycles, `gold 99` against `100`, `gold Dark Souls 3 DLC` against `Dark Souls 3`. Those are answers that are wrong.
+
+**§13.307.2's `R5` is withdrawn.** Its claim was that normalising the answer shape before the deterministic matchers would restore arm B's `exact` count to arm A's and recover at least four of the 4.70 points. The migration is 53 questions and the judge already rescued 47 of them, so the ceiling on that repair is **6 questions, 1.2 points** — a quarter of what the registration predicted, and it would not have been the mechanism that mattered.
+
+### 13.310.3 The preference column: 5.8% of the dataset, 42% of the gap
+
+| population | questions | A correct | B correct | A only | B only |
+| --- | --- | --- | --- | --- | --- |
+| preference golds | **29** | 23 (79.3%) | **13 (44.8%)** | 10 | 0 |
+| everything else | 471 | 430 (91.3%) | 416 (88.3%) | 24 | 10 |
+
+The preference gold is written as `The user would prefer responses that acknowledge and build upon their existing efforts…` — a description of what a good answer should do, not an answer. It can never be matched, so it always reaches the judge, and the judge is the only instrument on it.
+
+Two explanations were tested and **both were refuted**:
+
+| hypothesis | test | result |
+| --- | --- | --- |
+| length bias — the judge prefers long answers | arm A's answer length against arm B's on the ten questions A won | B was **shorter** on two, longer on one, within 8% on one. No direction |
+| noise — the same content judged twice | Jaccard overlap of the two arms' answers on those ten | **0.372** mean, none above 0.75. The answers genuinely differ |
+
+So the honest state is that **the cause of the preference gap is not established**, and §13.311 registers how to establish it. What is established is its size, which is the part an accuracy number cannot show.
+
+### 13.310.4 The instrument, and why it must be able to refuse
+
+`tools/arm-delta-decomposition.py` performs the join, the matrix, the migration count and the preference split. It reimplements `metrics.ts`'s four-channel decision in Python, which makes it a second opinion that can be wrong — so for every verdict derivable without a judge it compares its own answer with the artifact's `correct` and **raises** on any disagreement. A decomposition over two graders that disagree is a number about nothing, and the failure without the check is silent: the table would look exactly like the last one.
+
+On the two M1 artifacts it reproduces the numbers above, and both arms' self-checks agree on all 500 questions each. Its `judgeDependence` line — 50.4% for arm A, 57.2% for arm B — is the share of each arm this tool cannot verify, and it is printed because a decomposition over a mostly-judged arm is a statement about the judge rather than about the arm.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `D0` | a re-derived verdict that disagrees with the artifact raises, naming the question | a table printed over a disagreement |
+| `D1` | the join is on `questionId`, so a re-ordered artifact is the same comparison | a resort read as a regression |
+| `D2` | two arms over different question sets are refused | a comparison of two datasets reported as a comparison of two arms |
+| `D3` | the migration count reports how many the judge rescued, not only how many moved | a migration reported as a loss |
+| `D4` | the preference split is computed, because the gold's opening is a property of the dataset | a preference question counted with the rest |
+
+### 13.310.5 What this retracts, stated plainly
+
+- §13.307.2's sentence *"it is evidence that this pipeline has a contract defect: the answer shape a reasoning model produces is outside what the scorer accepts without a judge"* is **wrong**. The scorer accepted 47 of the 53.
+- §22.48.6's conclusion that the same-backbone comparison against Reglos now carries a shape condition is **withdrawn**: the shape effect is 1.2 points at its ceiling, not a plausible explanation of a 3–5 point difference.
+- The requirement-12 finding **stands and is sharper**: a stronger reader scored **4.70 points worse** on this harness, and the largest single cause is a question type where the judge is the entire instrument. That is not a harness bug in the matcher; it may be one in the rubric.
+
+The lesson is the one this campaign keeps paying for: **a change was inferred from a distribution rather than measured on the pairs.** §13.306's method — build the object that makes the claim checkable — was available and was not used, and the cost was a round of work aimed at the wrong mechanism.
+
+---
+
+## 13.311 The remaining explanation for the preference gap, and how to measure it
+
+### 13.311.1 Why this is now the only path left
+
+§13.310 refuted length bias and refuted same-content-different-verdict, and confirmed that the two arms' answers on the ten questions arm A won genuinely differ (Jaccard 0.372). Two explanations survive:
+
+1. **arm B's answers are worse on preference questions** — they address the criterion less well, and 44.8% is the true reading;
+2. **the judge's verdict on a preference question is unstable** — the same gold and answer can be scored either way, so 79.3% against 44.8% is a comparison of two draws from a noisy instrument rather than two abilities.
+
+These are distinguishable with one measurement, and it is not the one that was attempted: **re-judge the same recorded answers several times and count how often the verdict moves.** The first explanation predicts a low flip rate at both arms' accuracies; the second predicts a flip rate large enough to manufacture a 34.5-point difference.
+
+### 13.311.2 What the literature says the answer might be, and what it says about the instrument
+
+Two 2026 audits make this a measurement with a published prior rather than a fishing expedition.
+
+**`All Verdicts are Not Equal`** (arXiv:2610.12083, AACL IJCNLP 2026 Main) stress-tests six frontier judges across four benchmarks, five prompt formats, two presentation orders, three temperatures and ten repetitions per condition. Three findings bear directly here: verdicts change **across identical replications at temperature zero**; the most deterministic judge achieves perfect consistency by trivially repeating incorrect verdicts, agreeing with ground truth **51%** of the time; and **reliability is item-specific rather than model-level**. The last is the one that matters for this campaign: a judge-level agreement figure cannot say whether *this* question type is the unstable one.
+
+**`Reliability without Validity`** (arXiv:2606.19544) evaluates 21 judges from nine providers over ~541,000 judgments and reports two numbers that cut in opposite directions. Exact agreement overstates quality by **33–41 pp** against Cohen's κ, and high test–retest reliability (**>0.95**) coexists with severe position bias (**>0.10**) in judges already in production — a judge that repeats the same mistake on every pass reads as perfectly reliable. But **verbosity bias is small (<0.011)** under a single pairwise rubric, which is the published form of what §13.310 measured directly: length was not the mechanism.
+
+Neither paper measures a pointwise judge on preference golds, which is the cell this section fills. What they supply is the metric and the discipline: `T`, the trustworthy verdict rate, is the joint probability that a verdict is reproducible, order-invariant and accurate. **This harness's judge is pointwise** — one gold, one answer, no order — so the order dimension is not applicable and `T` degenerates to the product of the other two, which this section can measure.
+
+### 13.311.3 The criteria
+
+The instrument is `tools/judge-regrade.mjs`, which re-judges recorded answers `--passes` times and reports the flip rate by capability; it now also takes `--preference-only`, so the population whose golds are criteria can be measured apart from the population whose golds are answers. `judge-audit.yml` gains a `population` input forwarded to both the plan step and the reading step through one derived variable, because two steps that derived it separately could grade different populations into one artifact.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `J0` | the flip rate over preference golds is **higher** than over answer golds, on the same judge, the same arm and the same five passes | preference flip rate at or below the answer-gold rate |
+| `J1` | if `J0` holds, at least half of the preference gap is attributable to instability: the 34.5-point difference is larger than one flip-rate's worth of noise could produce on a stable instrument | a gap that survives the measured flip rate |
+| `J2` | the judge's **test–retest agreement is high while its agreement with the gold on preference questions is low** — the consistency-without-validity paradox, measured on this repository's own judge rather than borrowed from the paper | an unstable judge (low retest) or a stable-and-correct one (high both) |
+| `J3` | `T` = retest agreement × gold agreement, reported for the preference population and for the rest, is **lower on preference** | `T` equal across the two populations |
+
+`J2` is the one that decides which repair is available. A judge that is stable and wrong needs a **better rubric** — the preference golds have to be graded against stated criteria rather than by asking an LLM whether an answer "reflects" a description. A judge that is unstable needs **more passes and a majority verdict**, because a single draw from a noisy instrument cannot separate two arms whose true difference is smaller than the noise. The two repairs cost different things and only one of them is right, which is why the round that has the reading must not skip it.
+
+### 13.311.4 Dispatched, not read
+
+Two dispatches, one per M1 arm, `mode=regrade`, `passes=5`, `population=preference`, `limit=500`: 29 questions × 5 passes × 2 arms = 290 judgments. The reading is not in this registration; §13.312 will carry it, and until then **nothing in §13.310 may be read as "arm B is worse on preference questions"**. What §13.310 establishes is the size and the location of the gap, and where it is not.

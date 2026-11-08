@@ -250,3 +250,50 @@ def test_non_preference_only_is_the_complement(tmp_path: Path) -> None:
 def test_no_filter_flag_keeps_every_gradable_question(tmp_path: Path) -> None:
     out = run('--artifact', str(preference_artifact(tmp_path)), '--plan-only')
     assert gradable_count(out.stdout) == 2
+
+
+def test_the_majority_verdict_and_its_direction(tmp_path: Path) -> None:
+    """A flip rate says the verdict moved; it cannot say which way the artifact was wrong.
+
+    On the M1 preference population this distinction decides a published conclusion: arm B's
+    artifact recorded 13 of 29 correct and the re-grade disagreed with 11 of them, while the five
+    passes agreed with each other. Without a direction those eleven questions are consistent with
+    "the artifact was too strict" (B is really 24/29) and with "the artifact was too lenient"
+    (B is really 2/29), and the two readings support opposite conclusions about requirement 12.
+    """
+    script = """
+      import { tally, majority } from './tools/judge-regrade.mjs';
+      const rows = [
+        // Re-graded true every time, artifact said false: the artifact was strict.
+        { questionId: 'a', capability: 'IE', recorded: false, verdicts: [true, true, true] },
+        // Re-graded false every time, artifact said true: the artifact was lenient.
+        { questionId: 'b', capability: 'IE', recorded: true, verdicts: [false, false, false] },
+        // Unstable, majority true.
+        { questionId: 'c', capability: 'IE', recorded: false, verdicts: [true, true, false] },
+        // Unstable with no majority: a tie is not a verdict.
+        { questionId: 'd', capability: 'IE', recorded: true, verdicts: [true, false] },
+      ];
+      const reading = tally(rows);
+      console.log(JSON.stringify({
+        regradedCorrect: reading.regradedCorrect,
+        artifactOnlyCorrect: reading.artifactOnlyCorrect,
+        regradeOnlyCorrect: reading.regradeOnlyCorrect,
+        ties: reading.ties,
+        tieIsFalse: majority([true, false]),
+      }));
+    """
+    out = subprocess.run(
+        ['node', '--input-type=module', '-e', script],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr
+    reading = json.loads(out.stdout)
+    # `a` and `c` are correct on the majority; `b` is not; `d` is a tie and a tie is not a verdict.
+    assert reading['regradedCorrect'] == 2
+    assert reading['artifactOnlyCorrect'] == 1
+    assert reading['regradeOnlyCorrect'] == 2
+    assert reading['ties'] == 1
+    assert reading['tieIsFalse'] is False
