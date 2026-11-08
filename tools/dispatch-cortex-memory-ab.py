@@ -805,11 +805,18 @@ def main(argv: list[str] | None = None) -> int:
     # after, it would describe the next run rather than this one, and the gate §13.220.5 installed
     # would be checking a record nobody had written yet.
     declared = departures(inputs)
-    # The oracle switch joins the declaration, and it is declarable without being an input: the
-    # gate's `idle` list reports a declared field that did not move rather than failing on it, so
-    # naming the evidence source here is a record rather than a claim about the payload.
+    # The oracle switch joins the declaration, and the name is the **artifact's** field rather than
+    # the switch's: `readout-arm-run.py --registration` refuses a departure that resolves to no
+    # field, and `42500412709` was refused for exactly that -- the first oracle dispatch declared
+    # `oracleEvidence`, which is a repository variable's name and appears nowhere in the artifact.
+    # `evidenceSource` is the field the gate compares and the one a reader can look at, so declaring
+    # it is a record of what the artifact will say rather than a claim about the payload.
+    #
+    # Declared only when the condition is on. When it is off the artifact reads `corpus`, which is
+    # the registered value, so a declaration would be the "names a field this run did not move"
+    # case the gate reports as an intention.
     oracle = oracle_switch()
-    declared = sorted({*declared, *(("oracleEvidence",) if oracle == "1" else ())})
+    declared = sorted({*declared, *(("evidenceSource",) if oracle == "1" else ())})
     declare_departures(declared)
     print(f"declaring departures: {declared if declared else 'none'}")
     # Before the dispatch and unconditionally, for the reason the declaration is: the workflow reads

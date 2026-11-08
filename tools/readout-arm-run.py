@@ -4222,6 +4222,30 @@ DISPATCH_FIELD_ALIASES = {
     'cortex_memory_thinking': ('reader.thinking', 'reader.thinkingRoutes'),
 }
 
+# Conditions the registration implies without a dispatch input of its own.
+#
+# §10.3 registers an arm; not everything that changes what its number *means* is one of the arm's
+# fields. `evidenceSource` is the pool each question was graded against, and no dispatch input names
+# it: the oracle condition is a repository variable, because the workflow sits at 24 of GitHub's 25
+# `workflow_dispatch` inputs and `test_dispatch_inputs.py` refuses a workflow that reaches the limit
+# (`docs/MEASURE-ORACLE-CEILING.md`). So the gate had nothing to compare it against, and run
+# `42500412709` is what that costs: a 500-question artifact graded against gold sessions passed the
+# twenty field comparisons it had and would have reached *"this run is the registered configuration,
+# field for field, so its numbers are quotable as the arm's"* -- the one verdict that publishes a
+# reader ceiling as the arm's score. The gate refused the run for a different reason (the dispatcher
+# declared `oracleEvidence`, a name that resolves to no artifact field), which is why this table is
+# keyed on the **artifact's** field rather than on the switch's name: the declaration must name
+# something a reader can look at.
+#
+# Absence reads as the registered value, and that is a claim with a date: `toMemoryArmConfig` writes
+# `evidenceSource` on every run since `0ed3541`, and the oracle transform cannot produce an artifact
+# that omits it, so an artifact without the field predates it and graded the shipped corpus. An
+# artifact produced under the oracle condition can therefore never be silent about it, which is the
+# property the whole entry buys.
+REGISTERED_CONDITIONS: dict[str, tuple[str, str]] = {
+    'evidenceSource': ('evidenceSource', 'corpus'),
+}
+
 ABSENT = '<-absent->'
 
 
@@ -4528,6 +4552,14 @@ def registration_section(report: dict, departed: list[str]) -> tuple[str, int]:
     (`limit`, `ablation_runs`) is not the arm's configuration. The **presence** input (`cortex_memory`)
     is the block itself. Each is counted in the header rather than dropped, because a comparison that
     silently covers less than it appears to is the shape §13.191 found in the pair tool.
+
+    A **condition** (`REGISTERED_CONDITIONS`) is the fourth category and the newest: something the
+    registration implies, that no dispatch input carries, and that changes what the number means
+    rather than what the run did. It is compared unconditionally and declareable like an input, so
+    an artifact produced under one cannot pass as the arm's -- which is the defect the first oracle
+    run found. It is *not* a place for a field someone forgot to register: a condition that ever
+    acquires a dispatch input must be deleted from here rather than kept, or the same value would be
+    compared twice under two names.
     """
     config = _arm_config(report, 'report')
     flat, _runtime = _flatten_config(config)
@@ -4585,10 +4617,17 @@ def registration_section(report: dict, departed: list[str]) -> tuple[str, int]:
             return expected is not actual
         return _value_text(expected) != _value_text(actual)
 
+    # The conditions, after the inputs. They are compared on every artifact rather than only when
+    # declared, because that is the whole difference between a condition and a departure: a reader
+    # who did not ask for an oracle run is exactly the reader who must be told they are holding one.
+    for name, (path, registered) in sorted(REGISTERED_CONDITIONS.items()):
+        actual = flat.get(path, ABSENT)
+        compared.append((name, path, registered, registered if actual is ABSENT else actual))
+
     moved = [(name, path, expected, actual) for name, path, expected, actual in compared if differs(expected, actual)]
     undeclared = [entry for entry in moved if entry[0] not in departed]
     idle = [name for name in departed if not any(entry[0] == name for entry in moved)]
-    unknown = [name for name in departed if name not in inputs]
+    unknown = [name for name in departed if name not in inputs and name not in REGISTERED_CONDITIONS]
 
     lines: list[str] = []
     lines.append(
@@ -4604,9 +4643,9 @@ def registration_section(report: dict, departed: list[str]) -> tuple[str, int]:
 
     if unknown:
         lines.append(
-            f'  refused: --departs names {unknown}, which the dispatch table does not send. A '
-            'departure that resolves to nothing declares nothing, which is the `--set` defect '
-            '(§13.192.7.3) applied to the declaration.'
+            f'  refused: --departs names {unknown}, which neither the dispatch table sends nor the '
+            'artifact records as a condition. A departure that resolves to nothing declares '
+            'nothing, which is the `--set` defect (§13.192.7.3) applied to the declaration.'
         )
         return '\n'.join(lines), len(unknown)
 

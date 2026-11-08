@@ -240,4 +240,7 @@ class TestTheOracleSwitch:
         monkeypatch.setenv(module.ORACLE_VARIABLE, '1')
 
         assert module.main([]) == 0
-        assert declared and declared[0] == ['oracleEvidence'], declared
+        # The artifact's field, not the repository variable's name: a declaration that names
+        # no field is refused by the gate (`42500412709`), so the record has to point at
+        # something a reader can look up in the artifact.
+        assert declared and declared[0] == ['evidenceSource'], declared

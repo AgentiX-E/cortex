@@ -383,7 +383,10 @@ class TestWhatIsCounted:
     def test_the_header_states_every_population_it_did_not_compare(self) -> None:
         module = _module()
         text, _ = module.registration_section(report(REAL_41222844945), [])
-        assert "registration: 20 field(s) compared" in text
+        # Twenty inputs the arm records, plus the one condition: `evidenceSource` is compared on
+        # every artifact although no dispatch input carries it, which is what makes a gold-sessions
+        # run visible to a reader who did not ask for one.
+        assert "registration: 21 field(s) compared" in text
         # Two since §13.327: `maxPromptCharsByRoute` is derived on an artifact that carries the
         # scalar, exactly as `maxPromptChars` is derived on one that carries the map. Counted rather
         # than dropped, which is what the header exists to do.
@@ -492,3 +495,81 @@ class TestTheDefaultReportCarriesTheVerdict:
         that has nothing to declare."""
         module = _module()
         assert module.congruence_note({}) == ""
+
+
+def registered_config(module) -> dict:  # noqa: ANN001 - the tool module, imported by path
+    """The registered configuration as an artifact would hold it, with nothing else moved.
+
+    Built by reading the dispatch table rather than by editing the `41222844945` fixture: that
+    artifact departs on six fields the registration has since moved, so a test that started from it
+    would measure those six rather than the condition it names.
+    """
+    inputs = module.dispatch_inputs()
+    config = {
+        **REAL_41222844945,
+        "ask": inputs["cortex_memory_ask"],
+        "turnCutMarker": "none",
+        "askRoutes": ["multi-session"],
+        "reader": registered_reader(module),
+        "relevanceSignal": inputs["cortex_memory_relevance"],
+        "promptContract": inputs["cortex_memory_prompt_contract"],
+    }
+    registered_room(config, inputs["cortex_memory_max_prompt_chars"])
+    return config
+
+
+class TestTheRegisteredConditions:
+    """The fourth category: what the registration implies and no dispatch input carries.
+
+    Run `42500412709` is why this exists. It graded 500 questions against their gold sessions, and
+    the gate's other twenty comparisons all agreed, because the evidence source is not one of the
+    arm's dispatch inputs -- it is a repository variable the workflow sits too close to the input
+    ceiling to add. So the one artifact whose number means something different from the arm's was
+    the one artifact the gate would have called "the registered configuration, field for field".
+    """
+
+    def test_a_condition_that_moved_is_undeclared_until_it_is_named(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "evidenceSource": "gold-sessions"}
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 1, text
+        assert 'UNDECLARED  evidenceSource: "corpus" (registered) -> "gold-sessions" (ran)' in text
+
+    def test_declaring_it_licenses_the_run_as_an_experiment(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "evidenceSource": "gold-sessions"}
+        text, failures = module.registration_section(report(config), ["evidenceSource"])
+        assert failures == 0, text
+        assert 'declared    evidenceSource: "corpus" (registered) -> "gold-sessions" (ran)' in text
+
+    def test_an_artifact_without_the_field_reads_as_the_shipped_corpus(self) -> None:
+        """Absence is a dated claim, not an assumption: `toMemoryArmConfig` has written the field on
+        every run since `0ed3541`, and the oracle transform cannot produce an artifact that omits
+        it. So an artifact without it predates the field and graded the corpus -- and an oracle
+        artifact can never be silent about being one."""
+        module = _module()
+        config = registered_config(module)
+        assert "evidenceSource" not in config
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 0, text
+        assert "evidenceSource" not in text
+
+    def test_the_switch_name_is_still_refused_because_it_resolves_to_nothing(self) -> None:
+        """`oracleEvidence` is the repository variable's name and appears in no artifact. Declaring
+        it was the first oracle dispatch's defect: a declaration that names no field licenses
+        nothing, and the gate is right to refuse it rather than to read it as "whatever moved"."""
+        module = _module()
+        config = {**registered_config(module), "evidenceSource": "gold-sessions"}
+        text, failures = module.registration_section(report(config), ["oracleEvidence"])
+        assert failures == 1, text
+        assert "--departs names ['oracleEvidence']" in text
+
+    def test_declaring_the_condition_does_not_change_what_is_compared(self) -> None:
+        """A declaration licenses a difference; it must not shrink the table. The header is the
+        only place a reader can see how much was checked, so it is compared across the two calls."""
+        module = _module()
+        config = {**registered_config(module), "evidenceSource": "gold-sessions"}
+        silently, _ = module.registration_section(report(config), [])
+        declared, _ = module.registration_section(report(config), ["evidenceSource"])
+        header = lambda text: text.splitlines()[0]  # noqa: E731
+        assert header(silently) == header(declared)
