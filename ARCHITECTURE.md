@@ -193,7 +193,7 @@ to be retracted:
 - **A run records its own configuration**, byte for byte, and the record is checked against the
   dispatcher's inputs (`tools/arm-config-record.py`). Two hand-written documents once drifted from the
   run together and confirmed each other.
-- **A claim that was withdrawn stays written down** ([`RETRACTIONS.md`](RETRACTIONS.md)). Nine published
+- **A claim that was withdrawn stays written down** ([`RETRACTIONS.md`](RETRACTIONS.md)). Ten published
   numbers have been corrected so far; a project that republishes only its current figures is
   indistinguishable from one that never changed its mind.
 - **A difference smaller than the endpoint's own movement is not a result** (`tools/quantify-endpoint-noise.mjs`).

@@ -25,6 +25,7 @@ Two conventions:
 | 7 | Supermemory scores **97% on LongMemEval-S** | **Not comparable** — that figure is Recall@20, not answer accuracy | A retrieval metric printed in a table of answer accuracies. The row is kept and labelled | pre-registration §13.332.1 |
 | 8 | The gap to `Maximem Synap` is **20–23 questions / 4.0–4.6 points** | **20–24 questions / 4.0–4.8 points** | The upper end was computed against a 91.00% draw that no longer exists; the two current draws are 91.60% and 90.80%, so the larger gap is 4.8 points and 24 questions | `cortex-docs` 01 §6.5, 04 (round 41) |
 | 9 | The README's quick start is a working example | it never compiled: **4 type errors** (an object literal where `MemoryValue` was required, an undeclared `embedding`, a `VectorHit[]` passed where `MemoryValue[]` was required) | The front page was never executed. It is now compiled by `tools/manual-examples.mjs` on every build | this round, `cortex-docs` 04 (round 41) |
+| 10 | The headline is **91.60% (458/500)** | **91.20% (456/500)** for the registered configuration, and the 48,460-character form of it had never been run at 500 questions until this round | 91.60 came from a byte-identical repeat run (`41860773768` / `41970746908`) of a configuration that predates the `retrieval-anchored` ranking and the `evidence-blocks-unsourced` contract. The number was never wrong, it was **superseded**, and every table that quoted it as "ours" was comparing a 2026-10-31 system against 2026-11 rivals | this round, `docs/MEASURE-ORACLE-CEILING.md` §4 |
 
 ## What this list is for
 

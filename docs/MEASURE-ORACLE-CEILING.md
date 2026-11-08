@@ -83,18 +83,37 @@ sourced subset becomes its own denominator and the run reports both — it does 
 
 ## 4. Judgement, registered before the run
 
-Let `S` = the shipped score on the same 500 questions (currently **458/500 = 91.60%**, runs
-`42452904894` / `42467392736`) and `C` = the feature accuracy of the oracle run.
+Let `S` = the registered configuration's shipped score on the same 500 questions, and `C` = the
+feature accuracy of the oracle run (the ceiling). The difference `C − S` is retrieval's loss; `100 − C`
+is the reader's.
+
+**`S` is not the published headline, and the correction matters.** The number this project has quoted
+as its own — 91.60% (458/500) — belongs to a configuration that was superseded on 2026-11-07: it
+predates the `retrieval-anchored` ranking and the `evidence-blocks-unsourced` contract. The latest
+500-question run of the **registered** configuration is `42337560027`, **456/500 = 91.20%**, and its
+per-capability column (`IE 143/150, MR 99/121, KU 64/72, TR 120/127, ABS 30/30`) is the one every
+later table has been quoting. It differs from the registered form in one field: `maxPromptChars` was
+48,000 on all six routes rather than 48,460 on `multi-session`, which is 460 characters — 0.95% of one
+route's room — adopted to pay back the extra instruction text `verbatim-acts` writes. **That form has
+never been measured at 500 questions.** The control dispatch of this round measures it, so `S` becomes
+a number from this round rather than a number carried forward.
+
+The judgement is written in **questions**, not points, because the question is the unit the noise
+floor is stated in and a point-denominated threshold invites arithmetic that hides it.
 
 | # | Reading | Verdict | Consequence |
 | --- | --- | --- | --- |
-| 1 | `C ≤ 93.60%` | the reader is the binding constraint: the ceiling is within 2 points of what retrieval already delivers | **`MR` stops being the main front.** All effort moves to the reader — prompt contract, ask, second consultation. Retrieval work is re-scoped to what it costs, not what it might gain |
-| 2 | `93.60% < C < 96.00%` | both halves are large and comparable | the next four rounds split evenly, and `E1` decides which half buys more per token |
-| 3 | `C ≥ 96.00%` | retrieval is the binding constraint | the retrieval axis is re-opened with a budget, and the 48,460-character room is re-examined against `E1` |
+| 1 | `C − S ≤ 8 questions` (≤ 1.6 pp) | retrieval is nearly lossless: even the optimistic ceiling buys almost nothing over what retrieval already delivers | **`MR` stops being the main front.** Every round moves to the reader — contract, ask, second consultation, the audit. Retrieval work is re-scoped to what it costs, not what it might gain |
+| 2 | `9 – 27 questions` | inside the floor — unreadable in either direction | **do not conclude.** The registered recovery is `C3`: four repeated oracle dispatches, whose pooled paired test has the power this single draw lacks. Reading a number in this band as a verdict is the defect the floor exists to prevent |
+| 3 | `C − S ≥ 28 questions` (≥ 5.6 pp) | retrieval is the binding constraint, above the floor's 95% upper bound | the retrieval axis is re-opened with a budget: the pool, the ranking, and the 48,460-character room re-examined against `E1` |
 
-Why those thresholds: the noise floor on this arm is **17 questions / 27 at 95%**
-(`§1.37.1`), i.e. 3.4–5.4 points. A threshold closer to `S` than 2 points would be unreadable. 93.60
-is 2.0 points above `S`; 96.00 is 4.4.
+Why those bands: the noise floor on this arm is **17 questions observed, 27 at 95%** (`§1.37.1`).
+Band 1 is below the *lower* bound — a difference that small is not readable as a difference, but its
+direction is the one that survives the ceiling's optimism (both asymmetries in §2.1 inflate `C`), so a
+small `C − S` is evidence *against* retrieval being the problem even though a small negative one would
+not be evidence for anything. Band 3 is above the *upper* bound. Band 2 is the region where the honest
+answer is "repeat", and it is registered as a band rather than as a tie-break because a tie-break
+chosen after seeing the number is not a rule.
 
 **Falsifiers, and what each would refute:**
 
