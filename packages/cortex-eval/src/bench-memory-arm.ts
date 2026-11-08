@@ -171,6 +171,26 @@ export type CortexMemoryArmOptions = {
    */
   confidenceSignal: string;
   /**
+   * Whether this run grades **gold-only evidence** instead of the shipped corpus.
+   *
+   * `true` replaces every question's `context`/`sessions` with its gold sessions before the
+   * arm is called (`oracle-evidence.ts`), which turns the run's accuracy into the reader's
+   * ceiling rather than a system measurement: the difference between the ceiling and the
+   * shipped score is what retrieval lost, and the difference between the ceiling and 100%
+   * is what the reader lost. `Caura` publishes this decomposition (92.2% shipped, 94.6%
+   * oracle) and `docs/MEASURE-READING-STAGE.md` §5.2 records that this project could not.
+   *
+   * It is a *measurement mode*, not a treatment: the product is untouched, both sides see
+   * the same pool, and the artifact is marked at the top level (`dataset` gains
+   * `'+oracle'`) so its number cannot be filed beside a shipped one.
+   *
+   * Absent means `false`, and the difference is the reason this one is optional while
+   * `enabled` is not: every construction site that predates the field is a run that graded the
+   * shipped corpus, which is exactly what absence says. `toMemoryArmConfig` writes the resolved
+   * value on every run, so the artifact never has to express the default by omission.
+   */
+  oracleEvidence?: boolean | undefined;
+  /**
    * The evidence rendering the **abstention route** uses. §12.5's single variable.
    *
    * §12.4 localised the arm's loss to what the feature side presents: `b✗f✓ = 0` on every
@@ -623,6 +643,18 @@ const BUDGET_VARIABLE = 'CORTEX_MEMORY_SESSION_BUDGET';
 const SOURCE_TRUST_VARIABLE = 'CORTEX_MEMORY_SOURCE_TRUST';
 const CONFIDENCE_VARIABLE = 'CORTEX_MEMORY_CONFIDENCE';
 /**
+ * The variable naming the **evidence source** for this run: the shipped corpus, or the
+ * gold sessions alone (`oracle-evidence.ts`).
+ *
+ * Not a treatment and therefore not an arm input in the usual sense: it changes what the
+ * reader is handed, not what the product does with it, and its number is a *ceiling* rather
+ * than an accuracy. It is read here anyway, with the other arm options, because every layer
+ * that would otherwise have to carry it -- the dispatch script, the workflow, the artifact --
+ * already carries this block, and a switch read at the bench entry point could not be seen
+ * by the pre-registration guard.
+ */
+const ORACLE_EVIDENCE_VARIABLE = 'CORTEX_MEMORY_ORACLE';
+/**
  * The variable naming how many turns of evidence each record carries.
  *
  * `§13.12`'s bound. It is an environment variable rather than a constant in the
@@ -973,6 +1005,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       sessionBudget: Number.POSITIVE_INFINITY,
       sourceTrust: DEFAULT_SOURCE_TRUST,
       confidenceSignal: DEFAULT_CONFIDENCE_SIGNAL,
+      // Projected in the disabled state as well, because it is a property of the evidence
+      // rather than of the arm: a disabled run measures nothing on either pool, and
+      // `false` is the only truthful statement about which pool that was.
+      oracleEvidence: false,
       promptContract: DEFAULT_PROMPT_CONTRACT,
       ask: DEFAULT_ASK,
       evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
@@ -1009,6 +1045,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     sessionBudget: readSessionBudget(env[BUDGET_VARIABLE]),
     sourceTrust: readSourceTrust(env[SOURCE_TRUST_VARIABLE]),
     confidenceSignal: readConfidenceSignal(env[CONFIDENCE_VARIABLE]),
+    oracleEvidence: readOracleEvidence(env[ORACLE_EVIDENCE_VARIABLE]),
     promptContract: readPromptContract(env[PROMPT_CONTRACT_VARIABLE]),
     ask: readAsk(env[ASK_VARIABLE]),
     reviewPass: readReviewPass(env[REVIEW_PASS_VARIABLE]),
@@ -1108,6 +1145,39 @@ function readConfidenceSignal(raw: string | undefined): string {
     );
   }
   return value;
+}
+
+/**
+ * Read the evidence-source switch, rejecting anything unrecognised.
+ *
+ * ## Why this does not call `readToggle`
+ *
+ * `readToggle` reads an unrecognised value as off, and for a *treatment* that is the right
+ * direction: a typo runs the control arm, and the artifact says the treatment was not
+ * administered. This is not a treatment. `CORTEX_MEMORY_ORACLE=oracle` would run the
+ * shipped corpus and publish a number that a reader -- including this project's own
+ * readouts -- would file as a **ceiling**, which is the one class of number that cannot be
+ * corrected later by re-reading it. The volume in which the silently-wrong value is
+ * plausible is exactly the volume where it does the most damage.
+ *
+ * So the accepted set is `'0'`, `'1'` and the empty string (what an unfilled dispatch input
+ * actually is), and anything else throws with those three named.
+ */
+function readOracleEvidence(raw: string | undefined): boolean {
+  if (raw === undefined) return false;
+  const value = raw.trim();
+  // `''` is the unfilled input rather than a value: GitHub writes it into the environment
+  // for every input a dispatch leaves blank, and reading it as on would put the condition
+  // into every run whose dispatch predates the field.
+  if (value === '') return false;
+  if (value === '1') return true;
+  if (value === '0') return false;
+  throw new Error(
+    `${ORACLE_EVIDENCE_VARIABLE} must be '1', '0' or unset, got ${JSON.stringify(raw)}. ` +
+      'An unrecognised value is rejected rather than read as off: a run dispatched for the ' +
+      'reader ceiling would otherwise grade the shipped corpus, and a shipped score published ' +
+      'under an oracle label is a number no later re-reading can repair.',
+  );
 }
 
 /**
@@ -2273,6 +2343,12 @@ export function toMemoryArmConfig(
     // the same bytes otherwise, and this field exists because a claim of treatment nobody can check is the defect
     // the whole `featureConfig` block was added to close.
     reviewBareDecline: options.reviewBareDecline === true,
+    // The evidence source. Always present, like every field whose absence would otherwise be
+    // ambiguous: `corpus` is the state of every archived run, and it is also what a dispatch
+    // that leaves the switch blank selects -- so an artifact that spelled nothing would leave
+    // "graded the shipped corpus" and "predates the field" as the same bytes, and the one
+    // reading that matters (`'gold-sessions'`) would have no contrast on the page.
+    evidenceSource: options.oracleEvidence ? ('gold-sessions' as const) : ('corpus' as const),
     // §13.97. Always present for the reason `reviewPass` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.

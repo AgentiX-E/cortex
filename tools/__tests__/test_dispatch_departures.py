@@ -18,6 +18,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / 'tools' / 'dispatch-cortex-memory-ab.py'
 
@@ -170,3 +172,72 @@ class TestTheOrderOfOperations:
         out = capsys.readouterr().out
         assert 'declaring departures: ' in out
         assert "['model']" in out
+
+
+class TestTheOracleSwitch:
+    """The evidence-source variable, which is a repository variable rather than an input.
+
+    It cannot be a workflow input: `benchmark-cortex-memory.yml` sits at 24 of GitHub's 25
+    `workflow_dispatch` inputs and `test_dispatch_inputs.py` refuses a workflow that reaches the
+    limit, so the switch lives where `CORTEX_DECLARED_DEPARTURES` already lives -- written by the
+    dispatcher through the API, read by the job from `vars`. The tests below are about the two
+    properties that makes load-bearing: the value is never inherited, and a typo is never read as
+    the corpus.
+    """
+
+    def test_absent_means_the_shipped_corpus(self) -> None:
+        module = _module()
+        assert module.oracle_switch({}) == '0'
+
+    def test_the_empty_string_means_the_shipped_corpus(self) -> None:
+        # What an unset repository variable interpolates to in the workflow's `|| '0'`.
+        module = _module()
+        assert module.oracle_switch({module.ORACLE_VARIABLE: ''}) == '0'
+
+    def test_zero_and_one_are_the_two_states(self) -> None:
+        module = _module()
+        assert module.oracle_switch({module.ORACLE_VARIABLE: '0'}) == '0'
+        assert module.oracle_switch({module.ORACLE_VARIABLE: '1'}) == '1'
+
+    def test_a_typo_is_refused_instead_of_read_as_off(self) -> None:
+        module = _module()
+        with pytest.raises(SystemExit) as refusal:
+            module.oracle_switch({module.ORACLE_VARIABLE: 'oracle'})
+        assert module.ORACLE_VARIABLE in str(refusal.value)
+
+    def test_the_variable_is_written_on_every_dispatch(self, monkeypatch, capsys) -> None:  # noqa: ANN001
+        # The property that stops a `1` from outliving the run that asked for it: the dispatcher
+        # writes `0` even when nobody asked for anything, so a dispatch made outside this script is
+        # the only way to inherit the previous experiment's mode.
+        module = _module()
+        written: list[tuple[str, str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(
+            module,
+            'write_variable',
+            lambda name, value: written.append((name, value)) or value,
+        )
+        monkeypatch.delenv(module.ORACLE_VARIABLE, raising=False)
+
+        assert module.main(['--set', 'model=zhipu:glm-4.6']) == 0
+        assert (module.ORACLE_VARIABLE, '0') in written, written
+        assert f'{module.ORACLE_VARIABLE} = 0' in capsys.readouterr().out
+
+    def test_the_condition_is_declared_as_a_departure(self, monkeypatch) -> None:  # noqa: ANN001
+        # The artifact will say `evidenceSource: gold-sessions`; a declaration that did not name it
+        # would leave the gate's reader with a departure nobody asked for.
+        module = _module()
+        declared: list[list[str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
+        monkeypatch.setattr(module, 'declare_departures', lambda names: declared.append(names))
+        monkeypatch.setenv(module.ORACLE_VARIABLE, '1')
+
+        assert module.main([]) == 0
+        assert declared and declared[0] == ['oracleEvidence'], declared

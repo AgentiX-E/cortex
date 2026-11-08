@@ -34,6 +34,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -54,6 +55,18 @@ WORKFLOW = "benchmark-cortex-memory.yml"
 # having produced a perfectly good measurement. The gate was right; nothing had told it what to
 # expect.
 DECLARED_DEPARTURES_VARIABLE = "CORTEX_DECLARED_DEPARTURES"
+
+# The evidence source (`docs/MEASURE-ORACLE-CEILING.md`). Written on every dispatch for the reason
+# the declaration above is: it is a repository variable rather than a workflow input -- the
+# `cortex-memory` workflow sits at 24 of GitHub's 25 `workflow_dispatch` inputs and
+# `test_dispatch_inputs.py` refuses a workflow that reaches the limit -- so the only process that can
+# say what a run graded is the one choosing the dispatch.
+#
+# Always written, including the `0` that means "the shipped corpus", and the reset is the point: a
+# dispatch made outside this script would otherwise inherit the previous run's ceiling mode, and a
+# shipped score published under an oracle label is the one class of number a later re-reading cannot
+# repair. `--oracle` on the command line is the way to ask for the condition.
+ORACLE_VARIABLE = "CORTEX_MEMORY_ORACLE"
 
 # The configuration registered in `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3,
 # held constant. These values are not free parameters of this script: §10 fixed them
@@ -699,6 +712,57 @@ def departures(inputs: dict[str, str]) -> list[str]:
     return sorted(key for key in inputs if inputs[key] != INPUTS.get(key))
 
 
+def write_variable(name: str, value: str) -> str:
+    """Create, update or delete a repository variable, whichever the current state needs.
+
+    Extracted from `declare_departures` when the oracle switch needed the same three paths. The
+    paths are the ones §13.234 left half-tested: create answers 201 with a body, update answers
+    **204 with no body** (hence `allow_empty`), and delete answers 204 as well. An empty value is a
+    delete because GitHub rejects `422 Variable value cannot be empty`.
+    """
+    listing = req("GET", f"/repos/{REPO}/actions/variables?per_page=100")
+    existing = {variable.get("name") for variable in listing.get("variables", [])}
+    present = name in existing
+    if not value:
+        if present:
+            req("DELETE", f"/repos/{REPO}/actions/variables/{name}", allow_empty=True)
+        return value
+    payload = {"name": name, "value": value}
+    if present:
+        req(
+            "PATCH",
+            f"/repos/{REPO}/actions/variables/{name}",
+            payload,
+            allow_empty=True,
+        )
+    else:
+        req("POST", f"/repos/{REPO}/actions/variables", payload)
+    return value
+
+
+def oracle_switch(environ: dict[str, str] | None = None) -> str:
+    """`'1'` when this dispatch grades gold evidence, `'0'` otherwise.
+
+    Read from the dispatcher's own environment rather than from `--set`, because `--set` is checked
+    against the registered table and the table is the thing this variable is not: a `--set` key that
+    is not registered is refused, and registering it would need the workflow input the ceiling
+    forbids.
+
+    Strict on the value for the reason `readOracleEvidence` is strict in `cortex-eval`: a typo that
+    fell back to the corpus would produce a shipped score under a dispatch that asked for a ceiling.
+    """
+    raw = ((environ if environ is not None else os.environ).get(ORACLE_VARIABLE) or "").strip()
+    if raw in ("", "0"):
+        return "0"
+    if raw == "1":
+        return "1"
+    raise SystemExit(
+        f"{ORACLE_VARIABLE} must be '1' or unset in the dispatcher's environment, got {raw!r}. "
+        "An unrecognised value is refused rather than read as off, because the run it would "
+        "produce grades the shipped corpus while the dispatch asked for the reader ceiling."
+    )
+
+
 def declare_departures(names: list[str]) -> str:
     """Write the departure list where the registration gate will read it.
 
@@ -716,38 +780,11 @@ def declare_departures(names: list[str]) -> str:
     exits the process on any non-transient status and a missing variable is not an error here.
     """
     value = ",".join(names)
-    listing = req("GET", f"/repos/{REPO}/actions/variables?per_page=100")
-    existing = {variable.get("name") for variable in listing.get("variables", [])}
-    present = DECLARED_DEPARTURES_VARIABLE in existing
-    if not names:
-        if present:
-            req(
-                "DELETE",
-                f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}",
-                allow_empty=True,
-            )
-        return value
-    payload = {"name": DECLARED_DEPARTURES_VARIABLE, "value": value}
-    if present:
-        # `allow_empty` because the update path answers **204 with no body** and `json.loads('')`
-        # raises -- which is a parse failure reported as a dispatch failure, and it was: the
-        # re-dispatch of §13.234 wrote the variable, then died on `unparseable body: Expecting
-        # value: line 1 column 1`, and left a declaration describing a run that was never sent.
-        #
-        # Why this survived §13.229's "two real paths, each exercised once": the two paths that
-        # were exercised are POST (create, answers 201 with a body) and DELETE (204, already read
-        # with `allow_empty`). The third one, PATCH, was never run against the API -- and a path
-        # that is only ever reached when the variable already exists is exactly the path a fresh
-        # campaign never takes. Two agreeing paths cannot testify for a third.
-        req(
-            "PATCH",
-            f"/repos/{REPO}/actions/variables/{DECLARED_DEPARTURES_VARIABLE}",
-            payload,
-            allow_empty=True,
-        )
-    else:
-        req("POST", f"/repos/{REPO}/actions/variables", payload)
-    return value
+    # Delegated to `write_variable` so the three API paths have one implementation. The PATCH note
+    # that used to live here travels with it -- §13.234 died on `unparseable body` because the
+    # update path answers 204 with no body, and a second copy of that knowledge is a second place
+    # to lose it.
+    return write_variable(DECLARED_DEPARTURES_VARIABLE, value)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -768,8 +805,18 @@ def main(argv: list[str] | None = None) -> int:
     # after, it would describe the next run rather than this one, and the gate §13.220.5 installed
     # would be checking a record nobody had written yet.
     declared = departures(inputs)
+    # The oracle switch joins the declaration, and it is declarable without being an input: the
+    # gate's `idle` list reports a declared field that did not move rather than failing on it, so
+    # naming the evidence source here is a record rather than a claim about the payload.
+    oracle = oracle_switch()
+    declared = sorted({*declared, *(("oracleEvidence",) if oracle == "1" else ())})
     declare_departures(declared)
     print(f"declaring departures: {declared if declared else 'none'}")
+    # Before the dispatch and unconditionally, for the reason the declaration is: the workflow reads
+    # it when the job starts, and a stale `1` from a previous experiment would turn this run into a
+    # ceiling measurement nobody asked for. Written even when it is `0`.
+    write_variable(ORACLE_VARIABLE, oracle)
+    print(f"{ORACLE_VARIABLE} = {oracle}{' *' if oracle == '1' else ''}")
 
     req(
         "POST",

@@ -462,6 +462,18 @@ function renderExpansionCounts(counts: {
 }
 
 export type MemoryArmConfig = {
+  /**
+   * Which evidence the arm graded: the shipped corpus, or each question's gold sessions.
+   *
+   * The one field on this block that is not a product option, and the reason it is here
+   * rather than beside it: `'gold-sessions'` turns the run's accuracy into a reader
+   * **ceiling**, and every other number in the artifact then means something different from
+   * what it means for a shipped run -- the delta is the cognitive layer's contribution at
+   * perfect evidence, not at retrieved evidence. Optional because every archived artifact
+   * predates it; `toMemoryArmConfig` sets it on every run from now on, so `undefined` means
+   * "this artifact cannot answer the question" rather than "corpus".
+   */
+  readonly evidenceSource?: 'corpus' | 'gold-sessions' | undefined;
   /** Admission threshold handed to `decideWrite`. In `[0, 1]`. */
   readonly threshold: number;
   /**
@@ -1391,6 +1403,21 @@ export function formatAblationReport(report: AblationReport): string {
   // predates the field -- a distinction the single-line form could not draw at all.
   const memoryArm = report.memoryArmConfig;
   if (memoryArm !== undefined) {
+    // Its own line rather than a clause on the config line below, and above it rather than
+    // after: it is the only value here that changes what the NUMBER means rather than what
+    // the run did. Under `gold-sessions` the accuracy is a reader ceiling and the delta is
+    // the cognitive layer's contribution at perfect evidence. A reader who scanned the
+    // config line and missed this one would compare the two artifact kinds as if they were
+    // the same measurement.
+    if (memoryArm.evidenceSource !== undefined) {
+      lines.push(
+        `- Evidence source: \`${memoryArm.evidenceSource}\`` +
+          (memoryArm.evidenceSource === 'gold-sessions'
+            ? ' -- each question is graded against its gold sessions, so the accuracy below' +
+              ' is a reader ceiling rather than a system score'
+            : ''),
+      );
+    }
     lines.push(
       `- Memory arm config: \`threshold=${memoryArm.threshold}\`` +
         `, \`retrievalThreshold=${memoryArm.retrievalThreshold}\`` +

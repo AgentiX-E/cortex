@@ -467,6 +467,25 @@ jobs:
           # an input costs a registration, which the ceiling guard in test_dispatch_inputs.py will
           # demand be traded rather than added.
           CORTEX_MEMORY_CONFIDENCE: 'none'
+          # The evidence source (docs/MEASURE-ORACLE-CEILING.md). `1` grades every question against
+          # its gold sessions instead of the shipped corpus, which turns the run's accuracy into the
+          # reader's ceiling rather than a system score; `0` is the shipped corpus and is what every
+          # archived artifact measured.
+          #
+          # A repository variable rather than an input, and that is the input ceiling talking: this
+          # workflow sits at 24 of the 25 `workflow_dispatch` inputs GitHub accepts, and
+          # `tools/__tests__/test_dispatch_inputs.py` refuses a workflow that reaches the limit
+          # because the next registration would then be un-dispatchable. The precedent for a value
+          # that lives outside the input list is `CORTEX_DECLARED_DEPARTURES`, written by the same
+          # dispatcher through the same API and read here the same way.
+          #
+          # The cost of the trade is real and is paid by the artifact rather than by a comment: a
+          # dispatch made outside `tools/dispatch-cortex-memory-ab.py` would inherit whatever this
+          # variable holds. Two things make that visible instead of silent -- the dispatcher writes
+          # the variable on EVERY dispatch (default `0`), and the report states the resolved value
+          # on its own line (`Evidence source:`) and repeats it in `dataset` as a `+oracle` suffix.
+          # An inherited value therefore cannot produce a shipped-corpus number filed as a ceiling.
+          CORTEX_MEMORY_ORACLE: ${{ vars.CORTEX_MEMORY_ORACLE || '0' }}
           # §12.5's single variable, forwarded for the same reason as every variable
           # above: `readPromptContract` rejects an unrecognised value, so a dispatch
           # that named a rendering while this line was absent would run the baseline,

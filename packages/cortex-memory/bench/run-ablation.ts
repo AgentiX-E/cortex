@@ -92,6 +92,11 @@ import {
   cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
   describeEmbeddingCachePersist,
+  describeOracleCensus,
+  assertOracleReached,
+  oracleEvidenceDataset,
+  type OracleEvidenceCensus,
+  type OracleEvidenceDataset,
   expandMultiSessionQueries,
   fingerprintBytes,
   persistEmbeddingCache,
@@ -336,8 +341,31 @@ async function main(): Promise<void> {
   // never had. `readRestorePlanFromEnv` answers `null` for an ordinary run, so an unset variable
   // leaves every number below byte-identical to the run before it.
   const restorePlan = readRestorePlanFromEnv(process.env, (path) => readFileSync(path, 'utf8'));
-  const dataset =
+  const restricted =
     restorePlan === null ? fullDataset : restrictDatasetToPlan(fullDataset, restorePlan);
+  // §1.38.5's oracle condition, applied AFTER the restriction so its census describes the graded
+  // population rather than the file. Both arms are handed this dataset, which is what makes the
+  // condition a single variable: the two sides differ in their system, never in their evidence.
+  //
+  // `armOptions.oracleEvidence` is read from the environment by the arm's own parser, so a
+  // dispatch that leaves it blank runs the shipped corpus byte-identically to every run before it.
+  // Annotated rather than inferred: the union is the whole point of the conditional, and
+  // `OracleEvidenceDataset` is the type both the transform and the post-run check agree on.
+  const oracle: OracleEvidenceDataset | undefined = armOptions.oracleEvidence
+    ? oracleEvidenceDataset(restricted)
+    : undefined;
+  const dataset = oracle === undefined ? restricted : oracle.dataset;
+  if (oracle !== undefined) {
+    // Printed before the fingerprint line, because that line describes the FILE and this one
+    // describes the run: two runs of the same file, one shipped and one oracle, share a digest
+    // and differ in what their evidence was. The pool/shipped ratio is on the line because it is
+    // the confound this condition cannot remove -- the reader sees correct AND far less evidence.
+    // Typed at the boundary rather than passed inline: the census is what the post-run check is
+    // held to, so the one object the log prints and the one `assertOracleReached` compares are
+    // declared to be the same type here instead of meeting for the first time inside a call.
+    const census: OracleEvidenceCensus = oracle.census;
+    console.log(describeOracleCensus(census));
+  }
   if (restorePlan !== null) {
     // Printed before the fingerprint line, because the fingerprint describes the FILE and this
     // describes the run: two runs of the same file, one of 500 and one of 22, share a digest and
@@ -1044,6 +1072,18 @@ async function main(): Promise<void> {
     // would silently change what those runs measured. See `readBudgetMs`.
     ...(readBudgetMs(process.env) === undefined ? {} : { budgetMs: readBudgetMs(process.env) }),
   });
+
+  // §1.38.5's wiring proof, and it is a check on the ARTIFACT rather than on the variable.
+  //
+  // Between the transform above and this line sit the arm's own keying, the pool's per-worker
+  // factories and four repetitions. A run whose transform never reached the graded dataset -- a
+  // spread deleted at the call, a dataset replaced after the transform -- would publish a
+  // shipped-corpus score under a name that says `+oracle`, and that number would be read as a
+  // ceiling by everyone including this project's own readouts. The check is after the fact and on
+  // the field a reader reads, so it cannot pass while the two describe different evidence.
+  if (oracle !== undefined) {
+    assertOracleReached(result.report, oracle.census);
+  }
 
   // The census is already inside `result.report` -- `runCortexMemoryArm` puts it
   // there before rendering, so this file has nothing to merge. That is deliberate:

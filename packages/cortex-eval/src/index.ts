@@ -527,6 +527,19 @@ export {
 
 export { readToggle, type ReadToggleOptions } from './env-toggle.js';
 
+// The oracle-evidence condition (§1.38.5). Exported for the same reason the restore plan is:
+// `cortex-memory/bench/run-ablation.ts` is the only caller and it cannot reach this package's
+// module paths. The four names are the transform, its census type, the dataset suffix the
+// artifact check compares against, and the two helpers the entry point prints and asserts with
+// -- nothing here is exported so a test can reach it.
+export {
+  oracleEvidenceDataset,
+  describeOracleCensus,
+  assertOracleReached,
+  type OracleEvidenceCensus,
+  type OracleEvidenceDataset,
+} from './oracle-evidence.js';
+
 // §13.274's restore counterfactual. The decorator, the plan parser and the dataset restriction are
 // exported because the bench entry point in `cortex-memory` is the only caller and it cannot reach
 // into this package's module paths; the analysis reads `RestoreCall[]` off the ledger the same way.

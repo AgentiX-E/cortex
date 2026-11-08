@@ -1009,6 +1009,9 @@ describe('source trust reaches the artifact', () => {
       CORTEX_MEMORY_SOURCE_TRUST: '1',
     });
     expect(toMemoryArmConfig(options)).toEqual({
+      // The evidence source is stated on every artifact, so an exact-object assertion carries it.
+      // Its absence would mean "the artifact predates the field", which no run from now on does.
+      evidenceSource: 'corpus',
       threshold: 0.2,
       retrievalThreshold: 0.25,
       sessionBudget: null,
@@ -1525,6 +1528,7 @@ describe('runCortexMemoryArm', () => {
         evidenceTurnsPerRecord: Number.POSITIVE_INFINITY,
       });
       expect(config).toEqual({
+        evidenceSource: 'corpus',
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
@@ -1941,6 +1945,9 @@ describe('blank values from unfilled dispatch inputs', () => {
     });
     expect(options).toEqual({
       enabled: false,
+      // Projected on a disabled arm for the reason the reaches below are: it grades nothing, and
+      // "the shipped corpus" is the only truthful statement about which pool it graded nothing on.
+      oracleEvidence: false,
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: Number.POSITIVE_INFINITY,
@@ -1970,6 +1977,9 @@ describe('blank values from unfilled dispatch inputs', () => {
       CORTEX_MEMORY_SESSION_BUDGET: '',
     });
     expect(toMemoryArmConfig(options)).toEqual({
+      // The evidence source is stated on every artifact, so an exact-object assertion carries it.
+      // Its absence would mean "the artifact predates the field", which no run from now on does.
+      evidenceSource: 'corpus',
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,

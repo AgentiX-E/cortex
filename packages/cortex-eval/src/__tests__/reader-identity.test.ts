@@ -363,6 +363,25 @@ describe('§13.312 the judge reaches the artifact, and says where it came from',
     });
   });
 
+  it('states the evidence source on its own line, and marks a ceiling as one', () => {
+    // The field exists because it changes what the NUMBER means rather than what the run did: under
+    // `gold-sessions` the accuracy is a reader ceiling and the delta is the cognitive layer's
+    // contribution at perfect evidence. A reader who scanned the config line and missed it would
+    // compare the two artifact kinds as if they were the same measurement.
+    const corpus = reportWith(toMemoryArmConfig(GATE));
+    expect(corpus).toContain('- Evidence source: `corpus`');
+    expect(corpus).not.toContain('reader ceiling');
+
+    const oracle = reportWith(toMemoryArmConfig({ ...GATE, oracleEvidence: true }));
+    expect(oracle).toContain('- Evidence source: `gold-sessions`');
+    expect(oracle).toContain('is a reader ceiling rather than a system score');
+
+    // An artifact that predates the field reads as predating it, not as a run that graded the
+    // corpus: `undefined` is a different statement from `'corpus'`.
+    const { evidenceSource: _dropped, ...withoutSource } = toMemoryArmConfig(GATE);
+    expect(reportWith(withoutSource)).not.toContain('Evidence source:');
+  });
+
   it('omits the field entirely when the caller recorded no judge', () => {
     // The rule every other block in the type follows: an artifact that predates the field must read
     // as predating it, not as a run that declined to say.

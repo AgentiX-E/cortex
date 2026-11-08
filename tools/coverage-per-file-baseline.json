@@ -1172,20 +1172,20 @@
     },
     "cortex-eval/src/bench-memory-arm.ts": {
       "statements": [
-        476,
-        484
+        487,
+        495
       ],
       "branches": [
-        420,
-        431
+        430,
+        441
       ],
       "functions": [
-        90,
-        92
+        91,
+        93
       ],
       "lines": [
-        420,
-        422
+        427,
+        429
       ]
     },
     "cortex-eval/src/benchmark.ts": {
@@ -1710,6 +1710,24 @@
         35
       ]
     },
+    "cortex-eval/src/oracle-evidence.ts": {
+      "statements": [
+        49,
+        49
+      ],
+      "branches": [
+        24,
+        24
+      ],
+      "functions": [
+        8,
+        8
+      ],
+      "lines": [
+        44,
+        44
+      ]
+    },
     "cortex-eval/src/paired-flip.ts": {
       "statements": [
         61,
@@ -1964,20 +1982,20 @@
     },
     "cortex-eval/src/report.ts": {
       "statements": [
-        268,
-        269
+        270,
+        271
       ],
       "branches": [
-        299,
-        312
+        303,
+        316
       ],
       "functions": [
         36,
         36
       ],
       "lines": [
-        256,
-        257
+        258,
+        259
       ]
     },
     "cortex-eval/src/rerank-census.ts": {
