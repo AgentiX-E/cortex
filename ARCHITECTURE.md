@@ -4,7 +4,7 @@ High-level architecture of the Cortex agent memory layer: the layers, the flows 
 interfaces you extend, and — in the last two sections — exactly which parts of this design are wired
 to a measured path and which are not.
 
-For how to *use* the packages, read [`docs/USER-MANUAL.md`](docs/USER-MANUAL.md). For the reasoning
+For how to _use_ the packages, read [`docs/USER-MANUAL.md`](docs/USER-MANUAL.md). For the reasoning
 behind a specific decision, each section links the design record that argues it.
 
 ## 1. The three decisions that make this not a vector store
@@ -15,13 +15,13 @@ architecture exists to keep them separable:
 1. **What is worth keeping?** A turn becomes a memory when its estimated future utility clears a
    threshold — not when a similarity score is high. `threshold` gates the write.
 2. **What is worth answering from?** Kept evidence is re-valued at read time, and the reader may
-   decline. `retrievalThreshold` gates the answer, and it is a *different* field from `threshold`
+   decline. `retrievalThreshold` gates the answer, and it is a _different_ field from `threshold`
    because the two questions have different right answers.
 3. **Which prompt does this question deserve?** Six routes (multi-session, temporal, flat,
    knowledge-update, abstention, assistant) exist because six question shapes need different
    instructions, and a single generic prompt measurably loses on all of them together.
 4. **What does the answer cost?** The evidence room is budgeted in characters, per route, because one
-   character budget is five different *depths* on five routes (§7.4 of the manual).
+   character budget is five different _depths_ on five routes (§7.4 of the manual).
 
 Everything else — storage, model calls, embeddings — is delegated through an interface.
 
@@ -64,17 +64,17 @@ cortex-eval        the instrument, not the product: dataset types, the memory-sy
 
 The dependency edges run **downward only**: `cortex-memory` and `cortex-eval` both depend on
 `cortex-core`; `cortex-eval` cannot import the product, and the product may import `cortex-eval` for
-*types only*. That edge is what keeps the harness an instrument rather than a participant, and it is
+_types only_. That edge is what keeps the harness an instrument rather than a participant, and it is
 asserted by a test rather than trusted.
 
 ## 3. The interfaces you extend
 
-| interface | package | what a caller supplies | why it is injected rather than built |
-| --- | --- | --- | --- |
-| `LLM` | `cortex-core` | `complete(prompt, opts)`, `completeStructured(prompt, schema)` | Cortex owns no API key and makes no network call of its own |
-| `EmbeddingModel` | `cortex-core` | `embed(texts) -> Float64Array[]`, `dimension()` | Float64 output, so no float32 truncation leaks into the cognitive layer |
-| `Storage` | `cortex-core` | `put · get · del · query · transaction · close` | An in-memory object with six methods is a valid backend |
-| `MemorySystem` | `cortex-eval` | `name`, `answer`, plus optional `answerSessions` / `answerTemporal` / … | The harness routes on which optional members exist |
+| interface        | package       | what a caller supplies                                                  | why it is injected rather than built                                    |
+| ---------------- | ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `LLM`            | `cortex-core` | `complete(prompt, opts)`, `completeStructured(prompt, schema)`          | Cortex owns no API key and makes no network call of its own             |
+| `EmbeddingModel` | `cortex-core` | `embed(texts) -> Float64Array[]`, `dimension()`                         | Float64 output, so no float32 truncation leaks into the cognitive layer |
+| `Storage`        | `cortex-core` | `put · get · del · query · transaction · close`                         | An in-memory object with six methods is a valid backend                 |
+| `MemorySystem`   | `cortex-eval` | `name`, `answer`, plus optional `answerSessions` / `answerTemporal` / … | The harness routes on which optional members exist                      |
 
 `CortexMemory` is a `MemorySystem`. So is a ten-line object of your own; the harness treats them
 identically, which is how the reference pipeline and the product arm are compared in one call.
@@ -99,7 +99,7 @@ turn text
 ```
 
 Admission is where "value-driven" becomes concrete. `threshold: 0` is the identity configuration and
-is what the published arm runs, which is why the gate's *reach* is recorded in every artifact: a run
+is what the published arm runs, which is why the gate's _reach_ is recorded in every artifact: a run
 whose gate cannot close must not be read as one whose gate decided.
 
 ### 4.2 Read path (per question)
@@ -131,7 +131,7 @@ Three ordering facts are load-bearing and were each a defect once:
 
 1. **Contracts in core, engines outside.** Every backend — storage, vector, LLM, embedding — is an
    interface consumed by `cortex-core`, and concrete engines live in `cortex-storage` / `cortex-ai`.
-   That keeps core browser-safe and environment-agnostic. The *composition* of those contracts into a
+   That keeps core browser-safe and environment-agnostic. The _composition_ of those contracts into a
    runnable system lives in `cortex-memory`, which depends on none of the concrete engines.
 2. **Float64 everywhere.** Vectors are `Float64Array`; statistics use Kahan summation and Welford
    variance; decomposition is float64. No float32 truncation leaks into the cognitive layer.
@@ -141,35 +141,35 @@ Three ordering facts are load-bearing and were each a defect once:
 4. **A rule that is only written down is a rule that has already been broken once.** So each of these
    is a gate in `pnpm check`, not a paragraph in a document:
 
-| rule | enforced by |
-| --- | --- |
-| The storage root reaches no native module and no `node:` builtin | `tools/entry-guard.mjs` — a closure walk, with `./sqlite` as its positive control |
-| The `.` entry of `cortex-ai` never reaches transformers.js | the same walk, with `./local` as the positive control |
-| A bundle does not silently grow a native dependency | `tools/bundle-guard.mjs` |
-| Every public export has a caller or a documented reason | `tools/export-census.mjs` |
-| Every documented option exists, and every example compiles | `tools/manual-examples.mjs` |
-| Coverage ≥95% on each of four dimensions, per file | `tools/coverage-per-file.mjs` |
-| The browser reading is produced by a real browser | `tools/browser-reading-check.mjs` |
-| A document's quoted number still equals the number the code produces | `tools/docs-crosscheck.mjs` |
+| rule                                                                 | enforced by                                                                       |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| The storage root reaches no native module and no `node:` builtin     | `tools/entry-guard.mjs` — a closure walk, with `./sqlite` as its positive control |
+| The `.` entry of `cortex-ai` never reaches transformers.js           | the same walk, with `./local` as the positive control                             |
+| A bundle does not silently grow a native dependency                  | `tools/bundle-guard.mjs`                                                          |
+| Every public export has a caller or a documented reason              | `tools/export-census.mjs`                                                         |
+| Every documented option exists, and every example compiles           | `tools/manual-examples.mjs`                                                       |
+| Coverage ≥95% on each of four dimensions, per file                   | `tools/coverage-per-file.mjs`                                                     |
+| The browser reading is produced by a real browser                    | `tools/browser-reading-check.mjs`                                                 |
+| A document's quoted number still equals the number the code produces | `tools/docs-crosscheck.mjs`                                                       |
 
 ## Implementation status: what is wired to a measured path
 
 Not every algorithm in the layer map is on the evaluation path. This table states plainly which ones
 are load-bearing today, so no reader infers more coverage than exists.
 
-| Capability | Status | Note |
-| --- | --- | --- |
-| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **composed and armed** | `cortex-memory` is their first production caller. The pre-registered A/B that measures whether the gated composition *helps* is assembled; the dispatch is the remaining step — a pre-registration is a prediction, not a result |
-| Bitemporal facts | Implemented, tested, **composed** | Backs `answerKnowledgeUpdate`: previous-vs-current is a bitemporal query |
-| FSRS (`retrievability` / `review`) | Implemented, tested, **reached through `consolidate`** | `consolidate` has no caller, so FSRS is reachable only transitively. Stability is in days and elapsed time in milliseconds; both were once milliseconds, which made `consolidate`'s defaults delete every memory on the first run |
-| Hebbian graph (`MemoryGraph`) | Implemented, tested, **not on the eval path** | Graph recall was wired into the temporal path and removed on measurement: 77.95% → 70.87%, 15 questions broken against 6 repaired, exact McNemar p = 0.039. Closed, not pending |
-| Contradiction resolution | Implemented, tested, **not on the eval path** | — |
-| Cross-encoder reranking | Implemented, wired, **off by default** | On both retrieval paths; enabled via `CORTEX_RERANK` |
-| Recall-curve diagnostic | Implemented, wired, measured | Separates breadth from ordering. First reading: ceiling 93.02%, gain 65.12% → 2.33% across k=1→20 |
-| TD(λ) credit assignment | **Not implemented** | No eligibility traces exist in the codebase |
-| Optimal-transport distillation | **Implemented, inert** | `sinkhorn` is exported; nothing calls it |
-| Fact derivation (provenance DAG) | **Not implemented** | `Fact` records origin, trust and both time axes, so origin and as-of reconstruction are delivered. What is missing is the *edge*: a fact derived from three memories is indistinguishable from one asserted directly, except by its `source` string. A speculative `ProvenanceNode` type once stood in for this and read no code; it was deleted rather than kept as a shape without a graph, and this row is the record that it existed and why it went. The remedy is a `derivedFrom?: string[]` field on `Fact`, not a parallel table |
-| Abstention calibration (Platt / temperature) | **Not implemented** | Thresholds are fixed constants |
+| Capability                                                 | Status                                                 | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **composed and armed**            | `cortex-memory` is their first production caller. The pre-registered A/B that measures whether the gated composition _helps_ is assembled; the dispatch is the remaining step — a pre-registration is a prediction, not a result                                                                                                                                                                                                                                                                                                         |
+| Bitemporal facts                                           | Implemented, tested, **composed**                      | Backs `answerKnowledgeUpdate`: previous-vs-current is a bitemporal query                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| FSRS (`retrievability` / `review`)                         | Implemented, tested, **reached through `consolidate`** | `consolidate` has no caller, so FSRS is reachable only transitively. Stability is in days and elapsed time in milliseconds; both were once milliseconds, which made `consolidate`'s defaults delete every memory on the first run                                                                                                                                                                                                                                                                                                        |
+| Hebbian graph (`MemoryGraph`)                              | Implemented, tested, **not on the eval path**          | Graph recall was wired into the temporal path and removed on measurement: 77.95% → 70.87%, 15 questions broken against 6 repaired, exact McNemar p = 0.039. Closed, not pending                                                                                                                                                                                                                                                                                                                                                          |
+| Contradiction resolution                                   | Implemented, tested, **not on the eval path**          | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Cross-encoder reranking                                    | Implemented, wired, **off by default**                 | On both retrieval paths; enabled via `CORTEX_RERANK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Recall-curve diagnostic                                    | Implemented, wired, measured                           | Separates breadth from ordering. First reading: ceiling 93.02%, gain 65.12% → 2.33% across k=1→20                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| TD(λ) credit assignment                                    | **Not implemented**                                    | No eligibility traces exist in the codebase                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Optimal-transport distillation                             | **Implemented, inert**                                 | `sinkhorn` is exported; nothing calls it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Fact derivation (provenance DAG)                           | **Not implemented**                                    | `Fact` records origin, trust and both time axes, so origin and as-of reconstruction are delivered. What is missing is the _edge_: a fact derived from three memories is indistinguishable from one asserted directly, except by its `source` string. A speculative `ProvenanceNode` type once stood in for this and read no code; it was deleted rather than kept as a shape without a graph, and this row is the record that it existed and why it went. The remedy is a `derivedFrom?: string[]` field on `Fact`, not a parallel table |
+| Abstention calibration (Platt / temperature)               | **Not implemented**                                    | Thresholds are fixed constants                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 The published LongMemEval-S figure is produced by `cortex-eval`, which imports statistics helpers and
 one vector index from `cortex-core`. `cortex-core` is a validated algorithm library; the system under
@@ -181,11 +181,11 @@ measurement is the composition in `cortex-memory`. See
 Numbers are produced by three separate layers, and conflating them is how a project reports progress
 it does not have:
 
-| layer | what it produces | where it lives |
-| --- | --- | --- |
-| the instrument | per-question correctness, four repetitions, prompt digests, token usage | `cortex-eval` (`runBenchmark`, `runAblationReport`) |
-| the arithmetic | paired statistics, McNemar, Wilson bounds, endpoint noise, repetition instability | `cortex-eval` (`paired-*`, `variance.ts`, `judge-audit.ts`) |
-| the arm | a configuration, a dataset, a dispatch, an artifact | `cortex-memory/bench/`, `.github/workflows/benchmark-cortex-memory.yml` |
+| layer          | what it produces                                                                  | where it lives                                                          |
+| -------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| the instrument | per-question correctness, four repetitions, prompt digests, token usage           | `cortex-eval` (`runBenchmark`, `runAblationReport`)                     |
+| the arithmetic | paired statistics, McNemar, Wilson bounds, endpoint noise, repetition instability | `cortex-eval` (`paired-*`, `variance.ts`, `judge-audit.ts`)             |
+| the arm        | a configuration, a dataset, a dispatch, an artifact                               | `cortex-memory/bench/`, `.github/workflows/benchmark-cortex-memory.yml` |
 
 Two properties the instrument enforces, both because their absence produced published numbers that had
 to be retracted:
@@ -193,7 +193,7 @@ to be retracted:
 - **A run records its own configuration**, byte for byte, and the record is checked against the
   dispatcher's inputs (`tools/arm-config-record.py`). Two hand-written documents once drifted from the
   run together and confirmed each other.
-- **A claim that was withdrawn stays written down** ([`RETRACTIONS.md`](RETRACTIONS.md)). Eleven published
+- **A claim that was withdrawn stays written down** ([`RETRACTIONS.md`](RETRACTIONS.md)). Twelve published
   numbers have been corrected so far; a project that republishes only its current figures is
   indistinguishable from one that never changed its mind.
 - **A difference smaller than the endpoint's own movement is not a result** (`tools/quantify-endpoint-noise.mjs`).
@@ -223,11 +223,11 @@ docs/              USER-MANUAL.md and ARCHITECTURE.md are the published surface;
 
 ## 10. Dependencies
 
-| Concern | Choice | Rationale |
-| --- | --- | --- |
-| Linear algebra | `ml-matrix` | pure JS, Float64, Jacobi SVD, dual-environment |
-| Graph | self-implemented adjacency list | a core cognitive algorithm: full precision and determinism |
-| Embedded storage | `better-sqlite3` | synchronous, fast, mature, extension-capable |
-| Remote storage | `pg` | standard PostgreSQL client |
-| Local models | `@huggingface/transformers` (optional) | offline, browser and Node |
-| Browser storage | sqlite-wasm + OPFS, IndexedDB | no server, no native addon |
+| Concern          | Choice                                 | Rationale                                                  |
+| ---------------- | -------------------------------------- | ---------------------------------------------------------- |
+| Linear algebra   | `ml-matrix`                            | pure JS, Float64, Jacobi SVD, dual-environment             |
+| Graph            | self-implemented adjacency list        | a core cognitive algorithm: full precision and determinism |
+| Embedded storage | `better-sqlite3`                       | synchronous, fast, mature, extension-capable               |
+| Remote storage   | `pg`                                   | standard PostgreSQL client                                 |
+| Local models     | `@huggingface/transformers` (optional) | offline, browser and Node                                  |
+| Browser storage  | sqlite-wasm + OPFS, IndexedDB          | no server, no native addon                                 |
