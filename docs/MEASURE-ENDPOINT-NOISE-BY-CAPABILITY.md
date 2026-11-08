@@ -80,7 +80,14 @@ r42467: 4 repetition(s), unstable 28/500 (5.60%), settled correct 13, settled wr
 
 --- required effect size ---
 basedOnObservations: 2  minQuestionsStrictlyGreaterThan: 17  floorPp: 0.80  at95: 27
-floor source: the ROSTER, not the score (4 question(s) of score range, 16 question(s) of roster movement)
+
+floor source: the ROSTER, not the score. The count-based range is 4 question(s) but up to 16 question(s)
+moved between a pair of these runs. The range bounds how far the SCORE moves; it does not bound how
+much of the ROSTER moves. The bar above was derived from the larger figure, so it is not the one the
+range alone would have given.
+
+An arm must move STRICTLY MORE than the figure above to be distinguishable from re-running this
+benchmark. Matching the noise is not clearing it.
 ```
 
 ## What the tool refuses
