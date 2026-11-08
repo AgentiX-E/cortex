@@ -99,7 +99,21 @@ export type Source =
    * Relative to the workspace root, not to this package: the evidence for a benchmark run lives beside the
    * documents that discuss it, because a number and the paragraph that qualifies it have to travel together.
    */
-  | { readonly kind: 'artifact'; readonly path: string; readonly key: string }
+  | {
+      readonly kind: 'artifact';
+      readonly path: string;
+      readonly key: string;
+      /**
+       * What the artifact has to say about itself for the number to describe the system as it is now.
+       *
+       * A path is not an identity. `S1` read `summary.json#overall.accuracy` for three rounds and printed
+       * **83.45%** while the arm it names measured **90.85%** on the same 500 questions: the file was a real
+       * measurement of a configuration that no longer existed, and nothing in it said so. An attestation is
+       * the field that says so — each entry names a path the artifact must carry and the value it must hold,
+       * and a miss is reported as **stale**, which is neither a pass nor a fail.
+       */
+      readonly attest?: readonly { readonly key: string; readonly equals: string | number }[];
+    }
   /** No run exists. Reported as `unrun`, never as a pass. */
   | { readonly kind: 'unrun'; readonly reason: string };
 
@@ -372,13 +386,34 @@ export const CRITERIA: readonly Criterion[] = [
     metric: 'overall LongMemEval-S accuracy, official judge',
     dataset: 'LongMemEval-S, 500 questions',
     comparator: 'at-least',
-    threshold: 0.85,
+    threshold: 0.91,
     unit: 'ratio',
-    kind: 'aim',
+    // A gate, and the promotion is the point of this row rather than a detail of it. The threshold was 85%
+    // against a **83.45%** reading and could never be green; the reading then moved to 90.85% and the row was
+    // not re-read, because an `aim` that is met is easy to leave as an `aim` — it still prints `pass` and
+    // still blocks nothing. A criterion that cannot fail after it has been reached is the row this matrix was
+    // built to prevent, so the row changes class in the same edit that re-hangs it.
+    //
+    // The threshold is 91.0%, and it is derived rather than rounded. The shipping arm reads **91.95%**, and
+    // one dispatch's own four repetitions carry a standard error of **0.43 points** (`noiseFloor`, measured
+    // from `ablation.featureCorrectByRun`, not assumed). 91.0 is 2.2 standard errors below the measured value
+    // and 1.15 points above the arm this round replaced (90.85%), so a regression that gives back the whole
+    // of this round's +1.10 is red while a single noisy dispatch is not.
+    kind: 'gate',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/summary.json',
-      key: 'overall.accuracy',
+      path: 'cortex-docs/evidence/longmemeval/frontier.json',
+      key: 'shipping.accuracy',
+      // Three clauses, and each one closes a way the number could be about something else. The source is
+      // `repetition-mean` because `feature.metrics` is one repetition and read 90.20% where the mean read
+      // 90.85%; `runs: 4` because a two-repetition arm's mean carries twice the standard error; and the arm
+      // name because "the shipping arm" is a label the tool resolves to an artifact, so a label that stops
+      // existing becomes `stale` instead of silently reading an older file.
+      attest: [
+        { key: 'shipping.accuracySource', equals: 'repetition-mean' },
+        { key: 'shipping.runs', equals: 4 },
+        { key: 'shipping.arm', equals: 'route-room' },
+      ],
     },
     competitors: [
       {
@@ -561,7 +596,23 @@ export const CRITERIA: readonly Criterion[] = [
       },
     ],
     onMiss:
-      'The gap is concentrated in multi-session and temporal reasoning, so a miss on the total is answered by those two rows rather than by re-running with a different reader. The value moved from 81.0% to 83.5% when the bare-decline retry was measured over four runs: 417/415/416/421 against a control of 404/399, no category lower, ABS identical at 29/30 in all six. **A retracted reading is recorded here rather than deleted**: an earlier version called the 82.4% oracle a reader ceiling and inferred that a seat 1.6 points under it meant retrieval had little left to buy. arXiv:2610.30755 retired that inference — a naive raw-RAG pipeline reads 87.53 with a GPT-4o-mini reader, above the oracle. So 82.4 was a configuration and not a bound, and the reader axis has to be priced by measurement rather than inferred from a seat under an oracle.',
+      'Below 91.0% means the shipping configuration gave back the +1.10 points this round certified, and the ' +
+      'first thing to read is the ladder rather than the total: `route-room` is ahead of `registered` by ' +
+      '0.50 points for `ask: verbatim-acts` and 0.60 for the route room, each measured as its own single-' +
+      'variable step, and the two add up to the 1.10 the combined pair reads. A total that drops while both ' +
+      'steps hold is a dispatch problem; a total that drops because one step stopped paying is a mechanism ' +
+      'that regressed, and the ladder names which. **Do not raise the reader to answer this row** — the ' +
+      'reader axis is priced by `M1`, and changing it here would make the number incomparable with every ' +
+      'reading in this file. ' +
+      'The history matters for the same reason the attestation exists: this row read **83.45%** for three ' +
+      'rounds off `summary.json`, which is four *independent dispatches* of a configuration that no longer ' +
+      'ships, while the arm it names measured 90.85% on the same 500 questions. The 7.4-point error was not ' +
+      'a wrong number — it was a correct number about a different system, which is why the repair is an ' +
+      'attestation on the source and not an edit to the figure. ' +
+      '**A retracted reading is recorded here rather than deleted**: an earlier version called the 82.4% ' +
+      'oracle a reader ceiling and inferred that a seat 1.6 points under it meant retrieval had little left ' +
+      'to buy. arXiv:2610.30755 retired that inference — a naive raw-RAG pipeline reads 87.53 with a ' +
+      'GPT-4o-mini reader, above the oracle. So 82.4 was a configuration and not a bound.',
   },
   {
     id: 'S2',
@@ -1028,7 +1079,17 @@ export const CRITERIA: readonly Criterion[] = [
 export type Evaluation = {
   readonly id: string;
   readonly current: number | null;
-  readonly status: 'pass' | 'fail' | 'unrun';
+  /**
+   * Four states, and the fourth is the one this file learned last.
+   *
+   * `pass` and `fail` are computed and compared. `unrun` means the value could not be computed at all.
+   * **`stale` means the value was computed, and the artifact it came from says it describes a different
+   * system** — a different configuration, a different population, a different repetition count. It is not a
+   * pass, because the number is about something else; it is not a fail, because nothing regressed; and it is
+   * not `unrun`, because the run exists and its number is known. Collapsing it into any of the three is the
+   * failure that produced an eight-and-a-half-point error in this matrix's own headline row.
+   */
+  readonly status: 'pass' | 'fail' | 'unrun' | 'stale';
   /**
    * Whether this miss should stop a build.
    *
@@ -1036,7 +1097,7 @@ export type Evaluation = {
    * the checker so that the judgement is reviewable beside the criterion it applies to.
    */
   readonly blocking: boolean;
-  /** Why it is unrun, when it is. Empty otherwise. */
+  /** Why it is unrun or stale, when it is. Empty otherwise. */
   readonly note: string;
 };
 
@@ -1051,12 +1112,51 @@ export type Evaluation = {
 export type Resolvers = {
   readonly probe: (reading: string) => number | undefined;
   readonly artifact: (path: string, key: string) => number | undefined;
+  /**
+   * Reads any value out of the same artifact, for attestations only.
+   *
+   * Separate from `artifact` rather than a widening of it: `artifact` is typed `number | undefined` because
+   * every reading is a number, and a reader that also had to invent a value for a string would be a reader a
+   * caller can get subtly wrong. Optional, and its absence is reported as `stale` rather than as a pass —
+   * an unverifiable attestation is not a satisfied one.
+   */
+  readonly artifactRaw?: (path: string, key: string) => unknown;
   readonly arm: (arm: 'no-memory' | 'flat' | 'annotated' | 'gated') => number;
   readonly gap: () => number;
   readonly floor: () => number;
   readonly leak: () => number;
   readonly ablation: (removed: string) => number | undefined;
 };
+
+/**
+ * Whether a reading's artifact still describes the system this build ships — `null` when it does.
+ *
+ * The rule is one comparison per clause and no interpretation: the artifact carries a field, the criterion
+ * says what that field has to be, and a difference makes the *reading* stale rather than the artifact wrong.
+ * A file can be a perfectly good record of a configuration three increments old, and the only defect is that
+ * a criterion pointed at it.
+ */
+export function attestationOf(criterion: Criterion, resolve: Resolvers): string | null {
+  const { source } = criterion;
+  if (source.kind !== 'artifact') return null;
+  const clauses = source.attest;
+  if (clauses === undefined || clauses.length === 0) return null;
+  const read = resolve.artifactRaw;
+  if (read === undefined) {
+    return `no raw reader is configured, so ${describe(source)} cannot be checked against its attestation`;
+  }
+  for (const clause of clauses) {
+    const actual = read(source.path, clause.key);
+    if (actual !== clause.equals) {
+      return (
+        `${source.path}#${clause.key} reads ${JSON.stringify(actual ?? null)} and the criterion needs ` +
+        `${JSON.stringify(clause.equals)}: the artifact still records a measurement, but not of the ` +
+        'configuration this row is about'
+      );
+    }
+  }
+  return null;
+}
 
 /** The current value of one criterion, or `undefined` when the resolver cannot supply one. */
 export function currentOf(criterion: Criterion, resolve: Resolvers): number | undefined {
@@ -1084,7 +1184,17 @@ export function currentOf(criterion: Criterion, resolve: Resolvers): number | un
 }
 
 /** Compare one value against one criterion. Extracted so the rule exists once. */
-export function verdictOf(criterion: Criterion, current: number | null): Evaluation {
+export function verdictOf(
+  criterion: Criterion,
+  current: number | null,
+  stale: string | null = null,
+): Evaluation {
+  // Stale is checked first and swallows both branches, because a reading can be present *and* about the
+  // wrong system. Returning it as a number would put a stale figure in the `current` column with no marker
+  // beside it, which is exactly how 83.45% survived three rounds as the headline.
+  if (stale !== null) {
+    return { id: criterion.id, current, status: 'stale', blocking: false, note: stale };
+  }
   if (current === null) {
     return {
       id: criterion.id,

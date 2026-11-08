@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CRITERIA,
+  attestationOf,
   currentOf,
   describe as describeSource,
   unrun,
@@ -455,5 +456,81 @@ describe('the reranking rows, written before the run that fills them', () => {
     // The grade is doing work: a C figure may motivate the increment and may price the mechanism, and it may
     // not become the threshold. The threshold is 3 questions on our own 121, not 3.92 points on theirs.
     expect(peer?.value).not.toBe(s7?.threshold);
+  });
+});
+
+describe('attestationOf: a reading has to say it is about this system', () => {
+  const artifactCriterion = (
+    attest?: Criterion['source'] extends never ? never : unknown,
+  ): Criterion =>
+    criterionOf({
+      source: {
+        kind: 'artifact',
+        path: 'evidence/x.json',
+        key: 'shipping.accuracy',
+        ...(attest === undefined ? {} : { attest: attest as never }),
+      },
+    });
+
+  it('returns null when every clause holds, which is the only case that yields a number', () => {
+    const criterion = artifactCriterion([
+      { key: 'shipping.accuracySource', equals: 'repetition-mean' },
+      { key: 'shipping.runs', equals: 4 },
+    ]);
+    const resolve = {
+      artifactRaw: (path: string, key: string) =>
+        path === 'evidence/x.json'
+          ? { 'shipping.accuracySource': 'repetition-mean', 'shipping.runs': 4 }[key]
+          : undefined,
+    } as unknown as Resolvers;
+    expect(attestationOf(criterion, resolve)).toBeNull();
+  });
+
+  it('names the clause that failed and both values, so the note is actionable', () => {
+    const criterion = artifactCriterion([{ key: 'shipping.runs', equals: 4 }]);
+    const resolve = {
+      artifactRaw: () => 2,
+    } as unknown as Resolvers;
+    const note = attestationOf(criterion, resolve);
+    expect(note).toContain('shipping.runs');
+    expect(note).toContain('2');
+    expect(note).toContain('4');
+  });
+
+  it('reads a missing field as a mismatch rather than as a pass', () => {
+    // `undefined` is what a renamed key looks like, and a renamed key must not silently satisfy a clause.
+    const criterion = artifactCriterion([{ key: 'shipping.arm', equals: 'route-room' }]);
+    const resolve = { artifactRaw: () => undefined } as unknown as Resolvers;
+    expect(attestationOf(criterion, resolve)).toContain('null');
+  });
+
+  it('is stale, not a pass, when no raw reader is configured to check against', () => {
+    const criterion = artifactCriterion([{ key: 'shipping.runs', equals: 4 }]);
+    const resolve = { artifactRaw: undefined } as unknown as Resolvers;
+    expect(attestationOf(criterion, resolve)).toContain('no raw reader');
+  });
+
+  it('does not attest a source that says nothing about itself, or one that is not an artifact', () => {
+    const resolve = { artifactRaw: () => 'anything' } as unknown as Resolvers;
+    expect(attestationOf(artifactCriterion(), resolve)).toBeNull();
+    expect(attestationOf(artifactCriterion([]), resolve)).toBeNull();
+    expect(attestationOf(criterionOf({ source: { kind: 'gap' } }), resolve)).toBeNull();
+  });
+
+  it('keeps the stale note out of `blocking`, whatever the criterion kind is', () => {
+    // A stale reading of a gate is not a regression. Blocking would force a red build for a file that is a
+    // perfectly good record of an older configuration, which teaches people to delete rows.
+    const stale = verdictOf(criterionOf({ kind: 'gate', threshold: 0.9 }), 0.92, 'a reason');
+    expect(stale.status).toBe('stale');
+    expect(stale.blocking).toBe(false);
+    expect(stale.current).toBe(0.92);
+    expect(stale.note).toBe('a reason');
+  });
+
+  it('reports stale even when the value is absent, because the two are different repairs', () => {
+    const stale = verdictOf(criterionOf(), null, 'a reason');
+    expect(stale.status).toBe('stale');
+    const missing = verdictOf(criterionOf(), null);
+    expect(missing.status).toBe('unrun');
   });
 });

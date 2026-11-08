@@ -22,6 +22,7 @@ import {
   efficiencyFrontier,
   mcnemarExact,
   profileOf,
+  signFlipExact,
   type EfficiencyPoint,
   type EfficiencyPolicy,
   type PairedEvidence,
@@ -119,10 +120,24 @@ describe('profileOf', () => {
   it('refuses counts that are not counts, and a population that is not one', () => {
     const bad = (correct: number, total: number): EfficiencyPoint =>
       windowArm({ overall: { correct, total } });
-    expect(() => profileOf(bad(4.5, 500))).toThrow(/needs counts/);
+    // A question count is a count. Half a question is not a population, and a percentile of one would be a
+    // number about nothing.
+    expect(() => profileOf(bad(4.5, 500.5))).toThrow(/needs counts/);
+    expect(() => profileOf(bad(Number.NaN, 500))).toThrow(/needs counts/);
     expect(() => profileOf(bad(0, 0))).toThrow(/needs a population/);
     expect(() => profileOf(bad(-1, 500))).toThrow(/out of range/);
     expect(() => profileOf(bad(501, 500))).toThrow(/out of range/);
+  });
+
+  it('keeps the half-question a repetition mean produces instead of rounding it away', () => {
+    // Four repetitions of 451, 452, 460 and 454 correct out of 500 average 454.25, and the arm's own
+    // artifact reports 90.85%. Requiring an integer here rounded that to 454 and printed **90.80%** — a
+    // systematic half-question in one direction on every even repetition count, which is the same class of
+    // defect as reading one repetition: a reading whose precision is discarded before anyone looks at it.
+    const mean = profileOf(windowArm({ overall: { correct: 454.25, total: 500 } }));
+    expect(mean.overall.value).toBeCloseTo(0.9085, 10);
+    expect(mean.overall.lower).toBeLessThan(mean.overall.value);
+    expect(mean.overall.upper).toBeGreaterThan(mean.overall.value);
   });
 });
 
@@ -460,7 +475,9 @@ describe('compareEfficiency with paired evidence', () => {
     expect(unpaired.outcome).toBe('incomparable');
     expect(unpaired.pairedUsed).toBe(false);
 
-    const evidence: PairedEvidence = [{ label: 'overall', wonByA: 11, wonByB: 27 }];
+    const evidence: PairedEvidence = [
+      { kind: 'discordant', label: 'overall', wonByA: 11, wonByB: 27 },
+    ];
     const paired = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, evidence);
     expect(paired.pairedUsed).toBe(true);
     expect(paired.paired[0]!.pValue).toBeCloseTo(0.013853, 5);
@@ -472,7 +489,9 @@ describe('compareEfficiency with paired evidence', () => {
 
   it('reads a non-significant pair as a resolved tie rather than as missing power', () => {
     const [reduced, window] = pair();
-    const evidence: PairedEvidence = [{ label: 'overall', wonByA: 12, wonByB: 6 }];
+    const evidence: PairedEvidence = [
+      { kind: 'discordant', label: 'overall', wonByA: 12, wonByB: 6 },
+    ];
     const verdict = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, evidence);
     expect(verdict.paired[0]!.resolved).toBe(false);
     // The distinction the outcome type exists for: `unresolvable` would say the instrument cannot see
@@ -489,7 +508,7 @@ describe('compareEfficiency with paired evidence', () => {
   it('does not treat zero discordant pairs as a tie the data established', () => {
     const [reduced, window] = pair();
     const verdict = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
-      { label: 'overall', wonByA: 0, wonByB: 0 },
+      { kind: 'discordant', label: 'overall', wonByA: 0, wonByB: 0 },
     ]);
     expect(verdict.paired[0]!.pValue).toBe(1);
     expect(verdict.paired[0]!.resolved).toBe(false);
@@ -509,7 +528,9 @@ describe('compareEfficiency with paired evidence', () => {
       overall: { correct: 471, total: 500 },
       promptTokensPerQuestion: 11_000,
     });
-    const evidence: PairedEvidence = [{ label: 'overall', wonByA: 14, wonByB: 3 }];
+    const evidence: PairedEvidence = [
+      { kind: 'discordant', label: 'overall', wonByA: 14, wonByB: 3 },
+    ];
     const policy: EfficiencyPolicy = { margin: 0.02, tokenTolerance: 0.05, alpha: 0.05 };
     const unpaired = compareEfficiency(profileOf(better), profileOf(windowArm()), policy);
     expect(unpaired.outcome).toBe('underpowered');
@@ -523,7 +544,7 @@ describe('compareEfficiency with paired evidence', () => {
     // gap is not re-read through the margin rule afterwards.
     const [reduced, window] = pair();
     const verdict = compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
-      { label: 'MR', wonByA: 3, wonByB: 15 },
+      { kind: 'discordant', label: 'MR', wonByA: 3, wonByB: 15 },
     ]);
     expect(verdict.blocking).toContain('MR');
     expect(verdict.paired.map((entry) => entry.label)).toEqual(['MR']);
@@ -537,8 +558,8 @@ describe('compareEfficiency with paired evidence', () => {
     const [reduced, window] = pair();
     expect(() =>
       compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
-        { label: 'overall', wonByA: 1, wonByB: 2 },
-        { label: 'overall', wonByA: 3, wonByB: 4 },
+        { kind: 'discordant', label: 'overall', wonByA: 1, wonByB: 2 },
+        { kind: 'discordant', label: 'overall', wonByA: 3, wonByB: 4 },
       ]),
     ).toThrow(/names overall twice/);
   });
@@ -547,12 +568,12 @@ describe('compareEfficiency with paired evidence', () => {
     const [reduced, window] = pair();
     expect(() =>
       compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
-        { label: 'overall', wonByA: -1, wonByB: 2 },
+        { kind: 'discordant', label: 'overall', wonByA: -1, wonByB: 2 },
       ]),
     ).toThrow(/not a pair of counts/);
     expect(() =>
       compareEfficiency(reduced, window, DEFAULT_EFFICIENCY_POLICY, [
-        { label: 'overall', wonByA: 1.5, wonByB: 2 },
+        { kind: 'discordant', label: 'overall', wonByA: 1.5, wonByB: 2 },
       ]),
     ).toThrow(/not a pair of counts/);
   });
@@ -564,5 +585,226 @@ describe('compareEfficiency with paired evidence', () => {
         compareEfficiency(reduced, window, { margin: 0.025, tokenTolerance: 0.05, alpha }),
       ).toThrow(/paired alpha/);
     }
+  });
+});
+
+describe('signFlipExact', () => {
+  // The two readings that turned "repetition-mean pairing" from a hypothesis into a requirement. Both are the
+  // integer per-question differences of `42355323615` against `42310779222`, recovered from
+  // `ablation.featureCorrectByRun`: `a - b` over four repetitions, non-zero entries only.
+  const OVERALL = [
+    1, 1, 1, 1, 2, -1, 1, 2, 3, -1, 3, -1, 4, -1, 2, 1, -1, -1, -1, 1, 1, 1, -1, 2, 1, 1, 2, 1, 2,
+    -1, -2, -1, -1, 1,
+  ];
+  const MR = [1, 1, 1, 1, 2, -1, 1, 2, 3, -1, 3, -1, 4, -1, 2, 1, -1, 2, 1, 1, 2];
+
+  it('reproduces the aggregate reading the campaign reported', () => {
+    // 22 net questions over 34 that disagreed. This is the number that replaced "MR 2 won to 9 lost,
+    // p = 0.0654" with "+1.10 overall at p = 0.0211", and it is asserted to five decimals because it is
+    // the figure in the design document.
+    expect(OVERALL.reduce((total, value) => total + value, 0)).toBe(22);
+    expect(signFlipExact(OVERALL)).toBeCloseTo(0.0211099, 6);
+  });
+
+  it('reproduces the MR reading that the first-repetition pairing could not see', () => {
+    expect(MR.reduce((total, value) => total + value, 0)).toBe(23);
+    expect(signFlipExact(MR)).toBeCloseTo(0.00440407, 7);
+  });
+
+  it('is symmetric in the sign of every difference', () => {
+    const flipped = MR.map((value) => -value);
+    expect(signFlipExact(flipped)).toBeCloseTo(signFlipExact(MR), 12);
+  });
+
+  it('returns 1 when nothing disagreed, and 1 for an even split', () => {
+    expect(signFlipExact([])).toBe(1);
+    expect(signFlipExact([0, 0, 0])).toBe(1);
+    // Eight +1 against eight -1 is the definition of no signal, whatever the sample size.
+    expect(signFlipExact([...Array<number>(8).fill(1), ...Array<number>(8).fill(-1)])).toBe(1);
+  });
+
+  it('agrees with McNemar when every difference is one repetition wide', () => {
+    // The degenerate case has to line up with the other instrument, because the other instrument is what a
+    // single-repetition artifact uses and the two must not disagree about the same data.
+    for (const [won, lost] of [
+      [27, 11],
+      [6, 12],
+      [14, 3],
+      [1, 1],
+    ] as const) {
+      const differences = [...Array<number>(won).fill(1), ...Array<number>(lost).fill(-1)];
+      expect(signFlipExact(differences)).toBeCloseTo(mcnemarExact(won, lost), 12);
+    }
+  });
+
+  it('falls back to the normal approximation above the exact limit, conservatively', () => {
+    // 60 differences is past `SIGN_FLIP_EXACT_LIMIT`, so the folded table is not used. The approximation errs
+    // high — a larger p — which is the direction that cannot manufacture a claim.
+    const many = Array.from({ length: 60 }, (_, index) => (index < 44 ? 1 : -1));
+    const p = signFlipExact(many);
+    expect(p).toBeLessThan(0.05);
+    expect(p).toBeGreaterThan(0);
+  });
+
+  it('gives a large negative reading the same magnitude as its mirror', () => {
+    // 60 differences with a negative sum takes the normal fallback, and the tail is two-sided by construction
+    // rather than by an `abs` applied afterwards.
+    const many = Array.from({ length: 60 }, (_, index) => (index < 16 ? 1 : -1));
+    const positive = many.map((value) => -value);
+    expect(signFlipExact(many)).toBeCloseTo(signFlipExact(positive), 12);
+    expect(signFlipExact(many)).toBeLessThan(1);
+  });
+
+  it('refuses a difference that is not an integer count', () => {
+    expect(() => signFlipExact([0.5, -0.25])).toThrow(/integer per-question differences/);
+  });
+});
+
+describe('compareEfficiency over a repetition series', () => {
+  const series = (
+    label: 'overall' | 'MR',
+    questions: { a: number; b: number }[],
+  ): PairedEvidence => [{ kind: 'series', label, runs: 4, questions }];
+
+  /** `a` is the reduced-window arm and `b` the registered one, both at four repetitions. */
+  const pair = (): [ReturnType<typeof profileOf>, ReturnType<typeof profileOf>] => [
+    profileOf(squeezedArm({ runs: 4, cacheHitShare: 0.9834, promptTokensPerQuestion: 6_077 })),
+    profileOf(windowArm({ cacheHitShare: 0.9834 })),
+  ];
+
+  // The `MR` integer differences of `42355323615` against `42310779222`, repeated here so the series tests do
+  // not depend on the sign-flip block above.
+  const MR = [1, 1, 1, 1, 2, -1, 1, 2, 3, -1, 3, -1, 4, -1, 2, 1, -1, 2, 1, 1, 2];
+
+  it('certifies a win the first repetition alone called a tie', () => {
+    // The exact reading this change is about: on repetition 0 the same 121 MR questions gave 2 won to 9 lost
+    // (p = 0.0654, not significant) while the four-repetition means give an integer sum of 23 over 21 pairs.
+    const [reduced, window] = pair();
+    const verdict = compareEfficiency(
+      reduced,
+      window,
+      DEFAULT_EFFICIENCY_POLICY,
+      // Any pair of counts whose difference is the real one carries the same test: the statistic is the sum of
+      // the differences, so only their values matter. Both halves are pinned to the four repetitions.
+      series(
+        'MR',
+        MR.map((difference) =>
+          difference >= 0 ? { a: 4, b: 4 - difference } : { a: 4 + difference, b: 4 },
+        ),
+      ),
+    );
+    const reading = verdict.paired.find((entry) => entry.label === 'MR');
+    expect(reading?.test).toBe('sign-flip');
+    expect(reading?.pairs).toBe(21);
+    expect(reading?.pValue).toBeCloseTo(0.00440407, 7);
+  });
+
+  it('counts a 2-2 split as agreement rather than as half a win', () => {
+    const [reduced, window] = pair();
+    const questions = Array.from({ length: 40 }, () => ({ a: 2, b: 2 }));
+    const verdict = compareEfficiency(
+      reduced,
+      window,
+      DEFAULT_EFFICIENCY_POLICY,
+      series('MR', questions),
+    );
+    const reading = verdict.paired.find((entry) => entry.label === 'MR');
+    // Zero pairs, p = 1, unresolved — and `pairs` says zero rather than 40, so the reader can see that the
+    // sample was of agreement and not of evidence.
+    expect(reading?.pairs).toBe(0);
+    expect(reading?.pValue).toBe(1);
+    expect(reading?.resolved).toBe(false);
+  });
+
+  it('keeps the direction of a win the floor blocks out of the verdict', () => {
+    // +0.5 points, p = 0.354 on the real `ask` step: ahead, not certified. It must appear somewhere, because
+    // "ahead by less than we can see" and "level" argue for different next experiments.
+    const ahead = windowArm({
+      arm: 'ahead',
+      overall: { correct: 462.5, total: 500 },
+    });
+    const verdict = compareEfficiency(profileOf(ahead), profileOf(windowArm()));
+    expect(verdict.outcome).toBe('incomparable');
+    expect(verdict.belowNoise).toContain('overall');
+    expect(verdict.leading).not.toContain('overall');
+  });
+
+  it('promotes only above the noise floor as well as above alpha', () => {
+    const policy: EfficiencyPolicy = {
+      margin: 0.02,
+      tokenTolerance: 0.05,
+      alpha: 0.05,
+      noiseFloor: { delta: 0.05, source: 'test' },
+    };
+    const evidence: PairedEvidence = [
+      { kind: 'discordant', label: 'overall', wonByA: 33, wonByB: 17 },
+    ];
+    // 16 net questions is +3.2 points and p = 0.026, i.e. a certified win — and it is still under a
+    // 5-point floor, so the floor is what decides it rather than the pairs.
+    const under = windowArm({ arm: 'under', overall: { correct: 476, total: 500 } });
+    const floorBlocks = compareEfficiency(
+      profileOf(under),
+      profileOf(windowArm()),
+      policy,
+      evidence,
+    );
+    expect(floorBlocks.paired[0]?.resolved).toBe(true);
+    expect(floorBlocks.belowNoise).toContain('overall');
+    expect(floorBlocks.leading).not.toContain('overall');
+
+    // The same pair with no floor is promoted, which is what makes the floor the thing that decided it.
+    const noFloor = compareEfficiency(
+      profileOf(under),
+      profileOf(windowArm()),
+      { ...policy, noiseFloor: undefined },
+      evidence,
+    );
+    expect(noFloor.leading).toContain('overall');
+  });
+
+  it('never lets the floor block a demotion', () => {
+    // Asymmetric by construction: a noisy floor cannot make a loss look smaller than it is.
+    const policy: EfficiencyPolicy = {
+      margin: 0.02,
+      tokenTolerance: 0.05,
+      alpha: 0.05,
+      noiseFloor: { delta: 0.5, source: 'absurdly wide, on purpose' },
+    };
+    const behind = windowArm({ arm: 'behind', overall: { correct: 440, total: 500 } });
+    const verdict = compareEfficiency(profileOf(behind), profileOf(windowArm()), policy);
+    expect(verdict.blocking).toContain('overall');
+  });
+
+  it('refuses a series whose counts exceed its repetition count', () => {
+    expect(() =>
+      compareEfficiency(
+        profileOf(windowArm()),
+        profileOf(cheaperTwin()),
+        DEFAULT_EFFICIENCY_POLICY,
+        [{ kind: 'series', label: 'overall', runs: 4, questions: [{ a: 5, b: 1 }] }],
+      ),
+    ).toThrow(/cannot be right more often than it was asked/);
+  });
+
+  it('refuses a series with no questions rather than reading it as a tie', () => {
+    expect(() =>
+      compareEfficiency(
+        profileOf(windowArm()),
+        profileOf(cheaperTwin()),
+        DEFAULT_EFFICIENCY_POLICY,
+        [{ kind: 'series', label: 'overall', runs: 4, questions: [] }],
+      ),
+    ).toThrow(/carries no questions/);
+  });
+
+  it('refuses a series with no repetition count', () => {
+    expect(() =>
+      compareEfficiency(
+        profileOf(windowArm()),
+        profileOf(cheaperTwin()),
+        DEFAULT_EFFICIENCY_POLICY,
+        [{ kind: 'series', label: 'overall', runs: 0, questions: [{ a: 1, b: 0 }] }],
+      ),
+    ).toThrow(/has no repetition count/);
   });
 });

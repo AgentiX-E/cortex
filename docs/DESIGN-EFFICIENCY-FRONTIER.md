@@ -93,6 +93,97 @@ the system has to be checked for the same confound the accuracy axis has.** A to
 is not; an accuracy field looks like *an* accuracy and there are two of them; a configuration looks like
 one variable and the dispatch moved two.
 
+### 1.2 The fourth correction: the pairing read one repetition, and the data for four was in the artifact
+
+Correction 3 fixed **which field the accuracy came from**. It did not fix **which field the paired test came
+from**, and the tool kept pairing on repetition 0 for a round after the accuracy had moved. The cost was a
+verdict, not a decimal place:
+
+| pairing | design | `MR` | aggregate |
+| --- | --- | --- | --- |
+| `42310779222 → 42355323615` | repetition 0 only, exact McNemar | 2 won / 9 lost, **p = 0.0654** | 6 won / 12 lost, p = 0.238 |
+| the same two arms | four-repetition means, exact sign-flip | **16 won / 5 lost, p = 0.0044** | **22 won / 12 lost, p = 0.0211** |
+
+Same artifacts, same 500 questions, opposite conclusions. And nothing needed dispatching to fix it:
+`ablation.featureCorrectByRun` has been written since §13.88 — one correctness mask per repetition, indexed
+like `questions[]` — so **the data for a repetition-mean paired test was in every four-repetition artifact
+this project ever produced**, and the reader was throwing it away. That is the same shape as correction 3 and
+worth naming as a pattern: *the field existed, was documented, and one consumer read the other one.*
+
+The two instruments are now separated by data shape rather than by preference:
+
+- **`discordant`** — one repetition, so a question is right or wrong; exact McNemar on the counts that moved.
+- **`series`** — `k` repetitions, so a question is "three of four"; exact **sign-flip** on the integer
+  differences, folded over reachable sums rather than over `2ⁿ` assignments (34 non-zero pairs with six
+  distinct magnitudes cost 273 states instead of 1.7×10¹⁰).
+
+A `series` is **not** a `discordant` with more pairs, and the difference is not bookkeeping. Collapsing the
+series to one repetition is what produced the `p = 0.065` row above. Expanding a single repetition into `k`
+copies would be worse: it divides a p-value by roughly `k` while the evidence is unchanged. The union type is
+what makes the two unsubstitutable.
+
+### 1.3 The fifth correction: repetitions are not independent, and the pooled p is false precision
+
+The obvious way to use four repetitions is to pool them: 500 questions × 4 repetitions = 2,000 pairs, so
+26 won against 48 lost reads **p = 0.0141**. That number is wrong, and it is wrong in the direction that
+manufactures findings.
+
+The repetitions are **the same questions**. On this dataset only **28 of 500** questions change their answer
+at all across four repetitions of one arm, so the 2,000 "pairs" are 500 observations each counted about
+four times. Majority-vote per question — the honest aggregation — leaves **1 won to 4 lost**, p = 0.375. The
+same data, pooled, is "significant"; correctly aggregated, it is a tie.
+
+The general rule: **a repetition buys reliability information, not sample size.** What it tells us is that
+the answers are nearly deterministic (28/500 flip), which is useful — it means the paired test's power comes
+from the *questions* and cannot be bought by running more passes.
+
+### 1.4 The sixth correction: there is no null control, and the floor had to be measured elsewhere
+
+The floor a promotion has to clear is "how far apart do two dispatches of **one** configuration land". The
+tempting pair is `42310779222` (90.85%) against `42328499107` (90.20%) — both `ask: verbatim`, both 48,000
+characters, both four repetitions. It is not a rerun: `relevanceUnits` moves from `turn` to `session-fill`,
+which is a mechanism change. A first version of the tool accepted that pair and reported a **0.65-point
+noise floor** off it — a number with the shape of a measurement and the content of a confound. It now refuses
+the pair by name.
+
+What every artifact does carry is its own repetitions, and their spread is a direct reading of runner noise:
+
+| arm | four repetition accuracies | sd | standard error of the mean |
+| --- | --- | ---: | ---: |
+| `42310779222` | 451, 452, 460, 454 | 0.81 pt | **0.40 pt** |
+| `42337560027` | 457, 466, 457, 459 | 0.85 pt | **0.43 pt** |
+
+That is the `noiseFloor`, and it is a **lower bound** on dispatch-to-dispatch noise — a cold cache, a
+different runner image and a different provider shard all move more than four passes of one process do.
+Nothing in the artifacts measures that part, so the floor is honest about which half it is.
+
+The floor **only blocks a promotion**, for the same reason the bill only keeps a veto: demotion cannot be
+overstated by a noisy floor, promotion can.
+
+### 1.5 The seventh correction: two variables are not the same as two unattributed variables
+
+`42355323615` differs from `42310779222` in `ask` and the room representation, so the tool marked it
+`incomparable` and a reader concluded nothing had been established. That discarded the finding. The set has a
+**ladder**, and each step moves one field:
+
+| step | variable | overall | context | exact p (aggregate) |
+| --- | --- | ---: | ---: | --- |
+| `42310779222 → 42337560027` | `ask` (`verbatim` → `verbatim-acts`) | **+0.50 pt** | 0.998x | 0.354 |
+| `42337560027 → 42355323615` | `maxPromptChars` (48,000 → route room) | **+0.60 pt** | 1.005x | 0.170 |
+| `42310779222 → 42355323615` | both | **+1.10 pt** | 1.003x | **0.0211** |
+| `42310779222 → 42373407439` | `maxPromptChars` (48,000 → 24,000) | **−2.65 pt** | 0.502x | < 1e-16 |
+
+`0.50 + 0.60 = 1.10`: the two single-variable steps account for the combined pair exactly, so there is no
+interaction to explain and the combined reading is attributable after all. **The verdict word changed from
+`incomparable` to `confounded`** — "the instrument cannot tell these apart" and "this pair is better but two
+things moved" are different findings with different next experiments, and one word for both is how the second
+got lost.
+
+This is also the finding that reaches the acceptance matrix: `S1` was read off a file describing a
+configuration three increments old and printed 83.45% for three rounds. It now reads the **shipping** arm out
+of this tool's own output, with three attestations (`accuracySource`, `runs`, `arm`), and a mismatch is a new
+status — `stale` — which is neither a pass nor a fail.
+
 ## 2. Why not one weighted score
 
 The proposal on the table was a composite index — something like `0.7·accuracy + 0.3·(1/tokens)` — and

@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CRITERIA,
+  attestationOf,
   currentOf,
   describe,
   verdictOf,
@@ -54,13 +55,39 @@ const reviewHtml =
   path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html');
 
 /** Read a dotted path out of a JSON document, or `undefined` when any step is missing. */
-function pluck(value, key) {
+function pluckRaw(value, key) {
   let cursor = value;
   for (const step of key.split('.')) {
     if (cursor === null || typeof cursor !== 'object' || !(step in cursor)) return undefined;
     cursor = cursor[step];
   }
-  return typeof cursor === 'number' ? cursor : undefined;
+  return cursor;
+}
+
+/** The same path, restricted to numbers — a reading is always a number and a string is not one. */
+function pluck(value, key) {
+  const found = pluckRaw(value, key);
+  return typeof found === 'number' ? found : undefined;
+}
+
+/**
+ * The artifact cache, so one file is parsed once per invocation rather than once per criterion.
+ *
+ * `undefined` is cached as `undefined` deliberately: a file that is missing stays missing for the length of
+ * one run, and re-reading it per row would turn a single absence into thirty syscalls and the same note.
+ */
+const artifactCache = new Map();
+function artifactAt(relative) {
+  if (artifactCache.has(relative)) return artifactCache.get(relative);
+  const file = path.resolve(root, relative);
+  let parsed;
+  try {
+    parsed = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+  artifactCache.set(relative, parsed);
+  return parsed;
 }
 
 /** The controlled set, evaluated once and reused, because every arm row reads from it. */
@@ -117,13 +144,12 @@ function probeReading(name) {
 const resolve = {
   probe: probeReading,
   artifact: (relative, key) => {
-    const file = path.resolve(root, relative);
-    if (!existsSync(file)) return undefined;
-    try {
-      return pluck(JSON.parse(readFileSync(file, 'utf8')), key);
-    } catch {
-      return undefined;
-    }
+    const parsed = artifactAt(relative);
+    return parsed === undefined ? undefined : pluck(parsed, key);
+  },
+  artifactRaw: (relative, key) => {
+    const parsed = artifactAt(relative);
+    return parsed === undefined ? undefined : pluckRaw(parsed, key);
   },
   arm: (name) => scoreArm(controlledSet().cases, name).accuracy,
   gap: () => {
@@ -137,7 +163,9 @@ const resolve = {
 
 const evaluations = CRITERIA.map((criterion) => {
   const value = currentOf(criterion, resolve);
-  return { criterion, evaluation: verdictOf(criterion, value === undefined ? null : value) };
+  const current = value === undefined ? null : value;
+  const stale = attestationOf(criterion, resolve);
+  return { criterion, evaluation: verdictOf(criterion, current, stale) };
 });
 
 const pct = (value) => `${(100 * value).toFixed(1)}%`;
@@ -156,6 +184,9 @@ const want = (criterion) => {
 /** The word in the status column: a status is not enough once aims and accepted misses exist. */
 const label = (criterion, evaluation) => {
   if (evaluation.status === 'unrun') return 'unrun';
+  // `stale` is not `FAIL`: nothing was compared, because the number describes a different system. It is not
+  // `unrun` either, because the value exists and is printed beside the label.
+  if (evaluation.status === 'stale') return 'STALE';
   if (evaluation.status === 'pass') return 'pass';
   if (criterion.accepted === true) return 'accept';
   return criterion.kind === 'gate' ? 'FAIL' : 'aim';
@@ -177,6 +208,9 @@ if (asJson) {
         source: describe(criterion.source),
         current: evaluation.current,
         status: evaluation.status,
+        // The stale reason travels in `note` like the unrun one, so a consumer does not have to special-case
+        // which statuses carry an explanation.
+
         note: evaluation.note,
       })),
       null,
@@ -200,7 +234,12 @@ if (asJson) {
   const aims = evaluations.filter(
     (entry) => entry.evaluation.status === 'fail' && !entry.evaluation.blocking,
   );
-  const missing = evaluations.filter((entry) => entry.evaluation.status === 'unrun');
+  // `stale` counts as missing for the release gate, because a row whose number is about another system is
+  // not a measurement of this one. It is listed separately so the repair differs: a stale row needs the
+  // artifact re-hung, an unrun row needs a dispatch.
+  const missing = evaluations.filter(
+    (entry) => entry.evaluation.status === 'unrun' || entry.evaluation.status === 'stale',
+  );
 
   if (failed.length > 0) {
     process.stdout.write(`\n${failed.length} gate(s) below threshold\n`);
@@ -225,11 +264,12 @@ if (asJson) {
 
   if (missing.length > 0) {
     process.stdout.write(
-      `\n${missing.length} with no value — reported as unrun, never as a pass\n`,
+      `\n${missing.length} without a usable value — reported as unrun or stale, never as a pass\n`,
     );
     for (const { criterion, evaluation } of missing) {
+      const tag = evaluation.status === 'stale' ? 'stale' : 'unrun';
       process.stdout.write(
-        `  ${pad(criterion.id, 5)}${describe(criterion.source)}: ${evaluation.note}\n`,
+        `  ${pad(criterion.id, 5)}${pad(tag, 6)}${describe(criterion.source)}: ${evaluation.note}\n`,
       );
     }
   }
@@ -258,7 +298,9 @@ if (asJson) {
 }
 
 const failed = evaluations.filter((entry) => entry.evaluation.blocking).length;
-const missing = evaluations.filter((entry) => entry.evaluation.status === 'unrun').length;
+const missing = evaluations.filter(
+  (entry) => entry.evaluation.status === 'unrun' || entry.evaluation.status === 'stale',
+).length;
 // `process.exitCode`, never `process.exit()`. A write to a pipe is asynchronous in node, so an explicit exit
 // can terminate while `--json`'s document is still in flight: the exit code is the same and the output is
 // truncated mid-string, which a consumer reports as malformed JSON rather than as a check that failed. It was
