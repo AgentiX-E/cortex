@@ -35043,3 +35043,106 @@ unchanged at 1.003x, so this is not accuracy bought with tokens.
 The dispatch `E11` needs is the one this round could not make: **two runs of `42355323615`'s exact
 configuration**. It is the only measurement that turns the floor from a lower bound into a bound, and it is the
 cheapest remaining experiment in the queue.
+
+## 13.320 The `E11` dispatch, and why it runs at the baseline's commit rather than at master
+
+`42452904894` was dispatched at 05:59Z on 2026-11-08 against tag `s0-control-7692f20`. That tag points at
+`7692f204`, the commit `42355323615` ran, and the workflow is the one that commit contains. The inputs are the
+dispatch table as that commit held it, with the two values the baseline artifact records and the table now does
+not: `cortex_memory_ask=verbatim-acts` and `cortex_memory_max_prompt_chars=multi-session:48460`.
+
+The commit is the point. **33 commits** and **6,530 added lines** separate `7692f204` from master in
+`packages/*/src`, including `benchmark.ts` (+561), `reader-transport.ts` (+113), `report.ts` (+262) and
+`turn-cap-routes.ts` (+21). A control dispatched at master would price the code as well as the clock, and every
+line of that delta sits *upstream* of the prompt, which is exactly where the reading would have to guess. The
+alternative was to lean on `S4` — the `promptDigest` comparison — to say afterwards whether the packet moved.
+`S4` is still the instrument, but it is a **check on a control**, not a licence to dispatch without one: `S4`
+can only refute, it cannot restore a run whose packet drifted.
+
+`7692f204` was reached through a tag rather than a branch, and that is the one thing about this dispatch a reader
+should be suspicious of, because `tools/dispatch-cortex-memory-ab.py` pins `ref` to `master` and refuses a
+checkout whose tree is not master's. The refusal exists to stop a dispatch measuring code the caller is not
+looking at. Here the caller is looking at exactly that code: the ref names the commit, the artifact records
+`head_sha`, and `S0` is the claim that every field except the clock matches. The dispatcher's departure variable
+was written by hand for the same reason it exists — the gate must be told which two fields moved.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `S0a` | the artifact's `memoryArmConfig` matches `42355323615`'s field for field, and its `head_sha` is `7692f204` | any differing field, or any other SHA |
+| `S0b` | the two declared departures are exactly `cortex_memory_ask` and `cortex_memory_max_prompt_chars`, which are the two `42355323615` itself carried | a third departure, or a declaration that names a field the run did not move |
+| `S4` | `promptDigest` for repetition 1 equals `42355323615`'s, and is reported whatever it says | a digest that moved, which would mean the same commit and the same inputs delivered a different packet |
+
+`S1a`/`S1b`/`S1c` and `S3` are unchanged from §13.305 and are applied to this run. The band matters more than
+the point estimate: `42355323615` reads `MR` mean **101.5**, `42387911305` reads **97.3**, and the band's
+thresholds are 97 and 101. A third reading inside the band leaves the room explanation unresolved for a second
+time, which is a result about the instrument and is recorded as one rather than retried.
+
+## 13.321 The coverage campaign found a defect, and the rest of the gaps were dead code
+
+The de-gamification rule for this campaign is that a branch is either reached by a test or deleted. Applied to
+the four remaining files under 95% branch coverage in `cortex-eval`, it produced one real defect, and every
+other gap was dead code that the rule says to delete.
+
+### 13.321.1 The defect: an audit that aborts on a legitimate corpus
+
+`assertWrongByConstruction` has three failure arms, and one of them fired on a corpus no reader would call
+malformed:
+
+```text
+audit: a cross-gold introduced "Marcus", which the question itself states -- the answer would not be wrong
+```
+
+The planners filtered a candidate substitution against the **conversation** and the **gold**. Neither filters
+against the **question**, so a question phrased "Did Marcus help Rachel move?" pulled `Marcus` out of the corpus
+pool for `cross-gold`, and the assertion — correctly — refused it. The refusal is a `throw`, which ends
+`planAudit` for the whole corpus rather than dropping one case.
+
+Two things make this worse than its size. It is **corpus-dependent**: no fixture in the test set phrased a
+question that way, so nothing failed until a real artifact did, and the instrument's own suite would have
+stayed green. And it arrives as a **crash** — the audit tool reports an exception instead of a false-accept rate,
+on a run that cost ninety minutes.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `J10` | every planned case's introduced token is absent from the question, the conversation and the gold | a case whose `introduced` appears in any of the three |
+| `J11` | a question that names another gold's entity costs **one case**, not the audit | a corpus for which `planAudit` throws |
+| `J12` | the assertion at plan time still runs, because a refusal in the planner can be undone by the next planner added | an `assertWrongByConstruction` call removed while the planners keep filtering |
+
+The test was written before the fix and failed with the message above; the three planners now refuse the
+candidate, and the assertion stays as the last line rather than the first.
+
+### 13.321.2 The deletions, and why each was not "just uncovered"
+
+| file | what was deleted | why it could not run |
+| --- | --- | --- |
+| `markers.ts` | the comparator's token tie-break | two candidates share a span only if one token sits in two classes; `MARKER_TOKENS` is a partition and its own test asserts it |
+| `paired-flip.ts` | `classifyPaired`'s two guards | `summarisePaired` refuses both shapes first, and says which question |
+| `paired-flip.ts` | `?? []` on a map keyed by the same map that is being iterated | the lookup cannot miss |
+| `paired-flip.ts` | `?? 0` on an index into an array built with `length: runs` | the index cannot be absent |
+| `paired-flip.ts` | equality arm of the capability comparator | map keys are distinct, so `a === b` never holds |
+| `system-mirror.ts` | `enumerable !== undefined` guard | `getOwnPropertyDescriptors` always reports it |
+| `competitor.ts` | `right.score ?? 0` in the reference provider's comparator | the comparator's input is built by that function with a number |
+
+The last three matter for a reason beyond tidiness: a fallback for a state the code cannot produce is a
+**claim** that the state is possible, and it is read as one by whoever debugs the next failure. `!` and a
+required field say what is true instead.
+
+The seven branches that were reachable got tests that assert the arm that was missing rather than the happy
+path again: an instance whose history fields are absent rather than empty (different JSON, same type), a `null`
+from `String.match` rather than a list of short words, a getter with no setter, a setter with no getter,
+capabilities arriving in descending order, an empty corpus, and the substitution's three shapes.
+
+### 13.321.3 The readings
+
+| file | before | after |
+| --- | --- | --- |
+| `cortex-eval` package | 99.37 / 97.87 / 99.62 / 99.61 | **99.53 / 98.45 / 99.62 / 99.71** |
+| `competitor.ts` | 100 / 78.12 / 100 / 100 | **100 / 100 / 100 / 100** |
+| `paired-flip.ts` | 95.45 / 85.41 / 100 / 94.44 | **100 / 100 / 100 / 100** |
+| `system-mirror.ts` | 100 / 81.25 / 100 / 100 | **100 / 100 / 100 / 100** |
+| `judge-audit.ts` | 91.17 / 82.81 / 100 / 94.04 | **97.05 / 95.58 / 100 / 96.42** |
+| `markers.ts` (`cortex-core`) | 97.50 / 68.75 / 100 / 96.96 | **100 / 100 / 100 / 100** |
+
+`judge-audit.ts` is the one file that is not at 100, and the three arms it leaves are the assertion's own
+failure paths. They are reachable only through a planner defect, which is the definition of an assertion; the
+`J12` row above is how they earn their keep.
