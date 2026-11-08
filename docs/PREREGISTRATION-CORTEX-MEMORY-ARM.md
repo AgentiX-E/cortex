@@ -34733,3 +34733,66 @@ Three consequences, and the third is a limit rather than a result.
 | `J9` | with both artifacts re-read under one pinned judge over all 500 questions, the `M1` arm difference moves by less than it did under per-arm judges — the judge-decided share is 50.4% on A and 57.2% on B, so the identity can account for more than the preference column | a difference that survives a common judge at the same size, which would restore §13.310's reading and requirement 12's evidence with it |
 
 One correction to this section's own first draft, kept because it is the same mistake one size smaller: it recorded the `J5` pair as "A 14 against B 14" before the fourth cell existed, which is two readings of one judge and therefore valid, but it could not rule out that the *other* judge also separated the arms — and the direction of the effect is exactly what a single column cannot test. `42434223889` is the row that turns a reading into a 2 × 2, and the 2 × 2 is what says the effect is the judge's.
+
+---
+
+## 13.313 Two axes, one order — and the bill reading that was the repetition count
+
+Everything above prices one axis at a time, and §13.312 finished by showing what that costs: a 10-question
+arm difference and a 9-question judge difference were added together because the matrix had no row where the
+two could meet. The same shape appears on the cost side, and this section is the reading of it — including
+the arithmetic that made this section's first draft wrong.
+
+**The pair.** `42355323615` (control, 48,000-character cap, 4 repetitions, 457/500) against `42373407439`
+(24,000 characters, 2 repetitions, 441/500). Overall **−3.20 pp**, `MR −6.61`, `TR −4.72`, `KU −1.39`,
+`IE −0.67`, `ABS 0.00`, at **12,137 → 6,077** context tokens per question, **0.501x**.
+
+**What the matrix could say about it before.** `C2` reads 0.487 and a met budget; the accuracy cost lives in
+its `onMiss` as a sentence. Nothing computed whether the trade was good, and the two facts that decide it —
+that the loss is `MR` and `TR` and not the aggregate, and that a cost claim has a bill behind the context —
+had no row.
+
+**What the order says.** Three objectives: aggregate accuracy up, every gated capability not down beyond the
+margin, context tokens down, bill down. `dominates` means at least as good on all of them and strictly better
+on one; anything else is `incomparable`, which is a result. This pair is `incomparable`, blocking on
+`overall`, `MR` and `TR`. `C3` is the bill's row.
+
+**The self-correction, which is the part worth recording.** The first draft of this section reported the bill
+as **1.074x**, i.e. the arm that reads half as much costs 7.4% more because its prefix stops being cached.
+Pairing against the correct control made it **6.90x** instead. Neither number is a cost effect:
+
+| pairing | context | bill | cache share | repetitions |
+| --- | ---: | ---: | ---: | --- |
+| `42310779222` vs `42373407439` | 0.502x | 1.07x | 78.21% / 51.07% | 4 / 2 |
+| `42355323615` vs `42373407439` | 0.501x | 6.90x | 98.34% / 51.07% | 4 / 2 |
+
+The cache-hit share is a function of the repetition count — a prompt run four times can hit on three, a
+prompt run twice can hit on one — and 51.07% is what "one miss, one hit, equal-sized prompts" produces. A
+6.90x bill on a 0.50x context is not a plausible effect; it is `runs` wearing a cost's name. Two different
+wrong numbers from one confound is the reason the instrument now refuses rather than warns:
+`tools/efficiency-frontier.mjs` exits 2 on unequal `runs`, and `compareEfficiency` reports
+`billComparable: false` and drops the bill from both the promotion and the demotion clause, because a
+confounded axis can neither prove nor disprove anything.
+
+**What this does not license.** Reading `C2`'s met budget as a cost win, and reading `C3` at all until an
+equal-repetition pair exists. `C3` is `unrun` with the blocker named, which is the honest form.
+
+**The resolution arithmetic, because it decides the shape of every future criterion.** At n = 500 and
+91.40% the Wilson half-width is **2.47 pp**, so a 2.5-point margin is the finest test the aggregate supports
+— by 0.03 pp — and no capability subset supports one at all: `TR` ±3.60, `IE` ±4.09, `ABS` ±5.68, `MR` ±6.60,
+`KU` ±7.34. The token axes, by contrast, are sums of provider counters with no sampling variance; their only
+movement is a configuration change, and their only confound is `runs`. So cost is where an improvement can be
+*demonstrated* here, and accuracy is only ever asked whether it was bought. That is why the criterion is
+non-inferiority plus superiority rather than a weighted score, and why a capability-level claim has to be
+**paired** — `paired-flip.ts` and McNemar over discordant pairs have resolution set by the discordant count,
+which is the only route this dataset offers.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `E1` | with `runs` held equal, the bill ratio for a configuration that halves the context is within 5% of 1 — i.e. the cache survives a smaller window at a fixed repetition count | a bill ratio outside 1 ± 0.05 on an equal-`runs` pair, which would make the cache collapse a real effect and put prefix stability on the critical path |
+| `E2` | a gated capability's drop can be certified at n = 121 or n = 72 only when the claim is paired; an unpaired 2.5-point margin cannot be resolved on any subset | a paired reading that agrees with the unpaired one at the same effect size, which would mean the discordant count was not the binding term |
+| `E3` | `A1` (attribution at a fixed 48,000-character budget) moves `MR` by less than the 2.5-point margin — i.e. MemStrata's attribution spend buys tokens, not points | `MR` moving by more than 2.5 points at a held budget, which would make attribution a mechanism rather than a luxury |
+
+`A1`–`A4` and the racing-versus-porting rule are in `docs/PLAN-COMPETITOR-ABLATION.md`; the composite design is
+in `docs/DESIGN-EFFICIENCY-FRONTIER.md`; the external review this round answered is
+`docs/REVIEW-EXTERNAL-2026-11-08.md`.
