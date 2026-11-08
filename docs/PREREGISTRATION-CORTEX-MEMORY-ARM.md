@@ -34690,3 +34690,46 @@ The variable is not `DEEPSEEK_MODEL`, which names the reader: pinning a judge by
 | `J7` | the absolute preference accuracy moves by **more** than 5 points when the judge is swapped, which is the finding this section states | a swap that moves it by less, which would make `deepseek-v4-pro` and `deepseek-chat` interchangeable graders and put the 10-question difference down to the specific answers rather than to the judges |
 
 `J4` is the one that decides whether this section's explanation is complete. If the artifact reproduces, the three substitutions account for the whole discrepancy and the `M1` pair has to be re-read under a pinned judge before requirement 12's evidence means anything. If it does not, then the artifact's own judge was a fourth unknown and the campaign's oldest number — the `M1` accuracy pair itself — has to be rebuilt rather than reinterpreted.
+
+### 13.312.8 The readings, and the 2 × 2 they complete
+
+`J4` holds, `J5` holds, and together they close the question §13.311 opened. Each artifact, re-read by **its own** judge derived from its own record, reproduces:
+
+| run | artifact | judge | artifact | re-grade | first-pass agreement | flips |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| `42433645302` | B (`42391516675`) | `deepseek-v4-pro` @ 0 — derived | 13 / 29 | **14 / 29** | **29 / 29** | 2 |
+| `42433650537` | A (`42391635411`) | `deepseek-flash` @ 0 — derived | 23 / 29 | **22 / 29** | 28 / 29 | 1 |
+
+Agreement 29 of 29 and 28 of 29, correct count within one question of the artifact in both directions. **The artifacts were right about themselves; the round that "rescued ten answers" was measuring a different judge.** The line that says so is now printed by the tool rather than reconstructed from an env block:
+
+```
+artifact judge  model=deepseek-v4-pro temperature=0
+re-grade judge  model=deepseek-v4-pro temperature=0 matchesArtifact=true
+```
+
+Two more dispatches complete the 2 × 2 — the same 29 answers per arm, crossed with both judges, everything at temperature 0:
+
+| | `deepseek-flash` as judge | `deepseek-v4-pro` as judge | judge effect |
+| --- | ---: | ---: | ---: |
+| **arm A**'s 29 answers | 22 / 29 (75.9%) | 14 / 29 (48.3%) | **−8 questions** |
+| **arm B**'s 29 answers | 23 / 29 (79.3%) | 14 / 29 (48.3%) | **−9 questions** |
+| arm effect | **+1 for B** | **0** | — |
+
+Both cross-cells are pinned dispatches (`matchesArtifact=false`, recorded and printed on purpose): `42433656149` reads A's answers with `deepseek-v4-pro`, `42434223889` reads B's with `deepseek-flash`. Neither arm's bytes changed; only the grader did.
+
+**The gap is a main effect of the judge and there is no arm effect.** Under either judge the two arms are within one question of each other — B ahead by one under the lenient judge, level under the strict one — while swapping the judge moves each arm by eight or nine questions, about **29 points**. The recorded 10-question difference is therefore the sum of a one-question arm difference and a nine-question instrument difference, and the instrument's sign happened to point the same way as the story the campaign wanted to tell.
+
+Three consequences, and the third is a limit rather than a result.
+
+**`J7` is answered without its own dispatch.** A judge swap moves absolute preference accuracy by 29 points, far past the 5-point threshold, so `deepseek-v4-pro` and `deepseek-flash` are not interchangeable graders. Note which direction: three independent readings agree — `deepseek-chat` at the provider default (the broken run), `deepseek-flash` at 0, and `deepseek-flash` at 0 again on B — all sit at 22–23, while `deepseek-v4-pro` sits at 14 on both arms. The strictness is a property of that judge on this population, not of either arm's answers.
+
+**`J5` amends §13.310 rather than confirming it.** The gap was located in preference and it was real *as a difference between two readings*; it is not a difference between two abilities. What §13.310 established — the location, the refutation of length bias, the Jaccard 0.372 between the two arms' answers — stands, and §13.312.2's withdrawal of the size stands with it. What replaces the size is **0 to 1 questions**, and the sign is not the one the campaign had assumed.
+
+**A limit that has to be stated because it bounds what can be concluded next.** `judge-regrade.mjs` asks the judge directly and does not run `judgeScorer`, so its `re-graded correct` is the **judge channel only** — for a preference question that is the whole verdict (no gold string exists to match), which is why this population could reveal the defect at all. For the other five capabilities it is not the arm's score: an answer `exact` would have accepted is submitted to the model instead. So a pinned-judge reading of the *full* 500 is a different instrument from the artifact's accuracy, and it is registered rather than implied.
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `J8` | a pinned-judge **arm** comparison needs the full `judgeScorer`, not the judge channel alone: `judge-regrade.mjs` gains a `--scorer full` mode and the `all` population is read with it | a preference reading taken with the judge channel alone being read as an arm score |
+| `J9` | with both artifacts re-read under one pinned judge over all 500 questions, the `M1` arm difference moves by less than it did under per-arm judges — the judge-decided share is 50.4% on A and 57.2% on B, so the identity can account for more than the preference column | a difference that survives a common judge at the same size, which would restore §13.310's reading and requirement 12's evidence with it |
+
+One correction to this section's own first draft, kept because it is the same mistake one size smaller: it recorded the `J5` pair as "A 14 against B 14" before the fourth cell existed, which is two readings of one judge and therefore valid, but it could not rule out that the *other* judge also separated the arms — and the direction of the effect is exactly what a single column cannot test. `42434223889` is the row that turns a reading into a 2 × 2, and the 2 × 2 is what says the effect is the judge's.
