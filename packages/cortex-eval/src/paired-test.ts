@@ -175,8 +175,12 @@ export function signFlipExact(differences: readonly number[]): number {
  * `2^40` is 1.1×10¹² against `Number.MAX_SAFE_INTEGER` at 9.0×10¹⁵, so every weight in the table is an
  * integer the arithmetic can hold. Forty is not a resolution choice: above it the answer is still a
  * p-value, computed the other way, and the constant exists so the switch is one number a reader can find.
+ *
+ * **Not exported**, and the export census is why the first version was wrong: a constant that only
+ * `signFlipExact` reads is not part of this package's API, and an `export` on it is an orphan export by the
+ * project's own rule — "an export nothing calls". The check caught it on the first CI run.
  */
-export const SIGN_FLIP_EXACT_LIMIT = 40;
+const SIGN_FLIP_EXACT_LIMIT = 40;
 
 /**
  * The two-sided normal tail `2·(1 − Φ(z))`, for a **non-negative** `z`.
