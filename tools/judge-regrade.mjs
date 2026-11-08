@@ -121,6 +121,32 @@ export function signTest(up, down) {
   return Math.min(1, (2 * cumulative) / Math.pow(2, n));
 }
 
+/**
+ * The majority verdict over one pass vector, with a tie resolved to `false`.
+ *
+ * ## Why the direction matters as much as the rate
+ *
+ * A flip rate says the verdict moved. It cannot say whether the artifact was **strict** or
+ * **lenient**, and on a population of 29 questions eleven disagreements are consistent with both:
+ * if the re-grade accepted them, the artifact understated the arm by 11; if it rejected them, it
+ * overstated it. Those two readings support opposite conclusions about whether a stronger reader
+ * scored worse, which is the question this campaign is trying to answer. So the count of questions
+ * the majority rescues is reported beside the count it revokes.
+ *
+ * Strict `>` rather than `>=`: a 1–1 split is not a win for either side, and calling it one would
+ * let a two-pass reading manufacture agreement. Ties are counted separately, because an instrument
+ * that ties often cannot be majority-voted at all and the count is the evidence for that.
+ */
+export function majority(verdicts) {
+  const yes = verdicts.filter((verdict) => verdict).length;
+  return yes * 2 > verdicts.length;
+}
+
+/** True when no side of a pass vector has a majority. */
+function isTie(row) {
+  return row.verdicts.filter((verdict) => verdict).length * 2 === row.verdicts.length;
+}
+
 /** Count what the passes did, from the verdict vectors alone. */
 export function tally(rows) {
   const judged = rows.length;
@@ -145,6 +171,16 @@ export function tally(rows) {
     // The first pass is a re-grade of the same bytes with the same template, so any disagreement with
     // the artifact is itself a judge reading: `recorded` is what the run's own grading said.
     agreesWithArtifact: rows.filter((row) => row.verdicts[0] === row.recorded).length,
+    // What the re-grade says the arm actually scored, and where the artifact differed from it. Ties
+    // are excluded from the two direction counts rather than assigned to the artifact's side: a
+    // question the instrument could not decide is not evidence about which grader was wrong.
+    regradedCorrect: rows.filter((row) => majority(row.verdicts)).length,
+    artifactOnlyCorrect: rows.filter(
+      (row) => !isTie(row) && row.recorded && !majority(row.verdicts),
+    ).length,
+    regradeOnlyCorrect: rows.filter((row) => !isTie(row) && !row.recorded && majority(row.verdicts))
+      .length,
+    ties: rows.filter(isTie).length,
     byCapability: Object.fromEntries(
       [...byCapability.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
@@ -233,6 +269,13 @@ async function main() {
   );
   console.log(
     `  first pass agrees with the artifact on ${reading.agreesWithArtifact}/${reading.judged}`,
+  );
+  console.log(
+    `  re-graded correct ${reading.regradedCorrect} / ${reading.judged}` +
+      `  (artifact ${rows.filter((row) => row.recorded).length},` +
+      ` artifact-only ${reading.artifactOnlyCorrect},` +
+      ` re-grade-only ${reading.regradeOnlyCorrect},` +
+      ` ties ${reading.ties})`,
   );
   for (const [capability, entry] of Object.entries(reading.byCapability)) {
     console.log(
