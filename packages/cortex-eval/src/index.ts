@@ -631,3 +631,25 @@ export {
   type Probe,
   type ProbeOutcome,
 } from './model-portability.js';
+
+// The two axes read together. Every other row on the acceptance matrix prices one axis at a time, and
+// the reading the field is decided on — more accuracy for fewer tokens — had no row at all: run
+// `42373407439` bought 53.7% of the context for 3.20 accuracy points and the matrix could describe it
+// as a win on `C1` and a loss on `S1` with nothing computing the joint verdict. The primitive is
+// dominance rather than a weighted sum, because the two axes have resolution that differs by two
+// orders of magnitude and a scalar turns the verdict into a function of its weights.
+// See `docs/DESIGN-EFFICIENCY-FRONTIER.md`.
+export {
+  CACHE_HIT_PRICE_RATIO,
+  DEFAULT_EFFICIENCY_POLICY,
+  compareEfficiency,
+  efficiencyFrontier,
+  profileOf,
+  type EfficiencyComparison,
+  type EfficiencyFrontier,
+  type EfficiencyPoint,
+  type EfficiencyPolicy,
+  type EfficiencyProfile,
+  type EfficiencyReading,
+  type ReadingLabel,
+} from './efficiency-frontier.js';

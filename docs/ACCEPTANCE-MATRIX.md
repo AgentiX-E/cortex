@@ -71,6 +71,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
 | C2  | <!-- reading:C2 -->48.7%  | ≤ 70.0%   | pass   | cost                                   | LongMemEval-S, paired, median evidence tokens per question   |
+| C3  | <!-- reading:C3 -->—      | ≤ 100.0%   | unrun  | cost                                   | LongMemEval-S, billed prompt tokens per question at the reduced budget, as a fraction of the registered configuration |
 | M1  | <!-- reading:M1 -->—      | ≥ 3.0pp   | unrun  | reader strength                        | LongMemEval-S, one dispatch, two readers, prompt bytes held  |
 | P1  | <!-- reading:P1 -->—      | ≤ 2.0pp   | unrun  | provider portability                   | LongMemEval-S, one dispatch, two providers, prompt bytes held |
 
