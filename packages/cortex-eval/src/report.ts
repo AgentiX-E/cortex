@@ -951,6 +951,34 @@ export type MemoryArmConfig = {
       }
     | undefined;
   /**
+   * The judge that scored this run, and whether a dispatch pinned it.
+   *
+   * §13.312. `reader` names the model that **answered**; this names the model that **graded**, and
+   * until this field existed the artifact could not tell them apart because they were always the
+   * same object. That identity is right for one arm over time and wrong for two arms at one time: on
+   * the `M1` pair the judge was `deepseek-v4-pro` for one arm and `deepseek-flash` for the other, and
+   * on the 29 preference questions -- whose golds are criteria, so the verdict is entirely the
+   * judge's opinion -- one judge rejected 10 answers the other accepted. The 34.5-point capability
+   * gap that produced was an instrument swap, and no field in either artifact said so.
+   *
+   * `source` is the load-bearing half. `'reader'` is the state of every run before this field and
+   * means "nobody chose a judge, it followed the arm"; `'pinned'` means `CORTEX_JUDGE_MODEL` named
+   * one independent of the arm. A comparison across two artifacts is a comparison only when both say
+   * `pinned` with the same model, and that is checkable from the two files alone.
+   *
+   * Absent rather than defaulted, for the reason every other block here is: an artifact written
+   * before §13.312 must read as predating the field rather than as having followed its reader by
+   * choice.
+   */
+  readonly judge?:
+    | {
+        readonly providerId: ReaderProviderId;
+        readonly model: string;
+        readonly temperature: number | null;
+        readonly source: 'reader' | 'pinned';
+      }
+    | undefined;
+  /**
    * The reranking stage this run carried, and what it did.
    *
    * ## Why the toggle is recorded even for the control
@@ -1502,6 +1530,14 @@ export function formatAblationReport(report: AblationReport): string {
         // request carried no temperature" and "this artifact predates the field" are the same
         // bytes otherwise -- the distinction the `reviewPass` field exists to keep.
         (memoryArm.reader === undefined ? '' : `, \`${renderReader(memoryArm.reader)}\``) +
+        // §13.312, under the rule the `endpoint=override` clause follows one line up: printed only
+        // when the judge is **not** the reader it would otherwise have followed. A run that pinned
+        // nothing already says so through the reader clause, and an unconditional clause would move
+        // the bytes of every archived line to state something it already stated.
+        (memoryArm.judge === undefined || memoryArm.judge.source === 'reader'
+          ? ''
+          : `, \`judge=${memoryArm.judge.providerId}:${memoryArm.judge.model}` +
+            `/temp=${memoryArm.judge.temperature === null ? 'default' : String(memoryArm.judge.temperature)}\``) +
         // Which reranking stage the run carried. Appended only when the caller recorded one --
         // the arm always does, so an artifact without the field predates §13.115 and must not be
         // read as having run the control.

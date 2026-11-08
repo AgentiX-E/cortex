@@ -230,11 +230,23 @@ function firstNonEmptyName(env: LlmEnv, names: NonEmptyNames): string {
  * endpoint, and `resolveReaderIdentity` needs the selection in order to look the right
  * declaration up.
  */
-export function readModelSelection(env: LlmEnv): {
+export function readModelSelection(
+  env: LlmEnv,
+  /**
+   * The variable the selection is read from.
+   *
+   * A parameter since §13.312 because there are now two selections in one process: the reader's and
+   * the judge's, which a dispatch can pin independently of the arm it is measuring. Reading the
+   * judge's from a second copy of the grammar would be a second answer to "what is `zhipu:x`", and
+   * feeding the pin through `DEEPSEEK_MODEL` would make an invalid pin's error name a variable the
+   * operator never set -- which is the class of silent substitution this whole section is about.
+   */
+  variable: string = MODEL_SELECTION_VARIABLE,
+): {
   readonly id: ReaderProviderId;
   readonly model: string | undefined;
 } {
-  const raw = (env[MODEL_SELECTION_VARIABLE] ?? '').trim();
+  const raw = (env[variable] ?? '').trim();
   if (raw === '') return { id: 'deepseek', model: undefined };
   const colon = raw.indexOf(':');
   // No colon: the id is a model, and the provider is the default. This is the branch every
@@ -245,7 +257,7 @@ export function readModelSelection(env: LlmEnv): {
   const known = READER_PROVIDERS.find((candidate) => candidate === prefix);
   if (known === undefined) {
     throw new Error(
-      `${MODEL_SELECTION_VARIABLE}=${JSON.stringify(raw)} names ${JSON.stringify(prefix)} before ` +
+      `${variable}=${JSON.stringify(raw)} names ${JSON.stringify(prefix)} before ` +
         `its first colon, which is not a provider. Expected one of ` +
         `${READER_PROVIDERS.map((id) => JSON.stringify(id)).join(', ')}, or a plain model id ` +
         `(${JSON.stringify('deepseek-chat')}). A model id that itself contains a colon -- an ` +
@@ -296,8 +308,11 @@ function isImplied(host: string, domains: readonly string[]): boolean {
  * environment supplied; it is refusing to describe a run that cannot start. Every other provider
  * has defaults, so the refusal can only fire on the one provider that has none.
  */
-export function resolveReaderProvider(env: LlmEnv): ReaderProvider {
-  const selection = readModelSelection(env);
+export function resolveReaderProvider(
+  env: LlmEnv,
+  selectionVariable: string = MODEL_SELECTION_VARIABLE,
+): ReaderProvider {
+  const selection = readModelSelection(env, selectionVariable);
   const declaration = DECLARATIONS[selection.id];
   const baseUrl = firstNonEmpty(env, declaration.baseUrlVariables) ?? declaration.defaultBaseUrl;
   if (baseUrl === undefined) {

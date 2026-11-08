@@ -422,6 +422,10 @@ export {
   // base reader and letting the artifact name a treatment it did not administer.
   createReadersFromEnv,
   readThinkingReach,
+  // §13.312: which judge a process will use, and whether a dispatch pinned it. Exported because the
+  // artifact records it beside the reader's identity -- the two are the same object of a run and
+  // different objects of a comparison, which is the distinction the section exists to make.
+  resolveJudgeIdentity,
   resolveReaderIdentity,
   type LlmEnv,
   type ThinkingReach,
