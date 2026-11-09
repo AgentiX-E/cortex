@@ -764,8 +764,12 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   about dispatch inputs rather than about anything either artifact carries. It is written down here rather
   than only in the table because a value this arm's largest measured effect depends on is not an experiment's
   private business.
-- `readerThinking: multi-session+temporal` — **registered by §13.192.6 beside the id, and re-registered
-  by §13.232 from the value it used to hold.** `resolveReaderIdentity` reports
+- `readerThinking: temporal` — **re-registered by §13.345, third value on this line.** It held
+  `multi-session+temporal` from §13.232 until `T2` read it against the same 200-question control:
+  **184/200 against 181**, at **1.180 CNY against 2.021**, with the reasoning it keeps costing 329
+  completion tokens per call against 985. §13.345 records that the adoption claims **cost without an
+  accuracy cost** -- one draw, +3 questions inside the band -- and that `T2`'s own `TR` clause failed.
+  The two sections below are §13.192.6's and §13.232's history of the earlier values. `resolveReaderIdentity` reports
   `thinking` in every artifact since §13.110.1, and the input that sets it (`DEEPSEEK_THINKING`) was sent by
   nobody: `none` of this campaign's 500-question runs ever enabled it. It is the second half of the reader
   identity and the only one that can change a reply's *shape* without changing the model — which is exactly
@@ -37217,3 +37221,48 @@ band on its own; a third configuration that moves only `MR` and `KU` and reprodu
 If `T2` reproduces it, the effect is real enough to build on; if `T2` moves `TR` and leaves `MR`/`KU` where the
 control had them, the draws were noise and the honest conclusion is "the reasoning is worth nothing on the
 total", which is still a 45% saving.
+
+#### 13.344.6 `T2` read: the reach moves to one route, and the adoption claims cost rather than accuracy
+
+Run `42628645162` (`--screening --set thinking=temporal`) completed in 26 minutes. Its artifact says
+`thinking=enabled` on `['temporal']`, and the four readings on one control are:
+
+| | control | `T1` d1 | `T1r` d2 | **`T2`** |
+| --- | ---: | ---: | ---: | ---: |
+| accuracy | 90.5% (181) | 89.5% (179) | 91.0% (182) | **92.0% (184)** |
+| feature CNY | 2.021 | 2.208 | 0.944 | **1.180** |
+| completion/call | 985 | 138 | 136 | **329** |
+| cache hit | 97.4% | 75.2% | 97.4% | 97.4% |
+| `IE` | 78 | 78 | 76.5 | 78 |
+| `MR` | 23 | 24 | 25 | **25.5** |
+| `KU` | 24.5 | 25.5 | 26 | 25.5 |
+| `TR` | 26 | 24 | 24.5 | 25.5 |
+| `ABS` | 29 | 29 | 29 | 29 |
+
+Paired against the control question by question: **5 conversions and 2 regressions**, and three of the five
+conversions are counting questions (`How many bikes do I currently own`, `How many short stories have I
+written`, `How many tanks do I currently have`) — the population the two-route reach was taxing.
+
+**One clause of the registered bar failed and it is the one about `TR`.** §13.344.5 asked `TR` to recover at
+least a question; it read 25.5 against the control's 26, i.e. it neither recovered nor lost, and that is
+inside the 0.9-question band on 28. So the *premise* — that the reasoning is worth something on the temporal
+route — is **not demonstrated**, while the *conclusion* (this is the best measured point on the axis) is:
++3 questions and −41.6% of the feature side against the shipped configuration, on a pair whose conversion
+count is 5 to 2.
+
+**Adopted: `thinking=temporal`.** The claim the adoption makes is deliberately the narrow one §13.260.7 made for
+its own adoption: **cost without a measured accuracy cost**, not an accuracy gain. One draw of +3 questions on
+200 is inside the band (§13.326: 16 of 500 between two draws of one configuration is 6.4 on 200), and the
+evidence that this is not a loss is the same evidence that it is not a gain.
+
+Two things follow and both are on the record rather than in a commit message:
+
+- **`T1` is not refuted, it is ranked second.** `disabled` reads 180.5 across two draws at 0.944 CNY; `temporal`
+  reads 184 at 1.180. The axis is a Pareto frontier of two points, and the adopted one is the accuracy end of
+  it. A run that needs the last 20% of the bill knows where to find it.
+- **The full pass has not been re-read at the new reach.** `42533236864`'s 91.20% was produced under the
+  two-route reach, so `INPUTS`, §10.3 and `arm-config-baseline.json` now describe a configuration whose
+  500-question reading does not exist yet. The projection from this sample is **12.78 → ≈8.36 CNY a pass
+  (−35%)**, computed by re-pricing the completion line at the full pass's own token count (2.22M → 0.74M) and
+  holding the input lines fixed; the confirmation run is the next round's first dispatch, and until it lands the
+  91.20% belongs to the previous configuration rather than to this one.

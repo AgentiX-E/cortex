@@ -44,7 +44,7 @@ count over evidence that is spread across sessions.
 | --- | --- | --- |
 | fewer questions (500 -> 200) | -60% on the question axis, and the sampler keeps every capability | **adopt for screening** |
 | fewer repetitions (4 -> 2) | -50% on the repetition axis; McNemar still pairs | **adopt for screening** |
-| narrow the thinking reach | up to -6 CNY (-42%) | **test, do not assume** |
+| narrow the thinking reach | **-5.8 CNY of a 12.78 pass (-45%)**: the completion line 2.22M -> 0.29M at the full pass's own token count | **measured, §8-§9**: two draws, accuracy flat at 180.5/200 against 181. The 200-question sample reads -53% on the feature side and must not be scaled: its share of `MR`/`TR` is 28.5% against the file's 49.6% |
 | shrink the delivered context | -2.4 CNY at most | **reject** |
 | judge verdict cache | -0.15 CNY | not worth the change |
 
@@ -245,8 +245,13 @@ Three points on the curve, all measured except the middle one, which is register
 | configuration | full pass | accuracy | note |
 | --- | ---: | ---: | --- |
 | `multi-session+temporal` (shipped) | **12.78 CNY** | 91.20% | artifact `42533236864` |
-| `temporal` only (`T2`, registered) | ≈8.9 CNY projected | not yet read | predicted to keep `TR`'s reasoning and drop `MR`/`KU`'s |
-| `disabled` (`T1`) | **≈6.97 CNY** | 91.20% ± 0.5 on 200 | two draws, `42617201299` and `42621461902` |
+| `temporal` only (`T2`, registered) | ≈9.0 CNY projected | not yet read | predicted to keep `TR`'s reasoning and drop `MR`/`KU`'s |
+| `disabled` (`T1`) | **≈7.0 CNY** | 90.25% on 200 against 90.5% | two draws, `42617201299` and `42621461902` |
+
+The two discounted rows are computed by re-pricing the completion line at the full pass's own token count and
+holding the rest fixed, which is the only scaling this section will do: the sample's per-question completion is
+985 tokens against the full pass's 1,071, because the sample carries 28.5% of the two thinking routes where the
+file carries 49.6%, so multiplying the sample's saving by 2.5 overstates it by about a sixth.
 
 The middle row exists because the per-capability pattern inverts this section's own prediction: across both
 draws `MR` gained 1–2 questions and `KU` 1–1.5 while **`TR` lost 1.5–2 consistently**, so the reasoning is

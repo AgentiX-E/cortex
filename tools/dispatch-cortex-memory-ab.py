@@ -508,7 +508,7 @@ INPUTS = {
     # a trade: prompt tokens are **flat** (28.15 M against 28.41 M, 98.6% of them prefix-cache
     # hits in both) and the completion side goes from 0.24 M to 2.35 M, which is the thinking
     # tokens. A per-question budget of ~1,050 completion tokens buys 6.25 points.
-    "thinking": "multi-session+temporal",
+    "thinking": "temporal",
     # §13.345's population selector. `all` is the identity and is written down rather than omitted
     # because a dispatch value that is never sent is a value the artifact cannot be checked against
     # (§13.192.6) -- and because the registered configuration has to be readable as one object.
