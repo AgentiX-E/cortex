@@ -36640,9 +36640,11 @@ did, `[Assistant]` proves only what was recommended), `event_precision` windows 
 `year`/`range`/`approximate`, **"most recent means the latest `said_at`, not the latest `event_date`"**, and a
 three-part abstention test separating *a named particular is missing* from *the wording differs*.
 
-**7,391 does not include it.** At the characters-per-token ratio calibrated in `§13.340.3`, the prompt alone is
-≈5,900 tokens, so one call to their reader is ≈**13,400** tokens. Against this arm's **12,137**, which is a
-`usage.promptTokens` count that includes the system prompt, the context and the question.
+**7,391 does not include it.** At the ratio calibrated in `§13.340.3` the prompt alone is ≈5,900 tokens, and at
+the most generous 4.3 characters per token a tokenizer will give it is still **≥5,000** -- so one call to their
+reader is **≥12,400** before the field prefixes are counted, against this arm's **12,137**, which is a
+`usage.promptTokens` count that includes the system prompt, the context and the question. **That lower bound is
+the part no conversion rate can talk down**, which is why the finding survives a loose reading of the ratio.
 
 ### 13.340.3 The census, and the reading it refuses
 

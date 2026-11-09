@@ -113,12 +113,15 @@ failures this benchmark contains: unit-before-counting, speaker attribution, `ev
 windows, "most recent means latest `said_at` not latest `event_date`", and a three-part abstention
 test that distinguishes *a named particular is missing* from *the wording differs*.
 
-**The 7,391 does not include it.** Dividing 21.5 kB by the same 3.64 characters per token the census
-calibrated gives ≈5,900 tokens, so one call to their reader is ≈13,400 tokens — **the same order as
-this repository's 12,137, and slightly above it**. Two different tokenizers are in play
-(Gemini 3.8 Flash versus DeepSeek), so the honest claim is not "we are cheaper": it is that
-**"7,400 versus 12,137" is a comparison of a content-only count against a whole-prompt count, and
-the 40% price advantage it appears to show does not exist.**
+**The 7,391 does not include it**, and that survives a loose reading of the ratio. Even at the most
+generous 4.3 characters per token an English tokenizer will give, 21.5 kB is **≥5,000 tokens**, so a
+single call to their reader is **≥12,400** before the field prefixes are counted — at or above this
+repository's 12,137. At the census's own 3.64 it is ≈13,400.
+
+Two tokenizers are in play (Gemini 3.8 Flash versus DeepSeek), so the honest claim is not "we are
+cheaper": it is that **"7,400 versus 12,137" compares a content-only count with a whole-prompt
+count, and the 40% price advantage it appears to show does not exist.** The lower bound above is
+the part that does not depend on any conversion rate.
 
 ## 5. Where the 3.65 points actually are
 
