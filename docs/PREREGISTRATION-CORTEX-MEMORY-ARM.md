@@ -37361,12 +37361,13 @@ screening sample carries **29** `MR` questions, not 48, and three conversions is
 | treatment | `[item N]` prefix on every enumerated candidate, and the count taken by id rather than by string match |
 | population | `capability=MR`, 121 questions |
 | repetitions | 2 |
-| control | the run's own baseline arm -- the treatment is prompt-side and feature-only, so the pair is internal and no second dispatch is needed |
-| projected cost | **1.73 CNY** (§13.345.3), cleared by the default gate without a flag |
+| control | the full pass's own 121 `MR` questions at the **same shipped contract** (`42641469324`, 500 x 4, `thinking=temporal`), paired by question id. `limit`, `ablation_runs` and `capability` are harness inputs rather than configuration (`HARNESS_INPUTS`), so the pair is comparable without a second control dispatch |
+| projected cost | **1.73 CNY** (§13.345.3), cleared by the default gate without a flag -- and that is the whole cost of the reading, because the control already exists |
 | adopt if | **≥ 5 net `MR` conversions** (conversions minus regressions), i.e. above the 4-question floor |
 | reject if | **≤ 1 net conversion** |
 | between 2 and 4 | **inconclusive**, and re-run at `ablation_runs=4` (3.45 CNY) rather than re-argued |
 | guards | `IE`, `TR`, `KU`, `ABS` prompts must be byte-identical to the control's, and their accuracy unchanged: the treatment is `MR`-only, so movement anywhere else means the diff reached a request it should not have, which invalidates the pair rather than informing it |
+| coverage guard | the identifier is **longer** than the number it replaces (six characters per item), so unlike §13.283 this rendering cannot claim containment and the delivered set may shrink: at 48,460 characters and ~120 items that is 1.5% of the room, and the pair must show it took no gold turn away on any question. A question whose gold fell out of the window is a coverage loss and is excluded from the flip count with the loss reported; **more than 2 such questions voids the run** |
 
 The floor is the reason for the ≥ 5, and it is worth being explicit about what that costs: the arm has to move
 five questions of 121 -- 4.1 points of `MR` -- to be believed. If the mechanism is worth less than that, this
