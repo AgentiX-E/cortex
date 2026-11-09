@@ -257,7 +257,23 @@ export function project({
       observedThinkingReach !== undefined &&
       thinkingReach !== undefined &&
       String(observedThinkingReach) !== String(thinkingReach),
-    lowerBound: observedThinkingReach !== undefined && thinkingReach !== undefined && String(observedThinkingReach) !== String(thinkingReach),
+    // Two different reasons a total can be a lower bound, and they are not the same claim.
+    //
+    // The first is the reach: completion tokens are a property of the questions asked, so a run that
+    // changes which routes think cannot be priced by scaling a run that did not.
+    //
+    // The second is the population, and it was measured the hard way. §13.348: the first
+    // capability-scoped dispatch was projected at **1.73 CNY** and billed **5.87** -- 3.4x -- because
+    // scaling by the census assumes a capability's per-question cost is the file's, and `MR` is the
+    // route that carries the reasoning: its per-question-run cost is 0.0243 CNY against the file's
+    // 0.0064. The census is the right unit for *how many* questions a scoped run asks and the wrong
+    // unit for *what they cost*, so the figure is a floor and says so.
+    lowerBound:
+      (observedThinkingReach !== undefined &&
+        thinkingReach !== undefined &&
+        String(observedThinkingReach) !== String(thinkingReach)) ||
+      scoped,
+    lowerBoundBecause: scoped ? 'population' : 'reach',
     prices,
   };
 }
@@ -325,7 +341,7 @@ export function describe(projection, { limit, runs, capability } = {}) {
   const { cost, usage, factor } = projection;
   const hitShare = usage.promptTokens === 0 ? 0 : usage.cacheHitPromptTokens / usage.promptTokens;
   return [
-    `Projected spend for ${capability === undefined ? `${limit} questions` : `capability ${capability.join('+')}`} x ${runs} runs (scale ${factor.toFixed(3)} of the observed run)`,
+    `Projected spend for ${capability === undefined ? `${limit} questions` : `capability ${capability.join('+')}`} x ${runs} runs (scale ${factor.toFixed(3)} of the observed run${projection.lowerBoundBecause === 'population' ? ', LOWER BOUND: per-question cost is route-scoped and the census scales by count' : ''})`,
     `  input cached    ${(usage.cacheHitPromptTokens / 1e6).toFixed(2)}M  ${cost.cached.toFixed(2)} CNY`,
     `  input uncached  ${((usage.promptTokens - usage.cacheHitPromptTokens) / 1e6).toFixed(2)}M  ${cost.uncached.toFixed(2)} CNY`,
     `  output          ${(usage.completionTokens / 1e6).toFixed(2)}M  ${cost.output.toFixed(2)} CNY`,

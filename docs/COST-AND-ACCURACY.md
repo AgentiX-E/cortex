@@ -282,9 +282,16 @@ and saves it in another:
 | dispatch | questions | scale | projected | a file-scaled reading | at the 3.00 CNY default |
 | --- | ---: | ---: | ---: | ---: | --- |
 | `capability=MR`, 1 run | 121 | 0.060 | **0.86** | 3.57 | passes either way |
-| `capability=MR`, 2 runs | 121 | 0.121 | **1.73** | 7.13 | **passes as 1.73, refused as 7.13** |
+| `capability=MR`, 2 runs | 121 | 0.121 | **1.73** (billed **5.87**) | 7.13 | passes only with `--budget 8` |
 | `capability=MR`, 4 runs | 121 | 0.242 | **3.45** | 14.26 | refused either way |
 | whole file, 2 runs | 500 | 0.500 | 7.13 | 7.13 | refused |
+
+**The third column is a floor, not an estimate, and the first scoped dispatch proved it by a factor of
+3.4**: `capability=MR` x 2 runs was projected at 1.73 CNY and billed **5.87**, because the census scales
+by question count while per-question cost is route-scoped — `MR`'s question-run costs **0.0243 CNY**
+against the file's **0.0064**, since it is one of the two routes that carry the reasoning. So a scoped
+dispatch now **needs a named budget**; `--budget 8` dispatches and `--no-budget` dispatches unpriced. That
+is the honest form of the gate: it will not print a confident figure it knows to be low.
 
 The third column is what `tools/spend-projection.mjs` prints when the capability is forwarded; the fourth is what
 the same tool prints when it is not. **The gate had to learn the census**: with only `limit` and `runs` in hand it

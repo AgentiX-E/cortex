@@ -37516,3 +37516,60 @@ the cold number is the change's.
    two-route reach on the full set. The shipped reach is the measured optimum on this axis, the output
    line stays at ~52% of the bill, and the honest answer to "what is 48% of the money buying" is **six
    questions of `MR` and six abstentions avoided** — which is worth it.
+
+### 13.348 `I1` read: the identifier moves nothing, and the projection floored it at a third of the bill
+
+`42659283427` ran 121 `MR` questions x 2 repetitions at `evidence-blocks-item-ids` in 21 minutes. The
+registration read it as **one declared departure** (`promptContract`), so its numbers are a reading at
+those values rather than at the registration's, which is what an experiment's numbers should be.
+
+#### 13.348.1 The bar is not met, and the means say why
+
+| | control (`42533236864`, `MR` only) | treatment (`42659283427`) |
+| --- | ---: | ---: |
+| `MR` accuracy, mean over repetitions | **83.06%** | **83.06%** |
+| flips by question, majority-crossing | -- | **2 conversions, 4 regressions** |
+| net | | **−2** |
+| abstentions | 0 | 1 |
+
+The bar was **>= 5 net conversions**, the falsifier **<= 1**, and 2-4 inconclusive-then-re-run. The read is
+**−2**: the falsifier, on the nose. And the identical means with four flips in the wrong direction is the
+signature of a treatment that moved the reader around without moving the score — which is precisely what
+§13.203.4's flip-rate measurement warns a capability-sized claim looks like when it has no mechanism.
+
+**`I1` is rejected.** The numbering now runs across the blocks, the delivered set is identical by
+construction (§13.346.2), and the count is readable off the prompt — and the arm's counting failure did not
+move. What that establishes is narrow and worth stating: `MR`'s 16 `numeric_mismatch` failures are **not** a
+numbering problem. The reader is not losing the count because the evidence restarts at one; it is losing it
+somewhere between the count and the answer. That re-points the capability's remaining work at the *ask*
+(what the range inference and the answer line do with a count) rather than at the rendering.
+
+#### 13.348.2 The projection was wrong by 3.4x, and the direction matters
+
+| | projected | billed |
+| --- | ---: | ---: |
+| `capability=MR`, 2 runs | **1.73 CNY** | **5.87 CNY** |
+| per question-run | 0.0072 | **0.0243** |
+
+The projection scales the observed run by `(121/500) x (2/4)`, which is exactly right **for the question
+count** and wrong for the cost: per-question cost is route-scoped, and `MR` is one of the two routes that
+carry the reasoning. The file's average question-run is 0.0064 CNY and `MR`'s is **0.0243**, so a
+population made entirely of the expensive route costs 3.8x the average it was priced at.
+
+The tool now says so (`lowerBound: true`, `lowerBoundBecause: 'population'`) and the dispatch **refuses to
+ride the default ceiling** for a scoped run: a floor printed under a ceiling nobody chose is not a budget,
+and an instrument that reports a confident number it knows to be low is the defect it was built to remove.
+Naming a budget (`--budget 8`) dispatches; `--no-budget` dispatches unpriced, which is what the flag is for.
+
+#### 13.348.3 What the 5.87 bought
+
+It bought a **rejection with a mechanism**: the numbering is not where `MR`'s counting failures live, so
+the next `MR` arm should not be another representation. It also bought the projection defect, which would
+otherwise have been found by a run that could not afford itself. Neither was the registered question; both
+are worth more than the 4.14 CNY they cost over the projection, and both are now instruments rather than
+lessons.
+
+For the queue this means `I1`'s follow-up ("does the word `item` add anything on top of `#N`") is
+**cancelled rather than deferred**: an increment on top of a mechanism that moved nothing has no hypothesis
+behind it. The next `MR` arm is the answer side — the same 1.73-projections, the same 121 questions, and a
+`--budget` that reflects what a scoped run actually costs.

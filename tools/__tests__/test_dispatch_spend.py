@@ -198,6 +198,36 @@ class TestCapabilityScopedPricing:
             dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY)
         assert "carries no XX" in str(raised.value)
 
+    def test_a_scoped_dispatch_needs_a_named_budget(self, dispatch):
+        # §13.348. The projection is a floor for a scoped run (measured 1.73 projected against 5.87
+        # billed), so riding the default ceiling is not a decision -- it is a floor under a number
+        # nobody chose. The refusal has to carry the measurement, or the operator reads it as a
+        # formality and passes the default explicitly.
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR"
+        with pytest.raises(SystemExit) as raised:
+            dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY, named=False)
+        message = str(raised.value)
+        assert "lower bound" in message
+        assert "5.87" in message and "1.73" in message
+
+    def test_naming_the_budget_lets_the_scoped_dispatch_through(self, dispatch):
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR"
+        assert dispatch.projected_spend(inputs, 8.0, named=True) is None
+
+    def test_the_named_flag_is_what_the_parser_reports(self, dispatch):
+        _, default = dispatch.split_finance([])
+        _, named = dispatch.split_finance(["--budget", "8"])
+        _, unpriced = dispatch.split_finance(["--no-budget"])
+        assert default["named"] is False
+        assert named["named"] is True
+        assert unpriced["named"] is True
+
     def test_all_is_the_identity_and_is_not_passed(self, dispatch, capsys):
         inputs = dict(dispatch.INPUTS)
         inputs["limit"] = "0"

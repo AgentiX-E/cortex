@@ -886,6 +886,10 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
     """
     rest: list[str] = []
     budget: float | None = DEFAULT_BUDGET_CNY
+    # Whether the operator named a ceiling or is riding the default. §13.348 needs the distinction:
+    # the default is right for a dispatch the projection can price, and a capability-scoped dispatch
+    # is one it can only floor, so a floor under a default ceiling is not a decision anybody made.
+    named = False
     index = 0
     while index < len(argv):
         argument = argv[index]
@@ -893,14 +897,17 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
             if index + 1 >= len(argv):
                 raise SystemExit("--budget needs a CNY amount")
             budget = float(argv[index + 1])
+            named = True
             index += 2
             continue
         if argument.startswith("--budget="):
             budget = float(argument.split("=", 1)[1])
+            named = True
             index += 1
             continue
         if argument == "--no-budget":
             budget = None
+            named = True
             index += 1
             continue
         if argument == "--screening":
@@ -912,10 +919,10 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
             continue
         rest.append(argument)
         index += 1
-    return rest, {"budget": budget}
+    return rest, {"budget": budget, "named": named}
 
 
-def projected_spend(inputs: dict[str, str], budget: float | None) -> float | None:
+def projected_spend(inputs: dict[str, str], budget: float | None, named: bool = True) -> float | None:
     """Print this dispatch's projected bill and refuse when it breaches `budget`.
 
     Returns the projection so the caller can print it beside the inputs, or `None` when the
@@ -963,8 +970,23 @@ def projected_spend(inputs: dict[str, str], budget: float | None) -> float | Non
     # is a property of the bucket order, and quietly dropping the operator's limit would dispatch a
     # bigger run than the one that was asked for.
     capability = str(inputs.get("capability", "all") or "all").strip()
-    if capability != "" and capability.upper() != "ALL":
+    scoped = capability != "" and capability.upper() != "ALL"
+    if scoped:
         arguments.extend(["--capability", capability])
+        # §13.348. A capability-scoped projection is a **floor**, not an estimate: the census is the
+        # right count of questions and the wrong unit of cost, because per-question cost is
+        # route-scoped and `MR` is the route that carries the reasoning. The first scoped dispatch was
+        # projected at 1.73 CNY and billed 5.87 -- 3.4x -- so the default ceiling is not a ceiling
+        # here. An operator who means it names a number; the alternative is a gate that reports a
+        # confident figure it knows to be low, which is the defect it was built to remove.
+        if not named and budget is not None:
+            raise SystemExit(
+                "a capability-scoped dispatch is priced as a lower bound, so it needs a stated "
+                "budget: the census scales by question count and per-question cost is route-scoped "
+                f"(`MR` measured 0.0243 CNY per question-run against the file's 0.0064). The last "
+                f"scoped {capability} run was projected at 1.73 CNY and billed 5.87. Pass --budget N "
+                "with the ceiling you mean, or --no-budget to dispatch unpriced."
+            )
     if budget is not None:
         arguments.extend(["--budget", f"{budget}"])
     completed = subprocess.run(arguments, capture_output=True, text=True, check=False)
@@ -1017,7 +1039,7 @@ def main(argv: list[str] | None = None) -> int:
     # failure leaves no trace: a rejected configuration produces an artifact that says what it did,
     # a dispatch nobody could afford produces a bill. The gate runs on the values actually about to
     # be sent, so `--screening` and a hand-set pair of `--set` flags are priced identically.
-    projected_spend(inputs, finance["budget"])
+    projected_spend(inputs, finance["budget"], finance["named"])
 
     # Before the dispatch, because the workflow reads the variable when the job starts: written
     # after, it would describe the next run rather than this one, and the gate §13.220.5 installed
