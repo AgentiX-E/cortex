@@ -36495,3 +36495,100 @@ and this arm would keep it.
 against a system whose ingest dominates the dispatch and whose harness fit reads 0.0% independently is not
 a comparison until the ingest is measured, and the ingest only becomes a fair line item once the
 amortisation ratio is stated beside it.
+
+## 13.339 The budget is not what loses the evidence: at depth 20 this ranking covers half of gold
+
+`§13.338.5` left one item as the only route to the remaining 52% of cost headroom: send fewer turns rather than
+different ones. That framing carried an assumption nobody had checked -- that the character budget is what cuts
+gold evidence, so a smaller window would cost accuracy in proportion to how much gold it drops. The archived
+artifact refutes the assumption, and the refutation relocates the problem.
+
+### 13.339.1 Three steps, and only one of them loses anything
+
+`tools/evidence-depth-curve.mjs` reads `goldOverlap.goldRanks` from `42539923976` and splits the delivery of gold
+into the three stages that can each lose it:
+
+| capability | n | gold turns | recall (pool/total) | kept (carried/pool) | end-to-end | bypassed |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ABS` | 30 | 672 | 92.4% | 72.0% | 66.5% | 0 |
+| `IE` | 150 | 1,709 | 97.3% | 87.1% | 84.7% | 0 |
+| `KU` | 72 | 1,688 | 97.0% | 81.5% | 79.0% | 0 |
+| `MR` | 121 | 1,832 | 95.7% | — | 98.4% | 50 |
+| `TR` | 127 | 1,615 | 95.0% | — | 97.6% | 42 |
+| **all** | 500 | 7,516 | **95.9%** | **91.7%** | **87.9%** | 92 |
+
+`—` is not a missing value. On `MR` and `TR` the delivery path assembles whole sessions, so 92 gold turns arrived
+that the ranking never offered; `carried / pool` there would read 102.9% and 102.7%, which is a ratio above one
+rather than a retention rate. The tool reports the bypass count instead of the percentage, because a number that
+cannot be a proportion must not be printed as one.
+
+**So the budget is not the bottleneck.** The ranking surfaces 95.9% of gold somewhere in its pool and 87.9% of it
+reaches the reader. Whatever is losing `MR` the 9 points against `MemCog`'s 92.48, it is not the budget cutting
+the turn that answers the question.
+
+### 13.339.2 What is: depth, measured as a curve
+
+| capability | K5 | K10 | **K20** | K30 | K40 | K60 | K80 | K160 | never | depth for 90% |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ABS` | 12.1% | 21.3% | **36.9%** | 46.1% | 53.6% | 61.3% | 68.8% | 83.6% | 7.6% | 231 |
+| `IE` | 27.4% | 43.7% | **66.3%** | 75.0% | 79.0% | 84.1% | 86.7% | 93.0% | 2.7% | 112 |
+| `KU` | 17.3% | 32.6% | **52.3%** | 64.0% | 70.0% | 77.7% | 82.1% | 92.7% | 3.0% | 133 |
+| `MR` | 13.2% | 26.0% | **46.8%** | 57.9% | 65.2% | 74.2% | 78.9% | 89.0% | 4.3% | 172 |
+| `TR` | 15.9% | 28.8% | **46.4%** | 55.7% | 61.9% | 70.0% | 74.2% | 86.3% | 5.0% | 196 |
+| **all** | 17.8% | 31.7% | **51.5%** | 61.6% | 67.7% | 75.2% | 79.5% | 89.7% | 4.1% | **164** |
+
+**At depth 20 -- roughly 12,000 characters, the size of the room `A3`'s remaining 8% would buy -- this ranking
+covers 51.5% of gold.** To reach 90% it needs depth 164, which is essentially the whole pool and therefore the
+whole budget. That number closes the question `§13.338.5` opened: the 52% is not reachable by spending less,
+because **there is no depth at which spending less keeps the evidence.** Any window small enough to save a quarter
+of the bill drops a third of the answers' evidence.
+
+`A3`'s measured cost now has a number behind it as well. The 24,000-character room is about depth 40 at this
+corpus's mean turn length, where coverage is 67.7% -- and that room cost 2.65 points. The relationship is
+monotone and the slope is measurable in both directions, which is what makes the next step a variable rather than
+a hope.
+
+### 13.339.3 The literature says position is not the lever and distraction is
+
+Three readings, and the first two were published against the folk version of the third:
+
+| finding | source | what it licenses here |
+| --- | --- | --- |
+| the U-shaped position curve **does not reproduce** on contemporary readers, and in real RAG (retrieval rather than oracle) ordering interacts strongly with **retrieval quality and context size** | *Lost in the Evidence? Reproducing Document Position and Context Size Effects in RAG*, SIGIR 2026 (Gabín, Pérez, Parapar) | re-ordering the window is not the experiment. Improving the ranking is, because that is the variable ordering was interacting with |
+| **one** distractor passage costs a 2-hop question **26%**, an order of magnitude more than moving the correct passage from the best slot to the worst | *The Distracting Effect: Understanding Irrelevant Passages in RAG*, ACL 2025 (Amiraz et al.) | the 87% of the window that is not gold is not neutral padding; it is the active ingredient, and `MR` is the multi-hop route |
+| removing the graph overlay costs **−6.79**, removing the hierarchy **−6.53**, at 2–3 navigation steps per query | `MemCog` (arXiv:2605.28046) ablations | the 9-point `MR` gap has a measured shape in the competitor's own ablation: structure and navigation, not budget |
+
+The first row is the one that changes this campaign's next move. This arm has spent several rounds on *how many*
+characters to send, and the reproducibility study says the ordering question is downstream of retrieval quality.
+The second row explains why the shallow depths in 13.339.2 are so costly: at depth 20 the reader sees 20 turns of
+which about 10 carry gold, so **a distractor sits next to almost every piece of evidence**, and one distractor at
+2 hops is worth 26%. The third row says the competitor's answer to that is a navigable structure rather than a
+longer window -- which is the same conclusion from a different experiment.
+
+### 13.339.4 The hypothesis this leaves, and why chunking is the cheap test of it
+
+If depth cannot shrink and distraction is the cost, then the ranking has to put gold **nearer the front**, which
+is the variable `MemStrata`'s own ablation priced at **7.6 points** and this arm has never measured at a fixed
+depth.
+
+The first candidate is not a model and not a reranker: it is the **unit**. This arm embeds and ranks a single
+turn, whose mean delivered length is 377 characters -- about 91 tokens. A 91-token query/document pair carries a
+weak topical signal by construction, which is why `K@90%` is 164 and why a gold turn at rank 140 is
+indistinguishable from a distractor at rank 139. Retrieval systems generally chunk at 256–512 tokens, and this
+arm's unit is a quarter of the small end of that range.
+
+So the registered experiment is **unit granularity**, one variable:
+
+| id | variable | what it tests | criterion | falsifier |
+| --- | --- | --- | --- | --- |
+| **G1** | ranking unit: turn → **turn window of 3 with 1 overlap**, the window scored as one document and its turns delivered individually | whether the shallow-depth coverage deficit is a unit problem rather than a model problem | `K@90%` **≤ 60** on `MR` (from 172) with no capability's `K@90%` worse than now | `K@90%` unchanged within ±5 on every route -- then the unit is not the lever and the next candidate is a reranker, not a chunker |
+| **G1.1** | same, read on the artifact rather than the dispatch | `goldRanks` recomputed offline from the existing index, **no reader calls** | the same curve moves | — |
+
+`G1.1` is the reason this is the next step rather than a speculative one: **the criterion is readable without a
+dispatch**, because `goldRanks` is a property of the index rather than of the reader. A chunking change that does
+not move `K@90%` cannot move accuracy either, and knowing that before spending 2,000 reader calls is the whole
+point of having the instrument.
+
+`G1` is registered and not dispatched this round. What it replaces is the assumption `§13.338.5` inherited: that
+sending fewer turns is a budget decision. It is a ranking decision, and the ranking is measurably weak in exactly
+the place the curve says it is.
