@@ -555,6 +555,13 @@ export {
   type RestoreCall,
 } from './restore-plan.js';
 
+// The population selector. `bench/run-ablation.ts` is the only caller and it uses both halves: the
+// reader to parse the variable once, the restriction to apply it to the sampled dataset. Exported
+// as a pair rather than as one function that reads the environment and restricts in one step,
+// because the harness prints a census between them and a combined function would have to return
+// the parsed filter as well to keep that line honest.
+export { readCapabilityFilter, restrictDatasetToCapability } from './capability-filter.js';
+
 // `withTemperature` stays module-private: `llm-factory` is its only consumer, and an exported
 // decorator with one in-package caller is an export the census reports as an orphan. The reader
 // is `readTemperature`, which `bench/run.ts` needs so the `default` sentinel does not arrive as

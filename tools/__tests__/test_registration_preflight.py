@@ -176,7 +176,7 @@ class PreflightTest(unittest.TestCase):
         }
         code, out = self.run_preflight(incident, declared="cortex_memory_relevance_top_k")
         self.assertEqual(code, 1)
-        self.assertIn("15 departed", out)
+        self.assertIn("16 departed", out)
         for name in (
             "cortex_memory_ask",
             "cortex_memory_relevance",

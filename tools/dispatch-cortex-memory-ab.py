@@ -509,9 +509,24 @@ INPUTS = {
     # hits in both) and the completion side goes from 0.24 M to 2.35 M, which is the thinking
     # tokens. A per-question budget of ~1,050 completion tokens buys 6.25 points.
     "thinking": "multi-session+temporal",
+    # §13.345's population selector. `all` is the identity and is written down rather than omitted
+    # because a dispatch value that is never sent is a value the artifact cannot be checked against
+    # (§13.192.6) -- and because the registered configuration has to be readable as one object.
+    #
+    # It exists for the reason §13.342.8 measured: the sampler round-robins over seven buckets, so
+    # `limit=200` gives `MR` 29 questions and a 4-point `MR` effect is 1.2 questions, which is why
+    # two capability-scoped arms had to move their bars to `limit=400`. `capability=MR` grades the
+    # 121 `MR` questions in the file for a fifth of a full pass and reads the same 4 points at 4.8
+    # questions. It is a run-level selector, like `limit`, and `readout-arm-run.py`'s
+    # `HARNESS_INPUTS` says so on the gate's side.
+    #
+    # The `thinking` reading on the line above bought **6.25 points** when it was adopted (§13.197).
+    # `T1` re-read the same axis on the shipped configuration and found **1.0** (§13.344), and the
+    # difference between those two numbers is a configuration, not a contradiction: the 6.25 was
+    # measured before the route budget, the contract and the ask moved.
+    "capability": "all",
     "limit": "0",
     "ablation_runs": "4",
-    "temperature": "0",
 }
 
 

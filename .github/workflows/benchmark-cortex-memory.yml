@@ -48,10 +48,10 @@ on:
         required: false
         default: '4'
         type: string
-      temperature:
-        description: "Sampling temperature. '0' pins deterministic sampling (the pre-registered value, and now actually sent); 'default' sends no temperature at all, which is what every run before section 13.119 did by accident"
+      capability:
+        description: "Population selector: run one capability instead of the file. `all` (the default) is the identity, `MR` grades the 121 multi-session questions, and a comma list unions them. It is a run-level selector rather than arm configuration, so the registration gate ignores it the way it ignores `limit` -- and it exists because every capability-scoped arm is unreadable at a 200-question sample: the sampler gives MR 29 questions there, where a 4-point effect is 1.2 questions"
         required: false
-        default: '0'
+        default: 'all'
         type: string
       model:
         description: "Reader model, optionally prefixed with the provider that serves it: 'deepseek-chat' (the default provider), 'deepseek:deepseek-v4-pro', 'zhipu:glm-4.6', or 'custom:<id>' with CORTEX_READER_BASE_URL/CORTEX_READER_MODEL set in the job env. The split is on the FIRST colon, so a tag such as 'custom:qwen2.5:7b' keeps its tag. This rides the existing value rather than taking an input of its own because the surface sits one below GitHub's ceiling of 25 -- see PREREGISTRATION section 13.212.4 -- and because a model id is meaningless without the endpoint that serves it, which is why the two are recorded together. Section 13.212 also replaced the artifact's host-derived provider field with this declared name; every archived dispatch is unprefixed and resolves to 'deepseek', so their artefacts render the bytes they always rendered"
@@ -615,8 +615,15 @@ jobs:
           # a difference is the treatment or the sampling -- and that is exactly how §13.118's
           # control came to be unreadable against its own treatment.
           LIMIT: ${{ github.event.inputs.limit || '60' }}
+          CORTEX_CAPABILITY: ${{ github.event.inputs.capability || 'all' }}
           ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '4' }}
-          TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
+          # §13.345. A constant rather than an input as of this round, for the reason §13.94 and
+          # §13.115 demoted `evidenceTurnsPerRecord` and `budgetMinutes`: the dispatch surface sits at
+          # GitHub's 25-input ceiling and this workflow is the one that reached it first, so a slot has
+          # to be traded rather than added. `0` is §10.3's registered value and the sampling regime
+          # every archived artifact was produced under -- a dispatch that moved it would need its own
+          # registration, and the value a reader looks for is here rather than in a dispatch table.
+          TEMPERATURE: '0'
           # The reader is shared by both sides, so the model and the thinking mode have
           # to reach this step too. Omitting them would run the arm's two sides on a
           # different reader from the primary benchmark's, which makes the two reports

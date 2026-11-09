@@ -4575,6 +4575,11 @@ PRESENCE_INPUTS = {
 HARNESS_INPUTS = {
     'limit': 'how many questions were asked, not how the arm is configured',
     'ablation_runs': 'how many repetitions, not how the arm is configured',
+    # §13.345. Which questions were asked, for the same reason as `limit`: the arm resolves a route
+    # per question and is configured identically either way, so a run over `MR` departs from no
+    # registration. Listing it here rather than comparing it one-to-one is what keeps a
+    # capability-scoped dispatch from being reported as UNDECLARED on a field the arm never reads.
+    'capability': 'which questions were asked, not how the arm is configured',
 }
 
 

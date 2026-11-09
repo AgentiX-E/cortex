@@ -121,7 +121,11 @@ CONCEPT_TO_INPUT = {
     "readerThinking": "thinking",
     "limit": "limit",
     "ablation_runs": "ablation_runs",
-    "temperature": "temperature",
+    # §13.345's population selector, registered at `all` -- the identity. It is in this mapping
+    # rather than absent because the value reaches the run: a dispatch that sent `capability=MR`
+    # while the registration said `all` would grade 121 questions and report an accuracy that is
+    # not the registered configuration's, which is exactly the form-4 defect above.
+    "capability": "capability",
 }
 
 

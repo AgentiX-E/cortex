@@ -116,6 +116,11 @@ import {
   restoringReader,
   restoreBlock,
   restrictDatasetToPlan,
+  // §13.345's population selector. Two calls and no decisions: the reader parses the variable, the
+  // restriction narrows the sampled dataset. It sits beside the restore restriction above because
+  // both answer "which questions", and both are applied before the relevance index is built.
+  readCapabilityFilter,
+  restrictDatasetToCapability,
   type BenchmarkProgress,
   type EmbeddingPreflight,
   type ExpansionTarget,
@@ -334,6 +339,22 @@ async function main(): Promise<void> {
   const limit = Number(process.env['LIMIT'] ?? 0);
   const sampled = sampleInstances(parsed as never, limit);
   const fullDataset = loadLongMemEval(sampled as never);
+  // §13.345. The population selector, applied after the sample and before everything that reads the
+  // dataset. Order against the restore plan below is deliberate rather than incidental: the plan
+  // names question ids from a previous artifact, and if a filter ran second it would silently drop
+  // the entries it excluded -- a restore run that restored fewer questions than it registered. With
+  // the filter first, `restrictDatasetToPlan` refuses the incoherent combination by name.
+  const capabilityFilter = readCapabilityFilter(process.env['CORTEX_CAPABILITY']);
+  const selected = restrictDatasetToCapability(fullDataset, capabilityFilter);
+  if (capabilityFilter !== undefined) {
+    // Printed because the artifact's `questionsByCapability` says what was graded and this line says
+    // what was asked for; a run that selected `MR` and graded 121 questions is a different reading
+    // from one that selected `MR,TR` and graded 248, and both print the same total.
+    console.log(
+      `Capability filter: ${capabilityFilter.join(', ')} -> ${selected.questions.length} of ` +
+        `${fullDataset.questions.length} sampled question(s)`,
+    );
+  }
   // §13.274's restore counterfactual narrows the run to the population the plan names.
   //
   // The restriction is applied to the dataset rather than to the arm because both consumers of the
@@ -342,8 +363,7 @@ async function main(): Promise<void> {
   // never had. `readRestorePlanFromEnv` answers `null` for an ordinary run, so an unset variable
   // leaves every number below byte-identical to the run before it.
   const restorePlan = readRestorePlanFromEnv(process.env, (path) => readFileSync(path, 'utf8'));
-  const restricted =
-    restorePlan === null ? fullDataset : restrictDatasetToPlan(fullDataset, restorePlan);
+  const restricted = restorePlan === null ? selected : restrictDatasetToPlan(selected, restorePlan);
   // §1.38.5's oracle condition, applied AFTER the restriction so its census describes the graded
   // population rather than the file. Both arms are handed this dataset, which is what makes the
   // condition a single variable: the two sides differ in their system, never in their evidence.
