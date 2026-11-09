@@ -215,3 +215,41 @@ is 48.2% of the bill and 92.9% of that line is reasoning, so a `T1` that loses 2
 questions is a 45% saving for **1.0 point of the 200** and **3.5 points of the 57** — a trade to be accepted
 deliberately, and one that has to be
 written down rather than discovered later in a cost report that no longer mentions accuracy.
+
+## 9. The current ledger, and the arm that halves it without moving the token count
+
+§2's table is `42467`, which predates the route budget. The shipped configuration's latest full pass is
+`42533236864` (500 x 4, **91.20%**), and its ledger is the one every later comparison should be made against:
+
+| line | tokens | CNY | share |
+| --- | ---: | ---: | ---: |
+| input, prefix-cache hit (97.8%) | 18.0M | 3.60 | 28.2% |
+| input, cache miss | 0.4M | 0.80 | 6.3% |
+| **output** | **2.22M** | **6.65** | **52.0%** |
+| feature total | | **11.08** | |
+| reference arm (the A/B contrast, not the product) | 2.9M | 1.71 | |
+| **one full pass** | | **12.78** | |
+
+So the output line is now **more than half** the bill, and `T1` measured what it buys: at `thinking=disabled`
+the feature side is **0.944 CNY against 2.021** on the same 200 questions (−53.3%), with accuracy **182/200
+against 181/200** on the warm draw and 179 on the cold one — a mean of 180.5 against 181.
+
+**The token count barely moves.** Per question-run the shipped configuration sends 9,201 prompt and 1,071
+completion tokens; the treatment sends 9,201 and 138. That is **−9% on tokens and −53% on money**, because a
+completion token costs fifteen times a cached input token (3.00 against 0.20 per million). This is §22.68's
+first rule measured on the one arm where it decides: a cost review that reads tokens would rank this change
+ninth, and a cost review that reads money ranks it first.
+
+Three points on the curve, all measured except the middle one, which is registered as `T2`:
+
+| configuration | full pass | accuracy | note |
+| --- | ---: | ---: | --- |
+| `multi-session+temporal` (shipped) | **12.78 CNY** | 91.20% | artifact `42533236864` |
+| `temporal` only (`T2`, registered) | ≈8.9 CNY projected | not yet read | predicted to keep `TR`'s reasoning and drop `MR`/`KU`'s |
+| `disabled` (`T1`) | **≈6.97 CNY** | 91.20% ± 0.5 on 200 | two draws, `42617201299` and `42621461902` |
+
+The middle row exists because the per-capability pattern inverts this section's own prediction: across both
+draws `MR` gained 1–2 questions and `KU` 1–1.5 while **`TR` lost 1.5–2 consistently**, so the reasoning is
+worth something on exactly the route the literature said would survive trimming and worth less than nothing on
+the two it said would pay. If `T2` reproduces that, the shipped reach is pointed the wrong way and the
+strictly better configuration is one flag from the default.

@@ -824,10 +824,18 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   variable exists because §13.100.2 measured the reader's judgement moving on 24 of 121 answers with
   no treatment at all, so sampling it and voting is the one mechanism whose target is the instrument's
   own measured defect. §13.101.4 registers what a run of it must show.
-- `limit: 0`, `ablation_runs: 4`, `temperature: 0` — unchanged, and as of §13.119 the value
-  finally reaches the request: it was declared, forwarded and never read from §10.3's first
-  dispatch until then, so every reading before §13.119 was served at the provider's default
-  sampling. The number did not move; it started being true.
+- `limit: 0`, `ablation_runs: 4` — unchanged. The reader's `temperature` stays at `0` and is
+  **no longer a dispatch input as of §13.345**: the workflow forwards it as a constant, for the reason §13.94 and
+  §13.115 demoted `evidenceTurnsPerRecord` and `budgetMinutes`. The value did not move -- and as of
+  §13.119 it finally reaches the request: it was declared, forwarded and never read from §10.3's
+  first dispatch until then, so every reading before §13.119 was served at the provider's default
+  sampling. The number did not move then either; it started being true.
+- `capability: all` — **registered by §13.345's population selector, and the identity.** `all` grades
+  the file as it always did; `MR` grades the 121 multi-session questions, and a comma list unions
+  them. It is a run-level selector rather than arm configuration, so the registration gate reads it
+  where it reads `limit` rather than against a config field. §13.342.8 is why it exists: the sampler
+  gives `MR` 29 questions at `limit=200`, where a four-point effect is 1.2 questions, and two
+  capability-scoped arms had to move their bars to `limit=400` to be readable at all.
 - `promptContract: evidence-blocks-unsourced` — **registered by §13.283, replacing
   `evidence-blocks-instruction-first`.** The contract names the same instruction block and the same
   `instruction-first` assembly, and withholds the per-turn source id: the rendering is `numbered`
@@ -37144,3 +37152,62 @@ apart and then holds the *ratio* at the observed run's value, which is the same 
 pair proves the ratio moves with the configuration. `C3` asks the projection to refuse when a dispatched
 input can plausibly move the ratio (a changed thinking reach, a changed model, a changed route set) and to
 report the two-sided range instead of a point estimate.
+
+#### 13.344.4 `T1r` read: the cache loss was warmth, not the flag -- and the capability pattern inverts the prediction
+
+Run `42621461902` is the same dispatch a third time. Its feature-side cache hit ratio is **97.4%**, identical to
+the control's, and its completion line is 136 tokens per call. The cold-cache branch of §13.344.3 fires:
+
+| | control | `T1` draw 1 | `T1r` draw 2 |
+| --- | ---: | ---: | ---: |
+| accuracy | 90.5% (181) | 89.5% (179) | **91.0% (182)** |
+| feature CNY | 2.021 | 2.208 | **0.944** |
+| cache hit ratio | 97.4% | 75.2% | **97.4%** |
+| completion/call | 984 | 138 | 136 |
+| `IE` | 78 | 78 | 76.5 |
+| `MR` | 23 | 24 | **25** |
+| `KU` | 24.5 | 25.5 | **26** |
+| `TR` | 26 | 24 | **24.5** |
+| `ABS` | 29 | 29 | 29 |
+
+**The flag does not cost the cache.** Draw 1's 75.2% was the first run in a mode whose prefixes had never been
+cached: every feature call before it went to the thinking deployment, so `thinking=disabled` started with only
+the baseline's small prompts warm. One run paid about **0.66 CNY** to warm it and the next hit 97.4%. That is a
+one-off cost of *changing* modes, not a cost of the mode, and it belongs in the dispatch projection as a warm-up
+term rather than in every steady-state estimate.
+
+**The accuracy prediction is inverted, twice.** §18.3 predicted `MR` would suffer most (counting is the
+arithmetic-adjacent case) and `TR` least. Across both draws the reverse happened, and consistently:
+
+| capability | control | draw 1 | draw 2 | direction |
+| --- | ---: | ---: | ---: | --- |
+| `MR` | 23 | 24 | 25 | **+1, +2** |
+| `KU` | 24.5 | 25.5 | 26 | **+1, +1.5** |
+| `TR` | 26 | 24 | 24.5 | **-2, -1.5** |
+| `IE` | 78 | 78 | 76.5 | 0, -1.5 |
+
+Two draws in the same direction on both of the two moving capabilities is not the per-draw noise band
+(≈0.9 questions on 28); it is a **route-level effect**: the reasoning reach costs the two routes whose answers
+are a count over a list (`MR`, `KU`) and buys the one whose questions do arithmetic over dates (`TR`). The
+aggregate is flat — mean of the two treatment draws is 180.5 against 181 — which is exactly how a +3/−3 split
+of two capabilities reads at 200 questions.
+
+#### 13.344.5 `T2`: put the reasoning where it pays, which is the opposite route
+
+If the pattern holds, the shipped reach is pointed the wrong way and the **strictly better configuration is
+one flag away**: `thinking=enabled+temporal` keeps `TR`'s reasoning and takes it off `MR` and `KU`.
+
+| id | treatment | prediction | falsifier |
+| --- | --- | --- | --- |
+| `T2` | `thinking=enabled+temporal` (from `multi-session+temporal`) | paired against the shipped control: **`TR` recovers at least 1 question** and `MR`+`KU` keep at least their gains, i.e. total **≥ +1 of 200**, at **-45% or better** on the completion line | `TR` does not recover, or `MR`+`KU` give back more than 2, or the completion line falls by less than 25% |
+
+`T2` is dispatched at the same `--screening` scale as `T1` so that all three readings are paired against one
+control artifact, and it is the last arm on this axis: whichever of the three configurations wins is adopted on
+the axis and the reasoning question is closed for the round.
+
+One thing `T2` also settles, and it is not free: **whether the two moving capabilities are a route effect or a
+200-question accident.** `MR` +1/+2 and `KU` +1/+1.5 are consistent across two draws but each is inside the
+band on its own; a third configuration that moves only `MR` and `KU` and reproduces the same sign is the test.
+If `T2` reproduces it, the effect is real enough to build on; if `T2` moves `TR` and leaves `MR`/`KU` where the
+control had them, the draws were noise and the honest conclusion is "the reasoning is worth nothing on the
+total", which is still a 45% saving.

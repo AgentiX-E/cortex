@@ -1249,7 +1249,7 @@ exists.
 | Mem0 platform | 94.4% | ~6.8K | not stated | not stated | **open-source config measures ~32%** |
 | Honcho | 90.4% | ~11.6K | Claude Haiku 4.5 | gpt-4o | self-reported |
 | Zep | 90.2% | ~4.4K | gpt-5.4 | gpt-5.4 | self-judged |
-| cortex | **91.95%** | **12,137** | deepseek-chat | deepseek-chat | 4 repetitions, artifact public |
+| cortex | **91.20%** | **9,201** | deepseek-chat | deepseek-chat | 4 repetitions, artifact public (`42533236864`) |
 
 Two rows moved in a direction that matters more than the ranking. **Mastra publishes 84.23% with `gpt-4o` and
 94.87% with `gpt-5-mini`** — 10.6 points from the answer model alone, on a memory that did not change — and
@@ -1258,9 +1258,10 @@ reads about 32%**, which is the same "two products, one name" defect this docume
 Neither is a reason to doubt the systems; both are reasons to keep the reader column beside the score, which
 our own table does.
 
-Against our position the honest reading is unchanged from §16.4 and §17.3: **91.95% is 3.65 points behind the
-headline and inside the label noise of the nearest credible leader**, at 1.64x Synap's context and 0.27x
-Hindsight's. The one cell this board makes worse is cost: Mem0's ~6.8K and Zep's ~4.4K are both below our
+Against our position the honest reading: **91.20% is 4.40 points behind the headline**, at **1.24x** Synap's
+published context and 0.21x Hindsight's — and on the all-in basis §1.45 established for the Synap row (its
+7.4K counts `memory` plus `source_evidence` and excludes the field skeleton and the answer prompt, whose own
+lower bound is ≥12.4K), **this row is the cheaper of the two and it is the one that is behind.** The one cell this board makes worse is cost: Mem0's ~6.8K and Zep's ~4.4K are both below our
 12,137, and neither is reachable by cutting the room (§17.1 measures that trade at −3.20 for 0.487x).
 
 ### 18.2 The reader axis, priced five times over with the memory held fixed
@@ -1277,7 +1278,7 @@ An independent roundup now publishes the other direction: **one memory, five rea
 | our packet (`M1` arm A/B) | `deepseek-flash` vs `deepseek-v4-pro` | **1.35 points** |
 
 The last row is why this is a section and not a footnote. **Our own reader spread is the smallest of the five,
-and it is the only one measured on a single provider.** A 3.65-point gap sits inside what the field reports
+and it is the only one measured on a single provider.** A 4.40-point gap sits inside what the field reports
 for a reader change over identical memory, so "cortex is 3.65 behind" and "cortex's reader is 3.65 behind"
 are not distinguishable from anything this campaign has run. `M1` remains the one arm that would separate
 them, it remains unrun for a reason that is not scientific (the two frontier readers in the board's rows are
