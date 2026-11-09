@@ -36592,3 +36592,148 @@ point of having the instrument.
 `G1` is registered and not dispatched this round. What it replaces is the assumption `§13.338.5` inherited: that
 sending fewer turns is a budget decision. It is a ranking decision, and the ranking is measurably weak in exactly
 the place the curve says it is.
+
+## 13.340 Synap is closed, its paper has no system in it, and its 7,400 is not our 12,137
+
+The question put to this round was why we do not replicate Maximem Synap, the system that reads **95.6%** at
+about **7,400 context tokens** per question against this arm's **91.95%** at **12,137**. There are three
+answers, and the third one changes what the gap is.
+
+### 13.340.1 There is no code, and the paper does not contain the system
+
+The published repository (`maximem-ai/maximem_synap_sdk`, Apache-2.0) is an SDK. Its own README states that
+ingestion, entity resolution, retrieval and anticipation "run as a fully managed cloud service… and is not open
+source". Their harness's `adapters/synap_adapter.py` confirms it from the other side: 400 lines of retry,
+backoff and indexing-poll logic wrapped around `sdk.memories.create()` and `sdk.user.context.fetch()`, with no
+ranking, extraction or storage of its own. **The three components that produce the score are the three that
+cannot be read.**
+
+`arXiv:2607.21503v1` does not close that gap. It is a framework paper: five named primitives, no ablation table,
+no token accounting (`§6.3`: *"We deliberately report no latency numbers here and leave it for a follow up
+paper"*), no recall metric (the paper argues against hit-rate metrics in `§3.3`), and no statement of what is
+ingested or what is retrieved per question. Its own headline is **92.0% (460/500)** with `gpt-5-mini` as answer
+model and judge — not 95.6%, which is the blog run with Gemini 3.8 Flash.
+
+Its per-category table is more informative than its overall, and it is the part a replication would need:
+
+| category | paper (gpt-5-mini) | blog (Gemini 3.8 Flash) |
+| --- | ---: | ---: |
+| single-session-preference | 100.0% | 96.7% |
+| single-session-user | 100.0% | 95.7% |
+| knowledge-update | 100.0% | 97.4% |
+| temporal-reasoning | 100.0% | 97.7% |
+| single-session-assistant | 87.5% | 96.4% |
+| **multi-session** | **75.2%** | **91.7%** |
+
+Five perfect categories and 75.2% on the one that aggregates. The paper calls it residual error; it is the shape
+of the problem, and it is the same category this repository is worst at.
+
+### 13.340.2 What *is* published is the part that moves the score, and it is 5,900 tokens of prompt
+
+The vendor publishes the **21.5 kB answering prompt**, the **500 per-question records** (question, gold answer,
+retrieved memories, generated answer, judge verdict) and the harness. Those are the artefacts worth reading, and
+they are readable without any of the closed code.
+
+The prompt is a seven-step scaffold with named rules for exactly the failures this benchmark contains:
+unit fixed before counting ("occasions" versus "objects"), speaker attribution (`[User]` proves what the user
+did, `[Assistant]` proves only what was recommended), `event_precision` windows at `day`/`week`/`month`/`season`/
+`year`/`range`/`approximate`, **"most recent means the latest `said_at`, not the latest `event_date`"**, and a
+three-part abstention test separating *a named particular is missing* from *the wording differs*.
+
+**7,391 does not include it.** At the characters-per-token ratio calibrated in `§13.340.3`, the prompt alone is
+≈5,900 tokens, so one call to their reader is ≈**13,400** tokens. Against this arm's **12,137**, which is a
+`usage.promptTokens` count that includes the system prompt, the context and the question.
+
+### 13.340.3 The census, and the reading it refuses
+
+`tools/synap-context-census.mjs` takes the vendor's own records apart. On the 342 records downloaded at the time
+of writing (the file is 23 MB and the tail was truncated; the parser drops the incomplete record and says so):
+
+```
+median items/question   18
+median content chars    26881      (memory + source_evidence)
+median serialised chars 39327      (the whole record, field skeleton included)
+items with an excerpt   58.3%
+excerpt length median   2259 chars
+
+headline                7391 tokens/question
+  as content            3.64 chars/token -> content-only
+  as whole record       5.32 chars/token -> implausible
+```
+
+Two readings are possible and the tool reports both against **one** tokenizer band (3.0–4.5 characters per
+token for English) rather than giving the whole-record reading a wider band that would let the flattering
+interpretation through. At 3.64 the content reading is an ordinary tokenizer measurement; at 5.32 the
+whole-record reading is not one. **The published 7,391 counts `memory` plus `source_evidence`. It does not count
+the field skeleton (~3,400 tokens/ question) and it does not count the answering prompt (~5,900).**
+
+The second finding matters more than the price. **60.3% of the serialised context is verbatim excerpt and 6.2%
+is the LLM summary.** This is not a compression engine spending fewer tokens on the same evidence — it is a
+system sending mostly raw text, with a short summary on top. Their prompt concedes the risk in its own words:
+*"prefer the value that appears verbatim inside the quote over the summarized phrasing"*. And **42% of items
+carry no excerpt at all**, so the instruction cannot be followed on them.
+
+Excerpt lengths cluster at 1,570–2,474 characters around a 2,259 median — a **fixed truncation window**, not
+natural turn length.
+
+### 13.340.4 The gap is two aggregation categories, and a reader nobody here has tested
+
+Mapped onto the six categories, answerable scope so the 30 abstention items are their own row
+(`docs/COMPETITOR-SYNAP-DECOMPOSITION.md` §5 has the full table and its provenance):
+
+| capability | cortex (48,000, five runs) | Synap (answerable) | delta |
+| --- | ---: | ---: | ---: |
+| `ABS` | **100.00%** | 93.3% | **+6.7 us** |
+| `IE` | 93.33% | 96.0% | −2.67 |
+| `KU` | 88.89% | **97.2%** | **−8.33** |
+| `MR` | 83.47% (83.88% on `route-room`) | **92.6%** | **−9.13** |
+| `TR` | 96.06% | 97.6% | −1.54 |
+
+Two rows carry it, and they are the two that **aggregate**: `KU` asks which of several statements is current,
+`MR` asks for a count over turns. The arm already measured that asymmetry from the other side — halving the room
+48,000 → 24,000 costs `MR` −6.61 and `TR` −4.72 while `IE`, `KU`, `ABS` lose under 1.4.
+
+Synap's advantage in those two rows is not more evidence, because it sends less. It is **per-item structure the
+reader can compare across items**: a `[thing N]` marker saying two entries are the same thing (so a count does
+not double-count), and `event_date` + `event_precision` + `valid_until` (so "which is current" is a comparison
+rather than a reconstruction). This arm has `said_at` — `readTurnStamp` in `packages/cortex-eval/src/turn-
+clock.ts` — and none of the other three.
+
+### 13.340.5 One further variable, and it is the largest untested one
+
+The vendor's own README runs one memory under three frontier readers, `gpt-4o` judging all three:
+**95.2%** (`gpt-5.4`), **95.6%** (Gemini 3.8 Flash), **97.0%** (Gemini 4 Argon). That is their measurement of
+how much of their number is the model, and it is 1.8 points — small, because all three are strong.
+
+This arm's reader is `deepseek-chat`, and **it has never been run against a frontier reader on identical
+context**. Against `Zep`'s record (71.2% at `gpt-4o` versus 90.2% at `gpt-5.4`, same system) the reader is
+worth 19 points in the published landscape. So the difference between 91.95% and 95.6% may be substantially a
+reader difference, and no mechanism experiment can be interpreted until that is measured.
+
+### 13.340.6 Registered: three arms, cheapest first, and none of them a replication
+
+| id | arm | what it tests | criterion | falsifier | cost |
+| --- | --- | --- | --- | --- | --- |
+| **H1** | re-answer the **archived** `route-room` prompts with a frontier reader, re-judge with the official prompts | how much of the 3.65 points is the model | `S1` moves **≥ 2.0 points** and no capability loses | `S1` moves **< 1.0** — then the reader is not the axis and every mechanism arm designed against 95.6% was aimed at the wrong target | one reader call per question per repetition; retrieval is not re-run, because `promptDigest` pins the bytes |
+| **H2** | supply `event_date` / `event_precision` / `valid_until` on the delivered turns, **derived by rule, no model in the ingest path** | whether the `KU` row is a representation problem | **≥ 3 of 72** `KU` failures change, at no capability worse than −0.5 | **≤ 1 of 72** changes — the date properties are not the lever, and `H3` is the remaining candidate | zero reader calls for the pre-judgement (`goldOverlap` recomputed with the properties present); the arm itself is a re-run |
+| **H3** | entity grouping (`[thing N]`) on the `MR` route | whether the `MR` row is a counting problem | **≥ 3 of 121** `MR` failures change | **≤ 1 of 121** — and then the `MR` gap is neither dates nor grouping, so the next read is `H1`'s result before any further mechanism | one model call per session at ingest, which `tools/amortization-crossover.mjs` already prices at a 1:1 amortisation on this benchmark |
+
+**H1 is first, and not because it is cheap.** It is first because `H2` and `H3` are both *explanations of a
+3.65-point gap*, and if a frontier reader closes most of that gap on the same context, then both explanations
+are being fitted to a difference that belongs to the model. Measuring the model first is what makes the other
+two interpretable.
+
+### 13.340.7 What this round refuses to do
+
+It does not copy Synap's answering prompt onto the `MR` route. `MR`'s contract here is already migrated
+verbatim from the reference pipeline (`§13.246`) and tuned against measured failures (`§13.289`: 8 of 18
+below-gold `MR` losses traced to one calibrated line). **The rules in their prompt are candidates; the text is
+not**, and replacing a measured prompt with an unmeasured one would trade a known −1× for an unknown one.
+
+It does not replicate compaction. This arm measured the budget as clean — 95.9% of gold turns are in the pool
+and 91.7% of those reach the reader — so there is no 8% of evidence to win back by compressing harder.
+`validated compaction` is what Synap's paper claims, not something its artefacts demonstrate: no compaction
+count, no validation-score distribution and no compression ratio is published for the LongMemEval run.
+
+It does not adopt anticipatory retrieval, scoping hierarchy, or the 92.0% configuration as a target. The first
+two are invisible to every number in this benchmark; the third is the same unit error §13.340.3 measures.

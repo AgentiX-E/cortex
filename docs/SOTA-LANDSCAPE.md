@@ -706,7 +706,7 @@ publishes them.
 
 | system | accuracy | context per question | reader | honesty flags |
 | --- | ---: | ---: | --- | --- |
-| Maximem Synap | **95.6%** | **7.4K** | Gemini 3.8 Flash | run data + harness public |
+| Maximem Synap | **95.6%** | **7.4K** (content only; ~13.4K all-in) | Gemini 3.8 Flash | run data + harness public; the 7.4K excludes its 21.5 kB answering prompt — §13.340.3 |
 | Mastra Observational Memory | **94.87%** | ~30K (4.1×) | gpt-5-mini | harness public, run data not found |
 | Hindsight | 94.6% | ~43.6K (5.9×) | Gemini 3.1 Pro | judge is Gemini 2.5 Flash-Lite, not the official one |
 | Mem0 (managed) | 94.4% | **6.8K (0.9×)** | not stated | run data not public; open-source SDK measures ~32% |
@@ -944,7 +944,7 @@ answering that question rather than of a separate one.
 | **cortex (this arm)** | **12,105** | 83.45% | — |
 | Zep | 4,400 | 90.2% | 2.75x the context, 6.75 points behind |
 | Mem0 (managed) | 6,800 | 94.4% | 1.78x the context, 10.95 behind |
-| Maximem Synap | 7,400 | 95.6% | 1.64x the context, 12.15 behind |
+| Maximem Synap | 7,400 content-only / ~13,400 all-in | 95.6% | **~1.0x all-in, 12.15 behind** — the 1.64x this row used to show compared their content count with our prompt count (§13.340.3) |
 | Mastra OM (gpt-4o reader) | ~30,000 | 84.23% | **0.39x the context, 0.78 behind** |
 | Hindsight | 43,600 | 94.6% | 0.28x the context, the counter-example |
 
