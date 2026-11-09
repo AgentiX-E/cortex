@@ -37195,11 +37195,17 @@ of two capabilities reads at 200 questions.
 #### 13.344.5 `T2`: put the reasoning where it pays, which is the opposite route
 
 If the pattern holds, the shipped reach is pointed the wrong way and the **strictly better configuration is
-one flag away**: `thinking=enabled+temporal` keeps `TR`'s reasoning and takes it off `MR` and `KU`.
+one flag away**: `thinking=temporal` keeps `TR`'s reasoning and takes it off `MR` and `KU`.
+
+The spelling is the route list alone, with no mode word: `readThinkingReach` splits on `+` and reads every
+segment as a route, so `enabled+temporal` names a route called `enabled` and is refused before a question
+starts. Run `42627831651` was refused exactly that way, in 94 seconds, with the six legal route names in the
+message -- which is the grammar doing what §13.197.4 built it for, and the reason this registration now spells
+the value the way the product reads it.
 
 | id | treatment | prediction | falsifier |
 | --- | --- | --- | --- |
-| `T2` | `thinking=enabled+temporal` (from `multi-session+temporal`) | paired against the shipped control: **`TR` recovers at least 1 question** and `MR`+`KU` keep at least their gains, i.e. total **≥ +1 of 200**, at **-45% or better** on the completion line | `TR` does not recover, or `MR`+`KU` give back more than 2, or the completion line falls by less than 25% |
+| `T2` | `thinking=temporal` (from `multi-session+temporal`) | paired against the shipped control: **`TR` recovers at least 1 question** and `MR`+`KU` keep at least their gains, i.e. total **≥ +1 of 200**, at **-45% or better** on the completion line | `TR` does not recover, or `MR`+`KU` give back more than 2, or the completion line falls by less than 25% |
 
 `T2` is dispatched at the same `--screening` scale as `T1` so that all three readings are paired against one
 control artifact, and it is the last arm on this axis: whichever of the three configurations wins is adopted on
