@@ -36314,3 +36314,68 @@ in two rooms and their sum is a hypothesis. The next dispatch is therefore the a
 `replyRepair=commitment`, and it is one variable only because this section moved the first one into the registered
 configuration. It is not bookkeeping: the allocation binds on exactly the four routes whose room shrank, and a
 window that truncates differently can change where a reader declines.
+
+## 13.337 `E3` converts all fifteen: the mechanism works, and the headline cannot say so
+
+`E3` (`42539923976`, `replyRepair=commitment`, four repetitions) reads the census §13.334 registered, and three
+of its four criteria are met. The fourth is not met or unmet; it cannot be read from this artifact, and the
+distinction is the point.
+
+### 13.337.1 The four criteria
+
+| id | claim | reading | verdict |
+| --- | --- | --- | --- |
+| `E3.1` | fires on 3 to 5 questions per repetition and converts all of them | **15 consultations, 15 answered** over 4 repetitions = **3.8 per repetition**, 0 unconverted | **met** |
+| `E3.1` (refused kind) | `shape` stays off | `shape` 0 / 0 | the refusal held |
+| `E3.2` | no non-target flips | **not scorable on this artifact** | see 13.337.3 |
+| `E3.3` | `ABS` stays 30/30 | **30 / 30 on every repetition** (mean 30.0); abstention-correct rate 100% | **met** |
+| `E3.4` | the bill rises by ≤ 1% per question | **0.72%**: 15 extra calls at 11,719 mean tokens each = 175,780 of 24,269,355 | **met** |
+
+The class-level claim is the one that mattered: `reviewBareDecline` already converted 83 of 83 refusals, and this
+pass converts **15 of 15** of the replies that refusals of a different shape produce. Both passes work by
+withdrawing an affordance rather than by asking again more firmly, which is what §13.334.5 predicted from the
+abstention literature and what the token's absence *does* rather than says.
+
+### 13.337.2 The readings, and the one comparison that is not available
+
+| field | value |
+| --- | ---: |
+| `feature`, four-repetition mean | **91.90%** (min 91.40, max 92.20) |
+| `feature`, first repetition | 91.80% |
+| `reference`, four-repetition mean | 44.85% (44.60, 45.00) |
+| delta | +47.05%, McNemar `1.437e-54`, discordant 251 / 17 |
+| prompt tokens per question | 12,223 |
+| feature calls | 2,086 = 2,000 question-passes + 71 bare retries + **15 repairs** |
+| bare-decline retry | 71 / 71 |
+| prefix-cache share | 95.88% |
+
+Per capability, first repetition: `IE` 96.00% (mean 143.0), `MR` **80.99%** (98, mean 99.5), `KU` 88.89% (mean
+65.5), `TR` 96.85% (mean 121.5), `ABS` 100%.
+
+### 13.337.3 Why `E3.2` is unscorable here rather than failed
+
+`E3.2` asks that the 495-497 non-targets reproduce their correctness mask. That is a comparison between two runs,
+and the run it would compare against is `C5` -- **which differs in the room as well**, because §13.336 adopted the
+allocation after `C5` was dispatched and `E3` ran in the map that preceded it. `E3`'s prompt for question
+`e47becba` is 47,416 bytes against `C5`'s 23,007, which is the allocation binding, measured.
+
+So there is no same-room no-repair control in the archive, and two variables (room, repair) stand between the two
+artifacts. The pre-registered rule does not get to be relaxed because the comparison is inconvenient: `E3.2` is
+**unscored**, and what the artifact does support is stated instead:
+
+- The repair fires on **15 of 2,000 question-passes**. The other 1,985 were never re-consulted, so any movement
+  among them is endpoint nondeterminism rather than the mechanism.
+- The headline moves **+0.85** against `C5` and **−0.05** against the wider map's best draw (`42355323615`,
+  91.95%). Both are inside the 0.90-point spread three draws of one configuration produced (§13.336.1), which is
+  the pre-registered expectation for a mechanism worth 3 to 5 questions: **a flat headline on a `15 / 15` census
+  is the expected outcome, not a null result.**
+- `MR` reads 80.99% against `C5`'s 83.47%, i.e. **−3 questions**, and that is the direction the repair's
+  population does not explain. It is recorded rather than excused: the repair cannot move a question it did not
+  fire on, and this one fired on 15 of 2,000.
+
+### 13.337.4 What is owed, and it is one dispatch
+
+A same-room pair: `replyRepair=off` against `replyRepair=commitment`, both on the adopted allocation. That is the
+configuration that would ship, it is one variable, and it is the only way `E3.2` becomes scorable. The census
+half of this axis is closed -- the mechanism fires and converts, on both kinds of refusal that no retry could
+reach -- and what remains open is the paired mask, which needs a control rather than more mechanism.
