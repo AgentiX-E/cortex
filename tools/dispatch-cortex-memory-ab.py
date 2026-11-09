@@ -830,8 +830,119 @@ def declare_departures(names: list[str]) -> str:
     return write_variable(DECLARED_DEPARTURES_VARIABLE, value)
 
 
+# ---------------------------------------------------------------- spend gate
+
+# The tool that prices a dispatch, and the observation it scales.
+#
+# A gate rather than a warning, because the failure it prevents is not one a reader can undo: a
+# dispatch is billed the moment it starts and there is no refund for a run whose configuration was
+# wrong. `42467` is the archived full pass this projects from -- 500 questions, 4 repetitions,
+# 27.23M prompt and 2.29M completion tokens, 14.26 CNY at the published 2026-11-09 prices.
+SPEND_TOOL = Path(__file__).resolve().parent / "spend-projection.mjs"
+SPEND_BASELINE = Path(__file__).resolve().parent / "spend-baseline.json"
+
+# What a dispatch may cost without anyone saying so.
+#
+# Three CNY is the screening configuration's own price (200 questions x 2 repetitions = 2.85), so
+# this is the line between "a run that answers a question about a change" and "a run that publishes
+# a point estimate". The second kind is legitimate and is what the pre-registration is written for;
+# it is also 14.26 CNY, and it should be a decision someone typed rather than a default that was
+# never revisited. `--budget N` states a different ceiling; `--no-budget` disables the gate and says
+# so in the log.
+DEFAULT_BUDGET_CNY = 3.0
+
+
+def split_finance(argv: list[str]) -> tuple[list[str], dict]:
+    """Separate the spend flags from the dispatch flags.
+
+    `parse_argv` refuses anything that is not `--set`, and it is right to: an unrecognised argument
+    on the dispatch path is a dispatch that was not asked for. So the two kinds of flag are
+    separated here rather than by widening that parser, which would make `--set` optional beside
+    three more spellings and lose the refusal that keeps a typo from running the control arm.
+    """
+    rest: list[str] = []
+    budget: float | None = DEFAULT_BUDGET_CNY
+    index = 0
+    while index < len(argv):
+        argument = argv[index]
+        if argument == "--budget":
+            if index + 1 >= len(argv):
+                raise SystemExit("--budget needs a CNY amount")
+            budget = float(argv[index + 1])
+            index += 2
+            continue
+        if argument.startswith("--budget="):
+            budget = float(argument.split("=", 1)[1])
+            index += 1
+            continue
+        if argument == "--no-budget":
+            budget = None
+            index += 1
+            continue
+        if argument == "--screening":
+            # The screening configuration, named once. 200 questions keeps every capability
+            # represented (the sampler round-robins, so 40% of the file is 40% of each bucket) and 2
+            # repetitions keeps the pairing that McNemar needs while halving the sample's cost.
+            rest.extend(["--set", "limit=200", "--set", "ablation_runs=2"])
+            index += 1
+            continue
+        rest.append(argument)
+        index += 1
+    return rest, {"budget": budget}
+
+
+def projected_spend(inputs: dict[str, str], budget: float | None) -> float | None:
+    """Print this dispatch's projected bill and refuse when it breaches `budget`.
+
+    Returns the projection so the caller can print it beside the inputs, or `None` when the
+    baseline is missing. A missing baseline does not block the dispatch: the gate is an instrument,
+    and an instrument that cannot run is not a reason to stop working -- but the log says the run
+    was unmeasured rather than priced.
+    """
+    if not SPEND_BASELINE.exists():
+        print(f"spend: no baseline at {SPEND_BASELINE.name}, this dispatch is not priced")
+        return None
+    # `limit: '0'` is the full dataset, not zero questions -- the workflow's own spelling for it.
+    # Passing it through would price the run at nothing and then refuse it for dividing by zero,
+    # which is the one reading of that value nobody has ever meant.
+    try:
+        baseline = json.loads(SPEND_BASELINE.read_text())
+    except (OSError, ValueError) as error:
+        print(f"spend: baseline is unreadable ({error}), this dispatch is not priced")
+        return None
+    raw_limit = str(inputs.get("limit", "0") or "0")
+    limit = baseline.get("questionCount") if raw_limit == "0" else raw_limit
+    arguments = [
+        "node",
+        str(SPEND_TOOL),
+        "--report",
+        str(SPEND_BASELINE),
+        "--limit",
+        str(limit),
+        "--runs",
+        str(inputs.get("ablation_runs", "1")),
+        "--thinking",
+        os.environ.get("CORTEX_THINKING", inputs.get("thinking", "multi-session+temporal")),
+    ]
+    if budget is not None:
+        arguments.extend(["--budget", f"{budget}"])
+    completed = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    for line in completed.stdout.splitlines():
+        print(f"spend: {line}")
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or "the projection was refused"
+        raise SystemExit(
+            f"{detail}\n"
+            f"Refusing to dispatch. A screening run costs 2.85 CNY: pass --screening. A full pass "
+            f"costs 14.26 CNY: pass --budget 20 when that is the run you mean."
+        )
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
-    inputs = apply_overrides(INPUTS, parse_argv(sys.argv[1:] if argv is None else argv))
+    raw = sys.argv[1:] if argv is None else argv
+    dispatch_argv, finance = split_finance(raw)
+    inputs = apply_overrides(INPUTS, parse_argv(dispatch_argv))
     sha = remote_head()
     tree = req("GET", f"/repos/{REPO}/git/commits/{sha}")["tree"]["sha"]
     refusal = staleness_refusal(tree, local_tree())
@@ -843,6 +954,12 @@ def main(argv: list[str] | None = None) -> int:
     for key in sorted(inputs):
         marker = " *" if inputs[key] != INPUTS.get(key) else ""
         print(f"  {key} = {inputs[key]}{marker}")
+
+    # Before anything is written and long before the POST, because this is the only step whose
+    # failure leaves no trace: a rejected configuration produces an artifact that says what it did,
+    # a dispatch nobody could afford produces a bill. The gate runs on the values actually about to
+    # be sent, so `--screening` and a hand-set pair of `--set` flags are priced identically.
+    projected_spend(inputs, finance["budget"])
 
     # Before the dispatch, because the workflow reads the variable when the job starts: written
     # after, it would describe the next run rather than this one, and the gate §13.220.5 installed

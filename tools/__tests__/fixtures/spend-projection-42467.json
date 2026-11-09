@@ -1,0 +1,52 @@
+{
+ "runId": "42467",
+ "note": "Trimmed to the billed block, the population it was taken over, and the capability census. The 500-question body is not kept: this fixture exists to price a run, not to re-grade one.",
+ "questionCount": 500,
+ "runs": 4,
+ "llmUsage": {
+  "calls": 5638,
+  "unpricedCalls": 0,
+  "promptTokens": 27233394,
+  "completionTokens": 2291325,
+  "cacheHitPromptTokens": 26154285
+ },
+ "usageBySide": {
+  "baseline": {
+   "calls": 2711,
+   "unpricedCalls": 0,
+   "promptTokens": 2735307,
+   "completionTokens": 73559,
+   "cacheHitPromptTokens": 2247200
+  },
+  "feature": {
+   "calls": 2070,
+   "unpricedCalls": 0,
+   "promptTokens": 24258529,
+   "completionTokens": 2216909,
+   "cacheHitPromptTokens": 23855522
+  }
+ },
+ "ablation": {
+  "questionsByCapability": {
+   "IE": 150,
+   "ABS": 30,
+   "MR": 121,
+   "TR": 127,
+   "KU": 72
+  }
+ },
+ "memoryArmConfig": {
+  "reader": {
+   "providerId": "deepseek",
+   "model": "deepseek-chat",
+   "baseUrl": "https://api.deepseek.com/v1",
+   "endpoint": "matches",
+   "thinking": "enabled",
+   "thinkingRoutes": [
+    "multi-session",
+    "temporal"
+   ],
+   "temperature": 0
+  }
+ }
+}

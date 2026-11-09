@@ -11,6 +11,15 @@ The gate was right and useless: the declaration it compares against was a reposi
 a human had to remember to set. A check whose input is a human's memory is the defect `§13.220`
 wrote the check to remove, one level up. So the dispatcher -- the only process that knows which
 inputs it moved -- writes the variable itself, before dispatching, always.
+
+## Why every call here passes `--no-budget`
+
+These tests are about which variable is written and in what order. The spend gate added in
+`test_dispatch_spend.py` prices the dispatch before any of that and refuses a full pass at the
+default ceiling, so a call that left it on would be asserting the gate rather than the order --
+and would start failing the first time the baseline's price moved. Passing `--no-budget` states
+which question each test is asking; the gate is measured in its own file, against its own two
+configurations.
 """
 
 from __future__ import annotations
@@ -166,7 +175,7 @@ class TestTheOrderOfOperations:
         monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
         monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
 
-        assert module.main(['--set', 'model=zhipu:glm-4.6']) == 0
+        assert module.main(['--no-budget', '--set', 'model=zhipu:glm-4.6']) == 0
         assert 'dispatch' in order, order
         assert order.index('dispatch') > order.index('variable-GET'), order
         out = capsys.readouterr().out
@@ -222,7 +231,7 @@ class TestTheOracleSwitch:
         )
         monkeypatch.delenv(module.ORACLE_VARIABLE, raising=False)
 
-        assert module.main(['--set', 'model=zhipu:glm-4.6']) == 0
+        assert module.main(['--no-budget', '--set', 'model=zhipu:glm-4.6']) == 0
         assert (module.ORACLE_VARIABLE, '0') in written, written
         assert f'{module.ORACLE_VARIABLE} = 0' in capsys.readouterr().out
 
@@ -239,7 +248,7 @@ class TestTheOracleSwitch:
         monkeypatch.setattr(module, 'declare_departures', lambda names: declared.append(names))
         monkeypatch.setenv(module.ORACLE_VARIABLE, '1')
 
-        assert module.main([]) == 0
+        assert module.main(['--no-budget']) == 0
         # The artifact's field, not the repository variable's name: a declaration that names
         # no field is refused by the gate (`42500412709`), so the record has to point at
         # something a reader can look up in the artifact.
@@ -295,7 +304,7 @@ class TestTheReplyRepairSwitch:
         monkeypatch.delenv(module.ORACLE_VARIABLE, raising=False)
         monkeypatch.delenv(module.REPLY_REPAIR_VARIABLE, raising=False)
 
-        assert module.main(['--set', 'model=zhipu:glm-4.6']) == 0
+        assert module.main(['--no-budget', '--set', 'model=zhipu:glm-4.6']) == 0
         assert (module.REPLY_REPAIR_VARIABLE, 'off') in written, written
         assert f'{module.REPLY_REPAIR_VARIABLE} = off' in capsys.readouterr().out
 
@@ -314,9 +323,9 @@ class TestTheReplyRepairSwitch:
         monkeypatch.delenv(module.ORACLE_VARIABLE, raising=False)
 
         monkeypatch.setenv(module.REPLY_REPAIR_VARIABLE, 'both')
-        assert module.main([]) == 0
+        assert module.main(['--no-budget']) == 0
         assert declared[0] == ['replyRepair'], declared
 
         monkeypatch.setenv(module.REPLY_REPAIR_VARIABLE, 'off')
-        assert module.main([]) == 0
+        assert module.main(['--no-budget']) == 0
         assert declared[1] == [], declared

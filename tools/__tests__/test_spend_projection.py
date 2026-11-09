@@ -1,0 +1,252 @@
+"""The spend a dispatch will incur, computed before it is dispatched.
+
+Every other cost instrument in this repository divides an artifact that already exists, which is
+the right instrument for a ledger row and useless for the decision that spends the money. The
+archived total this tool was written against is 14.26 CNY for one full pass of the cortex-memory
+A/B, and the configuration that answers most questions about a change -- 200 questions, 2
+repetitions -- is 2.85 CNY of the same measurement. Nothing in the dispatch path said either number
+while the inputs were still editable.
+
+So these tests pin the projection, and pin the four ways a plausible implementation would print a
+number that means something else:
+
+  - **a projection is not a model.** The arithmetic is `observed x (questions/N) x (runs/R)` and
+    nothing else; a test that let a per-turn heuristic in would be testing a second opinion.
+  - **cached input is not uncached input.** They differ by 10x and `42467` hits the prefix cache on
+    96% of its input. Reporting one input price would either hide the cache or hide its absence.
+  - **a sample is not a subsample when the shares move.** Per-question cost is route-scoped, so a
+    sample that drops multi-session costs less per question than the run it is scaled from, and the
+    refusal must fire rather than be absorbed into the total.
+  - **a changed thinking reach is not a cheaper run.** Reasoning tokens are a property of the
+    questions asked. The completion line is therefore not re-priced, and the total is labelled a
+    lower bound instead of being presented as the cost of the new reach.
+"""
+
+import json
+import pathlib
+import subprocess
+
+import pytest
+
+TOOL = pathlib.Path(__file__).resolve().parents[1] / "spend-projection.mjs"
+REPO = pathlib.Path(__file__).resolve().parents[2]
+
+
+def _run_js(body: str) -> subprocess.CompletedProcess:
+    script = f"import * as mod from {json.dumps(TOOL.as_uri())};\n{body}"
+    return subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _call(body: str) -> object:
+    result = _run_js(f"const out = ({body});\nprocess.stdout.write(JSON.stringify(out));")
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def _call_error(body: str) -> subprocess.CompletedProcess:
+    return _run_js(f"const out = ({body});\nprocess.stdout.write(JSON.stringify(out));")
+
+
+def _cli(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["node", str(TOOL), *args], capture_output=True, text=True)
+
+
+# One observed run small enough to price by hand: 1M prompt of which 800K cached, 100K output, over
+# 100 questions x 2 runs. 0.8 x 0.2 + 0.2 x 2 + 0.1 x 3 = 0.86 CNY.
+OBSERVED = {
+    "promptTokens": 1_000_000,
+    "cacheHitPromptTokens": 800_000,
+    "completionTokens": 100_000,
+}
+OBSERVED_QUESTIONS = 100
+OBSERVED_RUNS = 2
+OBSERVED_LITERAL = json.dumps(OBSERVED)
+
+OBSERVED_CENSUS = {"IE": 150, "MR": 121, "TR": 127, "KU": 72, "ABS": 30}
+
+
+def _project(limit: int, runs: int, **extra) -> str:
+    """A `mod.project(...)` call over the fixture, with `extra` passed through as JS literals."""
+    parts = [
+        f"observed: {OBSERVED_LITERAL}",
+        f"observedQuestions: {OBSERVED_QUESTIONS}",
+        f"observedRuns: {OBSERVED_RUNS}",
+        f"limit: {limit}",
+        f"runs: {runs}",
+    ]
+    for key, value in extra.items():
+        parts.append(f"{key}: {json.dumps(value) if not isinstance(value, str) else json.dumps(value)}")
+    return "mod.project({" + ", ".join(parts) + "})"
+
+
+class TestPriceUsage:
+    def test_cached_and_uncached_input_are_priced_apart(self):
+        # Same token count, different cache outcome, 10x apart on the input line only.
+        cold = _call("mod.priceUsage({promptTokens: 1000000, cacheHitPromptTokens: 0, completionTokens: 0})")
+        hot = _call(
+            "mod.priceUsage({promptTokens: 1000000, cacheHitPromptTokens: 1000000, completionTokens: 0})"
+        )
+        assert cold["total"] == 2.0
+        assert hot["total"] == 0.2
+        assert cold["output"] == 0.0
+
+    def test_output_is_priced_at_its_own_rate(self):
+        priced = _call(
+            "mod.priceUsage({promptTokens: 0, cacheHitPromptTokens: 0, completionTokens: 1000000})"
+        )
+        assert priced["output"] == 3.0
+        assert priced["total"] == 3.0
+
+    def test_a_cache_hit_larger_than_its_prompt_is_refused(self):
+        # A provider that reported this would be crediting a discount that was not earned, and
+        # pricing it would print a bill below the one that could have happened.
+        result = _call_error(
+            "mod.priceUsage({promptTokens: 10, cacheHitPromptTokens: 11, completionTokens: 0})"
+        )
+        assert result.returncode != 0
+        assert "exceeds promptTokens" in result.stderr
+
+    def test_a_boolean_is_not_a_token_count(self):
+        # JavaScript would coerce `true` to 1 in the multiplication without complaint.
+        result = _call_error(
+            "mod.priceUsage({promptTokens: true, cacheHitPromptTokens: 0, completionTokens: 0})"
+        )
+        assert result.returncode != 0
+        assert "non-negative integer" in result.stderr
+
+    def test_a_fractional_token_count_is_refused(self):
+        result = _call_error(
+            "mod.priceUsage({promptTokens: 1.5, cacheHitPromptTokens: 0, completionTokens: 0})"
+        )
+        assert result.returncode != 0
+
+
+class TestProject:
+    def test_identity_projection_reproduces_the_observed_bill(self):
+        projection = _call(_project(OBSERVED_QUESTIONS, OBSERVED_RUNS))
+        assert projection["scaled"] is True
+        assert projection["factor"] == 1
+        assert projection["cost"]["total"] == pytest.approx(0.86)
+
+    def test_the_question_axis_and_the_repetition_axis_both_scale(self):
+        # 50 of 100 questions at 1 of 2 runs is a quarter of the measurement.
+        projection = _call(_project(50, 1))
+        assert projection["factor"] == 0.25
+        assert projection["usage"]["promptTokens"] == 250_000
+        assert projection["usage"]["cacheHitPromptTokens"] == 200_000
+        assert projection["usage"]["completionTokens"] == 25_000
+        # 0.2 x 0.2 + 0.05 x 2 + 0.025 x 3
+        assert projection["cost"]["total"] == pytest.approx(0.215)
+
+    def test_per_question_per_run_is_one_of_the_projections_own_divisions(self):
+        projection = _call(_project(OBSERVED_QUESTIONS, OBSERVED_RUNS))
+        assert projection["perQuestionPerRun"]["total"] == pytest.approx(0.86 / 200)
+
+    def test_a_zero_run_count_is_refused_rather_than_divided_by(self):
+        projection = _call(_project(10, 0))
+        assert projection["scaled"] is False
+        assert "zero" in projection["reason"]
+
+    def test_a_sample_that_moves_the_capability_shares_is_not_projected(self):
+        # Removing multi-session is the case that matters: it is where thinking is enabled, so a
+        # sample without it is cheaper per question than the run it would be scaled from.
+        projection = _call(
+            _project(
+                100,
+                1,
+                observedCensus=OBSERVED_CENSUS,
+                census={"IE": 300, "MR": 0, "TR": 127, "KU": 72, "ABS": 30},
+            )
+        )
+        assert projection["scaled"] is False
+        assert "MR" in projection["reason"]
+
+    def test_a_sample_that_keeps_the_shares_is_projected(self):
+        projection = _call(
+            _project(
+                200,
+                1,
+                observedCensus=OBSERVED_CENSUS,
+                census={"IE": 60, "MR": 48, "TR": 51, "KU": 29, "ABS": 12},
+            )
+        )
+        assert projection["scaled"] is True
+
+    def test_a_changed_thinking_reach_does_not_repricethe_completion_line(self):
+        # The saving from disabling thinking is real and is not this tool's to compute: the
+        # reasoning tokens are a property of the questions that were asked.
+        same = _call(
+            _project(
+                OBSERVED_QUESTIONS,
+                OBSERVED_RUNS,
+                observedThinkingReach="multi-session+temporal",
+                thinkingReach="multi-session+temporal",
+            )
+        )
+        changed = _call(
+            _project(
+                OBSERVED_QUESTIONS,
+                OBSERVED_RUNS,
+                observedThinkingReach="multi-session+temporal",
+                thinkingReach="temporal",
+            )
+        )
+        assert same["thinkingReachChanged"] is False
+        assert changed["thinkingReachChanged"] is True
+        assert changed["lowerBound"] is True
+        assert changed["cost"]["total"] == pytest.approx(same["cost"]["total"])
+
+
+class TestCli:
+    def test_no_arguments_prints_usage_and_exits_two(self):
+        result = _cli()
+        assert result.returncode == 2
+        assert "usage:" in result.stderr
+
+    def test_a_budget_breach_exits_nonzero_and_says_so(self, tmp_path):
+        report = tmp_path / "report.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "questionCount": OBSERVED_QUESTIONS,
+                    "runs": OBSERVED_RUNS,
+                    "llmUsage": OBSERVED,
+                    "ablation": {"questionsByCapability": {"IE": 60, "MR": 40}},
+                    "memoryArmConfig": {"reader": {"thinkingRoutes": ["multi-session", "temporal"]}},
+                }
+            )
+        )
+        result = _cli("--report", str(report), "--limit", "100", "--runs", "2", "--budget", "0.5")
+        assert result.returncode == 1
+        assert "BUDGET EXCEEDED" in result.stderr
+
+    def test_a_report_without_a_billed_block_is_refused_not_defaulted(self, tmp_path):
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({"questionCount": 10, "runs": 1}))
+        result = _cli("--report", str(report), "--limit", "10", "--runs", "1")
+        assert result.returncode == 1
+        assert "needs a run that was billed" in result.stderr
+
+
+class TestShippedArtifact:
+    """One reading of the archived run, so the tool is not only ever tested on a fixture."""
+
+    def test_the_archived_full_pass_is_the_number_the_ledger_states(self):
+        archived = REPO / "tools" / "__tests__" / "fixtures" / "spend-projection-42467.json"
+        if not archived.exists():
+            pytest.skip("archived usage fixture is not present")
+        result = _cli("--report", str(archived), "--limit", "500", "--runs", "4")
+        assert result.returncode == 0, result.stderr
+        assert "14.2" in result.stdout
+
+    def test_the_screening_configuration_is_one_fifth_of_it(self):
+        archived = REPO / "tools" / "__tests__" / "fixtures" / "spend-projection-42467.json"
+        if not archived.exists():
+            pytest.skip("archived usage fixture is not present")
+        result = _cli("--report", str(archived), "--limit", "200", "--runs", "2")
+        assert result.returncode == 0, result.stderr
+        assert "2.85" in result.stdout

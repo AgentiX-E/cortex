@@ -1,0 +1,53 @@
+{
+ "runId": "42467",
+ "observedAt": "2026-11-08T11:01:07.625Z",
+ "note": "The most recent full pass whose billed block was archived with its population and its capability census. This is the reference the dispatch projection scales; it is refreshed by `--refresh-spend-baseline <artifact>` when a newer full pass exists.",
+ "questionCount": 500,
+ "runs": 4,
+ "llmUsage": {
+  "calls": 5638,
+  "unpricedCalls": 0,
+  "promptTokens": 27233394,
+  "completionTokens": 2291325,
+  "cacheHitPromptTokens": 26154285
+ },
+ "usageBySide": {
+  "baseline": {
+   "calls": 2711,
+   "unpricedCalls": 0,
+   "promptTokens": 2735307,
+   "completionTokens": 73559,
+   "cacheHitPromptTokens": 2247200
+  },
+  "feature": {
+   "calls": 2070,
+   "unpricedCalls": 0,
+   "promptTokens": 24258529,
+   "completionTokens": 2216909,
+   "cacheHitPromptTokens": 23855522
+  }
+ },
+ "ablation": {
+  "questionsByCapability": {
+   "IE": 150,
+   "ABS": 30,
+   "MR": 121,
+   "TR": 127,
+   "KU": 72
+  }
+ },
+ "memoryArmConfig": {
+  "reader": {
+   "providerId": "deepseek",
+   "model": "deepseek-chat",
+   "baseUrl": "https://api.deepseek.com/v1",
+   "endpoint": "matches",
+   "thinking": "enabled",
+   "thinkingRoutes": [
+    "multi-session",
+    "temporal"
+   ],
+   "temperature": 0
+  }
+ }
+}

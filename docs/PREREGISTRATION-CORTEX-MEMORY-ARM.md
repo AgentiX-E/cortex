@@ -36796,3 +36796,133 @@ repeated is the assumption that completing it produces an `E3.2` reading: the ar
 the reference pipeline, and `E3.2` needs this arm against **itself** with the repair switch off. That pair has to
 be dispatched as its own arm, at the adopted room, and it is the reason `E3.2` has now survived two rounds
 unscored.
+
+### 13.342 The bill, and the accuracy that is left in it
+
+The question that produced this section was not a research question. It was *"the API balance for one day is
+gone; what is it being spent on, and can the same knowledge be bought for less"*. Answering it required two
+readings that the campaign had never taken together: a **per-line ledger of a real pass**, and an **attribution
+of the remaining wrong answers to a layer**. The second one changed the first one's conclusion.
+
+#### 13.342.1 The ledger, from `42467`
+
+| line | tokens | CNY | share of the run |
+| --- | ---: | ---: | ---: |
+| input, prefix-cache hit | 26.15M | 5.23 | 36.7% |
+| input, cache miss | 1.08M | 2.16 | 15.1% |
+| output | 2.29M | 6.87 | 48.2% |
+| **one full pass (500 x 4)** | | **14.26** | |
+
+Priced with `tools/spend-projection.mjs` at the provider's published 2026-11-09 rates (0.2 / 2 / 3 CNY per
+million cached-input / uncached-input / output). The same instrument prices the screening configuration at
+**2.85** and a single-pass smoke at **0.43**, and it is now on the dispatch path: `--budget` defaults to 3.00 CNY,
+so the 14.26 row has to be typed (`--budget 20`) rather than inherited from the registered table.
+
+Two facts in that table are load-bearing and neither was visible before it was computed.
+
+**96.0% of the input is already cached**, which is why the input line is 7.39 CNY for 27.23M tokens rather than
+61.34. The prompt assembly that puts the stable block first is worth 47.08 CNY a pass and is already shipped; it
+is not a lever left to pull.
+
+**The output line is larger than the input line, and it is not answers.** Feature completion is 1,071 tokens per
+call while the median delivered answer is 18 characters and all 500 raw outputs together are 145K characters
+(~36K tokens, 1.6% of the line). The remainder is reasoning: `DEEPSEEK_THINKING` is `multi-session+temporal`, and
+those are exactly the two routes whose answers are counts over evidence spread across sessions.
+
+#### 13.342.2 The lever that looks obvious and is refused
+
+Halving the delivered window from 48,460 to 24,000 characters saves about **2.4 CNY** on a 14.26 CNY run. The
+room experiment in this document already priced the other side of that trade: at 24,000, `MR` loses 6.61 points
+and `TR` loses 4.72, while `IE`, `KU` and `ABS` move by less than 1.4. Two and a half CNY against eight points of
+the two capabilities the arm is losing on is not an optimisation; it is a purchase of cheapness with the only
+currency that matters. **Refused.** The correction matters because the input line is the largest by token count
+and the smallest by money, and a cost review that reads tokens instead of CNY reaches the opposite conclusion.
+
+#### 13.342.3 The lever that is real and is refused as a projection
+
+The thinking reach accounts for roughly 6 CNY of the 6.87 in the output line. Narrowing it to `temporal` alone is
+the single largest available saving and **no projection in this repository will price it**, because reasoning
+tokens are a property of the questions asked rather than of the reach that enabled them -- a sample that replaces
+the `MR` questions replaces the reasoning with it. `spend-projection.mjs` therefore returns
+`thinkingReachChanged: true` and labels the total a **lower bound**, and the reach is settled by a paired
+screening run instead (`T1`, below).
+
+#### 13.342.4 No wrong answer on `42467` is a retrieval miss
+
+`goldOverlap` records, per question, how many of the gold turns the delivered window carried. Partitioning every
+wrong answer by it:
+
+| capability | n | accuracy | wrong | gold absent | gold partial | gold fully carried |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| IE | 150 | 94.0% | 9 | 0 | 5 | 4 |
+| MR | 121 | 82.6% | 21 | 0 | 10 | 11 |
+| TR | 127 | 93.7% | 8 | 0 | 4 | 4 |
+| KU | 72 | 88.9% | 8 | 0 | 7 | 1 |
+| ABS | 30 | 100.0% | 0 | 0 | 0 | 0 |
+
+**`gold absent` is zero on every capability.** The column is the population any retrieval change could convert,
+and on this artifact it is empty. This closes the chunker, the reranker and the window as explanations of the
+current failures -- not as a general claim about the system, but as a statement about these 46 questions -- and
+it is the reason the two registrations below are prompt- and order-side rather than retrieval-side. The eleven
+`MR` questions that carry **all** their gold and are still wrong are the sharpest case: the reader was given
+every turn the gold names and produced a different count.
+
+#### 13.342.5 The two repairs read off the failures
+
+**`KU` -- the same attribute at several dates, and the earlier one is answered.** Five of the eight:
+
+| question | gold | arm |
+| --- | --- | --- |
+| What day do I take a cocktail-making class? | Friday | Thursday |
+| Where did I go on my most recent family trip? | Paris | Hawaii |
+| How many eggs do we have stocked up? | 20 | 30 dozen |
+| What time do I usually go to the gym? | 6:00 pm | 7:00 pm on Mondays, Wednesdays, and Fridays |
+| How many Instagram followers do I have now? | 1300 | 1250 |
+
+The `knowledge-update` block already states the rule and every delivered turn already opens with its date
+(`[2023/06/16 (Fri) 13:26]`), so neither the instruction nor the date is missing. What is missing is that
+retrieval orders by relevance, which lets the later statement sit **behind** the earlier one; a reader that walks
+the block in delivery order meets the stale value first. 7 of the 8 carry part of their gold and 1 carries all of
+it, so none is a miss. The candidate is therefore a **date-ordered delivery on the `knowledge-update` route
+alone** -- a permutation of the same multiset, which is what makes a movement attributable to order, and the same
+mechanism `turn-clock.ts` already implements for the temporal window.
+
+**`MR` -- a count over a list the reader composes and cannot audit.** Twenty of the twenty-one failures are
+counting answers, most one member away (2 vs 1, 3 vs 2, 3 vs 5, 4 vs 5, `$3,750` vs `$8,750`). Six instruction
+variants have been measured on this population (`enumerated`, `sweep`, `aggregation`, `silent`, `operands`,
+`candidates`) and none moved it past 88, which is the evidence that a seventh wording is not the lever. What the
+vendor carries and this arm does not is a **stable identifier per item** (`[thing N]`), which turns the count
+into a count of identifiers a reader can audit. `tools/mr-failure-census.mjs` already partitions these failures
+and its `off-by-one` class is exactly the population an identifier is supposed to repair.
+
+#### 13.342.6 What is registered, and the bar each one has to clear
+
+All three are **screening** dispatches (`--screening`: 200 questions x 2 repetitions, 2.85 CNY each) read against
+a screening control of the same size, and none of them is a point estimate. A conversion of three questions out of
+200 is about the smallest movement a paired read can separate from this arm's own reader noise, so the bars are
+stated at that scale rather than at the full-set scale.
+
+| id | treatment | reach | bar | falsifier |
+| --- | --- | --- | --- | --- |
+| `K1` | dates ascending on the `knowledge-update` route, multiset unchanged | KU only | **>= 3 KU conversions** among the ~29 KU questions of the sample | <= 1 conversion, or any movement on another capability's prompt |
+| `M1` | `[item N]` identifier per enumerated candidate, counted by id | MR only | **>= 3 MR conversions** among the ~48 MR questions | <= 1 conversion |
+| `T1` | thinking reach `temporal` instead of `multi-session+temporal` | MR un-thought | MR no worse than **-1.0 point** on the paired sample | MR loses more than 1.0 point for a 40% saving |
+
+`K1` is first because its mechanism is already implemented for another route and its population is the smallest
+and best characterised of the three (five named questions, one shape). `M1` is second because it is the only
+candidate on `MR` that is a **representation** rather than a seventh wording. `T1` is last and is the only one
+that trades accuracy for money on purpose -- it is a measurement of what the reasoning is worth, not an
+optimisation, and its bar is written so that a small loss is an acceptable price for 40% of the bill while a
+large one is not.
+
+#### 13.342.7 What this round did not do, and why
+
+- **Did not change `limit`'s default to the screening size.** `INPUTS` is the adopted configuration and
+  `test_preregistration_config.py` compares it against §10.3; a quiet change to the registered table would be the
+  §10.3 defect the test exists to catch. The screening size is `--screening` on the dispatch, and the gate makes
+  the full pass a typed decision.
+- **Did not add a judge verdict cache.** The judge is 0.15 CNY of 14.26 -- 1% -- and a disk cache would buy a
+  staleness question for a saving that does not appear in the total.
+- **Did not dispatch `K1`, `M1` or `T1` this round.** The balance was restored during it, and a dispatch whose
+  registration was written in the same hour is the peeking problem §4 forbids: the bar has to exist before the
+  number does. They are the first three runs of the next round, in the order above.
