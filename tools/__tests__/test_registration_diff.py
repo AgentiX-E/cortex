@@ -616,3 +616,67 @@ class TestTheReplyRepairCondition:
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
         assert "replyRepair" not in text
+
+
+class TestKeyOrderIsNotADeparture:
+    """A route map written in a different order is the same configuration.
+
+    Run `42600727738` was refused by this gate on `maxPromptCharsByRoute` alone, and the registered
+    and observed values were the same six entries in different orders -- the table is alphabetical
+    and the arm writes its map in the order the routes resolve. A gate that fires on a rendering
+    difference fires on every dispatch that compares a mapping, and a gate that always fires is a
+    gate that gets ignored.
+    """
+
+    def _registered_config(self, module) -> dict:  # noqa: ANN001 - the tool module by path
+        inputs = module.dispatch_inputs()
+        config = {
+            **REAL_41222844945,
+            "ask": inputs["cortex_memory_ask"],
+            "turnCutMarker": "none",
+            "askRoutes": ["multi-session"],
+            "reader": registered_reader(module),
+            "relevanceSignal": inputs["cortex_memory_relevance"],
+            "promptContract": inputs["cortex_memory_prompt_contract"],
+        }
+        registered_room(config, inputs["cortex_memory_max_prompt_chars"])
+        return config
+
+    def test_a_reordered_mapping_is_the_same_value(self) -> None:
+        module = _module()
+        assert module._value_text({"a": 1, "b": 2}) == module._value_text({"b": 2, "a": 1})
+
+    def test_a_reordered_list_is_not(self) -> None:
+        # The other half of the same rule: a sequence is ordered by definition, so reordering one is
+        # a real difference and normalising it would hide the departure the gate exists to find.
+        module = _module()
+        assert module._value_text(["a", "b"]) != module._value_text(["b", "a"])
+
+    def test_a_reordered_route_map_does_not_depart(self) -> None:
+        module = _module()
+        config = self._registered_config(module)
+        room = config.get("maxPromptCharsByRoute")
+        if not isinstance(room, dict):
+            import pytest
+
+            pytest.skip("the registered configuration does not carry a route map in this checkout")
+        reordered = {key: room[key] for key in reversed(list(room))}
+        config["maxPromptCharsByRoute"] = reordered
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 0, text
+        assert "maxPromptCharsByRoute" not in text
+
+    def test_a_changed_route_value_still_departs(self) -> None:
+        # The guard on the repair: normalising the order must not normalise the value.
+        module = _module()
+        config = self._registered_config(module)
+        room = config.get("maxPromptCharsByRoute")
+        if not isinstance(room, dict) or not room:
+            import pytest
+
+            pytest.skip("the registered configuration does not carry a route map in this checkout")
+        key = sorted(room)[0]
+        config["maxPromptCharsByRoute"] = {**room, key: room[key] + 1}
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 1, text
+        assert "maxPromptCharsByRoute" in text

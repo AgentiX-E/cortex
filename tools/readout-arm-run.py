@@ -4406,7 +4406,30 @@ def _flatten_config(config: dict, prefix: str = '') -> tuple[dict, dict]:
 
 
 def _value_text(value: object) -> str:
-    return ABSENT if value is ABSENT else json.dumps(value)
+    """A value as text, for comparing two records that describe the same configuration.
+
+    ## Why the mapping's key order is not part of the comparison
+
+    A rendering difference is not a configuration difference, and a comparison that cannot tell them
+    apart reports a departure nobody made. That is not hypothetical: run `42600727738` was refused by
+    the registration gate on `maxPromptCharsByRoute` alone, and the two values were the **same six
+    entries** in a different order --
+
+        registered  {"abstention": 24000, ..., "multi-session": 48460, "temporal": 48000}
+        ran         {"multi-session": 48460, "temporal": 48000, ..., "assistant": 24000}
+
+    The table is written alphabetically and the arm writes its route map in the order the routes are
+    resolved, so every dispatch that compares a route map would have departed -- a gate that fails on
+    every run is a gate that gets read as noise and then ignored, which is the state the step was
+    installed to end.
+
+    `sort_keys=True` normalises every mapping and touches no sequence, and that asymmetry is the
+    whole point: a list is ordered by definition, so two lists in different orders are two different
+    values, while a mapping's insertion order is a rendering detail. `sort_keys` recurses through
+    nested mappings and leaves the elements of a list in the order they were written, which is
+    exactly the split the comparison needs.
+    """
+    return ABSENT if value is ABSENT else json.dumps(value, sort_keys=True)
 
 
 def _claimed_paths(treatment: list[str], known: set[str]) -> tuple[list[str], list[str]]:

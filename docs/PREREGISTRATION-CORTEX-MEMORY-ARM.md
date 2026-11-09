@@ -36926,3 +36926,59 @@ large one is not.
 - **Did not dispatch `K1`, `M1` or `T1` this round.** The balance was restored during it, and a dispatch whose
   registration was written in the same hour is the peeking problem §4 forbids: the bar has to exist before the
   number does. They are the first three runs of the next round, in the order above.
+
+#### 13.342.8 The screening dispatch, and the two defects it exposed
+
+Run `42600727738` was dispatched at `--screening` (200 questions x 2 repetitions) to establish the
+control the three registrations above are read against. The benchmark completed; the **registration
+gate failed it**, and the screening read both of the things this round needed.
+
+**The arm's number holds on the sample.** Feature 90.5% (181 of 200) against the full set's 90.8%,
+with `ABS` 29/29 and the four other capabilities inside 3.4 points of their full-set values:
+
+| capability | sample n | sample accuracy | full-set accuracy | difference |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 86 | 90.7% | 94.0% | -3.3 |
+| MR | 29 | 79.3% | 82.6% | -3.3 |
+| TR | 28 | 92.9% | 93.7% | -0.8 |
+| KU | 28 | 87.5% | 88.9% | -1.4 |
+| ABS | 29 | 100.0% | 100.0% | 0 |
+
+The run billed **2.53 CNY** against a projection of 2.85 -- 11% low, in the direction that matters
+for a budget and for a stated reason: the sample carries fewer `MR` and `TR` questions than the file
+does, so it carries less reasoning.
+
+**Defect 1: the gate refused a rendering difference.** `maxPromptCharsByRoute` was reported as an
+UNDECLARED departure, and the registered and observed values were the **same six entries in different
+order** -- the dispatch table is alphabetical, the arm writes its route map in route-resolution
+order, and `_value_text` compared `json.dumps` output. Every dispatch that compares a mapping would
+have departed, and a gate that fires on every run is a gate that gets read as noise and then
+ignored -- which is the state the step was installed to end. Repaired by normalising mapping keys and
+leaving sequences alone, with both halves tested: a reordered route map no longer departs, a reordered
+list still does, and a changed route **value** still does. Re-reading `42600727738` against the
+repaired tool gives `22 field(s) same, 0 undeclared`.
+
+**Defect 2: the sampler's `limit` is not a capability quota.** `sampleInstances` round-robins across
+buckets, and `IE` is split into three sub-type buckets while `MR`, `TR`, `KU` and `ABS` have one
+each. At `limit=200` that gives `IE` 86 questions (43%) and `MR` 29, `TR` 28, `KU` 28, `ABS` 29
+(14% each), against a file share of `IE` 30% and `MR`/`TR` 24/25%. Two consequences, and the second
+one is the reason this is written down rather than absorbed:
+
+- the projected cost is biased **high** for any screening run, because the capabilities that carry
+  thinking are under-sampled;
+- **the sample is weakest on exactly the capability the first two registrations target.** `M1`'s bar
+  is three conversions among ~29 `MR` questions, and §13.203.4's 2-sigma band on a capability-sized
+  difference was 9.3 questions on 470 -- so three questions on 29 is inside the band a
+  byte-identical prompt already produces. The `K1` and `M1` criteria as written in §13.342.6 are
+  therefore **not readable at this sample size**, and the registration is amended rather than
+  reinterpreted: both are read at `--set limit=400 --set ablation_runs=2` (5.70 CNY projected at the
+  same per-question cost), where the round-robin can reach most of every capability, and the
+  200-question screening is a smoke test of whether a change does something obvious rather than a
+  verdict. The exact `MR` and `KU` counts at 400 are **not** stated here: the sampler's bucket
+  exhaustion order is a property of the file and a hand-arithmetic guess at it would be the kind of
+  number this section is complaining about. `--limit 400` prints its own census to the log, and the
+  census is what the bar is counted against.
+
+The quota-aware sampler is the repair and it is **not** in this round: it changes what `limit` means
+for every caller, and the two registration bars it would make readable are being read this round
+against a dispatch that has already been priced and not yet spent.
