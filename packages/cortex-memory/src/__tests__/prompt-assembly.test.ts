@@ -172,9 +172,12 @@ describe('the assembly-order variable', () => {
     // Two entries rather than one since §13.283: that contract is read *against* the one above it,
     // so holding the order fixed is the whole reason its single variable is the rendering. A map
     // that dropped this entry would make the sequencing run a two-variable comparison.
+    // Three since §13.346: the item-id contract is read against the unsourced one, so the order
+    // is held for the same reason -- otherwise its single variable would be one of two.
     expect(Object.entries(ASSEMBLY_BY_CONTRACT)).toEqual([
       [ARM_CONTRACT, 'instruction-first'],
       ['evidence-blocks-unsourced', 'instruction-first'],
+      ['evidence-blocks-item-ids', 'instruction-first'],
     ]);
   });
 

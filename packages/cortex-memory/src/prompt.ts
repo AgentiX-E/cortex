@@ -20,7 +20,8 @@ export type PromptContract =
   | 'knowledge-update'
   | 'abstention-evidence-blocks'
   | 'evidence-blocks-instruction-first'
-  | 'evidence-blocks-unsourced';
+  | 'evidence-blocks-unsourced'
+  | 'evidence-blocks-item-ids';
 
 /**
  * The contracts a run may name, in the order they are worth reading.
@@ -34,6 +35,7 @@ export const PROMPT_CONTRACTS = [
   'abstention-evidence-blocks',
   'evidence-blocks-instruction-first',
   'evidence-blocks-unsourced',
+  'evidence-blocks-item-ids',
 ] as const;
 
 /**
@@ -63,6 +65,11 @@ export const DEFAULT_PROMPT_CONTRACT: PromptContract = 'abstention';
 export const RENDERING_BY_CONTRACT: Partial<Record<PromptContract, EvidenceRendering>> = {
   'abstention-evidence-blocks': 'sourced',
   'evidence-blocks-instruction-first': 'sourced',
+  // §13.346. The same instruction and the same order as `evidence-blocks-unsourced`, with the
+  // numbering made global so a count can be read off the prompt. Written here rather than as a
+  // second boolean because "which rendering" is already the question this map answers, and a
+  // second axis would make the two combinable in a dispatch that meant one of them.
+  'evidence-blocks-item-ids': 'item-ids',
   // `evidence-blocks-unsourced` is deliberately absent, and the absence is the value: it is the one
   // contract whose whole content is "the same instruction, assembled the same way, with no per-turn
   // source id". §13.283 measured what the id costs and what the reader does with it.
@@ -106,6 +113,10 @@ export const ASSEMBLY_BY_CONTRACT: Partial<Record<PromptContract, 'instruction-f
   // only difference between them is the rendering. A contract that changed both would make the
   // movement unattributable, which is the confound this campaign has already paid for twice.
   'evidence-blocks-unsourced': 'instruction-first',
+  // The same order, because the control for `§13.346` is the contract above and the only
+  // difference registered is the numbering. A contract that changed both would make the movement
+  // unattributable, which is the confound this campaign has paid for twice.
+  'evidence-blocks-item-ids': 'instruction-first',
 };
 
 /**
@@ -482,6 +493,15 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
  *   - `sourced`: the §12.5 candidate. `` `1. [id] text` ``, so a turn's origin is
  *     visible and a session boundary is not merely a blank line that looks the
  *     same as every paragraph break.
+ *   - `item-ids`: `` `[item N] text` ``, with `N` running **across** the session
+ *     blocks rather than restarting in each. It exists for the question this route
+ *     is worst at (§13.346): `buildSessionPrompt` renders one block per session and
+ *     each block numbers from one, so "how many bikes do I own" can only be
+ *     answered by counting every block and adding, with nothing in the prompt
+ *     saying how many items the reader has already passed. A global identifier
+ *     makes the count readable off the prompt -- the last id is the number of
+ *     items -- and it is the only thing that moves: same evidence, same order,
+ *     same instruction.
  *
  * Defaults to `numbered`, so every prior artifact keeps its meaning byte for
  * byte.
@@ -495,7 +515,7 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
  * code was not. A caller needs the *values*, and `PromptOptions['rendering']` names
  * the type for anyone who genuinely needs to hold one.
  */
-type EvidenceRendering = 'numbered' | 'sourced';
+type EvidenceRendering = 'numbered' | 'sourced' | 'item-ids';
 
 /**
  * How hard the prompt asks the model to answer rather than to decline.
@@ -917,6 +937,32 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
    */
   'evidence-blocks-unsourced': (...parameters) =>
     CONTRACT_INSTRUCTIONS['evidence-blocks-instruction-first'](...parameters),
+
+  /**
+   * The same block, the same order and the same evidence, with the numbering made global.
+   *
+   * ## Why the treatment is a numbering and not an instruction
+   *
+   * `MR`'s eleven remaining failures whose gold is delivered are counting failures (§13.342), and
+   * the cause is in the render: `buildSessionPrompt` numbers each session block from one, so
+   * "how many bikes do I own" is answered by counting every block and adding, with nothing in the
+   * prompt saying how many items the reader has already passed. A `[item N]` that runs across the
+   * blocks makes the count readable off the text -- the last id is the number of items.
+   *
+   * Telling the reader to count, or to use the ids, would be a second variable in an arm whose
+   * whole value is that it has one. It also cannot help: the ask is already `verbatim-acts`, whose
+   * instruction is to write the matching items as a numbered list, and the failure is not that the
+   * reader ignores it -- it is that the list it writes is per-block.
+   *
+   * ## Why delegation rather than a copy
+   *
+   * The instruction text is the control's function by reference, so a later edit to the control
+   * moves both arms and "the wording is identical" is a property of the object graph rather than a
+   * claim a second copy could quietly falsify (§13.279's reason, restated because this is the third
+   * contract to rely on it).
+   */
+  'evidence-blocks-item-ids': (...parameters) =>
+    CONTRACT_INSTRUCTIONS['evidence-blocks-unsourced'](...parameters),
 
   temporal: (date) =>
     [
@@ -2238,11 +2284,32 @@ export function formatEvidence(
     rendering?: EvidenceRendering;
     maxTurnChars?: number;
     turnCutMarker?: TurnCutMarker;
+    /**
+     * The number the first turn carries under `item-ids`, so a block can continue a
+     * numbering its caller has already spent (§13.346).
+     *
+     * Ignored by the other two renderings, and ignored rather than rejected: the option is
+     * threaded by `renderSessionBlocks` for every call, and a rendering that threw on it
+     * would make the one real difference between the control and the treatment a question
+     * of which options object each was built with. Off-by-default is `undefined`, i.e. 1,
+     * which is what a caller rendering a single block means.
+     */
+    itemNumberStart?: number;
   } = {},
 ): string {
   if (turns.length === 0) return '';
 
   const header = options.sessionIndex === undefined ? '' : `Session ${options.sessionIndex + 1}\n`;
+
+  // One closure for the two position-based renderings, so the choice between them is the
+  // label and nothing else. The third rendering is not here because it writes its label
+  // *outside* the position: `formatEvidenceWithSources` composes an index with a source id,
+  // which is a different shape rather than a different prefix.
+  const first = options.itemNumberStart ?? 1;
+  const label =
+    options.rendering === 'item-ids'
+      ? (index: number): string => `[item ${first + index}] `
+      : (index: number): string => `${index + 1}. `;
 
   const body =
     options.rendering === 'sourced'
@@ -2250,7 +2317,7 @@ export function formatEvidence(
       : turns
           .map(
             (turn, i) =>
-              `${i + 1}. ${contentFor(turn, options.maxTurnChars, options.turnCutMarker)}`,
+              `${label(i)}${contentFor(turn, options.maxTurnChars, options.turnCutMarker)}`,
           )
           .join('\n\n');
 
@@ -3619,23 +3686,29 @@ function renderSessionBlocks(
   turnCutMarker: TurnCutMarker | undefined,
 ): string {
   const kept = new Set(picked);
-  return sessions
-    .map((session) => ({
-      index: session.index,
-      turns: session.turns.filter((turn) => kept.has(turn)),
-    }))
-    .filter((session) => session.turns.length > 0)
-    .map((session) =>
-      formatEvidence(session.turns, {
+  // A loop rather than the two-`map` chain this used to be, because `item-ids` needs a counter
+  // that survives the dropped sessions between the blocks (§13.346). The counter is spent on what
+  // was **rendered**, not on what was admitted: an id is a promise about the prompt the reader
+  // sees, and a session that lost every turn contributes nothing to it.
+  const blocks: string[] = [];
+  let nextItem = 1;
+  for (const session of sessions) {
+    const turns = session.turns.filter((turn) => kept.has(turn));
+    if (turns.length === 0) continue;
+    blocks.push(
+      formatEvidence(turns, {
         sessionIndex: session.index,
         ...(rendering === undefined ? {} : { rendering }),
+        itemNumberStart: nextItem,
         // The cap reaches the blocks through the same renderer the flat route uses, which is
         // why it is threaded here rather than applied to the joined string: a per-turn cap
         // applied to the joined text would be a per-prompt cap.
         ...capOption(maxTurnChars, turnCutMarker),
       }),
-    )
-    .join('\n\n');
+    );
+    nextItem += turns.length;
+  }
+  return blocks.join('\n\n');
 }
 
 /** Tells the model that the blocks are separate conversations. */

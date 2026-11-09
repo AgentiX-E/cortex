@@ -109,11 +109,14 @@ describe('the prompt-contract switch', () => {
     // §13.283's entry is last because it is read against the entry before it: same instruction,
     // same order, no per-turn source id. A reader who reached it without the third name would not
     // know what the fourth withholds.
+    // §13.346's entry is fifth for the same reason the fourth is last-but-one: it is read against
+    // the one before it, and the only thing it moves is the numbering.
     expect(PROMPT_CONTRACTS).toEqual([
       'abstention',
       'abstention-evidence-blocks',
       'evidence-blocks-instruction-first',
       'evidence-blocks-unsourced',
+      'evidence-blocks-item-ids',
     ]);
   });
 

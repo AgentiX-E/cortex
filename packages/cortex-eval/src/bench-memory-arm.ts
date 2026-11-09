@@ -1223,6 +1223,15 @@ export const PROMPT_CONTRACTS = {
    * comparison it is read against.
    */
   'evidence-blocks-unsourced': 'evidence-blocks-unsourced',
+  /**
+   * §13.346's candidate: the same instruction and order, with the item identifier running across
+   * the session blocks.
+   *
+   * A contract rather than a dispatch input for the reason the two entries above give -- the
+   * workflow is at GitHub's 25-input ceiling -- and one variable rather than two because it
+   * delegates the instruction to the contract above and keeps its assembly.
+   */
+  'evidence-blocks-item-ids': 'evidence-blocks-item-ids',
 } as const;
 
 /**
@@ -1296,6 +1305,19 @@ const RENDERING_ROUTES: Record<string, readonly string[]> = {
   // administered it everywhere. The audit is the check that exists for that defect and it fired
   // correctly -- the artifact was what was wrong.
   'evidence-blocks-unsourced': [
+    'abstention',
+    'multi-session',
+    'temporal',
+    'knowledge-update',
+    'assistant',
+    'flat',
+  ],
+  // The same six, for the same reason: `formatEvidence` is reached by both builders, so the
+  // numbering is administered wherever evidence is rendered. The entry describes the **contract**;
+  // a dispatch that restricts the population (`capability=MR`, §13.345) records the population it
+  // graded in `questionsByCapability`, so the two fields together say what actually rendered rather
+  // than this table claiming a reach the run did not exercise.
+  'evidence-blocks-item-ids': [
     'abstention',
     'multi-session',
     'temporal',

@@ -37372,3 +37372,27 @@ The floor is the reason for the ≥ 5, and it is worth being explicit about what
 five questions of 121 -- 4.1 points of `MR` -- to be believed. If the mechanism is worth less than that, this
 dispatch cannot see it and the honest outcome is "not readable at this population", which is a different sentence
 from "no effect" and will be written as such if that is what the numbers say.
+
+#### 13.346.1 The treatment rides a contract, not a new input
+
+`I1`'s treatment is `cortex_memory_prompt_contract=evidence-blocks-item-ids`, a fifth value on an axis
+that already means "how this run renders". Three reasons, and the first two are on the record from
+§13.279 and §13.283:
+
+- **The dispatch table is at its ceiling.** `test_no_workflow_sits_at_the_input_ceiling` forbids a
+  25th input, and §13.345 already spent the one slot that came free on the population selector.
+- **The contract is the axis that carries a rendering.** A new `cortex_memory_item_ids` boolean would
+  make "which numbering" combinable with "which instruction", which is the two-variable dispatch
+  §12.9 exists to prevent.
+- **The reach is checkable.** `RENDERING_ROUTES` restates which routes a contract administers a
+  rendering on, `tools/readout-arm-run.py` refuses a run whose `askRoutes` name a route the
+  rendering never reached, and the artifact therefore proves the treatment arrived.
+
+The new contract delegates its instruction block to `evidence-blocks-unsourced` **by reference** and
+takes the same assembly, so what moves between the two arms is the numbering and only the numbering.
+`packages/cortex-memory/src/__tests__/prompt-item-id-contract.test.ts` asserts that by stripping the
+numbering tokens from both prompts and comparing the remainder, and
+`prompt-item-ids.test.ts` asserts the same property one layer down at the renderer, including that
+the added characters are exactly `6 x items`: `[item N] ` is eight-plus-digits characters against
+`N. `'s plus-two, so the difference is **six at every width** and a prompt that grew by anything
+else is a run that changed something else too.
