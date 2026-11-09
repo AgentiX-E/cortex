@@ -36739,3 +36739,52 @@ count, no validation-score distribution and no compression ratio is published fo
 
 It does not adopt anticipatory retrieval, scoping hierarchy, or the 92.0% configuration as a target. The first
 two are invisible to every number in this benchmark; the third is the same unit error §13.340.3 measures.
+
+## 13.341 `E4` did not finish, and it did not fail on anything this arm controls
+
+`42565379262` completed with conclusion `failure` after 1 h 34 m. The cause is in its own error log, not in the
+code:
+
+```
+progress: died on cortex-memory run=3 q=195/500 id=a96c20ee at +618.0s
+LLM request failed: 402 Payment Required —
+  {"error":{"message":"Insufficient Balance","type":"insufficient_balance_error"}}
+```
+
+Three of the four repetitions finished. The partial artefact is published (`longmemeval-s-report`, 140 kB):
+`benchmark-cortex-memory-partial.json` plus `benchmark-error.log`.
+
+### 13.341.1 Why `E3.2` still cannot be scored, and it is not the missing repetition
+
+The three completed repetitions are in the artefact, so the obvious move is to score them. **The two arms in that
+artefact are not the same shape**, and a paired mask over them would be a fabricated pairing rather than a
+measurement:
+
+| | `featureAnswers` | `baselineAnswers` |
+| --- | ---: | ---: |
+| non-null, run 0 / 1 / 2 | 470 / 470 / 470 | 254 / 253 / 253 |
+| first non-null index | 0 | **70** |
+| contiguous empty gaps | six, five to six items each — the 30 abstention items | 0–69 empty, then scattered |
+
+`featureAnswers` holds 470 of 500 with the 30 empty cells in six contiguous blocks, which is what the abstention
+distribution looks like. `baselineAnswers` holds **half** of that, starts at index 70, and the nulls after that
+are scattered rather than blocked. Two arms in that state cannot be paired question by question, and the 68–70%
+raw-output difference a naive zip produces is a property of the misalignment, not of `replyRepair=commitment`.
+
+**`E3.2` stays unscored.** §13.337 recorded one reason (the only comparable arm had a different room); this is a
+second, and neither is a reason to relax the criterion.
+
+### 13.341.2 The operational block this creates
+
+| provider | state | what it stops |
+| --- | --- | --- |
+| DeepSeek (`deepseek-chat`, the reader and the judge) | **402, balance exhausted** on 2026-11-09 | `E4`'s fourth repetition, every judge pass, and therefore `H1`–`H3` below |
+| Zhipu GLM (`embedding-3`) | **429, quota exhausted** since the round-46 note | any benchmark that re-embeds rather than reading an archived index |
+
+Both provider-dependent arms registered in §13.340.6 are therefore **blocked on credit rather than on design**.
+The one that is not blocked is `G1.1`, which reads `goldRanks` off an existing index and calls no model — which is
+the reason it was registered first among the cost arms and remains the only dispatchable experiment this round.
+
+**`E4` must be re-run rather than resumed** when the balance is restored: a partial artefact whose two arms hold
+different question sets cannot be completed by adding the missing repetition, because the missing one is not what
+is wrong with it.
