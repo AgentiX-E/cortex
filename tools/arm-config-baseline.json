@@ -1,6 +1,6 @@
 {
-  "adoptedBy": "13.318.3",
-  "commit": "7692f204",
+  "adoptedBy": "13.336",
+  "commit": "a2813874",
   "dataset": "longmemeval",
   "datasetFingerprint": "sha256:d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
   "dispatch": {
@@ -8,7 +8,7 @@
     "cortex_memory_ask": "verbatim-acts",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
-    "cortex_memory_max_prompt_chars": "multi-session:48460",
+    "cortex_memory_max_prompt_chars": "abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000",
     "cortex_memory_max_turn_chars": "400",
     "cortex_memory_max_turn_chars_routes": "multi-session,temporal",
     "cortex_memory_prompt_contract": "evidence-blocks-unsourced",
@@ -25,7 +25,7 @@
     "temperature": "0",
     "thinking": "multi-session+temporal"
   },
-  "generatedAt": "2026-11-08T11:01:07.625Z",
+  "generatedAt": "2026-11-09T00:33:00.762Z",
   "memoryArmConfig": {
     "anchors": {
       "count": 4,
@@ -43,6 +43,14 @@
       "multi-session"
     ],
     "confidenceSignal": "none",
+    "effectivePromptChars": {
+      "abstention": 24000,
+      "assistant": 24000,
+      "flat": 24000,
+      "knowledge-update": 24000,
+      "multi-session": 48460,
+      "temporal": 48000
+    },
     "embedding": {
       "dimensions": 1024,
       "model": "embedding-3",
@@ -56,8 +64,20 @@
       "multi-session",
       "temporal"
     ],
+    "evidenceSource": "corpus",
+    "judge": {
+      "model": "deepseek-chat",
+      "providerId": "deepseek",
+      "source": "reader",
+      "temperature": 0
+    },
     "maxPromptCharsByRoute": {
-      "multi-session": 48460
+      "abstention": 24000,
+      "assistant": 24000,
+      "flat": 24000,
+      "knowledge-update": 24000,
+      "multi-session": 48460,
+      "temporal": 48000
     },
     "maxTurnChars": 400,
     "maxTurnCharsRoutes": [
@@ -69,6 +89,7 @@
     "queryExpansion": "none",
     "reader": {
       "baseUrl": "https://api.deepseek.com/v1",
+      "deadlineMs": 600000,
       "endpoint": "matches",
       "model": "deepseek-chat",
       "providerId": "deepseek",
@@ -108,7 +129,7 @@
     "workers": 4
   },
   "questionCount": 500,
-  "run": "42467392736",
+  "run": "42533236864",
   "runs": 4,
-  "why": "the E11a redraw of the adopted configuration, whose config is identical to 42355323615's and whose artifact is the one on disk"
+  "why": "the dispatch that carried the six-route allocation, which \u00a713.336 adopts; it is the first artifact whose room map is the shipping one"
 }

@@ -707,8 +707,9 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   expressible at all, and it dropped MR's never-surfaced gold from 28.1% to **5.0%** while `beyond the pool`
   fell to zero. §13.54's refutation of this width was measured under a 26-turn room and is narrowed, not
   overturned: a wide pool is useless when the room is narrow, and necessary when it is not.
-- `maxPromptCharsByRoute: multi-session:48460` — **the evidence budget, adopted by §13.82 as one flat room and
-  re-registered as a route map by §13.295 and §13.318.3.** §13.81 registered 24,000 and §13.82 raised it to
+- `maxPromptCharsByRoute: abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000`
+  — **the evidence budget, adopted by §13.82 as one flat room and re-registered as a route map by §13.295 and
+  §13.318.3, then redistributed by §13.336.** §13.81 registered 24,000 and §13.82 raised it to
   48,000, because §13.80 showed the room cannot be bought by truncating: at a 200-character cap the room reached
   100 turns and MR fell to 29 of 121. At 48,000 the window held **144 turns on MR and 151 on TR** against 68 and
   74, delivered gold rose 72.9% → **86.9%** on MR, and the roster rose 394 → **403** (`39260774611`; §13.82.3
@@ -718,6 +719,13 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   the rule rent its room from the evidence: the route gets 48,460 and the other five stay at the product's
   48,000. §13.318.3 adopted the pair, and `42355323615` read **91.95%** overall against 90.85% with `MR` 83.88%
   against 79.13%, context unchanged at 1.003x.
+  **§13.336 adopts the redistribution `C5` measured**: `multi-session` 48,460 and `temporal` 48,000 keep their
+  rooms, and the four narrow routes drop to 24,000, which is what `42383171765` ran when it was priced at
+  **1.05 points and 24.6% of the bill**. `C5` (`42533236864`) re-ran that allocation on top of `verbatim-acts`
+  and read **91.05% at 9,201 prompt tokens per question**, clearing both pre-registered criteria (`≥ 90.80%`,
+  `≤ 9,300`). The 0.90 points against 91.95 is **not a measured loss**: three readings of the wider map already
+  span 91.95 / 91.65 / 91.05 (`42355323615`, `42452904894`, `42467392736`), so 91.05 sits inside the
+  configuration's own draw spread and the allocation's cost is below this harness's resolution.
   **A scalar is still expressible and still means one room for every route** — `maxPromptChars` survives in the
   artifact for that shape, and the parser decides between them on whether the input contains a colon rather than
   on a heuristic. The registration names the map because a scalar here would describe a run this arm is not
@@ -36260,3 +36268,48 @@ on exactly the four routes where the bill is being cut, and the repair adds a se
 minority of questions -- a prompt that a smaller room truncates differently could reframe what the reader
 declines. The next dispatch after both readings is therefore the allocation **with** the repair, and it
 is not optional bookkeeping: it is the configuration that would ship.
+
+## 13.336 The allocation is adopted, and the loss it was supposed to cost is below the harness's resolution
+
+`C5` (`42533236864`) answered the question `MEASURE-COST-LEVER.md` §5 queued: the per-route allocation on top of
+the registered `ask=verbatim-acts` reads **91.05%** (four-repetition mean, 90.60–91.40; first draw 91.20%, 456 of
+500) at **9,201** prompt tokens per question. Both criteria met, the falsifier missed by 1.55 points.
+
+### 13.336.1 Why the 0.90 points against 91.95 is not a price
+
+The wider map's own readings, all of them four-repetition means of the same configuration:
+
+| run | map | `feature` mean |
+| --- | --- | ---: |
+| `42355323615` | `multi-session` 48,460, five routes 48,000 | **91.95%** |
+| `42452904894` | the same | 91.65% |
+| `42467392736` | the same | 91.05% |
+| `42533236864` (`C5`) | `multi-session` 48,460, `temporal` 48,000, four routes 24,000 | **91.05%** |
+
+The configuration spans **0.90 points across three dispatches of itself**, and `C5`'s reading is the bottom of
+that span. So the allocation's cost is not "0.90 points"; it is **below the resolution of this harness**, and the
+honest statement of the trade is the direction of the one-sided comparison that is available: on the same
+questions, at the same reader, the allocation delivered 9,201 tokens per question against a bill that had already
+been priced at 24.6% higher.
+
+This is the third time in this campaign that a difference smaller than a configuration's own draw spread was about
+to be reported as an effect. §13.328.2's pair is the same defect from the other side — two draws of one
+configuration read 91.65% and 91.05% — and the rule it produced applies here unchanged: **a difference that two
+draws of one configuration can produce is not evidence about two configurations.**
+
+### 13.336.2 What moves, and the one thing that does not
+
+- §10.3's `maxPromptCharsByRoute` line moves to the six-route map, and `tools/dispatch-cortex-memory-ab.py` moves
+  with it, because `test_preregistration_config.py` pins the pair.
+- The two widened routes keep their rooms. They are the two whose windows §13.76's cap reaches, i.e. the two where
+  the room is spent on evidence rather than on instruction.
+- **The headline does not move.** 91.05% is inside the span the wider map already produced, so no published number
+  improves or degrades; what changes is the **bill**, which is the axis this adoption was for.
+
+### 13.336.3 What is now owed
+
+`E3` (`42539923976`) was dispatched in the **old** room, so `E3` and `C5` are two one-variable readings
+in two rooms and their sum is a hypothesis. The next dispatch is therefore the allocation **with**
+`replyRepair=commitment`, and it is one variable only because this section moved the first one into the registered
+configuration. It is not bookkeeping: the allocation binds on exactly the four routes whose room shrank, and a
+window that truncates differently can change where a reader declines.

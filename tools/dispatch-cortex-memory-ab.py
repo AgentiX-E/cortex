@@ -420,7 +420,22 @@ INPUTS = {
     # A scalar input still means one room for every route -- the arm's parser decides on the colon,
     # not on a heuristic -- so the two shapes cannot be confused, and this line names the map
     # because the scalar describes a run this arm is not making.
-    "cortex_memory_max_prompt_chars": "multi-session:48460",
+    #
+    # §13.336's redistribution, adopted by `C5` (`42533236864`). `42383171765` priced the narrower
+    # allocation at 1.05 points and 24.6% of the bill; `C5` re-ran it on top of `verbatim-acts` and
+    # read 91.05% at 9,201 prompt tokens per question, clearing both pre-registered criteria
+    # (>= 90.80%, <= 9,300). The 0.90 points against 91.95 is below this harness's resolution: three
+    # readings of the wider map already span 91.95 / 91.65 / 91.05 (`42355323615`, `42452904894`,
+    # `42467392736`), so the allocation costs less than one draw. The two widened routes keep their
+    # rooms because they are the two whose windows the cap reaches; the four narrow ones return to
+    # the product default of 24,000, which is what the bill was spent buying.
+    #
+    # The pairs are sorted, because `arm-config-record.py`'s `route_rooms` renderer sorts them and
+    # the comparison is string equality: an unsorted map here would report a configuration
+    # difference on every run while sending the same rooms.
+    "cortex_memory_max_prompt_chars": (
+        "abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000"
+    ),
     # §13.84's adopted filter. `all` was the state every run before it was in; `39298662801` took
     # MR from 83 to 90 and TR from 93 to 98 with no capability regressed, so these two lines move
     # with §10.3. The reach stays scoped: the three untouched capabilities reproduce their control

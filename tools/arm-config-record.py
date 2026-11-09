@@ -176,6 +176,25 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
         "provider and model resolve from the embedding environment at run time (`EMBEDDING_*`); "
         "the artifact records what was reached, and no §10.3 concept names it",
     ),
+    # The three below were carried by `42533236864` and by no baseline before it, so `--record`
+    # refused the artifact instead of writing a projection that stepped over them -- which is the
+    # reverse direction doing its job. Each is classified rather than skipped for that reason.
+    "effectivePromptChars": (
+        "derived",
+        "`#promptCharsFor`'s three-term expression (§13.299): the map for the routes it names, the "
+        "product default for the rest. It is the field that says what a prompt was actually capped "
+        "at, and comparing it would report a second violation for one defect",
+    ),
+    "evidenceSource": (
+        "constant",
+        "`corpus` on every benchmark dispatch; the workflow fixes it, and the ablation's other "
+        "source (`oracle`) is a different experiment rather than a value of this one",
+    ),
+    "judge": (
+        "identity",
+        "the grading model resolves from the judging environment at run time and no §10.3 concept "
+        "names it; the artifact records what was used",
+    ),
 }
 
 # Inputs in the table that the projection deliberately has no entry for. Kept as a mapping with a
