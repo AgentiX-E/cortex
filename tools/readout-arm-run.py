@@ -1253,7 +1253,16 @@ def reply_repair_section(report: dict) -> tuple[str, bool]:
     table, and `E3.4` (the bill) is `--spend`. Restating any of the three here would create a second
     reader of one quantity, which is how two numbers that agree get reported as a disagreement.
     """
-    census = _pair_of_counts(report.get('replyRepair'), 'replyRepair')
+    raw_census = report.get('replyRepair')
+    if raw_census is None:
+        # The field's absence has two causes and the artifact cannot distinguish them, so the message
+        # has to carry both rather than pick one -- a build without the repair and a dispatch with the
+        # switch off produce the same bytes here, and naming only one sends the reader to the wrong file.
+        raise ValueError(
+            'carries no `replyRepair` census: either the build predates §13.334, or the dispatch ran '
+            'with `replyRepair=off`. This field cannot tell those two apart'
+        )
+    census = _pair_of_counts(raw_census, 'replyRepair')
     commitment = _pair_of_counts(census_parts(report, 'commitment'), 'replyRepair.commitment')
     shape = _pair_of_counts(census_parts(report, 'shape'), 'replyRepair.shape')
 

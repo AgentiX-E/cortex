@@ -129,6 +129,10 @@ class TestWhatItRefusesToScore:
         r = _run(_report(None, present=False), tmp_path)
         assert r.returncode == 2
         assert 'replyRepair' in r.stderr
+        # Both causes, because the artifact cannot distinguish them: a build without the repair and a
+        # dispatch with the switch off are the same absence, and naming one sends the reader elsewhere.
+        assert 'predates' in r.stderr
+        assert 'off' in r.stderr
 
     def test_a_missing_half_discards_the_whole_field(self, tmp_path: Path) -> None:
         """A total without its parts is the shape the census type exists to prevent."""
