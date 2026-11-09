@@ -64,6 +64,7 @@ import type {
   AbstentionReasons as ReportAbstentionReasons,
   AuditCensus,
   BareRetryCensus,
+  ReplyRepairCensus,
   MemoryArmConfig,
   RecoveryCensus,
 } from './report.js';
@@ -236,6 +237,16 @@ export type CortexMemoryArmOptions = {
    * means the shipped behaviour, which is what every archived artifact was produced under.
    */
   reviewBareDecline?: boolean | undefined;
+  /**
+   * Which reply-contract repairs a run administers (`CORTEX_MEMORY_REPLY_REPAIR`, §13.334).
+   *
+   * A value rather than a boolean pair because the two kinds act on disjoint reply shapes, and a run has to be able
+   * to administer one of them: the commitment repair prices the prose refusals, the shape repair the quotation dumps.
+   * Optional for the reason `reviewPass` is -- absent means `off`, which is the shipped behaviour, and
+   * `toMemoryArmConfig` normalises it so the artifact always states a value rather than leaving the difference
+   * between "no repair" and "not recorded" to a reader.
+   */
+  replyRepair?: string | undefined;
   /**
    * Whether the multi-session route's relevance index is built from the question alone or
    * from the question plus model-written activity phrases (§13.97).
@@ -1058,6 +1069,9 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     // registers that dispatch as one `recover` against its control; under the old derivation the run
     // would have measured a withdrawal it did not name.
     reviewBareDecline: carriesBareLadder(readReviewPass(env[REVIEW_PASS_VARIABLE])),
+    // §13.334. Its own variable rather than a value of `REVIEW_PASS`, because it is a different treatment on a
+    // disjoint population -- the same reason `reviewBareDecline` was split out of the pass name.
+    replyRepair: readReplyRepair(env[REPLY_REPAIR_VARIABLE]),
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
@@ -1667,6 +1681,43 @@ function readQueryExpansion(raw: string | undefined): string {
   if (!QUERY_EXPANSIONS.includes(trimmed)) {
     throw new Error(
       `${QUERY_EXPANSION_VARIABLE} must be one of ${QUERY_EXPANSIONS.map((name) => JSON.stringify(name)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}.`,
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * The reply-contract repair a run administers on every route whose gold is not a decline (§13.334).
+ *
+ * The population is what `tools/reply-shape-census.mjs` counts over an artifact's own replies: 3 to 5 prose refusals
+ * per run, every one of them a loss, and 42 to 47 lists of quotations of which only 7 to 13 are losses. Neither shape
+ * is visible to the two retries the product already carries -- `reviewBareDecline` needs the token and nothing else,
+ * and `reviewPass: 'recover'` is told `answered: true` because `parseAnswer` reads "Not specified in the evidence" as
+ * an answer.
+ *
+ * Four values, because the two kinds are disjoint populations and a run has to be able to administer one of them.
+ * `off` is a value rather than an absent field so a control arm can say it ran the control, the same reason
+ * `QUERY_EXPANSIONS` carries `none`.
+ */
+const REPLY_REPAIR_VARIABLE = 'CORTEX_MEMORY_REPLY_REPAIR';
+
+/** The repairs this arm can dispatch, in the order the config line spells them. */
+const REPLY_REPAIRS: readonly string[] = ['off', 'commitment', 'shape', 'both'];
+
+/**
+ * Read the reply repair, rejecting anything the product does not implement.
+ *
+ * Rejected rather than defaulted for the reason `readReviewPass` rejects: a run dispatched to administer a repair that
+ * silently ran the control would publish an unchanged result, and that result would read as evidence the repair does
+ * not matter -- on a population this repository has already spent a dispatch measuring.
+ */
+function readReplyRepair(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim().toLowerCase();
+  if (trimmed === '') return 'off';
+  if (!REPLY_REPAIRS.includes(trimmed)) {
+    throw new Error(
+      `${REPLY_REPAIR_VARIABLE} must be one of ${REPLY_REPAIRS.map((name) => JSON.stringify(name)).join(', ')} ` +
         `or unset, got ${JSON.stringify(raw)}.`,
     );
   }
@@ -2343,6 +2394,10 @@ export function toMemoryArmConfig(
     // the same bytes otherwise, and this field exists because a claim of treatment nobody can check is the defect
     // the whole `featureConfig` block was added to close.
     reviewBareDecline: options.reviewBareDecline === true,
+    // §13.334. Always present, for the reason every field above is: `off` is the state of every archived run and also
+    // what a blank switch selects, so an artifact that spelled nothing would leave "ran the control" and "predates the
+    // field" as the same bytes -- and the arm that carries the repair would have no contrast.
+    replyRepair: options.replyRepair ?? 'off',
     // The evidence source. Always present, like every field whose absence would otherwise be
     // ambiguous: `corpus` is the state of every archived run, and it is also what a dispatch
     // that leaves the switch blank selects -- so an artifact that spelled nothing would leave
@@ -3170,6 +3225,7 @@ export async function runCortexMemoryArm(
     ...abstentionReasonsAcross(censusSystems),
     ...recoveryAcross(censusSystems),
     ...bareRetryAcross(censusSystems),
+    ...replyRepairAcross(censusSystems),
     ...auditAcross(censusSystems),
   };
   const questions = buildArmRoster(
@@ -3229,6 +3285,10 @@ export async function runCortexMemoryArm(
     // treatment on a different population, and a run that carries it must be able to say how often it
     // fired without a reader inferring it from an unchanged accuracy.
     ...(census.bareRetry === undefined ? {} : { bareRetry: census.bareRetry }),
+    // §13.334's tally, on the same rule and in its own field: it counts a different treatment on populations the
+    // retries above cannot see, so a run that carries it must be able to say how often each kind fired without a
+    // reader inferring it from an unchanged accuracy.
+    ...(census.replyRepair === undefined ? {} : { replyRepair: census.replyRepair }),
     // The membership audit's tally, on the same rule: a `bare` run has no audit to report, and writing
     // `attempted: 0` there would make "this build carries no audit" and "the audit ran and agreed with every
     // answer" produce the same artifact.
@@ -3889,6 +3949,47 @@ function bareRetryAcross(systems: readonly MemorySystem[]): { bareRetry?: BareRe
 }
 
 /**
+ * The reply-contract repair's census, summed over every instance the run answered through.
+ *
+ * ## Why this one flattens the payload to reuse `summedOver`
+ *
+ * The payload is nested by kind, and the nesting is the point: the two kinds are different sentences on disjoint
+ * populations, and flattening it in the report would put the naming of the kinds in the arm. So the flattening is
+ * local to the sum -- `summedOver` sees six integers and this function reassembles the two records -- and the rule it
+ * carries comes for free: an instance that cannot report makes the whole field absent rather than making it a partial
+ * sum, which is §13.244's defect (worker 0's quarter published as the run's).
+ */
+function replyRepairAcross(systems: readonly MemorySystem[]): { replyRepair?: ReplyRepairCensus } {
+  const total = summedOver(systems, (system) => {
+    const one = replyRepairOf(system).replyRepair;
+    if (one === undefined) return undefined;
+    return {
+      attempted: one.attempted,
+      answered: one.answered,
+      commitmentAttempted: one.commitment.attempted,
+      commitmentAnswered: one.commitment.answered,
+      shapeAttempted: one.shape.attempted,
+      shapeAnswered: one.shape.answered,
+    };
+  });
+  if (total === undefined) return {};
+  return {
+    replyRepair: {
+      attempted: total.attempted as number,
+      answered: total.answered as number,
+      commitment: {
+        attempted: total.commitmentAttempted as number,
+        answered: total.commitmentAnswered as number,
+      },
+      shape: {
+        attempted: total.shapeAttempted as number,
+        answered: total.shapeAnswered as number,
+      },
+    },
+  };
+}
+
+/**
  * The audit census, summed over every instance the run answered through.
  *
  * Summed for the reason §13.244 gives about the other three: a pooled run answers through N instances and reading
@@ -3989,6 +4090,53 @@ function bareRetryOf(system: MemorySystem): { bareRetry?: BareRetryCensus } {
   }
   return {
     bareRetry: { attempted: record.attempted as number, answered: record.answered as number },
+  };
+}
+
+/**
+ * Read the reply-contract repair's census off one instance, or `{}` when it carries none.
+ *
+ * The same three-step shape as `bareRetryOf` and one extra step, because this payload has parts: an absent member is
+ * a build without the repair, a throwing one is a broken optional capability rather than a failed run, and a payload
+ * whose **kinds** are missing or malformed is discarded rather than coerced -- a total without its parts is the shape
+ * `ReplyRepairCensus` exists to prevent, since a reader could then credit a conversion to a treatment that never
+ * fired.
+ */
+function replyRepairOf(system: MemorySystem): { replyRepair?: ReplyRepairCensus } {
+  const candidate = (system as { replyRepairCensus?: unknown }).replyRepairCensus;
+  if (typeof candidate !== 'function') return {};
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    return {};
+  }
+
+  if (payload === null || typeof payload !== 'object') return {};
+  const record = payload as Record<string, unknown>;
+  for (const key of ['attempted', 'answered'] as const) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+  }
+  const kinds = {} as Record<'commitment' | 'shape', { attempted: number; answered: number }>;
+  for (const kind of ['commitment', 'shape'] as const) {
+    const part = record[kind];
+    if (part === null || typeof part !== 'object') return {};
+    const counts = part as Record<string, unknown>;
+    for (const key of ['attempted', 'answered'] as const) {
+      const value = counts[key];
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+    }
+    kinds[kind] = { attempted: counts.attempted as number, answered: counts.answered as number };
+  }
+  return {
+    replyRepair: {
+      attempted: record.attempted as number,
+      answered: record.answered as number,
+      commitment: kinds.commitment,
+      shape: kinds.shape,
+    },
   };
 }
 

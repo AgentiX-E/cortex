@@ -1029,6 +1029,9 @@ describe('source trust reaches the artifact', () => {
       askRoutes: [],
       turnCutMarker: 'none',
       reviewPass: 'none',
+      // §13.334: the repair is a state on every artifact, `off` included, so an exact-object
+      // assertion carries it for the reason the evidence source above is carried.
+      replyRepair: 'off',
       reviewBareDecline: false,
       queryExpansion: 'none',
       selfConsistency: 'none',
@@ -1544,6 +1547,9 @@ describe('runCortexMemoryArm', () => {
         askRoutes: [],
         turnCutMarker: 'none',
         reviewPass: 'none',
+        // §13.334: the repair is a state on every artifact, `off` included, so an exact-object
+        // assertion carries it for the reason the evidence source above is carried.
+        replyRepair: 'off',
         reviewBareDecline: false,
         queryExpansion: 'none',
         selfConsistency: 'none',
@@ -1997,6 +2003,9 @@ describe('blank values from unfilled dispatch inputs', () => {
       askRoutes: [],
       turnCutMarker: 'none',
       reviewPass: 'none',
+      // §13.334: the repair is a state on every artifact, `off` included, so an exact-object
+      // assertion carries it for the reason the evidence source above is carried.
+      replyRepair: 'off',
       reviewBareDecline: false,
       queryExpansion: 'none',
       selfConsistency: 'none',
@@ -5017,5 +5026,64 @@ describe('the cut marker on the arm', () => {
         memoryArmConfig: withoutField as never,
       }),
     ).toContain('turnCutMarker=none');
+  });
+});
+
+/**
+ * The reply-contract repair, which §13.334 registers against the fourteen non-reasoning failures
+ * `docs/MEASURE-ORACLE-CEILING.md` §7.4 classifies.
+ *
+ * The arm's job here is the same as the review pass's: carry the value into the artifact, reject a spelling the
+ * product does not implement, and never let "the control ran" and "the field predates the run" produce the same
+ * bytes. What is different is that the value is a treatment name rather than a boolean, because the two kinds act on
+ * disjoint reply shapes and a run has to be able to administer one of them.
+ */
+describe('the reply-contract repair', () => {
+  it('is `off` when unset or blank', () => {
+    for (const raw of [undefined, '', '   ']) {
+      const options = cortextMemoryArmOptions({
+        CORTEX_MEMORY: '1',
+        ...(raw === undefined ? {} : { CORTEX_MEMORY_REPLY_REPAIR: raw }),
+      });
+      expect(options.replyRepair).toBe('off');
+    }
+  });
+
+  it('reads every repair the product implements, case and padding included', () => {
+    for (const name of ['commitment', 'shape', 'both'] as const) {
+      expect(
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_REPLY_REPAIR: ` ${name} ` })
+          .replyRepair,
+      ).toBe(name);
+    }
+  });
+
+  it('rejects a repair the product does not implement', () => {
+    // A run dispatched to administer a repair that silently ran the control would publish an unchanged
+    // result under the treatment's name, which is the reading this field exists to make impossible.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_REPLY_REPAIR: 'commit' }),
+    ).toThrow(/CORTEX_MEMORY_REPLY_REPAIR/);
+  });
+
+  it('projects the value into the config and onto the line, `off` included', () => {
+    const off = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
+    expect(off.replyRepair).toBe('off');
+
+    const on = toMemoryArmConfig(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_REPLY_REPAIR: 'both' }),
+    );
+    expect(on.replyRepair).toBe('both');
+
+    const line = formatAblationReport({
+      dataset: 'fixture',
+      questionCount: 0,
+      baseline: { name: 'reference-pipeline', metrics: emptyMetrics() },
+      feature: { name: 'cortex-memory', metrics: emptyMetrics() },
+      ablation: emptyAblation('cortex-memory'),
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: on,
+    });
+    expect(line).toContain('replyRepair=both');
   });
 });

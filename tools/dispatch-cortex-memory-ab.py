@@ -68,6 +68,14 @@ DECLARED_DEPARTURES_VARIABLE = "CORTEX_DECLARED_DEPARTURES"
 # repair. `--oracle` on the command line is the way to ask for the condition.
 ORACLE_VARIABLE = "CORTEX_MEMORY_ORACLE"
 
+# The reply-contract repair (§13.334). A repository variable for the same reason the evidence source
+# is one -- this workflow sits at 24 of GitHub's 25 dispatch inputs -- and with the same protection:
+# written on every dispatch, so a run can never inherit the previous experiment's treatment.
+REPLY_REPAIR_VARIABLE = "CORTEX_MEMORY_REPLY_REPAIR"
+
+# The values `readReplyRepair` in `cortex-eval` accepts, in the order the artifact spells them.
+REPLY_REPAIRS = ("off", "commitment", "shape", "both")
+
 # The configuration registered in `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3,
 # held constant. These values are not free parameters of this script: §10 fixed them
 # before the run, and `tools/__tests__/test_preregistration_config.py` asserts that what
@@ -763,6 +771,26 @@ def oracle_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def reply_repair_switch(environ: dict[str, str] | None = None) -> str:
+    """Which reply-contract repair this dispatch administers, `off` by default.
+
+    Strict on the value for the reason `oracle_switch` is: `readReplyRepair` refuses an unrecognised
+    name at the arm's boundary, so a typo here would fail the run three hours in rather than here --
+    and a run that fell back to `off` would publish the control's reading under the treatment's name.
+    """
+    raw = ((environ if environ is not None else os.environ).get(REPLY_REPAIR_VARIABLE) or "").strip().lower()
+    if raw == "":
+        return "off"
+    if raw not in REPLY_REPAIRS:
+        raise SystemExit(
+            f"{REPLY_REPAIR_VARIABLE} must be one of {', '.join(repr(name) for name in REPLY_REPAIRS)} "
+            f"or unset in the dispatcher's environment, got {raw!r}. An unrecognised value is refused "
+            "rather than read as off, because the run it would produce administers the control while "
+            "the dispatch asked for the repair."
+        )
+    return raw
+
+
 def declare_departures(names: list[str]) -> str:
     """Write the departure list where the registration gate will read it.
 
@@ -816,7 +844,17 @@ def main(argv: list[str] | None = None) -> int:
     # the registered value, so a declaration would be the "names a field this run did not move"
     # case the gate reports as an intention.
     oracle = oracle_switch()
-    declared = sorted({*declared, *(("evidenceSource",) if oracle == "1" else ())})
+    repair = reply_repair_switch()
+    # Both conditions join the declaration on the same rule: the name is the **artifact's** field, and
+    # only when the condition is on -- declaring a field the run left at its registered value would be
+    # the "names a field this run did not move" case the gate reports as an intention.
+    declared = sorted(
+        {
+            *declared,
+            *(("evidenceSource",) if oracle == "1" else ()),
+            *(("replyRepair",) if repair != "off" else ()),
+        }
+    )
     declare_departures(declared)
     print(f"declaring departures: {declared if declared else 'none'}")
     # Before the dispatch and unconditionally, for the reason the declaration is: the workflow reads
@@ -824,6 +862,10 @@ def main(argv: list[str] | None = None) -> int:
     # ceiling measurement nobody asked for. Written even when it is `0`.
     write_variable(ORACLE_VARIABLE, oracle)
     print(f"{ORACLE_VARIABLE} = {oracle}{' *' if oracle == '1' else ''}")
+    # Written unconditionally for the same reason, and it is the second variable that has to be: a stale
+    # `both` left behind by the last experiment would administer a treatment this dispatch did not name.
+    write_variable(REPLY_REPAIR_VARIABLE, repair)
+    print(f"{REPLY_REPAIR_VARIABLE} = {repair}{' *' if repair != 'off' else ''}")
 
     req(
         "POST",

@@ -131,6 +131,7 @@ import {
   type EvidenceAsk,
   type PromptContract,
   type RelevanceUnits,
+  type ReplyRepair,
   type ReviewPass,
   type TurnCapRoute,
   // Named at this boundary rather than inferred from the literal below: the two readers are the product's
@@ -783,6 +784,14 @@ async function main(): Promise<void> {
       // Same conditional shape as `reviewPass`: absent is the shipped behaviour, and a present-but-false key would
       // make "the control ran" indistinguishable from "the switch was configured off" to a `!== undefined` check.
       ...(armOptions.reviewBareDecline === true ? { reviewBareDecline: true } : {}),
+      // §13.334. Same conditional shape and the same reason: `off` is the shipped behaviour every archived artifact
+      // was produced under, so a present-but-off key would make "the control ran" indistinguishable from "the
+      // treatment was configured to off" to the `!== undefined` check the census accessor performs. The cast is at
+      // this boundary for the reason `reviewPass` above states: the arm carries the value as a string because the
+      // dependency runs the other way, and `readReplyRepair` has already rejected anything outside the union.
+      ...(armOptions.replyRepair === undefined || armOptions.replyRepair === 'off'
+        ? {}
+        : { replyRepair: armOptions.replyRepair as ReplyRepair }),
       // §13.197.4's knob, spread conditionally like every other treatment here: absent is the shipped
       // configuration every archived artifact was produced under, and a present-but-empty map would
       // read as configured to the `!== undefined` check `#readerFor` performs while resolving no route

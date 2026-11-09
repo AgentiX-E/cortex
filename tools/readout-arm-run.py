@@ -4244,6 +4244,11 @@ DISPATCH_FIELD_ALIASES = {
 # property the whole entry buys.
 REGISTERED_CONDITIONS: dict[str, tuple[str, str]] = {
     'evidenceSource': ('evidenceSource', 'corpus'),
+    # §13.334. The reply-contract repair changes what a decline count means, not what the run did: a run
+    # that answered eight refusals by re-asking has a different `bareRetry` population from one that did
+    # not, and the two artifacts would agree about every input. `off` is the registered value, so a
+    # treatment run must declare `replyRepair` and a control run is compared against `off`.
+    'replyRepair': ('replyRepair', 'off'),
 }
 
 ABSENT = '<-absent->'

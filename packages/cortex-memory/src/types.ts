@@ -519,6 +519,39 @@ export type CortexMemoryOptions = {
    */
   reviewBareDecline?: boolean;
   /**
+   * Repair a reply that broke the contract it was rendered with, once, and without changing the evidence.
+   *
+   * ## The measurement that asked for it
+   *
+   * `MEASURE-ORACLE-CEILING.md` §7.4 reads all 35 questions the arm loses with the gold sessions in the window and
+   * classifies fourteen of them as contract violations: eight refusals in prose and six lists of quotations. Both
+   * populations are invisible to the two retries the product already carries -- the bare retry needs the token and
+   * nothing else, and the recovery pass is told `answered: true` because `parseAnswer` reads "Not specified in the
+   * evidence" as an answer. So those questions are re-asked by nothing, and the bare retry reported `72/72`
+   * converted in the same run.
+   *
+   * The hand classification gave the kinds' sizes but not their denominators, and `tools/reply-shape-census.mjs`
+   * measured both over three artifacts (§13.334): the refusals are 3 to 5 per run and every one is a loss, while
+   * the lists of quotations are 42 to 47 per run and only 7 to 13 are losses. That is why `commitment` is the kind
+   * dispatched and `shape` is registered and refused.
+   *
+   * ## Why the licence is that a refusal can never be right here
+   *
+   * `abstention` is the only capability whose gold is a decline, and it reads 30/30 with 29 of its 30 answers
+   * being the bare token -- so the repair is excluded on that route at the call site, and on every route it does
+   * reach a refusal is wrong by construction. That is what licenses a prompt that says a refusal is not
+   * acceptable (`buildCommitPrompt`) instead of one that merely points at the evidence again.
+   *
+   * ## Cost
+   *
+   * At most one extra consultation per question, only on questions that already answered in a broken shape, and
+   * the retry carries `AssembledPrompt.carried` -- the exact text the first call read -- so it can never be the
+   * longer prompt `§13.147` removed from the bare retry.
+   *
+   * Default absent, which is the shipped behaviour and the setting every archived artifact was produced under.
+   */
+  replyRepair?: ReplyRepair;
+  /**
    * How many times the multi-session route consults the model on one prompt, and whether the
    * answers are reduced by majority. `1` (the default) is the shipped behaviour.
    *
@@ -627,3 +660,27 @@ export type WindowOrdering = {
  * value and could not say which move. Making them values of one field says that in the artifact.
  */
 export type ReviewPass = 'none' | 'audit' | 'recover';
+
+/**
+ * Which reply-contract repairs a run administers, if any.
+ *
+ * A union rather than two booleans because the two kinds are disjoint populations and a run has to be able to
+ * administer one of them: `commitment` alone prices the refusal repair, `shape` alone prices the answer-shape
+ * repair, and `both` is the arm that asks what two deterministic repairs together recover. `off` is a value
+ * rather than an absent field so a control arm can state that it ran the control, which is the reading
+ * §13.187.6D gives `queryExpansion`.
+ *
+ * The reach is decided by the reply rather than by the route: `reply-repair.ts` reads the first reply and returns
+ * at most one plan, and a reply that is the bare token belongs to `reviewBareDecline` instead -- so a run with
+ * both treatments on still consults at most once more per question.
+ *
+ * ## `shape` is a value and is not dispatched, and the numbers are why
+ *
+ * `tools/reply-shape-census.mjs` counts both columns over three archived artifacts: 42 to 47 replies per run are
+ * lists of quotations, and only **7 to 13 of them are wrong** -- the other 35 to 38 are correct answers that happen
+ * to be lists, because a preference question legitimately answers with a recommendation set. `commitment` plans
+ * **3 to 5** and every one of them is wrong. So the shape repair would consult nine times as many questions to
+ * reach a third as many, and two thirds of what it re-asked would be answers that were already right. The value
+ * exists so the mechanism can be measured rather than argued about, and §13.334 records the refusal.
+ */
+export type ReplyRepair = 'off' | 'commitment' | 'shape' | 'both';

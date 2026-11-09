@@ -2451,11 +2451,7 @@ export function buildRetryPrompt(
   turns: readonly AdmittedTurn[],
   options: PromptOptions = {},
 ): string {
-  const render = (picked: readonly AdmittedTurn[]): string =>
-    options.rendering === 'sourced'
-      ? formatEvidenceWithSources(picked, options.maxTurnChars, options.turnCutMarker)
-      : formatEvidence(picked, capOption(options.maxTurnChars, options.turnCutMarker));
-  const evidence = render(turns);
+  const evidence = renderCarried(turns, options);
   return [
     `EVIDENCE:\n${evidence.length === 0 ? NO_EVIDENCE : evidence}`,
     '',
@@ -2466,6 +2462,100 @@ export function buildRetryPrompt(
     'Write the items in the evidence that match the question as a numbered list first, one per line, each with the',
     'date it was stated, then compute the answer from that list.',
     'Reply with the answer alone on the last line.',
+  ].join('\n');
+}
+
+/**
+ * One rendering of the carried evidence, shared by every corrective prompt.
+ *
+ * The three repair builders below differ in their instruction and in nothing else, and that is the property the
+ * whole design rests on: the second call has to re-read **the same text** as the first, or the difference between
+ * the two answers is a difference of evidence and the reading is of the retry's window rather than of its
+ * instruction. A copy of this two-thirds expression in each builder is how those blocks come to differ by one
+ * option -- `maxTurnChars` or `turnCutMarker`, both of which reach `formatEvidence` through
+ * `capOption` -- while every test that compares a repair's prefix to the first prompt still passes, because it
+ * compares within one builder.
+ *
+ * `EVIDENCE:` and the empty placeholder stay at the call sites rather than moving in here: the placeholder is a
+ * statement about evidence, and a builder that folded it into the renderer would be the fourth place that decides
+ * what an empty window looks like.
+ */
+function renderCarried(turns: readonly AdmittedTurn[], options: PromptOptions): string {
+  return options.rendering === 'sourced'
+    ? formatEvidenceWithSources(turns, options.maxTurnChars, options.turnCutMarker)
+    : formatEvidence(turns, capOption(options.maxTurnChars, options.turnCutMarker));
+}
+
+/**
+ * The prompt a refusal in prose gets back: the same evidence, and a commitment rule.
+ *
+ * ## Why this is not `buildRetryPrompt`
+ *
+ * That builder answers a reply that named **nothing**, and says so ("The previous reply named no evidence"). A
+ * prose refusal is the opposite state: the reader read the window and reported what it found there ("Not specified
+ * in the evidence", "No items in the evidence match"). Reusing the bare retry's sentence would tell it that it said
+ * nothing, which is false, and a false statement about the reply is the one thing a corrective prompt cannot
+ * afford -- the model's next move is to reconcile it with what it actually wrote.
+ *
+ * ## Why the instruction is a rule and not a hint
+ *
+ * `MEASURE-ORACLE-CEILING.md` §7.4's eight refusals are questions whose gold answer is not a decline; the
+ * abstention route, where a decline **is** the answer, reads 30/30 and is excluded at the call site. So on every
+ * route this reaches, a refusal is wrong by construction, and the prompt can say so: a licence that is discharged
+ * is not a licence. The list-then-compute instruction is the same one the contract already carries, repeated
+ * because it is the procedure that makes a partly-answered question answerable.
+ */
+export function buildCommitPrompt(
+  question: string,
+  turns: readonly AdmittedTurn[],
+  options: PromptOptions = {},
+): string {
+  const evidence = renderCarried(turns, options);
+  return [
+    `EVIDENCE:\n${evidence.length === 0 ? NO_EVIDENCE : evidence}`,
+    '',
+    `QUESTION: ${question}`,
+    '',
+    'Your previous reply reported that the evidence above does not answer this question.',
+    'That reply is not acceptable here: this question does have an answer in the evidence, and a refusal is not',
+    'one of the answers you may give.',
+    'Write the items in the evidence that bear on the question as a numbered list first, one per line, each with',
+    'the date it was stated, then compute the answer from that list.',
+    'Reply with the answer alone on the last line.',
+  ].join('\n');
+}
+
+/**
+ * The prompt a list-of-quotations gets back: the same evidence, and the reply shape, named.
+ *
+ * ## Why the shape is spelled with a label
+ *
+ * `parseAnswer` reads the text after a closing `Answer:` label, so a reply that writes `Answer: 3` is parsed as `3`
+ * and one that writes `3` is parsed as `3` too -- the label is what makes the *second* call's shape unambiguous
+ * without depending on a model choosing to be terse. It is also the shape `ask=verbatim`'s migrated contract
+ * already names, so this is a reminder of a shape the arm has measured, not a new format.
+ *
+ * ## Why "the previous reply was a list" is stated as the reason
+ *
+ * The six archived failures are correct extractions that never committed: the reader quoted the turns that bear on
+ * the question and stopped. Naming the defect is what makes the second call a correction rather than a re-roll of
+ * the same question, which is the distinction §13.100.2 priced (a second sample moves 24 of 121 answers and knows
+ * nothing about which of them was wrong).
+ */
+export function buildShapePrompt(
+  question: string,
+  turns: readonly AdmittedTurn[],
+  options: PromptOptions = {},
+): string {
+  const evidence = renderCarried(turns, options);
+  return [
+    `EVIDENCE:\n${evidence.length === 0 ? NO_EVIDENCE : evidence}`,
+    '',
+    `QUESTION: ${question}`,
+    '',
+    'Your previous reply quoted the evidence instead of answering, so it could not be read as an answer.',
+    'Compute the answer from the evidence above and reply in exactly this form, on one line, with nothing else:',
+    'Answer: <the answer -- a word, a name, a number or a short phrase>',
   ].join('\n');
 }
 

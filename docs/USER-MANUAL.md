@@ -314,6 +314,7 @@ Three fields are required and each is required for a reason:
 | `roleOf` | `(turn) => string \| undefined` | absent | How to read a turn's role. Required when `evidenceRoles` is set. |
 | `reviewPass` | `'none' \| 'audit' \| 'recover'` | `'none'` | A second consultation on the multi-session route: audit the first answer's list, or retry a bare decline. |
 | `reviewBareDecline` | `boolean` | absent | Give a decline that named nothing one question back, without offering the abstention token. |
+| `replyRepair` | `'off' \| 'commitment' \| 'shape' \| 'both'` | `'off'` | Re-ask once when the reply broke the contract it was given: a refusal in prose, or a list of quotations instead of an answer. Excludes `reviewPass`. |
 | `selfConsistency` | `number` | absent (1) | Consultations per question and majority reduction. Must be a positive integer; refused with `reviewPass: 'audit'`. |
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder, as two injections. |
 <!-- /contract-table -->
@@ -508,6 +509,26 @@ const memory = new CortexMemory({
   ask: 'extractive',
   reviewPass: 'recover',
   reviewBareDecline: true,
+});
+void memory;
+```
+
+**Repair the reply, not the evidence.** `replyRepair` answers the two reply shapes that no retry can reach — a
+refusal written in prose, which parses as an answer, and a list of quotations with no answer line. It re-asks once
+with the same evidence and a different instruction, so the movement it produces is attributable to the sentence
+rather than to a different window. It is refused beside `reviewPass`, because that field already puts a second
+consultation on the same route.
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+const memory = new CortexMemory({
+  llm,
+  now: 0,
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
+  replyRepair: 'both',
 });
 void memory;
 ```

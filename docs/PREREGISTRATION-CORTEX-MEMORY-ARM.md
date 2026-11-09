@@ -36110,3 +36110,93 @@ dispatch that follows it must be chosen for a population that is larger than nin
 It is registered and not built this round, because §13.330 and §13.331 changed the bar every previous
 `MR` verdict was read against, and a mechanism dispatched in the same round as a change of measure is
 attributable to neither.
+
+### 13.334 The reply-contract repair: one kind dispatched, one kind refused, and the census that decided
+
+`MEASURE-ORACLE-CEILING.md` §7.4 reads all 35 questions the arm loses with the gold sessions in the window and
+classifies **fourteen** of them as contract violations rather than reasoning failures: eight refusals in prose, six
+lists of quotations. That count is a hand classification of the losses. Before spending a dispatch on it, this round
+built the classifier and **counted the same claim over the replies themselves**, on the three artifacts that carry
+`rawOutput` -- which is what `tools/reply-shape-census.mjs` exists to do.
+
+#### 13.334.1 The population, measured rather than classified
+
+| artifact | configuration | `bare-decline` | `prose-decline` | `shape-failed` |
+| --- | --- | ---: | ---: | ---: |
+| `42521885948` | gold sessions, top-k 256 | 30 (**0** wrong) | 5 (**5** wrong) | 42 (7 wrong) |
+| `42500867182` | corpus, top-k 256 | 30 (**0** wrong) | 4 (**4** wrong) | 47 (9 wrong) |
+| `42522552589` (`E2`) | corpus, top-k 32 | 30 (**0** wrong) | 3 (**3** wrong) | 47 (13 wrong) |
+
+Three readings, and the first two are what the registration turns on:
+
+1. **`prose-decline` is 100% wrong in all three artifacts.** Every reply the classifier calls a refusal in prose is a
+   question the arm lost, and none of the three artifacts contains one that was graded correct. That is stronger than
+   the hand classification could be: it is not "these eight look like refusals", it is "of the replies that are
+   refusals, every single one cost a question".
+2. **`bare-decline` is 100% correct, and all thirty are `ABS`.** The token is the right answer on the one capability
+   whose gold is a decline, which is the exclusion `reviewBareDecline` states in prose and this instrument now
+   measures: **the population a blind retry would reach is exactly the population that reads 30/30.** A treatment
+   with the wrong reach here does not buy nothing; it spends 30 calls to lose questions.
+3. **`shape-failed` is 17-28% wrong.** 42 to 47 replies per artifact are lists of quotations, and 7 to 13 of them are
+   losses. The other 35 to 38 are **correct answers that happen to be lists** -- IE preference questions legitimately
+   answer with a bulleted recommendation set.
+
+`shape-failed`'s count is also the reason §7.4's "fourteen" does not reproduce: the hand classification read the six
+losses and did not have the denominator. The predicate finds **42 to 47** replies of that shape, of which **six to
+thirteen** are the losses the section read. A registration that quoted fourteen as the population would be quoting
+`k` without `n`.
+
+#### 13.334.2 The mechanism, and why the two kinds are one option
+
+One pass, one consultation, two sentences:
+
+| kind | trigger | prompt | why the evidence does not move |
+| --- | --- | --- | --- |
+| `commitment` | the reader declined, and not with the bare token | `buildCommitPrompt`: the evidence again, plus "a refusal is not acceptable here" and the list-then-compute instruction | the prompt carries `AssembledPrompt.carried`, the exact text the first call read |
+| `shape` | the reply is a list of quotations | `buildShapePrompt`: the evidence again, plus the `Answer: <phrase>` shape | same set, same rendering, `renderCarried` shared by all three builders |
+
+The two are disjoint by construction, and the disjointness is what keeps the cost at **one** extra call per question
+when both are on: `classifyReply` reads the bare shape first, so a reply that `reviewBareDecline` owns can never become
+a plan for this pass. `reply-repair.test.ts` asserts that over a reply table rather than trusting the ordering, and
+`reply-repair-route.test.ts` asserts it end to end with both switches on: two calls per question, and the census
+credits exactly one of them.
+
+The constructor refuses `replyRepair` beside `reviewPass`, for the reason `selfConsistency` refuses `audit`: two
+second consultations on one route with overlapping populations would make any movement two variables.
+
+#### 13.334.3 Why `shape` is registered and refused
+
+| | `commitment` | `shape` |
+| --- | ---: | ---: |
+| consultations per run | **3 to 5** | 42 to 47 |
+| of them already correct | **0** | 35 to 38 |
+| cannot lose, by construction | yes: no route outside `abs` has a decline for a gold answer | **no**: two thirds of the targets are already right |
+
+A repair of an already-correct answer is not free: `§13.100.2` measured 24 of 121 answers differ between two
+consultations of one prompt, so re-asking 35-38 correct questions to reach 7-13 wrong ones would trade a ~20% churn
+rate on the 35 for an unknown conversion rate on the 13. The expected value is negative and the cost is nine times
+`commitment`'s. So `shape` stays a value of the option, stays measured in the artifact, and is **not dispatched** --
+and the reason is a row in a table rather than a sentence in a comment.
+
+#### 13.334.4 What is dispatched, and what it must show
+
+`E3`: `replyRepair=commitment` against the registered configuration, 500 questions, four repetitions, one variable
+(`docs/03-execution-plan.md` §14.74 carries the dispatch).
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `E3.1` | the pass fires on **3 to 5** questions per repetition, and converts **all** of them: `commitment.attempted == commitment.answered`, both within `[3, 5]` | `attempted: 0` (the plan never fired: the predicate or the wiring is wrong) or `answered < attempted - 1` (the commitment rule does not commit) |
+| `E3.2` | no question that answered loses: the 495-497 non-targets reproduce their correctness mask | any flip among the non-targets -- the pass would then be reaching replies it was not registered for |
+| `E3.3` | `ABS` stays at **30/30** | any `ABS` loss: the reach reached the one capability whose gold is a decline |
+| `E3.4` | the bill rises by **≤1%** per question | more: the pass is firing beyond its population, which `E3.1`'s count would contradict |
+
+The corpus consequence is stated so that it is not read as a disappointment later: **3 to 5 questions is +0.6 to +1.0
+points**, which is inside the 17-question floor. This axis is decided by `E3.1`'s paired count and by nothing else, and
+a flat headline on a run whose census reads `4/4` is the *expected* outcome rather than a null result.
+
+#### 13.334.5 What it withdraws
+
+`MEASURE-ORACLE-CEILING.md` §7.4's arithmetic is corrected rather than deleted: the fourteen questions are still
+fourteen losses, but they are not fourteen replies of two shapes. The refusals are 3 to 5 per run and the quotation
+dumps 42 to 47, of which six to thirteen are losses -- so "the repair of the fourteen" was never the mechanism, and
+"the repair of the refusals" is worth 1.0 point at most. `RETRACTIONS.md` entry 13 records the correction.

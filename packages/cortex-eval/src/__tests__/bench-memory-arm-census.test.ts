@@ -557,3 +557,121 @@ describe('the arm records what the bare-decline retry did', () => {
     expect(result.report.bareRetry).toEqual({ attempted: 21, answered: 4 });
   });
 });
+
+/**
+ * The reply-contract repair's census (§13.334).
+ *
+ * The same contract as the three censuses above, plus one property none of them has: this payload has **parts**.
+ * The two kinds act on disjoint reply shapes -- a refusal in prose and a list of quotations -- and the registration
+ * that asks for the repair names those populations separately, so a tally that carried only the totals would let a
+ * reader credit one kind with the other's conversions. The malformed-payload cases therefore include the case where
+ * the totals are whole and the parts are not.
+ */
+describe('the arm records the reply-contract repair census', () => {
+  const CENSUS = {
+    attempted: 9,
+    answered: 4,
+    commitment: { attempted: 6, answered: 3 },
+    shape: { attempted: 3, answered: 1 },
+  };
+
+  function systemWithReplyRepair(payload: unknown, impl?: () => unknown): MemorySystem {
+    return {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      replyRepairCensus: impl ?? (() => payload),
+    } as unknown as MemorySystem;
+  }
+
+  it('carries both kinds through, and renders them as two rows', async () => {
+    const result = await run(systemWithReplyRepair(CENSUS));
+
+    expect(result.report.replyRepair).toEqual(CENSUS);
+    expect(result.markdown).toContain('## Reply-contract repair');
+    expect(result.markdown).toMatch(/\|\s*commitment\s*\|[^|]*\|\s*6\s*\|\s*3\s*\|\s*50\.0%\s*\|/);
+    expect(result.markdown).toMatch(/\|\s*shape\s*\|[^|]*\|\s*3\s*\|\s*1\s*\|\s*33\.3%\s*\|/);
+  });
+
+  it('renders a kind that never fired as not-applicable rather than as a share of nothing', async () => {
+    // The state of a run that administers `both` on a corpus where only one shape occurs: the row has to
+    // appear with a zero in it, because "the repair was configured and this half never fired" is a finding.
+    const result = await run(
+      systemWithReplyRepair({
+        attempted: 2,
+        answered: 1,
+        commitment: { attempted: 2, answered: 1 },
+        shape: { attempted: 0, answered: 0 },
+      }),
+    );
+    expect(result.markdown).toMatch(/\|\s*shape\s*\|[^|]*\|\s*0\s*\|\s*0\s*\|\s*n\/a\s*\|/);
+  });
+
+  it('omits the section for a system that does not carry the repair', async () => {
+    const result = await run(constantSystem('cortex-memory', 'one'));
+
+    expect(result.report.replyRepair).toBeUndefined();
+    expect(result.markdown).not.toContain('## Reply-contract repair');
+  });
+
+  it('discards a payload whose total is not a whole non-negative count', async () => {
+    for (const payload of [
+      { ...CENSUS, attempted: Number.NaN },
+      { ...CENSUS, answered: -1 },
+      { ...CENSUS, attempted: 1.5 },
+    ]) {
+      const result = await run(systemWithReplyRepair(payload));
+      expect(result.report.replyRepair, JSON.stringify(payload.attempted)).toBeUndefined();
+    }
+  });
+
+  it('discards a payload whose parts are missing or malformed', async () => {
+    // A total without its parts is the shape the type exists to prevent: a reader could then credit a
+    // conversion to a treatment that never fired.
+    const { shape: _shape, ...withoutShape } = CENSUS;
+    const malformed = [
+      withoutShape,
+      { ...CENSUS, shape: { attempted: 3 } },
+      { ...CENSUS, commitment: { attempted: -6, answered: 3 } },
+      { ...CENSUS, shape: null },
+      { attempted: 9, answered: 4 },
+    ];
+    for (const payload of malformed) {
+      const result = await run(systemWithReplyRepair(payload));
+      expect(result.report.replyRepair, JSON.stringify(payload)).toBeUndefined();
+    }
+  });
+
+  it('treats a throwing accessor as absent rather than failing the run', async () => {
+    const result = await run(
+      systemWithReplyRepair(null, () => {
+        throw new Error('broken');
+      }),
+    );
+    expect(result.report.replyRepair).toBeUndefined();
+    expect(result.report.questions).toHaveLength(1);
+  });
+
+  it('treats a null payload as absent', async () => {
+    // The accessor exists and answers `null`, which is what a build without the repair reports (§13.268). Publishing
+    // a zeroed census there would claim a mechanism that ran and found nothing.
+    const result = await run(systemWithReplyRepair(null));
+    expect(result.report.replyRepair).toBeUndefined();
+    expect(result.markdown).not.toContain('## Reply-contract repair');
+  });
+
+  it('keeps the repair census apart from the bare retry', async () => {
+    // The two act on reply shapes that cannot overlap, and one field holding both would let a reader
+    // attribute a conversion to the wrong treatment -- the ambiguity every census in this file removes.
+    const both = {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      bareRetryCensus: () => ({ attempted: 21, answered: 4 }),
+      replyRepairCensus: () => CENSUS,
+    } as unknown as MemorySystem;
+
+    const result = await run(both);
+
+    expect(result.report.bareRetry).toEqual({ attempted: 21, answered: 4 });
+    expect(result.report.replyRepair).toEqual(CENSUS);
+  });
+});

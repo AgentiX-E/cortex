@@ -141,6 +141,16 @@ export type AblationReport = {
    */
   bareRetry?: BareRetryCensus | undefined;
   /**
+   * What the reply-contract repair did, split by kind, and absent unless the run carried it.
+   *
+   * A fifth field rather than another value of `bareRetry`, because the two repairs act on shapes that retry cannot
+   * see: a prose refusal parses as an answer, and a list of quotations parses as an answer too, so `bareRetry`
+   * reporting `0` on a run whose repair fired eight times would be a census of the wrong mechanism. Absent means
+   * the build could not have fired it -- the reading §13.268 gives `audit` -- which is why the producer writes the
+   * field only when the accessor answers.
+   */
+  replyRepair?: ReplyRepairCensus | undefined;
+  /**
    * What the membership audit did: consultations issued, and how many moved the answer.
    *
    * A fourth field, absent unless the run carried `reviewPass: 'audit'`. Its absence is a statement that the
@@ -594,6 +604,14 @@ export type MemoryArmConfig = {
    * producer is where the guarantee lives, and `test/` pins it there.
    */
   readonly reviewBareDecline?: boolean | undefined;
+  /**
+   * Which reply-contract repairs the run administered (§13.334).
+   *
+   * Always written by the producer, `off` included, for the reason {@link MemoryArmConfig.reviewPass} is: an
+   * artifact has to answer what the run did, and a field that is only present under treatment makes "no repair" and
+   * "a repair that was not recorded" the same row. Optional in the type because archived artifacts predate it.
+   */
+  readonly replyRepair?: string | undefined;
   /**
    * Whether the multi-session route's ranking was built from the question alone or from the
    * question plus model-written activity phrases (§13.97).
@@ -1192,6 +1210,29 @@ export type BareRetryCensus = {
 };
 
 /**
+ * The reply-contract repair's tally, split by the kind of violation that earned it.
+ *
+ * ## Why the kinds are carried rather than summed away
+ *
+ * The two repairs are different sentences on disjoint populations (§13.334): `commitment` re-asks a refusal written
+ * in prose, `shape` re-asks a list of quotations for an answer line. A run reporting `attempted: 9, answered: 3`
+ * has said nothing about which treatment earned the three, and the fourteen questions this pass was registered
+ * against split 8 / 6 between them -- so the totals are derived from these two and not the other way round.
+ *
+ * ## Why `attempted` is not a rate
+ *
+ * `answered` counts consultations that returned something other than a decline, which is what "the repair
+ * produced a reply" means. Whether that reply was **right** needs the gold, which lives in the roster beside this
+ * tally and not in it -- the same split `AuditCensus.changed` states for the audit.
+ */
+export type ReplyRepairCensus = {
+  readonly attempted: number;
+  readonly answered: number;
+  readonly commitment: { readonly attempted: number; readonly answered: number };
+  readonly shape: { readonly attempted: number; readonly answered: number };
+};
+
+/**
  * The membership audit's own tally.
  *
  * A third type rather than a reuse of {@link RecoveryCensus}, and the second field is why: this pass is handed an
@@ -1496,6 +1537,10 @@ export function formatAblationReport(report: AblationReport): string {
         // prompt (every turn was eligible) rather than the absence of one, and a reader comparing
         // two artifacts must be able to see which of them filtered.
         `, \`reviewPass=${memoryArm.reviewPass ?? 'none'}\`` +
+        // §13.334, rendered on every run for the reason `reviewPass` is: `off` is a fact about the run
+        // (it repaired nothing) rather than a missing field, and the dispatch that carries the repair has to be
+        // distinguishable from its control on the line a human reads, not only in the JSON.
+        `, \`replyRepair=${memoryArm.replyRepair ?? 'off'}\`` +
         // §13.97, rendered on every run for the reason the pass is: `none` is a fact about the
         // run's retrieval (it used the bare question) rather than a missing field, and the two
         // artifacts this experiment compares differ only in this value.
@@ -1867,6 +1912,10 @@ export function formatAblationReport(report: AblationReport): string {
   // neither, and a section that only appeared when `recovery` did would hide the bare pass on exactly the builds
   // that have it without the older one.
   lines.push(...bareRetryLines(report.bareRetry));
+  // §13.334's own section, on the same rule and for the strongest version of the same reason: this repair acts on
+  // the two reply shapes that neither retry above can reach, so folding it into `bareRetry` would print a zero for a
+  // mechanism that fired and a number for one that could not.
+  lines.push(...replyRepairLines(report.replyRepair));
   // Its own section and its own guard, for the same reason as the two above and one of its own: this pass is
   // the only one whose product is a **difference**, so a section that appeared only when a conversion happened
   // would hide the run that most needs reading -- the audit that ran everywhere and agreed everywhere.
@@ -2040,6 +2089,47 @@ function bareRetryLines(census: BareRetryCensus | undefined): string[] {
     'that token absent from the prompt. The abstention route is excluded: its gold is the decline, so a retry',
     'there could only spend a call to turn a correct answer into a wrong one. A question answered first time',
     'is never re-asked.',
+  ];
+}
+
+/**
+ * The reply-contract repair's own section (§13.334).
+ *
+ * ## Why the kinds are two rows rather than one
+ *
+ * The pass acts on two shapes that no other retry can see, and the registration that asks for it names both
+ * populations separately: eight prose refusals and six quotation dumps out of the fourteen questions in
+ * `MEASURE-ORACLE-CEILING.md` §7.4 that are contract violations rather than reasoning failures. A section that
+ * printed one pair of numbers would let a reader credit the commitment repair with the shape repair's conversions --
+ * and the run that matters most is the one where one kind fires and the other does not.
+ *
+ * ## Why the note says what a conversion is not
+ *
+ * `answered` counts consultations that came back with something other than a decline. Whether that something was
+ * right needs the gold, and a section that implied otherwise would turn a census into a score -- the mistake
+ * `AuditCensus.changed` states explicitly for the audit.
+ */
+function replyRepairLines(census: ReplyRepairCensus | undefined): string[] {
+  if (census === undefined) return [];
+  const rate = (part: { attempted: number; answered: number }): string =>
+    part.attempted === 0 ? 'n/a' : `${((part.answered / part.attempted) * 100).toFixed(1)}%`;
+  return [
+    '',
+    '## Reply-contract repair',
+    '',
+    '| Kind | Trigger | Consultations | Answered | Converted |',
+    '|---|---|---|---|---|',
+    `| commitment | a refusal written in prose | ${census.commitment.attempted} | ${census.commitment.answered} | ${rate(census.commitment)} |`,
+    `| shape | a list of quotations instead of an answer | ${census.shape.attempted} | ${census.shape.answered} | ${rate(census.shape)} |`,
+    `| **both** | — | **${census.attempted}** | **${census.answered}** | **${rate(census)}** |`,
+    '',
+    'Re-asked once, with the evidence the first call read and nothing else changed. `commitment` answers a reply that',
+    'reported the evidence holds no answer; `shape` answers a reply that quoted the evidence and stopped. Neither is',
+    '`bareRetry`: that one needs the abstention token and nothing else, and both shapes here parse as answers, which',
+    'is why no retry could reach them. The abstention route is excluded -- its gold is the decline.',
+    '',
+    '`Answered` means the second call returned something other than a decline. It does not mean correct: the gold',
+    'lives in the roster beside this tally, and the delta on the run is what scores it.',
   ];
 }
 

@@ -12,6 +12,7 @@
 export type {
   GateOptions,
   CortexMemoryOptions,
+  ReplyRepair,
   ReviewPass,
   TurnCapRoute,
   // §13.153: the arm constructs both readers from `cortex-eval`'s turn clock and window
@@ -67,7 +68,9 @@ export {
 
 // prompt
 export {
+  buildCommitPrompt,
   buildPrompt,
+  buildShapePrompt,
   buildSessionPrompt,
   formatEvidence,
   truncateCodePointSafe,
@@ -122,6 +125,7 @@ export {
   planAbstentionRecovery,
   type RecoveryPlan,
 } from './abstention-recovery.js';
+export { classifyReply, planReplyRepair } from './reply-repair.js';
 
 // composition
 export { CortexMemory } from './memory.js';

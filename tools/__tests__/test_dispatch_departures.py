@@ -244,3 +244,79 @@ class TestTheOracleSwitch:
         # no field is refused by the gate (`42500412709`), so the record has to point at
         # something a reader can look up in the artifact.
         assert declared and declared[0] == ['evidenceSource'], declared
+
+
+class TestTheReplyRepairSwitch:
+    """The reply-contract repair's variable, on the same two properties as the evidence source.
+
+    It cannot be a workflow input (the 24-of-25 ceiling), so it is written by the dispatcher and read by
+    the job from `vars`. What has to hold is that it is never inherited and that a typo is refused here
+    rather than three hours into a run -- `readReplyRepair` in `cortex-eval` would refuse it too, but a
+    refused dispatch costs a second while a refused run costs the whole queue behind it.
+    """
+
+    def test_absent_means_the_registered_control(self) -> None:
+        module = _module()
+        assert module.reply_repair_switch({}) == 'off'
+        assert module.reply_repair_switch({module.REPLY_REPAIR_VARIABLE: ''}) == 'off'
+
+    def test_every_value_the_product_implements_round_trips(self) -> None:
+        # The list is the arm's, not a second copy: `REPLY_REPAIRS` is what the error message offers and
+        # what `readReplyRepair` accepts, and a value in one and not the other is a dispatch that dies late.
+        module = _module()
+        for name in module.REPLY_REPAIRS:
+            assert module.reply_repair_switch({module.REPLY_REPAIR_VARIABLE: name}) == name
+
+    def test_case_and_padding_are_normalised(self) -> None:
+        # The repository variable is typed by a human in a settings page, and `Both` is not a different
+        # treatment from `both`.
+        module = _module()
+        assert module.reply_repair_switch({module.REPLY_REPAIR_VARIABLE: ' Both '}) == 'both'
+
+    def test_a_typo_is_refused_instead_of_read_as_off(self) -> None:
+        module = _module()
+        with pytest.raises(SystemExit) as refusal:
+            module.reply_repair_switch({module.REPLY_REPAIR_VARIABLE: 'commit'})
+        assert module.REPLY_REPAIR_VARIABLE in str(refusal.value)
+
+    def test_the_variable_is_written_on_every_dispatch(self, monkeypatch, capsys) -> None:  # noqa: ANN001
+        # The property that stops a `both` from outliving the run that asked for it.
+        module = _module()
+        written: list[tuple[str, str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(
+            module,
+            'write_variable',
+            lambda name, value: written.append((name, value)) or value,
+        )
+        monkeypatch.delenv(module.ORACLE_VARIABLE, raising=False)
+        monkeypatch.delenv(module.REPLY_REPAIR_VARIABLE, raising=False)
+
+        assert module.main(['--set', 'model=zhipu:glm-4.6']) == 0
+        assert (module.REPLY_REPAIR_VARIABLE, 'off') in written, written
+        assert f'{module.REPLY_REPAIR_VARIABLE} = off' in capsys.readouterr().out
+
+    def test_the_treatment_is_declared_and_the_control_is_not(self, monkeypatch) -> None:  # noqa: ANN001
+        # The artifact's field name, and only when the treatment is on: `off` is the registered value, so a
+        # declaration there would name a field the run did not move -- which the gate reports as an
+        # intention rather than a departure.
+        module = _module()
+        declared: list[list[str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
+        monkeypatch.setattr(module, 'declare_departures', lambda names: declared.append(names))
+        monkeypatch.delenv(module.ORACLE_VARIABLE, raising=False)
+
+        monkeypatch.setenv(module.REPLY_REPAIR_VARIABLE, 'both')
+        assert module.main([]) == 0
+        assert declared[0] == ['replyRepair'], declared
+
+        monkeypatch.setenv(module.REPLY_REPAIR_VARIABLE, 'off')
+        assert module.main([]) == 0
+        assert declared[1] == [], declared

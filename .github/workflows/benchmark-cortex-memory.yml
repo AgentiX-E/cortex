@@ -486,6 +486,11 @@ jobs:
           # on its own line (`Evidence source:`) and repeats it in `dataset` as a `+oracle` suffix.
           # An inherited value therefore cannot produce a shipped-corpus number filed as a ceiling.
           CORTEX_MEMORY_ORACLE: ${{ vars.CORTEX_MEMORY_ORACLE || '0' }}
+          # The reply-contract repair (§13.334, docs/MEASURE-ORACLE-CEILING.md §7.4): `commitment`, `shape`,
+          # `both` or `off`. A repository variable for the reason the switch above is one -- the same 24-of-25
+          # input ceiling -- and with the same two protections: the dispatcher writes it on every dispatch
+          # (default `off`), and the report states the resolved value in `memoryArmConfig.replyRepair`.
+          CORTEX_MEMORY_REPLY_REPAIR: ${{ vars.CORTEX_MEMORY_REPLY_REPAIR || 'off' }}
           # §12.5's single variable, forwarded for the same reason as every variable
           # above: `readPromptContract` rejects an unrecognised value, so a dispatch
           # that named a rendering while this line was absent would run the baseline,

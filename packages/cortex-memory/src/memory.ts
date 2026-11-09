@@ -34,9 +34,11 @@ import {
   ASSEMBLY_BY_CONTRACT,
   RENDERING_BY_CONTRACT,
   buildAuditPrompt,
+  buildCommitPrompt,
   buildPrompt,
   buildRetryPrompt,
   buildSessionPrompt,
+  buildShapePrompt,
   type AssembledPrompt,
   type EvidenceOrdering,
   type PromptContract,
@@ -47,6 +49,7 @@ import {
   isBareDecline,
   planAbstentionRecovery,
 } from './abstention-recovery.js';
+import { planReplyRepair } from './reply-repair.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
@@ -198,6 +201,19 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * fired and changed nothing" are different findings about the same run, and a single tally collapses them.
    */
   readonly #bareRetries: { attempted: number; answered: number } = { attempted: 0, answered: 0 };
+
+  /**
+   * The reply-contract repair, counted by kind.
+   *
+   * By kind rather than as one pair, because the two treatments are different sentences on disjoint populations
+   * and a run that reports `attempted: 9, answered: 3` has said nothing about which repair earned the three. The
+   * totals are derived in {@link replyRepairCensus} instead of being kept beside these two, so a counter that
+   * stopped being incremented cannot leave a total that disagrees with its parts.
+   */
+  readonly #repairs: Record<'commitment' | 'shape', { attempted: number; answered: number }> = {
+    commitment: { attempted: 0, answered: 0 },
+    shape: { attempted: 0, answered: 0 },
+  };
 
   /**
    * How many corrective consultations were attempted, and how many produced an answer.
@@ -486,6 +502,23 @@ export class CortexMemory implements SessionAwareMemorySystem {
           'selfConsistency and reviewPass: audit cannot both be on: the route would consult the ' +
             'model six times per question, and nothing has measured what the two passes do to ' +
             'each other. Choose one, or register the combination with its own prediction.',
+        );
+      }
+    }
+    // §13.334. Refused rather than resolved in favour of one of them, for the reason the
+    // `selfConsistency` check above refuses its own combination: `reviewPass: 'recover'` and `'audit'` both put a
+    // second consultation on the multi-session route, and the repair puts a third possibility on the same route.
+    // A run that carried two of them could not say which one moved a question, and the two populations are not
+    // even disjoint -- a decline that lists items is quoteable by `recover` and refusable by this pass.
+    //
+    // `reviewBareDecline` is deliberately NOT refused: `classifyReply` reads the bare shape first, so a reply this
+    // pass acts on is never a bare decline, and the two treatments cannot both fire on one question.
+    if (options.replyRepair !== undefined && options.replyRepair !== 'off') {
+      if (options.reviewPass !== undefined && options.reviewPass !== 'none') {
+        throw new Error(
+          'replyRepair and reviewPass cannot both be on: the route would carry two second consultations with ' +
+            'overlapping populations, and nothing has measured what they do to each other. Choose one, or ' +
+            'register the combination with its own prediction.',
         );
       }
     }
@@ -836,6 +869,32 @@ export class CortexMemory implements SessionAwareMemorySystem {
   /** How often a bare decline was re-asked, and how often the second answer stood. */
   bareRetryCensus(): { attempted: number; answered: number } {
     return { ...this.#bareRetries };
+  }
+
+  /**
+   * What the reply-contract repair did, by kind, or `null` when this build was not configured to carry it.
+   *
+   * `null` rather than a zeroed pair, for the reason `auditCensus` answers `null` (§13.268): a run with
+   * `attempted: 0` on every kind is "the repair ran on nothing" only if the repair was on, and a build that never
+   * carried it must say so by omission. The arm reads an absent or `null` payload as "this system has no repair",
+   * which is the statement the artifact then makes by leaving the field out.
+   */
+  replyRepairCensus(): {
+    attempted: number;
+    answered: number;
+    commitment: { attempted: number; answered: number };
+    shape: { attempted: number; answered: number };
+  } | null {
+    const mode = this.#options.replyRepair;
+    if (mode === undefined || mode === 'off') return null;
+    const commitment = { ...this.#repairs.commitment };
+    const shape = { ...this.#repairs.shape };
+    return {
+      attempted: commitment.attempted + shape.attempted,
+      answered: commitment.answered + shape.answered,
+      commitment,
+      shape,
+    };
   }
 
   /** What the abstention-recovery pass did, for a run that turned it on. */
@@ -1203,6 +1262,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // §13.107: the outcome is recorded once per question, here rather than inside `#consult`, so a route that
     // consults twice does not enter the census twice.
     const first = await this.#consult(assembled.prompt, route);
+    // §13.334. The reply-contract repair, read before the bare retry and before the guard below, because the two
+    // declines it acts on are the ones that guard returns early on: a prose refusal parses as an answer
+    // (`first !== null`), and a reply of `None` names no token at all. The ordering with `reviewBareDecline` is
+    // structural rather than positional -- `classifyReply` reads the bare shape first, so a bare decline never
+    // becomes a repair plan here -- and that is what keeps the reach at one extra call per question.
+    if (route !== 'abstention') {
+      const repaired = await this.#repairReply(question, assembled, route);
+      if (repaired !== undefined) return this.#recordOutcome(repaired);
+    }
     // The abstention route shares this path and must be excluded here rather than at the call site: `#prompt` is the
     // entry point for it, so a guard on the option alone would reach the one capability whose gold is a decline.
     // `ABS` reads 30/30 with 29 bare tokens; converting one of those would spend a call to turn a right answer into
@@ -1232,6 +1300,50 @@ export class CortexMemory implements SessionAwareMemorySystem {
     );
     if (second !== null) this.#bareRetries.answered += 1;
     return this.#recordOutcome(second);
+  }
+
+  /**
+   * The one consultation a broken reply earns, or `undefined` when it earned none.
+   *
+   * ## Why the plan is read here rather than at the two call sites
+   *
+   * The single-block routes and `answerSessions` reach this with the same state -- `#lastRawOutput` holds the
+   * reply, `assembled.carried` holds the evidence that reply read -- and they differ only in the route name they
+   * pass back to `#consult`. Two copies of the plan-and-count sequence is how the counters came to disagree with
+   * the artifact twice in this repository's history (`retryFires`, §13.259), so there is one copy and the callers
+   * pass the route.
+   *
+   * ## Why `undefined` and not `null`
+   *
+   * `null` is an answer: it is the reply that declined **again**, and the honest reading of a repair that found
+   * nothing. `undefined` is the state "no repair was planned", which is the only value that lets a caller
+   * distinguish "the first answer stands" from "the second call declined". A caller that collapsed them would
+   * return the first pass's answer for a question the repair just declined, and the census would count a
+   * conversion that never happened.
+   *
+   * ## Why the evidence block is `assembled.carried`
+   *
+   * Both builders render it through `renderCarried`, so the second call reads the same characters as the first.
+   * The bare retry's docstring records what passing `kept` cost (§13.147); this pass inherits the rule rather than
+   * rediscovering it.
+   */
+  async #repairReply(
+    question: string,
+    assembled: Pick<AssembledPrompt, 'carried'>,
+    route: TurnCapRoute,
+  ): Promise<Answer | undefined> {
+    const repair = planReplyRepair(this.#lastRawOutput, this.#options.replyRepair);
+    if (repair.kind === 'none') return undefined;
+    const options = this.#promptOptions(route);
+    const repaired = await this.#consult(
+      repair.kind === 'commitment'
+        ? buildCommitPrompt(question, assembled.carried, options)
+        : buildShapePrompt(question, assembled.carried, options),
+      route,
+    );
+    this.#repairs[repair.kind].attempted += 1;
+    if (repaired !== null) this.#repairs[repair.kind].answered += 1;
+    return repaired;
   }
 
   /**
@@ -1365,6 +1477,30 @@ export class CortexMemory implements SessionAwareMemorySystem {
           assembled,
         );
         return this.#recordOutcome(retried);
+      }
+    }
+
+    // §13.334. The reply-contract repair, on the route that holds half the population.
+    //
+    // `MEASURE-ORACLE-CEILING.md` §7.4 puts 4 of the 8 prose refusals and 2 of the 6 quotation dumps on `MR`, and
+    // neither pass on this route can see either shape: the recovery pass above is told `answered: true` for a
+    // refusal written in prose (`parseAnswer` returns the sentence), and the bare retry below needs the token and
+    // nothing else. The three are mutually exclusive at the constructor for `reviewPass`, and disjoint by
+    // `classifyReply`'s ordering for `reviewBareDecline`, so at most one of them consults on any question.
+    //
+    // Placed after the recovery pass and before the bare retry, which is also the reading order: a reply that
+    // quoted a list and then declined belongs to `recover`; a refusal in prose belongs here; a bare token belongs
+    // to the retry.
+    {
+      const repaired = await this.#repairReply(question, assembled, 'multi-session');
+      if (repaired !== undefined) {
+        // Recorded from the prompt the answer came from, for the reason the recovery branch above records it: the
+        // repair prompt carries `assembled.carried` and no other evidence, so `assembled` is what the reader read.
+        this.#recordEvidence(
+          sessions.flatMap((session) => session.turns),
+          assembled,
+        );
+        return this.#recordOutcome(repaired);
       }
     }
 

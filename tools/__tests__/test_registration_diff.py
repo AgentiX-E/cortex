@@ -383,10 +383,10 @@ class TestWhatIsCounted:
     def test_the_header_states_every_population_it_did_not_compare(self) -> None:
         module = _module()
         text, _ = module.registration_section(report(REAL_41222844945), [])
-        # Twenty inputs the arm records, plus the one condition: `evidenceSource` is compared on
-        # every artifact although no dispatch input carries it, which is what makes a gold-sessions
-        # run visible to a reader who did not ask for one.
-        assert "registration: 21 field(s) compared" in text
+        # Twenty inputs the arm records, plus two conditions: `evidenceSource` and `replyRepair` are
+        # compared on every artifact although no dispatch input carries either, which is what makes a
+        # gold-sessions run or a repair run visible to a reader who did not ask for one.
+        assert "registration: 22 field(s) compared" in text
         # Two since §13.327: `maxPromptCharsByRoute` is derived on an artifact that carries the
         # scalar, exactly as `maxPromptChars` is derived on one that carries the map. Counted rather
         # than dropped, which is what the header exists to do.
@@ -573,3 +573,46 @@ class TestTheRegisteredConditions:
         declared, _ = module.registration_section(report(config), ["evidenceSource"])
         header = lambda text: text.splitlines()[0]  # noqa: E731
         assert header(silently) == header(declared)
+
+
+class TestTheReplyRepairCondition:
+    """§13.334's switch, which is a condition rather than an input for the same ceiling reason.
+
+    It changes what a number means rather than what the run did: a run that re-asked eight prose refusals
+    has a different `bareRetry` and `replyRepair` population from one that did not, and both artifacts
+    would agree about every dispatch input. So a repair run that is not declared must fail the gate, and
+    the control -- which is `off` -- must not gain a row for saying nothing.
+    """
+
+    def test_a_repair_run_is_undeclared_until_it_is_named(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "replyRepair": "both"}
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 1, text
+        # JSON, not YAML: the value is a string and the gate prints it quoted, so `both` alone would also
+        # match a key. The exact line is asserted for the reason the oracle's is.
+        assert 'UNDECLARED  replyRepair: "off" (registered) -> "both" (ran)' in text
+
+    def test_declaring_it_licenses_the_run_as_an_experiment(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "replyRepair": "commitment"}
+        text, failures = module.registration_section(report(config), ["replyRepair"])
+        assert failures == 0, text
+        assert 'declared    replyRepair: "off" (registered) -> "commitment" (ran)' in text
+
+    def test_the_control_is_not_a_difference(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "replyRepair": "off"}
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 0, text
+        assert "replyRepair" not in text
+
+    def test_an_artifact_without_the_field_reads_as_the_control(self) -> None:
+        # Every archived artifact predates the field, and none of them carried a repair. Reading absence
+        # as `off` is what keeps the whole archive comparable rather than making it a pile of departures.
+        module = _module()
+        config = registered_config(module)
+        assert "replyRepair" not in config
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 0, text
+        assert "replyRepair" not in text
