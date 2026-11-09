@@ -125,3 +125,21 @@ converts them is the result, and it is registered in §13.334 with its own falsi
 quotation dump is harmless: 7 to 13 losses per run is real, and the repair that would reach them is not a re-ask of
 the same question. The next idea for that shape has to be one that changes what the reply must *contain* rather than
 how it must be shaped, because the shape is not the defect — the commitment is, and the shape is how it shows.
+
+## 7. How the dispatch is read, and the divisor that is not optional
+
+`tools/readout-arm-run.py --reply-repair` prints the census and `E3.1`'s verdict, and the exit code is the verdict:
+`0` converted and in band, `1` either falsifier, `2` the artifact does not say.
+
+The reason it is a tool rather than a paragraph is a factor of four. A memory instance is reused across every
+repetition (§12.5), so the artifact's census is **`per-repetition x runs`**: a four-repetition run that fires on four
+questions per pass reports `16`. Read against §13.334.4's band of `[3, 5]` without dividing, a working mechanism looks
+broken — and this repository has already published one census of `120` beside a capability table of `30` without
+saying which was which.
+
+So the reader divides by `report.runs`, the count that was actually configured, prints the divisor it used, and
+**refuses to score** an artifact that carries none. Deriving the divisor from `questionCount` would assume every
+question was asked exactly `runs` times, which a partially-failed run falsifies; assuming `1` would invent a reading
+rather than report one. The two refusals the reader makes — no divisor, malformed half — are exit `2` and not a
+verdict, because "the artifact does not say" and "the mechanism failed" are different statements and the four-state
+classifier's entire argument is that collapsing them hides a real fault behind a plausible zero.

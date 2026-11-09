@@ -1202,6 +1202,109 @@ def spend_section(report: dict) -> str:
     return '\n'.join(lines)
 
 
+# §13.334.4's `E3.1`, per repetition: the pass fires on 3 to 5 questions and converts all of them.
+#
+# A pair of counts rather than a rate, because 3 to 5 questions is +0.6 to +1.0 points, which is
+# inside the corpus's seventeen-question noise floor -- the headline cannot confirm or refute this
+# mechanism, and a flat run with a `4 / 4` census is the *expected* reading rather than a null one.
+REPLY_REPAIR_BAND = (3, 5)
+
+
+def _pair_of_counts(value: object, where: str) -> dict[str, int]:
+    """Validate one `{attempted, answered}` pair, raising when it is not one.
+
+    A malformed part discards the whole field rather than being coerced, for the reason the
+    TypeScript side gives: a total without its parts lets a reader credit a conversion to a
+    treatment that never fired, and a coerced zero reads as "the pass never ran" -- the same silent
+    success the four-state classifier exists to make impossible. `bool` is rejected explicitly
+    because `isinstance(True, int)` is true in Python and a `true` in a counter is a fault, not one.
+    """
+    if not isinstance(value, dict):
+        raise ValueError(f'{where} is not an object')
+    out: dict[str, int] = {}
+    for key in ('attempted', 'answered'):
+        item = value.get(key)
+        if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+            raise ValueError(f'{where}.{key} is not a non-negative integer')
+        out[key] = item
+    return out
+
+
+def reply_repair_section(report: dict) -> tuple[str, bool]:
+    """The reply-contract repair's census, divided by the configured run count, plus `E3.1`'s verdict.
+
+    ## Why the divisor is the point of this section
+
+    A memory instance is reused across every repetition (`§12.5`), so the census's totals are
+    `per-repetition x runs`: `16` on a four-repetition run is `4.0` per repetition. Read against a
+    band of `[3, 5]` without dividing, a working mechanism looks broken by a factor of four. The
+    same artifact once carried a census of `120` beside a capability table of `30` and both were
+    correct; nothing in the document said which was which.
+
+    So the divisor is `report.runs`, the count that was actually configured, and it is printed.
+    Deriving it from `questionCount` would assume every question was asked exactly `runs` times,
+    which a partially-failed run falsifies, and assuming `1` when the field is absent would invent
+    a reading. An artifact with no published divisor therefore refuses to score: that is a
+    statement about the artifact, not about the mechanism.
+
+    ## What it prints and what it leaves to the other sections
+
+    `E3.2` (no non-target flips) is `--paired`'s ledger, `E3.3` (`ABS` 30/30) is the capability
+    table, and `E3.4` (the bill) is `--spend`. Restating any of the three here would create a second
+    reader of one quantity, which is how two numbers that agree get reported as a disagreement.
+    """
+    census = _pair_of_counts(report.get('replyRepair'), 'replyRepair')
+    commitment = _pair_of_counts(census_parts(report, 'commitment'), 'replyRepair.commitment')
+    shape = _pair_of_counts(census_parts(report, 'shape'), 'replyRepair.shape')
+
+    runs = report.get('runs')
+    if isinstance(runs, bool) or not isinstance(runs, int) or runs < 1:
+        raise ValueError(
+            'carries no `runs`, so the per-repetition band of §13.334.4 cannot be applied. The '
+            'census is accumulated on one instance reused across repetitions; dividing it by an '
+            'assumed single pass would read a working mechanism as four times its true rate'
+        )
+
+    lines = ['', 'reply-contract repair (field: replyRepair; §13.334.4)']
+    for name, pair in (('commitment', commitment), ('shape', shape), ('total', census)):
+        lines.append(f'  {name:<12} {pair["attempted"]} / {pair["answered"]}')
+    lines.append('               attempted / answered')
+    per_run = commitment['attempted'] / runs
+    lines.append(f'  repetitions  {runs}   (the divisor for the band below, from `runs`)')
+    lines.append(f'  per run      {per_run:.1f} attempted, {commitment["answered"] / runs:.1f} answered')
+
+    low, high = REPLY_REPAIR_BAND
+    unconverted = census['attempted'] - census['answered']
+    if unconverted:
+        verdict = (
+            f'FAIL  {unconverted} not converted: the commitment rule fires and does not commit, '
+            'which is `E3.1`\'s second falsifier'
+        )
+    elif not low <= per_run <= high:
+        verdict = (
+            f'FAIL  {per_run:.1f} per repetition is outside [{low}, {high}]: the plan fired on the '
+            'wrong population, or the predicate and the wiring disagree, which is the first falsifier'
+        )
+    else:
+        verdict = f'PASS  {per_run:.1f} per repetition in [{low}, {high}], {unconverted} unconverted'
+    lines.append(f'  E3.1         attempted == answered, per-repetition attempted in band   {verdict}')
+    lines.append('  E3.2/E3.3/E3.4  read `--paired`, the capability table and `--spend`')
+    if shape['attempted']:
+        lines.append(
+            f'  note         the refused kind fired {shape["attempted"]} times: §13.334.3 '
+            'dispatches `commitment` only, so a non-zero `shape` means the wrong value was written'
+        )
+    return '\n'.join(lines), not unconverted and low <= per_run <= high
+
+
+def census_parts(report: dict, kind: str) -> object:
+    """The named half of the census, or a value `_pair_of_counts` will reject by name."""
+    census = report.get('replyRepair')
+    if not isinstance(census, dict):
+        return None
+    return census.get(kind)
+
+
 def _window_reordered(question: dict) -> bool:
     """Whether this record says the window mechanism reached it.
 
@@ -5207,6 +5310,14 @@ def main(argv: list[str]) -> int:
         help='print the decline table by Step 1 content instead of the run summary',
     )
     parser.add_argument(
+        '--reply-repair',
+        action='store_true',
+        help=(
+            'print the reply-contract repair\'s census divided by `runs`, with §13.334.4\'s E3.1 '
+            'verdict as the exit code (1 when the paired count fails, 2 when it cannot be applied)'
+        ),
+    )
+    parser.add_argument(
         '--union',
         action='store_true',
         help='print the union of the two sides per capability instead of the run summary',
@@ -5871,6 +5982,18 @@ def main(argv: list[str]) -> int:
             return 2
         print(section)
         return 0
+
+    if args.reply_repair:
+        # An unreadable field is exit 2 rather than a verdict: "the artifact does not say" and "the
+        # mechanism failed" are different statements, and the four-state classifier's whole
+        # argument is that collapsing them hides a real fault behind a plausible zero.
+        try:
+            section, passed = reply_repair_section(report)
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        print(section)
+        return 0 if passed else 1
 
     if args.declines:
         section, read = declines_section(questions)
