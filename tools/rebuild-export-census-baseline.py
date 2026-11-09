@@ -181,6 +181,8 @@ RATIONALE = {
     "anchor-recall-signature": """The two types in `restoreAnchorNeighbourhoods`' signature. TypeScript has no package-private visibility, so a function exported for its one real caller (`relevance-index.ts`) forces its parameter and return types to be exported as well -- a caller cannot name what it was handed otherwise. They are recorded as debt rather than argued away, which is the rule this file states for every entry: the number stays honest. The mechanism's other symbols are module-private (`selectAnchors`, the three defaults) precisely so this bucket stays at two.""",
     "source-aware-protocol-awaiting-its-dispatch": """The second grading protocol (`arXiv:2610.05343` / `arXiv:2610.09193`) is implemented and tested at 100% on all four coverage measures, and it has no caller yet -- because wiring it needs an audit cache, the cache needs a 500-call generation pass, and that pass needs the dataset file the artifact deliberately does not carry. `renderAuditCache` has no writer and `sourceAwareScorer` has no scorer construction to wrap. They are recorded as debt rather than wired into `bench/run-ablation.ts` behind an environment variable, because a scorer that is reachable only through an unset variable is a pipeline stage the build does not have: the census would go green and the protocol would still never run. What exists today is the half that needs no model -- `tools/source-aware-audit.mjs`, which screens an existing artifact for lexical reachability and reports the reader/retrieval split -- and the whole reading is in `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` and `docs/SOTA-LANDSCAPE.md` §17. The two names move out of this ledger in the commit that gives them a caller.""",
     "efficiency-frontier-public-api": """The declared types of the efficiency frontier, which is the one module in this package whose public surface is a contract rather than an implementation detail: `compareEfficiency` returns `EfficiencyComparison` and `efficiencyFrontier` returns `EfficiencyFrontier`, so a consumer outside the package cannot use either function without these names. `tools/efficiency-frontier.mjs` is the in-package caller and it is a `.mjs`, so it reaches the runtime values through `dist` and the types are erased before it ever sees them -- which is why the five runtime exports are `with-caller` and these seven are not. They are recorded as debt rather than de-exported for the reason `export-surface.test.ts` states in the other direction: removing `export` from a declaration that appears in a published signature would make the signature unnameable.""",
+    "cost-per-capability-public-api": """The declared types and two constants of `docs/MEASURE-MR-CEILING.md`'s join, in the same position `efficiency-frontier-public-api` occupies and for the same reason: `costPerCapability` returns `CostByCapability` and takes a `CostArtifactShape` plus optional `TokenPrices`, so a consumer outside the package cannot call it without these names. `tools/cost-per-capability.mjs` is the in-package caller and it is a `.mjs`, so it reaches `costPerCapability` and `renderCostByCapability` through `dist` and the types are erased before it sees them -- which is why those two are `with-caller` and these six are not. `COST_REFUSALS` is the sixth because its six reasons are the module's contract for a caller that renders them, and `COST_BY_CAPABILITY_POLICY` because the threshold a published verdict is graded against must be readable rather than guessed from the output. Recorded as debt rather than de-exported for the reason `export-surface.test.ts` states: removing `export` from a declaration that appears in a published signature would make the signature unnameable.""",
+
 }
 
 GROUP_ORDER = [
@@ -192,6 +194,7 @@ GROUP_ORDER = [
     "anchor-recall-signature",
     "source-aware-protocol-awaiting-its-dispatch",
     "efficiency-frontier-public-api",
+    "cost-per-capability-public-api",
 ]
 
 # The three single-file groups, matched by suffix so a package rename does not silently
@@ -199,6 +202,7 @@ GROUP_ORDER = [
 ANCHOR_RECALL_PATH = "cortex-eval/src/anchor-recall.ts"
 SOURCE_AWARE_PATH = "cortex-eval/src/source-aware.ts"
 EFFICIENCY_FRONTIER_PATH = "cortex-eval/src/efficiency-frontier.ts"
+COST_PER_CAPABILITY_PATH = "cortex-eval/src/cost-per-capability.ts"
 
 ABLATION_KEYS = (
     "ablation",
@@ -235,6 +239,8 @@ def category(orphan: str) -> str:
             return "source-aware-protocol-awaiting-its-dispatch"
         if path.endswith(EFFICIENCY_FRONTIER_PATH):
             return "efficiency-frontier-public-api"
+        if path.endswith(COST_PER_CAPABILITY_PATH):
+            return "cost-per-capability-public-api"
         if any(key in path for key in ABLATION_KEYS):
             return "ablation-and-diagnostic-surface"
         return "eval-harness-surface"

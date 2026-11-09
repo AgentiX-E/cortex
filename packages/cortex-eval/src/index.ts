@@ -674,3 +674,18 @@ export {
   type EfficiencyReading,
   type ReadingLabel,
 } from './efficiency-frontier.js';
+
+// §13.349: what each capability costs and what each returns, which no artifact answered before —
+// the run's tokens are per file and its accuracy is per capability, and the two had never been
+// joined. `tools/cost-per-capability.mjs` is the caller; the library owns the arithmetic so the
+// apportionment rule is a tested function rather than a paragraph in a document.
+export {
+  COST_BY_CAPABILITY_POLICY,
+  COST_REFUSALS,
+  costPerCapability,
+  renderCostByCapability,
+  type CapabilityCostRow,
+  type CostArtifactShape,
+  type CostByCapability,
+  type TokenPrices,
+} from './cost-per-capability.js';

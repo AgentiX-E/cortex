@@ -37573,3 +37573,92 @@ For the queue this means `I1`'s follow-up ("does the word `item` add anything on
 **cancelled rather than deferred**: an increment on top of a mechanism that moved nothing has no hypothesis
 behind it. The next `MR` arm is the answer side — the same 1.73-projections, the same 121 questions, and a
 `--budget` that reflects what a scoped run actually costs.
+
+### 13.349 `I2` is cancelled before dispatch: the artifact on disk refutes its premise
+
+§13.348.3 wrote the next entry as *"the answer side — the same 1.73-projections, the same 121 questions, and a
+`--budget` that reflects what a scoped run actually costs."* That entry is **cancelled**, and the reason is a
+census rather than a preference: the three counts below were all available before the dispatch, in the artifact
+`42533236864` that this campaign already paid for, and each of them removes the population a wording change
+would have had to move.
+
+**This section registers no prediction, because nothing is dispatched.** §6.3's requirement is a prediction
+before a dispatch; the correct form for a cancelled arm is the record of why the dispatch is not made, which is
+what this section is. The registration gate is unaffected: no run is created, and no departure is declared.
+
+#### 13.349.1 All twenty failures carried their gold
+
+`goldOverlap.carried / total` is per question: how many of the gold answer's own turns the delivered prompt
+contained. On the 121 MR questions of `42533236864`, **0** of the 20 failures carried an empty gold, 11 carried
+it in full, and the other 9 were short by one to four turns out of windows carrying ten to thirty. The correct
+population reads 89 of 101 in full, so the two populations differ by six questions of partial coverage against a
+failure population of twenty.
+
+That is the same statement §13.204 made for an earlier configuration — *"the gold is inside the window on 32 of
+32"* — re-measured on the shipping one. It closes the room axis for this capability and it is why §13.348.2's
+3.4x projection defect did not change any accuracy number: the run it mispriced answered questions whose
+evidence it had.
+
+#### 13.349.2 The reference pipeline reads the same block and misses the same questions
+
+`§13.246` migrated the reference's aggregation contract into this arm **verbatim**, held to line equality by
+`ask-verbatim.test.ts`, and every artifact carries the reference as its baseline side. On these 121 questions:
+
+| | this arm | reference pipeline |
+| --- | ---: | ---: |
+| correct, first run | **101** | **102** |
+| both wrong | | **10** |
+| this arm only correct | | 9 |
+| reference only correct | | 10 |
+
+A one-question difference between two systems that read the same instruction, on questions whose evidence both
+windows carry, is the sampling `MEASURE-READING-STAGE.md` §1.1 measured: a 127-question column swings ten
+questions with the prompt held byte-identical. And the ten the reference buys are **four declines, three
+under-counts, two over-counts and one operation failure** — a better draw, not a rule it has and this arm lacks.
+
+#### 13.349.3 The operation failures are three, and two of them defeat the reference too
+
+`§13.348.3` re-pointed the capability at *"what the range inference and the answer line do with a count"*. Read
+against the failures, that population is **three questions**:
+
+| question | gold | this arm | the reference |
+| --- | ---: | --- | --- |
+| `37f165cf` | `856` | `440 pages and 416 pages` | **also wrong** |
+| `9ee3ecd6` | `100` | `300 points` | **also wrong** |
+| `gpt4_2ba83207` | `Thrive Market` | `Walmart` | correct |
+
+The bar §13.346 wrote for this population is **>= 5 net conversions with a falsifier at <= 1**, sized against
+§13.348.1's measurement of what a mechanism-free capability-sized claim looks like (2 conversions, 4
+regressions, identical means). A treatment with three questions in its reach cannot clear it, and lowering the
+bar to admit it would be the failure §6.3 exists to prevent.
+
+The eighteen other failures are enumeration: five over-counts, seven under-counts, one verb filter and four
+declines. Half of the over-counts are **identity** failures rather than instruction failures — `gpt4_2f8be40d`
+lists six rows marked `attended`, answers `6`, is internally consistent, and is wrong because three weddings are
+described under two names each — and no instruction about *how to compute* reaches a list that counted one
+wedding as two. A stronger instruction to compute would raise confidence over a list that is already wrong in
+seven of eighteen cases, which is how `d851d5ba` (`$8,750` against `$3,750`) fails today.
+
+#### 13.349.4 What the cancellation bought, and what replaces the queue entry
+
+**0 CNY.** The instrument that produced §13.349.1-3 is `tools/cost-per-capability.mjs` over
+`packages/cortex-eval/src/cost-per-capability.ts`, and its second reading is the one that outlives this
+capability:
+
+| capability | n | chars/q | share of prompt | accuracy | tok/correct | x the cheapest |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ABS` | 30 | 23,099 | 3.9% | 100.00% | 5,995 | 1.00x |
+| `IE` | 150 | 22,981 | 19.4% | 94.17% | 6,334 | 1.06x |
+| `KU` | 72 | 23,084 | 9.4% | 87.15% | 6,875 | 1.15x |
+| `TR` | 127 | 47,841 | 34.3% | 95.08% | 13,060 | 2.18x |
+| `MR` | 121 | 48,311 | 33.0% | 83.06% | **15,097** | **2.52x** |
+
+The rows reconstruct the artifact's feature-side bill at **11.078 CNY** against the 11.06 the round recorded,
+which is the check that the apportionment is the artifact's own and not an assumption about it.
+
+For the queue: the next MR entry must be **either a reader or an aggregation mechanism with a stated ceiling**,
+and neither is a prompt. `M1` remains blocked on a frontier reader key, and this campaign has already measured
+that "bigger" is not the sign on that axis (`deepseek-v4-pro` at 381/500 against `deepseek-chat` at 417/500,
+§8 item 2). The aggregation mechanism is priced by the same census: it would address the three operation
+questions and the arithmetic in `gpt4_372c3eed`, and its ceiling is the eighteen enumeration failures it cannot
+touch.

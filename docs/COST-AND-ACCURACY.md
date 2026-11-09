@@ -304,3 +304,40 @@ Two limits on the selector, stated so the numbers above are not read as a genera
   (`capability=MR,TR`), but the census shares are the file's, so a union is exactly as expensive as its parts.
 - **`IE` remains the weak reading.** It is 150 of 500 questions and 30% of the file, and a 200-question screening
   gives it 86; the selector does not change that, because the resolution limit is the bucket's own size.
+
+---
+
+## 11. The bill split by capability, which is the table the earlier sections could not print
+
+Sections 1-10 read the run as one line. Every one of them divides the same totals by the same 500, which
+is right for a projection and wrong for a decision: the six-route allocation gives `multi-session` 48,460
+characters and `temporal` 48,000 where the other four routes get 24,000, so the file is not one product
+with one price. `tools/cost-per-capability.mjs` joins the per-capability accuracy to the token ledger and
+prints the exchange rate each capability actually gets.
+
+Run `42533236864`, `deepseek-chat`, four repetitions. Reconstructed from the rows: **11.078 CNY** against
+the 11.06 the round was recorded at.
+
+| capability |   n | chars/q | share of prompt | tok/q-run | accuracy |  CNY | CNY/correct | x money | tok/correct | x **prompt** |
+| ---------- | --: | ------: | --------------: | --------: | -------: | ---: | ----------: | ------: | ----------: | -----------: |
+| `IE`       | 150 |  22,981 |           19.4% |     5,965 |   94.17% | 2.86 |      0.0051 |   1.06x |       6,334 |        1.06x |
+| `MR`       | 121 |  48,311 |           33.0% |    12,539 |   83.06% | 3.07 |      0.0076 |   1.60x |  **15,097** |    **2.52x** |
+| `KU`       |  72 |  23,084 |            9.4% |     5,992 |   87.15% | 1.37 |      0.0055 |   1.15x |       6,875 |        1.15x |
+| `TR`       | 127 |  47,841 |           34.3% |    12,417 |   95.08% | 3.21 |      0.0066 |   1.39x |      13,060 |    **2.18x** |
+| `ABS`      |  30 |  23,099 |            3.9% |     5,995 |  100.00% | 0.57 |      0.0048 |   1.00x |       5,995 |    **1.00x** |
+
+**`MR` and `TR` are 67.3% of the prompt characters.** `MR` is the second-largest line on the bill and the
+worst accuracy in the file, and per correct answer it costs **2.52x** what `ABS` does and **2.38x** what
+`IE` does.
+
+Two columns of ratios, and the difference between them is a warning rather than a detail. The prompt
+column divides two measurements — delivered characters, and the ledger's own token total — so it is the
+one a threshold should be read off. The money column additionally divides a **completion** half that the
+artifact records per run and not per question, so the tool apportions it by question-runs and every ratio
+is pulled toward 1. `MR` reads 2.52x on prompts and 1.60x on money; the 0.92 gap is the null model, not a
+measurement. `COST_BY_CAPABILITY_POLICY.expensiveRatio` therefore grades the **prompt** column.
+
+What this does *not* license is cutting `MR`'s window. `MEASURE-COST-LEVER.md` retraction 12 prices the
+clean 48k to 24k pair at **-2.75 MR questions, -2.65 points**, so the reasoning routes' room is
+load-bearing at the smaller size. A capability that is both the least accurate and the most expensive is
+the one whose *accuracy* is worth buying.
