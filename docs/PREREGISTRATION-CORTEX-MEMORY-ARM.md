@@ -36982,3 +36982,76 @@ one is the reason this is written down rather than absorbed:
 The quota-aware sampler is the repair and it is **not** in this round: it changes what `limit` means
 for every caller, and the two registration bars it would make readable are being read this round
 against a dispatch that has already been priced and not yet spent.
+
+### 13.343 `T1` before `M1`: the reasoning is 45% of the bill and nobody has asked what it buys
+
+§13.342.6 put two prompt-side repairs (`K1`, `M1`) ahead of the cost arm and gave `T1` a bar of
+"`MR` no worse than **-1.0 point**". Reading the three of them against what the sample can actually resolve
+reorders them, and it demotes `K1` out of this round entirely.
+
+#### 13.343.1 `K1`'s population is too small to read, in either direction
+
+`K1` descends the delivered order on the `knowledge-update` route. The pre-count says the route is
+**already delivered in strictly non-decreasing date order on all 72 questions** and on every other capability
+too (150/150 `IE`, 121/121 `MR`, 127/127 `TR`, 72/72 `KU`, zero inversions anywhere), so the mechanism is a
+deterministic reversal rather than a heuristic re-rank. The problem is the population on both sides of it:
+
+| bucket, by what the question asks for | n | correct now |
+| --- | ---: | ---: |
+| asks for an **earlier** value (`previous`, `before`, `used to`, `initially`) | 13 | 11 |
+| asks for the **current** value (`current`, `now`, `most recent`, `latest`) | 17 | 14 |
+| neither (`what day do I…`, counting questions) | 42 | 39 |
+
+Only 5 of the 8 `KU` failures are an order-shaped conflict between two dated values; 2 are declines and 1 is a
+count. A reversal helps at most 5 questions and puts the 11 correct "earlier value" answers at risk, and a
+restricted version (descend only when the question asks for the current value) helps 3 while risking 0 --
+against a sampled population of ~29 `KU` in a 200-question screening, where three questions is the whole
+resolution. `K1` is therefore **withdrawn from this round**, not refuted: it is re-registered at 400 questions,
+after a mechanism that changes one variable at a time, and its own bar moves from "3 conversions" to a number
+the census can print. What would be wrong is spending 5.70 CNY to read a 3-question expectation on 29 questions
+and calling the result a verdict.
+
+#### 13.343.2 The arm the bill points at
+
+`T1` costs nothing to administer (one flag, no code), and it is the only arm whose subject is 45% of the
+spend:
+
+| line, artifact `42467` | CNY | share |
+| --- | ---: | ---: |
+| input, cached + uncached | 7.39 | 51.8% |
+| **output** | **6.87** | **48.2%** |
+| of which answers (~36K tokens of 2.14M) | 0.11 | 0.8% |
+
+The output line is `multi-session+temporal` reasoning. Dropping it is worth roughly **6.4 CNY of every 14.26**,
+and the question "what is it worth in accuracy" has never been asked -- §13.197 bought the *reach* with a
+220-question pair and never priced the *mode*. So the order is `T1` first: it is the cheapest reading
+(≈1.7 CNY, below) and, if the reasoning turns out to be worth less than one point, every later arm gets 45%
+cheaper to run.
+
+#### 13.343.3 The bar, in the unit the sample can resolve
+
+Control: run `42600727738`, 200 questions x 2 repetitions, thinking `multi-session+temporal`, feature **90.5%**
+(181/200) with `MR` 23/29, `TR` 26/28, `IE` 78/86, `KU` 24.5/28, `ABS` 29/29. Treatment: the identical
+dispatch with `--set thinking=disabled`, which touches no other input. The sampler is deterministic at a given
+`limit`, so the two runs read **the same 200 questions** and the comparison is paired by construction.
+
+§13.326 (`E11a`) measured two draws of one configuration disagreeing on **16 of 500** questions, so on 200 the
+same band is ≈6 questions and is **wider at two repetitions than at four**. A bar of "-1.0 point" on 29 `MR`
+questions would be 0.3 of a question and therefore unfalsifiable, which is why the bar is written in questions:
+
+| id | treatment | reads | adopt if | reject if |
+| --- | --- | --- | --- | --- |
+| `T1` | `thinking=disabled` | `MR` and `TR` (57 questions), then the 200 | paired loss **<= 4 of 200** *and* `MR` loss **<= 2** *and* `TR` loss **<= 2** | `MR`+`TR` paired loss **>= 6** |
+
+Between 5 and 7 the reading is **inconclusive** and is re-run at `--set limit=400 --set ablation_runs=2`
+(≈3.4 CNY with the treatment, ≈5.7 with the reach), because a 45% saving that costs 2.5 points is a purchase
+of cheapness with the only currency that matters and one that costs nothing is the largest single number in
+this document.
+
+Two guards on the reading, both stated before the numbers exist:
+
+- **`ABS` must stay 29/29.** The abstention route carries no thinking either way, so any movement there is
+  reader noise and invalidates the pair rather than informing it.
+- **The treatment's completion line is read from `usageBySide.feature`, not from the projection.** The whole
+  claim is that reasoning is 93% of the output line; if `completionTokens` does not fall by more than half,
+  the diff did not reach the request and the run is a null treatment, not a null result.
