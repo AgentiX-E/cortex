@@ -36905,11 +36905,11 @@ stated at that scale rather than at the full-set scale.
 | id | treatment | reach | bar | falsifier |
 | --- | --- | --- | --- | --- |
 | `K1` | dates ascending on the `knowledge-update` route, multiset unchanged | KU only | **>= 3 KU conversions** among the ~29 KU questions of the sample | <= 1 conversion, or any movement on another capability's prompt |
-| `M1` | `[item N]` identifier per enumerated candidate, counted by id | MR only | **>= 3 MR conversions** among the ~48 MR questions | <= 1 conversion |
+| `I1` | `[item N]` identifier per enumerated candidate, counted by id | MR only | **>= 3 MR conversions** among the ~48 MR questions | <= 1 conversion |
 | `T1` | thinking reach `temporal` instead of `multi-session+temporal` | MR un-thought | MR no worse than **-1.0 point** on the paired sample | MR loses more than 1.0 point for a 40% saving |
 
 `K1` is first because its mechanism is already implemented for another route and its population is the smallest
-and best characterised of the three (five named questions, one shape). `M1` is second because it is the only
+and best characterised of the three (five named questions, one shape). `I1` is second because it is the only
 candidate on `MR` that is a **representation** rather than a seventh wording. `T1` is last and is the only one
 that trades accuracy for money on purpose -- it is a measurement of what the reasoning is worth, not an
 optimisation, and its bar is written so that a small loss is an acceptable price for 40% of the bill while a
@@ -36923,7 +36923,7 @@ large one is not.
   the full pass a typed decision.
 - **Did not add a judge verdict cache.** The judge is 0.15 CNY of 14.26 -- 1% -- and a disk cache would buy a
   staleness question for a saving that does not appear in the total.
-- **Did not dispatch `K1`, `M1` or `T1` this round.** The balance was restored during it, and a dispatch whose
+- **Did not dispatch `K1`, `I1` or `T1` this round.** The balance was restored during it, and a dispatch whose
   registration was written in the same hour is the peeking problem §4 forbids: the bar has to exist before the
   number does. They are the first three runs of the next round, in the order above.
 
@@ -36966,10 +36966,10 @@ one is the reason this is written down rather than absorbed:
 
 - the projected cost is biased **high** for any screening run, because the capabilities that carry
   thinking are under-sampled;
-- **the sample is weakest on exactly the capability the first two registrations target.** `M1`'s bar
+- **the sample is weakest on exactly the capability the first two registrations target.** `I1`'s bar
   is three conversions among ~29 `MR` questions, and §13.203.4's 2-sigma band on a capability-sized
   difference was 9.3 questions on 470 -- so three questions on 29 is inside the band a
-  byte-identical prompt already produces. The `K1` and `M1` criteria as written in §13.342.6 are
+  byte-identical prompt already produces. The `K1` and `I1` criteria as written in §13.342.6 are
   therefore **not readable at this sample size**, and the registration is amended rather than
   reinterpreted: both are read at `--set limit=400 --set ablation_runs=2` (5.70 CNY projected at the
   same per-question cost), where the round-robin can reach most of every capability, and the
@@ -36983,9 +36983,9 @@ The quota-aware sampler is the repair and it is **not** in this round: it change
 for every caller, and the two registration bars it would make readable are being read this round
 against a dispatch that has already been priced and not yet spent.
 
-### 13.343 `T1` before `M1`: the reasoning is 45% of the bill and nobody has asked what it buys
+### 13.343 `T1` before `I1`: the reasoning is 45% of the bill and nobody has asked what it buys
 
-§13.342.6 put two prompt-side repairs (`K1`, `M1`) ahead of the cost arm and gave `T1` a bar of
+§13.342.6 put two prompt-side repairs (`K1`, `I1`) ahead of the cost arm and gave `T1` a bar of
 "`MR` no worse than **-1.0 point**". Reading the three of them against what the sample can actually resolve
 reorders them, and it demotes `K1` out of this round entirely.
 
@@ -37055,3 +37055,92 @@ Two guards on the reading, both stated before the numbers exist:
 - **The treatment's completion line is read from `usageBySide.feature`, not from the projection.** The whole
   claim is that reasoning is 93% of the output line; if `completionTokens` does not fall by more than half,
   the diff did not reach the request and the run is a null treatment, not a null result.
+
+#### 13.343.4 The item-identifier arm is `I1`, because `M1` is the reader axis
+
+§13.342.6 spelled the per-item identifier arm `M1`, and `M1` has meant **the reader axis** since §13.303 --
+it is the arm with two readers on one packet, `J4`–`J9` re-read it under a pinned judge, and `SOTA-LANDSCAPE`
+§16.4 carries it as the unmeasured cell "reader strength". Two arms under one name is the defect
+`§13.163`'s comparability key exists to prevent, and it would surface first in a sentence like "`M1` is still
+unrun" being true of two different experiments. The identifier arm is renamed **`I1`** wherever it appears,
+including §13.342.6 and §13.342.8; no reading changes, only the name.
+
+### 13.344 `T1` read: the reasoning was worth one point, and turning it off cost more money
+
+Run `42617201299` (`--screening --set thinking=disabled`) completed in **11.2 minutes** against the control's
+20.8 (which includes the failing registration step, so the run-clock comparison is a lower bound on the
+difference rather than a measurement of it), and the two artifacts carry **byte-identical prompts on all 200
+questions** (`promptChars` equal question by
+question, same order, same census), so this is a single-variable pair in the strict sense.
+
+#### 13.344.1 The accuracy half passes its bar
+
+| | control `42600727738` | treatment `42617201299` | Δ |
+| --- | ---: | ---: | ---: |
+| accuracy | 90.5% (181/200) | **89.5% (179/200)** | **-2 questions / -1.0 pt** |
+| `IE` | 78/86 | 78/86 | 0 |
+| `MR` | 23/29 | 24/29 | **+1** |
+| `TR` | 26/28 | 24/28 | **-2** |
+| `KU` | 24.5/28 | 25.5/28 | +1 |
+| `ABS` | 29/29 | 29/29 | 0 |
+| completion tokens per call | 1,028 | **138** | **-86.6%** |
+
+Every clause of §13.343.3's rule is met: the paired loss is 2 of 200 (bar ≤4), `MR` gained a question, `TR`
+lost two (bar ≤2), and the null-treatment guard fired the right way — completion fell to 138 per call, so the
+flag reached the request. **On accuracy alone this would be adopted.** The registered prediction was that `MR`
+would suffer most because counting is the arithmetic-adjacent case the literature says pays for trimming; it
+did not, and `TR` took the two-question loss instead. That is recorded as a miss of the prediction, not
+explained away.
+
+#### 13.344.2 The cost half refutes the arm's purpose
+
+| line, feature side | control | treatment | Δ CNY |
+| --- | ---: | ---: | ---: |
+| input, cache hit | 3,025K tok / 0.605 | 2,360K tok / 0.472 | -0.133 |
+| input, cache **miss** | 80K tok / 0.160 | **779K tok / 1.559** | **+1.399** |
+| output | 418K tok / 1.255 | 59K tok / 0.177 | **-1.078** |
+| **feature total** | **2.021** | **2.208** | **+0.186** |
+| whole run, both arms | 2.453 | **2.648** | **+0.195 (+8.0%)** |
+
+The completion line fell by almost exactly the predicted 1.08 CNY and **the uncached input line rose by 1.40**,
+because the prefix-cache hit ratio fell from **97.4% to 75.2%** on identical prompts. The arm that was
+registered to buy 45% of the bill **bought -8% of it, for one point of accuracy**.
+
+This is the first time in this campaign that an arm has passed its accuracy bar and been refused anyway, and
+the reason is worth stating precisely: **the bar §13.343.3 wrote measured one of the two axes the arm trades.**
+It was written on the assumption that the cost side was already known (6.4 CNY of reasoning), and the
+assumption was wrong in a way that only a per-line ledger could show. §13.342.1's table is what made it
+visible; a projection that priced the output line and held the cache ratio constant would have reported a 42%
+saving for a run that cost 8% more.
+
+**Decision: not adopted.** The accuracy reading stands as a measurement (the reach is worth ≈1 point on this
+sample), the cost reading stands as a measurement (the flag costs 22 points of cache), and the two together
+are a refusal rather than a trade.
+
+#### 13.344.3 What the cache reading does not establish, and the replication that settles it
+
+Two mechanisms produce a 22-point cache loss on identical prompts, and they point at different products:
+
+- **The flag perturbs the cache.** `thinking=disabled` and `thinking=enabled` are served by different
+  deployments, and the treatment's single deployment then carries **two prompt families** — the feature's
+  23,114-character packets and the baseline's ~1,300-token prompts — interleaved. A capacity-limited prefix
+  cache shared by two families hits each about half as often. If this is the mechanism, the finding is a
+  *product* one: route families that share a deployment should not be interleaved, and the cache is the asset
+  to protect rather than the tokens.
+- **The first run in a mode pays a cold-cache tax.** Then the treatment's 75.2% is a warm-up artefact, steady
+  state is 97%, and thinking-off genuinely saves **1.20 of 2.02 CNY (-60%)** for one point.
+
+`T1r` is the same dispatch again, and its bar is written before it runs:
+
+| reading | conclusion |
+| --- | --- |
+| feature cache ≥ **0.95** and completion still < 300/call | the first draw was cold: **adopt**, at -2 questions of 200 for -60% of the run |
+| feature cache < **0.85** again | the flag itself costs the cache: **refused**, and `C3` (below) becomes the cost arm |
+| 0.85–0.95 | a third draw, and the decision moves to 500 questions |
+
+`C3` is registered here and not dispatched: **the cache-hit ratio becomes a measured outcome of every run
+rather than a constant of the cost model.** `tools/spend-projection.mjs` prices cached and uncached input
+apart and then holds the *ratio* at the observed run's value, which is the same error one level down — this
+pair proves the ratio moves with the configuration. `C3` asks the projection to refuse when a dispatched
+input can plausibly move the ratio (a changed thinking reach, a changed model, a changed route set) and to
+report the two-sided range instead of a point estimate.

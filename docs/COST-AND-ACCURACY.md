@@ -182,3 +182,36 @@ now a decision someone types rather than the value the table happens to carry.
   buys a correctness question about staleness for a saving that does not show up in the total.
 - **Did not touch retrieval.** §4 measures that no current failure has its gold outside the window,
   so a retrieval change would be aimed at a population that does not exist on this artifact.
+
+## 8. The reasoning line: what the literature says before we measure it
+
+§3 lists "narrow the thinking reach" as `up to -6 CNY (-42%)` and refuses to project it. That refusal is
+correct and it leaves the largest line in the bill unmeasured, so this section records what the published
+work predicts, **before** the arm is read, and what would count as a surprise.
+
+| source | intervention | finding |
+| --- | --- | --- |
+| TALE (ACL 2025 Findings) | model-estimated token budget | 67% fewer output tokens, <3 points lost; a budget set too tight is **ignored** and the trace grows again |
+| Chain of Draft | each step ≤ 5 words | commonsense/symbolic unchanged, **arithmetic −4 points for −80% output** |
+| NoWait (EMNLP 2025) | suppress reflection tokens | 27–51% shorter, negligible on RL-trained models, **>12 points on distilled ones** |
+| Price of Thinking (arXiv 2608.16956) | `high` effort explicit vs omitted | **+$0.0103/call** for **+0.0133 accuracy, CI [−0.0267, +0.0467]** |
+
+Read together they say the price of trimming is **task-shaped, not model-shaped**: symbolic and commonsense
+work survives it, arithmetic pays for it, and an explicit effort term on a frontier model has been measured
+buying no detectable accuracy at a real cost. `T1`'s two routes are on both sides of that line — `MR` counts
+items across sessions (the arithmetic-adjacent case), `TR` does arithmetic over turns that already carry
+dates (the symbolic case) — so the registered prediction is **`MR` loses more than `TR`**, and a flat `MR`
+result is treated as a suspicion about the instrument (did the reach reach the request?) rather than as a
+finding.
+
+The measurement itself is `T1` in `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §13.343: the same 200 questions x 2
+repetitions at `thinking=disabled`, paired against run `42600727738`'s control, with the bar written in
+questions rather than points because −1.0 point on 29 `MR` questions is 0.3 of a question. Its cost is
+**≈1.7 CNY** — the reason it goes before the two prompt-side arms, whose screening reads cost 5.70 each: if
+the reasoning is worth less than a point, every later arm in this campaign is 45% cheaper to run.
+
+One thing this section will not do is call the saving free before the accuracy side is read. The output line
+is 48.2% of the bill and 92.9% of that line is reasoning, so a `T1` that loses 2 questions on 57 thinking
+questions is a 45% saving for **1.0 point of the 200** and **3.5 points of the 57** — a trade to be accepted
+deliberately, and one that has to be
+written down rather than discovered later in a cost report that no longer mentions accuracy.

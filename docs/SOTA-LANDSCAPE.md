@@ -1231,3 +1231,90 @@ one refused prompt used to destroy it.
 `252 questions whose answer lives in one turn` read `92.86%` at 48,000 and `92.06%` at 24,000. The
 `248 that aggregate` read `89.92%` and `84.27%`. That split is the whole product roadmap for cost: the
 free half is half the questions, and no published competitor has reported a per-route budget at all.
+
+## 18. The October board re-read, the reader axis priced at 22.6 points from outside, and the reasoning literature that makes `T1` two-sided
+
+§17 left seven cells, four of them `unrun`, and one lever unmeasured: the 45% of the bill that is reasoning.
+This section re-reads the board at its own check date, adds the outside reading of the reader axis that §14.2
+could only bound from vendor pairs, and states the literature's prediction for `T1` **before** our number
+exists.
+
+### 18.1 The board, as published on 2026-10-28
+
+| system | LongMemEval_S | context/question | answer model | judge | verdict on the row |
+| --- | ---: | ---: | --- | --- | --- |
+| Maximem Synap | **95.6%** | 7.4K | Gemini 3.8 Flash | gpt-4o | self-reported, per-question data public |
+| Mastra OM | 94.87% | ~30K | gpt-5-mini | gpt-4o | self-reported, **84.23% with gpt-4o** |
+| Hindsight | 94.6% | ~43.6K | Gemini 3.1 Pro | its own family | judged in-family |
+| Mem0 platform | 94.4% | ~6.8K | not stated | not stated | **open-source config measures ~32%** |
+| Honcho | 90.4% | ~11.6K | Claude Haiku 4.5 | gpt-4o | self-reported |
+| Zep | 90.2% | ~4.4K | gpt-5.4 | gpt-5.4 | self-judged |
+| cortex | **91.95%** | **12,137** | deepseek-chat | deepseek-chat | 4 repetitions, artifact public |
+
+Two rows moved in a direction that matters more than the ranking. **Mastra publishes 84.23% with `gpt-4o` and
+94.87% with `gpt-5-mini`** — 10.6 points from the answer model alone, on a memory that did not change — and
+**Mem0's 94.4% belongs to the managed platform while a third-party re-test of its open-source configuration
+reads about 32%**, which is the same "two products, one name" defect this document caught in §12 and §14.
+Neither is a reason to doubt the systems; both are reasons to keep the reader column beside the score, which
+our own table does.
+
+Against our position the honest reading is unchanged from §16.4 and §17.3: **91.95% is 3.65 points behind the
+headline and inside the label noise of the nearest credible leader**, at 1.64x Synap's context and 0.27x
+Hindsight's. The one cell this board makes worse is cost: Mem0's ~6.8K and Zep's ~4.4K are both below our
+12,137, and neither is reachable by cutting the room (§17.1 measures that trade at −3.20 for 0.487x).
+
+### 18.2 The reader axis, priced five times over with the memory held fixed
+
+§14.2 priced the reader from vendor pairs and got 1.8 points across three frontier readers on one packet.
+An independent roundup now publishes the other direction: **one memory, five readers, 22.6 points.**
+
+| what was held fixed | what moved | spread |
+| --- | --- | ---: |
+| Perpetuity's frame on the same 500 | reader only | **22.6 points** |
+| Mastra's memory | answer model `gpt-4o` → `gpt-5-mini` | **10.6 points** |
+| Synap's memory + prompt | `gpt-5-mini` → Gemini 3.8 Flash | 3.6 points |
+| Agent Zero's memory | eight backbones | 3.4 points |
+| our packet (`M1` arm A/B) | `deepseek-flash` vs `deepseek-v4-pro` | **1.35 points** |
+
+The last row is why this is a section and not a footnote. **Our own reader spread is the smallest of the five,
+and it is the only one measured on a single provider.** A 3.65-point gap sits inside what the field reports
+for a reader change over identical memory, so "cortex is 3.65 behind" and "cortex's reader is 3.65 behind"
+are not distinguishable from anything this campaign has run. `M1` remains the one arm that would separate
+them, it remains unrun for a reason that is not scientific (the two frontier readers in the board's rows are
+not reachable from this repository's org secrets), and every memory-side arm is now read with that caveat
+attached: **a memory-side win of less than 3 points cannot be separated from a reader effect by this
+pipeline's own instruments.**
+
+### 18.3 What the reasoning literature predicts for `T1`, stated before the number
+
+`T1` drops the `multi-session+temporal` thinking reach and asks what it was worth. Four published results
+bound the answer, and they do not agree:
+
+| source | intervention | finding |
+| --- | --- | --- |
+| TALE (ACL 2025 Findings) | model-estimated token budget in the prompt | **67% fewer output tokens, <3 points lost**; a budget set *too tight* is ignored and reasoning grows again (258 → 86 at 50 tokens, 157 at 10) |
+| Chain of Draft (2024) | each reasoning step ≤ 5 words | commonsense and symbolic unchanged, **arithmetic loses ~4 points for an 80% cut** |
+| NoWait (EMNLP 2025) | suppress reflection tokens (`Wait`, `Hmm`) | 27–51% shorter, negligible loss on RL-trained models, **>12 points lost on distilled ones** |
+| Price of Thinking (arXiv 2608.16956) | explicit `high` effort vs omitted, Sonnet 5, AIME | cost **+$0.0103/call**, accuracy **+0.0133 [−0.0267, +0.0467]** — no detected gain |
+
+So the prediction, written here before run `42617201299` is read:
+
+- **`MR` should be the route that suffers**, because counting is the arithmetic-adjacent case where every one
+  of the four sources that separates task families finds the loss, and `MR` is also where the answer is not
+  in any single turn.
+- **`TR` should suffer less**, because its questions are arithmetic over a window the turns already carry
+  dates for — closer to the symbolic case that survived trimming.
+- **A flat result on `MR` is a surprise, not a win.** If the reasoning turns out to be worth nothing on the
+  one route whose task shape the literature says needs it, the more likely explanation is that the reach was
+  not reaching the request on this arm, which is why §13.343.3 makes `completionTokens` falling by more than
+  half a precondition of reading the accuracy at all.
+
+### 18.4 The per-route budget no competitor reports
+
+`§17.4`'s split — **252 questions whose answer lives in one turn, 248 that aggregate** — is already the shipped
+configuration: `abstention/assistant/flat/knowledge-update` at 24,000 characters and `multi-session/temporal`
+at 48,460 and 48,000 (`INPUTS`, §10.3). It is worth stating on this page because no published competitor
+reports a per-route budget at all: the board's context column is one number per system, and both of ours are
+below Hindsight's and above Zep's *by route* rather than on average. That is a product fact the leaderboard
+cannot express, and it is the only column on which this project is ahead by construction rather than by
+measurement.
