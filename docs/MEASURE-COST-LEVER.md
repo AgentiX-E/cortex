@@ -199,5 +199,5 @@ values, so the reading is the allocation's own effect on the configuration that 
 1.55 points. The allocation is therefore **adoptable**, and the shipping decision it was owed is now a
 decision rather than a question. `§13.335.3` states the two things this does not license: 9,201 is not a
 cost SOTA (`Maximem Synap` is 7,400 at 95.6%), and this reading does not combine with `E3` — the repair
-runs in the registered scalar room, so the configuration that would ship is the allocation **with** the
+runs in the room the registration held before §13.336, so the configuration that would ship is the allocation **with** the
 repair, which is the next dispatch rather than an inference from these two.

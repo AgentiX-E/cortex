@@ -36262,7 +36262,8 @@ short, which is the same gap this campaign has been naming, now with the arm's o
 beside it.
 
 **It does not license reading `C5` and `E3` as one configuration.** `E3` (`§13.334`) is dispatched in the
-**registered** scalar room, and `C5` is the per-route allocation with no repair switch. They are two
+**pre-adoption** room (`multi-session` 48,460 with the other five at 48,000), and `C5` is the per-route
+allocation with no repair switch. They are two
 one-variable readings in two rooms; their sum is a hypothesis. That matters because the allocation binds
 on exactly the four routes where the bill is being cut, and the repair adds a second consultation on a
 minority of questions -- a prompt that a smaller room truncates differently could reframe what the reader
