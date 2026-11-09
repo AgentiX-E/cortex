@@ -23,7 +23,7 @@
     "cortex_memory_self_consistency": "none",
     "cortex_memory_source_trust": "0.5",
     "model": "deepseek-chat",
-    "thinking": "temporal"
+    "thinking": "multi-session+temporal"
   },
   "generatedAt": "2026-11-09T00:33:00.762Z",
   "memoryArmConfig": {
@@ -132,5 +132,5 @@
   "run": "42533236864",
   "runs": 4,
   "why": "the dispatch that carried the six-route allocation, which \u00a713.336 adopts; it is the first artifact whose room map is the shipping one",
-  "note": "The thinking reach moved to `temporal` after the artifact below was produced (adopted by PREREGISTRATION 13.345 from run 42628645162, a 200-question screening). `memoryArmConfig` still describes the artifact, which was produced at `multi-session+temporal`; the next full pass at the adopted reach is what replaces both halves at once."
+  "note": "The registered configuration and the artifact below agree again: \u00a713.347 reverted \u00a713.345's `temporal`-only reach after the 500-question confirmation run read 90.15% against this configuration's 91.20%. `memoryArmConfig` describes `42533236864`, which is the artifact the reverted table now matches."
 }

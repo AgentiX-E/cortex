@@ -242,25 +242,35 @@ ninth, and a cost review that reads money ranks it first.
 
 Three points on the curve, two of them now measured on the same 200 questions:
 
-| configuration | full pass | accuracy on 200 | feature CNY on 200 |
+| configuration | full pass (500 x 4) | accuracy on 200 | feature CNY on 200 |
 | --- | ---: | ---: | ---: |
-| `multi-session+temporal` (previous) | 12.78 CNY | 90.5% (181) | 2.021 |
-| **`temporal` only (adopted)** | **≈8.4 CNY projected** | **92.0% (184)** | **1.180** |
-| `disabled` (`T1`, second on the axis) | ≈7.0 CNY | 91.0% (182), 89.5% on the cold draw | 0.944 |
+| **`multi-session+temporal` (shipped)** | **12.79 CNY / 91.20%** | 90.5% (181) | 2.021 |
+| `temporal` only (adopted by §13.345, **reverted by §13.347**) | **10.69 CNY / 90.15%** | 92.0% (184) | 1.180 |
+| `disabled` (`T1`, ranked second) | ≈7.0 CNY projected | 91.0% (182), 89.5% on the cold draw | 0.944 |
 
-The projected rows are computed by re-pricing the completion line at the full pass's own token count and
+The middle row is the one to read twice: it is the only row with a **measured** full pass on both axes,
+and it measures **−1.05 points for −16% of the bill**, with `MR`'s abstentions at 7 against 1. It was
+adopted on a 200-question sample that read +3 questions, and the confirmation run reversed the sign. The
+sample's projection of ≈8.36 CNY was right about the completion line (2.22 M -> 0.90 M tokens) and wrong
+about the input line, which is where a configuration change pays for its cache re-warm.
+
+The projected row is computed by re-pricing the completion line at the full pass's own token count and
 holding the rest fixed, which is the only scaling this section will do: the sample's per-question completion is
 985 tokens against the full pass's 1,071, because the sample carries 28.5% of the two thinking routes where the
-file carries 49.6%, so multiplying the sample's saving by 2.5 overstates it by about a sixth. **Neither projected
-row has a 500-question reading yet**, and until the confirmation dispatch lands the 91.20% belongs to the
-previous configuration rather than to the adopted one.
+file carries 49.6%, so multiplying the sample's saving by 2.5 overstates it by about a sixth. **The
+`disabled` row has no 500-question reading**, and after §13.347 it is not worth buying: it is dominated by
+`temporal` on the sample and `temporal` is dominated by the shipped reach on the full set, so the axis is
+closed rather than unexplored.
 
 The middle row exists because the per-capability pattern inverts this section's own prediction: across both
-draws `MR` gained 1–2 questions and `KU` 1–1.5 while **`TR` lost 1.5–2 consistently**, so the reasoning is
+draws `MR` gained 1–2 questions and `KU` 1–1.5 while **`TR` lost 1.5–2 consistently**, so the reasoning looked
 worth something on exactly the route the literature said would survive trimming and worth less than nothing on
 the two it said would pay. `T2` moved the reach to `temporal`, read +3 questions and −41.6% of the feature side
-against the previous configuration, and was adopted on that — with the `TR` clause of its own bar **unmet**
-(`TR` read 25.5 against 26), recorded rather than smoothed over.
+on the 200-question sample, and was adopted on that — with the `TR` clause of its own bar **unmet** (`TR` read
+25.5 against 26). **The full pass then reversed all of it** (§13.347): at 500 questions `temporal` reads 90.15%
+against 91.20%, the pair is 10 regressions to 5 conversions on `MR`, and `MR`'s abstentions go 1 -> 7. The
+per-capability prediction was right that the two routes behave differently and wrong about which one was paying:
+removing `MR`'s reasoning costs six questions, and the sample's +3 was the reader-noise band.
 
 ## 10. Buying resolution on one capability instead of the whole file
 

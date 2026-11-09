@@ -764,12 +764,13 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   about dispatch inputs rather than about anything either artifact carries. It is written down here rather
   than only in the table because a value this arm's largest measured effect depends on is not an experiment's
   private business.
-- `readerThinking: temporal` — **re-registered by §13.345, third value on this line.** It held
-  `multi-session+temporal` from §13.232 until `T2` read it against the same 200-question control:
-  **184/200 against 181**, at **1.180 CNY against 2.021**, with the reasoning it keeps costing 329
-  completion tokens per call against 985. §13.345 records that the adoption claims **cost without an
-  accuracy cost** -- one draw, +3 questions inside the band -- and that `T2`'s own `TR` clause failed.
-  The two sections below are §13.192.6's and §13.232's history of the earlier values. `resolveReaderIdentity` reports
+- `readerThinking: multi-session+temporal` — **re-registered by §13.347, fourth value on this line,
+  and the second time the value returns to what it was.** §13.345 moved it to `temporal` alone on one
+  200-question sample (184/200 against 181, 1.180 CNY against 2.021) claiming **cost without a
+  measured accuracy cost**; §13.347 reads the 500-question confirmation run and **reverts**: 90.15%
+  against 91.20%, MR 95/121 against 101/121, and MR's abstentions **7 against 1**. The saving is
+  12.79 -> 10.69 CNY on the same basis, which is 16% of the bill for a point of accuracy. The
+  sections below are §13.192.6's and §13.232's history of the earlier values. `resolveReaderIdentity` reports
   `thinking` in every artifact since §13.110.1, and the input that sets it (`DEEPSEEK_THINKING`) was sent by
   nobody: `none` of this campaign's 500-question runs ever enabled it. It is the second half of the reader
   identity and the only one that can change a reply's *shape* without changing the model — which is exactly
@@ -37361,7 +37362,7 @@ screening sample carries **29** `MR` questions, not 48, and three conversions is
 | treatment | `#N` prefix on every enumerated candidate, with `N` running across the session blocks, and the count taken by id rather than by string match |
 | population | `capability=MR`, 121 questions |
 | repetitions | 2 |
-| control | the full pass's own 121 `MR` questions at the **same shipped contract** (`42641469324`, 500 x 4, `thinking=temporal`), paired by question id. `limit`, `ablation_runs` and `capability` are harness inputs rather than configuration (`HARNESS_INPUTS`), so the pair is comparable without a second control dispatch |
+| control | `42533236864`'s own 121 `MR` questions -- the **registered** configuration (500 x 4, `thinking=multi-session+temporal`, `evidence-blocks-unsourced`), paired by question id. `limit`, `ablation_runs` and `capability` are harness inputs rather than configuration (`HARNESS_INPUTS`), so the pair is comparable without a second control dispatch. The alternative control `42641469324` is **not** usable: §13.347 reverted its reach, so pairing against it would measure the numbering and the reasoning together |
 | projected cost | **1.73 CNY** (§13.345.3), cleared by the default gate without a flag -- and that is the whole cost of the reading, because the control already exists |
 | adopt if | **≥ 5 net `MR` conversions** (conversions minus regressions), i.e. above the 4-question floor |
 | reject if | **≤ 1 net conversion** |
@@ -37424,3 +37425,94 @@ running across the blocks, countable off the prompt. What it gives up is the wor
 moves the count, whether the word adds anything on top is a second, additive question with its own
 dispatch -- and it is the kind of question that should be asked after the mechanism is shown to work
 rather than bundled into the run that would have to show it.
+
+### 13.347 The confirmation run: `temporal` is refuted at 500, and the reach reverts
+
+`42641469324` ran 500 questions x 4 repetitions at the adopted reach, 56 minutes, and the registration
+gate reads it as **the registered configuration, field for field** — so its numbers are quotable as the
+arm's and there is nothing to declare. It reads:
+
+| | `multi-session+temporal` (`42533236864`) | **`temporal` (`42641469324`)** | |
+| --- | ---: | ---: | --- |
+| feature, mean of 4 repetitions | **91.20%** | **90.15%** | **−1.05** |
+| feature, first repetition | 91.2% | 89.8% | |
+| `IE` | 141/150 | 141/150 | 0 |
+| `MR` | **101/121** | **95/121** | **−6** |
+| `TR` | 121/127 | 121/127 | 0 |
+| `KU` | 63/72 | 62/72 | −1 |
+| `ABS` | 30/30 | 30/30 | 0 |
+| `MR` abstentions | **1** | **7** | **+6** |
+
+Paired by question id against the previous full pass, the movement is concentrated where the reasoning
+was removed and it has a shape:
+
+| capability | changed | conversions | regressions | net |
+| --- | ---: | ---: | ---: | ---: |
+| `MR` | 17 of 121 (14.0%) | 5 | **10** | **−5** |
+| `KU` | 1 of 72 | 0 | 1 | −1 |
+| `IE` | 3 of 150 | 1 | 1 | 0 |
+| `TR` | 2 of 127 | 1 | 1 | 0 |
+| `ABS` | 0 of 30 | 0 | 0 | 0 |
+
+Three of `MR`'s ten regressions are `correct -> abstention` and two more are `numeric_mismatch ->
+abstention`: **the reader stops answering when the reasoning is taken off the route**, and the abstention
+count says so directly (1 -> 7). That is a product loss the accuracy number understates, because a
+decline on a question whose gold is in the window is the worst shape a failure can take here.
+
+#### 13.347.1 What it actually bought, and why the sample over-predicted it
+
+The saving is real and smaller than projected, and both halves are on the same pair:
+
+| line | `42533236864` | `42641469324` | |
+| --- | ---: | ---: | --- |
+| feature side | 11.08 CNY | **9.10** | −17.9% |
+| reference side | 1.71 | 1.59 | −7.0% |
+| **total** | **12.79** | **10.69** | **−16.4%** |
+| completion tokens per feature call | 1,071 | **437** | −59% |
+| output share of the bill | 52.4% | **26.3%** | |
+| feature prefix-cache hit | 97.8% | **91.6%** | **−6.2 points** |
+
+The projection said **≈8.36 CNY (−35%)**, computed by re-pricing the completion line at the full pass's
+own token count with the input lines held fixed. The completion line did fall as predicted — 2.22 M to
+0.90 M, 59% — and the projection still missed by 2.3 CNY, because **the input line did not hold still**:
+the feature side's uncached prompt went from 0.40 M to 1.53 M tokens (+1.12 M, **+2.25 CNY**), which is
+more than the entire saving.
+
+That is §13.344.4's rule a second time, and it is worth writing as a rule rather than an incident:
+**the first run after a configuration change pays to re-warm the prefix cache, so it is not the
+configuration's bill.** At the previous run's 97.8% hit rate the same token counts price at **7.08 CNY
+on the feature side (−36%)**, which is the projection's number. The warm number is the configuration's;
+the cold number is the change's.
+
+#### 13.347.2 The verdict is revert, and the bar it fails is the one it was adopted on
+
+`T2` was adopted on a claim written to be falsifiable: **cost without a measured accuracy cost**
+(§13.344.6). The confirmation run measures a cost — −1.05 points on the arm, −5 net on `MR`, abstentions
+1 -> 7 — and the claim fails at the population the arm is published at. So:
+
+- **`readerThinking` reverts to `multi-session+temporal`** in `INPUTS`, §10.3, `arm-config-baseline.json`
+  and the workflow default. The configuration and the artifact agree again, and `arm-config-record.py`
+  reads `20 input(s) recorded from run 42533236864 agree with the dispatch table`.
+- **No new dispatch is needed to establish the reverted value's reading**: `42533236864` *is* that
+  configuration, 500 x 4, 91.20%.
+- **The money is not worth the point.** 2.10 CNY of a 12.79 CNY run — 16%, or 5.71 CNY of a 13.16 CNY
+  total on the block's own arithmetic — against 1.05 points of the metric every competitive comparison in
+  `SOTA-LANDSCAPE` is drawn on, which widens the gap to Synap's 95.6% from 4.40 to 5.45 points. A cost
+  review that reads money ranks this first; a review that reads the scoreboard does not rank it at all.
+
+#### 13.347.3 Three things this cost 8.36 CNY to learn, and one that closes an axis
+
+1. **A 200-question screening cannot license a 6-question claim.** §13.326's two-draw band is 16 of 500,
+   i.e. **6 questions on 200** — and `T1` moved −1, `T2` +3 and then −5 on the full set, every one of
+   them inside the band it was measured against. Both readings were honest and both were used to adopt;
+   the difference is that this one had a confirmation run in its registration and the other did not.
+   **The lesson is the registration's, not the reading's:** an arm whose adoption is provisional must
+   name the run that can overturn it, and this one did (§13.344.6 said so in as many words).
+2. **A configuration change pays cache rewarm**, so a bill taken on the first run after the change
+   attributes the rewarm to the configuration. Project both lines, not one.
+3. **The abstention count is a first-class reading.** `MR` 1 -> 7 is invisible in a 1.05-point accuracy
+   delta and is the most user-visible thing in the table.
+4. **The reasoning axis is closed.** `disabled` loses to `temporal` on the sample; `temporal` loses to the
+   two-route reach on the full set. The shipped reach is the measured optimum on this axis, the output
+   line stays at ~52% of the bill, and the honest answer to "what is 48% of the money buying" is **six
+   questions of `MR` and six abstentions avoided** — which is worth it.

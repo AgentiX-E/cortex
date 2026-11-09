@@ -178,9 +178,10 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(code, 1)
         # The count is a property of the registered table's size and of what this fixture omits, so it
         # moves whenever the registration does -- 15 before §13.345 added `capability`, 16 with it, 17
-        # once `thinking` moved to `temporal` and this incident's two-route value became a departure as
-        # well. The assertions that carry the incident are the named fields below, not the total.
-        self.assertIn("17 departed", out)
+        # while §13.345's `temporal` reach made this incident's two-route value a departure as well, and
+        # back to 16 when §13.347 reverted the reach and the two-route value became the registered one
+        # again. The assertions that carry the incident are the named fields below, not the total.
+        self.assertIn("16 departed", out)
         for name in (
             "cortex_memory_ask",
             "cortex_memory_relevance",

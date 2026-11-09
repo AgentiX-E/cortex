@@ -508,7 +508,16 @@ INPUTS = {
     # a trade: prompt tokens are **flat** (28.15 M against 28.41 M, 98.6% of them prefix-cache
     # hits in both) and the completion side goes from 0.24 M to 2.35 M, which is the thinking
     # tokens. A per-question budget of ~1,050 completion tokens buys 6.25 points.
-    "thinking": "temporal",
+    #
+    # §13.347 REVERTS the `temporal`-only reach §13.345 adopted. The 500-question confirmation run
+    # (`42641469324`) reads **90.15%** against this value's **91.20%** (`42533236864`), and the
+    # movement is where the reasoning was removed: paired by question id, `MR` loses 10 and gains
+    # 5, and its abstentions go **1 -> 7**. The saving it bought is real but smaller than the
+    # sample predicted -- 12.79 -> 10.69 CNY on the same basis, because removing the reach also
+    # costs prefix-cache warmth (97.8% -> 91.6% on the feature side). A point of accuracy is not
+    # worth two yuan of a ten-yuan run, so the axis closes at the earlier value and the reasoning
+    # question is answered: it earns its money on `MR`.
+    "thinking": "multi-session+temporal",
     # §13.345's population selector. `all` is the identity and is written down rather than omitted
     # because a dispatch value that is never sent is a value the artifact cannot be checked against
     # (§13.192.6) -- and because the registered configuration has to be readable as one object.
