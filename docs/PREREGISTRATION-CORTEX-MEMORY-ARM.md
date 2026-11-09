@@ -36200,3 +36200,63 @@ a flat headline on a run whose census reads `4/4` is the *expected* outcome rath
 fourteen losses, but they are not fourteen replies of two shapes. The refusals are 3 to 5 per run and the quotation
 dumps 42 to 47, of which six to thirteen are losses -- so "the repair of the fourteen" was never the mechanism, and
 "the repair of the refusals" is worth 1.0 point at most. `RETRACTIONS.md` entry 13 records the correction.
+
+## 13.335 `C5` reads 91.05% at 9,201 tokens: the allocation is adoptable, and the combination is not yet tested
+
+`docs/MEASURE-COST-LEVER.md` §5 registered `C5` as one variable -- the per-route room map on top of the
+registered `ask=verbatim-acts` -- with two criteria and one falsifier. Run `42533236864` answers it.
+
+### 13.335.1 The numbers
+
+| field | value |
+| --- | ---: |
+| `feature`, four-repetition mean | **91.05%** (min 90.60, max 91.40) |
+| `feature`, first repetition | 91.20% (456 / 500) |
+| `reference`, four-repetition mean | 43.85% (43.40, 44.40) |
+| delta (feature − reference) | **+47.20%**, McNemar `4.372e-60`, discordant 250 / 11 |
+| prompt tokens per question | **9,201** |
+| prompt tokens per correct answer | 10,105 |
+| prefix-cache share of the prompt | 94.93% (20,408,121 of 21,497,392) |
+| bare-decline retry | 76 / 76, **100%** |
+| transport | 5,721 calls, 0 retries, 0 answered `429` |
+
+Per capability, first repetition:
+
+| capability | n | correct | reading |
+| --- | ---: | ---: | ---: |
+| `IE` | 150 | 141 | 94.00% |
+| `MR` | 121 | 101 | 83.47% |
+| `KU` | 72 | 63 | 87.50% |
+| `TR` | 127 | 121 | 95.28% |
+| `ABS` | 30 | 30 | 100.00% |
+
+The room map the artifact carries is `multi-session:48460+temporal:48000+flat:24000+knowledge-update:24000+abstention:24000+assistant:24000`,
+i.e. the allocation and nothing else: `ask`, the ranking, the contract, the cap and the pool are the
+registered values.
+
+### 13.335.2 The verdict, against what was written down before the run
+
+| id | claim | reading | verdict |
+| --- | --- | --- | --- |
+| `C5` accuracy | **≥ 90.80%** | 91.05% | **met** |
+| `C5` price | **≤ 9,300** prompt tokens per question | 9,201 | **met** |
+| `C5` falsifier | accuracy **≤ 89.50%** would say the allocation costs more than the `verbatim` pair measured | not triggered, by 1.55 points | not triggered |
+
+So the allocation is **adoptable**: it holds the arm's headline inside the noise floor it already has and
+takes roughly a quarter of the bill with it. The decision the document existed to inform is now a
+shipping decision rather than an open question.
+
+### 13.335.3 What this does not license, and the combination that is untested
+
+**It does not make 9,201 the state of the art on cost.** `Maximem Synap` publishes 95.6% at about 7,400
+tokens per question. This run is 9,201 at 91.05%: 24% more expensive per question and 4.55 points
+short, which is the same gap this campaign has been naming, now with the arm's own cheapest reading
+beside it.
+
+**It does not license reading `C5` and `E3` as one configuration.** `E3` (`§13.334`) is dispatched in the
+**registered** scalar room, and `C5` is the per-route allocation with no repair switch. They are two
+one-variable readings in two rooms; their sum is a hypothesis. That matters because the allocation binds
+on exactly the four routes where the bill is being cut, and the repair adds a second consultation on a
+minority of questions -- a prompt that a smaller room truncates differently could reframe what the reader
+declines. The next dispatch after both readings is therefore the allocation **with** the repair, and it
+is not optional bookkeeping: it is the configuration that would ship.
