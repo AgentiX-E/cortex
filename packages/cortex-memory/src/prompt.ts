@@ -493,15 +493,23 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
  *   - `sourced`: the §12.5 candidate. `` `1. [id] text` ``, so a turn's origin is
  *     visible and a session boundary is not merely a blank line that looks the
  *     same as every paragraph break.
- *   - `item-ids`: `` `[item N] text` ``, with `N` running **across** the session
- *     blocks rather than restarting in each. It exists for the question this route
- *     is worst at (§13.346): `buildSessionPrompt` renders one block per session and
+ *   - `item-ids`: `` `#N text` ``, with `N` running **across** the session blocks
+ *     rather than restarting in each. It exists for the question this route is
+ *     worst at (§13.346): `buildSessionPrompt` renders one block per session and
  *     each block numbers from one, so "how many bikes do I own" can only be
  *     answered by counting every block and adding, with nothing in the prompt
  *     saying how many items the reader has already passed. A global identifier
  *     makes the count readable off the prompt -- the last id is the number of
  *     items -- and it is the only thing that moves: same evidence, same order,
  *     same instruction.
+ *
+ *     The token is `#N ` rather than `[item N] ` because it is **length-neutral**:
+ *     `#` occupies the character `.` occupied, so `#243 ` is seven characters and
+ *     `243. ` is seven. A wordier marker costs five characters per item, and on
+ *     `MR`'s 243-item prompts that is 1,215 characters -- enough to push 8 of 121
+ *     questions past the route's 48,460-character cap and cut a turn from each.
+ *     Keeping the width means the treatment changes the numbering and nothing
+ *     else, including the delivered set.
  *
  * Defaults to `numbered`, so every prior artifact keeps its meaning byte for
  * byte.
@@ -2308,7 +2316,7 @@ export function formatEvidence(
   const first = options.itemNumberStart ?? 1;
   const label =
     options.rendering === 'item-ids'
-      ? (index: number): string => `[item ${first + index}] `
+      ? (index: number): string => `#${first + index} `
       : (index: number): string => `${index + 1}. `;
 
   const body =

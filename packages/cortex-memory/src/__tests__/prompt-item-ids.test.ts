@@ -1,5 +1,5 @@
 /**
- * `[item N]`: one identifier per delivered turn, running across session boundaries.
+ * `#N`: one identifier per delivered turn, running across session boundaries.
  *
  * ## The defect this rendering is written against
  *
@@ -60,7 +60,7 @@ function evidenceOf(prompt: string): string[] {
   return prompt
     .split('\n\n')
     .map((segment) => segment.trim())
-    .filter((segment) => /^(Session \d+|\d+\. |\[item \d+\] )/.test(segment));
+    .filter((segment) => /^(Session \d+|\d+\. |#\d+ )/.test(segment));
 }
 
 const TWO_SESSIONS = [
@@ -90,11 +90,11 @@ describe('the item-id rendering', () => {
   it('numbers across the session boundary instead of restarting', () => {
     const { prompt } = buildSessionPrompt(QUESTION, TWO_SESSIONS, { rendering: 'item-ids' });
 
-    expect(prompt).toContain('[item 1] I bought a red bike in March.');
-    expect(prompt).toContain('[item 2] I sold the red bike in June.');
+    expect(prompt).toContain('#1 I bought a red bike in March.');
+    expect(prompt).toContain('#2 I sold the red bike in June.');
     // The one line that distinguishes this rendering from the control: the third item is 3, not 1.
-    expect(prompt).toContain('[item 3] I bought a blue bike in July.');
-    expect(prompt).not.toContain('[item 1] I bought a blue bike in July.');
+    expect(prompt).toContain('#3 I bought a blue bike in July.');
+    expect(prompt).not.toContain('#1 I bought a blue bike in July.');
   });
 
   it('leaves no position-numbered line behind', () => {
@@ -118,7 +118,7 @@ describe('the item-id rendering', () => {
       itemNumberStart: 5,
     });
 
-    expect(block).toBe('[item 5] alpha\n\n[item 6] beta');
+    expect(block).toBe('#5 alpha\n\n#6 beta');
   });
 
   it('ignores the start when the rendering does not number by item', () => {
@@ -138,7 +138,7 @@ describe('one variable, measured', () => {
       evidenceOf(prompt).map((segment) =>
         segment
           .split('\n')
-          .map((line) => line.replace(/^(\d+\. |\[item \d+\] )/, ''))
+          .map((line) => line.replace(/^([\d#]+\.?\s)/, ''))
           .join('\n'),
       );
 
@@ -148,14 +148,16 @@ describe('one variable, measured', () => {
     expect(strip(treated.prompt)).toEqual(strip(control.prompt));
   });
 
-  it('keeps the total length within the id it adds', () => {
-    // `[item 3] ` is 6 characters longer than `3. `, and the assertion exists so a future edit that
-    // also changed the body would fail here rather than in a run whose arm was meant to be one
-    // variable.
+  it('adds and removes nothing, character for character', () => {
+    // The token is `#N ` against `N. `, so the two prompts are the **same length**. That is the
+    // property the spelling was chosen for: at `MR`'s 243-item prompts a five-character marker
+    // would add 1,215 characters and push 8 of 121 questions past the route's cap, so the delivered
+    // set would shrink and the reading would carry a coverage difference as well as a numbering one.
     const control = buildSessionPrompt(QUESTION, TWO_SESSIONS, { rendering: 'numbered' });
     const treated = buildSessionPrompt(QUESTION, TWO_SESSIONS, { rendering: 'item-ids' });
-    const perItem = 6 * 3;
 
-    expect(treated.prompt.length - control.prompt.length).toBe(perItem);
+    expect(treated.prompt.length).toBe(control.prompt.length);
+    expect(treated.carried.length).toBe(control.carried.length);
+    expect(treated.evidenceChars).toBe(control.evidenceChars);
   });
 });

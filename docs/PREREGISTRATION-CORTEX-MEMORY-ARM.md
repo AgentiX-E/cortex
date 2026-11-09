@@ -37358,7 +37358,7 @@ screening sample carries **29** `MR` questions, not 48, and three conversions is
 | field | value |
 | --- | --- |
 | id | `I1` |
-| treatment | `[item N]` prefix on every enumerated candidate, and the count taken by id rather than by string match |
+| treatment | `#N` prefix on every enumerated candidate, with `N` running across the session blocks, and the count taken by id rather than by string match |
 | population | `capability=MR`, 121 questions |
 | repetitions | 2 |
 | control | the full pass's own 121 `MR` questions at the **same shipped contract** (`42641469324`, 500 x 4, `thinking=temporal`), paired by question id. `limit`, `ablation_runs` and `capability` are harness inputs rather than configuration (`HARNESS_INPUTS`), so the pair is comparable without a second control dispatch |
@@ -37367,7 +37367,7 @@ screening sample carries **29** `MR` questions, not 48, and three conversions is
 | reject if | **≤ 1 net conversion** |
 | between 2 and 4 | **inconclusive**, and re-run at `ablation_runs=4` (3.45 CNY) rather than re-argued |
 | guards | `IE`, `TR`, `KU`, `ABS` prompts must be byte-identical to the control's, and their accuracy unchanged: the treatment is `MR`-only, so movement anywhere else means the diff reached a request it should not have, which invalidates the pair rather than informing it |
-| coverage guard | the identifier is **longer** than the number it replaces (six characters per item), so unlike §13.283 this rendering cannot claim containment and the delivered set may shrink: at 48,460 characters and ~120 items that is 1.5% of the room, and the pair must show it took no gold turn away on any question. A question whose gold fell out of the window is a coverage loss and is excluded from the flip count with the loss reported; **more than 2 such questions voids the run** |
+| coverage guard | **zero** of the 121 questions may exceed the route's 48,460-character cap. The treatment is length-neutral by construction (§13.346.2), so this is a check that the construction held rather than a tolerance: any question over the cap means the renderer cut a turn, and the pair then differs in its delivered set as well as in its numbering |
 
 The floor is the reason for the ≥ 5, and it is worth being explicit about what that costs: the arm has to move
 five questions of 121 -- 4.1 points of `MR` -- to be believed. If the mechanism is worth less than that, this
@@ -37394,6 +37394,33 @@ takes the same assembly, so what moves between the two arms is the numbering and
 `packages/cortex-memory/src/__tests__/prompt-item-id-contract.test.ts` asserts that by stripping the
 numbering tokens from both prompts and comparing the remainder, and
 `prompt-item-ids.test.ts` asserts the same property one layer down at the renderer, including that
-the added characters are exactly `6 x items`: `[item N] ` is eight-plus-digits characters against
-`N. `'s plus-two, so the difference is **six at every width** and a prompt that grew by anything
-else is a run that changed something else too.
+the two prompts are **the same length**, which is the reason the treatment is spelled `#N ` rather
+than `[item N] ` (§13.346.2).
+
+#### 13.346.2 The token is `#N`, and the reason is measured on the arm's own prompts
+
+The first spelling was `[item N] `, which reads better and costs five characters per item. Whether
+that cost matters is a question about the population, not about taste, so it was measured on the
+artifact the control comes from -- `42533236864`'s 121 `MR` questions, whose delivered evidence runs
+to a **median of 243 items** and whose prompts reach 47,325 characters against a route cap of
+**48,460**:
+
+| spelling | extra per item | `MR` questions pushed past the cap | what else moves |
+| --- | ---: | ---: | --- |
+| `N. ` (control) | 0 | 0 | -- |
+| **`#N `** | **0** | **0** | nothing: `#` occupies the character `.` occupied |
+| `[N] ` | +1 | 0 | +243 characters per prompt (0.5%) |
+| `[item N] ` | +5 | **8** | +1,215 characters per prompt (2.7%), and a turn cut on those eight |
+
+Eight of 121 is 6.6% of the population losing a turn to the treatment itself, which would put a
+coverage difference inside an arm registered on one variable -- and it would bias the reading
+*against* adoption, so the false negative would look like a null result rather than like a defect.
+`#N ` is the same width as the number it replaces at every value, so the delivered set is identical
+by construction and the assertion in `prompt-item-ids.test.ts` is an equality of prompt length rather
+than a tolerance.
+
+What the spelling keeps is the thing that was registered: a single identifier per delivered turn,
+running across the blocks, countable off the prompt. What it gives up is the word "item". If `I1`
+moves the count, whether the word adds anything on top is a second, additive question with its own
+dispatch -- and it is the kind of question that should be asked after the mechanism is shown to work
+rather than bundled into the run that would have to show it.

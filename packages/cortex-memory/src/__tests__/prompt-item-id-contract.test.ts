@@ -105,7 +105,7 @@ describe('the item-id contract', () => {
     expect(ASSEMBLY_BY_CONTRACT[TREATED]).toBe(ASSEMBLY_BY_CONTRACT[CONTROL]);
 
     const strip = (prompt: string): string =>
-      prompt.replace(/^(\d+\. |\[item \d+\] )/gm, '').replace(/^(Session \d+)$/gm, '$1');
+      prompt.replace(/^(\d+\. |#\d+ )/gm, '').replace(/^(Session \d+)$/gm, '$1');
     expect(strip(render('item-ids'))).toBe(strip(render('numbered')));
   });
 
@@ -113,9 +113,9 @@ describe('the item-id contract', () => {
     const treated = render('item-ids');
     // Six turns over two blocks: the fourth is `[item 4]`, not `[item 1]`. That one line is the
     // entire treatment, and the count is readable off it.
-    expect(treated).toContain('[item 4] s2t0:');
-    expect(treated).not.toContain('[item 1] s2t0:');
-    expect(treated).toContain('[item 6] s2t2:');
+    expect(treated).toContain('#4 s2t0:');
+    expect(treated).not.toContain('#1 s2t0:');
+    expect(treated).toContain('#6 s2t2:');
   });
 
   it('reaches the product, not only the builder', async () => {
@@ -127,10 +127,10 @@ describe('the item-id contract', () => {
     ]);
     const prompt = seen[0] ?? '';
 
-    expect(prompt).toContain('[item 1] ');
+    expect(prompt).toContain('#1 ');
     // Two blocks of one turn each, so the second block's turn is the second item: the property the
     // route is being measured on, read from a real request rather than from the builder's options.
-    expect(prompt).toContain('[item 2] ');
+    expect(prompt).toContain('#2 ');
   });
 
   it('serves the instruction block of the contract it delegates to, byte for byte', () => {
