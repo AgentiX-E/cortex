@@ -120,6 +120,33 @@ described as work. None is dispatched this round; the queue order is the order b
 because we do not select. `A1` is the one that decides the accuracy axis against MemStrata, and it is the only
 arm in the table whose result could be published as a comparison rather than as a reading.
 
+### 3.5 `A3` has been read, and it did not reach its own bar
+
+`A3` was dispatched as `C5` (`42533236864`) and adopted by `§13.336`; the criteria have to be compared
+one at a time, because they were not all met.
+
+| criterion | registered | read | verdict |
+| --- | --- | ---: | --- |
+| `C2` (context per question, against 12,105) | **≤ 0.70** (8,473) | **0.76** (9,201) | **not met** |
+| `C5`'s own registration (`MEASURE-COST-LEVER.md` §5) | ≤ 9,300 with accuracy ≥ 90.80% | 9,201 at 91.05% | met |
+| no gated capability beyond the margin | — | `ABS` 30/30, `TR` 95.28%, `IE` 94.00%, `KU` 87.50%, `MR` 83.47% | met |
+| `C3` readable | — | 94.93% prefix-cache share, 0 retries | readable |
+
+The stricter of the two registrations is the one that governs, so the honest reading is **`A3` fell 8% short
+of its own bar**, and the previous round reported `C5` as passing without saying so. `§13.338.4` records the
+correction.
+
+**What this changes about the Zep question.** The remaining room inside the allocation mechanism is 8% and
+the distance to Zep's 4,400 is 52%, so the cost axis cannot be closed by splitting rooms further. It also
+crystallises something §1.2 already said: this arm's number is a **cap constant** in every configuration,
+including the six-cap one, so `12,105 → 9,201` was bought by **shrinking a cap, not by improving retrieval**.
+Shrinking a cap spends evidence; retrieval does not. The next 52% therefore has to come from sending fewer
+*turns* while keeping the ones that carry the answer -- selection **inside** the turns, which is the one
+version of the competitor's mechanism that `40614772262` did not test, because it replaced the turns instead.
+
+`§13.338.3` prices the alternative: at this corpus's 1:1 amortisation, porting Graphiti's ingest costs
+**37 questions per haystack** more than it saves, and LongMemEval asks one.
+
 ---
 
 ## 4. What would make a real race possible, and what it would cost

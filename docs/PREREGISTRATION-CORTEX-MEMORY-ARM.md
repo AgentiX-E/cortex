@@ -36379,3 +36379,119 @@ A same-room pair: `replyRepair=off` against `replyRepair=commitment`, both on th
 configuration that would ship, it is one variable, and it is the only way `E3.2` becomes scorable. The census
 half of this axis is closed -- the mechanism fires and converts, on both kinds of refusal that no retry could
 reach -- and what remains open is the paired mask, which needs a control rather than more mechanism.
+
+## 13.338 Two axes give opposite answers about Zep, and the one that decides whether to copy it is a ratio nobody publishes
+
+The question this section answers was asked of this campaign directly: the arm is behind Zep, so why not
+study and port its code to bring the cost down? The premise has to be split before it can be answered,
+because it is true on one axis and false on the other, and the axis where it is false is the one the
+project is actually graded on.
+
+### 13.338.1 On accuracy there are no two comparable numbers, and on cost the gap is 2.09x
+
+| reading | value | reader and judge |
+| --- | ---: | --- |
+| Zep, `LANDSCAPE-CONTROLLED-BOARD.md` | 90.2 / 94.7 | **Zep's own run**, GPT-5.4 as reader *and* judge |
+| Zep, its own LongMemEval paper (`ACCEPTANCE-MATRIX.md`) | **71.2%** | GPT-4o reader |
+| this arm, `C5` (`42533236864`) | **91.05%** | DeepSeek reader, official judge prompts |
+| this arm, `E3` (`42539923976`) | 91.90% | the same |
+
+One system, one benchmark, **23.5 points of spread, all of it the reader.** So "we are behind Zep" is not
+a statement about accuracy: there is no Zep number produced under this arm's reader, and the closest
+like-for-like row on the board (`Recallium` at 90.2% with a GPT-4o reader) is one this arm is level with.
+On **cost** the premise is simply correct: 9,201 against ~4,400 is **2.09x**, and `A3`'s remaining room does
+not close it (§13.338.4).
+
+### 13.338.2 What a competitor's architecture actually costs when it is run, measured
+
+`40614772262` ran Mem0's own package through this repository's protocol -- `MEM0_INFER=0`, Zhipu
+`embedding-3` at 1024 dimensions, FAISS -- on the same 100 questions:
+
+| quantity | competitor | this arm |
+| --- | ---: | ---: |
+| recall@k | **99.0%** | — |
+| all-gold (verbatim evidence preserved) | **4.0%** | **73.0%** |
+| score | — | 87.0% |
+| prompt tokens per question | **1,942** | ~9,200 |
+
+**It returns the memories it wrote, not the turns it was given**, and a question about a date inside a turn
+needs that turn. The token bill fell by 4.7x and the verbatim evidence fell from 73.0% to 4.0% -- **69
+points**. That is not a failed reproduction; it is a *successful* one, and what it demonstrates is that the
+cheap half of the architecture is cheap because it changed the task.
+
+The same shape appears in the independent harness (`COMPETITOR-REPRODUCTION.md` §6.2): `graphiti-core`
+reads **0.0%** there, Cognee 20.0%, and four of six systems score below the 57.6% no-memory baseline. A
+system at 0.0% has a harness-fit defect before it has a score, so even the port would begin with repair
+work rather than with a reading.
+
+### 13.338.3 The decisive number is not the gap, it is the amortisation ratio
+
+Zep's barrier was never the licence -- Graphiti is Apache-2.0. It is that `add_episode()` runs a model call
+per episode to infer `valid_at`/`invalid_at`, so the read path is cheap **because the write path already paid**.
+That trade is only judgeable against a denominator, and the denominator is *how many questions one haystack
+is asked*:
+
+| term | value | source |
+| --- | ---: | --- |
+| sessions per question in this corpus | **47** | measured (`AUDIT-ZHIPU-429-ROOT-CAUSE.md` §4) |
+| haystack tokens per question | **~115k** | measured |
+| mean tokens per session | 2,447 | derived |
+| extraction calls per session | 1 | Graphiti's `add_episode()` |
+| ingestion per haystack | **176,109** prompt tokens | `tools/amortization-crossover.mjs` |
+| this arm's saving per question | 4,801 tokens | 9,201 − 4,400 |
+| **one haystack must be asked** | **37 questions** | before the ingestion is repaid |
+
+**LongMemEval asks each haystack exactly one question.** Every question carries its own
+`haystack_sessions`, so the amortisation ratio is **1:1** and the ingestion is charged 500 times and
+collected never. Porting Zep's architecture onto this benchmark does not lower the cost by 4,801 tokens per
+question; it **raises** it by roughly 171,000, and the sign of that trade is arithmetic rather than
+judgement.
+
+The trade reverses in a product, and that is the honest half: a customer's history is ingested once and
+asked a thousand times, a ratio of 1:1000, where the crossover at 37 has been passed by a factor of 27.
+**So the correct answer to "why not port Zep" is that the question is about deployment, not about code** --
+and the instrument for it is a curve of `N*` against session count and extraction cost, which
+`tools/amortization-crossover.mjs` now computes instead of a paragraph asserting it.
+
+### 13.338.4 A correction this round owes: `A3`'s own criterion was 0.70, and `C5` read 0.76
+
+`A3` (`PLAN-COMPETITOR-ABLATION.md` §3) was registered as **selection instead of fill** with the criterion
+`C2 <= 0.70` against the 12,105-token register, i.e. **8,473**. `C5` reads **9,201**, which is **0.76**.
+
+`C5` passed `MEASURE-COST-LEVER.md` §5's own criterion (`<= 9,300`), and that registration is legitimate.
+But the previous round reported it as "both criteria met" without saying that the older, stricter
+criterion on the same mechanism had *not* been met -- and letting a newer, looser registration stand in for
+an older one is criterion drift, which is the defect class this document exists to prevent.
+
+The corrected position, which is also the answer to the rest of the question:
+
+| quantity | value |
+| --- | ---: |
+| registered before `C5` | 12,105 |
+| `C5` (`A3` implemented) | **9,201 = 0.76x** |
+| `A3`'s own bar | 8,473 = 0.70x |
+| remaining room inside this mechanism | **8%** |
+| Zep's published read cost | 4,400 = **0.48x of `C5`** |
+| still unreached after taking all remaining room | **52%** |
+
+**The per-route allocation has reached its ceiling.** It can deliver 8% more at most, and the distance to
+4,400 is 52%. So the 2.09x is not a tuning gap that more room-splitting will close; it is a *unit* gap --
+Zep sends a selected subgraph and this arm sends turns -- and §13.338.2 prices the unit change at 69 points
+of verbatim evidence.
+
+### 13.338.5 What this licenses, and the one experiment it leaves
+
+**Refused:** "port the competitor to lower the cost". At a 1:1 amortisation it is a 171,000-token *increase*
+per question and a 69-point evidence loss on the only axis where the competitor was cheaper.
+
+**Licensed, and now the highest-value unrun item on this axis:** **selection inside the turns rather than
+in place of them.** `A3` proved the room can be split by route; the next 52% cannot come from splitting
+(8% left), so it has to come from sending fewer *turns* -- fewer, not summarised. That is a different
+mechanism from `40614772262`'s, which replaced turns with memories, and it is testable as one variable
+with a paired mask, because the failure mode that made Mem0 lose 69 points is precisely "the turn is gone"
+and this arm would keep it.
+
+**Deferred, with the reason:** a Zep frontier point (`A5`) stays behind that, because a bill comparison
+against a system whose ingest dominates the dispatch and whose harness fit reads 0.0% independently is not
+a comparison until the ingest is measured, and the ingest only becomes a fair line item once the
+amortisation ratio is stated beside it.
