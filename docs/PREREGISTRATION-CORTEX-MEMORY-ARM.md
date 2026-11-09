@@ -36648,34 +36648,34 @@ the part no conversion rate can talk down**, which is why the finding survives a
 
 ### 13.340.3 The census, and the reading it refuses
 
-`tools/synap-context-census.mjs` takes the vendor's own records apart. On the 342 records downloaded at the time
+`tools/synap-context-census.mjs` takes the vendor's own records apart. On the 348 records downloaded at the time
 of writing (the file is 23 MB and the tail was truncated; the parser drops the incomplete record and says so):
 
 ```
 median items/question   18
-median content chars    26881      (memory + source_evidence)
-median serialised chars 39327      (the whole record, field skeleton included)
-items with an excerpt   58.3%
-excerpt length median   2259 chars
+median content chars    27298      (memory + source_evidence)
+median serialised chars 39618      (the whole record, field skeleton included)
+items with an excerpt   58.5%
+excerpt length median   2260 chars
 
 headline                7391 tokens/question
-  as content            3.64 chars/token -> content-only
-  as whole record       5.32 chars/token -> implausible
+  as content            3.69 chars/token -> content-only
+  as whole record       5.36 chars/token -> implausible
 ```
 
 Two readings are possible and the tool reports both against **one** tokenizer band (3.0–4.5 characters per
 token for English) rather than giving the whole-record reading a wider band that would let the flattering
-interpretation through. At 3.64 the content reading is an ordinary tokenizer measurement; at 5.32 the
+interpretation through. At 3.69 the content reading is an ordinary tokenizer measurement; at 5.36 the
 whole-record reading is not one. **The published 7,391 counts `memory` plus `source_evidence`. It does not count
 the field skeleton (~3,400 tokens/ question) and it does not count the answering prompt (~5,900).**
 
-The second finding matters more than the price. **60.3% of the serialised context is verbatim excerpt and 6.2%
+The second finding matters more than the price. **59.5% of the serialised context is verbatim excerpt and 6.8%
 is the LLM summary.** This is not a compression engine spending fewer tokens on the same evidence — it is a
 system sending mostly raw text, with a short summary on top. Their prompt concedes the risk in its own words:
 *"prefer the value that appears verbatim inside the quote over the summarized phrasing"*. And **42% of items
 carry no excerpt at all**, so the instruction cannot be followed on them.
 
-Excerpt lengths cluster at 1,570–2,474 characters around a 2,259 median — a **fixed truncation window**, not
+Excerpt lengths cluster at 1,573–2,491 characters around a 2,260 median — a **fixed truncation window**, not
 natural turn length.
 
 ### 13.340.4 The gap is two aggregation categories, and a reader nobody here has tested

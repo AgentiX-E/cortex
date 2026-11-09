@@ -82,26 +82,26 @@ The intuition "7,400 tokens because they compress" is wrong, and the published r
 
 ```
 $ node tools/synap-context-census.mjs <question_records_gemini-3.8-flash.json>
-records parsed          342 (file was truncated; tail dropped)
+records parsed          348 (file was truncated; tail dropped)
 median items/question   18
-median content chars    26881
-median serialised chars 39327
-items with an excerpt   58.3%
-excerpt length median   2259 chars
+median content chars    27298
+median serialised chars 39618
+items with an excerpt   58.5%
+excerpt length median   2260 chars
 
 headline                7391 tokens/question
-  as content            3.64 chars/token -> content-only
-  as whole record       5.32 chars/token -> implausible
+  as content            3.69 chars/token -> content-only
+  as whole record       5.36 chars/token -> implausible
 ```
 
-- **60.3% of the serialised context is `source_evidence`** — verbatim excerpts.
-- **6.2% is `memory`**, the LLM-written summary.
+- **59.5% of the serialised context is `source_evidence`** — verbatim excerpts.
+- **6.8% is `memory`**, the LLM-written summary.
 - **42% of the 6,699 items carry no excerpt at all**, so those reach the reader as a summary with
   nothing to check it against. Their own prompt concedes the risk: *"prefer the value that appears
   verbatim inside the quote over the summarized phrasing"* — which is an instruction that cannot be
   followed on the 42%.
 
-Excerpt lengths cluster at 1,570–2,474 characters around a 2,259 median. That is a **fixed
+Excerpt lengths cluster at 1,573–2,491 characters around a 2,260 median. That is a **fixed
 truncation window**, not natural turn length: the system stores a summary plus up to ~2.3 kB of the
 turn it came from.
 
