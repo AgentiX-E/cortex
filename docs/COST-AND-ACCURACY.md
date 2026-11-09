@@ -240,21 +240,50 @@ completion token costs fifteen times a cached input token (3.00 against 0.20 per
 first rule measured on the one arm where it decides: a cost review that reads tokens would rank this change
 ninth, and a cost review that reads money ranks it first.
 
-Three points on the curve, all measured except the middle one, which is registered as `T2`:
+Three points on the curve, two of them now measured on the same 200 questions:
 
-| configuration | full pass | accuracy | note |
-| --- | ---: | ---: | --- |
-| `multi-session+temporal` (shipped) | **12.78 CNY** | 91.20% | artifact `42533236864` |
-| `temporal` only (`T2`, registered) | ≈9.0 CNY projected | not yet read | predicted to keep `TR`'s reasoning and drop `MR`/`KU`'s |
-| `disabled` (`T1`) | **≈7.0 CNY** | 90.25% on 200 against 90.5% | two draws, `42617201299` and `42621461902` |
+| configuration | full pass | accuracy on 200 | feature CNY on 200 |
+| --- | ---: | ---: | ---: |
+| `multi-session+temporal` (previous) | 12.78 CNY | 90.5% (181) | 2.021 |
+| **`temporal` only (adopted)** | **≈8.4 CNY projected** | **92.0% (184)** | **1.180** |
+| `disabled` (`T1`, second on the axis) | ≈7.0 CNY | 91.0% (182), 89.5% on the cold draw | 0.944 |
 
-The two discounted rows are computed by re-pricing the completion line at the full pass's own token count and
+The projected rows are computed by re-pricing the completion line at the full pass's own token count and
 holding the rest fixed, which is the only scaling this section will do: the sample's per-question completion is
 985 tokens against the full pass's 1,071, because the sample carries 28.5% of the two thinking routes where the
-file carries 49.6%, so multiplying the sample's saving by 2.5 overstates it by about a sixth.
+file carries 49.6%, so multiplying the sample's saving by 2.5 overstates it by about a sixth. **Neither projected
+row has a 500-question reading yet**, and until the confirmation dispatch lands the 91.20% belongs to the
+previous configuration rather than to the adopted one.
 
 The middle row exists because the per-capability pattern inverts this section's own prediction: across both
 draws `MR` gained 1–2 questions and `KU` 1–1.5 while **`TR` lost 1.5–2 consistently**, so the reasoning is
 worth something on exactly the route the literature said would survive trimming and worth less than nothing on
-the two it said would pay. If `T2` reproduces that, the shipped reach is pointed the wrong way and the
-strictly better configuration is one flag from the default.
+the two it said would pay. `T2` moved the reach to `temporal`, read +3 questions and −41.6% of the feature side
+against the previous configuration, and was adopted on that — with the `TR` clause of its own bar **unmet**
+(`TR` read 25.5 against 26), recorded rather than smoothed over.
+
+## 10. Buying resolution on one capability instead of the whole file
+
+Every arm so far was read on a mixed 200-question sample, where a capability-level effect is diluted by
+construction: a 4-point `MR` effect is **4.8 questions of 121** and **1.2 questions of 200**, and only the first
+survives the floor that a byte-identical prompt already produces. The selector costs money in exactly one place
+and saves it in another:
+
+| dispatch | questions | scale | projected | a file-scaled reading | at the 3.00 CNY default |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `capability=MR`, 1 run | 121 | 0.060 | **0.86** | 3.57 | passes either way |
+| `capability=MR`, 2 runs | 121 | 0.121 | **1.73** | 7.13 | **passes as 1.73, refused as 7.13** |
+| `capability=MR`, 4 runs | 121 | 0.242 | **3.45** | 14.26 | refused either way |
+| whole file, 2 runs | 500 | 0.500 | 7.13 | 7.13 | refused |
+
+The third column is what `tools/spend-projection.mjs` prints when the capability is forwarded; the fourth is what
+the same tool prints when it is not. **The gate had to learn the census**: with only `limit` and `runs` in hand it
+would have priced `I1` as a 7.13 CNY double pass and refused a 1.73 CNY dispatch, which is the "cheap and
+expensive look identical at the moment of choosing" defect one layer up from where it was fixed.
+
+Two limits on the selector, stated so the numbers above are not read as a general discount:
+
+- **It buys resolution on one capability, not on the arm.** The five-way union is available
+  (`capability=MR,TR`), but the census shares are the file's, so a union is exactly as expensive as its parts.
+- **`IE` remains the weak reading.** It is 150 of 500 questions and 30% of the file, and a 200-question screening
+  gives it 86; the selector does not change that, because the resolution limit is the bucket's own size.

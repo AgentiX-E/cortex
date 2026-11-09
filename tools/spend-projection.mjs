@@ -168,6 +168,7 @@ export function project({
   runs,
   census,
   observedCensus,
+  capability,
   observedThinkingReach,
   thinkingReach,
   prices = DEEPSEEK_PRICES,
@@ -176,16 +177,59 @@ export function project({
   requireCount('observedRuns', observedRuns);
   requireCount('limit', limit);
   requireCount('runs', runs);
-  if (observedQuestions === 0 || observedRuns === 0 || limit === 0 || runs === 0) {
+  const scoped = capability !== undefined && capability.length > 0;
+  // `limit: 0` is the workflow's spelling of "the whole file" and this tool's own default is the file's
+  // size, so both are the identity and neither is a division by zero. With a capability the question
+  // count comes from the census rather than from `limit`, which is why the guard follows it.
+  const wholeFile = limit === 0 || limit === observedQuestions;
+  const zero = scoped ? observedQuestions === 0 || runs === 0 : observedQuestions === 0 || runs === 0 || limit === 0;
+  if (zero) {
     return refuse('a zero question count or repetition count would make the projection a division by zero');
   }
 
-  const shareFailure = checkShares({ census, observedCensus });
-  if (shareFailure !== null) {
-    return refuse(shareFailure);
+  // §13.345's population selector. Two things it changes and one it refuses.
+  //
+  // It changes the question axis from "how many of the file" to "how many of this capability", and
+  // it makes the capability-share check (§13.339) meaningless in the direction it was written: a run
+  // over `MR` alone has a share of 100% by construction, so comparing its census against the observed
+  // run's would refuse every capability-scoped dispatch as unbalanced. The filter *is* the balance.
+  //
+  // It refuses `limit` alongside it, because the sampler round-robins over seven buckets: `limit=200`
+  // then `capability=MR` yields however many `MR` questions the first 200 happened to include (29),
+  // which is a property of the bucket order rather than of either input. A projection that guessed
+  // would be the model-not-a-measurement §22.68 rule two rejects.
+  let selectedQuestions;
+  if (scoped) {
+    if (!wholeFile) {
+      return refuse(
+        '`limit` and `capability` together are not projectable: the sampler round-robins over seven ' +
+          'buckets, so the surviving count is a property of the bucket order rather than of either ' +
+          'input. Dispatch `limit=0` with a capability, or the capability alone.',
+      );
+    }
+    if (observedCensus === undefined) {
+      return refuse(
+        'a capability-scoped projection needs the observed run\'s `questionsByCapability` census, and ' +
+          'the baseline carries none',
+      );
+    }
+    const missing = capability.filter((name) => !(name in observedCensus));
+    if (missing.length > 0) {
+      return refuse(
+        `the baseline census carries no ${missing.join(', ')}; it has ${Object.keys(observedCensus).sort().join(', ')}`,
+      );
+    }
+    selectedQuestions = capability.reduce((total, name) => total + observedCensus[name], 0);
+    if (selectedQuestions === 0) return refuse('the selected capabilities carry no questions in the baseline');
+  } else {
+    const shareFailure = checkShares({ census, observedCensus });
+    if (shareFailure !== null) {
+      return refuse(shareFailure);
+    }
+    selectedQuestions = limit;
   }
 
-  const questionFactor = limit / observedQuestions;
+  const questionFactor = selectedQuestions / observedQuestions;
   const runFactor = runs / observedRuns;
   const factor = questionFactor * runFactor;
 
@@ -271,7 +315,7 @@ function requireCount(name, value) {
  * One human-readable block. Kept out of `project` so the arithmetic is testable without the prose,
  * and kept here rather than in the CLI so the dispatch script prints the same lines the tool does.
  */
-export function describe(projection, { limit, runs } = {}) {
+export function describe(projection, { limit, runs, capability } = {}) {
   if (!projection.scaled) {
     return [
       `REFUSED: ${projection.reason}`,
@@ -281,7 +325,7 @@ export function describe(projection, { limit, runs } = {}) {
   const { cost, usage, factor } = projection;
   const hitShare = usage.promptTokens === 0 ? 0 : usage.cacheHitPromptTokens / usage.promptTokens;
   return [
-    `Projected spend for ${limit} questions x ${runs} runs (scale ${factor.toFixed(3)} of the observed run)`,
+    `Projected spend for ${capability === undefined ? `${limit} questions` : `capability ${capability.join('+')}`} x ${runs} runs (scale ${factor.toFixed(3)} of the observed run)`,
     `  input cached    ${(usage.cacheHitPromptTokens / 1e6).toFixed(2)}M  ${cost.cached.toFixed(2)} CNY`,
     `  input uncached  ${((usage.promptTokens - usage.cacheHitPromptTokens) / 1e6).toFixed(2)}M  ${cost.uncached.toFixed(2)} CNY`,
     `  output          ${(usage.completionTokens / 1e6).toFixed(2)}M  ${cost.output.toFixed(2)} CNY`,
@@ -326,10 +370,13 @@ async function main(argv) {
     runs: options.runs,
     census: options.census,
     observedCensus,
+    capability: options.capability,
     observedThinkingReach: report.memoryArmConfig?.reader?.thinkingRoutes?.join('+') ?? report.memoryArmConfig?.reader?.thinking,
     thinkingReach: options.thinking,
   });
-  console.log(describe(projection, { limit: options.limit, runs: options.runs }).join('\n'));
+  console.log(
+    describe(projection, { limit: options.limit, runs: options.runs, capability: options.capability }).join('\n'),
+  );
   if (!projection.scaled) {
     return 1;
   }
@@ -372,6 +419,7 @@ function parseArgs(argv) {
     else if (argument === '--runs') options.runs = Number(next());
     else if (argument === '--budget') options.budget = Number(next());
     else if (argument === '--thinking') options.thinking = next();
+    else if (argument === '--capability') options.capability = next().split(',').map((name) => name.trim().toUpperCase()).filter((name) => name !== '');
     else if (argument === '--side') options.side = next();
     else if (argument === '--help' || argument === '-h') options.help = true;
     else throw new Error(`unrecognised argument ${argument}`);
@@ -383,6 +431,7 @@ function usage() {
   return [
     'usage: node tools/spend-projection.mjs --report <artifact.json> --limit N --runs N',
     '                                      [--budget CNY] [--thinking multi-session+temporal]',
+    '                                      [--capability MR|MR,TR]',
     '                                      [--side llmUsage|feature|baseline]',
     '',
     'Projects what a dispatch will be billed, by scaling a run that already was.',

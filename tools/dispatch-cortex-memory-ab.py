@@ -939,18 +939,52 @@ def projected_spend(inputs: dict[str, str], budget: float | None) -> float | Non
         "--thinking",
         os.environ.get("CORTEX_THINKING", inputs.get("thinking", "multi-session+temporal")),
     ]
+    # A capability-scoped dispatch is priced off the census rather than the file, because the
+    # question axis stops being "what share of the file" and becomes "how many of this capability".
+    # The gate has to price the same dispatch the workflow will run, or the number it prints is a
+    # different run's bill. Here that difference decides whether the run happens at all: the `I1`
+    # dispatch is `capability=MR` at two repetitions, which is 121 questions and **1.73 CNY**, and
+    # a file-scaled projection would read the same inputs as 500 questions x 2 runs -- **7.13 CNY**
+    # -- and refuse it against the 3.00 default. The cheap experiment would be blocked by the
+    # instrument built to make cheap experiments visible. `all` is the identity and is not passed,
+    # so an unfiltered run prices as it always did.
+    #
+    # A partial `limit` together with a capability is left to the projection to refuse rather than
+    # silently overridden here: the sampler round-robins over seven buckets, so the surviving count
+    # is a property of the bucket order, and quietly dropping the operator's limit would dispatch a
+    # bigger run than the one that was asked for.
+    capability = str(inputs.get("capability", "all") or "all").strip()
+    if capability != "" and capability.upper() != "ALL":
+        arguments.extend(["--capability", capability])
     if budget is not None:
         arguments.extend(["--budget", f"{budget}"])
     completed = subprocess.run(arguments, capture_output=True, text=True, check=False)
     for line in completed.stdout.splitlines():
         print(f"spend: {line}")
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or "the projection was refused"
-        raise SystemExit(
-            f"{detail}\n"
-            f"Refusing to dispatch. A screening run costs 2.85 CNY: pass --screening. A full pass "
-            f"costs 14.26 CNY: pass --budget 20 when that is the run you mean."
+        # The projection refuses for more than one reason -- an unaffordable run, but also a pair of
+        # inputs it cannot price and a census that does not carry the named capability -- and those
+        # refusals are printed as `REFUSED: <why>` on stdout. Quoting them back is the difference
+        # between an operator who knows what to change and one who is told to buy a bigger budget
+        # for a spelling mistake.
+        refusal = next(
+            (
+                line.split("REFUSED:", 1)[1].strip()
+                for line in completed.stdout.splitlines()
+                if "REFUSED:" in line
+            ),
+            None,
         )
+        detail = refusal or completed.stderr.strip() or "the projection was refused"
+        # The ladder is advice about money, so it is appended only when money is what refused:
+        # `--screening` does not fix an unpriceable input pair, and offering it would be a guess.
+        ladder = ""
+        if refusal is None or "budget" in detail.lower():
+            ladder = (
+                "\nRefusing to dispatch. A screening run costs 2.85 CNY: pass --screening. A full "
+                "pass costs 14.26 CNY: pass --budget 20 when that is the run you mean."
+            )
+        raise SystemExit(f"{detail}{ladder}")
     return None
 
 

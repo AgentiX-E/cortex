@@ -250,3 +250,50 @@ class TestShippedArtifact:
         result = _cli("--report", str(archived), "--limit", "200", "--runs", "2")
         assert result.returncode == 0, result.stderr
         assert "2.85" in result.stdout
+
+
+class TestCapabilityScopedRuns:
+    """§13.345's population selector, on the pricing side.
+
+    A capability-scoped dispatch is a fifth of a pass, so the gate has to price it as one. Without
+    this the budget default of 3.00 CNY refuses every capability run -- a gate that fires on the
+    cheap configuration while letting the expensive one through is worse than no gate.
+    """
+
+    BASELINE = REPO / "tools" / "spend-baseline.json"
+
+    def _run(self, *args):
+        if not self.BASELINE.exists():
+            pytest.skip("the spend baseline is not present")
+        return _cli("--report", str(self.BASELINE), "--runs", "1", *args)
+
+    def test_one_capability_is_priced_from_the_census_not_from_the_file(self):
+        # `MR` is 121 of 500 questions, so the factor is 0.242 of a one-repetition pass and the total
+        # has to land under a fifth of it -- if the tool priced the file, this would read ~3.57.
+        result = self._run("--limit", "0", "--capability", "MR")
+        assert result.returncode == 0, result.stderr
+        assert "capability MR" in result.stdout
+        assert "0.8" in result.stdout
+        assert "3.5" not in result.stdout
+
+    def test_the_whole_file_is_either_zero_or_its_own_size(self):
+        # Two spellings of one state: the workflow says `limit=0` and the tool's default is the file's
+        # size. A capability projection must read the same for both or two callers price one run twice.
+        zero = self._run("--limit", "0", "--capability", "MR")
+        filesize = self._run("--limit", "500", "--capability", "MR")
+        assert zero.returncode == 0 and filesize.returncode == 0
+        assert zero.stdout.splitlines()[0] == filesize.stdout.splitlines()[0]
+
+    def test_a_sample_plus_a_capability_is_refused(self):
+        # The sampler round-robins over seven buckets, so `limit=200` then `MR` yields whatever the
+        # first two hundred questions happened to contain. A number there would be a guess dressed as
+        # a measurement, which §22.68's rule two forbids.
+        result = self._run("--limit", "200", "--capability", "MR")
+        assert result.returncode == 1
+        assert "not projectable" in result.stdout
+
+    def test_an_unknown_capability_names_the_census(self):
+        result = self._run("--limit", "0", "--capability", "XX")
+        assert result.returncode == 1
+        assert "carries no XX" in result.stdout
+        assert "ABS, IE, KU, MR, TR" in result.stdout

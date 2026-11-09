@@ -131,6 +131,84 @@ class TestProjectedSpend:
         assert "500 questions" in printed
 
 
+class TestCapabilityScopedPricing:
+    """The gate and the projection have to price the same dispatch.
+
+    A capability scoped run is priced off the observed census (`MR` is 121 of 500 questions), so a
+    projection that scaled the whole file would report 200 questions for a 121 question run. The
+    mis-pricing is not hypothetical: the selector exists so a 4.8 question effect can be read for
+    under two yuan, and at 200 questions x 2 runs the projection reads 2.85 CNY while the dispatch
+    actually buys 121 questions. Cheap and expensive would again look alike at the moment of
+    choosing -- the defect the gate was built against, one layer up.
+    """
+
+    def test_a_capability_run_is_priced_on_the_census(self, dispatch, capsys):
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR"
+        assert dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY) is None
+        printed = capsys.readouterr().out
+        assert "capability MR" in printed
+        assert "500 questions" not in printed
+
+    def test_the_whole_file_and_the_capability_are_different_numbers(self, dispatch, capsys):
+        # 121/500 x 2/4 = scale 0.121, so 14.26 CNY reads 1.73. The assertion is on the total line
+        # rather than on a substring of any line, because the per-line figures happen to contain
+        # "0.83" for the output row and a looser check would pass on the wrong number.
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR"
+        dispatch.projected_spend(inputs, 1000.0)
+        total = [line for line in capsys.readouterr().out.splitlines() if "TOTAL" in line]
+        assert len(total) == 1
+        assert "1.73" in total[0]
+
+    def test_a_partial_limit_with_a_capability_is_refused_rather_than_overridden(self, dispatch):
+        # Silently dropping `limit` here would dispatch a run bigger than the one that was asked
+        # for, so the gate passes the pair through and lets the projection refuse it by name.
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "200"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR"
+        with pytest.raises(SystemExit) as raised:
+            dispatch.projected_spend(inputs, 1000.0)
+        assert "not projectable" in str(raised.value)
+
+    def test_a_refusal_that_is_not_about_money_does_not_advise_a_budget(self, dispatch):
+        # `--screening` does not fix an unpriceable input pair. The ladder is advice about money and
+        # is offered only when money is what refused.
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "200"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "MR"
+        with pytest.raises(SystemExit) as raised:
+            dispatch.projected_spend(inputs, 1000.0)
+        assert "--screening" not in str(raised.value)
+
+    def test_the_projection_refusal_is_quoted_back_verbatim(self, dispatch):
+        # The reason lives on stdout as `REFUSED: <why>`. Dropping it leaves the operator with the
+        # generic "the projection was refused" and no way to know which input to change.
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "2"
+        inputs["capability"] = "XX"
+        with pytest.raises(SystemExit) as raised:
+            dispatch.projected_spend(inputs, dispatch.DEFAULT_BUDGET_CNY)
+        assert "carries no XX" in str(raised.value)
+
+    def test_all_is_the_identity_and_is_not_passed(self, dispatch, capsys):
+        inputs = dict(dispatch.INPUTS)
+        inputs["limit"] = "0"
+        inputs["ablation_runs"] = "4"
+        inputs["capability"] = "all"
+        dispatch.projected_spend(inputs, 1000.0)
+        printed = capsys.readouterr().out
+        assert "500 questions" in printed
+        assert "capability" not in printed
+
+
 class TestBaselineIsTheArchivedRun:
     def test_the_baseline_names_the_run_it_is_read_from(self):
         baseline = json.loads((REPO / "tools" / "spend-baseline.json").read_text())

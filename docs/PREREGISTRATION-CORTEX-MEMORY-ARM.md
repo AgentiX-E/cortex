@@ -37266,3 +37266,109 @@ Two things follow and both are on the record rather than in a commit message:
   (−35%)**, computed by re-pricing the completion line at the full pass's own token count (2.22M → 0.74M) and
   holding the input lines fixed; the confirmation run is the next round's first dispatch, and until it lands the
   91.20% belongs to the previous configuration rather than to this one.
+
+### 13.345 The population selector: `limit` is not a capability quota, and the gate had to learn the census
+
+§13.342.8's second defect is the one that stops the round: `I1`'s bar is written on `MR`, the screening sample
+carries **29** `MR` questions, and three conversions on 29 is inside the band a byte-identical prompt already
+produces on that population. The reflex repair is "buy more questions", which buys the effect and every other
+capability's questions with it. The repair the defect actually points at is **run the capability**, and it is a
+fifth of the price of the same resolution on the whole file.
+
+#### 13.345.1 What the selector is, and what it deliberately is not
+
+`CORTEX_CAPABILITY` is read once, at the top of the ablation, by `readCapabilityFilter`: empty and `all` are the
+identity, names are case-folded, a comma-separated value is a **union**, duplicates collapse, and an unknown name
+is refused with the five legal ones listed (`ABS, IE, KU, MR, TR`) rather than silently selecting nothing. The
+filter is applied between `loadLongMemEval` and the restore plan, so sampling, plan restoration and grading all
+see the smaller dataset and nothing else in the pipeline moves.
+
+Two properties are worth naming because they are what makes the reading interpretive rather than merely cheap:
+
+- **The identity is by reference.** With no filter, `restrictDatasetToCapability` returns the object it was
+  given, not a copy, so an unfiltered dispatch's population is byte-for-byte the population it was before this
+  change. A filter that returned an equal copy would be indistinguishable in behaviour and would still make every
+  previously archived run a claim about a different object.
+- **An empty dataset is its own refusal.** Selecting a capability that the file does not carry is not "a run with
+  zero questions"; it is a mis-specified dispatch, and it says so at the filter with the sample's population
+  attached. Writing that refusal is also why the module closes at **100% on all four coverage dimensions**
+  instead of 93.75%: the alternative was a `present.join(', ') || 'no questions'` fallback whose right operand
+  the pipeline could never reach, and a dead branch defended by a test would be the `v8 ignore` defect this
+  repository removed rather than reproduced.
+
+**The input ceiling paid for it.** The workflow already sat at 25 inputs, which `test_no_workflow_sits_at_the_input_ceiling`
+forbids, so `capability` was bought with `temperature`'s slot: `temperature` is now a constant forwarded by the
+workflow, exactly the precedent §13.94 and §13.115 set for other inputs. The value did not change (it is still
+`0`, still visible on the env line); what changed is that it can no longer be varied per dispatch. That is the
+right thing to spend when the alternative is an arm that cannot be read at all.
+
+#### 13.345.2 Why the spelling is `capability` alone and never `capability` plus `limit`
+
+`sampleInstances` round-robins over **seven** buckets -- `IE` is split into three sub-types and the other four
+capabilities have one each -- so `limit` is a share of every bucket rather than a quota of one capability. At
+`limit=200` that is `IE` 86, `MR` 29, `TR` 28, `KU` 28, `ABS` 29; at `limit=200` with `capability=MR` the
+surviving count is a property of the bucket order and of nothing the operator wrote. The projection therefore
+**refuses the pair by name** rather than picking one of the two readings:
+
+```
+REFUSED: `limit` and `capability` together are not projectable: the sampler round-robins over seven buckets, so
+the surviving count is a property of the bucket order rather than of either input. Dispatch `limit=0` with a
+capability, or the capability alone.
+```
+
+#### 13.345.3 The price, and the gate that would have refused the cheap run
+
+The projection scales the census rather than the file, and the difference is not cosmetic -- it is the
+difference between a run that starts and a run that is refused:
+
+| dispatch | questions | scale | projected | a file-scaled reading | at the 3.00 CNY default |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `capability=MR`, 1 run | 121 | 0.060 | **0.86** | 3.57 | passes either way |
+| `capability=MR`, 2 runs | 121 | 0.121 | **1.73** | 7.13 | **passes as 1.73, refused as 7.13** |
+| `capability=MR`, 4 runs | 121 | 0.242 | **3.45** | 14.26 | refused either way |
+
+`projected_spend` in the dispatch path passed `--limit`, `--runs`, `--thinking` and `--budget` and **not** the
+capability, so `I1` -- a 1.73 CNY dispatch -- would have been priced as a 7.13 CNY full-file double pass and
+refused by the instrument that exists to make cheap dispatches visible. That is §13.342.8's defect one layer up,
+and the same shape: a number two readers can disagree about because the thing it assumed is not in the file. The
+gate now forwards the capability when it is not `all`, leaves a partial `limit` to be refused **by name** rather
+than silently dropped (dropping it would dispatch a bigger run than the one that was asked for), and quotes the
+projection's own `REFUSED:` line back instead of a generic "the projection was refused". The money ladder
+(`--screening`, `--budget 20`) is appended **only when money is what refused**, because `--screening` does not
+fix an unpriceable input pair and offering it would be a guess dressed as advice.
+
+#### 13.345.4 The resolution the population buys, in the unit the bar is written in
+
+On 121 `MR` questions one question is **0.83pp**, the binomial sd is **3.45pp** and the 2-sd band is
+**±6.89pp**. The floor is the two-draw disagreement §13.326 measured at 16 of 500, which scales to **3.9** on
+121 -- call it **4 questions** of movement that a byte-identical prompt already produces.
+
+So the capability buys resolution where the mixed sample has none: a 4-point `MR` effect is **4.8 questions of
+121** and **1.2 questions of 200**, and only the first of those is outside the floor. It does not buy everything
+-- `IE` keeps 30% of the file and is 150 questions, so a reading on `IE` at 2 repetitions is still weak -- and it
+is why the selector is a union rather than a single name.
+
+### 13.346 `I1` re-registered on `MR` alone, with the bar above the floor
+
+§13.342.6 wrote `I1` as "`[item N]` identifier per enumerated candidate, counted by id" with a bar of **≥ 3 MR
+conversions among the ~48 MR questions**. Both halves of that sentence were wrong about the instrument: the
+screening sample carries **29** `MR` questions, not 48, and three conversions is *below* the 4-question floor that
+§13.345.4 computes for the population the arm is now run on. The treatment is unchanged and the bar moves:
+
+| field | value |
+| --- | --- |
+| id | `I1` |
+| treatment | `[item N]` prefix on every enumerated candidate, and the count taken by id rather than by string match |
+| population | `capability=MR`, 121 questions |
+| repetitions | 2 |
+| control | the run's own baseline arm -- the treatment is prompt-side and feature-only, so the pair is internal and no second dispatch is needed |
+| projected cost | **1.73 CNY** (§13.345.3), cleared by the default gate without a flag |
+| adopt if | **≥ 5 net `MR` conversions** (conversions minus regressions), i.e. above the 4-question floor |
+| reject if | **≤ 1 net conversion** |
+| between 2 and 4 | **inconclusive**, and re-run at `ablation_runs=4` (3.45 CNY) rather than re-argued |
+| guards | `IE`, `TR`, `KU`, `ABS` prompts must be byte-identical to the control's, and their accuracy unchanged: the treatment is `MR`-only, so movement anywhere else means the diff reached a request it should not have, which invalidates the pair rather than informing it |
+
+The floor is the reason for the ≥ 5, and it is worth being explicit about what that costs: the arm has to move
+five questions of 121 -- 4.1 points of `MR` -- to be believed. If the mechanism is worth less than that, this
+dispatch cannot see it and the honest outcome is "not readable at this population", which is a different sentence
+from "no effect" and will be written as such if that is what the numbers say.
