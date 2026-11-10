@@ -957,6 +957,15 @@ repair: bringing every gold turn into the `MR` prompts (98 of 121 questions to 1
 removing it is free. No run has taken the cap down and looked, so the cap experiment is registered behind the
 reader change rather than in front of it.
 
+**Round 59 divides the row, which is what this table could not do.** The prompt decomposes into
+**97.18%** evidence and **2.82%** instructions, header and question, so the two bases are 8,941 and 9,201
+tokens and every row above can be restated on whichever one its competitor published. The result is a split
+verdict rather than a ranking — dearer than all five on the content basis, 0.69x of the one all-in figure
+anyone has measured — and [`MEASURE-TOKEN-BASIS.md`](MEASURE-TOKEN-BASIS.md) is the table, `tools/token-basis.py`
+the arithmetic, and `pnpm check` recomputes it. The 2.82% is also the answer to the question this section
+leaves open: there is no prompt-engineering saving hiding in the overhead, so the only lever on the row is
+the cap.
+
 The honest sentence for the board is that this arm is **mid-table on cost and behind the leaders on accuracy**,
 and that the two facts are connected by §13.291 rather than by the cost number: the tokens are not buying
 accuracy, and more evidence did not either. Hindsight at 43.6K for 94.6% is the row that keeps "cheaper" and

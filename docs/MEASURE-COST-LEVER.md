@@ -216,3 +216,10 @@ price (−2.65 points for 0.463x, −1.05 for 0.754x) is a property of the pair,
 moves is the row that multiplies it against a competitor: **10,105 prompt tokens per correct answer**, against
 Maximem Synap's 7,740 and Mem0's published 7,203 — **1.31x** and **1.40x**, where this document's §3 read
 1.71x and 1.83x on the same two competitors.
+
+> **§6.1 (round 59) retracts both of those ratios.** They divide this arm's **whole prompt** per correct
+> answer by a competitor's **retrieved context** per correct answer, which is the defect §13.340.3 already
+> retracted once for Synap. The corrected table is in [`MEASURE-TOKEN-BASIS.md`](MEASURE-TOKEN-BASIS.md),
+> and the correction is a tool rather than a sentence: `tools/token-basis.py --check` recomputes every ratio
+> from `tools/token-basis.json` and `tools/competitor-ledger.json` in `pnpm check`, and refuses a ledger
+> cost that does not declare what it counts.

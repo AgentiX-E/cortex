@@ -474,11 +474,17 @@ read 174 turns for 46,264 characters. Raising those two costs nothing in depth a
 tokens; lowering `maxPromptCharsByRoute['multi-session']` is the cheap direction, and it is why the
 option is per route rather than global.
 
-For a published comparison, the field reports its prompt budget in tokens and other systems report
-theirs: Mem0 6,787, Zep 4,408, Contextier 2,807 mean. A 48,000-character room is roughly 12,000
-tokens, so a Cortex arm is spending about twice Mem0's budget per question. If your cost target is
-theirs, `maxPromptChars: 24_000` is the setting to measure, and `sessionBudget` expressed in `chars`
-(via `CortexSessionProvider`'s `budgetUnit`) is the unit that is comparable at all.
+For a published comparison, be careful about which quantity is being compared, because the field does
+not agree on one. Some published figures count the **retrieved evidence** only -- Mem0 6,787, Zep
+4,408 (a median), Contextier 2,807 -- and some count **everything the model is handed**. Those are
+not the same number, and dividing one by the other produces a ratio that means nothing.
+
+Cortex records both so you can pick: `promptTokensPerQuestion` is the whole prompt, and the evidence
+share is about 97% of it, so `promptChars` (delivered evidence) is the like-for-like quantity against
+a field figure. `docs/MEASURE-TOKEN-BASIS.md` has the table and `tools/token-basis.py` computes it
+from the ledger. If your cost target is a competitor's evidence budget, `maxPromptChars: 24_000` is
+the setting to measure, and `sessionBudget` expressed in `chars` (via `CortexSessionProvider`'s
+`budgetUnit`) is the unit that is comparable at all.
 
 `selfConsistency: n` multiplies the model calls by `n` on the routes it reaches and buys stability,
 not accuracy: read `voteCounts()` before and after, because a vote that is unanimous every time is

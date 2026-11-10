@@ -38552,3 +38552,102 @@ Three things would reopen it, in the order they should be attempted:
 
 What is *not* owed is a fourth dispatch of the same configuration. The pair exists, the reading is quotable, and it
 says the mechanism is worth less at the shipping room than at the room it was registered in.
+
+## 13.359 The cost ratio was two different quantities, and the 2.8% is the argument
+
+Round 58's competitive section published **1.31x against Synap** and **1.40x against Mem0** as the
+price of a correct answer. Both divide this arm's **whole prompt** per correct answer by a
+competitor's **retrieved context** per correct answer. §13.340.3 had already retracted exactly this
+for Synap — a 1.64x became "~1.0x all-in" — and the defect returned one round later with a different
+competitor's name on it, because the retraction was a sentence and a sentence has no arithmetic in it
+to re-run.
+
+### 13.359.1 The decomposition, and why it is 2.8% and not 24%
+
+`42533236864`'s per-question records carry both quantities already: `promptChars` is the delivered
+**evidence** and `deliveredPromptChars` is the **whole prompt**, and `question-record.ts` asserts the
+ordering between them. Divided:
+
+| quantity | per question | share |
+| --- | ---: | ---: |
+| evidence | 8,941 tokens / 34,447 characters | **97.18%** |
+| instructions, session header, question | 260 tokens / 1,000 characters | 2.82% |
+| whole prompt | 9,201 tokens / 35,447 characters | 100% |
+
+So the basis error was worth **2.8% of the bill**, not the 24% the mixed rows implied, and the
+conclusion is the uncomfortable one: the arithmetic was wrong by 2–5% and the claim it supported was
+wrong because it was a quotient of two different quantities. **The prompt is the evidence.** There is
+no prompt-engineering saving hiding in the overhead, which closes the last cheap route out of the
+cost problem.
+
+Two further readings from the same division. The room is filled to **98.42%** of its cap overall and
+to **99.7%** on `MR` and `TR`, which is the artifact-level confirmation of §1's `windowComposition`
+argument that the cost is the cap rather than the selection. And the split is taken at the run's own
+**3.8528 characters per token**, recorded rather than assumed, because that rate is what makes the
+division falsifiable.
+
+### 13.359.2 The table, on one basis per row
+
+`tools/token-basis.py` divides by the row's own basis. Our figure on that basis, our figure on the
+corrected per-correct axis (accuracy applied to **both** sides), and the caveat the ledger's own
+dialects force:
+
+| id | basis | theirs | ours | ratio | per-correct |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `contextier-context` | context | 2,807 | 8,941 | **3.19x** | 3.20x |
+| `mem0-v3-context` | context | 6,787 | 8,941 | **1.32x** | 1.35x |
+| `mem0-apr2026-context` | context | 6,800 | 8,941 | **1.31x** | 1.36x |
+| `synap-context` | context | 7,400 | 8,941 | **1.21x** | 1.27x |
+| `zep-context` | context | 4,408 | 8,941 | **2.03x** | 2.01x |
+| `synap-allin` | **prompt** | ≈13,400 | 9,201 | **0.69x** | 0.72x |
+
+Four rows keep their direction and one changes it. On the context basis this arm is dearer than all
+five, so **re-basing did not rescue the efficiency claim** — 8,941 against 2,807 is 3.19x, the same
+order as the 3.28x the uncorrected pair printed. On the prompt basis exactly one comparison exists,
+because Synap is the only competitor whose full prompt this repository measured rather than read, and
+we are 0.69x of it. The honest summary is that split, stated as a split, rather than resolved in
+whichever direction the round needed.
+
+### 13.359.3 Contextier is the row that decides the next mechanism
+
+**91.6% at 2,807** against this arm's 91.05% at 8,941 — cheaper and higher. Matching their bill means
+a **0.31x** cut in delivered evidence, and §2's room curve measures what cuts cost: 0.463x costs 2.65
+points, 0.25x costs 3.04. Interpolated, 0.31x lands at about **−2.9 points**, i.e. ≈88.2% at their
+cost, where their configuration reads 91.6%.
+
+That interpolation is labelled as one — it is not a dispatch — but its direction is what matters and
+it is negative and useful: **the remaining efficiency gap is architectural.** No setting of
+`maxPromptCharsByRoute` reaches their cost/accuracy point, so the next mechanism has to change what is
+selected or extracted rather than how much of it is admitted. That is the first time this repository
+has had arithmetic behind that sentence instead of an intuition from their blog post.
+
+### 13.359.4 The gate, and the ledger field that makes it possible
+
+`tools/token-basis.py` runs as `pnpm token:check` immediately after `pnpm registration:check`, and the
+pairing is the round's actual product: `registration:check` refuses a bill measured on a configuration
+the arm no longer runs (§13.357), and `token:check` refuses a ratio whose two sides do not count the
+same thing. Both defect classes were found by a person reading two records against each other; both
+are now arithmetic that runs without one.
+
+The ledger gained a `cost` block with six required fields — `id`, `tokens`, `basis`, `statistic`,
+`tokenizer`, `source` — on the rule it already applied to `score`: a number without its conditions is
+not evidence. A missing `basis` is refused rather than defaulted, because a default is a guess about
+what somebody else counted and the guess would be invisible in every table that followed. `kind` on a
+cost block overrides the entry's, which is how the Synap all-in row is marked `ours`.
+
+`--check` needs no artifact: the committed reading carries the three primitives and the derived
+values, and the check re-derives the second from the first. A hand edit of `evidenceTokens` fails; a
+ledger row that changes without re-recording fails; a document that quotes a ratio other than the one
+the records produce fails, through the `<!-- token-ratio:id -->` marker `docs-crosscheck.mjs`'s
+convention already established for criteria.
+
+### 13.359.5 What this round does not change
+
+**The accuracy gap.** 91.05% against Synap's 95.6% is untouched, and §13.341's oracle ceiling says the
+2.7 points above 92.9% cannot come from retrieval at all. Nothing here is a mechanism, so the queue
+stays empty and no dispatch is owed or queued.
+
+**The completion figure.** 97%, unchanged, for the same reason as last round: instrument work does not
+add capability. What it adds is that a *published* number can no longer contradict its own records
+without the build saying so, which is the third round in a row where the deliverable was the ability
+to be wrong out loud.
