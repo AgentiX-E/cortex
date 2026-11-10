@@ -38166,6 +38166,13 @@ the reason for the registration that follows, rather than a note:
 | --- | --- | --- |
 | `V4` | a paired arm verdict is **one implementation**: given two artifacts and a capability, it pairs by question id, refuses unequal repetitions or non-identical `evidenceChars` when the mechanism does not change retrieval, and computes conversions, regressions, the control-perfect set from the **masks**, both exact tests, and the bar's clause-by-clause result | a verdict quoted from hand arithmetic over two artifacts, or a bar clause whose population comes from a `perCapability` field instead of the masks |
 
-It is registered rather than built in this round because the two readings it would have covered are
-already recorded, with reproduction snippets in `docs/MEASURE-CONFLICT-SURFACING.md` §6; what it
-prevents is the third instance.
+It is built in the round that registers it, because a rule about not trusting hand arithmetic is worth
+exactly what its implementation is worth. `packages/cortex-eval/src/arm-verdict.ts` (19 tests,
+**100% statements / branches / functions / lines**) holds the statistics and the six refusals;
+`tools/arm-verdict.mjs` (11 tests, `tools/__tests__/test_arm_verdict.py`) holds the projection from a
+report to the masks — the half the two wrong claims actually got wrong. Both test fixtures are twelve
+questions cut from `42355323615` and `42758152902`, so the published reading of §13.354.1 is asserted
+against a pair of committed files rather than described.
+
+`docs/MEASURE-CONFLICT-SURFACING.md` §6 is the reproduction: one command, and its verbatim output is
+the table in §13.354.1.

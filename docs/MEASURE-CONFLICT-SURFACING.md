@@ -260,10 +260,53 @@ one `§13.354.4` registers a requirement for.
 
 ## 6. Reproduction
 
-Reach (§2), on the archived artifact and at zero cost:
+Both readings, from the two artifacts, at zero cost — and the first command is the tool `§13.354.5`
+registers as `V4`, because the numbers in §4 and §5 are the ones two hand readings got wrong:
 
 ```
-pnpm --filter @agentix-e/cortex-memory build
+pnpm --filter @agentix-e/cortex-eval build
+node tools/arm-verdict.mjs \
+  --control run-42355323615/benchmark-cortex-memory-ablation-report.json \
+  --arm art-42758152902/benchmark-cortex-memory-ablation-report.json \
+  --capability KU --require-identical-evidence --bar conversions=3,falsifier=2
+```
+
+which prints, verbatim:
+
+```
+questions 72, cells 288
+passes 255 -> 260  (88.54% -> 90.28%, +1.74 points)
+cells 16 improved / 11 worsened, exact McNemar p = 0.4421
+questions up/down sign test p = 1.0000
+control-perfect 62
+conversions 4
+  ce6d2d27   0000 -> 1111   0 -> 4
+  9ea5eabc   0000 -> 1111   0 -> 4
+  ed4ddc30   0000 -> 1111   0 -> 4
+  59524333   0000 -> 0010   0 -> 1
+regressions 5
+  6a1eabeb   1111 -> 0110   4 -> 2
+  89941a93   1111 -> 1010   4 -> 2
+  f9e8c073   1101 -> 0000   3 -> 0
+  6071bd76   1111 -> 1011   4 -> 3
+  07741c45   1111 -> 0111   4 -> 3
+control-perfect regressions 4
+  6a1eabeb   1111 -> 0110   4 -> 2
+  89941a93   1111 -> 1010   4 -> 2
+  6071bd76   1111 -> 1011   4 -> 3
+  07741c45   1111 -> 0111   4 -> 3
+bar: conversions met=true no-regression met=false falsified=true -> REJECTED
+```
+
+`--require-identical-evidence` is the precondition §4.4 states, and the tool refuses the pair with
+exit 3 rather than reading it when that precondition fails. `6a1eabeb 4 -> 2` and `89941a93 4 -> 2`
+are the falsifier; `f9e8c073 3 -> 0` is the largest single loss and does **not** fire it, because the
+falsifier's population is the questions the control answers in **every** repetition and `1101` is not
+one of them.
+
+Reach (§2), which needs no dispatch either:
+
+```
 node -e "
 const { conflictBlock } = require('./packages/cortex-memory/dist/conflict.js');
 const A = require('./run-42355323615/.../benchmark-cortex-memory-ablation-report.json');
@@ -273,24 +316,8 @@ for (const q of A.questions.filter((q) => q.capability === 'KU')) {
 }"
 ```
 
-The paired readings of §4 and §5, against the two runs' masks (`featureCorrectByRun`, one string of
-`0`/`1` per repetition, in `questions[]` order):
-
-```
-node -e "
-const A = require('./art-42758152902/benchmark-cortex-memory-ablation-report.json');
-const C = require('./art-42355323615/benchmark-cortex-memory-ablation-report.json');
-const ids = A.questions.map((q) => q.questionId);
-const ci = new Map(C.questions.map((q, i) => [q.questionId, i]));
-const FA = A.ablation.featureCorrectByRun, FC = C.ablation.featureCorrectByRun;
-let up = 0, down = 0;
-for (const [j, id] of ids.entries()) for (let r = 0; r < FA.length; r += 1) {
-  const a = FA[r][j] === '1', c = FC[r][ci.get(id)] === '1';
-  if (a && !c) up += 1; else if (c && !a) down += 1;
-}
-console.log(ids.length, up, down);"
-```
-
-`16` improved and `11` worsened is §5's table; the exact McNemar p-value on those two counts and the
-`evidenceChars` equality check are the two numbers every reading in this document depends on, and both
-are cheap enough to recompute rather than trust.
+Every number in §2 comes from that loop, run against the archived artifact. The eleven tests on the
+tool (`tools/__tests__/test_arm_verdict.py`) and the nineteen on the statistics
+(`packages/cortex-eval/src/__tests__/arm-verdict.test.ts`) both assert against a twelve-question
+fixture cut from these two artifacts, so a change in either implementation breaks a test rather than a
+document.
