@@ -73,6 +73,12 @@ ORACLE_VARIABLE = "CORTEX_MEMORY_ORACLE"
 # written on every dispatch, so a run can never inherit the previous experiment's treatment.
 REPLY_REPAIR_VARIABLE = "CORTEX_MEMORY_REPLY_REPAIR"
 
+# The related-statements block (§13.352). A repository variable for the same reason the two above
+# are -- this workflow sits one below GitHub's ceiling of 25 dispatch inputs and
+# `test_dispatch_inputs.py` forbids sitting at it -- and with the same protection: written on every
+# dispatch, so a run can never inherit the previous experiment's treatment.
+CONFLICTS_VARIABLE = "CORTEX_MEMORY_CONFLICTS"
+
 # The values `readReplyRepair` in `cortex-eval` accepts, in the order the artifact spells them.
 REPLY_REPAIRS = ("off", "commitment", "shape", "both")
 
@@ -787,6 +793,24 @@ def write_variable(name: str, value: str) -> str:
     return value
 
 
+def conflicts_switch(environ: dict[str, str] | None = None) -> str:
+    """`'1'` when this dispatch prints the related-statements block, `'0'` otherwise.
+
+    Read from the dispatcher's environment for the reason `oracle_switch` is: `--set` is checked
+    against the registered table and this is deliberately not a workflow input. Strict on the value,
+    because a typo that fell back to `0` would produce a control reading under a dispatch that asked
+    for the treatment -- and the artifact would say `conflicts: false`, which is true and useless.
+    """
+    raw = ((environ if environ is not None else os.environ).get(CONFLICTS_VARIABLE) or "").strip()
+    if raw in ("", "0", "1"):
+        return raw or "0"
+    raise SystemExit(
+        f"{CONFLICTS_VARIABLE} must be 0 or 1 (or unset): got {raw!r}. An unrecognised value is "
+        "refused rather than defaulted, because a dispatch that silently ran the control would "
+        "publish the control reading under the treatment's name."
+    )
+
+
 def oracle_switch(environ: dict[str, str] | None = None) -> str:
     """`'1'` when this dispatch grades gold evidence, `'0'` otherwise.
 
@@ -1060,11 +1084,16 @@ def main(argv: list[str] | None = None) -> int:
     # Both conditions join the declaration on the same rule: the name is the **artifact's** field, and
     # only when the condition is on -- declaring a field the run left at its registered value would be
     # the "names a field this run did not move" case the gate reports as an intention.
+    conflicts = conflicts_switch()
     declared = sorted(
         {
             *declared,
             *(("evidenceSource",) if oracle == "1" else ()),
             *(("replyRepair",) if repair != "off" else ()),
+            # The artifact's own field, declared only when the condition is on: a `conflicts` of
+            # `false` is the registered arm, and declaring it would be the "names a field this run
+            # did not move" case the gate reports as an intention.
+            *(("conflicts",) if conflicts == "1" else ()),
         }
     )
     declare_departures(declared)
@@ -1073,6 +1102,10 @@ def main(argv: list[str] | None = None) -> int:
     # it when the job starts, and a stale `1` from a previous experiment would turn this run into a
     # ceiling measurement nobody asked for. Written even when it is `0`.
     write_variable(ORACLE_VARIABLE, oracle)
+    # Written before the dispatch for the same reason, and unconditionally: a `1` left over from the
+    # previous experiment would turn the next control dispatch into an unannounced treatment of this
+    # section, and nothing in the artifact would say the value had been inherited.
+    write_variable(CONFLICTS_VARIABLE, conflicts)
     print(f"{ORACLE_VARIABLE} = {oracle}{' *' if oracle == '1' else ''}")
     # Written unconditionally for the same reason, and it is the second variable that has to be: a stale
     # `both` left behind by the last experiment would administer a treatment this dispatch did not name.
