@@ -38029,14 +38029,143 @@ earlier one is the value it replaced."*
 - **Dispatch.** `capability=KU`, four repetitions, `conflicts` declared. Projected 2.05 CNY, lower
   bound; the first run of this arm was projected 1.73 and billed 5.87, so the budget ceiling is 12.
 
-### 13.353.4 The harness defect this run found
+### 13.353.4 The arm's `baseline` line, and the claim this section first made about it
 
-The reference pipeline answered **0 of 72** under `capability=KU`: 58 declines and 14 wrong answers,
-against 65 of 72 correct on the same questions in the full-file run. So a capability-scoped dispatch
-has **no usable within-run control**, and this comparison had to be made against the archived
-full-file artifact — legitimate here only because `evidenceChars` is equal on all 72 questions, which
-makes the delivered evidence identical and the block the only difference.
+**Corrected in §13.354.5.** This section first called this a harness defect. The reading behind it was
+that the reference pipeline "answered 0 of 72 under `capability=KU` … against 65 of 72 correct on the
+same questions in the full-file run", and that comparison is invalid: the 65 is the **feature** arm's
+best repetition, and the archived full-file run's `baselineByCapability.KU` reads `0 / 0 / 0`. The
+reference pipeline is a lexical implementation and this capability is outside it in every run, scoped
+or not (0 of 72 archived, 0 of 72 in `42754985453`, 1 of 72 in `42758152902`).
 
-It is registered as a harness defect rather than worked around: every capability-scoped arm in this
-campaign (`§13.342.8`'s `MR` runs included) carries it, and a scoped run's `baseline` line is
-currently a reading of the filter and not of the reference pipeline.
+What survives is the protocol rather than the defect: a capability-scoped arm's `baseline` line
+measures a pipeline that cannot answer the capability, so the only usable control is the **archived
+feature arm paired question for question**, and that pairing is admissible only when `evidenceChars` is
+identical on every question, which makes the delivered evidence identical and the mechanism the only
+difference. That precondition held on 72 of 72 in both administrations below.
+
+## 13.354 The second administration: four conversions, the falsifier, and the shelving
+
+Run `42758152902` (commit `3bd2b7c`) administered §13.353.3's block on the same 72 `KU` questions, four
+repetitions, `conflicts=1` declared. `docs/MEASURE-CONFLICT-SURFACING.md` §5 is the reading; this
+section registers the verdict, the two instrument corrections the pair of administrations forced, and
+what the queue holds afterwards.
+
+### 13.354.1 The reading
+
+`evidenceChars` is identical to the archived control on **72 of 72**, so the only difference between
+the two runs is the block's 1.1k characters. Masks are per repetition, `questions[]` order, control ←
+`42355323615`.
+
+| question | control | arm | | question | control | arm |
+| --- | :---: | :---: | --- | --- | :---: | :---: |
+| `ce6d2d27` | `0000` | **`1111`** | | `6a1eabeb` | `1111` | `0110` |
+| `9ea5eabc` | `0000` | **`1111`** | | `89941a93` | `1111` | `1010` |
+| `ed4ddc30` | `0000` | **`1111`** | | `6071bd76` | `1111` | `1011` |
+| `59524333` | `0000` | **`0010`** | | `07741c45` | `1111` | `0111` |
+| `c4ea545c` | `1001` | `1011` | | `f9e8c073` | `1101` | `0000` |
+| `c7dc5443` | `1111` | `1111` | | `852ce960` | `0101` | `1010` |
+
+`KU` **255 → 260 of 288**: 88.54% → **90.28%**, **+5 passes / +1.74 points**. The direction of that
+gain is not measurable at this n, and both counts that set the resolution say so:
+
+- **repetition cells**: 16 improved, 11 worsened — exact McNemar two-sided **p = 0.442**;
+- **questions**: 5 up, 5 down — exact sign test two-sided **p = 1.000**.
+
+So the mean moves because the conversions are worth +4, +4, +4, +1, +1 repetitions and the regressions
+cost −2, −2, −3, −1, −3. Magnitude asymmetry, not a direction.
+
+### 13.354.2 The bar, clause by clause — and the population it named against the population it has
+
+| clause | registered | observed | |
+| --- | --- | --- | :---: |
+| conversions of the four reachable | **≥ 3** | **4** — `ce6d2d27`, `9ea5eabc`, `ed4ddc30`, and `59524333` at `0010`, which §13.352.2 priced as *reach* and the first administration left at `0000` | **met** |
+| no regression among the control-perfect questions | "the 65 questions the control answers in every repetition" | the artifact holds **62** such questions, and **4** of them lost at least one repetition: `6a1eabeb` −2, `89941a93` −2, `6071bd76` −1, `07741c45` −1 | **failed** |
+| falsifier: any regression in two or more repetitions | — | `6a1eabeb` and `89941a93` each lost **two** | **triggered** |
+
+The population error is `§13.353.3`'s, and it is the same mistake as `§13.353.4`'s in a different
+field: 65 is `featureByCapability.KU.max` in the archived run, 62 is `.min`, and "answers in every
+repetition" is a count only the per-question masks can give. `MEASURE-CONFLICT-SURFACING.md` §4.4
+records it against the artifact; it is corrected here rather than re-stated, because a bar whose
+population is a metric field will keep naming a number the masks disagree with.
+
+**Verdict: rejected.** The first clause passes for the first time in this campaign — the block does to
+the four reachable questions what §13.352 predicted, including the one it had only reached — and the
+falsifier fires anyway. That is the reason the bar has two clauses: the single-clause bar of §13.352.3
+could not tell "converted three" from "converted three and broke five", and this one refuses a
+mechanism whose conversions are paid for elsewhere **even when the net is +5 passes**. A criterion that
+would have accepted this run is a criterion that accepts a trade.
+
+### 13.354.3 Shelved rather than registered a third time, on relocation rather than size
+
+The reason is not that 1.74 points is small. It is that the cost **moved** when one sentence of the
+block changed:
+
+| | `42754985453` (invitational close) | `42758152902` (directional close) |
+| --- | --- | --- |
+| control-perfect losses | `6a1eabeb` 4→0, `89941a93` 4→0, `c7dc5443` 4→0 | `6a1eabeb` 4→2, `89941a93` 4→2, `6071bd76` 4→3, `07741c45` 4→3 |
+| partially-correct losses | `f9e8c073` 3→0, `852ce960` 2→0 | `f9e8c073` 3→0 |
+| recovered | — | `c7dc5443` back to 4, `852ce960` back to its count |
+
+Two of the four questions the second run pays on were not paying in the first, and two that were paying
+stopped. A cost that relocates when the wording changes is not a cost the mechanism models; it is what
+a 1.1k insertion into a 47.5k prompt does to a 72-question population whose own repetition spread is
+2.52 questions. A third registration would fit the flip sequence, and the campaign has already paid
+**11.74 CNY** for two administrations.
+
+What is kept, because it is measured: the reach decomposition of §13.352.2, the value gate's counts
+(§13.353.3), and the conversion of all four reachable questions. The option stays exported and default
+off, so the mechanism can be re-read at zero cost by anyone who wants to test a *different* population
+against it.
+
+### 13.354.4 What the queue holds, and what the next candidate has to satisfy
+
+With `H2` closed by two rejections, every entry in §13.351.4's table is now at-or-below its own
+population's null or out of mechanisms:
+
+| population | mechanism | ceiling | null | state |
+| --- | --- | ---: | ---: | --- |
+| `MR` | deterministic summation | 2.25 | 4.16 | cancelled (§13.351.5) |
+| `MR` | entity grouping (`H3`) | 4.00 | 4.16 | cancelled (§13.351.5) |
+| `MR` | decline repair (`E3.2`) | 3.75 | 4.16 | re-priced, behind the head of the queue |
+| `KU` | stale-value selection (`H2`) | 6.00 | 2.52 | **rejected twice** (§13.353.1, §13.354.2) |
+| `MR` | under-count repair | 6.00 | 4.16 | above the null, **no mechanism proposed**; `§13.108`'s session-unit arm moved under-counts 15 → 19 |
+
+So **no registered mechanism sits above its own noise with a mechanism behind it**, and the next
+increment has to be a new candidate rather than another dispatch. The requirement is registered here so
+that the next proposal is priced before it is built:
+
+1. **A ceiling measured at zero cost**, on an artifact already paid for, before any dispatch — the form
+   §13.349, §13.351 and §13.352.2 established.
+2. **A population at least 2 sd of its own capability**, stated in questions against that capability's
+   measured spread, not against a convention.
+3. **A two-clause bar** by construction: a population clause the mechanism is supposed to move, and a
+   non-target clause it must not pay on. §13.354.2 is the evidence that one clause cannot express this.
+4. **An admissible control** — equal repetitions, and identical delivered evidence when the mechanism
+   does not change retrieval, both checked before the reading is taken.
+
+The reach reading also says where *not* to look next: on the four reachable questions the comparison is
+now in the prompt and three of four convert, so `KU`'s remaining failures on this axis are the reader's
+resolution of a comparison it can see, not a statement the prompt is missing.
+
+### 13.354.5 The instrument corrections this pair forced, and the tool that is now registered
+
+Two claims from these two readings were wrong in the same way — a number read from a field that does
+not mean what the sentence needed:
+
+1. `§13.353.4` compared the arm's **baseline** line against the **feature** arm's best repetition and
+   called the difference a harness defect. It is not: the baseline is 0 of 72 on `KU` in the archived
+   full-file run as well.
+2. `§13.353.3`'s bar named **65** control-perfect questions, which is the feature arm's `max`; the
+   masks say **62**.
+
+Both were produced by hand arithmetic over two artifacts, and both are now corrected in place. That is
+the reason for the registration that follows, rather than a note:
+
+| id | claim | falsifier |
+| --- | --- | --- |
+| `V4` | a paired arm verdict is **one implementation**: given two artifacts and a capability, it pairs by question id, refuses unequal repetitions or non-identical `evidenceChars` when the mechanism does not change retrieval, and computes conversions, regressions, the control-perfect set from the **masks**, both exact tests, and the bar's clause-by-clause result | a verdict quoted from hand arithmetic over two artifacts, or a bar clause whose population comes from a `perCapability` field instead of the masks |
+
+It is registered rather than built in this round because the two readings it would have covered are
+already recorded, with reproduction snippets in `docs/MEASURE-CONFLICT-SURFACING.md` §6; what it
+prevents is the third instance.

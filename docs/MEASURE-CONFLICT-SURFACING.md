@@ -92,21 +92,6 @@ in the store: §13.351.7 measured that the gold turns are carried, and this docu
 pair is one sentence each. The mechanism moves the comparison from the reader to the prompt. Whether
 the reader then performs it is the dispatch's question, and it is unanswered.
 
-## 5. Reproduction
-
-```
-pnpm --filter @agentix-e/cortex-memory build
-node -e "
-const { conflictBlock } = require('./packages/cortex-memory/dist/conflict.js');
-const A = require('./run-42355323615/.../benchmark-cortex-memory-ablation-report.json');
-for (const q of A.questions.filter((q) => q.capability === 'KU')) {
-  const block = conflictBlock(q.question, q.turns.map((t) => ({ content: t.text })));
-  console.log(q.questionId, block.length, block.includes(q.groundTruth ?? ''));
-}"
-```
-
-Every number in §2 comes from that loop, run against the archived artifact.
-
 ## 4. The first run that administered it: three conversions and five regressions
 
 Run `42754985453` — 72 `KU` questions, 4 repetitions, `capability=KU`, `limit=0`, the registered arm
@@ -175,14 +160,137 @@ The registered bar was **≥ 3 of 4 stable conversions**, and this run met it on
 failed it on the sentence that followed: *no capability worse than 2 sd of its own spread*. `KU` fell
 **4.51 points** against a 3.50-point 2 sd, on identical evidence. **The mechanism as registered is
 rejected.** What is registered next is the directional block of §4.1 with the same target set and a
-bar that cannot be met by a trade: **≥ 3 conversions and no regression among the 65 questions the
-control answers in every repetition**, falsifier any regression in two or more repetitions.
+bar that cannot be met by a trade: **≥ 3 conversions and no regression among the control-perfect
+questions**, falsifier any regression in two or more repetitions. (The bar named that population as 65
+questions; §4.4 corrects it to **62**, and §5.1 evaluates it on the corrected count.)
 
-### 4.4 What the run also showed, about the instrument
+### 4.4 The arm's own baseline line, and the claim this section first made about it
 
-The reference pipeline answered **0 of 72** under `capability=KU` — it declined on 58 and answered
-the other 14 wrong, against 65 of 72 correct in the full-file run. So a capability-scoped dispatch
-has **no usable within-run control**, and this section's comparison is against the archived
-full-file artifact on byte-identical evidence rather than against the arm's own baseline. That is
-recorded as a defect of the harness rather than of this mechanism: every capability-scoped arm in
-this campaign would have carried it.
+The arm's reference pipeline answered **0 of 72** under `capability=KU` (58 declines, 14 wrong), which
+looks like a broken control — and this section first read it as one, by comparing it against "65 of 72
+correct in the full-file run". That comparison is wrong, and the artifacts say so in two fields each:
+
+| run | reference pipeline, `KU` | cortex-memory, `KU` (min / mean / max over repetitions) |
+| --- | ---: | --- |
+| archived full file `42355323615` | **0** of 72 | 62 / 63.75 / **65** of 72 |
+| scoped arm `42754985453` | **0** of 72 | 59 / 60.5 / **62** of 72 |
+| scoped arm `42758152902` | **1** of 72 | 63 / 65 / **68** of 72 |
+
+The **65 was the feature arm's best repetition, not the baseline's**. The baseline scores **0 of 72 on
+`KU` in the full-file run too** — it is a lexical pipeline and this capability is entirely outside it —
+so the scoped arms' `0` and `1` are not a filter artifact and there is **no harness defect here**. What
+is true is weaker and has to be stated as the reading protocol instead: a capability-scoped arm's
+`baseline` line measures a pipeline that cannot answer this capability at all, so the only usable
+control is the **archived feature arm**, paired question for question, and that pairing is admissible
+only because `evidenceChars` is identical on all 72 — which makes the delivered evidence identical and
+the inserted block the only difference between the two runs.
+
+Two things follow, and the second one is a correction to `§13.353.4`. The comparison above is
+legitimate on its own stated precondition rather than as a workaround. And the earlier "every
+capability-scoped arm carries it" claim is withdrawn: 62 of 72 is what the feature arm's `min` field
+reads, 65 is its `max`, and only a field read across repetitions can tell those apart — which is the
+same mistake, one artefact over, that `§13.353.3`'s bar made when it wrote "the 65 questions the
+control answers in every repetition" for a population that is **62**.
+
+## 5. The second run: four conversions, a falsifier, and why the mechanism is shelved
+
+Run `42758152902`, commit `3bd2b7c` — the same 72 `KU` questions, 4 repetitions, `capability=KU`, the
+directional closing line of §4.1 and the value gate of §4.2. `evidenceChars` is again identical to the
+archived control on **72 of 72**, so this is the same experiment with one sentence and one gate moved.
+
+| question | control | arm | | question | control | arm |
+| --- | :---: | :---: | --- | --- | :---: | :---: |
+| `ce6d2d27` | `0000` | **`1111`** | | `6a1eabeb` | `1111` | `0110` |
+| `9ea5eabc` | `0000` | **`1111`** | | `89941a93` | `1111` | `1010` |
+| `ed4ddc30` | `0000` | **`1111`** | | `6071bd76` | `1111` | `1011` |
+| `59524333` | `0000` | **`0010`** | | `07741c45` | `1111` | `0111` |
+| `c4ea545c` | `1001` | `1011` | | `f9e8c073` | `1101` | `0000` |
+| `c7dc5443` | `1111` | `1111` | | `852ce960` | `0101` | `1010` |
+
+`KU` **255 → 260 of 288**: 88.54% → **90.28%**, **+5 passes / +1.74 points**, and the sign of that
+gain is not evidence of anything, because the count of questions that moved is symmetric:
+
+- **repetition cells**: 16 improved, 11 worsened, exact McNemar two-sided **p = 0.442**;
+- **questions**: 5 up, 5 down, exact sign test two-sided **p = 1.000**.
+
+### 5.1 The registered bar, evaluated
+
+`§13.353.3` registered two clauses and a falsifier, and the run answers all three:
+
+| clause | registered | observed | |
+| --- | --- | --- | :---: |
+| conversions of the four reachable | **≥ 3** | **4** — and `59524333` converts for the first time (`0010`), which §2 priced as reach *without* conversion in the first run | **met** |
+| no regression among the control-perfect questions | 65 named, **62** in the artifact | **4** of 62 lost at least one repetition: `6a1eabeb` −2, `89941a93` −2, `6071bd76` −1, `07741c45` −1 | **failed** |
+| falsifier: any regression in two or more repetitions | — | `6a1eabeb` and `89941a93` each lost **two** | **triggered** |
+
+**Verdict: rejected.** The first clause passed for the first time in this campaign — the block does
+what it claims on the population it reaches, and `59524333` at `0010` is the fourth of four — and the
+falsifier fired anyway. That is the two-clause bar doing the job it was written for: the first run's
+single-clause bar could not distinguish "converted three" from "converted three and broke five", and
+this one refuses a mechanism whose conversions are paid for elsewhere even when the net moves **up**.
+
+### 5.2 The repair worked, and the cost moved rather than shrank
+
+The directional line of §4.1 was written for three named regressions and it repaired them: `c7dc5443`
+`0000` → `1111` (fully recovered), `852ce960` `0000` → `1010` (back to its control count), `6a1eabeb`
+`0000` → `0110` (half recovered). What it did not do is remove the cost — it moved it:
+
+| | first run (`42754985453`) | second run (`42758152902`) |
+| --- | --- | --- |
+| control-perfect questions broken | `6a1eabeb`, `89941a93`, `c7dc5443` (4→0) | `6a1eabeb`, `89941a93` (−2 each) |
+| attenuated by one repetition | — | `6071bd76`, `07741c45` (**new**) |
+| partially-correct question lost | `f9e8c073` 3→0, `852ce960` 2→0 | `f9e8c073` 3→0 (**unchanged**) |
+
+Two of the four questions the second run pays on (`6071bd76`, `07741c45`) were **not** paying in the
+first run, and two that were paying have stopped. A cost that relocates when one sentence of a 1.1k
+block changes is not a cost the block models; it is what a 2.3% insertion into a 47.5k prompt does to a
+population of 72 questions with a 2.52-question null. That is the reason this mechanism is **shelved
+rather than re-registered a third time**: `§13.353.3`'s bar is a correct bar, the mechanism has now
+been given two administrations and 11.74 CNY, and fitting a third wording to the same 72 questions
+would be fitting the sequence of flips above.
+
+### 5.3 What survives, and it is measured rather than hoped for
+
+The option stays, default off, because three of its readings are durable: the reach decomposition of §2
+(four of seven, three distinct reasons, none of them a threshold), the value gate's population counts
+(§4.2), and the conversion of all four reachable questions — the last of which says the *comparison*
+is now in the prompt and that the failures that remain on this axis are **the reader's resolution of a
+comparison it can see**, not a missing statement. That is a different next mechanism, and it is the
+one `§13.354.4` registers a requirement for.
+
+## 6. Reproduction
+
+Reach (§2), on the archived artifact and at zero cost:
+
+```
+pnpm --filter @agentix-e/cortex-memory build
+node -e "
+const { conflictBlock } = require('./packages/cortex-memory/dist/conflict.js');
+const A = require('./run-42355323615/.../benchmark-cortex-memory-ablation-report.json');
+for (const q of A.questions.filter((q) => q.capability === 'KU')) {
+  const block = conflictBlock(q.question, q.turns.map((t) => ({ content: t.text })));
+  console.log(q.questionId, block.length, block.includes(q.groundTruth ?? ''));
+}"
+```
+
+The paired readings of §4 and §5, against the two runs' masks (`featureCorrectByRun`, one string of
+`0`/`1` per repetition, in `questions[]` order):
+
+```
+node -e "
+const A = require('./art-42758152902/benchmark-cortex-memory-ablation-report.json');
+const C = require('./art-42355323615/benchmark-cortex-memory-ablation-report.json');
+const ids = A.questions.map((q) => q.questionId);
+const ci = new Map(C.questions.map((q, i) => [q.questionId, i]));
+const FA = A.ablation.featureCorrectByRun, FC = C.ablation.featureCorrectByRun;
+let up = 0, down = 0;
+for (const [j, id] of ids.entries()) for (let r = 0; r < FA.length; r += 1) {
+  const a = FA[r][j] === '1', c = FC[r][ci.get(id)] === '1';
+  if (a && !c) up += 1; else if (c && !a) down += 1;
+}
+console.log(ids.length, up, down);"
+```
+
+`16` improved and `11` worsened is §5's table; the exact McNemar p-value on those two counts and the
+`evidenceChars` equality check are the two numbers every reading in this document depends on, and both
+are cheap enough to recompute rather than trust.
