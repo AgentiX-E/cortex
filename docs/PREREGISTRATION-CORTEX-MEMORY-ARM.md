@@ -38984,7 +38984,8 @@ was known when the population in §13.362.1 was counted:
     probed on memory age × question type × evidence condition. Its finding is the one that matches this
     artifact: *"the evidence was retrievable 10 times more often than it was missing"* — the same shape
     `MEASURE-MR-CEILING` §1 measured (0 of 20 wrong `MR` questions had zero gold overlap).
-- **StructMemEval** (Shutova et al., 2026) is the evaluation set that *does* name the accounting
+- **StructMemEval** (Shutova, Olenina, Vinogradov and Sinitsin, *Evaluating Memory Structure in LLM
+  Agents*, arXiv **2602.11243**) is the evaluation set that *does* name the accounting
   failures, and it was not in the earlier draft at all. Its count-based subset expects a maintained
   ledger and a running aggregate, and under `gemini-3-pro` top-20 retrieval scores **0.0 at 50
   transactions** while a markdown-file memory agent stays non-zero (**0.20 without hint, 0.27 with**).
@@ -39115,7 +39116,8 @@ useful artifact:
   definition is not in the paper and has been removed.
 - The **MSU MemTrace** (2606.17328) is a different paper with the same name, and it is the one whose
   headline matches this artifact: evidence *"was retrievable 10 times more often than it was missing"*.
-- **StructMemEval** (Shutova et al., 2026) is the set that does name the accounting failures —
+- **StructMemEval** (*Evaluating Memory Structure in LLM Agents*, arXiv **2602.11243**) is the set
+  that does name the accounting failures —
   *omission*, *duplication*, *hallucination* — and its count-based subset is this arm's population in
   another corpus: top-20 retrieval scores **0.0 at 50 transactions** against a ledger-keeping agent's
   0.20–0.27. Its hint finding is the design instruction for the next attempt: *"the gap between with
