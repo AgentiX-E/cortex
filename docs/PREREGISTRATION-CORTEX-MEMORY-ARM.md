@@ -38408,3 +38408,147 @@ Two rows stay as they are, with the reason on the page rather than in a queue. `
 48,000-everywhere control, and re-basing it needs an artifact that no dispatch has produced (the six-route room at
 24,000 everywhere); the wording now says the ratio is *of the room cut* rather than *of the registered
 configuration*. `M1` and `P1` remain `unrun` for the reasons §13.310 and `AUDIT-MODEL-PORTABILITY.md` §7 give.
+
+## 13.358 The same-room pair landed, and `E3.2` is still unscorable — now because the artifact cannot name its targets
+
+The dispatch §13.357.4 promised ran (`42791109966`), and it is the first artifact in the campaign that is one
+variable away from a control: `replyRepair=commitment` on the adopted allocation, against `42533236864`, which is
+the same six-route room with the repair absent. The reading is available; the criterion that protects against harm
+is not; and the reason has moved from the archive to the instrument.
+
+### 13.358.1 The read-out refused it first, on a field that never moved
+
+The step that reads an artifact against the registration failed before the numbers were printed:
+
+```
+UNDECLARED  conflicts: "false" (registered) -> false (ran)
+```
+
+Neither side is wrong. `REGISTERED_CONDITIONS['conflicts']` stated the registered value as the **string** `"false"`
+— the spelling the repository variable uses — and `toMemoryArmConfig` records the JSON **boolean** `false`.
+`_value_text` compares JSON texts, and `"false"` is not `false`, so a **control run of the arm departed from its
+own registration**. Nothing coerced the pair: dispatch inputs go through `coerce_to_artifact`, which reads the
+artifact's type, and a condition has no dispatch input to coerce against.
+
+The cost is one full pass — 500 questions, four repetitions, 101 minutes, 14.26 CNY projected — refused on a value
+that did not move. The gate itself is sound; §13.357 is the same mechanism catching a configuration that had
+stopped shipping. It was wrong about the vocabulary, and the vocabulary is the part with no coercion to fall back
+on, which is why nothing caught it: the table has a test class per condition, and `replyRepair` had one while
+`conflicts` had none.
+
+Two changes, one the repair and the other the reason it cannot recur:
+
+- `REGISTERED_CONDITIONS['conflicts']` is `('conflicts', False)`, and the table is typed `dict[str, tuple[str,
+  object]]` so a boolean is expressible at all. A condition is registered in the vocabulary the arm writes it in.
+- `TestTheConditionTable` refuses any registered value that is text spelling a JSON literal (`"false"`, `"48000"`,
+  `'"corpus"'`). It runs at the desk, in `pnpm check`, which is before a dispatch rather than 101 minutes after
+  one.
+
+Re-read with the correction, the artifact is a clean single-variable experiment: **23 fields compared, 22 the same,
+one declared departure**, and the verdict is the one that licenses quoting its numbers as an experiment.
+
+### 13.358.2 The four criteria
+
+| id | claim | reading | verdict |
+| --- | --- | --- | --- |
+| `E3.1` | fires on **3 to 5** questions per repetition and converts all of them | **6** consultations over four repetitions = **1.5 per repetition**, 6 answered | **not met** |
+| `E3.1` (refused kind) | `shape` stays off | `shape` 0 / 0 | the refusal held |
+| `E3.2` | no non-target flips | **not scorable on this artifact** | see §13.358.4 |
+| `E3.3` | `ABS` stays at **30/30** | 30 / 30 on every repetition | **met** |
+| `E3.4` | the bill rises by **≤1%** per question | **−0.15%**: 9,187 against 9,200.5 | **met** |
+
+`E3.1`'s census half is now the failing half, and it is the half that had already passed once: `E3` fired on 15
+question-passes at the single-route room and every one of them converted. At the adopted allocation the pass fires
+on 6 and still converts all 6.
+
+### 13.358.3 The band is a property of the room, and the counts say which property
+
+Three runs, one variable apart at a time. The decline populations are counted per run of 2,000 question-passes:
+
+| run | room | `abstentionReasons.llm` | `bareRetry` | prose refusals (llm − bare) | repaired |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `42533236864` (`C5`) | six routes | 127 | 76 | 51 | — (arm carried no repair) |
+| `42539923976` (`E3`) | `multi-session:48460` everywhere | 120 | 71 | 49 | **15** |
+| `42791109966` (`E3`, adopted room) | six routes | 120 | 70 | 50 | **6** |
+
+The population the repair is *aimed* at is the same size in all three: roughly fifty refusals written in prose. The
+population it *matches* is not — fifteen at one room, six at another — and the classifier that decides reads the
+refusal's **wording** (`reply-repair.ts` matches a sentence that reports the evidence holds no answer). The room
+changes what the reader writes, the wording decides what the planner matches, so the reach is a function of the
+room rather than of the corpus.
+
+That is what makes `E3.1`'s band non-transferable, and it is the same class of defect §13.357 found in the
+acceptance rows: a criterion stated in counts, derived from one configuration, evaluated on another. The band is
+not relaxed here — a relaxed criterion is a criterion that cannot fail — and the successor is stated instead:
+
+`E3.1'` (registers with the next dispatch of this switch): the pass fires on **≥ 6** question-passes per four
+repetitions at any room, converts **all** of them, and the artifact names them (§13.358.4), so the count is
+readable against the population rather than against a number carried over from a room the run does not use.
+
+### 13.358.4 `E3.2`'s third reason, and it is the first one the archive is not to blame for
+
+§13.337.3 gave two reasons `E3.2` could not be read: `C5` and `E3` differed in the room, and then `E3`'s artifact
+compared the arm against the reference pipeline rather than against itself. Both are now closed — the pair is
+single-variable and the two artifacts are the same arm. The criterion is still unscorable, and the third reason is
+an instrument defect:
+
+**the artifact records `replyRepair.attempted = 6` and cannot say which six.** `E3.2` is a statement about a
+**set** — the 494 non-targets reproduce their correctness mask — and a set cannot be derived from two integers.
+Nothing else in the artifact recovers it either: `questions[].promptVariants` is `1` for all 500, because a repair
+re-asks the same bytes, so the double consultation leaves no trace on the record.
+
+That is repaired rather than recorded. `replyRepairCensus()` now carries `questions` per kind — the question text of
+every consultation — and `replyRepairAcross` concatenates the populations across pool instances, which is the same
+argument §13.244 makes about counts: a pooled run answers through N instances and reading one of them reads worker
+0's share. Two decisions worth stating:
+
+- **the text, not an index.** An index is a position in a roster the census does not have; the question text is
+  already in `questions[].question` for every record, so the target set is a join rather than a second key.
+- **a payload that predates the field is refused whole.** `questions` missing means "this artifact cannot name its
+  targets", and the alternative reading of an empty array — "the repair fired on nothing" — is a licence. So a
+  malformed or absent population discards the census instead of defaulting it, which is the rule the counts already
+  followed.
+
+The bill for this instrument is the next dispatch that carries the switch, and it is not spent this round: the
+mechanism is rejected on `E3.1` (§13.358.6) and a criterion that cannot be scored has never been a reason to run.
+
+### 13.358.5 The mask, against a null it finally has
+
+Fifteen of 500 questions flipped majority correctness between the control and the repaired run. By capability:
+
+| capability | n | control | repaired | flips | direction |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `IE` | 150 | 141 | 141 | 0 | — |
+| `MR` | 121 | 101 | 101 | 10 | 5 up, 5 down |
+| `KU` | 72 | 63 | 63 | 2 | 1 up, 1 down |
+| `TR` | 127 | 121 | **124** | 3 | 3 up, 0 down |
+| `ABS` | 30 | 30 | 30 | 0 | — |
+
+The paired test on the 500 masks: 9 questions this run answered and the control did not, 6 the other way, exact
+McNemar **p = 0.607**. The four-repetition means are **91.30% against 91.05%**, i.e. **+0.25 points**, against a
+spread of 0.90 that three draws of one configuration produced (§13.336.1).
+
+The shape of that table is the interesting part and it is not the headline. `MR` churns ten questions and ends on
+the same count; `KU` churns two and ends on the same count; `TR` moves three and does not move back. That is exactly
+what a mechanism with a six-pass footprint on `TR`-shaped refusals should look like, and exactly what §13.100.2's
+20% re-consultation churn looks like everywhere else — and at n = 6 the two are not distinguishable. A criterion
+that could separate them would have to know which six, which is §13.358.4.
+
+### 13.358.6 The verdict: not adopted, and what would change it
+
+**`replyRepair=commitment` is not adopted at the adopted allocation.** `E3.1` is not met, `E3.2` cannot be read,
+and the movement is inside the null. The switch stays measured and stays off, which is the state it has been in
+since §13.334 and is now a state with a same-room reading behind it rather than an argument.
+
+Three things would reopen it, in the order they should be attempted:
+
+1. **a dispatch that carries the population** (§13.358.4) — it is the only way `E3.2` becomes scorable, and until
+   it is scored the mechanism's harm-side is unmeasured rather than measured-and-absent;
+2. **`E3.1'`** on that artifact: the census half is the half that decides, because a repair that fires on six
+   passes cannot move a 500-question headline and a repair that fires on twenty can;
+3. **a room at which the prose-refusal population is one the planner matches**, which §13.358.3 says is a wider
+   room than the one that ships — so the honest summary is that this switch pays at a configuration the arm no
+   longer runs.
+
+What is *not* owed is a fourth dispatch of the same configuration. The pair exists, the reading is quotable, and it
+says the mechanism is worth less at the shipping room than at the room it was registered in.

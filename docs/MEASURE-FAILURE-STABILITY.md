@@ -183,7 +183,7 @@ finding stated twice: **in this arm, retrieval is not where the accuracy is goin
 | --- | --- | --- |
 | `H3` entity grouping (`MR`) | "≥ 3 of 121 changes" | **cancelled** — ceiling 4.00 against a 4.16 null, and the 3 stable conversions are the whole of its margin |
 | deterministic summation (`MR`, §5.2) | "not registered here" | **cancelled** — ceiling 2.25 against 4.16, and `gpt4_2ba83207` is already correct in three repetitions of four |
-| decline repair (`MR`) | `E3.2`, ~2.9 CNY | **deferred and re-priced** — ceiling 3.75 against 4.16; the money would buy a reading the null can hide |
+| decline repair (`MR`) | `E3.2`, ~2.9 CNY | **spent and not adopted** — `42791109966` bought the same-room pair for 14.26 CNY; it fires 1.5 times per repetition at the shipping room against a registered 3–5, the headline moves +0.25 points with p = 0.607, and `E3.2` still cannot be read because the artifact names no targets (§13.358) |
 | `H2` date properties | scoped to `KU`, "≥ 3 of 72" | **promoted to the head of the queue**, scoped to the 6 stable stale-value questions, with a ceiling of 8.33 points against a 2.52 null |
 | `M1` reader axis | blocked on a key | **unchanged, and now cheaper to argue**: on `MR` no mechanism below 4.16 questions is readable, so the reader remains the only lever the row has |
 | `P1` portability | blocked on a 1.41-question-per-minute provider | unchanged |

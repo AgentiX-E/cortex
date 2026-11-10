@@ -347,7 +347,11 @@ would be indistinguishable from lowering the bar to stay green, so it is left wh
 consequence is recorded: the next dispatch that reads below 91.0% is reported as a regression whether or not one
 occurred. `C2`'s denominator is the 48,000-everywhere control rather than the registered configuration, and cannot
 be re-based without a dispatch, because no artifact runs the six-route room at 24,000 everywhere; the row's wording
-now says so. `E3.2` is still unscored for the same reason it was: the room moved between the two artifacts.
+now says so. `E3.2` is still unscored, and the reason has changed: the room no longer differs (`42791109966` pairs
+`replyRepair=commitment` against `42533236864` on one allocation), but the artifact records how many questions the
+repair consulted and not which, so the target set -- and therefore the non-targets the criterion is about -- cannot
+be enumerated. §13.358.4 adds the population to the census; the next dispatch that carries the switch can score
+the mask.
 
 ### 3.1 One row prices memory itself, and it can come out negative
 

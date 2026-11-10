@@ -104,10 +104,21 @@ reduced arm is no longer a preview of a budget the project might adopt — it ad
 needs a dispatch, because no artifact runs the six-route room at 24,000 everywhere, and inventing the number would
 be worse than the wording fix.
 
-**`E3.2` remains unscored.** The repair criterion asks that the 495–497 non-targets of `replyRepair=commitment`
-reproduce their correctness mask against a control, and the control it would use (`C5`) differs in the room as well,
-because §13.336 adopted the allocation after `C5` was dispatched. One dispatch — the repair on the adopted
-allocation — makes the pair one variable, and `42791109966` is that dispatch.
+**`E3.2` remains unscored, and it is no longer the room.** The repair criterion asks that the 494 non-targets of
+`replyRepair=commitment` reproduce their correctness mask against a control. `42791109966` is that control's pair —
+`replyRepair=commitment` on the adopted allocation against `42533236864`, one variable apart — and the criterion
+still cannot be read, because the artifact records `attempted: 6` and cannot say which six: it is a criterion about
+a **set**, and two integers do not name one. That is an instrument defect rather than an archive limitation, and
+§13.358.4 repairs it (`replyRepair.<kind>.questions`, summed across pool instances, refused whole when a payload
+predates it). The next dispatch that carries the switch can score the mask; this one could not, and the mechanism is
+rejected on `E3.1` in the meantime.
+
+**Three defects in this round came from one rule stated in the wrong vocabulary**, and it is worth naming once: an
+acceptance row that named the wrong configuration (a label that resolved to a replaced file), a registered
+condition written as text where the arm writes a boolean (a control run departing from its own registration), and a
+criterion written in counts derived at a room the run does not use (a band that cannot transfer). Each was a record
+that described one thing in the dialect of another, and each was found by reading two records against each other
+rather than by re-reading either alone.
 
 ## 6. The standing rule
 
