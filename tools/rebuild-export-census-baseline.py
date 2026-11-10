@@ -183,6 +183,7 @@ RATIONALE = {
     "efficiency-frontier-public-api": """The declared types of the efficiency frontier, which is the one module in this package whose public surface is a contract rather than an implementation detail: `compareEfficiency` returns `EfficiencyComparison` and `efficiencyFrontier` returns `EfficiencyFrontier`, so a consumer outside the package cannot use either function without these names. `tools/efficiency-frontier.mjs` is the in-package caller and it is a `.mjs`, so it reaches the runtime values through `dist` and the types are erased before it ever sees them -- which is why the five runtime exports are `with-caller` and these seven are not. They are recorded as debt rather than de-exported for the reason `export-surface.test.ts` states in the other direction: removing `export` from a declaration that appears in a published signature would make the signature unnameable.""",
     "cost-per-capability-public-api": """The declared types and two constants of `docs/MEASURE-MR-CEILING.md`'s join, in the same position `efficiency-frontier-public-api` occupies and for the same reason: `costPerCapability` returns `CostByCapability` and takes a `CostArtifactShape` plus optional `TokenPrices`, so a consumer outside the package cannot call it without these names. `tools/cost-per-capability.mjs` is the in-package caller and it is a `.mjs`, so it reaches `costPerCapability` and `renderCostByCapability` through `dist` and the types are erased before it sees them -- which is why those two are `with-caller` and these six are not. `COST_REFUSALS` is the sixth because its six reasons are the module's contract for a caller that renders them, and `COST_BY_CAPABILITY_POLICY` because the threshold a published verdict is graded against must be readable rather than guessed from the output. Recorded as debt rather than de-exported for the reason `export-surface.test.ts` states: removing `export` from a declaration that appears in a published signature would make the signature unnameable.""",
     "embedding-space-public-api": """The error surface of `EmbeddingSpace`, which is the one part of the guard a caller is expected to branch on. `EmbeddingSpace` itself is `with-caller`: `cortex-eval/src/retrieval.ts` and `cortex-eval/src/embedding-memory.ts` both open one, so the guard runs on every retrieved question rather than waiting for a user to adopt it. The three names here are what catching it requires -- `EmbeddingSpaceError` is the thrown class, `EmbeddingSpaceRefusal` is the discriminant its `reason` field carries so a caller can tell "this store is in another space" from "this model is broken", and `EmbeddingSpaceOptions` is the parameter type of `open`, which a wrapper that forwards its own options cannot name without. No in-repo caller catches the error: the two call sites let it fail the run, which is the correct behaviour for a benchmark whose whole point is that a space mismatch is not a recoverable condition. Recorded as debt rather than de-exported for the reason `export-surface.test.ts` states.""",
+    "failure-stability-public-api": """The declared shapes and one constant of `docs/MEASURE-FAILURE-STABILITY.md`\'s partition, in the same position `cost-per-capability-public-api` occupies and for the same reason: `stabilityOf` returns `StabilityReading`, `repetitionNull` returns `NullReading` and `conversionCeiling` returns `CeilingReading`, each taking a `StabilityArtifactShape` and producing a structure a consumer outside the package cannot name without these declarations. `tools/failure-stability.mjs` is the in-package caller and it is a `.mjs`, so it reaches `stabilityOf`, `repetitionNull`, `conversionCeiling`, `renderStability` and `renderCeilings` through `dist` and the types are erased before it sees them -- which is why those five are `with-caller` and the eight here are not. `STABILITY_REFUSALS` is the last because its six reasons are the module\'s contract for a caller that renders them, and a mechanism arm whose target set is refused has to say which refusal it hit. `StabilityQuestionShape` and `StabilitySelection` are the two parameter types of the public functions, which a wrapper that forwards its own options cannot name without. Recorded as debt rather than de-exported for the reason `export-surface.test.ts` states.""",
 
 
 }
@@ -198,6 +199,7 @@ GROUP_ORDER = [
     "efficiency-frontier-public-api",
     "cost-per-capability-public-api",
     "embedding-space-public-api",
+    "failure-stability-public-api",
 ]
 
 # The three single-file groups, matched by suffix so a package rename does not silently
@@ -207,6 +209,7 @@ SOURCE_AWARE_PATH = "cortex-eval/src/source-aware.ts"
 EFFICIENCY_FRONTIER_PATH = "cortex-eval/src/efficiency-frontier.ts"
 COST_PER_CAPABILITY_PATH = "cortex-eval/src/cost-per-capability.ts"
 EMBEDDING_SPACE_PATH = "cortex-core/src/vector/embedding-space.ts"
+FAILURE_STABILITY_PATH = "cortex-eval/src/failure-stability.ts"
 
 ABLATION_KEYS = (
     "ablation",
@@ -247,6 +250,8 @@ def category(orphan: str) -> str:
             return "cost-per-capability-public-api"
         if path.endswith(EMBEDDING_SPACE_PATH):
             return "embedding-space-public-api"
+        if path.endswith(FAILURE_STABILITY_PATH):
+            return "failure-stability-public-api"
         if any(key in path for key in ABLATION_KEYS):
             return "ablation-and-diagnostic-surface"
         return "eval-harness-surface"

@@ -37747,3 +37747,103 @@ still owed; the way to obtain a plausible one by accident is closed.
 
 Queue unchanged from §13.349, with one entry's precondition now satisfied rather than pending: the reader axis
 (`M1`) and the aggregation mechanism are both still ahead of it, and neither depends on this.
+
+## 13.351 The failure population is a draw, and three of the four queued mechanisms are below its noise
+
+`docs/MEASURE-FAILURE-STABILITY.md` is the reading; this section registers what it changes. It
+dispatches nothing and spends **0 CNY**, because the data it reads has been in every artifact since
+§13.118.5.
+
+### 13.351.1 The field that was never read per question
+
+`ablation.featureCorrectByRun` is one `'0'`/`'1'` mask per repetition, in dataset order. Its readers
+were the paired tests, the flip table and the cost join — all of which consume it as a **rate**. No
+reader asked it *which questions*. So every census in this campaign, including §13.348's item-identifier
+reading and `MEASURE-MR-CEILING.md` §3's twenty, was a **one-repetition** census of a four-repetition
+run, and the queue was designed against it.
+
+### 13.351.2 The partition, and the file's own mean
+
+On `42355323615` (500 x 4): **27 questions wrong in all four, 27 wrong in at least one, 446 always
+right**. By capability:
+
+| capability | n | mean | recoverable | wrong in all 4 | flaky | 2 sd (questions) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ABS` | 30 | 100.00% | 0.00 | 0 | 0 | 0.00 |
+| `KU` | 72 | 88.54% | 8.25 | 7 | 3 | **2.52** |
+| `MR` | 121 | 83.88% | 19.50 | 13 | 13 | **4.16** |
+| `TR` | 127 | 96.06% | 5.00 | 2 | 6 | 4.32 |
+| `IE` | 150 | 95.00% | 7.50 | 5 | 5 | 3.46 |
+| file | 500 | **91.95%** | 40.25 | 27 | 27 | 8.54 |
+
+`MR` is 13 stable and 13 flaky, so **§13.348.1's "twenty" is half a draw**: the ten the reference
+pipeline also misses are stable and the ten it does not are mostly not. The file mean is 91.95% against
+the 91.20% `S1` quotes — repetition one against the mean of four, which `S1`'s own second attestation
+already requires and which no document had printed.
+
+### 13.351.3 A null belongs to a population
+
+§13.118.5's 6.54-question floor was measured on a 127-question column. Applying it to a 121- or
+72-question subset is the unit error §13.340.3 refused once. `repetitionNull` derives the null from
+the same four numbers on the same questions and reports it in **questions**, so a ceiling and a null
+subtract. `KU`'s is 2.52 and `MR`'s is 4.16 — the two rows the queue is aimed at, and they differ by
+65%.
+
+### 13.351.4 Every registered mechanism, against its own population's null
+
+The ceiling is `sum(1 - passRate)` over the target set, not the size of the set:
+
+| population | mechanism | set | stable | ceiling | points | 2 sd | resolvable |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | :---: |
+| `MR` | deterministic summation (§13.349 §5.2) | 3 | 1 | 2.25 | 1.86 | 4.16 | no |
+| `MR` | entity grouping (`H3`, §13.340.6) | 5 | 3 | 4.00 | 3.31 | 4.16 | no |
+| `MR` | decline repair (`E3.2`, §13.341) | 4 | 3 | 3.75 | 3.10 | 4.16 | no |
+| `MR` | under-count repair | 7 | 6 | 6.00 | 4.96 | 4.16 | yes |
+| `KU` | stale-value selection (`H2`) | 6 | 6 | 6.00 | **8.33** | 2.52 | **yes** |
+| `KU` | `H2` including the decline | 7 | 7 | 7.00 | 9.72 | 2.52 | **yes** |
+
+Summation reads **2.25** where §5.2 priced it at "the two operation failures": of `37f165cf`,
+`9ee3ecd6` and `gpt4_2ba83207`, only the first is wrong in every repetition. Entity grouping reaches
+`H3`'s "≥ 3 of 121" bar on its stable count exactly, which is the whole of its margin.
+
+### 13.351.5 Registered: `H3` and summation are cancelled, `H2` is promoted, and its bar changes
+
+- **`H3` cancelled.** Ceiling 4.00 against a 4.16 null. It is not deferred: an increment whose ceiling
+  is inside the noise is an increment no reading can attribute. The reason is arithmetic, not
+  preference, and it is the same rule that cancelled `I2` in §13.349 at zero cost.
+- **Deterministic summation cancelled.** Ceiling 2.25 against 4.16, and `gpt4_2ba83207` — one of the
+  three §4 names — is already correct in three of four repetitions.
+- **`E3.2` re-priced, not cancelled.** Ceiling 3.75 against 4.16. Spending 2.9 CNY on a movement the
+  null can hide is the failure §6.3 exists to prevent; it returns to the queue behind `H2`.
+- **`H2` promoted to the head of the queue**, scoped to `KU`'s six stable stale-value questions. It is
+  the only mechanism in the queue whose ceiling exceeds its population's null, and its ceiling (8.33
+  points) is the size of the whole `KU` gap to Synap (8.31 at repetition one, 8.66 at the mean).
+
+**The bar changes with it.** §13.340.6 registered `H2` at "≥ 3 of 72 `KU` failures change". Three
+questions is 4.17 points and the `KU` null is 3.50 points, so a three-conversion result would sit
+inside the noise on a population where six are available on 24 opportunities each. The registered
+criterion is therefore **≥ 4 stable conversions of the six, with no other capability worse than 2 sd
+of its own spread**, and the falsifier **≤ 2**. This is the first bar in the campaign derived from a
+measured null rather than from a convention, and it is stricter than the one it replaces.
+
+### 13.351.6 What this does not license
+
+It does not license re-reading the published numbers as means. `S1` reads a repetition mean because
+§13.298's attestations require one; the other `S*` rows read `summary.json` and are single readings,
+and swapping one for the other without the attestation machinery is how §2.1's three-round stale
+`S1` happened.
+
+It does not license calling `MR` unimproveable. Thirteen questions fail every time. What it says is
+that the *named* mechanisms are each smaller than the noise, and that the only `MR` class above the
+null is under-count (ceiling 6.00), for which the queue proposes nothing — and `MEASURE-MR-CEILING.md`
+§1 already showed every one of the twenty carries its gold, so a short list is not a retrieval
+failure either.
+
+It does not license a new tool with no caller. `tools/failure-stability.mjs` reads an archived
+artifact and is the reproduction path for every number in §13.351.2 and §13.351.4; the library behind
+it (`cortex-eval/src/failure-stability.ts`) has 27 tests, because the alternative to a tested ceiling
+is a ceiling typed into a document, which is the defect §ACCEPTANCE-MATRIX §1 opens with.
+
+Queue after this section: **`H2` on `KU`** (bar ≥ 4 of 6, falsifier ≤ 2), then `M1` (blocked on a
+frontier key), then `E3.2`, then `P1` (blocked on the provider's 1.41 questions per minute). `H3` and
+summation are closed.

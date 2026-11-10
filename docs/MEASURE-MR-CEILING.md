@@ -144,6 +144,17 @@ narrows the two things that could still move the route to ones the campaign has 
    wrong — so the ceiling on that mechanism is the enumeration error rate, and it is a design with a
    measured ceiling rather than a hope. It is not registered here.
 
+   **Superseded by `MEASURE-FAILURE-STABILITY.md` §2.** This document read one repetition of
+   `42533236864`; `42355323615` runs the same configuration with four, so the same questions can be
+   asked how often they actually fail. §4's three operation failures (`37f165cf`, `9ee3ecd6`,
+   `gpt4_2ba83207`) are wrong in **4, 1 and 2** of four repetitions, so the mechanism's ceiling is
+   `1 + 0.75 + 0.5 = **2.25** questions` rather than three rows — against a repetition spread of
+   **4.16 questions** on the same population. The two questions named in the sentence above are also
+   not both arithmetic failures in every draw: in `42355323615`, `37f165cf` declines and
+   `gpt4_372c3eed` answers `8 years` against a gold of `10 years`, which is a wrong operand rather
+   than an unsummed list. The census of this document stands; the price it put on this mechanism does
+   not.
+
 ## 6. The bill, split by capability
 
 `tools/cost-per-capability.mjs` joins the per-capability accuracy to the run's token ledger. It

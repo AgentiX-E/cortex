@@ -689,3 +689,25 @@ export {
   type CostByCapability,
   type TokenPrices,
 } from './cost-per-capability.js';
+
+// §13.351: which failures are real and which are one draw's. `featureCorrectByRun` has carried one
+// mask per repetition since §13.118.5 and nothing read it per question, so every mechanism arm was
+// designed against a single repetition's failure list — on `MR` that is 20 rows where 13 are wrong
+// in all four and 13 are wrong in at least one. `conversionCeiling` prices a target set as
+// `sum(1 - passRate)` and compares it against the population's own repetition spread, because a
+// ceiling below the noise is not a result.
+export {
+  STABILITY_REFUSALS,
+  conversionCeiling,
+  renderCeilings,
+  renderStability,
+  repetitionNull,
+  stabilityOf,
+  type CeilingReading,
+  type NullReading,
+  type StabilityArtifactShape,
+  type StabilityQuestion,
+  type StabilityQuestionShape,
+  type StabilityReading,
+  type StabilitySelection,
+} from './failure-stability.js';
