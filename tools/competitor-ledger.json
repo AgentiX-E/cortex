@@ -107,7 +107,8 @@
           "statistic": "mean",
           "tokenizer": null,
           "kind": "self",
-          "source": "contextier.com blog, 6,787 mean context tokens per query; the blog does not say whether the count includes the answering prompt"
+          "source": "contextier.com blog, 6,787 mean context tokens per query; the blog does not say whether the count includes the answering prompt",
+          "note": "The same 6,787 is printed by mem0.ai against **94.4%**, not 93.4%: `LongMemEval 94.4 ~6,787 tokens`. So the token figure is attested by both vendors and the score pairing is not -- contextier.com's table puts 93.4 beside it and Mem0's own page puts 94.4. The row keeps contextier's pairing because that is the table it was taken from, and this note is the record that the pairing is the uncertain half. Nothing in a ratio moves: the token count is the denominator and the two candidate scores differ by 1 point."
         }
       ]
     },
@@ -155,7 +156,8 @@
           "statistic": "mean",
           "tokenizer": "o200k",
           "kind": "self",
-          "source": "contextier.com blog, 2,807 mean / 2,854 median context tokens per query, o200k tokenizer stated"
+          "source": "contextier.com blog, 2,807 mean / 2,854 median context tokens per query, o200k tokenizer stated",
+          "note": "Their published stack, which decides whether the 2,807 is ambitious or ordinary: extraction gpt-5.4-mini per session, answer generation **gpt-5.4-nano** (the lowest-cost tier), judge gpt-5.4-mini, embeddings text-embedding-3-small. A nano-tier reader reaching 91.6% is the part of this row that matters -- it says the pipeline rather than the reader is doing the work."
         }
       ]
     },

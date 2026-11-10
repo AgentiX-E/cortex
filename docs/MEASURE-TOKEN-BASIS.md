@@ -91,6 +91,18 @@ count. Both are true; which one a buyer believes depends on whether the omitted 
 cost, and they are. What keeps this from being self-serving is that the split is stated as a split,
 with the basis named on every row, rather than resolved in whichever direction the round needed.
 
+### 2.1 One token figure, two scores, and which half is uncertain
+
+`mem0-v3-context`'s 6,787 is printed by **both** vendors against **different scores**: contextier.com's
+comparison table pairs it with 93.4%, and Mem0's own benchmark page prints `LongMemEval 94.4 ~6,787 tokens`. The counter is attested twice and the accuracy attached to it is not, which is the ordinary
+state of this field and exactly what the ledger's `note` field is for. The row keeps contextier's
+pairing because that is the table it was taken from, and no ratio moves either way: the token count is
+the denominator, and the two candidate scores differ by a point.
+
+This is worth a paragraph rather than a silent entry because it is the same shape as the defect the
+round is about, one level down. A ledger that quietly chose one of the two pairings would produce a
+table identical to one that chose the other, and a reader could not tell which was picked or why.
+
 ## 3. What the basis error was worth, exactly
 
 The retracted values, next to the corrected ones on the same competitor:
@@ -120,6 +132,25 @@ Interpolating those two measured points puts 0.31x at about **−2.9 points**, i
 cost. Their configuration reads 91.6% there. So the 3.3-point gap at equal cost is **not a room we
 have not tried** — it is a different pipeline, and no setting of `maxPromptCharsByRoute` reaches it.
 
+**Their published stack says the pipeline is doing the work, and it says which four things.** Their
+blog names the changes, and they are more specific than "per-session extraction":
+
+| change | their reported effect |
+| --- | --- |
+| extraction isolated per session — prior facts are **not** fed to the extractor, and a separate pass resolves conflicts afterwards | `KU` 55% → 86%, `MR` 65% → 90% |
+| date-aware temporal retrieval — the temporal strategy returns only facts that carry a date | less noise reaches fusion |
+| rebalanced reciprocal rank fusion — more weight on exact keyword match, wider candidate pool before fusion | better entity-specific ranking |
+| supersession wired through extraction — the old fact is deactivated and its validity window carried forward | no pile-up of contradictions |
+
+Read against this repository's own record, that table is uncomfortable in a useful way. The first row
+is a **+31-point** claim on `KU` and a **+25-point** claim on `MR` from one change to what the
+extractor is allowed to see, and `MR` is this arm's worst capability at 83.47%. The second row is a
+filter this arm has no equivalent of. The third is a ranking change, and §1 already measured that
+ranking does not move the bill — but nothing here measured whether it moves accuracy at fixed cost.
+And their reader is **gpt-5.4-nano**, the cheapest tier, which is the part that reframes the gap: a
+nano-tier reader at 91.6% is not a reader advantage to be closed by a better model, it is a context
+advantage.
+
 That is an interpolation across a measured range and it is labelled as one; it is not a dispatch and
 it is not evidence that they achieve what they publish (their figure is `kind: self`, with no
 answer model and no judge stated, which is the same caveat `MEASURE-COST-LEVER.md` §3 prices at 38.4
@@ -143,6 +174,12 @@ change.** It is the first time that sentence has arithmetic behind it.
 found in round 57 and the second in round 58; both were found by a person reading two records against
 each other, and both are now arithmetic.
 
+One boundary is worth stating where it can be read: `--check` compares **numbers**, so editing a
+`source`, a `note` or a `tokenizer` does not invalidate the reading. That is deliberate — provenance is
+not a quantity, and forcing a re-record for a corrected citation would teach people to skip the record
+— but it means a changed `basis` is caught and a changed *claim about* the basis is reviewed like any
+other prose.
+
 The ledger grew a `cost` block with six required fields, and the rule is the one it already applied to
 `score`: **a number without its conditions is not evidence.** `basis`, `statistic`, `tokenizer` and
 `source` are conditions here, and a cost block missing any of them is refused rather than defaulted —
@@ -165,3 +202,20 @@ markers require both.
 tighter. Contextier declares o200k and this arm's count is under the reader's own; the two rates differ
 by roughly the 3.19x-to-3.07x band, which is smaller than every other uncertainty in the row, so the
 ratio carries the difference as a caveat instead of an invented conversion factor.
+
+### 6.1 What the field's most careful harness does that this one does not
+
+`LLMSlim`'s BEAM-1M round (October 2026) publishes, per system, **mean context tokens, score with a
+95% interval, and cost per 1,000 questions at list prices** — and its cost line counts the answer
+call *and* each system's memory-building calls. That is a better instrument than any self-report on
+this ledger, including this arm's own, for one reason: the token count and the score are produced by
+the same harness, so the ratio cannot be assembled from two vendors' habits.
+
+Two things follow, and neither is a dispatch:
+
+1. **This arm's cost line should be priced the same way** — per 1,000 questions at list prices,
+   counting the ingestion and embedding calls and not only the answer call. The artifact already
+   carries `usageBySide` and `llmUsage`, so the number is a report change rather than a measurement.
+2. **A score cannot be moved onto that board by relabelling.** BEAM's score is a rubric mean out of
+   100, not accuracy, so those rows are not comparable with the LongMemEval rows above and are
+   deliberately not in the ledger. Mixing them would be the same defect one level up.
