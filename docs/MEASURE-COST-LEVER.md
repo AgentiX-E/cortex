@@ -201,3 +201,18 @@ decision rather than a question. `§13.335.3` states the two things this does no
 cost SOTA (`Maximem Synap` is 7,400 at 95.6%), and this reading does not combine with `E3` — the repair
 runs in the room the registration held before §13.336, so the configuration that would ship is the allocation **with** the
 repair, which is the next dispatch rather than an inference from these two.
+
+## 6. Addendum (round 57): the numbers above are the predecessor configuration's
+
+Everything in §1–§5 was measured against the 48,000-everywhere configuration (`42310779222`) and the
+single-route widening (`42355323615`). §13.336 adopted the six-route allocation, and the registered
+configuration bills **9,201** prompt tokens per question (`42533236864`), not 12,137 — so the "48,000 room"
+rows above are a record of what the room cost, not of what the product costs. `docs/MEASURE-CONFIGURATION-IDENTITY.md`
+is the correction, and `C1` now reads the registered configuration because `cost-ledger.py --write` refuses
+an artifact of any other one.
+
+The relative comparison survives unchanged, which is why this is an addendum and not a rewrite: the room's
+price (−2.65 points for 0.463x, −1.05 for 0.754x) is a property of the pair, and the pair is intact. What
+moves is the row that multiplies it against a competitor: **10,105 prompt tokens per correct answer**, against
+Maximem Synap's 7,740 and Mem0's published 7,203 — **1.31x** and **1.40x**, where this document's §3 read
+1.71x and 1.83x on the same two competitors.
