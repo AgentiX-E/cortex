@@ -1027,7 +1027,7 @@ export const CRITERIA: readonly Criterion[] = [
       key: 'ratio.ratio',
     },
     // No competitor row: this criterion's unit is a *fraction of our own window*, so an absolute token
-    // figure from another system cannot be placed in it — 4,400 tokens is 36% of 12,105 and 0% of the
+    // figure from another system cannot be placed in it — 4,400 tokens is 48% of 9,201 and 0% of the
     // number a reader would think it was looking at. The absolute figures stay on `C1` where they print
     // as tokens, and the one comparison that matters here (ours against ours at two budgets) has no
     // external counterpart because no vendor publishes a paired budget ablation.
@@ -1040,10 +1040,11 @@ export const CRITERIA: readonly Criterion[] = [
   //
   // The frontier was a report and is now a gate. `C1`-`C3` price a *candidate*; nothing priced the
   // answer to "should the candidate replace what we ship", which is the only decision the frontier
-  // exists to inform. `42310779222`, `42355323615` and `42373407439` are the three arms this project has
-  // read at full 500 with four or two repetitions, and none of them dominates the configuration on the
-  // order; on 2026-11-08 that is a fact about how much has been tried, and the gate is what makes the
-  // next arm that *does* dominate it block a release until it is adopted.
+  // exists to inform. Six arms have been read at full 500 with four or two repetitions and none of them
+  // dominates the configuration on the order. Round 57 is what makes the count mean that: the reference
+  // is now the registered configuration, and before the re-hang it was `42310779222`, which is not what
+  // ships. So the row used to report dominance over an arm nobody was running, and the arm that *is*
+  // running would have been counted as a candidate to adopt rather than as the thing on the box.
   //
   // The count, not the verdict list, because a gate reads a number. `summary.dominating` is computed by
   // `tools/efficiency-frontier.mjs` from the artifacts rather than typed here, and it is 0 only while
@@ -1053,7 +1054,7 @@ export const CRITERIA: readonly Criterion[] = [
     capability: 'cost',
     metric: 'measured arms that dominate the shipping configuration on the three-axis order',
     dataset:
-      'every full-500 arm this project has read, compared against the newest four-repetition artifact',
+      'every full-500 arm this project has read, compared against the registered configuration',
     comparator: 'equals',
     threshold: 0,
     unit: 'count',
