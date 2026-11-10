@@ -1440,7 +1440,97 @@ def audit_section(
         f'{len(questions)} records, questionCount says {question_count}',
     )
 
-    # 2. The census counts questions, not model calls (§13.107).
+    # 2. The report carries two accuracy units and they are not interchangeable: one repetition's
+    #    figure sits beside a count (`feature.metrics`), and a mean over all repetitions sits beside
+    #    nothing (`costEfficiency`). Round 61's reading table quoted `91.05% (456)` -- a mean with a
+    #    single-repetition count -- and the same table compared a capability's maximum to another
+    #    arm's mean. Both are quotable errors rather than artifacts of prose, so both are checked
+    #    here: a figure printed next to a count must be that count's figure, and a mean must lie
+    #    inside the band its own repetitions define.
+    metrics = (report.get('feature') or {}).get('metrics') or {}
+    feature_accuracy = metrics.get('accuracy')
+    feature_total = metrics.get('total')
+    feature_correct = metrics.get('correct')
+    has_triple = (
+        isinstance(feature_accuracy, (int, float))
+        and isinstance(feature_total, int)
+        and feature_total > 0
+        and isinstance(feature_correct, int)
+    )
+    if not has_triple:
+        # A hand-built fixture, or an artifact from before `feature.metrics` carried a count, has
+        # no triple to compare -- and a check that fails on a legitimate shape teaches a reader to
+        # skip the output. The absence is printed, because a silent skip is how a missing
+        # instrument becomes a passing gate.
+        lines.append(
+            '  SKIP  accuracy-unit no feature.metrics accuracy/total/correct triple; a percentage '
+            'cannot be checked against a count it does not come from'
+        )
+    else:
+        check(
+            'accuracy-unit',
+            abs(feature_accuracy * feature_total - feature_correct) <= 0.5,
+            f'one repetition: {feature_correct} correct of {feature_total} reads '
+            f'{_pct(feature_correct / feature_total)}, metrics says {_pct(feature_accuracy)}'
+            " -- a percentage quoted beside a count must be that count's percentage",
+        )
+
+    by_capability = (report.get('ablation') or {}).get('featureByCapability') or {}
+    ordered = [
+        name
+        for name, cell in sorted(by_capability.items())
+        if not (
+            isinstance(cell.get('min'), int)
+            and isinstance(cell.get('avg'), (int, float))
+            and isinstance(cell.get('max'), int)
+            and cell['min'] <= cell['avg'] <= cell['max']
+        )
+    ]
+    if not by_capability:
+        lines.append(
+            '  SKIP  cap-order      no ablation.featureByCapability block; there is no repetition '
+            'spread to order'
+        )
+    else:
+        check(
+            'cap-order',
+            not ordered,
+            f'{len(by_capability)} capabilities with min <= avg <= max'
+            if not ordered
+            else f'out of order: {", ".join(ordered)}',
+        )
+
+    # The all-runs mean has to fall inside [sum of minima, sum of maxima] over the capabilities.
+    # A mean outside that band cannot be a mean of the repetitions the same artifact reports, and
+    # the failure mode this catches is the one round 61 committed: quoting an all-runs mean beside
+    # per-capability figures taken from the repetition table.
+    cost = report.get('costEfficiency') or {}
+    all_runs_accuracy = cost.get('accuracy')
+    band_ready = (
+        cost.get('accuracySource') == 'all-runs'
+        and isinstance(all_runs_accuracy, (int, float))
+        and by_capability
+        and isinstance(question_count, int)
+        and question_count > 0
+        and all(isinstance(cell.get('min'), int) and isinstance(cell.get('max'), int) for cell in by_capability.values())
+    )
+    if not band_ready:
+        lines.append(
+            '  SKIP  accuracy-band  no all-runs accuracy beside a complete per-capability spread; '
+            'the band an all-runs mean must lie in is undefined'
+        )
+    else:
+        low = sum(cell['min'] for cell in by_capability.values())
+        high = sum(cell['max'] for cell in by_capability.values())
+        scaled = all_runs_accuracy * question_count
+        check(
+            'accuracy-band',
+            low <= scaled <= high,
+            f'all-runs {_pct(all_runs_accuracy)} x {question_count} = {scaled:.2f}, '
+            f'band [{low}, {high}] from the per-capability repetitions',
+        )
+
+    # 3. The census counts questions, not model calls (§13.107).
     census = report.get('abstentionReasons') or {}
     census_total = sum(value for value in census.values() if isinstance(value, int))
     check(

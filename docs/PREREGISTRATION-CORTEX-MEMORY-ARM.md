@@ -39082,6 +39082,22 @@ artifact failed the audit and the job went red at 18:44. The check is now a memb
 `changed + refused ≤ attempted` — and the real artifact re-audits `PASS`:
 `the roster sums to 342 consultations and 173 changes over 500 of 500 records`.
 
+**A second gate, for the mistake this section made.** The unit slip in the table above was a reading
+error rather than an artifact error, and no check could see it because the artifact was internally
+consistent. Three invariants now hold inside `audit_section`, each with a test that mutates one field
+of a report at the benchmark's real sizes:
+
+| check | invariant | the defect it would have caught |
+| --- | --- | --- |
+| `accuracy-unit` | `feature.metrics.accuracy × total = correct` within half a question | `91.05% (456)`: a four-run mean beside one repetition's count |
+| `cap-order` | every capability's `min ≤ avg ≤ max` | a maximum quoted as a mean |
+| `accuracy-band` | `all-runs` mean × questions inside `[Σmin, Σmax]` | a mean outside the repetitions that produced it |
+
+All three print `SKIP` rather than `FAIL` when their fields are absent. That branch was not there in
+the first cut and sixteen existing tests went red on hand-built fixtures — which is the block's own
+rule (`a check that fires on a good run teaches a reader to skip the output`) being rediscovered by
+paying for it.
+
 **What it licenses.** Nothing about the default: `reviewPass: bare` stays. It closes the answer-side
 question `MEASURE-MR-CEILING` §7 left open — the answer side has been tried and priced at −9.5 `MR`
 questions on the four-run mean (−9 on repetition 0) — and it moves the next attempt one level up, from

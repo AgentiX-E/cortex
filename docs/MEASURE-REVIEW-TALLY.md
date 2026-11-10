@@ -194,8 +194,8 @@ mechanism is dominated on both axes it was supposed to improve. Rejected.
 ### 6.3 What the round did buy
 
 1. **A population priced and closed.** "The reader cannot add" is now a measured claim with a sign:
-   handing the addition to the product costs 10 multi-session questions, because the operand selection
-   is the hard part and it stays with the reader either way.
+   handing the addition to the product costs 9.5 multi-session questions on the four-run mean, because
+   the operand selection is the hard part and it stays with the reader either way.
 2. **A gate that had never seen this pass.** `readout-arm-run.py` treated only `reviewPass: audit` as
    publishing the second-consultation census, so a correct `tally` artifact failed the arm audit — the
    run is red for that reason and not for a broken artifact (the roster sums to the census exactly,
@@ -206,6 +206,21 @@ mechanism is dominated on both axes it was supposed to improve. Rejected.
    ledger*; this pass is a prose list with a number at the end of each line, and the distance between
    +13.8 and −1.70 is the specification layer. The next attempt at this axis is that layer, not a
    longer prompt — and it is now specified in `02-technical-design` §22.87 rather than named.
+4. **Three gates against the defect this document committed.** The unit slip in §6's first table was
+   ours, not the artifact's, and no existing check could see it because the artifact was internally
+   consistent — only the sentence quoting it was not. Three invariants now hold at the artifact level,
+   each with a test that mutates one field of a real-sized report:
+
+   | check | invariant | what it would have caught |
+   | --- | --- | --- |
+   | `accuracy-unit` | `feature.metrics.accuracy × total = correct`, within half a question | `91.05% (456)` — a four-run mean printed beside one repetition's count |
+   | `cap-order` | every capability's `min ≤ avg ≤ max` | a maximum quoted as a mean |
+   | `accuracy-band` | an `all-runs` mean × questions inside `[Σmin, Σmax]` | a mean outside the repetitions that produced it |
+
+   Each prints `SKIP` rather than `FAIL` when the fields it needs are absent, because a check that
+   fires on a legitimate shape teaches a reader to skip the output — the same rule the block's own
+   docstring states, and one this addition broke first: sixteen existing tests went red on the
+   hand-built fixtures before the skip branch was added.
 
 ### 6.4 Status
 
