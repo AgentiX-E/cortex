@@ -33131,10 +33131,17 @@ which is what a CI checkout without the sibling repository sees.
 | | per-question prompt tokens | accuracy | grade | ours is |
 | --- | --- | --- | --- | --- |
 | **cortex (this arm)** | **12,105** | 83.45% | measured | — |
-| Zep | 4,400 | 90.2% | C | 2.75x the context, 6.75 points behind |
-| Mem0 (managed) | 6,800 | 94.4% | C | 1.78x the context, 10.95 points behind |
-| Maximem Synap | 7,400 | 95.6% | C | 1.64x the context, 12.15 points behind |
+| Zep | 4,400 | 90.2% | C | 2.75x the prompt, 6.75 points behind |
+| Mem0 (managed) | 6,800 | 94.4% | C | 1.78x the prompt, 10.95 points behind |
+| Maximem Synap | 7,400 | 95.6% | C | 1.64x the prompt, 12.15 points behind — **retracted, §13.340.3 and §13.359.2** |
 | Hindsight | 43,600 | 94.6% | C | 0.28x the context — the counter-example that stops this being read as "accuracy costs nothing" |
+
+The `ours is` column divided this arm's **prompt** by each competitor's **context** count, which is why it says
+"the prompt" here rather than "the context": the arithmetic is what §13.293 was measuring, and the label is what
+§13.359 had to correct. The Synap row's 1.64x is the value that comparison produced and it was **retracted** in
+§13.340.3 once the vendor's own records showed their 7,400 counts `memory` + `source_evidence` and excludes a
+published 21.5 kB answering prompt. It is left in the table as the record of the error, marked, rather than
+quietly restated — the retraction is the finding.
 
 The honest sentence is that this arm is **mid-table on cost and below the leaders on accuracy**, and that the
 two facts are connected by the finding in §13.293.2 rather than by the cost number: the tokens are not buying

@@ -942,8 +942,8 @@ answering that question rather than of a separate one.
 | | prompt tokens per question | accuracy | ours |
 | --- | ---: | ---: | --- |
 | **cortex (this arm)** | **12,105** | 83.45% | — |
-| Zep | 4,400 | 90.2% | 2.75x the context, 6.75 points behind |
-| Mem0 (managed) | 6,800 | 94.4% | 1.78x the context, 10.95 behind |
+| Zep | 4,400 | 90.2% | 2.75x the prompt, 6.75 points behind |
+| Mem0 (managed) | 6,800 | 94.4% | 1.78x the prompt, 10.95 behind |
 | Maximem Synap | 7,400 content-only / ~13,400 all-in | 95.6% | **~1.0x all-in, 12.15 behind** — the 1.64x this row used to show compared their content count with our prompt count (§13.340.3) |
 | Mastra OM (gpt-4o reader) | ~30,000 | 84.23% | **0.39x the context, 0.78 behind** |
 | Hindsight | 43,600 | 94.6% | 0.28x the context, the counter-example |
