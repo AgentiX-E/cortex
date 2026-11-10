@@ -686,12 +686,18 @@ export type WindowOrdering = {
  * - `audit` — after an answer, re-ask over the evidence, restricted to membership.
  * - `recover` — after a **decline that contradicts its own Step 1 list**, ask once with the list
  *   quoted and no evidence re-sent (`abstention-recovery.ts`).
+ * - `tally` — after an answer to a **count-or-total question**, ask for the same list with every line
+ *   tagged by what it contributes, and answer with the sum of the tags (`tally.ts`). The audit pass
+ *   already reviews membership and is instructed *not* to adjust a total, because run `42054107910`
+ *   measured 22 correct answers destroyed by that request; this value is the arithmetic the audit
+ *   refuses to do, computed outside the model instead of asked of it again.
  *
- * The two passes are mutually exclusive on purpose. `audit` consults every answered question and
- * `recover` consults only a decline, so a run that could do both would be two treatments behind one
- * value and could not say which move. Making them values of one field says that in the artifact.
+ * The passes are mutually exclusive on purpose. `audit` consults every answered question, `recover`
+ * consults only a decline, and `tally` consults a count-or-total question that was answered, so a run
+ * that could do two would be two treatments behind one value and could not say which move. Making
+ * them values of one field says that in the artifact.
  */
-export type ReviewPass = 'none' | 'audit' | 'recover';
+export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally';
 
 /**
  * Which reply-contract repairs a run administers, if any.

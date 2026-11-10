@@ -107,6 +107,10 @@ export {
 
 // parse
 export { parseAnswer, isAbstention, ABSTAIN_TOKEN } from './parse.js';
+// The four the arm calls: the gate, the two halves of the arithmetic, and the renderer. The types and
+// `classifyAnswerRequest` stay module-level because nothing outside reaches them -- the export census
+// rejected exactly that shape, and a barrel entry nothing calls is public surface with no consumer.
+export { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
 /**
  * The two readings a question can call for, and the test that decides between them.
  *

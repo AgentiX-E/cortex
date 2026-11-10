@@ -242,6 +242,81 @@ describe('the audit census reaches the artifact', () => {
     expect(result.report.questions![0]!.auditChanges).toBeUndefined();
   });
 
+  it('renders the tally pass under its own heading, with the refusals it alone can report', async () => {
+    // §13.362. `refused` is optional on the census because the audit has no such state: a second
+    // consultation that could not read the ledger is a fact about the tally pass, and printing a zero
+    // for it under `audit` would be a measurement of a branch that pass cannot enter.
+    const tallying: MemorySystem = {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      auditCensus: () => ({ attempted: 4, changed: 1, refused: 2 }),
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(
+      dataset(2),
+      bareSystem('reference-pipeline'),
+      tallying,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.audit).toEqual({ attempted: 4, changed: 1, refused: 2 });
+    expect(result.markdown).toContain('## Second consultation (`reviewPass: tally`)');
+    expect(result.markdown).not.toContain('## Membership audit');
+    expect(result.markdown).toContain('| 4 | 1 | 25.0% | 2 | 50.0% |');
+    // The refusal is explained where it is printed, because a reader who does not know what a refused
+    // ledger is cannot tell the mechanism failing from the mechanism never running.
+    expect(result.markdown).toContain('A **refused** ledger is one where a line carried no tag');
+  });
+
+  it('says n/a rather than 0/0 when a tally run consulted nothing', async () => {
+    // A pass configured but never reached is a measurement of zero, and 0/0 is not a share. The two
+    // `n/a` arms exist for exactly this state, and without a test they would be the only branches in
+    // this table nothing enters -- which the per-file ratchet reports as a fall.
+    const silent: MemorySystem = {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      auditCensus: () => ({ attempted: 0, changed: 0, refused: 0 }),
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(dataset(2), bareSystem('reference-pipeline'), silent, {
+      runs: 1,
+      scorer: exactMatchScorer,
+      generatedAt: '1970-01-01T00:00:00.000Z',
+      memoryArmConfig: { ...GATE },
+    });
+
+    expect(result.markdown).toContain('| 0 | 0 | n/a | 0 | n/a |');
+  });
+
+  it('treats a malformed refusal count as an absent instrument', async () => {
+    // The rule the two counters already follow: the only producer is a counter incremented by one, so a
+    // negative or fractional value can only mean the field is not the count it claims to be.
+    const malformed: MemorySystem = {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      auditCensus: () => ({ attempted: 4, changed: 1, refused: 1.5 }),
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(
+      dataset(2),
+      bareSystem('reference-pipeline'),
+      malformed,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.audit).toBeUndefined();
+  });
+
   it('reads a throwing accessor as an absent instrument rather than a failed run', async () => {
     // The rule the sibling readers already follow: a system whose census throws is a system that cannot
     // report, which is not the same as a run that measured zero.

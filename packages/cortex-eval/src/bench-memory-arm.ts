@@ -1601,7 +1601,7 @@ function readAsk(raw: string | undefined): string {
 const REVIEW_PASS_VARIABLE = 'CORTEX_MEMORY_REVIEW_PASS';
 
 /** The passes this arm can dispatch, in the order the config line spells them. */
-const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare'];
+const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare', 'tally'];
 
 /**
  * Read the review pass, rejecting anything the product does not implement.
@@ -4044,7 +4044,16 @@ function replyRepairAcross(systems: readonly MemorySystem[]): { replyRepair?: Re
 function auditAcross(systems: readonly MemorySystem[]): { audit?: AuditCensus } {
   const total = summedOver(systems, (system) => auditOf(system).audit);
   if (total === undefined) return {};
-  return { audit: { attempted: total.attempted as number, changed: total.changed as number } };
+  // `refused` is summed only when at least one instance reported it. Summing it to a present zero would
+  // put the column under `audit`, which cannot refuse anything -- the reason the field is optional.
+  const refused = total.refused as number | undefined;
+  return {
+    audit: {
+      attempted: total.attempted as number,
+      changed: total.changed as number,
+      ...(refused === undefined ? {} : { refused }),
+    },
+  };
 }
 
 /**
@@ -4222,7 +4231,22 @@ function auditOf(system: MemorySystem): { audit?: AuditCensus } {
     const value = record[key];
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
   }
-  return { audit: { attempted: record.attempted as number, changed: record.changed as number } };
+  // `refused` is optional on the payload for the reason the field is optional in the artifact: only the
+  // tally pass can refuse, so a missing value is the audit stating a fact rather than a gap. A present
+  // value is held to the same rule as the two counters -- a count of registries is an integer.
+  const refused = record.refused;
+  if (
+    refused !== undefined &&
+    (typeof refused !== 'number' || !Number.isInteger(refused) || refused < 0)
+  )
+    return {};
+  return {
+    audit: {
+      attempted: record.attempted as number,
+      changed: record.changed as number,
+      ...(refused === undefined ? {} : { refused: refused as number }),
+    },
+  };
 }
 
 function abstentionReasonsOf(system: MemorySystem): { abstentionReasons?: AbstentionReasons } {

@@ -1,10 +1,10 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read. AN ENTRY LEFT, for the first time in four rounds on purpose rather than by rebuild: `cortex-ai: DEFAULT_RETRY_TIMEOUT_MS` was an orphan until \u00a713.227 moved the reader's transport decisions into their own module, which made `cortex-eval` a caller of it -- the deadline the retry budget has to exceed is now read from the package that owns it instead of being copied. Totals 964 -> 964 exports, 549 -> 550 with a caller, 415 -> 414 orphan sites, 375 -> 374 local, 40 nowhere. Every difference is the one symbol, which is the check 13.158.4 asks for before a baseline diff is accepted.",
   "totals": {
-    "exports": 1090,
-    "withCaller": 635,
-    "orphaned": 455,
-    "referencedLocally": 410,
+    "exports": 1101,
+    "withCaller": 642,
+    "orphaned": 459,
+    "referencedLocally": 414,
     "unreferenced": 45
   },
   "groups": [
@@ -202,7 +202,7 @@
         "cortex-memory: conflictStatements (packages/cortex-memory/src/conflict.ts:459)",
         "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:2288)",
         "cortex-memory: renderConflicts (packages/cortex-memory/src/conflict.ts:564)",
-        "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:3734)",
+        "cortex-memory: truncateCodePointSafe (packages/cortex-memory/src/prompt.ts:3818)",
         "cortex-memory: valueSignature (packages/cortex-memory/src/conflict.ts:428)",
         "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:18)",
         "cortex-storage: PgStorageOptions (packages/cortex-storage/src/storage/pg.ts:14)",
@@ -323,7 +323,7 @@
         "cortex-eval: A3Result (packages/cortex-eval/src/a3.ts:75)",
         "cortex-eval: A3Trial (packages/cortex-eval/src/a3.ts:41)",
         "cortex-eval: A3Verdict (packages/cortex-eval/src/a3.ts:72)",
-        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1268)",
+        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1293)",
         "cortex-eval: AbstainReason (packages/cortex-eval/src/natural-language-memory.ts:66)",
         "cortex-eval: BenchmarkRunnerOptions (packages/cortex-eval/src/runner.ts:89)",
         "cortex-eval: BuildCost (packages/cortex-eval/src/competitor.ts:80)",
@@ -361,7 +361,7 @@
         "cortex-eval: EmbeddingMemorySystemOptions (packages/cortex-eval/src/embedding-memory.ts:14)",
         "cortex-eval: EmbeddingSourceStats (packages/cortex-eval/src/retrieval.ts:151)",
         "cortex-eval: EmbeddingWithProvenance (packages/cortex-eval/src/embedding-factory.ts:51)",
-        "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:1079)",
+        "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:1207)",
         "cortex-eval: EvidenceScope (packages/cortex-eval/src/model-portability.ts:252)",
         "cortex-eval: FactMemorySystem (packages/cortex-eval/src/fact-memory.ts:16)",
         "cortex-eval: FactMemorySystemOptions (packages/cortex-eval/src/fact-memory.ts:9)",
@@ -383,7 +383,7 @@
         "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
         "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:48)",
         "cortex-eval: RerankFallbackReport (packages/cortex-eval/src/runner.ts:51)",
-        "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:1112)",
+        "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:1240)",
         "cortex-eval: RetrievalMode (packages/cortex-eval/src/harness.ts:52)",
         "cortex-eval: RetryAblationReport (packages/cortex-eval/src/runner.ts:862)",
         "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1175)",
@@ -531,6 +531,17 @@
         "cortex-eval: StabilityQuestionShape (packages/cortex-eval/src/failure-stability.ts:148)",
         "cortex-eval: StabilityReading (packages/cortex-eval/src/failure-stability.ts:78)",
         "cortex-eval: StabilitySelection (packages/cortex-eval/src/failure-stability.ts:154)"
+      ]
+    },
+    {
+      "category": "tally-pass-public-api",
+      "count": 4,
+      "rationale": "The shapes the arithmetic pass is written in, in the same position `cost-per-capability-public-api` and `failure-stability-public-api` occupy: `parseTallyLedger` returns `TallyLedger`, `tallyTotal` takes `readonly TallyEntry[]`, and `classifyAnswerRequest` returns `AnswerRequest`, so a consumer outside the package cannot name what it hands over or what it gets back without these four. The four functions that do carry a caller -- `isTallyQuestion`, `parseTallyLedger`, `tallyTotal`, `renderTally` -- are the arm's own wiring in `memory.ts` and are counted there; `classifyAnswerRequest` is reached only through `isTallyQuestion` inside the module, which is why it is an orphan rather than a caller-carrying export. Nothing here is exported from the barrel that is not called: `index.ts` names exactly the four the arm uses, which is the shape the gate demanded before the baseline was rebuilt.",
+      "declarationSites": [
+        "cortex-memory: AnswerRequest (packages/cortex-memory/src/tally.ts:49)",
+        "cortex-memory: TallyEntry (packages/cortex-memory/src/tally.ts:73)",
+        "cortex-memory: TallyLedger (packages/cortex-memory/src/tally.ts:86)",
+        "cortex-memory: classifyAnswerRequest (packages/cortex-memory/src/tally.ts:66)"
       ]
     }
   ],
@@ -951,6 +962,7 @@
     "cortex-memory: ASK_CHANGES",
     "cortex-memory: ASK_CHANGES_WHEN_DERIVATION",
     "cortex-memory: ASK_CONTROLS",
+    "cortex-memory: AnswerRequest",
     "cortex-memory: CheckOptions",
     "cortex-memory: ConflictOptions",
     "cortex-memory: ConflictStatement",
@@ -964,6 +976,9 @@
     "cortex-memory: ProviderTurn",
     "cortex-memory: RecoveryPlan",
     "cortex-memory: SayResult",
+    "cortex-memory: TallyEntry",
+    "cortex-memory: TallyLedger",
+    "cortex-memory: classifyAnswerRequest",
     "cortex-memory: conflictStatements",
     "cortex-memory: formatEvidence",
     "cortex-memory: renderConflicts",
@@ -1408,6 +1423,7 @@
     "cortex-memory: ASK_CHANGES": "unreferenced",
     "cortex-memory: ASK_CHANGES_WHEN_DERIVATION": "unreferenced",
     "cortex-memory: ASK_CONTROLS": "unreferenced",
+    "cortex-memory: AnswerRequest": "referenced-locally",
     "cortex-memory: CheckOptions": "referenced-locally",
     "cortex-memory: ConflictOptions": "referenced-locally",
     "cortex-memory: ConflictStatement": "referenced-locally",
@@ -1421,6 +1437,9 @@
     "cortex-memory: ProviderTurn": "referenced-locally",
     "cortex-memory: RecoveryPlan": "referenced-locally",
     "cortex-memory: SayResult": "referenced-locally",
+    "cortex-memory: TallyEntry": "referenced-locally",
+    "cortex-memory: TallyLedger": "referenced-locally",
+    "cortex-memory: classifyAnswerRequest": "referenced-locally",
     "cortex-memory: conflictStatements": "referenced-locally",
     "cortex-memory: formatEvidence": "referenced-locally",
     "cortex-memory: renderConflicts": "referenced-locally",
@@ -1969,7 +1988,7 @@
       "packages/cortex-eval/src/assumption-ablation.ts:69"
     ],
     "cortex-eval: AblationReportOptions": [
-      "packages/cortex-eval/src/report.ts:1268"
+      "packages/cortex-eval/src/report.ts:1293"
     ],
     "cortex-eval: AblationRow": [
       "packages/cortex-eval/src/assumption-ablation.ts:780"
@@ -2200,7 +2219,7 @@
       "packages/cortex-eval/src/embedding-factory.ts:51"
     ],
     "cortex-eval: Evaluation": [
-      "packages/cortex-eval/src/acceptance.ts:1079"
+      "packages/cortex-eval/src/acceptance.ts:1207"
     ],
     "cortex-eval: EvidenceScope": [
       "packages/cortex-eval/src/model-portability.ts:252"
@@ -2314,7 +2333,7 @@
       "packages/cortex-eval/src/runner.ts:51"
     ],
     "cortex-eval: Resolvers": [
-      "packages/cortex-eval/src/acceptance.ts:1112"
+      "packages/cortex-eval/src/acceptance.ts:1240"
     ],
     "cortex-eval: RetrievalDiagnostic": [
       "packages/cortex-eval/src/retrieval-diagnostics.ts:41"
@@ -2697,6 +2716,9 @@
     "cortex-memory: ASK_CONTROLS": [
       "packages/cortex-memory/src/prompt.ts:373"
     ],
+    "cortex-memory: AnswerRequest": [
+      "packages/cortex-memory/src/tally.ts:49"
+    ],
     "cortex-memory: CheckOptions": [
       "packages/cortex-memory/src/disclosure/session.ts:88"
     ],
@@ -2736,6 +2758,15 @@
     "cortex-memory: SayResult": [
       "packages/cortex-memory/src/disclosure/session.ts:82"
     ],
+    "cortex-memory: TallyEntry": [
+      "packages/cortex-memory/src/tally.ts:73"
+    ],
+    "cortex-memory: TallyLedger": [
+      "packages/cortex-memory/src/tally.ts:86"
+    ],
+    "cortex-memory: classifyAnswerRequest": [
+      "packages/cortex-memory/src/tally.ts:66"
+    ],
     "cortex-memory: conflictStatements": [
       "packages/cortex-memory/src/conflict.ts:459"
     ],
@@ -2746,7 +2777,7 @@
       "packages/cortex-memory/src/conflict.ts:564"
     ],
     "cortex-memory: truncateCodePointSafe": [
-      "packages/cortex-memory/src/prompt.ts:3734"
+      "packages/cortex-memory/src/prompt.ts:3818"
     ],
     "cortex-memory: valueSignature": [
       "packages/cortex-memory/src/conflict.ts:428"

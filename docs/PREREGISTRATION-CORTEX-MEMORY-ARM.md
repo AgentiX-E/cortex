@@ -38854,3 +38854,150 @@ nothing moves.
 **The completion figure.** 97% → **98%**: requirement 12's reasoning axis moves from `unrun` to a passing reading
 on the configuration that ships, which is one of the three points the figure was carrying as missing. The
 release signal does not move, because a mechanism queue that is still empty is not a capability.
+
+## 13.362 The arithmetic pass: the reader tags, the product adds
+
+Rounds 58 to 60 spent their dispatches on the reader axis — a reply-contract repair, a mode, a model
+tier — and the last of them closed the axis with a sign on both ends (`+4.35` for the reasoning mode,
+`−7.20` for the larger model). What none of them touched is where the failures actually are. This
+section registers the first mechanism of the campaign that is aimed at a **population counted on an
+artifact** rather than at a knob.
+
+### 13.362.1 The population, and why it is not a hypothesis
+
+`42533236864`, 500 questions × 4 repetitions, `deepseek-chat`, six-route allocation, the configuration
+that ships. Its 44 wrong questions split **MR 20, IE 9, KU 9, TR 6, ABS 0**, and the multi-session 20
+have three properties that together decide what the mechanism has to be:
+
+| property | reading | what it rules out |
+| --- | --- | --- |
+| every failure carries its gold turns | `goldOverlap` carried/total **0.966** on the 20 against **0.988** on the 101 correct; zero failures at 0/22 | retrieval and room (`MEASURE-MR-CEILING` §1: all 121 prompts within 400 chars of the cap) |
+| the failures are counts and totals | **102 of the 121 ask for a count or a total, and 18 of the 20 are inside that 102** — 82.4% there, 19 of 19 elsewhere | a wording change aimed at "multi-session" generally |
+| the misses are arithmetic | `2` for 3, `5` for 4, `22` for 23, `1` for 2, `$8,750` for `$3,750`, `$700` for `$720`, and `37f165cf` answering **"440 pages and 416 pages"** against a gold of **856** | membership, which `reviewPass: audit` already reviews |
+
+The last row is the registration. `37f165cf`'s reply lists both operands — 440 and 416 — and then
+declines to add them; the gold is their sum. That is not a reader that could not find the answer. It is
+a reader that could find it and could not do the operation.
+
+### 13.362.2 Why the audit pass is not widened, and what is done instead
+
+`reviewPass: 'audit'` re-asks with the first response quoted and reviews **membership**, and its
+instruction contains *"do not adjust a total for any reason other than the list changing"*. That
+sentence is not timidity: run `42054107910` measured **22 correct answers destroyed**, every one
+rewritten as a bare integer, 17 of them on questions whose gold was a name, a price, a date or a list.
+A model asked to correct a total damages questions that were right.
+
+So the operation is taken away from the model instead of asked of it again:
+
+1. the second consultation asks for the **same list**, one line per item, every line ending with the
+   **single bare number that item contributes** — and explicitly asks for no total and no answer;
+2. `parseTallyLedger` reads the lines and `tallyTotal` sums them;
+3. the answer is the sum, and no model wrote it.
+
+Reach is three gates, each a refusal: the **route** is `multi-session` by construction; the **shape**
+is `enumeration` (`question-shape.ts` sends derivations to an operand prompt, and "how many years older
+am I" would otherwise be summed into an age); the **request** is count-or-total (`gpt4_2ba83207`, "which
+grocery store did I spend the most money at", is a maximum and is one of the two failures outside the
+population). Intersection: **100 questions carrying 16 of the 20 failures**.
+
+### 13.362.3 What a refused ledger does, and why that is the mechanism's most important line
+
+A line without a trailing number refuses the **whole** ledger and the first pass's answer stands. The
+reason is arithmetic rather than caution: `37f165cf` needs both operands, so a parser that dropped the
+line it could not read would answer 440 against a gold of 856 — a smaller total stated with a complete
+one's confidence. `auditCensus().refused` counts those, because a null result has two completely
+different explanations (the pass never fired; every ledger was untagged) and only the count separates
+them.
+
+### 13.362.4 The predictions, written so the dispatch can fail them
+
+- **`P1` (population, not headline).** `MR` gains **≥ 2.0 points** — ≥ 3 of 121 questions net — against
+  `42533236864` on the same 500 questions and the same four repetitions. The overall row is the same
+  movement divided by five, so the overall bar is **≥ +0.5 points**; a run whose overall move is larger
+  than that with `MR` flat would be a reading of something else.
+- **`P2` (no destruction, which is the failure this class has on record).** Of the control's **101**
+  correct multi-session answers, at most **3** become wrong. `42054107910`'s 22 is the number this
+  bar exists to be smaller than; a treatment that buys 4 and sells 5 has not moved the capability.
+- **`P3` (admissibility).** `audit.attempted` is **≥ 60** and `audit.refused` is **≤ 20** of it. A
+  run whose pass fired on fewer than 60 questions did not administer the treatment the registration
+  describes, and a run that refused more than a fifth of its ledgers is a reading of the parser rather
+  than of the arithmetic. Neither is a failure of the mechanism; both are a failure of this dispatch
+  to measure it, and they are named in advance so the artifact cannot be read as the other thing.
+- **`P4` (cost, stated as a bound rather than a hope).** Feature-side spend rises by **≤ 25%** against
+  the control. The pass issues one extra call on ~100 of 500 questions, re-rendering the window, and
+  the control's bill is 60% output — so a rise above a quarter would mean the pass is being consulted
+  far more often than the population allows.
+
+Prompt identity is **not** a condition here and must not be quoted as one: this is a mechanism, the
+prompts differ on the population by construction, and the comparison is paired on the 500 questions
+with the same reader, the same evidence and the same scorer.
+
+### 13.362.5 What each outcome licenses, and the stopping rule
+
+**If `P1`–`P4` hold:** `tally` becomes the first mechanism adopted since the window allocation, on a
+population basis rather than a headline — `MEASURE-MR-CEILING` §7 has said since it was written that
+the undecided question on MR is the answer side, and this is the answer side.
+
+**If `P1` fails with `P2` and `P3` holding:** the arithmetic hypothesis is falsified on its own terms
+and the capability's remaining 18 points are not arithmetic. That is a finding the campaign can act on
+— it would retire the answer side the way §13.348 retired representation — and it costs one run.
+
+**If `P2` fails:** the mechanism is rejected whatever `P1` says, because the audit's own history says a
+pass that damages correct answers is worse than the defect it repairs.
+
+**If `P3` fails:** nothing is read, and the round's finding is that the population was smaller than the
+artifact's census said — which would be the eleventh instrument defect this campaign has found by
+reading two records against each other.
+
+One run. No peeking, no re-run for a better draw. The cost is printed by `spend-projection.mjs` before
+the POST.
+
+### 13.362.6 The literature arrived before the artifact, and it changes nothing about the bars
+
+Registered after the mechanism was written and before the dispatch, because a section that names a
+competitor's mechanism after seeing its own result is not a registration.
+
+Two papers and one pattern catalogue describe exactly the split this pass implements, and none of them
+was known when the population in §13.362.1 was counted:
+
+- **TallyMem** (*When Agent Memory Needs to Compute: Evidence Access and Executable Aggregation*,
+  arXiv **2610.19474**) separates *deciding what to count* from *counting*: a model writes an event
+  specification, a deterministic executor evaluates it over a ledger, and the specification "allows
+  errors in specifying the intended events to be distinguished from errors in combining them". It
+  reports **+13.8 points** exact match over its own trajectory-memory baseline on 99 held-out MINTEval
+  repositories (+11.0 on a controlled probe without routing) and a much smaller **69.8% → 71.1%** on
+  full AMA-Bench. Its opening measurement is this arm's finding in another system: *"even a reader given
+  all 150 steps of a trajectory miscounts five of eight action types."*
+- **MemTrace** (arXiv **2605.28732**) attributes memory-system errors and names *aggregation and
+  counting failure* as its own subtype — the retrieved context "already contained multiple qualifying
+  art-event memories within the target window, but the model enumerated only one event and concluded
+  the answer was 1 instead of 4" — plus a *schema mismatch* form that turns a quantity question into a
+  count of actions.
+- The **Tool-Output Arithmetic Trust** pattern names the anti-pattern this pass removes: *"the agent
+  compares, ranks, or sums correctly returned tool data in its own head instead of offloading the
+  computation to a deterministic tool, emitting confident wrong aggregates."*
+
+`tally` is the cheap end of TallyMem's design, and the difference is worth stating because it bounds
+what this dispatch can show: TallyMem builds its ledger **before any question** and lets the model
+compile a query at question time; this pass has no persistent ledger, so the ledger is the reader's own
+first-pass list and the only operation is the sum. That is why §13.362.4's bar is **2 points on MR**
+rather than the 13.8 TallyMem reports on a different corpus and a different baseline.
+
+**The load curve replicates on this arm.** TallyMem reports correct counts for 100% of trajectories at
+14 events and 80% at 53. The nearest quantity this artifact carries is `goldOverlap.total` — how many
+gold turns the answer combines — and on `42533236864`'s 121 multi-session questions:
+
+| aggregation load | n | accuracy |
+| --- | ---: | ---: |
+| ≤ 14 gold turns | 75 | **90.7%** |
+| > 14 gold turns | 46 | **71.7%** |
+
+point-biserial **r = −0.234**. So the capability's loss is concentrated where the answer must combine
+more items, which is the shape the mechanism addresses — and it adds a fifth reading the dispatch will
+be asked for:
+
+- **`P5` (where the gain must appear).** Of the ≥ 3 net questions `P1` requires, at least **2** carry
+  more than 14 gold turns. A gain spread evenly across the load curve would say the pass is acting as a
+  second sample rather than as arithmetic.
+
+`P1`–`P4` stand as written. The literature is a prior on the sign, not a licence to move a threshold.

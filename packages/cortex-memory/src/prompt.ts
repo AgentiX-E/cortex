@@ -3603,6 +3603,52 @@ function auditInstruction(firstPass: string): string {
 }
 
 /**
+ * The instruction the tally pass asks with: the same membership review, plus a tag on every line and
+ * no arithmetic.
+ *
+ * ## Why the model is told not to total
+ *
+ * Because the total is the step that fails. On run `42533236864` **18 of multi-session's 20 failures
+ * are count-or-total questions** and the items are present in every one of them: `37f165cf` lists
+ * "440 pages" and "416 pages" and answers "440 pages and 416 pages" against a gold of 856. Asking for
+ * the same operation a second time, more emphatically, is what the audit pass already does — and its
+ * instruction had to be rewritten to say *"do not adjust a total for any reason"* after run
+ * `42054107910` measured 22 correct answers destroyed by exactly that request. So the division of
+ * labour is stated: the reader names the items and tags what each contributes, `parseTallyLedger`
+ * adds, and the product answers.
+ *
+ * ## Why the tag is the line's last token
+ *
+ * A number inside the item's own text is not a contribution — `2023/05/22`, `Session 3` and "440
+ * pages" are all numbers, and only one of them belongs in the sum. Putting the contribution last, as
+ * a bare number, is a shape a parser can read without guessing, and `parseTallyLedger` refuses the
+ * whole ledger when a line does not carry one.
+ *
+ * ## Why the zero is spelled out
+ *
+ * A line that matched the question and contributes nothing is still a line: dropping it changes the
+ * count, and keeping it untagged refuses the ledger. `0` is the third option and it has to be named,
+ * because "leave it out" and "write 0" are the same instruction only if the reader already knows
+ * which one the arithmetic wants.
+ */
+function tallyInstruction(firstPass: string): string {
+  return [
+    'A first pass answered this question from the evidence above. Its whole response is quoted below.',
+    `FIRST PASS:\n${firstPass}`,
+    'Review that response for MEMBERSHIP and for what each item contributes, then write the ledger.',
+    'Step 1 — one line per item that matches the question and appears in the evidence. Begin the line ' +
+      'with `- `, name the item and the date it appears on, and end the line with the single bare ' +
+      'number this item contributes to the answer: how many of the thing it represents, or the amount ' +
+      'it adds. Add an item the first pass omitted, split an entry that describes two different ' +
+      'events, merge two entries that describe the same event, and drop an entry the evidence does not ' +
+      'support. An item that matches the question but contributes nothing ends with `0`; do not leave ' +
+      'it out, because the number of lines is part of the answer.',
+    'Write no other lines, and do not compute anything: no step 2, no total, no answer. The number ' +
+      'after each line is the only number you write.',
+  ].join('\n\n');
+}
+
+/**
  * The second consultation: the same evidence, the first pass quoted, and a membership review.
  *
  * Built through `fitToBudget` rather than by appending text to the first prompt, because the evidence
@@ -3616,6 +3662,45 @@ export function buildAuditPrompt(
   firstPass: string,
   options: PromptOptions = {},
   firstPassBudget: number = DEFAULT_FIRST_PASS_CHARS,
+): AssembledPrompt {
+  return buildSecondPassPrompt(
+    question,
+    sessions,
+    options,
+    auditInstruction(truncateCodePointSafe(firstPass, firstPassBudget)),
+  );
+}
+
+/**
+ * The tally pass: the same evidence and the same ledger room, with an instruction that asks for
+ * operands instead of a verdict.
+ *
+ * A second entry point rather than an option on `buildAuditPrompt`, because the two passes differ in
+ * what they do with the response — the audit's answer *is* the response's Step 2, and the tally's
+ * answer is computed from its Step 1 — and a flag would put that difference inside the builder where
+ * the caller could not see which one it got.
+ */
+export function buildTallyPrompt(
+  question: string,
+  sessions: readonly AdmittedSession[],
+  firstPass: string,
+  options: PromptOptions = {},
+  firstPassBudget: number = DEFAULT_FIRST_PASS_CHARS,
+): AssembledPrompt {
+  return buildSecondPassPrompt(
+    question,
+    sessions,
+    options,
+    tallyInstruction(truncateCodePointSafe(firstPass, firstPassBudget)),
+  );
+}
+
+/** The body both second passes share: the evidence, the note, the question, then the instruction. */
+function buildSecondPassPrompt(
+  question: string,
+  sessions: readonly AdmittedSession[],
+  options: PromptOptions,
+  instruction: string,
 ): AssembledPrompt {
   const maxChars = options.maxChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const flat = sessions.flatMap((session) => session.turns);
@@ -3632,7 +3717,6 @@ export function buildAuditPrompt(
       options.turnCutMarker,
     );
 
-  const instruction = auditInstruction(truncateCodePointSafe(firstPass, firstPassBudget));
   const body = render(flat);
   const full = [`EVIDENCE:\n${body}`, SESSION_NOTE, `QUESTION: ${question}`, instruction].join(
     '\n\n',

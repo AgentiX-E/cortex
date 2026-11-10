@@ -110,11 +110,12 @@ class TestTheReviewPassReachesTheProduct(unittest.TestCase):
     def test_the_product_carries_the_field(self) -> None:
         source = TYPES.read_text(encoding="utf-8")
         self.assertRegex(source, r"reviewPass\?:\s*ReviewPass;")
-        # The union gained `recover` in step 23. Pinned as the full member list rather than as a
+        # The union gained `tally` in round 61: the arithmetic pass, which is a value of this field
+        # rather than an input of its own because the workflow is at 24 of its 25 dispatch inputs. Pinned as the full member list rather than as a
         # count, because the assertion's subject is "the product carries the values the arm can
         # dispatch", and a dispatch of a value the product does not implement is rejected at the
         # arm's boundary -- so the two lists have to agree member by member.
-        self.assertIn("export type ReviewPass = 'none' | 'audit' | 'recover';", source)
+        self.assertIn("export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally';", source)
 
 
 if __name__ == "__main__":

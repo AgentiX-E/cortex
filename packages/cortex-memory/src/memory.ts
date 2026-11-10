@@ -40,6 +40,7 @@ import {
   buildRetryPrompt,
   buildSessionPrompt,
   buildShapePrompt,
+  buildTallyPrompt,
   type AssembledPrompt,
   type EvidenceOrdering,
   type PromptContract,
@@ -51,6 +52,7 @@ import {
   planAbstentionRecovery,
 } from './abstention-recovery.js';
 import { planReplyRepair } from './reply-repair.js';
+import { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
@@ -249,6 +251,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * counter is the monotonic side of that delta, exactly as `#recoveries` is for the recovery pass.
    */
   readonly #audits: { attempted: number; changed: number } = { attempted: 0, changed: 0 };
+
+  /**
+   * Ledgers the tally pass could not read, counted rather than logged.
+   *
+   * A refusal is not a failure of the run: it is the pass declining to answer from a list it could not
+   * add. It is counted because a null result has two completely different explanations -- the pass never
+   * fired, or it fired and every ledger was untagged -- and only the count separates them.
+   */
+  #tallyRefusals = 0;
 
   /**
    * The model's own output for the most recent call, before `parseAnswer`.
@@ -932,8 +943,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * a measurement and stays a measurement -- a configured pass that declined every list still answers
    * `{ attempted: 0, changed: 0 }`. Absence is a fact about the build, and only this method can state it.
    */
-  auditCensus(): { attempted: number; changed: number } | null {
-    if (this.#options.reviewPass !== 'audit') return null;
+  auditCensus(): { attempted: number; changed: number; refused?: number } | null {
+    const pass = this.#options.reviewPass;
+    if (pass !== 'audit' && pass !== 'tally') return null;
+    if (pass === 'tally') {
+      // The same two numbers with the same meaning under both passes -- a second consultation ran, and
+      // the answer it produced differs from the first -- plus the refusals, which only this pass can
+      // have. The audit's own payload has no third field, so adding one to the shared type would print
+      // a zero the audit never measured.
+      return { ...this.#audits, refused: this.#tallyRefusals };
+    }
     return { ...this.#audits };
   }
 
@@ -1553,6 +1572,51 @@ export class CortexMemory implements SessionAwareMemorySystem {
         assembled,
       );
       return this.#recordOutcome(second);
+    }
+
+    // §13.362. The tally pass, which is the arithmetic the audit pass is instructed not to do.
+    //
+    // The population is not a hypothesis: on run `42533236864`, **102 of the 121 multi-session questions
+    // ask for a count or a total and 18 of the capability's 20 failures are inside that 102** (82.4%
+    // there, 19 of 19 elsewhere). Every one of them carries its gold turns, and the misses are
+    // off-by-one counts, wrong sums, and `37f165cf` answering "440 pages and 416 pages" against a gold of
+    // 856 -- the reader found the operands and did not add them.
+    //
+    // Three gates, each a state this pass must not enter. A **decline** has no list (the audit's own
+    // rule). A question whose answer is a name, a maximum or a derivation has nothing to sum here:
+    // `question-shape.ts` owns the derivation prompt and this arithmetic would answer "how many years
+    // older" with an age. And the reach is the multi-session route by construction, so the other five
+    // capabilities answer from byte-identical prompts.
+    if (this.#options.reviewPass === 'tally' && first !== null && isTallyQuestion(question)) {
+      const tallyPrompt = buildTallyPrompt(question, sessions, firstRaw, options);
+      // Counted before the call and compared after it, for the reason the audit branch gives: `attempted`
+      // has to mean "a consultation was issued".
+      this.#audits.attempted += 1;
+      await this.#consult(tallyPrompt.prompt, 'multi-session');
+      const ledger = parseTallyLedger(this.#lastRawOutput as string);
+      if (ledger.kind === 'refused') {
+        this.#tallyRefusals += 1;
+        // The first pass's answer stands, and the evidence recorded is the prompt that answer came from.
+        // A partial sum is not a partial answer: dropping the line that did not parse would answer 440
+        // for a question whose gold is 856, with the same confidence as a complete ledger.
+        this.#recordEvidence(
+          sessions.flatMap((session) => session.turns),
+          assembled,
+        );
+        return this.#recordOutcome(first);
+      }
+      const answered = renderTally(tallyTotal(ledger.entries));
+      if (answered !== first) this.#audits.changed += 1;
+      this.#lastReview = { first, final: answered, changed: answered !== first };
+      // Delivery from retrieval's prompt and coverage from this one, which is the split §13.262 states:
+      // the tally pass re-selects evidence against the room its instruction needs, so what the answer
+      // came from is its own prompt while what retrieval delivered is unchanged.
+      this.#recordDelivery(assembled);
+      this.#recordCoverage(
+        sessions.flatMap((session) => session.turns),
+        tallyPrompt,
+      );
+      return this.#recordOutcome(answered);
     }
 
     // §13.94's second consultation. Two conditions, each a state this pass must not enter: no pass

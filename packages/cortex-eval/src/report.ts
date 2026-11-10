@@ -1269,6 +1269,14 @@ export type ReplyRepairCensus = {
 export type AuditCensus = {
   readonly attempted: number;
   readonly changed: number;
+  /**
+   * Ledgers the second pass could not read, present only under `reviewPass: tally`.
+   *
+   * Optional rather than defaulted to zero, because the audit pass has no such state: a run that prints
+   * `refused: 0` under `audit` would be stating a measurement of a branch it cannot enter, which is the
+   * defect this file's `recovery` census was introduced to remove in the other direction.
+   */
+  readonly refused?: number;
 };
 
 export type AbstentionReasons = {
@@ -2186,21 +2194,42 @@ function replyRepairLines(census: ReplyRepairCensus | undefined): string[] {
  */
 function auditLines(census: AuditCensus | undefined): string[] {
   if (census === undefined) return [];
-  const { attempted, changed } = census;
+  const { attempted, changed, refused } = census;
   const share = attempted === 0 ? 'n/a' : `${((changed / attempted) * 100).toFixed(1)}%`;
+  // The refusal column is printed only when the pass that can refuse ran. A row of zeros under `audit`
+  // would be a measurement of a branch the audit cannot enter -- the reason `AuditCensus.refused` is
+  // optional rather than defaulted.
   return [
     '',
-    '## Membership audit (`reviewPass: audit`)',
+    refused === undefined
+      ? '## Membership audit (`reviewPass: audit`)'
+      : '## Second consultation (`reviewPass: tally`)',
     '',
-    '| Consultations | Moved the answer | Share moved |',
-    '|---|---|---|',
-    `| ${attempted} | ${changed} | ${share} |`,
+    refused === undefined
+      ? '| Consultations | Moved the answer | Share moved |'
+      : '| Consultations | Moved the answer | Share moved | Refused ledgers | Refused share |',
+    refused === undefined ? '|---|---|---|' : '|---|---|---|---|---|',
+    refused === undefined
+      ? `| ${attempted} | ${changed} | ${share} |`
+      : `| ${attempted} | ${changed} | ${share} | ${refused} | ${attempted === 0 ? 'n/a' : `${((refused / attempted) * 100).toFixed(1)}%`} |`,
     '',
     'Attempted counts consultations this pass issued: it runs on the multi-session route, on an answer that was',
     'not a decline, and it re-reads the same evidence with the first pass quoted and a membership-only',
     'instruction. "Moved" counts the consultations whose answer differed from the one they were handed -- a',
     'review that agreed everywhere reports `0` here and has still measured something. Whether a move was an',
     'improvement is not in this table: that needs the gold, and it is read from the roster.',
+    ...(refused === undefined
+      ? []
+      : [
+          '',
+          'Under `reviewPass: tally` the second consultation is not a membership review of every answered',
+          'question: it runs on the multi-session route, on an answer that was not a decline, and only where the',
+          'question asks for a count or a total (`tally.ts`). It asks for the same list with every line tagged',
+          'by what it contributes, and the answer is the sum of the tags rather than the model own total.',
+          'A **refused** ledger is one where a line carried no tag, or where there were no lines at all; the',
+          'first pass answer stands in that case, because a partial sum is a smaller total stated with the same',
+          'confidence as a complete one.',
+        ]),
   ];
 }
 
