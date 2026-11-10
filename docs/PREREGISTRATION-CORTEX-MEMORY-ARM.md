@@ -37980,3 +37980,63 @@ The trade is stated rather than hidden. The variable is not in the run's dispatc
 after the run, because a variable left at `1` would silently make the next dispatch a treatment of
 this section. Everything else is unchanged: `readToggle` reads an unset variable as the control,
 which is the state every archived run is in.
+
+## 13.353 The first administration: three conversions, five regressions, and the bar applied to both
+
+Run `42754985453` administered §13.352's block on the 72 `KU` questions, four repetitions, with
+`conflicts` declared. `docs/MEASURE-CONFLICT-SURFACING.md` §4 is the reading; this section registers
+the verdict and what replaces it.
+
+### 13.353.1 The reading, and the bar it was registered against
+
+`ce6d2d27` 0/4 → 3/4, `9ea5eabc` 0/4 → 4/4, `ed4ddc30` 0/4 → 4/4, `59524333` 0/4 → 0/4:
+**three of the four reachable conversions**, which meets the bar of §13.352.3 on the letter.
+`6a1eabeb` 4/4 → 0/4, `89941a93` 4/4 → 0/4, `c7dc5443` 4/4 → 0/4, `f9e8c073` 3/4 → 0/4,
+`852ce960` 2/4 → 0/4: **five questions the control answered in every repetition, answered wrong.**
+`KU` mean 88.54% → 84.03%, a net **−2**.
+
+The bar's second sentence was *no capability worse than 2 sd of its own spread*, which is 3.50 points
+on this population. A 4.51-point fall on **byte-identical evidence** (`evidenceChars` equal on all 72
+questions) is three times the threshold. **Verdict: rejected.** The conversions are real and the
+trade is not.
+
+### 13.353.2 The three regressions name their cause, and it is one sentence
+
+`6a1eabeb` (5K best, `25:50` → `27:12`), `89941a93` (bikes, `4` → "Three bikes") and `c7dc5443`
+(record, `5-2` → `3-2`) are all **"current" questions answered with the earlier value**, and all
+three saw a block that ended with the sentence written for `0977f2af`: *"If the question asks about
+a previous state, the earlier statement is the answer."*
+
+That sentence was defensible as design ("the direction is in the question") and is indefensible
+against this artifact: the question it was written for is **not reachable** by the mechanism
+(§13.352.2 — it shares no term with either gadget), so the sentence served no target and primed three
+regressions. The closing line is now directional: *"the later statement is the value now and the
+earlier one is the value it replaced."*
+
+### 13.353.3 Registered: the same block, a value-only population, and a bar that cannot be met by a trade
+
+- **Population.** Only statements that state a **value** (weekday, month, clock time, number, or a
+  capitalised name), and only when two of them state **different** values. Measured on the artifact:
+  blocks on 69 → **64** of 72, naming the gold 41 → **42**, and four of the five regressions still
+  fire. The gate is the honest population rather than the fix, and it is registered as such.
+- **Closing line.** Directional, per §13.353.2. One sentence, one variable, and the only change this
+  section makes to the prompt.
+- **Bar.** **≥ 3 conversions** of the four reachable, **and no regression among the 65 questions the
+  control answers in every repetition**. **Falsifier: any regression in two or more repetitions.**
+  This is the first bar in the campaign with two clauses, because the first two-clause bar this
+  section applied — conversions *and* no capability worse than 2 sd — was met on one clause and
+  failed on the other, which is exactly the case a single-clause bar cannot express.
+- **Dispatch.** `capability=KU`, four repetitions, `conflicts` declared. Projected 2.05 CNY, lower
+  bound; the first run of this arm was projected 1.73 and billed 5.87, so the budget ceiling is 12.
+
+### 13.353.4 The harness defect this run found
+
+The reference pipeline answered **0 of 72** under `capability=KU`: 58 declines and 14 wrong answers,
+against 65 of 72 correct on the same questions in the full-file run. So a capability-scoped dispatch
+has **no usable within-run control**, and this comparison had to be made against the archived
+full-file artifact — legitimate here only because `evidenceChars` is equal on all 72 questions, which
+makes the delivered evidence identical and the block the only difference.
+
+It is registered as a harness defect rather than worked around: every capability-scoped arm in this
+campaign (`§13.342.8`'s `MR` runs included) carries it, and a scoped run's `baseline` line is
+currently a reading of the filter and not of the reference pipeline.

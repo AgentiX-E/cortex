@@ -4361,6 +4361,13 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, str]] = {
     # not, and the two artifacts would agree about every input. `off` is the registered value, so a
     # treatment run must declare `replyRepair` and a control run is compared against `off`.
     'replyRepair': ('replyRepair', 'off'),
+    # §13.352. The related-statements block changes what a `KU` answer is answering rather than what
+    # the run did: the delivered evidence is byte-identical either way, so an artifact produced with
+    # the block on and one produced with it off agree about every dispatch input. `false` is the
+    # registered value, so a treatment run must declare `conflicts` and a control run is compared
+    # against `false`. Carried by a repository variable rather than an input for the reason §13.352.5
+    # states, which is why it is a condition here and not a `DISPATCH_FIELD_ALIASES` entry.
+    'conflicts': ('conflicts', 'false'),
 }
 
 ABSENT = '<-absent->'

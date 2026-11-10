@@ -39,11 +39,11 @@
  * with the **question**, keeps the earliest and the latest of those plus the most relevant ones, and
  * prints them in the order the evidence states them, with their dates.
  *
- * The decision is left with the reader because the direction of the comparison is in the question:
- * `0977f2af` asks "what new kitchen gadget did I invest in **before** getting the Air Fryer", i.e.
- * the *earlier* of two values, and the same block has to serve it. An annotator that labelled the
- * later statement "current" would be wrong on that question and right on the other six, which is a
- * regression dressed as a feature.
+ * It does not fold the two statements into one, either: the block prints them and says which is the
+ * later value, and the reader answers. That is the only direction that survived measurement — run
+ * `42754985453` shows a sentence offering the *earlier* value as the answer costing three
+ * conversions on questions that ask for the current one, and the one question it was written for
+ * (`0977f2af`, "before the Air Fryer") is not reachable by this mechanism at all.
  *
  * ## Why the block is additive and the window is not touched
  *
@@ -300,6 +300,154 @@ function clip(sentence: string, limit: number): string {
 }
 
 /**
+ * The words that make a statement a *value* rather than a mention of a subject.
+ *
+ * ## Why this exists, and what it cost to learn
+ *
+ * The first version of this module printed any two statements about the question's subject. Run
+ * `42754985453` measured what that is worth: it converted **three** of the four reachable questions
+ * (`ce6d2d27` 0/4 → 3/4, `9ea5eabc` 0/4 → 4/4, `ed4ddc30` 0/4 → 4/4) and **broke five** that the
+ * control answered correctly in every repetition (`6a1eabeb`, `89941a93`, `c7dc5443` 4/4 → 0/4,
+ * `f9e8c073` 3/4 → 0/4, `852ce960` 2/4 → 0/4), for a net **-2** questions on byte-identical
+ * evidence. A block that names no gold is a prompt perturbation, and on 31 of these 72 questions
+ * the block did exactly that.
+ *
+ * So the population is now the statements that state a **value**, and the block fires only when two
+ * of them state **different** values. That is the difference between "related statements" — what
+ * the first version printed, and what the artifact priced — and a conflict, which is what the
+ * mechanism was always supposed to be about.
+ */
+const WEEKDAYS = new Set([
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+]);
+
+const MONTHS = new Set([
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+]);
+
+/**
+ * Words that are capitalised for grammar rather than because they name something.
+ *
+ * A statement starts with a capital, so the sentence's own first word is excluded by position in
+ * {@link valueSignature} instead of by this list; what remains here is the vocabulary that begins
+ * clauses ("And", "But", "By", "If", "So", "The", "When") and the pronouns a capitalised sentence
+ * opens with.
+ */
+const NOT_A_NAME = new Set([
+  'a',
+  'actually',
+  'also',
+  'and',
+  'anyway',
+  'as',
+  'at',
+  'but',
+  'by',
+  'can',
+  'could',
+  'do',
+  'does',
+  'for',
+  'from',
+  'he',
+  'her',
+  'here',
+  'his',
+  'how',
+  'i',
+  'if',
+  'in',
+  'is',
+  'it',
+  'its',
+  'just',
+  'let',
+  'maybe',
+  'my',
+  'no',
+  'not',
+  'now',
+  'of',
+  'on',
+  'or',
+  'our',
+  'she',
+  'so',
+  'some',
+  'that',
+  'the',
+  'then',
+  'there',
+  'these',
+  'they',
+  'this',
+  'those',
+  'to',
+  'we',
+  'well',
+  'what',
+  'when',
+  'where',
+  'which',
+  'while',
+  'who',
+  'why',
+  'with',
+  'would',
+  'yes',
+  'you',
+  'your',
+]);
+
+/**
+ * The values a sentence states: weekdays, months, clock times, numbers and capitalised names.
+ *
+ * Deliberately not a parser. It has to answer one question -- do these two statements disagree about
+ * a value -- and every additional kind of token it recognises is another way for two statements about
+ * the same subject to look like a conflict when they are not. A capitalised word is included because
+ * the corpus states places and products that way ("trip to Hawaii", "Instant Pot"), and excluding
+ * the sentence's first word is what keeps ordinary prose from looking like a proper noun.
+ */
+export function valueSignature(sentence: string): string[] {
+  const out = new Set<string>();
+  const words = sentence.match(/[A-Za-z0-9][A-Za-z0-9:'’.-]*/g) ?? [];
+  words.forEach((raw, index) => {
+    const token = raw.replace(/[.,;:]+$/, '');
+    const lower = token.toLowerCase().replace(/'s$/, '');
+    if (WEEKDAYS.has(lower) || MONTHS.has(lower)) {
+      out.add(lower);
+      return;
+    }
+    // A clock time or a number, either written out or as digits, is a value whatever else it is.
+    if (/^\d+(?:[:.]\d+)?(?:am|pm)?$/i.test(token)) {
+      out.add(lower);
+      return;
+    }
+    if (index > 0 && /^[A-Z]/.test(token) && !NOT_A_NAME.has(lower) && lower.length >= 3) {
+      out.add(lower);
+    }
+  });
+  return [...out].sort();
+}
+
+/**
  * The statements in the window that are about what the question asks, in evidence order.
  *
  * Returns fewer than two when the window states nothing twice, which is the correct answer for a
@@ -367,13 +515,19 @@ export function conflictStatements(
     : [...qualifying, latest];
   if (candidates.length < 2) return [];
 
-  // The endpoints are kept first, then the rest by relevance. `candidates` is already in evidence
-  // order, so `[0]` and `[length - 1]` are the earliest and latest statements of the subject.
-  const kept = new Set<number>([
-    candidates[0]!.position,
-    candidates[candidates.length - 1]!.position,
-  ]);
-  const byRelevance = [...candidates].sort((a, b) =>
+  // Only the statements that state a value, and only when two of them state different ones. This is
+  // the gate run `42754985453` bought: without it the block printed any two statements about the
+  // subject, converted three reachable questions and broke five correct ones.
+  const valued = candidates
+    .map((entry) => ({ ...entry, values: valueSignature(entry.sentence) }))
+    .filter((entry) => entry.values.length > 0);
+  if (valued.length < 2) return [];
+  if (new Set(valued.map((entry) => entry.values.join('|'))).size < 2) return [];
+
+  // The endpoints are kept first, then the rest by relevance. `valued` is in evidence order, so
+  // `[0]` and `[length - 1]` are the earliest and latest statements that state a value.
+  const kept = new Set<number>([valued[0]!.position, valued[valued.length - 1]!.position]);
+  const byRelevance = [...valued].sort((a, b) =>
     b.score === a.score ? b.position - a.position : b.score - a.score,
   );
   for (const entry of byRelevance) {
@@ -381,7 +535,7 @@ export function conflictStatements(
     kept.add(entry.position);
   }
 
-  return candidates
+  return valued
     .filter((entry) => kept.has(entry.position))
     .map((entry) => ({
       date: entry.date,
@@ -393,11 +547,19 @@ export function conflictStatements(
 /**
  * The block, or the empty string when there is nothing to compare.
  *
- * The closing line states the rule conditionally ("when two of these state different values …")
- * rather than asserting that the last entry is the answer. The block is a sample of the statements
- * about the subject, not a resolution of them: its last entry can be an aside that states no value
- * at all, and a line calling it "the current value" would be a claim the evidence does not support
- * on the very questions where the earliest and latest statements are equally relevant.
+ * The closing line is conditional ("when two of these state different values …") rather than
+ * asserting that the last entry is the answer, because the block is a sample of the statements and
+ * not a resolution of them.
+ *
+ * It is also **directional**, and that is a correction with a measurement behind it. The first
+ * version ended with a third sentence — "If the question asks about a previous state, the earlier
+ * statement is the answer" — which existed to serve `0977f2af` ("what did I buy before the Air
+ * Fryer"). Run `42754985453` priced it: the sentence primed the reader to take the earlier value and
+ * it did, on `6a1eabeb` (5K personal best, 25:50 → 27:12), `89941a93` (bikes, 4 → "Three") and
+ * `c7dc5443` (volleyball record, 5-2 → 3-2) — all three answered correctly by the control and all
+ * three "current" questions the sentence had no business touching. `0977f2af` is not reachable by
+ * this mechanism at all (it shares no term with either gadget), so the sentence bought nothing and
+ * cost three conversions.
  */
 export function renderConflicts(statements: readonly ConflictStatement[]): string {
   if (statements.length < 2) return '';
@@ -407,9 +569,8 @@ export function renderConflicts(statements: readonly ConflictStatement[]): strin
   return [
     'RELATED STATEMENTS (the same ones appear in the evidence, in this order):',
     ...lines,
-    'When two of these state different values for the same thing, the later statement is the later',
-    'value and the earlier statement is the earlier one. If the question asks about a previous state,',
-    'the earlier statement is the answer.',
+    'When two of these state different values for the same thing, the later statement is the value',
+    'now and the earlier one is the value it replaced.',
   ].join('\n');
 }
 

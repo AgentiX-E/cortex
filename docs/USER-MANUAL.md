@@ -503,10 +503,8 @@ const memory = new CortexMemory({
   llm,
   now: 0,
   gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
-  // The prompt names the statements that share terms with the question, earliest first, with their
-  // dates, and says that when two of them differ the later one is the later value. It decides
-  // nothing: "what did I buy before the Air Fryer" asks for the *earlier* of two values, so the
-  // direction stays in the question.
+  // The prompt names the statements that share terms with the question and state a value, earliest
+  // first, with their dates, and says that when two of them differ the later one is the value now.
   conflicts: true,
 });
 
@@ -516,7 +514,8 @@ const answer = await memory.answer('What day of the week do I take a cocktail-ma
 The block is inserted after the budget decided which turns are carried, so it costs the evidence
 nothing: mean 1,104 characters, 2.3% of a 48k prompt, and zero model calls. What it cannot do is
 reach a value that is only named by its relation to another one, or one the corpus increments rather
-than replaces -- `docs/MEASURE-CONFLICT-SURFACING.md` section 2 prices both.
+than replaces -- `docs/MEASURE-CONFLICT-SURFACING.md` sections 2 and 4 price both, and section 4 is
+the reading of the first run that administered it.
 
 **A stronger reader for two routes only.** Measured: thinking mode gained four `TR` and two `KU`
 questions while losing sixteen `IE` — one reader for six routes cannot express that.

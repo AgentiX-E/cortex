@@ -149,7 +149,9 @@ describe('conflictStatements', () => {
       ),
     ];
     const statements = conflictStatements(question, window, { maxStatements: 3 });
-    expect(statements).toHaveLength(3);
+    // Two, not three: the value gate drops the asides that name no day at all, which is the whole
+    // difference between this and the version run 42754985453 priced.
+    expect(statements).toHaveLength(2);
     expect(statements[0]!.sentence).toContain('Thursday');
     expect(statements[statements.length - 1]!.sentence).toContain('Fridays');
   });
@@ -289,8 +291,10 @@ describe('renderConflicts', () => {
     expect(block).toContain('RELATED STATEMENTS');
     expect(block.indexOf('Thursday')).toBeLessThan(block.indexOf('Fridays'));
     expect(block).toContain('[2023/06/16 (Fri) 13:26]');
-    expect(block).toContain('the later statement is the later');
-    expect(block).toContain('asks about a previous state');
+    expect(block).toContain('the later statement is the value');
+    // The directional correction: a third sentence inviting the earlier value cost three conversions
+    // on run 42754985453, so the block no longer offers one.
+    expect(block).not.toContain('previous state');
   });
 
   it('does not assert that the last statement is the answer', () => {

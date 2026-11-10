@@ -383,10 +383,11 @@ class TestWhatIsCounted:
     def test_the_header_states_every_population_it_did_not_compare(self) -> None:
         module = _module()
         text, _ = module.registration_section(report(REAL_41222844945), [])
-        # Twenty inputs the arm records, plus two conditions: `evidenceSource` and `replyRepair` are
-        # compared on every artifact although no dispatch input carries either, which is what makes a
-        # gold-sessions run or a repair run visible to a reader who did not ask for one.
-        assert "registration: 22 field(s) compared" in text
+        # Twenty inputs the arm records, plus three conditions: `evidenceSource`, `replyRepair` and
+        # `conflicts` are compared on every artifact although no dispatch input carries any of them,
+        # which is what makes a gold-sessions run, a repair run or a related-statements run visible to
+        # a reader who did not ask for one.
+        assert "registration: 23 field(s) compared" in text
         # Two since §13.327: `maxPromptCharsByRoute` is derived on an artifact that carries the
         # scalar, exactly as `maxPromptChars` is derived on one that carries the map. Counted rather
         # than dropped, which is what the header exists to do.
