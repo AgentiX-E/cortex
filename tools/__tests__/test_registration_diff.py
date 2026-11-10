@@ -31,6 +31,7 @@ a comparison that covers less than it appears to is the defect this file exists 
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -617,6 +618,109 @@ class TestTheReplyRepairCondition:
         text, failures = module.registration_section(report(config), [])
         assert failures == 0, text
         assert "replyRepair" not in text
+
+
+class TestTheConflictsCondition:
+    """§13.352's switch: the one condition whose registered value is not text.
+
+    It was registered as the string `"false"` and recorded by the arm as the boolean `false`, and
+    `_value_text` compares JSON texts -- so `"false"` and `false` are two different values, and the
+    control run of the arm departed from its own registration. Run `42791109966` is what that costs:
+    500 questions, 101 minutes, a projected 14.26 yuan, refused at read-out on a field whose value
+    never moved. The tests below pin both the value and its JSON type, because the value alone would
+    have passed.
+    """
+
+    def test_the_registered_value_is_the_boolean_the_arm_records(self) -> None:
+        module = _module()
+        path, registered = module.REGISTERED_CONDITIONS["conflicts"]
+        assert path == "conflicts"
+        assert registered is False
+
+    def test_the_control_is_not_a_difference(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "conflicts": False}
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 0, text
+        assert "conflicts" not in text
+
+    def test_a_conflict_block_run_is_undeclared_until_it_is_named(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "conflicts": True}
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 1, text
+        assert 'UNDECLARED  conflicts: false (registered) -> true (ran)' in text
+
+    def test_declaring_it_licenses_the_run_as_an_experiment(self) -> None:
+        module = _module()
+        config = {**registered_config(module), "conflicts": True}
+        text, failures = module.registration_section(report(config), ["conflicts"])
+        assert failures == 0, text
+        assert 'declared    conflicts: false (registered) -> true (ran)' in text
+
+    def test_an_artifact_without_the_field_reads_as_the_control(self) -> None:
+        # The arm writes the field unconditionally since §13.352, so absence is a dated claim: an
+        # artifact without it predates the block and therefore ran the control.
+        module = _module()
+        config = registered_config(module)
+        assert "conflicts" not in config
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 0, text
+        assert "conflicts" not in text
+
+    def test_the_string_spelling_of_the_control_is_a_departure(self) -> None:
+        """The other direction: a run that recorded the condition as text is not the control.
+
+        The arm records a JSON boolean, so `"false"` in an artifact is a different shape from `false`
+        and the gate says so rather than reading it as the same condition -- which is the whole
+        difference between the defect above and a normalisation that would hide the next one.
+        """
+        module = _module()
+        config = {**registered_config(module), "conflicts": "false"}
+        text, failures = module.registration_section(report(config), [])
+        assert failures == 1, text
+        assert 'UNDECLARED  conflicts: false (registered) -> "false" (ran)' in text
+
+
+class TestTheConditionTable:
+    """The table's own vocabulary, checked without an artifact.
+
+    A condition is registered in the vocabulary the arm writes, because the comparison is between
+    two JSON texts and nothing coerces a condition the way `coerce_to_artifact` coerces an input.
+    That makes a registered value a claim about a type, and a claim nobody checks is how `"false"`
+    reached §10.3 and cost run `42791109966`. This class is the check: a registered value that is
+    text spelling a JSON literal is the table and the writer disagreeing about a type, and it is
+    caught here rather than at the end of a 101-minute run.
+    """
+
+    @staticmethod
+    def _as_json_literal(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return False
+        return not isinstance(parsed, str)
+
+    def test_no_condition_registers_a_json_literal_as_text(self) -> None:
+        module = _module()
+        offenders = {
+            name: registered
+            for name, (_path, registered) in module.REGISTERED_CONDITIONS.items()
+            if self._as_json_literal(registered)
+        }
+        assert not offenders, (
+            f'{offenders} are text in the table and JSON literals in the artifact. Register the '
+            'value in the artifact\'s own vocabulary: no comparison coerces a condition, so a '
+            'spelling the arm does not use reads as a departure on every run of the arm'
+        )
+
+    def test_the_check_would_have_caught_the_registration_this_cost_found(self) -> None:
+        assert self._as_json_literal("false")
+        assert self._as_json_literal("48000")
+        assert not self._as_json_literal("off")
+        assert not self._as_json_literal("corpus")
 
 
 class TestKeyOrderIsNotADeparture:

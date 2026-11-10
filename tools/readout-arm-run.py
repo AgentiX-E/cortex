@@ -4354,7 +4354,16 @@ DISPATCH_FIELD_ALIASES = {
 # that omits it, so an artifact without the field predates it and graded the shipped corpus. An
 # artifact produced under the oracle condition can therefore never be silent about it, which is the
 # property the whole entry buys.
-REGISTERED_CONDITIONS: dict[str, tuple[str, str]] = {
+# The value is registered in **the vocabulary the arm writes it in**, because `_value_text` compares
+# two JSON texts and nothing here coerces a condition the way `coerce_to_artifact` coerces an input.
+# That makes each value a claim about a type as well as about a value: `conflicts` is a JSON boolean
+# in `toMemoryArmConfig`, so it is a JSON boolean here. Run `42791109966` is what the other spelling
+# costs -- registered `"false"`, recorded `false`, so a control run of the arm departed from its own
+# registration on a field whose value never moved, and the verdict arrived after 500 questions and
+# 101 minutes (projected 14.26 yuan). `tools/__tests__/test_registration_diff.py::
+# TestTheConditionTable` refuses a registered value that is text spelling a JSON literal, so the
+# table cannot disagree with the writer about a type without a red check at the desk.
+REGISTERED_CONDITIONS: dict[str, tuple[str, object]] = {
     'evidenceSource': ('evidenceSource', 'corpus'),
     # §13.334. The reply-contract repair changes what a decline count means, not what the run did: a run
     # that answered eight refusals by re-asking has a different `bareRetry` population from one that did
@@ -4367,7 +4376,7 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, str]] = {
     # registered value, so a treatment run must declare `conflicts` and a control run is compared
     # against `false`. Carried by a repository variable rather than an input for the reason §13.352.5
     # states, which is why it is a condition here and not a `DISPATCH_FIELD_ALIASES` entry.
-    'conflicts': ('conflicts', 'false'),
+    'conflicts': ('conflicts', False),
 }
 
 ABSENT = '<-absent->'
