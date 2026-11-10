@@ -45,6 +45,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from importlib import import_module
 
 ledger_tool = import_module("cost-ledger")
+registration = import_module("registration-attest")
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "cost-ledger.py"
@@ -242,10 +243,36 @@ class TestTheRender:
 
 # -------------------------------------------------------------------------------------- the CLI
 
+CONFIG = {"ask": "verbatim-acts", "maxTurnChars": 400, "reader": {"model": "deepseek-chat", "temperature": 0}}
+
+
+def registered(tmp_path: pathlib.Path, data: dict, run: str = "42310779222") -> pathlib.Path:
+    """A registration record that agrees with `data`.
+
+    `dispatch` is empty on purpose: `matched` is decided by the fingerprint and the difference list only
+    diagnoses, which is the property `test_registration_attest.py` pins. A full projection here would be
+    a second test of `arm-config-record.py`.
+    """
+    path = tmp_path / "baseline.json"
+    path.write_text(
+        json.dumps(
+            {
+                "run": run,
+                "adoptedBy": "13.336",
+                "memoryArmConfigFingerprint": registration.fingerprint(data.get("memoryArmConfig")),
+                "dispatch": {},
+            }
+        )
+    )
+    return path
+
+
 class TestTheCommandLine:
     def test_json_and_write_carry_the_same_ledger(self, tmp_path: pathlib.Path):
+        data = report_with_cap()
+        data['memoryArmConfig'] = CONFIG
         source = tmp_path / 'report.json'
-        source.write_text(json.dumps(report_with_cap()))
+        source.write_text(json.dumps(data))
         written = tmp_path / 'out' / 'ledger.json'
 
         as_json = subprocess.run(
@@ -253,7 +280,10 @@ class TestTheCommandLine:
             capture_output=True, text=True, check=True,
         )
         as_write = subprocess.run(
-            [sys.executable, str(TOOL), str(source), '--write', str(written), '--run', '42310779222'],
+            [
+                sys.executable, str(TOOL), str(source), '--write', str(written),
+                '--run', '42310779222', '--baseline', str(registered(tmp_path, data)),
+            ],
             capture_output=True, text=True, check=True,
         )
 
@@ -278,17 +308,45 @@ class TestTheCommandLine:
         assert not written.exists()
 
     def test_a_refused_artifact_exits_non_zero_and_writes_nothing(self, tmp_path: pathlib.Path):
+        data = report(with_side=False)
+        data['memoryArmConfig'] = CONFIG
         source = tmp_path / 'report.json'
-        source.write_text(json.dumps(report(with_side=False)))
+        source.write_text(json.dumps(data))
         written = tmp_path / 'ledger.json'
 
         completed = subprocess.run(
-            [sys.executable, str(TOOL), str(source), '--write', str(written), '--run', '42310779222'],
+            [
+                sys.executable, str(TOOL), str(source), '--write', str(written),
+                '--run', '42310779222', '--baseline', str(registered(tmp_path, data)),
+            ],
             capture_output=True, text=True,
         )
 
         assert completed.returncode != 0
         assert 'usageBySide.feature' in completed.stderr
+        assert not written.exists()
+
+    def test_an_artifact_of_another_configuration_cannot_become_the_ledger(self, tmp_path: pathlib.Path):
+        # `C1` read 12,137 for a round in which the registered configuration billed 9,201 -- a correct
+        # record of a run, and not a record of the configuration the project ships. The refusal is what
+        # makes the difference impossible to publish again.
+        data = report_with_cap()
+        data['memoryArmConfig'] = CONFIG
+        source = tmp_path / 'report.json'
+        source.write_text(json.dumps(data))
+        written = tmp_path / 'ledger.json'
+        other = dict(CONFIG, maxPromptCharsByRoute={'multi-session': 48460})
+
+        completed = subprocess.run(
+            [
+                sys.executable, str(TOOL), str(source), '--write', str(written),
+                '--run', '42355323615', '--baseline', str(registered(tmp_path, {'memoryArmConfig': other})),
+            ],
+            capture_output=True, text=True,
+        )
+
+        assert completed.returncode != 0
+        assert 'not a measurement of the registered configuration' in completed.stderr
         assert not written.exists()
 
 

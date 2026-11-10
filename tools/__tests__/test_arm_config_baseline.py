@@ -69,6 +69,17 @@ class TestThePartitionIsComplete(unittest.TestCase):
         config = baseline()["memoryArmConfig"]
         self.assertEqual(tool.unclassified(config), [])
 
+    def test_the_fingerprint_is_a_function_of_the_configuration_beside_it(self) -> None:
+        # The baseline carries `memoryArmConfig` verbatim and the fingerprint of it, and the fingerprint is
+        # the value two acceptance rows and the frontier's shipping block compare against. If the two ever
+        # disagree, every row goes stale at once and the repair looks like a re-record rather than the
+        # one-line correction it would be -- so the invariant is asserted here, where the file is read.
+        recorded = baseline()
+        self.assertEqual(
+            tool.fingerprint(recorded["memoryArmConfig"]),
+            recorded["memoryArmConfigFingerprint"],
+        )
+
     def test_the_two_classes_do_not_overlap(self) -> None:
         overlap = set(tool.PROJECTED) & set(tool.UNPROJECTED)
         self.assertEqual(
@@ -129,11 +140,12 @@ class TestTheBaselineAgreesWithTheTable(unittest.TestCase):
         self.assertEqual(len(found), 1, found)
         self.assertIn("cortex_memory_evidence_roles_routes", found[0])
 
-    def test_the_exemption_list_is_exactly_the_two_decisions_on_record(self) -> None:
-        # A third exemption is a decision somebody has to make in a diff, which is the point: the
-        # list is short enough to read and any addition shows up here as a failing test rather than
-        # as a silently narrowing comparison.
-        self.assertEqual(sorted(tool.TABLE_ONLY), ["cortex_memory", "limit"])
+    def test_the_exemption_list_is_exactly_the_decisions_on_record(self) -> None:
+        # An exemption is a decision somebody has to make in a diff, which is the point: the list is
+        # short enough to read and any addition shows up here as a failing test rather than as a
+        # silently narrowing comparison. `capability` joined it in round 57, when a comparison between
+        # two artifacts made a run-level selector look like a configuration field.
+        self.assertEqual(sorted(tool.TABLE_ONLY), ["capability", "cortex_memory", "limit"])
         table = tool.dispatched()
         for name in tool.TABLE_ONLY:
             with self.subTest(input=name):
@@ -143,6 +155,16 @@ class TestTheBaselineAgreesWithTheTable(unittest.TestCase):
                     f"{name} is exempted from the projection and the table no longer sends it, so "
                     "the exemption has outlived its subject.",
                 )
+
+    def test_a_fixed_input_is_exempt_from_the_projection_and_still_recorded(self) -> None:
+        # The mirror image of `TABLE_ONLY`: `temperature` is in the artifact and not in the table. It is
+        # exempt because the arm builds the reader at 0 rather than because a dispatch sends it, and the
+        # exemption is asserted in the other direction -- an exemption whose subject the table has since
+        # started sending is one that has outlived its reason.
+        self.assertEqual(sorted(tool.FIXED), ["temperature"])
+        recorded = tool.project(baseline())
+        self.assertIn("temperature", recorded)
+        self.assertNotIn("temperature", tool.dispatched())
 
     def test_an_exemption_whose_key_is_gone_is_reported(self) -> None:
         table = tool.dispatched()

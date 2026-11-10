@@ -54,6 +54,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # is the one that made the drift expensive.
 ledger_tool = import_module('cost-ledger')
 
+# The registration gate; see `cost-ledger.py` for why it is at the write boundary.
+registration = import_module('registration-attest')
+
 # The band a measured characters-per-token ratio has to land inside before it is used to convert
 # anything. English prose sits near 4; code and tables sit lower; a CJK dataset would sit much lower.
 # Outside this range the likelier explanation is that the two sides describe different populations --
@@ -307,6 +310,27 @@ def render(result: dict) -> str:
     return '\n'.join(lines)
 
 
+REGISTRATION = Path(__file__).resolve().parent / 'arm-config-baseline.json'
+
+
+def require_registered(report: dict, baseline: Path = REGISTRATION) -> None:
+    """Refuse to write an evidence file from an artifact of a configuration nobody registers.
+
+    The defect this closes is §2.2's, one axis further: §13.336 adopted a room map, moved §10.3, the
+    dispatch table and `arm-config-baseline.json`, and left four generated evidence files naming the
+    run of the map it replaced. `C1` published a bill 24.2% above the registered configuration's and
+    `S1`-`S5` a 0.90-point-higher accuracy, and no check could see it because every one of those files
+    was a well-formed record of a real run.
+
+    The refusal is unconditional and has no override. An artifact that is not the registered
+    configuration is still readable -- `--json` prints the ledger from any artifact, which is what the
+    experiment reports do -- and it simply may not become the file a criterion reads.
+    """
+    reading = registration.attestation(report, json.loads(baseline.read_text(encoding='utf-8')))
+    if not reading['matched']:
+        raise SystemExit(registration.refusal(reading, baseline))
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
@@ -314,12 +338,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--json', action='store_true', help='print the readings as JSON')
     parser.add_argument('--write', type=Path, help='write the JSON readings to this path')
     parser.add_argument('--run', help='the workflow run id this report came from')
+    parser.add_argument('--baseline', type=Path, default=REGISTRATION, help='the registration record')
     args = parser.parse_args(argv)
 
     if args.write is not None and not args.run:
         raise SystemExit('--write requires --run: an evidence file must name the run it came from')
 
-    result = budget(json.loads(args.report.read_text()))
+    report = json.loads(args.report.read_text())
+    if args.write is not None:
+        require_registered(report, args.baseline)
+    result = budget(report)
     if args.reference is None:
         result['ratio'] = ratio_to_reference(result, result)
         result['reference'] = None

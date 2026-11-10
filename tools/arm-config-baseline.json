@@ -5,7 +5,6 @@
   "datasetFingerprint": "sha256:d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
   "dispatch": {
     "ablation_runs": "4",
-    "capability": "all",
     "cortex_memory_ask": "verbatim-acts",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
@@ -23,6 +22,7 @@
     "cortex_memory_self_consistency": "none",
     "cortex_memory_source_trust": "0.5",
     "model": "deepseek-chat",
+    "temperature": "0",
     "thinking": "multi-session+temporal"
   },
   "generatedAt": "2026-11-09T00:33:00.762Z",
@@ -123,6 +123,8 @@
     "threshold": 0,
     "turnCutMarker": "none"
   },
+  "memoryArmConfigFingerprint": "sha256:0c6c25e7dfe5602c74e394ed41ff1c4913b38513478122340a2efeb74b480075",
+  "note": "The registered configuration and the artifact below agree again: \u00a713.347 reverted \u00a713.345's `temporal`-only reach after the 500-question confirmation run read 90.15% against this configuration's 91.20%. `memoryArmConfig` describes `42533236864`, which is the artifact the reverted table now matches.",
   "passShape": {
     "minIntervalMs": null,
     "retryBudgetMs": null,
@@ -131,6 +133,5 @@
   "questionCount": 500,
   "run": "42533236864",
   "runs": 4,
-  "why": "the dispatch that carried the six-route allocation, which \u00a713.336 adopts; it is the first artifact whose room map is the shipping one",
-  "note": "The registered configuration and the artifact below agree again: \u00a713.347 reverted \u00a713.345's `temporal`-only reach after the 500-question confirmation run read 90.15% against this configuration's 91.20%. `memoryArmConfig` describes `42533236864`, which is the artifact the reverted table now matches."
+  "why": "the dispatch that carried the six-route allocation, which \u00a713.336 adopts; it is the first artifact whose room map is the shipping one"
 }

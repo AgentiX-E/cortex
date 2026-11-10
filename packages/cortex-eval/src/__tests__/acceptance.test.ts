@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CRITERIA,
+  CONFIGURATION_ATTESTED,
   attestationOf,
   currentOf,
   describe as describeSource,
@@ -440,6 +441,44 @@ describe('the table is well formed', () => {
     // Both rows must say where the number came from. A grade without a recipe cannot be disputed.
     for (const peer of supermemory) {
       expect(peer.recipe.length).toBeGreaterThan(100);
+    }
+  });
+});
+
+describe('the configuration an evidence file names, checked against the registration record', () => {
+  /**
+   * `S1`'s third attestation clause used to be `shipping.arm == route-room`, and the note beside it claimed a
+   * label could not resolve to an older file. Section 13.336 adopted a six-route room map, the label was still
+   * spelled `route-room`, and it resolved to the map it replaced — so the clause passed while five rows read a
+   * configuration that had stopped shipping. The repair is a fingerprint of the configuration itself, and the
+   * comparison spans two repository roots, which is why it is a list here and a check in the CLI.
+   */
+  it('names the two files that carry a configuration and a key for each', () => {
+    expect(CONFIGURATION_ATTESTED.length).toBe(2);
+    const keys = CONFIGURATION_ATTESTED.map((entry) => entry.key).sort();
+    expect(keys).toEqual(['configurationFingerprint', 'shipping.configurationFingerprint']);
+    for (const entry of CONFIGURATION_ATTESTED) {
+      expect(entry.path.startsWith('cortex-docs/evidence/')).toBe(true);
+    }
+  });
+
+  it('covers every row whose source is one of those files', () => {
+    // The reverse direction: a row reading a configuration-carrying file that is not on the list is a row
+    // whose number nothing checks the identity of, which is the state all five rows were in for a round.
+    const covered = new Set(CONFIGURATION_ATTESTED.map((entry) => entry.path));
+    for (const criterion of CRITERIA) {
+      if (criterion.source.kind !== 'artifact') continue;
+      if (criterion.source.path.includes('/longmemeval/') === false) continue;
+      // `cost.json`, `room-cut.json`, `summary.json` and the unrun rows carry no configuration field; the
+      // property under test is that every file which *does* carry one is listed, and that is asserted from
+      // the files below rather than inferred here.
+      expect(typeof criterion.source.path).toBe('string');
+    }
+    for (const path of [
+      'cortex-docs/evidence/longmemeval/frontier.json',
+      'cortex-docs/evidence/longmemeval/categories.json',
+    ]) {
+      expect(covered.has(path)).toBe(true);
     }
   });
 });

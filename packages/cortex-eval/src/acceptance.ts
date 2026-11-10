@@ -171,6 +171,34 @@ export type Criterion = {
  */
 const CATEGORY_LEDGER = 'cortex-docs/evidence/longmemeval/categories.json';
 
+/**
+ * The evidence files that name the configuration they were measured on, and have to name the registered one.
+ *
+ * ## Why this is a list and not a clause on a row
+ *
+ * `S1`'s third attestation clause was `shipping.arm == route-room`, and the note beside it made a claim that
+ * turned out to be false: a label "cannot silently resolve to an older file". §13.336 adopted a six-route room
+ * map; the label was still spelled `route-room` and still resolved, to the map it replaced. A label is a name,
+ * and a name outlives its meaning -- which is the same defect as `S1` reading `summary.json` for three rounds,
+ * one indirection further out.
+ *
+ * So the thing compared is the configuration, by fingerprint, against `tools/arm-config-baseline.json`, which
+ * `arm-config-record.py --record` writes from the artifact that adopted it. That comparison spans two
+ * repositories' roots and one file in each, which `attestationOf` cannot do with an in-file clause; it is
+ * therefore a check of its own in `tools/acceptance-check.mjs`, and it fails the build rather than marking a
+ * row, because an evidence file describing another configuration is not a reading of this one at all.
+ *
+ * The list is here rather than in the checker for the reason every other list is: this file is the single
+ * statement of what the project claims, and a second copy in a script is a second statement.
+ */
+export const CONFIGURATION_ATTESTED: readonly { readonly path: string; readonly key: string }[] = [
+  {
+    path: 'cortex-docs/evidence/longmemeval/frontier.json',
+    key: 'shipping.configurationFingerprint',
+  },
+  { path: 'cortex-docs/evidence/longmemeval/categories.json', key: 'configurationFingerprint' },
+];
+
 const CATEGORY_ATTEST = [
   { key: 'accuracySource', equals: 'repetition-mean' },
   { key: 'runs', equals: 4 },
@@ -417,11 +445,19 @@ export const CRITERIA: readonly Criterion[] = [
     // still blocks nothing. A criterion that cannot fail after it has been reached is the row this matrix was
     // built to prevent, so the row changes class in the same edit that re-hangs it.
     //
-    // The threshold is 91.0%, and it is derived rather than rounded. The shipping arm reads **91.95%**, and
-    // one dispatch's own four repetitions carry a standard error of **0.43 points** (`noiseFloor`, measured
-    // from `ablation.featureCorrectByRun`, not assumed). 91.0 is 2.2 standard errors below the measured value
-    // and 1.15 points above the arm this round replaced (90.85%), so a regression that gives back the whole
-    // of this round's +1.10 is red while a single noisy dispatch is not.
+    // The threshold is 91.0%, and it is derived rather than rounded. It was derived against a shipping arm
+    // reading **91.95%** and a four-repetition standard error of **0.43 points** (`noiseFloor`, measured from
+    // `ablation.featureCorrectByRun`, not assumed): 2.2 standard errors below the reading, and 1.15 points
+    // above the arm that reading replaced (90.85%).
+    //
+    // Round 57 moved the reading to **91.05%** without touching the threshold, and the margin is now 0.05
+    // points. That is the honest consequence of §13.336 and it is recorded rather than repaired: the room map
+    // that ships reads 0.90 points below the map it replaced, which is inside the 0.90-point span three draws
+    // of the predecessor configuration produced (91.95 / 91.65 / 91.05), so no capability changed — and the
+    // bill fell 24.2%, which is the axis the adoption was for. Lowering the threshold to restore the margin
+    // would be indistinguishable from lowering the bar to stay green, which this file refuses everywhere else;
+    // leaving it means the next dispatch that reads below 91.0 is reported as a regression whether or not one
+    // occurred, and that is a fact about the population's resolution rather than about this row.
     kind: 'gate',
     source: {
       kind: 'artifact',
@@ -432,6 +468,11 @@ export const CRITERIA: readonly Criterion[] = [
       // 90.85%; `runs: 4` because a two-repetition arm's mean carries twice the standard error; and the arm
       // name because "the shipping arm" is a label the tool resolves to an artifact, so a label that stops
       // existing becomes `stale` instead of silently reading an older file.
+      //
+      // The third clause was not enough, and §13.336 is the measurement: the label kept existing and kept
+      // resolving, to the room map the adoption replaced. A fourth check covers it — the configuration
+      // fingerprint, compared against `tools/arm-config-baseline.json` by `tools/acceptance-check.mjs` and
+      // listed in `CONFIGURATION_ATTESTED` below — because a name can outlive its meaning and a hash cannot.
       attest: [
         { key: 'shipping.accuracySource', equals: 'repetition-mean' },
         { key: 'shipping.runs', equals: 4 },
@@ -851,7 +892,8 @@ export const CRITERIA: readonly Criterion[] = [
     capability: 'cost',
     metric:
       'prompt tokens delivered to the reader for one question, one repetition, retries included',
-    dataset: 'LongMemEval-S, 500 questions, four repetitions, feature arm only',
+    dataset:
+      'LongMemEval-S, 500 questions, four repetitions, feature arm only, registered configuration',
     comparator: 'at-most',
     threshold: 6000,
     unit: 'count',
@@ -892,7 +934,7 @@ export const CRITERIA: readonly Criterion[] = [
       },
     ],
     onMiss:
-      'Measured, not aimed at: the reading is 12,105 on `42310779222`, 2.02x the threshold and 2.75x Zep\u2019s published 4.4K. Four things must not be read off this miss. First, the number is generated by `tools/cost-ledger.py`, which names its division (per question per repetition, retries included) because the same artifact yields 11,690 per call and 48,420 per question across all four repetitions \u2014 a 4.14x spread from one token count and three defensible divisions, and a row that does not state one lets every reader pick a different deficit. Second, it is not a reason to shrink the window: the reading sits at the arm\u2019s own `maxPromptChars: 48000` (48,000 characters at 4.11 characters per token is 11,680, i.e. the delivery fills the window rather than selecting from it), and section 13.291 measured that delivering every gold turn \u2014 98 of 121 questions to 120 of 121 \u2014 moved accuracy by exactly zero. So the extra room is not what the missing points are made of, and the repair is the budget UNIT (characters, section 13.287.2: the same budget buys 2.62x more tokens when written in tokens) rather than the budget size, with any cap change verified by a run because \u201cthe tokens are wasted\u201d is a prediction and not yet a measurement. Third, it is not comparable to any competitor row above 6.8K unless the reader is the same, and none of them is: a stronger reader that also declines to be terse can spend more tokens and score lower, which is section 13.232\u2019s IE result in the other direction. Fourth, cache hits are not a discount on this row: 18,933,570 of the 24,209,976 prompt tokens were cache hits, which changes the bill and not the context the reader had to read. The row exists so that the next increment that changes the room has to say what it did to this number. Fifth, and this one was written after the row was read: `42373407439` shrank the window to 24,000 characters and the reading on it is **5,623 tokens per question**, so the threshold above is reachable -- at **-3.20 accuracy points**, which `A` refused. The fall is not spread: `MR -6.61` and `TR -4.72` against `ABS 0.00`, `IE -0.67`, `KU -1.39`, on a run where every capability lost about half its turns. So the sentence above -- that shrinking the window is not the repair -- was right about the whole window and wrong about the parts: a **per-route** room is close to free on the 252 questions whose answer lives in one turn and expensive on the 248 that count over turns. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` records the reading and §13.302 registers the arm; this row keeps its 12,137 because the registered configuration has not moved, and a met cost row at a room the accuracy registration refuses is a boundary rather than a licence.',
+      'Measured, not aimed at: the reading is 9,201 on the registered configuration, 1.53x the threshold and 2.09x Zep\u2019s published 4.4K. It read 12,137 for a round, because the file named the run of a room map that had stopped shipping -- see the sixth point below, which is the correction rather than a caveat. Four things must not be read off this miss. First, the number is generated by `tools/cost-ledger.py`, which names its division (per question per repetition, retries included) because the same artifact yields 11,690 per call and 48,420 per question across all four repetitions \u2014 a 4.14x spread from one token count and three defensible divisions, and a row that does not state one lets every reader pick a different deficit. Second, it is not a reason to shrink the window: the reading sits at the arm\u2019s own `maxPromptChars: 48000` (48,000 characters at 4.11 characters per token is 11,680, i.e. the delivery fills the window rather than selecting from it), and section 13.291 measured that delivering every gold turn \u2014 98 of 121 questions to 120 of 121 \u2014 moved accuracy by exactly zero. So the extra room is not what the missing points are made of, and the repair is the budget UNIT (characters, section 13.287.2: the same budget buys 2.62x more tokens when written in tokens) rather than the budget size, with any cap change verified by a run because \u201cthe tokens are wasted\u201d is a prediction and not yet a measurement. Third, it is not comparable to any competitor row above 6.8K unless the reader is the same, and none of them is: a stronger reader that also declines to be terse can spend more tokens and score lower, which is section 13.232\u2019s IE result in the other direction. Fourth, cache hits are not a discount on this row: 18,933,570 of the 24,209,976 prompt tokens were cache hits, which changes the bill and not the context the reader had to read. The row exists so that the next increment that changes the room has to say what it did to this number. Fifth, and this one was written after the row was read: `42373407439` shrank the window to 24,000 characters and the reading on it is **5,623 tokens per question**, so the threshold above is reachable -- at **-3.20 accuracy points**, which `A` refused. The fall is not spread: `MR -6.61` and `TR -4.72` against `ABS 0.00`, `IE -0.67`, `KU -1.39`, on a run where every capability lost about half its turns. So the sentence above -- that shrinking the window is not the repair -- was right about the whole window and wrong about the parts: a **per-route** room is close to free on the 252 questions whose answer lives in one turn and expensive on the 248 that count over turns. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` records the reading and §13.302 registers the arm; this row kept its 12,137 while the registered configuration had not moved, and a met cost row at a room the accuracy registration refuses is a boundary rather than a licence. Sixth, and this is the correction rather than a caveat: **the registered configuration moved and this row did not follow it.** Section 13.336 adopted the six-route room map, and `cortex-docs/evidence/longmemeval/cost.json` went on naming `42355323615`, which delivered 12,137 tokens per question under the map it replaced. The registered configuration bills **9,201** (`42533236864`, four repetitions, 18,401,041 prompt tokens over 2,076 calls), so the row was overstating the bill by **24.2%** for a round while being a correct record of a real run. That is §2.2\u2019s defect class one axis further: there four accuracy rows read a configuration that no longer shipped, here the bill did. The repair is not this paragraph -- `tools/cost-ledger.py --write` now refuses an artifact whose configuration fingerprint is not `tools/arm-config-baseline.json`\u2019s, so the file cannot outlive an adoption, and `tools/acceptance-check.mjs` fails the build when a committed evidence file names another configuration.',
   },
 
   // ---- the browser axis, which the plan called "maturity" and no row priced ------------------------

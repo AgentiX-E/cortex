@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -214,6 +215,26 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
 TABLE_ONLY: dict[str, str] = {
     "cortex_memory": "the arm's switch, not a configuration value",
     "limit": "`0` is the whole set; the artifact records the resolved count",
+    # `registration-preflight.py` exempts this one for the same reason and says so: it selects which
+    # questions *run* rather than how the arm behaves on them, so a 121-question `MR` dispatch and a
+    # 500-question one are two samples of one configuration. Comparing it would report the sample as a
+    # configuration difference, and §13.336's adoption is the case that made that expensive: the
+    # projection has no entry for it, so every artifact recorded after the adoption would have been
+    # reported as a departure on an input nobody had moved.
+    "capability": "a run-level population selector, not a configuration value",
+}
+
+
+# Projected inputs the table deliberately does **not** send, because the value is fixed outside the
+# dispatch. The mirror image of `TABLE_ONLY`: there the table has a key the artifact does not, here the
+# artifact has a value the table does not. Both need a reason and both need the check in the other
+# direction, or an exemption outlives the thing it exempts and nothing notices.
+FIXED: dict[str, str] = {
+    "temperature": (
+        "fixed at 0 by the reader the arm builds (`temperature: 0` is the pre-registered value and "
+        "§10.3 states it as a property of the arm); no dispatch input carries it, and the artifact "
+        "records the value that was resolved"
+    ),
 }
 
 
@@ -236,6 +257,35 @@ def project(report: dict) -> dict[str, str]:
         projected["temperature"] = RENDERERS["number"](config["reader"].get("temperature"))
         projected["thinking"] = RENDERERS["reader_thinking"](config["reader"])
     return projected
+
+
+def canonical(config: object) -> str:
+    """The artifact's configuration as one string, with no formatting left to disagree about.
+
+    Sorted keys because the artifact's objects have no order and a key-order difference is not a
+    configuration difference; no whitespace because indentation is not one either; `ensure_ascii` off
+    because a product name is UTF-8 and escaping it would be a difference a reader cannot see.
+
+    `efficiency-frontier.mjs` reimplements this in nine lines, because the shipping arm's fingerprint
+    is written by the JavaScript tool from the artifact it loaded. `tools/__tests__/test_registration_attest.py`
+    pins the two to the same output on a shared fixture: a fingerprint two languages compute
+    differently would be a gate that fires on every green run, which is how a gate gets deleted.
+    """
+    return json.dumps(config, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def fingerprint(config: object) -> str:
+    """`sha256:<hex>` over `canonical(config)`.
+
+    The prefix is not decoration. `datasetFingerprint` in the artifacts uses the same spelling, so a
+    reader who sees one without the other can tell the algorithm is stated rather than implied.
+
+    What this identifies is the **configuration**, not the dispatch. Two runs of the same
+    configuration share a fingerprint and that is the point: §13.336 adopted a configuration, and the
+    claim an acceptance row needs to be able to check is "this reading is of the configuration we
+    register", which survives a re-dispatch and does not survive an adoption.
+    """
+    return "sha256:" + hashlib.sha256(canonical(config).encode("utf-8")).hexdigest()
 
 
 def unclassified(config: dict) -> list[str]:
@@ -295,6 +345,11 @@ def record(
         "questionCount": report["questionCount"],
         "runs": report["runs"],
         "memoryArmConfig": report["memoryArmConfig"],
+        # The whole configuration as one value, so a reader that cannot run this projection -- a
+        # criterion in `acceptance.ts`, the shipping block in `efficiency-frontier.mjs` -- can still
+        # ask the only question an attestation is allowed to ask. `dispatch` stays beside it because
+        # a hash is undiagnosable and this file is the one place a difference can be named.
+        "memoryArmConfigFingerprint": fingerprint(report["memoryArmConfig"]),
         "passShape": report.get("passShape"),
         "dispatch": project(report),
     }
@@ -315,6 +370,15 @@ def differences(baseline: dict, table: dict[str, str]) -> list[str]:
                 found.append(
                     f"{name}: TABLE_ONLY explains why the projection skips it, and the table no "
                     "longer sends it, so the explanation has outlived its subject"
+                )
+            continue
+        if name in FIXED:
+            # Asserted in the other direction, like `TABLE_ONLY`: an exemption whose subject the table
+            # has since started sending is an exemption that has outlived its reason.
+            if name in table:
+                found.append(
+                    f"{name}: FIXED says no dispatch input carries it and the table now sends "
+                    f"{table[name]!r}, so the exemption has outlived its subject"
                 )
             continue
         if name not in table:

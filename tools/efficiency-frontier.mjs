@@ -22,6 +22,7 @@
  * at one of two possible populations (`§13.308`); taking the rendering and inventing a denominator
  * for it is the defect that produced a 54%-cheaper-looking arm. The counts or nothing.
  */
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 // The dist path rather than the barrel, for the reason `tools/paired-flip.mjs` gives: the barrel is
@@ -400,6 +401,51 @@ function pairedOf(pathA, pathB, artifactA, artifactB) {
   );
 }
 
+/**
+ * The artifact's configuration as one string, in the spelling `arm-config-record.py` uses.
+ *
+ * ## Why a fingerprint and not the configuration
+ *
+ * `S1`'s third attestation clause was `shipping.arm == route-room`, and the note beside it said a label
+ * "cannot silently resolve to an older file". Section 13.336 adopted a six-route room map, and the label
+ * `route-room` was still present and still resolved to the room map it replaced -- so the clause passed
+ * while the row read a configuration that had stopped shipping. A label is a **name**, and a name can
+ * outlive its meaning; a fingerprint is the configuration itself, so it cannot.
+ *
+ * ## Why it is reimplemented here rather than read
+ *
+ * The shipping arm's identity is written by this file from the artifact it loaded, and the Python tool
+ * that records the registration cannot run inside a Node process. The two must agree byte for byte or the
+ * gate fires on every green run, so `tools/__tests__/test_registration_attest.py` pins them to the same
+ * output on a shared fixture and treats a disagreement as a test failure rather than a warning.
+ *
+ * The rules are the ones `json.dumps(..., sort_keys=True, separators=(',', ':'), ensure_ascii=False)`
+ * applies: keys sorted, no whitespace, no escaping of non-ASCII. `JSON.stringify` on a string produces the
+ * same bytes as `json.dumps` on it for every value an arm configuration carries, and every one of those
+ * values is a string, an integer, a boolean or an array of them -- a float would be the one divergence, and
+ * `arm-config-record.py` refuses to record a configuration it has no class for.
+ */
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function configurationFingerprint(config, path) {
+  if (config === null || typeof config !== 'object') {
+    // Refused rather than hashed as `null`. A `null` fingerprint would compare unequal for the right
+    // reason and the wrong message -- the repair a reader would make is to regenerate, when the artifact
+    // is the thing that cannot answer.
+    fail(`${path} carries no memoryArmConfig, so the shipping arm's configuration cannot be attested`);
+  }
+  return `sha256:${createHash('sha256').update(canonical(config), 'utf8').digest('hex')}`;
+}
+
 const VALUED_FLAGS = new Set(['--margin', '--tolerance', '--alpha', '--label', '--ship']);
 
 /**
@@ -646,6 +692,13 @@ function main(argv) {
               accuracySource: points[index].accuracySource,
               runs: points[index].runs,
               promptTokensPerQuestion: profiles[index].promptTokensPerQuestion,
+              // The configuration, not the label. `acceptance.ts` compares this against the
+              // registration record, so a row goes `stale` when the arm it names stops being the arm
+              // the project registers -- which is the check the label was standing in for.
+              configurationFingerprint: configurationFingerprint(
+                artifacts[index].memoryArmConfig,
+                paths[index],
+              ),
             };
           })(),
           // Which artifact the comparison is against, and why that is not the same question as "which

@@ -56,7 +56,23 @@ import argparse
 import json
 import math
 import sys
+from importlib import import_module
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+# The registration gate, shared with the other two writers. `S2`-`S5` read the file this tool writes,
+# and §13.336 is the case that proved a provenance check is not a configuration check: `42355323615`
+# named its run correctly and described a room map that had stopped shipping.
+registration = import_module('registration-attest')
+
+REGISTRATION = Path(__file__).resolve().parent / 'arm-config-baseline.json'
+
+
+def require_registered(report: dict, baseline: Path = REGISTRATION) -> None:
+    """Refuse to write an evidence file from an artifact of a configuration nobody registers."""
+    reading = registration.attestation(report, json.loads(baseline.read_text(encoding='utf-8')))
+    if not reading['matched']:
+        raise SystemExit(registration.refusal(reading, baseline))
 
 # z at 0.975 plus z at 0.80, the two-sided 5% / 80% power constant. Stated rather than recomputed so a
 # reader can check the formula against a table without importing anything.
@@ -266,6 +282,11 @@ def ledger(report: dict, run: str, level: float = 0.95, arm: str = 'cortex-memor
         ),
         'run': run,
         'arm': arm,
+        # The configuration, not the label. `arm` is a name the caller supplies on the command line and a
+        # name can outlive its meaning -- §13.336 adopted a room map and the `route-room` label went on
+        # resolving to the map it replaced, which is how `S2`-`S5` came to read a configuration that had
+        # stopped shipping. This is compared against the registration record by `acceptance.ts`.
+        'configurationFingerprint': registration.fingerprint(report.get('memoryArmConfig')),
         'benchmark': 'LongMemEval-S',
         'accuracySource': 'repetition-mean',
         'runs': len(report['ablation']['featureCorrectByRun']),
@@ -333,6 +354,7 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument('--json', action='store_true', help='print the file rather than the table')
     parser.add_argument('--write', help='write the JSON file here rather than printing it')
+    parser.add_argument('--baseline', default=str(REGISTRATION), help='the registration record')
     options = parser.parse_args(argv)
 
     # Before the artifact is read, not after: the refusal a caller meets should be the one about the
@@ -346,6 +368,8 @@ def main(argv: list[str]) -> int:
     except OSError as error:
         print(f'cannot read {options.artifact}: {error}', file=sys.stderr)
         return 2
+    if options.write:
+        require_registered(report, Path(options.baseline))
     try:
         built = ledger(report, options.run or '', options.level, options.arm)
     except ValueError as error:

@@ -232,6 +232,38 @@ def test_instruction_share_is_reported_both_ways() -> None:
     assert readings['instructionShareOfMedian'] == pytest.approx(1 - 900 / 1_000, abs=1e-3)
 
 
+def test_write_refuses_an_artifact_of_another_configuration(tmp_path: pathlib.Path) -> None:
+    # The same gate as `cost-ledger.py --write`, and for the same reason: this file's readings are prose
+    # support for `C1` and `C2`, and a support file naming a superseded room map is how a 24% error gets
+    # quoted in a paragraph that no check reads.
+    artifact = tmp_path / 'report.json'
+    body = report()
+    body['memoryArmConfig'] = {'ask': 'verbatim-acts'}
+    artifact.write_text(json.dumps(body))
+    baseline = tmp_path / 'baseline.json'
+    baseline.write_text(
+        json.dumps(
+            {
+                'run': '42355323615',
+                'adoptedBy': '13.336',
+                'memoryArmConfigFingerprint': 'sha256:' + '0' * 64,
+                'dispatch': {},
+            }
+        )
+    )
+    completed = subprocess.run(
+        [
+            sys.executable, str(TOOL), str(artifact), '--write', str(tmp_path / 'out.json'),
+            '--run', '42355323615', '--baseline', str(baseline),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert 'not a measurement of the registered configuration' in completed.stderr
+    assert not (tmp_path / 'out.json').exists()
+
+
 def test_write_requires_the_run_it_came_from(tmp_path: pathlib.Path) -> None:
     artifact = tmp_path / 'report.json'
     artifact.write_text(json.dumps(report()))

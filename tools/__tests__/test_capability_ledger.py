@@ -36,6 +36,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from importlib import import_module
 
 ledger_tool = import_module("capability-ledger")
+registration = import_module("registration-attest")
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "capability-ledger.py"
@@ -260,6 +261,32 @@ def test_render_prints_a_dash_for_a_ceiling_rather_than_zero() -> None:
 # ---- the command line ---------------------------------------------------------------------------
 
 
+CONFIG = {"ask": "verbatim-acts", "maxTurnChars": 400, "reader": {"model": "deepseek-chat", "temperature": 0}}
+
+
+def registered(tmp_path: pathlib.Path, data: dict, run: str = "42355323615") -> pathlib.Path:
+    """A registration record that agrees with `data`, so the write gate has something true to check.
+
+    The projection is empty on purpose: `matched` is decided by the fingerprint, and a baseline with no
+    dispatch block exercises exactly that -- the file records *which* configuration and lets a later
+    diagnostic explain *which input*. A full projection here would test `arm-config-record.py`, which
+    has its own tests.
+    """
+    path = tmp_path / "baseline.json"
+    path.write_text(
+        json.dumps(
+            {
+                "run": run,
+                "adoptedBy": "13.336",
+                "memoryArmConfigFingerprint": registration.fingerprint(data.get("memoryArmConfig")),
+                "dispatch": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def write(tmp_path: pathlib.Path, data: dict) -> pathlib.Path:
     path = tmp_path / "report.json"
     path.write_text(json.dumps(data), encoding="utf-8")
@@ -282,13 +309,45 @@ def test_write_requires_a_run_and_writes_nothing_without_one(tmp_path: pathlib.P
 
 
 def test_write_produces_a_file_that_names_the_run(tmp_path: pathlib.Path) -> None:
-    artifact = write(tmp_path, report({"MR": [99, 101, 104, 102]}))
+    data = report({"MR": [99, 101, 104, 102]})
+    data["memoryArmConfig"] = CONFIG
+    artifact = write(tmp_path, data)
     target = tmp_path / "categories.json"
-    result = run(str(artifact), "--run", "42355323615", "--write", str(target))
+    result = run(
+        str(artifact), "--run", "42355323615", "--write", str(target), "--baseline", str(registered(tmp_path, data))
+    )
     assert result.returncode == 0, result.stderr
     written = json.loads(target.read_text(encoding="utf-8"))
     assert written["run"] == "42355323615"
     assert written["categories"]["MR"]["passes"] == pytest.approx(101.5)
+
+
+def test_write_refuses_an_artifact_of_another_configuration(tmp_path: pathlib.Path) -> None:
+    # The defect this gate closes: `42355323615` was a correct record of a run whose room map had stopped
+    # being the registered one, and four rows read it. The file must not be writable from such an artifact,
+    # and the refusal must name the input that moved rather than only the hash.
+    data = report({"MR": [99, 101, 104, 102]})
+    data["memoryArmConfig"] = CONFIG
+    artifact = write(tmp_path, data)
+    elsewhere = dict(CONFIG, maxTurnChars=200)
+    other = report({"MR": [99, 101, 104, 102]})
+    other["memoryArmConfig"] = elsewhere
+    baseline = registered(tmp_path, other)
+    target = tmp_path / "categories.json"
+    result = run(str(artifact), "--run", "42355323615", "--write", str(target), "--baseline", str(baseline))
+    assert result.returncode != 0
+    assert "not a measurement of the registered configuration" in result.stderr
+    assert not target.exists()
+
+
+def test_the_file_carries_the_configuration_not_only_the_label(tmp_path: pathlib.Path) -> None:
+    # `arm` is a name the caller supplies; a name outlives its meaning. The fingerprint is the value
+    # `acceptance.ts` compares against the registration record.
+    data = report({"MR": [99, 101, 104, 102]})
+    data["memoryArmConfig"] = CONFIG
+    built = ledger_tool.ledger(data, "42533236864", 0.95, "route-room")
+    assert built["configurationFingerprint"] == registration.fingerprint(CONFIG)
+    assert built["arm"] == "route-room"
 
 
 def test_the_table_and_the_file_agree(tmp_path: pathlib.Path) -> None:

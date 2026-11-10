@@ -38308,3 +38308,103 @@ number that the arm clears by eleven points.
 `S3` is left an `aim` at 85% and its `onMiss` now states that the remaining 1.1 points are **0.12 of the
 population's own floor**. The row stays because the measurement is real and a large regression must be caught;
 the measurable form of the same target is `S8`'s paired count, for the reason §13.355.1 gives.
+
+## 13.357 Six rows read a configuration that had stopped shipping, and the bill was 24.2% too high
+
+`§13.336` adopted the six-route character-room allocation and moved three files: this document's §10.3,
+`tools/dispatch-cortex-memory-ab.py`'s `INPUTS`, and `tools/arm-config-baseline.json`, which
+`arm-config-record.py --record` rewrote from `42533236864` in the same edit. Three files agreeing is what this
+campaign calls a registration, and it is a good definition. It is not a sufficient one, because **nothing a
+criterion reads was among them.**
+
+### 13.357.1 What the six rows were reading, and the two sizes of the error
+
+| evidence file | read by | run named | configuration that run applied |
+| --- | --- | --- | --- |
+| `cost.json` | `C1` | `42355323615` | `multi-session: 48460`, five routes at 48,000 |
+| `categories.json` | `S2`–`S5` | `42355323615` | the same |
+| `frontier.json#shipping` | `S1` | `42355323615`, via the label `route-room` | the same |
+| `evidence-budget.json` | prose only | `42355323615` | the same |
+
+Every file named its run and every run was real, which is why `--run` could not catch this and why §2.2's
+attestation — `accuracySource`, `runs`, `arm` — passed. The readings, against the registered configuration:
+
+| row | printed | registered | difference | what kind of difference |
+| --- | ---: | ---: | ---: | --- |
+| `C1` prompt tokens per question | 12,137 | **9,201** | **−24.2%** | not noise; the axis the adoption was for |
+| `C1` prompt tokens per correct answer | 13,207 | **10,105** | **−23.5%** | the same |
+| `S1` overall | 91.95% | 91.05% | −0.90 | inside the predecessor's own 0.90-point three-draw span |
+| `S2` `KU` | 88.54% | 87.15% | −1.39 | the same |
+| `S3` `MR` | 83.88% | 83.06% | −0.84 | the same |
+| `S4` `TR` | 96.06% | 95.08% | −0.98 | the same |
+| `S5` `ABS` | 100.00% | 100.00% | 0.00 | — |
+
+The accuracy rows move down by about one point each and the bill moves down by a quarter, and the two are
+different statements. §13.336's own argument was that the adoption's accuracy effect is below this harness's
+resolution; that argument is not a licence to publish a number from a configuration nobody ships, and it is
+certainly not a licence to publish a bill from one. So four rows correct **downward**, which is the direction a
+project has to be willing to move, and `C1` — the row this campaign has been losing on for eleven rounds —
+corrects downward by the largest relative amount of any row on the page.
+
+`C1`'s `onMiss` ended with the sentence that aged worst: *"this row keeps its 12,137 because the registered
+configuration has not moved."* The registered configuration moved on 2026-11-09.
+
+### 13.357.2 The repair is a fingerprint, and it is four files
+
+`tools/registration-attest.py` answers one question — is this artifact a measurement of the configuration the
+project registers — and the answer is `sha256:` over the artifact's `memoryArmConfig`, canonically spelled.
+
+| piece | where | what it closes |
+| --- | --- | --- |
+| `canonical()` / `fingerprint()` | `arm-config-record.py` | one implementation of "what is a configuration"; a second copy is the defect class itself |
+| `memoryArmConfigFingerprint` | `arm-config-baseline.json`, written by `--record` | the configuration the project registers, beside the configuration |
+| `require_registered()` | `cost-ledger.py`, `evidence-budget.py`, `capability-ledger.py` | `--write` refuses an artifact of another configuration; an evidence file cannot outlive an adoption |
+| `shipping.configurationFingerprint` | `efficiency-frontier.mjs --ship` | the shipping arm's configuration, hashed in Node |
+| `CONFIGURATION_ATTESTED` | `acceptance.ts`, checked by `acceptance-check.mjs` | the build fails when a committed evidence file names another configuration |
+
+Three properties are pinned by tests rather than stated in prose, and each is a decision this campaign has had to
+make twice before:
+
+1. **The fingerprint decides; the difference list only diagnoses.** They can disagree in one direction — a baseline
+   recorded before the projection gained an input — and ANDing them would report a *correct* record as a defect whose
+   repair is to re-record a baseline that was not wrong. `matched` is the fingerprint comparison and nothing else;
+   `differences()` exists so the refusal can name `cortex_memory_max_prompt_chars` instead of a hash.
+2. **The refusal has no override.** `--json` still reads any artifact, because the experiment reports need to. What
+   is refused is the promotion of another configuration's reading into the file a criterion reads. An override flag
+   is the thing somebody passes on the day the build is red.
+3. **The fingerprint crosses languages.** Node hashes the shipping arm's configuration and Python hashes the
+   registered one; `test_the_shipping_fingerprint_matches_the_python_one` runs both on one fixture. A gate that
+   fires on every green run gets deleted, and this repository has deleted two.
+
+Two exemptions had to be classified to make the comparison possible, and both are asserted in the direction that
+would catch them decaying: `capability` joins `TABLE_ONLY` (a run-level population selector, which
+`registration-preflight.py` already exempts for the same reason), and `temperature` is a new `FIXED` class — a value
+the artifact records and no dispatch input carries, because the arm builds its reader at 0. Recording `42533236864`
+through the projection is what surfaced both: the committed baseline had been hand-merged and was missing
+`temperature`, which no check had noticed because `--check` compares the baseline against the *table* and neither
+side carried it.
+
+### 13.357.3 `S1`'s gate now has 0.05 points of margin, and it is written down rather than repaired
+
+The threshold is 91.0%, derived in §2.1 as 2.2 standard errors below a reading of 91.95%. The registered
+configuration reads 91.05%. Re-deriving the threshold would restore the margin and would be indistinguishable from
+lowering the bar to stay green, so it stays, and the consequence is recorded: the next dispatch that reads below
+91.0% is reported as a regression whether or not one occurred. That is a fact about the population's resolution —
+`MR` is the row that can move and its floor is 9.36 points — and the honest repair is a higher reading rather than a
+lower threshold.
+
+This is the first thing in the campaign where an adoption **spent** a gate's margin instead of buying one, and it
+is worth naming because the pattern will recur: a change that is invisible on accuracy is by construction invisible
+to an accuracy gate, so adopting it moves the reading without moving the threshold and the two converge.
+
+### 13.357.4 What is owed, and it is one dispatch that already exists
+
+`E3.2` is unscored for the reason §13.337.3 gives — `C5` and `E3` differ in the room as well as the repair — and
+`42791109966` is the dispatch that closes it: `replyRepair=commitment` on the adopted allocation, which is one
+variable against `C5` and is the configuration that would ship if the repair converts without cost. It was
+dispatched at the top of this round and is running.
+
+Two rows stay as they are, with the reason on the page rather than in a queue. `C2`'s denominator is the
+48,000-everywhere control, and re-basing it needs an artifact that no dispatch has produced (the six-route room at
+24,000 everywhere); the wording now says the ratio is *of the room cut* rather than *of the registered
+configuration*. `M1` and `P1` remain `unrun` for the reasons §13.310 and `AUDIT-MODEL-PORTABILITY.md` §7 give.

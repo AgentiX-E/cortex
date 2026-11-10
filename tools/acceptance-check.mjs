@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CRITERIA,
   attestationOf,
+  CONFIGURATION_ATTESTED,
   currentOf,
   describe,
   verdictOf,
@@ -161,6 +162,46 @@ const resolve = {
   ablation: (removed) => controlledSet().rows.find((row) => row.removed === removed)?.accuracy,
 };
 
+/**
+ * Evidence files that name a configuration which is not the one the project registers.
+ *
+ * `github.com/AgentiX-E/cortex-docs` and this repository are separate checkouts, so the comparison crosses a
+ * root that `attestationOf`'s resolvers do not span: the evidence files are addressed relative to the
+ * workspace and the registration record is addressed relative to this repository. That is the mechanical
+ * reason this is a check of its own; the reason it fails the build rather than marking a row stale is that
+ * a file describing another configuration is not a weak reading of this one, it is a reading of something
+ * else, and §13.336 published one for a round.
+ *
+ * The list of files is `CONFIGURATION_ATTESTED` in `acceptance.ts`, not a copy here.
+ */
+function registryDefects() {
+  let baseline;
+  try {
+    baseline = JSON.parse(readFileSync(path.join(REPO, 'tools/arm-config-baseline.json'), 'utf8'));
+  } catch (error) {
+    return [`tools/arm-config-baseline.json cannot be read, so no configuration can be attested: ${error.message}`];
+  }
+  const registered = baseline.memoryArmConfigFingerprint;
+  if (typeof registered !== 'string' || registered === '') {
+    return ['tools/arm-config-baseline.json carries no `memoryArmConfigFingerprint`, so nothing can be compared'];
+  }
+  const defects = [];
+  for (const { path: relative, key } of CONFIGURATION_ATTESTED) {
+    const parsed = artifactAt(relative);
+    const found = parsed === undefined ? undefined : pluckRaw(parsed, key);
+    if (found === registered) continue;
+    defects.push(
+      `${relative}#${key} reads ${JSON.stringify(found ?? null)} and the registered configuration is ` +
+        `${JSON.stringify(registered)} (run ${baseline.run}, adopted by §${baseline.adoptedBy}). ` +
+        'Regenerate the file from an artifact of the registered configuration, or record the new ' +
+        'baseline in the change that adopts it.',
+    );
+  }
+  return defects;
+}
+
+const registry = registryDefects();
+
 const evaluations = CRITERIA.map((criterion) => {
   const value = currentOf(criterion, resolve);
   const current = value === undefined ? null : value;
@@ -228,6 +269,11 @@ if (asJson) {
     process.stdout.write(
       `${pad(criterion.id, 5)}${pad(show(criterion, evaluation.current), 10)}${pad(want(criterion), 10)}${pad(label(criterion, evaluation), 8)}${criterion.capability}\n`,
     );
+  }
+
+  if (registry.length > 0) {
+    process.stdout.write(`\n${registry.length} evidence file(s) describe a configuration that is not registered\n`);
+    for (const line of registry) process.stdout.write(`  ${line}\n`);
   }
 
   const failed = evaluations.filter((entry) => entry.evaluation.blocking);
@@ -306,4 +352,7 @@ const missing = evaluations.filter(
 // truncated mid-string, which a consumer reports as malformed JSON rather than as a check that failed. It was
 // intermittent -- small documents usually flushed in time -- and `test_reading_render.py` caught it as an
 // occasional `Unterminated string` while every gate was passing.
-process.exitCode = failed > 0 ? 1 : strictUnrun && missing > 0 ? 2 : 0;
+// An evidence file describing another configuration is a failure of the same severity as a gate: nothing
+// was compared, because the number is about a different system.
+const blocking = failed > 0 || registry.length > 0;
+process.exitCode = blocking ? 1 : strictUnrun && missing > 0 ? 2 : 0;

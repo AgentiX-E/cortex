@@ -59,15 +59,15 @@ unrun    no value could be computed — reported, never counted as a pass
 | T4  | <!-- reading:T4 -->100.0% | = 100.0%  | pass   | settled fact versus plan               | controlled set, `−lapse`                                    |
 | D1  | —                         | ≤ 45.0%   | unrun  | extraction fidelity                    | A3 round 2, verbatim share                                  |
 | R1  | <!-- reading:R1 -->-1     | ≥ 1       | accept | abstention recovery                    | LongMemEval-S, 500 questions                                |
-| S1  | <!-- reading:S1 -->92.0%  | ≥ 85.0%   | aim    | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
-| S2  | <!-- reading:S2 -->88.5%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 of the 78 published                     |
-| S3  | <!-- reading:S3 -->83.9%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 of the 133 published                   |
-| S4  | <!-- reading:S4 -->96.1%  | ≥ 94.0%   | pass   | temporal reasoning                     | LongMemEval-S, 127 of the 133 published                   |
+| S1  | <!-- reading:S1 -->91.1%  | ≥ 91.0%   | pass   | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
+| S2  | <!-- reading:S2 -->87.2%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 of the 78 published                     |
+| S3  | <!-- reading:S3 -->83.1%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 of the 133 published                   |
+| S4  | <!-- reading:S4 -->95.1%  | ≥ 94.0%   | pass   | temporal reasoning                     | LongMemEval-S, 127 of the 133 published                   |
 | S5  | <!-- reading:S5 -->100.0% | ≥ 80.0%   | pass   | abstention                             | LongMemEval-S, 30 questions                               |
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
-| C1  | <!-- reading:C1 -->12137  | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
+| C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
 | C2  | <!-- reading:C2 -->48.7%  | ≤ 70.0%   | pass   | cost                                   | LongMemEval-S, paired, median evidence tokens per question   |
@@ -267,11 +267,84 @@ else:
 | --- | --- |
 | `accuracySource == repetition-mean` | `feature.metrics` is one repetition; on `MR` the four repetitions span 99 to 104 of 121, so a one-repetition row and a mean row are four points apart |
 | `runs == 4` | a two-repetition mean carries twice the standard error of the mean |
-| `arm == route-room` | the capability file is only about the shipping system if it was generated from it; a file regenerated from `registered` would read 3.4 points lower on `TR` and be perfectly well-formed |
+| `arm == route-room` | the capability file is only about the shipping system if it was generated from it; a file regenerated from the 48,000-everywhere arm would read 0.98 points lower on `TR` and be perfectly well-formed |
 | `pooled.denominator == 500` | the per-category counts are taken out of the full suite; a file generated from a 72-question scoped arm has categories too, and they are not these |
 
 A failing clause produces `stale`, not `fail`: nothing was compared, and the row says so instead of quoting a
 number about a different system.
+
+### 2.3 Six rows read a configuration that had stopped shipping, and the repair is a fingerprint
+
+`docs/MEASURE-CONFIGURATION-IDENTITY.md` is the full record, including the playbook and the three things the
+repair does not reach.
+
+§13.336 adopted a six-route character-room allocation on 2026-11-09. It moved three files — §10.3 of the
+pre-registration, `tools/dispatch-cortex-memory-ab.py`'s `INPUTS`, and `tools/arm-config-baseline.json`, which
+`--record` had just rewritten from the run that carried the allocation (`42533236864`). Three files agreeing is
+what this project calls a registration. **Nothing that a criterion reads was among them.**
+
+| evidence file | read by | run it named | configuration that run applied |
+| --- | --- | --- | --- |
+| `cost.json` | `C1` | `42355323615` | `multi-session: 48460`, five routes at 48,000 |
+| `categories.json` | `S2`–`S5` | `42355323615` | the same |
+| `frontier.json#shipping` | `S1` | `42355323615`, via the label `route-room` | the same |
+| `evidence-budget.json` | prose only | `42355323615` | the same |
+
+Every one of those files was a correct record of a real run. What none of them was, was a record of the
+configuration the project ships, and nothing in any of them said which one the project registers. The two sizes
+of the error are not comparable, and reporting them as one number would hide the interesting half:
+
+| row | printed | registered configuration reads | difference | character of the difference |
+| --- | ---: | ---: | ---: | --- |
+| `C1` prompt tokens per question | 12,137 | **9,201** | **−24.2%** | not noise in any frame; it is the axis the adoption was for |
+| `S1` overall, four-repetition mean | 91.95% | 91.05% | −0.90 | inside the 0.90-point span three draws of the *predecessor* produced (§13.336.1) |
+| `S2` knowledge update | 88.5% | 87.2% | −1.39 | the same |
+| `S3` multi-session | 83.9% | 83.1% | −0.84 | the same |
+| `S4` temporal | 96.1% | 95.1% | −1.06 | the same |
+| `S5` abstention | 100.0% | 100.0% | 0.00 | — |
+
+So the accuracy rows move by less than one draw-spread and the bill moves by a quarter, which is the shape §13.336
+predicted: the adoption could not be seen on accuracy and could be seen on cost. Correcting the rows is
+consequently a correction *downward* on four of them, which is the direction a project has to be willing to move,
+and it is why this section is not a win.
+
+**The repair is not an edit to any of the six numbers.** It is `tools/registration-attest.py`: the artifact's
+`memoryArmConfig` is hashed canonically into `sha256:…`, `arm-config-record.py --record` writes that fingerprint
+into the baseline beside the configuration it came from, and:
+
+- `cost-ledger.py --write`, `evidence-budget.py --write` and `capability-ledger.py --write` **refuse** an artifact
+  whose fingerprint is not the baseline's, and the refusal names the dispatch input that moved rather than the hash;
+- `efficiency-frontier.mjs --ship` writes `shipping.configurationFingerprint` beside `shipping.accuracy`;
+- `CONFIGURATION_ATTESTED` in `acceptance.ts` lists the two committed files that carry a configuration, and
+  `tools/acceptance-check.mjs` compares both against `tools/arm-config-baseline.json` and **fails the build** when
+  they disagree.
+
+A `--write` refuses with the difference list, because a refusal that says only "the configuration differs" sends the
+reader to diff two JSON files:
+
+```
+this artifact is not a measurement of the registered configuration (tools/arm-config-baseline.json).
+  applied    sha256:8c72ad24…0e0d5bd
+  registered sha256:0c6c25e7…480075  (run 42533236864, adopted by §13.336)
+  cortex_memory_max_prompt_chars: the baseline records 'abstention:24000,…,temporal:48000'
+    and this artifact applied 'multi-session:48460'
+```
+
+Three properties of the gate are pinned by tests rather than by intent. The fingerprint decides and the difference
+list only diagnoses — ANDing them would report every artifact recorded before the projection gained a field as a
+false failure. The refusal is unconditional, with no override: an artifact of another configuration is still
+readable through `--json`, it simply may not become the file a criterion reads. And the fingerprint crosses
+languages — `efficiency-frontier.mjs` computes it in Node and `registration-attest.py` in Python, and
+`tools/__tests__/test_registration_attest.py` runs both on one fixture, because a gate that fires on every green
+run is a gate that gets deleted.
+
+**What this does not fix, stated here rather than discovered later.** `S1`'s gate is 91.0% and the registered
+configuration reads 91.05%, so the margin is 0.05 points. Re-deriving the threshold would restore the margin and
+would be indistinguishable from lowering the bar to stay green, so it is left where §2.1's derivation put it and the
+consequence is recorded: the next dispatch that reads below 91.0% is reported as a regression whether or not one
+occurred. `C2`'s denominator is the 48,000-everywhere control rather than the registered configuration, and cannot
+be re-based without a dispatch, because no artifact runs the six-route room at 24,000 everywhere; the row's wording
+now says so. `E3.2` is still unscored for the same reason it was: the room moved between the two artifacts.
 
 ### 3.1 One row prices memory itself, and it can come out negative
 
@@ -401,7 +474,7 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | oracle context, GPT-4o           | 82.4%                    | B     | one oracle configuration — **not a ceiling**, see consequence 3                                                                    |
 | **Raw-RAG (naive, GPT-4o-mini)** | **87.5%**                | B     | timestamps, chunking, dense retrieval, reranking over raw turns — no extraction, no rewriting                                      |
 | StateMem (DeepSeek reader)       | 65.6%                    | B     | state-tracking memory; the only published DeepSeek-reader figure on this benchmark                                                 |
-| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->92.0% | —     | DeepSeek reader, official judge prompts, four runs, `maxPromptChars=48000` / `relevanceTopK=256`                                   |
+| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->91.1% | —     | DeepSeek reader, official judge prompts, four runs, six-route room map / `relevanceTopK=256`                                        |
 | Mastra OM, GPT-4o                | 84.2%                    | B     | vendor research page, observational memory, GPT-4o reader and judge                                                                |
 | Mem0 OSS, reproduced             | 32.4%                    | B     | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not        |
 | no-memory baseline               | 57.6%                    | B     | benchd.ai: the whole history in the window, no memory system                                                                       |
@@ -440,8 +513,8 @@ Four consequences, and the last two are uncomfortable:
    the benchmark's own either way.
 
 The category split is where the deficit is, and it is not uniform. Knowledge update is at
-<!-- reading:S2 -->88.5%, above the threshold and above the frontier's implied position; multi-session is at
-<!-- reading:S3 -->83.9% and temporal reasoning at <!-- reading:S4 -->96.1%, so **the two categories that used
+<!-- reading:S2 -->87.2%, above the threshold and above the frontier's implied position; multi-session is at
+<!-- reading:S3 -->83.1% and temporal reasoning at <!-- reading:S4 -->95.1%, so **the two categories that used
 to hold essentially all of the gap are one pass and one 1.1-point miss**, not two deep deficits. That reading
 replaced three that were four to eighteen points wrong; §2.2 is the record, and the reason it changed is not
 that the system improved but that four rows were reading a configuration that no longer ships.

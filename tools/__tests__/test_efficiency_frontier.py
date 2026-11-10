@@ -660,14 +660,26 @@ def test_the_ladder_names_a_step_that_does_not_run_through_the_reference(tmp_pat
 
 def test_the_shipping_block_carries_the_attestation_the_matrix_reads(tmp_path: Path) -> None:
     """`S1` reads `shipping.accuracy` and checks three fields; this is where they are written."""
-    reference = write(tmp_path, 'a.json', artifact(name='a', masks=['111', '111', '111'], aggregate=1.0))
-    shipped = write(tmp_path, 'b.json', artifact(name='shipped', masks=['111', '111', '111'], aggregate=1.0))
+    config = {'ask': 'verbatim-acts', 'maxPromptCharsByRoute': {'multi-session': 48460}}
+    reference = write(
+        tmp_path, 'a.json', artifact(name='a', arm_config=config, masks=['111', '111', '111'], aggregate=1.0)
+    )
+    shipped = write(
+        tmp_path,
+        'b.json',
+        artifact(name='shipped', arm_config=config, masks=['111', '111', '111'], aggregate=1.0),
+    )
     result = run(tmp_path, '--json', '--label', 'a', '--label', 'shipped', '--ship', 'shipped', str(reference), str(shipped))
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload['shipping']['arm'] == 'shipped'
     assert payload['shipping']['accuracySource'] == 'repetition-mean'
     assert payload['shipping']['runs'] == 4
+    # The fourth clause, added in round 57. The three above attest *how* the number was computed; this one
+    # attests *which configuration* it describes, because §13.336 adopted a room map and the `route-room`
+    # label went on resolving to the map it replaced. A name can outlive its meaning; a hash cannot.
+    assert payload['shipping']['configurationFingerprint'].startswith('sha256:')
+    assert len(payload['shipping']['configurationFingerprint']) == len('sha256:') + 64
 
 
 def test_a_ship_label_that_is_not_an_arm_is_refused(tmp_path: Path) -> None:
