@@ -7,7 +7,7 @@
  * `enabled` bought `TR` four questions with **zero losses** and sold `IE` sixteen. §13.197.3
  * registers the product answer -- thinking on the two routes whose block closes with the answer
  * instruction, off on the four that do not -- and §13.197.4 records why it cannot be a new
- * dispatch input: the workflow declares **24** inputs and GitHub's ceiling is 25, the same wall
+ * dispatch input: the workflow declared **24** inputs against GitHub's ceiling of 25, the same wall
  * that moved `budgetMinutes` into a constant. The state therefore goes inside the value that
  * already exists, which is the repair §13.188 established for the turn-cap width.
  *

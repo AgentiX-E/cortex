@@ -405,6 +405,38 @@ export type CortexMemoryOptions = {
    */
   ask?: EvidenceAsk;
   /**
+   * Whether the prompt names the statements that state the same detail twice.
+   *
+   * ## The failure it is aimed at
+   *
+   * Five of the seven `KU` questions that fail in all four repetitions of run `42355323615` answer
+   * with a value the corpus **later replaced**, and the later statement is in the delivered window
+   * every time: `ce6d2d27` says "class on Thursday" at turn 4 and "class on Fridays" at turn 29 and
+   * answers `Thursday`; `59524333` says "usually 7:00 pm" in February and "usually at 6:00 pm" in May
+   * and answers `7:00 pm`. The instruction block already says which of the two to prefer
+   * (`knowledge-update` carries the "latest date" rule), so the reader has the rule and both
+   * statements and still answers with the earlier one — the comparison is one it has to **find**
+   * inside 23,084 characters before it can perform.
+   *
+   * With this on, `cortex-memory/src/conflict.ts` picks the turns whose best sentence shares terms
+   * with the question, keeps the earliest and the latest of them plus the most relevant, and prints
+   * them between the evidence and the question with their dates and one conditional line. It does
+   * not decide which value is current, because the direction is in the question: `0977f2af` asks for
+   * the gadget bought **before** the Air Fryer, i.e. the earlier of two values.
+   *
+   * ## Cost and reach
+   *
+   * About 1.2k characters on a 48k prompt (six statements at most, each at most 180 characters), and
+   * the delivered evidence is untouched — the block is inserted after the budget decided the carried
+   * set, so a run with this on carries exactly what its control carried. The reach is the five routes
+   * that assemble through `#answerWithBareRetry`; the multi-session route renders session blocks and
+   * is excluded, as `#withConflicts` records.
+   *
+   * Absent means off, and an off run's prompts are byte-identical to the ones before this option
+   * existed.
+   */
+  conflicts?: boolean;
+  /**
    * The kinds of turn the evidence may be built from. Absent means every turn.
    *
    * ## The measurement this answers

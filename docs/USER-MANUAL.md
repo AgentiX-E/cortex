@@ -367,6 +367,7 @@ Three fields are required and each is required for a reason:
 | `replyRepair` | `'off' \| 'commitment' \| 'shape' \| 'both'` | `'off'` | Re-ask once when the reply broke the contract it was given: a refusal in prose, or a list of quotations instead of an answer. Excludes `reviewPass`. |
 | `selfConsistency` | `number` | absent (1) | Consultations per question and majority reduction. Must be a positive integer; refused with `reviewPass: 'audit'`. |
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder, as two injections. |
+| `conflicts` | `boolean` | absent (off) | Prints the statements that state one detail twice, in evidence order, between the evidence and the question. Reaches flat, temporal, knowledge-update and assistant; abstention and multi-session are excluded. §6.4. |
 <!-- /contract-table -->
 
 ### 6.2 `GateOptions`
@@ -484,6 +485,38 @@ not accuracy: read `voteCounts()` before and after, because a vote that is unani
 not a vote.
 
 ## 9. Recipes
+
+**Two statements of one detail, side by side.** A memory that says "class on Thursday" in June and
+"class on Fridays" a fortnight later answers *"what day is my class"* with whichever of the two the
+reader happened to anchor on. Measured on five questions that fail this way in every repetition, the
+later statement is in the window every time and the reader answers with the earlier one -- the
+comparison is one it has to find inside 23k characters before it can perform it.
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+declare const turns: string[];
+
+const memory = new CortexMemory({
+  llm,
+  now: 0,
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
+  // The prompt names the statements that share terms with the question, earliest first, with their
+  // dates, and says that when two of them differ the later one is the later value. It decides
+  // nothing: "what did I buy before the Air Fryer" asks for the *earlier* of two values, so the
+  // direction stays in the question.
+  conflicts: true,
+});
+
+const answer = await memory.answer('What day of the week do I take a cocktail-making class?', turns);
+```
+
+The block is inserted after the budget decided which turns are carried, so it costs the evidence
+nothing: mean 1,104 characters, 2.3% of a 48k prompt, and zero model calls. What it cannot do is
+reach a value that is only named by its relation to another one, or one the corpus increments rather
+than replaces -- `docs/MEASURE-CONFLICT-SURFACING.md` section 2 prices both.
 
 **A stronger reader for two routes only.** Measured: thinking mode gained four `TR` and two `KU`
 questions while losing sixteen `IE` — one reader for six routes cannot express that.

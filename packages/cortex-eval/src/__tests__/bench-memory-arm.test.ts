@@ -1012,6 +1012,9 @@ describe('source trust reaches the artifact', () => {
       // The evidence source is stated on every artifact, so an exact-object assertion carries it.
       // Its absence would mean "the artifact predates the field", which no run from now on does.
       evidenceSource: 'corpus',
+      // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
+      // is a fact about the run, not a missing field.
+      conflicts: false,
       threshold: 0.2,
       retrievalThreshold: 0.25,
       sessionBudget: null,
@@ -1532,6 +1535,9 @@ describe('runCortexMemoryArm', () => {
       });
       expect(config).toEqual({
         evidenceSource: 'corpus',
+        // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
+        // is a fact about the run, not a missing field.
+        conflicts: false,
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
@@ -1986,6 +1992,9 @@ describe('blank values from unfilled dispatch inputs', () => {
       // The evidence source is stated on every artifact, so an exact-object assertion carries it.
       // Its absence would mean "the artifact predates the field", which no run from now on does.
       evidenceSource: 'corpus',
+      // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
+      // is a fact about the run, not a missing field.
+      conflicts: false,
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,

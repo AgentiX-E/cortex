@@ -23,6 +23,7 @@
 import type { LLM, MemoryValue, ValueFunction } from '@agentix-e/cortex-core';
 import { decideRetrieval } from '@agentix-e/cortex-core';
 import type { Answer, SessionAwareMemorySystem } from '@agentix-e/cortex-eval';
+import { conflictBlock, insertRelatedStatements } from './conflict.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 import {
   admissionOptionsFrom,
@@ -1248,15 +1249,20 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const kept = this.#turnsForRoute(turns, route);
     if (kept.length === 0) return this.#declinedEmpty();
     const ordering = this.#orderingFor(question, questionDate);
-    const assembled = buildPrompt(
+    const assembled = this.#withConflicts(
       question,
       kept,
-      contract,
-      {
-        ...options,
-        ...(questionDate === undefined ? {} : { questionDate }),
-      },
-      ordering,
+      route,
+      buildPrompt(
+        question,
+        kept,
+        contract,
+        {
+          ...options,
+          ...(questionDate === undefined ? {} : { questionDate }),
+        },
+        ordering,
+      ),
     );
     this.#recordEvidence(kept, assembled);
     // §13.107: the outcome is recorded once per question, here rather than inside `#consult`, so a route that
@@ -1702,6 +1708,43 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #promptCharsFor(route: TurnCapRoute): number | undefined {
     const named = this.#options.maxPromptCharsByRoute?.[route];
     return named ?? this.#options.maxPromptChars;
+  }
+
+  /**
+   * Insert the related-statements block between the evidence and the question.
+   *
+   * ## Why the insertion is here and not in a builder
+   *
+   * The five routes that assemble through `#answerWithBareRetry` end at one `buildPrompt` call, and
+   * the block is a function of two things that exist only at this depth: the question, and the
+   * **carried** set after the budget decided it. Computing it inside `buildPrompt` would put it
+   * before `fitToBudget`, where the block's characters would compete with the evidence for the
+   * room — a run would then carry fewer turns than its control and the reading could no longer be
+   * attributed to the block. Inserting after the event keeps the delivered multiset byte-identical,
+   * which `conflict-reach.test.ts` asserts by deleting the block and requiring the control's prompt
+   * back.
+   *
+   * ## Why abstention and multi-session do not get it
+   *
+   * The abstention route's gold is a decline, 29 of its 30 answers are the bare token and it reads
+   * 30/30: a block showing it two statements about the question's subject is an invitation to
+   * answer, which on that population is an invitation to be wrong. `#promptSessionAware` hands
+   * `buildSessionPrompt` **sessions** and renders them with their boundaries intact, and a block
+   * that flattened them back into one order would undo the one thing that builder is for. The reach
+   * is therefore four routes and is stated rather than discovered.
+   */
+  #withConflicts(
+    question: string,
+    turns: readonly AdmittedTurn[],
+    route: TurnCapRoute,
+    assembled: AssembledPrompt,
+  ): AssembledPrompt {
+    if (this.#options.conflicts !== true) return assembled;
+    if (route === 'abstention') return assembled;
+    return {
+      ...assembled,
+      prompt: insertRelatedStatements(assembled.prompt, conflictBlock(question, turns)),
+    };
   }
 
   #promptOptions(route: TurnCapRoute): PromptOptions {

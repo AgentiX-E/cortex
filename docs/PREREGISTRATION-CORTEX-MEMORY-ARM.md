@@ -37864,3 +37864,119 @@ reply is not using it", which is the same finding `MEASURE-MR-CEILING.md` §1 re
 Queue after this section: **`H2` on `KU`** (bar ≥ 4 of 6, falsifier ≤ 2), then `M1` (blocked on a
 frontier key), then `E3.2`, then `P1` (blocked on the provider's 1.41 questions per minute). `H3` and
 summation are closed.
+
+## 13.352 The one mechanism above its own noise, and the block that administers it
+
+§13.351 promoted `H2` — stale-value selection on `KU` — to the head of the queue and changed its bar
+from a convention to a measured null. This section is the mechanism that administers it, the reading
+that says how much of it is reachable, and the dispatch that asks whether the reader performs a
+comparison once the pair is on the page. `docs/MEASURE-CONFLICT-SURFACING.md` is the reading.
+
+### 13.352.1 What the mechanism is, and what it deliberately is not
+
+`cortex-memory/src/conflict.ts` takes the question's content terms, scores every turn by its best
+sentence's overlap with them, keeps the earliest and latest statement about that subject plus the
+most relevant ones (six at most, 180 characters each), and prints them between the evidence and the
+question:
+
+```
+RELATED STATEMENTS (the same ones appear in the evidence, in this order):
+- [2023/06/16 (Fri) 13:26] And by the way, I have a cocktail-making class on Thursday, …
+- [2023/06/30 (Fri) 22:49] By the way, I have a cocktail-making class on Fridays, …
+When two of these state different values for the same thing, the later statement is the later value
+and the earlier statement is the earlier one. If the question asks about a previous state, the
+earlier statement is the answer.
+```
+
+It does **not** decide which value is current. The direction of the comparison is in the question —
+`0977f2af` asks for the gadget bought **before** the Air Fryer, i.e. the earlier of two values — and a
+block that labelled the later statement "current" would be right on four questions and wrong on that
+one. The closing line is conditional for that reason, and the block's last row is allowed to be an
+aside that states no value at all.
+
+### 13.352.2 Reach, measured on the real windows rather than on excerpts
+
+Read over the artifact's own turns at their own lengths (§13.351's run):
+
+| question | statements | block chars | gold present | gold after the replaced value | reached |
+| --- | ---: | ---: | :---: | :---: | :---: |
+| `ce6d2d27` | 6 | 984 | yes | yes | **yes** |
+| `9ea5eabc` | 6 | 1,005 | yes | yes | **yes** |
+| `ed4ddc30` | 5 | 721 | yes | yes | **yes** |
+| `59524333` | 6 | 1,203 | yes | yes | **yes** |
+| `a2f3aa27` | 2 | 584 | no | — | no |
+| `69fee5aa` | 6 | 1,154 | no | — | no |
+| `0977f2af` | 5 | 935 | no | — | no |
+
+**Four of seven**, and the three misses are three different reasons:
+
+- **`a2f3aa27`, segmentation.** The replacing statement is the last sentence of a long turn whose
+  opening is about an Instagram post, so the turn's best-scoring sentence is the opening: one shared
+  term where the statement it replaces shares two. Widening the threshold to reach that sentence also
+  admits every turn that mentions Instagram once, and 31 of these 72 questions already produce a block
+  that names no gold.
+- **`69fee5aa`, increment.** "I have a total of 37 coins" then "I just added a new coin" is an
+  **addition**, so the gold `38` is nowhere in the text. §13.351.5 counted this question as
+  stale-value selection; that was wrong and this section corrects it, which also means the `KU`
+  population that §13.351.4 priced at 6.00 questions is **5.00** on this mechanism's definition and
+  4.00 on its reach.
+- **`0977f2af`, relational naming.** Neither the gold nor its relation to the Air Fryer shares a term
+  with the question. Matching words cannot reach a value named only by its relation to another one.
+
+Of the 72 `KU` questions the block is non-empty on **69**, mean **1,104** characters, median 1,139,
+maximum 1,392 — **2.3%** of a 47,542-character prompt. It names the gold on 41 of them.
+
+### 13.352.3 Registered: `conflicts`, on `KU`, four repetitions, and the bar is 3 of 4
+
+- **Reach is four routes**: flat, temporal, knowledge-update and assistant. **Abstention is excluded**
+  because its gold is a decline, 29 of its 30 answers are the bare token and it reads 30/30 — a block
+  showing it two statements about the question's subject is an invitation to answer, which on that
+  population is an invitation to be wrong. **Multi-session is excluded** because it renders session
+  blocks with their boundaries intact and a flattened order would undo the one thing that builder is
+  for. Both exclusions are asserted in `conflict-reach.test.ts` rather than described.
+- **The block is inserted, not rendered.** It is placed after `fitToBudget` decided the carried set,
+  so a run with it on carries exactly what its control carried. The reach test proves it by deleting
+  the block from the treatment's prompt and requiring the control's back, byte for byte, on all four
+  routes that move.
+- **Zero model calls.** The mechanism is arithmetic over text the prompt already holds, so this
+  dispatch's bill is the control's bill — the first arm since §13.118 whose cost is not a reason to
+  defer it.
+- **Bar: ≥ 3 of the 4 reachable conversions**, with no capability worse than 2 sd of its own
+  repetition spread. **Falsifier: ≤ 1.** Three questions is 4.17 points of `KU` against a 2 sd of
+  3.50 points, so three is the smallest result that clears the null; four is the ceiling and a
+  4-of-4 reading would be reported as the ceiling reached rather than as a rate.
+- **Dispatch: `capability=KU`, 4 repetitions.** 72 questions × 2 arms × 4 repetitions. The paired
+  comparison is within-run, so the control is the same 72 questions under the same reader and the
+  same embedding cache, and the reading is a McNemar over 288 answer pairs per arm.
+
+### 13.352.4 What would make this mechanism wrong rather than untested
+
+Two readings would falsify the design rather than the effect, and both are recorded before the
+dispatch so that a negative result cannot be re-read as a positive one afterwards:
+
+1. **The four conversions do not move while the other 65 `KU` questions do.** That would say the
+   block is a prompt perturbation rather than a comparison aid, and the mechanism would be withdrawn
+   rather than tuned.
+2. **The conversions move but the file's other capabilities fall.** The reach is four routes, so TR
+   and IE read the block too on a full run; this run is `KU`-only precisely so that the first reading
+   is attributable, and a full-file dispatch would be a second decision on this section's evidence.
+
+### 13.352.5 Why this toggle is a repository variable and not a dispatch input
+
+The workflow declares 24 inputs against GitHub's ceiling of 25, and
+`tools/__tests__/test_dispatch_inputs.py::test_no_workflow_sits_at_the_input_ceiling` forbids a
+workflow from sitting **at** the ceiling — a workflow one input away from a `422` is one that cannot
+be planned against. So `cortex_memory_conflicts` is the twenty-fifth input for about ten minutes of
+this round's life, which is how long it took that guard to reject it, and the toggle is read from the
+repository variable of the same name instead:
+
+```
+CORTEX_MEMORY_CONFLICTS: ${{ vars.CORTEX_MEMORY_CONFLICTS }}
+```
+
+The trade is stated rather than hidden. The variable is not in the run's dispatch history, so
+"which arm was this" is answered by the **artifact** (`memoryArmConfig.conflicts` and
+`featureConfig.conflicts`) rather than by the workflow's inputs; and the variable has to be unset
+after the run, because a variable left at `1` would silently make the next dispatch a treatment of
+this section. Everything else is unchanged: `readToggle` reads an unset variable as the control,
+which is the state every archived run is in.

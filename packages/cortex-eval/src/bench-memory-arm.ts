@@ -281,6 +281,20 @@ export type CortexMemoryArmOptions = {
    */
   queryExpansion?: string | undefined;
   /**
+   * Whether the product names the statements that state one detail twice (§13.352).
+   *
+   * A boolean rather than a string because there is no third state to name: unlike `ask` or
+   * `queryExpansion`, "ran the control" is the absence of the block, which the artifact spells as
+   * `conflicts: false` on every run from this point and as a missing field on every run before it.
+   *
+   * The mechanism is `cortex-memory/src/conflict.ts`: it picks the turns whose best sentence shares
+   * terms with the question, keeps the earliest and latest of them plus the most relevant, and prints
+   * them between the evidence and the question. It spends **zero model calls**, so a dispatch of it
+   * costs the control's bill -- which is why it is the one mechanism the queue registers after three
+   * were cancelled for having a ceiling below their population's noise.
+   */
+  conflicts?: boolean | undefined;
+  /**
    * How many times the multi-session route consults the model on one prompt (§13.101).
    *
    * `none` is one consultation, which is the shipped behaviour and the state every archived run is
@@ -1073,6 +1087,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     // disjoint population -- the same reason `reviewBareDecline` was split out of the pass name.
     replyRepair: readReplyRepair(env[REPLY_REPAIR_VARIABLE]),
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
+    conflicts: readToggle(env, CONFLICTS_VARIABLE),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
@@ -1674,6 +1689,7 @@ function readSelfConsistency(raw: string | undefined): string {
 }
 
 /** The variable this arm reads for §13.97's query expansion. */
+const CONFLICTS_VARIABLE = 'CORTEX_MEMORY_CONFLICTS';
 const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
 
 /**
@@ -2430,6 +2446,10 @@ export function toMemoryArmConfig(
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.
     queryExpansion: options.queryExpansion ?? 'none',
+    // §13.352. Always present for the reason `queryExpansion` is: `false` is a state a run can be
+    // dispatched to, so an artifact that spelled nothing would leave "ran the control" and "predates
+    // the field" as the same bytes.
+    conflicts: options.conflicts === true,
     // §13.101. Always present for the reason `queryExpansion` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.

@@ -622,6 +622,14 @@ export type MemoryArmConfig = {
    */
   readonly queryExpansion?: string | undefined;
   /**
+   * Whether the product printed the statements that state one detail twice (§13.352).
+   *
+   * Always present, `false` included, for the reason {@link MemoryArmConfig.reviewPass} is: an
+   * artifact has to answer what the run did, and a field that is only present under treatment makes
+   * "ran the control" and "predates the field" the same row.
+   */
+  readonly conflicts?: boolean | undefined;
+  /**
    * The multi-session consultation count the run used (§13.101).
    *
    * Always present, `none` included, for the reason {@link MemoryArmConfig.reviewPass} is: an artifact
@@ -1548,6 +1556,10 @@ export function formatAblationReport(report: AblationReport): string {
         // run's consultations (one per question) rather than a missing field.
         `, \`selfConsistency=${memoryArm.selfConsistency ?? 'none'}\`` +
         `, \`queryExpansion=${memoryArm.queryExpansion ?? 'none'}\`` +
+        // §13.352. Rendered on every run for the reason the two above are: the block's absence is a
+        // fact about the run rather than a missing field, and the artifact this experiment compares
+        // differs from this one only in this value.
+        `, \`conflicts=${memoryArm.conflicts === true}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
         // refused whole. One field rather than three so the line stays a configuration

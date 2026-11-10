@@ -789,6 +789,11 @@ async function main(): Promise<void> {
       // `readAsk` validates it against the product's own list at parse time, throwing on
       // anything unrecognised. So the value IS one of the union's members here.
       ...(armOptions.ask === 'route' ? {} : { ask: armOptions.ask as EvidenceAsk }),
+      // §13.352. The related-statements block. Spread conditionally for the reason every option above
+      // is: `false` IS the shipped behaviour and is expressed by NOT passing the key, so a run that
+      // does not name it reproduces the previous prompt byte for byte -- which `conflict-reach.test.ts`
+      // asserts on all six routes rather than assuming.
+      ...(armOptions.conflicts === true ? { conflicts: true } : {}),
       // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
       // the key, for the reason every other conditional spread here is: every archived artifact was
       // produced without a pass, and a present-but-inert key would make the option indistinguishable
@@ -1052,7 +1057,7 @@ async function main(): Promise<void> {
     // §13.153's mechanism is recorded beside the flag that says the arm ran at all, because the two
     // artifacts this dispatch compares differ by exactly this entry: the config line is the only place
     // a reader of the JSON can see that the treatment was administered rather than merely dispatched.
-    featureConfig: { cortexMemory: true, windowReorder },
+    featureConfig: { cortexMemory: true, windowReorder, conflicts: armOptions.conflicts === true },
     datasetFingerprint,
     // Read from the parsed arm options, not decided here: §13.12 registers the
     // bound, and a value written in this file would never appear in the
