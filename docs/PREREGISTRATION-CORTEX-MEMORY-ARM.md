@@ -38739,3 +38739,48 @@ round that read `M1` as licence to switch model tiers would be doing the same in
 The cost of this dispatch is printed by `spend-projection.mjs` before the POST, from the most recent full pass's
 billed block; the projection is printed rather than restated here for the reason §13.359.4 gives about ratios —
 a number copied into prose is a number nothing re-derives.
+
+### 13.360.6 Correction, written after the dispatch and before the artifact is read
+
+§13.360.2 above is **wrong on one point** and the error is worth keeping rather than editing away: it says no
+reading exists of the shipped `thinking` value against `disabled` on the current configuration. One does.
+§13.344 dispatched exactly this variable — `42617201299`, `--screening --set thinking=disabled` — and §13.345
+repeated it as `T1r` (`42621461902`) after §13.344's first reading turned out to be contaminated by a cold
+prefix cache:
+
+| | control `42600727738` | `T1r` `42621461902` | Δ |
+| --- | ---: | ---: | ---: |
+| accuracy, 200 questions × 2 runs | 90.5% (181) | **91.0% (182)** | **+0.5 pt** |
+| feature-side spend | 2.021 CNY | **0.944 CNY** | **−53.3%** |
+| prompts | — | byte-identical on 200 of 200 | — |
+
+So the pair exists, and it says the opposite of what this section assumed: disabling the reach **did not cost
+accuracy** and **halved the bill**. It was not adopted because it is a 200-question sample, and §10.3's
+registered scale is 500 — the same reason every capability-scoped arm is unreadable there (`MR` carries 29
+questions on that sample, where a 3-point effect is 1.2 questions, per the workflow's own `capability` input).
+
+That makes this dispatch **the 500-question confirmation `T1r` never had**, and it changes what the round is
+for. The predictions below replace §13.360.3's, and they replace them before the artifact exists:
+
+- **`P1` (scale transfer).** The 500-question paired delta lands within **±2 questions** of `T1r`'s +1. In
+  points, **|Δ| ≤ 0.4**. A reading of ≥3.0 points in either direction falsifies one of the two runs, and the
+  smaller sample is the likelier of the two to be wrong.
+- **`P2` (the cost half, which is the reason to care).** Feature-side spend falls by **≥ 40%** against the
+  control on the same 2,000 question-runs. `T1r` measured 53.3%; a run whose spend does not fall means the
+  reach was not reaching the request, which is the precondition §13.343.3 already made for reading accuracy.
+- **`P3` (admissibility).** 500 of 500 prompts byte-identical, checked by `promptDigest` and not by
+  `promptChars` — the digest is the field that compares two artifacts, and `arm-flip-census.py --relations`
+  now prints the three counts beside every delta.
+
+**What it licenses if `P1`–`P3` hold:** the shipped default moves to `disabled`. That is a product change with
+a 500-question basis at equal accuracy and half the bill, which is requirement 8's "budget predictable,
+controllable and minimal" in its cheapest form. It is *not* a mechanism and it does not move `S1`.
+
+**What it licenses for `M1`:** `M1` flips from `unrun` to **`fail`** — the reasoning reader is worth less than
+the row's 3.0-point threshold on this arm — and the row's competitor column is then read correctly: Mastra's
++10.64 is a **frontier-reader** effect, and this arm's reader is not one. §18.2 of `SOTA-LANDSCAPE.md` already
+priced our own reader spread as the smallest of five for exactly this reason.
+
+**What it does not license:** a claim that reasoning is worthless in general. It says the two routes' thinking
+reach buys less than a point on this corpus, this prompt and this reader — which is the only population the
+measurement covers, and the sentence that a future round would have to beat rather than re-derive.
