@@ -2,7 +2,7 @@
  * OpenAI-compatible embedding adapter. Normalizes remote float32 outputs to
  * Float64Array so downstream Cortex math retains full precision.
  */
-import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import type { EmbeddingIdentity, EmbeddingModel } from '@agentix-e/cortex-core';
 import { retryableFetch } from '../retry.js';
 
 export type OpenAIEmbeddingOptions = {
@@ -28,6 +28,23 @@ export class OpenAIEmbedding implements EmbeddingModel {
 
   dimension(): number {
     return this.options.dimensions;
+  }
+
+  /**
+   * The identity of the space these vectors live in.
+   *
+   * `provider` is `'openai-compatible'` rather than a vendor name, because that is what this adapter
+   * can honestly state: it speaks one protocol and reaches whatever `baseUrl` was configured. The
+   * vendor is legible from `endpoint`, which is a field of the identity for exactly this reason — the
+   * same model id served by two gateways can be two different sets of weights.
+   */
+  identity(): EmbeddingIdentity {
+    return {
+      provider: 'openai-compatible',
+      model: this.options.model,
+      endpoint: this.options.baseUrl,
+      dimensions: this.options.dimensions,
+    };
   }
 
   async embed(texts: string[]): Promise<Float64Array[]> {

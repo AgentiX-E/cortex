@@ -37662,3 +37662,88 @@ that "bigger" is not the sign on that axis (`deepseek-v4-pro` at 381/500 against
 §8 item 2). The aggregation mechanism is priced by the same census: it would address the three operation
 questions and the arithmetic in `gpt4_372c3eed`, and its ceiling is the eighteen enumeration failures it cannot
 touch.
+
+### 13.350 `P1`'s missing half, and the fix that had to precede any measurement of it
+
+§13.349 left the queue holding one reader arm blocked on a key, one aggregation mechanism, and two instruments.
+This round dispatched **nothing** either, and for a different reason: the next item was not an arm. Reading
+`interfaces/embedding.ts` against `AUDIT-MODEL-PORTABILITY.md` §7.0 turned up a defect in the abstraction the
+product publishes, and a portability measurement taken through it could have come out **plausible and
+meaningless** — which is the failure mode this campaign has paid for three times already (§13.327's registry,
+§13.348.2's 3.4× projection, §13.348.3's empty population).
+
+**This section registers no prediction either, because nothing is dispatched.** What it records is the reason the
+`P1` reading is still owed after it.
+
+#### 13.350.1 The abstraction could not state the thing portability is about
+
+`VectorIndex` stores `Float64Array`s; `EmbeddingModel` produces them; `EmbeddingModel.dimension()` was the only
+identity either side exposed. Three checks existed and all three are about the width:
+
+| layer | what it compares | the case it cannot see |
+| --- | --- | --- |
+| `dot` / `l2Distance` | array length | two models of the same width |
+| `deserializeEmbeddingCache` | provider, model, baseUrl, dimensions of a **cache file** | a deployment's own index |
+| `EmbeddingProvenance` | which backend the **harness** reached | which model wrote a **product** index |
+
+So the same-width case — 1024 against 1024, unit-norm on both sides, every `add` succeeding — produced a ranking
+in `[-1, 1]` with no error anywhere. `AUDIT-MODEL-PORTABILITY.md` §7.0 cites the controlled study of exactly this
+(Goyal & Ray, arXiv:2609.05339: the same store gains **9.91** points one way and loses **13.28** the other under a
+writer swap) and then notes that this repository has a provenance record for the benchmark and none for the
+product. The audit was right, and it understated one thing: the test suite could not have found the defect,
+because seven doubles were cast `as unknown as EmbeddingModel` without implementing the interface.
+
+#### 13.350.2 What was added, and the four refusals
+
+`EmbeddingIdentity` (`provider`, `model`, `endpoint`, `dimensions`) and an **optional** `identity?()` on
+`EmbeddingModel` — optional because a required member would break every implementation outside this repository on
+a minor upgrade, and this interface is the documented way to inject a model. `EmbeddingSpace` binds a model to an
+index and refuses:
+
+| condition | reason |
+| --- | --- |
+| `size() > 0` and no `stored` | `unstated` — "I am X" is a fact about the model, not evidence that the index was written by X |
+| `stored` present, model unnamed | `unidentifiable` |
+| `stored` differs from the model | `mismatch`, naming every differing field |
+| `identity().dimensions` ≠ `dimension()` | `width`, before that identity is trusted by anything else |
+| wrong count or wrong width from `embed` | `count` / `width` |
+
+The strict row is the first: it fires **even when the model names itself**, and that is deliberate. It costs a
+caller one field on reopen and buys the only property worth having — a store whose space is unknown can never be
+queried through this path.
+
+#### 13.350.3 The adoption, and what it caught
+
+Four call sites assemble an index in this repository and all four now go through the space: `buildTurnIndex`,
+`buildSessionIndex`, `buildSessionTurnIndex` (`cortex-eval/src/retrieval.ts`) and `EmbeddingMemorySystem`
+(`cortex-eval/src/embedding-memory.ts`). Two consequences, both measured rather than intended:
+
+- **`embedManyCached`'s padding became visible.** When a provider returns fewer vectors than texts, that function
+  inserts an empty vector so the cache stays positionally correct. Those empty vectors used to be indexed, and
+  every cosine against them read `0` — a turn that can never be retrieved, indistinguishable from a turn that is
+  merely irrelevant. `retrieval.test.ts` now asserts the width refusal instead.
+- **Two doubles stopped compiling, which is the point.** `retrieval-diagnostics-threshold-name.test.ts` declared
+  `dimensions: 2` — a data field, not the method — under an `as unknown as` cast; five of its tests failed the
+  moment `dimension()` was called. `retrieval.test.ts` stubbed `embed: async () => []` to make "matches no turn"
+  true, which made every query vector zero-length. Neither was a product bug; both are why a product bug in this
+  area could not have been found here.
+
+#### 13.350.4 What this does to the queue, and what it explicitly does not
+
+**0 CNY.** The fix is worth a round on its own terms — a silent wrong answer is worse than a loud refusal — but
+its relevance to this campaign is narrow and worth stating precisely: **it does not produce a number.**
+
+`P1` in `ACCEPTANCE-MATRIX.md` remains `unrun`, and its blocker is unchanged: the ratio between between-provider
+variance and within-provider variance has not been measured on any pair in this repository. `AUDIT-MODEL-
+PORTABILITY.md` §7 puts the lower bound for `within` at **6.54 questions** (§13.118.5's four repetitions of one
+configuration), which is larger than most effects this campaign has published — so a `P1` reading needs a
+population where a 2-point claim is resolvable, and the Zhipu reader's configured pace (`CORTEX_LLM_MIN_INTERVAL_MS
+= 6000`) makes a full 500×4 dispatch a **6.7-hour** job. That is the real reason it is not run this round, and it
+is stated here rather than discovered later.
+
+What the fix changes is the failure mode of the eventual reading. A half-re-embedded store cannot now be graded
+and reported as "the substitute scored the same": it refuses at `open`, naming both spaces. The measurement is
+still owed; the way to obtain a plausible one by accident is closed.
+
+Queue unchanged from §13.349, with one entry's precondition now satisfied rather than pending: the reader axis
+(`M1`) and the aggregation mechanism are both still ahead of it, and neither depends on this.

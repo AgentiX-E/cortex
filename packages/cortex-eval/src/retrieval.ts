@@ -6,7 +6,7 @@
  * embedding provider rather than from divergent retrieval logic.
  */
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
-import { BruteForceVectorIndex } from '@agentix-e/cortex-core';
+import { BruteForceVectorIndex, EmbeddingSpace } from '@agentix-e/cortex-core';
 import type { EmbeddingProvenance } from './embedding-factory.js';
 
 /** Zhipu embedding-3 accepts at most 64 inputs per request. */
@@ -511,7 +511,7 @@ export type RetrievalHit = {
 
 /** A per-call vector index over a question's turns plus the lookup tables. */
 type TurnIndex = {
-  index: BruteForceVectorIndex;
+  index: EmbeddingSpace;
   texts: Map<string, string>;
   idToIndex: Map<string, number>;
 };
@@ -522,7 +522,11 @@ type TurnIndex = {
  * haystacks); uncached turns are embedded once in bounded batches.
  */
 async function buildTurnIndex(embedding: EmbeddingModel, context: string[]): Promise<TurnIndex> {
-  const index = new BruteForceVectorIndex();
+  // The index and the model that fills it are bound here rather than left to convention: every
+  // vector in this index came from `embedding`, and `EmbeddingSpace` is what makes that a checked
+  // property instead of a comment. It refuses a model whose identity contradicts its own
+  // `dimension()`, and it refuses a vector whose width is not the space's.
+  const space = await EmbeddingSpace.open({ model: embedding, index: new BruteForceVectorIndex() });
   const texts = new Map<string, string>();
   const idToIndex = new Map<string, number>();
 
@@ -540,11 +544,11 @@ async function buildTurnIndex(embedding: EmbeddingModel, context: string[]): Pro
     for (let i = 0; i < pending.length; i++) {
       const turn = pending[i]!;
       const id = `t-${hashText(turn)}`;
-      await index.add(id, vectors[i]!);
+      await space.addVector(id, vectors[i]!);
       texts.set(id, turn);
     }
   }
-  return { index, texts, idToIndex };
+  return { index: space, texts, idToIndex };
 }
 
 /** Search a prebuilt turn index with a precomputed query vector (no API calls). */
@@ -553,7 +557,7 @@ async function searchTurnIndex(
   queryVec: Float64Array,
   topK: number,
 ): Promise<RetrievalHit[]> {
-  const hits = await data.index.search(queryVec, topK);
+  const hits = await data.index.searchVector(queryVec, topK);
   // `index` is deliberately NOT taken from `idToIndex`.
   //
   // It used to be `data.idToIndex.get(h.id) ?? -1`, and that fallback could never
@@ -869,7 +873,7 @@ export type SessionHit = {
 
 /** A per-call vector index over session centroids plus the lookup tables. */
 type SessionIndex = {
-  index: BruteForceVectorIndex;
+  index: EmbeddingSpace;
   texts: Map<string, string>;
   idToSession: Map<string, number>;
 };
@@ -891,7 +895,7 @@ async function buildSessionIndex(
   }
 
   const vectors = flat.length > 0 ? await embedManyCached(embedding, flat) : [];
-  const index = new BruteForceVectorIndex();
+  const space = await EmbeddingSpace.open({ model: embedding, index: new BruteForceVectorIndex() });
   const texts = new Map<string, string>();
   const idToSession = new Map<string, number>();
 
@@ -905,11 +909,11 @@ async function buildSessionIndex(
       continue;
     }
     const id = `s-${hashText(session.join('\n'))}`;
-    await index.add(id, sessionVec);
+    await space.addVector(id, sessionVec);
     texts.set(id, session.join('\n'));
     idToSession.set(id, s);
   }
-  return { index, texts, idToSession };
+  return { index: space, texts, idToSession };
 }
 
 /** Search a prebuilt session index with a precomputed query vector (no API calls). */
@@ -921,7 +925,7 @@ async function searchSessionIndex(
   if (data.texts.size === 0) {
     return [];
   }
-  const hits = await data.index.search(queryVec, topK);
+  const hits = await data.index.searchVector(queryVec, topK);
   // Every hit id was inserted via `texts.set` and `idToSession.set`, so both
   // lookups are always defined. The `sessionIndex` lookup used to carry a
   // `?? -1` fallback; it was removed because it was unreachable AND harmful: no
@@ -984,7 +988,7 @@ export async function retrieveByQueries(
 
 /** A per-call index over individual turns, annotated with the owning session. */
 type SessionTurnIndex = {
-  index: BruteForceVectorIndex;
+  index: EmbeddingSpace;
   idToSession: Map<string, number>;
 };
 
@@ -1000,7 +1004,7 @@ async function buildSessionTurnIndex(
   embedding: EmbeddingModel,
   sessions: string[][],
 ): Promise<SessionTurnIndex> {
-  const index = new BruteForceVectorIndex();
+  const space = await EmbeddingSpace.open({ model: embedding, index: new BruteForceVectorIndex() });
   const idToSession = new Map<string, number>();
   const pending: string[] = [];
   const ids: string[] = [];
@@ -1026,10 +1030,10 @@ async function buildSessionTurnIndex(
   if (pending.length > 0) {
     const vectors = await embedManyCached(embedding, pending);
     for (let i = 0; i < pending.length; i++) {
-      await index.add(ids[i]!, vectors[i]!);
+      await space.addVector(ids[i]!, vectors[i]!);
     }
   }
-  return { index, idToSession };
+  return { index: space, idToSession };
 }
 
 /**
@@ -1076,7 +1080,7 @@ export async function retrieveSessionsByTurns(
   const queryVecs = await embedManyCached(embedding, queries);
   const bestBySession = new Map<number, number>();
   for (const queryVec of queryVecs) {
-    const hits = await data.index.search(queryVec, turnsPerQuery);
+    const hits = await data.index.searchVector(queryVec, turnsPerQuery);
     for (const hit of hits) {
       // Every hit id was inserted via `idToSession.set`, so the lookup is
       // always defined.

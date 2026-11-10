@@ -361,6 +361,27 @@ describe('OpenAICompatibleLLM (real local server)', () => {
     expect(vectors[0]![0]).toBeCloseTo(1, 12);
   });
 
+  it('states the identity of the vectors it produces, from the endpoint it was given', () => {
+    // `provider` is the adapter family, not a vendor: this class speaks one protocol and reaches
+    // whatever `baseUrl` it was configured with, so the vendor is legible from `endpoint` and the
+    // identity does not pretend to know more than it does. The full-stack consequence is asserted in
+    // `cortex-eval`'s `embedding-provenance.test.ts`, where this identity is compared against the
+    // provenance the factory reports for the same environment -- one answer, computed from fields,
+    // checked in the one place both are visible.
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: 'test',
+      model: 'embedding-3',
+      dimensions: 1024,
+    });
+    expect(emb.identity()).toEqual({
+      provider: 'openai-compatible',
+      model: 'embedding-3',
+      endpoint: 'https://open.bigmodel.cn/api/paas/v4',
+      dimensions: 1024,
+    });
+  });
+
   it('throws when the embedding server returns an error', async () => {
     const emb = new OpenAIEmbedding({ baseUrl, apiKey: 'test', model: 'm', dimensions: 3 });
     await expect(emb.embed(['fail'])).rejects.toThrow(/Embedding request failed/);

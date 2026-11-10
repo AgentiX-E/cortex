@@ -185,6 +185,56 @@ const reranker = new OpenAICompatibleReranker({
 with the same width. Changing the width later means re-embedding everything — an index built at 1536
 does not accept 512.
 
+#### Switching embedding models without silently poisoning the store
+
+Width is the *only* difference a vector index can see for itself. Two models with the same width
+produce vectors that compare as numbers and mean nothing, so a store that mixes them returns a ranking
+that looks like an answer. `EmbeddingSpace` binds the model to the index and refuses the combinations
+that would mix:
+
+```ts
+import { BruteForceVectorIndex, EmbeddingSpace, type EmbeddingIdentity } from '@agentix-e/cortex-core';
+import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
+
+const embedding = new OpenAIEmbedding({
+  baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  apiKey: process.env.ZHIPU_API_KEY ?? '',
+  model: 'embedding-3',
+  dimensions: 512,
+});
+
+// What a previous process persisted beside its index; `null` for a store being built now.
+declare const loaded: EmbeddingIdentity | null;
+
+const index = new BruteForceVectorIndex();
+const space = await EmbeddingSpace.open(
+  loaded === null ? { model: embedding, index } : { model: embedding, index, stored: loaded },
+);
+
+await space.add('turn-1', 'I moved to Berlin in March.');
+const hits = await space.search('Where do I live?', 5);
+
+// Persist this next to the index. It is `null` only when the index is empty and the model does not
+// name itself, and it is what a later process passes back in as `stored`.
+const provenance = space.identity;
+```
+
+Four things are refused, by name and with the fields that differ:
+
+| you pass | it refuses because |
+| --- | --- |
+| a non-empty index and no `stored` | the space of those vectors is unknown, and assuming it is the current model is the substitution itself |
+| `stored` and a model that does not report `identity()` | a statement nothing can check |
+| `stored` from a different model, endpoint, provider or width | every field is compared, and all the differing ones are named |
+| a model whose `identity().dimensions` disagrees with `dimension()` | every later width check trusts the identity |
+
+Two backends ship in this repository and both name themselves: `OpenAIEmbedding` reports
+`openai-compatible` with the endpoint it was configured with, and the offline `HashEmbedding` reports
+`hash` with no model and no endpoint — naming a vendor the process never contacted would make a
+credential-less run read as a remote one. A model of your own opts in by implementing `identity()`;
+without it you can still build an index, but a store that a later process reopens must name its space,
+and that is a statement only a model with an identity can satisfy.
+
 ### 4.3 What a call cost
 
 ```ts

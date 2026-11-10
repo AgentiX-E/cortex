@@ -4,7 +4,7 @@
  * for reproducible, network-free evaluation; production systems inject a learned
  * `EmbeddingModel` (transformers.js or a remote API) through the same contract.
  */
-import type { EmbeddingModel } from '@agentix-e/cortex-core';
+import type { EmbeddingIdentity, EmbeddingModel } from '@agentix-e/cortex-core';
 
 export class HashEmbedding implements EmbeddingModel {
   private readonly dim: number;
@@ -18,6 +18,15 @@ export class HashEmbedding implements EmbeddingModel {
 
   dimension(): number {
     return this.dim;
+  }
+
+  /**
+   * `provider: 'hash'` with `model` and `endpoint` null, which is the same statement
+   * `resolveEmbeddingProvenance` makes for this backend: naming a vendor the process never
+   * contacted would make a credential-less run read as a remote run.
+   */
+  identity(): EmbeddingIdentity {
+    return { provider: 'hash', model: null, endpoint: null, dimensions: this.dim };
   }
 
   async embed(texts: string[]): Promise<Float64Array[]> {

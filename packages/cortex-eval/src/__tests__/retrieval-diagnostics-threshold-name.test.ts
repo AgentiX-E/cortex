@@ -101,19 +101,24 @@ const LOW: [number, number] = [0.6, 0.8]; // cos 0.6
  */
 function scriptedEmbedding(): EmbeddingModel {
   return {
-    dimensions: 2,
-    async embed(texts: string[]): Promise<number[][]> {
+    // `dimension` is a METHOD on `EmbeddingModel`. This double said `dimensions: 2`, a data field
+    // nothing reads, and the `as unknown as EmbeddingModel` cast below turned that into a lie the
+    // compiler could not see -- until `EmbeddingSpace.open` called `dimension()` and five tests in
+    // this file failed with "model.dimension is not a function". The cast is gone with the typo: a
+    // double that does not satisfy the interface should not compile, not run.
+    dimension: () => 2,
+    async embed(texts: string[]): Promise<Float64Array[]> {
       return texts.map((text) => {
         // Order matters: `TOP` and `HIGH` are distinct markers, but the real turn text
         // also carries the question id, so only the marker may be a substring test.
-        if (text.includes('TOP')) return TOP;
-        if (text.includes('HIGH')) return HIGH;
-        if (text.includes('LOW')) return LOW;
+        if (text.includes('TOP')) return new Float64Array(TOP);
+        if (text.includes('HIGH')) return new Float64Array(HIGH);
+        if (text.includes('LOW')) return new Float64Array(LOW);
         // The question text defines the axis.
-        return QUERY_AXIS;
+        return new Float64Array(QUERY_AXIS);
       });
     },
-  } as unknown as EmbeddingModel;
+  };
 }
 
 /**
@@ -186,17 +191,17 @@ const HIGH_MISS: [number, number] = [1, 1]; // cos 0.707
 
 function overlappingEmbedding(): EmbeddingModel {
   return {
-    dimensions: 2,
-    async embed(texts: string[]): Promise<number[][]> {
+    dimension: () => 2,
+    async embed(texts: string[]): Promise<Float64Array[]> {
       return texts.map((text) => {
         // Order matters: the discriminator is what is tested, never the question id.
-        if (text.includes('MISSING')) return HIGH_MISS;
-        if (text.includes('PRESENT')) return LOW_HIT;
+        if (text.includes('MISSING')) return new Float64Array(HIGH_MISS);
+        if (text.includes('PRESENT')) return new Float64Array(LOW_HIT);
         // The question defines the axis.
-        return QUERY_AXIS;
+        return new Float64Array(QUERY_AXIS);
       });
     },
-  } as unknown as EmbeddingModel;
+  };
 }
 
 /**

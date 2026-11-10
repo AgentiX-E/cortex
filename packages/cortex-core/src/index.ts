@@ -9,7 +9,7 @@ export type {
 } from './interfaces/storage.js';
 export type { VectorIndex, VectorHit, VectorFilter } from './interfaces/vector.js';
 export type { LLM, CompleteOptions, JsonSchema } from './interfaces/llm.js';
-export type { EmbeddingModel } from './interfaces/embedding.js';
+export type { EmbeddingIdentity, EmbeddingModel } from './interfaces/embedding.js';
 
 // domain
 export type { MemoryValue, MemoryType } from './domain/memory.js';
@@ -44,6 +44,12 @@ export {
 
 // vector
 export { BruteForceVectorIndex } from './vector/brute-force.js';
+export {
+  EmbeddingSpace,
+  EmbeddingSpaceError,
+  type EmbeddingSpaceOptions,
+  type EmbeddingSpaceRefusal,
+} from './vector/embedding-space.js';
 
 // retrieval
 export {

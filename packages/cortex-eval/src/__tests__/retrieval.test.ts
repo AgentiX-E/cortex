@@ -732,6 +732,19 @@ describe('retrieveByQueries', () => {
     expect(hits).toEqual([]);
   });
 
+  it('refuses a provider that returns fewer vectors than texts instead of indexing empty ones', async () => {
+    clearEmbeddingCache();
+    // `embedManyCached` pads a short provider answer with empty vectors so the cache stays
+    // positionally correct. Before the index was bound to its model, those empty vectors were added
+    // and every cosine against them read `0` -- a turn that can never be retrieved, indistinguishable
+    // from a turn that is simply irrelevant. The space refuses the width, which turns a silently
+    // unreachable turn into a failure that names the provider.
+    const embedding: EmbeddingModel = { dimension: () => 4, embed: async () => [] };
+    await expect(retrieveTopK(embedding, 'q', ['turn a', 'turn b'], 2)).rejects.toThrow(
+      /dimensions where this space is 4/,
+    );
+  });
+
   it('embeds all queries in one batched pass instead of one request per query', async () => {
     clearEmbeddingCache();
     const batches: string[][] = [];
@@ -814,9 +827,14 @@ describe('retrieveTopKByQueries', () => {
 
   it('returns an empty list when all queries match no turn', async () => {
     clearEmbeddingCache();
+    // The model is well-formed and the corpus is empty: this test is about there being no turn to
+    // match, not about a provider that returns nothing. It used to stub `embed: async () => []`,
+    // which made every query vector zero-length; `EmbeddingSpace` now refuses that shape by width,
+    // and rightly -- a zero-norm query scores 0 against everything, so the old stub was asserting
+    // an empty result that came from a broken vector rather than from an empty corpus.
     const embedding: EmbeddingModel = {
       dimension: () => 4,
-      embed: async () => [],
+      embed: async (texts) => texts.map(() => new Float64Array([1, 0, 0, 0])),
     };
     const hits = await retrieveTopKByQueries(embedding, ['q1', 'q2'], [], 2);
     expect(hits).toEqual([]);
