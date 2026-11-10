@@ -1,0 +1,116 @@
+{
+  "why": "The projection of one arm artifact onto the two bases a competitor cost can be compared on. `--check` re-derives the partition and every ratio from these inputs plus tools/competitor-ledger.json, so a ratio that drifts from its records fails the gate rather than surviving in prose.",
+  "artifact": {
+    "run": "42533236864",
+    "generatedAt": "2026-11-09T00:33:00.762Z",
+    "questionCount": 500,
+    "runs": 4,
+    "dataset": "longmemeval",
+    "datasetFingerprint": "sha256:d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "configurationFingerprint": null
+  },
+  "partition": {
+    "questions": 500,
+    "meanEvidenceChars": 34446.938,
+    "meanPromptChars": 35447.32,
+    "charsPerToken": 3.8528,
+    "promptTokens": 9200.5205,
+    "evidenceTokens": 8940.8666,
+    "overheadTokens": 259.6539,
+    "evidenceShare": 0.971778,
+    "accuracy": 0.9105000000000001
+  },
+  "rows": [
+    {
+      "id": "contextier-context",
+      "system": "Contextier",
+      "basis": "context",
+      "statistic": "mean",
+      "theirTokens": 2807.0,
+      "ourTokens": 8940.867,
+      "ratio": 3.1852,
+      "caveats": [
+        "counted under o200k, this arm under the reader's own"
+      ],
+      "theirTokensPerCorrect": 3064.41,
+      "ourTokensPerCorrect": 9819.733,
+      "ratioPerCorrect": 3.2044
+    },
+    {
+      "id": "mem0-apr2026-context",
+      "system": "Mem0",
+      "basis": "context",
+      "statistic": "mean",
+      "theirTokens": 6800.0,
+      "ourTokens": 8940.867,
+      "ratio": 1.3148,
+      "caveats": [
+        "no tokenizer is stated, so the count is not reproducible on this side"
+      ],
+      "theirTokensPerCorrect": 7203.39,
+      "ourTokensPerCorrect": 9819.733,
+      "ratioPerCorrect": 1.3632
+    },
+    {
+      "id": "mem0-v3-context",
+      "system": "Mem0",
+      "basis": "context",
+      "statistic": "mean",
+      "theirTokens": 6787.0,
+      "ourTokens": 8940.867,
+      "ratio": 1.3174,
+      "caveats": [
+        "no tokenizer is stated, so the count is not reproducible on this side"
+      ],
+      "theirTokensPerCorrect": 7266.595,
+      "ourTokensPerCorrect": 9819.733,
+      "ratioPerCorrect": 1.3514
+    },
+    {
+      "id": "synap-context",
+      "system": "Maximem Synap",
+      "basis": "context",
+      "statistic": "mean",
+      "theirTokens": 7400.0,
+      "ourTokens": 8940.867,
+      "ratio": 1.2082,
+      "caveats": [
+        "no tokenizer is stated, so the count is not reproducible on this side"
+      ],
+      "theirTokensPerCorrect": 7740.586,
+      "ourTokensPerCorrect": 9819.733,
+      "ratioPerCorrect": 1.2686
+    },
+    {
+      "id": "zep-context",
+      "system": "Zep / Graphiti",
+      "basis": "context",
+      "statistic": "median",
+      "theirTokens": 4408.0,
+      "ourTokens": 8940.867,
+      "ratio": 2.0283,
+      "caveats": [
+        "theirs is a median and ours is a mean, so the ratio is between different reductions",
+        "no tokenizer is stated, so the count is not reproducible on this side"
+      ],
+      "theirTokensPerCorrect": 4886.918,
+      "ourTokensPerCorrect": 9819.733,
+      "ratioPerCorrect": 2.0094
+    },
+    {
+      "id": "synap-allin",
+      "system": "Maximem Synap",
+      "basis": "prompt",
+      "statistic": "mean",
+      "theirTokens": 13400.0,
+      "ourTokens": 9200.521,
+      "ratio": 0.6866,
+      "caveats": [
+        "no tokenizer is stated, so the count is not reproducible on this side"
+      ],
+      "theirTokensPerCorrect": 14016.736,
+      "ourTokensPerCorrect": 10104.91,
+      "ratioPerCorrect": 0.7209
+    }
+  ]
+}

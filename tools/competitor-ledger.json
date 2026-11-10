@@ -22,7 +22,24 @@
     "releases of each -- and they share a `system` so the spread block computes across them.",
     "The deployment is in the harness name, because it is a condition and not an identity.",
     "The deployment is a separate field rather than part of the harness name: the harness",
-    "is whose pipeline ran, and OmniMemEval ran Mem0 the same way it ran the other eight."
+    "is whose pipeline ran, and OmniMemEval ran Mem0 the same way it ran the other eight.",
+    "",
+    "A `cost` block is the same discipline applied to a token figure, which is the number most",
+    "often compared across rows that are not comparable. Six fields are required and a missing one",
+    "is refused by tools/token-basis.py rather than defaulted:",
+    "  id        -- the name a document's `<!-- token-ratio:id -->` marker addresses",
+    "  tokens    -- the number as published, per question",
+    "  basis     -- what it counts: `context` (retrieved evidence only) or `prompt` (everything the",
+    "               reader is handed). A ratio across two bases is not a ratio, which is the defect",
+    "               that retracted a 1.64x here in §13.340.3 and came back as a 1.31x in round 58.",
+    "  statistic -- `mean` or `median`. Zep publishes a median and this arm reports a mean, so that",
+    "               row carries the difference as a caveat instead of hiding it in a quotient.",
+    "  tokenizer -- stated by the vendor, or null. Null is a recorded absence, not a default.",
+    "  source    -- where the figure comes from, in enough detail to re-read it.",
+    "",
+    "`kind` on a cost block overrides the entry's, which is how the Synap all-in row is marked",
+    "`ours`: the 7,400 is the vendor's and the 13,400 is this repository's recomputation from their",
+    "published per-question records."
   ],
   "entries": [
     {
@@ -81,7 +98,18 @@
       "kind": "self",
       "source": "contextier.com blog, 6,787 mean context tokens per query",
       "note": "A second self-reported figure with a stated token cost, which is the only reason it is listed separately: accuracy without tokens is not a comparison.",
-      "deployment": "vendor-published configuration"
+      "deployment": "vendor-published configuration",
+      "cost": [
+        {
+          "id": "mem0-v3-context",
+          "tokens": 6787,
+          "basis": "context",
+          "statistic": "mean",
+          "tokenizer": null,
+          "kind": "self",
+          "source": "contextier.com blog, 6,787 mean context tokens per query; the blog does not say whether the count includes the answering prompt"
+        }
+      ]
     },
     {
       "system": "Zep / Graphiti",
@@ -94,7 +122,18 @@
       "harness": "zep-published",
       "kind": "self",
       "source": "contextier.com blog, 4,408 median context tokens per query",
-      "note": "Paired with 71.2 below, which is the same system read by a competitor's table."
+      "note": "Paired with 71.2 below, which is the same system read by a competitor's table.",
+      "cost": [
+        {
+          "id": "zep-context",
+          "tokens": 4408,
+          "basis": "context",
+          "statistic": "median",
+          "tokenizer": null,
+          "kind": "self",
+          "source": "contextier.com blog, 4,408 median context tokens per query; a median, which this arm's mean is not"
+        }
+      ]
     },
     {
       "system": "Contextier",
@@ -107,7 +146,18 @@
       "harness": "contextier-published",
       "kind": "self",
       "source": "contextier.com blog, 2,807 mean / 2,854 median context tokens per query",
-      "note": "Included because it is the only system in this table that publishes accuracy beside its token budget, which is the axis this repository does not yet measure."
+      "note": "Included because it is the only system in this table that publishes accuracy beside its token budget, which is the axis this repository does not yet measure.",
+      "cost": [
+        {
+          "id": "contextier-context",
+          "tokens": 2807,
+          "basis": "context",
+          "statistic": "mean",
+          "tokenizer": "o200k",
+          "kind": "self",
+          "source": "contextier.com blog, 2,807 mean / 2,854 median context tokens per query, o200k tokenizer stated"
+        }
+      ]
     },
     {
       "system": "APEX-MEM",
@@ -463,7 +513,27 @@
       "note": "The highest figure in this ledger and a self-reported one. Its own table is the useful part: the same memory layer moves 0.4 points across two answer models while Mastra's moves 10.6 across three, which is the argument that the retrieved context, not the reader, is doing the work -- made by the vendor about itself and therefore worth less than the same claim would be from a third party.",
       "dataset": "LongMemEval",
       "variant": "S",
-      "scoring": "single"
+      "scoring": "single",
+      "cost": [
+        {
+          "id": "synap-context",
+          "tokens": 7400,
+          "basis": "context",
+          "statistic": "mean",
+          "tokenizer": null,
+          "kind": "self",
+          "source": "maximem.ai/evals, \"~7.4K context tokens per question\"; recomputed by tools/synap-context-census.mjs as `memory` + `source_evidence` at 3.64 characters per token"
+        },
+        {
+          "id": "synap-allin",
+          "tokens": 13400,
+          "basis": "prompt",
+          "statistic": "mean",
+          "tokenizer": null,
+          "kind": "ours",
+          "source": "tools/synap-context-census.mjs against the vendor's published per-question records: the 7,400 excludes a published 21.5 kB answering prompt, so the all-in figure is ~13,400 (COMPETITOR-SYNAP-DECOMPOSITION.md)"
+        }
+      ]
     },
     {
       "system": "Mastra Observational Memory",
@@ -599,7 +669,18 @@
       "note": "A revision of the 94.4 already in this ledger and a sharper one: the reader and the judge are the same model, the retrieval budget is stated, and the context per question is 6.8K against the history's ~115K. Paired with the OmniMemEval row at 56.0, which is the same system under a harness that is not its own.",
       "dataset": "LongMemEval",
       "variant": "S",
-      "scoring": "single"
+      "scoring": "single",
+      "cost": [
+        {
+          "id": "mem0-apr2026-context",
+          "tokens": 6800,
+          "basis": "context",
+          "statistic": "mean",
+          "tokenizer": null,
+          "kind": "self",
+          "source": "mem0ai/memory-benchmarks, April 2026, \"~6.8K context tokens per question\" at a top-200 retrieval budget"
+        }
+      ]
     },
     {
       "system": "oracle (gold evidence sessions only)",
