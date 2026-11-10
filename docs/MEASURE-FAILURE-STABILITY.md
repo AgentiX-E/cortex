@@ -152,6 +152,31 @@ message also states the assistant has no access to previous conversations". A re
 comparison correctly and then discounting the result is the failure mode of an instruction that asks
 for arithmetic on a haystack, not of an instruction that is missing.
 
+### 3.1 The population is not evidence-blocked, so no arm on it can be blocked either
+
+The artifact's own `goldOverlap` settles the precondition `H2` needs before it is worth registering.
+All seven stable failures carry gold turns inside the delivered window:
+
+| question | gold turns carried | gold turns total | delivered turns |
+| --- | ---: | ---: | ---: |
+| `ce6d2d27` | 16 | 24 | 66 |
+| `9ea5eabc` | 17 | 24 | 64 |
+| `ed4ddc30` | 17 | 24 | 100 |
+| `59524333` | 14 | 22 | 87 |
+| `69fee5aa` | **22** | **22** | 61 |
+| `a2f3aa27` | 17 | 20 | 62 |
+| `0977f2af` | 17 | 24 | 65 |
+
+The fifth row is the one that matters. `69fee5aa` carries **every** gold turn and answers `37` against
+a gold of `38` — a derivation miss with the whole evidence set on the page. The same shape holds on
+`a2f3aa27`, where `nearing 1300 followers` is delivered at turn 51 of 61 and the reply answers `1250`,
+and on `0977f2af`, where `using my new Instant Pot` is delivered at turn 31 and the reply **declines**.
+
+So the `KU` population is representational end to end, and the comparison `H2` proposes to hand the
+reader is one it currently has to perform over 23,084 characters. That is the same conclusion
+`MEASURE-MR-CEILING.md` §1 reached on `MR` from the other direction, and it makes the two rows one
+finding stated twice: **in this arm, retrieval is not where the accuracy is going.**
+
 ## 4. What this does to the queue
 
 | queued item | was | is now |

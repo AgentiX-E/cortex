@@ -37844,6 +37844,23 @@ artifact and is the reproduction path for every number in §13.351.2 and §13.35
 it (`cortex-eval/src/failure-stability.ts`) has 27 tests, because the alternative to a tested ceiling
 is a ceiling typed into a document, which is the defect §ACCEPTANCE-MATRIX §1 opens with.
 
+### 13.351.7 `H2`'s precondition, checked before it is registered
+
+`H2` hands the reader a comparison it currently performs itself, so it is worth nothing if the
+later statement is not delivered. The artifact's own `goldOverlap` settles that without a dispatch:
+**all seven stable `KU` failures carry gold turns inside the window** — 16/24, 17/24, 17/24, 14/22,
+**22/22**, 17/20 and 17/24.
+
+The fifth is the decisive one. `69fee5aa` carries **every** gold turn and answers `37` against a gold
+of `38`: a derivation miss with the whole evidence set on the page. `a2f3aa27` delivers `nearing 1300
+followers` at turn 51 of 61 and answers `1250`; `0977f2af` delivers `using my new Instant Pot` at turn
+31 and **declines**. So the population is representational end to end, and the mechanism is not
+competing with a retrieval defect for the credit.
+
+This is the check that `§13.340.6` listed as "zero reader calls for the pre-judgement" and it has now
+been made. It costs nothing and it moves `H2` from "plausible" to "the evidence is on the page and the
+reply is not using it", which is the same finding `MEASURE-MR-CEILING.md` §1 recorded on `MR`.
+
 Queue after this section: **`H2` on `KU`** (bar ≥ 4 of 6, falsifier ≤ 2), then `M1` (blocked on a
 frontier key), then `E3.2`, then `P1` (blocked on the provider's 1.41 questions per minute). `H3` and
 summation are closed.
