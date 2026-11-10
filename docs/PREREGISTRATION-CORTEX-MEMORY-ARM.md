@@ -39029,18 +39029,40 @@ input shipped.
 
 | | control | tally | Δ |
 | --- | ---: | ---: | ---: |
-| accuracy | 91.05% (456) | **89.60%** (448) | **−1.45 pt** |
-| `MR` | 101 | 91 (mean of 4) | **−10 questions** |
+| accuracy, 4-run mean (min–max) | **91.05%** (90.60–91.40) | **89.35%** (88.40–90.00) | **−1.70 pt** |
+| accuracy, repetition 0 | 91.20% (456/500) | 89.60% (448/500) | **−1.60 pt** |
+| `MR`, 4-run mean (min–max) | 100.5 (100–101) | **91.0 (86–96)** | **−9.5 questions** |
+| `MR`, repetition 0 | 101 | 92 | **−9** |
 | overall flips | — | 4 repaired / 12 broken | net **−8**, p = 0.077 |
 | `MR` flips | — | 1 repaired / **10 broken** | net **−9**, **p = 0.0117** |
 | census | — | `{attempted: 342, changed: 173, refused: 7}` | roster sums exactly |
-| feature spend | 11.08 CNY | **21.45 CNY** | **+93.6%** |
+| feature-arm output tokens | 2,224,170 | **4,413,187** | **+98.4%** |
+| prompt tokens per correct answer | 10,105 | **12,733** | **+26.0%** |
+| prefix-cache share | 94.93% | 89.43% | **−5.5 pt** |
 | wall clock | 43 m | 2 h 11 m | 3.1x |
 
+**The first draft of this table was wrong and the error is worth recording.** It compared the control's
+`MR` **maximum** (101) to the tally arm's **mean** (91) and called the difference ten questions; the
+control's mean is 100.5, so the mean-to-mean delta is **9.5**. It also paired a four-run mean accuracy
+with a single-repetition accuracy (−1.45 pt), when the two units give −1.70 and −1.60 respectively.
+Neither confusion changes a verdict — every one of them is negative — but a table that mixes units is
+a table that can be made to say anything, so both units are now printed.
+
+The dispersion is the part the mean hides: the control's four repetitions fall in a **two-question**
+band (100–101) and the tally arm's in an **eleven-question** band (86–96). The pass did not just lower
+`MR`, it made `MR` unstable.
+
+**On the spend row.** The earlier "11.08 → 21.45 CNY" was not reproducible from either artifact — 11.08
+CNY is the feature-side figure from the *previous* round's token experiment (§13.361), carried across by
+mistake. It is replaced with the four quantities the artifacts actually report. A list-price estimate
+from those (0.5 / 2 / 8 CNY per Mtok) reads 30.79 → 52.82 CNY, +71.6%, and is labelled an estimate
+wherever it appears.
+
 **Verdict: rejected.** The mechanism is significantly worse on the capability it was written for, so
-`P1` and `P2` fail together and `P4` fails by a factor of nearly four. `P3` holds — 85.5 consultations
-per repetition, 2.0% of ledgers refused — which is what makes the loss a finding about the mechanism
-rather than about the dispatch.
+`P1` and `P2` fail together and `P4` fails on every unit it is measured in — prompt tokens per correct
+answer by 26.0%, feature-arm output tokens by 98.4%, list-price spend by 71.6%, and the prefix cache
+from 94.93% to 89.43%. `P3` holds — 85.5 consultations per repetition, 2.0% of ledgers refused — which
+is what makes the loss a finding about the mechanism rather than about the dispatch.
 
 **The ten losses are all specification, none arithmetic.** `0100672e` wants `$12` and the ledger tagged
 **60** (the mugs, not the price); `bb7c3b45` and `e25c3b8d` want `$300` and tagged **700**; `7024f17c`
@@ -39061,9 +39083,10 @@ artifact failed the audit and the job went red at 18:44. The check is now a memb
 `the roster sums to 342 consultations and 173 changes over 500 of 500 records`.
 
 **What it licenses.** Nothing about the default: `reviewPass: bare` stays. It closes the answer-side
-question `MEASURE-MR-CEILING` §7 left open — the answer side has been tried and priced at −10
-questions — and it moves the next attempt one level up, from *asking for a number after each line* to
-*compiling what to count before the list exists*, which is the half of TallyMem this arm has not built.
+question `MEASURE-MR-CEILING` §7 left open — the answer side has been tried and priced at −9.5 `MR`
+questions on the four-run mean (−9 on repetition 0) — and it moves the next attempt one level up, from
+*asking for a number after each line* to *compiling what to count before the list exists*, which is the
+half of TallyMem this arm has not built.
 
 **The literature, re-read after the reading, moved one claim and added one.** §13.362.6 cited two
 papers as one and overstated one of them; both are corrected there now, and the correction is the more

@@ -100,16 +100,45 @@ branch it cannot enter.
 `42855433242`, `cortex_memory_review_pass=tally`, 500 questions × 4 repetitions, every other input at
 its shipped value, 2 h 11 m against the control's 43 m.
 
+**Two units, stated once and kept apart.** The report carries a per-repetition score and a four-run
+summary (min / mean / max). The first draft of this table compared the control's *maximum* to the
+tally arm's *mean* and called it a delta; every row below now names its unit, and the two rows that
+matter carry both.
+
 | | control `42533236864` | `tally` `42855433242` | Δ |
 | --- | ---: | ---: | ---: |
-| accuracy | **91.05%** (456) | **89.60%** (448) | **−1.45 pt** |
-| `MR` | 101 | **91** (mean of four) | **−10 questions** |
-| `IE` | 141 | 140.5 | −0.5 |
-| `KU` | 63 | 63.25 | +0.25 |
-| `TR` | 121 | 122 | +1 |
-| `ABS` | 30 | 30 | 0 |
-| feature spend | 11.08 CNY | **21.45 CNY** | **+93.6%** |
+| accuracy, 4-run mean (min–max) | **91.05%** (90.60–91.40) | **89.35%** (88.40–90.00) | **−1.70 pt** |
+| accuracy, repetition 0 | 91.20% (456/500) | 89.60% (448/500) | **−1.60 pt** |
+| `MR`, 4-run mean (min–max) | 100.5 (100–101) | **91.0 (86–96)** | **−9.5 questions** |
+| `MR`, repetition 0 | 101 | 92 | **−9** |
+| `IE`, rep 0 / mean | 141 / 141.3 | 141 / 140.5 | 0 / −0.8 |
+| `KU`, rep 0 / mean | 63 / 62.8 | 63 / 63.3 | 0 / +0.5 |
+| `TR`, rep 0 / mean | 121 / 120.8 | 122 / 122.0 | +1 / +1.2 |
+| `ABS`, rep 0 / mean | 30 / 30 | 30 / 30 | 0 |
 | wall clock | 43 m | 2 h 11 m | **3.1x** |
+
+**The `MR` spread is the reading the mean hides.** The control's four repetitions land in a two-question
+band (100–101); the tally arm's land in an **eleven-question** band (86–96). The mechanism did not only
+lower the mean, it made the capability **unstable** — which is what a pass that re-renders the window
+and re-asks a second model question would do even if its operand selection were unbiased.
+
+**Cost, in units the artifact reports** (the earlier "11.08 → 21.45 CNY" could not be reproduced from
+either artifact and has been replaced rather than repeated):
+
+| | control | `tally` | Δ |
+| --- | ---: | ---: | ---: |
+| calls returning a response | 5,707 | 6,011 | +5.3% |
+| prompt tokens | 21,497,392 | 25,690,303 | +19.5% |
+| completion tokens | 2,301,401 | 4,487,431 | +95.0% |
+| **feature-arm completion tokens** | **2,224,170** | **4,413,187** | **+98.4%** |
+| prompt tokens per correct answer | 10,105 | 12,733 | **+26.0%** |
+| prefix-cache share of the prompt | 94.93% | 89.43% | **−5.5 pt** |
+| spend at DeepSeek list price (0.5 / 2 / 8 CNY per Mtok) | 30.79 CNY | 52.82 CNY | **+71.6%** |
+
+The last row is an estimate computed from the two token columns at published list price, not a
+provider-reported figure; the six rows above it are read straight out of the artifacts and are the ones
+to cite. The cache-share drop is the mechanism's own signature: the second consultation misplaces the
+prefix, so a fifth of the prompt that used to be free is billed at four times the rate.
 
 The paired census is the reading a capability column cannot give: **4 repaired, 12 broken, net −8**
 (exact p = 0.077) and on `MR` alone **1 repaired against 10 broken, net −9, p = 0.0117**. The
@@ -151,10 +180,10 @@ number after each line.
 
 | prediction | stated | read | verdict |
 | --- | --- | --- | --- |
-| `P1` population | `MR` ≥ **+2.0** points (≥ 3 questions) | **−10 questions** (−8.3 points) | **falsified** |
-| `P2` no destruction | ≤ **3** of the control's 101 correct `MR` turn wrong | **10** | **falsified** |
+| `P1` population | `MR` ≥ **+2.0** points (≥ 3 questions) | **−9.5 questions** on the 4-run mean (−7.9 points), **−9** on repetition 0 | **falsified** |
+| `P2` no destruction | ≤ **3** of the control's correct `MR` turned wrong | **10** | **falsified** |
 | `P3` admissibility | `attempted` ≥ 60, `refused` ≤ 20% of it | 85.5 per repetition, 7 of 342 = **2.0%** | **holds** |
-| `P4` cost bound | ≤ **+25%** feature spend | **+93.6%** (output tokens doubled, 2.22M → 4.41M) | **falsified** |
+| `P4` cost bound | ≤ **+25%** feature spend | **+26.0%** prompt tokens per correct answer, **+98.4%** feature-arm output tokens | **falsified** |
 | `P5` load concentration | ≥ 2 of the net on > 14 gold turns | moot: the net is negative | — |
 
 `P4` deserves its own line because it is the requirement-8 answer: the pass did not buy accuracy with
@@ -174,9 +203,9 @@ mechanism is dominated on both axes it was supposed to improve. Rejected.
    is **required** under `tally` and **forbidden** under `audit`, and `changed + refused ≤ attempted`.
    Five tests, one of them the real artifact.
 3. **The literature read backwards.** TallyMem's +13.8 is a *compiled specification over a typed
-   ledger*; this pass is a prose list with a number at the end of each line, and the difference between
-   +13.8 and −1.45 is exactly the specification layer. The next attempt at this axis is that layer, not
-   a longer prompt.
+   ledger*; this pass is a prose list with a number at the end of each line, and the distance between
+   +13.8 and −1.70 is the specification layer. The next attempt at this axis is that layer, not a
+   longer prompt — and it is now specified in `02-technical-design` §22.87 rather than named.
 
 ### 6.4 Status
 
