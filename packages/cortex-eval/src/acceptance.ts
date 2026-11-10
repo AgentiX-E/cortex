@@ -156,6 +156,29 @@ export type Criterion = {
 };
 
 /**
+ * Where the four category rows read from, and what the file has to say about itself.
+ *
+ * They used to read `summary.json`, which is four *independent dispatches* of a configuration that no
+ * longer ships. `S1` was moved off that file three rounds ago with an attestation; `S2`-`S5` were left
+ * on it, so the matrix printed `MR 71.7%` and `TR 78.3%` while the arm the project ships read **83.9%**
+ * and **96.1%** on the same 500 questions -- the same defect `S1` had, four rows over, and it had already
+ * been written down as "the distance between the two is one script".
+ *
+ * `tools/capability-ledger.py` is that script. Its file carries the run id, and the four clauses below are
+ * what makes the rows about *this* system rather than about whichever artifact was read last: the mean
+ * rather than one repetition, four repetitions rather than two, the shipping configuration label, and the
+ * 500-question denominator that the per-category counts are taken from.
+ */
+const CATEGORY_LEDGER = 'cortex-docs/evidence/longmemeval/categories.json';
+
+const CATEGORY_ATTEST = [
+  { key: 'accuracySource', equals: 'repetition-mean' },
+  { key: 'runs', equals: 4 },
+  { key: 'arm', equals: 'route-room' },
+  { key: 'pooled.denominator', equals: 500 },
+] as const;
+
+/**
  * The criteria.
  *
  * Grouped by capability, and the order inside a group is the order the work happened — which is also the
@@ -618,75 +641,117 @@ export const CRITERIA: readonly Criterion[] = [
     id: 'S2',
     capability: 'knowledge update',
     metric: 'LongMemEval-S knowledge-update category',
-    dataset: 'LongMemEval-S, 78 questions',
+    // The denominator is the local regrouping, and the published split is 78. Renaming the dataset to the
+    // number the file actually divides by is the whole of this edit's point: a row that says 78 and divides
+    // by 72 is a row whose percentage is right and whose population is wrong.
+    dataset: 'LongMemEval-S, 72 questions (local regrouping; the published split is 78)',
     comparator: 'at-least',
     threshold: 0.85,
     unit: 'ratio',
     kind: 'gate',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/summary.json',
-      key: 'categories.knowledge-update.accuracy',
+      path: CATEGORY_LEDGER,
+      key: 'categories.KU.mean',
+      attest: CATEGORY_ATTEST,
     },
     onMiss:
-      'Already above threshold at 86.8%. A regression here after a ledger change means the ledger is retiring a fact the judge wanted named.',
+      'Reads 88.5% off the shipping arm, up from the 87.2% the stale file reported. A regression here after a ' +
+      'ledger change means the ledger is retiring a fact the judge wanted named -- and the exact interval is ' +
+      '**[77.6, 94.1] on 72 questions**, so only a fall of more than about ten points is distinguishable from ' +
+      'this population at all. A reading inside that band is a dispatch, not a regression: the first thing to ' +
+      'check is that `categories.json` still names the arm and the run, because a stale file is the failure ' +
+      'mode this row was re-hung to end.',
   },
   {
     id: 'S3',
     capability: 'multi-session reasoning',
     metric: 'LongMemEval-S multi-session category',
-    dataset: 'LongMemEval-S, 133 questions',
+    dataset: 'LongMemEval-S, 121 questions (local regrouping; the published split is 133)',
     comparator: 'at-least',
     threshold: 0.85,
     unit: 'ratio',
     kind: 'aim',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/summary.json',
-      key: 'categories.multi-session.accuracy',
+      path: CATEGORY_LEDGER,
+      key: 'categories.MR.mean',
+      attest: CATEGORY_ATTEST,
     },
     onMiss:
-      'At 69.6% this is the largest deficit. The failure census attributes most of it to retrieval rather than reading, so the answer is the second-hop retrieval work, not a bigger context.',
+      // The prose that used to be here said "at 69.6% this is the largest deficit" and named retrieval as
+      // the cause. Both halves were readings of the dead configuration. The corrected reading is 83.9%, and
+      // the correction changes the *kind* of the question: the remaining gap is 1.1 points, and this
+      // population's own resolution floor is **9.4 points** at 80% power (Miller, arXiv:2411.00640). So the
+      // row cannot be evidence of a deficit, and a threshold 1.1 points above a 121-question reading is
+      // decoration in the sense `S1`'s 85% was decoration against 83.45%. The row stays because the number is
+      // real and the direction is not: what is measurable on multi-session is a **paired** gain, which is
+      // `S8`, and that is why `S8` was registered as a count rather than a ratio.
+      "Reads 83.9% on 121 questions, and the 1.1-point gap to the threshold is **inside this population's " +
+      'own resolution floor of 9.4 points**, so a miss here is not evidence of a deficit and a pass would not ' +
+      'be evidence of a gain. The measurable form of this target is `S8`, which counts paired conversions ' +
+      'instead of differencing two ratios: 121 questions cannot see a one-point move, and no number of ' +
+      "repetitions changes that, because repetitions divide the reader's noise and not the question sample. " +
+      'What a reading here can still do is catch a **large** regression, which is why the row is kept.',
   },
   {
     id: 'S4',
     capability: 'temporal reasoning',
     metric: 'LongMemEval-S temporal-reasoning category',
-    dataset: 'LongMemEval-S, 133 questions',
+    dataset: 'LongMemEval-S, 127 questions (local regrouping; the published split is 133)',
     comparator: 'at-least',
-    threshold: 0.85,
+    threshold: 0.94,
     unit: 'ratio',
-    kind: 'aim',
+    // Promoted from `aim` to `gate` in the round that re-hung it, for the reason `S1` gives: an aim that is
+    // met and left as an aim prints `pass` while blocking nothing. The threshold is derived, not rounded --
+    // the arm reads **96.06%**, the four repetitions are 120/122/125/121 of 127, their standard deviation is
+    // 2.08 points and the standard error of the mean is 1.04, so 94.0 is **1.98 standard errors** below the
+    // measured value. A red gate therefore means a real loss of at least the size of the whole old aim's
+    // remaining gap, and the old aim's 85% is now unreachable-by-regression rather than a target.
+    kind: 'gate',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/summary.json',
-      key: 'categories.temporal-reasoning.accuracy',
+      path: CATEGORY_LEDGER,
+      key: 'categories.TR.mean',
+      attest: CATEGORY_ATTEST,
     },
     onMiss:
       // The first version of this line said the date-frame pre-registration predicted the recovery.
       // `PREREG-DATE-FRAME.md` §0 withdrew it: the temporal prompt has carried the published anchor
       // ("The question was asked on …") and the per-turn date since the contract existed, so the
-      // frame is not a treatment this route can receive. What is left is the failure shape —
-      // 21 of TR's 33 misses are abstentions over evidence that was delivered — and the recovery
-      // pass, which reaches `multi-session` only.
-      'At 74.0%, and the frame is already installed, so it cannot be the lever: 21 of the 33 misses are abstentions over delivered evidence, and `reviewPass: recover` does not reach this route.',
+      // frame is not a treatment this route can receive. The second version priced the remaining gap as
+      // "21 of TR's 33 misses are abstentions" -- a census of a configuration that no longer ships. On the
+      // arm this row now reads, temporal reasoning misses **5 of 127**, so the recovery pass has 5 questions
+      // of room in total and cannot be the lever at all: a pass that converts 5 would be at the exact
+      // ceiling, and `R1` measured the pass at net -1.
+      'Red means temporal reasoning gave back more than two standard errors of its own four repetitions. ' +
+      'Nothing small can move this row: the exact interval is **[91.1, 98.7] on 127 questions** and 5 ' +
+      'questions are wrong in an average repetition, so the remaining headroom is smaller than the interval ' +
+      'and the only defensible next step here is to keep it, not to optimise it. The lever this row used to ' +
+      'name -- the recovery pass -- had 5 questions of room, and `R1` measured that pass at net -1.',
   },
   {
     id: 'S5',
     capability: 'abstention',
     metric: 'LongMemEval-S abstention subset',
-    dataset: 'LongMemEval-S, 30 false-premise questions',
+    dataset: 'LongMemEval-S, 30 questions (the false-premise subset; no regrouping here)',
     comparator: 'at-least',
     threshold: 0.8,
     unit: 'ratio',
     kind: 'gate',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/summary.json',
-      key: 'abstention.accuracy',
+      path: CATEGORY_LEDGER,
+      key: 'categories.ABS.mean',
+      attest: CATEGORY_ATTEST,
     },
     onMiss:
-      'Thirty questions is a wide interval, so a single run decides nothing. The row stays because the denominator is fixed and the direction is not.',
+      'Thirty questions is a wide interval -- the exact one at 30 of 30 is **[88.4, 100]** -- so a single run ' +
+      'decides nothing and a gate at 80% is a gate against a **collapse**, not against drift. That is the ' +
+      'honest reading of a fixed 30-question subset: 0.8 is 6 questions of slack, and the row blocks only the ' +
+      'failure that loses a fifth of the subset at once. The difference from the stale file is that this row ' +
+      'used to read 96.7% off a configuration that no longer ships, which made 0.8 look like a threshold with ' +
+      'room above it; it has 0 wrong answers and no room at all.',
   },
 
   // ---- the one RAW-RAG stage this arm did not have (§13.115) --------------------------------------

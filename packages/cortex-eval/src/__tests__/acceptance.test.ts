@@ -280,6 +280,35 @@ describe('the table is well formed', () => {
     expect(green.length).toBeGreaterThan(5);
   });
 
+  it('reads the four category rows from the attested ledger, not from the stale summary', () => {
+    // `S1` was moved off `summary.json` and the other four were left on it, so the page printed a
+    // multi-session deficit of 13.3 points where the arm's own artifact reads 1.1. The clauses are the
+    // repair: a row that reads the ledger without attesting it can drift back onto another configuration
+    // exactly the way it drifted onto another *dispatch*.
+    const denominators: Record<string, string> = {
+      S2: '72 questions',
+      S3: '121 questions',
+      S4: '127 questions',
+      S5: '30 questions',
+    };
+    for (const id of ['S2', 'S3', 'S4', 'S5']) {
+      const row = CRITERIA.find((criterion) => criterion.id === id);
+      expect(row?.source.kind).toBe('artifact');
+      if (row?.source.kind !== 'artifact') throw new Error(`${id} has no artifact source`);
+      expect(row.source.path).toBe('cortex-docs/evidence/longmemeval/categories.json');
+      expect(row.source.key?.startsWith('categories.')).toBe(true);
+      expect(row.source.attest?.map((clause) => clause.key)).toEqual([
+        'accuracySource',
+        'runs',
+        'arm',
+        'pooled.denominator',
+      ]);
+      // The denominator a row divides by and the denominator it names have to be the same number: `S2`
+      // said "78 questions" while dividing by 72, which is a correct percentage of the wrong population.
+      expect(row.dataset).toContain(denominators[id]);
+    }
+  });
+
   it('gives the benchmark rows a competitor figure with a grade', () => {
     const benchmark = CRITERIA.find((criterion) => criterion.id === 'S1');
     expect(benchmark?.competitors?.length).toBeGreaterThan(3);

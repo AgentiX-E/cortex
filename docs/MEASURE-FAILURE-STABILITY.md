@@ -228,3 +228,47 @@ the one it replaced. `stabilityOf`, `repetitionNull` and `conversionCeiling` are
 it (`packages/cortex-eval/src/failure-stability.ts`), with six named refusals of their own — the
 important one being **one repetition**, which is refused rather than read as "every failure is
 stable".
+
+## 7. The null in this file is the wrong yardstick, and the correction cancels the queue
+
+§3 judges every mechanism against each capability's own **repetition 2 sd** — 4.16 questions on `MR`, 2.52
+on `KU`. That number answers "how much would this configuration move if it were re-run", and it is not the
+question the queue asks. The question is "how large must a true difference be before this population sees it",
+and the answer is the **resolution floor** `2.8016 * sqrt(p(1-p)/n)` (Miller, `arXiv:2411.00640`): **9.37
+points on `MR`**, **10.52 on `KU`**.
+
+| population | mechanism | ceiling | points | floor | detectable |
+| --- | --- | ---: | ---: | ---: | :---: |
+| `MR` | deterministic summation | 2.25 | 1.86 | 9.37 | **no** |
+| `MR` | entity grouping (`H3`) | 4.00 | 3.31 | 9.37 | **no** |
+| `MR` | decline repair (`E3.2`) | 3.75 | 3.10 | 9.37 | **no** |
+| `MR` | under-count repair | 6.00 | 4.96 | 9.37 | **no** |
+| `KU` | stale-value selection (`H2`) | 6.00 | 8.33 | 10.52 | **no** |
+| `KU` | the same, including the decline | 7.00 | 9.72 | 10.52 | **no** |
+
+Every ceiling in §3 is below its population's floor, including the one §3 promoted to the head of the queue.
+`docs/MEASURE-RESOLUTION-WALL.md` is the full argument; this section records the consequence for the two
+mechanisms §3 left open.
+
+**Under-count is cancelled, on reach rather than on size.** §3 has it as the one `MR` class above the null with
+no mechanism proposed. The artifact answers the reach question at zero cost through `goldOverlap`: of the six
+questions the class is stable-wrong on, **three carry every gold turn** (`2b8f3739` 18/18, `bf659f65` 17/17,
+`gpt4_2f91af09` 17/17) and three do not (`gpt4_731e37d7` 22/23, `gpt4_372c3eed` 16/17, `21d02d0d` 10/11). So a
+prompt that enumerates before summing can reach **3.00 questions = 2.48 points** against a floor of 9.37, and
+the class at its absolute ceiling of 6.00 questions is 4.96 — also below. Two independent reasons, both
+zero-cost, and the mechanism is not dispatched.
+
+The half that is *not* reachable is the informative half. `21d02d0d` answers 1 where the truth is 2 and one of
+its eleven gold turns is outside the delivered window, so the reader was short one **fact**, not one act of
+counting: `enumerate what you see before you add` cannot enumerate what was never delivered. That is the
+distinction `MEASURE-MR-ENUMERATION`-class work kept blurring — a counting failure and a retrieval failure
+produce the same wrong integer.
+
+**`H2`'s two rejections were arithmetically correct and evidentially empty.** `§13.354.2` rejected a +1.74-point
+mean against a falsifier that fired, on 10 discordant questions of 72 — `pi` = 13.9%, which at n = 72 makes the
+paired floor **12.3 points**. The block moved 1.74 points against a floor of 12.3: no reading of that dispatch
+could have been a gain, and the sign test's `p = 1.000` is the wall showing through, not a property of the
+block. The verdict of *rejected* stands, because the bar was registered in advance and firing a registered
+falsifier is a rejection however the number is later explained; what changes is its **weight**: it is not
+evidence that the mechanism does nothing, and the shelving decision in `§13.354.3` — relocation of cost rather
+than size — is the only durable part of it.

@@ -38176,3 +38176,135 @@ against a pair of committed files rather than described.
 
 `docs/MEASURE-CONFLICT-SURFACING.md` §6 is the reproduction: one command, and its verbatim output is
 the table in §13.354.1.
+
+## 13.355 The queue is empty because every mechanism in it is smaller than its population can see
+
+Zero dispatches, zero model calls. The artifact that has been read since §13.118.5 answers both questions this
+section resolves, and neither had been asked.
+
+### 13.355.1 The wrong yardstick, named
+
+§13.340.6 judges a mechanism by each capability's own repetition spread: 4.16 questions on `MR`, 2.52 on `KU`.
+That is the **reader's** nondeterminism on one configuration. It is not the variance that binds on a 121-question
+population, where the question sample dominates, and four repetitions divide the first while leaving the second
+untouched. The quantity the queue needs is Miller's smallest detectable effect
+(`Adding Error Bars to Evals`, `arXiv:2411.00640`) at 5% significance and 80% power:
+
+```
+delta_min = 2.8016 * sqrt(p(1-p)/n)        MR: 9.37 points     KU: 10.52     overall (n=500): 3.41
+```
+
+Every ceiling §13.351.4 prices, in the points of the population it lives in:
+
+| population | mechanism | ceiling (questions) | points | floor | detectable |
+| --- | --- | ---: | ---: | ---: | :---: |
+| `MR` | deterministic summation | 2.25 | 1.86 | 9.37 | **no** |
+| `MR` | entity grouping (`H3`) | 4.00 | 3.31 | 9.37 | **no** |
+| `MR` | decline repair (`E3.2`) | 3.75 | 3.10 | 9.37 | **no** |
+| `MR` | under-count repair | 6.00 | 4.96 | 9.37 | **no** |
+| `KU` | stale-value selection (`H2`) | 6.00 | 8.33 | 10.52 | **no** |
+| `KU` | the same, including the decline | 7.00 | 9.72 | 10.52 | **no** |
+
+The largest ceiling in the queue is 92% of the smallest floor that could measure it. Registered as a rule, not a
+note: **a mechanism whose ceiling is under its population's floor cannot be accepted, cannot be rejected, and
+cannot be measured**, and a registration that violates this is recorded as undetectable rather than dispatched.
+
+### 13.355.2 Under-count: cancelled on reach, then on size
+
+The one `MR` class §13.351.4 left above the null with no mechanism. Reach is measurable at zero cost from
+`goldOverlap.carried` against `goldOverlap.total`, which says whether every turn supplying a gold item is inside
+the delivered window:
+
+| question | mask | gold turns carried | reachable |
+| --- | --- | ---: | :---: |
+| `2b8f3739` | `0000` | **18 / 18** | **yes** |
+| `bf659f65` | `0000` | **17 / 17** | **yes** |
+| `gpt4_2f91af09` | `0000` | **17 / 17** | **yes** |
+| `gpt4_731e37d7` | `0000` | 22 / 23 | no |
+| `gpt4_372c3eed` | `0000` | 16 / 17 | no |
+| `21d02d0d` | `0000` | 10 / 11 | no |
+
+Reachable ceiling **3.00 questions = 2.48 points**, full class 6.00 questions = 4.96 points, floor 9.37. Both
+below. **Cancelled**, and the reason is registered rather than the decision alone: `21d02d0d` answers 1 where the
+truth is 2 with one of its eleven gold turns outside the window, so a reader that enumerated perfectly would still
+answer 1. Enumerating cannot enumerate what was not delivered, which means a counting repair and a retrieval
+repair are indistinguishable from the answer alone — the same conflation `AUDIT-MR-ENUMERATION.md` found in the
+census.
+
+### 13.355.3 What §13.354's rejection weighs, which is less than it read as
+
+`§13.354.2` rejected a +1.74-point mean because the registered falsifier fired, and that verdict stands: a bar
+registered in advance is a bar. But the dispatch moved 10 of its 72 questions (`pi` = 13.9%), and at n = 72 a
+paired reading of that discordance has a floor of `2.8016 * sqrt(0.139/72)` = **12.3 points**. The block moved
+1.74 against 12.3. The sign test's `p = 1.000` is the wall showing through rather than a property of the block,
+and the durable half of the shelving decision is §13.354.3's **relocation** argument — cost that moves when one
+sentence changes is not modelled by the mechanism — not the magnitude.
+
+### 13.355.4 The queue, after this section
+
+Empty of mechanisms, and empty for a reason that is arithmetic rather than strategic. The three ways past the wall
+are costed in `docs/MEASURE-RESOLUTION-WALL.md` §4: a paired conversion count at low discordance (floor 4.4
+points at `pi` = 3%), a larger population (**431 `MR` questions** for the full under-count ceiling, **1,726** for
+the reachable part, against 121 available), or a mechanism spanning several classes, for which this campaign has
+no positive evidence. The next registration must carry its ceiling in floor units before it is priced.
+
+## 13.356 Four acceptance rows were still reading a dead configuration, and the repair is a tool
+
+Registered here because it changes what every published category percentage means, and it was found by reading
+the artifact rather than by running anything.
+
+### 13.356.1 The defect, which `§13.298` had already named
+
+`S1` was moved off `evidence/longmemeval/summary.json` in §13.298 with an attestation on the source. `S2`, `S3`,
+`S4` and `S5` were left on it, and that file is four *independent dispatches* of a configuration that no longer
+ships. `§13.298.4` wrote the gap down as "the distance between the two is one script". It stayed that way for
+four rounds because a stale reading does not fail: it prints a plausible percentage in the `current` column.
+
+| row | stale | corrected | delta | consequence |
+| --- | ---: | ---: | ---: | --- |
+| `S2` knowledge update | 87.2% | **88.5%** | +1.4 | stays `pass` |
+| `S3` multi-session | 71.7% | **83.9%** | +12.2 | stays `aim`; deficit 13.3 points → **1.1** |
+| `S4` temporal | 78.3% | **96.1%** | +17.8 | **promoted `aim` → `gate`**, 85% → 94% |
+| `S5` abstention | 96.7% | **100.0%** | +3.3 | stays `pass`; zero wrong answers |
+
+### 13.356.2 The script, and why it is a tool rather than an edit
+
+`tools/capability-ledger.py` writes `evidence/longmemeval/categories.json` with the run id in it, following the
+`--run` discipline `tools/cost-ledger.py` and `tools/evidence-budget.py` established: a file that cannot name its
+artifact cannot exist. It reads the repetition mean off `ablation.featureCorrectByRun`, not off
+`featureByCapability`, because only `avg` there is the repetition mean and `min`/`max` read three to four
+questions apart on the same population — the error `§13.354.2` made when it named 65 control-perfect questions
+where the masks said 62.
+
+Intervals are **Clopper-Pearson**, not Wilson, because the denominators are 30 to 127 and
+`arXiv:2402.04702` measured CLT-based intervals to under-cover badly at that size. The cost is conservatism;
+that is the direction a gate may err in. The ledger also writes each capability's **resolution floor**, which is
+the number §13.355 is built on, and `None` rather than `0` at a ceiling: `p(1-p)` is zero at 30 of 30, and a zero
+floor reads as "resolves any difference" when the exact interval is 11.6 points wide.
+
+At the file level: **28 tests** on the tool, including the four textbook anchors for the interval and one
+regression test for the bug that shipped its first version — the lower bound solving `P(X >= k) = 1 - alpha/2`
+instead of `alpha/2`, which does not crash and produces an interval that does not contain the estimate.
+
+### 13.356.3 The four attestations, and what each one prevents
+
+| clause | what it prevents |
+| --- | --- |
+| `accuracySource == repetition-mean` | `feature.metrics` is one repetition; `MR`'s four span 99 to 104 of 121 |
+| `runs == 4` | a two-repetition mean carries twice the standard error |
+| `arm == route-room` | a file regenerated from `registered` is well-formed and describes a different system (`TR` 3.4 points lower) |
+| `pooled.denominator == 500` | a 72-question scoped arm has categories too, and they are not these |
+
+A failing clause reads `stale`, which is neither pass nor fail: nothing was compared.
+
+### 13.356.4 `S4`'s promotion, and why the threshold is 94 rather than 85
+
+An aim that is met and left as an aim prints `pass` and blocks nothing — the failure `S1`'s own comment names, one
+row over. The reading is 96.06%; the four repetitions are 120/122/125/121 of 127, their standard deviation is
+2.08 points, the standard error of the mean is 1.04, and **94.0 is 1.98 standard errors below the measured
+value**. The old 85% is now unreachable-by-regression rather than a target, which is the correct state for a
+number that the arm clears by eleven points.
+
+`S3` is left an `aim` at 85% and its `onMiss` now states that the remaining 1.1 points are **0.12 of the
+population's own floor**. The row stays because the measurement is real and a large regression must be caught;
+the measurable form of the same target is `S8`'s paired count, for the reason §13.355.1 gives.

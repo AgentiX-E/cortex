@@ -60,10 +60,10 @@ unrun    no value could be computed — reported, never counted as a pass
 | D1  | —                         | ≤ 45.0%   | unrun  | extraction fidelity                    | A3 round 2, verbatim share                                  |
 | R1  | <!-- reading:R1 -->-1     | ≥ 1       | accept | abstention recovery                    | LongMemEval-S, 500 questions                                |
 | S1  | <!-- reading:S1 -->92.0%  | ≥ 85.0%   | aim    | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
-| S2  | <!-- reading:S2 -->87.2%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 questions                                 |
-| S3  | <!-- reading:S3 -->71.7%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 questions                                |
-| S4  | <!-- reading:S4 -->78.3%  | ≥ 85.0%   | aim    | temporal reasoning                     | LongMemEval-S, 127 questions                                |
-| S5  | <!-- reading:S5 -->96.7%  | ≥ 80.0%   | pass   | abstention                             | LongMemEval-S, 30 questions                                 |
+| S2  | <!-- reading:S2 -->88.5%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 of the 78 published                     |
+| S3  | <!-- reading:S3 -->83.9%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 of the 133 published                   |
+| S4  | <!-- reading:S4 -->96.1%  | ≥ 94.0%   | pass   | temporal reasoning                     | LongMemEval-S, 127 of the 133 published                   |
+| S5  | <!-- reading:S5 -->100.0% | ≥ 80.0%   | pass   | abstention                             | LongMemEval-S, 30 questions                               |
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
@@ -193,6 +193,85 @@ asks for the list to be written out, the reference asks for it to be kept privat
 `enumerated` control whose flat and temporal blocks are byte-identical, so it is the rare row where an assembly
 failure is detectable from the control side: a movement in TR or IE means the dispatch administered more than one
 route and no number in the row is readable.
+
+### 2.2 Four rows still read a dead configuration, and fixing it moved them 12 to 18 points
+
+The §2.1 repair turned `S1` into an attested row and left `S2`, `S3`, `S4` and `S5` reading
+`summary.json` — the same file, the same defect, four rows over. It was written down at the time as "the
+distance between the two is one script, and it is the script `13.298.4` specified", and it stayed that way
+because a stale reading does not fail anything: it prints a plausible percentage in the `current` column and
+looks like a measurement.
+
+`tools/capability-ledger.py` is that script. It reads one artifact, takes the repetition mean off
+`ablation.featureCorrectByRun` rather than off `featureByCapability`'s `min / avg / max`, and writes
+`evidence/longmemeval/categories.json` with the run id in it. Both files describe the same 500 questions; they
+describe **different systems**:
+
+| row | stale reading | corrected | delta |  | consequence |
+| --- | ---: | ---: | ---: | --- | --- |
+| `S2` knowledge update | 87.2% | **88.5%** | +1.4 | | stays `pass` |
+| `S3` multi-session | 71.7% | **83.9%** | +12.2 | | stays `aim`, but the deficit shrinks from 13.3 points to 1.1 |
+| `S4` temporal | 78.3% | **96.1%** | +17.8 | | **promoted `aim` → `gate`**, threshold 85% → 94% |
+| `S5` abstention | 96.7% | **100.0%** | +3.3 | | stays `pass`; the row has zero wrong answers and no room |
+
+`S4`'s promotion is not decoration in the other direction. An aim that is met and left as an aim prints `pass`
+and blocks nothing — the failure `S1`'s own comment names — so the row changes class in the edit that re-hangs
+it, and the new threshold is **derived**: the arm reads 96.06%, its four repetitions are 120/122/125/121 of
+127, the standard deviation is 2.08 points, the standard error of the mean is 1.04, and 94.0 is 1.98 standard
+errors below the measured value.
+
+### 2.2.1 The interval and the resolution floor, which the page did not have
+
+Every row on this page prints a point estimate. Two rows cannot be read without a second number, and the
+ledger now writes both:
+
+| capability | n | mean | exact 95% (Clopper-Pearson) | half-width | resolution floor |
+| --- | ---: | ---: | --- | ---: | ---: |
+| `IE` | 150 | 95.00% | [89.76, 97.67] | 3.95 | **4.99** |
+| `MR` | 121 | 83.88% | [75.63, 89.60] | 6.98 | **9.36** |
+| `KU` | 72 | 88.54% | [77.59, 94.12] | 8.26 | **10.52** |
+| `TR` | 127 | 96.06% | [91.05, 98.71] | 3.83 | **4.83** |
+| `ABS` | 30 | 100.00% | [88.43, 100.00] | 5.79 | — |
+| overall | 500 | 91.95% | [89.04, 94.05] | 2.51 | **3.41** |
+
+The interval is **exact** rather than Wilson because the denominators are 30 to 127, which is where
+Bowyer, Aitchison and Ivanova (`arXiv:2402.04702`) measured CLT-based intervals to under-cover badly. The cost
+of exactness is conservatism, and that is the direction a gate may err in. `ABS`'s floor is `—` rather than
+`0.00` on purpose: `p(1-p)` is zero at 30 of 30, so the formula returns zero, and a zero floor reads as "this
+population resolves any difference" when the exact interval is 11.6 points wide.
+
+The floor is `2.8016 * sqrt(p(1-p)/n)` — Miller's smallest detectable effect at 5% significance and 80% power
+(`Adding Error Bars to Evals`, `arXiv:2411.00640`), with Wang's `p(1-p)` rule of thumb in place of the true
+paired variance. It is a **design** quantity and it is not the same number as the 2 sd of observed repetition
+spread this project uses to judge mechanism bars; the two answer different questions ("what would this
+population see?" versus "what did this configuration do?"), and this page now carries both.
+
+Two consequences, and the second one is why the table is here:
+
+- **`S3`'s remaining 1.1 points are not measurable.** The floor at 121 questions is 9.36 points. A threshold
+  1.1 points above a reading whose own interval is 14 points wide is a number that cannot go red for the reason
+  it names. The row stays — the measurement is real and a *large* regression must be caught — and the
+  measurable form of the same target is `S8`, which counts paired conversions instead of differencing two
+  ratios.
+- **The repetition count does not buy resolution.** Four repetitions per question costs 2.8x the sampling of
+  one and divides the reader's own noise; it does not touch `p(1-p)/n`, which is the question sample. Every
+  "run it again to be sure" instinct in this campaign's history is priced by that sentence, and
+  `docs/MEASURE-RESOLUTION-WALL.md` works through what it means for the mechanism queue.
+
+### 2.2.2 What the four attestations are for
+
+Each of the four rows now carries four clauses, and each closes a way the number could be about something
+else:
+
+| clause | what it prevents |
+| --- | --- |
+| `accuracySource == repetition-mean` | `feature.metrics` is one repetition; on `MR` the four repetitions span 99 to 104 of 121, so a one-repetition row and a mean row are four points apart |
+| `runs == 4` | a two-repetition mean carries twice the standard error of the mean |
+| `arm == route-room` | the capability file is only about the shipping system if it was generated from it; a file regenerated from `registered` would read 3.4 points lower on `TR` and be perfectly well-formed |
+| `pooled.denominator == 500` | the per-category counts are taken out of the full suite; a file generated from a 72-question scoped arm has categories too, and they are not these |
+
+A failing clause produces `stale`, not `fail`: nothing was compared, and the row says so instead of quoting a
+number about a different system.
 
 ### 3.1 One row prices memory itself, and it can come out negative
 
@@ -361,10 +440,11 @@ Four consequences, and the last two are uncomfortable:
    the benchmark's own either way.
 
 The category split is where the deficit is, and it is not uniform. Knowledge update is at
-<!-- reading:S2 -->87.2%, above the threshold and above the frontier's implied position; multi-session is at
-<!-- reading:S3 -->71.7% and temporal reasoning at <!-- reading:S4 -->78.3%, and those two categories hold
-
-essentially all of the gap.
+<!-- reading:S2 -->88.5%, above the threshold and above the frontier's implied position; multi-session is at
+<!-- reading:S3 -->83.9% and temporal reasoning at <!-- reading:S4 -->96.1%, so **the two categories that used
+to hold essentially all of the gap are one pass and one 1.1-point miss**, not two deep deficits. That reading
+replaced three that were four to eighteen points wrong; §2.2 is the record, and the reason it changed is not
+that the system improved but that four rows were reading a configuration that no longer ships.
 
 **How the current value was reached, because it changed this round.** The reading is now the mean of four runs
 of one configuration (`reviewPass: bare`) rather than four runs of the previous one: 417 / 415 / 416 / 421
