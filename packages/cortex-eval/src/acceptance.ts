@@ -1103,9 +1103,10 @@ export const CRITERIA: readonly Criterion[] = [
   // ---- two rows the product needs and the campaign has never measured ------------------------------
   //
   // Requirement 11 asks that a deployment on a third provider not stay silently worse; requirement 12
-  // asks that the strong reader beat the weak one. Both are testable, neither has a reading, and both
-  // are stated here as aims with a recipe rather than left as properties the architecture is said to
-  // have. The outside evidence says what to expect: one vendor measured +10.64 points from a reader
+  // asks that the strong reader beat the weak one. Both are stated here as aims with a recipe rather
+  // than left as properties the architecture is said to have. `M1` gained a generated reading in round
+  // 60 (below); `P1` still has none, because the second provider answers 1.41 questions per minute and
+  // a 500-question dispatch on it is five times the run budget. The outside evidence says what to expect: one vendor measured +10.64 points from a reader
   // swap on a fixed memory system, and a 12-system study found the swap moves the level and barely the
   // order. So a *negative* delta here is not variance — it is a prompt-contract defect.
   {
@@ -1119,9 +1120,28 @@ export const CRITERIA: readonly Criterion[] = [
     unit: 'points',
     kind: 'aim',
     source: {
-      kind: 'unrun',
-      reason:
-        'a pair exists on an older configuration (`41222844945` 85.75% thinking disabled against `41254359622` 90.45% with thinking on the multi-session and temporal routes, +4.70, every prompt byte-identical) but it predates the current feature aggregate of 90.15, so it is not a reading of the configuration this row would gate. No pair exists on the current one',
+      kind: 'artifact',
+      // Round 60: the pair is generated rather than narrated, because the row read prose for three
+      // rounds while three different pairs existed in three different sections. `tools/reader-ladder.py`
+      // takes the two artifacts and writes the four quantities below, and `tools/reader-ladder.py`'s own
+      // refusals are what makes the file trustworthy: different populations, different repetition counts
+      // and non-identical prompts are `SystemExit`, not warnings.
+      path: 'cortex-docs/evidence/longmemeval/reader-ladder.json',
+      key: 'reasoningGainPoints',
+      // `reasoningGainPoints` is `reasoning - non-reasoning` with the reasoning side named in the file,
+      // because `deltaPoints` is `treatment - control` and a row that read that directly would print a
+      // negative gain every time the reasoning reader was the control.
+      //
+      // The three attestations are the admissibility conditions, not decoration. A pair whose prompts
+      // differ on any question is not a reader comparison at all, and a pair drawn at two repetitions or
+      // on 200 questions is a comparison of two instruments — each becomes `stale`, which the release gate
+      // counts as missing rather than as a pass.
+      attest: [
+        { key: 'promptIdentity.differ', equals: 0 },
+        { key: 'promptIdentity.missing', equals: 0 },
+        { key: 'control.runs', equals: 4 },
+        { key: 'control.questionCount', equals: 500 },
+      ],
     },
     competitors: [
       {

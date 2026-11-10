@@ -297,3 +297,27 @@ class TestCapabilityScopedRuns:
         assert result.returncode == 1
         assert "carries no XX" in result.stdout
         assert "ABS, IE, KU, MR, TR" in result.stdout
+
+
+def test_the_per_thousand_questions_line_is_the_observed_price_times_a_thousand() -> None:
+    """The one figure comparable to a published bill without a scale factor.
+
+    `perQuestionPerRun` is exact for the run it came from, so x 1,000 is what a thousand questions
+    cost at the same rates -- and it must be printed beside the note that embeddings are absent,
+    because a floor presented as a total is the defect every other cost row in this repository was
+    written to prevent.
+    """
+    described = _run_js(
+        "const projection = {"
+        " scaled: true, factor: 1, questionFactor: 1, runFactor: 1,"
+        " usage: { promptTokens: 0, cacheHitPromptTokens: 0, completionTokens: 0 },"
+        " cost: { cached: 0, uncached: 0, output: 0, total: 0 },"
+        " perQuestionPerRun: { cached: 0, uncached: 0, output: 0, total: 0.00658 },"
+        " thinkingReachChanged: false,"
+        " prices: { model: 'x', asOf: 'y', cacheHitCnyPerMillion: 1, cacheMissCnyPerMillion: 1, outputCnyPerMillion: 1 } };"
+        "process.stdout.write(mod.describe(projection, { limit: 500, runs: 4 }).join('\\n'));"
+    )
+    assert described.returncode == 0, described.stderr
+    assert "per 1,000 qs" in described.stdout
+    assert "6.58 CNY" in described.stdout
+    assert "embeddings not in the artifact" in described.stdout

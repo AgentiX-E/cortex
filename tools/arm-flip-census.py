@@ -2,7 +2,7 @@
 """Report how much of a paired difference is noise, before anyone reads the difference.
 
     python3 tools/arm-flip-census.py --treatment A.json --control B.json \\
-        [--partition 'auditConsultations>0'] [--capability MR] [--json]
+        [--partition 'auditConsultations>0'] [--capability MR] [--relations] [--json]
 
 ## The gap this closes
 
@@ -49,6 +49,32 @@ It cannot tell a mechanism's effect from a prompt's effect when both moved at on
 an accounting of disagreement, not a causal claim; the pairing has to be established elsewhere — for
 the audit dispatch it was 22 identical inputs with `cortex_memory_review_pass` the only declared
 departure.
+
+## `--relations`: what a flipped answer has to do with its gold, and why that is not a diagnosis
+
+A flip count says two configurations disagreed about a question. It does not say whether the side that
+lost produced something unrelated to the gold or something that contains it, and the two need different
+work: an answer that contains the gold but was graded wrong is a scoring or verbosity question, while an
+answer with no relation to the gold is a reading question. `--relations` classifies the **losing** side of
+every flip — treatment's answer when the treatment broke, control's when it repaired — against the
+question's gold, into `empty`, `equal`, `numeric`, `answer-in-gold`, `gold-in-answer` and `disjoint`.
+
+Three limits are stated rather than fixed:
+
+- the classifier reads the **gold**, so it cannot be a runtime rule. It is a post-hoc description of a
+  pair of artifacts, and it exists to stop a round from narrating a cause it did not measure;
+- `equal` should be empty. A graded-wrong record whose answer equals the gold is a scorer defect, and
+  printing the count is the cheapest way for that defect to be seen rather than argued about;
+- `numeric` is checked before containment because `2` is contained in `2023/05/30` and the containment
+  test would otherwise report a date match as a partial success. It is the same boundary rule
+  `tr-failure-class.ts` uses.
+
+## `--relations` also prints prompt identity, which is the admissibility of the pair
+
+A paired delta between two artifacts is a reader comparison only if the reader was sent the same bytes.
+`promptDigest` answers that directly: `identical`, `differ`, or `missing` per question. The census prints
+the three counts beside the delta, because a delta whose identity is 0 of 500 is not a smaller
+measurement of the same thing — it is a different experiment wearing the same column headings.
 """
 
 from __future__ import annotations
@@ -57,6 +83,7 @@ import argparse
 import importlib.util
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -242,6 +269,124 @@ def partition(
     return read
 
 
+RELATION_CLASSES = (
+    'empty',
+    'equal',
+    'numeric',
+    'answer-in-gold',
+    'gold-in-answer',
+    'disjoint',
+)
+
+_WHITESPACE = re.compile(r'\s+')
+_NUMBER = re.compile(r'^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$')
+
+
+def normalise(text: object) -> str:
+    """Case-folded, whitespace-collapsed, punctuation-trimmed.
+
+    The trimming is deliberately narrow: a trailing full stop is the one difference between an answer
+    and its gold that no reader can be asked to avoid, and it is the difference a `disjoint` verdict
+    would otherwise invent.
+    """
+    if not isinstance(text, str):
+        return ''
+    return _WHITESPACE.sub(' ', text).strip().strip('.').strip().lower()
+
+
+def _contains(text: str, part: str) -> bool:
+    """Is `part` in `text`, with a digit boundary when `part` is a number.
+
+    The boundary is the whole reason this is not `in`. An answer of `2` is a substring of the date
+    `2023/05/30` and of the count `20`, so a plain containment test reports the most common TR answer
+    as "contained in the gold" and quietly converts a wrong answer into a partial success. `tr-failure-class.ts`
+    carries the same rule for the same reason, and this is its Python half.
+    """
+    if not part:
+        return False
+    if _NUMBER.match(part):
+        return re.search(r'(?<![\d.])' + re.escape(part) + r'(?![\d.])', text) is not None
+    return part in text
+
+
+def classify_answer(answer: object, gold: object) -> str:
+    """Which of {@link RELATION_CLASSES} the answer bears to the gold.
+
+    Order is the definition, not a convenience: `empty` before `equal` (an absent answer is not a
+    quote of an absent gold), `numeric` before containment (a number against a number is a
+    disagreement about a value, not a partial quote), and containment only with digit boundaries.
+    """
+    text = normalise(answer)
+    target = normalise(gold)
+    if not text:
+        return 'empty'
+    if text == target:
+        return 'equal'
+    if _NUMBER.match(text) and _NUMBER.match(target):
+        return 'numeric'
+    if _contains(target, text):
+        return 'answer-in-gold'
+    if _contains(text, target):
+        return 'gold-in-answer'
+    return 'disjoint'
+
+
+def relations(treatment: dict, control: dict, ids: list[str]) -> dict:
+    """Classify the losing side of every flip, in both directions.
+
+    A flip whose gold is absent on both sides is counted as `ungoverned` rather than folded into
+    `disjoint`: "no relation" and "nothing to have a relation with" are different records, which is
+    the rule `evidence-completeness.py` applies to a missing coverage block.
+    """
+    repaired = [i for i in ids if _verdict(treatment[i]) is True and _verdict(control[i]) is False]
+    broken = [i for i in ids if _verdict(control[i]) is True and _verdict(treatment[i]) is False]
+    table = {name: {'repaired': 0, 'broken': 0} for name in RELATION_CLASSES}
+    ungoverned = {'repaired': 0, 'broken': 0}
+    detail = []
+    for direction, population, losing in (
+        ('repaired', repaired, control),
+        ('broken', broken, treatment),
+    ):
+        for identifier in population:
+            gold = treatment[identifier].get('groundTruth')
+            if gold is None:
+                gold = control[identifier].get('groundTruth')
+            if not isinstance(gold, (str, int, float)) or normalise(gold) == '':
+                ungoverned[direction] += 1
+                continue
+            answer = losing[identifier].get('answer')
+            name = classify_answer(answer, gold)
+            table[name][direction] += 1
+            detail.append(
+                {
+                    'questionId': identifier,
+                    'direction': direction,
+                    'class': name,
+                    'capability': _capability(treatment[identifier]),
+                    'answer': answer,
+                    'gold': gold,
+                }
+            )
+    return {'classes': table, 'ungoverned': ungoverned, 'detail': detail}
+
+
+def identity(treatment: dict, control: dict, ids: list[str]) -> dict:
+    """How many of the shared questions were sent the same prompt bytes on both sides."""
+    identical = 0
+    differ = 0
+    missing = 0
+    for identifier in ids:
+        left = treatment[identifier].get('promptDigest')
+        right = control[identifier].get('promptDigest')
+        if not isinstance(left, str) or not isinstance(right, str):
+            missing += 1
+        elif left == right:
+            identical += 1
+        else:
+            differ += 1
+    return {'identical': identical, 'differ': differ, 'missing': missing, 'n': len(ids)}
+
+
 def render(summary: dict) -> str:
     lines = [
         'Paired flip census',
@@ -311,6 +456,34 @@ def render(summary: dict) -> str:
                 '  It is not a control group: the split was chosen after seeing the treatment.',
             ]
 
+    if summary.get('relations'):
+        rel = summary['relations']
+        ident = summary['identity']
+        lines += [
+            '',
+            'Losing side of each flip, against its gold — post hoc, and the classifier reads the gold',
+            '',
+            f'{"class":16s} {"broken":>7s} {"repaired":>9s}',
+            '-' * 34,
+        ]
+        for name in RELATION_CLASSES:
+            row_counts = rel['classes'][name]
+            if not row_counts['broken'] and not row_counts['repaired']:
+                continue
+            lines.append(f'{name:16s} {row_counts["broken"]:7d} {row_counts["repaired"]:9d}')
+        if rel['ungoverned']['broken'] or rel['ungoverned']['repaired']:
+            lines.append(
+                f'{"ungoverned":16s} {rel["ungoverned"]["broken"]:7d} '
+                f'{rel["ungoverned"]["repaired"]:9d}  (no gold on either side)'
+            )
+        lines += [
+            '',
+            f'prompt identity: {ident["identical"]}/{ident["n"]} identical, '
+            f'{ident["differ"]} differ, {ident["missing"]} missing',
+            '  a paired delta is a reader comparison only on the identical share; a delta whose',
+            '  identity is 0 of 500 is a different experiment, not a smaller measurement of this one.',
+        ]
+
     lines += [
         '',
         'Reading',
@@ -328,6 +501,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--control', required=True, help='the artifact it is paired against')
     parser.add_argument('--partition', default=None, help="a field predicate, e.g. 'auditConsultations>0'")
     parser.add_argument('--capability', action='append', default=None, help='restrict to these')
+    parser.add_argument(
+        '--relations',
+        action='store_true',
+        help='classify the losing side of each flip against its gold, and print prompt identity',
+    )
     parser.add_argument('--json', action='store_true', help='the summary as JSON')
     args = parser.parse_args(argv)
 
@@ -364,6 +542,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.partition:
         summary['partition'] = partition(treatment, control, graded, args.partition)
+    if args.relations:
+        summary['relations'] = relations(treatment, control, graded)
+        summary['identity'] = identity(treatment, control, shared)
 
     if args.json:
         print(json.dumps(summary, indent=1, sort_keys=True))

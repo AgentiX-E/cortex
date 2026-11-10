@@ -209,6 +209,94 @@ class FlipCliTest(unittest.TestCase):
         self.assertEqual(summary['overall']['broken_ids'], ['b'])
 
 
+class AnswerRelationTest(unittest.TestCase):
+    """`classify_answer` is the definition of the relation column, so each boundary is a test."""
+
+    def test_an_absent_answer_is_its_own_class_and_not_a_disjoint_one(self) -> None:
+        self.assertEqual(flip.classify_answer('', '3 weeks ago'), 'empty')
+        self.assertEqual(flip.classify_answer(None, '3 weeks ago'), 'empty')
+
+    def test_case_whitespace_and_a_trailing_full_stop_are_not_a_difference(self) -> None:
+        self.assertEqual(flip.classify_answer('  8   Weeks. ', '8 weeks'), 'equal')
+
+    def test_a_number_against_a_date_is_not_a_partial_quote(self) -> None:
+        # The whole reason `_contains` carries a digit boundary: `2` is a substring of `2023/05/30`.
+        self.assertEqual(flip.classify_answer('2', '2023/05/30'), 'disjoint')
+
+    def test_two_numbers_that_differ_are_a_value_disagreement(self) -> None:
+        self.assertEqual(flip.classify_answer('0', '2'), 'numeric')
+
+    def test_a_truncated_name_is_a_partial_quote_of_the_gold(self) -> None:
+        self.assertEqual(flip.classify_answer('Dark Souls 3', 'Dark Souls 3 DLC'), 'answer-in-gold')
+
+    def test_a_verbose_answer_that_contains_the_gold_is_its_own_class(self) -> None:
+        self.assertEqual(flip.classify_answer('You met at 19:38 in 2023', '19:38'), 'gold-in-answer')
+
+    def test_an_unrelated_answer_is_disjoint(self) -> None:
+        self.assertEqual(flip.classify_answer('2 weeks and 6 days', '3 weeks ago'), 'disjoint')
+
+
+class FlipRelationTest(unittest.TestCase):
+    def test_the_losing_side_is_the_one_classified_in_each_direction(self) -> None:
+        treatment = {
+            'a': _record('a', correct=True, answer='right'),
+            'b': _record('b', correct=False, answer='wrong'),
+        }
+        control = {
+            'a': _record('a', correct=False, answer='wrong'),
+            'b': _record('b', correct=True, answer='right'),
+        }
+        for record in treatment.values():
+            record['groundTruth'] = 'right'
+        for record in control.values():
+            record['groundTruth'] = 'right'
+        result = flip.relations(treatment, control, ['a', 'b'])
+        # `a` was repaired by the treatment, so the control's answer is the losing one; `b` broke.
+        self.assertEqual(result['classes']['disjoint']['repaired'], 1)
+        self.assertEqual(result['classes']['disjoint']['broken'], 1)
+        self.assertEqual({item['direction'] for item in result['detail']}, {'repaired', 'broken'})
+
+    def test_a_flip_with_no_gold_is_ungoverned_rather_than_disjoint(self) -> None:
+        treatment = {'a': _record('a', correct=False, answer='x')}
+        control = {'a': _record('a', correct=True, answer='y')}
+        result = flip.relations(treatment, control, ['a'])
+        self.assertEqual(result['ungoverned']['broken'], 1)
+        self.assertEqual(sum(sum(counts.values()) for counts in result['classes'].values()), 0)
+
+    def test_prompt_identity_counts_the_three_states_separately(self) -> None:
+        treatment = {
+            'a': _record('a', correct=True, promptDigest='one'),
+            'b': _record('b', correct=True, promptDigest='two'),
+            'c': _record('c', correct=True),
+        }
+        control = {
+            'a': _record('a', correct=True, promptDigest='one'),
+            'b': _record('b', correct=True, promptDigest='three'),
+            'c': _record('c', correct=True),
+        }
+        result = flip.identity(treatment, control, ['a', 'b', 'c'])
+        self.assertEqual((result['identical'], result['differ'], result['missing']), (1, 1, 1))
+
+    def test_the_relation_block_prints_identity_beside_the_classes(self) -> None:
+        treatment = [_record('a', correct=False, answer='0', groundTruth='2')]
+        control = [_record('a', correct=True, answer='2', groundTruth='2')]
+        directory = Path(tempfile.mkdtemp(prefix='relations-'))
+        left = directory / 'treatment.json'
+        right = directory / 'control.json'
+        left.write_text(json.dumps(_report(treatment)))
+        right.write_text(json.dumps(_report(control)))
+        completed = subprocess.run(
+            [sys.executable, str(TOOLS / 'arm-flip-census.py'), '--treatment', str(left),
+             '--control', str(right), '--relations'],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn('numeric', completed.stdout)
+        self.assertIn('prompt identity', completed.stdout)
+
+
 class CompletenessClassifyTest(unittest.TestCase):
     def test_a_record_without_the_block_is_unknown_and_not_partial(self) -> None:
         # Counting it as partial would inflate the population a window repair is supposed to reach.

@@ -223,3 +223,32 @@ Maximem Synap's 7,740 and Mem0's published 7,203 — **1.31x** and **1.40x**, wh
 > and the correction is a tool rather than a sentence: `tools/token-basis.py --check` recomputes every ratio
 > from `tools/token-basis.json` and `tools/competitor-ledger.json` in `pnpm check`, and refuses a ledger
 > cost that does not declare what it counts.
+
+## 7. The unit a published bill is written in, and the one line that produces it
+
+`LLMSlim`'s BEAM-1M round publishes cost **per thousand questions**, including each system's memory-build
+calls, which is the only unit in the competitive record that a reader can compare without knowing the other
+system's harness. This repository had no such row: every cost instrument answers "what did that run cost" in
+the run's own shape, and a run's shape is not a unit.
+
+`tools/spend-projection.mjs` now prints it, from the observed run's own per-question price and no scale factor:
+
+```
+$ node tools/spend-projection.mjs --report <artifact> --limit 500 --runs 4 --side feature
+  TOTAL           11.08 CNY   (cache hit 97.8% of input)
+  per 1,000 qs    5.54 CNY at list price, reader calls only (embeddings not in the artifact: floor)
+```
+
+Three things the line says and one it refuses to.
+
+- **It is exact for the run it came from.** No projection is applied; the factor is 1.
+- **It is the feature side.** `--side llmUsage` would print both arms, which is a number about two systems.
+- **It is a floor.** Embedding calls are not in the artifact, so the row excludes them and says so. A total
+  presented as a floor is the defect every other cost row here was written to prevent.
+- **It does not re-price a changed thinking reach.** Output tokens are a property of the questions asked, so
+  a dispatch that turns reasoning off cannot be priced by scaling a run that had it on — which is why the
+  confirmation in `PREREGISTRATION` §13.360.6 measures spend rather than projecting it.
+
+The composition is the part worth reading beside the total: **6.67 of the 11.08 CNY is output** — 60% of the
+bill is the reader thinking, on prompts whose input is 97.8% cache hits. So the mode is not an input-cost
+question, and the ledger's context-token rows (8,941 per question) are not where that money is.

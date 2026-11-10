@@ -346,6 +346,13 @@ export function describe(projection, { limit, runs, capability } = {}) {
     `  input uncached  ${((usage.promptTokens - usage.cacheHitPromptTokens) / 1e6).toFixed(2)}M  ${cost.uncached.toFixed(2)} CNY`,
     `  output          ${(usage.completionTokens / 1e6).toFixed(2)}M  ${cost.output.toFixed(2)} CNY`,
     `  TOTAL           ${cost.total.toFixed(2)} CNY   (cache hit ${(hitShare * 100).toFixed(1)}% of input)`,
+    // The one figure that is comparable to a competitor's published bill without a scale factor: the
+    // observed run's own per-question price x 1,000, at the same published rates. It is exact for the
+    // run it came from -- no projection is applied -- and it excludes the embedding calls, which the
+    // artifact does not carry, so it is a floor for "what a thousand questions cost" and is labelled
+    // as one. `LLMSlim`'s BEAM-1M round publishes this unit with the memory build included; the
+    // difference between the two is the embedding line, not the reader.
+    `  per 1,000 qs    ${(projection.perQuestionPerRun.total * 1000).toFixed(2)} CNY at list price, reader calls only (embeddings not in the artifact: floor)`,
     `  prices: ${projection.prices.model} as of ${projection.prices.asOf} ` +
       `(${projection.prices.cacheHitCnyPerMillion}/${projection.prices.cacheMissCnyPerMillion}/${projection.prices.outputCnyPerMillion} CNY per M cached/miss/output)`,
     ...(projection.thinkingReachChanged

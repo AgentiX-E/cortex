@@ -57,7 +57,7 @@ and metric, different reader or judge; **C** = different metric, subset, or an u
 | Mastra OM (base)                  | 84.23%                           | B     | GPT-4o                           | GPT-4o            | the reader-controlled half of the pair above                                                                            |
 | Emergence Simple                  | 82.40%                           | B     | GPT-4o                           | GPT-4o            | oracle-context baseline                                                                                                 |
 | Oracle (gold context handed over) | 82.40%                           | A     | GPT-4o                           | GPT-4o            | **the ceiling for a GPT-4o reader given the answer's evidence**                                                         |
-| **Cortex**                        | **83.45%** (417.25/500)          | B     | DeepSeek `deepseek-chat`         | official prompts  | five runs of the shipped arm, band **83.0–84.2%**; paired control in the same invocation (`reference-pipeline`, 43.40%) |
+| **Cortex**                        | **91.05%** (455.25/500, four-run mean) | B     | DeepSeek `deepseek-chat`         | official prompts  | the arm as it ships, `42533236864`; the gated form of this row is `S1` in `ACCEPTANCE-MATRIX.md`, which reads the same run. This cell carried **83.45%** for three rounds after the arm had moved and was 7.6 points behind its own matrix until round 60 replaced it |
 | MemCog                            | 95.80%                           | C     | GPT-4o-mini / GPT-4.1-mini       | GPT-4o            | arXiv:2605.28046; **baseline column copied from two other papers**, not re-run; multi-session 92.48 by 2–3 ReAct steps  |
 | PlugMem                           | 90.20%                           | C     | not stated                       | not stated        | arXiv:2603.03296, ICML 2026; **Apache-2.0 code**, so this is the row that can become a measurement                      |
 | MEMTIER                           | 38.20%                           | C     | Qwen2.5-7B, 6 GB GPU             | not stated        | Algorithms 19(7):607; the only 7B row held, and it makes the 57-point reader effect visible in one table                |
@@ -1328,3 +1328,72 @@ reports a per-route budget at all: the board's context column is one number per 
 below Hindsight's and above Zep's *by route* rather than on average. That is a product fact the leaderboard
 cannot express, and it is the only column on which this project is ahead by construction rather than by
 measurement.
+
+## 19. The reader axis has two names, and the cheaper one is not the smarter one
+
+§18.2 priced the reader five times from outside and got a spread of 1.35 points on this project's own packet
+against 22.6 on Perpetuity's. Round 60 added three things to that column, and together they say the axis the
+plan has been treating as one axis is two, with opposite signs.
+
+### 19.1 Two interventions, one column, and they disagree
+
+| intervention | pair | Δ | prompts | verdict |
+| --- | --- | ---: | --- | --- |
+| reasoning **mode**, same model, same provider | `41222844945` → `41254359622` | **+4.70 pt** | byte-identical, 500/500 | the mode buys points |
+| reasoning **mode**, shipped reach, current configuration | `42600727738` → `42621461902` (`T1r`) | **+0.5 pt** | byte-identical, 200/200 | the mode buys nothing measurable, and the shipped value costs 2.14x the bill for it (2.021 against 0.944 CNY) |
+| model **tier**, same mode, same provider | `40698867439` → `40698883428` | **−7.20 pt** | byte-identical, 500/500 | the larger model loses |
+
+The first and second rows are the same knob read at two points in the campaign's history, and they do not agree
+— which is why §13.360.6 registered the third reading (500 questions, current configuration) **before** its
+artifact existed rather than narrating the difference afterwards. The third row is a different axis entirely:
+`deepseek-v4-pro` is not "more reasoning", it is a different model, and on this arm and this prompt it loses
+58 questions while winning 22, with the loss concentrated in `TR` (−14) and `IE` (−12).
+
+### 19.2 The frontier prices the same axis lower than the field's own anecdotes
+
+Synap publishes three readers over one unchanged memory — which is the only kind of row that belongs in this
+column: **95.6%** with Gemini 3.8 Flash, **95.2%** with `gpt-5.4`, **97.0%** (485/500) with Gemini 4 Argon. The
+spread is **+1.4 points**, and the frontier tier is *below* the flash tier on the middle row. Mastra's
+**+10.64** remains the largest published reader effect and it is a `gpt-4o` baseline, which §14.6 already
+argued is a weak-reader story rather than a strong-reader one.
+
+So the board's reader column now reads: 22.6 (one memory, five readers, third-party frame) > 10.64 (Mastra,
+weak baseline) > 4.70 (this arm, thinking on the shipped prompt) > 1.4 (Synap, frontier) > 0.5 (this arm, the
+current configuration) > −7.20 (this arm, larger model). **The effect shrinks as the baseline gets stronger**,
+which is the one pattern in this column that is consistent across four independent systems.
+
+### 19.3 Three rows refreshed, and one more vendor that publishes two numbers for itself
+
+Checked against the vendors' own pages on 2026-11-10, in the spirit of §2's rule that a score without its
+reader and judge is a press release:
+
+- **Honcho 90.4% at ~11.6K context**, Claude Haiku 4.5 reader, `gpt-4o` judge — a *cheap* reader at 1.6x our
+  context, which makes it the closest architectural comparator in the field rather than a headline.
+- **Zep 90.2% at ~4.4K** with a `gpt-5.4` reader *and* judge, against **71.2%** on the same benchmark under a
+  `gpt-4o` judge in a third-party comparison. That is a 19-point spread on one system, and it is the same
+  defect this ledger already records for `mem0-v3-context` — one number, two pairings. Neither row is adopted;
+  both are recorded, because a ledger that quietly picks the favourable pairing produces a table identical to
+  one that picked the other.
+- **Hindsight**: 94.6% (Gemini 3.1 Pro) in the vendor's own table against **91.40%** (Gemini 3 Pro,
+  `GPT-OSS-120B` judge) in an independent roundup. Two readers, two judges, 3.2 points.
+
+**MemPalace's 96.6%** appears in a ranking blog with no harness, no judge and no per-question data; it is
+grade **C** at best and is not added to §2's table, which is the rule that keeps that table from becoming a
+list of announcements.
+
+### 19.4 What this changes about the plan
+
+Nothing about accuracy, and that is the point. Three independent sources now say the reader swap is worth
+1.4–4.7 points once the baseline reader is competent, and this arm's own reader swap is worth **−7.20** in the
+wrong direction. The next mechanism therefore cannot be a reader change.
+
+**The 500-question confirmation landed, and it answered the mode question in the direction the 200-question pair
+did not:** `42533236864` against `42826272421` reads **91.05% → 86.70%**, **−4.35 points** on 500 questions and
+500 of 500 byte-identical prompts, with `TR` −12.40 and `MR` −4.13 carrying all of it and `IE`/`KU`/`ABS`
+answering **identically on all 252 questions**. So the mode buys 4.35 points for 53% of the bill at steady state,
+the default does not move, and `M1` — the row this section's §19.1 third column is about — **passes at 4.3pp**.
+
+The general lesson is in the two readings of the same knob: a 200-question sample said **+0.5** and the full pass
+said **−4.35**. §19.1's third row (`deepseek-v4-pro`, −7.20) and this one are therefore the same story told at
+two scales — **on this arm, the reader moves are large enough to see and small enough to be hidden by a sample**,
+which is why every row in this section that is quoted carries its N.

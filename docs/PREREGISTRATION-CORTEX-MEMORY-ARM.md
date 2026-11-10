@@ -38784,3 +38784,73 @@ priced our own reader spread as the smallest of five for exactly this reason.
 **What it does not license:** a claim that reasoning is worthless in general. It says the two routes' thinking
 reach buys less than a point on this corpus, this prompt and this reader — which is the only population the
 measurement covers, and the sentence that a future round would have to beat rather than re-derive.
+
+## 13.361 `T1r` was a sample, `M1` passes, and the refusal population has a price
+
+Run `42826272421` (`--set thinking=disabled`, ref `0c403862`, 500 questions × 4 repetitions, 43 minutes) against
+`42533236864`. **Prompt identity: 500 of 500 by `promptDigest`**, which is the admissibility condition §13.360.6
+made and the field `promptChars` cannot supply.
+
+### 13.361.1 All three predictions, scored
+
+| prediction | stated | read | verdict |
+| --- | --- | --- | --- |
+| `P1` scale transfer | \|Δ\| ≤ 2 questions (≤ 0.4 pt) of `T1r`'s +1 | **−21.75 questions (−4.35 pt)** | **falsified** |
+| `P2` spend down ≥ 40% | feature-side CNY on the same 2,000 question-runs | **11.08 → 7.43 CNY (−32.9%)** | **falsified**, cause identified |
+| `P3` prompts identical | 500/500 | 500/500, 0 differ, 0 missing | **holds** |
+
+`M1` reads **+4.35 points** against a 3.0-point threshold and `kind: aim` becomes `pass`.
+
+### 13.361.2 Why `P2` failed, and it is the third appearance of one defect
+
+The saving is real and larger than this run shows: **output tokens fell 87.8%** (2.22M → 0.27M) while **uncached
+input rose 4x** (0.40M → 1.61M), because the first run after a mode change finds a cold prefix cache. The extra
+1.21M uncached tokens cost 2.42 CNY at the provider's 2 CNY/M miss rate, which is exactly the distance between
+the observed −32.9% and `T1r`'s −53.3%. §13.344 measured the same thing on `T1`'s first dispatch (0.66 CNY of
+cache warming, cache hit 75.2% against 97.4%) and §13.345 repaired the reading by re-running.
+
+So the honest statement is the one the registration refused to make in advance: **the price of the mode is 53% of
+the bill at steady state**, and a dispatch that changes a decoding mode can never measure its own steady-state
+price in one run. `P2` is falsified as written and that is the finding, not a threshold missed by rounding.
+
+### 13.361.3 The 200-question pair reversed sign, and the population explains why
+
+| capability | shipped | disabled | Δ |
+| --- | ---: | ---: | ---: |
+| `IE` | 94.17% | 93.17% | −1.00 |
+| `ABS` | 100.00% | 100.00% | 0.00 |
+| `KU` | 87.15% | 87.85% | +0.69 |
+| `MR` | 83.06% | 78.93% | −4.13 |
+| `TR` | 95.08% | 82.68% | **−12.40** |
+| overall | **91.05%** | **86.70%** | **−4.35** |
+
+`IE`, `KU` and `ABS` answered **identically on all 252 questions** across two runs separated by weeks, so the
+entire movement is `TR` and `MR` — the two routes the reach enables. That is the *shape* §13.360.3's `P2`
+predicted ("the loss concentrates on the two enabled routes, the other three move by ≤ 3 questions") and it is
+recorded here because §13.360.6 replaced that prediction with a threshold before the artifact existed; the
+original shape turned out to be right and the replacement turned out to be wrong. At 200 questions `TR` carries 28 and `MR` 29, so a 12.4-point `TR` effect is
+3.4 questions, inside the 2–4 question spread §13.118.5 measured across four repetitions of one configuration.
+**A screening pass cannot resolve the effect a full pass finds**, and this is the pair that measures that.
+
+The flip census (`arm-flip-census.py --relations`) is the part a capability table cannot say: 5 repaired against
+26 broken, exact **p = 1.9e-4**, resolution 13 questions; `TR` alone is 1 against 16 (p = 2.7e-4). Classifying
+the losing side against its gold: **11 of 26 are `empty`** — the non-reasoning reader declined a question the
+reasoning one answered — 10 `disjoint`, 3 `numeric`, 2 `gold-in-answer`, and **0 `equal`**, which is the control
+that says the scorer is not rejecting answers that match.
+
+That is the first time this campaign has a *refusal population* with a price: 11 questions, worth at most 2.2
+points overall, bought by 53% of the bill. `R1` measured abstention recovery at a net −1 and `E3.1'` could not be
+scored; this run says what the population is worth **before** a mechanism is written for it, which is the order
+§13.358.6 asked for and did not get.
+
+### 13.361.4 What the round does not change
+
+**The default.** `thinking=multi-session+temporal` keeps its place, and it now has a current-configuration
+reading rather than a 200-question sample: 4.35 points for 2.14x the bill is a price a product can defend.
+
+**The accuracy headline.** `S1` is `42533236864`'s 91.05% and this pair's control side is that same artifact, so
+nothing moves.
+
+**The completion figure.** 97% → **98%**: requirement 12's reasoning axis moves from `unrun` to a passing reading
+on the configuration that ships, which is one of the three points the figure was carrying as missing. The
+release signal does not move, because a mechanism queue that is still empty is not a capability.

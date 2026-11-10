@@ -73,7 +73,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | C2  | <!-- reading:C2 -->48.7%  | ≤ 70.0%   | pass   | cost                                   | LongMemEval-S, paired, median evidence tokens per question   |
 | C3  | <!-- reading:C3 -->—      | ≤ 100.0%   | unrun  | cost                                   | LongMemEval-S, billed prompt tokens per question at the reduced budget, as a fraction of the registered configuration |
 | C4  | <!-- reading:C4 -->0      | = 0       | pass   | cost                                   | every full-500 arm read, against the registered configuration |
-| M1  | <!-- reading:M1 -->—      | ≥ 3.0pp   | unrun  | reader strength                        | LongMemEval-S, one dispatch, two readers, prompt bytes held  |
+| M1  | <!-- reading:M1 -->4.3pp  | ≥ 3.0pp   | pass   | reader strength                        | LongMemEval-S, 500 questions, two readers, prompt bytes held |
 | P1  | <!-- reading:P1 -->—      | ≤ 2.0pp   | unrun  | provider portability                   | LongMemEval-S, one dispatch, two providers, prompt bytes held |
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
@@ -119,11 +119,16 @@ holes. `LANDSCAPE-CONTROLLED-BOARD.md` §7 is the argument; this is the record o
   absolute external number cannot be placed in that column. The absolute figures stay on `C1`.
 - **`M1` and `P1` price requirements 11 and 12**, which until now were properties the architecture was said to
   have. `M1` is the paired reader-strength gain (≥ 3.0 points, against a measured noise floor of 1.6–2.2 and an
-  external +10.64); `P1` is the cross-provider loss (≤ 2.0 points). Both are `unrun` and the reason is written
-  into the row: a pair exists for `M1` on an **older** configuration (`41222844945` 85.75% against
-  `41254359622` 90.45%, +4.70, every prompt byte-identical), and using it would be quoting a reading of a
-  system this row does not gate. For `P1`, `AUDIT-MODEL-PORTABILITY.md` §7 names the ratio the criterion needs
-  and states it has never been measured — so the row makes the omission a list item instead of a footnote.
+  external +10.64); `P1` is the cross-provider loss (≤ 2.0 points).
+  **`M1` left `unrun` in round 60.** It reads `cortex-docs/evidence/longmemeval/reader-ladder.json`, which
+  `tools/reader-ladder.py` writes from two artifacts, and it prints **4.3pp** from `42533236864` against
+  `42826272421`: 500 questions, four repetitions each, **500 of 500 prompts byte-identical**, the shipped
+  `thinking=multi-session+temporal` against `thinking=disabled`, +21.75 questions net on 5 repaired and 26
+  broken (exact p = 1.9e-4, resolution 13). The row carries four attestations, so a pair drawn on another
+  population, at another repetition count, or with one differing prompt prints `stale` rather than a number.
+  For `P1`, `AUDIT-MODEL-PORTABILITY.md` §7 names the ratio the criterion needs and states it has never been
+  measured — the second provider answers 1.41 questions per minute, so a 500-question dispatch on it is five
+  times the run budget, and the row says so instead of quoting a smoke.
 
 ### 2.1 `S1` read a stale artifact for three rounds, and the repair is an attestation
 
