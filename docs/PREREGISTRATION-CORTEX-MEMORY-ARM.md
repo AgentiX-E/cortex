@@ -38360,7 +38360,7 @@ project registers — and the answer is `sha256:` over the artifact's `memoryArm
 | `memoryArmConfigFingerprint` | `arm-config-baseline.json`, written by `--record` | the configuration the project registers, beside the configuration |
 | `require_registered()` | `cost-ledger.py`, `evidence-budget.py`, `capability-ledger.py` | `--write` refuses an artifact of another configuration; an evidence file cannot outlive an adoption |
 | `shipping.configurationFingerprint` | `efficiency-frontier.mjs --ship` | the shipping arm's configuration, hashed in Node |
-| `CONFIGURATION_ATTESTED` | `acceptance.ts`, checked by `acceptance-check.mjs` | the build fails when a committed evidence file names another configuration |
+| `CONFIGURATION_ATTESTED` | `acceptance.ts`, checked by `acceptance-check.mjs` | the check fails when a committed evidence file names another configuration, and prints a skip when the file is not in the checkout -- CI checks out one repository, so the absence is the normal state there and only a present-and-wrong file is a defect |
 
 Three properties are pinned by tests rather than stated in prose, and each is a decision this campaign has had to
 make twice before:

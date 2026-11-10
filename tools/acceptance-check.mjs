@@ -174,7 +174,7 @@ const resolve = {
  *
  * The list of files is `CONFIGURATION_ATTESTED` in `acceptance.ts`, not a copy here.
  */
-function registryDefects() {
+function registryDefects(skipped) {
   let baseline;
   try {
     baseline = JSON.parse(readFileSync(path.join(REPO, 'tools/arm-config-baseline.json'), 'utf8'));
@@ -188,7 +188,15 @@ function registryDefects() {
   const defects = [];
   for (const { path: relative, key } of CONFIGURATION_ATTESTED) {
     const parsed = artifactAt(relative);
-    const found = parsed === undefined ? undefined : pluckRaw(parsed, key);
+    // Absent is **skipped**, not failed. This repository's CI checks out one repository, so every
+    // `cortex-docs/...` path is missing there and the five rows that read one print `unrun` for exactly
+    // that reason. Reporting an absent file as a defect would turn a single-repository checkout red on
+    // every push and teach the next person to delete the check; the state is printed instead.
+    if (parsed === undefined) {
+      skipped.push(relative);
+      continue;
+    }
+    const found = pluckRaw(parsed, key);
     if (found === registered) continue;
     defects.push(
       `${relative}#${key} reads ${JSON.stringify(found ?? null)} and the registered configuration is ` +
@@ -200,7 +208,8 @@ function registryDefects() {
   return defects;
 }
 
-const registry = registryDefects();
+const registrySkipped = [];
+const registry = registryDefects(registrySkipped);
 
 const evaluations = CRITERIA.map((criterion) => {
   const value = currentOf(criterion, resolve);
@@ -274,6 +283,13 @@ if (asJson) {
   if (registry.length > 0) {
     process.stdout.write(`\n${registry.length} evidence file(s) describe a configuration that is not registered\n`);
     for (const line of registry) process.stdout.write(`  ${line}\n`);
+  }
+  if (registrySkipped.length > 0) {
+    process.stdout.write(
+      `\n${registrySkipped.length} configuration-bearing evidence file(s) are not in this checkout, so their ` +
+        'configuration cannot be attested here\n',
+    );
+    for (const relative of registrySkipped) process.stdout.write(`  ${relative}\n`);
   }
 
   const failed = evaluations.filter((entry) => entry.evaluation.blocking);

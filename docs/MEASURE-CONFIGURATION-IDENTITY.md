@@ -60,7 +60,7 @@ project registers — and three files had to change for it to be answerable.
 | `attestation()` / `differences()` | `tools/registration-attest.py` | matched or not, the fingerprint either way, and the dispatch inputs that moved, projected through `PROJECTED` rather than restated |
 | `require_registered()` | `cost-ledger.py`, `evidence-budget.py`, `capability-ledger.py` | `--write` refuses an artifact of another configuration and names the field |
 | `shipping.configurationFingerprint` | `tools/efficiency-frontier.mjs` | the shipping arm's configuration, computed in Node from the same canonical form |
-| `CONFIGURATION_ATTESTED` | `packages/cortex-eval/src/acceptance.ts`, checked by `tools/acceptance-check.mjs` | fails the build when a committed evidence file names a configuration that is not registered |
+| `CONFIGURATION_ATTESTED` | `packages/cortex-eval/src/acceptance.ts`, checked by `tools/acceptance-check.mjs` | fails the check when a committed evidence file names a configuration that is not registered; an absent file is printed as skipped, because CI checks out one repository |
 
 ```
 $ python3 tools/registration-attest.py <artifact>

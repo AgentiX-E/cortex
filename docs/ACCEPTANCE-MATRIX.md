@@ -316,8 +316,11 @@ into the baseline beside the configuration it came from, and:
   whose fingerprint is not the baseline's, and the refusal names the dispatch input that moved rather than the hash;
 - `efficiency-frontier.mjs --ship` writes `shipping.configurationFingerprint` beside `shipping.accuracy`;
 - `CONFIGURATION_ATTESTED` in `acceptance.ts` lists the two committed files that carry a configuration, and
-  `tools/acceptance-check.mjs` compares both against `tools/arm-config-baseline.json` and **fails the build** when
-  they disagree.
+  `tools/acceptance-check.mjs` compares both against `tools/arm-config-baseline.json` and **fails the check** when
+  they disagree. A file that is absent from the checkout is reported as skipped rather than failed, because CI
+  checks out one repository and every `cortex-docs/...` path is missing there — the same state the five rows
+  report as `unrun`. The check therefore fires where the defect would be introduced (a checkout carrying both),
+  and its skip is printed rather than silent.
 
 A `--write` refuses with the difference list, because a refusal that says only "the configuration differs" sends the
 reader to diff two JSON files:

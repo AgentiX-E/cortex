@@ -134,3 +134,45 @@ class TestTheJsonDocumentSurvivesThePipe:
         assert out.returncode == 0, out.stderr[-400:]
         # Parsed rather than counted: the defect was a truncated string, which only a parse sees.
         assert len(json.loads(out.stdout)) > 0
+
+
+class TestTheConfigurationAttestation:
+    """A single-repository checkout must skip the registry check rather than fail it.
+
+    This repository's CI checks out one repository, so every `cortex-docs/...` path is absent there and the
+    five rows that read one print `unrun` for exactly that reason. The first version of the registry check
+    treated an absent file as a defect, which made the check red on every push in CI and green only in a
+    developer checkout with both repositories — a gate whose verdict depends on which machine ran it, which
+    is the shape `AUDIT-B7-DEAD-SWITCH.md` records twice.
+
+    The distinction the check has to keep is *absent* against *present and naming another configuration*:
+    only the second is a defect, and the test below pins both sides so the skip cannot widen into a pass.
+    """
+
+    def test_an_absent_evidence_file_is_skipped_and_named(self, tmp_path: pathlib.Path) -> None:
+        out = subprocess.run(
+            [_node(), str(CHECKER), "--root", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+        )
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert "not in this checkout" in out.stdout
+        assert "cortex-docs/evidence/longmemeval/frontier.json" in out.stdout
+        assert "describe a configuration that is not registered" not in out.stdout
+
+    def test_a_present_file_naming_another_configuration_fails(self, tmp_path: pathlib.Path) -> None:
+        # The other direction, and the one that matters: a file that *is* here and names a configuration the
+        # baseline does not is a defect even though every number in it is well formed. §13.336 is the case.
+        evidence = tmp_path / "cortex-docs" / "evidence" / "longmemeval"
+        evidence.mkdir(parents=True)
+        (evidence / "frontier.json").write_text(json.dumps({"shipping": {"configurationFingerprint": "sha256:" + "0" * 64}}))
+        (evidence / "categories.json").write_text(json.dumps({"configurationFingerprint": "sha256:" + "0" * 64}))
+        out = subprocess.run(
+            [_node(), str(CHECKER), "--root", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+        )
+        assert out.returncode == 1, out.stdout + out.stderr
+        assert "describe a configuration that is not registered" in out.stdout
