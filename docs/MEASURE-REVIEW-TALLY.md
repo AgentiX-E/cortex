@@ -94,3 +94,93 @@ branch it cannot enter.
   stated as though it had.
 - **Not evidence about `IE`, `KU`, `TR` or `ABS`.** Their prompts and windows are unchanged to the
   character, so a movement there is a reading of sampling rather than of this mechanism.
+
+## 6. The reading: the arithmetic moved, and the failure moved with it
+
+`42855433242`, `cortex_memory_review_pass=tally`, 500 questions × 4 repetitions, every other input at
+its shipped value, 2 h 11 m against the control's 43 m.
+
+| | control `42533236864` | `tally` `42855433242` | Δ |
+| --- | ---: | ---: | ---: |
+| accuracy | **91.05%** (456) | **89.60%** (448) | **−1.45 pt** |
+| `MR` | 101 | **91** (mean of four) | **−10 questions** |
+| `IE` | 141 | 140.5 | −0.5 |
+| `KU` | 63 | 63.25 | +0.25 |
+| `TR` | 121 | 122 | +1 |
+| `ABS` | 30 | 30 | 0 |
+| feature spend | 11.08 CNY | **21.45 CNY** | **+93.6%** |
+| wall clock | 43 m | 2 h 11 m | **3.1x** |
+
+The paired census is the reading a capability column cannot give: **4 repaired, 12 broken, net −8**
+(exact p = 0.077) and on `MR` alone **1 repaired against 10 broken, net −9, p = 0.0117**. The
+mechanism is not "unproven": it is significantly worse on the capability it was built for.
+
+`audit: { attempted: 342, changed: 173, refused: 7 }` — 85.5 consultations per repetition, **half of
+which disagreed with the answer they were handed**, and the roster sums to the census exactly (342 and
+173 over 500 records).
+
+### 6.1 What the ten `MR` losses actually are
+
+| question | gold | control | tally | what the tag counted |
+| --- | --- | --- | --- | --- |
+| `0100672e` | `$12` | `$12 per mug` | **60** | the mugs, not the price |
+| `87f22b4a` | `$120` | `$120` | **43** | an unrelated count |
+| `bb7c3b45` | `$300` | `$300` | **700** | the spend, not the earning |
+| `e25c3b8d` | `$300` | `$300` | **700** | the same shape as the row above |
+| `2311e44b` | `190` | `190 pages` | **690** | a second book's pages added in |
+| `a4996e51` | `50` | `50 hours per week` | **40** | hours without the extra shift |
+| `a08a253f` | `4 days` | `4 days a week` | **3** | three of the four days |
+| `7024f17c` | `0.5 hours` | `0.5 hours` | **0** | nothing, because 0.5 is not an integer count |
+| `b3c15d39` | `5 days` | `5 days` | **0** | nothing |
+| `0a995998` | `3` | `3` | **2** | two of the three items |
+
+**Not one of the ten is an addition error.** Every one is the ledger tagging the wrong quantity: a
+count where the question wanted a price, a partial where it wanted the whole, zero where the item was
+real but fractional. The arithmetic never failed — `tallyTotal` added exactly what it was given. What
+failed is the sentence *"the single bare number this item contributes to the answer"*, which is a
+judgement about the question, and it is as hard as the arithmetic was.
+
+That is the finding, and it is the one TallyMem's paper states about its own residual errors: separating
+specification from execution "allows errors in specifying the intended events to be distinguished from
+errors in combining them", and executing specifications "exposes event-selection mistakes as the
+largest residual system-error category". This run is that sentence, measured on this arm, at the cheap
+end of that design — where there is no typed ledger and no compiled query, only a prose list and a
+number after each line.
+
+### 6.2 All four predictions, scored
+
+| prediction | stated | read | verdict |
+| --- | --- | --- | --- |
+| `P1` population | `MR` ≥ **+2.0** points (≥ 3 questions) | **−10 questions** (−8.3 points) | **falsified** |
+| `P2` no destruction | ≤ **3** of the control's 101 correct `MR` turn wrong | **10** | **falsified** |
+| `P3` admissibility | `attempted` ≥ 60, `refused` ≤ 20% of it | 85.5 per repetition, 7 of 342 = **2.0%** | **holds** |
+| `P4` cost bound | ≤ **+25%** feature spend | **+93.6%** (output tokens doubled, 2.22M → 4.41M) | **falsified** |
+| `P5` load concentration | ≥ 2 of the net on > 14 gold turns | moot: the net is negative | — |
+
+`P4` deserves its own line because it is the requirement-8 answer: the pass did not buy accuracy with
+tokens, it bought **less accuracy with twice the tokens**. The extra consultation re-renders the window
+and, with `thinking` on, writes a long tagged ledger — 4.41M output tokens against 2.22M — so the
+mechanism is dominated on both axes it was supposed to improve. Rejected.
+
+### 6.3 What the round did buy
+
+1. **A population priced and closed.** "The reader cannot add" is now a measured claim with a sign:
+   handing the addition to the product costs 10 multi-session questions, because the operand selection
+   is the hard part and it stays with the reader either way.
+2. **A gate that had never seen this pass.** `readout-arm-run.py` treated only `reviewPass: audit` as
+   publishing the second-consultation census, so a correct `tally` artifact failed the arm audit — the
+   run is red for that reason and not for a broken artifact (the roster sums to the census exactly,
+   re-audited after the fix). The check is now a membership with a three-integer invariant: `refused`
+   is **required** under `tally` and **forbidden** under `audit`, and `changed + refused ≤ attempted`.
+   Five tests, one of them the real artifact.
+3. **The literature read backwards.** TallyMem's +13.8 is a *compiled specification over a typed
+   ledger*; this pass is a prose list with a number at the end of each line, and the difference between
+   +13.8 and −1.45 is exactly the specification layer. The next attempt at this axis is that layer, not
+   a longer prompt.
+
+### 6.4 Status
+
+`reviewPass: tally` is **not adopted**; the shipped default stays `bare`. Nothing in the acceptance
+matrix moves: `S3` is still 83.1% against an 85.0% bar, and the cost row is unchanged. The mechanism
+stays in the product as an off-by-default value, because a negative result that can be re-run is worth
+more than a paragraph that says it was tried.

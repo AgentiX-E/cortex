@@ -165,3 +165,78 @@ class TestTheAuditCensusIsCheckedAgainstTheRoster:
 
         assert result.returncode == 0, result.stdout + result.stderr
         assert 'PASS  audit' in result.stdout
+
+
+class TestTheTallyCensusIsCheckedByTheSameIdentity:
+    """The second pass that publishes this census, and the field only it can have."""
+
+    def test_a_tally_run_passes_when_the_census_carries_its_three_integers(self, tmp_path: Path) -> None:
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='tally',
+                audit={'attempted': 4, 'changed': 2, 'refused': 1},
+                counts=[1, 0, 2, 1],
+                changes=[0, 0, 1, 1],
+            ),
+        )
+        assert result.returncode == 0, result.stdout
+
+    def test_a_tally_run_without_the_refusal_count_fails(self, tmp_path: Path) -> None:
+        # `auditCensus()` emits `refused` under exactly one of the two passes, so an artifact that
+        # omitted it under `tally` is not this build -- and the omitted field is the only number that
+        # separates "the pass never fired" from "every ledger was unreadable".
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='tally',
+                audit={'attempted': 4, 'changed': 2},
+                counts=[1, 0, 2, 1],
+                changes=[0, 0, 1, 1],
+            ),
+        )
+        assert result.returncode != 0
+        assert 'FAIL' in result.stdout
+
+    def test_an_audit_run_that_publishes_a_refusal_count_fails(self, tmp_path: Path) -> None:
+        # The mirror image: the audit has no refusal state, so printing a zero for it would report a
+        # measurement of a branch that pass cannot enter.
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='audit',
+                audit={'attempted': 4, 'changed': 2, 'refused': 0},
+                counts=[1, 0, 2, 1],
+                changes=[0, 0, 1, 1],
+            ),
+        )
+        assert result.returncode != 0
+        assert 'FAIL' in result.stdout
+
+    def test_a_refusal_count_above_the_consultations_fails(self, tmp_path: Path) -> None:
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='tally',
+                audit={'attempted': 4, 'changed': 2, 'refused': 5},
+                counts=[1, 0, 2, 1],
+                changes=[0, 0, 1, 1],
+            ),
+        )
+        assert result.returncode != 0
+        assert 'FAIL' in result.stdout
+
+    def test_changes_plus_refusals_cannot_exceed_the_consultations(self, tmp_path: Path) -> None:
+        # A consultation either produced a total, agreed with the one it was handed, or was refused, so
+        # the two outcomes cannot together exceed the population they are outcomes of.
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='tally',
+                audit={'attempted': 4, 'changed': 4, 'refused': 3},
+                counts=[1, 0, 2, 1],
+                changes=[1, 0, 1, 2],
+            ),
+        )
+        assert result.returncode != 0
+        assert 'FAIL' in result.stdout

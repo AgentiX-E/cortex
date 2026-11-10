@@ -38968,11 +38968,31 @@ was known when the population in §13.362.1 was counted:
   repositories (+11.0 on a controlled probe without routing) and a much smaller **69.8% → 71.1%** on
   full AMA-Bench. Its opening measurement is this arm's finding in another system: *"even a reader given
   all 150 steps of a trajectory miscounts five of eight action types."*
-- **MemTrace** (arXiv **2605.28732**) attributes memory-system errors and names *aggregation and
-  counting failure* as its own subtype — the retrieved context "already contained multiple qualifying
-  art-event memories within the target window, but the model enumerated only one event and concluded
-  the answer was 1 instead of 4" — plus a *schema mismatch* form that turns a quantity question into a
-  count of actions.
+- **Two different papers are both called MemTrace**, and the first draft of this paragraph cited them
+  as one. They are not interchangeable, and the claim it made was too strong in one case:
+  - arXiv **2605.28732**, *MemTrace: Tracing and Attributing Errors in Large Language Model Memory
+    Systems* (Deng et al.), builds executable memory-evolution graphs and a MemTraceBench over
+    Long-Context, RAG, Mem0 and EverMemOS, defines **seven error types, five of them memory-specific**,
+    and closes a loop that corrects faults for up to **+7.62 points**. Checked against the full text,
+    *"aggregation and counting failures"* occurs **once**, as a descriptive remark in §6.1 about
+    EverMemOS's response stage — it is **not** one of the seven defined types, and the sentence this
+    paragraph previously quoted as a definition does not appear in the paper. **Correction recorded, not
+    quietly removed**: the mechanism this arm built was aimed at a failure class this paper names only
+    in passing.
+  - arXiv **2606.17328**, *MemTrace: Probing What Final Accuracy Misses in Long-Term Memory* (Long et
+    al., MSU), is a benchmark measured in **knowledge points**: 13 configurations across four paradigms,
+    probed on memory age × question type × evidence condition. Its finding is the one that matches this
+    artifact: *"the evidence was retrievable 10 times more often than it was missing"* — the same shape
+    `MEASURE-MR-CEILING` §1 measured (0 of 20 wrong `MR` questions had zero gold overlap).
+- **StructMemEval** (Shutova et al., 2026) is the evaluation set that *does* name the accounting
+  failures, and it was not in the earlier draft at all. Its count-based subset expects a maintained
+  ledger and a running aggregate, and under `gemini-3-pro` top-20 retrieval scores **0.0 at 50
+  transactions** while a markdown-file memory agent stays non-zero (**0.20 without hint, 0.27 with**).
+  Its three named failures — *omission*, *duplication*, *hallucination* of transactions — are the right
+  vocabulary for this arm's ten `MR` losses (§13.362.7). Its most useful sentence for the next attempt
+  is that *"the gap between with hint and without hint is often larger than the gap between Mem0 and
+  mem-agent"*: models can use a structure once it is named, and cannot reliably infer that they need
+  one.
 - The **Tool-Output Arithmetic Trust** pattern names the anti-pattern this pass removes: *"the agent
   compares, ranks, or sums correctly returned tool data in its own head instead of offloading the
   computation to a deterministic tool, emitting confident wrong aggregates."*
@@ -39001,3 +39021,69 @@ be asked for:
   second sample rather than as arithmetic.
 
 `P1`–`P4` stand as written. The literature is a prior on the sign, not a licence to move a threshold.
+
+### 13.362.7 The reading: rejected on `P1`, `P2` and `P4`, and the mechanism's failure is specification
+
+`42855433242`, 500 questions × 4 repetitions, `reviewPass: tally` against `42533236864`, every other
+input shipped.
+
+| | control | tally | Δ |
+| --- | ---: | ---: | ---: |
+| accuracy | 91.05% (456) | **89.60%** (448) | **−1.45 pt** |
+| `MR` | 101 | 91 (mean of 4) | **−10 questions** |
+| overall flips | — | 4 repaired / 12 broken | net **−8**, p = 0.077 |
+| `MR` flips | — | 1 repaired / **10 broken** | net **−9**, **p = 0.0117** |
+| census | — | `{attempted: 342, changed: 173, refused: 7}` | roster sums exactly |
+| feature spend | 11.08 CNY | **21.45 CNY** | **+93.6%** |
+| wall clock | 43 m | 2 h 11 m | 3.1x |
+
+**Verdict: rejected.** The mechanism is significantly worse on the capability it was written for, so
+`P1` and `P2` fail together and `P4` fails by a factor of nearly four. `P3` holds — 85.5 consultations
+per repetition, 2.0% of ledgers refused — which is what makes the loss a finding about the mechanism
+rather than about the dispatch.
+
+**The ten losses are all specification, none arithmetic.** `0100672e` wants `$12` and the ledger tagged
+**60** (the mugs, not the price); `bb7c3b45` and `e25c3b8d` want `$300` and tagged **700**; `7024f17c`
+wants `0.5 hours` and tagged **0**, because a fractional item has no integer count; `a4996e51` wants
+`50` hours and the ledger lists **40**. `tallyTotal` added exactly what it was given, ten times.
+
+So the sentence this section registered — *"the reader can find it and cannot add it"* — is half right
+and the half that is wrong is the one the mechanism depended on. The reader can find it; **choosing
+which quantity each item contributes is a second judgement, and it is as unreliable as the addition
+was**. That is TallyMem's own residual-error finding (§13.362.6) arriving at the cheap end of their
+design, where there is no typed ledger and no compiled query.
+
+**A gate defect the run exposed, and its fix.** The arm audit in `readout-arm-run.py` treated only
+`reviewPass: audit` as a pass that publishes the second-consultation census, so a *correct* `tally`
+artifact failed the audit and the job went red at 18:44. The check is now a membership (`audit` or
+`tally`) with a three-integer invariant — `refused` required under `tally`, forbidden under `audit`,
+`changed + refused ≤ attempted` — and the real artifact re-audits `PASS`:
+`the roster sums to 342 consultations and 173 changes over 500 of 500 records`.
+
+**What it licenses.** Nothing about the default: `reviewPass: bare` stays. It closes the answer-side
+question `MEASURE-MR-CEILING` §7 left open — the answer side has been tried and priced at −10
+questions — and it moves the next attempt one level up, from *asking for a number after each line* to
+*compiling what to count before the list exists*, which is the half of TallyMem this arm has not built.
+
+**The literature, re-read after the reading, moved one claim and added one.** §13.362.6 cited two
+papers as one and overstated one of them; both are corrected there now, and the correction is the more
+useful artifact:
+
+- The **zjunlp MemTrace** (2605.28732) does define seven error types, five of them memory-specific, but
+  *"aggregation and counting failures"* appears **once** in the full text — a descriptive remark about
+  EverMemOS's response stage in §6.1 — and is **not** one of the seven. This arm was aimed at a class
+  that paper names in passing, not a class it names formally. The sentence previously quoted here as a
+  definition is not in the paper and has been removed.
+- The **MSU MemTrace** (2606.17328) is a different paper with the same name, and it is the one whose
+  headline matches this artifact: evidence *"was retrievable 10 times more often than it was missing"*.
+- **StructMemEval** (Shutova et al., 2026) is the set that does name the accounting failures —
+  *omission*, *duplication*, *hallucination* — and its count-based subset is this arm's population in
+  another corpus: top-20 retrieval scores **0.0 at 50 transactions** against a ledger-keeping agent's
+  0.20–0.27. Its hint finding is the design instruction for the next attempt: *"the gap between with
+  hint and without hint is often larger than the gap between Mem0 and mem-agent"* — models **can** use a
+  named structure and cannot reliably infer that they need one.
+
+Read together with the ten losses, those three sources say one thing: this arm told the reader *that*
+it should tag, and never told it **which quantity counts as the event**. That is exactly the thing
+StructMemEval's hint supplies and TallyMem's specification layer compiles, and it is the next
+mechanism — not a longer prompt, and not another pass over the same list.
