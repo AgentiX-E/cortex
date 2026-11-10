@@ -1681,7 +1681,7 @@ def audit_section(
     # membership rather than as a second branch because a second branch would be a second copy of the
     # sums, and a copy is where the two would eventually disagree.
     review_pass = config.get('reviewPass') or 'bare'
-    auditing = review_pass in ('audit', 'tally')
+    auditing = review_pass in ('audit', 'tally', 'spec')
     roster_consultations = [
         question for question in questions if question.get('auditConsultations') is not None
     ]
@@ -1691,14 +1691,17 @@ def audit_section(
         tally = audit_census if isinstance(audit_census, dict) else None
         attempted = tally.get('attempted') if isinstance(tally, dict) else None
         changed = tally.get('changed') if isinstance(tally, dict) else None
-        # `refused` is required under `tally` and forbidden under `audit`: the product emits it from
-        # `auditCensus()` under exactly one of the two passes, so an artifact that printed it under the
-        # other would be a build nobody wrote, and an artifact that omitted it under `tally` would be
-        # hiding the only number that separates "the pass never fired" from "every ledger was unreadable".
+        # `refused` is required under the two passes that can refuse (`tally`, `spec`) and forbidden
+        # under `audit`: the product emits it from `auditCensus()` under exactly those passes, so an
+        # artifact that printed it under `audit` would be a build nobody wrote, and an artifact that
+        # omitted it under a refusing pass would be hiding the only number that separates "the pass
+        # never fired" from "every plan was unreadable". Membership rather than equality, because the
+        # third pass is the same claim about a different mechanism.
+        refusing = review_pass in ('tally', 'spec')
         refused = tally.get('refused') if isinstance(tally, dict) else None
         tally_shape = (
             isinstance(refused, int) and not isinstance(refused, bool) and 0 <= refused <= attempted
-            if review_pass == 'tally'
+            if refusing
             else 'refused' not in tally if isinstance(tally, dict) else True
         )
         consistent = (
@@ -1706,7 +1709,7 @@ def audit_section(
             and isinstance(changed, int)
             and 0 <= changed <= attempted
             and tally_shape
-            and (review_pass != 'tally' or changed + refused <= attempted)
+            and (not refusing or changed + refused <= attempted)
             and consulted_once_each(roster_consultations, len(questions))
             and consultations == attempted
             and changes == changed

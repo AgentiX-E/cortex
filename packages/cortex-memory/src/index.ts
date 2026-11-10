@@ -112,6 +112,24 @@ export { parseAnswer, isAbstention, ABSTAIN_TOKEN } from './parse.js';
 // rejected exactly that shape, and a barrel entry nothing calls is public surface with no consumer.
 export { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
 /**
+ * The specification layer: a ledger compiled before the question, a typed plan, and an executor.
+ *
+ * Five names, and each has a consumer outside the package. `buildLedger` and `buildSpecPrompt` are what
+ * the offline ceiling harness in `bench/measure-spec-ceiling.ts` calls, and that harness is the reason
+ * this pass could be priced before it was dispatched. `parseEventSpec`, `executeSpec` and
+ * `renderAggregate` are the three halves of the mechanism a reader needs to re-run a plan by hand from
+ * an artifact's own fields.
+ *
+ * `questionKeywords`, `buildPlanTable` and `ledgerVocabulary` stay module-level: the prompt uses them,
+ * nothing outside the package does, and a barrel entry nothing calls is public surface with no consumer
+ * -- the shape the export census rejected for the tally pass.
+ */
+export { buildLedger } from './aggregation/ledger.js';
+export { parseEventSpec } from './aggregation/spec.js';
+export { executeSpec } from './aggregation/execute.js';
+export { renderAggregate } from './aggregation/render.js';
+export { buildSpecPrompt } from './aggregation/plan-prompt.js';
+/**
  * The two readings a question can call for, and the test that decides between them.
  *
  * Exported because the reach of an ask is a property of the **dataset**, not only of the dispatcher:

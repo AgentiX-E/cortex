@@ -273,6 +273,36 @@ describe('the audit census reaches the artifact', () => {
     expect(result.markdown).toContain('A **refused** ledger is one where a line carried no tag');
   });
 
+  it('names the specification pass rather than the tally pass under the same heading shape', async () => {
+    // The heading used to be keyed off `refused === undefined`, which was right while `tally` was the only
+    // pass that could refuse and became a mislabel the moment `spec` arrived: a specification run would
+    // have published its census under the arithmetic pass's name.
+    const specifying: MemorySystem = {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      auditCensus: () => ({ attempted: 6, changed: 2, refused: 3 }),
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(
+      dataset(2),
+      bareSystem('reference-pipeline'),
+      specifying,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE, reviewPass: 'spec' },
+      },
+    );
+
+    expect(result.markdown).toContain('## Second consultation (`reviewPass: spec`)');
+    expect(result.markdown).not.toContain('`reviewPass: tally`');
+    expect(result.markdown).toContain('| 6 | 2 | 33.3% | 3 | 50.0% |');
+    // The explanation follows the pass, because a refused plan and a refused ledger are different objects.
+    expect(result.markdown).toContain('it asks for a PLAN rather than a list');
+    expect(result.markdown).toContain('A **refused** plan is one the parser');
+  });
+
   it('says n/a rather than 0/0 when a tally run consulted nothing', async () => {
     // A pass configured but never reached is a measurement of zero, and 0/0 is not a share. The two
     // `n/a` arms exist for exactly this state, and without a test they would be the only branches in

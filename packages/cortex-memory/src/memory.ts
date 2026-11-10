@@ -53,6 +53,11 @@ import {
 } from './abstention-recovery.js';
 import { planReplyRepair } from './reply-repair.js';
 import { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
+import { buildLedger } from './aggregation/ledger.js';
+import { parseEventSpec } from './aggregation/spec.js';
+import { executeSpec } from './aggregation/execute.js';
+import { renderAggregate } from './aggregation/render.js';
+import { buildSpecPrompt } from './aggregation/plan-prompt.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
@@ -260,6 +265,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * fired, or it fired and every ledger was untagged -- and only the count separates them.
    */
   #tallyRefusals = 0;
+
+  /** Plans the specification pass could not read, by refusal code, summed for the census. */
+  #specRefusals = 0;
 
   /**
    * The model's own output for the most recent call, before `parseAnswer`.
@@ -945,13 +953,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   auditCensus(): { attempted: number; changed: number; refused?: number } | null {
     const pass = this.#options.reviewPass;
-    if (pass !== 'audit' && pass !== 'tally') return null;
+    if (pass !== 'audit' && pass !== 'tally' && pass !== 'spec') return null;
     if (pass === 'tally') {
       // The same two numbers with the same meaning under both passes -- a second consultation ran, and
       // the answer it produced differs from the first -- plus the refusals, which only this pass can
       // have. The audit's own payload has no third field, so adding one to the shared type would print
       // a zero the audit never measured.
       return { ...this.#audits, refused: this.#tallyRefusals };
+    }
+    if (pass === 'spec') {
+      // `specified` is `attempted - refused` by construction rather than a fourth counter: two counters
+      // that can disagree are two counters that will, and the identity is checkable from the artifact.
+      return { ...this.#audits, refused: this.#specRefusals };
     }
     return { ...this.#audits };
   }
@@ -1572,6 +1585,59 @@ export class CortexMemory implements SessionAwareMemorySystem {
         assembled,
       );
       return this.#recordOutcome(second);
+    }
+
+    // §13.363. The specification pass: a ledger built before the question, and a plan rather than a list.
+    //
+    // The pass this replaces asked the reader for "the single bare number this item contributes" and lost
+    // **9.5 multi-session questions** doing it, with no arithmetic error among the ten losses: `$12` was
+    // tagged 60 (a mug count), `$300` was tagged 700 (spent, not earned), `0.5 hours` was tagged 0 (a
+    // fraction is not a count). The autoreview located the failure in the *selection* of the quantity, so
+    // this pass does not ask for quantities at all -- it asks for a scope, a conjunction of field filters
+    // and an operation, and runs that plan over a ledger whose rows were compiled by programme from the
+    // same admitted turns the reader was given.
+    //
+    // Three gates, each a state this pass must not enter, and they are the tally pass's own: a decline has
+    // nothing to compute over (the audit's rule), a derivation question would be answered with an age
+    // instead of a difference (`question-shape.ts` owns it), and reach is the route itself -- the other
+    // five capabilities answer from byte-identical prompts because this branch is never reached for them.
+    if (this.#options.reviewPass === 'spec' && first !== null && isTallyQuestion(question)) {
+      // The ledger is compiled from the admitted turns, not from the corpus: `support` then indexes the
+      // same strings the reader was shown, so a count and the prompt cannot disagree about what a step is.
+      const ledger = buildLedger(
+        sessions.map((session) => session.turns.map((turn) => turn.content)),
+      );
+      const plan = buildSpecPrompt(question, ledger);
+      this.#audits.attempted += 1;
+      await this.#consult(plan.prompt, 'multi-session');
+      const parsed = parseEventSpec(this.#lastRawOutput as string, ledger.steps, ledger.sessions);
+      const result = parsed.kind === 'spec' ? executeSpec(ledger, parsed.spec) : null;
+      const answered = result === null ? null : renderAggregate(result);
+      if (answered === null) {
+        // One counter for two shapes of "the plan did not produce an answer", and the shape is
+        // recoverable from the response: an unreadable plan leaves prose, an empty plan leaves a plan
+        // that selected nothing, and a mixed-unit sum leaves a plan that added two quantities. Counting
+        // them together keeps the census's identity (`specified = attempted - refused`) checkable, which
+        // is worth more than a fourth number that could disagree with the other three.
+        this.#specRefusals += 1;
+        this.#recordEvidence(
+          sessions.flatMap((session) => session.turns),
+          assembled,
+        );
+        return this.#recordOutcome(first);
+      }
+      if (answered !== first) this.#audits.changed += 1;
+      this.#lastReview = { first, final: answered, changed: answered !== first };
+      // Delivery stays retrieval's own prompt, coverage comes from the pass. The ledger is built from the
+      // admitted turns, so what the answer came from and what retrieval delivered are the same evidence --
+      // which is a stronger claim than the tally pass can make, and it is why the two are recorded the
+      // same way here even though the prompts differ.
+      this.#recordDelivery(assembled);
+      this.#recordCoverage(
+        sessions.flatMap((session) => session.turns),
+        assembled,
+      );
+      return this.#recordOutcome(answered);
     }
 
     // §13.362. The tally pass, which is the arithmetic the audit pass is instructed not to do.

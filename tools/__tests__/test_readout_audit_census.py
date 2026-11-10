@@ -240,3 +240,61 @@ class TestTheTallyCensusIsCheckedByTheSameIdentity:
         )
         assert result.returncode != 0
         assert 'FAIL' in result.stdout
+
+
+class TestTheSpecificationPassIsCheckedByTheSameIdentity:
+    """Three passes publish this census, and the gate has to accept all three or none.
+
+    The membership in `readout-arm-run.py` was a two-element tuple while `audit` and `tally` were the
+    only passes that could refuse. Round 62 added a third, and the failure mode of forgetting to widen
+    it is not a crash: a *correct* `spec` artifact fails the arm audit and the job goes red for a gate
+    its own artifact satisfies -- exactly the defect round 61's dispatch exposed when `tally` was new.
+    """
+
+    def test_a_spec_run_passes_when_the_census_carries_its_three_integers(self, tmp_path: Path) -> None:
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='spec',
+                audit={'attempted': 3, 'changed': 2, 'refused': 1},
+                counts=[1, 1, 1, 0],
+                changes=[0, 1, 1, 0],
+            ),
+        )
+        assert result.returncode == 0, result.stdout
+
+    def test_a_spec_run_without_the_refusal_count_fails(self, tmp_path: Path) -> None:
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='spec',
+                audit={'attempted': 3, 'changed': 2},
+                counts=[1, 1, 1, 0],
+                changes=[0, 1, 1, 0],
+            ),
+        )
+        assert result.returncode != 0
+        assert 'FAIL' in result.stdout
+
+    def test_spec_changes_plus_refusals_cannot_exceed_the_plans_it_asked_for(self, tmp_path: Path) -> None:
+        # A plan either produced an answer, agreed with the one it was handed, or was refused. The
+        # identity is the same one the tally pass carries, which is why it is one membership rather than
+        # two branches: a second copy of the sums is where the two would eventually disagree.
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='spec',
+                audit={'attempted': 3, 'changed': 2, 'refused': 2},
+                counts=[1, 1, 1, 0],
+                changes=[0, 1, 1, 0],
+            ),
+        )
+        assert result.returncode != 0
+        assert 'FAIL' in result.stdout
+
+    def test_every_pass_that_publishes_the_census_is_in_the_membership(self) -> None:
+        # Read out of the gate's own source rather than restated here: a fourth pass added to the product
+        # has to be added to the membership, and the test that notices is this one.
+        source = TOOL.read_text(encoding='utf-8')
+        assert "review_pass in ('audit', 'tally', 'spec')" in source
+        assert "refusing = review_pass in ('tally', 'spec')" in source

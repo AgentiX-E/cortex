@@ -39128,3 +39128,127 @@ Read together with the ten losses, those three sources say one thing: this arm t
 it should tag, and never told it **which quantity counts as the event**. That is exactly the thing
 StructMemEval's hint supplies and TallyMem's specification layer compiles, and it is the next
 mechanism — not a longer prompt, and not another pass over the same list.
+
+### 13.363 The specification pass: a ledger before the question, and a plan instead of a list
+
+§13.362 priced the answer side and closed it: asking the reader for "the single bare number this item
+contributes" lost **9.5 multi-session questions**, doubled completion tokens, and produced ten losses of
+which **not one was arithmetic**. `$12` was tagged 60 (a mug count), `$300` was tagged 700 (spent rather
+than earned), `0.5 hours` was tagged 0 (a fraction is not a count of anything). The mechanism did what it
+was designed to do and the answers were still wrong, because *which quantity counts* was never stated.
+
+This section registers the layer that states it, and it registers a **measurement taken before the
+dispatch** rather than after it. `MEASURE-SPEC-CEILING.md` holds the full reading; the numbers this
+registration is written against are these:
+
+| | reached | of 17 |
+| --- | ---: | ---: |
+| the control arm's multi-session failures with a numeric gold | — | 17 |
+| a plan over the **question's own vocabulary** | **8** | 47.1% |
+| a plan over **any word the history uses** (500 rarest, capped) | **12** | 70.6% (a lower bound) |
+| a single turn already stating the gold number ("copy") | 11 | 64.7% |
+
+The five unreachable are `d851d5ba` (`$3,750`), `gpt4_731e37d7` (`$720`), `2b8f3739` (`$495`),
+`d6062bb9` (`1,998`) and `37f165cf` (`856`) — four money sums and one page-count pair, every one of whose
+operands **shares a turn with distractor numbers**. No keyword isolates them, because a turn is not a
+transaction. That is the grain, and it is named here as the next increment rather than left to be
+rediscovered.
+
+#### 13.363.1 The mechanism, in four files
+
+| file | what it is | what it refuses to do |
+| --- | --- | --- |
+| `src/aggregation/ledger.ts` | `buildLedger(sessions)` — one row per turn: step, session, date, speaker, text, and every numeral with the unit the source attached | no model call, no summary, no dropped turn; a turn without a timestamp becomes a row with `date: null`, not a gap |
+| `src/aggregation/spec.ts` | `parseEventSpec(raw, steps, sessions)` — a scope, a conjunction of field filters, an operation, plus nine refusal codes | never defaults: an unknown field, an out-of-range scope, an empty predicate and an unknown operation are four different codes |
+| `src/aggregation/execute.ts` | `executeSpec(ledger, spec)` — a pure function returning the value, the supporting step ids and the unit the numbers shared | never guesses a unit: two units in one sum sets `mixed`, and the renderer refuses that case |
+| `src/aggregation/render.ts` | `renderAggregate(result)` — a bare integer for a count, a currency-prefixed number for a sum of one currency, `null` for everything else | does not render a quotation where a count belongs, which is `37f165cf`'s exact failure mode |
+
+The plan prompt (`src/aggregation/plan-prompt.ts`) carries **no evidence**: a schema, the history's
+bounds, and a table of what each keyword in the question selects — turns containing it, how many of those
+state a number, and the sums by unit. The table is built by the same `mentions` predicate the executor
+runs, so the prompt cannot report one number and the executor compute another; that equality is a test
+rather than an intention.
+
+#### 13.363.2 Why this is not the tally pass with a longer prompt
+
+| | `tally` (measured) | `spec` (dispatched here) |
+| --- | --- | --- |
+| when the ledger exists | after the question, written by the reader | **before the question**, compiled by programme |
+| what the model produces | prose lines with a trailing number | one JSON object: scope, predicates, operation |
+| what the model costs | a second read of the whole window (+98.4% completion tokens) | a schema and a table, no evidence |
+| who computes | `tallyTotal` over the reader's tags | `executeSpec` over the ledger |
+| what a failure leaves | a wrong list, no trace | a plan with its filters and supporting step ids |
+| refusal codes | 2 | 9 |
+
+The fourth row is the reason the cost bound in `P4` is a *design* claim rather than a hope: the prompt is
+bounded by the question and not by the window, so a thousand-turn history produces a prompt of the same
+order as a hundred-turn one (a test asserts the difference stays under sixty characters).
+
+#### 13.363.3 The predictions
+
+| prediction | stated | rationale |
+| --- | --- | --- |
+| `P1` population | `MR` ≥ **+2.0 points** (≥ 3 questions) on the four-run mean | the ceiling is 12 of 17 and the table alone reaches 8; three is a sixth of what the grammar admits, which is the smallest movement that could be distinguished from the ±2-question spread the capability showed at `tally` |
+| `P2` not destructive | ≤ **3** of the shipped arm's ~101 correct `MR` turn wrong | a plan that executes is checked against its own support before it is answered from; the tally pass broke 10 |
+| `P3` admissibility | `attempted` ≥ 60, `refused` ≤ **40%** of it | the population is ~102 questions × 4; a refusal now covers four states (unreadable plan, out-of-scope, empty selection, mixed units), so the bar is looser than tally's 20% |
+| `P4` cost bound | feature-arm completion tokens ≤ **+20%** | the plan prompt is a table and a schema rather than a re-read; tally measured +98.4% for the other design |
+| `P5` load concentration | ≥ 2 of the net repair on questions carrying more than 14 gold turns | high aggregation load is the population both the ceiling and the load curve point at |
+
+**Diagnosis requirement.** The artifact must carry `attempted`, `changed` and `refused` per run and per
+question, and `specified = attempted − refused` must hold. A run whose census is absent, or whose roster
+does not sum to it, fails the arm audit — the check that round 61's dispatch exposed as too narrow when
+`tally` was the new value.
+
+#### 13.363.4 What a failure would mean, stated before the result
+
+If `P1` fails and `P3` holds, the finding is **not** "the model cannot plan": it is that the **turn grain
+cannot express the answer**, and the five unreachable questions in `MEASURE-SPEC-CEILING.md` §4 are the
+evidence that this is a property of the ledger rather than of the vocabulary. The next increment in that
+case is an **annotated ledger** — one row per event, compiled before the question, which is TallyMem's
+own layer and StructMemEval's transaction grain — and it is a bigger increment than another prompt.
+
+If `P1` fails and `P3` fails too, the finding is that the plan contract is not being followed at all, and
+the next increment is the contract (a worked example, a schema the model can copy) before the grain.
+
+Either way the default stays `bare` and the mechanism stays in the product as an off-by-default value,
+for the reason §13.362.7 gives: a negative result that can be re-run is worth more than a paragraph that
+says it was tried.
+
+#### 13.363.5 The gate, before the dispatch rather than after it
+
+Round 61's dispatch went red because `tools/readout-arm-run.py` treated only `reviewPass: audit` as
+publishing the second-consultation census, so a *correct* `tally` artifact failed the arm audit. This
+round widens the membership **in the same commit as the mechanism**, and the refusal rule with it:
+`refused` is required under `tally` **and** `spec`, forbidden under `audit`, and `changed + refused ≤
+attempted`. Three tests pin the new pass in the gate and a fourth reads the membership out of the gate's
+source, so a fifth pass added to the product has to be added to the check.
+
+#### 13.363.6 A defect the verification found, and its two regimes
+
+Verifying this round's changes with a full `pnpm check` turned one test red —
+`deadline-loss.test.ts`'s "ends the pass once the losses exceed the registered share", on the second of
+its two `runBenchmark` calls, with a bare `DOMException: The operation was aborted due to timeout`. It
+passed three times in isolation and failed under five packages running at once, which is the shape of a
+load-dependent defect rather than a broken test.
+
+The cause is one calibration. `deadlineExhaustion` classifies a loss as a deadline when every attempt's
+recorded duration is **within 1% of the deadline**, and that fraction was written against the campaign's
+real reading — 300,000 ms, where 1% is three seconds of slack. The suite's own deadline tests run at
+**500 ms**, where 1% is **five milliseconds**. A loaded event loop delays the abort beyond that, the
+attempt records a duration a few milliseconds *under* its deadline, the classification fails, and the
+caller's `exhaustion === null` branch **re-throws** — which is deliberate for a malformed body or a bad
+key, and wrong for a deadline: the pass died on a question it should have counted as lost.
+
+The tolerance is now `max(25 ms, 1% of the deadline)` and it is a named function, `deadlineReached`, so
+both regimes can be pinned without a clock:
+
+| attempt | deadline | before | now | why |
+| --- | --- | --- | --- | --- |
+| 495 ms | 500 ms | not a deadline | **deadline** | 5 ms of slack is below scheduling jitter |
+| 480 ms | 500 ms | not a deadline | **deadline** | 20 ms of slack is still inside jitter on a busy machine |
+| 474 ms | 500 ms | not a deadline | not a deadline | 26 ms is a real early failure |
+| 297,500 ms | 300,000 ms | deadline | **deadline** | the fraction still governs at scale |
+| 3,000 ms | 300,000 ms | wire fault | **wire fault** | a reset at 3 s must not be read as a slow model |
+
+Three tests, one per regime, and the `deadlineReached` export is recorded in the export census with its
+reason (a timing assertion would need a timer, and a timing test is what the floor exists to avoid).

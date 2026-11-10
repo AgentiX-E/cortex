@@ -696,8 +696,15 @@ export type WindowOrdering = {
  * consults only a decline, and `tally` consults a count-or-total question that was answered, so a run
  * that could do two would be two treatments behind one value and could not say which move. Making
  * them values of one field says that in the artifact.
+ *
+ * `spec` is the fourth and it is not a variant of `tally`: the tally pass asks the reader for a
+ * numbered list and sums it, while `spec` asks for a *plan* -- a scope, a conjunction of field filters
+ * and an operation -- and runs it over a ledger the programme compiled before the question arrived.
+ * The two differ in what the model is asked to produce (prose items versus a typed object), in when
+ * the ledger exists (after the question versus before it), and in what a failure leaves behind (a
+ * wrong list versus a plan whose filters and supporting steps can be printed.)
  */
-export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally';
+export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec';
 
 /**
  * Which reply-contract repairs a run administers, if any.

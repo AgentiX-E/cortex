@@ -1601,7 +1601,7 @@ function readAsk(raw: string | undefined): string {
 const REVIEW_PASS_VARIABLE = 'CORTEX_MEMORY_REVIEW_PASS';
 
 /** The passes this arm can dispatch, in the order the config line spells them. */
-const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare', 'tally'];
+const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare', 'tally', 'spec'];
 
 /**
  * Read the review pass, rejecting anything the product does not implement.

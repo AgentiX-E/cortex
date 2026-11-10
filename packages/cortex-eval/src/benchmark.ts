@@ -194,17 +194,35 @@ export function deadlineLossCeiling(total: number): number {
  * model. The all-attempts condition is the narrow reading, and the wide one buys nothing: a genuine
  * deadline loss on this reader reached the bound on both attempts (299,999 and 300,001 ms).
  *
- * The tolerance is 1% of the deadline because `AbortSignal` fires on a timer and the recorded
- * duration is measured around it -- the second attempt above is *one millisecond over* its own
- * deadline, and an exact comparison would classify the clearest loss in the campaign as a wire
- * fault.
+ * The tolerance exists because `AbortSignal` fires on a timer and the recorded duration is measured
+ * around it -- the second attempt above is *one millisecond over* its own deadline, and an exact
+ * comparison would classify the clearest loss in the campaign as a wire fault.
+ *
+ * ## Why the tolerance has a floor as well as a fraction
+ *
+ * One per cent of 300,000 ms is three seconds, which is the slack the campaign's own reading needed.
+ * One per cent of **500 ms** is five milliseconds, which is less than the event-loop delay of a loaded
+ * machine -- and the failure that exposed it was exactly that: the suite's deadline tests run with a
+ * 500 ms budget, and under a full `pnpm check` (five packages, every worker busy) an attempt was
+ * aborted *late* by the timer, recorded a duration a few milliseconds under the deadline, failed the
+ * classification and was **re-thrown** by the caller's `exhaustion === null` branch, which is by design
+ * for a malformed body and fatal for a deadline. The pass died on a question it should have counted as
+ * lost.
+ *
+ * So the slack is `max(25 ms, 1% of the deadline)`: 25 ms is above the scheduling jitter of a loaded
+ * event loop and below any real deadline this arm dispatches, and at 300 s the fraction still governs.
+ * Written as `deadlineReached` rather than inline so the two regimes can be tested without a clock.
  */
+export function deadlineReached(attemptMs: number, timeoutMs: number): boolean {
+  return attemptMs >= timeoutMs - Math.max(25, timeoutMs * 0.01);
+}
+
 function deadlineExhaustion(err: unknown): RetryExhaustion | null {
   if (!(err instanceof Error)) return null;
   const exhaustion = (err as { readonly retryExhausted?: RetryExhaustion }).retryExhausted;
   if (exhaustion === undefined || exhaustion.attemptsMs.length === 0) return null;
-  const reached = exhaustion.attemptsMs.every(
-    (attemptMs) => attemptMs >= exhaustion.timeoutMs * 0.99,
+  const reached = exhaustion.attemptsMs.every((attemptMs) =>
+    deadlineReached(attemptMs, exhaustion.timeoutMs),
   );
   return reached ? exhaustion : null;
 }

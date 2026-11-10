@@ -115,7 +115,23 @@ class TestTheReviewPassReachesTheProduct(unittest.TestCase):
         # count, because the assertion's subject is "the product carries the values the arm can
         # dispatch", and a dispatch of a value the product does not implement is rejected at the
         # arm's boundary -- so the two lists have to agree member by member.
-        self.assertIn("export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally';", source)
+        self.assertIn("export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec';", source)
+
+    def test_the_arm_can_dispatch_every_value_the_product_implements(self) -> None:
+        # Two lists that have to agree member by member: a value the product implements but the arm
+        # rejects is a mechanism nobody can dispatch, and a value the arm accepts but the product does
+        # not implement is a run that fails at the boundary. Round 62 added `spec` to both.
+        arm = ARM.read_text(encoding="utf-8")
+        self.assertIn(
+            "const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare', 'tally', 'spec'];",
+            arm,
+        )
+        types = TYPES.read_text(encoding="utf-8")
+        union = "export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec';"
+        self.assertIn(union, types)
+        for value in ('none', 'audit', 'recover', 'tally', 'spec'):
+            self.assertIn(f"'{value}'", union)
+            self.assertIn(f"'{value}'", arm)
 
 
 if __name__ == "__main__":

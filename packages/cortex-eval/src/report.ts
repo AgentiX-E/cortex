@@ -1956,7 +1956,7 @@ export function formatAblationReport(report: AblationReport): string {
   // Its own section and its own guard, for the same reason as the two above and one of its own: this pass is
   // the only one whose product is a **difference**, so a section that appeared only when a conversion happened
   // would hide the run that most needs reading -- the audit that ran everywhere and agreed everywhere.
-  lines.push(...auditLines(report.audit));
+  lines.push(...auditLines(report.audit, report.memoryArmConfig?.reviewPass));
   // Its own section and its own guard, like the two retry passes above: the stage is a property of
   // the arm's ranking rather than of the abstention path, so it must not be nested under a census
   // that a different layer produces.
@@ -2192,9 +2192,19 @@ function replyRepairLines(census: ReplyRepairCensus | undefined): string[] {
  * would be a second definition of accuracy computed from the same records, and the campaign has paid for two
  * definitions of one number more than once (§13.41.5 is the first).
  */
-function auditLines(census: AuditCensus | undefined): string[] {
+/**
+ * The second consultation's rows, named by the pass that produced them.
+ *
+ * The header used to be keyed off `refused === undefined`, which was correct while `tally` was the only
+ * pass that could refuse and became a mislabel the moment `spec` arrived: a specification run would
+ * have printed *"reviewPass: tally"* over its own census. The pass name is now passed in, and the
+ * refusal column still follows the field rather than the name -- a pass that cannot refuse must not
+ * print a zero for a branch it cannot enter.
+ */
+function auditLines(census: AuditCensus | undefined, pass?: string | undefined): string[] {
   if (census === undefined) return [];
   const { attempted, changed, refused } = census;
+  const label = pass === 'spec' ? 'spec' : 'tally';
   const share = attempted === 0 ? 'n/a' : `${((changed / attempted) * 100).toFixed(1)}%`;
   // The refusal column is printed only when the pass that can refuse ran. A row of zeros under `audit`
   // would be a measurement of a branch the audit cannot enter -- the reason `AuditCensus.refused` is
@@ -2203,7 +2213,7 @@ function auditLines(census: AuditCensus | undefined): string[] {
     '',
     refused === undefined
       ? '## Membership audit (`reviewPass: audit`)'
-      : '## Second consultation (`reviewPass: tally`)',
+      : `## Second consultation (\`reviewPass: ${label}\`)`,
     '',
     refused === undefined
       ? '| Consultations | Moved the answer | Share moved |'
@@ -2222,13 +2232,25 @@ function auditLines(census: AuditCensus | undefined): string[] {
       ? []
       : [
           '',
-          'Under `reviewPass: tally` the second consultation is not a membership review of every answered',
+          `Under \`reviewPass: ${label}\` the second consultation is not a membership review of every answered`,
           'question: it runs on the multi-session route, on an answer that was not a decline, and only where the',
           'question asks for a count or a total (`tally.ts`). It asks for the same list with every line tagged',
-          'by what it contributes, and the answer is the sum of the tags rather than the model own total.',
-          'A **refused** ledger is one where a line carried no tag, or where there were no lines at all; the',
-          'first pass answer stands in that case, because a partial sum is a smaller total stated with the same',
-          'confidence as a complete one.',
+          label === 'spec'
+            ? 'a question asks for a count or a total (`tally.ts`), and it asks for a PLAN rather than a list: a'
+            : 'by what it contributes, and the answer is the sum of the tags rather than the model own total.',
+          ...(label === 'spec'
+            ? [
+                'scope, a conjunction of field filters and an operation, run by a deterministic executor over a',
+                'ledger compiled by programme before the question arrived. A **refused** plan is one the parser',
+                'could not read, one whose scope runs past the history, or one whose execution produced no value',
+                '-- an empty selection, or a sum whose numbers disagreed about their unit. The first pass answer',
+                'stands in every one of those cases.',
+              ]
+            : [
+                'A **refused** ledger is one where a line carried no tag, or where there were no lines at all; the',
+                'first pass answer stands in that case, because a partial sum is a smaller total stated with the same',
+                'confidence as a complete one.',
+              ]),
         ]),
   ];
 }

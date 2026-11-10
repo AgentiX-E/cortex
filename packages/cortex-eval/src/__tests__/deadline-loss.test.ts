@@ -39,6 +39,7 @@ import { OpenAICompatibleLLM, resetRetryStats } from '@agentix-e/cortex-ai';
 
 import {
   deadlineLossCeiling,
+  deadlineReached,
   describeTransportLosses,
   lostToTransport,
   providerRefusals,
@@ -336,5 +337,30 @@ describe('§13.309 describeTransportLosses on the deadline kind', () => {
 describe('lostToTransport', () => {
   it('returns a copy, so a caller cannot rewrite the record the report is derived from', () => {
     expect(lostToTransport('deadline')).not.toBe(lostToTransport('deadline'));
+  });
+});
+
+describe('the deadline tolerance has a floor, and the floor is what a loaded machine needs', () => {
+  it('counts an attempt aborted a few milliseconds late as having reached the deadline', () => {
+    // The observed defect: a 500 ms deadline under a full `pnpm check` recorded 495 ms, failed the
+    // one-per-cent test (5 ms of slack), and was re-thrown as an unclassified transport error rather
+    // than counted as a lost question.
+    expect(deadlineReached(495, 500)).toBe(true);
+    expect(deadlineReached(480, 500)).toBe(true);
+  });
+
+  it('still refuses an attempt that died well before the deadline', () => {
+    // The floor must not swallow the class it exists to separate: a socket reset at 3 s against a
+    // 300 s deadline is a wire fault, and calling it a deadline would report a broken network as a
+    // slower model.
+    expect(deadlineReached(3_000, 300_000)).toBe(false);
+    expect(deadlineReached(474, 500)).toBe(false);
+  });
+
+  it('keeps the one-per-cent slack where the deadline is large', () => {
+    // 1% of 300 s is 3 s, which is the slack the campaign's own reading needed; the floor must not
+    // replace it, only cover the small-deadline regime.
+    expect(deadlineReached(297_500, 300_000)).toBe(true);
+    expect(deadlineReached(296_000, 300_000)).toBe(false);
   });
 });
