@@ -463,6 +463,16 @@ describe('the arm records what the recovery pass did', () => {
     expect(result.report.recovery).toBeUndefined();
   });
 
+  it('discards a payload that is not an object at all', async () => {
+    // The accessor is optional and duck-typed, so its return value is `unknown`: a string or a number reaching the
+    // reader is a build whose accessor answers something else, and reading a field off it would throw a TypeError
+    // out of a benchmark. `null` is the interesting one, because `typeof null === 'object'`.
+    for (const payload of [null, 'attempted', 15]) {
+      const result = await run(systemWithRecovery(payload));
+      expect(result.report.recovery, JSON.stringify(payload)).toBeUndefined();
+    }
+  });
+
   it('treats a throwing accessor as absent rather than failing the run', async () => {
     const result = await run(
       systemWithRecovery(null, () => {
@@ -531,6 +541,13 @@ describe('the arm records what the bare-decline retry did', () => {
     expect(result.report.bareRetry).toBeUndefined();
   });
 
+  it('discards a payload that is not an object at all', async () => {
+    for (const payload of [null, 'attempted', 21]) {
+      const result = await run(systemWithBareRetry(payload));
+      expect(result.report.bareRetry, JSON.stringify(payload)).toBeUndefined();
+    }
+  });
+
   it('treats a throwing accessor as absent rather than failing the run', async () => {
     const result = await run(
       systemWithBareRetry(null, () => {
@@ -571,8 +588,8 @@ describe('the arm records the reply-contract repair census', () => {
   const CENSUS = {
     attempted: 9,
     answered: 4,
-    commitment: { attempted: 6, answered: 3 },
-    shape: { attempted: 3, answered: 1 },
+    commitment: { attempted: 6, answered: 3, questions: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'] },
+    shape: { attempted: 3, answered: 1, questions: ['q7', 'q8', 'q9'] },
   };
 
   function systemWithReplyRepair(payload: unknown, impl?: () => unknown): MemorySystem {
@@ -599,11 +616,56 @@ describe('the arm records the reply-contract repair census', () => {
       systemWithReplyRepair({
         attempted: 2,
         answered: 1,
-        commitment: { attempted: 2, answered: 1 },
-        shape: { attempted: 0, answered: 0 },
+        commitment: { attempted: 2, answered: 1, questions: ['a', 'b'] },
+        shape: { attempted: 0, answered: 0, questions: [] },
       }),
     );
     expect(result.markdown).toMatch(/\|\s*shape\s*\|[^|]*\|\s*0\s*\|\s*0\s*\|\s*n\/a\s*\|/);
+  });
+
+  it('names the questions each kind reached, not only how many it reached', async () => {
+    // §13.358. `E3.2` is a criterion about a set -- the non-targets reproduce their mask, so the targets have to
+    // be nameable. Run `42791109966` matched its control's room and was still unscorable, because `attempted: 6`
+    // does not say which six.
+    const result = await run(systemWithReplyRepair(CENSUS));
+
+    expect(result.report.replyRepair?.commitment.questions).toEqual([
+      'q1',
+      'q2',
+      'q3',
+      'q4',
+      'q5',
+      'q6',
+    ]);
+    expect(result.report.replyRepair?.shape.questions).toEqual(['q7', 'q8', 'q9']);
+  });
+
+  it('refuses a census that predates the populations rather than reading it as an empty set', async () => {
+    // The two readings a missing array could be given are opposite: "the repair fired on nothing" is a licence,
+    // and "this artifact cannot say" is the truth. A zeroed array would be the first, so the whole census is
+    // refused -- the same rule that refuses a malformed count, and the reason this cannot be `.questions ?? []`.
+    const predates = {
+      attempted: 9,
+      answered: 4,
+      commitment: { attempted: 6, answered: 3 },
+      shape: { attempted: 3, answered: 1 },
+    };
+    const result = await run(systemWithReplyRepair(predates));
+
+    expect(result.report.replyRepair).toBeUndefined();
+    expect(result.markdown).not.toContain('## Reply-contract repair');
+  });
+
+  it('refuses a population that is not a list of strings', async () => {
+    for (const questions of ['q1', [1, 2], [null], { q1: true }]) {
+      const result = await run(
+        systemWithReplyRepair({
+          ...CENSUS,
+          commitment: { attempted: 6, answered: 3, questions },
+        }),
+      );
+      expect(result.report.replyRepair, JSON.stringify(questions)).toBeUndefined();
+    }
   });
 
   it('omits the section for a system that does not carry the repair', async () => {
@@ -631,7 +693,7 @@ describe('the arm records the reply-contract repair census', () => {
     const malformed = [
       withoutShape,
       { ...CENSUS, shape: { attempted: 3 } },
-      { ...CENSUS, commitment: { attempted: -6, answered: 3 } },
+      { ...CENSUS, commitment: { attempted: -6, answered: 3, questions: [] } },
       { ...CENSUS, shape: null },
       { attempted: 9, answered: 4 },
     ];
@@ -673,5 +735,38 @@ describe('the arm records the reply-contract repair census', () => {
 
     expect(result.report.bareRetry).toEqual({ attempted: 21, answered: 4 });
     expect(result.report.replyRepair).toEqual(CENSUS);
+  });
+});
+
+describe('the arm records what the membership audit did', () => {
+  // The audit is the fourth census and the only one whose second field is not a subset of the first: it is handed an
+  // answer that already exists, so "came back with an answer" is true of every consultation it makes and `changed`
+  // is what a reader needs. These two cases are the reader's floor, not the mechanism's: a build that answers with
+  // the wrong shape must be read as "no audit" rather than as a zero that renders as a measured agreement.
+  function systemWithAudit(payload: unknown): MemorySystem {
+    return {
+      name: 'cortex-memory',
+      answer: () => 'one',
+      auditCensus: () => payload,
+    } as unknown as MemorySystem;
+  }
+
+  it('carries the two counts through, and renders them', async () => {
+    const result = await run(systemWithAudit({ attempted: 480, changed: 12 }));
+
+    expect(result.report.audit).toEqual({ attempted: 480, changed: 12 });
+    expect(result.markdown).toContain('## Membership audit (`reviewPass: audit`)');
+  });
+
+  it('discards a count that is not a whole non-negative number', async () => {
+    for (const payload of [
+      { attempted: 480, changed: -1 },
+      { attempted: 480, changed: 1.5 },
+      { attempted: 480 },
+      { attempted: 480, changed: '12' },
+    ]) {
+      const result = await run(systemWithAudit(payload));
+      expect(result.report.audit, JSON.stringify(payload)).toBeUndefined();
+    }
   });
 });

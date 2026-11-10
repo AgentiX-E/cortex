@@ -211,9 +211,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * totals are derived in {@link replyRepairCensus} instead of being kept beside these two, so a counter that
    * stopped being incremented cannot leave a total that disagrees with its parts.
    */
-  readonly #repairs: Record<'commitment' | 'shape', { attempted: number; answered: number }> = {
-    commitment: { attempted: 0, answered: 0 },
-    shape: { attempted: 0, answered: 0 },
+  readonly #repairs: Record<
+    'commitment' | 'shape',
+    { attempted: number; answered: number; questions: string[] }
+  > = {
+    commitment: { attempted: 0, answered: 0, questions: [] },
+    shape: { attempted: 0, answered: 0, questions: [] },
   };
 
   /**
@@ -883,13 +886,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
   replyRepairCensus(): {
     attempted: number;
     answered: number;
-    commitment: { attempted: number; answered: number };
-    shape: { attempted: number; answered: number };
+    commitment: { attempted: number; answered: number; questions: string[] };
+    shape: { attempted: number; answered: number; questions: string[] };
   } | null {
     const mode = this.#options.replyRepair;
     if (mode === undefined || mode === 'off') return null;
-    const commitment = { ...this.#repairs.commitment };
-    const shape = { ...this.#repairs.shape };
+    // The arrays are copied rather than shared: the caller keeps this census past the next question, and a
+    // reference would let a later repair append to a record that has already been read.
+    const commitment = {
+      ...this.#repairs.commitment,
+      questions: [...this.#repairs.commitment.questions],
+    };
+    const shape = { ...this.#repairs.shape, questions: [...this.#repairs.shape.questions] };
     return {
       attempted: commitment.attempted + shape.attempted,
       answered: commitment.answered + shape.answered,
@@ -1347,8 +1355,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
         : buildShapePrompt(question, assembled.carried, options),
       route,
     );
-    this.#repairs[repair.kind].attempted += 1;
-    if (repaired !== null) this.#repairs[repair.kind].answered += 1;
+    const census = this.#repairs[repair.kind];
+    census.attempted += 1;
+    // §13.358. The question, not just the count: `E3.2` asks whether the repair reached anything outside its
+    // registered population, and that is a question about a **set** -- which six of the five hundred. A census of
+    // two integers cannot name it, so the run that paid for the reading (42791109966) could not produce it, and
+    // the criterion stayed unscorable for a third reason after the room was finally matched.
+    census.questions.push(question);
+    if (repaired !== null) census.answered += 1;
     return repaired;
   }
 

@@ -1232,12 +1232,29 @@ export type BareRetryCensus = {
  * `answered` counts consultations that returned something other than a decline, which is what "the repair
  * produced a reply" means. Whether that reply was **right** needs the gold, which lives in the roster beside this
  * tally and not in it -- the same split `AuditCensus.changed` states for the audit.
+ *
+ * ## Why each kind also carries its questions
+ *
+ * `E3.2` is a criterion about a **set**: the 494 to 497 non-targets must reproduce their correctness mask, so the
+ * 3 to 6 targets have to be nameable. Two integers cannot name them, and run `42791109966` is what that costs --
+ * the room finally matched the control, the pair was finally single-variable, and the criterion stayed unscorable
+ * because the artifact could say `attempted: 6` and not which six. The strings are the questions themselves rather
+ * than indices because an index is a position in a roster the census does not have, and the question text is
+ * already in `questions[].question` for every one of them.
  */
 export type ReplyRepairCensus = {
   readonly attempted: number;
   readonly answered: number;
-  readonly commitment: { readonly attempted: number; readonly answered: number };
-  readonly shape: { readonly attempted: number; readonly answered: number };
+  readonly commitment: {
+    readonly attempted: number;
+    readonly answered: number;
+    readonly questions: readonly string[];
+  };
+  readonly shape: {
+    readonly attempted: number;
+    readonly answered: number;
+    readonly questions: readonly string[];
+  };
 };
 
 /**
@@ -2142,6 +2159,10 @@ function replyRepairLines(census: ReplyRepairCensus | undefined): string[] {
     '',
     '`Answered` means the second call returned something other than a decline. It does not mean correct: the gold',
     'lives in the roster beside this tally, and the delta on the run is what scores it.',
+    '',
+    'Each kind also carries its questions, in `replyRepair.<kind>.questions`. That is the target set: a criterion',
+    'about whether the repair stayed inside its population is a criterion about a set, and a pair of counts cannot',
+    'name it.',
   ];
 }
 

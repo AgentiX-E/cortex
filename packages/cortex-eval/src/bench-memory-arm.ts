@@ -4002,31 +4002,32 @@ function bareRetryAcross(systems: readonly MemorySystem[]): { bareRetry?: BareRe
  * sum, which is §13.244's defect (worker 0's quarter published as the run's).
  */
 function replyRepairAcross(systems: readonly MemorySystem[]): { replyRepair?: ReplyRepairCensus } {
-  const total = summedOver(systems, (system) => {
+  const parts: ReplyRepairCensus[] = [];
+  for (const system of systems) {
     const one = replyRepairOf(system).replyRepair;
-    if (one === undefined) return undefined;
-    return {
-      attempted: one.attempted,
-      answered: one.answered,
-      commitmentAttempted: one.commitment.attempted,
-      commitmentAnswered: one.commitment.answered,
-      shapeAttempted: one.shape.attempted,
-      shapeAnswered: one.shape.answered,
-    };
-  });
-  if (total === undefined) return {};
+    if (one === undefined) return {};
+    parts.push(one);
+  }
+  if (parts.length === 0) return {};
+  // Accumulated by hand rather than through `summedOver`, because two of the six fields are **sets**: §13.358 added
+  // each kind's question list so `E3.2` could name its targets, and a summer that adds numbers would either have to
+  // dispatch on the value's type or concatenate a count with a list. The populations concatenate; the counts add.
+  const commitment = { attempted: 0, answered: 0, questions: [] as string[] };
+  const shape = { attempted: 0, answered: 0, questions: [] as string[] };
+  for (const one of parts) {
+    commitment.attempted += one.commitment.attempted;
+    commitment.answered += one.commitment.answered;
+    commitment.questions.push(...one.commitment.questions);
+    shape.attempted += one.shape.attempted;
+    shape.answered += one.shape.answered;
+    shape.questions.push(...one.shape.questions);
+  }
   return {
     replyRepair: {
-      attempted: total.attempted as number,
-      answered: total.answered as number,
-      commitment: {
-        attempted: total.commitmentAttempted as number,
-        answered: total.commitmentAnswered as number,
-      },
-      shape: {
-        attempted: total.shapeAttempted as number,
-        answered: total.shapeAnswered as number,
-      },
+      attempted: commitment.attempted + shape.attempted,
+      answered: commitment.answered + shape.answered,
+      commitment,
+      shape,
     },
   };
 }
@@ -4161,7 +4162,10 @@ function replyRepairOf(system: MemorySystem): { replyRepair?: ReplyRepairCensus 
     const value = record[key];
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
   }
-  const kinds = {} as Record<'commitment' | 'shape', { attempted: number; answered: number }>;
+  const kinds = {} as Record<
+    'commitment' | 'shape',
+    { attempted: number; answered: number; questions: string[] }
+  >;
   for (const kind of ['commitment', 'shape'] as const) {
     const part = record[kind];
     if (part === null || typeof part !== 'object') return {};
@@ -4170,7 +4174,17 @@ function replyRepairOf(system: MemorySystem): { replyRepair?: ReplyRepairCensus 
       const value = counts[key];
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
     }
-    kinds[kind] = { attempted: counts.attempted as number, answered: counts.answered as number };
+    // §13.358. A build that predates the populations answers without the field, and the honest reading of that is
+    // "this artifact cannot name its targets" rather than a made-up empty set -- which would read as a repair that
+    // fired on nothing and licence `E3.2` on the strength of a missing array. So the whole census is refused, by
+    // the same rule that refuses a malformed count.
+    const questions = counts.questions;
+    if (!Array.isArray(questions) || !questions.every((one) => typeof one === 'string')) return {};
+    kinds[kind] = {
+      attempted: counts.attempted as number,
+      answered: counts.answered as number,
+      questions: questions as string[],
+    };
   }
   return {
     replyRepair: {

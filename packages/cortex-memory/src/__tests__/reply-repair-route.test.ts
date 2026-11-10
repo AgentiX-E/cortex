@@ -89,8 +89,8 @@ describe('the flat route', () => {
     expect(instance.replyRepairCensus()).toEqual({
       attempted: 1,
       answered: 1,
-      commitment: { attempted: 1, answered: 1 },
-      shape: { attempted: 0, answered: 0 },
+      commitment: { attempted: 1, answered: 1, questions: [QUESTION] },
+      shape: { attempted: 0, answered: 0, questions: [] },
     });
   });
 
@@ -124,8 +124,8 @@ describe('the flat route', () => {
     expect(instance.replyRepairCensus()).toEqual({
       attempted: 1,
       answered: 1,
-      commitment: { attempted: 0, answered: 0 },
-      shape: { attempted: 1, answered: 1 },
+      commitment: { attempted: 0, answered: 0, questions: [] },
+      shape: { attempted: 1, answered: 1, questions: [QUESTION] },
     });
   });
 
@@ -138,6 +138,20 @@ describe('the flat route', () => {
     expect(instance.replyRepairCensus()?.shape.attempted).toBe(0);
   });
 
+  it('names the question it repaired, and hands out a copy of the list', async () => {
+    // §13.358. The population `E3.2` needs. The copy matters because the census is read after the question that
+    // produced it: a shared array would let the next repair append to a record a reader already holds, which is the
+    // shape of every "the artifact and its own summary disagreed" defect in this register.
+    const { llm } = scripted([PROSE_REFUSAL, 'Business Administration']);
+    const instance = system(llm, { replyRepair: 'commitment' });
+    await instance.answer(QUESTION, CONTEXT);
+
+    const first = instance.replyRepairCensus();
+    expect(first?.commitment.questions).toEqual([QUESTION]);
+    (first?.commitment.questions as string[]).push('a question this run never asked');
+    expect(instance.replyRepairCensus()?.commitment.questions).toEqual([QUESTION]);
+  });
+
   it('counts a repair that refused again, and keeps the refusal', async () => {
     // The honest outcome for evidence that genuinely holds nothing. `attempted` and `answered` are separate so that
     // "the pass did not fire" and "the pass fired and changed nothing" stay distinguishable -- and this is the arm
@@ -146,7 +160,11 @@ describe('the flat route', () => {
     const instance = system(llm, { replyRepair: 'commitment' });
     expect(await instance.answer(QUESTION, CONTEXT)).toBeNull();
     expect(seen).toHaveLength(2);
-    expect(instance.replyRepairCensus()?.commitment).toEqual({ attempted: 1, answered: 0 });
+    expect(instance.replyRepairCensus()?.commitment).toEqual({
+      attempted: 1,
+      answered: 0,
+      questions: [QUESTION],
+    });
   });
 
   it('keeps a second refusal in prose rather than the first one', async () => {
@@ -156,7 +174,11 @@ describe('the flat route', () => {
     const instance = system(llm, { replyRepair: 'commitment' });
     expect(await instance.answer(QUESTION, CONTEXT)).toBe('Cannot be determined');
     expect(seen).toHaveLength(2);
-    expect(instance.replyRepairCensus()?.commitment).toEqual({ attempted: 1, answered: 1 });
+    expect(instance.replyRepairCensus()?.commitment).toEqual({
+      attempted: 1,
+      answered: 1,
+      questions: [QUESTION],
+    });
   });
 });
 
@@ -166,7 +188,11 @@ describe('the multi-session route', () => {
     const instance = system(llm, { replyRepair: 'commitment' });
     expect(await instance.answerSessions(QUESTION, sessions())).toBe('Business Administration');
     expect(seen).toHaveLength(2);
-    expect(instance.replyRepairCensus()?.commitment).toEqual({ attempted: 1, answered: 1 });
+    expect(instance.replyRepairCensus()?.commitment).toEqual({
+      attempted: 1,
+      answered: 1,
+      questions: [QUESTION],
+    });
   });
 
   it('re-asks a quotation dump for its shape', async () => {
@@ -174,7 +200,11 @@ describe('the multi-session route', () => {
     const instance = system(llm, { replyRepair: 'both' });
     expect(await instance.answerSessions(QUESTION, sessions())).toBe('Business Administration');
     expect(seen).toHaveLength(2);
-    expect(instance.replyRepairCensus()?.shape).toEqual({ attempted: 1, answered: 1 });
+    expect(instance.replyRepairCensus()?.shape).toEqual({
+      attempted: 1,
+      answered: 1,
+      questions: [QUESTION],
+    });
   });
 
   it('leaves an answer alone', async () => {
@@ -210,8 +240,8 @@ describe('the exclusions', () => {
     expect(instance.replyRepairCensus()).toEqual({
       attempted: 0,
       answered: 0,
-      commitment: { attempted: 0, answered: 0 },
-      shape: { attempted: 0, answered: 0 },
+      commitment: { attempted: 0, answered: 0, questions: [] },
+      shape: { attempted: 0, answered: 0, questions: [] },
     });
   });
 
