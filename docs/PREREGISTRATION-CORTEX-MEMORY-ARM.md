@@ -38658,3 +38658,84 @@ stays empty and no dispatch is owed or queued.
 add capability. What it adds is that a *published* number can no longer contradict its own records
 without the build saying so, which is the third round in a row where the deliverable was the ability
 to be wrong out loud.
+
+## 13.360 The reasoning-reader axis, measured on the configuration that ships
+
+`M1` is the last unwritten row on the reader axis: *"accuracy points gained by the reasoning reader over the
+non-reasoning one, paired, same configuration"*, threshold **≥ 3.0 points**. It has been `unrun` since it was
+registered, with a reason that is arithmetic rather than scheduling: the only pair that existed
+(`41222844945` 85.75% with thinking disabled against `41254359622` 90.45% with it enabled on the multi-session
+and temporal routes, **+4.70**, every prompt byte-identical) predates the configuration this row would gate.
+Quoting it would be the `MEASURE-BASELINE-DRIFT` §8 defect — a reading of a system the arm no longer runs.
+
+So the row needs one dispatch, and this section registers it before it happens.
+
+### 13.360.1 What moves, and the twenty-three values that do not
+
+The arm's dispatch surface is 24 inputs and this dispatch moves **one** of them:
+
+| input | shipped value | this dispatch | note |
+| --- | --- | --- | --- |
+| `thinking` | `multi-session+temporal` | **`disabled`** | the variable under test |
+| everything else | §10.3 | unchanged | `model=deepseek-chat`, `ask=verbatim-acts`, `promptContract=evidence-blocks-unsourced`, `relevanceTopK=256`, `limit=0`, `ablation_runs=4` |
+
+The dispatcher declares `reader.thinking` as the departure it is; a run whose artifact showed `disabled`
+without that declaration is the §13.220.5 defect, and the gate refuses it.
+
+### 13.360.2 Why this is not §13.197 dispatched a fourth time
+
+§13.197 measured *five* routes enabled against disabled and read **−12 questions** net (`TR` +4, `IE` −16);
+§13.345 measured `temporal` alone at **+3** on a 200-question sample and §13.347 reverted it at 500 because the
+saving was 16% of the bill and the cost was a point. The value that ships is **two routes**, and the pair
+`41222844945`/`41254359622` is the only reading of it — on the configuration *before* the window allocation, the
+unsourced rendering and the `verbatim-acts` ask. What is missing is not a fourth attempt at the axis; it is a
+reading of the value that ships against the value it ships over, on the arm as it stands.
+
+### 13.360.3 The predictions, written so the dispatch can fail them
+
+- **`P1` (the row's own criterion).** The shipped value beats `disabled` by **≥ 3.0 points** overall, paired on
+  the same 500 questions, and the net exceeds **2 sd of the identical-prompt null** that `arm-flip-census.py`
+  estimates from the questions whose prompts are byte-identical.
+- **`P2` (where the movement must be).** `TR` and `MR` — the two routes the value enables — each contribute
+  **≥ 3 questions** of the net. `IE`, `KU` and `ABS` each move by **≤ 3 questions**. A loss of ≥ 4 on any of the
+  three is a falsification of "the off-list routes are the same routes": it would mean the enabled value moved
+  something the route list says it cannot.
+- **`P3` (admissibility, not a prediction).** The 500 prompts are **byte-identical** to the control's. This is the
+  condition the whole comparison rests on and it is checked by digest, not assumed. If it fails, no reader
+  comparison is read from this pair and `M1` stays `unrun` with the failure recorded.
+
+### 13.360.4 What each outcome licenses, and what none of them licenses
+
+**If `P1` and `P3` hold:** `M1` flips to `pass` with a current-configuration reading, and the shipped
+`thinking` value stops being a cost taken on faith — it becomes a price with a measurement behind it. Requirement
+12 gains its reasoning-axis half on the arm as it stands.
+
+**If the net lands inside ±3.0 while `P3` holds:** `M1` reads `fail`, and the honest summary is that the two
+enabled routes buy less than the row's threshold at this configuration. That does **not** move the default: a
+fail says the value is not worth three points here, not that `disabled` is better, and switching the default on
+the strength of a failed threshold is the same error as adopting a mechanism on a sample.
+
+**If `P3` fails:** nothing is read. The dispatch has bought a record that the prompt is not held constant across
+these two values — which would itself be a finding about `thinking`, since the pair that predates the current
+configuration had 500 of 500 identical.
+
+None of the three licenses a second dispatch of this pair. The stopping rule is one run, no peeking, no re-run
+for a better draw.
+
+### 13.360.5 What this pair cannot say, and the axis it must not be confused with
+
+"Stronger reader" is two different things in this campaign's records and they point in opposite directions:
+
+| axis | reading | what moved |
+| --- | --- | --- |
+| reasoning **mode**, same model | **+4.70** (`41222844945` → `41254359622`, prompts identical) | decoding, not identity |
+| model **tier**, same mode | **−7.20** (`40698867439` → `40698883428`, 417 against 381 of 500) | the model itself |
+
+`M1` names the first axis. The second is measured and negative, and §13.118.1 catalogued it: the stronger tier
+lost **58 questions the weaker one answered** and won 22, with the loss concentrated in `TR` (−14) and `IE`
+(−12). A round that read the tier result as a verdict on `M1` would be answering a question nobody asked, and a
+round that read `M1` as licence to switch model tiers would be doing the same in the other direction.
+
+The cost of this dispatch is printed by `spend-projection.mjs` before the POST, from the most recent full pass's
+billed block; the projection is printed rather than restated here for the reason §13.359.4 gives about ratios —
+a number copied into prose is a number nothing re-derives.
