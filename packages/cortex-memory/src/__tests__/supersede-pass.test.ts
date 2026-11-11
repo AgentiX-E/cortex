@@ -18,6 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LLM } from '@agentix-e/cortex-core';
 
+import { admissionOptionsFrom, admitTurns } from '../admission.js';
 import { CortexMemory } from '../memory.js';
 import { buildSupersedePrompt } from '../prompt.js';
 import type { CortexMemoryOptions } from '../types.js';
@@ -264,11 +265,11 @@ describe('the prompt builder', () => {
   });
 
   it('carries the first answer verbatim, which is the only reason the comparison is possible', async () => {
-    const turns = [EARLY, LATE].map((text) => ({
-      content: text,
-      session: 0,
-      role: 'user' as const,
-    }));
+    // Built through `admitTurns` rather than as an object literal: `AdmittedTurn` is `MemoryValue` plus an
+    // ordinal, and a hand-written literal that satisfies the shape today stops satisfying it the moment the
+    // value type gains a field -- which is exactly how this fixture failed the build after passing typecheck
+    // against a stale `dist`.
+    const turns = admitTurns([EARLY, LATE], admissionOptionsFrom(NOW, { ...GATE }));
     const { prompt } = buildSupersedePrompt('How many followers?', '1250 followers', turns);
 
     expect(prompt).toContain('1250 followers');
