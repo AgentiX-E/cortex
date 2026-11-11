@@ -156,3 +156,27 @@ The mechanism is wired (`reviewPass: 'spec'`), off by default, with its census (
 **Next.** Dispatch `spec` on the runner and read it against the shipped arm. If `MR` moves by fewer than
 three questions, the finding is about the grain and the next increment is an **annotated ledger** — one row
 per event, compiled before the question — rather than a longer plan language.
+
+## 8. The classification this measurement freezes
+
+§3's table is a reading of a run that has not happened. To keep it from being re-derived once the run
+exists — the move that turns a pre-registered split into a post-hoc one — the membership is written to
+`tools/spec-reachability-groups.json` by `tools/spec-reachability-groups.py`, and both are pinned by
+`tools/__tests__/test_spec_reachability_groups.py`. The tool refuses a derivation that disagrees with
+the two readings' own headlines, with the questions' golds, or with each other's vocabulary order,
+because every one of those states produces a plausible group about the wrong population.
+
+| group | n | the reading it supports |
+| --- | ---: | --- |
+| `question-vocabulary` | 8 | a plan is reachable from the question alone; a loss is a contract failure |
+| `history-only` | 4 | reachable only by naming a word the question does not use; a loss is the table's wording |
+| `unreachable` | 5 | not reachable by any plan; a loss is the ledger's grain |
+| `no-numeric-gold` | 3 | the gold is not a number; the grammar was never the instrument |
+
+**The split is one-sided and `tools/arm-flip-census.py --groups` says so in the artifact itself.** Every
+group is drawn from the control's failures, so its `brk` column is structurally zero: the groups can only
+show repairs. A treatment's losses land in `unclassified`, on questions the control already answered
+correctly, and the identity the reading has to satisfy is
+`Σ group repairs − unclassified breaks = overall net`. The tally arm is the proof that this matters rather
+than being tidy: ten `MR` losses, all ten unclassified, and a failure-list table that would have been
+blank. The tool refuses a classification that violates the premise, so the blank table cannot recur.

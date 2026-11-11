@@ -2,7 +2,8 @@
 """Report how much of a paired difference is noise, before anyone reads the difference.
 
     python3 tools/arm-flip-census.py --treatment A.json --control B.json \\
-        [--partition 'auditConsultations>0'] [--capability MR] [--relations] [--json]
+        [--partition 'auditConsultations>0'] [--capability MR] [--relations] [--json] \\
+        [--groups tools/spec-reachability-groups.json]
 
 ## The gap this closes
 
@@ -68,6 +69,25 @@ Three limits are stated rather than fixed:
 - `numeric` is checked before containment because `2` is contained in `2023/05/30` and the containment
   test would otherwise report a date match as a partial success. It is the same boundary rule
   `tr-failure-class.ts` uses.
+
+## `--groups` reads a split that was fixed before the run, and the split is asymmetric
+
+`--partition` is post hoc by construction, so this tool prints a warning beside it. `--groups` takes
+the membership from a file instead — `tools/spec-reachability-groups.json` is derived from a grammar
+measurement taken before the dispatch, and `tools/spec-reachability-groups.py` refuses to derive one
+that disagrees with the readings it came from.
+
+The block that comes back is **not** a partition of the movement, and reading it as one is the
+mistake it exists to prevent. Its groups are drawn from the control's **failures**, so a member can
+only be repaired or stay wrong: every group's `brk` is structurally zero. A treatment's losses are
+therefore always in `unclassified`, on questions the control answered correctly. The `tally` arm is
+the worked example — ten `MR` losses, ten of them unclassified, and a group table that would have
+shown nothing at all.
+
+`registered_groups` refuses a file whose groups hold a control-correct question for that reason. The
+identity it prints is the one that can fail:
+
+    Σ group repairs − unclassified breaks = overall net
 
 ## `--relations` also prints prompt identity, which is the admissibility of the pair
 
@@ -269,6 +289,111 @@ def partition(
     return read
 
 
+def registered_groups(
+    treatment: dict, control: dict, shared: list[str], path: Path
+) -> dict:
+    """Read an explicit, frozen classification of the shared questions.
+
+    `--partition` splits by a *record field*, which means the split is a fact about the treatment's
+    own output and can only be chosen after the run. This takes the membership from a file instead,
+    so a split derived from a measurement taken before the dispatch -- the grammar ceiling, for
+    instance -- stops being post hoc.
+
+    Two states are refused rather than reported, because both produce a group about the wrong thing:
+
+    - an id in two groups. The union would then double-count it, and the identity line below exists
+      to make that impossible to miss rather than to be discovered in prose;
+    - an id the artifacts do not carry. That is a stale classification: the file was derived from a
+      population the run no longer has, and every group's `n` would be quietly wrong.
+    """
+    payload = json.loads(path.read_text())
+    declared = payload.get('groups')
+    if not isinstance(declared, list) or not declared:
+        raise ValueError(f'{path} declares no groups')
+    membership: dict[str, str] = {}
+    for group in declared:
+        name = group.get('name')
+        ids = group.get('ids')
+        if not isinstance(name, str) or not name:
+            raise ValueError(f'{path}: a group carries no name')
+        if not isinstance(ids, list) or not ids:
+            raise ValueError(f'{path}: group `{name}` carries no ids')
+        for identifier in ids:
+            if identifier in membership:
+                raise ValueError(
+                    f'{path}: {identifier} is in both `{membership[identifier]}` and `{name}`; '
+                    'the identity line would not balance and the double count would look like a group'
+                )
+            membership[identifier] = name
+    absent = sorted(i for i in membership if i not in treatment or i not in control)
+    if absent:
+        raise ValueError(
+            f'{path}: {len(absent)} classified questions are not in both artifacts (e.g. {absent[:5]}); '
+            'the classification is stale against this pair'
+        )
+
+    population = set(shared)
+    # Every classified question has to be one the CONTROL answered wrong, and this is not a
+    # stylistic preference. A group derived from the control's failure list can only ever be repaired
+    # or left wrong; it cannot be broken, because it was already wrong. So a group whose `brk` is not
+    # structurally zero is a group derived from the other arm, or from a different verdict field, and
+    # its arithmetic would silently mix the repair opportunity with the exposure to damage. The tally
+    # arm is the worked example: all ten of its losses land in `unclassified`, because the losses are
+    # by construction questions the control got right and the failure list never saw.
+    settled = sorted(i for i in membership if i in population and _verdict(control[i]) is not False)
+    if settled:
+        raise ValueError(
+            f'{path}: {len(settled)} classified questions were answered CORRECTLY by the control '
+            f'(e.g. {settled[:5]}). A group built from a failure list cannot contain them, and the '
+            'repair/damage identity would not mean what it prints'
+        )
+
+    read: list[dict] = []
+    for group in declared:
+        inside = [i for i in group['ids'] if i in population]
+        summary = compare(treatment, control, inside) if inside else None
+        read.append(
+            {
+                'name': group['name'],
+                'what': group.get('what'),
+                'declared': len(group['ids']),
+                'excluded': len(group['ids']) - len(inside),
+                **(summary or {'n': 0, 'repaired': 0, 'broken': 0, 'net': 0, 'discordant': 0,
+                               'p_value': None, 'resolution': None, 'power_net': None,
+                               'ungraded': 0, 'repaired_ids': [], 'broken_ids': []}),
+            }
+        )
+
+    grouped = {i for group in declared for i in group['ids']} & population
+    outside = [i for i in shared if i not in grouped]
+    unclassified = compare(treatment, control, outside) if outside else None
+    overall = compare(treatment, control, shared)
+    grouped_repaired = sum(group['repaired'] for group in read)
+    grouped_broken = sum(group['broken'] for group in read)
+    grouped_n = sum(group['n'] for group in read)
+    outside_broken = unclassified['broken'] if unclassified else 0
+    outside_repaired = unclassified['repaired'] if unclassified else 0
+    identity = {
+        'grouped': grouped_n,
+        'unclassified': unclassified['n'] if unclassified else 0,
+        'total': overall['n'],
+        'repair': grouped_repaired + outside_repaired,
+        'damage': outside_broken,
+        'holds': (
+            grouped_n + (unclassified['n'] if unclassified else 0) == overall['n']
+            and grouped_repaired + outside_repaired == overall['repaired']
+            and outside_broken == overall['broken']
+            and grouped_repaired - outside_broken == overall['net']
+        ),
+    }
+    return {
+        'source': payload.get('source'),
+        'groups': read,
+        'unclassified': unclassified,
+        'identity': identity,
+    }
+
+
 RELATION_CLASSES = (
     'empty',
     'equal',
@@ -456,6 +581,58 @@ def render(summary: dict) -> str:
                 '  It is not a control group: the split was chosen after seeing the treatment.',
             ]
 
+    if summary.get('groups'):
+        block = summary['groups']
+        source = block.get('source') or {}
+        lines += [
+            '',
+            'Registered groups — fixed before the dispatch, not chosen from these results',
+            '',
+        ]
+        if source:
+            lines += [
+                f'  {source.get("capability", "?")} population of {source.get("controlArtifact", "?")}; '
+                f'measured by {source.get("measuredBy", "?")}',
+                f'  frozen {source.get("frozenBefore", "?")}',
+                '',
+            ]
+        head = (
+            f'{"group":22s} {"n":>4s} {"rep":>5s} {"brk":>5s} {"net":>5s} {"p":>8s} '
+            f'{"resolution":>11s}'
+        )
+        lines += [head, '-' * len(head)]
+        for group in block['groups']:
+            resolution = '—' if group['resolution'] is None else f'{group["resolution"]}'
+            p_value = '—' if group['p_value'] is None else f'{group["p_value"]:.4g}'
+            lines.append(
+                f'{group["name"]:22s} {group["n"]:4d} {group["repaired"]:5d} {group["broken"]:5d} '
+                f'{group["net"]:+5d} {p_value:>8s} {resolution:>11s}'
+            )
+        outside = block['unclassified']
+        if outside is not None:
+            p_value = '—' if outside['p_value'] is None else f'{outside["p_value"]:.4g}'
+            lines.append(
+                f'{"unclassified":22s} {outside["n"]:4d} {outside["repaired"]:5d} '
+                f'{outside["broken"]:5d} {outside["net"]:+5d} {p_value:>8s} {"—":>11s}'
+            )
+        identity = block['identity']
+        lines.append(
+            f'  identity: {identity["grouped"]} grouped + {identity["unclassified"]} unclassified '
+            f'= {identity["total"]} graded; repair {identity["repair"]} − damage {identity["damage"]} '
+            f'= net — {"PASS" if identity["holds"] else "FAIL"}'
+        )
+        lines.append(
+            '  every grouped question is one the control answered WRONG, so a group can only be '
+            'repaired or stay wrong: its `brk` is structurally zero and its net is its repair yield. '
+            'The damage side of a movement can only land in `unclassified`.'
+        )
+        for group in block['groups']:
+            if group['excluded']:
+                lines.append(
+                    f'  {group["name"]}: {group["excluded"]} declared questions are outside this '
+                    'population and are not read here'
+                )
+
     if summary.get('relations'):
         rel = summary['relations']
         ident = summary['identity']
@@ -500,6 +677,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--treatment', required=True, help='the artifact under test')
     parser.add_argument('--control', required=True, help='the artifact it is paired against')
     parser.add_argument('--partition', default=None, help="a field predicate, e.g. 'auditConsultations>0'")
+    parser.add_argument(
+        '--groups',
+        default=None,
+        help='a frozen classification file: groups derived before the dispatch, not from these results',
+    )
     parser.add_argument('--capability', action='append', default=None, help='restrict to these')
     parser.add_argument(
         '--relations',
@@ -542,6 +724,12 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.partition:
         summary['partition'] = partition(treatment, control, graded, args.partition)
+    if args.groups:
+        try:
+            summary['groups'] = registered_groups(treatment, control, shared, Path(args.groups))
+        except (OSError, ValueError) as error:
+            print(f'FAIL {error}', file=sys.stderr)
+            return 1
     if args.relations:
         summary['relations'] = relations(treatment, control, graded)
         summary['identity'] = identity(treatment, control, shared)

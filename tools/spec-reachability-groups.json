@@ -1,0 +1,49 @@
+{
+  "source": {
+    "measuredBy": "packages/cortex-memory/bench/measure-spec-ceiling.ts",
+    "readings": [
+      "tools/readings/spec-ceiling-question.json",
+      "tools/readings/spec-ceiling-history.json"
+    ],
+    "controlArtifact": "42533236864",
+    "capability": "MR",
+    "ceilings": {
+      "numericGold": 17,
+      "questionVocabulary": 8,
+      "historyVocabulary": 12,
+      "copy": 11
+    },
+    "frozenBefore": "the round-62 `reviewPass: spec` dispatch: derived from measure-spec-ceiling.ts over 42533236864 before the run that reads it, so the split cannot be chosen after the result"
+  },
+  "groups": [
+    {
+      "name": "question-vocabulary",
+      "what": "a plan built from the question's own words reaches the gold; a loss here is the contract",
+      "ids": [
+        "21d02d0d",
+        "3a704032",
+        "60bf93ed",
+        "6d550036",
+        "88432d0a",
+        "9ee3ecd6",
+        "bf659f65",
+        "gpt4_7fce9456"
+      ]
+    },
+    {
+      "name": "history-only",
+      "what": "no plan from the question's words reaches it and one using a word the history uses does; a loss here is the table's wording",
+      "ids": ["c18a7dc8", "d905b33f", "gpt4_2f91af09", "gpt4_372c3eed"]
+    },
+    {
+      "name": "unreachable",
+      "what": "no plan in the grammar reaches a numeric gold; a loss here is the ledger's grain",
+      "ids": ["2b8f3739", "37f165cf", "d6062bb9", "d851d5ba", "gpt4_731e37d7"]
+    },
+    {
+      "name": "no-numeric-gold",
+      "what": "no plan reaches it and the gold is not a number; the grammar was never the instrument",
+      "ids": ["gpt4_2ba83207", "gpt4_2f8be40d", "gpt4_ab202e7f"]
+    }
+  ]
+}

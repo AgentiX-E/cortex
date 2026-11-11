@@ -39252,3 +39252,53 @@ both regimes can be pinned without a clock:
 
 Three tests, one per regime, and the `deadlineReached` export is recorded in the export census with its
 reason (a timing assertion would need a timer, and a timing test is what the floor exists to avoid).
+
+#### 13.363.7 The reading is decomposed before the dispatch, and the split is asymmetric
+
+`P1` is an `MR` number and `MR` is four populations wearing one heading. §13.363's own ceiling
+table says what those groups are, and it was produced *before* this dispatch, so the membership below
+is a fact about the grammar rather than a choice made with the results in hand. It is frozen to
+`tools/spec-reachability-groups.json`, derived by `tools/spec-reachability-groups.py` from the two
+readings in `tools/readings/`, and `test_spec_reachability_groups.py` fails if the file and a fresh
+derivation ever part company.
+
+| group | n | what a loss there would mean |
+| --- | ---: | --- |
+| `question-vocabulary` | 8 | a plan from the question's own words reaches the gold and the model did not choose it — **the contract** |
+| `history-only` | 4 | only a word the question does not supply reaches it — **the table's wording** |
+| `unreachable` | 5 | no plan in the grammar reaches a numeric gold — **the ledger's grain** |
+| `no-numeric-gold` | 3 | the gold is not a number; the grammar was never the instrument |
+
+**The split is not a partition of the movement, and that is the part that has to be said out loud.**
+Every group is drawn from the control's **failures**, so a grouped question can only be repaired or
+stay wrong; group `brk` is structurally zero. A treatment's losses therefore land in `unclassified`
+— the 101 `MR` questions the control already answered correctly — and `--groups` refuses a
+classification containing a control-correct question rather than printing a table where the damage is
+invisible. The `tally` arm is the worked example: ten `MR` losses, **ten of them unclassified**, and a
+group table drawn from the failure list that would have shown nothing at all. The identical
+structure is what `P2` measures on its own line, which is why the two must be read together.
+
+The identity the reading has to satisfy, and the one it can fail:
+
+> `Σ group repairs − unclassified breaks = overall net`
+
+| outcome | what it licenses |
+| --- | --- |
+| repairs concentrated in `question-vocabulary` | the plan prompt is reaching what it can see, and the next increment is the table's *wording* for the `history-only` four |
+| repairs in `history-only` but none in `question-vocabulary` | the model is not following the schema on the questions it could answer — a contract defect, not a ledger one |
+| repairs only in `unclassified` | the movement is not the specification at all; it is the reader behaving differently under a different prompt |
+| no group repairs, `unclassified` breaks ≤ 3 | `P1` fails on a population with 8 reachable questions, which is the strongest available evidence for the **annotated ledger** |
+
+**Dispatch.**
+
+```
+python3 tools/dispatch-cortex-memory-ab.py --set cortex_memory_review_pass=spec
+```
+
+and the reading:
+
+```
+python3 tools/arm-flip-census.py \
+  --treatment <spec artifact> --control <42533236864 artifact> \
+  --capability MR --groups tools/spec-reachability-groups.json
+```

@@ -385,5 +385,125 @@ class CompletenessCliTest(unittest.TestCase):
         self.assertIn('ZZ', completed.stderr)
 
 
+class RegisteredGroupsTest(unittest.TestCase):
+    """A split read from a frozen file, and the two ways such a file can be about the wrong thing.
+
+    The population is built so the arithmetic is checkable by hand: the control answers `g1`..`g4`
+    wrong and `u1`..`u6` right, the treatment repairs `g1` and breaks `u1` and `u2`. Two groups of
+    two, so the identity is 1 repair and 2 damage over 6 unclassified.
+    """
+
+    def _pair(self) -> tuple[list[dict], list[dict]]:
+        control = [_record(f'g{i}', correct=False) for i in range(1, 5)]
+        control += [_record(f'u{i}', correct=True) for i in range(1, 7)]
+        treatment = [_record(f'g{i}', correct=i == 1) for i in range(1, 5)]
+        treatment += [_record(f'u{i}', correct=i > 2) for i in range(1, 7)]
+        return treatment, control
+
+    def _run(self, treatment: list[dict], control: list[dict], groups: dict) -> subprocess.CompletedProcess:
+        directory = Path(tempfile.mkdtemp(prefix='groups-'))
+        left = directory / 'treatment.json'
+        right = directory / 'control.json'
+        declared = directory / 'groups.json'
+        left.write_text(json.dumps(_report(treatment)))
+        right.write_text(json.dumps(_report(control)))
+        declared.write_text(json.dumps(groups))
+        return subprocess.run(
+            [sys.executable, str(TOOLS / 'arm-flip-census.py'), '--treatment', str(left),
+             '--control', str(right), '--groups', str(declared)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def _groups(self, **overrides: object) -> dict:
+        payload = {
+            'source': {'capability': 'MR', 'controlArtifact': 'test', 'measuredBy': 'a measurement',
+                       'frozenBefore': 'the dispatch'},
+            'groups': [
+                {'name': 'a', 'what': 'reaches the gold', 'ids': ['g1', 'g2']},
+                {'name': 'b', 'what': 'does not', 'ids': ['g3', 'g4']},
+            ],
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_the_reading_splits_the_repair_side_and_prints_the_identity(self) -> None:
+        treatment, control = self._pair()
+        completed = self._run(treatment, control, self._groups())
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        # Column alignment is the renderer's business; the numbers are what this asserts.
+        self.assertRegex(completed.stdout, r'(?m)^a\s+2\s+1\s+0\s+\+1\b')
+        self.assertRegex(completed.stdout, r'(?m)^unclassified\s+6\s+0\s+2\s+-2\b')
+        self.assertIn('identity: 4 grouped + 6 unclassified = 10 graded; repair 1 − damage 2 = net', completed.stdout)
+        self.assertIn('PASS', completed.stdout)
+
+    def test_the_block_says_the_split_was_not_chosen_from_the_results(self) -> None:
+        # The whole reason the file exists. `--partition` prints the opposite sentence about itself,
+        # and a reader has to be able to tell which instrument produced the block in front of them.
+        treatment, control = self._pair()
+        completed = self._run(treatment, control, self._groups())
+        self.assertIn('not chosen from these results', completed.stdout)
+
+    def test_every_group_carries_its_own_interpretation(self) -> None:
+        signal = flip.registered_groups(
+            *reversed_pair(self._pair()),
+            list(f'g{i}' for i in range(1, 5)) + [f'u{i}' for i in range(1, 7)],
+            _write_groups(self._groups()),
+        )
+        self.assertEqual([group['what'] for group in signal['groups']], ['reaches the gold', 'does not'])
+
+    def test_a_question_in_two_groups_is_refused(self) -> None:
+        # The union would double-count it and the identity line would be the only evidence.
+        treatment, control = self._pair()
+        payload = self._groups()
+        payload['groups'][1]['ids'] = ['g3', 'g4', 'g1']
+        completed = self._run(treatment, control, payload)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn('is in both', completed.stderr)
+
+    def test_a_classification_that_predates_the_artifacts_is_refused(self) -> None:
+        treatment, control = self._pair()
+        payload = self._groups()
+        payload['groups'][0]['ids'] = ['g1', 'gone']
+        completed = self._run(treatment, control, payload)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn('stale', completed.stderr)
+
+    def test_a_group_holding_a_control_correct_question_is_refused(self) -> None:
+        # The structural check. A group derived from a failure list cannot contain a question the
+        # control answered correctly, and if one is there the file was derived from the other arm --
+        # at which point its `brk` column would mix repair opportunity with exposure to damage.
+        treatment, control = self._pair()
+        payload = self._groups()
+        payload['groups'][0]['ids'] = ['g1', 'u1']
+        completed = self._run(treatment, control, payload)
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn('answered CORRECTLY by the control', completed.stderr)
+        self.assertIn('u1', completed.stderr)
+
+    def test_a_file_with_no_groups_is_refused(self) -> None:
+        treatment, control = self._pair()
+        completed = self._run(treatment, control, self._groups(groups=[]))
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn('declares no groups', completed.stderr)
+
+
+def reversed_pair(pair: tuple[list[dict], list[dict]]) -> tuple[dict, dict]:
+    """The fixture's two sides as `registered_groups` wants them: indexed by question id."""
+    treatment, control = pair
+    return (
+        {record['questionId']: record for record in treatment},
+        {record['questionId']: record for record in control},
+    )
+
+
+def _write_groups(payload: dict) -> Path:
+    directory = Path(tempfile.mkdtemp(prefix='groups-'))
+    target = directory / 'groups.json'
+    target.write_text(json.dumps(payload))
+    return target
+
+
 if __name__ == '__main__':
     unittest.main()
