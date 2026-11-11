@@ -39735,3 +39735,53 @@ two rounds before the pass and already contained the direction (`earlier` / `lat
 it in four lines. Nothing in the arm's own artifact could have said it, because the artifact records that a
 substitution was *authorised*, never that it was *backwards*. That is the instrument gap this section closes, and it
 is worth stating that the gap was in the **authorization's definition**, not in its arithmetic.
+
+#### 13.372 The corrected supersession arm read: `K1` fails at 2 of 8, and the family is closed
+
+`43001135439` completed at 11:39Z, 91 minutes, 5,965 provider calls. Against `42533236864`:
+
+| # | verdict | reading |
+| --- | --- | --- |
+| `K1` | **fails** | **2 of 8** converted (bar 6), **4** regressions on the `KU` column, exact `p = 1.0` |
+| `K2` | holds | no capability outside its own 2 sd |
+| `K3` | holds | 0 non-`KU` digest differences |
+| `K4` | holds | `replaced 18` / `refused 270` = 288 |
+| `K5` | holds | prompt **+6.7%**, completion **+0.7%** |
+| — | — | overall **90.4% (452)** against the control's **91.2% (456)** — **−0.8 points** |
+
+`P2` (no-change < 100) read **213**; `P3a` (`restates` ≤ 8) read **57**; `P3b` held; `P3c` (`replaced` > 19) read
+**18**. Three of the four instrument predictions failed, and the one that held is the weakest — that the pass was
+consulted on every target.
+
+**The finding that outranks the gate.** The value rule admitted four of the six spans the ceiling had refused, and
+their answers price the refusals for the first time: `a2f3aa27` converted to `1300` (a refusal that cost a repair),
+and `ed4ddc30`, `0ddfec37`, `10e09553` were each turned from a correct answer into a wrong one (`30 dozen`,
+`20 autographed`, `9 largemouth`) — three refusals that prevented damages. The ceiling's net on those four was **+2
+questions**, so §13.369's central claim ("the ceiling refused the answers that arrived") was wrong about three of the
+six, and §13.371's direction hole is one of the three rather than the whole story.
+
+**The refutation, on the registered termination condition.** §13.370 said: *if those two changes do not clear it, the
+mechanism is refuted as a member of its family, and the queue moves to `assemble()` and the reader axis.* They did
+not clear it. **The supersession family is closed**, and so is the substitution family it belongs to: `tally` (−9.5),
+`spec` (−39), `supersede` (0, then −0.8 overall).
+
+**Two things this arm establishes that outlast it.**
+
+1. **The premise was never the problem, and is now measured three ways.** The correction is in the window 72/72
+   (`MEASURE-STALE-EXPOSURE.md`); the reader can find it (one question at 4 of 4); and removing the instruction's
+   discouragement moved `no-change` by only 29 consultations in 288. Asking the same reader to compare two statements
+   it has already read does not produce the comparison.
+2. **`not-later` is correct and stays.** It is a guard with no mechanism to guard, so it ships as a refusal reason
+   that cannot fire — `reviewPass: supersede` remains an experimental mode and the guard is what any future
+   substitution mechanism inherits. Its `Q1`–`Q3` were satisfied offline before this arm's artifact existed
+   (`ed4ddc30` refuses, `a2f3aa27` passes on a same-day pair), and the arm's own damage on `ed4ddc30` is the
+   independent confirmation.
+
+**Instrument gap registered, and it cost this round 14 CNY.** `CortexMemory` computes `lastReview { first, final,
+changed }` per question and the artifact persists only counts. A refused substitution is therefore invisible until a
+later arm performs it, which is why §11 could be wrong for a whole round without any artifact contradicting it. Any
+future substitution mechanism must persist `final`.
+
+**What is not licensed.** A third supersession arm. The registered licence was "an extraction defect visible in the
+census", and `P3a`'s failure is that defect — but a mechanism whose best case is 1 repair against 3 damages is not one
+extraction fix away from 6 of 8. The queue moves to `assemble()`.

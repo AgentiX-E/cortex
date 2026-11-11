@@ -220,6 +220,12 @@ right; substituting `30 dozen` would have made it wrong. The remaining five refu
 census records a length, not a direction, so which of them were saves and which were losses cannot be recovered
 from `42976296380`'s artifact at all.
 
+**Correction to this section, written after `43001135439` was read (§12.2).** The arm that admitted the spans the
+ceiling refused damaged **three** of them (`ed4ddc30`, `0ddfec37`, `10e09553`) and repaired **one** (`a2f3aa27`), so
+the ceiling's net on the four that can now be priced was **+2 questions**. The sentence below — "a guard built from
+those two checks authorises a substitution in the wrong direction" — is right; the framing above it, that the ceiling
+mostly ate correct identifications, was wrong about three of six.
+
 **The reading that survives is sharper and worse for the mechanism.** Every `CHANGED: yes` was correct on both
 checkable fields — span in the evidence, date on the same record — and the two fields are **necessary but not
 sufficient**: `ed4ddc30`'s span passes both and states the *earlier* value. A guard built from those two checks
@@ -253,3 +259,97 @@ destroyed**. The first reason — an instruction that argued for `no` on a popul
 The mechanism's own premise is also unchanged: the correction is in the window 72/72. What changed is that the
 authorization was missing a third check, and the failure mode that check prevents is not "the pass does nothing" but
 "the pass makes a right answer wrong".
+
+## 12. The corrected arm: `K1` fails again, and the ceiling it replaced was right twice as often as it was wrong
+
+**Read from:** `43001135439` (the value rule, 500 × 4, 10:08Z → 11:39Z) against `42533236864` (its control).
+
+| # | verdict | reading |
+| --- | --- | --- |
+| `K1` | **fails** | **2 of 8** converted (bar 6); the `KU` column carries **4** regressions; exact `p = 1.0` |
+| `K2` | holds | no capability outside its own 2 sd (`TR` +0.79, `MR` +0.21, `IE` −0.33, `ABS` 0.00) |
+| `K3` | holds | 0 non-`KU` prompt differences |
+| `K4` | holds | `replaced 18` / `refused 270`, `18 + 270 = 288` |
+| `K5` | holds | prompt **+6.7%**, completion **+0.7%** |
+
+Overall **90.4% (452/500)** against the control's **91.2% (456)** — the arm is **0.8 points worse**, which is the
+first time in this campaign a mechanism has moved the total in the wrong direction outside the flip floor.
+
+| prediction | stated | read | verdict |
+| --- | --- | --- | --- |
+| `P2` | `no-change` < 100 | **213** (was 242) | **fails** — deleting the sentence bought 29 of 288 |
+| `P3a` | `restates` ≤ 8, `unreadable` = 0 | **57**, 0 | **fails** |
+| `P3b` | every unconverted target consulted | all 6 | holds |
+| `P3c` | `replaced` > 19 | **18** | **fails** |
+
+### 12.1 The two conversions and the four damages, named
+
+| question | control | treatment | answer it became | what it is |
+| --- | ---: | ---: | --- | --- |
+| `a2f3aa27` | 0.00 | **1.00** | `1300` | the repair the ceiling destroyed last round, now 4 of 4 |
+| `a1eacc2a` | 0.00 | 0.25 | `Four short stories had been written …` | one repetition — and a **judge** question, see below |
+| `ed4ddc30` | 1.00 | **0.00** | `30 dozen` | the direction hole: a correct `20 dozen` replaced by the January value |
+| `0ddfec37` | 1.00 | **0.00** | `20 autographed` | a span about a different thing; gold `15` |
+| `10e09553` | 1.00 | **0.00** | `9 largemouth` | the same, gold `7` |
+| `50635ada` | 1.00 | 0.75 | unchanged | one repetition of four |
+
+**`a1eacc2a` is not a mechanism win.** Its gold is `seven`; the control answered `Four` and was graded **wrong**; this
+arm answered `Four short stories had been written since starting to write regularly` and was graded **correct**. The
+leading value is the same wrong value in both, so the difference is the judge accepting a longer answer that contains
+it. That is a judge-consistency question with a known hazard (the same one `judge-audit.yml` exists for), and counting
+it as a conversion would credit the mechanism for a leniency. **Genuine conversions: one.**
+
+### 12.2 The column change is the ceiling being right, and this is the round's real finding
+
+Last round's six length refusals were read as the guard destroying correct identifications. Four of the six are now
+measured, because the value rule **admitted** their spans and the answers tell us what they were worth:
+
+| question | last round | this round | reading |
+| --- | --- | --- | --- |
+| `a2f3aa27` | refused, gold `1300` | **converted to `1300`** | a refusal that **cost** a repair |
+| `ed4ddc30` | refused, answer correct | **damaged to `30 dozen`** | a refusal that **prevented** a damage |
+| `0ddfec37` | refused, answer `15` correct | **damaged to `20 autographed`** | a refusal that **prevented** a damage |
+| `10e09553` | refused, answer `7` correct | **damaged to `9 largemouth`** | a refusal that **prevented** a damage |
+| `dad224aa` | refused on length | refused as **`restates`** | the same verdict, now stated about the pair |
+| `7401057b` | refused | untouched | unknown |
+
+So the ceiling's net on the four we can now price was **+2 questions**: it prevented three damages and cost one
+repair. `§11` said "at least one of the six was a damage avoided"; the measurement says **three**, and the sentence
+that called the ceiling an instrument that "ate the answers it was built to accept" was wrong about two thirds of
+that population. The reason it looked right is the reason this campaign keeps re-deriving readings: the artifact
+records that a substitution was *authorised*, never what it replaced the answer with, so a refused substitution is
+invisible until a later arm performs it.
+
+**Instrument gap, registered.** `CortexMemory` already computes `lastReview { first, final, changed }` per question
+and the artifact persists none of it. Any future substitution mechanism must persist `final`, or its damages can only
+be read one arm later — which is exactly what happened here, at 14 CNY per reading.
+
+### 12.2.1 What the census says, and it is not about the instruction
+
+75 of 288 consultations said `CHANGED: yes`, and of those:
+
+- **18** carried a value the answer did not already have (`replaced`);
+- **57** carried numerals the answer already had (`restates`).
+
+So when the reader does answer, three times out of four it quotes the **current** value back. On the other 213 it says
+nothing changed, about windows where `MEASURE-STALE-EXPOSURE.md` finds the correction present in 72 of 72.
+
+The previous round attributed this to the instruction's asymmetry sentence. That attribution is now measured and it
+was **wrong as a primary cause**: deleting the sentence moved `no-change` from 242 to 213 and `replaced` from 19 to 18.
+The behaviour survives its own explanation, which means the failure is in what the reader does with the pair, not in
+how the pass asked for it.
+
+### 12.3 The refutation, stated as §13.370 registered it
+
+§13.370's termination condition: *"if those two changes do not clear it, the mechanism is refuted as a member of its
+family, and the queue moves to `assemble()` and the reader axis."* Both changes were made; the cell did not clear.
+**The supersession family is closed.** Three substitution mechanisms have now been measured on this arm — `tally`
+(−9.5 multi-session questions), `spec` (−39), `supersede` (0, then −0.8 overall) — and the family's premise ("the
+reader has the evidence and needs the comparison isolated") has been tested in its strongest available form and
+failed.
+
+What that does **not** say: that `KU` is unsolvable. The premise holds (the correction is in the window 72/72), and
+one question converted at 4 of 4 repetitions, which is proof that the comparison is *possible* on this corpus. What
+it says is that asking the same reader, in a second call, to compare two statements it has already read does not
+produce the comparison — and the campaign's remaining levers on `KU` are structural (retrieval that puts the two
+statements adjacent, or a reader that reasons) rather than another prompt about them.
