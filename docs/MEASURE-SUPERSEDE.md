@@ -353,3 +353,53 @@ one question converted at 4 of 4 repetitions, which is proof that the comparison
 it says is that asking the same reader, in a second call, to compare two statements it has already read does not
 produce the comparison — and the campaign's remaining levers on `KU` are structural (retrieval that puts the two
 statements adjacent, or a reader that reasons) rather than another prompt about them.
+
+## 13. The counterfactual: every substitution now ships with the answer it overrode
+
+### 13.1 The gap this closes, priced twice
+
+Run `43001135439` published `replaced 18` beside `refused 270`. The eighteen were unreadable. The record's `answer`
+is what the pass **shipped**, so a wrong answer next to a positive count reads identically whether the pass destroyed
+a correct answer or replaced one wrong answer with another.
+
+Section 12 recovered the direction by pairing that arm against `42533236864` — a **previous** run's control arm, on
+the same 500 questions. That is a second dispatch of the same population, paid for one column, and it worked only
+because the earlier artifact happened to exist. A mechanism whose damage is invisible until the next run is a
+mechanism whose next reading will be attributed to the wrong change.
+
+### 13.2 What was added, and the four decisions with their counterexamples
+
+| Decision | What it rejects |
+| --- | --- |
+| `{first, final}` per substitution, not a count | A count says how many and leaves the direction to be re-derived from another artifact |
+| A cumulative list on the product, read as a **tail slice** per answer | A slot would report the previous question's substitution on every question after it (§13.145.6's stale beacon) |
+| The accessor hands out a **copy** | An array by reference keeps growing underneath a reading that was already recorded |
+| The record omits the field when empty | `supersessionReplacements` names the population; an empty list is a third state a reader has to discount |
+
+`first` is the string the route would have returned with the pass switched off on that question. That is the only
+counterfactual the mechanism owes, and it is written on the same call that performs the substitution — anything
+written later would be a substitution the artifact could report without the text that decided it.
+
+### 13.3 The offline reader, and why its number is a lower bound
+
+`tools/supersede-rewrites.py` classifies each pair by containment: gold in `final` and not in `first` is a
+conversion; gold in `first` and not in `final` is a damage; both or neither is neutral.
+
+- A numeral gold is matched with **boundaries**, not as a substring: `20` occurs inside `1200`, and a substring rule
+  would score a substitution about a follower count as a conversion on a question about eggs.
+- Blind spot one: a string can contain the gold and still be judged wrong — `a1eacc2a` is that shape, and `12.2`
+  already records it as a leniency artefact rather than a gain.
+- Blind spot two: a string can be judged right without containing the gold. Both blind spots push toward `neutral`,
+  so `conversion - damage` is a lower bound and the tool says so rather than calling it a net.
+
+It refuses three states in which a rate would be about the instrument rather than the run: no record carrying the
+field (every artifact before this change), pairs that do not sum to the record's own `supersessionReplacements`, and
+a record with pairs and no count. On `43001135439` it answers `not scorable`, which is the correct reading of a run
+that predates the field.
+
+### 13.4 What this does *not* reopen
+
+The family stays closed. Section 12's `K1` failure stands, and the direction instrument does not change a score — it
+changes what a future score can be attributed to. The next arm on `KU` is the structural one §12 names: put the two
+statements in one unit, at read time, because this corpus has no write path. That arm must move **position** and not
+wording, or it prices two variables at once.
