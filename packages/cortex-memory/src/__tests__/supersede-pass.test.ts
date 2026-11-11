@@ -83,6 +83,66 @@ describe('the supersession pass', () => {
     expect(memory.supersessionCensus()).toMatchObject({ attempted: 1, replaced: 1, refused: 0 });
   });
 
+  it('records the pair it substituted, so a replacement has a direction the artifact can read', async () => {
+    const seen: string[] = [];
+    const memory = system({ reviewPass: 'supersede' }, queueLlm(seen, '1250', AUTHORIZED));
+
+    const answer = await memory.answerKnowledgeUpdate(QUESTION, SESSIONS.flat(), SESSIONS);
+
+    expect(answer).toBe('1300');
+    // `answer` alone cannot separate this from a pass that damaged a correct answer: the counterfactual has to
+    // travel with it, and it is the string the route would have returned with the pass switched off.
+    expect(memory.supersessionCensus()).toMatchObject({
+      rewrites: [{ first: '1250', final: '1300' }],
+    });
+  });
+
+  it('records no pair when the pass refuses, so a refusal and a substitution never collide', async () => {
+    const seen: string[] = [];
+    const memory = system({ reviewPass: 'supersede' }, queueLlm(seen, '1250', FABRICATED));
+
+    await memory.answerKnowledgeUpdate(QUESTION, SESSIONS.flat(), SESSIONS);
+
+    expect(memory.supersessionCensus()).toMatchObject({ replaced: 0, rewrites: [] });
+  });
+
+  it('accumulates the pairs in the order the pass wrote them, across questions', async () => {
+    const seen: string[] = [];
+    const memory = system(
+      { reviewPass: 'supersede' },
+      queueLlm(seen, '1250', AUTHORIZED, '1250', AUTHORIZED),
+    );
+
+    await memory.answerKnowledgeUpdate(QUESTION, SESSIONS.flat(), SESSIONS);
+    await memory.answerKnowledgeUpdate(QUESTION, SESSIONS.flat(), SESSIONS);
+
+    // Cumulative rather than a slot: the arm takes a difference around one answer, and a slot would report the
+    // previous question's substitution on every question after it.
+    expect(memory.supersessionCensus()).toMatchObject({
+      replaced: 2,
+      rewrites: [
+        { first: '1250', final: '1300' },
+        { first: '1250', final: '1300' },
+      ],
+    });
+  });
+
+  it('hands out a copy, so a reader that keeps one reading is not moved by the next substitution', async () => {
+    const seen: string[] = [];
+    const memory = system({ reviewPass: 'supersede' }, queueLlm(seen, '1250', AUTHORIZED));
+
+    await memory.answerKnowledgeUpdate(QUESTION, SESSIONS.flat(), SESSIONS);
+    const first = memory.supersessionCensus() as {
+      rewrites: readonly { first: string; final: string }[];
+    };
+    const taken = first.rewrites.length;
+
+    await memory.answerKnowledgeUpdate(QUESTION, SESSIONS.flat(), SESSIONS);
+
+    expect(taken).toBe(1);
+    expect(first.rewrites).toHaveLength(1);
+  });
+
   it('re-reads the evidence the first pass read, so the two calls differ only in instruction', async () => {
     const seen: string[] = [];
     const memory = system({ reviewPass: 'supersede' }, queueLlm(seen, '1250', AUTHORIZED));

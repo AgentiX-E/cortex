@@ -360,6 +360,27 @@ export type QuestionRecord = {
    */
   readonly supersessionRefusals?: Readonly<Record<string, number>> | undefined;
   /**
+   * What the supersession pass substituted on this question, as the `first`/`final` pairs it wrote.
+   *
+   * ## Why a pair and not a count
+   *
+   * `supersessionReplacements` says how many answers the pass overrode and cannot say whether either direction
+   * was earned. The shipped answer is the record's own `answer`, so a wrong answer beside `replacements: 4`
+   * reads the same whether the pass destroyed a correct answer or merely replaced one wrong answer with
+   * another. §14.110.1 read `replaced 18` that way and had to pair the arm against an **earlier** run's
+   * control arm to recover the direction, which is a dispatch the artifact should have made unnecessary.
+   *
+   * `first` is the string the route would have returned with the pass switched off on that question -- the only
+   * counterfactual the mechanism owes -- so a reader can classify every substitution as a conversion, a
+   * damage, or a neutral move without a second run. Four repetitions contribute four entries each, so the
+   * instability a question shows across repetitions stays visible rather than being averaged into a rate.
+   *
+   * Written only when the list is non-empty. `supersessionReplacements` names the population, and an empty
+   * array would be a third state a reader has to discount.
+   */
+  readonly supersessionRewrites?:
+    readonly { readonly first: string; readonly final: string }[] | undefined;
+  /**
    * What the specification pass's authorization said about this question, as counts over its repetitions.
    *
    * ## Why the arithmetic is recorded before the veto exists
@@ -570,6 +591,9 @@ export type QuestionRecordInput = {
   readonly supersessionReplacements?: number | undefined;
   /** See {@link QuestionRecordInput.supersessionRefusals}. */
   readonly supersessionRefusals?: Readonly<Record<string, number>> | undefined;
+  /** See {@link QuestionRecord.supersessionRewrites}. */
+  readonly supersessionRewrites?:
+    readonly { readonly first: string; readonly final: string }[] | undefined;
   /** See {@link QuestionRecordInput.specEvaluations}. */
   readonly specEvaluations?: number | undefined;
   /** See {@link QuestionRecordInput.specAuthorizations}. */
@@ -919,6 +943,12 @@ export function buildQuestionRecords(
             Object.keys(input.supersessionRefusals).length === 0
               ? {}
               : { supersessionRefusals: input.supersessionRefusals }),
+            // The substitutions themselves, on the same rule as the refusals: absent when there were none,
+            // because `supersessionReplacements` already states the count and an empty list would be a value
+            // a reader has to tell apart from a producer that predates the field.
+            ...(input.supersessionRewrites === undefined || input.supersessionRewrites.length === 0
+              ? {}
+              : { supersessionRewrites: input.supersessionRewrites }),
           }),
       // The authorization quartet on the same rule as the pairs above: `specEvaluations` is the field that
       // says this mechanism acted on the question, and the other three are given zero defaults rather than

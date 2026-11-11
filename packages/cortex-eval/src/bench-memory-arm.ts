@@ -3036,6 +3036,20 @@ type SupersessionTrace = {
    * prediction cannot be scored at all, and an unscorable prediction is worse than a weaker one.
    */
   refusals: Readonly<Record<string, number>>;
+  /**
+   * What the pass substituted on this question, summed over its repetitions.
+   *
+   * The reason is the same one the refusals above give, one level deeper. The censuses can price **that** a
+   * substitution happened and cannot price **what** it was: `answer` holds the shipped string, so a record
+   * with a wrong answer reads identically whether the pass wrote it or merely failed to change it. `43001135439`
+   * carried `replaced 18` and had to be read against a previous run's control arm to learn how many of the
+   * eighteen were conversions -- a second dispatch of the same population, for one column.
+   *
+   * `first` is the counterfactual the mechanism owes: the string the route would have returned with the pass
+   * switched off on that question. A rewrite whose `first` was already right is a **damage** and one whose
+   * `first` was wrong is a **conversion**, both decidable from this record alone.
+   */
+  rewrites: readonly SupersessionRewrite[];
 };
 
 /**
@@ -3167,11 +3181,16 @@ function traceSupersession(
       attempted: delta.attempted,
       replaced: delta.replaced,
       refusals: delta.refusals ?? {},
+      rewrites: delta.rewrites,
     }),
     (prev, next) => ({
       attempted: prev.attempted + next.attempted,
       replaced: prev.replaced + next.replaced,
       refusals: mergedRefusals(prev.refusals, next.refusals),
+      // Concatenated in repetition order rather than deduplicated: four repetitions of one question that
+      // substituted twice each are eight substitutions, and a set would report four and hide the instability
+      // §13.370's `K1` is about -- the same question converting on some repetitions and damaging on others.
+      rewrites: [...prev.rewrites, ...next.rewrites],
     }),
   );
 }
@@ -3190,6 +3209,19 @@ type CensusAuthorization = {
   supportHits: number;
   ledgerRows: number;
   tokens: number;
+};
+
+/**
+ * One substitution, as the pair of strings it was.
+ *
+ * Restated here rather than imported for the reason {@link CensusAuthorization} is: this module reads the
+ * product through an accessor **name**, and importing the class or its types would make the instrument depend
+ * on the implementation it measures. The two declarations have to agree, and the agreement is tested -- a
+ * fixture that answers without the field is exactly what a type that had drifted apart would look like.
+ */
+type SupersessionRewrite = {
+  readonly first: string;
+  readonly final: string;
 };
 
 /** The same payload as a difference, which is what one question's share of it is. */
@@ -3240,6 +3272,7 @@ function traceCensus<T>(
     replaced: number;
     authorization: CensusAuthorizationDelta | null;
     refusals: Record<string, number> | null;
+    rewrites: readonly SupersessionRewrite[];
   }) => T,
   merge: (prev: T, next: T) => T,
 ): MemorySystem {
@@ -3253,6 +3286,7 @@ function traceCensus<T>(
         replaced?: number;
         authorization?: CensusAuthorization;
         refusals?: Readonly<Record<string, number>>;
+        rewrites?: readonly SupersessionRewrite[];
       } | null
     >
   >;
@@ -3278,6 +3312,7 @@ function traceCensus<T>(
     replaced: number;
     authorization: CensusAuthorization | null;
     refusals: Record<string, number> | null;
+    rewrites: readonly SupersessionRewrite[];
   } | null => {
     if (!usable) return null;
     try {
@@ -3300,6 +3335,10 @@ function traceCensus<T>(
         // Absent under the passes that have no refusal census, and `null` there for the same reason
         // `authorization` is: a delta over zeroed reasons would report a refusal that could not have happened.
         refusals: (reading.refusals as Record<string, number> | undefined) ?? null,
+        // Absent under every pass but `supersede`, and an empty list here rather than `null` because the
+        // arithmetic below is a slice: `null` would force every reader of this shape to branch on a field only
+        // one accessor fills, and the branch would be on "which pass is this" rather than on the data.
+        rewrites: reading.rewrites ?? [],
       };
     } catch {
       usable = false;
@@ -3342,6 +3381,12 @@ function traceCensus<T>(
           replaced: after.replaced - before.replaced,
           authorization: authorizationDelta(before.authorization, after.authorization),
           refusals: refusalDelta(before.refusals, after.refusals),
+          // The slice rather than a difference of counts: substitutions are append-only on the product side, so
+          // what this question added is the tail of the list past the length the previous read saw. A count
+          // would say how many and leave the texts unattributable, which is the gap that made `replaced 18`
+          // unreadable. `slice` past the end is empty rather than a throw, so a build whose list shrank (it
+          // cannot, but a second implementation could) reports no rewrites rather than a wrong one.
+          rewrites: after.rewrites.slice(before.rewrites.length),
         });
         const prev = trace.get(question);
         trace.set(question, prev === undefined ? entry : merge(prev, entry));
@@ -3775,6 +3820,7 @@ function traceOf(
   auditChanges?: number;
   supersessionConsultations?: number;
   supersessionReplacements?: number;
+  supersessionRewrites?: readonly SupersessionRewrite[];
   specEvaluations?: number;
   specAuthorizations?: number;
   specSelected?: number;
@@ -3821,6 +3867,7 @@ function traceOf(
     supersessionConsultations?: number;
     supersessionReplacements?: number;
     supersessionRefusals?: Readonly<Record<string, number>>;
+    supersessionRewrites?: readonly SupersessionRewrite[];
   } =
     superseded === undefined
       ? {}
@@ -3830,6 +3877,12 @@ function traceOf(
           ...(Object.keys(superseded.refusals).length === 0
             ? {}
             : { supersessionRefusals: superseded.refusals }),
+          // Written only when the pass actually substituted something, and then always: an empty list would be
+          // a value a reader has to distinguish from an absent field for no gain, and the population is
+          // already named by `supersessionReplacements > 0`.
+          ...(superseded.rewrites.length === 0
+            ? {}
+            : { supersessionRewrites: superseded.rewrites }),
         };
   return { ...recovery, ...auditing, ...superseding };
 }

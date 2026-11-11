@@ -471,15 +471,43 @@ export function adjudicateSupersession(
   return { kind: 'replace', value: value.value, record: last.index };
 }
 
+/**
+ * One substitution as the two strings it was: the answer the pass was handed, and the answer it shipped.
+ *
+ * ## Why the pair and not the replacement alone
+ *
+ * `replaced` counts substitutions and says nothing about which direction each went. `43001135439` published
+ * `replaced 18` beside `refused 270`, and the eighteen were unreadable: `answer` holds what the pass shipped,
+ * so a record shows a wrong final answer and cannot distinguish "the pass damaged a correct answer" from "the
+ * answer was already wrong and the pass changed it into another wrong one". §14.110.1 had to re-derive the
+ * direction by pairing the arm against a **previous** run's control arm, which cost a second dispatch of the
+ * same population.
+ *
+ * The pair makes the direction a property of one record, so a run can be read the day it lands. `first` is the
+ * string the product would have returned with the pass switched off on that question, which is the only
+ * counterfactual the mechanism owes an accounting for.
+ */
+export type SupersessionRewrite = {
+  /** What the route answered before the pass was consulted. */
+  readonly first: string;
+  /** What the pass shipped in its place. */
+  readonly final: string;
+};
+
 /** An empty census, with every reason present at zero so an artifact never has to infer absence. */
 export function emptySupersessionCensus(): {
   attempted: number;
   replaced: number;
   refusals: Record<SupersessionRefusal, number>;
+  rewrites: SupersessionRewrite[];
 } {
   return {
     attempted: 0,
     replaced: 0,
+    // Empty rather than absent, on the opposite rule to `refusals`: a reason's zero is a measurement ("this
+    // failure mode did not occur"), and a substitution's text is not something a zero can stand in for. A
+    // reader distinguishes "no substitutions" from "not recorded" by `replaced`, which is always present.
+    rewrites: [],
     refusals: {
       unreadable: 0,
       'no-change': 0,

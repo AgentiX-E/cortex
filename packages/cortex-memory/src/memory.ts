@@ -59,6 +59,7 @@ import {
   parseSupersessionReport,
   type SupersessionRefusal,
   type SupersessionReport,
+  type SupersessionRewrite,
   type SupersessionVerdict,
 } from './supersede.js';
 import { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
@@ -328,6 +329,20 @@ export class CortexMemory implements SessionAwareMemorySystem {
     attempted: number;
     replaced: number;
     refusals: Record<SupersessionRefusal, number>;
+    /**
+     * Every substitution this build performed, in the order it performed them.
+     *
+     * Cumulative rather than a slot, because the arm reads this accessor **twice per answer** and takes the
+     * difference: a slot would describe the last substitution of the run on every question after it, which is
+     * the stale-beacon defect §13.145.6 rejected for the review counters. A list is what makes the difference
+     * computable at all -- two counts can only say "one happened", and the value it happened to is the part
+     * that decides whether the mechanism helped.
+     *
+     * Unbounded on purpose. The bound a caller cares about is per run (one entry per substitution, and a
+     * substitution requires a consultation that was already billed), and truncating here would remove exactly
+     * the long answers whose direction is hardest to guess from the shipped text.
+     */
+    rewrites: SupersessionRewrite[];
   } = emptySupersessionCensus();
 
   /**
@@ -1068,6 +1083,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     replaced: number;
     refused: number;
     refusals: Record<SupersessionRefusal, number>;
+    rewrites: readonly SupersessionRewrite[];
   } | null {
     if (this.#options.reviewPass !== 'supersede') return null;
     const refusals = { ...this.#supersessions.refusals };
@@ -1079,6 +1095,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
       replaced: this.#supersessions.replaced,
       refused,
       refusals,
+      // Copied for the same reason the refusals are: the arm takes a delta around one answer and keeps it, so
+      // an array handed out by reference would keep growing underneath a reading that had already been taken.
+      rewrites: [...this.#supersessions.rewrites],
     };
   }
 
@@ -1544,6 +1563,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
       return first;
     }
     this.#supersessions.replaced += 1;
+    // Recorded before the answer is returned, so the pair exists on the same call that produced it. A
+    // substitution written anywhere later would be a substitution the artifact could report without the text
+    // that decided it, which is the state §14.110.1 had to pay a second dispatch to escape.
+    this.#supersessions.rewrites.push({ first, final: verdict.value });
     this.#lastReview = { first, final: verdict.value, changed: true };
     return verdict.value;
   }

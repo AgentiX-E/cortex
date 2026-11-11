@@ -65,6 +65,13 @@ function refusalsOf(entries: Refusals): Refusals {
 class SupersedingSystem implements MemorySystem {
   readonly name: string;
   #census = { attempted: 0, replaced: 0, refusals: refusalsOf({}) };
+  /**
+   * The substitutions this instance performed, cumulative.
+   *
+   * The values come from the counter so two questions' pairs are distinguishable, which is what makes an
+   * ordering assertion possible: with a constant pair, a fold that reversed the repetitions would pass.
+   */
+  #rewrites: { first: string; final: string }[] = [];
 
   constructor(name: string) {
     this.name = name;
@@ -73,6 +80,10 @@ class SupersedingSystem implements MemorySystem {
   async answer(): Promise<Answer> {
     this.#census.attempted += 1;
     this.#census.replaced += 1;
+    this.#rewrites.push({
+      first: `${this.#census.attempted}`,
+      final: `late-${this.#census.attempted}`,
+    });
     return 'one';
   }
 
@@ -81,6 +92,7 @@ class SupersedingSystem implements MemorySystem {
     replaced: number;
     refused: number;
     refusals: Refusals;
+    rewrites: readonly { first: string; final: string }[];
   } {
     const refused = Object.values(this.#census.refusals).reduce((sum, count) => sum + count, 0);
     return {
@@ -88,6 +100,7 @@ class SupersedingSystem implements MemorySystem {
       replaced: this.#census.replaced,
       refused,
       refusals: { ...this.#census.refusals },
+      rewrites: [...this.#rewrites],
     };
   }
 }
@@ -577,5 +590,113 @@ describe('merging reasons that do not repeat', () => {
       restates: 1,
       'no-change': 1,
     });
+  });
+});
+
+/**
+ * §14.110.1's gap, closed by measurement rather than by another dispatch.
+ *
+ * `43001135439` published `replaced 18` and the eighteen were unreadable: the record's `answer` is what the
+ * pass shipped, so a wrong answer beside a positive count reads the same whether the pass destroyed a correct
+ * answer or replaced one wrong answer with another. Reading the direction cost a second dispatch of the same
+ * population against an **earlier** run's control arm. The pair is what makes it a property of one record.
+ */
+describe('the substitution itself reaches the question it belongs to', () => {
+  it('writes the first and final strings per question, so a replacement has a direction', async () => {
+    const result = await runCortexMemoryArm(
+      dataset(2),
+      bareSystem('reference-pipeline'),
+      new SupersedingSystem('cortex-memory'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    // `first` is the counterfactual the mechanism owes: the string the route would have returned with the pass
+    // switched off. A record without it cannot separate a conversion from a damage, which is the state the
+    // previous artifact was in and the reason this field exists.
+    expect(result.report.questions!.map((record) => record.supersessionRewrites)).toEqual([
+      [{ first: '1', final: 'late-1' }],
+      [{ first: '2', final: 'late-2' }],
+    ]);
+  });
+
+  it('concatenates the repetitions rather than deduplicating them', async () => {
+    // Four repetitions of one question that substituted twice each are eight substitutions, and a set would
+    // report four -- hiding exactly the instability `K1` is about, where one question converts on some
+    // repetitions and damages on others.
+    const result = await runCortexMemoryArm(
+      dataset(1),
+      bareSystem('reference-pipeline'),
+      new SupersedingSystem('cortex-memory'),
+      {
+        runs: 2,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions![0]!.supersessionRewrites).toEqual([
+      { first: '1', final: 'late-1' },
+      { first: '2', final: 'late-2' },
+    ]);
+  });
+
+  it('omits the field on a run whose pass consulted and substituted nothing', async () => {
+    // The rule the coalesced fields follow everywhere else: an absent measurement is omitted rather than
+    // written as an empty list, and `supersessionReplacements` already names the population.
+    const result = await runCortexMemoryArm(
+      dataset(1),
+      bareSystem('reference-pipeline'),
+      new RestatingSystem('cortex-memory'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions![0]!.supersessionRewrites).toBeUndefined();
+  });
+
+  it('writes no pair for a build that carries the pass without the field', async () => {
+    // A third-party system implementing the accessor as it was specified before this field existed. The record
+    // must omit the pair rather than invent one, and the run must still publish its counts.
+    const legacy = new (class {
+      readonly name = 'cortex-memory';
+      #asked = 0;
+      async answer(): Promise<Answer> {
+        this.#asked += 1;
+        return 'one';
+      }
+      supersessionCensus() {
+        return {
+          attempted: this.#asked,
+          replaced: this.#asked,
+          refused: 0,
+          refusals: refusalsOf({}),
+        };
+      }
+    })();
+
+    const result = await runCortexMemoryArm(
+      dataset(1),
+      bareSystem('reference-pipeline'),
+      legacy as unknown as MemorySystem,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions![0]!.supersessionRewrites).toBeUndefined();
+    expect(result.report.questions![0]!.supersessionReplacements).toBe(1);
   });
 });
