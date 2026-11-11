@@ -355,3 +355,226 @@ describe('the supersession census reaches the artifact', () => {
     expect('supersession' in result.report).toBe(false);
   });
 });
+
+/**
+ * A system that consults on every question and refuses every claim, naming the reason.
+ *
+ * §13.370's `P3` is a claim about eight named questions -- *no gate target may be refused as a restatement* --
+ * and the run-level census cannot support it: it counts reasons across the run without saying whose they were.
+ * This fixture is the one that makes the attribution fail if the per-question field is dropped, because the
+ * aggregate alone cannot distinguish "one question refused four times" from "four questions refused once".
+ */
+class RestatingSystem implements MemorySystem {
+  readonly name: string;
+  #restates = 0;
+
+  constructor(name: string) {
+    this.name = name;
+  }
+
+  // Takes the question because one test below narrows the population by it; the base behaviour ignores it.
+  async answer(_question?: string): Promise<Answer> {
+    this.#restates += 1;
+    return 'one';
+  }
+
+  supersessionCensus(): {
+    attempted: number;
+    replaced: number;
+    refused: number;
+    refusals: Refusals;
+  } {
+    return {
+      attempted: this.#restates,
+      replaced: 0,
+      refused: this.#restates,
+      refusals: refusalsOf({ restates: this.#restates }),
+    };
+  }
+}
+
+describe('the refusal reason reaches the question it belongs to', () => {
+  it('writes the reasons per question, and the run census still sums them', async () => {
+    // Without the per-question field the run-level tally is the only record, and `P3` would be unscorable:
+    // 288 consultations and 8 restatements could be one gate target refused four times or eight ordinary
+    // questions refused once, and the two readings license opposite conclusions about the value rule.
+    const result = await runCortexMemoryArm(
+      dataset(2),
+      bareSystem('reference-pipeline'),
+      new RestatingSystem('cortex-memory'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions!.map((record) => record.supersessionRefusals)).toEqual([
+      { restates: 1 },
+      { restates: 1 },
+    ]);
+    expect(result.report.supersession).toMatchObject({
+      attempted: 2,
+      replaced: 0,
+      refused: 2,
+    });
+  });
+
+  it('omits the field on a question the pass did not consult', async () => {
+    // The same rule the coalesced fields follow everywhere else in this artifact: an absent measurement is
+    // omitted, not written as an empty record, so a reader can tell "not consulted" from "consulted and
+    // refused nothing".
+    const selective = new (class extends RestatingSystem {
+      override async answer(question?: string): Promise<Answer> {
+        return (question ?? '').includes('1') ? super.answer(question) : 'one';
+      }
+    })('cortex-memory');
+
+    const result = await runCortexMemoryArm(
+      dataset(2),
+      bareSystem('reference-pipeline'),
+      selective,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    const records = result.report.questions!;
+    expect(records[0]!.supersessionRefusals).toBeUndefined();
+    expect(records[1]!.supersessionRefusals).toEqual({ restates: 1 });
+  });
+});
+
+describe('the refusal delta, on the three shapes a census can arrive in', () => {
+  it('sums a reason across repetitions rather than overwriting it', async () => {
+    // The map is keyed by question and a run asks each question `runs` times, so a merge that let the last write
+    // win would report one repetition's refusals as the question's total (§13.262's defect, one census over).
+    const result = await runCortexMemoryArm(
+      dataset(2),
+      bareSystem('reference-pipeline'),
+      new RestatingSystem('cortex-memory'),
+      {
+        runs: 2,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions!.map((record) => record.supersessionRefusals)).toEqual([
+      { restates: 2 },
+      { restates: 2 },
+    ]);
+    expect(result.report.supersession?.refusals.restates).toBe(4);
+  });
+
+  it('records nothing for a question on which no reason moved', async () => {
+    // A consultation that replaced its answer moves `replaced` and no reason at all, so the delta is empty. It
+    // must read as an empty record rather than as every reason at zero, or `P3`'s bar would be satisfied by
+    // arithmetic instead of by a reading.
+    let consulted = 0;
+    const replacementOnly = {
+      name: 'cortex-memory',
+      answer: () => {
+        consulted += 1;
+        return 'one';
+      },
+      supersessionCensus: () => ({
+        attempted: consulted,
+        replaced: consulted,
+        refused: 0,
+        refusals: refusalsOf({}),
+      }),
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(
+      dataset(1),
+      bareSystem('reference-pipeline'),
+      replacementOnly,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions![0]!.supersessionRefusals).toBeUndefined();
+    expect(result.report.questions![0]!.supersessionReplacements).toBe(1);
+  });
+
+  it('writes no reasons at all when the census does not carry them', async () => {
+    // The absent-payload branch, which is the build a third-party `MemorySystem` produces: an accessor with the
+    // three counts and no reason record. A delta over absent readings is not a delta over zeros.
+    let asked = 0;
+    const withoutReasons = {
+      name: 'cortex-memory',
+      answer: () => {
+        asked += 1;
+        return 'one';
+      },
+      supersessionCensus: () => ({ attempted: asked, replaced: 0, refused: asked }),
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(
+      dataset(1),
+      bareSystem('reference-pipeline'),
+      withoutReasons,
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions![0]!.supersessionConsultations).toBe(1);
+    expect(result.report.questions![0]!.supersessionRefusals).toBeUndefined();
+  });
+});
+
+describe('merging reasons that do not repeat', () => {
+  it('keeps a reason the earlier repetition did not have', async () => {
+    // The merge is by reason, not by position: a question refused as a restatement on one repetition and as
+    // `no-change` on the next contributes one of each, and a merge that read a missing reason as "no key" rather
+    // than as zero would drop whichever came first.
+    let asked = 0;
+    const alternating = {
+      name: 'cortex-memory',
+      answer: () => {
+        asked += 1;
+        return 'one';
+      },
+      supersessionCensus: () => ({
+        attempted: asked,
+        replaced: 0,
+        refused: asked,
+        // Cumulative, like the product: a reason once counted stays counted, and the next repetition adds one.
+        refusals: refusalsOf(
+          asked === 0 ? {} : asked === 1 ? { restates: 1 } : { restates: 1, 'no-change': 1 },
+        ),
+      }),
+    } as unknown as MemorySystem;
+
+    const result = await runCortexMemoryArm(
+      dataset(1),
+      bareSystem('reference-pipeline'),
+      alternating,
+      {
+        runs: 2,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: { ...GATE },
+      },
+    );
+
+    expect(result.report.questions![0]!.supersessionRefusals).toEqual({
+      restates: 1,
+      'no-change': 1,
+    });
+  });
+});

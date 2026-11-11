@@ -2984,6 +2984,38 @@ type AuditMechanismTrace = {
 };
 
 /**
+ * One question's refusals, by reason, as the difference between two readings of a monotonic census.
+ *
+ * `null` when either read lacked the payload, which is every pass but `supersede` and every build that
+ * predates the field: a delta over absent readings would report a question the pass never consulted as one
+ * it refused, and `P3` is a statement about which questions were refused **and why**.
+ */
+function refusalDelta(
+  before: Readonly<Record<string, number>> | null,
+  after: Readonly<Record<string, number>> | null,
+): Record<string, number> | null {
+  if (before === null || after === null) return null;
+  const delta: Record<string, number> = {};
+  for (const [reason, count] of Object.entries(after)) {
+    const previous = before[reason] ?? 0;
+    if (count !== previous) delta[reason] = count - previous;
+  }
+  return delta;
+}
+
+/** Two questions' refusal counts, summed by reason. Reasons absent from one side read as zero. */
+function mergedRefusals(
+  prev: Readonly<Record<string, number>>,
+  next: Readonly<Record<string, number>>,
+): Record<string, number> {
+  const merged: Record<string, number> = { ...prev };
+  for (const [reason, count] of Object.entries(next)) {
+    merged[reason] = (merged[reason] ?? 0) + count;
+  }
+  return merged;
+}
+
+/**
  * What one question's census said about the supersession pass, as counts.
  *
  * `replaced` is the number of answers the pass actually substituted, which is the only number that can
@@ -2992,7 +3024,19 @@ type AuditMechanismTrace = {
  * that is doing its job -- the distinction `MEASURE-PLAN-SHAPE.md` had to reconstruct after the fact for
  * the specification pass, because its artifact carried neither.
  */
-type SupersessionTrace = { attempted: number; replaced: number };
+type SupersessionTrace = {
+  attempted: number;
+  replaced: number;
+  /**
+   * Why the pass refused, on this question, by reason (§13.370's `P3`).
+   *
+   * The run-level census says how many claims were refused for each reason *across the run*; it cannot say
+   * which question a refusal belongs to, and `P3` is a statement about eight named questions -- "no gate
+   * target may be refused as a restatement". Attribution is therefore not a convenience here: without it the
+   * prediction cannot be scored at all, and an unscorable prediction is worse than a weaker one.
+   */
+  refusals: Readonly<Record<string, number>>;
+};
 
 /**
  * Wrap a system so each answer records whether the review mechanisms fired **on that question**.
@@ -3119,10 +3163,15 @@ function traceSupersession(
     system,
     'supersessionCensus',
     trace,
-    (delta) => ({ attempted: delta.attempted, replaced: delta.replaced }),
+    (delta) => ({
+      attempted: delta.attempted,
+      replaced: delta.replaced,
+      refusals: delta.refusals ?? {},
+    }),
     (prev, next) => ({
       attempted: prev.attempted + next.attempted,
       replaced: prev.replaced + next.replaced,
+      refusals: mergedRefusals(prev.refusals, next.refusals),
     }),
   );
 }
@@ -3190,6 +3239,7 @@ function traceCensus<T>(
     changed: number;
     replaced: number;
     authorization: CensusAuthorizationDelta | null;
+    refusals: Record<string, number> | null;
   }) => T,
   merge: (prev: T, next: T) => T,
 ): MemorySystem {
@@ -3202,6 +3252,7 @@ function traceCensus<T>(
         changed?: number;
         replaced?: number;
         authorization?: CensusAuthorization;
+        refusals?: Readonly<Record<string, number>>;
       } | null
     >
   >;
@@ -3226,6 +3277,7 @@ function traceCensus<T>(
     changed: number;
     replaced: number;
     authorization: CensusAuthorization | null;
+    refusals: Record<string, number> | null;
   } | null => {
     if (!usable) return null;
     try {
@@ -3245,6 +3297,9 @@ function traceCensus<T>(
         // `null` rather than a zeroed record: under `audit` and `tally` the payload has no such field, and a
         // delta over zeros would report a veto that fired nowhere on a build that cannot fire it at all.
         authorization: reading.authorization ?? null,
+        // Absent under the passes that have no refusal census, and `null` there for the same reason
+        // `authorization` is: a delta over zeroed reasons would report a refusal that could not have happened.
+        refusals: (reading.refusals as Record<string, number> | undefined) ?? null,
       };
     } catch {
       usable = false;
@@ -3286,6 +3341,7 @@ function traceCensus<T>(
           changed: after.changed - before.changed,
           replaced: after.replaced - before.replaced,
           authorization: authorizationDelta(before.authorization, after.authorization),
+          refusals: refusalDelta(before.refusals, after.refusals),
         });
         const prev = trace.get(question);
         trace.set(question, prev === undefined ? entry : merge(prev, entry));
@@ -3755,18 +3811,25 @@ function traceOf(
                 specSupportHits: reviewed.authorization.supportHits,
               }),
         };
-  // Three fields would be redundant: `replaced` is the only one that can move a score, and `attempted`
-  // beside it separates an inert pass from a guard that refused every claim. The refusals by name stay at
-  // the run level, where they are a statement about the population rather than about a question.
+  // `replaced` is the only field that can move a score, and `attempted` beside it separates an inert pass
+  // from a guard that refused every claim. The refusals by name **also** travel per question, which they did
+  // not before §13.370: the run-level census says how often a reason fired but not on which question, and
+  // `P3` is a claim about eight named questions, so the reason had to be attributable before it could be
+  // scored. Emitted only when non-empty, because a question the pass did not consult carries no refusals and
+  // a record of eight zeros would be a value this build cannot distinguish from an absent field.
   const superseding: {
     supersessionConsultations?: number;
     supersessionReplacements?: number;
+    supersessionRefusals?: Readonly<Record<string, number>>;
   } =
     superseded === undefined
       ? {}
       : {
           supersessionConsultations: superseded.attempted,
           supersessionReplacements: superseded.replaced,
+          ...(Object.keys(superseded.refusals).length === 0
+            ? {}
+            : { supersessionRefusals: superseded.refusals }),
         };
   return { ...recovery, ...auditing, ...superseding };
 }

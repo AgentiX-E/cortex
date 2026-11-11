@@ -39660,3 +39660,29 @@ The third row is deliberately narrow. The campaign has spent four arms on substi
 (`tally` −9.5, `spec` −39, `supersede` 0) and the honest prior is that the next 14 CNY is better spent on
 `assemble()`; a third arm is licensed only by an extraction defect that is visible in the census, never by a net
 that is merely short of the bar.
+
+##### 13.370.1 `P3` restated as a scorable prediction, before the artifact exists
+
+`P3` above asked for *"zero `restates` refusals on the gate's eight targets"*, and the artifact this arm will
+produce **cannot answer that**: the run-level census counts reasons across the run, and the per-question trace
+carries only `supersessionConsultations` and `supersessionReplacements`. An unscorable prediction is worse than a
+weaker one — it would be "read" by assertion, which is the defect `AUDIT-SILENT-DENOMINATOR.md` catalogues.
+
+So `P3` is restated, on the same population, in the three parts this artifact can answer:
+
+- **`P3a`** — `restates` **≤ 8** over the whole run (72 `KU` questions × 4 repetitions), and `unreadable` **= 0**.
+  The second half is the instrument's own health: a reply the three-line parser cannot read is not a defect of the
+  value rule and must not be counted as one.
+- **`P3b`** — every gate target that did **not** convert carries `supersessionConsultations ≥ 1` in the
+  per-question trace. This excludes the one explanation that would invalidate the reading rather than the
+  mechanism: that the pass never ran on that question.
+- **`P3c`** — the run publishes a `replaced` count strictly greater than `42976296380`'s 19. The old instrument
+  refused ten correct identifications; the new one must accept at least some of them, or the amendment changed the
+  census's name and nothing else.
+
+**And the instrument gap is closed in the same commit rather than noted for later.** The per-question trace now
+carries `supersessionRefusals`, attributed by the delta the trace already takes, so the next artifact can score the
+original `P3` directly. `supersession-census.test.ts` pins both directions: reasons travel per question, and a
+question the pass did not consult omits the field rather than writing an empty record. The field being absent from
+**this** run's artifact is the reason `P3` is restated rather than kept — a prediction has to be scorable on the
+artifact it was written for.

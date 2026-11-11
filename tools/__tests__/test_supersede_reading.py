@@ -322,3 +322,83 @@ class ReadingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstrumentPredictionTest(unittest.TestCase):
+    """§13.370.1's four predictions, scored on synthetic artifacts.
+
+    Why these are separate from the gates: an arm can move the score and still fail the instrument -- `K1` holds
+    while the value rule refuses targets as restatements -- and that combination is the one the next dispatch is
+    designed against. A prediction block folded into the gates could not report it.
+    """
+
+    def read(self, treatment: dict, control: dict) -> dict:
+        with tempfile.TemporaryDirectory() as raw:
+            left = write(Path(raw), "t.json", treatment)
+            right = write(Path(raw), "c.json", control)
+            return reader.read(left, right)
+
+    def pair(
+        self,
+        *,
+        refusals: dict,
+        replaced: int,
+        consulted: dict[str, int] | None = None,
+        converted: int = 6,
+        total: int = 8,
+    ) -> dict:
+        ids = [f"q{index}" for index in range(total)]
+        control = artifact(ids=ids, control_masks=[[0] * total for _ in range(4)])
+        masks = [[1 if index < converted else 0 for index in range(total)] for _ in range(4)]
+        treatment = artifact(ids=ids, control_masks=masks)
+        for row in treatment["questions"]:
+            row["supersessionConsultations"] = (consulted or {}).get(row["questionId"], 4)
+        treatment["supersession"] = {
+            "attempted": total * 4,
+            "replaced": replaced,
+            "refused": total * 4 - replaced,
+            "refusals": refusals,
+        }
+        return self.read(treatment, control)
+
+    def test_a_run_that_answered_no_change_almost_every_time_fails_p2(self) -> None:
+        reading = self.pair(refusals={"no-change": 242, "restates": 0}, replaced=24)
+        self.assertFalse(reading["predictions"]["P2"]["passed"])
+
+        quiet = self.pair(refusals={"no-change": 60, "restates": 0}, replaced=24)
+        self.assertTrue(quiet["predictions"]["P2"]["passed"])
+
+    def test_the_asymmetry_sentence_tombstone_is_read_off_the_census(self) -> None:
+        # 242 is the count `42976296380` published. A run at that count has not changed the instruction, and the
+        # reading says so rather than comparing accuracies.
+        reading = self.pair(refusals={"no-change": 242}, replaced=19)
+        self.assertIn("242", reading["predictions"]["P2"]["reading"])
+
+    def test_restatements_past_the_bar_fail_p3a(self) -> None:
+        self.assertFalse(self.pair(refusals={"restates": 9}, replaced=24)["predictions"]["P3a"]["passed"])
+        self.assertTrue(self.pair(refusals={"restates": 8}, replaced=24)["predictions"]["P3a"]["passed"])
+
+    def test_an_unreadable_reply_fails_p3a_even_with_no_restatements(self) -> None:
+        reading = self.pair(refusals={"restates": 0, "unreadable": 1}, replaced=24)
+        self.assertFalse(reading["predictions"]["P3a"]["passed"])
+
+    def test_an_artifact_that_predates_the_reason_is_not_scorable_rather_than_passing(self) -> None:
+        # `too-long`-era artifacts file every refusal under the old name, so `restates` reads zero for a reason
+        # that has nothing to do with the value rule. Scoring that zero as a pass is the defect the rename fixed.
+        reading = self.pair(refusals={"too-long": 27}, replaced=19)
+        self.assertFalse(reading["predictions"]["P3a"]["passed"])
+        self.assertIn("not scorable", reading["predictions"]["P3a"]["reading"])
+
+    def test_a_target_the_pass_never_consulted_fails_p3b(self) -> None:
+        reading = self.pair(refusals={"restates": 0}, replaced=24, consulted={"q6": 0, "q7": 0})
+        self.assertFalse(reading["predictions"]["P3b"]["passed"])
+        self.assertIn("never consulted", reading["predictions"]["P3b"]["reading"])
+
+    def test_a_pass_that_replaces_no_more_than_the_ceiling_did_fails_p3c(self) -> None:
+        self.assertFalse(self.pair(refusals={"restates": 0}, replaced=19)["predictions"]["P3c"]["passed"])
+        self.assertTrue(self.pair(refusals={"restates": 0}, replaced=20)["predictions"]["P3c"]["passed"])
+
+    def test_the_printed_report_carries_the_prediction_block(self) -> None:
+        printed = reader.report(self.pair(refusals={"restates": 1}, replaced=24))
+        self.assertIn("§13.370.1", printed)
+        self.assertIn("`P3c`", printed)

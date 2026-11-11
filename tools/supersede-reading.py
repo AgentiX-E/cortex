@@ -73,6 +73,18 @@ SPREAD: dict[str, float] = {"ABS": 0.00, "KU": 2.52, "MR": 4.16, "TR": 4.32, "IE
 # prompt, so 4.1% of any population this size moves with nothing changed, half in each direction.
 FLIP_RATE = 5 / 121
 
+# Section 13.370.1's `P3`, as bars. `P2` is the asymmetry sentence's tombstone: the instruction that told the reader
+# a wrong yes is worse than a wrong no produced 242 `no-change` answers out of 288 consultations, on a population
+# where the correction is present 72 of 72. A hundred is not a taxonomically chosen number -- it is the point below
+# which the majority of consultations did not answer "nothing changed", and the arm's own census prints the exact
+# count beside it rather than a verdict by ratio.
+NO_CHANGE_BAR = 100
+# Four repetitions x two questions: enough for one question to be refused in every repetition and still pass, which
+# is the tolerance a value rule stated over lexical classes needs.
+RESTATES_BAR = 8
+# `42976296380`'s own `replaced`, the count the ceiling produced while refusing six correct identifications.
+PREVIOUS_REPLACED = 19
+
 
 def mcnemar_exact(repairs: int, damages: int) -> float:
     """Two-sided exact McNemar p, which depends only on the discordant counts."""
@@ -304,6 +316,45 @@ def read(treatment_path: Path, control_path: Path) -> dict[str, Any]:
         "reading": f"replaced {replaced}, refused {refused}",
         "refusals": (census or {}).get("refusals") or {},
     }
+    # Section 13.370.1: `P3` restated as three parts this artifact can answer. Kept beside the gates and not
+    # folded into them, because they are predictions about the *instrument* while `K1` is about the mechanism --
+    # an arm can move the score and still fail P3, and that combination is the one worth being able to see.
+    reasons = (census or {}).get("refusals") or {}
+    restates = int(reasons.get("restates") or 0)
+    unreadable = int(reasons.get("unreadable") or 0)
+    unconverted = [row["id"] for row in targets if row["state"] != "converted"]
+    missing = [
+        question_id
+        for question_id in unconverted
+        if int(treatment.questions[question_id].get("supersessionConsultations") or 0) < 1
+    ]
+    predictions = {
+        "P2": {
+            "passed": int(reasons.get("no-change") or 0) < NO_CHANGE_BAR,
+            "reading": f"no-change {int(reasons.get('no-change') or 0)} (bar < {NO_CHANGE_BAR}), "
+            f"against 242 in 42976296380",
+        },
+        # An artifact that predates the reason cannot score this one: `restates` would read zero because the
+        # refusals are filed under `too-long`, and a zero that means "the name did not exist yet" is exactly the
+        # defect the census rewrite was for. Reported as not scorable rather than passed.
+        "P3a": {
+            "passed": restates <= RESTATES_BAR and unreadable == 0 and "restates" in reasons,
+            "reading": "not scorable: this artifact files its refusals under `too-long`, so it predates the reason"
+            if "restates" not in reasons and "too-long" in reasons
+            else f"restates {restates} (bar <= {RESTATES_BAR}), unreadable {unreadable} (bar 0)",
+        },
+        "P3b": {
+            "passed": not missing,
+            "reading": f"{len(missing)} of {len(unconverted)} unconverted target(s) never consulted"
+            if missing
+            else f"all {len(unconverted)} unconverted target(s) were consulted",
+        },
+        "P3c": {
+            "passed": replaced > PREVIOUS_REPLACED,
+            "reading": f"replaced {replaced} (bar > {PREVIOUS_REPLACED}, the run the ceiling refused)",
+        },
+    }
+
     before_tokens = usage["control"]
     after_tokens = usage["treatment"]
     prompt_ratio = ratio(after_tokens.get("promptTokens"), before_tokens.get("promptTokens"))
@@ -328,6 +379,7 @@ def read(treatment_path: Path, control_path: Path) -> dict[str, Any]:
         "per_capability": per_capability,
         "digest_differences": reach_diffs,
         "census": census,
+        "predictions": predictions,
         "usage": usage,
         "gates": gates,
     }
@@ -397,6 +449,14 @@ def report(result: dict[str, Any]) -> str:
         lines.append(
             "refusals: " + ", ".join(f"`{name}` {count}" for name, count in sorted(refusals.items()) if count)
         )
+    lines.append("")
+    lines.append("## the instrument's own predictions (§13.370.1)")
+    lines.append("")
+    lines.append("| # | verdict | reading |")
+    lines.append("| --- | --- | --- |")
+    for name, row in result["predictions"].items():
+        verdict = "**holds**" if row["passed"] else "**fails**"
+        lines.append(f"| `{name}` | {verdict} | {row['reading']} |")
     return "\n".join(lines)
 
 

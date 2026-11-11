@@ -351,6 +351,15 @@ export type QuestionRecord = {
   /** How often the supersession pass substituted its own value. See `supersessionConsultations`. */
   readonly supersessionReplacements?: number | undefined;
   /**
+   * Why the supersession pass refused on this question, by reason, summed over its repetitions.
+   *
+   * §13.370's `P3` is a statement about eight named questions — *no gate target may be refused as a
+   * restatement* — and the run-level census cannot support it: it counts reasons across the run without
+   * saying whose they were. Attribution is therefore the premise of the prediction rather than a nicety,
+   * which is why the field is written per question and only when the pass consulted at all.
+   */
+  readonly supersessionRefusals?: Readonly<Record<string, number>> | undefined;
+  /**
    * What the specification pass's authorization said about this question, as counts over its repetitions.
    *
    * ## Why the arithmetic is recorded before the veto exists
@@ -559,6 +568,8 @@ export type QuestionRecordInput = {
   readonly supersessionConsultations?: number | undefined;
   /** See {@link QuestionRecordInput.supersessionReplacements}. */
   readonly supersessionReplacements?: number | undefined;
+  /** See {@link QuestionRecordInput.supersessionRefusals}. */
+  readonly supersessionRefusals?: Readonly<Record<string, number>> | undefined;
   /** See {@link QuestionRecordInput.specEvaluations}. */
   readonly specEvaluations?: number | undefined;
   /** See {@link QuestionRecordInput.specAuthorizations}. */
@@ -901,6 +912,13 @@ export function buildQuestionRecords(
         : {
             supersessionConsultations: input.supersessionConsultations,
             supersessionReplacements: input.supersessionReplacements ?? 0,
+            // Omitted when empty rather than written as `{}`: a question the pass consulted and refused
+            // nothing on carries no reasons, and an empty object would be a value a reader has to
+            // distinguish from an absent field for no gain.
+            ...(input.supersessionRefusals === undefined ||
+            Object.keys(input.supersessionRefusals).length === 0
+              ? {}
+              : { supersessionRefusals: input.supersessionRefusals }),
           }),
       // The authorization quartet on the same rule as the pairs above: `specEvaluations` is the field that
       // says this mechanism acted on the question, and the other three are given zero defaults rather than
