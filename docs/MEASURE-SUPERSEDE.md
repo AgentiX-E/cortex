@@ -403,3 +403,100 @@ The family stays closed. Section 12's `K1` failure stands, and the direction ins
 changes what a future score can be attributed to. The next arm on `KU` is the structural one §12 names: put the two
 statements in one unit, at read time, because this corpus has no write path. That arm must move **position** and not
 wording, or it prices two variables at once.
+
+## 14. The state an answer settled on: a closed pool built from one artifact
+
+### 14.1 `wrong` is a count, and nine of them are three bugs
+
+`42533236864` -- the registered configuration -- answers nine of seventy-two `KU` questions wrongly. Read through
+the record, those nine are not one failure:
+
+- four repeat a value the corpus had **already replaced**: `59524333` answers `7:00 pm` where the window states it
+  on 02/11 and `6:00 pm` on 05/30, and `852ce960` answers `$350,000` where `$400,000` is the later figure;
+- four answer a value the delivery **never carried**: `69fee5aa`'s gold is `38` and the window holds `37`;
+  `c7dc5443`'s is `5-2` and the window holds `3-2`; `e66b632c`'s is `27 minutes and 45 seconds` and the window
+  holds `26:30`; `f9e8c073`'s is `five` and the window holds `three sessions`;
+- one has a phrase gold (`in a shoe rack in my closet`) that no value instrument can place.
+
+The first class is what a read-time annotation could reach. The second is not reachable by any annotation at all,
+because the text it would annotate was never delivered. Separating them is the whole of section 14, and it is
+what decided this round's arm (section 14.6).
+
+### 14.2 The pool, and nine labels rather than a verdict
+
+`tools/state-relation.py` builds the closed pool StateMemBench (arXiv 2608.19652) builds from a generator, out
+of the artifact instead: the gold is the current state, every other value the delivery states is placed by the
+timestamp on the turn that states it, and `tGold` is the **latest** statement of the gold. Values are read in
+three families -- numerals at a boundary, `h:mm am/pm` clock times, `w-l` records -- plus number words, because
+half this corpus is written `five`.
+
+| Label | What it means | What fixes it |
+| --- | --- | --- |
+| `current` | the answer states the gold | -- |
+| `both` | states the gold **and** another pool value | the reader hedged; nothing |
+| `older` | states only a value the window stated before the gold | annotate the two statements together |
+| `newer` | states only a value the window stated after the gold | **the annotation makes this worse** |
+| `overlap` | the value is stated on both sides of `tGold` | not decidable from one artifact |
+| `mixed` | values on both sides | not decidable |
+| `only-in-answer` | the value is in no delivered turn | derivation or hallucination |
+| `gold-not-in-window` | the delivery never stated the gold | delivery, not annotation |
+| `unnumbered` | the gold is a phrase | out of this instrument's scope (21 of 72) |
+
+### 14.3 Two guards that earned their place, and one that changes nothing
+
+Both were found by reading a wrong row rather than by designing for it:
+
+- **Citations.** Answers cite evidence as `[2023/04/30]`. A raw numeral pass reads that as `2023` beside `4` and
+  `30`, and before the guard **seventeen correct answers** read `both` on their own citations.
+- **Numbered lists.** An assistant turn that answers with a list puts `5.` at the head of its fifth item. Before
+  the guard, `f9e8c073`'s current state was dated to a turn about art events and the question read `overlap`
+  instead of `gold-not-in-window`.
+
+The third guard -- the gold is located only in a turn that also names the question's attribute -- changes **no
+row on either artifact**. It is kept as a guard against a shape this corpus does not contain, pinned by a test,
+and credited with nothing.
+
+### 14.4 The control, and three refusals
+
+A graded-correct answer states its gold, so the classifier's positive control is internal: both artifacts read
+**40 of 43 (93.0%)**. The tool refuses three states rather than publishing a number about itself: turns with no
+timestamp (no ordering exists), a population with no numbered correct answer (no control exists), and a control
+below 90%.
+
+### 14.5 The two readings, and what the second one says about the closed family
+
+| Artifact | Configuration | `older` | `newer` | `gold-not-in-window` | `unnumbered` |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `42533236864` | registered (`reviewPass: bare`) | 4 | **0** | 4 | 1 |
+| `43001135439` | `reviewPass: supersede` | 2 | **2** | 4 | 1 |
+
+On the control arm, **not one** of the nine failures is `newer`: every state-selection failure is a missed
+update. On the supersede arm two appear, and the question sets say what produced them -- KU accuracy is 63 of 72
+in both arms, with three questions converted (`852ce960`, `a1eacc2a`, `a2f3aa27`) and three damaged
+(`ed4ddc30`, `0ddfec37`, `10e09553`), and each damage carries its own `LATER:` quote:
+
+- `10e09553` -- "How many bass did I catch on the **earlier** trip before the 7/22 trip?" The pass replaced with
+  `we caught 9 largemouth bass that day` (11/30), which is the later trip. The recency instruction was wrong.
+- `0ddfec37` -- "...in the **first three months** of collection?" The pass replaced with `20 ... in the past few
+  months` (12/30). Same shape.
+- `ed4ddc30` -- replaced with the **earlier** value (`30 dozen`, 01/11) against a gold stated 03/15: the
+  `not-later` direction defect section 11 corrects, not a recency claim.
+
+So the family closed on a break-even reading of exactly the class it was built for, and two of its three damages
+are questions where **the newest value is the wrong answer**. A mechanism that says "prefer the later statement"
+cannot be repaired by phrasing: it is right for four of the nine and wrong for two, and section 14.6 prices the
+axis that reaches the other four instead.
+
+### 14.6 What this changed: the arm is delivery, not annotation
+
+`03 §14.112` registers one variable -- `knowledge-update`'s evidence room from 24,000 to 49,400 characters, the
+room `tools/evidence-depth.py` derives for 80% coverage -- because:
+
+1. the four `gold-not-in-window` rows are unreachable by annotation;
+2. KU's window is 28 turns at 783 characters per turn, the shallowest of the five routes, and its coverage is
+   63.4% against 94.7-95.7% on the two routes that hold twice the room;
+3. `offered == delivered` and `unscoredChars == 0` on all four undelivered rows, so the prompt builder did not
+   cut them -- the room the selector filled is what was too small.
+
+It does **not** claim the room explains `older`. Those four are a reader problem, and the annotation that could
+reach them is the one section 14.5 shows cannot be made directional.
