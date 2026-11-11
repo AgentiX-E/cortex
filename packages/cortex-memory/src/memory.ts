@@ -67,6 +67,8 @@ import { parseEventSpec } from './aggregation/spec.js';
 import { executeSpec } from './aggregation/execute.js';
 import { renderAggregate } from './aggregation/render.js';
 import { buildSpecPrompt } from './aggregation/plan-prompt.js';
+import { authoriseSpecSubstitution } from './aggregation/authorization.js';
+import type { SpecAuthorization } from './aggregation/authorization.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
 
@@ -277,6 +279,41 @@ export class CortexMemory implements SessionAwareMemorySystem {
 
   /** Plans the specification pass could not read, by refusal code, summed for the census. */
   #specRefusals = 0;
+
+  /**
+   * What the specification pass's authorization would have said, summed over every substitution it offered.
+   *
+   * ## Why this is recorded before the veto exists
+   *
+   * §13.365 registers a veto — substitute the plan's value only if the first answer's own token is among the
+   * rows the plan selected — and the four numbers that decide it. The order matters and this campaign has paid
+   * for getting it wrong twice: `support` was computed on every call and **dropped here**, so the relation the
+   * veto is built from could not be measured after the run that needed it, and the arm would have to be
+   * re-dispatched to learn whether the predicate had a population at all.
+   *
+   * So the arithmetic lands with no model call attached and no behaviour change: `authorized` is computed and
+   * counted, and nothing acts on it yet. What that buys is the reading `V3` needs — *would the veto have
+   * authorized the three known repairs* — from a run that was going to happen anyway, and the answer to
+   * "does this predicate separate the two populations" before the dispatch that depends on it.
+   *
+   * `evaluated` counts substitutions the pass *offered*, so a plan that refused (`#specRefusals`) is outside
+   * this population and `evaluated + refused = attempted` keeps the identity `auditCensus` already publishes.
+   */
+  readonly #specAuthorization: {
+    evaluated: number;
+    authorized: number;
+    selected: number;
+    supportHits: number;
+    ledgerRows: number;
+    tokens: number;
+  } = {
+    evaluated: 0,
+    authorized: 0,
+    selected: 0,
+    supportHits: 0,
+    ledgerRows: 0,
+    tokens: 0,
+  };
 
   /**
    * The supersession pass's counters: consultations issued, answers replaced, and every refusal by name.
@@ -975,7 +1012,19 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * a measurement and stays a measurement -- a configured pass that declined every list still answers
    * `{ attempted: 0, changed: 0 }`. Absence is a fact about the build, and only this method can state it.
    */
-  auditCensus(): { attempted: number; changed: number; refused?: number } | null {
+  auditCensus(): {
+    attempted: number;
+    changed: number;
+    refused?: number;
+    authorization?: {
+      evaluated: number;
+      authorized: number;
+      selected: number;
+      supportHits: number;
+      ledgerRows: number;
+      tokens: number;
+    };
+  } | null {
     const pass = this.#options.reviewPass;
     if (pass !== 'audit' && pass !== 'tally' && pass !== 'spec') return null;
     if (pass === 'tally') {
@@ -988,7 +1037,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
     if (pass === 'spec') {
       // `specified` is `attempted - refused` by construction rather than a fourth counter: two counters
       // that can disagree are two counters that will, and the identity is checkable from the artifact.
-      return { ...this.#audits, refused: this.#specRefusals };
+      //
+      // `authorization` is the veto's arithmetic, present only under this pass and only as a measurement:
+      // §13.365 registers the predicate and the dispatch that prices it, and the numbers have to be
+      // recorded on a run before the one that depends on them, or the arm has to be paid for twice.
+      return {
+        ...this.#audits,
+        refused: this.#specRefusals,
+        authorization: { ...this.#specAuthorization },
+      };
     }
     return { ...this.#audits };
   }
@@ -1753,7 +1810,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
       const parsed = parseEventSpec(this.#lastRawOutput as string, ledger.steps, ledger.sessions);
       const result = parsed.kind === 'spec' ? executeSpec(ledger, parsed.spec) : null;
       const answered = result === null ? null : renderAggregate(result);
-      if (answered === null) {
+      // The two refusals are one branch because they are one population for the census: no substitution was
+      // offered. Narrowing them separately would leave `result` possibly-null below, and the authorization
+      // needs a computed result to read a support list from.
+      if (result === null || answered === null) {
         // One counter for two shapes of "the plan did not produce an answer", and the shape is
         // recoverable from the response: an unreadable plan leaves prose, an empty plan leaves a plan
         // that selected nothing, and a mixed-unit sum leaves a plan that added two quantities. Counting
@@ -1766,6 +1826,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
         );
         return this.#recordOutcome(first);
       }
+      // §13.365's relation, recorded and not yet acted on: the arithmetic of the veto lands before the
+      // dispatch that prices it, because a relation nobody recorded cannot be measured afterwards.
+      const authorization: SpecAuthorization = authoriseSpecSubstitution(result, ledger, first);
+      this.#specAuthorization.evaluated += 1;
+      if (authorization.authorized) this.#specAuthorization.authorized += 1;
+      this.#specAuthorization.selected += authorization.selected;
+      this.#specAuthorization.supportHits += authorization.supportHits;
+      this.#specAuthorization.ledgerRows += authorization.ledgerRows;
+      this.#specAuthorization.tokens += authorization.tokens;
       if (answered !== first) this.#audits.changed += 1;
       this.#lastReview = { first, final: answered, changed: answered !== first };
       // Delivery stays retrieval's own prompt, coverage comes from the pass. The ledger is built from the

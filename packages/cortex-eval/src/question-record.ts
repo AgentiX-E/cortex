@@ -351,6 +351,33 @@ export type QuestionRecord = {
   /** How often the supersession pass substituted its own value. See `supersessionConsultations`. */
   readonly supersessionReplacements?: number | undefined;
   /**
+   * What the specification pass's authorization said about this question, as counts over its repetitions.
+   *
+   * ## Why the arithmetic is recorded before the veto exists
+   *
+   * §13.365 registers a veto — substitute the plan's value only if the first answer's own token appears among
+   * the rows the plan selected — and four numbers decide it. They are recorded on the run **before** the one
+   * that depends on them: `support` was computed on every call in this pass and dropped, so the relation the
+   * veto is built from could not be measured after the run that needed it, and the arm would have had to be
+   * paid for twice to learn whether the predicate had a population at all.
+   *
+   * `specEvaluations` counts substitutions the pass **offered**, so a refused plan is outside this population
+   * and `specEvaluations + refused = auditConsultations` stays true. `specAuthorizations` is the veto's verdict;
+   * `specSelected` and `specSupportHits` are its numerator and denominator, and `specSupportHits = 0` with
+   * `specEvaluations > 0` is the state a predicate that never fires reports.
+   *
+   * Four counts and not one boolean, for the reason §13.262 records about the audit's own fields: a question is
+   * asked `runs` times, so a boolean would collapse four repetitions into one and the column would stop summing
+   * to the run-level tally.
+   */
+  readonly specEvaluations?: number | undefined;
+  /** How often the veto would have authorized the substitution. See `specEvaluations`. */
+  readonly specAuthorizations?: number | undefined;
+  /** Rows the plans selected, summed over the repetitions. See `specEvaluations`. */
+  readonly specSelected?: number | undefined;
+  /** Selected rows carrying the first answer's own numeral. See `specEvaluations`. */
+  readonly specSupportHits?: number | undefined;
+  /**
    * How much of the dataset's gold evidence the reader's context contained.
    *
    * ## Why this field is the point of `§13.18`
@@ -532,6 +559,14 @@ export type QuestionRecordInput = {
   readonly supersessionConsultations?: number | undefined;
   /** See {@link QuestionRecordInput.supersessionReplacements}. */
   readonly supersessionReplacements?: number | undefined;
+  /** See {@link QuestionRecordInput.specEvaluations}. */
+  readonly specEvaluations?: number | undefined;
+  /** See {@link QuestionRecordInput.specAuthorizations}. */
+  readonly specAuthorizations?: number | undefined;
+  /** See {@link QuestionRecordInput.specSelected}. */
+  readonly specSelected?: number | undefined;
+  /** See {@link QuestionRecordInput.specSupportHits}. */
+  readonly specSupportHits?: number | undefined;
   /**
    * How much of the dataset's gold evidence `retrieved` contained, or `null`.
    *
@@ -866,6 +901,17 @@ export function buildQuestionRecords(
         : {
             supersessionConsultations: input.supersessionConsultations,
             supersessionReplacements: input.supersessionReplacements ?? 0,
+          }),
+      // The authorization quartet on the same rule as the pairs above: `specEvaluations` is the field that
+      // says this mechanism acted on the question, and the other three are given zero defaults rather than
+      // demanded, because a producer that incremented no verdict has a zero and not a missing value.
+      ...(input.specEvaluations === undefined
+        ? {}
+        : {
+            specEvaluations: input.specEvaluations,
+            specAuthorizations: input.specAuthorizations ?? 0,
+            specSelected: input.specSelected ?? 0,
+            specSupportHits: input.specSupportHits ?? 0,
           }),
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });

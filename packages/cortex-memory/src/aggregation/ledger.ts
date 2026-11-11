@@ -167,6 +167,18 @@ function extractNumbers(text: string): LedgerNumber[] {
 }
 
 /**
+ * The numerals in any text, by the ledger's own rules.
+ *
+ * Exported for the authorization in `authorization.ts`, and the export is the point rather than a convenience:
+ * that check asks whether *the first answer's token* appears in a selected row, which is a statement about one
+ * vocabulary. A second tokeniser reading `1,998` as `1` and `998`, or `COVID-19` as nineteen, would answer a
+ * different question from the one the ledger can be audited against.
+ */
+export function numeralsIn(text: string): readonly number[] {
+  return extractNumbers(text).map((number) => number.value);
+}
+
+/**
  * Compile sessions into a ledger.
  *
  * Sessions arrive as `string[][]` -- the shape `answerSessions` already receives -- so this runs on

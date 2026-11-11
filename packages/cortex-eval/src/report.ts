@@ -1296,6 +1296,28 @@ export type AuditCensus = {
    * defect this file's `recovery` census was introduced to remove in the other direction.
    */
   readonly refused?: number;
+  /**
+   * The `spec` pass's authorization arithmetic, present only under `reviewPass: 'spec'`.
+   *
+   * §13.365 registers a veto — substitute the plan's value only if the first answer's own token is among the
+   * rows the plan selected — and these are the four numbers plus two denominators that decide it. They are
+   * recorded on the run **before** the one that depends on them, because a relation nobody persisted cannot be
+   * measured afterwards: `support` was computed on every call in the `spec` pass and dropped, which is the
+   * defect that made this field exist.
+   *
+   * `evaluated` counts substitutions the pass offered, so a refused plan is outside this population and
+   * `evaluated + refused = attempted` stays true. `ledgerRows` and `tokens` are the denominators — a hit rate
+   * over two rows and a hit rate over two hundred are different readings, and `tokens: 0` is the case where the
+   * veto could not run at all.
+   */
+  readonly authorization?: {
+    readonly evaluated: number;
+    readonly authorized: number;
+    readonly selected: number;
+    readonly supportHits: number;
+    readonly ledgerRows: number;
+    readonly tokens: number;
+  };
 };
 
 export type AbstentionReasons = {
@@ -2270,6 +2292,30 @@ function auditLines(census: AuditCensus | undefined, pass?: string | undefined):
                 'first pass answer stands in that case, because a partial sum is a smaller total stated with the same',
                 'confidence as a complete one.',
               ]),
+        ]),
+    ...(census.authorization === undefined
+      ? []
+      : [
+          '',
+          '## Authorization (`reviewPass: spec`, §13.365)',
+          '',
+          '| Substitutions offered | Veto would authorize | Share | Rows selected | Supporting rows | Ledger rows | Answer numerals |',
+          '|---|---|---|---|---|---|---|',
+          `| ${census.authorization.evaluated} | ${census.authorization.authorized} | ${
+            census.authorization.evaluated === 0
+              ? 'n/a'
+              : `${((census.authorization.authorized / census.authorization.evaluated) * 100).toFixed(1)}%`
+          } | ${census.authorization.selected} | ${census.authorization.supportHits} | ${
+            census.authorization.ledgerRows
+          } | ${census.authorization.tokens} |`,
+          '',
+          'The registered veto substitutes the plan value only when the first answer own numeral appears among the',
+          'rows the plan selected. **Nothing acts on that verdict in this build**: the arithmetic is recorded on',
+          'the run before the dispatch that prices it, because a relation nobody persisted cannot be measured',
+          'afterwards -- `support` was computed on every call in this pass and dropped, which is the defect this',
+          'table exists to close. `Supporting rows` counts selected rows carrying one of the answer numerals, so',
+          'the identity to check is `supporting <= selected <= ledger rows`, and `Answer numerals: 0` is the case',
+          'where the veto could not run at all.',
         ]),
   ];
 }

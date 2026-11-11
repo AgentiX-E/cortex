@@ -881,3 +881,49 @@ describe('the census triples the roster carries', () => {
     expect(Object.hasOwn(record!, 'supersessionReplacements')).toBe(false);
   });
 });
+
+/**
+ * The authorization quartet, which follows the rule the three pairs above already established.
+ *
+ * One field says the mechanism acted on this question (`specEvaluations`); the other three are counts whose
+ * absence would be a missing value rather than a measurement. So they default to zero — and the defaults are the
+ * branch no artifact with a full payload exercises, which is why they are asserted here rather than left to the
+ * arm's own run.
+ */
+describe('the specification authorization columns', () => {
+  it('writes the quartet when only the leading count is supplied, defaulting the rest to zero', () => {
+    const [record] = buildQuestionRecords([input({ specEvaluations: 2 })]);
+
+    expect(record!.specEvaluations).toBe(2);
+    expect(record!.specAuthorizations).toBe(0);
+    expect(record!.specSelected).toBe(0);
+    expect(record!.specSupportHits).toBe(0);
+  });
+
+  it('carries all four through to the JSON when every one is measured', () => {
+    const [record] = buildQuestionRecords([
+      input({ specEvaluations: 4, specAuthorizations: 3, specSelected: 12, specSupportHits: 9 }),
+    ]);
+
+    expect(JSON.parse(JSON.stringify(record))).toMatchObject({
+      specEvaluations: 4,
+      specAuthorizations: 3,
+      specSelected: 12,
+      specSupportHits: 9,
+    });
+  });
+
+  it('omits all four when the pass never offered a substitution', () => {
+    // Absence is not zero: a question the pass never reached and a question whose plan was refused are
+    // different facts, and a zeroed quartet would collapse them.
+    const [record] = buildQuestionRecords([input({})]);
+    for (const key of [
+      'specEvaluations',
+      'specAuthorizations',
+      'specSelected',
+      'specSupportHits',
+    ]) {
+      expect(Object.hasOwn(record!, key)).toBe(false);
+    }
+  });
+});

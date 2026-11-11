@@ -2965,8 +2965,23 @@ export type ReviewMechanismTrace = { attempted: number; answered: number };
  *
  * `changed` is not a synonym for `answered`: an audit that ran and returned the first pass's own answer has
  * a consultation and no change, and that is the state a run needs to be able to report.
+ *
+ * `authorization` rides here rather than in a fourth trace because it is measured by the same accessor over the
+ * same population: under `reviewPass: 'spec'` the census carries the veto's arithmetic, and a separate wrapper
+ * would read the same method twice per question to split one payload. It is optional so a run of `audit` or
+ * `tally` omits the fields entirely, which is the difference between "the veto did not fire" and "this pass has
+ * no veto".
  */
-type AuditMechanismTrace = { attempted: number; changed: number };
+type AuditMechanismTrace = {
+  attempted: number;
+  changed: number;
+  authorization?: {
+    evaluations: number;
+    authorizations: number;
+    selected: number;
+    supportHits: number;
+  };
+};
 
 /**
  * What one question's census said about the supersession pass, as counts.
@@ -3053,10 +3068,35 @@ function traceAuditPass(
     system,
     'auditCensus',
     trace,
-    (delta) => ({ attempted: delta.attempted, changed: delta.changed }),
+    (delta) => ({
+      attempted: delta.attempted,
+      changed: delta.changed,
+      // Present only where the accessor reported it, so a pass with no plan leaves the record's fields absent
+      // rather than zeroed -- the same rule the record applies to the whole trace one level up.
+      ...(delta.authorization === null
+        ? {}
+        : {
+            authorization: {
+              evaluations: delta.authorization.evaluated,
+              authorizations: delta.authorization.authorized,
+              selected: delta.authorization.selected,
+              supportHits: delta.authorization.supportHits,
+            },
+          }),
+    }),
     (prev, next) => ({
       attempted: prev.attempted + next.attempted,
       changed: prev.changed + next.changed,
+      ...(prev.authorization === undefined || next.authorization === undefined
+        ? {}
+        : {
+            authorization: {
+              evaluations: prev.authorization.evaluations + next.authorization.evaluations,
+              authorizations: prev.authorization.authorizations + next.authorization.authorizations,
+              selected: prev.authorization.selected + next.authorization.selected,
+              supportHits: prev.authorization.supportHits + next.authorization.supportHits,
+            },
+          }),
     }),
   );
 }
@@ -3088,6 +3128,50 @@ function traceSupersession(
 }
 
 /**
+ * The authorization payload a `spec` census carries, as the product states it.
+ *
+ * The product's own shape, restated here because this module reads it through an accessor name rather than
+ * through a type: `CortexMemory.auditCensus()` is on the `MemorySystem` surface only as an optional member, and
+ * importing the class would make the harness depend on one implementation of the interface.
+ */
+type CensusAuthorization = {
+  evaluated: number;
+  authorized: number;
+  selected: number;
+  supportHits: number;
+  ledgerRows: number;
+  tokens: number;
+};
+
+/** The same payload as a difference, which is what one question's share of it is. */
+type CensusAuthorizationDelta = {
+  evaluated: number;
+  authorized: number;
+  selected: number;
+  supportHits: number;
+};
+
+/**
+ * What one question contributed to the authorization counters.
+ *
+ * `null` when either read lacked the payload, which is the case under every pass but `spec` and -- more
+ * importantly -- the case when a build predates the field. A delta over an absent reading would be a veto
+ * counted as having evaluated zero substitutions, which reads as "the predicate had no population".
+ */
+function authorizationDelta(
+  before: CensusAuthorization | null,
+  after: CensusAuthorization | null,
+): CensusAuthorizationDelta | null {
+  if (before === null || after === null) return null;
+  return {
+    evaluated: after.evaluated - before.evaluated,
+    authorized: after.authorized - before.authorized,
+    selected: after.selected - before.selected,
+    supportHits: after.supportHits - before.supportHits,
+  };
+}
+
+/**
  * The machinery both traces above share: take a census before and after every `answer*` call and record the
  * difference against the question string the caller passed.
  *
@@ -3100,13 +3184,25 @@ function traceCensus<T>(
   system: MemorySystem,
   accessor: 'recoveryCensus' | 'auditCensus' | 'supersessionCensus',
   trace: Map<string, T>,
-  project: (delta: { attempted: number; answered: number; changed: number; replaced: number }) => T,
+  project: (delta: {
+    attempted: number;
+    answered: number;
+    changed: number;
+    replaced: number;
+    authorization: CensusAuthorizationDelta | null;
+  }) => T,
   merge: (prev: T, next: T) => T,
 ): MemorySystem {
   const source = system as Partial<
     Record<
       typeof accessor,
-      () => { attempted: number; answered?: number; changed?: number; replaced?: number } | null
+      () => {
+        attempted: number;
+        answered?: number;
+        changed?: number;
+        replaced?: number;
+        authorization?: CensusAuthorization;
+      } | null
     >
   >;
   const census = source[accessor];
@@ -3129,6 +3225,7 @@ function traceCensus<T>(
     answered: number;
     changed: number;
     replaced: number;
+    authorization: CensusAuthorization | null;
   } | null => {
     if (!usable) return null;
     try {
@@ -3145,6 +3242,9 @@ function traceCensus<T>(
         answered: reading.answered ?? 0,
         changed: reading.changed ?? 0,
         replaced: reading.replaced ?? 0,
+        // `null` rather than a zeroed record: under `audit` and `tally` the payload has no such field, and a
+        // delta over zeros would report a veto that fired nowhere on a build that cannot fire it at all.
+        authorization: reading.authorization ?? null,
       };
     } catch {
       usable = false;
@@ -3185,6 +3285,7 @@ function traceCensus<T>(
           answered: after.answered - before.answered,
           changed: after.changed - before.changed,
           replaced: after.replaced - before.replaced,
+          authorization: authorizationDelta(before.authorization, after.authorization),
         });
         const prev = trace.get(question);
         trace.set(question, prev === undefined ? entry : merge(prev, entry));
@@ -3618,6 +3719,10 @@ function traceOf(
   auditChanges?: number;
   supersessionConsultations?: number;
   supersessionReplacements?: number;
+  specEvaluations?: number;
+  specAuthorizations?: number;
+  specSelected?: number;
+  specSupportHits?: number;
 } {
   const entry = trace?.get(question);
   const reviewed = audit?.get(question);
@@ -3626,10 +3731,30 @@ function traceOf(
     entry === undefined
       ? {}
       : { recoveryConsultations: entry.attempted, recoveryAnswers: entry.answered };
-  const auditing: { auditConsultations?: number; auditChanges?: number } =
+  const auditing: {
+    auditConsultations?: number;
+    auditChanges?: number;
+    specEvaluations?: number;
+    specAuthorizations?: number;
+    specSelected?: number;
+    specSupportHits?: number;
+  } =
     reviewed === undefined
       ? {}
-      : { auditConsultations: reviewed.attempted, auditChanges: reviewed.changed };
+      : {
+          auditConsultations: reviewed.attempted,
+          auditChanges: reviewed.changed,
+          // Four columns rather than the whole payload: `ledgerRows` and `tokens` are denominators for a rate
+          // over the run, and a per-question copy of them would be two more columns whose sum nobody reads.
+          ...(reviewed.authorization === undefined
+            ? {}
+            : {
+                specEvaluations: reviewed.authorization.evaluations,
+                specAuthorizations: reviewed.authorization.authorizations,
+                specSelected: reviewed.authorization.selected,
+                specSupportHits: reviewed.authorization.supportHits,
+              }),
+        };
   // Three fields would be redundant: `replaced` is the only one that can move a score, and `attempted`
   // beside it separates an inert pass from a guard that refused every claim. The refusals by name stay at
   // the run level, where they are a statement about the population rather than about a question.
@@ -4142,16 +4267,59 @@ function replyRepairAcross(systems: readonly MemorySystem[]): { replyRepair?: Re
  * found the two agreeing, since the call count is a process total and the census would not have been.
  */
 function auditAcross(systems: readonly MemorySystem[]): { audit?: AuditCensus } {
-  const total = summedOver(systems, (system) => auditOf(system).audit);
-  if (total === undefined) return {};
-  // `refused` is summed only when at least one instance reported it. Summing it to a present zero would
-  // put the column under `audit`, which cannot refuse anything -- the reason the field is optional.
-  const refused = total.refused as number | undefined;
+  if (systems.length === 0) return {};
+  let attempted = 0;
+  let changed = 0;
+  let refused: number | undefined;
+  // Accumulated by hand rather than through `summedOver`, for the reason `supersessionAcross` gives about its
+  // refusal record: this payload now carries one nested object, and a summer over a flat number record would
+  // have to dispatch on the value's type. The three flat fields add; the authorization has to be checked.
+  const authorization = {
+    evaluated: 0,
+    authorized: 0,
+    selected: 0,
+    supportHits: 0,
+    ledgerRows: 0,
+    tokens: 0,
+  };
+  let reporting = 0;
+  for (const system of systems) {
+    const one = auditOf(system).audit;
+    // All-or-nothing, which is the rule every census in this file follows: `41773546221` published worker 0's
+    // quarter of a census as if it were the run's, and a quarter reads exactly like a measurement.
+    if (one === undefined) return {};
+    attempted += one.attempted;
+    changed += one.changed;
+    if (one.refused !== undefined) refused = (refused ?? 0) + one.refused;
+    if (one.authorization !== undefined) {
+      reporting += 1;
+      authorization.evaluated += one.authorization.evaluated;
+      authorization.authorized += one.authorization.authorized;
+      authorization.selected += one.authorization.selected;
+      authorization.supportHits += one.authorization.supportHits;
+      authorization.ledgerRows += one.authorization.ledgerRows;
+      authorization.tokens += one.authorization.tokens;
+    }
+  }
+  // A partial report is no report: one instance carrying the payload and another not is the truncated sum in
+  // its subtler form, and the artifact would state a veto measured over some of the run.
+  const complete = reporting === systems.length;
+  // The identity is checked rather than trusted, for `supersessionAcross`'s reason: the product derives these
+  // from one counter set, so they agree by construction inside an instance and across a pool -- which means a
+  // disagreement is the only way a defect in this fold can become visible at all. A total that fails the check
+  // is not published, because a census that cannot state its own population should not state a number.
+  const sound =
+    complete &&
+    authorization.supportHits <= authorization.selected &&
+    authorization.selected <= authorization.ledgerRows &&
+    authorization.authorized <= authorization.evaluated &&
+    authorization.evaluated + (refused ?? 0) === attempted;
   return {
     audit: {
-      attempted: total.attempted as number,
-      changed: total.changed as number,
+      attempted,
+      changed,
       ...(refused === undefined ? {} : { refused }),
+      ...(sound ? { authorization } : {}),
     },
   };
 }
@@ -4434,11 +4602,42 @@ function auditOf(system: MemorySystem): { audit?: AuditCensus } {
     (typeof refused !== 'number' || !Number.isInteger(refused) || refused < 0)
   )
     return {};
+  // `authorization` is optional for the same reason and is held to a stricter rule than `refused`: it is a
+  // record rather than a count, so a malformed *part* is refused with the whole census. A payload whose
+  // numerator arrived and whose denominator did not is the total-without-its-parts shape `ReplyRepairCensus`
+  // exists to prevent -- a reader could divide by a number that was never measured.
+  const raw = record.authorization;
+  let authorization: AuditCensus['authorization'];
+  if (raw !== undefined) {
+    if (raw === null || typeof raw !== 'object') return {};
+    const parts = raw as Record<string, unknown>;
+    const keys = [
+      'evaluated',
+      'authorized',
+      'selected',
+      'supportHits',
+      'ledgerRows',
+      'tokens',
+    ] as const;
+    for (const key of keys) {
+      const value = parts[key];
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
+    }
+    authorization = {
+      evaluated: parts.evaluated as number,
+      authorized: parts.authorized as number,
+      selected: parts.selected as number,
+      supportHits: parts.supportHits as number,
+      ledgerRows: parts.ledgerRows as number,
+      tokens: parts.tokens as number,
+    };
+  }
   return {
     audit: {
       attempted: record.attempted as number,
       changed: record.changed as number,
       ...(refused === undefined ? {} : { refused: refused as number }),
+      ...(authorization === undefined ? {} : { authorization }),
     },
   };
 }

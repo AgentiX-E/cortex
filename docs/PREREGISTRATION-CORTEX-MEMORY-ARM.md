@@ -39506,3 +39506,59 @@ own. Both nulls are still reported, and a conversion rate below 75% is still a d
 **What is read instead of guessed.** `tools/supersede-reading.py` derives the population from the control it is
 handed and refuses an artifact whose roster disagrees with the other's. The six original ids are printed beside it
 as a continuity table, not as the gate.
+
+#### 13.367 The premise under `K1`, measured before the arm was read
+
+§13.366's justification for a prompt-level pass was a sentence that had never been a column: *the correction is
+already in front of the reader, and the reader does not treat it as a correction.* If it were false — if the
+corrective turn were simply not retrieved for most failing questions — the pass would be aimed at the wrong
+population and the six-of-eight bar would be unreachable by construction rather than by outcome, which is the
+defect §13.366.1 had just finished recording in a different form.
+
+`tools/stale-exposure.py` measures it off the control artifact and the dataset, at zero cost, before the arm is
+read: the per-question windows the artifact records verbatim are compared against the sessions `answer_session_ids`
+names, exact equality after whitespace collapse.
+
+| state | `KU` questions (control `42533236864`) | of the gate's own population (8) |
+| --- | ---: | ---: |
+| `both` — obsolete value and correction both in the window | **72 / 72** | **8 / 8** |
+| `earlier-only`, `later-only`, `neither` | 0 | 0 |
+
+**Registered: the premise holds, and the rival explanation does not.** One window in 72 shows the correction
+before the statement it replaces, and that question is answered **correctly**; zero of the nine wrong answers are
+inverted, and zero have the obsolete value as the last thing in the window. So position — the cheapest available
+story, and the one that would have made the fix free — explains nothing, and the failures are about interpreting
+the pair rather than about its order.
+
+Two columns are printed as bounds and labelled so: per-turn agreement with the dataset is 60.5% because the arm
+truncates long turns, so presence is a lower bound; and the gold-value check reads numeric tokens only, which
+leaves three of the nine wrong answers — `seven`, `five`, `in a shoe rack in my closet` — outside what it can
+judge.
+
+#### 13.368 The authorization arithmetic lands before the veto it prices
+
+§13.365 registers a veto on substitution and four bars for the arm that carries it. The relation it acts on had
+never been persisted: `support` was computed on every call in the `spec` pass and dropped at `memory.ts`, so
+"would the veto have authorized the three known repairs" could only be answered by paying for the arm.
+
+**What is now recorded**, with no model call and no change to any answer:
+
+| surface | fields |
+| --- | --- |
+| per question | `specEvaluations`, `specAuthorizations`, `specSelected`, `specSupportHits` |
+| per run | `audit.authorization.{evaluated, authorized, selected, supportHits, ledgerRows, tokens}` |
+
+`evaluated` counts substitutions the pass **offered**, so a refused plan is outside the population and
+`evaluated + refused = attempted` — the identity `specified = attempted - refused` already gives the pass —
+continues to hold. The two asymmetries are decisions: an answer with no numeral is never authorized (`tokens: 0`),
+and a hit counts rows rather than occurrences.
+
+**Registered: the bound that makes `V2` predictable.** The veto cannot damage a substitution that did not change
+the answer, because refusing it leaves the same answer standing. A damage therefore needs a **changed**
+substitution *and* a wrong authorization, and only the second is what the arm measures. This is pinned by a test,
+not by an argument.
+
+**Registered: three refusals at the fold.** A partial sum (one instance reporting the block and another not), a
+violated identity (`supportHits ≤ selected ≤ ledgerRows`), and a violated census identity all publish **nothing**
+rather than a number that reads like a measurement. The reason is `41773546221`, which published worker 0's
+quarter of a census and looked entirely healthy.
