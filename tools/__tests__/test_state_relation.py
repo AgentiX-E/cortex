@@ -248,6 +248,27 @@ class RefusalTest(unittest.TestCase):
         status, _ = self.run_cli(path)
         self.assertNotEqual(status, 0)
 
+    def test_a_refusal_over_two_populations_names_each_one_s_control(self):
+        # `--capability all` mixes populations, and a single number would read as an instrument defect. `TR` is
+        # the one that drags it down here: a graded-correct answer that states no clock time at all.
+        path = artifact(
+            [
+                record(questionId='k1', answer='20'),
+                record(questionId='k2', answer='20'),
+                record(questionId='k3', answer='20'),
+                record(questionId='k4', answer='20'),
+                record(questionId='t1', capability='TR', groundTruth='7:30 am', answer='started the role'),
+                record(questionId='t2', capability='TR', groundTruth='7:30 am', answer='started the role'),
+            ]
+        )
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit) as refusal:
+                states.main([str(path), '--capability', 'all'])
+        message = str(refusal.exception.code)
+        self.assertIn('KU 100.0%', message)
+        self.assertIn('TR 0.0%', message)
+
     def test_an_artifact_whose_control_falls_below_the_floor_is_refused(self):
         # A correct answer states its gold. Three hedged answers that do not are enough to make the split of the
         # wrong answers a fact about the classifier, and the refusal says so with the number.

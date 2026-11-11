@@ -81,7 +81,7 @@ artefact `MEASURE-SUPERSEDE.md` 12.2 already records.
 ## Usage
 
     python3 tools/state-relation.py <artifact>.json
-    python3 tools/state-relation.py <artifact>.json --capability all
+    python3 tools/state-relation.py <artifact>.json --capability MR
     python3 tools/state-relation.py <artifact>.json --audit
     python3 tools/state-relation.py <artifact>.json --json
 """
@@ -379,10 +379,31 @@ def read(path: Path, capability: str | None) -> dict:
         raise SystemExit(
             f"{path}: the classifier finds the gold in only {share:.1%} of numbered correct answers "
             f"(floor {MIN_GOLD_FOUND_SHARE:.0%}). A graded-correct answer states the gold by definition, so this "
-            "is a defect in the instrument, and any split of the wrong answers would be a fact about it"
+            "is a defect in the instrument, and any split of the wrong answers would be a fact about it. By "
+            f"capability: {_control_by_capability(measured)}. A population that mixes them cannot pass -- the "
+            "control is a property of one capability's golds -- so measure one capability at a time"
         )
 
     return {"artifact": str(path), "capability": capability, "rows": rows, **measured}
+
+
+def _control_by_capability(measured: dict) -> str:
+    """The per-capability control shares, so a refusal says which population is which rather than one number.
+
+    `--capability all` on this corpus is the case this exists for: `KU`'s golds are values and read 93.0%, while
+    the capabilities whose golds are sentences (`Yes. (You have a road bike...)`) cannot state them in a value
+    pool, and the mixed population lands at 82.2%. Without the split that reads as an instrument defect rather
+    than as a mode being asked for the wrong population.
+    """
+    parts: list[str] = []
+    for capability, counts in measured["perCapability"].items():
+        if not counts["correctNumbered"]:
+            continue
+        share = counts["correctGoldFound"] / counts["correctNumbered"]
+        parts.append(
+            f"{capability} {share:.1%} ({counts['correctGoldFound']}/{counts['correctNumbered']})"
+        )
+    return ", ".join(parts) if parts else "none measured"
 
 
 def headline(reading: dict) -> str:
@@ -434,7 +455,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--capability",
         default="KU",
-        help="capability to measure, or `all` for every record (default: KU)",
+        help=(
+            "capability to measure (default: KU), or `all` for one population over every record -- which on a "
+            "corpus whose golds are sentences cannot pass the control, and the refusal names each capability's "
+            "share so that is visible rather than inferred"
+        ),
     )
     parser.add_argument("--json", action="store_true", help="emit one JSON object per artifact")
     parser.add_argument("--audit", action="store_true", help="print one line per wrong record")
