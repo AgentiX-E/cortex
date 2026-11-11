@@ -649,3 +649,46 @@ The three counting classes the census names are the first MR target, and they ar
 answers that differ from the gold by exactly one item, and five `aggregation` answers whose total is short or long.
 They are also the class where the *reference pipeline* beats us with a tenth of the evidence, which is the strongest
 evidence available that the difficulty is the reader's counting over a wide window and not the corpus.
+
+### 14.10 The readout: nine refusals reached, nine answered, and the score inside the floor
+
+`43051879550` ran the registered configuration -- room back at 24,000, `reviewPass=bare`, and one field moved:
+`replyRepair=commitment`.
+
+| Criterion (registered in section 14.8) | Predicted | Read | Verdict |
+| --- | --- | --- | --- |
+| overall over four repetitions | >= 92.0% | **91.35%** (min 90.40, max 92.00) | **missed** |
+| overall, first repetition | -- | 91.20% (control 91.20%) | unchanged |
+| every capability inside its own 2-question floor | required | IE 141.3 -> 141.0, MR 100.5 -> 99.8, KU 62.8 -> 63.3, TR 120.8 -> 122.8, ABS 30 -> 30 | met |
+| `ABS` | 30/30 | 30/30, abstention-correct 100% | met |
+| prompt tokens per question | <= 9,250 | **9,241** (control 9,201) | met, +0.4% |
+| `commitment.attempted` | >= 3 | **9** (2.25 per run) | met |
+| `commitment.converted` | >= 3 | **9, 100%** | met |
+| no correct answer re-asked | required | 0 of 9 first replies was an answer | met |
+
+The mechanism did exactly what it was registered to do: nine replies that refused in prose -- which neither the
+bare ladder nor the recovery pass can see -- were re-asked and all nine came back as answers, for 0.4% more
+prompt tokens. And the score moved from 91.05% to **91.35%**, which is 1.5 questions over four runs.
+
+That is the whole reading, and it is a negative result stated precisely:
+
+- **Converting a refusal is not answering it.** Of the five distinct questions the pass reached, one became
+  correct (`37f165cf`, the page count: the second reply listed both novels and the sum is the gold), two stayed
+  wrong with a committed answer (`d6062bb9` answered `1,456` against `1,998`; `60bf93ed` said "Cannot be
+  determined from the provided evidence" again), one was already correct, and one became wrong for a reason that
+  is not the pass's: `a4996e51` refused in this run and answered `50` correctly in the control run, so what moved
+  is the first reply's shape between two runs of one configuration, not a correct reply being re-asked.
+- **The gain is inside the floor.** Section 14.7.1 measured the floor at up to two questions per capability
+  between two runs of one configuration. 1.5 questions dataset-wide cannot be told apart from zero, and the swap
+  is four bought against four sold.
+- **So the family closes, and it closes without a monument.** `commitment` is not adopted: the dispatcher writes
+  the variable back to `off` on every dispatch, the repository variable is `off` as of this read, and no default
+  changed. `shape` stays refused on its own measurement (49 targets, 11 wrong). The value of the dispatch is that
+  the last mechanism in the queue is now a measured one rather than a plausible one.
+
+Three families have now been measured against this corpus -- supersession by rewrite or annotation (3 bought and
+3 sold, sections 14.5), delivery by room (5 bought and 4 sold, section 14.7), and reply repair (4 bought and 4
+sold, above). All three land within one question of break-even, and all three are aimed at the *answer* side. The
+pool arithmetic in section 14.9 says where the 4.40 points actually are: `MR` is 45.5% of it, and the five
+`off-by-one` answers there are boundary judgements rather than counting errors -- three of them exclude an item
+the gold includes. The next arm is `reviewPass: 'audit'`, registered in `03 section 14.113.8` and never dispatched.
