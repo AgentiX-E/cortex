@@ -39562,3 +39562,49 @@ not by an argument.
 violated identity (`supportHits ≤ selected ≤ ledgerRows`), and a violated census identity all publish **nothing**
 rather than a number that reads like a measurement. The reason is `41773546221`, which published worker 0's
 quarter of a census and looked entirely healthy.
+
+#### 13.369 The supersession arm read: `K1` fails, and the two rules that failed it
+
+`42976296380` completed at 08:30Z, 90 minutes of runner time, 5,936 provider calls against the control's 5,707.
+`tools/supersede-reading.py` reads §13.366's five gates:
+
+| # | verdict | reading |
+| --- | --- | --- |
+| `K1` | **fails** | **1 of 8** converted (bar 6), 3 damages on the column; exact `p = 1.0`, flip floor `p = 0.187` |
+| `K2` | holds | no other capability outside its own 2 sd |
+| `K3` | holds | 0 non-`KU` `promptDigest` differences |
+| `K4` | holds | replaced 19, refused 269 — `19 + 269 = 288` |
+| `K5` | holds | prompt +6.6%, completion +1.8% (21.77M of 22.92M prompt tokens were cache hits) |
+
+On the eight questions the pass touched, **two repairs and two damages**. The remaining movement on the column
+(one up, one down among the sixty-four untouched) is the 4.1% flip floor.
+
+**The census localises the failure.** `no-change` 242, `too-long` 27, and **zero** of `no-quote`,
+`not-in-evidence`, `date-not-on-line`, `unreadable`, `agrees`. So the reader never fabricated a span, never quoted
+one that was absent, never borrowed a date from another line — and said *no later value* on 84% of consultations
+about windows that `MEASURE-STALE-EXPOSURE.md` proves contain one in 72 of 72 cases.
+
+Two rules account for it, both written in §13.366:
+
+1. **The instruction argued for the wrong answer.** *"That is the common case and a wrong `yes` is worse than a
+   wrong `no`"* is false about this population — the correction is present 72/72 — and the reader obeyed it: 62 of
+   72 came back `CHANGED: no`.
+2. **The ceiling refused the answers that arrived.** `quoteCeiling = min(80, max(20, 2 × len(first)))` refused 6
+   of the 10 correct identifications on length alone: `ed4ddc30` by two characters, `a2f3aa27` while quoting
+   `I think I'm close to 1300 now` against a gold of `1300`. **Two of the six are gate targets.** The ceiling
+   existed to stop a sentence replacing a value, and that is the wrong instrument: a span is how the reader
+   demonstrates it copied, not what should become the answer.
+
+**Registered: the pass is not enabled.** A mechanism that moved nothing is not shipped, and `reviewPass:
+supersede` stays an experimental mode.
+
+**Registered: the next arm, and its termination condition.** One arm, ~14 CNY, with two changes and the same
+`6/0` cell:
+
+> the substituted answer becomes the numeral the span carries and the first answer does not; a span with no new
+> numeral is refused as `restates`. The asymmetry sentence is deleted. Bar unchanged: **≥ 6 of the control's 8
+> stable `KU` failures convert, no `KU` regression.**
+
+If those two changes do not clear it, the mechanism is **refuted as a member of its family** — not "one tweak
+away" — and the `MR`/`KU` queue moves to `assemble()` and the frontier reader. That sentence is the point of this
+paragraph: a second inert arm must be readable as a refutation rather than as a near miss.

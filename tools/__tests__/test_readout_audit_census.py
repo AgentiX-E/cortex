@@ -44,10 +44,19 @@ def _report(
     audit: dict | None = None,
     counts: list[int] | None = None,
     changes: list[int] | None = None,
+    authorization: dict | None = None,
+    spec_columns: tuple[int, int, int, int] | None = None,
 ) -> dict:
-    """A run whose every other field is consistent, so the audit check is the only variable."""
+    """A run whose every other field is consistent, so the audit check is the only variable.
+
+    The authorization quartet is synthesized for a `spec` run, because the product records it on every such run:
+    a fixture that omitted it would be an artifact this build cannot produce, and a gate written against one is a
+    gate that fails on the good case. `authorization` and `spec_columns` are the two ways a test breaks exactly
+    one number -- the block and the roster respectively -- without breaking the rest of the report.
+    """
     ids = ['q1', 'q2', 'q3', 'q4']
     records = []
+    report_authorization: dict | None = None
     for index, question_id in enumerate(ids):
         record = {
             'questionId': question_id,
@@ -62,6 +71,29 @@ def _report(
             record['auditConsultations'] = counts[index]
             record['auditChanges'] = (changes or counts)[index]
         records.append(record)
+
+    if review_pass == 'spec':
+        # Derived from the roster and the refusal count so the three identities hold by construction:
+        # `evaluated + refused = attempted`, `supporting <= selected <= ledger`, and every column sums to the
+        # block. All of it sits on the first record unless a test overrides `spec_columns`, because the check
+        # reads sums and not distributions.
+        refused_here = (audit or {}).get('refused', 0) or 0
+        evaluated = sum(counts or []) - refused_here
+        block = {
+            'evaluated': evaluated,
+            'authorized': evaluated,
+            'selected': 2 * evaluated,
+            'supportHits': 2 * evaluated,
+            'ledgerRows': 4 * evaluated,
+            'tokens': evaluated,
+        }
+        report_authorization = block if authorization is None else authorization
+        columns = (evaluated, evaluated, 2 * evaluated, 2 * evaluated) if spec_columns is None else spec_columns
+        if evaluated > 0 or spec_columns is not None:
+            records[0]['specEvaluations'] = columns[0]
+            records[0]['specAuthorizations'] = columns[1]
+            records[0]['specSelected'] = columns[2]
+            records[0]['specSupportHits'] = columns[3]
 
     report = {
         'questionCount': len(ids),
@@ -80,7 +112,11 @@ def _report(
         'questions': records,
     }
     if audit is not None:
-        report['audit'] = audit
+        report['audit'] = (
+            {**audit, 'authorization': report_authorization}
+            if report_authorization is not None
+            else audit
+        )
     return report
 
 
@@ -298,3 +334,133 @@ class TestTheSpecificationPassIsCheckedByTheSameIdentity:
         source = TOOL.read_text(encoding='utf-8')
         assert "review_pass in ('audit', 'tally', 'spec')" in source
         assert "refusing = review_pass in ('tally', 'spec')" in source
+
+
+class TestTheAuthorizationIsCheckedAgainstItsOwnIdentities:
+    """§13.368's four columns, and the three ways a recorded ratio lies.
+
+    The block is not a verdict — nothing acts on it yet — so what the gate can check is arithmetic: the columns
+    must sum to the block, and the block must satisfy `evaluated + refused = attempted` and
+    `supporting <= selected <= ledger`. Each case below breaks exactly one, because a check that only ever sees a
+    good artifact is a check nobody has tested.
+    """
+
+    def test_a_spec_run_with_a_consistent_block_passes(self, tmp_path: Path) -> None:
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='spec',
+                audit={'attempted': 3, 'changed': 2, 'refused': 1},
+                counts=[1, 1, 1, 0],
+                changes=[0, 1, 1, 0],
+            ),
+        )
+
+        assert result.returncode == 0, result.stdout
+        assert 'PASS  spec-authorization' in result.stdout
+        # Two substitutions offered, two authorized, four rows selected, four supporting, eight in the ledger.
+        assert "'evaluated': 2" in result.stdout
+
+    def test_a_spec_run_without_the_block_fails(self, tmp_path: Path) -> None:
+        report = _report(
+            review_pass='spec',
+            audit={'attempted': 3, 'changed': 2, 'refused': 1},
+            counts=[1, 1, 1, 0],
+            changes=[0, 1, 1, 0],
+        )
+        report['audit'].pop('authorization')
+
+        result = _run(tmp_path, report)
+
+        assert result.returncode != 0
+        assert 'FAIL  spec-authorization' in result.stdout
+
+    def test_a_roster_that_does_not_sum_to_the_block_fails(self, tmp_path: Path) -> None:
+        # The `41773546221` shape one level down: a column that came from a different subset than the total.
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='spec',
+                audit={'attempted': 3, 'changed': 2, 'refused': 1},
+                counts=[1, 1, 1, 0],
+                changes=[0, 1, 1, 0],
+                spec_columns=(1, 1, 2, 2),
+            ),
+        )
+
+        assert result.returncode != 0
+        assert 'FAIL  spec-authorization' in result.stdout
+
+    def test_a_block_whose_support_exceeds_its_selection_fails(self, tmp_path: Path) -> None:
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='spec',
+                audit={'attempted': 3, 'changed': 2, 'refused': 1},
+                counts=[1, 1, 1, 0],
+                changes=[0, 1, 1, 0],
+                authorization={
+                    'evaluated': 2,
+                    'authorized': 2,
+                    'selected': 2,
+                    'supportHits': 3,
+                    'ledgerRows': 8,
+                    'tokens': 2,
+                },
+                spec_columns=(2, 2, 2, 3),
+            ),
+        )
+
+        assert result.returncode != 0
+        assert 'FAIL  spec-authorization' in result.stdout
+
+    def test_evaluated_plus_refused_must_equal_the_consultations(self, tmp_path: Path) -> None:
+        # The identity that separates "the pass offered no substitution" from "every plan was refused".
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='spec',
+                audit={'attempted': 3, 'changed': 2, 'refused': 1},
+                counts=[1, 1, 1, 0],
+                changes=[0, 1, 1, 0],
+                authorization={
+                    'evaluated': 1,
+                    'authorized': 1,
+                    'selected': 2,
+                    'supportHits': 2,
+                    'ledgerRows': 4,
+                    'tokens': 1,
+                },
+                spec_columns=(1, 1, 2, 2),
+            ),
+        )
+
+        assert result.returncode != 0
+        assert 'FAIL  spec-authorization' in result.stdout
+
+    def test_an_audit_run_carrying_the_block_fails(self, tmp_path: Path) -> None:
+        # A pass with no plan cannot authorize anything, so a block under `audit` is the same claim `refused`
+        # would be: a measurement of a branch the pass cannot enter.
+        result = _run(
+            tmp_path,
+            _report(
+                review_pass='audit',
+                audit={
+                    'attempted': 4,
+                    'changed': 2,
+                    'authorization': {
+                        'evaluated': 1,
+                        'authorized': 1,
+                        'selected': 1,
+                        'supportHits': 1,
+                        'ledgerRows': 1,
+                        'tokens': 1,
+                    },
+                },
+                counts=[1, 1, 1, 1],
+                changes=[1, 1, 0, 0],
+            ),
+        )
+
+        assert result.returncode != 0
+        assert 'FAIL  spec-authorization' in result.stdout

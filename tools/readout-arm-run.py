@@ -1731,13 +1731,78 @@ def audit_section(
         check(
             'audit',
             audit_census is None and not roster_consultations,
-            'reviewPass=bare, so neither a tally nor a per-question count may be published'
+            f'reviewPass={review_pass}, so neither a tally nor a per-question count may be published'
             + (
                 ''
                 if audit_census is None and not roster_consultations
                 else ' -- a zeroed census here would claim a mechanism that never ran'
             ),
         )
+
+    # 7b. §13.368: the authorization arithmetic, checked against the roster it describes.
+    #
+    # The block is recorded under `spec` on every run, whether or not a substitution was offered, so its
+    # presence is a fact about the build rather than about the questions -- the rule `refused` follows two
+    # checks up. What is checked is not the verdict (nothing acts on it yet) but the four sums against the
+    # roster and the identities against each other: a ratio whose numerator and denominator came from
+    # different subsets reads as a measurement and is not one, which is the whole reason the four columns
+    # are counts rather than a per-question boolean.
+    authorization = audit_census.get('authorization') if isinstance(audit_census, dict) else None
+    authorization_records = [question for question in questions if question.get('specEvaluations') is not None]
+    if auditing:
+        counts_ok = isinstance(authorization, dict) and all(
+            isinstance(authorization.get(key), int)
+            and not isinstance(authorization.get(key), bool)
+            and authorization.get(key) >= 0
+            for key in ('evaluated', 'authorized', 'selected', 'supportHits', 'ledgerRows', 'tokens')
+        )
+        pairs = (
+            ('specEvaluations', 'evaluated'),
+            ('specAuthorizations', 'authorized'),
+            ('specSelected', 'selected'),
+            ('specSupportHits', 'supportHits'),
+        )
+        sums_ok = counts_ok and all(
+            sum(question.get(column) or 0 for question in questions) == authorization[key]
+            for column, key in pairs
+        )
+        # `evaluated + refused = attempted` is the same identity `specified = attempted - refused` gives the
+        # pass, and it is the one that separates "the pass offered no substitution" from "every plan was
+        # refused" -- two states that a single count cannot tell apart.
+        identity_ok = (
+            counts_ok
+            and authorization['supportHits'] <= authorization['selected'] <= authorization['ledgerRows']
+            and authorization['authorized'] <= authorization['evaluated']
+            and authorization['evaluated'] + (refused or 0) == attempted
+        )
+        if review_pass == 'spec':
+            check(
+                'spec-authorization',
+                bool(counts_ok and sums_ok and identity_ok),
+                (
+                    f'authorization {authorization if counts_ok else "malformed or absent"}; '
+                    f'{len(authorization_records)} of {len(questions)} records carry the quartet'
+                    + (
+                        ''
+                        if counts_ok and sums_ok and identity_ok
+                        else ' -- the columns must sum to the block, `supporting <= selected <= ledger`, '
+                        'and `evaluated + refused` must equal the consultation count'
+                    )
+                ),
+            )
+        else:
+            # Only the pass with a plan can authorize a substitution, so its arithmetic is forbidden here for
+            # the reason `refused` is: a zeroed block under `audit` would claim a veto that cannot exist.
+            check(
+                'spec-authorization',
+                authorization is None and not authorization_records,
+                f'reviewPass={review_pass}, so neither the block nor the columns may be published'
+                + (
+                    ''
+                    if authorization is None and not authorization_records
+                    else ' -- a mechanism with no plan cannot have authorized anything'
+                ),
+            )
 
     # 8. The three spend counts are a partition, and the remainder is stated rather than left
     #    to the reader's subtraction.
