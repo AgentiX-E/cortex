@@ -691,4 +691,114 @@ Three families have now been measured against this corpus -- supersession by rew
 sold, above). All three land within one question of break-even, and all three are aimed at the *answer* side. The
 pool arithmetic in section 14.9 says where the 4.40 points actually are: `MR` is 45.5% of it, and the five
 `off-by-one` answers there are boundary judgements rather than counting errors -- three of them exclude an item
-the gold includes. The next arm is `reviewPass: 'audit'`, registered in `03 section 14.113.8` and never dispatched.
+the gold includes. **An earlier draft of this paragraph named `reviewPass: 'audit'` as the next arm and said it
+had never been dispatched. That sentence was false and is withdrawn here rather than deleted, because a record
+that quietly drops a wrong claim cannot be audited.** `audit` was dispatched as `42054107910`, a single-field
+experiment against `42013256884`, and `PREREGISTRATION` section 13.262 records the reading: **-6.10 points
+overall, MR -15.70**, with **22 correct answers destroyed, all 22 rewritten as a bare integer, and 17 of those
+22 on questions whose gold was not a count at all** (`TikTok`, `$6`, `February 1st`). `tally` measured -9.5 MR
+and `spec` -7.8 overall on the same arm.
+
+So there is no pass left to try. Every mechanism that consults the reader a second time has now been measured,
+and every one of them lands at or below break-even. Section 14.11 reads what the 44 failures have in common
+that survives that, and why the next change has to be to the shape of the evidence rather than to the question
+asked about it.
+
+### 14.11 What all 44 failures have in common, and why every repair so far could not touch it
+
+Sections 14.4 to 14.10 measured four families against this corpus and every one of them landed within a
+question of break-even. `PREREGISTRATION` 13.262 and `MEASURE-REVIEW-TALLY.md` / `MEASURE-SPEC-CEILING.md`
+add three more -- `audit` -6.10, `tally` -9.5 MR, `spec` -7.8 -- and 13.102 adds a fourth, `selfConsistency`
+sampling the noise and finding MR at 86.2 against a floor of 89. That is eight mechanisms across four
+different theories of the failure, and none of them moved the score.
+
+A run of eight null results does not say the mechanisms were badly built. It says the **diagnosis they were
+all built on** was never tested. This section tests it, on the control artifact, with no model calls.
+
+#### 14.11.1 The gold is already in the window for 40 of the 44 failures
+
+`goldOverlap.carried / total` is the share of the question's gold-bearing turns that reached the prompt.
+Crossing it against `correct` over all 500 questions of `42533236864`:
+
+| gold-turn coverage | wrong | right |
+| --- | ---: | ---: |
+| **full** (`carried == total`) | **13** | 231 |
+| **partial** (some, not all) | **27** | 225 |
+| **none** | 4 | 0 |
+
+**40 of the 44 failures carried at least part of their gold, and 13 carried all of it.** Four failures
+carried no gold turn at all, which is the only population a retrieval change can reach -- and it is 0.8% of
+the dataset.
+
+Restricted to `MR`, where 20 of the 44 live, the reading is sharper: **16 of the 20 carry their entire gold
+set**, and the four that do not are missing exactly one turn (`88432d0a` 23/24, `gpt4_7fce9456` 29/30,
+`d851d5ba` 21/22, `gpt4_ab202e7f` 26/30). The `KU` failures in section 14.7 read the same way.
+
+#### 14.11.2 Position is not the variable either
+
+The "lost in the middle" hypothesis is the natural second candidate, and it is false on this artifact.
+Taking each `MR` question's gold turns, locating them in the delivered chronological order, and bucketing by
+the median relative position:
+
+| gold position in the window | right | wrong |
+| --- | ---: | ---: |
+| first 10% | 2/2 | 0 |
+| 10-33% | 15/18 | 3 |
+| 33-66% | 44/54 | 10 |
+| 66-90% | 37/44 | 7 |
+| last 10% | 3/3 | 0 |
+
+Median relative position: **0.57 on the correct answers, 0.565 on the wrong ones**. A question is no harder
+when its answer sits at the front, the back, or the middle. Whatever the reader is doing wrong, it is doing
+it uniformly across the window.
+
+#### 14.11.3 So what is left
+
+Three properties survive every null result, and together they name one thing:
+
+1. **The reader can find the items.** Every `MR` failure that was read by hand enumerates candidates in its
+   own Step 1 -- `gpt4_7fce9456` lists five properties with dates and sources and counts five where the gold
+   is four, because it counted the townhouse the question excludes; `2b8f3739` lists four market sales and
+   sums three of them; `37f165cf` lists "440 pages" and "416 pages" and answers *"440 pages and 416 pages"*
+   against a gold of 856.
+2. **The failure is judgement, not recall.** `6d550036` (gold 2) excludes two of its own candidates with a
+   reason -- "planning"/"applying" is not "led". `gpt4_15e38248` excludes a mattress as not-furniture. The
+   exclusions are the error.
+3. **A second consultation cannot repair judgement.** It is the same reader, the same evidence, the same
+   attention budget: `audit` asked exactly this question, got 22 flips, and 17 of them were on questions with
+   no count in the gold at all.
+
+One reading follows, and it is the one this whole section was built to reach: **the reader is not short of
+evidence, it is short of a place to do the judging.** It is handed 45,723 characters of transcript and asked
+to hold a scope definition, a set of candidates, a de-duplication rule and an arithmetic operation at once,
+across two hundred turns. The reference pipeline answers the same questions from a tenth of the evidence,
+which is the same statement from the other side.
+
+#### 14.11.4 Why this closes the read-side option space
+
+Every mechanism measured from 14.4 to 14.10 operates on the *question put to* the transcript -- re-ask it,
+widen it, narrow it, vote on it, annotate it. None of them operates on the *transcript*. `Synap`'s published
+92.0% (arXiv 2607.21503) is built the other way round: typed memories extracted before storage, entities
+resolved, supersession applied at write time, and retrieval returning "a short list of current, attributed
+statements about the user, not a pile of transcript". Its own multi-session figure is **75.2%** -- below this
+arm's 83.47% -- while its preference and temporal categories read 100%. The four-point gap between 92.0 and
+this arm's 91.05 is not in `MR`; it is in the capabilities where a single extracted statement answers the
+question outright.
+
+That is a claim about **evidence representation**, and it is the only axis in the campaign that has never been
+dispatched.
+
+#### 14.11.5 The experiment this licenses, and the one it forbids
+
+Forbidden: any further read-side mechanism. Eight are measured and eight are at or below break-even; a ninth
+would be the ninth sample of the same null.
+
+Licensed: a **compaction** stage -- one call that rewrites the delivered evidence as a list of dated,
+attributed statements with the numbers their source states, after which the answer is produced **once** from
+that list. The distinction from `tally` and `spec` is not cosmetic and is the reason this is not a ninth null:
+those two generate an answer and then overwrite it. This generates the **evidence** and then answers, so the
+answer is produced exactly once and there is no second opinion to lose to.
+
+The order is a probe before an arm: 20 `MR` questions, one repetition, read for whether the compaction keeps
+the gold spans (the same `goldOverlap` predicate) and what it costs in tokens. Twenty questions cannot settle
+accuracy; it can settle whether the mechanism is admissible at all, which is the question worth one yuan.
