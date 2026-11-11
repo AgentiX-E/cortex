@@ -228,19 +228,174 @@ describe('the adjudication', () => {
     });
   });
 
-  it('refuses a sentence, even one that is in the evidence', () => {
+  it('takes the value out of a sentence, because a span is not the answer (§13.369)', () => {
+    // `42976296380` refused 6 of the 10 correct identifications on length alone -- `ed4ddc30` by two
+    // characters, `a2f3aa27` while quoting `I think I'm close to 1300 now` against a gold of `1300` -- and two
+    // of the six were the gate's own targets. The span is how the reader demonstrates that it copied; the
+    // numeral inside it is what the answer becomes.
     const sentence = 'Small update, I crossed 1300 followers last week.';
     expect(adjudicateSupersession(report({ later: sentence }), '1250', EVIDENCE)).toEqual({
-      kind: 'keep',
-      reason: 'too-long',
+      kind: 'replace',
+      value: '1300 followers',
+      record: 2,
     });
   });
 
-  it('refuses a quote that carries a line break', () => {
+  it('keeps the unit a value carries, so `30 dozen` does not become `30`', () => {
+    const evidence = '[2023/03/12 (Sun) 11:40] user: I am at 30 dozen at the moment.';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '30 dozen at the moment',
+        when: '2023/03/12 (Sun) 11:40',
+        shape: 'three-lines',
+      },
+      '20 dozen',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '30 dozen', record: 0 });
+  });
+
+  it('drops a word that is not a unit, so an adverb is not part of the value', () => {
+    const evidence = '[2023/05/01 (Mon) 10:00] user: I think I am close to 1300 now.';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'I think I am close to 1300 now',
+        when: '2023/05/01 (Mon) 10:00',
+        shape: 'three-lines',
+      },
+      '1250',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 0 });
+  });
+
+  it('takes the last new numeral in a span, because a span that states two states the second about the first', () => {
+    const evidence = '[2023/05/01 (Mon) 10:00] user: It went from 1250 to 1300 followers.';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'It went from 1250 to 1300 followers',
+        when: '2023/05/01 (Mon) 10:00',
+        shape: 'three-lines',
+      },
+      '1250',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '1300 followers', record: 0 });
+  });
+
+  it('refuses a span whose numerals are all already in the answer, and names it a restatement', () => {
+    // `dad224aa` answered `7:30 am` and its quote was a restatement of that value. Neither a fabrication nor a
+    // length problem: substituting it would report a conversion that never happened, which is a fourth thing
+    // the census has to be able to count (`42976296380` could not, because `too-long` was stated about length).
+    const evidence = '[2023/05/01 (Mon) 10:00] user: Yes, 7:30 am, same as always.';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '7:30 am, same as always',
+        when: '2023/05/01 (Mon) 10:00',
+        shape: 'three-lines',
+      },
+      '7:30 am',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'restates' });
+  });
+
+  it('takes a value-shaped span whole when it carries no numeral at all', () => {
+    // `ce6d2d27` answers `Thursday` and its gold is a weekday; `9ea5eabc` is a place. A rule stated only over
+    // numerals cannot represent either, and both are document-order targets -- refusing them would be the same
+    // defect as the ceiling, in a new place. §13.370 registers the amendment before its dispatch.
+    const evidence = '[2023/03/12 (Sun) 11:40] user: The class moved to Friday.';
+    const verdict = adjudicateSupersession(
+      { changed: true, later: 'Friday', when: '2023/03/12 (Sun) 11:40', shape: 'three-lines' },
+      'Thursday',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: 'Friday', record: 0 });
+  });
+
+  it('refuses a clause that carries no numeral, because a clause is not a value', () => {
+    const evidence = '[2023/03/12 (Sun) 11:40] user: I moved it, it is on Friday from now on.';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'I moved it, it is on Friday from now on',
+        when: '2023/03/12 (Sun) 11:40',
+        shape: 'three-lines',
+      },
+      'Thursday',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'restates' });
+  });
+
+  it('does not read the numerals of a calendar date as values', () => {
+    // A date on the copied line is what `WHEN` is for. Without this rule `moved to Friday on 2023/03/12` would
+    // yield `2023/03/12` -- or, worse, `12` -- as the answer to a question about a weekday.
+    const evidence = '[2023/03/12 (Sun) 11:40] user: the class moved to Friday on 2023/03/12';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'the class moved to Friday on 2023/03/12',
+        when: '2023/03/12 (Sun) 11:40',
+        shape: 'three-lines',
+      },
+      'Thursday',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'restates' });
+  });
+
+  it('takes a numeral that ends the span, with no unit to carry', () => {
+    const evidence = '[2023/03/12 (Sun) 11:40] user: small update, we reached 1300';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'small update, we reached 1300',
+        when: '2023/03/12 (Sun) 11:40',
+        shape: 'three-lines',
+      },
+      '1250',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 0 });
+  });
+
+  it('carries no unit when the next token is not a word', () => {
+    // A symbol after the numeral is not a unit this rule can name -- `300 $` is the same value as `300` and a
+    // token copied from a table cell must not be appended to an answer as if it were a word.
+    const evidence = '[2023/03/12 (Sun) 11:40] user: the ticket now costs 300 $';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'the ticket now costs 300 $',
+        when: '2023/03/12 (Sun) 11:40',
+        shape: 'three-lines',
+      },
+      '250',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '300', record: 0 });
+  });
+
+  it('accepts a span that carries a line break, because the value is one token of it', () => {
     const wrapped = '1300 followers\nlast week';
     expect(adjudicateSupersession(report({ later: wrapped }), '1250', EVIDENCE)).toEqual({
-      kind: 'keep',
-      reason: 'too-long',
+      kind: 'replace',
+      value: '1300 followers',
+      record: 2,
     });
   });
 

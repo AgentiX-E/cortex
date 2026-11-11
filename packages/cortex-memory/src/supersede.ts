@@ -52,6 +52,27 @@
  *
  * It also does not re-answer on `no`: `no` is a measurement ("the evidence never restates this fact"),
  * and turning it into a retry would make the pass's cost depend on its own reading.
+ *
+ * ## Why the *value* is substituted and not the span (13.369)
+ *
+ * The first version of this file substituted the reader's span when the span was short enough:
+ * `min(80, max(20, 2 x len(first answer)))`. `42976296380` priced that instrument. It refused **6 of the
+ * 10** correct identifications on length alone — `ed4ddc30` by two characters, `a2f3aa27` while quoting
+ * `I think I'm close to 1300 now` against a gold of `1300` — and **two of the six were the gate's own
+ * targets**. The ceiling was aimed at the right defect (a passage pasted over a value) and built from the
+ * wrong property: a span is how the reader demonstrates that it copied, not what should become the answer.
+ *
+ * So the span is now evidence and the numeral inside it is the answer. Three consequences, each of which
+ * this file states rather than inherits:
+ *
+ * - A span may be as long as the reader needs it to be. Its length is no longer a claim about the answer.
+ * - A span that carries no numeral the first answer lacks is a **restatement**, and substituting it would
+ *   report a conversion that did not happen (`dad224aa`, whose quote is the answer it was meant to replace).
+ * - A span that carries no numeral at all is not reducible that way, and the two document-order targets
+ *   whose golds are words (`ce6d2d27` `Friday`, `9ea5eabc` `Paris`) would be unrepresentable. Those spans
+ *   are value-shaped by inspection — at most three tokens, no clause punctuation — and are substituted
+ *   whole. §13.370 registers that amendment before its dispatch, because a refusal instrument that can eat
+ *   a known-correct answer shape is the exact defect `42976296380` was lost to.
  */
 
 /**
@@ -76,15 +97,21 @@ export type SupersessionReport = {
  *
  * Named rather than collapsed into `refused` for the reason §22.88.6 registers about the audit: two
  * defects with one name is one defect the census can no longer see. A run whose refusals are all
- * `not-in-evidence` has a fabricating reader; a run whose refusals are all `agrees` has a reader that
+ * `not-in-evidence` has a fabricating reader; a run whose refusals are all `restates` has a reader that
  * restated its own answer and nothing else, which is a different report entirely.
+ *
+ * `too-long` is gone and `restates` takes its place (§13.369). The two are not the same defect renamed:
+ * `too-long` refused a span for its length, which is a property of the evidence; `restates` refuses it for
+ * carrying no value the answer does not already have, which is a property of the **pair**. The census of
+ * `42976296380` read `too-long 27` and could not tell which of those 27 carried a new value, because the
+ * reason was stated about the wrong thing.
  */
 export type SupersessionRefusal =
   | 'unreadable'
   | 'no-change'
   | 'no-quote'
   | 'agrees'
-  | 'too-long'
+  | 'restates'
   | 'not-in-evidence'
   | 'date-not-on-line';
 
@@ -94,37 +121,150 @@ export type SupersessionVerdict =
   | { readonly kind: 'replace'; readonly value: string; readonly record: number };
 
 /**
- * The ceiling on a substituted span, in characters, before the relative rule is applied.
+ * The numeral inside one whitespace-delimited token. `7:30` is a time, not two counts.
  *
- * The measured answers on the six target questions are `Friday`, `Paris`, `20`, `6:00 pm`, `38` and
- * `1300`; the longest is six characters. Eighty is therefore thirteen times the longest real value and
- * still short enough that a substituted answer reads as an answer. A reader that copies a whole sentence
- * has not found a value, it has found a paragraph, and substituting a paragraph destroys a correct
- * answer — the damage shape `MEASURE-PLAN-SHAPE.md` priced at 43 questions.
+ * The token's **characters** are kept and only its count is compared, because the grader reads characters
+ * and `$3,750` is not `3750 $`. Formatting is the evidence's, never this module's.
  */
-const MAX_QUOTE_CHARS = 80;
+const DIGITS_IN_TOKEN = /\d[\d,]*(?:\.\d+)?/;
 
-/** The floor under the relative rule, so a one-character answer is not held to a two-character span. */
-const MIN_QUOTE_CHARS = 20;
+/** A calendar date is the `WHEN` field's business, never the substituted value. */
+const DATE_TOKEN = /^\d{4}\/\d{1,2}\/\d{1,2}/;
 
 /**
- * How long a span this answer is allowed to be replaced with.
+ * Words that follow a numeral without naming what it counts.
  *
- * ## Why the rule is relative rather than absolute
- *
- * An absolute cap alone cannot separate a value from a passage when the answer is itself short: `1250`
- * is four characters, so a 47-character sentence fits under any cap generous enough to admit
- * `7:00 pm on Mondays, Wednesdays, and Fridays` as a legitimate value on another question. Doubling the
- * current answer's length answers the question the pass is actually asking — *is this a refinement of
- * the answer, or a passage pasted over it?* — and it does so without a word list, which would be a
- * vocabulary the evidence is free to exceed.
- *
- * The two bounds together fail closed in both directions: a short answer cannot be replaced by a
- * sentence, and no answer can be replaced by more than {@link MAX_QUOTE_CHARS} characters.
+ * Shorter than `ledger.ts`'s list on purpose. That one filters specifications, where `5 to 6` must not
+ * become a count of `to`; this one decides whether a unit is part of the value the answer keeps, and it
+ * must therefore be conservative in the other direction: dropping a real unit turns `30 dozen` into `30`.
+ * Only words that cannot be a unit at all are listed.
  */
-function quoteCeiling(firstAnswer: string): number {
-  const current = comparisonKey(firstAnswer).length;
-  return Math.min(MAX_QUOTE_CHARS, Math.max(MIN_QUOTE_CHARS, current * 2));
+const NOT_A_UNIT = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'but',
+  'by',
+  'for',
+  'from',
+  'had',
+  'has',
+  'have',
+  'i',
+  'if',
+  'in',
+  'is',
+  'it',
+  'its',
+  'me',
+  'my',
+  'no',
+  'not',
+  'now',
+  'of',
+  'on',
+  'or',
+  'so',
+  'than',
+  'that',
+  'the',
+  'then',
+  'there',
+  'this',
+  'to',
+  'was',
+  'were',
+  'when',
+  'which',
+  'will',
+  'with',
+  'you',
+]);
+
+/** The tokens of a span, with the record header removed because a date is not a value. */
+function tokensOf(text: string): readonly string[] {
+  return text
+    .trim()
+    .replace(/^\[[^\]]*\]\s*/, '')
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+}
+
+/** The count inside a token, or `null` for a token with no numeral and for a calendar date. */
+function countOf(token: string): string | null {
+  const cleaned = token.replace(/^["'`“‘([]+/, '');
+  if (DATE_TOKEN.test(cleaned)) return null;
+  const match = DIGITS_IN_TOKEN.exec(cleaned);
+  return match === null ? null : match[0].replaceAll(',', '');
+}
+
+/** Every count in a text, by the rule above, in the order the text states them. */
+function countsOf(text: string): readonly string[] {
+  return tokensOf(text)
+    .map(countOf)
+    .filter((count): count is string => count !== null);
+}
+
+/**
+ * Whether a span is a value rather than a clause: at most three tokens, no clause punctuation.
+ *
+ * This is the shape test the ceiling was trying to be. `Friday`, `Paris` and `6:00 pm` pass it; a sentence
+ * with a comma, a question or a semicolon in it does not, and a span of four or more tokens does not. It is
+ * stated on the comparison key so a trailing full stop is not the difference between a value and a clause.
+ *
+ * No empty-key guard: the caller has already refused a span whose key is empty as `no-quote`, and a second
+ * copy of that check here would be a branch no input can reach -- the dead-code shape this campaign removes
+ * rather than tolerates.
+ */
+function isValueShaped(span: string): boolean {
+  const key = comparisonKey(span);
+  if (/[,;!?]/.test(key)) return false;
+  return key.split(' ').length <= 3;
+}
+
+/** The unit a numeral carries, when the token after it names one. */
+function unitAfter(tokens: readonly string[], index: number): string | null {
+  const next = tokens[index + 1];
+  if (next === undefined) return null;
+  const cleaned = next.replace(/^["'`“‘([]+/, '').replace(/["'`”’)\],.;!?]+$/, '');
+  if (!/^[A-Za-z][A-Za-z.%-]{0,11}$/.test(cleaned)) return null;
+  return NOT_A_UNIT.has(cleaned.toLowerCase()) ? null : cleaned;
+}
+
+/**
+ * What the answer becomes: the value the span carries and the first answer does not.
+ *
+ * Three outcomes, in the order they are decided:
+ *
+ * 1. **A new numeral.** The last one in the span, plus the unit that follows it when the next token names
+ *    one. The last rather than the first because a single span that states two counts states the second
+ *    about the first — the same ordering rule the pass applies across turns, applied within one span.
+ * 2. **No numeral at all, and a value-shaped span.** `Friday` against `Thursday` has no numeral to reduce
+ *    to, and substituting the span is what the mechanism did before the ceiling refused it.
+ * 3. **Numerals, all of them already in the answer.** That is a restatement, and substituting it would
+ *    report a conversion that never happened.
+ */
+function substitutedValue(
+  span: string,
+  firstAnswer: string,
+): { readonly kind: 'value'; readonly value: string } | { readonly kind: 'restates' } {
+  const tokens = tokensOf(span);
+  const known = new Set(countsOf(firstAnswer));
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as string;
+    const count = countOf(token);
+    if (count === null || known.has(count)) continue;
+    const unit = unitAfter(tokens, index);
+    return { kind: 'value', value: unit === null ? token : `${token} ${unit}` };
+  }
+  if (countsOf(span).length === 0 && isValueShaped(span)) {
+    return { kind: 'value', value: span.trim() };
+  }
+  return { kind: 'restates' };
 }
 
 /** One evidence record: the line that opens it, and the continuation lines under it. */
@@ -241,9 +381,10 @@ export function adjudicateSupersession(
   // would report `replace` on every question where the reader dutifully copied its own answer, and the
   // census's `replaced` would count conversions that never happened.
   if (quote === comparisonKey(firstAnswer)) return { kind: 'keep', reason: 'agrees' };
-  if (report.later.length > quoteCeiling(firstAnswer) || /[\n\r]/.test(report.later)) {
-    return { kind: 'keep', reason: 'too-long' };
-  }
+  // The value, not the span (§13.369). A span is how the reader shows it copied; the numeral inside it is
+  // what the answer becomes. A span whose numerals are all already in the answer is a restatement.
+  const value = substitutedValue(report.later, firstAnswer);
+  if (value.kind === 'restates') return { kind: 'keep', reason: 'restates' };
 
   const records = evidenceRecords(evidence);
   const matching = records
@@ -262,7 +403,7 @@ export function adjudicateSupersession(
   if (!dated) return { kind: 'keep', reason: 'date-not-on-line' };
 
   const last = matching[matching.length - 1] as { record: EvidenceRecord; index: number };
-  return { kind: 'replace', value: report.later.trim(), record: last.index };
+  return { kind: 'replace', value: value.value, record: last.index };
 }
 
 /** An empty census, with every reason present at zero so an artifact never has to infer absence. */
@@ -279,7 +420,7 @@ export function emptySupersessionCensus(): {
       'no-change': 0,
       'no-quote': 0,
       agrees: 0,
-      'too-long': 0,
+      restates: 0,
       'not-in-evidence': 0,
       'date-not-on-line': 0,
     },

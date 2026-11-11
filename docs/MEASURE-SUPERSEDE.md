@@ -171,3 +171,33 @@ python3 tools/stale-exposure.py \
 
 The first prints the five gates and the per-capability table; the second prints the premise the first one's
 diagnosis depends on. Neither dispatches anything.
+
+## 10. The amendment, as implemented (registered as §13.370 before dispatch)
+
+§8 registered "the numeral the span shares with nothing in the first answer". Written as a function, that
+sentence needed three decisions §8 did not cover, and each one is stated here rather than discovered in the
+reading:
+
+| decision | rule | why |
+| --- | --- | --- |
+| which numeral, when the span carries several | the **last** new one | a span that states two counts states the second about the first — the ordering rule the pass already applies across turns |
+| what travels with it | the unit word that follows, unless it is a function word | `30 dozen`, `1300 followers`, `7:30 am`; a graded answer that contains `30` but not `dozen` is not the answer, and the containment judge reads characters |
+| what a span with **no** numeral does | substituted whole iff **value-shaped** | `ce6d2d27`'s gold is `Friday` and `9ea5eabc`'s is `Paris`; a numeral-only rule cannot represent either, and two of the gate's eight targets would be structurally unreachable |
+
+The third is an **amendment to §13.369, not a discretionary widening**, and the reason is the failure this whole
+document is about: a guard that can eat a known-correct answer *shape* is the defect `42976296380` was lost to.
+Value-shaped means three tokens or fewer after the comparison key and no `,` `;` `!` `?` — so `Friday`, `Paris`,
+`6:00 pm` and `$3,750` pass, and `I moved it, it is on Friday from now on` does not.
+
+Two consequences that are not refinements but removals:
+
+- **The newline refusal is gone.** It existed because the span became the answer and an answer with a line break is
+  malformed. The value is one token of the span, so a wrapped quotation no longer costs a correct identification.
+- **`too-long` is gone from the census and `restates` takes its place.** `42976296380` published `too-long 27` and
+  could not say whether any of the 27 carried a new value, because the reason was stated about the length of a
+  string instead of about the relation between two answers. `dad224aa` — whose span restates its own answer — is
+  now countable as what it is.
+
+Nothing else moves: the same three lines, the same substring and same-record date checks, the same `6/0` cell, and
+the same stopping rule. The arm's bar is not softened by the amendment; the amendment exists so that the bar can be
+reached by a correct answer.

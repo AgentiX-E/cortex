@@ -3856,6 +3856,15 @@ export function truncateCodePointSafe(text: string, maxChars: number): string {
  * The contract's own answer on the six target questions is a value — `Friday`, `1300`, `6:00 pm`. A
  * substituted sentence would be a different answer shape graded against a value, and `reply-repair`'s
  * census already measured what a list-of-quotations answer costs.
+ *
+ * ## Why the instruction no longer says which error is worse (§13.369)
+ *
+ * It said *"that is the common case and a wrong `yes` is worse than a wrong `no`"*, and on this population
+ * that sentence is false: `MEASURE-STALE-EXPOSURE.md` finds the correction present in **72 of 72** `KU`
+ * windows. The reader obeyed the sentence anyway — 62 of 72 answers came back `CHANGED: no` — so the pass
+ * spent a call per question to learn what its own instruction had told it to say. An instruction may state
+ * the conditions under which each answer is correct; it may not price the two errors, because a prior about
+ * which error is cheaper is a claim about a population and this prompt has no access to one.
  */
 export function buildSupersedePrompt(
   question: string,
@@ -3882,8 +3891,7 @@ export function buildSupersedePrompt(
     'WHEN: <the date written on the same evidence line, or NONE>',
     '',
     'Rules, and they are strict:',
-    '- `CHANGED: no` when the evidence never restates this fact with a different value. That is the',
-    '  common case and a wrong `yes` is worse than a wrong `no`.',
+    '- `CHANGED: no` only when the evidence never restates this fact with a different value.',
     '- `LATER` must be copied, not paraphrased. A span that is not in the evidence above cannot be used.',
     '- `WHEN` must be the date written on the line you copied `LATER` from.',
     '- Never write an explanation, a heading, or the answer to the question.',

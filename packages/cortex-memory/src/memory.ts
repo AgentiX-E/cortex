@@ -1499,12 +1499,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * evidence, and the date it claims must sit on the same evidence record. A reader that invents a value
    * fails the first test; a reader that promotes a real value on an invented date fails the second.
    *
-   * ## Why the answer is the quote and not a re-render
+   * ## Why the answer is the value the quote carries, and not the quote itself
    *
    * The six target questions' golds are values -- `Friday`, `Paris`, `20`, `6:00 pm`, `38`, `1300` -- and
-   * the quote is the span that states one. Re-rendering it through a template would put the pass's own
+   * `42976296380` measured what happens when the quote is used as the answer instead: the ceiling that
+   * existed to keep a passage out of an answer refused **6 of the 10** correct identifications on length
+   * alone, two of them gate targets. The quote is how the reader demonstrates it copied; the value inside
+   * it is what the answer becomes (§13.369). Re-rendering it through a template would put the pass's own
    * prose between the evidence and the grader, which is the defect `renderAggregate` was written to
-   * avoid on `MR`.
+   * avoid on `MR` -- so the value is copied, not composed.
    *
    * ## Why `#lastReview` is written even though the question's outcome is the only answer
    *

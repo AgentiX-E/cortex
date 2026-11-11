@@ -39608,3 +39608,55 @@ supersede` stays an experimental mode.
 If those two changes do not clear it, the mechanism is **refuted as a member of its family** — not "one tweak
 away" — and the `MR`/`KU` queue moves to `assemble()` and the frontier reader. That sentence is the point of this
 paragraph: a second inert arm must be readable as a refutation rather than as a near miss.
+
+#### 13.370 The corrected supersession arm: the value rule, and the two shapes it must not refuse
+
+§13.369 registered two changes and a termination condition. This section registers what the implementation had
+to decide **before** the arm is dispatched, so that the reading is a verdict on a mechanism rather than on a
+choice made after seeing the result.
+
+**The amendment, and why it is an amendment rather than a widening.** §13.369 says *"the numeral the span carries
+and the first answer does not; a span with no new numeral is refused as `restates`"*. That sentence covers five of
+the gate's eight targets. The other two — `ce6d2d27` (gold `Friday`) and `9ea5eabc` (gold `Paris`) — have no
+numeral in any span that could carry their correction, so a numeral-only rule makes them **structurally
+unreachable** and caps `K1` at exactly the bar with no tolerance. Building that is building the defect
+`42976296380` was lost to, one layer down: the first version's ceiling ate two gate targets by *two characters*,
+and a numeral-only rule would eat two more by *lexical class*. So the rule is stated over values:
+
+> the substituted answer is the last numeral in the span that the first answer does not carry, with the unit word
+> that follows it; a span that carries no numeral at all is substituted **whole** when it is value-shaped — three
+> tokens or fewer after the comparison key, no `,` `;` `!` `?` — and refused as `restates` otherwise.
+
+The bound on the amendment is that it adds no new freedom over the *answer*: the substituted characters are still
+a contiguous token of a span that is still required to appear in the evidence character for character, and the
+date is still required on every record the span appears on. What it changes is which characters of an already
+authorised span become the answer.
+
+**`restates` replaces `too-long` in the census.** Not a rename: `too-long` was a property of one string and
+`restates` is a property of the pair. The old reason could not distinguish the 27 refusals it counted — 24 of them
+were the ceiling refusing a correct identification, 3 were repetitions of a question whose last output said `no` —
+and the whole reading of `42976296380` turned on that distinction.
+
+**Predictions, written so the dispatch can fail them.**
+
+- **`P1` (the gate, unchanged).** ≥ 6 of the control's 8 stable `KU` failures convert and the column carries no
+  regression. Same `6/0` cell, same exact and flip-floor nulls.
+- **`P2` (the localisation).** `no-change` falls below 100 of the 288 consultations. `42976296380` read 242 with
+  the asymmetry sentence present; if the sentence was the cause, its removal is visible here and not only in the
+  net.
+- **`P3` (the instrument).** **Zero** `restates` refusals on the gate's eight targets, and at most two on the whole
+  `KU` column per repetition. A `restates` on a target means the value rule cannot see a change that
+  `MEASURE-STALE-EXPOSURE.md` proves is in the window, which is this arm failing the same way the last one did.
+
+**What each outcome licenses.**
+
+| reading | licence |
+| --- | --- |
+| `P1`–`P3` hold | the pass ships as the `supersede` default for `KU`; the family is confirmed at one member |
+| `P1` fails, `P2`/`P3` hold | the mechanism is **refuted as a member of its family** (§13.369). Not "one tweak away": the queue moves to `assemble()` and to the reader axis, and no further supersession arm is dispatched |
+| `P3` fails on a target | the value rule is the wrong instrument and the refutation is about the extraction, not about the pass — recorded, because it is the only outcome that would justify a third arm |
+
+The third row is deliberately narrow. The campaign has spent four arms on substitution mechanisms
+(`tally` −9.5, `spec` −39, `supersede` 0) and the honest prior is that the next 14 CNY is better spent on
+`assemble()`; a third arm is licensed only by an extraction defect that is visible in the census, never by a net
+that is merely short of the bar.

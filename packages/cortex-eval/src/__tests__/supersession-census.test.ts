@@ -48,7 +48,7 @@ function refusalsOf(entries: Refusals): Refusals {
     'no-change': 0,
     'no-quote': 0,
     agrees: 0,
-    'too-long': 0,
+    restates: 0,
     'not-in-evidence': 0,
     'date-not-on-line': 0,
     ...entries,
