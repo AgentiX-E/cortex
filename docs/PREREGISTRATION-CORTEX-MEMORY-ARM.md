@@ -39456,3 +39456,53 @@ because a registration that can be edited without a trace is not a registration.
 correct is a damage, and the census cannot see it — it counts `replaced`, not `replaced-and-was-right`. That
 number comes from the paired artifact, which is why `K1` is written as "no question regresses" over the whole
 `KU` column and not as a conversion count.
+
+#### 13.366.1 Amendment made blind: the target population is read off the **control**, not off a run from six rounds ago
+
+Written while `42976296380` was in flight and **before** its artifact existed. The amendment is registered as an
+amendment rather than folded into §13.366, because a registration that can be edited without a trace is not one.
+
+**What was wrong.** §13.366 named six ids as "the six stable stale-value failures", taken from
+`MEASURE-FAILURE-STABILITY.md` §3, which read them from `42355323615`. This arm is compared against
+`42533236864`. Read against **that** control, three of the six are correct in all four repetitions and a fourth
+(`0977f2af`) is too:
+
+| id | mask in `42533236864` | control pass rate |
+| --- | --- | ---: |
+| `ce6d2d27` | `1111` | 1.00 |
+| `9ea5eabc` | `1111` | 1.00 |
+| `ed4ddc30` | `1111` | 1.00 |
+| `59524333` | `0000` | 0.00 |
+| `69fee5aa` | `0000` | 0.00 |
+| `a2f3aa27` | `0000` | 0.00 |
+
+A target that already passes cannot convert, so `K1` as first written — "≥ 6 of the six" — was **unreachable by
+construction**, and the run would have been read as a mechanism failure when it was an accounting failure. The
+deeper fault is the one this campaign has now made three times: a population is a property of **a pair of
+artifacts**, and a list carried over from another dispatch is a list about a different comparison.
+
+**What the population is now.** The `KU` questions that are wrong in **all four** repetitions of `42533236864` —
+eight of them, read from the control's own `featureCorrectByRun`:
+
+```
+a1eacc2a  f9e8c073  59524333  e66b632c  69fee5aa  a2f3aa27  c7dc5443  07741c45
+```
+
+They are the same failure shape the six were chosen for — a value the corpus later changes (`a2f3aa27` `1250`
+against `1300`, `07741c45` a location that moved, `e66b632c` a time that was revised, `c7dc5443` a score that
+changed) — and four of them are the six-original set. The two questions that changed answers between the two runs
+are `ce6d2d27` and `9ea5eabc`, which is itself a datum about this population's flakiness rather than about either
+dispatch.
+
+**The bar, restated.** `K1` becomes:
+
+> at least **75%** of the control's stable `KU` failures convert (six of eight), and **no** question on the `KU`
+> column regresses.
+
+Six of eight is the same `6/0` cell the §13.366 table prices at `p = 0.031` exact and `p = 0.0037` against the
+flip floor, so the arithmetic that replaced the old bar is unchanged; only the denominator is now the control's
+own. Both nulls are still reported, and a conversion rate below 75% is still a direction rather than a result.
+
+**What is read instead of guessed.** `tools/supersede-reading.py` derives the population from the control it is
+handed and refuses an artifact whose roster disagrees with the other's. The six original ids are printed beside it
+as a continuity table, not as the gate.
