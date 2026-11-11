@@ -617,3 +617,35 @@ arm, censused into the report, and it has never been dispatched. It is registere
 
 The `+4` is small and it is the only arm on the table that cannot lose: every question it touches is currently
 wrong, and the cost of touching one is a single consultation on a prompt that is 2.6% of the run's tokens.
+
+### 14.9 The arithmetic of the gap: 4.40 points is 22 questions, and one capability cannot pay it
+
+Every reading in this section is per capability, and the last three rounds were all aimed at `KU`. The pool says
+whether that was the right target.
+
+| capability | questions | wrong (control) | wrong (room) | share of the 44 | value of one question |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| IE | 150 | 9 | 11 | 20.5% | 0.20 points |
+| MR | 121 | **20** | **20** | **45.5%** | 0.20 points |
+| KU | 72 | 9 | 8 | 20.5% | 0.20 points |
+| TR | 127 | 6 | 5 | 13.6% | 0.20 points |
+| ABS | 30 | 0 | 0 | 0.0% | -- |
+| **total** | 500 | **44** | **44** | 100% | |
+
+Four numbers follow, and the first two bound what the last three rounds could ever have bought:
+
+1. **The gap to 95.60% is 4.40 points, which is 22 questions.** The whole error pool is 44, so the target is
+   "remove exactly half of every mistake", not "improve one class".
+2. **A perfect `KU` is worth +1.80 points** (all nine). A perfect `KU` *delivery* -- every `gold-not-in-window` row
+   delivered with no collateral -- is the arm's own hypothesis executed cleanly: 63 + 3 = **66/72, which is the
+   registered criterion to the question**. The arm read 64 because it sold four, not because the three were not there.
+3. **`MR` is 45.5% of the pool and cannot pay the gap alone** (20 questions against 22 needed). `MR` + `IE` together
+   are 29, which is enough; either alone is not.
+4. Therefore the order of work is no longer "the capability the last round was about". It is **`MR`, then `IE`**, and
+   `KU` stays closed at whatever the repair in section 14.8 buys, because its entire remaining value is 1.8 points and
+   its delivery axis has already been shown to be one-for-one.
+
+The three counting classes the census names are the first MR target, and they are 10 of its 20 -- five `off-by-one`
+answers that differ from the gold by exactly one item, and five `aggregation` answers whose total is short or long.
+They are also the class where the *reference pipeline* beats us with a tenth of the evidence, which is the strongest
+evidence available that the difficulty is the reader's counting over a wide window and not the corpus.
