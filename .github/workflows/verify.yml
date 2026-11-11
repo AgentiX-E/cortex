@@ -136,8 +136,17 @@ jobs:
       # Pinned through `@1.49.1` and confirmed with `--yes` because `npx` in a non-interactive shell
       # otherwise behaves differently across npm versions, and a job that hangs on a prompt reports as
       # a timeout rather than as the missing browser it is.
+      #
+      # `--with-deps` is not used, and the reason is a failure rather than a preference: on
+      # 2026-11-11 three attempts died in `apt-get` with `Temporary failure resolving
+      # 'azure.archive.ubuntu.com'` before a single assertion ran, and the attempt eight minutes
+      # earlier had installed the same browser and launched it. The flag buys distribution packages
+      # the `ubuntu-latest` image already carries, at the price of a dependency on an apt mirror the
+      # job does not otherwise need. It is not a weakening: the suites launch the browser themselves,
+      # so a genuinely missing library fails the job at the first `spawn` with the library's name in
+      # the message, which is a better failure than a resolver timeout.
       - name: Install a browser
-        run: npx --yes playwright@1.49.1 install --with-deps chromium
+        run: npx --yes playwright@1.49.1 install chromium
 
       - name: Build
         run: pnpm build
