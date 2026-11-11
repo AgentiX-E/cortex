@@ -65,10 +65,22 @@ function sessions(): string[][] {
 /** The eight refusals' shape: an answer to the parser, a refusal to a reader. */
 const PROSE_REFUSAL = 'Not specified in the evidence';
 
-/** The six shape failures' shape: the turns quoted, and no answer line. */
+/** The shape failures that are quotations: the turns quoted, no stamp, no answer line. */
 const QUOTATION_DUMP = [
-  '- [2023/05/20] "I graduated with a degree in Business Administration."',
-  '- [2023/05/25] "The ceremony was in June, two weeks after the last exam."',
+  '- "I graduated with a degree in Business Administration."',
+  '- "The ceremony was in June, two weeks after the last exam."',
+].join('\n');
+
+/**
+ * The shape failures that are the evidence written back: the same list, with the renderer's stamp on each line.
+ *
+ * The two are separate kinds since `MEASURE-COMPETITOR-PAIRING.md` section 4 -- 15 replies wrong 53.3% of the time
+ * against 28 wrong 14.3% -- and separate values on the option, so both need a route test and neither may fire
+ * under the other's arm.
+ */
+const EVIDENCE_ECHO = [
+  '- [2023/05/20] user: "I graduated with a degree in Business Administration."',
+  '- [2023/05/25] user: "The ceremony was in June, two weeks after the last exam."',
 ].join('\n');
 
 describe('the flat route', () => {
@@ -90,6 +102,7 @@ describe('the flat route', () => {
       attempted: 1,
       answered: 1,
       commitment: { attempted: 1, answered: 1, questions: [QUESTION] },
+      echo: { attempted: 0, answered: 0, questions: [] },
       shape: { attempted: 0, answered: 0, questions: [] },
     });
   });
@@ -125,8 +138,45 @@ describe('the flat route', () => {
       attempted: 1,
       answered: 1,
       commitment: { attempted: 0, answered: 0, questions: [] },
+      echo: { attempted: 0, answered: 0, questions: [] },
       shape: { attempted: 1, answered: 1, questions: [QUESTION] },
     });
+  });
+
+  it('re-asks a transcript for an answer, and says which mistake it made', async () => {
+    // The kind `MEASURE-COMPETITOR-PAIRING.md` section 4 separated from the quotations: the reply is the evidence
+    // block with this renderer's stamp on every line, wrong 53.3% of the time against 14.3% for the quotations.
+    // The prompt has to name the mistake -- a reply that already enumerated will enumerate again if asked to.
+    const { llm, seen } = scripted([EVIDENCE_ECHO, 'Business Administration']);
+    const instance = system(llm, { replyRepair: 'echo' });
+    expect(await instance.answer(QUESTION, CONTEXT)).toBe('Business Administration');
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toContain('copied the evidence above back instead of answering');
+    expect(seen[1]).toContain('Do not restate, quote or list the evidence');
+    expect(instance.replyRepairCensus()).toEqual({
+      attempted: 1,
+      answered: 1,
+      commitment: { attempted: 0, answered: 0, questions: [] },
+      echo: { attempted: 1, answered: 1, questions: [QUESTION] },
+      shape: { attempted: 0, answered: 0, questions: [] },
+    });
+  });
+
+  it('keeps the two shape kinds on their own arms, in both directions', async () => {
+    // `echo` must not reach a quotation list, and `shape` must not reach a transcript: a mode that reached both
+    // would publish one reading for two populations, and the whole reason the split exists is that the two have
+    // different wrong rates.
+    const quotation = scripted([QUOTATION_DUMP, 'Business Administration']);
+    expect(await system(quotation.llm, { replyRepair: 'echo' }).answer(QUESTION, CONTEXT)).toBe(
+      QUOTATION_DUMP,
+    );
+    expect(quotation.seen).toHaveLength(1);
+
+    const transcript = scripted([EVIDENCE_ECHO, 'Business Administration']);
+    expect(await system(transcript.llm, { replyRepair: 'shape' }).answer(QUESTION, CONTEXT)).toBe(
+      EVIDENCE_ECHO,
+    );
+    expect(transcript.seen).toHaveLength(1);
   });
 
   it('does not repair a dump when only the commitment kind is on', async () => {
@@ -241,6 +291,7 @@ describe('the exclusions', () => {
       attempted: 0,
       answered: 0,
       commitment: { attempted: 0, answered: 0, questions: [] },
+      echo: { attempted: 0, answered: 0, questions: [] },
       shape: { attempted: 0, answered: 0, questions: [] },
     });
   });

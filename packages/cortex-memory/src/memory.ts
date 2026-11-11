@@ -36,6 +36,7 @@ import {
   RENDERING_BY_CONTRACT,
   buildAuditPrompt,
   buildCommitPrompt,
+  buildEchoPrompt,
   buildPrompt,
   buildRetryPrompt,
   buildSessionPrompt,
@@ -231,10 +232,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * stopped being incremented cannot leave a total that disagrees with its parts.
    */
   readonly #repairs: Record<
-    'commitment' | 'shape',
+    'commitment' | 'echo' | 'shape',
     { attempted: number; answered: number; questions: string[] }
   > = {
     commitment: { attempted: 0, answered: 0, questions: [] },
+    echo: { attempted: 0, answered: 0, questions: [] },
     shape: { attempted: 0, answered: 0, questions: [] },
   };
 
@@ -982,6 +984,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     attempted: number;
     answered: number;
     commitment: { attempted: number; answered: number; questions: string[] };
+    echo: { attempted: number; answered: number; questions: string[] };
     shape: { attempted: number; answered: number; questions: string[] };
   } | null {
     const mode = this.#options.replyRepair;
@@ -992,11 +995,13 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ...this.#repairs.commitment,
       questions: [...this.#repairs.commitment.questions],
     };
+    const echo = { ...this.#repairs.echo, questions: [...this.#repairs.echo.questions] };
     const shape = { ...this.#repairs.shape, questions: [...this.#repairs.shape.questions] };
     return {
-      attempted: commitment.attempted + shape.attempted,
-      answered: commitment.answered + shape.answered,
+      attempted: commitment.attempted + echo.attempted + shape.attempted,
+      answered: commitment.answered + echo.answered + shape.answered,
       commitment,
+      echo,
       shape,
     };
   }
@@ -1607,7 +1612,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const repaired = await this.#consult(
       repair.kind === 'commitment'
         ? buildCommitPrompt(question, assembled.carried, options)
-        : buildShapePrompt(question, assembled.carried, options),
+        : repair.kind === 'echo'
+          ? buildEchoPrompt(question, assembled.carried, options)
+          : buildShapePrompt(question, assembled.carried, options),
       route,
     );
     const census = this.#repairs[repair.kind];

@@ -1742,14 +1742,16 @@ function readQueryExpansion(raw: string | undefined): string {
  * and `reviewPass: 'recover'` is told `answered: true` because `parseAnswer` reads "Not specified in the evidence" as
  * an answer.
  *
- * Four values, because the two kinds are disjoint populations and a run has to be able to administer one of them.
+ * Five values, because the kinds are disjoint populations and a run has to be able to administer one of them.
+ * `echo` is its own value rather than a wider `commitment` for the reason `reply-repair.ts` states: `commitment`
+ * was dispatched on `43051879550` and its reading belongs to the nine prose refusals it was registered on.
  * `off` is a value rather than an absent field so a control arm can say it ran the control, the same reason
  * `QUERY_EXPANSIONS` carries `none`.
  */
 const REPLY_REPAIR_VARIABLE = 'CORTEX_MEMORY_REPLY_REPAIR';
 
 /** The repairs this arm can dispatch, in the order the config line spells them. */
-const REPLY_REPAIRS: readonly string[] = ['off', 'commitment', 'shape', 'both'];
+const REPLY_REPAIRS: readonly string[] = ['off', 'commitment', 'echo', 'shape', 'both'];
 
 /**
  * Read the reply repair, rejecting anything the product does not implement.
@@ -4354,20 +4356,25 @@ function replyRepairAcross(systems: readonly MemorySystem[]): { replyRepair?: Re
   // each kind's question list so `E3.2` could name its targets, and a summer that adds numbers would either have to
   // dispatch on the value's type or concatenate a count with a list. The populations concatenate; the counts add.
   const commitment = { attempted: 0, answered: 0, questions: [] as string[] };
+  const echo = { attempted: 0, answered: 0, questions: [] as string[] };
   const shape = { attempted: 0, answered: 0, questions: [] as string[] };
   for (const one of parts) {
     commitment.attempted += one.commitment.attempted;
     commitment.answered += one.commitment.answered;
     commitment.questions.push(...one.commitment.questions);
+    echo.attempted += one.echo.attempted;
+    echo.answered += one.echo.answered;
+    echo.questions.push(...one.echo.questions);
     shape.attempted += one.shape.attempted;
     shape.answered += one.shape.answered;
     shape.questions.push(...one.shape.questions);
   }
   return {
     replyRepair: {
-      attempted: commitment.attempted + shape.attempted,
-      answered: commitment.answered + shape.answered,
+      attempted: commitment.attempted + echo.attempted + shape.attempted,
+      answered: commitment.answered + echo.answered + shape.answered,
       commitment,
+      echo,
       shape,
     },
   };
@@ -4650,10 +4657,10 @@ function replyRepairOf(system: MemorySystem): { replyRepair?: ReplyRepairCensus 
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return {};
   }
   const kinds = {} as Record<
-    'commitment' | 'shape',
+    'commitment' | 'echo' | 'shape',
     { attempted: number; answered: number; questions: string[] }
   >;
-  for (const kind of ['commitment', 'shape'] as const) {
+  for (const kind of ['commitment', 'echo', 'shape'] as const) {
     const part = record[kind];
     if (part === null || typeof part !== 'object') return {};
     const counts = part as Record<string, unknown>;
@@ -4678,6 +4685,7 @@ function replyRepairOf(system: MemorySystem): { replyRepair?: ReplyRepairCensus 
       attempted: record.attempted as number,
       answered: record.answered as number,
       commitment: kinds.commitment,
+      echo: kinds.echo,
       shape: kinds.shape,
     },
   };

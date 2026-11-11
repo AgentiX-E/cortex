@@ -48,7 +48,7 @@ import type { ReplyRepair } from './types.js';
  * `committed` is not "correct": it is "the reply is an answer in the shape the contract asked for", which is the
  * only thing a pass reading the reply's text can know. Whether it is right is the judge's question.
  */
-type ReplyKind = 'committed' | 'bare-decline' | 'prose-decline' | 'shape-failed';
+type ReplyKind = 'committed' | 'bare-decline' | 'prose-decline' | 'evidence-echo' | 'shape-failed';
 
 /**
  * Which repairs a run administers.
@@ -60,7 +60,10 @@ type ReplyKind = 'committed' | 'bare-decline' | 'prose-decline' | 'shape-failed'
 
 /** What, if anything, to do about the first reply. */
 type RepairPlan =
-  { readonly kind: 'none' } | { readonly kind: 'commitment' } | { readonly kind: 'shape' };
+  | { readonly kind: 'none' }
+  | { readonly kind: 'commitment' }
+  | { readonly kind: 'echo' }
+  | { readonly kind: 'shape' };
 
 /**
  * The longest reply that can be read as a refusal rather than as an answer that mentions one.
@@ -87,6 +90,16 @@ const REFUSAL_OPENER =
 
 /** `- item`, `* item`, `• item`, `1. item`, `1) item` -- the shapes a list is written in. */
 const BULLET = /^(?:[-*\u2022]|\d+[.)])\s+\S/;
+
+/**
+ * A line that opens with this product's own evidence rendering.
+ *
+ * `formatEvidence` writes `${index}. [${turn.id}] ...` for sourced contracts and `[${date}] ${speaker}: ...`
+ * for the block contract, so an evidence turn begins with a bracketed date. **An answer never does**: the
+ * 425 `committed` replies on `42533236864` carry no line starting this way, and the 15 that do are transcripts.
+ * That is what makes the predicate decidable without a model.
+ */
+const EVIDENCE_STAMP = /^(?:[-*\u2022]|\d+[.)])?\s*\[\d{4}\/\d{2}\/\d{2}/;
 
 /** A line that opens with a quotation mark, which is a quotation rather than an answer. */
 const QUOTED = /^["\u201c'\u2018]/;
@@ -122,6 +135,41 @@ function isListAnswer(answer: string): boolean {
 }
 
 /**
+ * Whether a parsed answer is the evidence block written back, rather than an answer.
+ *
+ * ## The measurement this separates, and why it is not `isListAnswer`
+ *
+ * `MEASURE-COMPETITOR-PAIRING.md` section 4 runs this file's own `classifyReply` over the 500 raw replies of
+ * `42533236864`, with the stamp above added to split the shape failures in two:
+ *
+ * | form | n | wrong | wrong rate |
+ * | --- | ---: | ---: | ---: |
+ * | `committed` | 425 | 30 | 7.1% |
+ * | **`evidence-echo`** | **15** | **8** | **53.3%** |
+ * | `shape-failed` (not a dump) | 28 | 4 | 14.3% |
+ *
+ * A transcript dump is wrong **seven and a half times as often** as an answer, and the 28 shape failures that are
+ * not dumps are wrong four times. That ratio is why `replyRepair: 'shape'` was a bad trade at 44 re-asks for 12 wrong answers,
+ * and why this predicate exists instead: it keeps the repair on the 15 and off the 28.
+ *
+ * ## Why half the lines and not one
+ *
+ * A reply that states an answer and then quotes one evidence line is an answer -- the quotation is support, not
+ * the reply. One stamp among many lines is that shape; **at least half** is a dump. The single-line case is
+ * included deliberately: a one-line reply that opens with `[2023/05/25 (Thu) 03:32]` is `5d3d2817`, which is a
+ * transcript with nothing else in it.
+ */
+function isEvidenceEcho(answer: string): boolean {
+  const lines = answer
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  if (lines.length === 0) return false;
+  const stamped = lines.filter((line) => EVIDENCE_STAMP.test(line)).length;
+  return stamped * 2 >= lines.length;
+}
+
+/**
  * What the reply was, read in the order that keeps the four states disjoint.
  *
  * The order is the contract, not an implementation detail: `bare-decline` before `prose-decline` is what makes
@@ -144,6 +192,12 @@ export function classifyReply(raw: string | null): ReplyKind {
     return 'prose-decline';
   }
   const answer = parseAnswer(text);
+  // Before `shape-failed`, because a dump is a list answer and the two would otherwise be indistinguishable. The
+  // order is what keeps the two repairs on disjoint populations: `shape` re-asks a list where an answer was
+  // asked for, `echo` re-asks a transcript, and the 28 replies that are lists but not dumps must keep landing in
+  // the first bucket -- they are wrong once, and `shape` at 44 re-asks for 12 wrong answers is the trade
+  // `MEASURE-COMPETITOR-PAIRING.md` section 4 refused.
+  if (answer !== null && isEvidenceEcho(answer)) return 'evidence-echo';
   if (answer !== null && isListAnswer(answer)) return 'shape-failed';
   return 'committed';
 }
@@ -159,6 +213,13 @@ export function planReplyRepair(raw: string | null, repair: ReplyRepair | undefi
   const kind = classifyReply(raw);
   if (kind === 'prose-decline' && (repair === 'commitment' || repair === 'both')) {
     return { kind: 'commitment' };
+  }
+  // Its own value rather than a wider `commitment`: that option was dispatched on `43051879550` and its reading
+  // (91.35%, `attempted` 9, all nine prose refusals) belongs to the population it was registered on. Widening it
+  // to reach these 15 would make one published number describe two populations, which is the defect section 13.192
+  // spent a page correcting for the reader field.
+  if (kind === 'evidence-echo' && (repair === 'echo' || repair === 'both')) {
+    return { kind: 'echo' };
   }
   if (kind === 'shape-failed' && (repair === 'shape' || repair === 'both'))
     return { kind: 'shape' };

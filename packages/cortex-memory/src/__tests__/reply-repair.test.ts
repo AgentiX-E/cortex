@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { classifyReply, planReplyRepair } from '../reply-repair.js';
 import { ABSTAIN_TOKEN, parseAnswer } from '../parse.js';
-import { buildCommitPrompt, buildPrompt, buildShapePrompt } from '../prompt.js';
+import { buildCommitPrompt, buildEchoPrompt, buildPrompt, buildShapePrompt } from '../prompt.js';
 import type { AdmittedTurn } from '../admission.js';
 
 /**
@@ -37,19 +37,32 @@ const TOKEN_IN_PROSE = [
   `- one event on 2023/05/20\n\n${ABSTAIN_TOKEN}`,
 ];
 
-/** A list of quotations with no answer line, which is what the six shape failures produced. */
-const QUOTATION_DUMPS = [
+/**
+ * A transcript written back, with this product's own evidence stamp at the head of its lines.
+ *
+ * The stamp is `formatEvidence`'s, so no answer can carry it -- `MEASURE-COMPETITOR-PAIRING.md` section 4 checks
+ * that against all 500 replies of `42533236864`: the 425 `committed` ones contain no line starting `[YYYY/MM/DD`,
+ * and all 16 that do are transcripts. These three are that shape, copied from the artifact's own rendering.
+ */
+const EVIDENCE_ECHOES = [
   [
     '- [2023/04/02] user: "I bought a new bike for $600"',
     '- [2023/04/09] user: "sold the bike for $450"',
   ].join('\n'),
+  ['1. [2023/05/01] "ran 5 km"', '2. [2023/05/03] "ran 7 km"', '3. [2023/05/04] "ran 3 km"'].join(
+    '\n',
+  ),
+  // One line is enough when the one line is a transcript: `5d3d2817` answered a one-line dump of 493 characters.
+  "1. [2023/05/25 (Thu) 03:32] The user's profile shows extensive experience in the pharmaceutical industry",
+];
+
+/** A list of quotations with no answer line and **no** stamp, which is the shape failure that is not a dump. */
+const QUOTATION_DUMPS = [
   [
     '"I have been reading a lot of science fiction lately"',
     '"the last one was about a generation ship"',
   ].join('\n'),
-  ['1. [2023/05/01] "ran 5 km"', '2. [2023/05/03] "ran 7 km"', '3. [2023/05/04] "ran 3 km"'].join(
-    '\n',
-  ),
+  ['- "the deadline slipped to March"', '- "we shipped it in April anyway"'].join('\n'),
 ];
 
 /** Replies that are answers, including the two shapes that a looser predicate would misread. */
@@ -67,11 +80,31 @@ const ANSWERS = [
 ];
 
 describe('classifyReply', () => {
-  it('reads the four states apart', () => {
+  it('reads the five states apart', () => {
     for (const reply of PROSE_REFUSALS) expect(classifyReply(reply), reply).toBe('prose-decline');
     for (const reply of TOKEN_IN_PROSE) expect(classifyReply(reply), reply).toBe('prose-decline');
     for (const reply of QUOTATION_DUMPS) expect(classifyReply(reply), reply).toBe('shape-failed');
+    for (const reply of EVIDENCE_ECHOES) expect(classifyReply(reply), reply).toBe('evidence-echo');
     for (const reply of ANSWERS) expect(classifyReply(reply), reply).toBe('committed');
+  });
+
+  it('separates a transcript from a quotation list by the evidence stamp, not by being a list', () => {
+    // The two populations a shape failure contains, and the arithmetic that made them worth separating: on
+    // `42533236864` the 15 dumps are wrong 53.3% of the time and the 28 lists 14.3%. A predicate that read both as
+    // one kind would spend 41 re-asks to reach 10 wrong answers, which is the trade `shape` measured and lost.
+    for (const reply of EVIDENCE_ECHOES) expect(classifyReply(reply), reply).toBe('evidence-echo');
+    for (const reply of QUOTATION_DUMPS) expect(classifyReply(reply), reply).toBe('shape-failed');
+  });
+
+  it('keeps an answer that quotes one line out of the echo population', () => {
+    // A quotation inside an answer is support, not the reply. The half-the-lines rule is what keeps this off the
+    // 425 committed replies, and it is stated as a test because a one-line threshold would have caught it.
+    const answerWithSupport = [
+      'You ran 12 km in total.',
+      'As you said on 2023/05/01: "ran 5 km".',
+      'That is the sum of the distances you reported.',
+    ].join('\n');
+    expect(classifyReply(answerWithSupport)).toBe('committed');
   });
 
   it('keeps the bare token for the retry that owns it', () => {
@@ -89,6 +122,21 @@ describe('classifyReply', () => {
     expect(classifyReply(null)).toBe('committed');
     expect(classifyReply('')).toBe('committed');
     expect(classifyReply('   \n ')).toBe('committed');
+  });
+
+  it('reads a reply that stops at the label as an empty answer, not as a dump', () => {
+    // The one path that reaches the echo predicate with no lines at all: a reply that writes its steps and then
+    // stops at the label. `afterClosingLabel` returns the empty string there -- "an answer, a blank one" rather
+    // than a fallback to the transcript -- so the predicate is handed nothing to stamp. A blank answer is neither
+    // a dump nor a list, and the predicate must not divide a line count it does not have.
+    const endedAtTheLabel = 'Step 1: read the evidence\n\nStep 2 - Answer:';
+    expect(parseAnswer(endedAtTheLabel)).toBe('');
+    expect(classifyReply(endedAtTheLabel)).toBe('committed');
+    expect(planReplyRepair(endedAtTheLabel, 'both')).toEqual({ kind: 'none' });
+    // The neighbouring shape, and the reason this test is about *lines* rather than the label: a reply that is
+    // the label and nothing before it reduces to the empty string at `stripDecoration` too, so `isBareDecline`
+    // claims it and the token's own retry owns it -- one population, not two.
+    expect(classifyReply('Answer:')).toBe('bare-decline');
   });
 
   it('reads decoration through stripDecoration rather than its own pattern', () => {
@@ -123,6 +171,7 @@ describe('the list-answer rule, read through the classifier that owns it', () =>
 describe('planReplyRepair', () => {
   const refusal = 'Not specified in the evidence';
   const dump = '- [2023/04/02] "bought a bike"\n- [2023/04/09] "sold the bike"';
+  const quotes = '- "bought a bike"\n- "sold the bike"';
 
   it('plans nothing when the option is absent or off', () => {
     // Absent is the state every archived artifact was produced in, and `off` is a value a control arm can name.
@@ -133,10 +182,21 @@ describe('planReplyRepair', () => {
   it('routes each kind only where the run asked for it', () => {
     expect(planReplyRepair(refusal, 'commitment')).toEqual({ kind: 'commitment' });
     expect(planReplyRepair(refusal, 'shape')).toEqual({ kind: 'none' });
-    expect(planReplyRepair(dump, 'shape')).toEqual({ kind: 'shape' });
-    expect(planReplyRepair(dump, 'commitment')).toEqual({ kind: 'none' });
+    expect(planReplyRepair(quotes, 'shape')).toEqual({ kind: 'shape' });
+    expect(planReplyRepair(quotes, 'commitment')).toEqual({ kind: 'none' });
     expect(planReplyRepair(refusal, 'both')).toEqual({ kind: 'commitment' });
-    expect(planReplyRepair(dump, 'both')).toEqual({ kind: 'shape' });
+    expect(planReplyRepair(quotes, 'both')).toEqual({ kind: 'shape' });
+  });
+
+  it('administers the echo only under its own value', () => {
+    // Its own value rather than a wider `commitment`: that one was dispatched on `43051879550` and its reading
+    // belongs to the nine prose refusals it was registered on. A number that described two populations would be
+    // the defect section 13.192 spent a page correcting for the reader field.
+    expect(planReplyRepair(dump, 'echo')).toEqual({ kind: 'echo' });
+    expect(planReplyRepair(dump, 'both')).toEqual({ kind: 'echo' });
+    expect(planReplyRepair(dump, 'commitment')).toEqual({ kind: 'none' });
+    // `shape` is the 28-reply trade and must not reach the dumps.
+    expect(planReplyRepair(dump, 'shape')).toEqual({ kind: 'none' });
   });
 
   it('plans nothing for an answer, under every mode', () => {
@@ -164,7 +224,7 @@ describe('the repair prompts', () => {
     // the two answers is a difference of instruction. Asserted as a prefix, the way `bare-decline-retry.test.ts`
     // asserts it, because the instruction block below the evidence is the treatment.
     const first = buildPrompt(question, turns, 'extractive').prompt;
-    for (const build of [buildCommitPrompt, buildShapePrompt]) {
+    for (const build of [buildCommitPrompt, buildEchoPrompt, buildShapePrompt]) {
       const repair = build(question, turns);
       const head = repair.slice(0, repair.indexOf('QUESTION:'));
       expect(first.startsWith(head)).toBe(true);
@@ -188,7 +248,7 @@ describe('the repair prompts', () => {
     // The state a builder can be handed directly: the product returns `#declinedEmpty()` before consulting, so this
     // is reachable only through the exported API -- and a builder that printed `EVIDENCE:` with nothing under it
     // would be asking a question about a window the reader cannot see.
-    for (const build of [buildCommitPrompt, buildShapePrompt]) {
+    for (const build of [buildCommitPrompt, buildEchoPrompt, buildShapePrompt]) {
       const prompt = build(question, []);
       expect(prompt).toContain('EVIDENCE:');
       expect(prompt).not.toMatch(/EVIDENCE:\n\n/);

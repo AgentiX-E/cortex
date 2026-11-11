@@ -1269,6 +1269,17 @@ export type ReplyRepairCensus = {
     readonly answered: number;
     readonly questions: readonly string[];
   };
+  /**
+   * The evidence-echo repair (`MEASURE-COMPETITOR-PAIRING.md` section 4): replies that wrote the evidence block
+   * back instead of answering, 16 of 500 on `42533236864` of which 9 were wrong. Its own field rather than a
+   * wider `commitment`, because the two were dispatched separately and one number cannot describe two
+   * populations.
+   */
+  readonly echo: {
+    readonly attempted: number;
+    readonly answered: number;
+    readonly questions: readonly string[];
+  };
   readonly shape: {
     readonly attempted: number;
     readonly answered: number;
@@ -2198,11 +2209,15 @@ function replyRepairLines(census: ReplyRepairCensus | undefined): string[] {
     '| Kind | Trigger | Consultations | Answered | Converted |',
     '|---|---|---|---|---|',
     `| commitment | a refusal written in prose | ${census.commitment.attempted} | ${census.commitment.answered} | ${rate(census.commitment)} |`,
+    `| echo | the evidence block written back instead of an answer | ${census.echo.attempted} | ${census.echo.answered} | ${rate(census.echo)} |`,
     `| shape | a list of quotations instead of an answer | ${census.shape.attempted} | ${census.shape.answered} | ${rate(census.shape)} |`,
     `| **both** | — | **${census.attempted}** | **${census.answered}** | **${rate(census)}** |`,
     '',
     'Re-asked once, with the evidence the first call read and nothing else changed. `commitment` answers a reply that',
-    'reported the evidence holds no answer; `shape` answers a reply that quoted the evidence and stopped. Neither is',
+    'reported the evidence holds no answer; `echo` answers a reply that wrote the whole evidence block back -- it is',
+    'separated from `shape` because its lines carry the `[YYYY/MM/DD` stamp this product renders, and on `42533236864`',
+    '15 dumps are wrong 53.3% of the time against 14.3% for the 28 shape failures that are not dumps; `shape` answers',
+    'a reply that quoted the evidence and stopped. None of the three is',
     '`bareRetry`: that one needs the abstention token and nothing else, and both shapes here parse as answers, which',
     'is why no retry could reach them. The abstention route is excluded -- its gold is the decline.',
     '',

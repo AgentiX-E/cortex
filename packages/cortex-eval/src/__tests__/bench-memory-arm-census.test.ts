@@ -586,10 +586,13 @@ describe('the arm records what the bare-decline retry did', () => {
  */
 describe('the arm records the reply-contract repair census', () => {
   const CENSUS = {
-    attempted: 9,
-    answered: 4,
+    attempted: 12,
+    answered: 5,
     commitment: { attempted: 6, answered: 3, questions: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'] },
-    shape: { attempted: 3, answered: 1, questions: ['q7', 'q8', 'q9'] },
+    // The second kind, `MEASURE-COMPETITOR-PAIRING.md` section 4: a transcript written back, told apart from the
+    // quotations by this product's own stamp rather than by being a list.
+    echo: { attempted: 3, answered: 1, questions: ['q7', 'q8', 'q9'] },
+    shape: { attempted: 3, answered: 1, questions: ['q10', 'q11', 'q12'] },
   };
 
   function systemWithReplyRepair(payload: unknown, impl?: () => unknown): MemorySystem {
@@ -600,12 +603,13 @@ describe('the arm records the reply-contract repair census', () => {
     } as unknown as MemorySystem;
   }
 
-  it('carries both kinds through, and renders them as two rows', async () => {
+  it('carries every kind through, and renders each as its own row', async () => {
     const result = await run(systemWithReplyRepair(CENSUS));
 
     expect(result.report.replyRepair).toEqual(CENSUS);
     expect(result.markdown).toContain('## Reply-contract repair');
     expect(result.markdown).toMatch(/\|\s*commitment\s*\|[^|]*\|\s*6\s*\|\s*3\s*\|\s*50\.0%\s*\|/);
+    expect(result.markdown).toMatch(/\|\s*echo\s*\|[^|]*\|\s*3\s*\|\s*1\s*\|\s*33\.3%\s*\|/);
     expect(result.markdown).toMatch(/\|\s*shape\s*\|[^|]*\|\s*3\s*\|\s*1\s*\|\s*33\.3%\s*\|/);
   });
 
@@ -617,6 +621,7 @@ describe('the arm records the reply-contract repair census', () => {
         attempted: 2,
         answered: 1,
         commitment: { attempted: 2, answered: 1, questions: ['a', 'b'] },
+        echo: { attempted: 0, answered: 0, questions: [] },
         shape: { attempted: 0, answered: 0, questions: [] },
       }),
     );
@@ -637,7 +642,8 @@ describe('the arm records the reply-contract repair census', () => {
       'q5',
       'q6',
     ]);
-    expect(result.report.replyRepair?.shape.questions).toEqual(['q7', 'q8', 'q9']);
+    expect(result.report.replyRepair?.echo.questions).toEqual(['q7', 'q8', 'q9']);
+    expect(result.report.replyRepair?.shape.questions).toEqual(['q10', 'q11', 'q12']);
   });
 
   it('refuses a census that predates the populations rather than reading it as an empty set', async () => {

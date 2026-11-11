@@ -69,6 +69,7 @@ export {
 // prompt
 export {
   buildCommitPrompt,
+  buildEchoPrompt,
   buildPrompt,
   buildShapePrompt,
   buildSessionPrompt,

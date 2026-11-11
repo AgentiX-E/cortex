@@ -80,7 +80,7 @@ REPLY_REPAIR_VARIABLE = "CORTEX_MEMORY_REPLY_REPAIR"
 CONFLICTS_VARIABLE = "CORTEX_MEMORY_CONFLICTS"
 
 # The values `readReplyRepair` in `cortex-eval` accepts, in the order the artifact spells them.
-REPLY_REPAIRS = ("off", "commitment", "shape", "both")
+REPLY_REPAIRS = ("off", "commitment", "echo", "shape", "both")
 
 # The configuration registered in `docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md` §10.3,
 # held constant. These values are not free parameters of this script: §10 fixed them

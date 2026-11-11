@@ -743,4 +743,4 @@ export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec' | 'supe
  * reach a third as many, and two thirds of what it re-asked would be answers that were already right. The value
  * exists so the mechanism can be measured rather than argued about, and §13.334 records the refusal.
  */
-export type ReplyRepair = 'off' | 'commitment' | 'shape' | 'both';
+export type ReplyRepair = 'off' | 'commitment' | 'echo' | 'shape' | 'both';

@@ -26,11 +26,19 @@
 import { readFileSync } from 'node:fs';
 import { classifyReply, planReplyRepair } from '../packages/cortex-memory/dist/reply-repair.js';
 
-/** The four states, in the order the table prints them. */
-const KINDS = ['committed', 'bare-decline', 'prose-decline', 'shape-failed'];
+/**
+ * The five states, in the order `classifyReply` reads them.
+ *
+ * `evidence-echo` sits between the refusals and the shape failures because that is where the classifier puts it:
+ * it is a shape failure that carries this product's own evidence stamp, and `MEASURE-COMPETITOR-PAIRING.md`
+ * section 4 separates it from the shape failures that do not -- 16 of 500 on `42533236864` wrong 56.3% of the
+ * time against 25 wrong 4.0%. A table that printed them as one row would show 41 targets and hide the ratio that
+ * decides whether a re-ask is worth its calls.
+ */
+const KINDS = ['committed', 'bare-decline', 'prose-decline', 'evidence-echo', 'shape-failed'];
 
 /** The repairs each mode would administer, so a run's own configuration can be looked up. */
-const MODES = ['off', 'commitment', 'shape', 'both'];
+const MODES = ['off', 'commitment', 'echo', 'shape', 'both'];
 
 function pad(value, width) {
   return String(value).padStart(width);

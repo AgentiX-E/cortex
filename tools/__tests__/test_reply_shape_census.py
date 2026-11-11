@@ -53,7 +53,13 @@ def run(tmp_path, payload: dict) -> str:
     return result.stdout
 
 
-def test_the_four_shapes_are_counted_and_the_decision_follows_the_gold(tmp_path) -> None:
+def test_the_five_shapes_are_counted_and_each_mode_is_priced_on_its_own(tmp_path) -> None:
+    """Five shapes, and the split that matters is `evidence-echo` against the rest of `shape-failed`.
+
+    On `42533236864` the echo is 16 replies wrong 56.3% of the time and the other shape failures are 25 wrong
+    4.0%. Printing them as one row shows 41 targets and hides the ratio that decides whether a re-ask is worth
+    its calls, which is the arithmetic that made `shape` a refused trade.
+    """
     payload = artifact(
         [
             # An answer, correct.
@@ -64,20 +70,26 @@ def test_the_four_shapes_are_counted_and_the_decision_follows_the_gold(tmp_path)
             # A refusal in prose: every one of these is wrong by construction, because no route outside
             # `abs` has a decline for a gold answer.
             record('q3', 'MR', 'Not specified in the evidence', False),
-            # A list of quotations, graded correct: the case that makes `shape` a risk rather than a repair.
+            # A transcript written back, graded correct -- the case that makes the echo a smaller risk than a
+            # repair without being free.
             record('q4', 'IE', '1. [2023/05/01] "ran 5 km"\n2. [2023/05/03] "ran 7 km"', True),
-            # The same shape, wrong.
-            record('q5', 'IE', '- "bought a bike"\n- "sold the bike"', False),
+            # The same form, wrong.
+            record('q5', 'MR', '- [2023/05/21] user: "I led a project"\n- [2023/05/22] user: "me too"', False),
+            # A quotation list with no stamp: the shape failure that is not a dump, and the population `shape`
+            # was registered on.
+            record('q6', 'IE', '- "bought a bike"\n- "sold the bike"', False),
         ]
     )
     text = run(tmp_path, payload)
 
-    assert 'committed' in text and 'bare-decline' in text and 'prose-decline' in text
-    assert 'shape-failed' in text
+    for kind in ('committed', 'bare-decline', 'prose-decline', 'evidence-echo', 'shape-failed'):
+        assert kind in text, text
     # `commitment` plans one target and it is wrong.
     assert re.search(r'commitment\s+1\s+1\s+yes', text), text
-    # `shape` plans two, one of them correct: a consultation of a correct answer is a risk, not a repair.
-    assert 'measured, refused' in text
+    # `echo` plans two, one correct: priced separately from the shape failures that do not carry a stamp.
+    assert re.search(r'echo\s+2\s+1\s+measured, refused', text), text
+    # `shape` plans one and it is wrong, which is the reading the two populations separated.
+    assert re.search(r'shape\s+1\s+1\s+yes', text), text
 
 
 def test_the_bare_decline_counts_as_correct_because_that_is_what_it_is(tmp_path) -> None:

@@ -2601,6 +2601,56 @@ export function buildCommitPrompt(
 }
 
 /**
+ * The prompt a transcript dump gets back: the same evidence, the mistake named, and one answer asked for.
+ *
+ * ## The population, and why it is not `shape`
+ *
+ * `MEASURE-COMPETITOR-PAIRING.md` section 4 separates the two populations a shape failure contains, using this
+ * product's own `classifyReply` over `42533236864`:
+ *
+ * | form | n | wrong | wrong rate |
+ * | --- | ---: | ---: | ---: |
+ * | `committed` | 425 | 30 | 7.1% |
+ * | **`evidence-echo`** | **15** | **8** | **53.3%** |
+ * | `shape-failed` (not a dump) | 28 | 4 | 14.3% |
+ *
+ * The echo is wrong eight times as often as an answer; the other shape failures are wrong once in twenty-five.
+ * `replyRepair: 'shape'` re-asks all 41 and was therefore measured as a bad trade. This one re-asks the 15, and
+ * its population is decided by a marker -- `[YYYY/MM/DD` at the head of a line -- that no answer in either
+ * bucket carries.
+ *
+ * ## Why the instruction says what the last reply did
+ *
+ * Because the failure is not a shortage of reasoning, it is a misread of what was asked: the reply wrote the
+ * evidence back instead of reading it. `MEASURE-ORACLE-CEILING.md` section 7.4 names the same shape in six of
+ * the 35 questions that lose with the gold sessions in the window. Naming it is the whole repair -- the model
+ * has the evidence already, in the call it just answered.
+ *
+ * ## Why no list is requested
+ *
+ * `commitment` asks for a numbered list because its population has to be made to enumerate before it will
+ * compute. Here the reply already enumerated -- it enumerated the evidence. Asking for another list invites the
+ * same dump with a heading on top, which is why this asks for the answer and nothing else.
+ */
+export function buildEchoPrompt(
+  question: string,
+  turns: readonly AdmittedTurn[],
+  options: PromptOptions = {},
+): string {
+  const evidence = renderCarried(turns, options);
+  return [
+    `EVIDENCE:\n${evidence.length === 0 ? NO_EVIDENCE : evidence}`,
+    '',
+    `QUESTION: ${question}`,
+    '',
+    'Your previous reply copied the evidence above back instead of answering the question.',
+    'A copy of the evidence is not an answer, and it is not one of the replies you may give.',
+    'Read the evidence and reply with the answer to the question alone on the last line.',
+    'Do not restate, quote or list the evidence.',
+  ].join('\n');
+}
+
+/**
  * The prompt a list-of-quotations gets back: the same evidence, and the reply shape, named.
  *
  * ## Why the shape is spelled with a label
