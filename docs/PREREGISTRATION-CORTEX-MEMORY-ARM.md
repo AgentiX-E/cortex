@@ -36739,9 +36739,17 @@ reader difference, and no mechanism experiment can be interpreted until that is 
 
 | id     | arm                                                                                                                              | what it tests                                    | criterion                                                            | falsifier                                                                                                                            | cost                                                                                                                                  |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **H1** | re-answer the **archived** `route-room` prompts with a frontier reader, re-judge with the official prompts                       | how much of the 3.65 points is the model         | `S1` moves **≥ 2.0 points** and no capability loses                  | `S1` moves **< 1.0** — then the reader is not the axis and every mechanism arm designed against 95.6% was aimed at the wrong target  | one reader call per question per repetition; retrieval is not re-run, because `promptDigest` pins the bytes                           |
+| **H1** | re-answer the **archived** `route-room` prompts with a frontier reader, re-judge with the official prompts                       | how much of the 3.65 points is the model         | `S1` clears the `M1` row in `ACCEPTANCE-MATRIX.md`, and no capability loses | `S1` moves **< 1.0** — then the reader is not the axis and every mechanism arm designed against 95.6% was aimed at the wrong target  | one reader call per question per repetition; retrieval is not re-run, because `promptDigest` pins the bytes                           |
 | **H2** | supply `event_date` / `event_precision` / `valid_until` on the delivered turns, **derived by rule, no model in the ingest path** | whether the `KU` row is a representation problem | **≥ 3 of 72** `KU` failures change, at no capability worse than −0.5 | **≤ 1 of 72** changes — the date properties are not the lever, and `H3` is the remaining candidate                                   | zero reader calls for the pre-judgement (`goldOverlap` recomputed with the properties present); the arm itself is a re-run            |
 | **H3** | entity grouping (`[thing N]`) on the `MR` route                                                                                  | whether the `MR` row is a counting problem       | **≥ 3 of 121** `MR` failures change                                  | **≤ 1 of 121** — and then the `MR` gap is neither dates nor grouping, so the next read is `H1`'s result before any further mechanism | one model call per session at ingest, which `tools/amortization-crossover.mjs` already prices at a 1:1 amortisation on this benchmark |
+
+**`H1`'s bar was a second copy, and the scan caught it.** The row above registered `S1`'s movement as a points
+number of its own, while `ACCEPTANCE-MATRIX.md` row `M1` already owns the reader axis with a stricter number
+in `packages/cortex-eval/src/acceptance.ts`. Two numbers for one axis is the defect `PREREG-READER-AXIS.md`
+§7.1 was written about, and its rule is that the checked copy wins and the quote is amended — so the quote
+now points at the row instead of restating it, and the direction of the repair is stricter, not looser. The
+falsifier keeps its own number because a falsifier is not a bar: `< 1.0` says what would make the arm
+uninformative, which no row in the matrix encodes.
 
 **H1 is first, and not because it is cheap.** It is first because `H2` and `H3` are both _explanations of a
 3.65-point gap_, and if a frontier reader closes most of that gap on the same context, then both explanations
@@ -39344,3 +39352,47 @@ answers and is available to the treatment without seeing the control.
 **Two passes are now off by default on the strength of their own readings** (`tally` −9.5 on `MR`,
 `spec` −7.8 overall). The next dispatch order is: implement the support-membership floor, show offline that it
 separates the 6 repairs from the 45 breaks, and only then spend 14.26 CNY.
+
+#### 13.365 The plans tabulated: the family of shape gates is closed, and the floor is now measured
+
+Reading in `MEASURE-PLAN-SHAPE.md`, instrument `tools/plan-shape-census.py` (121 paired `MR`
+questions, `13824633060` against `42533236864`). Two results, one of which is an instrument rather
+than a mechanism.
+
+**The variance floor is measured, not estimated: 5 of 121 questions (4.1%) flip under a byte-identical
+prompt.** All five carry an identical `promptDigest` on both sides and none of them carries a plan, so the
+`spec` branch could not have touched them — the pass replaces an answer only when a plan executes, and a
+refused or absent plan returns `#recordOutcome(first)`. They split **3 repair / 2 damage**, which nets +1
+by luck. Every future paired read in this campaign is registered against this floor: **a net of 1 or 2
+questions is not a result**, whatever its p-value, because a pair that differs by nothing produces it.
+
+**The 46 mechanism flips share one shape, so all eight candidate shape gates are priced and none pays.**
+Every mechanism flip — 3 repairs, 43 damages — came from a plan whose `scope` covered the whole ledger; 37
+of the damages are `sum` (too wide) and 5 of 6 `count` damages are too narrow. `span-wide` blocks 43 of 43
+damages and loses **all three** repairs, and the +1 it shows is the floor. The corpus of the finding is the
+one line that would have to be true for any member of the family to work — *damages are wide and repairs are
+not* — and it is false in the data.
+
+**Registered: the relation, and the instrument that makes it visible.** The next arm is not a plan
+predicate. It is a **veto on substitution**, evaluated where the ledger exists:
+
+> authorize the plan's value iff the first answer's own token appears among the rows the plan selected;
+> otherwise keep the first answer, and count the refusal.
+
+Three integers and a boolean per question — `selected`, `ledgerRows`, `supportHits`, `authorized` — carried
+by the census channel `recoveryCensus` and `auditCensus` already use. `support` is computed on every call
+today and dropped at `memory.ts`, so this is an instrument change with no model call attached, and it must
+land **before** the dispatch it prices.
+
+**Bars for that dispatch, registered now.**
+
+| #    | criterion                                                                   | reading that would falsify it                                        |
+| ---- | --------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `V1` | `MR` net ≥ **+3 questions** against the control                             | ≤ +2 — inside the 5-question floor of §13.365, so the veto is not a result |
+| `V2` | damage ≤ **3** questions                                                    | > 3 — the veto admitted the damages it was built to refuse           |
+| `V3` | `authorized` on ≥ **2 of the 3** known mechanism repairs                    | ≤ 1 — the veto refuses the only answers worth keeping                |
+| `V4` | completion tokens ≤ **+20%**                                                | > 20% — a veto that costs a second consultation is a different design |
+
+`V1`–`V4` are evaluated by `tools/arm-flip-census.py` and the new census columns; `V3` is a
+population statement about three named questions (`6d550036`, `60bf93ed`, `d6062bb9`), which is why it
+is written with the ids rather than as a rate.
