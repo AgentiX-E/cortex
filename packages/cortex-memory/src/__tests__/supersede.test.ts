@@ -438,6 +438,182 @@ describe('the census', () => {
     expect(census.attempted).toBe(0);
     expect(census.replaced).toBe(0);
     expect(Object.values(census.refusals).every((count) => count === 0)).toBe(true);
-    expect(Object.keys(census.refusals)).toHaveLength(7);
+    expect(Object.keys(census.refusals)).toHaveLength(8);
+  });
+});
+
+describe('the ordering check, which the span and the date cannot supply', () => {
+  const EGG_EARLY =
+    '[2023/01/11 (Wed) 12:18] user: we have a lot in the fridge - 30 dozen at the moment!';
+  const EGG_LATE =
+    '[2023/03/15 (Wed) 10:52] user: we have got 20 dozen stocked up in the fridge right now.';
+  const EGG_EVIDENCE = [EGG_EARLY, EGG_LATE].join('\n');
+
+  it('refuses a span that is earlier than the statement the answer rests on', () => {
+    // `ed4ddc30`, measured: gold `20`, the answer quotes the March turn, and the only span the reader offered
+    // was the January `30 dozen at the moment`. Both checkable fields pass on that span -- it is in the evidence
+    // and its date is on the same record -- so without this check the pass replaces a correct answer with the
+    // value it supersedes. That is the direction the mechanism is named for, and nothing above tests it.
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '30 dozen at the moment',
+        when: '2023/01/11 (Wed) 12:18',
+        shape: 'three-lines',
+      },
+      '20 dozen',
+      EGG_EVIDENCE,
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'not-later' });
+  });
+
+  it('replaces when the span is later than the statement the answer rests on', () => {
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up in the fridge right now',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '30 dozen',
+      EGG_EVIDENCE,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 1 });
+  });
+
+  it('does not order two statements in one record, and takes the reader at its word', () => {
+    // A single turn that states both values has an order no stamp records. Refusing there would make the guard's
+    // reach depend on how the corpus happened to be segmented, which is the defect `a2f3aa27` already exhibits
+    // in the other direction (`MEASURE-CONFLICT-SURFACING.md` section 2: the replacing sentence shares one term
+    // with the question, where the statement it replaces shares two).
+    const oneTurn =
+      '[2023/05/25 (Thu) 09:00] user: I had 1250 followers but now I am close to 1300.';
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'close to 1300',
+        when: '2023/05/25 (Thu) 09:00',
+        shape: 'three-lines',
+      },
+      '1250',
+      oneTurn,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 0 });
+  });
+
+  it('does not order against an answer whose own statement is not in the evidence', () => {
+    // A composed answer has no turn to be later than. Skipping the check there is the choice that fails open,
+    // and it is deliberate: the alternative would refuse every substitution on a question whose evidence never
+    // restates the answer's phrasing, which is a property of the answer rather than of the evidence.
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up in the fridge right now',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      'about twenty egg cartons',
+      EGG_EVIDENCE,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 1 });
+  });
+});
+
+describe('the stamps the ordering check can and cannot read', () => {
+  it('orders records whose stamp carries no time', () => {
+    // A corpus that dates a turn by day alone still has an order, and a rule that required minutes would skip the
+    // check on every record of that corpus -- a guard silently off, which is the failure every census in this
+    // repository is built to make visible.
+    const dated = [
+      '[2023/01/11] user: we have 30 dozen',
+      '[2023/03/15] user: we have 20 dozen',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      { changed: true, later: '30 dozen', when: '2023/01/11', shape: 'three-lines' },
+      '20 dozen',
+      dated,
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'not-later' });
+  });
+
+  it('skips the ordering when a stamp is unreadable, rather than inventing one', () => {
+    // `[undated]` is not a date, and an ordering computed against a guessed one is the fabricated-value defect
+    // the rest of this file refuses. The substitution still has to pass the span and date checks, so skipping here
+    // leaves the guard's other two conditions standing.
+    const undated = [
+      '[undated] user: we have 30 dozen',
+      '[2023/03/15] user: we have 20 dozen',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      { changed: true, later: '30 dozen', when: 'undated', shape: 'three-lines' },
+      '20 dozen',
+      undated,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '30 dozen', record: 0 });
+  });
+
+  it('skips the ordering when the answer is empty, because there is nothing to locate', () => {
+    const evidence = '[2023/03/15 (Wed) 10:52] user: we have 20 dozen stocked up.';
+    const verdict = adjudicateSupersession(
+      { changed: true, later: '20 dozen', when: '2023/03/15 (Wed) 10:52', shape: 'three-lines' },
+      '',
+      evidence,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 0 });
+  });
+});
+
+describe('two records that carry the same stamp', () => {
+  it('does not call one later than the other, and does not refuse either', () => {
+    // Equal stamps in two records happen when a corpus repeats a date for two turns of one sitting. The comparison
+    // has no answer there, and the requirement is "later", so a zero must not be read as "not later" -- that would
+    // refuse every substitution inside a single sitting, which is where most corrections live.
+    const twice = [
+      '[2023/03/15 (Wed) 10:52] user: we have 30 dozen stocked up',
+      '[2023/03/15 (Wed) 10:52] user: sorry, we have 20 dozen stocked up',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '30 dozen',
+      twice,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 1 });
+  });
+});
+
+describe('an answer whose own record carries no date at all', () => {
+  it('does not order against a record with no stamp', () => {
+    // Evidence that opens with no bracket is one record with `date: null` -- the shape `evidenceRecords` produces
+    // for a turn the renderer could not date. There is nothing to compare against, so the ordering is skipped and
+    // the span and date checks still stand.
+    const mixed = [
+      'my follower count is 20 dozen',
+      '[2023/03/15 (Wed) 10:52] user: we have 30 dozen stocked up',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '30 dozen stocked up',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '20 dozen',
+      mixed,
+    );
+
+    expect(verdict).toEqual({ kind: 'replace', value: '30 dozen', record: 1 });
   });
 });

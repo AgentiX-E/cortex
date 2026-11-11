@@ -39686,3 +39686,52 @@ original `P3` directly. `supersession-census.test.ts` pins both directions: reas
 question the pass did not consult omits the field rather than writing an empty record. The field being absent from
 **this** run's artifact is the reason `P3` is restated rather than kept — a prediction has to be scorable on the
 artifact it was written for.
+
+#### 13.371 The third check: the span must be *later*, and `ed4ddc30` proves it was missing
+
+The arm dispatched as `43001135439` carries the value rule and **cannot tell direction**. Both of its checkable
+fields — the span is in the evidence, the date is on the span's record — are satisfied by a span that states the
+**earlier** value, and the mechanism is named for the later one. That is not a hypothetical:
+
+| fact | source |
+| --- | --- |
+| `ed4ddc30`'s gold is `20` | `longmemeval_s_cleaned.json` |
+| `30 dozen at the moment` is session 1, 2023/01/11 | the record |
+| `20 dozen stocked up in the fridge right now` is session 40, 2023/03/15 | the record |
+| the control `42533236864` answers `20 dozen` and is **correct in all four repetitions** | the artifact's roster |
+
+So the span that pass offered on that question was the value the corpus **supersedes**. `MEASURE-SUPERSEDE.md` §5
+and §13.369 both count it among the six correct identifications the ceiling refused, and both are wrong: the refusal
+prevented a damage. The corrected count is **five at most**, and among them `a2f3aa27` (`I think I'm close to 1300
+now` against a gold of `1300`) is the one the ceiling demonstrably destroyed.
+
+**The check.** After the span and date checks, the record carrying the span must be **later** than the last record
+carrying the answer's own statement, compared on `YYYY/MM/DD (Ddd) HH:MM` as a single integer (year in the 10^8
+column down to minute in 10^0). Two exceptions, both deliberate and both failing **open**:
+
+- **the same record** — two values stated in one turn have an order no stamp records;
+- **an answer whose statement is not in the evidence** — a composed answer has no turn to be later than, and
+  refusing those would make the guard's reach depend on the answer's phrasing rather than on the evidence.
+
+A refusal introduced here is named `not-later` and counted separately, because it is the one refusal in this
+mechanism that means *the reader found a change and got its direction wrong*, which is a different reader defect
+from every other reason in the census.
+
+**Predictions for the next arm that carries it.**
+
+- **`Q1`.** On `ed4ddc30` the pass refuses as `not-later` in all four repetitions, and the answer stays `20 dozen`.
+- **`Q2`.** `not-later` fires on **at most 8** consultations of 288. A higher count means the locator is matching the
+  wrong record — most likely because the answer's phrasing occurs in an early turn for an unrelated reason — and the
+  check would then be refusing more than it protects.
+- **`Q3`.** `a2f3aa27` converts, and its span is the later record. If it does not, the same-record exception is
+  firing there and the exception has to be narrowed to "same record **and** the same sentence" rather than the
+  same record.
+
+**What it licenses.** Nothing on its own: this is a guard, not a mechanism, and a guard's reading is the absence of
+the damage it prevents. It becomes part of the default only together with a `K1` that holds.
+
+**Why this is a bug found by cross-reading rather than by a run.** The conflict table in `conflict.ts` was written
+two rounds before the pass and already contained the direction (`earlier` / `later` columns); the dataset confirmed
+it in four lines. Nothing in the arm's own artifact could have said it, because the artifact records that a
+substitution was *authorised*, never that it was *backwards*. That is the instrument gap this section closes, and it
+is worth stating that the gap was in the **authorization's definition**, not in its arithmetic.

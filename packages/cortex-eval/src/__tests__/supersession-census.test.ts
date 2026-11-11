@@ -51,6 +51,7 @@ function refusalsOf(entries: Refusals): Refusals {
     restates: 0,
     'not-in-evidence': 0,
     'date-not-on-line': 0,
+    'not-later': 0,
     ...entries,
   };
 }
@@ -126,7 +127,7 @@ describe('the supersession census reaches the artifact', () => {
     expect(result.report.supersession).toMatchObject({ attempted: 6, replaced: 6, refused: 0 });
     // The reason record is published with every name present, so a reader never infers "this reason did not
     // occur" from a missing key.
-    expect(Object.keys(result.report.supersession?.refusals ?? {})).toHaveLength(7);
+    expect(Object.keys(result.report.supersession?.refusals ?? {})).toHaveLength(8);
   });
 
   it('writes the per-question pair, so a reader can join the pass to the gold', async () => {

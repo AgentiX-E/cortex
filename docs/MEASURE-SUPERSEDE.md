@@ -201,3 +201,55 @@ Two consequences that are not refinements but removals:
 Nothing else moves: the same three lines, the same substring and same-record date checks, the same `6/0` cell, and
 the same stopping rule. The arm's bar is not softened by the amendment; the amendment exists so that the bar can be
 reached by a correct answer.
+
+## 11. Correction: one refusal that looked like the guard eating an answer was the guard saving one
+
+§5 and §13.369 count `ed4ddc30` among the six correct identifications the ceiling refused, and §13.369 counts it
+among the two that were gate targets. **Both are wrong**, and the dataset says so in four lines:
+
+| fact | source |
+| --- | --- |
+| gold is `20` | `longmemeval_s_cleaned.json`, `ed4ddc30` |
+| `30 dozen at the moment` is at **session 1**, 2023/01/11 | the same record |
+| `20 dozen stocked up in the fridge right now` is at **session 40**, 2023/03/15 | the same record |
+| the control's answer is `20 dozen`, **correct in all four repetitions** | `42533236864`, per-question roster |
+
+So the span this pass offered was the value the corpus **supersedes**, not the one that supersedes it, and the
+ceiling's refusal on that row did not eat a correct identification — it prevented a damage. `20 dozen` was already
+right; substituting `30 dozen` would have made it wrong. The remaining five refusals are unchanged by this: the
+census records a length, not a direction, so which of them were saves and which were losses cannot be recovered
+from `42976296380`'s artifact at all.
+
+**The reading that survives is sharper and worse for the mechanism.** Every `CHANGED: yes` was correct on both
+checkable fields — span in the evidence, date on the same record — and the two fields are **necessary but not
+sufficient**: `ed4ddc30`'s span passes both and states the *earlier* value. A guard built from those two checks
+authorises a substitution in the wrong direction, and on this question it would have converted a correct answer
+into a wrong one.
+
+### 11.1 The hole, and the check that closes it
+
+The instruction asks for "a turn dated **after** the turn the answer came from", and nothing verified the ordering.
+§13.371 adds the check: the record carrying the span must be later than the record carrying the answer's own
+statement, compared on the stamp (`YYYY/MM/DD (Ddd) HH:MM`, minutes included, because `a2f3aa27`'s two statements
+are on the same day). Two cases are deliberately not ordered:
+
+- **the same record**, because two values stated in one turn have an order no stamp records, and refusing there
+  would make the guard's reach depend on how the corpus happened to be segmented;
+- **an answer whose own statement is not in the evidence**, because a composed answer has no turn to be later than,
+  and refusing those would make the guard's reach a property of the answer's phrasing.
+
+Both fail open, and the reason is the asymmetry this document is about: a check that fails closed on a
+*composed* answer would refuse substitutions on questions whose evidence never restates the answer's phrasing,
+which is most of them.
+
+### 11.2 What this costs the previous arm's reading
+
+Nothing about the gates, and one sentence of the diagnosis. `K1` failed at 1 of 8 for two reasons, and the corrected
+statement of the second is: the ceiling refused ten identifications, **at least one of which was a damage avoided
+and at least one of which (`a2f3aa27`, `I think I'm close to 1300 now` against a gold of `1300`) was a repair
+destroyed**. The first reason — an instruction that argued for `no` on a population where the correction is present
+72 of 72 — is untouched, and it is the one the census put 242 answers behind.
+
+The mechanism's own premise is also unchanged: the correction is in the window 72/72. What changed is that the
+authorization was missing a third check, and the failure mode that check prevents is not "the pass does nothing" but
+"the pass makes a right answer wrong".

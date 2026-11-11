@@ -113,7 +113,8 @@ export type SupersessionRefusal =
   | 'agrees'
   | 'restates'
   | 'not-in-evidence'
-  | 'date-not-on-line';
+  | 'date-not-on-line'
+  | 'not-later';
 
 /** What the pass should answer, and the record of how it decided. */
 export type SupersessionVerdict =
@@ -267,6 +268,41 @@ function substitutedValue(
   return { kind: 'restates' };
 }
 
+/**
+ * A record's stamp as a comparable tuple, or `null` when the record carries no readable date.
+ *
+ * The renderer writes `[2023/03/12 (Sun) 11:40]`, and the weekday is dropped because it is derivable and
+ * because a comparison over it would order two same-day records by the spelling of a day name. Minutes are
+ * included: `a2f3aa27`'s two statements are on the same day, and the whole question is which came second.
+ */
+function stampKey(date: string | null): readonly number[] | null {
+  if (date === null) return null;
+  const match = /(\d{4})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{1,2})(?:[^\d]*(\d{1,2}):(\d{2}))?/.exec(
+    date,
+  );
+  if (match === null) return null;
+  return [
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+    Number(match[4] ?? 0),
+    Number(match[5] ?? 0),
+  ];
+}
+
+/**
+ * The tuple as one comparable integer: year in the 10^8 column, month in 10^6, day in 10^4, hour in 10^2,
+ * minute in 10^0.
+ *
+ * One number rather than an element-wise comparison, because the digits fit their columns on every input the
+ * renderer can produce (month <= 12, day <= 31, hour <= 23, minute <= 59) and a scalar makes the ordering a
+ * single comparison at the call site instead of a loop with a branch per component -- a loop is three places for
+ * an off-by-one and one place a reader has to check.
+ */
+function stampOrder(key: readonly number[]): number {
+  return key.reduce((total, part, index) => total + part * 10 ** (8 - index * 2), 0);
+}
+
 /** One evidence record: the line that opens it, and the continuation lines under it. */
 type EvidenceRecord = { readonly text: string; readonly date: string | null };
 
@@ -403,6 +439,35 @@ export function adjudicateSupersession(
   if (!dated) return { kind: 'keep', reason: 'date-not-on-line' };
 
   const last = matching[matching.length - 1] as { record: EvidenceRecord; index: number };
+
+  // The ordering check (§13.371). Everything above proves the span is *in* the evidence and *dated*; none of it
+  // proves the span is **later** than the statement the answer rests on, and that is the direction the mechanism
+  // is named for. `ed4ddc30` is the measurement: its only offered span is `30 dozen at the moment` from the
+  // January turn, the answer's own `20 dozen` is the March one, and the gold is `20`. Both checkable fields pass
+  // on that span, so without this check the pass would replace a correct answer with the value it supersedes.
+  //
+  // The answer's own statement is located by its text, and the comparison is skipped when it cannot be located:
+  // an answer the reader composed rather than copied has no turn to be later than, and refusing those would make
+  // the guard's reach depend on the answer's phrasing. Same record is also skipped, for the same reason at a
+  // smaller scale -- two values stated in one turn have an order no stamp records.
+  const answerKey = comparisonKey(firstAnswer);
+  let answerRecord: number | null = null;
+  if (answerKey.length > 0) {
+    for (const { record, index } of records.map((record, index) => ({ record, index }))) {
+      if (comparisonKey(record.text).includes(answerKey)) answerRecord = index;
+    }
+  }
+  if (answerRecord !== null && answerRecord !== last.index) {
+    const spanStamp = stampKey(last.record.date);
+    const answerStamp = stampKey((records[answerRecord] as EvidenceRecord).date);
+    if (
+      spanStamp !== null &&
+      answerStamp !== null &&
+      stampOrder(spanStamp) < stampOrder(answerStamp)
+    ) {
+      return { kind: 'keep', reason: 'not-later' };
+    }
+  }
   return { kind: 'replace', value: value.value, record: last.index };
 }
 
@@ -423,6 +488,7 @@ export function emptySupersessionCensus(): {
       restates: 0,
       'not-in-evidence': 0,
       'date-not-on-line': 0,
+      'not-later': 0,
     },
   };
 }
