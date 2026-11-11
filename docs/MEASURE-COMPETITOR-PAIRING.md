@@ -211,10 +211,41 @@ figure differ by 3.6 points on harness alone, and the part of their lead that is
 **they read facts, this arm reads transcripts** — which is priced at 12 named questions (5 `preference` + 7 `KU`),
 not at 22.
 
-## 7. What this file is not
+## 7. The adapter is built; the run is not
+
+§5 licensed a like-for-like run and §6 priced the reading contract. Both need the same two files, and they now
+exist and are tested:
+
+| file | what it does |
+| --- | --- |
+| `tools/competitor-adapter/bridge.mjs` | this store behind `tools/competitor-sut/PROTOCOL.md`, with **us** as the child |
+| `tools/competitor-adapter/cortex_adapter.py` | their `Provider` ABC: `initialize` / `ingest` / `await_indexing` / `search` / `clear` |
+| `tools/__tests__/test_competitor_adapter.py` | seven tests over the five ops, the refusal envelope and the `search` ceiling |
+
+The protocol is reused rather than reinvented: one document already describes how a store is asked three
+questions, and a second implementation of it is how two protocols drift into two meanings. The adapter's own
+headings say what it refuses — no answer generation inside `search`, `build: none` in the manifest, one store per
+`clear`, and a hard top-k on the way out because their `limit` is a session count while this store's hits are
+turns (the unit error `provider.ts` records at 25.4% recall).
+
+**What the run can say, and what it cannot.** Their published arm answers with `gemini-3.8-flash` and judges with
+`gpt-4o`; this sandbox has neither key, so both roles go to the reader this campaign already pays for. The valid
+comparison is therefore **within** the run — their adapter against ours, one answer model, one judge, one corpus
+— and where their adapter cannot be run at all (it needs a hosted Synap instance and an `instance_id`), the
+remaining honest claim is narrower: *this arm's score under their pipeline*, with the model substitution named in
+the same sentence. It is not a SOTA row, and it is not written as one.
+
+**Verified**: the bridge answers all five ops over stdio against `packages/cortex-memory/dist`, and the Python
+adapter runs under their own `runner.types` (initialize → ingest → search → clear → close; `manifest` =
+`cortex-session`, `build` = `none`, one session in, one hit out, zero after `clear`). **Not verified**: a scored
+run. That needs their tree, `requirements-longmemeval.txt`, and the 20-question smoke the README specifies before
+the full set.
+
+## 8. What this file is not
 
 It is not a claim that this arm is behind by 36 questions of capability. Thirty-six questions is what one
 answer model and one judge produced against another answer model and another judge on the same 500 questions;
 sections 3.1 and 3.2 show that at least twelve of them are mechanisms — a superseded value taken, a preference
 session missed — rather than capability. The correct reading is narrower and more useful: **there are 36 named
 questions, each with a stated cause, and 12 of them have a cause that is already understood.**
+
