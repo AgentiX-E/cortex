@@ -500,3 +500,120 @@ room `tools/evidence-depth.py` derives for 80% coverage -- because:
 
 It does **not** claim the room explains `older`. Those four are a reader problem, and the annotation that could
 reach them is the one section 14.5 shows cannot be made directional.
+
+### 14.7 The readout: the room bought five questions and sold four
+
+`43031679630` is the arm section 14.6 registered. It ran the registered configuration with one field moved --
+`maxPromptCharsByRoute: knowledge-update` from 24,000 to 49,400 -- and every other route, turn cap, contract,
+reader and pass byte-identical.
+
+| Criterion (registered in `03 §14.112.3`) | Predicted | Read | Verdict |
+| --- | --- | --- | --- |
+| `KU` first repetition | >= 66/72 | **64/72** (88.89%) | missed |
+| `KU` over four repetitions | -- | **62.5** of 72 (control 62.8) | no change |
+| Overall, first repetition | -- | 91.20% (control 91.20%) | no change |
+| Overall over four repetitions | >= 91.05% | 91.05% (min 90.60, max 91.60) | met, by construction |
+| prompt tokens per question | <= 9,700 | **10,028** (control 9,201) | **missed, +9.0%** |
+| other four routes inside their own 2 sd | required | IE 141 -> 139, MR 101 -> 100, TR 121 -> 122, ABS 30 -> 30 | see below |
+
+The arm is **falsified by its own criteria** and the room is reverted. The reading that matters is not the net,
+though -- it is what the change did to individual questions.
+
+### 14.7.1 Nine bought and nine sold: the swap inside the net
+
+`tools/arm-delta-decomposition.py` pairs the two artifacts by `questionId`:
+
+| | control right | control wrong |
+| --- | --- | --- |
+| **room right** | 447 | only room 9 |
+| **room wrong** | only control 9 | 35 |
+
+Nine bought, nine sold, net zero. Restricted to a capability:
+
+| capability | questions | sold (only control) | bought (only room) | net |
+| --- | ---: | ---: | ---: | ---: |
+| IE | 150 | 2 | 0 | -2 |
+| MR | 121 | 2 | 2 | 0 |
+| KU | 72 | 4 | 5 | **+1** |
+| TR | 127 | 1 | 2 | +1 |
+| ABS | 30 | 0 | 0 | 0 |
+
+`IE`, `MR`, `TR` and `ABS` were **not touched by this arm**: their room, their cap, their contract and their reader
+are identical on both sides. They moved by -2, 0, +1 and +1 anyway, which is this instrument's noise floor stated
+in questions: **a capability moves by up to two questions between two runs of one configuration.** Against that
+floor, `KU`'s +1 is nothing, and the +3 the registration asked for was the smallest reading that would have been
+above it -- which is why the criterion was written as a count rather than as a percentage.
+
+### 14.7.2 What the room actually reached, read through section 14.2's pool
+
+| question | control | room | gold |
+| --- | --- | --- | --- |
+| `c7dc5443` | `gold-not-in-window`, wrong | `current`, **right** | `5-2` |
+| `e66b632c` | `gold-not-in-window`, wrong | `both`, **right** | `27 minutes and 45 seconds` |
+| `f9e8c073` | `gold-not-in-window`, wrong | `both`, **right** | `five` |
+| `7401057b` | `current`, right | `overlap`, **wrong** | `Two` |
+| `ed4ddc30` | `current`, right | `overlap`, **wrong** | `20 dozen` |
+| `0977f2af` | `unnumbered`, right | `unnumbered`, **wrong** | `Instant Pot` |
+| `c4ea545c` | `unnumbered`, right | `unnumbered`, **wrong** | `Yes` |
+
+Three of the four `gold-not-in-window` failures became correct. That is the hypothesis working, and it worked for
+**every row the room could reach**. The four it lost are the same mechanism: two answers that stated the gold on a
+`current` reading now state a competing value that the wider window also carried (`overlap`), and two are
+questions where the reader refused in prose and the judge's verdict on that refusal moved with the text around it.
+
+So the room is not a delivery fix with no effect. It is **a one-for-one trade**: wider delivery converts
+`gold-not-in-window` into `current`, and the same width feeds the reader a second value that competes with the
+first. Five bought, four sold, and the cost of the trade is +9.0% prompt tokens -- **827 tokens per question
+dataset-wide, 5,743 per `KU` question**, which is the whole added room. Not one character of it was unpaid for.
+
+### 14.7.3 The axis this closes, and the one it opens
+
+The axis `03 §14.112.3` opened -- "the room is too small, so raise it" -- is closed: the failure it was aimed at
+(`gold-not-in-window`) is reachable, and reaching it does not move the score, because the delivery that fixes it
+is the delivery that breaks the reader's choice between two values. Widening further would trade more of the same
+at a higher price, and the two routes that already hold twice the room read 94.7-95.7% coverage without reading
+better on this class.
+
+What it opens is a **selector** question and not a room question: the three rows the room bought had their gold
+*beyond the cut*, so the selector ranked a gold-bearing turn below twenty-eight others. Raising the cut bought
+those turns **and** every turn between them and the gold. A selector that ranked the gold-bearing turn higher
+would buy the same three and spend nothing. Nothing in this round prices that mechanism, and section 14.8 does not
+attempt it: the repair registered there is the one thing on the table whose population is entirely wrong answers.
+
+### 14.8 The next arm: a reply that refused in prose is re-asked once
+
+`tools/reply-shape-census.mjs` runs the product's own classifier over an artifact's `rawOutput`:
+
+| kind | control (`42533236864`) | room (`43031679630`) | of which wrong |
+| --- | ---: | ---: | ---: |
+| `committed` | 426 | 417 | 31 / 29 |
+| `bare-decline` | 30 | 30 | 0 / 0 |
+| `prose-decline` | **1** | **4** | **1 / 4** |
+| `shape-failed` | 43 | 49 | 12 / 11 |
+
+A `prose-decline` is a reply that refuses in words -- "Based on the evidence provided, there is no mention of a
+kitchen gadget purchased before the Air Fryer" -- rather than by returning the abstention token. **Every one of
+them is wrong**, on both artifacts, and that is a property rather than a coincidence: `abstention` is the only
+capability whose gold is a decline and the repair is excluded there at the call site, so on every route the repair
+reaches, a refusal is wrong by construction.
+
+`replyRepair: commitment` re-asks that reply once, on the evidence the first call already carried, with a prompt
+that says a refusal is not an acceptable answer. It is not a new mechanism: it is implemented, wired through the
+arm, censused into the report, and it has never been dispatched. It is registered here as one variable:
+
+| | value |
+| --- | --- |
+| variable | `vars.CORTEX_MEMORY_REPLY_REPAIR` = `commitment` |
+| held at the registered configuration | room back to `knowledge-update:24000`; `reviewPass=bare` (unchanged); ask, contract, roles, cap, reader, threshold, budget -- every field as `42533236864` |
+| the config line proves it | the report writes `replyRepair=commitment` and the memory arm config keeps `knowledge-update:24000` |
+| population | 4 prose refusals, 4 wrong (control: 1, 1) |
+| why `commitment` and not `shape` | `shape` plans 49 replies of which 11 are wrong: it would re-ask 38 answers that were already right, and the refused kind is registered rather than dispatched for that reason |
+| no-loss property | by construction: the pass fires only on a reply that is a refusal, and no refusal on a reachable route can be correct |
+| at most one extra call per question | `classifyReply` reads the bare shape first, so a reply this pass acts on is never one the bare ladder re-asks |
+| criterion | overall >= **92.0%** (>= +4, i.e. all four converted); no capability below its own control by more than 2 questions; `ABS` 30/30; prompt tokens per question <= **9,250** (+0.5%) |
+| reading reported by the artifact | `replyRepair.commitment.attempted` and `.converted`, and the four question ids |
+| termination | if it converts and the score does not move, the four refusals are wrong for a reason a re-ask cannot reach and the family closes with `shape`; if it converts fewer than three, the commitment prompt is wrong for this corpus and is rewritten before another dispatch |
+| budget | 14.26 CNY (`43051879550`) |
+
+The `+4` is small and it is the only arm on the table that cannot lose: every question it touches is currently
+wrong, and the cost of touching one is a single consultation on a prompt that is 2.6% of the run's tokens.

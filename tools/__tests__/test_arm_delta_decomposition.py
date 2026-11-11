@@ -222,6 +222,96 @@ class TestThePairedDecomposition:
         assert result['exactMigratedStillCorrect'] == 1
 
 
+class TestTheCapabilitySlice:
+    """The same pairing, restricted to a column, because a net of zero hid two things happening.
+
+    `42533236864` against `43031679630` is `only A 9 / only B 9` and reads as "nothing moved". Inside
+    `KU` it is `4 / 5`, and the four it lost are answers that were right before the room grew. A
+    dataset-level table cannot show that, and a per-capability table that did not add back up to the
+    matrix would be a second opinion rather than a slice -- so the closure is asserted, not trusted.
+    """
+
+    def _pair(self) -> tuple[dict, dict]:
+        # Six questions over two capabilities: KU buys three and sells two (net +1), IE sells one and
+        # buys none (net -1) -- a pair whose overall net is zero and whose two halves are not.
+        a = report(
+            path='a.json',
+            questions=[
+                question(qid='k1', text='Q?', gold='the gold', answer='a reply', correct=False, capability='KU'),
+                question(qid='k2', text='Q?', gold='the gold', answer='a reply', correct=False, capability='KU'),
+                question(qid='k3', text='Q?', gold='the gold', answer='a reply', correct=False, capability='KU'),
+                question(qid='k4', text='Q?', gold='the gold', answer='a reply', correct=True, capability='KU'),
+                question(qid='k5', text='Q?', gold='the gold', answer='a reply', correct=True, capability='KU'),
+                question(qid='i1', text='Q?', gold='the gold', answer='a reply', correct=True, capability='IE'),
+            ],
+        )
+        b = report(
+            path='b.json',
+            questions=[
+                question(qid='k1', text='Q?', gold='the gold', answer='a reply', correct=True, capability='KU'),
+                question(qid='k2', text='Q?', gold='the gold', answer='a reply', correct=True, capability='KU'),
+                question(qid='k3', text='Q?', gold='the gold', answer='a reply', correct=True, capability='KU'),
+                question(qid='k4', text='Q?', gold='the gold', answer='a reply', correct=False, capability='KU'),
+                question(qid='k5', text='Q?', gold='the gold', answer='a reply', correct=False, capability='KU'),
+                question(qid='i1', text='Q?', gold='the gold', answer='a reply', correct=False, capability='IE'),
+            ],
+        )
+        return a, b
+
+    def test_a_flat_overall_net_can_be_two_opposite_movements(self):
+        a, b = self._pair()
+        result = tool.paired(a, b)
+        assert result['net'] == 0
+        assert result['byCapability']['KU']['onlyB'] == 3
+        assert result['byCapability']['KU']['onlyA'] == 2
+        assert result['byCapability']['IE']['onlyA'] == 1
+        assert result['byCapability']['IE']['onlyB'] == 0
+
+    def test_the_columns_sum_to_the_matrix(self):
+        # The property that makes the slice a slice: every cell of the 2x2 over all capabilities is
+        # the same total as the matrix above it. A record that lost its capability lands in `?`
+        # rather than disappearing, which is what keeps this true for a malformed artifact too.
+        a, b = self._pair()
+        a['questions'][0].pop('capability')
+        result = tool.paired(a, b)
+        totals = dict.fromkeys(('questions', 'onlyA', 'onlyB', 'bothRight', 'bothWrong'), 0)
+        for counts in result['byCapability'].values():
+            for key in totals:
+                totals[key] += counts[key]
+        matrix = result['matrix']
+        assert totals['onlyA'] == matrix['onlyA']
+        assert totals['onlyB'] == matrix['onlyB']
+        assert totals['bothRight'] == matrix['bothRight']
+        assert totals['bothWrong'] == matrix['bothWrong']
+        assert totals['questions'] == 6
+        assert result['byCapability']['?']['questions'] == 1
+
+    def test_the_capability_nets_sum_to_the_overall_net(self):
+        a, b = self._pair()
+        result = tool.paired(a, b)
+        nets = [counts['onlyA'] - counts['onlyB'] for counts in result['byCapability'].values()]
+        assert sum(nets) == result['net']
+
+    def test_the_table_is_printed_in_the_dataset_order_and_names_the_net(self):
+        a, b = self._pair()
+        text = tool.render(tool.paired(a, b))
+        assert '| KU |' in text
+        assert '| IE |' in text
+        # The five known capabilities print in their own order, so two artifacts are comparable as a
+        # column; a capability the artifact invented sorts after them.
+        assert text.index('| IE |') < text.index('| KU |')
+
+    def test_the_accuracy_columns_are_the_arms_own_counts(self):
+        # A acc is `(bothRight + onlyA) / questions`, which is the artifact's own accuracy over the
+        # column -- not a second scorer. Reading it any other way would let the table disagree with
+        # the report it was built from.
+        a, b = self._pair()
+        result = tool.paired(a, b)
+        counts = result['byCapability']['KU']
+        assert (counts['bothRight'] + counts['onlyA']) / counts['questions'] == pytest.approx(2 / 5)
+        assert (counts['bothRight'] + counts['onlyB']) / counts['questions'] == pytest.approx(3 / 5)
+
+
 class TestTheQuestionTypeBreakdown:
     """The decomposition that named the preference column."""
 

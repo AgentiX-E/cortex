@@ -49,6 +49,20 @@ LongMemEval's preference golds are written as a **description of what a good ans
 The gold is a criterion, not an answer, so it can never be matched exactly and always reaches the
 judge. They are 5.8% of the dataset and they were 42% of the M1 gap, which is a ratio no
 dataset-level accuracy can show.
+
+## Why a capability row was added, and the reading that forced it
+
+`42533236864` and `43031679630` both read 91.20% on the first repetition, and the pair is
+`only A 9 / only B 9` -- a net of zero. That number is the one the arm was judged on, and it is
+also the one that hides the mechanism: **inside `KU` the same pair is `only A 4 / only B 5`**, and
+the four it lost are two answers that were `current` before the room grew and are `overlap` after
+it. So the room bought five questions and sold four, and the dataset-level `+0` cannot tell a
+mechanism that did nothing from one that did two things.
+
+The slice is not a second tool: it is the same pairing restricted to `record['capability']`, and
+the arithmetic closes over it -- the per-capability columns sum to the matrix above, and the
+per-capability nets sum to the overall net. Both are asserted in the tests rather than trusted,
+because a table that does not add up is the failure this file's `self-check` exists to refuse.
 """
 
 from __future__ import annotations
@@ -220,6 +234,7 @@ def paired(arm_a: dict, arm_b: dict) -> dict:
     rescued = 0
     preference = {'questions': 0, 'onlyA': 0, 'onlyB': 0, 'bothRight': 0, 'bothWrong': 0}
     non_preference = dict.fromkeys(('questions', 'onlyA', 'onlyB', 'bothRight', 'bothWrong'), 0)
+    by_capability: dict[str, dict[str, int]] = {}
     for qid, record in a.items():
         other = b[qid]
         channel_a, _ = channel_of_record(record)
@@ -230,15 +245,27 @@ def paired(arm_a: dict, arm_b: dict) -> dict:
                 rescued += 1
         bucket = preference if is_preference(record.get('groundTruth')) else non_preference
         bucket['questions'] += 1
+        # `?` rather than dropping the record: an artifact that stopped recording the capability would
+        # otherwise make the columns stop summing to the matrix, which is the one property the table
+        # is asserted on.
+        capability = str(record.get('capability') or '?')
+        counts = by_capability.setdefault(
+            capability, dict.fromkeys(('questions', 'onlyA', 'onlyB', 'bothRight', 'bothWrong'), 0)
+        )
+        counts['questions'] += 1
         mine, theirs = bool(record.get('correct')), bool(other.get('correct'))
         if mine and theirs:
             bucket['bothRight'] += 1
+            counts['bothRight'] += 1
         elif mine:
             bucket['onlyA'] += 1
+            counts['onlyA'] += 1
         elif theirs:
             bucket['onlyB'] += 1
+            counts['onlyB'] += 1
         else:
             bucket['bothWrong'] += 1
+            counts['bothWrong'] += 1
 
     matrix = _matrix(a, b)
     return {
@@ -248,6 +275,7 @@ def paired(arm_a: dict, arm_b: dict) -> dict:
         'exactMigratedStillCorrect': rescued,
         'preference': preference,
         'nonPreference': non_preference,
+        'byCapability': by_capability,
         'armA': reconstruct_channels(arm_a),
         'armB': reconstruct_channels(arm_b),
     }
@@ -290,7 +318,33 @@ def render(result: dict) -> str:
         channels = arm['channels']
         share = ', '.join(f'{key} {value}' for key, value in channels.items())
         lines.append(f'{name} channels: {share}')
+    lines += [
+        '',
+        '| capability | questions | only A | only B | net | A acc | B acc |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ]
+    for capability in _capability_order(result['byCapability']):
+        counts = result['byCapability'][capability]
+        total = counts['questions']
+        a_right = counts['bothRight'] + counts['onlyA']
+        b_right = counts['bothRight'] + counts['onlyB']
+        lines.append(
+            f'| {capability} | {total} | {counts["onlyA"]} | {counts["onlyB"]} | '
+            f'{counts["onlyA"] - counts["onlyB"]:+d} | '
+            f'{a_right / total * 100:.2f}% | {b_right / total * 100:.2f}% |'
+        )
     return '\n'.join(lines)
+
+
+def _capability_order(by_capability: dict[str, dict[str, int]]) -> list[str]:
+    """The five known capabilities in their own order, then anything the artifact invented.
+
+    A fixed order because the table is read as a column across runs: two artifacts printed in
+    dictionary order would be comparable only if both happened to be built in the same order, and
+    `?` -- the bucket for a record with no capability -- sorts last for the reason it is last.
+    """
+    known = [name for name in CAPABILITIES if name in by_capability]
+    return known + sorted(name for name in by_capability if name not in CAPABILITIES)
 
 
 def _load(path: pathlib.Path) -> dict:
