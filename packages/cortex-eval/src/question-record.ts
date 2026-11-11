@@ -338,6 +338,19 @@ export type QuestionRecord = {
   /** How often the audit's answer differed from the one it was handed. See `auditConsultations`. */
   readonly auditChanges?: number | undefined;
   /**
+   * How many times the supersession pass consulted the reader on this question, and how often it replaced
+   * the answer.
+   *
+   * A third pair, for the reason the second one is a pair: the three passes act on disjoint populations
+   * (recovery on a decline, audit on a non-decline on any route, supersession on a non-decline on the
+   * knowledge-update route only), so one field would carry "not applicable" for most of the roster.
+   * `supersessionReplacements` is the only number that can move a score; `supersessionConsultations`
+   * beside it is what separates an inert pass from a guard that refused every claim it saw.
+   */
+  readonly supersessionConsultations?: number | undefined;
+  /** How often the supersession pass substituted its own value. See `supersessionConsultations`. */
+  readonly supersessionReplacements?: number | undefined;
+  /**
    * How much of the dataset's gold evidence the reader's context contained.
    *
    * ## Why this field is the point of `§13.18`
@@ -515,6 +528,10 @@ export type QuestionRecordInput = {
   readonly auditConsultations?: number | undefined;
   /** See {@link QuestionRecordInput.auditChanges}. */
   readonly auditChanges?: number | undefined;
+  /** See {@link QuestionRecordInput.supersessionConsultations}. */
+  readonly supersessionConsultations?: number | undefined;
+  /** See {@link QuestionRecordInput.supersessionReplacements}. */
+  readonly supersessionReplacements?: number | undefined;
   /**
    * How much of the dataset's gold evidence `retrieved` contained, or `null`.
    *
@@ -840,6 +857,15 @@ export function buildQuestionRecords(
         : {
             auditConsultations: input.auditConsultations,
             auditChanges: input.auditChanges ?? 0,
+          }),
+      // The supersession pair, on the same rule, and with the same refusal about half a pair: the product
+      // increments `attempted` on every consultation and `replaced` on every substitution, so a producer
+      // that supplies one without the other has taken its delta against the wrong object.
+      ...(input.supersessionConsultations === undefined
+        ? {}
+        : {
+            supersessionConsultations: input.supersessionConsultations,
+            supersessionReplacements: input.supersessionReplacements ?? 0,
           }),
       ...(featureConfig === undefined ? {} : { featureConfig }),
     });

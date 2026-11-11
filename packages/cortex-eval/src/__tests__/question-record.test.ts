@@ -832,3 +832,52 @@ describe('the record carries the room to the same contract the gold follows', ()
     expect(JSON.parse(JSON.stringify(record))).toHaveProperty('windowComposition');
   });
 });
+
+describe('the census triples the roster carries', () => {
+  /**
+   * A pair with one half missing is a delta taken against the wrong object.
+   *
+   * The product increments `attempted` on every consultation and the second number on every outcome, so the two
+   * come from one object or the read was against another. The record still has to be constructible from such
+   * an input -- it is a seatbelt, not a parser -- and the value it writes is `0`, which is the only reading
+   * available: the consultation happened and produced no second number.
+   *
+   * The three blocks are exercised together because they are the same rule written three times, and a test per
+   * pair would let one of them drift into an `undefined` that JSON drops.
+   */
+  it('fills the missing half of a pair with zero, and writes no pair at all when there is none', () => {
+    const [record] = buildQuestionRecords([
+      input({
+        recoveryConsultations: 2,
+        auditConsultations: 3,
+        supersessionConsultations: 4,
+      }),
+    ]);
+
+    expect(record!.recoveryConsultations).toBe(2);
+    expect(record!.recoveryAnswers).toBe(0);
+    expect(record!.auditConsultations).toBe(3);
+    expect(record!.auditChanges).toBe(0);
+    expect(record!.supersessionConsultations).toBe(4);
+    expect(record!.supersessionReplacements).toBe(0);
+  });
+
+  it('carries the supersession pair through to the JSON when both halves are measured', () => {
+    const [record] = buildQuestionRecords([
+      input({ supersessionConsultations: 1, supersessionReplacements: 1 }),
+    ]);
+
+    expect(JSON.parse(JSON.stringify(record))).toMatchObject({
+      supersessionConsultations: 1,
+      supersessionReplacements: 1,
+    });
+  });
+
+  it('omits the pair entirely when the pass did not run', () => {
+    // Absence is not zero here, for the reason the audit pair's absence is not: a question the pass never
+    // reached and a question it reached and found nothing on are two different facts about the run.
+    const [record] = buildQuestionRecords([input({})]);
+    expect(Object.hasOwn(record!, 'supersessionConsultations')).toBe(false);
+    expect(Object.hasOwn(record!, 'supersessionReplacements')).toBe(false);
+  });
+});

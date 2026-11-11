@@ -40,6 +40,7 @@ import {
   buildRetryPrompt,
   buildSessionPrompt,
   buildShapePrompt,
+  buildSupersedePrompt,
   buildTallyPrompt,
   type AssembledPrompt,
   type EvidenceOrdering,
@@ -52,6 +53,14 @@ import {
   planAbstentionRecovery,
 } from './abstention-recovery.js';
 import { planReplyRepair } from './reply-repair.js';
+import {
+  adjudicateSupersession,
+  emptySupersessionCensus,
+  parseSupersessionReport,
+  type SupersessionRefusal,
+  type SupersessionReport,
+  type SupersessionVerdict,
+} from './supersede.js';
 import { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
 import { buildLedger } from './aggregation/ledger.js';
 import { parseEventSpec } from './aggregation/spec.js';
@@ -268,6 +277,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
 
   /** Plans the specification pass could not read, by refusal code, summed for the census. */
   #specRefusals = 0;
+
+  /**
+   * The supersession pass's counters: consultations issued, answers replaced, and every refusal by name.
+   *
+   * The identity is `attempted = replaced + Σ refusals`, and it is reconstructible from the artifact
+   * rather than asserted in prose -- the same property `specified = attempted - refused` gives the
+   * specification pass. The reasons are kept apart because two defects with one name is one defect the
+   * census can no longer see: a run refusing everything on `not-in-evidence` is a fabricating reader,
+   * and a run refusing everything on `agrees` is a reader that restated its own answer.
+   */
+  readonly #supersessions: {
+    attempted: number;
+    replaced: number;
+    refusals: Record<SupersessionRefusal, number>;
+  } = emptySupersessionCensus();
 
   /**
    * The model's own output for the most recent call, before `parseAnswer`.
@@ -970,6 +994,38 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * What the supersession pass did, or `null` when this build was not configured to carry it.
+   *
+   * `null` rather than a zeroed record, for the reason §13.268 gives `auditCensus`: the mechanism is the
+   * only thing that knows whether the build carried it, and a zero from a build without the pass reads
+   * exactly like a pass that looked at five hundred answers and superseded none.
+   *
+   * The refusals are reported as a record with every reason present, zero or not, so a reader never has
+   * to infer "this reason did not occur" from a missing key. That is the opposite decision from the
+   * `null` above, and it is deliberate: the build-level question ("did this run carry the pass") has an
+   * answer the build knows, and the per-reason question ("did this failure mode occur") is a measurement
+   * whose zero is informative.
+   */
+  supersessionCensus(): {
+    attempted: number;
+    replaced: number;
+    refused: number;
+    refusals: Record<SupersessionRefusal, number>;
+  } | null {
+    if (this.#options.reviewPass !== 'supersede') return null;
+    const refusals = { ...this.#supersessions.refusals };
+    // Derived, never stored: two counters that can disagree are two counters that will, and this
+    // identity is what lets a reader check the artifact's numbers against each other.
+    const refused = Object.values(refusals).reduce((sum, count) => sum + count, 0);
+    return {
+      attempted: this.#supersessions.attempted,
+      replaced: this.#supersessions.replaced,
+      refused,
+      refusals,
+    };
+  }
+
+  /**
    * Flat answering. Also the fallback for every shape whose dedicated path is
    * absent, and for `single-session-preference`.
    */
@@ -1317,6 +1373,31 @@ export class CortexMemory implements SessionAwareMemorySystem {
       const repaired = await this.#repairReply(question, assembled, route);
       if (repaired !== undefined) return this.#recordOutcome(repaired);
     }
+    // §13.366. The supersession pass, which is the only mechanism in this arm aimed at a failure the
+    // prompt already forbids. `MEASURE-FAILURE-STABILITY.md` §3 reads the seven `KU` questions that are
+    // wrong in all four repetitions: six are one mode -- the reply answers with a statement the corpus
+    // later supersedes -- and the `knowledge-update` contract states the rule against it on every one of
+    // them, four times each, 24 failures out of 24. A rule that is present and fails every time is not a
+    // rule that needs rewording; it is a comparison demanded across a window whose median is 23,084
+    // characters. So this asks for the comparison alone, and a function decides.
+    //
+    // Reach is one route. `knowledge-update` is the only place a supersession is the failure mode, and
+    // the gate is the route rather than the question text so the other four capabilities answer from
+    // byte-identical prompts -- the property `42161343457`'s audit and `42930900136`'s spec pass both
+    // failed to keep and both had to add a reach audit for.
+    //
+    // A decline is out of reach by construction and that is not a gap: the first answer has to exist for
+    // there to be a value to supersede. `0977f2af` -- the seventh stable `KU` failure, whose gold is
+    // `Instant Pot` and whose reply declines -- is therefore absent from this population rather than
+    // silently included in it, which is the distinction `MEASURE-FAILURE-STABILITY.md` §3 draws between
+    // "absent, not superseded" and the six it counts.
+    if (
+      this.#options.reviewPass === 'supersede' &&
+      route === 'knowledge-update' &&
+      first !== null
+    ) {
+      return this.#recordOutcome(await this.#supersede(question, first, assembled.carried, route));
+    }
     // The abstention route shares this path and must be excluded here rather than at the call site: `#prompt` is the
     // entry point for it, so a guard on the option alone would reach the one capability whose gold is a decline.
     // `ABS` reads 30/30 with 29 bare tokens; converting one of those would spend a call to turn a right answer into
@@ -1346,6 +1427,65 @@ export class CortexMemory implements SessionAwareMemorySystem {
     );
     if (second !== null) this.#bareRetries.answered += 1;
     return this.#recordOutcome(second);
+  }
+
+  /**
+   * The one comparison a `knowledge-update` answer earns, and the function that decides what to do with it.
+   *
+   * ## Why the reply is adjudicated rather than used
+   *
+   * `MEASURE-PLAN-SHAPE.md` is the campaign's most expensive lesson about substitution: the `spec` pass
+   * replaced 46 answers, 43 of them wrong to replace, and every candidate shape gate priced against that
+   * population came back at or below the noise floor. The finding registered there is that a gate has to
+   * be a property of the **relation between the two answers**. This pass has the strongest form of that
+   * relation available: the proposed value must be a span copied character for character out of the
+   * evidence, and the date it claims must sit on the same evidence record. A reader that invents a value
+   * fails the first test; a reader that promotes a real value on an invented date fails the second.
+   *
+   * ## Why the answer is the quote and not a re-render
+   *
+   * The six target questions' golds are values -- `Friday`, `Paris`, `20`, `6:00 pm`, `38`, `1300` -- and
+   * the quote is the span that states one. Re-rendering it through a template would put the pass's own
+   * prose between the evidence and the grader, which is the defect `renderAggregate` was written to
+   * avoid on `MR`.
+   *
+   * ## Why `#lastReview` is written even though the question's outcome is the only answer
+   *
+   * `lastReview()` is what makes "the pass disagreed" legible, and a run whose pass replaced 40 answers
+   * and a run whose pass ran on nothing both publish one final answer per question without it.
+   *
+   * ## What it does not touch
+   *
+   * The evidence and the delivery. Both calls read the same `carried` turns, so what the answer came
+   * from is the window the first pass read -- `#recordEvidence` already ran, and a second call that
+   * re-recorded coverage would make the artifact's evidence fields describe the second prompt instead of
+   * the answer.
+   */
+  async #supersede(
+    question: string,
+    first: string,
+    carried: readonly AdmittedTurn[],
+    route: TurnCapRoute,
+  ): Promise<Answer> {
+    const built = buildSupersedePrompt(question, first, carried, this.#promptOptions(route));
+    // Counted before the call, so `attempted` means "a consultation was issued" rather than "a
+    // consultation returned something" -- the rule the audit and spec branches both follow.
+    this.#supersessions.attempted += 1;
+    const raw = await this.#consult(built.prompt, route);
+    // Annotated rather than inferred, so the two shapes the census is read against are the types this file
+    // names and not two anonymous literals that could drift from the module's own declaration.
+    const report: SupersessionReport = parseSupersessionReport(
+      raw === null ? this.#lastRawOutput : raw,
+    );
+    const verdict: SupersessionVerdict = adjudicateSupersession(report, first, built.evidence);
+    if (verdict.kind === 'keep') {
+      this.#supersessions.refusals[verdict.reason] += 1;
+      this.#lastReview = { first, final: first, changed: false };
+      return first;
+    }
+    this.#supersessions.replaced += 1;
+    this.#lastReview = { first, final: verdict.value, changed: true };
+    return verdict.value;
   }
 
   /**

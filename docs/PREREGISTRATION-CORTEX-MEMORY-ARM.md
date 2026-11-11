@@ -39396,3 +39396,63 @@ land **before** the dispatch it prices.
 `V1`–`V4` are evaluated by `tools/arm-flip-census.py` and the new census columns; `V3` is a
 population statement about three named questions (`6d550036`, `60bf93ed`, `d6062bb9`), which is why it
 is written with the ids rather than as a rate.
+
+#### 13.366 The supersession pass, and the first bar in this campaign derived from a computed test
+
+Registered before dispatch. The mechanism is `reviewPass: 'supersede'` (`cortex-memory/src/supersede.ts`,
+`buildSupersedePrompt` in `prompt.ts`), its reach is the `knowledge-update` route on a **non-declined** answer
+and nothing else, and the reading that follows is one 500 x 4 dispatch against the same control every arm
+uses.
+
+**Why this population.** `MEASURE-FAILURE-STABILITY.md` §3 reads the seven `KU` questions wrong in all four
+repetitions of `42355323615`: six are one failure mode — the reply answers with a statement the corpus later
+supersedes — and the `knowledge-update` contract states the rule against it on every one of them, four times
+each, **24 failures out of 24**. `852ce960` names the later date and then argues itself out of it. The
+population is representational end to end (`69fee5aa` carries 22 of 22 gold turns and answers `37` against
+`38`), so this is not a retrieval or a room problem.
+
+**Why it is not the `spec` pass again.** `spec` replaced 46 answers having checked only whether the *new* one
+was executable; 43 were damages, and `MEASURE-PLAN-SHAPE.md` records the rule that came out of it — an
+authorization has to be a property of the **relation between the two answers**. This pass's authorization is
+the strongest form of that relation available: the substituted span must appear in the evidence **character for
+character**, and the date it claims must sit on **every** evidence record the span appears on. Both are
+substring tests over the text the first pass read. A fabricated value fails the first; a real value promoted on
+an invented date fails the second; a span that merely repeats the answer fails a third (`agrees`).
+
+**Why the second call re-reads the evidence.** Because the failure is a comparison the reader declines to
+perform across a window whose median is 23,084 characters, not a fact it cannot find. One extraction is
+therefore not enough and one instruction is not enough; the second call removes the question and asks for the
+pair. The evidence block is byte-identical to the first prompt's, so the added cost is one instruction block
+per `KU` question rather than one window, and the provider's prefix cache can hit on the shared head.
+
+**The bar, and the two nulls it is set against.** `MEASURE-PAIRED-POWER.md` is the arithmetic; the registration
+is this section. The three numbers below are computed, not conventional:
+
+| null | `p(≥4)` | `p(≥5)` | `p(≥6)` |
+| --- | ---: | ---: | ---: |
+| exact McNemar, no mechanism effect | 0.125 | 0.063 | **0.031** |
+| measured flip floor (4.1% of the population, direction by chance) | 0.061 | 0.016 | **0.0037** |
+
+| # | criterion | reading that would falsify it |
+| --- | --- | --- |
+| `K1` | ≥ **6** of the six named targets convert, and **no** question regresses | ≤ 5 — both nulls call it a direction rather than a result |
+| `K2` | every other capability within **2 sd** of its own repetition spread (`ABS` 0.00, `KU` 2.52, `MR` 4.16, `TR` 4.32, `IE` 3.46) | any capability outside — the pass has reached a route it does not claim |
+| `K3` | `promptDigest` **identical** on every non-`KU` question | any difference — the reach is not the route, it is the code path |
+| `K4` | `supersession.replaced = 0` on the six targets, or `refused = 0` while `replaced > 0` | the first says the pass is inert; the second says the guard never fired and the substitutions are unaudited |
+| `K5` | completion tokens ≤ **+25%**, prompt tokens ≤ **+15%** | above either — one instruction block per `KU` question is the whole design |
+
+**`K1` supersedes a registered bar, and the correction is the point.** `MEASURE-FAILURE-STABILITY.md` §4
+registered "≥ 4 stable conversions of the six, at no other capability worse than 2 sd". Four conversions is
+`p = 0.125` under the exact test and `p = 0.061` under the measured floor — **a result both nulls call luck**.
+It was registered before either null was computable, and it would have been satisfiable by a draw. The bar is
+now six, it is stated with the table that produces it, and the defect is recorded rather than quietly repaired
+because a registration that can be edited without a trace is not a registration.
+
+**Stopping rule.** One dispatch. `K1` is read from the three named question ids (`ce6d2d27`, `9ea5eabc`,
+`ed4ddc30`, `59524333`, `69fee5aa`, `a2f3aa27`), so a failure cannot be averaged away, and `K5` is read from
+`llmUsage` against the control's `21,497,392` prompt / `2,301,401` completion tokens.
+
+**What would make this pass a net negative even if `K1` holds.** A conversion on a question that was already
+correct is a damage, and the census cannot see it — it counts `replaced`, not `replaced-and-was-right`. That
+number comes from the paired artifact, which is why `K1` is written as "no question regresses" over the whole
+`KU` column and not as a conversion count.

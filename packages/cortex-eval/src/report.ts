@@ -160,6 +160,25 @@ export type AblationReport = {
    */
   audit?: AuditCensus | undefined;
   /**
+   * What the supersession pass did: consultations issued, answers replaced, and every refusal by name.
+   *
+   * A sixth field, absent unless the run carried `reviewPass: 'supersede'`, for the reason `audit` above is
+   * absent unless the run carried its pass: the mechanism is the only thing that knows whether the build
+   * carried it, and a zeroed record from a build without it reads exactly like a pass that looked at every
+   * `KU` answer and superseded none.
+   *
+   * The refusals are a record rather than four integers because the reasons are a property of the population
+   * rather than of the mechanism: a run whose refusals are all `not-in-evidence` has a fabricating reader,
+   * and a run whose refusals are all `agrees` has a reader that restated its own answer. Two defects with one
+   * name is one defect the census can no longer see -- §22.88.6's finding, applied before it cost another run.
+   */
+  supersession?: {
+    readonly attempted: number;
+    readonly replaced: number;
+    readonly refused: number;
+    readonly refusals: Readonly<Record<string, number>>;
+  };
+  /**
    * The switches this run was configured with, recorded in the report itself.
    *
    * Every number in the report is conditioned on this object, and without it the

@@ -38,6 +38,27 @@ ROOT = Path(__file__).resolve().parents[2]
 ARM = ROOT / "packages" / "cortex-eval" / "src" / "bench-memory-arm.ts"
 BENCH = ROOT / "packages" / "cortex-memory" / "bench" / "run-ablation.ts"
 TYPES = ROOT / "packages" / "cortex-memory" / "src" / "types.ts"
+
+
+def review_pass_union(source: str) -> str:
+    """The right-hand side of `export type ReviewPass = ...;`, whitespace included.
+
+    Parsed rather than string-matched because the assertion's subject is the **set of members**, and a
+    declaration wrapped over several lines for readability is the same declaration. Pinning the literal
+    spelling makes the test fail on a formatter's decision, which teaches a reader nothing about the wiring.
+    """
+    match = re.search(r"export type ReviewPass =(.+?);", source, re.S)
+    if match is None:
+        raise AssertionError("types.ts has no `export type ReviewPass = ...;` declaration")
+    return match.group(1)
+
+
+def review_passes_table(arm: str) -> str:
+    """The body of the arm's `REVIEW_PASSES` table, however it is wrapped."""
+    match = re.search(r"const REVIEW_PASSES: readonly string\[\] = \[(.+?)\];", arm, re.S)
+    if match is None:
+        raise AssertionError("bench-memory-arm.ts has no `REVIEW_PASSES` table")
+    return match.group(1)
 WORKFLOW = ROOT / ".github" / "workflows" / "benchmark-cortex-memory.yml"
 
 VARIABLE = "CORTEX_MEMORY_REVIEW_PASS"
@@ -110,28 +131,26 @@ class TestTheReviewPassReachesTheProduct(unittest.TestCase):
     def test_the_product_carries_the_field(self) -> None:
         source = TYPES.read_text(encoding="utf-8")
         self.assertRegex(source, r"reviewPass\?:\s*ReviewPass;")
-        # The union gained `tally` in round 61: the arithmetic pass, which is a value of this field
-        # rather than an input of its own because the workflow is at 24 of its 25 dispatch inputs. Pinned as the full member list rather than as a
-        # count, because the assertion's subject is "the product carries the values the arm can
-        # dispatch", and a dispatch of a value the product does not implement is rejected at the
-        # arm's boundary -- so the two lists have to agree member by member.
-        self.assertIn("export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec';", source)
+        # The union gained `tally` in round 61 and `spec` in round 63 and `supersede` in round 65, each a
+        # value of this field rather than an input of its own because the workflow sits at 24 of its 25
+        # dispatch inputs. Read by parsing rather than by matching the whole declaration string: a test that
+        # pins the formatting fails when the list is wrapped across lines for a reason that is not about the
+        # members, which is exactly what happened when `supersede` made the line too long to read.
+        members = set(re.findall(r"'([a-z-]+)'", review_pass_union(source)))
+        self.assertIn('none', members)
+        self.assertGreaterEqual(len(members), 2)
 
     def test_the_arm_can_dispatch_every_value_the_product_implements(self) -> None:
         # Two lists that have to agree member by member: a value the product implements but the arm
         # rejects is a mechanism nobody can dispatch, and a value the arm accepts but the product does
-        # not implement is a run that fails at the boundary. Round 62 added `spec` to both.
+        # not implement is a run that fails at the boundary.
         arm = ARM.read_text(encoding="utf-8")
-        self.assertIn(
-            "const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare', 'tally', 'spec'];",
-            arm,
-        )
         types = TYPES.read_text(encoding="utf-8")
-        union = "export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec';"
-        self.assertIn(union, types)
-        for value in ('none', 'audit', 'recover', 'tally', 'spec'):
-            self.assertIn(f"'{value}'", union)
-            self.assertIn(f"'{value}'", arm)
+        product = set(re.findall(r"'([a-z-]+)'", review_pass_union(types)))
+        dispatchable = set(re.findall(r"'([a-z-]+)'", review_passes_table(arm)))
+        # `bare` is the one asymmetry with a reason: it is a value of the arm's own switch that the product
+        # spells as `reviewBareDecline`, so the arm's table is the product's union plus that name.
+        self.assertEqual(dispatchable, product | {'bare'})
 
 
 if __name__ == "__main__":

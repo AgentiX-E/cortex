@@ -703,8 +703,23 @@ export type WindowOrdering = {
  * The two differ in what the model is asked to produce (prose items versus a typed object), in when
  * the ledger exists (after the question versus before it), and in what a failure leaves behind (a
  * wrong list versus a plan whose filters and supporting steps can be printed.)
+ *
+ * - `supersede` — after an answer on the **knowledge-update route**, ask which later statement
+ *   supersedes the value the answer rests on, and substitute only when the proposed span is copied
+ *   character for character out of the evidence **and** the date it claims sits on the same evidence
+ *   record (`supersede.ts`). This is the only value whose target is a failure the prompt already
+ *   forbids: the `knowledge-update` contract states the latest-consistent-value rule on every one of the
+ *   seven questions that fail in all four repetitions of `42355323615`, and it fails 24 times out of 24
+ *   (`MEASURE-FAILURE-STABILITY.md` §3). A rule that is present and fails every time is a comparison the
+ *   reader is being asked to perform over 23,084 characters, so this pass asks for the comparison alone
+ *   and gives the decision to a function.
+ *
+ * The three mechanisms that *substitute* an answer -- `tally`, `spec`, `supersede` -- are the three that
+ * had to be given an authorization gate, and the order in which they were built is the order in which
+ * the campaign learned it: `tally` had none and lost 9.5 questions; `spec` had none and lost 39, 43 of
+ * its 46 flips damages (`MEASURE-PLAN-SHAPE.md`); `supersede` was written with one.
  */
-export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec';
+export type ReviewPass = 'none' | 'audit' | 'recover' | 'tally' | 'spec' | 'supersede';
 
 /**
  * Which reply-contract repairs a run administers, if any.

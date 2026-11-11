@@ -3827,3 +3827,66 @@ export function truncateCodePointSafe(text: string, maxChars: number): string {
 
   return text.slice(0, end);
 }
+
+/**
+ * The prompt for the one comparison a `knowledge-update` answer gets back.
+ *
+ * ## Why the second call re-reads the evidence and the first one's answer
+ *
+ * The diagnosis in `MEASURE-FAILURE-STABILITY.md` §3 is not that the reader cannot find a later value —
+ * `852ce960` names the later date and then argues itself out of it — it is that the reader is asked to
+ * perform the comparison *while* answering, across a window whose median is 23,084 characters. This
+ * prompt removes everything except the comparison: no question to re-answer, no abstention token to
+ * decline with, and one pair to report.
+ *
+ * The evidence is rendered by `renderCarried`, which is the same call the first prompt's evidence block
+ * goes through, so the two requests share a byte-identical head and the provider's prefix cache can hit
+ * on it. That is not a micro-optimisation in a campaign that reports tokens per correct answer: the
+ * added cost is one instruction block per `KU` question, not one window.
+ *
+ * ## Why the instruction asks for a copied span and a copied date
+ *
+ * Because both are checkable. `supersede.ts` accepts a substitution only when the span appears in the
+ * evidence character for character **and** the date appears on the same evidence record. An instruction
+ * that asked for "the later value" would produce answers no function could audit, which is the state
+ * the `spec` pass reached with a `support` array nobody persisted.
+ *
+ * ## Why `LATER` is asked for as the shortest span and not as a sentence
+ *
+ * The contract's own answer on the six target questions is a value — `Friday`, `1300`, `6:00 pm`. A
+ * substituted sentence would be a different answer shape graded against a value, and `reply-repair`'s
+ * census already measured what a list-of-quotations answer costs.
+ */
+export function buildSupersedePrompt(
+  question: string,
+  firstAnswer: string,
+  turns: readonly AdmittedTurn[],
+  options: PromptOptions = {},
+): { prompt: string; evidence: string } {
+  const rendered = renderCarried(turns, options);
+  const evidence = rendered.length === 0 ? NO_EVIDENCE : rendered;
+  const prompt = [
+    `EVIDENCE:\n${evidence}`,
+    '',
+    `QUESTION: ${question}`,
+    '',
+    `An earlier pass read the evidence above and answered: ${firstAnswer}`,
+    '',
+    'Do not answer the question again. Do exactly one thing: decide whether the evidence states a',
+    'LATER version of the fact that answer rests on — a value about the same thing, stated in a turn',
+    'dated after the turn the answer came from.',
+    '',
+    'Reply with exactly these three lines and nothing else:',
+    'CHANGED: yes',
+    'LATER: <shortest span copied character for character from the evidence, or NONE>',
+    'WHEN: <the date written on the same evidence line, or NONE>',
+    '',
+    'Rules, and they are strict:',
+    '- `CHANGED: no` when the evidence never restates this fact with a different value. That is the',
+    '  common case and a wrong `yes` is worse than a wrong `no`.',
+    '- `LATER` must be copied, not paraphrased. A span that is not in the evidence above cannot be used.',
+    '- `WHEN` must be the date written on the line you copied `LATER` from.',
+    '- Never write an explanation, a heading, or the answer to the question.',
+  ].join('\n');
+  return { prompt, evidence };
+}

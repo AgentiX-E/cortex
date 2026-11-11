@@ -1601,7 +1601,15 @@ function readAsk(raw: string | undefined): string {
 const REVIEW_PASS_VARIABLE = 'CORTEX_MEMORY_REVIEW_PASS';
 
 /** The passes this arm can dispatch, in the order the config line spells them. */
-const REVIEW_PASSES: readonly string[] = ['none', 'audit', 'recover', 'bare', 'tally', 'spec'];
+const REVIEW_PASSES: readonly string[] = [
+  'none',
+  'audit',
+  'recover',
+  'bare',
+  'tally',
+  'spec',
+  'supersede',
+];
 
 /**
  * Read the review pass, rejecting anything the product does not implement.
@@ -2961,6 +2969,17 @@ export type ReviewMechanismTrace = { attempted: number; answered: number };
 type AuditMechanismTrace = { attempted: number; changed: number };
 
 /**
+ * What one question's census said about the supersession pass, as counts.
+ *
+ * `replaced` is the number of answers the pass actually substituted, which is the only number that can
+ * move the score. `attempted` beside it separates "the pass ran on nothing" from "the pass ran and
+ * refused every claim", and those two are the whole difference between an inert mechanism and a guard
+ * that is doing its job -- the distinction `MEASURE-PLAN-SHAPE.md` had to reconstruct after the fact for
+ * the specification pass, because its artifact carried neither.
+ */
+type SupersessionTrace = { attempted: number; replaced: number };
+
+/**
  * Wrap a system so each answer records whether the review mechanisms fired **on that question**.
  *
  * ## Why this exists
@@ -3043,6 +3062,32 @@ function traceAuditPass(
 }
 
 /**
+ * Wrap a system so each answer records whether the **supersession pass** ran on that question, and
+ * whether it replaced the answer.
+ *
+ * The third instance of the same machinery, and the reason to keep it as three thin callers rather than
+ * one configurable one is the same reason `traceAuditPass` gives: the three censuses answer three
+ * different questions on three disjoint populations, and a single map keyed by question would carry
+ * three meanings per entry. What is shared is the part that has already been wrong once -- the delta, the
+ * prototype mirroring, and "an accessor that throws is an instrument that is not there".
+ */
+function traceSupersession(
+  system: MemorySystem,
+  trace: Map<string, SupersessionTrace>,
+): MemorySystem {
+  return traceCensus(
+    system,
+    'supersessionCensus',
+    trace,
+    (delta) => ({ attempted: delta.attempted, replaced: delta.replaced }),
+    (prev, next) => ({
+      attempted: prev.attempted + next.attempted,
+      replaced: prev.replaced + next.replaced,
+    }),
+  );
+}
+
+/**
  * The machinery both traces above share: take a census before and after every `answer*` call and record the
  * difference against the question string the caller passed.
  *
@@ -3053,13 +3098,16 @@ function traceAuditPass(
  */
 function traceCensus<T>(
   system: MemorySystem,
-  accessor: 'recoveryCensus' | 'auditCensus',
+  accessor: 'recoveryCensus' | 'auditCensus' | 'supersessionCensus',
   trace: Map<string, T>,
-  project: (delta: { attempted: number; answered: number; changed: number }) => T,
+  project: (delta: { attempted: number; answered: number; changed: number; replaced: number }) => T,
   merge: (prev: T, next: T) => T,
 ): MemorySystem {
   const source = system as Partial<
-    Record<typeof accessor, () => { attempted: number; answered?: number; changed?: number } | null>
+    Record<
+      typeof accessor,
+      () => { attempted: number; answered?: number; changed?: number; replaced?: number } | null
+    >
   >;
   const census = source[accessor];
   if (typeof census !== 'function') return system;
@@ -3076,7 +3124,12 @@ function traceCensus<T>(
   // `reading.attempted` would throw a `TypeError` and take the same path by accident, which is a behaviour
   // no reader of this function could see.
   let usable = true;
-  const readCensus = (): { attempted: number; answered: number; changed: number } | null => {
+  const readCensus = (): {
+    attempted: number;
+    answered: number;
+    changed: number;
+    replaced: number;
+  } | null => {
     if (!usable) return null;
     try {
       const reading = census.call(system);
@@ -3091,6 +3144,7 @@ function traceCensus<T>(
         attempted: reading.attempted,
         answered: reading.answered ?? 0,
         changed: reading.changed ?? 0,
+        replaced: reading.replaced ?? 0,
       };
     } catch {
       usable = false;
@@ -3130,6 +3184,7 @@ function traceCensus<T>(
           attempted: after.attempted - before.attempted,
           answered: after.answered - before.answered,
           changed: after.changed - before.changed,
+          replaced: after.replaced - before.replaced,
         });
         const prev = trace.get(question);
         trace.set(question, prev === undefined ? entry : merge(prev, entry));
@@ -3192,6 +3247,10 @@ export async function runCortexMemoryArm(
   // this pass runs on non-declines where the recovery pass cannot, so one map keyed by question would carry
   // two meanings per entry.
   const auditTrace = new Map<string, AuditMechanismTrace>();
+  // §13.366: the supersession pass's own per-question trace. Third map, third type, same machinery, and
+  // for the reason the audit map gives -- the three passes run on disjoint populations, so one map keyed
+  // by question would carry three meanings per entry.
+  const supersessionTrace = new Map<string, SupersessionTrace>();
   // §13.189: the same ledger, read per side. Wrapped on BOTH arms so the split closes against
   // `llmUsage` above; the judge and the phrasing stage land in the residual by construction.
   //
@@ -3206,13 +3265,18 @@ export async function runCortexMemoryArm(
   // below are never called -- the pool has to be wrapped instead, and both paths are kept because a
   // serial run is the one every archived artifact was produced by.
   const usagePool =
-    options.pool === undefined ? undefined : tracedPool(options.pool, usageLedger, auditTrace);
+    options.pool === undefined
+      ? undefined
+      : tracedPool(options.pool, usageLedger, auditTrace, supersessionTrace);
   const report = await runAblationReport(
     dataset,
     traceUsage(baseline, 'baseline', usageLedger),
-    traceAuditPass(
-      traceReviewMechanisms(traceUsage(feature, 'feature', usageLedger), recoveryTrace),
-      auditTrace,
+    traceSupersession(
+      traceAuditPass(
+        traceReviewMechanisms(traceUsage(feature, 'feature', usageLedger), recoveryTrace),
+        auditTrace,
+      ),
+      supersessionTrace,
     ),
     {
       ...(options.runs === undefined ? {} : { runs: options.runs }),
@@ -3269,6 +3333,7 @@ export async function runCortexMemoryArm(
     ...bareRetryAcross(censusSystems),
     ...replyRepairAcross(censusSystems),
     ...auditAcross(censusSystems),
+    ...supersessionAcross(censusSystems),
   };
   const questions = buildArmRoster(
     dataset,
@@ -3285,6 +3350,7 @@ export async function runCortexMemoryArm(
     options.relevancePoolFor,
     recoveryTrace,
     auditTrace,
+    supersessionTrace,
   );
   // Derived from the records rather than tallied while building them, so the
   // manifest and the records it describes cannot disagree (`evidenceReductionOf`).
@@ -3335,6 +3401,10 @@ export async function runCortexMemoryArm(
     // `attempted: 0` there would make "this build carries no audit" and "the audit ran and agreed with every
     // answer" produce the same artifact.
     ...(census.audit === undefined ? {} : { audit: census.audit }),
+    // §13.366's tally, on the same absence rule. A run that does not carry the pass writes no field, so
+    // "the pass superseded 40 answers" and "this build has no pass" are different bytes rather than the
+    // same zeros.
+    ...(census.supersession === undefined ? {} : { supersession: census.supersession }),
     // Spread conditionally on both sides: a run that did not vote has no census, and a report built
     // without an arm config has nowhere to put one. Either absence means "not measured", which the
     // field's optionality already says.
@@ -3540,14 +3610,18 @@ function traceOf(
   trace: ReadonlyMap<string, ReviewMechanismTrace> | undefined,
   question: string,
   audit?: ReadonlyMap<string, AuditMechanismTrace>,
+  supersession?: ReadonlyMap<string, SupersessionTrace>,
 ): {
   recoveryConsultations?: number;
   recoveryAnswers?: number;
   auditConsultations?: number;
   auditChanges?: number;
+  supersessionConsultations?: number;
+  supersessionReplacements?: number;
 } {
   const entry = trace?.get(question);
   const reviewed = audit?.get(question);
+  const superseded = supersession?.get(question);
   const recovery: { recoveryConsultations?: number; recoveryAnswers?: number } =
     entry === undefined
       ? {}
@@ -3556,7 +3630,20 @@ function traceOf(
     reviewed === undefined
       ? {}
       : { auditConsultations: reviewed.attempted, auditChanges: reviewed.changed };
-  return { ...recovery, ...auditing };
+  // Three fields would be redundant: `replaced` is the only one that can move a score, and `attempted`
+  // beside it separates an inert pass from a guard that refused every claim. The refusals by name stay at
+  // the run level, where they are a statement about the population rather than about a question.
+  const superseding: {
+    supersessionConsultations?: number;
+    supersessionReplacements?: number;
+  } =
+    superseded === undefined
+      ? {}
+      : {
+          supersessionConsultations: superseded.attempted,
+          supersessionReplacements: superseded.replaced,
+        };
+  return { ...recovery, ...auditing, ...superseding };
 }
 
 function buildArmRoster(
@@ -3597,6 +3684,14 @@ function buildArmRoster(
    * pass, so a reader inside this function would see only the last question.
    */
   auditTrace?: ReadonlyMap<string, AuditMechanismTrace>,
+  /**
+   * Whether the supersession pass ran on each question, and whether it replaced the answer.
+   *
+   * Passed in for the reason the two maps above are: the trace is captured around each answer and the roster
+   * is built after the whole pass. Absent for a run that does not carry the pass, which is every archived
+   * artifact -- so the field is written by the run that measured it and by no other.
+   */
+  supersessionTrace?: ReadonlyMap<string, SupersessionTrace>,
 ): readonly QuestionRecord[] {
   const answers = ablation.featureAnswers!;
   // Captured per question inside the answer loop and carried alongside the
@@ -3730,7 +3825,7 @@ function buildArmRoster(
       promptVariants: promptVariantCounts?.[i] ?? null,
       // §13.145.6. Two fields rather than one because a retry that fired and declined again is `attempted`
       // without `answered`, and that half is what says the mechanism ran rather than which way it went.
-      ...traceOf(recoveryTrace, question.question, auditTrace),
+      ...traceOf(recoveryTrace, question.question, auditTrace, supersessionTrace),
       // Measured here rather than inside `buildQuestionRecords`, because the
       // measurement needs the **pre-bound** context and this is the last place it
       // exists: the record's `turns` are what the bound left. Computing it a hop later
@@ -3885,6 +3980,7 @@ function tracedPool(
   pool: AblationPool,
   ledger: Record<UsageSide, UsageTally>,
   auditTrace?: Map<string, AuditMechanismTrace>,
+  supersessionTrace?: Map<string, SupersessionTrace>,
 ): AblationPool {
   const wrapped: Record<UsageSide, Map<number, MemorySystem>> = {
     baseline: new Map<number, MemorySystem>(),
@@ -3898,8 +3994,12 @@ function tracedPool(
     // reference pipeline, which carries no `reviewPass` at all. Wrapping here rather than positionally is the
     // lesson §13.259 wrote down -- under a pool the positional wrapper is never called, so the trace would be
     // empty and the artifact would say the mechanism did not fire on any question.
-    const traced =
+    const audited =
       side === 'feature' && auditTrace !== undefined ? traceAuditPass(spent, auditTrace) : spent;
+    const traced =
+      side === 'feature' && supersessionTrace !== undefined
+        ? traceSupersession(audited, supersessionTrace)
+        : audited;
     wrapped[side].set(worker, traced);
     return traced;
   };
@@ -4053,6 +4153,100 @@ function auditAcross(systems: readonly MemorySystem[]): { audit?: AuditCensus } 
       changed: total.changed as number,
       ...(refused === undefined ? {} : { refused }),
     },
+  };
+}
+
+/**
+ * The supersession census: what the pass attempted, what it replaced, and every refusal by name.
+ *
+ * ## Why this is not `summedOver`
+ *
+ * `summedOver` folds a flat record of numbers, and this payload carries one nested record -- the refusal
+ * reasons. Flattening them into `refusals.agrees` keys inside the same record would work and would make
+ * the artifact's field names depend on the product's reason list, which is the drift `auditOf`'s
+ * explicit key list refuses. So the fold is written out, and the reason list is read off the payload
+ * rather than named here:
+ *
+ * **all-or-nothing, over the same rule as the other censuses.** A pooled run answers through N instances
+ * and `41773546221` published worker 0's quarter of a census as if it were the run's -- a number that
+ * reads exactly like a measurement. If any instance cannot report, the field is absent and the artifact
+ * says "no census" rather than a quarter of one.
+ *
+ * ## Why the identity is checked here rather than trusted
+ *
+ * The product derives `refused` from its reasons, so `attempted = replaced + refused` is true by
+ * construction inside one instance. Across a pool it is true by construction again, because both sides
+ * are sums of the same instances. What is *not* implied is that a report whose numbers disagree is a
+ * report this arm should publish, and a disagreeing sum is the only way a defect in the fold can become
+ * visible at all. A mismatch drops the field for the reason above: an artifact that cannot state the
+ * population it superseded should not state a number.
+ */
+function supersessionAcross(systems: readonly MemorySystem[]): {
+  supersession?: {
+    attempted: number;
+    replaced: number;
+    refused: number;
+    refusals: Record<string, number>;
+  };
+} {
+  if (systems.length === 0) return {};
+  let attempted = 0;
+  let replaced = 0;
+  let refused = 0;
+  const refusals: Record<string, number> = {};
+  for (const system of systems) {
+    const one = supersessionOf(system);
+    if (one === undefined) return {};
+    attempted += one.attempted;
+    replaced += one.replaced;
+    refused += one.refused;
+    for (const [reason, count] of Object.entries(one.refusals)) {
+      refusals[reason] = (refusals[reason] ?? 0) + count;
+    }
+  }
+  if (attempted !== replaced + refused) return {};
+  return { supersession: { attempted, replaced, refused, refusals } };
+}
+
+/**
+ * Read the supersession census off one instance, or `undefined` when the instance carries no such
+ * accessor -- the same three-step shape as `auditOf`, and `undefined` rather than `{}` because this
+ * reader feeds a fold that has to be able to stop on the first absent instance.
+ */
+function supersessionOf(system: MemorySystem):
+  | {
+      attempted: number;
+      replaced: number;
+      refused: number;
+      refusals: Record<string, number>;
+    }
+  | undefined {
+  const candidate = (system as { supersessionCensus?: unknown }).supersessionCensus;
+  if (typeof candidate !== 'function') return undefined;
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    return undefined;
+  }
+  if (payload === null || typeof payload !== 'object') return undefined;
+  const record = payload as Record<string, unknown>;
+  for (const key of ['attempted', 'replaced', 'refused'] as const) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return undefined;
+  }
+  const reasons = record.refusals;
+  if (reasons === null || typeof reasons !== 'object') return undefined;
+  const refusals: Record<string, number> = {};
+  for (const [reason, count] of Object.entries(reasons as Record<string, unknown>)) {
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) return undefined;
+    refusals[reason] = count;
+  }
+  return {
+    attempted: record.attempted as number,
+    replaced: record.replaced as number,
+    refused: record.refused as number,
+    refusals,
   };
 }
 
