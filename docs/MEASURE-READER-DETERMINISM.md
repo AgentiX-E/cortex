@@ -66,13 +66,27 @@ Two dispatches, identical inputs, `sut` empty so the competitor's 50-minute inge
 
 | run | reader identity | `cortex-session` | per-question agreement with the other |
 | --- | --- | ---: | ---: |
-| `43197264759` | `temp=0` | **13 / 20 = 65.0%** | — |
-| `43198214714` | `temp=0` | **13 / 20 = 65.0%** | **20/20 = 100.0%** |
+| `43197264759` | `temp=0` | **13 / 20 = 65.0%** | — (artifact digest `e27e242f`) |
+| `43198214714` | `temp=0` | **13 / 20 = 65.0%** | **20/20 = 100.0%** (same digest) |
 | `43170314351` | `temp=default` | 13 / 20 | 16/20 = 80.0% |
 | `43178388235` | `temp=default` | 11 / 20 | (the comparison above) |
 
-**Zero flips.** `H5` requires 90%; the pinned instrument returns 100% on twenty questions, and the two
-runs spent 3m07s and 4m42s of runner time respectively.
+**Zero flips — and the two artifacts are byte-identical.** Not "the same verdicts": the whole
+`competitor-read.json` of the two runs has one sha256.
+
+```
+e27e242f8ac15dadc28091cbf575077f64fb4ed656e60e2bde3ceb2da9199cf5  43197264759
+e27e242f8ac15dadc28091cbf575077f64fb4ed656e60e2bde3ceb2da9199cf5  43198214714
+```
+
+That covers the run's configuration, its 20 per-question records with the retrieved window and the
+answer, and every verdict — so there is nothing left in the artifact that a second run could disagree
+with and nothing this file had to select before comparing. `H5` requires 90%; the pinned instrument
+returns 100% on twenty questions, and the two runs spent 3m07s and 4m42s of runner time respectively.
+
+The comparison is a stronger statement than the gate it was written against, and that is worth being
+explicit about: `H5` would have passed on 19 of 20 matching verdicts, which would have left room for one
+undetected non-determinism in the answer text under a matching verdict. The digest leaves none.
 
 The two `default` rows are the control for the mechanism: the same arm, the same questions, the same
 judge, the same prompt, differing only in whether a sampling field was on the request — and it moved two
