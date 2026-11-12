@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { compareRecords, compareRuns, mcnemarExact } from '../paired-test.js';
+import { compareArmsInRun, compareRecords, compareRuns, mcnemarExact } from '../paired-test.js';
 import type { ProviderScore, QuestionRecord } from '../harness.js';
 
 describe('mcnemarExact', () => {
@@ -185,5 +185,109 @@ describe('compareRuns', () => {
     // Two columns of `false` would report perfect stability as though it had been measured.
     const unread = [record('a', false, { read: false })];
     expect(compareRuns([score('arm', unread)], [score('arm', unread)])).toEqual([]);
+  });
+});
+
+describe('compareArmsInRun', () => {
+  function arm(provider: string, records: readonly QuestionRecord[]): ProviderScore {
+    return {
+      provider,
+      build: 'none',
+      questions: records.length,
+      measured: records.length,
+      unmeasurable: 0,
+      found: records.filter((r) => r.found).length,
+      foundAll: 0,
+      empty: 0,
+      recallAtK: 0,
+      recallAllAtK: 0,
+      mrr: 0,
+      sessions: 0,
+      turns: 0,
+      meanContextChars: 0,
+      correct: null,
+      read: records.filter((r) => r.read).length,
+      accuracy: null,
+      abstained: 0,
+      skipped: [],
+      byCapability: {},
+      ingestSkipped: 0,
+      records,
+    };
+  }
+
+  it('counts the four cells for two arms that answered the same questions', () => {
+    // The 100-question reading: `cortex-session` 65/100 against `mem0` 59/100, and the question is whether the
+    // six-question gap is a difference or a draw. Every arm in one harness run answers the same sampled list, so
+    // the pairing is established by the file rather than by matching provider names.
+    const run = [
+      arm('cortex-session', [
+        record('a', true), // both correct
+        record('b', true), // regressed: mem0 got it, we did not
+        record('c', false), // improved: we did not, mem0 did
+        record('d', false), // both wrong
+      ]),
+      arm('mem0', [record('a', true), record('b', false), record('c', true), record('d', false)]),
+    ];
+    const result = compareArmsInRun(run, 'cortex-session', 'mem0');
+    expect(result.improved).toBe(1);
+    expect(result.regressed).toBe(1);
+    expect(result.bothCorrect).toBe(1);
+    expect(result.bothWrong).toBe(1);
+    expect(result.n).toBe(4);
+    expect(result.delta).toBe(0);
+    expect(result.p).toBe(1);
+  });
+
+  it('labels the pair in the direction the counts are read', () => {
+    // `improved` means "right under the treatment, wrong under the baseline", so the label has to name both arms
+    // and the arrow has to point the same way the delta does. A bare provider name here would make `delta > 0`
+    // mean "the other arm is better", which is the misreading this label exists to prevent.
+    const run = [arm('ours', [record('a', false)]), arm('theirs', [record('a', true)])];
+    expect(compareArmsInRun(run, 'ours', 'theirs').provider).toBe('ours->theirs');
+    expect(compareArmsInRun(run, 'ours', 'theirs').delta).toBeGreaterThan(0);
+    expect(compareArmsInRun(run, 'theirs', 'ours').delta).toBeLessThan(0);
+  });
+
+  it('refuses a self-pair, which has no direction and no p-value to report', () => {
+    // Comparing an arm with itself yields delta 0 and p 1 by construction. Printed, that reads as "measured, no
+    // difference" -- a statement about the system, when it is a statement about the call.
+    const run = [arm('ours', [record('a', true)])];
+    expect(() => compareArmsInRun(run, 'ours', 'ours')).toThrow(/two different arms/);
+  });
+
+  it('names the arm that is not in the run instead of skipping the pair', () => {
+    const run = [arm('ours', [record('a', true)])];
+    expect(() => compareArmsInRun(run, 'ours', 'mem0')).toThrow(/'mem0' is not in this run/);
+    expect(() => compareArmsInRun(run, 'mem0', 'ours')).toThrow(/'mem0' is not in this run/);
+  });
+
+  it('refuses an arm that was not read, because the caller named this pair', () => {
+    // `compareRuns` may skip an unread arm: it is sweeping whatever the two runs happen to share. Here the pair
+    // was asked for by name, and a silent empty result would be read as "no difference".
+    const run = [
+      arm('ours', [record('a', true)]),
+      arm('retrieval-only', [record('a', false, { read: false })]),
+    ];
+    expect(() => compareArmsInRun(run, 'ours', 'retrieval-only')).toThrow(/was not read/);
+  });
+
+  it('refuses two arms over different question sets, which in one run is a harness fault', () => {
+    // Across runs a shrinking subset is a fact about the runs and `unmatched` reports it. Within one run every arm
+    // answers the same list, so a different list means the harness lost a record; reporting it through `unmatched`
+    // would file a defect as a property of the systems being compared.
+    const run = [
+      arm('ours', [record('a', true), record('b', true)]),
+      arm('theirs', [record('a', true)]),
+    ];
+    expect(() => compareArmsInRun(run, 'ours', 'theirs')).toThrow(/2 and 1 questions/);
+  });
+});
+
+describe('compareArmsInRun on a run with no arms', () => {
+  it('says the run measured nothing rather than listing an empty set', () => {
+    // A run whose `scores[]` is empty is a dispatch that failed before retrieval. The message has to say that,
+    // because "is not in this run. The run measured ." reads as a truncation rather than as emptiness.
+    expect(() => compareArmsInRun([], 'ours', 'mem0')).toThrow(/measured nothing/);
   });
 });

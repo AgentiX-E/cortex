@@ -3,6 +3,10 @@
  * Compare two competition runs question by question, and say whether the difference is real.
  *
  *     node tools/paired-test.mjs baseline.json treatment.json [--alpha 0.05]
+ *     node tools/paired-test.mjs --within run.json [--alpha 0.05]
+ *
+ * The first form pairs one arm across two runs. The second pairs **every pair of read arms inside one run**,
+ * which is the shape a competitor comparison has.
  *
  * ## Why this exists as a tool rather than a paragraph
  *
@@ -17,16 +21,23 @@
  *
  * ## What it refuses to do
  *
- * It does not pool providers, and it does not compare a provider against a different provider. An arm's question
- * set is part of the arm; pairing `cortex-session` with `cortex/trim-2.8k` would compare two experiments and
- * report the result as one condition against another.
+ * Across two files it does not pool providers, and it does not compare a provider against a different provider:
+ * two runs differ in their sample as well as in their arm, so pairing `cortex-session` from one with `mem0` from
+ * the other would compare two experiments and report the result as one condition against another.
+ *
+ * **Within one file it does exactly that**, and the reason is a fact about the harness rather than a change of
+ * mind. One invocation samples the question list once and hands every arm the same one, so two arms in one run
+ * share their questions by construction — that is the definition of a paired comparison, and it is the only
+ * shape in which a competitor comparison exists at all. `--within` is that mode, and it is the reason the
+ * 100-question reading can say whether six questions between two systems is a difference instead of arguing about
+ * two percentages.
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-import { compareRuns } from '../packages/cortex-eval/dist/index.js';
+import { compareArmsInRun, compareRuns } from '../packages/cortex-eval/dist/index.js';
 
 const argv = process.argv.slice(2);
 const positional = argv.filter((arg) => !arg.startsWith('--'));
@@ -35,10 +46,12 @@ const flag = (name) => {
   return at === -1 ? undefined : argv[at + 1];
 };
 const alpha = Number(flag('--alpha') ?? 0.05);
+const within = argv.includes('--within');
 
-if (positional.length !== 2) {
+if (within ? positional.length !== 1 : positional.length !== 2) {
   process.stderr.write(
-    'usage: node tools/paired-test.mjs baseline.json treatment.json [--alpha 0.05]\n',
+    'usage: node tools/paired-test.mjs baseline.json treatment.json [--alpha 0.05]\n' +
+      '       node tools/paired-test.mjs --within run.json [--alpha 0.05]\n',
   );
   process.exit(2);
 }
@@ -117,6 +130,77 @@ function load(file) {
   return { name: path.basename(file), payload, scores, dataset: datasetOf(payload) };
 }
 
+const pad = (value, width) => String(value).padEnd(width);
+const pct = (value) => `${(100 * value).toFixed(1)}%`;
+
+/** `improved` / `regressed` / `not significant`, with the no-change case named separately. */
+function verdictOf(result) {
+  if (result.improved + result.regressed === 0) return 'no change';
+  if (result.p >= alpha) return 'not significant';
+  return result.delta > 0 ? 'improved' : 'regressed';
+}
+
+function rowOf(result, width) {
+  const unmatched = result.unmatched === 0 ? '' : ` (${result.unmatched} unmatched)`;
+  return (
+    `${pad(result.provider, width)}${pad(result.n, 6)}${pad(result.improved, 6)}` +
+    `${pad(result.regressed, 6)}${pad(pct(result.delta), 9)}${pad(result.p.toFixed(4), 10)}` +
+    `${verdictOf(result)}${unmatched}\n`
+  );
+}
+
+if (within) {
+  const run = load(positional[0]);
+  // "Read" is the only filter applied here, and it is stated rather than silent: an arm that never reached the
+  // reader has `correct: false` on every question, so pairing it would measure the floor and call it the arm.
+  const read = run.scores.filter((score) => score.records.some((record) => record.read));
+  const unread = run.scores.filter((score) => !score.records.some((record) => record.read));
+
+  process.stdout.write(`run      : ${run.name}  (${run.dataset})\n`);
+  process.stdout.write(`alpha    : ${alpha}\n`);
+  process.stdout.write(
+    `arms read: ${read.map((score) => `${score.provider} ${score.correct}/${score.read}`).join(', ')}\n`,
+  );
+  if (unread.length > 0) {
+    process.stdout.write(
+      `excluded : ${unread.map((score) => score.provider).join(', ')} — not read, so every question scores as\n` +
+        `           wrong and a pair would report the floor as a difference\n`,
+    );
+  }
+  process.stdout.write('\n');
+
+  if (read.length < 2) {
+    process.stdout.write(
+      `one read arm in this run, so there is no pair to test. A paired test needs two arms answering the same\n` +
+        `questions; set the run's read arms to at least two.\n`,
+    );
+    process.exit(0);
+  }
+
+  const width = Math.max(...read.map((score) => score.provider.length)) * 2 + 2;
+  process.stdout.write(
+    `${pad('baseline->treatment', width)}${pad('n', 6)}${pad('+', 6)}${pad('-', 6)}${pad('delta', 9)}` +
+      `${pad('p', 10)}verdict\n`,
+  );
+  for (const [i, baselineArm] of read.entries()) {
+    for (const treatmentArm of read.slice(i + 1)) {
+      // Both arms come from this one file, which is what makes the pairing legitimate: the run sampled the
+      // question list once and every arm answered that list. `compareArmsInRun` refuses anything else.
+      process.stdout.write(
+        rowOf(compareArmsInRun(run.scores, baselineArm.provider, treatmentArm.provider), width),
+      );
+    }
+  }
+
+  process.stdout.write(
+    `\nPairing comes from the run, not from matching provider names: one invocation hands every arm the same\n` +
+      `questions, so each pair is the same questions under two systems. 'delta' is the treatment's accuracy minus\n` +
+      `the baseline's, and '+'/'-' count the questions that changed direction. The p-value is the two-tailed\n` +
+      `exact McNemar test over those two counts only.\n`,
+  );
+  process.exit(0);
+}
+
 const baseline = load(positional[0]);
 const treatment = load(positional[1]);
 
@@ -132,9 +216,6 @@ if (!sameCorpus) {
 }
 
 const results = compareRuns(baseline.scores, treatment.scores);
-
-const pad = (value, width) => String(value).padEnd(width);
-const pct = (value) => `${(100 * value).toFixed(1)}%`;
 
 process.stdout.write(`baseline : ${baseline.name}  (${baseline.dataset})\n`);
 process.stdout.write(`treatment: ${treatment.name}  (${treatment.dataset})\n`);
@@ -152,19 +233,7 @@ process.stdout.write(
   `${pad('provider', 20)}${pad('n', 6)}${pad('+', 6)}${pad('-', 6)}${pad('delta', 9)}${pad('p', 10)}verdict\n`,
 );
 for (const result of results) {
-  const verdict =
-    result.improved + result.regressed === 0
-      ? 'no change'
-      : result.p < alpha
-        ? result.delta > 0
-          ? 'improved'
-          : 'regressed'
-        : 'not significant';
-  const unmatched = result.unmatched === 0 ? '' : ` (${result.unmatched} unmatched)`;
-  process.stdout.write(
-    `${pad(result.provider, 20)}${pad(result.n, 6)}${pad(result.improved, 6)}${pad(result.regressed, 6)}` +
-      `${pad(pct(result.delta), 9)}${pad(result.p.toFixed(4), 10)}${verdict}${unmatched}\n`,
-  );
+  process.stdout.write(rowOf(result, 20));
 }
 
 process.stdout.write(

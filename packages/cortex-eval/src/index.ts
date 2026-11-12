@@ -114,11 +114,13 @@ export { summarisePaired } from './paired-flip.js';
 export { createProviderReader } from './competitor-reader.js';
 
 // Is the difference real? A paired test over two runs of the same questions, and the reason
-// `ProviderScore.records` exists. Only the two-run entry is exported: the tool compares runs, and a caller
-// reaching for `mcnemarExact` or `compareRecords` directly would be building a second comparison rather than
-// using this one. The tests import the module directly, which is why the census reports them as
+// `ProviderScore.records` exists. Two entry points, one statistic: `compareRuns` pairs one arm across two runs,
+// `compareArmsInRun` pairs two arms that answered the same questions in one run — which is the shape a competitor
+// comparison has, because one harness invocation gives every arm the same sampled list. `mcnemarExact` and
+// `compareRecords` stay unexported: a caller reaching for them directly would be building a second comparison
+// rather than using this one. The tests import the module directly, which is why the census reports them as
 // referenced-locally.
-export { compareRuns } from './paired-test.js';
+export { compareArmsInRun, compareRuns } from './paired-test.js';
 // §13.244: the pool implementation the arm's CLI uses. Exported because it is the only way to build
 // an `AblationPool` that can enumerate its instances, and the enumeration is what keeps a pooled
 // run's census denominator equal to its question count.

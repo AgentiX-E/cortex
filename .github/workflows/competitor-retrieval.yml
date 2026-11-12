@@ -442,6 +442,23 @@ jobs:
             fi
           done
 
+      # The pairing the step above cannot express: two *systems* answering the same questions in one run. That
+      # step pairs one arm across two prompt shapes, so every line it can print has the same provider on both
+      # sides -- the right test for a prompt change and the wrong one for a competitor, where the two sides are
+      # different systems by definition. Run 43216630823 is why this exists: its two lines both read
+      # `skipped, a run file is missing`, no arm was compared, and the six-point gap between `cortex-session`
+      # (65/100) and `mem0` (59/100) stayed a hand computation until someone did it in a shell.
+      - name: Paired tests across the arms in one run
+        if: ${{ always() && github.event.inputs.read_questions != '0' }}
+        run: |
+          if [ -f competitor-read.json ]; then
+            echo '=== arms in competitor-read.json ===' | tee -a competitor-paired.txt
+            node tools/paired-test.mjs --within competitor-read.json | tee -a competitor-paired.txt
+            echo
+          else
+            echo '=== arms: skipped, the reading stage wrote no json ===' | tee -a competitor-paired.txt
+          fi
+
       - name: Summary
         if: always()
         run: |

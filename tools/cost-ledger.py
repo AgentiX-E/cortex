@@ -169,25 +169,53 @@ def cap_reading(report: dict, per_call: float) -> dict | None:
     test_room = narrowest if resolved_artifact else widest
     implied = test_room / per_call
     low, high = CAP_DENSITY_BAND
-    reading = {
+    # A band test is a fill test only when the rooms are equal, and the reason is arithmetic rather than
+    # caution. The quotient is one room over a mean taken across routes, so for a run that filled **every**
+    # route it equals `density * narrowest / mean_room` -- the whole reading is scaled by how far the
+    # narrowest room sits from the mean. `43264749133` is the case that produced this branch: rooms
+    # 24,000 x4 and 48,000/48,460 x2, 143 of 200 questions on the narrow ones, so a delivery at 4.15
+    # characters per token with nothing unspent scores `4.15 * 24000 / 30971 = 3.22` and reads
+    # `below-cap` while `tools/evidence-budget.py` measures 99.0% median utilisation against the same
+    # rooms. The bias is not one-sided either: a *high* quotient on a redistribution says the mean is small,
+    # which is consistent with every route being under its room. So the reading is withheld whenever the
+    # spread could move a full delivery out of the band.
+    #
+    # `narrowest / widest` is a lower bound on `narrowest / mean_room`, so testing it withholds the reading
+    # in a few runs where it would have been fine -- the direction that costs nothing, because an
+    # `indeterminate` is refusable by the instrument that does measure utilisation per question.
+    midpoint = (low + high) / 2
+    spread = narrowest / widest
+    if resolved_artifact and spread < low / midpoint:
+        reading = 'indeterminate'
+    else:
+        reading = 'at-cap' if low <= implied <= high else 'below-cap'
+    reading_block = {
         'maxPromptChars': widest,
         'minRoom': narrowest,
         'maxRoom': widest,
         'rooms': rooms if source == 'effectivePromptChars' else {source: rooms},
         'roomSource': source,
         'impliedCharsPerToken': round(implied, 2),
-        'reading': 'at-cap' if low <= implied <= high else 'below-cap',
+        'reading': reading,
         'band': f'{low}-{high} characters per token, English prose',
         'status': 'inferred',
     }
+    if reading == 'indeterminate':
+        reading_block['reason'] = (
+            f'the rooms span {narrowest:,} to {widest:,} ({spread:.3f} of the widest), so one room over the '
+            'mean tokens per call is scaled by the same factor and cannot answer the fill question in either '
+            'direction: a delivery that filled every route still scores below the band. '
+            '`tools/evidence-budget.py` measures utilisation per question against the resolved room, which is '
+            'the instrument that can answer it.'
+        )
     if not resolved_artifact:
-        reading['caveat'] = (
+        reading_block['caveat'] = (
             'the routes this map does not name took the product default, which the artifact does '
             'not record; the fill is computed at the widest named room and is therefore a ceiling '
             'on it rather than a measurement. Artifacts written after §13.299 carry '
             '`effectivePromptChars` and do not have this limitation.'
         )
-    return reading
+    return reading_block
 
 
 def _split_closes(report: dict) -> bool:
@@ -436,6 +464,8 @@ def render(result: dict) -> str:
             f"  implied chars per token   {cap['impliedCharsPerToken']:>12.2f}   at the {basis} room",
             f"  window fill               {cap['reading']:>12}  (inferred, band {cap['band']})",
         ]
+        if 'reason' in cap:
+            lines += ['', f"  not a fill measurement: {cap['reason']}"]
         if 'caveat' in cap:
             lines += ['', f"  ceiling, not measurement: {cap['caveat']}"]
     lines += ['', f"  comparable to              {result['comparableTo']}"]

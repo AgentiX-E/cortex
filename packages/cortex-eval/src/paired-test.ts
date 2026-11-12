@@ -209,8 +209,9 @@ function normalTwoSidedTail(z: number): number {
 /**
  * Compare one provider across two runs, keyed by question id.
  *
- * Provider names must match: the comparison is "the same arm under two conditions", and pairing
- * `cortex-session` against `cortex/trim-2.8k` would silently compare two systems whose question sets also differ.
+ * Provider names must match: the comparison is "the same arm under two conditions", and pairing a run's
+ * `cortex-session` with another run's `mem0` would compare two experiments whose question sets also differ. When
+ * both arms come from the **same** run the samples are shared by construction, and that is `compareArmsInRun`.
  * An id present in one run and not the other is excluded from `n` and reported, because a subset that shrank
  * between runs is a fact about the runs and not something to average away.
  */
@@ -221,12 +222,28 @@ export function compareRecords(
   if (baseline.provider !== treatment.provider) {
     throw new Error(
       `paired comparison needs one provider on both sides, got '${baseline.provider}' and ` +
-        `'${treatment.provider}'. Two different arms also differ in their question set, so a per-question ` +
+        `'${treatment.provider}'. Two runs also differ in their question set, so a per-question ` +
         'pairing would be comparing two experiments rather than two conditions.',
     );
   }
 
-  const after = new Map(treatment.records.map((record) => [record.id, record]));
+  return pairCorrectness(baseline.records, treatment.records, baseline.provider);
+}
+
+/**
+ * The four cells of the 2×2 table, from two per-question record lists.
+ *
+ * One implementation, because the statistic must not move when the envelope does. `compareRecords` (one arm,
+ * two runs) and `compareArmsInRun` (two arms, one run) differ only in where the records come from and in what
+ * they refuse; the arithmetic below is the same arithmetic, and a second copy of it would be a second answer to
+ * the same question.
+ */
+function pairCorrectness(
+  before: readonly QuestionRecord[],
+  after: readonly QuestionRecord[],
+  label: string,
+): PairedResult {
+  const index = new Map(after.map((record) => [record.id, record]));
   let improved = 0;
   let regressed = 0;
   let bothCorrect = 0;
@@ -234,21 +251,21 @@ export function compareRecords(
   let n = 0;
   let unmatched = 0;
 
-  for (const before of baseline.records) {
-    const now = after.get(before.id);
-    if (now === undefined) {
+  for (const earlier of before) {
+    const later = index.get(earlier.id);
+    if (later === undefined) {
       unmatched += 1;
       continue;
     }
     n += 1;
-    if (!before.correct && now.correct) improved += 1;
-    else if (before.correct && !now.correct) regressed += 1;
-    else if (before.correct) bothCorrect += 1;
+    if (!earlier.correct && later.correct) improved += 1;
+    else if (earlier.correct && !later.correct) regressed += 1;
+    else if (earlier.correct) bothCorrect += 1;
     else bothWrong += 1;
   }
 
   return {
-    provider: baseline.provider,
+    provider: label,
     n,
     unmatched,
     improved,
@@ -258,6 +275,71 @@ export function compareRecords(
     delta: n === 0 ? 0 : (improved - regressed) / n,
     p: mcnemarExact(improved, regressed),
   };
+}
+
+/**
+ * Compare two arms that answered the same questions **in one harness run**, keyed by question id.
+ *
+ * ## Why this is not the comparison `compareRecords` refuses
+ *
+ * `compareRecords` refuses two different provider names because two *runs* also differ in their samples: pairing
+ * `cortex-session` from run A with `mem0` from run B would compare two experiments and call the result one
+ * condition against another. That reason does not survive into a single run. One harness invocation samples the
+ * question list once and gives every arm the same one — `scores[]` carries one `records[]` per arm over the same
+ * ids — so the pairing is established by the file, not by matching names. The refusal belongs to the caller,
+ * which is the only place that knows whether the two sides came from one run or two.
+ *
+ * ## What it refuses, and why each refusal is a different mistake
+ *
+ * - **The same arm twice.** `delta` 0 and `p` 1 by construction; printed, that reads as "measured, no
+ *   difference" — a claim about the system that is really a claim about the call.
+ * - **A name that is not in the run.** A missing arm is a dispatch that did not select it, and a silent empty
+ *   table would be read as "no difference" by anyone who did not know what was asked for.
+ * - **An arm that was not read.** Its `correct` is `false` for every question, so it would score as a perfectly
+ *   stable floor rather than as an absent measurement.
+ * - **Two arms over different question lists.** Within one run that is a harness fault — a record went missing —
+ *   and reporting it through `unmatched` would file a defect as a property of the systems being compared. Across
+ *   runs the same asymmetry is a fact about the two runs, which is why `compareRecords` reports it there instead.
+ */
+export function compareArmsInRun(
+  scores: readonly ProviderScore[],
+  baselineName: string,
+  treatmentName: string,
+): PairedResult {
+  if (baselineName === treatmentName) {
+    throw new Error(
+      `paired comparison needs two different arms, got '${baselineName}' on both sides. A self-pair is ` +
+        'zero by construction, and printing it would report the call as a measurement of no difference.',
+    );
+  }
+  const find = (name: string): ProviderScore => {
+    const found = scores.find((score) => score.provider === name);
+    if (found === undefined) {
+      const known = scores.map((score) => `'${score.provider}'`).join(', ');
+      throw new Error(`'${name}' is not in this run. The run measured ${known || 'nothing'}.`);
+    }
+    return found;
+  };
+  const baseline = find(baselineName);
+  const treatment = find(treatmentName);
+  const unread = [baseline, treatment].filter(
+    (score) => !score.records.some((record) => record.read),
+  );
+  if (unread.length > 0) {
+    throw new Error(
+      `'${unread.map((score) => score.provider).join("' and '")}' was not read in this run, so every ` +
+        'question scores as wrong and the pair would read as a stable floor rather than as a measurement.',
+    );
+  }
+  if (baseline.records.length !== treatment.records.length) {
+    throw new Error(
+      `the two arms answered ${baseline.records.length} and ${treatment.records.length} questions. ` +
+        'Every arm in one run answers the same list, so a different count is a lost record, not a property of ' +
+        'the two systems.',
+    );
+  }
+
+  return pairCorrectness(baseline.records, treatment.records, `${baselineName}->${treatmentName}`);
 }
 
 /** Pair every provider present in both runs, in the baseline's order. */

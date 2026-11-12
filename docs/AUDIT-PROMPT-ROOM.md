@@ -135,3 +135,45 @@ the room cannot be bought by truncating; nothing in this campaign has stated the
 The row that moved most is not the row with the new number. `C2` went from "no instrument" to "instrument,
 denominator, named arm", and it has not moved at all on the quantity it measures: a ratio of one is the
 registered budget measured against itself.
+
+## 6. The negative reading that a redistribution fakes (`43264749133`)
+
+§5 closed this file on `cap_reading` returning `at-cap` with a stated basis, and the repair was correct for the
+direction it was written for. It has a second direction, and that one was wrong.
+
+The quotient the ledger tests is `room / (promptTokens / calls)`, and on a run with more than one room the
+numerator is **one route's** room while the denominator is a mean **across** routes. So for a delivery that filled
+every route,
+
+```
+implied = density * narrowest / mean_room
+```
+
+`43264749133` assembles under `{multi-session: 48,460, temporal: 48,000, flat: 24,000, knowledge-update: 24,000,
+abstention: 24,000, assistant: 24,000}`. 143 of its 200 question-runs are on the 24,000 routes, so `mean_room` is
+30,971 and a delivery at 4.15 characters per token with **nothing unspent** scores `4.15 × 24,000 / 30,971 = 3.22`,
+outside the 3.5–4.7 band. The ledger printed `below-cap` at 3.29 — a verdict of "the window did not fill" on an
+artifact whose own `tools/evidence-budget.py` reading is **99.0% median utilisation, 235 characters unspent**.
+
+The bias is not one-sided. A *high* quotient on a redistribution says the mean prompt is small, which is equally
+consistent with every route sitting under its own room. So the band test means nothing on unequal rooms in either
+direction.
+
+| | before | after |
+| --- | --- | --- |
+| rooms equal, quotient in band | `at-cap` | `at-cap` |
+| rooms equal, quotient outside | `below-cap` | `below-cap` |
+| rooms spanning 24,000–48,460, quotient 3.29 | **`below-cap`** — false, the window is 99% full | **`indeterminate`**, with the spread and the reason |
+| rooms 48,000 against 48,460 (1% spread) | `at-cap` | `at-cap` — a spread below the band's own width cannot move a full delivery out of it |
+| the instrument that can answer | unstated | named: utilisation per question against the resolved room |
+
+The threshold is `narrowest / widest ≥ low / midpoint`, i.e. the rooms must sit within the band's own 15% for the
+quotient to be a fill measurement at all. Testing the *lower bound* `narrowest / widest` (rather than the true
+`narrowest / mean_room`, which needs per-route question counts the artifact does not carry) withholds the reading
+on a few runs where it would have been fine. That is the direction that costs nothing: `indeterminate` is
+refusable in one command by the tool that measures the thing directly, while a false `below-cap` is refuted only
+by reading two tools and noticing they disagree — which is how this one was found.
+
+**Why this is worth a section.** `C6`'s verdict in `MEASURE-WIDTH-PLAN.md` §7 rests on "the cap is not in the
+quantity being measured". A tool that reports the cap as unfilled when it is full makes that sentence unavailable
+in exactly the runs where a redistribution is under test — the ones where the room is being moved on purpose.

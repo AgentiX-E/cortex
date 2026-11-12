@@ -219,6 +219,10 @@ all-gold 12.4% against 82.2% — and that is exactly the trade the reading would
 `mem0,cortex/trim-2.8k` at n = 100 is the cheapest row in this file that could support a SOTA statement about
 cost *and* accuracy at once, and it is the next dispatch this file recommends.
 
+> It ran on `43216630823` and the answer is §9: **1.44×** the tokens, 54/100 against 59/100, paired
+> p = 0.4583. The 1.58× quoted above was the n = 20 reading; the n = 100 dispatch delivered 2,799 against
+> 1,942, which is 1.44×. The trade is real, it is priced, and it is not yet resolved in either direction.
+
 ## 8. Reproduction
 
 ```sh
@@ -231,4 +235,109 @@ gh workflow run competitor-retrieval.yml \
 # the two artifacts this file reads
 #   art-43199357450/competitor-read.txt   temp=0: cortex-session 13/20, mem0 11/20
 #   art-43178388235/competitor-read.txt   temp=default: cortex-session 11/20, mem0 12/20  (accuracy withdrawn)
+```
+
+## 9. The decision row: n = 100, with the cost-matched arm in it (`43216630823`)
+
+`7.2` named the missing row and recommended it. It ran: `read_arms` carried `mem0`, `cortex-session` and
+`cortex/trim-2.8k`, one invocation, one sample of 100 questions round-robin across the five capabilities, reader
+and judge both `deepseek-chat` at `temp=0`, `k = 10`. One artifact, so every row below answered the same questions
+— which is what makes §9.2 a paired test rather than two percentages.
+
+### 9.1 The table
+
+| provider | build | recall@k | all-gold | MRR | accuracy | ~tok | per correct answer |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cortex-session` | none | 87.0% | **73.0%** | 0.746 | **65/100** | 33,310 | 51,246 |
+| `cortex/trim-2.8k` | none | 73.0% | 6.0% | 0.708 | 54/100 | 2,799 | 5,183 |
+| `mem0` 2.2.1 | embedding | **99.0%** | 4.0% | **0.846** | 59/100 | **1,942** | **3,292** |
+
+`~tok` is `meanContextChars / 4` per question — delivered evidence, not the whole prompt. The last column is
+`~tok × 100 / correct`: the bill for one right answer, which is the quantity `H9` asks about because a cost
+comparison whose denominator is questions rewards an arm for answering *less*.
+
+Configuration was identical across the three rows, and the harness printed `comparability(identical): A`. Ingest
+stored **4,713 of 4,713** sessions with 0 refused; the SUT returned 0 refusals and 0 empty results over 100
+questions. The two retrieval-only rows in the same run (`cortex/whole-8t`, `null-floor`) and the two unread
+`cortex/trim-8t` / `lexical-reference` rows are excluded here because they carry no accuracy — §9.4 is about what
+their absence means.
+
+### 9.2 The pairing, and the one line that reaches significance
+
+`node tools/paired-test.mjs --within competitor-read.json` — three pairs, exact McNemar, alpha 0.05:
+
+| baseline -> treatment | n | + | − | delta | p | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `cortex-session -> cortex/trim-2.8k` | 100 | 6 | 17 | **−11.0%** | **0.0347** | regressed |
+| `cortex-session -> mem0` | 100 | 11 | 17 | −6.0% | 0.3449 | not significant |
+| `cortex/trim-2.8k -> mem0` | 100 | 17 | 12 | +5.0% | 0.4583 | not significant |
+
+Three sentences, and the first is the uncomfortable one:
+
+1. **The only real difference in this run is between our two arms.** `cortex/trim-2.8k` is 11 points behind
+   `cortex-session` (17 questions lost against 6 gained, p = 0.0347). That is a *cost curve*, not a competitor
+   result: cutting 91.6% of the delivered context costs 11 points of accuracy. `C6` measured the same shape from
+   the other end — a 27.1% bill cut for 4 points — so the two now agree on the price of evidence in this task.
+2. **Our +6 over `mem0` is not a win.** 17 questions went to `mem0` and 11 to us; p = 0.3449. A 6-point gap on 100
+   questions is a coin (28 discordant pairs split 11:17 does not clear 0.05). Writing "+6" in a table without this
+   line is the error `MEASURE-PAIRED-POWER.md` exists to price.
+3. **Our −5 at cost parity is not a loss either.** `trim-2.8k` trails `mem0` by 5 points at **1.44×** the tokens
+   and p = 0.4583. Same coin, other side.
+
+### 9.3 What §9.2 licenses and what it does not
+
+**`H8` is satisfied for the first time.** The cost-parity hypothesis needed a pair whose delivered context is
+within 2×; `cortex-session` against `mem0` is **17.15×** and cannot answer it, `cortex/trim-2.8k` against `mem0` is
+**1.44×** and can. So the comparison now exists — and its result is "no significant difference in either
+direction at n = 100", which is a *different* statement from "we are behind" and from "we are ahead".
+
+**No accuracy claim is available from this run at n = 100, in either direction.** That is not a reason to run more
+of the same: a 5-point difference at this discordance needs roughly four times the questions to resolve, and the
+four-hours-per-100 wall clock in §7 makes that a day of runner time for one sentence. The cheaper route is the one
+§9.4 opens — raise the accuracy of the cheap arm so the gap is no longer near zero, and only then spend the
+questions on proving it.
+
+**`all-gold` is an arm-shape statistic, not a quality statistic.** `mem0` covers every gold turn on 4.0% of
+questions and still answers 59 of 100; `cortex-session` covers every gold turn on 73.0% and answers 65. An
+extractor that returns short entries rarely contains *all* of a multi-turn gold set, and that says nothing about
+whether the reader can answer from what it did return. Any future row that quotes `all-gold` as evidence of
+retrieval quality across providers of different granularity is reading a property of the unit size.
+
+### 9.4 The two defects this run found, and what each cost
+
+**The paired step could not express this comparison at all.** `competitor-paired.txt` carried two lines, both
+`skipped, a run file is missing`, because the step pairs *prompt shapes* of one arm across two files — `con` and
+`dispatch`, `dispatch` and `dispatch2` — and this dispatch asked for neither. The job reported success, the Summary
+printed two skip lines, and the three arms in `competitor-read.json` were never compared by anything in the
+workflow. The three-arm table above was a hand computation in a shell before this section existed, which is exactly
+the second-comparer defect `tools/paired-test.mjs` was written to prevent, one level up.
+
+The repair is `compareArmsInRun` in `cortex-eval` and `--within` on the tool: one run file, every pair of *read*
+arms, the same McNemar over the same records. It refuses the four ways this can be asked wrongly — a self-pair
+(zero by construction), a name absent from the run (a dispatch that did not select it), an arm that was never read
+(`correct: false` throughout, so it scores as a floor), and two arms over different question lists (within one run
+that is a lost record, not a property of the systems). `competitor-retrieval.yml` now runs it as its own step, so
+the numbers in §9.2 come from the artifact rather than from a shell.
+
+**`below-cap` was being reported on runs whose window was full.** The cost ledger's fill test divides one room by
+the mean tokens per call; on a redistribution that quotient is scaled by `narrowest / mean_room`, so a run that
+filled **every** route still lands below the band. `43264749133` read `below-cap` at 3.29 while
+`tools/evidence-budget.py` measured **99.0% median utilisation** against the same rooms. The ledger now withholds
+the reading (`indeterminate`) whenever the room spread could move a full delivery out of the band, and names the
+instrument that can answer it. Two readings of one artifact disagreeing is not a matter of taste; the one that was
+wrong is now silent about the question it cannot answer.
+
+### 9.5 Reproduction
+
+```sh
+# the reading stage in §9.1: one invocation, three read arms, pinned sampler
+gh workflow run competitor-retrieval.yml \
+  -f questions=5 -f read_questions=100 \
+  -f sut=mem0 -f sut_infer=0 \
+  -f read_arms=mem0,cortex-session,cortex/trim-2.8k -f read_prompts=con \
+  -f limit=10 -f temperature=0
+
+# §9.2, from the artifact alone
+node tools/paired-test.mjs --within competitor-read.json
+node tools/paired-test.mjs --within competitor-read.json --alpha 0.01   # and how much of it survives
 ```

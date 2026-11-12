@@ -158,3 +158,59 @@ def test_no_source_file_still_calls_the_default_24_000() -> None:
             if stale.search(line):
                 offenders.append(f'{path.relative_to(REPO)}:{number}: {line.strip()}')
     assert offenders == [], 'a comment claims the product default is 24,000:\n' + '\n'.join(offenders)
+
+
+def test_a_redistribution_withholds_the_fill_reading() -> None:
+    """`43264749133`'s room set: the quotient cannot answer the fill question, so it does not claim to.
+
+    The reading was `below-cap` at 3.29, and the same artifact measured 99.0% median utilisation against
+    those rooms. The quotient is `narrowest_room / mean_tokens`, and on a redistribution the mean spans
+    routes whose rooms are twice the narrowest -- so a delivery that filled every route scores
+    `4.15 * 24_000 / 30_971 = 3.22` and lands outside the band with nothing unspent.
+    """
+    cap = ledger_tool.cap_reading(
+        report(
+            {
+                'effectivePromptChars': {
+                    'multi-session': 48_460,
+                    'temporal': 48_000,
+                    'flat': 24_000,
+                    'knowledge-update': 24_000,
+                    'abstention': 24_000,
+                    'assistant': 24_000,
+                }
+            }
+        ),
+        per_call=7_286,
+    )
+    assert cap is not None
+    assert cap['reading'] == 'indeterminate'
+    assert 'reason' in cap and 'scaled' in cap['reason']
+    # The numbers stay printed: withholding the verdict is not withholding the evidence.
+    assert cap['impliedCharsPerToken'] == pytest.approx(round(24_000 / 7_286, 2))
+    assert cap['minRoom'] == 24_000 and cap['maxRoom'] == 48_460
+
+
+def test_a_high_quotient_on_a_redistribution_is_withheld_too() -> None:
+    # The bias is not one-sided: a large quotient says the mean prompt is small, which is equally
+    # consistent with every route sitting under its own room. Only the band test on equal rooms means
+    # anything, so both directions are withheld together.
+    cap = ledger_tool.cap_reading(
+        report({'effectivePromptChars': {'mr': 48_460, 'flat': 24_000}}),
+        per_call=3_000,
+    )
+    assert cap is not None
+    assert cap['impliedCharsPerToken'] == pytest.approx(8.0)
+    assert cap['reading'] == 'indeterminate'
+
+
+def test_rooms_within_the_band_width_keep_the_reading() -> None:
+    # 48,460 against 48,000 is a 1% spread, which cannot move a full delivery out of a band that is itself
+    # 15% wide. The threshold is `low / midpoint`, so a run this close is still answered rather than refused.
+    cap = ledger_tool.cap_reading(
+        report({'effectivePromptChars': {'multi-session': 48_460, 'temporal': 48_000}}),
+        per_call=11_721,
+    )
+    assert cap is not None
+    assert cap['reading'] == 'at-cap'
+    assert 'reason' not in cap
