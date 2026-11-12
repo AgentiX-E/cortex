@@ -97,3 +97,64 @@ it parses to the empty answer.
 
 Criterion 2 is a **non-inferiority** bound, not an improvement target. A parser repair that moves the score by +4 would
 mean the judge had been scoring dumps as answers, and that would need its own file.
+
+## 6. The dispatch, and all four criteria met
+
+`43140878641`, 500 questions, four repetitions, one variable (the closing line of three builders), 70 retries.
+
+| criterion | threshold | reading | |
+| --- | --- | --- | :---: |
+| answers carrying a line-initial date stamp | 16 → **0** | **0** | pass |
+| total correct | ≥ **455** | repetitions **457 / 456 / 454 / 458**, mean **456.25** | pass |
+| the 30 `bare-decline` questions | **30/30** | **30/30** in all four | pass |
+| `bareRetry.answered` | ≥ **70** | **70 of 70 attempted** | pass |
+
+Against the control (`42533236864`, repetitions 456 / 453 / 457 / 455, mean 455.25) the net is **+1.00 question**
+(0.20 points), which is inside the arm's own draw spread and is reported as such. Paired over 2,000 question-repetitions
+the movement is **33 converted, 29 broken**, and by question **19 up, 16 down** — so the repair is real at the level it
+was aimed at (16 unparseable replies became parseable) and noise-level at the level of the score.
+
+| capability | n | control mean | feature mean | delta |
+| --- | ---: | ---: | ---: | ---: |
+| `IE` | 150 | 141.25 | 138.50 | **−2.75** |
+| `MR` | 121 | 100.50 | 102.00 | +1.50 |
+| `KU` | 72 | 62.75 | 63.50 | +0.75 |
+| `TR` | 127 | 120.75 | 122.25 | +1.50 |
+| `ABS` | 30 | 30.00 | 30.00 | 0.00 |
+
+The one named conversion this file can claim is `852ce960` (`0110 → 1101`), the mortgage pre-approval question that
+`MEASURE-KU-STALE.md` reads as a stale twin: it is wrong in two of four repetitions under the control and right in three
+under the repair. `89941a93` also recovers (`1011 → 1101`), which matters because that is one of the two questions the
+`conflicts: true` block broke. Neither is claimed as a mechanism: the variable here is which line the parser reads.
+
+`IE`'s −2.75 is the cost and it is the one number a reader should check first, since `IE` is the capability with the
+least room (150 questions, 95.0% mean). Four questions going `1111 → 1011`/`1010` is what that delta is made of, and
+22 of the 29 broken repetitions are inside `IE` and `MR` while 26 of the 33 conversions are in `MR` and `TR`.
+
+**Adopted**, because the four criteria were written before the dispatch and all four were met, and because what it
+repairs is a parser reading rather than a model behaviour. The transcript story closes with it: there never were
+answers that were pure transcripts, and now there are no answers that *look* like them either.
+
+### 6.1 The configuration this run carried, and why the evidence files still describe the older one
+
+`registration-attest.py` **refuses** `43140878641`, and the refusal is correct rather than noise:
+
+```
+  applied    sha256:9da51cc2…87732a
+  registered sha256:0c6c25e7…480075  (run 42533236864, adopted by §13.336)
+```
+
+The diff of the two artifacts' `memoryArmConfig` is two keys of 33, and both are **defaults written out**:
+
+| key | `42533236864` | `43140878641` |
+| --- | --- | --- |
+| `conflicts` | absent (default `false`) | `false` |
+| `replyRepair` | absent (default `off`) | `off` |
+
+So the two runs are behaviourally the same configuration and the fingerprint differs because the projection now
+carries the two switches explicitly — which is the documented failure mode of a hash over a projection
+(`ACCEPTANCE-MATRIX.md` §2.3: "the fingerprint decides and the difference list only diagnoses"). The consequence
+is stated rather than worked around: **`cost.json`, `categories.json` and `frontier.json` still describe
+`42533236864`**, and refreshing them requires `arm-config-record.py --record` in the change that adopts this run as
+the shipping baseline — in that order, because the second is what makes the first true. That change is not this
+one; a label repair that also silently re-bases five acceptance rows would be two changes wearing one commit.
