@@ -9,6 +9,7 @@
  */
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
 import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
+import type { WidthPlanOptions } from './width.js';
 
 /** The knobs the admission gates expose. */
 export type GateOptions = {
@@ -218,6 +219,33 @@ export type CortexMemoryOptions = {
    * and its delta is attributable to the two it named.
    */
   maxPromptCharsByRoute?: Partial<Record<TurnCapRoute, number>> | undefined;
+  /**
+   * How much evidence one question is worth, when the arm wants to stop paying for a fixed room.
+   *
+   * ## The measurement
+   *
+   * §13.302 answered "one room per route", which left the bill at **9,168** prompt tokens per question with
+   * **67.3%** of it the two load-bearing routes at their full 48,460 characters (`cost.json`,
+   * `cap.rooms`). §14.126 registers `C6` on the arithmetic that says where the money went: at **2x the gold
+   * evidence** the same five hundred questions would bill **3,703** -- so 59.6% of the bill is not evidence,
+   * it is the assumption that every question needs the same width.
+   *
+   * ## What this option is not
+   *
+   * Not a smaller room. `maxPromptChars` is one number per route and can only express "every question on
+   * this route gets this much"; the mechanism here is per question, and it reads the question's own
+   * relevance mass to decide. Nor is it a second selector: the funded prefix is what `chooseEvidence` would
+   * have chosen first anyway, so the cut removes the **tail** rather than reordering the head.
+   *
+   * ## The risk, stated where it is chosen
+   *
+   * Relevance mass is not gold recall -- `a4996e51` is the recorded case of a decisive operand sitting in a
+   * turn that shares no term with the question. So this mechanism can cut evidence that mattered, and its
+   * registered negative form is `03` §14.126.2 clause 5: below 90.40% accuracy on 200 questions x 2
+   * repetitions the family closes. Absent means the route's room is the only bound, which reproduces every
+   * archived artifact.
+   */
+  widthPlan?: WidthPlanOptions | undefined;
   /**
    * Upper bound on the characters one turn may contribute to the prompt. Absent means none.
    *

@@ -54,6 +54,7 @@ import {
   planAbstentionRecovery,
 } from './abstention-recovery.js';
 import { planReplyRepair } from './reply-repair.js';
+import { planEvidenceRoom, type WidthDecision } from './width.js';
 import {
   adjudicateSupersession,
   emptySupersessionCensus,
@@ -411,6 +412,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastVote: Vote | null = null;
   /**
+   * How the most recent question's evidence budget was decided, or `undefined` when no arm asked.
+   *
+   * Four reasons rather than a character count, because a count alone cannot distinguish the two
+   * findings a reader has to separate: **the plan looked and declined** (`identity`: the prefix already
+   * covered every candidate, so the cap would remove nothing) and **the plan cut and delivered**
+   * (`capped`). §14.126.2 clause 4 requires `width`/`reason` per question, and a mechanism whose
+   * negative form is a closure decision cannot be scored from a number that reads the same when it
+   * never fired.
+   */
+  #lastWidth: WidthDecision | undefined = undefined;
+  /**
    * How every vote this instance resolved, counted by outcome.
    *
    * Three outcomes rather than two, because "unanimous" and "majority" are different facts about
@@ -718,6 +730,26 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   lastVote(): Vote | null {
     return this.#lastVote;
+  }
+
+  /**
+   * How the most recent question's evidence budget was decided, or `undefined` when the arm asked for none.
+   *
+   * Returned by value rather than as a live reference, for the reason `voteCounts()` is: the arm
+   * serialises this straight into its artifact, and a caller holding the object could otherwise change
+   * what a later reading attributes to this question.
+   *
+   * `reason` is the field to read first. `capped` is the only one that means the mechanism acted;
+   * `identity` means it looked and the prefix already covered every candidate; `unsignalled` means the
+   * question shares no content term with anything retrieved, which is the population the cut must not
+   * touch; `empty` means there was nothing to rank.
+   */
+  lastWidth(): WidthDecision | undefined {
+    const decision = this.#lastWidth;
+    if (decision === undefined) return undefined;
+    return decision.plan === undefined
+      ? { reason: decision.reason }
+      : { reason: decision.reason, plan: { ...decision.plan } };
   }
 
   /**
@@ -1338,6 +1370,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #declinedEmpty(): null {
     this.#reasons.empty += 1;
+    // No prompt was assembled, so no budget was decided. Leaving the previous question's decision in
+    // place would make `lastWidth()` describe a cut that this question never had -- and the arm writes
+    // that field once per question.
+    this.#lastWidth = undefined;
     return null;
   }
 
@@ -1422,9 +1458,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     route: TurnCapRoute,
     questionDate: string | undefined,
   ): Promise<Answer> {
-    const options = this.#promptOptions(route);
     const kept = this.#turnsForRoute(turns, route);
     if (kept.length === 0) return this.#declinedEmpty();
+    // §14.126. After the route filter and before the prompt, because both halves of that ordering are
+    // load-bearing: a width computed over turns this route will not see would fund evidence the prompt
+    // cannot carry, and a width computed after the prompt would be a description rather than an input.
+    const options = this.#promptOptions(route, this.#widthFor(question, kept)?.plan?.evidenceChars);
     const ordering = this.#orderingFor(question, questionDate);
     const assembled = this.#withConflicts(
       question,
@@ -1683,7 +1722,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
     question: string,
     sessions: readonly AdmittedSession[],
   ): Promise<Answer> {
-    const options = this.#promptOptions('multi-session');
+    // §14.126. The width is decided over the turns this route will render, flattened, so the plan ranks
+    // the same set `buildSessionPrompt` will spend the room on. Ranking the sessions instead would make
+    // the unit of the cut a session while the unit of the budget is a character, and `MR` -- the route
+    // this reaches -- is the one whose failure mode is a room too small for the events it needs.
+    const options = this.#promptOptions(
+      'multi-session',
+      this.#widthFor(
+        question,
+        sessions.flatMap((session) => session.turns),
+      )?.plan?.evidenceChars,
+    );
     const assembled = buildSessionPrompt(
       question,
       sessions,
@@ -2133,7 +2182,35 @@ export class CortexMemory implements SessionAwareMemorySystem {
     };
   }
 
-  #promptOptions(route: TurnCapRoute): PromptOptions {
+  /**
+   * This question's evidence budget, or `undefined` when the arm did not ask for one.
+   *
+   * One method rather than a call to `planEvidenceRoom` at each of the two builders that can carry
+   * evidence, for the reason `#capReaches` is one predicate: the six paths resolve their options in one
+   * place, so a route cannot be added and silently answer at its full width while the artifact reports a
+   * cap. The decision is also recorded -- {@link #lastWidth} -- because `price` is not the only thing a
+   * reader needs: "the plan did not act" and "the plan acted and delivered what it asked for" are
+   * different findings about the mechanism, and only the second is evidence that the cut is affordable.
+   */
+  #widthFor(question: string, turns: readonly AdmittedTurn[]): WidthDecision | undefined {
+    const options = this.#options.widthPlan;
+    if (options === undefined) {
+      // Cleared rather than left alone, so `lastWidth()` describes **this** question. A run that turned
+      // the option off halfway would otherwise report the previous question's cut against a prompt it did
+      // not produce, which is the same defect `#lastReview` is reset at the start of every question for.
+      this.#lastWidth = undefined;
+      return undefined;
+    }
+    const decision = planEvidenceRoom(
+      question,
+      turns.map((turn) => turn.content),
+      options,
+    );
+    this.#lastWidth = decision;
+    return decision;
+  }
+
+  #promptOptions(route: TurnCapRoute, evidenceChars?: number): PromptOptions {
     // `promptContract` is absent on every pre-switch construction, and an absent
     // contract means the baseline rendering -- which is the same answer as naming
     // `abstention`. The lookup is guarded rather than defaulted so the record stays a
@@ -2154,6 +2231,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const room = this.#promptCharsFor(route);
     return {
       ...(room === undefined ? {} : { maxChars: room }),
+      // §14.126's per-question width, resolved at the call sites that have the **question** rather than
+      // here, because this method's only argument beyond the route is what the route needs. Forwarded
+      // rather than computed here for the same reason `maxChars` is resolved here and not at the six
+      // prompt builders: an option resolved at a call site is an option a route can miss, and a route that
+      // missed this one would answer at its full width while the artifact reported a cap.
+      ...(evidenceChars === undefined ? {} : { maxEvidenceChars: evidenceChars }),
       // §13.68's width, now reached through §13.73's route list. The decision is made HERE
       // rather than at the six call sites, so a route cannot be added and silently receive a
       // cap that the run's artifact says reaches two routes. `undefined` means "every route"

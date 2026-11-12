@@ -53,6 +53,14 @@ export { confidenceFromLength } from './confidence.js';
 // alternative -- widening `confidenceFor` -- was refused.
 export { lexicalRelevance } from './relevance.js';
 
+// width
+// §14.126's per-question evidence budget, exported as a value and a type for the reason `relevance`
+// above is: the measurement arm is a caller outside this package and supplies the three numbers.
+// `planEvidenceRoom` is here as well as `CortexMemoryOptions.widthPlan` because the arm's own tests
+// assert the cut against the question rather than against an assembled prompt.
+export { planEvidenceRoom } from './width.js';
+export type { WidthDecision, WidthPlan, WidthPlanOptions } from './width.js';
+
 // sessionize
 export {
   admitSessions,

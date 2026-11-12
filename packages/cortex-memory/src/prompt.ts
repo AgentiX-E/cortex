@@ -616,6 +616,35 @@ export type PromptOptions = {
   /** Upper bound on prompt length in UTF-16 code units. */
   maxChars?: number;
   /**
+   * Upper bound on the **evidence** this prompt carries, in rendered characters. Absent means the total
+   * room is the only bound.
+   *
+   * ## Why a second bound, when `maxChars` already bounds the prompt
+   *
+   * Because the two are set by different quantities. `maxChars` is the route's room -- one number per
+   * route, 48,460 for `multi-session` and 24,000 for the other four -- and `cost.json` shows what that
+   * costs: 9,168 billed prompt tokens per question, **67.3% of it the two load-bearing routes answering
+   * at their full width** while the median delivered turn is 272 characters. The evidence room and the
+   * prompt room are the same number today only because nothing ever had a reason to separate them.
+   *
+   * `planEvidenceRoom` in `width.ts` produces this number per question: rank the candidates by relevance,
+   * fund the shortest prefix that explains a target share of the relevance mass. It cannot produce a
+   * *prompt* bound, because that would require predicting the instruction and question lengths, which are
+   * properties of the contract and the question rather than of the candidates -- so the allocator's output
+   * is an evidence bound and this field is where it enters.
+   *
+   * ## The smaller of the two wins, and that is expressible
+   *
+   * `fitToBudget` spends `min(remaining - header, maxEvidenceChars)`, so a cap larger than the room is
+   * inert (the identity for any archived run) and a cap smaller than it shrinks the evidence without
+   * touching the instruction block -- the behaviour `maxChars` cannot express on a question whose prompt
+   * is already under its room, because that path returns before any budget is spent.
+   *
+   * `| undefined`, like `maxTurnChars` and unlike `maxChars`: a sweep reads this from an environment
+   * variable, and an unset variable must behave exactly as an absent field rather than as a default.
+   */
+  maxEvidenceChars?: number | undefined;
+  /**
    * Upper bound on the characters **one turn** may contribute to the rendering.
    *
    * ## The measurement, and the assumption it overturns
@@ -2762,7 +2791,10 @@ export function buildPrompt(
 
   const prompt = [evidenceBlock, '', `QUESTION: ${question}`, '', instruction].join('\n');
 
-  if (prompt.length <= maxChars) {
+  if (
+    prompt.length <= maxChars &&
+    (options.maxEvidenceChars === undefined || evidence.length <= options.maxEvidenceChars)
+  ) {
     // `ordered`, not `turns`: this path carries every admitted turn, so the promoted list is the whole
     // set and reporting the unrereordered one would make the artifact describe a prompt the model did
     // not read. The set is identical, which is why nothing above this line depends on the choice.
@@ -2785,6 +2817,8 @@ export function buildPrompt(
     },
     maxChars,
     'EVIDENCE:\n',
+    undefined,
+    options.maxEvidenceChars,
   );
 }
 
@@ -2897,6 +2931,7 @@ function fitToBudget(
   maxChars: number,
   header: string,
   assembly?: 'instruction-first',
+  evidenceCap?: number,
 ): AssembledPrompt {
   const SEPARATOR = '\n\n';
 
@@ -2933,7 +2968,17 @@ function fitToBudget(
   const noteText = note.length + SEPARATOR.length <= remaining ? note : '';
   if (noteText.length > 0) remaining -= noteText.length + SEPARATOR.length;
 
-  const evidenceRoom = remaining - header.length;
+  // Two budgets, and the smaller one wins. `remaining` is what the prompt's total room left after the
+  // instruction, the question, the note and the header; `evidenceCap` is what this question is worth,
+  // decided by `planEvidenceRoom` from its own relevance mass. They are separate quantities because they
+  // are set by different things -- the route's room and the question's shape -- and a single number could
+  // only express one of them. `??` rather than `||` for the reason `#promptCharsFor` uses it: a cap of
+  // zero is a value a sweep will produce, and substituting the room for it would make the artifact
+  // describe a prompt that was never assembled.
+  const evidenceRoom =
+    evidenceCap === undefined
+      ? remaining - header.length
+      : Math.min(remaining - header.length, evidenceCap);
   const selected =
     evidenceRoom <= 0 ? NOTHING_CARRIED : chooseEvidence(question, plan, evidenceRoom);
 
@@ -3592,7 +3637,12 @@ export function buildSessionPrompt(
   // is byte-identical to its shipped prompt, so a movement on MR cannot be attributed to the ask.
   // The reach report records which routes the ask actually changed for exactly this reason.
   const full = assembleSections(sections, instruction, options.assembly);
-  if (full.length <= maxChars) {
+  // Two paths, one cap: the evidence bound has to be tested on the fits path as well, because a
+  // multi-session prompt is usually **under** its 48,460-character room -- the arm's median delivered
+  // evidence is what makes that true -- and a cap tested only inside `fitToBudget` would never fire on
+  // this route. That is the route the cap exists for, so the error would have been total.
+  const overBody = options.maxEvidenceChars !== undefined && body.length > options.maxEvidenceChars;
+  if (full.length <= maxChars && !overBody) {
     // The placeholder is a sentence about evidence, not evidence, so an empty
     // session list reports zero carried characters. That path cannot reach the
     // model anyway -- an empty admission declines before any prompt is built, per
@@ -3623,6 +3673,7 @@ export function buildSessionPrompt(
     maxChars,
     'EVIDENCE:\n',
     options.assembly,
+    options.maxEvidenceChars,
   );
   // `body` is the placeholder on an empty list, and `fitToBudget` cannot tell
   // that from evidence, so the correction is made here where the list length is
