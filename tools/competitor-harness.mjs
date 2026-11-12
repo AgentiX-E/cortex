@@ -37,12 +37,14 @@ import {
   createLlmJudge,
   createProviderReader,
   measureRetrieval,
+  readTemperature,
   toJudgeQuestionType,
 } from '../packages/cortex-eval/dist/index.js';
 import { loadLongMemEval } from '../packages/cortex-eval/dist/datasets/longmemeval-loader.js';
 import { generateSyntheticBenchmark } from '../packages/cortex-eval/dist/datasets/synthetic-benchmark.js';
 import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 import { createSutProvider } from './competitor-sut.mjs';
+import { NO_READER, describeJudgeIdentity, describeReaderIdentity } from './reader-identity.mjs';
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
@@ -270,12 +272,17 @@ const scores = await measureRetrieval(dataset, providers, {
 // The reader and judge are named by the model that actually ran, not by "deepseek": `comparability()` compares
 // these strings, so a run whose configuration says `deepseek-chat` and whose calls went to `deepseek-v4-pro`
 // would be graded A against a run it does not match.
+// The temperature belongs in the name for the same reason the model does: `comparability()` compares these
+// strings, and two runs whose requests differed by a sampling field are not the same reading. Before this line
+// the workflow passed no temperature at all, so every row was served at the provider default while the artifact
+// said nothing about it -- and the same control arm read twice moved two questions in twenty (run 43178388235).
+// The mapping lives in `reader-identity.mjs` so it is testable without a dataset, a key or a model.
+const model = process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat';
+const temperature = readAnswers ? readTemperature(process.env) : null;
 const readerName = readAnswers
-  ? `${process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat'} (chain-of-note/${readerMode}, one request)`
-  : 'none (retrieval only)';
-const judgeName = readAnswers
-  ? `${process.env['DEEPSEEK_MODEL'] ?? 'deepseek-chat'} (official per-type templates)`
-  : 'none (retrieval only)';
+  ? describeReaderIdentity({ model, mode: readerMode, temperature })
+  : NO_READER;
+const judgeName = readAnswers ? describeJudgeIdentity({ model, temperature }) : NO_READER;
 
 const config = {
   dataset: `${dataset.name}/${dataset.questions.length}`,

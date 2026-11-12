@@ -116,3 +116,69 @@ class TestTheDefectWouldBeCaught:
             without = step["run"].replace(SUT_ARG_USE, "")
             assert SUT_ARG_USE not in without
             assert SUT_ARG_USE in step["run"]
+
+
+def _job_env():
+    document = yaml.safe_load(WORKFLOW.read_text())
+    return (document["jobs"]["retrieval"].get("env") or {})
+
+
+def _inputs():
+    document = yaml.safe_load(WORKFLOW.read_text())
+    # PyYAML parses the bare key `on` as the boolean True, so the trigger block is reached either way.
+    return (document.get("on") or document.get(True))["workflow_dispatch"]["inputs"]
+
+
+class TestTheReadingStageSamplesAtADeclaredTemperature:
+    """The defect: this workflow forwarded no `TEMPERATURE`, so every row ran at the provider default.
+
+    `createLlmFromEnv` builds the reader with `temperature: null` when the variable is absent, and
+    `null` means the request carries no sampling field. That is not hypothetical: run `43178388235`
+    read the same control arm twice on the same twenty questions and moved 13 -> 11, which fails
+    `H5` and is twice the inter-arm difference the run exists to detect. Every other workflow that
+    answers questions pins the field; this one did not.
+    """
+
+    def test_the_dispatch_can_choose_a_temperature_and_defaults_to_zero(self):
+        inputs = _inputs()
+        assert "temperature" in inputs, "the dispatch cannot pin the reading stage"
+        assert inputs["temperature"]["default"] == "0", (
+            "a dispatch that means to be deterministic should have to say what it is, "
+            "and the default should be the deterministic one"
+        )
+
+    def test_the_job_forwards_it_into_the_environment(self):
+        # Job level rather than step level, so a fourth reading stage inherits it by existing.
+        # The step-level assertions below still hold for the stages that declare their own env.
+        env = _job_env()
+        assert "TEMPERATURE" in env, "no TEMPERATURE in the job environment"
+        assert "github.event.inputs.temperature" in str(env["TEMPERATURE"])
+
+    def test_no_reading_stage_overrides_it_with_something_else(self):
+        # A step that declared its own TEMPERATURE would shadow the job's for the readers in that
+        # one prompt, and the two prompts would then be two temperatures under one table.
+        for step in _reading_steps():
+            env = step.get("env") or {}
+            if "TEMPERATURE" in env:
+                assert "github.event.inputs.temperature" in str(env["TEMPERATURE"]), (
+                    f"{step['name']}: pins a temperature the dispatch cannot see"
+                )
+
+    def test_every_reading_stage_ends_up_with_it(self):
+        # The invariant the three above are about, stated once: each stage either inherits the
+        # job's value or declares the same expression itself.
+        job_has = "TEMPERATURE" in _job_env()
+        for step in _reading_steps():
+            assert job_has or "TEMPERATURE" in (step.get("env") or {}), (
+                f"{step['name']}: reads answers with no temperature on the request"
+            )
+
+
+class TestTheTemperatureDefectWouldBeCaught:
+    def test_a_workflow_without_the_variable_is_detected(self):
+        # Property of the assertion rather than of the file: without the job-level key the check
+        # above fails, which is what would have happened against the workflow that produced run
+        # 43178388235.
+        env = dict(_job_env())
+        env.pop("TEMPERATURE", None)
+        assert "TEMPERATURE" not in env

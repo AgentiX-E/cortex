@@ -48,6 +48,18 @@ on:
         required: false
         default: '10'
         type: string
+      # The reading stage had no temperature at all until this input existed. Every other workflow that
+      # answers questions pins it (benchmark.yml, benchmark-cortex-memory.yml, restore-counterfactual.yml);
+      # this one did not, so `createLlmFromEnv` built the reader with `temperature: null` and the request
+      # carried no field, which means the provider default served every T1 row ever read. That is the
+      # stated cause of H5 failing on run 43178388235: the same control arm read twice moved 13 -> 11.
+      # `default` is the sentinel for "send no temperature" (reader-temperature.ts); it is not the default
+      # here on purpose, because a run that means to be deterministic should have to say what it is.
+      temperature:
+        description: 'Sampling temperature for the reading stage; `default` sends no field and lets the provider decide'
+        required: false
+        default: '0'
+        type: string
       sut:
         description: 'System under test to run as one more arm (empty = none; `mem0` and `letta` run their own code, `reference` is the offline floor). `letta` installs the archived V1 server at tag 0.16.8 rather than `pip install letta`, which now resolves to Letta Code — a different product — see tools/competitor-sut/PROTOCOL.md'
         required: false
@@ -80,6 +92,7 @@ jobs:
       QUESTIONS: ${{ github.event.inputs.questions || '100' }}
       LIMIT: ${{ github.event.inputs.limit || '10' }}
       READ_QUESTIONS: ${{ github.event.inputs.read_questions || '100' }}
+      TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
     # 500 questions x 2 arms x 2 calls per arm is ~2,000 calls for ONE reading arm, and this workflow now runs
     # three of them. The measured cost of the first arm alone was about 45 minutes on a runner, so 120 was already
     # marginal and three arms made it a coin flip. Raised rather than cutting the question count: a 500-question
