@@ -261,5 +261,52 @@ class TestTheGateItself(unittest.TestCase):
             drifted.unlink()
 
 
+class TestTheConditionsAreClassifiedByTheTableThatComparesThem(unittest.TestCase):
+    """The reverse direction was asserted against the *record*, so it could not see a new field.
+
+    `conflicts` (§13.352) and `replyRepair` (§13.334) are spelled by the writer on every run from the
+    change that introduced them, and neither was in `PROJECTED` or `UNPROJECTED`. Three consequences
+    arrived together, and only the first was visible:
+
+    1. `--record` refused every artifact produced after the fields appeared, so the baseline could not
+       be refreshed from a repeat of the arm it records;
+    2. the fingerprint covers the whole block, so an unchanged configuration hashed differently and
+       every attestation refused;
+    3. `differences()` projects onto `PROJECTED`, so the refusal **named nothing** -- the one output a
+       diagnosability tool must not produce.
+
+    `test_every_recorded_field_is_classified` above passes on all three, because the recorded block
+    predates the fields. The fix is to stop hand-writing this family: `readout-arm-run.py` already
+    compares these values and already knows which value is registered, so its table is the source.
+    """
+
+    def test_the_two_fields_that_broke_the_record_are_classified(self) -> None:
+        self.assertEqual(tool.unclassified({"conflicts": False, "replyRepair": "off"}), [])
+
+    def test_they_are_conditions_and_carry_the_registered_value(self) -> None:
+        self.assertEqual(tool.classification("conflicts"), "condition")
+        self.assertEqual(tool.classification("replyRepair"), "condition")
+        # The value, not just the class: `readout-arm-run.py` compares two JSON texts, so `"false"`
+        # as a string is a different registered value from `false` as a boolean (§13.352's own defect).
+        self.assertIs(tool.conditions()["conflicts"], False)
+        self.assertEqual(tool.conditions()["replyRepair"], "off")
+
+    def test_a_condition_added_to_the_run_level_table_widens_the_partition_here(self) -> None:
+        # The point of deriving the class: the next condition cannot land in neither class without a
+        # red check, and nobody has to remember to edit this file for it.
+        readout = tool._readout()
+        readout.REGISTERED_CONDITIONS["aFutureCondition"] = ("aFutureCondition", "off")
+        try:
+            self.assertEqual(tool.classification("aFutureCondition"), "condition")
+            self.assertEqual(tool.unclassified({"aFutureCondition": "on"}), [])
+        finally:
+            del readout.REGISTERED_CONDITIONS["aFutureCondition"]
+
+    def test_an_undecided_field_is_still_refused(self) -> None:
+        # Widening the partition must not turn it into a partition that accepts everything: a field
+        # nobody classified remains the state `--record` exists to refuse.
+        self.assertEqual(tool.unclassified({"aValueNobodyDecided": 1}), ["aValueNobodyDecided"])
+
+
 if __name__ == "__main__":
     unittest.main()

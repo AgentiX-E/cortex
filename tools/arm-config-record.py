@@ -65,7 +65,9 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import hashlib
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -141,7 +143,8 @@ REPORT_LEVEL: dict[str, tuple[str, str]] = {
     "runs": ("ablation_runs", "number"),
 }
 
-# `artifact field -> (kind, why)`. `kind` is one of `derived`, `constant`, `identity`.
+# `artifact field -> (kind, why)`. `kind` is one of `derived`, `constant`, `identity`, `condition` --
+# the last one also being derived from `conditions()` below rather than restated here.
 UNPROJECTED: dict[str, tuple[str, str]] = {
     "threshold": (
         "constant",
@@ -187,9 +190,9 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
         "at, and comparing it would report a second violation for one defect",
     ),
     "evidenceSource": (
-        "constant",
-        "`corpus` on every benchmark dispatch; the workflow fixes it, and the ablation's other "
-        "source (`oracle`) is a different experiment rather than a value of this one",
+        "condition",
+        "see `conditions()`: `corpus` on every benchmark dispatch, and the ablation's other source "
+        "(`oracle`) is a different experiment rather than a value of this one",
     ),
     "judge": (
         "identity",
@@ -197,6 +200,65 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
         "names it; the artifact records what was used",
     ),
 }
+
+
+@functools.lru_cache(maxsize=1)
+def _readout():  # noqa: ANN202 - imported by path, like every other cross-tool import here
+    """`readout-arm-run.py`, which owns the condition vocabulary this module classifies against.
+
+    Cached because `classification()` is called once per artifact field from `--record`'s refusal and
+    again from every diagnosis line, and re-executing a 5,000-line module per field would be a parser
+    benchmark. The single module object is also what makes the vocabulary injectable: a test can add
+    a name to `REGISTERED_CONDITIONS` and watch the partition widen without editing this file, which is
+    the property the classification claims.
+    """
+    spec = importlib.util.spec_from_file_location("readout_arm_run", ROOT / "tools" / "readout-arm-run.py")
+    if spec is None or spec.loader is None:  # pragma: no cover - a missing file is a broken checkout
+        raise SystemExit("cannot load tools/readout-arm-run.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def conditions() -> dict[str, tuple[str, object]]:
+    """`{artifact field: registered value}` for the arm's **conditions**.
+
+    A condition is the fourth class, and the one that produced a refusal nobody could read. It is a
+    field the artifact carries, the dispatch table cannot send (`INPUTS` has 22 names and none of
+    them is `conflicts`), and the workflow decides per run through the environment -- so neither
+    `PROJECTED` (map it to an input name) nor `constant` (there is a second copy to disagree with)
+    describes it. `readout-arm-run.py --registration` already compares them, with the rule that an
+    artifact omitting one predates the field and **reads as the registered value**.
+
+    That table is the single source of this vocabulary on purpose. `conflicts` (§13.352) and
+    `replyRepair` (§13.334) landed in `memoryArmConfig` by design -- the writer spells both on every
+    run from the change that introduced them -- and this module's hand-written partition did not know
+    them, so `--record` refused every later artifact, the attestation's fingerprint moved on an arm
+    that had not moved, and `differences()` named nothing because neither field is in `PROJECTED`.
+    A refusal with an empty diagnosis is worse than no gate: it sends the reader to diff two JSON
+    files and calls that a decision. Deriving the class from the table that compares the fields makes
+    the partition total by construction for this family.
+    """
+    return {
+        path.split(".")[0]: registered
+        for path, registered in _readout().REGISTERED_CONDITIONS.values()
+    }
+
+
+def classification(field: str) -> str | None:
+    """`projected`, the field's `UNPROJECTED` kind, `condition`, or `None` for undecided.
+
+    One function rather than three set lookups at each call site: `--record`'s refusal, the
+    attestation's diagnosis and the tests all have to agree about what "classified" means, and they
+    stop agreeing the moment the definition is restated.
+    """
+    if field in PROJECTED:
+        return "projected"
+    if field in UNPROJECTED:
+        return UNPROJECTED[field][0]
+    if field in conditions():
+        return "condition"
+    return None
 
 # Inputs in the table that the projection deliberately has no entry for. Kept as a mapping with a
 # reason rather than as a silent skip, because the reverse direction of the comparison is what
@@ -295,7 +357,7 @@ def unclassified(config: dict) -> list[str]:
     than given classes of their own: `temperature` and `thinking` are projected out of it by
     `project()`, and `providerId`/`baseUrl`/`endpoint` are the identity the transport resolved.
     """
-    return sorted(field for field in config if field not in PROJECTED and field not in UNPROJECTED)
+    return sorted(field for field in config if classification(field) is None)
 
 
 def dispatched(path: Path = DISPATCH) -> dict[str, str]:

@@ -149,6 +149,77 @@ def differences(report: dict, baseline: dict) -> list[str]:
                 f"{name}: the baseline records {recorded[name]!r} and this artifact applied "
                 f"{ran[name]!r}"
             )
+    found.extend(condition_differences(report, baseline))
+    return found
+
+
+def condition_differences(report: dict, baseline: dict) -> list[str]:
+    """The conditions whose value moved, compared the way the run-level instrument compares them.
+
+    `arm-config-record.py`'s `conditions()` is `readout-arm-run.py`'s `REGISTERED_CONDITIONS`, which
+    says three things this comparison needs and `PROJECTED` cannot express: the artifact's field name,
+    the **registered value**, and the rule that a side omitting the field reads as that value. The rule
+    is what makes a control run comparable with a record written before the field existed -- the
+    writer spells `conflicts: false` on every run from §13.352 onwards and nothing on the runs before
+    it, so treating absence as "different" would report a departure on every artifact older than the
+    field, and treating it as "the same as whatever this artifact says" would report none.
+    """
+    record = _record_module()
+    config = report.get("memoryArmConfig")
+    if not isinstance(config, dict):
+        return []
+    registered_config = baseline.get("memoryArmConfig")
+    if not isinstance(registered_config, dict):
+        return []
+    found: list[str] = []
+    for field, registered in sorted(record.conditions().items()):
+        applied = config.get(field, registered)
+        was = registered_config.get(field, registered)
+        if applied != was:
+            found.append(
+                f"{field}: the baseline reads {was!r} and this artifact applied {applied!r} -- a "
+                f"condition, whose registered value is {registered!r}"
+            )
+    return found
+
+
+def unprojected_differences(report: dict, baseline: dict) -> list[str]:
+    """What moved when the projection found nothing -- never an empty diagnosis.
+
+    A false `matched` with an empty `differences()` is the one output this tool must not produce: the
+    refusal's whole purpose is to name the section that moved, and the fingerprint is computed over a
+    block whose **key set grows by design** (`memoryArmConfig` gained `conflicts` and `replyRepair`
+    after this baseline was recorded). So when the projected inputs all agree and the hash still
+    differs, the cause is in the part of the block the projection does not cover, and the three shapes
+    it can take are enumerable: a field the artifact carries and the record does not, a field the
+    record carries and the artifact does not, and a field both carry with different values.
+    """
+    config = report.get("memoryArmConfig")
+    registered_config = baseline.get("memoryArmConfig")
+    if not isinstance(config, dict) or not isinstance(registered_config, dict):
+        return []
+    record = _record_module()
+    found: list[str] = []
+    for field in sorted(set(config) - set(registered_config)):
+        kind = record.classification(field) or "undecided"
+        found.append(
+            f"{field}: this artifact carries {config[field]!r} and the record does not -- classified "
+            f"`{kind}`, so the field was added to the arm after the record was written"
+        )
+    for field in sorted(set(registered_config) - set(config)):
+        found.append(
+            f"{field}: the record carries {registered_config[field]!r} and this artifact does not, "
+            "so the artifact predates a field the record was written with"
+        )
+    for field in sorted(set(config) & set(registered_config)):
+        if record.classification(field) in ("projected", "condition"):
+            continue
+        if config[field] != registered_config[field]:
+            found.append(
+                f"{field}: the record carries {registered_config[field]!r} and this artifact applied "
+                f"{config[field]!r} -- outside the projection and not a condition, so only the "
+                "fingerprint sees it"
+            )
     return found
 
 
@@ -166,6 +237,11 @@ def attestation(report: dict, baseline: dict) -> dict:
     applied = fingerprint(report.get("memoryArmConfig"))
     registered = baseline.get("memoryArmConfigFingerprint")
     found = differences(report, baseline)
+    if not found and applied != registered:
+        # A refusal that names nothing is what this branch exists to make impossible. It fires when
+        # the projected inputs and the conditions all agree and the block still hashes differently,
+        # which is the shape a field addition takes: the arm did not move, the vocabulary did.
+        found = unprojected_differences(report, baseline)
     return {
         "matched": applied == registered,
         "applied": applied,

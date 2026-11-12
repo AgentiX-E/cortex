@@ -253,3 +253,62 @@ class TestTheTwoLanguagesAgree:
         assert completed.returncode == 0, completed.stderr
         written = json.loads(completed.stdout)["shipping"]["configurationFingerprint"]
         assert written == attest.fingerprint(CONFIG)
+
+
+# ------------------------------------------------------------------- conditions and the empty refusal
+
+class TestAConditionIsComparedAndNeverSilentlyAbsent:
+    """The refusal a reader could not act on: `matched` false, `differences()` empty.
+
+    `memoryArmConfig`'s key set grows by design -- `conflicts` and `replyRepair` are spelled on every
+    run from the change that introduced them and on none before it -- and the fingerprint covers the
+    whole block. So a repeat of the **same** configuration, produced after those fields appeared,
+    hashed differently from a record written before them, and `differences()` projected onto
+    `PROJECTED` so it had nothing to say. The gate was right that the artifact was not the record and
+    wrong about every reason a reader needs.
+    """
+
+    def test_a_condition_at_its_registered_value_is_not_a_departure(self) -> None:
+        # The record predates the fields; the artifact spells both at the registered values, so the
+        # arm did not move and the conditions must not be reported as if it had.
+        newer = artifact({**CONFIG, "conflicts": False, "replyRepair": "off"})
+        assert attest.condition_differences(newer, baseline_of()) == []
+
+    def test_a_condition_that_moved_is_named_with_both_values(self) -> None:
+        newer = artifact({**CONFIG, "conflicts": True, "replyRepair": "repair"})
+        lines = attest.condition_differences(newer, baseline_of())
+        assert any(line.startswith("conflicts:") and "True" in line for line in lines)
+        assert any(line.startswith("replyRepair:") and "'repair'" in line for line in lines)
+
+    def test_a_control_run_of_a_record_that_names_the_condition_agrees(self) -> None:
+        # The other direction: once the record carries the field, a control run must still be silent,
+        # or every reading after the re-record would be refused for being correct.
+        config = {**CONFIG, "conflicts": False, "replyRepair": "off"}
+        assert attest.condition_differences(artifact(config), baseline_of(config)) == []
+
+    def test_the_refusal_names_the_vocabulary_gap_rather_than_nothing(self) -> None:
+        newer = artifact({**CONFIG, "conflicts": False, "replyRepair": "off"})
+        reading = attest.attestation(newer, baseline_of())
+        assert reading["matched"] is False
+        assert reading["differences"], "a refusal must name what moved"
+        assert any(line.startswith("conflicts:") for line in reading["differences"])
+        assert any(line.startswith("replyRepair:") for line in reading["differences"])
+        assert all("added to the arm after the record was written" in line
+                   for line in reading["differences"])
+
+    def test_a_field_the_record_carries_and_the_artifact_dropped_is_named(self) -> None:
+        config = {**CONFIG, "conflicts": False}
+        reading = attest.attestation(artifact(CONFIG), baseline_of(config))
+        assert reading["matched"] is False
+        assert any(line.startswith("conflicts:") and "does not" in line
+                   for line in reading["differences"])
+
+    def test_a_value_outside_every_class_is_named_rather_than_left_to_the_hash(self) -> None:
+        # `embedding` is `identity`: outside the projection, deliberately not compared. When it moves,
+        # the fingerprint is the only witness, and this is the sentence that makes the witness readable.
+        config = {**CONFIG, "embedding": {"provider": "openai-compatible", "model": "embedding-3"}}
+        moved = {**CONFIG, "embedding": {"provider": "openai-compatible", "model": "embedding-2"}}
+        reading = attest.attestation(artifact(moved), baseline_of(config))
+        assert reading["matched"] is False
+        assert any(line.startswith("embedding:") and "only the fingerprint sees it" in line
+                   for line in reading["differences"])

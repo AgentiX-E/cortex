@@ -128,3 +128,83 @@ rather than by re-reading either alone.
 The mechanism is the fingerprint. The rule it replaces — "a label cannot silently resolve to an older file" — was
 true for an hour in 2026-11 and was the third time in this campaign that a defence was written as a sentence about
 why a name is safe.
+
+## 7. The block's vocabulary grew, and the gate called it an adoption
+
+The identity in §3 is the SHA-256 of `memoryArmConfig` as a whole. That block's **key set is not fixed**:
+`bench-memory-arm.ts` spells `conflicts: false` "on every run from this point and as a missing field on every run
+before it", and `replyRepair` arrived the same way. So a repeat of the *same* configuration, produced after those
+two fields appeared, hashes differently from the record written before them, and three things happened at once:
+
+| what a reader saw | what was true |
+| --- | --- |
+| `--record` refused every artifact produced after the fields appeared | the partition had no class for them: not in `PROJECTED` (no dispatch input carries them) and not in `UNPROJECTED` |
+| the attestation refused an artifact of the registered arm | the fingerprint moved on vocabulary, not on configuration |
+| the refusal **named nothing** | `differences()` projects onto `PROJECTED`, so it had no field to report and returned `[]` |
+
+The third is the one that matters. §5 of `registration-attest.py`'s own docstring says a refusal that says only
+"the configuration differs" sends the reader to diff two JSON files; `refusal()` builds a sentence precisely so it
+does not. Against artifact `43140878641` it printed the two hashes, the adoption section, and then nothing —
+the strongest possible claim (this is not the configuration) attached to the weakest possible evidence.
+
+### 7.1 Why the guard missed it
+
+`test_every_recorded_field_is_classified` asserts the partition on `arm-config-baseline.json`'s block — the
+**record**. A field added to the arm after the record was written cannot appear there, so the reverse direction was
+asserted against the one artifact that could not carry the defect. The field `conflicts` was in every artifact
+produced since §13.352 and in no artifact the test looked at.
+
+### 7.2 The repair, in three parts
+
+1. **The class is derived, not restated.** `arm-config-record.py`'s `conditions()` is
+   `readout-arm-run.py`'s `REGISTERED_CONDITIONS`, which already says three things this file needed: the artifact
+   field name, the **registered value**, and the rule that a side omitting the field reads as that value.
+   `classification()` is the single predicate the refusal, the diagnosis and the tests now share, so the family is
+   total by construction — a fourth condition is classified the moment it enters that table.
+2. **Conditions are compared, not skipped.** `condition_differences()` compares each condition verbatim, treating
+   absence on either side as the registered value. That is why a control run of `{conflicts: false}` agrees with a
+   record written before the field existed, while `{conflicts: true}` against the same record is named with both
+   values.
+3. **An empty refusal is now impossible.** `unprojected_differences()` runs when the projected inputs and the
+   conditions all agree and the hash still differs, and names the three shapes the cause can take: a field the
+   artifact carries and the record does not (with its class), a field the record carries and the artifact does
+   not, and a value that moved outside the projection. Against `43140878641` it prints:
+
+   ```
+   conflicts: this artifact carries False and the record does not -- classified `condition`, so the field
+   was added to the arm after the record was written
+   replyRepair: this artifact carries 'off' and the record does not -- classified `condition`, so the field
+   was added to the arm after the record was written
+   ```
+
+Six assertions pin the three parts, and all six were verified red by deleting the code they cover
+(`condition_differences` call, the empty-diagnosis fallback, and the `condition` branch of `classification`) before
+restoring it.
+
+### 7.3 What was deliberately *not* done: the re-record
+
+The obvious next command is `--record` from `43140878641`, and it was run: the artifact attests, and `C1` moves
+**9,201 → 9,168 prompt tokens per question** (−0.36%) with `S1`'s reading moving **91.05% → 91.25%** (+0.20 points,
+inside the 91.05 / 91.60 span the same configuration already produces). Both moves are real and neither is
+interesting. Both were reverted, because a registration is four files and only three can be rebuilt today:
+
+- `cost.json`, `categories.json` and `evidence-budget.json` regenerate from one artifact;
+- `frontier.json` is a **six-rung ladder**, and the run each rung came from is not recorded in the file — only its
+  label and its numbers are. Two of the six artifacts exist in this workspace.
+
+Re-recording on those three alone puts `C1` (new artifact, new fingerprint) beside `S1` (ladder, old fingerprint) —
+which is §13.336.1's defect with the sign reversed: rows reading two records of one configuration, one of which
+cannot be regenerated. The matrix would be right about both numbers and wrong about the thing it promises, so the
+re-registration stays queued as its own change, whose first task is to recover the ladder's six artifact ids (the
+`provenance` block should have carried them; it does not, and that is a second defect this round found and did not
+fix).
+
+**What this costs while it is queued: 33 tokens per question on `C1` and 0.20 points on `S1`** — the difference
+between the registered arm's two recorded repetitions. That is small enough to leave for a change that can be
+finished, and large enough that it must be written down rather than rounded away.
+
+### 7.4 The standing rule, amended
+
+> An evidence file may not outlive the configuration it describes — and a **field** entering the artifact is not
+> the configuration moving. The gate must be able to tell those apart, because a gate that cannot is either deleted
+> or obeyed for the wrong reason.
