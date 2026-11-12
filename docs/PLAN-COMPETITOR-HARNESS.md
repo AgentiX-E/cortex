@@ -408,7 +408,7 @@ model, so a vector-space difference cannot masquerade as a design difference —
 to judge. If the embedding quota fails, the run records the fallback in the manifest and the row is quoted with
 that named; a silent substitution is the defect this project has found three times.
 
-### 7.2 What a run must show before its number may be quoted (H1–H7)
+### 7.2 What a run must show before its number may be quoted (H1–H8)
 
 | # | criterion | threshold | fails as |
 | --- | --- | --- | --- |
@@ -419,10 +419,19 @@ that named; a silent substitution is the defect this project has found three tim
 | **H5** | repeatability | two 20-question runs of the same arm agree on ≥ 90% of per-question verdicts | the arm's noise is larger than the effect at n = 20 |
 | **H6** | manifest | `name`, `build`, `version` printed beside the score | the number cannot be attributed |
 | **H7** | cost gate | no arm is read on 500 questions at `build: llm` (~275,000 model calls) | a bill mistaken for a comparison |
+| **H8** | budget parity | a **cost-accuracy** claim needs at least one pair whose delivered context is within **2×**; a pair outside it may be quoted on accuracy or on cost, never on both | `19×` the tokens for `+2` questions read as "we win" — which is the vendor's own mistake in the other direction |
 
 H2 and H5 exist because this repository has already published one competitor row that was a plumbing failure
 (`0.0%`, run `40519523383`) and one table that disagreed with itself by five questions per arm. Both were caught
 by reading the instrument, which is the only thing that has ever caught them.
+
+**H8 is the one this round added, and it was added because the first measured pair failed it.** `43199357450` reads
+`cortex-session` at **33,556** prompt tokens per question against `mem0`'s **1,768** — 19.0× — for `13/20` against
+`11/20` (`p = 0.50`). An equal-`k` pair with a 19× budget gap is not a cost-accuracy comparison in either direction;
+it is two systems being asked different questions about what they can afford. The same artifact already carries the
+arm that can clear this bar: `cortex/trim-2.8k` at **2,799** tokens is **1.58×** `mem0`, so reading
+`mem0,cortex/trim-2.8k` is the pair H8 admits — and it is also the cheapest pair to run, because a 12× smaller
+context is a 12× shorter read stage.
 
 ### 7.3 The queue, in the order that produces a quotable number soonest
 
