@@ -149,63 +149,87 @@ python3 tools/dispatch-cortex-memory-ab.py \
   --set cortex_memory_max_prompt_chars='...same...,coverage=0.9'
 ```
 
-## 7. The first reading (`43259830582`): the bill moved, the accuracy is not yet decidable
+## 7. The reading (`43259830582` vs `43264749133`): the mechanism works and the family closes
 
-200 questions x 2 repetitions, `temp=0`, the plan at `coverage=0.9 / floor=4000 / margin=1.15`, the two
-route ceilings untouched. The run took **20 minutes** and cost **2.85 CNY**.
+The plan was read against the **registered configuration on the same 200 questions and the same two
+repetitions**, dispatched 25 minutes apart. That pairing is the whole design of the read: the 200-question
+slice is 43% `IE` and 14.5% `MR` while the 500-question population is 30% and 24.2%, so a slice reading
+cannot be compared with the product table at all -- and the first reading, at 86.25%, would have looked like
+a six-point regression against 91.25% when the control on the same slice is **90.50%**.
 
-### 7.1 The bill
-
-| reading | control (`43140878641`, 500 q) | plan (`43259830582`, 200 q) | change |
+| reading | control `43264749133` | plan `43259830582` | change |
 | --- | ---: | ---: | ---: |
-| prompt tokens per question per run | **9,201** | **5,660** | **-38.5%** |
-| prompt tokens per correct answer | 10,105 | **6,563** | **-35.0%** |
-| implied characters per token | 2.71 | 4.53 | +67% |
+| accuracy (200 q x 2) | **181/200 = 90.50%** | 173/200 = 86.50% | **-4.00 points** |
+| prompt tokens per question per run | 7,760 | **5,660** | **-27.1%** |
+| prompt tokens per correct answer | 8,670 | **6,563** | **-24.3%** |
+| mean evidence characters delivered | 29,340 | 21,238 | -27.6% |
+| prompt overhead (delivered minus evidence) | 880 | 880 | **0** |
 
-`C1`'s threshold is 6,000 and `C6`'s own criterion 2 is **6,500**: the plan lands at **5,660**, so
-**criterion 2 is met** and the 6,000 that `C1` wants is 340 tokens away rather than 3,201.
+The last row is the single-variable check: the instruction block, the question line and the section headers
+are **byte-identical in cost**, so the 27.1% came out of evidence and nothing else.
 
-The characters-per-token figure is the mechanism visible in the cost arithmetic: the control delivered
-2.71 characters per billed token because most of the room was instruction and header, and the plan
-delivers 4.53 because it stopped filling the tail.
+### 7.1 The verdict
 
-### 7.2 The accuracy, and why 86.25% decides nothing on its own
+`C6`'s criterion 1 is non-inferiority within 1.0 point. The pair reads **-4.00**, exact McNemar
+**p = 0.0574** on 14 discordant questions (11 the control answers and the plan does not, 3 the other way).
+Criterion 1 **fails**, so criterion 5 fires: **the family closes at `coverage = 0.9`.**
 
-| capability | control (500 q, all runs) | plan (200 q, all runs) | change |
-| --- | ---: | ---: | ---: |
-| `IE` | 92.3% | 88.4% | -3.9 |
-| `MR` | 84.3% | **72.4%** | **-11.9** |
-| `KU` | 88.2% | 89.3% | +1.1 |
-| `TR` | 96.3% | **78.6%** | **-17.7** |
-| `ABS` | 100% | 100% | 0 |
-| total | 91.25% (456.25/500) | **86.25%** (172.5/200) | -5.0 |
+Priced honestly, the trade was 27.1% of the bill for 4.00 points. `C1` wants 7,760 -> 6,000, which is
+22.7% -- so the plan **overshot the saving and paid for it in accuracy**, and a gentler setting would land
+inside `C1` by construction. That is not a reason to re-dispatch: §7.3 shows why the exchange rate is bad
+at every point on this curve.
 
-**This table is not a subtraction and must not be read as one.** The two columns are different question
-sets: the 200-question slice is 43% `IE` and 14.5% `MR`, while the 500-question population is 30% `IE` and
-24.2% `MR`. Weighting the control's per-capability rates by the slice's composition gives **92.2%**, so the
-plan is **~6 points below what the same configuration would score on these questions** -- but that
-weighting assumes the slice is a random sample of each capability, which it is not: a `limit` takes a
-prefix, and a prefix is not a sample.
+### 7.2 Where the cut landed, and why that is the finding rather than the failure
 
-Three things are nonetheless visible and all three point the same way:
+| capability | n | control mean evidence | plan | saving | share of control bill | accuracy change |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `IE` | 86 | 22,587 | 22,107 | -2.1% | 33.1% | **0.00** |
+| `MR` | 29 | 45,843 | 19,443 | **-57.6%** | 22.7% | **-10.34** |
+| `KU` | 28 | 22,480 | 22,480 | **0.0%** | 10.7% | -3.57 |
+| `TR` | 28 | 47,131 | 18,700 | **-60.3%** | 22.5% | **-14.29** |
+| `ABS` | 29 | 22,310 | 21,708 | -2.7% | 11.0% | **0.00** |
 
-1. **The two routes the per-turn cap reaches are the two that fell most** (`TR` -17.7, `MR` -11.9), and
-   they are exactly the two whose bill the plan cuts hardest.
-2. **`ABS` did not move at all** (100% either way, 29 questions), which is what `unsignalled` predicts:
-   those questions share no content term with their evidence, so the plan declines and their prompt is the
-   one it always was.
-3. **`KU` rose 1.1 points** on 28 questions, which is one question and inside the noise.
+**The plan only ever acted on the two 48,000-character routes.** On the four 24,000-character ones the
+prefix that explains 90% of the relevance mass is already most of the candidates, so the plan either
+returned `identity` or cut 2% -- which is what a bill whose 54.8% sits on those routes being **inelastic**
+looks like. On `MR` and `TR` the same rule cut 58-60%, and those are exactly the two capabilities that
+fell.
 
-### 7.3 What decides it: the paired control on the same slice
+Every one of `MR`'s 29 questions and every one of `TR`'s 28 were cut by more than 30%. Of the 61 questions
+cut that hard, **9 the control answers and the plan does not, 2 the other way** -- so the net `-7` is the
+whole of the accuracy loss, and it is not spread thinly over the population. It is concentrated on the
+questions the mechanism touched.
 
-`43264749133` is the registered configuration on the **same 200 questions and the same two repetitions**,
-dispatched immediately after. It is the only reading that can separate "the plan cost accuracy" from "the
-slice is harder", and `C6`'s criterion 1 is judged on the pair rather than on either number:
+That is the mechanism story with evidence behind it: **`MR` and `TR` are the two capabilities whose
+failure mode is breadth** (§1.30.3 measured `MR`'s room gap at 2.1x-6.0x, and `TR` needs several dated
+points to reason across), and a cut that funds a relevance-ranked prefix removes breadth by construction.
+The two capabilities the plan does not touch are the two that do not move.
 
-- if the control also reads ~86%, the plan is **non-inferior on these questions and 38.5% cheaper**, and
-  the full run is authorised;
-- if the control reads ~92%, the plan cost ~6 points and **criterion 5 closes this family**.
+### 7.3 Why no gentler setting is dispatched
 
-**Until that run lands, this file records a mechanism that meets its cost criterion and has no accuracy
-verdict.** The 2.85 CNY of the pair is the price of not publishing the first half alone -- which is the
-mistake §14.131 caught in the sampler and §13.230.2 caught in the overhead attribution.
+The curve has two ends measured and no middle to find: at 0% cut the saving is 0 and the delta is 0; at
+27% cut the saving is 27% and the delta is -4.00. A middle setting that saved 10% would need the loss to
+be less than proportional, and the loss is *concentrated rather than diffuse* -- 11 questions gained by the
+control, 9 of them inside the cut population. Concentration is the opposite of the shape that produces a
+threshold: a threshold means "some questions tolerate less evidence", and here the questions that
+tolerated it are the ones the plan never touched.
+
+The price of finding out would be 2.85 CNY and twenty minutes, and the prize would be at most a 10% saving
+that does not reach `C1`'s 22.7%. The same 2.85 CNY buys `C7`, which is the only mechanism on the table
+that changes the **density** rather than the **amount**.
+
+### 7.4 What this establishes, in the terms the campaign needs
+
+1. **The bill is evidence, not overhead.** 880 characters of instruction and header against 29,340 of
+   evidence: **3.0%**. Every earlier search for a cheaper prompt by shortening instructions was looking at
+   three points of a hundred.
+2. **The bill is therefore elastic only where evidence is elastic**, and on this arm evidence is elastic
+   only on the two wide routes -- the two where it is not affordable.
+3. **The exchange rate is -1 point per 6.8% of the bill.** `C1` needs 22.7%, which the straight line prices
+   at -3.3 points. That is the number `C7` has to beat: it must deliver the tokens **without** removing
+   events, which means the same events at fewer characters -- an excerpt, a record, a summary line in place
+   of a transcript turn.
+4. **`C6` stays implemented and unregistered.** The mechanism is correct, tested and shipped behind an
+   option that no registered arm sets; its negative form is on the record, and its location data is what
+   `C7` will be judged against.
+
