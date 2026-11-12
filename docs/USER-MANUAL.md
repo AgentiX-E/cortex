@@ -396,6 +396,7 @@ Three fields are required and each is required for a reason:
 | `readerByRoute` | `Partial<Record<TurnCapRoute, LLM>>` | absent | A different reader per route; absent routes fall back to `llm`. |
 | `maxPromptChars` | `number` | `48000` | Upper bound on the assembled prompt, in UTF-16 code units. |
 | `maxPromptCharsByRoute` | `Partial<Record<TurnCapRoute, number>>` | absent | The same bound per route; unnamed routes keep `maxPromptChars`. |
+| `widthPlan` | `WidthPlanOptions` | absent | A per-**question** evidence budget: rank the candidates by relevance and fund the shortest prefix that explains `coverage` of the mass. `fitToBudget` spends the smaller of this and the room. |
 | `maxTurnChars` | `number` | absent (no cap) | Upper bound on what one turn may contribute. |
 | `turnCutMarker` | `'none' \| 'ellipsis'` | absent | Whether a turn the cap cut says so. Only forwarded on routes the cap reaches. |
 | `maxTurnCharsRoutes` | `readonly TurnCapRoute[]` | absent (all routes) | Which routes the per-turn cap reaches. `[]` reaches none. |
@@ -604,6 +605,41 @@ const memory = new CortexMemory({
 });
 void memory;
 ```
+
+**A per-question evidence budget, when a fixed room is paying for a tail.**
+
+`maxPromptChars` is one number per route, so every question on that route is answered at that
+width. `widthPlan` decides the budget from the question instead: rank its candidates by
+`lexicalRelevance`, take the shortest prefix explaining `coverage` of the relevance mass, and
+spend the smaller of that and the room. `lastWidth()` reports which of the four reasons the
+plan gave -- `capped` is the only one that means it acted.
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+const memory = new CortexMemory({
+  llm,
+  now: 0,
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 200 },
+  maxPromptCharsByRoute: { 'multi-session': 48_460 },
+  widthPlan: { coverage: 0.9, floorChars: 4_000, renderMargin: 1.15 },
+});
+void memory;
+```
+
+Three numbers, and each one changes what the cut means. `coverage` is the share of the
+question's relevance mass the delivered evidence must explain -- `1` is the identity, where the
+plan looks and declines on every question. `floorChars` is the smallest budget it will fund,
+which exists so a reading measures *less evidence* rather than *a prompt too small to work*.
+`renderMargin` inflates a raw prefix length to the rendered one; below `1` the selector is
+handed less room than the plan reports and the turns the plan counted as delivered are dropped.
+
+The cut is funded over the characters each turn **contributes**, not the characters it holds,
+so a `maxTurnChars` cap is accounted for: a 5,000-character turn that the cap reduces to 400
+counts as 400. A plan measured on raw lengths would fund twelve times the prompt it budgets
+and silently do nothing on exactly the routes the cap reaches.
 
 **Only user turns, on the two routes where assistant turns are noise.**
 
