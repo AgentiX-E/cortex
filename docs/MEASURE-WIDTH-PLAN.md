@@ -148,3 +148,64 @@ python3 tools/dispatch-cortex-memory-ab.py \
 python3 tools/dispatch-cortex-memory-ab.py \
   --set cortex_memory_max_prompt_chars='...same...,coverage=0.9'
 ```
+
+## 7. The first reading (`43259830582`): the bill moved, the accuracy is not yet decidable
+
+200 questions x 2 repetitions, `temp=0`, the plan at `coverage=0.9 / floor=4000 / margin=1.15`, the two
+route ceilings untouched. The run took **20 minutes** and cost **2.85 CNY**.
+
+### 7.1 The bill
+
+| reading | control (`43140878641`, 500 q) | plan (`43259830582`, 200 q) | change |
+| --- | ---: | ---: | ---: |
+| prompt tokens per question per run | **9,201** | **5,660** | **-38.5%** |
+| prompt tokens per correct answer | 10,105 | **6,563** | **-35.0%** |
+| implied characters per token | 2.71 | 4.53 | +67% |
+
+`C1`'s threshold is 6,000 and `C6`'s own criterion 2 is **6,500**: the plan lands at **5,660**, so
+**criterion 2 is met** and the 6,000 that `C1` wants is 340 tokens away rather than 3,201.
+
+The characters-per-token figure is the mechanism visible in the cost arithmetic: the control delivered
+2.71 characters per billed token because most of the room was instruction and header, and the plan
+delivers 4.53 because it stopped filling the tail.
+
+### 7.2 The accuracy, and why 86.25% decides nothing on its own
+
+| capability | control (500 q, all runs) | plan (200 q, all runs) | change |
+| --- | ---: | ---: | ---: |
+| `IE` | 92.3% | 88.4% | -3.9 |
+| `MR` | 84.3% | **72.4%** | **-11.9** |
+| `KU` | 88.2% | 89.3% | +1.1 |
+| `TR` | 96.3% | **78.6%** | **-17.7** |
+| `ABS` | 100% | 100% | 0 |
+| total | 91.25% (456.25/500) | **86.25%** (172.5/200) | -5.0 |
+
+**This table is not a subtraction and must not be read as one.** The two columns are different question
+sets: the 200-question slice is 43% `IE` and 14.5% `MR`, while the 500-question population is 30% `IE` and
+24.2% `MR`. Weighting the control's per-capability rates by the slice's composition gives **92.2%**, so the
+plan is **~6 points below what the same configuration would score on these questions** -- but that
+weighting assumes the slice is a random sample of each capability, which it is not: a `limit` takes a
+prefix, and a prefix is not a sample.
+
+Three things are nonetheless visible and all three point the same way:
+
+1. **The two routes the per-turn cap reaches are the two that fell most** (`TR` -17.7, `MR` -11.9), and
+   they are exactly the two whose bill the plan cuts hardest.
+2. **`ABS` did not move at all** (100% either way, 29 questions), which is what `unsignalled` predicts:
+   those questions share no content term with their evidence, so the plan declines and their prompt is the
+   one it always was.
+3. **`KU` rose 1.1 points** on 28 questions, which is one question and inside the noise.
+
+### 7.3 What decides it: the paired control on the same slice
+
+`43264749133` is the registered configuration on the **same 200 questions and the same two repetitions**,
+dispatched immediately after. It is the only reading that can separate "the plan cost accuracy" from "the
+slice is harder", and `C6`'s criterion 1 is judged on the pair rather than on either number:
+
+- if the control also reads ~86%, the plan is **non-inferior on these questions and 38.5% cheaper**, and
+  the full run is authorised;
+- if the control reads ~92%, the plan cost ~6 points and **criterion 5 closes this family**.
+
+**Until that run lands, this file records a mechanism that meets its cost criterion and has no accuracy
+verdict.** The 2.85 CNY of the pair is the price of not publishing the first half alone -- which is the
+mistake §14.131 caught in the sampler and §13.230.2 caught in the overhead attribution.
