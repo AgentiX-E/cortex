@@ -138,3 +138,53 @@ capability KU: 63 right, 9 wrong of 72
 
 The tool reads only `questions[].turns`, `answer`, `groundTruth`, `correct` and `capability`, so it runs on any
 artifact this campaign has archived, including the ones from before this file existed.
+
+## 7. What `MEASURE-CONFLICT-SURFACING.md` already tried, and why that changes the arm
+
+This file was written before the archive was searched, and the archive had the answer. `MEASURE-CONFLICT-SURFACING.md`
+studies the **same capability on an earlier artifact** (`42355323615`) and records two dispatches of `conflicts:
+true` — the mechanism that appends a block naming two statements about the question and leaves the choice to the
+reader:
+
+| run | what it carried | `KU` | verdict |
+| --- | --- | ---: | --- |
+| `42754985453` | the block | 88.54% → **84.03%** (−2 questions) | rejected: 3 conversions, 5 regressions |
+| `42758152902` | the block + a directional closing line + a value-only gate | 88.54% → **90.28%** (+1.74 points) | rejected: **4 of 4 reachable converted**, and the falsifier fired — `6a1eabeb` and `89941a93` each lost two repetitions |
+
+The second run is the important one, and it is the reason this file's arm is not the one its first draft proposed.
+The block **works on the population it reaches** — four of four, including `59524333` for the first time — and it is
+still refused, because every conversion was paid for somewhere else. A mechanism whose conversions are bought with
+regressions is not a gain even when the net moves up.
+
+**So `'mark'` is withdrawn.** Annotating the superseded turn `[superseded by <date>]` points the reader at the older
+value exactly as the block does; it is the same mechanism with a smaller font, and the block's own record says what
+that costs. What is left on this axis is `'drop'` — removing the superseded turn from the rendering instead of
+calling attention to it — which is the **opposite** intervention and the only one the two rejections do not already
+cover. `03-execution-plan.md` 14.121 registers it, at 72 `KU` questions rather than the full file, because the
+population it can reach is four.
+
+### 7.1 A second reason to distrust the block's reach, found while checking this file's own claims
+
+Running `conflictStatements` over this artifact's windows for the nine questions, and asking whether any selected
+statement names the gold, gives a reach of **4 of 9**. Two of those four are false positives that matter:
+
+| question | gold | a selected sentence contains | gold actually in the window |
+| --- | --- | --- | :---: |
+| `e66b632c` | `27 minutes and 45 seconds` | `7:00-7:45 am: Yoga (45 minutes)` | **no** — the string `27` is absent from the window entirely |
+| `07741c45` | `in a shoe rack in my closet` | `Use shoe trees or stuffing` / `hidden away in my closet` | **no** — two unrelated sentences, one word each |
+
+The block matches **words**, and a question about a 5K time shares `45` with a yoga class, while a question about
+shoe storage shares `shoe` and `closet` with two different turns. On this artifact the block would therefore present
+a comparison that does not exist — which is a mechanism-level explanation for the five regressions the earlier
+document could only attribute to its closing sentence.
+
+The two sets are worth putting side by side, because they are both four questions and they are not the same four:
+
+| test | questions it selects | |
+| --- | --- | --- |
+| the block's term overlap | `a1eacc2a`, `59524333`, `e66b632c`, `07741c45` | 2 of the 4 are invented conflicts |
+| this file's whole-token run | `852ce960`, `a1eacc2a`, `59524333`, `a2f3aa27` | 2 of the 4 the block cannot see |
+
+**Two of each are wrong and they are wrong in opposite directions**, which is why this file's census matches whole
+token runs rather than overlapping terms: a term test cannot tell `45 minutes` from `27 minutes and 45 seconds`, and
+a census built on it would register a rendering change for a comparison the evidence does not contain.
