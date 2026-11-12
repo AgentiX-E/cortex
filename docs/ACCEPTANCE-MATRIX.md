@@ -411,7 +411,9 @@ rows at 3.6–4.4 points (Mastra 94.87, Synap 95.6) are not.
 
 Two things this does **not** do. It does not move a threshold: a row is a comparison inside one dispatch,
 and the band cancels there. And it does not make the vendored figures comparable — their judge is `gpt-4o`,
-which this project has never called.
+which this project will not call. The remedy for that is structural rather than instrumental: grade **their
+software** on **our** instrument (`PLAN-COMPETITOR-HARNESS.md` §7), so the judge is inside the constant and
+the vendor's number stops being an input to any claim.
 
 ### 3.3 `C1` has never been cleared, and under the shipping allocation it cannot be
 

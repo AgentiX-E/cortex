@@ -362,3 +362,98 @@ questions with an oracle split before it touches the full set.
 
 The change is small in words and large in obligations: a C is no longer a permanent verdict on a competitor, it
 is a to-do with a reason attached.
+
+## 7. One instrument, many harnesses: the arrangement this campaign runs on
+
+Four rounds went into estimating the instrument instead of using it: a second judge was swapped onto our
+answers, the band it produces was priced, and a third judge was proposed as the thing that would settle the
+cross-vendor rows. That was the wrong lever, and the reasoning is short.
+
+**A judge is a component of the measuring instrument, not a variable of the experiment.** Adding a fourth grader
+to our answers does not tell us whether Synap's system is better — it tells us how much our own score moves when
+someone else grades it, which is a fact about the instrument and is now bounded at −3.2 points. The question
+"are we behind" is answered by putting *their software* under *our instrument*, where the grader is inside the
+constant and the band has nothing to cancel. `gpt-4o` is therefore out of scope permanently, not for cost
+reasons alone but because it is the wrong side of the comparison.
+
+### 7.1 The fixed half (`A`), as a list a script could check
+
+| slot | value | where it comes from |
+| --- | --- | --- |
+| reader model | `deepseek-chat` | Org secret `DEEPSEEK_API_KEY`; `DEEPSEEK_MODEL` may pin it, and the value used is printed |
+| reader prompt | `con` (official Chain-of-Note: note silently, then answer with the phrase only) | `competitor-reader.ts`, one function for every arm |
+| judge model | `deepseek-chat` — **the same model as the reader**, so no arm gets a grader it did not answer under | `llm-factory.ts` + `judge.ts` |
+| judge policy | `longmemeval-official-per-type` | `judge.ts`; the policy name is printed beside every score |
+| embedding model | Zhipu `embedding-3` (Org secret `ZHIPU_API_KEY`), offline `@agentix-e/embed-code-node` only as a declared fallback | `embedding-factory.ts` |
+| dataset | LongMemEval-S cleaned, 500 questions, `sha256:d6f21ea9…` | `dataset-fingerprint.ts`; the fingerprint travels in the artifact |
+| subset rule | round-robin across capabilities, within a capability sorted by `id` | `stratify()` in `tools/competitor-harness.mjs` |
+| top-k | 10 | `--limit 10` |
+| scoring | `single` (one answer per question, no `pass@k`, no majority) | `RunConfig.scoring` |
+
+Two consequences follow, and both are obligations rather than remarks.
+
+**The product's headline is not in the A-grade table, and must never be subtracted from a row that is.** The
+memory arm reads through the product's own contract, route by route; the harness reads every system through
+`con`. Those are two tables:
+
+| table | what answers | what it is for |
+| --- | --- | --- |
+| **T1** — harness table | `con` reader, one judge, `cortex-session` + every competitor adapter | "whose memory is better, at one reader" — the only table a gap may be quoted from |
+| **T2** — product table | the product's own reader and routes, judged by the same judge | "what the product scores", 91.25% on `43140878641` |
+
+A cross-table subtraction is what `comparability()` grades `B` at best, and the campaign will not make one.
+
+**GLM is an embedding slot, not a reader slot.** It is fixed where it is used — every arm embeds with the same
+model, so a vector-space difference cannot masquerade as a design difference — and it is never asked to answer or
+to judge. If the embedding quota fails, the run records the fallback in the manifest and the row is quoted with
+that named; a silent substitution is the defect this project has found three times.
+
+### 7.2 What a run must show before its number may be quoted (H1–H7)
+
+| # | criterion | threshold | fails as |
+| --- | --- | --- | --- |
+| **H1** | identity | dataset fingerprint, question-id set, `k`, reader prompt digest and judge prompt digest all identical across the paired arms, and all five carried in the artifact | the rows are not a pair |
+| **H2** | smoke gate | 20 questions: `ingest.skipped` empty **and** `found > 0` on ≥ 18 of 20 | "not comparable this round", no score quoted, next competitor |
+| **H3** | pairing, not subtraction | `wins / losses / ties` plus the named question ids and an exact McNemar p | `93.6% − 91.2% = +2.4` is not evidence |
+| **H4** | cost column | prompt tokens per question per arm, from one accounting, plus each arm's `build` class and ingest model-call count | a cheap row that is cheap because it read less |
+| **H5** | repeatability | two 20-question runs of the same arm agree on ≥ 90% of per-question verdicts | the arm's noise is larger than the effect at n = 20 |
+| **H6** | manifest | `name`, `build`, `version` printed beside the score | the number cannot be attributed |
+| **H7** | cost gate | no arm is read on 500 questions at `build: llm` (~275,000 model calls) | a bill mistaken for a comparison |
+
+H2 and H5 exist because this repository has already published one competitor row that was a plumbing failure
+(`0.0%`, run `40519523383`) and one table that disagreed with itself by five questions per arm. Both were caught
+by reading the instrument, which is the only thing that has ever caught them.
+
+### 7.3 The queue, in the order that produces a quotable number soonest
+
+| # | system | why this position | runnable now | cost per dispatch |
+| --- | --- | --- | --- | --- |
+| 1 | `mem0` OSS | driver exists, installs by name, and it is the field's reference baseline | **yes** — `--sut mem0`, `sut_infer=0` | 20 q: one ingest (~10k embeddings) + 40 model calls |
+| 2 | `letta` @ `0.16.8` | **the only competitor with a published same-reader number** (MemStrata's 438/500) | yes — archived V1 server, driver refuses the successor product | 20 q: one container + 40 model calls |
+| 3 | `langmem` (MIT) | the `3.26M`-token arm MRAgent compares against; pure Python, no service | yes, adapter needed | 20 q: no ingest model calls |
+| 4 | `MemOS` | vendor `89.20`, and OmniMemEval independently measured `89.20` — a row where self-report and reproduction agree, so a difference from it is a difference from something real | yes, adapter needed | 20 q |
+| 5 | `Hindsight` | publishes its own model ladder: 83.6% with a 20B open-weight model against 39.0% full-context — the one published experiment whose reader substitution we can reproduce | yes, needs Postgres/pg0 | 20 q + one service |
+| 6 | `Graphiti` (Zep) | the **cost** SOTA we have to beat: 4,878 tokens per correct answer | needs Neo4j or FalkorDB | 20 q + one graph database |
+| — | Recallium, ContextStream, Agent Zero, MemStrata | **no code** | no | reading only, never a row |
+
+The first two are one dispatch each and they are the whole difference between a campaign that quotes vendors and
+one that measures them. Nothing below the first two is worth scheduling until they exist.
+
+### 7.4 What each row is expected to teach, so the run is not just a score
+
+| row | mechanism worth taking if it wins | what would falsify it |
+| --- | --- | --- |
+| `mem0` | LLM-extracted atomic facts instead of turns: 1,942 tokens per question against our ~35,000 delivered characters | its `all-gold` was 4.0% against our 73.0% (`COMPETITOR-REPRODUCTION.md` §6.3) — if accuracy also loses, extraction is a compression, not a memory |
+| `letta` | the agent-loop store: paging a fixed-size core memory instead of retrieving | the `search` squeeze loses the loop, so a loss may be the adapter's |
+| `langmem` | background consolidation of a store between sessions | consolidation that cannot be pointed at is a cost, not a mechanism |
+| `MemOS` | the `89.20`-reproduced pipeline: what its retrieval does that survives an independent harness | — |
+| `Hindsight` | the 20B-model ladder: memory gains **shrink** as the reader weakens (83.6 → 39.0 is full-context, not memory) | if our DeepSeek reader halves every arm's separation, the memory axis is reader-dependent and every published gap is too |
+| `Graphiti` | graph traversal + edge validity windows, which is where its token economy comes from | 4,878 tokens per correct answer may be bought with ingestion cost that its own numbers do not count |
+
+### 7.5 What this replaces
+
+| withdrawn | replaced by |
+| --- | --- |
+| "a third judge (`gpt-4o`) would settle the 3-point rows" | run their code under our judge (§7.1); the band cancels instead of being estimated |
+| `J9`'s full form (both `M1` arms, one pinned judge, 500 questions) | the same dispatch budget spent on a competitor arm, which produces a number the campaign can use |
+| "grade C means the number may not be used" | grade C means **we have not run it**; §7.3 is the queue that turns each C into an A or a stated refusal |

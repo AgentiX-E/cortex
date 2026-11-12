@@ -65,10 +65,13 @@ document establishes is that the separation is worth a dispatch, not that it has
 
 1. **The 91.25% carries a −3.2-point instrument band**, measured on 467 answers with a 0.43% noise
    floor, and nobody comparing it with a vendor number has accounted for it.
-2. **Cross-vendor comparison at the 3-point scale is not decidable on this instrument.** The two
+2. **Quoting a vendor's number at the 3-point scale is not decidable on this instrument.** The two
    nearest published rows — Synap 95.6% and Mastra 94.87% — sit **4.35 and 3.62 points** above this
-   arm, i.e. within roughly one judge swap. Their judges are `gpt-4o`; ours is `deepseek-chat`. A
-   third judge has never been applied to our answers and a like-for-like reading would need it.
+   arm, i.e. within roughly one judge swap. Their judges are `gpt-4o`; ours is `deepseek-chat`. **The
+   repair is not a third judge.** `gpt-4o` is outside this project's model budget permanently, and a
+   fourth grader would only widen the band instead of removing it — the question "are we 3 points
+   behind" is answered by grading *their software* on *our* instrument, not by grading our answers
+   with theirs. `PLAN-COMPETITOR-HARNESS.md` §7 states that arrangement and what it costs.
 3. **`J9`'s design is now priced.** One artifact, 934 judge verdicts, 8 minutes of runner time, and
    the answer is a 15-question movement. The full `J9` (both `M1` arms under one pinned judge) is the
    same dispatch at twice the population.
@@ -82,8 +85,10 @@ document establishes is that the separation is worth a dispatch, not that it has
   established the same way: 452 of 467 first-pass verdicts agree, and the two same-judge flips are
   the reproducibility this repository already priced at 5.0%.
 - **It does not say `deepseek-v4-pro` is a better judge.** It says it is a stricter one on `IE`. Which
-  one is closer to the benchmark's official `gpt-4o` is a separate reading, and `gpt-4o` is not a
-  model this arm has ever called.
+  one is closer to the benchmark's official `gpt-4o` is not a question this project will answer by
+  calling `gpt-4o` — that model is not available here, and a vendor's grader is not the reference this
+  campaign needs. The reference is **one instrument applied to every system**, which is what makes the
+  band cancel instead of having to be estimated.
 - **It does not explain the `IE` gap to the field.** Everything it establishes is about the
   instrument; a strictness difference is a property of the grader, and the answers are unchanged.
 
