@@ -110,6 +110,24 @@ import type { AblationResult, BenchmarkDataset, GoldOverlap, MemorySystem } from
 export type CortexMemoryArmEnv = Readonly<Record<string, string | undefined>>;
 
 /**
+ * A per-question evidence budget, as this module carries it.
+ *
+ * Structural rather than imported: `cortex-memory` depends on this package, so the type can only travel
+ * the other way through a copy -- the same arrangement `maxPromptCharsByRoute` uses for the route names
+ * and `prompt-turn-cap` uses for the marker. What holds the copy to the original is the boundary cast in
+ * `cortex-memory/bench/run-ablation.ts`, which the compiler checks: a field renamed on either side stops
+ * that file from building rather than silently reaching the product as an unused property.
+ */
+export type WidthPlan = {
+  /** Share of the question's relevance mass the delivered evidence must explain, in `(0, 1]`. */
+  readonly coverage: number;
+  /** The smallest budget the plan will fund, in rendered characters. */
+  readonly floorChars: number;
+  /** Raw prefix length to rendered length, as a multiplier greater than or equal to 1. */
+  readonly renderMargin: number;
+};
+
+/**
  * The arm's parsed configuration.
  *
  * `enabled` is separate from the numeric knobs on purpose. An unset environment
@@ -504,6 +522,21 @@ export type CortexMemoryArmOptions = {
    */
   maxPromptCharsByRoute?: Readonly<Record<string, number>> | undefined;
   /**
+   * The per-question evidence budget (`03` §14.126, `C6`), or absent for the route's room.
+   *
+   * Three numbers rather than one, and the split is the mechanism rather than a convenience:
+   * `coverage` is the share of a question's relevance mass the delivered evidence must explain,
+   * `floorChars` is the smallest budget the plan will fund, and `renderMargin` inflates a raw prefix
+   * length to the rendered length the prompt will actually spend. `cortex-memory` owns the type and the
+   * arithmetic; this module carries a **structural** copy because the dependency runs type-only here
+   * under the acyclicity rule, so the cast at the boundary in `bench/run-ablation.ts` is checked by the
+   * compiler rather than asserted.
+   *
+   * Absent means the route's room is the only bound, which reproduces every archived artifact byte for
+   * byte -- the property the whole campaign's comparability rests on.
+   */
+  widthPlan?: WidthPlan | undefined;
+  /**
    * The turn roles the evidence may be built from, or absent for every role.
    *
    * §13.82's measurement, not a hypothesis: 51.9% of the multi-session route's rendered room is
@@ -771,6 +804,43 @@ const MAX_TURN_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_TURN_CHARS';
  * `AUDIT-BENCHMARK-WALLCLOCK.md` §7.
  */
 const MAX_PROMPT_CHARS_VARIABLE = 'CORTEX_MEMORY_MAX_PROMPT_CHARS';
+
+/**
+ * §14.126's per-question evidence budget (`C6`), as the **third shape** of the budget input.
+ *
+ * ## Why it rides `CORTEX_MEMORY_MAX_PROMPT_CHARS` instead of taking an input of its own
+ *
+ * The same reason `turnCutMarker` rides the cap and the route map rides this one: the workflow sits at
+ * **24 of GitHub's 25 dispatch inputs** and `tools/__tests__/test_dispatch_inputs.py` forbids sitting at
+ * the ceiling. The three shapes cannot be confused, and the character that decides is what makes that
+ * true rather than a heuristic:
+ *
+ *   `<digits>`                 -- a scalar room (no `:`, no `=`)
+ *   `<route>:<chars>,...`      -- a per-route room (contains `:`, no `=`)
+ *   `coverage=...[,floor=...]` -- this plan (contains `=`)
+ *
+ * ## The grammar
+ *
+ *   `coverage=<0,1>[,floor=<chars>][,margin=<multiplier>]`
+ *
+ * `coverage` is required: a plan with no target is a plan with no reading, and defaulting it would make
+ * an artifact unable to say what share of the relevance mass its cut was asked to explain. `floor`
+ * defaults to 4,000 and `margin` to 1.15, both of them the registered values in `03` §14.126.2; naming
+ * either is an override rather than a second experiment.
+ *
+ * ## Why every malformed input is refused
+ *
+ * The shapes this parser rejects -- an unknown key, a value that is not a number in range, a missing
+ * `coverage`, a key named twice -- would all leave the run at its route's full width while the
+ * artifact's config line claimed a cut. That is the same failure `§14.131` found in the sampler: an
+ * input that parsed as empty and made two arms look like one configuration.
+ */
+
+/** The registered floor, in rendered evidence characters. One sixth of the narrowest route's room. */
+const WIDTH_PLAN_DEFAULT_FLOOR = 4_000;
+
+/** The registered margin between a prefix's raw length and its rendered length. */
+const WIDTH_PLAN_DEFAULT_MARGIN = 1.15;
 
 /**
  * What the cap's value may also say: whether the cut it makes is visible.
@@ -1096,6 +1166,9 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     maxTurnCharsRoutes: readMaxTurnCharsRoutes(env[MAX_TURN_CHARS_ROUTES_VARIABLE]),
     // Spread conditionally, because "the product default" is an absent field rather than a number
     // this module would have to keep in step with `prompt.ts`.
+    // One input, three shapes (§14.126): a scalar room, a per-route map, or this round's per-question
+    // plan. Spread rather than assigned, because "the product default" and "the route's room" are absent
+    // fields on this type rather than numbers it would have to keep in step with `prompt.ts`.
     ...readPromptBudget(env[MAX_PROMPT_CHARS_VARIABLE]),
     // Spread rather than assigned, because "no cap" is an absent field on this type rather
     // than an infinite one -- see `CortexMemoryArmOptions.maxTurnChars`.
@@ -1941,6 +2014,103 @@ function readMaxPromptChars(raw: string | undefined): number | undefined {
   return value;
 }
 
+/**
+ * The per-question budget as one input carries it, or `undefined` for none.
+ *
+ * The grammar is `coverage=<0,1>[,floor=<chars>][,margin=<multiplier>]`, and the parser is strict in the
+ * three ways §14.126 needs it to be:
+ *
+ * 1. **`coverage` is required.** A plan with no target is a plan with no reading -- the artifact could
+ *    not say what share of the relevance mass its cut was asked to explain, and two runs at different
+ *    targets would carry the same bytes.
+ * 2. **An unknown key is refused rather than ignored.** A typo in `coverage` would otherwise leave the
+ *    default in place, which is precisely the failure an input that parses as empty produces: the run
+ *    answers at its route's full width while the config line claims a cut.
+ * 3. **Every number is range-checked.** `coverage` in `(0, 1]`, `floor` a non-negative integer, `margin`
+ *    at least 1. A margin below 1 would under-fund the selector -- the one direction that costs accuracy
+ *    -- and a coverage above 1 would fund nothing.
+ */
+function readWidthPlan(raw: string | undefined): WidthPlan | undefined {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed === '') return undefined;
+
+  const parts = new Map<string, string>();
+  for (const pair of trimmed.split(',')) {
+    const at = pair.indexOf('=');
+    if (at <= 0) {
+      throw new Error(
+        `${MAX_PROMPT_CHARS_VARIABLE} expects \`key=value\` pairs, got ${JSON.stringify(pair)}. ` +
+          'The grammar is `coverage=<0,1>[,floor=<chars>][,margin=<multiplier>]`.',
+      );
+    }
+    const key = pair.slice(0, at).trim();
+    const value = pair.slice(at + 1).trim();
+    if (parts.has(key)) {
+      throw new Error(
+        `${MAX_PROMPT_CHARS_VARIABLE} names \`${key}\` twice; the first value is not the one applied.`,
+      );
+    }
+    parts.set(key, value);
+  }
+
+  const unknown = [...parts.keys()].filter((key) => !['coverage', 'floor', 'margin'].includes(key));
+  if (unknown.length > 0) {
+    // Refused rather than dropped, because the alternative is a run whose config line records a cut it
+    // never made -- the shape `§14.131` found in the sampler, arriving through a typo instead of an
+    // unforwarded variable.
+    throw new Error(
+      `${MAX_PROMPT_CHARS_VARIABLE} does not know ${unknown.map((key) => JSON.stringify(key)).join(', ')}. ` +
+        'Known keys: coverage, floor, margin.',
+    );
+  }
+
+  const number = (key: string): number | undefined => {
+    const text = parts.get(key);
+    if (text === undefined) return undefined;
+    const value = Number(text);
+    if (text === '' || !Number.isFinite(value)) {
+      throw new Error(
+        `${MAX_PROMPT_CHARS_VARIABLE} wants a number for \`${key}\`, got ${JSON.stringify(text)}.`,
+      );
+    }
+    return value;
+  };
+
+  const coverage = number('coverage');
+  if (coverage === undefined) {
+    throw new Error(
+      `${MAX_PROMPT_CHARS_VARIABLE} requires \`coverage\`. Without a target the plan has no reading: the ` +
+        'artifact could not say what share of the relevance mass the cut was asked to explain.',
+    );
+  }
+  if (!(coverage > 0) || coverage > 1) {
+    throw new Error(
+      `${MAX_PROMPT_CHARS_VARIABLE} wants coverage in (0, 1], got ${coverage}. Above 1 the plan funds nothing ` +
+        'and at 0 it funds one turn, so neither is a budget.',
+    );
+  }
+
+  const floorChars = number('floor') ?? WIDTH_PLAN_DEFAULT_FLOOR;
+  if (!Number.isInteger(floorChars) || floorChars < 0) {
+    throw new Error(
+      `${MAX_PROMPT_CHARS_VARIABLE} wants a non-negative integer floor, got ${floorChars}. The unit is ` +
+        'rendered evidence characters; a fractional floor is a number no prompt can spend.',
+    );
+  }
+
+  const renderMargin = number('margin') ?? WIDTH_PLAN_DEFAULT_MARGIN;
+  if (renderMargin < 1) {
+    throw new Error(
+      `${MAX_PROMPT_CHARS_VARIABLE} wants a margin of at least 1, got ${renderMargin}. The renderer prefixes ` +
+        'each block, so a prefix measured in raw characters is shorter rendered than delivered -- a ' +
+        'margin below 1 hands the selector less room than the plan reports, and the turns the plan ' +
+        'counted as delivered are dropped.',
+    );
+  }
+
+  return { coverage, floorChars, renderMargin };
+}
+
 /** The cap as the dispatch states it: a width, and whether a cut prints a mark of omission. */
 type TurnCapSpec = {
   width?: number;
@@ -1962,9 +2132,18 @@ type TurnCapSpec = {
 function readPromptBudget(raw: string | undefined): {
   maxPromptChars?: number;
   maxPromptCharsByRoute?: Record<string, number>;
+  widthPlan?: WidthPlan;
 } {
   const trimmed = (raw ?? '').trim();
   if (trimmed === '') return {};
+  // `=` decides this branch and `:` the next one, and the three shapes are mutually exclusive by
+  // character rather than by a guess: a scalar is digits, a route map has a colon, and a plan has an
+  // assignment. Deciding by the most specific character first is what keeps a plan's own `floor=4000`
+  // from ever reaching the route-map parser.
+  if (trimmed.includes('=')) {
+    const plan = readWidthPlan(trimmed);
+    if (plan !== undefined) return { widthPlan: plan };
+  }
   if (trimmed.includes(':')) return { maxPromptCharsByRoute: readRouteRooms(trimmed) };
   const width = readMaxPromptChars(raw);
   return width === undefined ? {} : { maxPromptChars: width };
@@ -2502,6 +2681,12 @@ export function toMemoryArmConfig(
     ...(options.maxPromptCharsByRoute === undefined
       ? {}
       : { maxPromptCharsByRoute: options.maxPromptCharsByRoute }),
+    // §14.126. Conditional for the reason every optional field here is: absent means the route's room
+    // was the only bound, which is what every archived artifact was produced under, so the absence is a
+    // fact about the run rather than a missing field. Spread as one object rather than flattened into
+    // three top-level keys, because the three numbers are one plan -- a record that carried `coverage`
+    // without `margin` would be a cut whose estimate nobody could reconstruct.
+    ...(options.widthPlan === undefined ? {} : { widthPlan: options.widthPlan }),
     // §13.299. Always present, and the only field here that is computed rather than projected.
     //
     // The two fields above describe how the room was *requested*; neither describes the room the

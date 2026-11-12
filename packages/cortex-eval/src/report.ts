@@ -573,6 +573,25 @@ export type MemoryArmConfig = {
    */
   readonly maxPromptCharsByRoute?: Readonly<Record<string, number>> | undefined;
   /**
+   * The per-question evidence budget this run applied, or absent for the route's room (`03` §14.126).
+   *
+   * Three numbers, because the plan is three numbers: the share of a question's relevance mass the cut
+   * was asked to explain, the floor below which it refuses to go, and the margin between a raw prefix
+   * length and its rendered length. Recorded as one object rather than as three top-level fields, since
+   * a record carrying `coverage` without `margin` would describe a cut nobody could recompute.
+   *
+   * Absent on every archived artifact, and that absence is a fact about the run: the room was the only
+   * bound. `C6`'s reading is a comparison against exactly that state, so the field has to distinguish
+   * "no plan" from "a plan at coverage 1" -- which is why it is not defaulted here.
+   */
+  readonly widthPlan?:
+    | {
+        readonly coverage: number;
+        readonly floorChars: number;
+        readonly renderMargin: number;
+      }
+    | undefined;
+  /**
    * The routes that cap reached. Every route when the run named none.
    *
    * Recorded even when `maxTurnChars` is absent, because the two answer different questions: the
@@ -1609,6 +1628,14 @@ export function formatAblationReport(report: AblationReport): string {
           : `, \`maxPromptCharsByRoute=${Object.entries(memoryArm.maxPromptCharsByRoute)
               .map(([route, width]) => `${route}:${width}`)
               .join('+')}\``) +
+        // §14.126, rendered only when a plan was dispatched, for the reason the redistribution above is:
+        // the absent state is the route's room, which every archived artifact used, and spelling it on
+        // every line would make those artifacts indistinguishable from ones that declined a plan. `/`
+        // rather than `+` or `,` for the reason the reach uses `+` -- the line already separates fields
+        // with commas -- and because the three numbers are one plan rather than three settings.
+        (memoryArm.widthPlan === undefined
+          ? ''
+          : `, \`widthPlan=${memoryArm.widthPlan.coverage}/${memoryArm.widthPlan.floorChars}/${memoryArm.widthPlan.renderMargin}\``) +
         // The reach, rendered on every run beside the width and joined with `+` rather than a
         // comma: the line already separates fields with commas, so a comma inside a value would
         // make one field look like three.

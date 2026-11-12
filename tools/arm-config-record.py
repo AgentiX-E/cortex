@@ -111,6 +111,14 @@ RENDERERS = {
         else str(value.get("thinking"))
     ),
     "rerank": lambda value: str(value.get("provider")),
+    # §14.126's plan is one artifact object carried by one input, in the grammar `readWidthPlan`
+    # accepts. Rendered in a fixed key order because the artifact's object has no order and a
+    # key-order difference is not a configuration difference -- the same reason `route_rooms`
+    # sorts.
+    "width_plan": lambda value: ",".join(
+        f"{key}={_number(value[field])}"
+        for key, field in (("coverage", "coverage"), ("floor", "floorChars"), ("margin", "renderMargin"))
+    ),
 }
 
 # `artifact field -> (dispatch input, renderer)`. Every entry here is a value the table can send,
@@ -128,6 +136,10 @@ PROJECTED: dict[str, tuple[str, str]] = {
     "relevanceUnits": ("cortex_memory_relevance_units", "text"),
     "maxTurnChars": ("cortex_memory_max_turn_chars", "number"),
     "maxPromptCharsByRoute": ("cortex_memory_max_prompt_chars", "route_rooms"),
+    # The third shape of the same input (§14.126): the workflow is at 24 of GitHub's 25 dispatch inputs and
+    # the suite forbids the ceiling, so a plan rides the budget's value the way the marker rides the cap's.
+    # `=` is the discriminator, which is why the two renderers cannot produce each other's output.
+    "widthPlan": ("cortex_memory_max_prompt_chars", "width_plan"),
     "maxTurnCharsRoutes": ("cortex_memory_max_turn_chars_routes", "csv"),
     "evidenceRoles": ("cortex_memory_evidence_roles", "csv"),
     "evidenceRolesRoutes": ("cortex_memory_evidence_roles_routes", "csv"),

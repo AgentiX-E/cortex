@@ -144,6 +144,10 @@ import {
   // instance of it. Inferred, the type would have no caller outside its own module and
   // `tools/export-census.mjs` would report it as an export nothing names.
   type WindowOrdering,
+  // §14.126's plan, named here for the reason `WindowOrdering` is: the three numbers are supplied by
+  // `cortex-eval` through an environment variable, so the shape belongs to this package's surface and
+  // the arm only carries a structural copy of it.
+  type WidthPlanOptions,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -883,6 +887,14 @@ async function main(): Promise<void> {
               Record<TurnCapRoute, number>
             >,
           }),
+      // §14.126's per-question budget. Spread only when named, for the reason every conditional spread in
+      // this constructor is: an absent plan is the route's room, which is what every archived run used.
+      // The annotation is the boundary check -- `cortex-eval` carries a structural copy of this type
+      // because it cannot import the package, so a field renamed on either side stops this file building
+      // rather than reaching the product as an unused property.
+      ...(armOptions.widthPlan === undefined
+        ? {}
+        : { widthPlan: armOptions.widthPlan as WidthPlanOptions }),
       // §13.73's reach, passed beside the width and for the same reason. `undefined` on the arm's
       // side means every route, which is what §13.68 shipped; an explicit six-route list is the same
       // state reached by a different path, and the product treats both as "reaches everything". The
@@ -985,6 +997,12 @@ async function main(): Promise<void> {
       // the log and the artifact config can be compared against the prompt that was rendered.
       `, turnCutMarker=${armOptions.turnCutMarker ?? 'none'}` +
       `, maxPromptChars=${armOptions.maxPromptChars ?? 'default'}` +
+      // §14.126's plan, on the same line as the room it replaces, because a reader comparing a wall clock
+      // and a bill needs both: the room says what the route was allowed and the plan says what the
+      // question was worth. `none` is the archived state and is printed rather than omitted for the
+      // reason `maxTurnChars` is -- an absent value and a disabled one are the same bytes and different
+      // facts only when one of them is written down.
+      `, widthPlan=${armOptions.widthPlan === undefined ? 'none' : `${armOptions.widthPlan.coverage}/${armOptions.widthPlan.floorChars}/${armOptions.widthPlan.renderMargin}`}` +
       // The width the pass ran at, on the line every other run property is on. It is not part
       // of the arm's configuration (§14.22) but it is part of what the wall clock means, and a
       // reader comparing two durations needs it.
