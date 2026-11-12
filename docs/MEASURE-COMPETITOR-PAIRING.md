@@ -168,7 +168,7 @@ Three readings follow, and the third is why this is a repair rather than a note:
 ## 6. Their reading contract, measured against ours
 
 The gap is not only which questions are wrong; it is what each system tells its reader to do. Synap published its
-answering prompt (`LME_answering_prompt.md`, 21,366 characters, 3,622 words, seven numbered steps and three
+answering prompt (`LME_answering_prompt.md`, 21,366 characters, 3,622 words, seven numbered steps and four
 sub-steps). This arm's contract block, measured by building one prompt per contract on a one-turn window:
 
 | contract | instruction characters |
@@ -179,7 +179,7 @@ sub-steps). This arm's contract block, measured by building one prompt per contr
 | `knowledge-update` | 580 |
 
 **37 to 93 times shorter.** That is the single largest structural difference between the two systems, and it runs
-opposite to where this campaign has spent its rounds: the window (22,558 median characters of delivered prompt on
+opposite to where this campaign has spent its rounds: the window (23,994 median characters of delivered prompt on
 `42533236864`) has been tuned for twenty rounds, while the instruction that reads it is between two and five lines.
 
 | dimension | theirs | ours |
@@ -199,7 +199,7 @@ Reading that table against sections 3 and 4 gives a narrower conclusion than "co
 2. **Attribution does not name a population** in the 36, so it is not registered. It is written down because it is
    the one rule in their contract that contradicts ours outright.
 3. **The evidence representation is the architecture difference.** Their reader is handed a fact list; ours is
-   handed 22,558 characters of transcript and asked to extract, resolve entities, resolve supersession and do the
+   handed a 23,994-character prompt and asked to extract, resolve entities, resolve supersession and do the
    date arithmetic in one pass. `MEASURE-SUPERSEDE.md` §14.11.1 measured what that costs: **40 of the 44
    wrong answers had the gold already inside the delivered window** — 13 fully, 27 partially — and only 4 stood at
    zero coverage. A reader that loses an answer it was given is not a retrieval failure, and the five `preference`
