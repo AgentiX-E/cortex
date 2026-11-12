@@ -4,73 +4,102 @@ Every "gap" this campaign has quoted was a difference between two **harnesses**:
 vendor's self-report produced by a different reader, a different judge and a different prompt. `PLAN-COMPETITOR-HARNESS.md`
 §7 replaced that with the only arrangement that measures anything — fix the instrument, vary whose memory answers.
 
-This file is the first reading from that arrangement. It cost two dispatches and about ninety minutes of runner
-time, and it produced three results, of which **only one is decidable**:
+This file is the first reading from that arrangement. It cost four dispatches and about three hours of runner
+time, and it produced four results, of which **two are decidable**:
 
-1. **The T1 table has a row.** `mem0` 2.2.1 ran its own code on our 20 questions, our `con` reader, our judge, and
-   `k = 10`, and answered **12 of 20**. The control arm answered 11.
-2. **The accuracy difference is not decidable and must not be quoted.** The control arm moved **two questions
-   between two identical runs**, which is twice the inter-arm difference.
-3. **The cost difference is decidable and large.** 1,768 prompt tokens per question against 33,556: **19.0×**.
+1. **The T1 table has two rows with an accuracy cell each, read under one instrument.** `mem0` 2.2.1 ran its own
+   code on our 20 questions, our `con` reader, our judge, and `k = 10`, and answered **11 of 20**. The control
+   arm, `cortex-session`, answered **13 of 20** (`43199357450`, `temp=0` both sides).
+2. **The pair is two discordant questions, both ours, and that is not a ranking.** Exact McNemar over
+   `(11, 2, 0, 7)` is **p = 0.50**: `mem0` converted none of the seven questions we missed, we converted two of
+   the nine it missed, and twenty questions cannot turn that into a verdict. The direction is one-sided; the
+   size is unmeasured.
+3. **The cost difference is decidable and large.** 1,768 prompt tokens per question against 33,556: **19.0×**,
+   in `mem0`'s favour, on the same twenty questions and the same reader.
+4. **The arm is repeatable at this size, task-level.** Three `temp=0` dispatches — `43197264759`,
+   `43198214714`, `43199357450` — all read `cortex-session` at **13 of 20**, and the first two produced
+   **byte-identical artifacts**. §3 keeps the history of the reading that failed this check before the
+   workflow's temperature was pinned.
 
 ## 0. What ran
 
-| | run A `43170314351` | run B `43178388235` |
-| --- | --- | --- |
-| questions | 20 (round-robin, `id`-sorted within capability) | same 20 |
-| `sut` | `mem0`, `sut_infer=0` | same |
-| read arms | `mem0,cortex-session` **→ mem0 absent** | `mem0,cortex-session` |
-| read prompts | `con` | `con` |
-| reader | `deepseek-chat` (Chain-of-Note, one request) | same |
-| judge | `deepseek-chat`, `longmemeval-official-per-type` | same |
-| `k` / scoring | 10 / `single` | same |
-| dataset | LongMemEval-S cleaned | same |
-| mem0 ingest | 972/972 sessions, 0 refused | 972/972, 0 refused |
-| mem0 manifest | `2.2.1`, `build=embedding`, `infer=false`, `faiss`, `embedding-3` @1024d | same |
+| | run A `43170314351` | run B `43178388235` | run C `43199357450` |
+| --- | --- | --- | --- |
+| questions | 20 (round-robin, `id`-sorted within capability) | same 20 | same 20 |
+| `sut` | `mem0`, `sut_infer=0` | same | same |
+| read arms | `mem0,cortex-session` **→ mem0 absent** | `mem0,cortex-session` | `mem0,cortex-session` |
+| read prompts | `con` | `con` | `con` |
+| reader | `deepseek-chat` (Chain-of-Note, one request, `temp=default`) | same | `deepseek-chat` (Chain-of-Note, **`temp=0`**) |
+| judge | `deepseek-chat`, `longmemeval-official-per-type` | same | same, `temp=0` |
+| `k` / scoring | 10 / `single` | same | same |
+| dataset | LongMemEval-S cleaned | same | same |
+| mem0 ingest | 972/972 sessions, 0 refused | 972/972, 0 refused | 972/972, 0 refused, embedder cache keyed on the dataset digest |
+| mem0 manifest | `2.2.1`, `build=embedding`, `infer=false`, `faiss`, `embedding-3` @1024d | same | same |
 
 Run A did not read `mem0` at all: the reading stage is a second invocation and it never launched the competitor,
 so `--read-arms mem0` matched nothing and the run finished green with the only A-grade arm absent from the table
 it exists to fill. That is fixed in `.github/workflows/competitor-retrieval.yml` and pinned by
 `tools/__tests__/test_sut_read_wiring.py` (§4).
 
-## 1. The table (run B, `43178388235`)
+Run C differs from B in one field and one field only — the sampling temperature, which B never received (§3) —
+and it is the run §1 quotes. Its reader identity is written into the artifact by
+`tools/reader-identity.mjs`, so the field cannot be absent from a table again:
+`deepseek-chat (chain-of-note/con, temp=0, one request)`.
 
-> The two accuracy cells are struck through. Both were read at `temp=default`, before the workflow pinned a
-> sampling field; §3 records the repair and the re-read (`43199357450`). The retrieval and cost columns stand:
-> they are properties of the systems, not of the sampler.
+## 1. The table (`43199357450`, both arms at `temp=0`)
+
+> The accuracy column was withdrawn for one round (§3) and is restored here from the pinned re-read. The
+> retrieval and cost columns never moved: they are properties of the systems, not of the sampler, and run B's
+> figures reproduce to the token.
 
 | provider | build | recall@k | all-gold | MRR | **accuracy** | ~tok/question |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `cortex-session` | none | 85.0% | **80.0%** | 0.792 | ~~11/20 = 55.0%~~ **withdrawn** | 33,556 |
-| **`mem0` 2.2.1** | embedding | **100.0%** | 0.0% | **0.908** | ~~12/20 = 60.0%~~ **withdrawn** | **1,768** |
+| `cortex-session` | none | 85.0% | **80.0%** | 0.792 | **13/20 = 65.0%** | 33,556 |
+| **`mem0` 2.2.1** | embedding | **100.0%** | 0.0% | **0.908** | **11/20 = 55.0%** | **1,768** |
+
+The interval, which is the part a reader must take with the point estimate:
+
+| arm | correct | 95% Wilson | what the interval rules out |
+| --- | ---: | --- | --- |
+| `cortex-session` | 13/20 | **[43.3%, 81.9%]** | any accuracy claim above 82% or below 43% |
+| `mem0` 2.2.1 | 11/20 | **[34.2%, 74.2%]** | the same, one question lower |
+
+The two intervals overlap across 31.7 points of their length, so **the row order is a point estimate and not a
+measurement of which system is better**. What the row does establish is that the arrangement runs end to end
+with a competitor's own process, its own vector store and its own embedding model, under one reader and one
+judge — `comparability()` grade **A**.
 
 Per capability, accuracy:
 
 | capability | `cortex-session` | `mem0` |
 | --- | ---: | ---: |
-| `ABS` | 3/4 | 3/4 |
-| `IE` | 1/4 | **2/4** |
-| `KU` | 3/4 | **4/4** |
+| `ABS` | **4/4** | 3/4 |
+| `IE` | 1/4 | 1/4 |
+| `KU` | 4/4 | 4/4 |
 | `MR` | **3/4** | 2/4 |
 | `TR` | 1/4 | 1/4 |
 
 Both arms are read by one function with one prompt, so the only difference between the two rows is whose memory
 produced the text. `TR` at 1/4 in both is the `con` prompt's known omission (no date, no arithmetic), not a
-finding about either system.
+finding about either system. `IE` at 1/4 in both is the reader failing on the same four questions, which is why
+the inter-arm difference sits in the two capabilities where the retrieval shape differs.
 
 ## 2. The pairing, which is the evidence and the totals are not
 
 | | `mem0` wrong | `mem0` right |
 | --- | ---: | ---: |
-| **`cortex-session` wrong** | 7 | **2** (`031748ae`, `07b6f563`) |
-| **`cortex-session` right** | **1** (`00ca467f`) | 10 |
+| **`cortex-session` wrong** | 7 | **0** |
+| **`cortex-session` right** | **2** (`031748ae_abs`, `0100672e`) | 11 |
 
-Two discordant pairs one way, one the other, ten ties: exact McNemar **p = 1.0**. The one-question net is
-`2 − 1`, and three discordant questions out of twenty is a coin flip with a small sample, not a ranking.
+Two discordant pairs, both in one direction, eleven ties: exact McNemar **p = 0.50**. The sign test over two
+discordant questions is `2⁻¹`, so the honest reading is *the direction survived the repair and the count did
+not grow*: at `temp=default` the same table was `(1, 2, 10, 7)` — one for us, two for `mem0` — and at `temp=0`
+`mem0` converts nothing of the seven we miss.
 
-`031748ae` is a `KU` question and `07b6f563` is `IE` — the two capabilities where `mem0`'s extraction is
-supposed to help — and `00ca467f` is `MR`, where returning whole sessions instead of extracted facts is supposed
-to help. One question each. **The mechanism story is available; the evidence for it is not, at this size.**
+`031748ae_abs` is an `ABS` question and `0100672e` is `MR`. At `temp=default` the two capabilities told the
+opposite story (`IE` and `KU` for `mem0`, `MR` for us), which is what a sampler moving one question per arm
+does to a capability claim built on four questions per capability. **No mechanism story is quoted from this
+table at n = 20**, and the two that were quoted last round are retracted in place rather than re-explained.
 
 ## 3. `H5` failed — and the cause was the workflow, not the arm
 
@@ -99,8 +128,14 @@ So three things are now separable, and this file had them fused:
 | statement | status after the repair |
 | --- | --- |
 | the arm is noisy at n = 20 | **falsified** — the pinned arm is bit-stable on this population |
-| the numbers 55.0% and 60.0% in §2 are quotable | **withdrawn** — they were read at `temp=default`, and the control's own two readings differed by more than the inter-arm difference. Re-read under `43199357450` |
-| n = 20 cannot rank anyone | **not established by `H5` any more.** The gate passes; a ranking objection has to be made with an interval rather than a failed threshold |
+| the numbers 55.0% and 60.0% in §2 are quotable | **withdrawn** — they were read at `temp=default`, and the control's own two readings differed by more than the inter-arm difference. Restored as **65.0% and 55.0%** from `43199357450` |
+| n = 20 cannot rank anyone | **established by the interval, not by the gate.** `H5` passes; the ranking objection is now `[43.3%, 81.9%]` against `[34.2%, 74.2%]` and `p = 0.50` |
+
+The third draw is what closes the loop rather than the second. `43199357450` re-ran the whole pipeline — ingest,
+both arms, `con`, judge — and read `cortex-session` at **13/20** for the third time, with the retrieval and cost
+columns reproducing `43178388235` exactly (85.0% / 80.0% / 0.792 and 33,556 tokens; `mem0` 100.0% / 0.0% / 0.908
+and 1,768). A count that survives one re-dispatch is a pair; three of them, one of which took a different path
+through the workflow, is the population being stable and the sampler being the variable that moved.
 
 This is the same defect class the campaign already found once in this instrument — two invocations of one
 harness disagreed by five questions per arm, which is why `--json-out` exists — except the movement was on
@@ -122,47 +157,78 @@ workflow, all five pass against this one.
 
 ## 5. What this licenses
 
-- **A statement about cost:** at indistinguishable accuracy on this population, `mem0` reads **1,768** prompt
-  tokens per question against **33,556** — a 19.0× difference, and the direction has a mechanism: it returns
-  extracted memory entries rather than turns, and its `all-gold` is **0.0%** against 80.0%. It finds *one*
-  annotated evidence item every time and *all* of them never.
-- **A statement about the harness:** the T1 pipeline now runs end to end with a competitor's own code, its own
-  process, its own vector store, and our reader and judge. Two dispatches, `comparability()` grade **A**.
-- **A statement about the population:** n = 20 is too small for this instrument. That is measured, not assumed.
+- **A statement about cost, against us:** `mem0` reads **1,768** prompt tokens per question where we read
+  **33,556** — 19.0× — while scoring one question lower on this population. The direction has a mechanism: it
+  returns extracted memory entries rather than turns, and its `all-gold` is **0.0%** against 80.0%. It finds
+  *one* annotated evidence item every time and *all* of them never. That is the cost the product pays for
+  delivering turns verbatim, and it is the number `C1` argues about in house terms (9,168 tokens/question) on a
+  different axis.
+- **A statement about the harness:** the T1 pipeline runs end to end with a competitor's own code, its own
+  process, its own vector store and its own embedding model, under our reader and our judge. Four dispatches,
+  `comparability()` grade **A**, and three of them reproduce the control arm's count exactly.
+- **A statement about the sign, not the size:** `mem0` converted **0 of 7** questions our arm missed, and our arm
+  converted **2 of 9** of its misses. At n = 20 that is `p = 0.50`; what it does rule out is the inverted
+  reading, that `mem0` answers questions we cannot.
 
 ## 6. What it does not license
 
-- **No ranking.** p = 1.0 and an 80% repeatability at n = 20.
+- **No ranking.** `p = 0.50`, and the intervals overlap across 31.7 points.
 - **No comparison with 91.25%.** That is T2 — the product's own reader and routes. This is T1. Subtracting across
   the two is what `comparability()` grades `B`, and the campaign has already made that mistake twenty times.
 - **No claim about `mem0`'s published 94.4%.** `infer=false` is a different system from the one that number
   describes, and the manifest says so beside the row.
-- **No claim about `MR`/`TR`.** Both arms are at 1/4 on `TR`, and the reader is the reason.
+- **No claim about `MR`/`TR` or about any capability.** Both arms are at 1/4 on `TR` because the reader is; the
+  arm-level gap is two questions, so a per-capability gap of one question is the sampler's resolution.
+- **No claim that the 19.0× is `mem0`'s ceiling.** It is what its `infer=false` configuration returned at `k = 10`
+  on this corpus.
 
-## 7. What a decision costs
+## 7. What a decision costs, and what the last row got wrong
 
-| step | questions | ingest wall clock | reader+judge calls | decides |
-| --- | ---: | ---: | ---: | --- |
-| smoke (this) | 20 | 50 min | 40 | that the pipeline runs |
-| **decision** | **100** | **~4 h 10 m** | **200** | a ranking, if `H5` clears at n = 100 |
-| full row | 500 | ~21 h | 1,000 | a quotable row beside the product table |
+| step | questions | ingest wall clock | read+judge wall clock | calls | decides |
+| --- | ---: | ---: | ---: | ---: | --- |
+| smoke (this) | 20 | 49m13s | **50m48s** | 80 | that the pipeline runs |
+| **decision** | **100** | minutes (cache warm) | **~4h14m** | **400** | a ranking, if the count holds at five times the population |
+| cost-matched | 100 | same | **~35m** | 400 | a ranking at equal context budget (§7.2) |
+| full row | 500 | ~21 h cold / minutes warm | ~21 h | 2,000 | a quotable row beside the product table |
 
-The ingest is 55× the answering cost: the SUT stage spent **49m42s** ingesting and the reading stage spent
-**54s** reading and grading the same 20 questions. That is why `03` §14.130 registers a content-addressed embedder
-cache — with the criterion that with and without the cache the arms must produce **identical answers**, not equal
-accuracy — and why the queue's second row (`letta`) is worth running before the third, since its ingest is the
-same shape.
+### 7.1 The "55×" this file used to quote was a measurement of the wrong stage
+
+The previous version of this table said the ingest was **55×** the answering cost — 49m42s against 54s — and
+concluded that the ingest was the lever. The 54s was a retrieval-only stage: the reading stage in that dispatch
+answered **nothing**, because the arm it was asked to read was absent (§4). `43199357450` ran both stages and
+spends **49m13s** ingesting and **50m48s** reading and grading — `0.97×`, not 55×.
+
+The correction changes which lever matters, so it is recorded rather than quietly deleted:
+
+- The embedder cache (`03` §14.130) removes the **ingest** half of a repeat dispatch. Worth having, and it does
+  not make the run cheap, because the other half is now the floor.
+- The floor is the reader's **context**, not the vendor's pipeline: 40 calls over 33,556 tokens each take 50
+  minutes at roughly 76 s per call, so 400 calls take four hours. A 19× smaller context is a 19× cheaper
+  measurement — and that is an argument about what to *measure*, not only about what to build.
+
+### 7.2 The row that is missing is the cost-matched one
+
+`cortex-session` answers from **whole sessions** and `mem0` from **extracted entries**, and the table compares
+them at equal `k` with a **19×** difference in delivered context. A cost-accuracy claim cannot be built on that
+pair, in either direction: our +2 questions cost 19× the tokens, and a 19× budget is not a fair handicap to
+give ourselves.
+
+The same artifact already carries the row that can: `cortex/trim-2.8k`, **2,799** tokens at `k = 10`, which is
+**1.58×** `mem0`'s 1,768 rather than 19×. Its retrieval on the full 500 is weaker — recall@k 80.8% against 94.0%,
+all-gold 12.4% against 82.2% — and that is exactly the trade the reading would price. Reading
+`mem0,cortex/trim-2.8k` at n = 100 is the cheapest row in this file that could support a SOTA statement about
+cost *and* accuracy at once, and it is the next dispatch this file recommends.
 
 ## 8. Reproduction
 
 ```sh
-# run B, the one with both rows
+# the table in §1: both arms, pinned sampler
 gh workflow run competitor-retrieval.yml \
   -f questions=5 -f read_questions=20 \
   -f sut=mem0 -f sut_infer=0 \
-  -f read_arms=mem0,cortex-session -f read_prompts=con -f limit=10
+  -f read_arms=mem0,cortex-session -f read_prompts=con -f limit=10 -f temperature=0
 
 # the two artifacts this file reads
-#   art-43170314351/competitor-read.txt   run A: cortex-session 13/20, no mem0 row
-#   art-43178388235/competitor-read.txt   run B: cortex-session 11/20, mem0 12/20
+#   art-43199357450/competitor-read.txt   temp=0: cortex-session 13/20, mem0 11/20
+#   art-43178388235/competitor-read.txt   temp=default: cortex-session 11/20, mem0 12/20  (accuracy withdrawn)
 ```
