@@ -107,6 +107,34 @@ describe("the budget input's third shape: a per-question plan", () => {
     expect(() => arm('coverage=')).toThrow(/wants a number for `coverage`/);
   });
 
+  it('coexists with the per-route rooms, because C6 holds those fixed', () => {
+    // §14.126.2 clause 3 is "only the allocator moves": the two load-bearing routes keep their ceilings
+    // and the plan decides the budget *under* them. A value that could carry only one of the two would
+    // move the room and the budget in one dispatch, and no reading could say which earned the delta.
+    const both = arm(
+      'abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000,coverage=0.9',
+    );
+    expect(both.widthPlan).toEqual({ coverage: 0.9, floorChars: 4_000, renderMargin: 1.15 });
+    expect(both.maxPromptCharsByRoute).toEqual({
+      abstention: 24_000,
+      assistant: 24_000,
+      flat: 24_000,
+      'knowledge-update': 24_000,
+      'multi-session': 48_460,
+      temporal: 48_000,
+    });
+    expect(both.maxPromptChars).toBeUndefined();
+  });
+
+  it('keeps the three older shapes working, so no archived dispatch changes meaning', () => {
+    expect(arm('24000').maxPromptChars).toBe(24_000);
+    expect(arm('24000').widthPlan).toBeUndefined();
+    expect(arm('multi-session:48460').maxPromptCharsByRoute).toEqual({ 'multi-session': 48_460 });
+    expect(arm('multi-session:48460').widthPlan).toBeUndefined();
+    expect(arm('coverage=0.9').maxPromptCharsByRoute).toBeUndefined();
+    expect(arm('coverage=0.9').maxPromptChars).toBeUndefined();
+  });
+
   it('reaches the artifact config as one object, and is absent from it otherwise', () => {
     const withPlan = toMemoryArmConfig(arm('coverage=0.9,floor=3000,margin=1.1'), EMBEDDING);
     expect(withPlan.widthPlan).toEqual({ coverage: 0.9, floorChars: 3_000, renderMargin: 1.1 });

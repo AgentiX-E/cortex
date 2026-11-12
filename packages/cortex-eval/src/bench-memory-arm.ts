@@ -2118,12 +2118,33 @@ type TurnCapSpec = {
 };
 
 /**
- * The evidence budget as one input carries it: a scalar, a map, or nothing.
+ * The evidence budget as one input carries it: a scalar, a map, a plan, a map **and** a plan, or nothing.
  *
- * Two shapes on one variable because the workflow is one dispatch input below GitHub's ceiling of
- * 25 and its suite forbids sitting at the ceiling. They cannot be confused -- a scalar is digits and
- * a map contains a colon -- so the grammar decides the branch rather than a heuristic, and a value
- * that is neither reaches `readMaxPromptChars` and is refused there.
+ * ## Why four shapes on one variable
+ *
+ * Because the workflow sits at 24 of GitHub's 25 dispatch inputs and `test_dispatch_inputs.py` forbids
+ * sitting at the ceiling. `turnCutMarker` took the same route onto the per-turn cap's value and the route
+ * map took it onto this one; the plan is the third thing that wanted an input and could not have one.
+ *
+ * ## Why the plan and the map must coexist rather than replace each other
+ *
+ * They are orthogonal and both are needed by the one experiment that uses them. `maxPromptCharsByRoute`
+ * is a **ceiling** -- `multi-session` at 48,460 and the other four at 24,000 -- while `widthPlan` is a
+ * **per-question budget** that `fitToBudget` spends as `min(room, plan)`. So `C6`'s criterion 3 (a single
+ * variable, with the two route ceilings untouched) is satisfiable **only** by a value that carries both:
+ * replacing the map with a plan would move the room and the budget in one dispatch, and no reading could
+ * say which of them earned the delta.
+ *
+ * ## The grammar, and the character that decides each shape
+ *
+ *   `<digits>`                                  -- a scalar room
+ *   `abstention:24000,...,multi-session:48460`  -- a per-route room
+ *   `coverage=0.9[,floor=4000][,margin=1.15]`   -- a plan
+ *   `multi-session:48460,coverage=0.9`          -- both, one item each
+ *
+ * Items are split on commas and each is classified by the character it contains: an item with `=` is a
+ * plan parameter and an item with `:` is a route. That is why `floor=4000` can never reach the route
+ * parser -- it is routed by its own character rather than by a guess about the whole string.
  *
  * An absent or blank input returns an **empty object**, not a default: "the product default" is the
  * absence of the field, and a field carrying the number would make an artifact from before §13.213
@@ -2136,17 +2157,29 @@ function readPromptBudget(raw: string | undefined): {
 } {
   const trimmed = (raw ?? '').trim();
   if (trimmed === '') return {};
-  // `=` decides this branch and `:` the next one, and the three shapes are mutually exclusive by
-  // character rather than by a guess: a scalar is digits, a route map has a colon, and a plan has an
-  // assignment. Deciding by the most specific character first is what keeps a plan's own `floor=4000`
-  // from ever reaching the route-map parser.
-  if (trimmed.includes('=')) {
-    const plan = readWidthPlan(trimmed);
-    if (plan !== undefined) return { widthPlan: plan };
-  }
-  if (trimmed.includes(':')) return { maxPromptCharsByRoute: readRouteRooms(trimmed) };
-  const width = readMaxPromptChars(raw);
-  return width === undefined ? {} : { maxPromptChars: width };
+  const items = trimmed
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+  const assignments = items.filter((item) => item.includes('='));
+  const rooms = items.filter((item) => !item.includes('='));
+
+  // A plan is parsed from its own items only, so a neighbouring route room cannot be read as an unknown
+  // key and a plan key cannot be read as a route name. `readWidthPlan` refuses a blank result, which is
+  // why no `undefined` check is needed on the way back.
+  const plan = assignments.length === 0 ? undefined : readWidthPlan(assignments.join(','));
+  // A single item with no colon is the scalar shape; anything else is a map, and the map parser owns the
+  // refusals for an unknown route name, a duplicate pair and a width that is not a positive integer.
+  const scalar =
+    rooms.length === 1 && !rooms[0]!.includes(':') ? readMaxPromptChars(rooms[0]) : undefined;
+  const byRoute =
+    rooms.length === 0 || scalar !== undefined ? undefined : readRouteRooms(rooms.join(','));
+
+  return {
+    ...(scalar === undefined ? {} : { maxPromptChars: scalar }),
+    ...(byRoute === undefined ? {} : { maxPromptCharsByRoute: byRoute }),
+    ...(plan === undefined ? {} : { widthPlan: plan }),
+  };
 }
 
 /**
