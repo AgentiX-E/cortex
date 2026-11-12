@@ -235,6 +235,51 @@ credential-less run read as a remote one. A model of your own opts in by impleme
 without it you can still build an index, but a store that a later process reopens must name its space,
 and that is a statement only a model with an identity can satisfy.
 
+#### Not paying twice for the same text
+
+`CachingEmbedding` wraps any model and embeds each text once. It is a decorator rather than an option
+because an option is something a constructor can forget: wrap the model you already have and every call
+site inherits it.
+
+```ts
+import { CachingEmbedding, MemoryEmbeddingCacheStore, OpenAIEmbedding } from '@agentix-e/cortex-ai';
+
+const cache = new MemoryEmbeddingCacheStore();
+const embedding = new CachingEmbedding(
+  new OpenAIEmbedding({
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    apiKey: process.env.ZHIPU_API_KEY ?? '',
+    model: 'embedding-3',
+    dimensions: 512,
+  }),
+  { store: cache },
+);
+// ... ingest, index, query as before ...
+console.log(embedding.stats());
+// { textsAsked: 1942, storeHits: 1310, batchRepeats: 88, embedderCalls: 544,
+//   saved: 1398, reuseRate: 0.7198, stored: 544 }
+```
+
+Three facts make this safe to put in front of a measurement:
+
+- **A hit is the vector that was produced.** The cache stores what the endpoint returned and hands back a
+  copy, so a caller cannot mutate it into something the endpoint never said.
+- **`identity()` is forwarded verbatim.** A cache does not move the vector space, and a wrapper that
+  reported a different identity would make your store refuse an index it had written itself.
+- **Order is preserved.** The result has the input's length and the input's order, including when a batch
+  is partly warm.
+
+The counters partition the request, because the three parts mean different things: a **store hit** is text
+you paid for in an earlier call, a **batch repeat** is the same text twice inside one call, and an
+**embedder call** is text that cost money. The first two numbers are the saving; the third is the bill.
+`reuseRate` is `null` before anything has been asked, which is a different fact from a rate of zero.
+
+`EmbeddingCacheStore` is the extension point — three methods, `get` / `set` / `size`. The default lives as
+long as the process; a deployment that wants reuse across restarts implements the three methods over
+whatever it already runs, and this package never learns where the vectors went. The key is
+`identity + "\0" + text`, so two gateways serving the same model id do not share vectors: the same model
+name behind two endpoints can be two sets of weights.
+
 ### 4.3 What a call cost
 
 ```ts
