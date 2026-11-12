@@ -131,14 +131,33 @@ artifact's 500 raw replies, with two deterministic openers added to separate the
 Three readings follow, and the third is why this is a repair rather than a note:
 
 1. **A reply that is a transcript dump is wrong seven and a half times as often as one that is an answer**
-   (53.3% against 7.1%), and it is 14 times as long.
+   (53.3% against 7.1%), and it is 14 times as long. **The rate is right and the name is wrong**: see the correction
+   below, which shows there is no dump in this corpus and that what the 15 have in common is having been retried.
 2. **A shape failure that is not a dump is a different population.** Its 28 replies are wrong four times, which
    is 14.3%. That is the arithmetic that made `replyRepair: 'shape'` a bad trade — it re-asks 44 replies to reach
    12 wrong ones — and it is why the repair registered below is scoped to the echo rather than to the shape
    failure it belongs to.
 3. **The echo has a marker no answer can have.** Every one of the 15 begins a line with `[YYYY/MM/DD ...]`, which
    is this product's own evidence rendering. `parseAnswer` has no way to tell it from an answer, so it returns
-   2,952 characters of transcript and the judge scores it wrong. Nothing about that is a question of inference.
+   2,952 characters of transcript and the judge scores it wrong. Nothing about that is a question of inference — and
+   the parser, not the model, is where the 2,952 characters were produced. See the correction below.
+
+**Correction (`MEASURE-RETRY-SHAPE.md`).** The counts above reproduce exactly, and the reading they were given does
+not survive being opened. All 15 replies **end with an answer line**; the parser concatenated the list, the blank line
+and that answer because the builders behind them asked for a list without a step heading and closed with a sentence
+instead of an `Answer:` label. Sorting the 16 stamped answers by what they contain:
+
+| what the reply contains | n |
+| --- | ---: |
+| a stamped list followed by an answer line | 16 |
+| a stamped list and nothing else | **0** |
+
+So `evidence-echo` in this artifact is a **parsing defect wearing a model-behaviour name**, and the 53.3% belongs to
+the population the retry selects (first reply was a bare decline) rather than to a reply form. Two consequences:
+
+- The `echo` gate's `attempted: 0` on `43121298653` is not an unexplained zero: there was nothing of that shape for it
+  to fire on, and the 14 replies it was registered against were the parser's reading, produced after the gate ran.
+- The repair is a label, not a re-ask: all three list-asking builders now close on `Answer: <the answer>`.
 
 ## 5. What the pairing forbids, and what it licenses
 

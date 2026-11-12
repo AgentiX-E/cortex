@@ -2520,6 +2520,24 @@ export type AssembledPrompt = {
  * window it admitted or budgeted. `#answerWithBareRetry` passed the latter until §13.147, which sent the retry a
  * larger window than the call it was correcting. Asserted from the prompt side in `bare-decline-retry.test.ts`,
  * where the retry's evidence block is required to be a byte prefix of the first prompt's.
+ *
+ * ## Why the last line is a label and not a sentence
+ *
+ * Both this builder and `buildCommitPrompt` ask for a numbered list and then for the answer, and both used to
+ * close with *"Reply with the answer alone on the last line"* -- a sentence, not a label. `parseAnswer` reads a
+ * closing `Answer:` label (`CLOSING_ANSWER_LABEL`) and strips a step heading (`ENUMERATION_STEP_HEADING`), and
+ * these two builders produced neither, so the answer arrived as the whole reply: the list, the blank line and the
+ * last line, concatenated.
+ *
+ * `MEASURE-RETRY-SHAPE.md` measures the consequence on `43121298653`: 14 of its 500 final replies were a stamped
+ * list followed by a correct answer line, and `classifyReply` counted them as `evidence-echo` -- a dump -- when the
+ * answer was on the last line the whole time. That is a parsing defect wearing a model-behaviour name, and it is
+ * why the `echo` gate recorded `attempted: 0` while 14 dumps were still said to exist: the dumps were the parser's
+ * reading, produced *after* the gate had run.
+ *
+ * The label is the smallest repair that binds: `buildShapePrompt` already asks in exactly this form, so this
+ * removes an inconsistency between three builders rather than introducing a fourth format. Nothing the model is
+ * asked to *do* changes -- list first, then compute -- only the shape of the line that says which is which.
  */
 export function buildRetryPrompt(
   question: string,
@@ -2536,7 +2554,8 @@ export function buildRetryPrompt(
     'The previous reply named no evidence, so it was not a valid answer to this question.',
     'Write the items in the evidence that match the question as a numbered list first, one per line, each with the',
     'date it was stated, then compute the answer from that list.',
-    'Reply with the answer alone on the last line.',
+    'End your response with a single line in exactly this form, and write nothing after it:',
+    'Answer: <the answer>',
   ].join('\n');
 }
 
@@ -2596,7 +2615,8 @@ export function buildCommitPrompt(
     'one of the answers you may give.',
     'Write the items in the evidence that bear on the question as a numbered list first, one per line, each with',
     'the date it was stated, then compute the answer from that list.',
-    'Reply with the answer alone on the last line.',
+    'End your response with a single line in exactly this form, and write nothing after it:',
+    'Answer: <the answer>',
   ].join('\n');
 }
 
@@ -2645,8 +2665,9 @@ export function buildEchoPrompt(
     '',
     'Your previous reply copied the evidence above back instead of answering the question.',
     'A copy of the evidence is not an answer, and it is not one of the replies you may give.',
-    'Read the evidence and reply with the answer to the question alone on the last line.',
     'Do not restate, quote or list the evidence.',
+    'Read the evidence and reply with the answer to the question alone on the last line, in exactly this form:',
+    'Answer: <the answer>',
   ].join('\n');
 }
 
