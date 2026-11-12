@@ -408,7 +408,7 @@ model, so a vector-space difference cannot masquerade as a design difference —
 to judge. If the embedding quota fails, the run records the fallback in the manifest and the row is quoted with
 that named; a silent substitution is the defect this project has found three times.
 
-### 7.2 What a run must show before its number may be quoted (H1–H8)
+### 7.2 What a run must show before its number may be quoted (H1–H9)
 
 | # | criterion | threshold | fails as |
 | --- | --- | --- | --- |
@@ -420,6 +420,7 @@ that named; a silent substitution is the defect this project has found three tim
 | **H6** | manifest | `name`, `build`, `version` printed beside the score | the number cannot be attributed |
 | **H7** | cost gate | no arm is read on 500 questions at `build: llm` (~275,000 model calls) | a bill mistaken for a comparison |
 | **H8** | budget parity | a **cost-accuracy** claim needs at least one pair whose delivered context is within **2×**; a pair outside it may be quoted on accuracy or on cost, never on both | `19×` the tokens for `+2` questions read as "we win" — which is the vendor's own mistake in the other direction |
+| **H9** | the cost denominator | a cost comparison between arms of **different accuracy** must be `promptTokens / correct`, carried in the artifact beside `promptTokens / question`; the per-question figure may only be quoted between arms whose accuracy differs by less than the run's own resolution | "we cut 25% of the tokens" while answering fewer questions — the bill fell and each useful answer got dearer |
 
 H2 and H5 exist because this repository has already published one competitor row that was a plumbing failure
 (`0.0%`, run `40519523383`) and one table that disagreed with itself by five questions per arm. Both were caught
@@ -432,6 +433,24 @@ it is two systems being asked different questions about what they can afford. Th
 arm that can clear this bar: `cortex/trim-2.8k` at **2,799** tokens is **1.58×** `mem0`, so reading
 `mem0,cortex/trim-2.8k` is the pair H8 admits — and it is also the cheapest pair to run, because a 12× smaller
 context is a 12× shorter read stage.
+
+**H9 was added in the same round, and it is the criterion that stops a cheaper arm from being read as a better one.**
+Two sources force it. `arXiv:2608.11879` benchmarks three memory systems against a rolling window and against
+resubmitting the transcript, on 665 LoCoMo questions and up to 400 turns, and reports three facts that bind here:
+accuracy spans **21–54%**; a cost model fitted on conversation length and message size misses the memory systems by
+**18–69%**, because their bill is set by internal extraction, retrieval and consolidation rather than by the
+conversation; and **no system wins on both axes**. `arXiv:2610.20675` supplies the arithmetic that makes the second
+fact quotable: when accuracy falls, output per execution falls while **output per correct answer rises**.
+
+`tools/cost-ledger.py` has carried the fourth reading since it was written — `perCorrectAnswerPromptTokens`, **10,105**
+on the registered arm against **9,201** per question — and `C1` quotes only the second. H9 is the rule that closes
+that gap: the two numbers are allowed to move in opposite directions, so a run that quotes one of them without the
+other is quoting the cheaper half of a pair of facts.
+
+This does not make `C1` wrong. It makes `C1` a statement about the bill and not about value, and "we are on the cost
+frontier" a separate assertion that has to be made in `per-correct-answer` — which is the unit Zep's published
+**4,878** is written in, and the unit in which our **10,105** is a 2.07× deficit rather than the 1.0× the two
+per-question figures would suggest.
 
 ### 7.3 The queue, in the order that produces a quotable number soonest
 
