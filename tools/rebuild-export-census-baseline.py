@@ -48,6 +48,22 @@ RATIONALE = {
         "because the roadmap may still wire them; each must be adjudicated by a roadmap item, not "
         "by this ledger."
     ),
+    # Appended in place: the ledger is a snapshot, and a snapshot whose rationale is not updated
+    # alongside it is a list without a reason. These six are the embedder-cache surface.
+    "cortex-ai-embedder-cache-api": (
+        "The embedder cache added at the `EmbeddingModel` boundary. `CachingEmbedding` is a decorator whose "
+        "caller is a deployment: this repository ships no application, so the only in-tree reader is the "
+        "user manual's compiled example and the 23 assertions in `embedding-cache.test.ts`, neither of which "
+        "the census counts. The five others exist because a caller has to be able to name what it uses: "
+        "`EmbeddingCacheStore` is the documented extension point (a deployment implements three methods over "
+        "whatever it already runs), `MemoryEmbeddingCacheStore` is the default, `CachingEmbeddingOptions` and "
+        "`EmbeddingCacheStats` are the constructor's shape and the return of `stats()`, and "
+        "`defaultEmbeddingCacheKey` is exported so a store that persists keys can reproduce them rather than "
+        "reimplement them. This is the `PgStorage` shape rather than the dead-code shape: an API whose consumer "
+        "is outside the repository. Recorded rather than deleted because deleting it would delete the feature; "
+        "`03` section 22.92 and USER-MANUAL 4.2 are the documents that describe it, and the day a shipped "
+        "application wires it in, this group shrinks to nothing and that shrinkage is the signal to look for."
+    ),
     "eval-harness-surface": (
         "Evaluation harness internals. This is the largest bucket and the one most likely to hold "
         "genuine defects: most of the repository's orphaned exports are here. Some are reached only "
@@ -202,6 +218,7 @@ GROUP_ORDER = [
     "embedding-space-public-api",
     "failure-stability-public-api",
     "conflict-surfacing-public-api",
+    "cortex-ai-embedder-cache-api",
 ]
 
 # The three single-file groups, matched by suffix so a package rename does not silently
@@ -213,6 +230,7 @@ COST_PER_CAPABILITY_PATH = "cortex-eval/src/cost-per-capability.ts"
 EMBEDDING_SPACE_PATH = "cortex-core/src/vector/embedding-space.ts"
 FAILURE_STABILITY_PATH = "cortex-eval/src/failure-stability.ts"
 CONFLICT_SURFACING_PATH = "cortex-memory/src/conflict.ts"
+EMBEDDER_CACHE_PATH = "cortex-ai/src/embedding/cache.ts"
 
 ABLATION_KEYS = (
     "ablation",
@@ -236,6 +254,11 @@ def category(orphan: str) -> str:
         return "census-tool-public-api"
     if "cortex-storage/src/browser/" in path:
         return "browser-storage-surface"
+    if path.endswith(EMBEDDER_CACHE_PATH):
+        # One file, one argument, in the position `embedding-space-public-api` and the three measurement
+        # groups occupy. Folding it into the cortex-ai catch-all would have put a cache API next to `retry.ts`
+        # helpers under a paragraph about dependency profiles, which is a different claim.
+        return "cortex-ai-embedder-cache-api"
     if "cortex-eval" in path:
         # The three named groups come first: each is one file whose reason for being
         # exported is its own argument, and folding them into the catch-all would have
