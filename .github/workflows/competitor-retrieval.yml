@@ -262,12 +262,22 @@ jobs:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
           ARMS_FLAG: ${{ github.event.inputs.read_arms != '' && format('--read-arms {0}', github.event.inputs.read_arms) || '' }}
+          SUT: ${{ github.event.inputs.sut }}
+          MEM0_INFER: ${{ github.event.inputs.sut_infer || '0' }}
+          # The competitor's own process has to be startable in the reading stage too. It is a second process:
+          # `--read-arms mem0` in an invocation that never launched mem0 matches no provider and reads nothing,
+          # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
+          # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
         run: |
           if [ "$READ_QUESTIONS" = "0" ]; then
             echo "reading stage skipped by input"
             exit 0
           fi
           ARMS="${ARMS_FLAG}"
+          # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
+          SUT_ARG=""
+          if [ -n "$SUT" ]; then SUT_ARG="--sut $SUT"; fi
           # One invocation, two outputs. Running it twice -- once for the JSON and once for the table -- produced an
           # artifact and a printed table from two different samples that disagreed by five questions per arm, which
           # is why `--json-out` exists.
@@ -277,6 +287,7 @@ jobs:
             --limit 10 \
             --budget-tokens 2800 \
             --read $ARMS \
+            $SUT_ARG \
             --json-out competitor-read.json \
             | tee competitor-read.txt
 
@@ -291,7 +302,17 @@ jobs:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
           ARMS_FLAG: ${{ github.event.inputs.read_arms != '' && format('--read-arms {0}', github.event.inputs.read_arms) || '' }}
+          SUT: ${{ github.event.inputs.sut }}
+          MEM0_INFER: ${{ github.event.inputs.sut_infer || '0' }}
+          # The competitor's own process has to be startable in the reading stage too. It is a second process:
+          # `--read-arms mem0` in an invocation that never launched mem0 matches no provider and reads nothing,
+          # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
+          # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
         run: |
+          # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
+          SUT_ARG=""
+          if [ -n "$SUT" ]; then SUT_ARG="--sut $SUT"; fi
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
             --questions "$READ_QUESTIONS" \
@@ -301,6 +322,7 @@ jobs:
             --reader dispatch \
             --json-out competitor-read-dispatch.json \
             $ARMS_FLAG \
+            $SUT_ARG \
             | tee competitor-read-dispatch.txt
 
       # The multi-session rewrite. `dispatch` says "collect every block and do not stop at the first"; `dispatch2`
@@ -315,7 +337,17 @@ jobs:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
           ARMS_FLAG: ${{ github.event.inputs.read_arms != '' && format('--read-arms {0}', github.event.inputs.read_arms) || '' }}
+          SUT: ${{ github.event.inputs.sut }}
+          MEM0_INFER: ${{ github.event.inputs.sut_infer || '0' }}
+          # The competitor's own process has to be startable in the reading stage too. It is a second process:
+          # `--read-arms mem0` in an invocation that never launched mem0 matches no provider and reads nothing,
+          # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
+          # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
         run: |
+          # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
+          SUT_ARG=""
+          if [ -n "$SUT" ]; then SUT_ARG="--sut $SUT"; fi
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
             --questions "$READ_QUESTIONS" \
@@ -325,6 +357,7 @@ jobs:
             --reader dispatch2 \
             --json-out competitor-read-dispatch2.json \
             $ARMS_FLAG \
+            $SUT_ARG \
             | tee competitor-read-dispatch2.txt
 
       # Paired tests over the three arms. Without this the run reports three totals and a reader has to decide
