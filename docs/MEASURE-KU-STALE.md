@@ -158,10 +158,20 @@ regressions is not a gain even when the net moves up.
 
 **So `'mark'` is withdrawn.** Annotating the superseded turn `[superseded by <date>]` points the reader at the older
 value exactly as the block does; it is the same mechanism with a smaller font, and the block's own record says what
-that costs. What is left on this axis is `'drop'` — removing the superseded turn from the rendering instead of
-calling attention to it — which is the **opposite** intervention and the only one the two rejections do not already
-cover. `03-execution-plan.md` 14.121 registers it, at 72 `KU` questions rather than the full file, because the
+that costs. What was left on this axis was `'drop'` — removing the superseded turn from the rendering instead of
+calling attention to it — which is the **opposite** intervention and the only one the two rejections did not already
+cover. `03-execution-plan.md` 14.121 registered it at 72 `KU` questions rather than the full file, because the
 population it can reach is four.
+
+**`'drop'` is now withdrawn as well, before it was paid for.** `MEASURE-SUPERSEDE-REACH.md` measures three
+text-level pair rules over this file's own artifact at zero model calls. The tightest of them touches 77 windows,
+66 of which are already correct, deletes the gold from 36, and removes the stale value from **none of the four**
+stale twins above — its single removal is `c7dc5443`, one of the five *undelivered* questions the arm's third
+clause forbids counting. The reason is structural rather than a tuning failure: a substitution is a **slot**
+changing value, and no function of surface tokens recovers a slot. `cortex-core` has the slot
+(`knowledge/edge.ts` derives `supersedes` from subject and predicate); `cortex-memory` imports none of it, so the
+store holds turns and turns have no slots. The read side of this axis therefore closes, and the layer that can
+reach it is the write path.
 
 ### 7.1 A second reason to distrust the block's reach, found while checking this file's own claims
 
