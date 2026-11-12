@@ -148,10 +148,19 @@ class _Handler(BaseHTTPRequestHandler):
         if missing:
             # One upstream call for the whole miss set, so the request count falls with the hit rate rather than
             # being held constant by a per-text loop.
+            #
+            # Every field except `input` is forwarded verbatim. That is not tidiness: Zhipu's `embedding-3` is a
+            # variable-dimension model and answers 400 when `dimensions` is omitted, and Mem0 sends it from its own
+            # `embedding_dims`. A proxy that rebuilt the body from `{model, input}` would drop it and the vectors
+            # would come back at the vendor's default width against an index created at the configured one -- a
+            # width mismatch the vector store reports as a failed ingest rather than as what it is.
+            forwarded = {key: value for key, value in payload.items() if key != "input"}
+            forwarded["model"] = model
+            forwarded["input"] = [str(texts[index]) for index in missing]
             response = _post(
                 f"{self.upstream.rstrip('/')}/embeddings",
                 self.api_key,
-                {"model": model, "input": [str(texts[index]) for index in missing]},
+                forwarded,
                 self.timeout,
             )
             for position, index in enumerate(missing):

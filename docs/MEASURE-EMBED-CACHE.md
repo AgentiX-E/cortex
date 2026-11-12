@@ -49,6 +49,7 @@ than a mock, because the failure this is guarding is at the wire:
 | 2b — the misses come back in the order they were asked | a batch `[a, b, c]` with `b` warm must return `b`'s original vector at index 1 and distinct vectors for `a` and `c` |
 | 4 — the cache says what it did | hits and upstream calls counted separately; `reuseRate` is `null` rather than `0.0` on an empty cache |
 | 5 — the model travels with the vector | a second model misses; the store survives a restart; a warm second run over the same corpus makes **zero** upstream calls |
+| **transparency** | `dimensions` reaches the upstream; an unrecognised field is forwarded rather than dropped; a partly-warm batch shrinks `input` and leaves every other field alone |
 
 `tools/__tests__/test_embed_cache_wiring.py` — 10 assertions on the workflow, because the wiring is where this
 repository keeps losing. It derives the *ingesting* steps from the workflow the same way
@@ -56,6 +57,14 @@ repository keeps losing. It derives the *ingesting* steps from the workflow the 
 it asserts the ordering that `sqlite3.connect` requires: **`sqlite3.connect` does not create parent
 directories**, so a create step after the first ingest produces `unable to open database file` several minutes
 in, reported as an embedder failure.
+
+### 2.1 The transparency row is not a formality
+
+The first version of the proxy rebuilt the upstream body as `{"model", "input"}`, which **drops `dimensions`**.
+Zhipu's `embedding-3` is a variable-dimension model and Mem0 sends `dimensions` from its own `embedding_dims`, so
+the forwarded request either 400s or answers at the vendor's default width against an index created at the
+configured one — and the second form is the dangerous one, because it arrives as a failed ingest several minutes
+into a run rather than as a wrong request. Every field except `input` is now forwarded verbatim.
 
 `test_embed_cache_proxy.py` also runs the real driver end to end (`mem0ai==2.2.1` + `faiss-cpu`, both present
 on the Runner): two sessions, three turn texts of which two are the same sentence, then `served == 3`,

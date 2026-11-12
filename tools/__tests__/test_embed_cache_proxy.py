@@ -174,6 +174,57 @@ class TestCriterionOneTheKeyIsTheWholeRequest:
         assert proxy_module.cache_key("embedding-3", "hello") == expected
 
 
+class TestTheProxyIsTransparent:
+    """A cache in front of an endpoint must not edit the request on its way through.
+
+    The defect this closes was real and the first version of this file had it: the proxy rebuilt the upstream body
+    from `{"model", "input"}`, which drops `dimensions`. Zhipu's `embedding-3` is a variable-dimension model, Mem0
+    sends `dimensions` from its own `embedding_dims`, and a request without it is either a 400 or a reply at the
+    vendor default width against an index created at the configured one. The second form is worse: it reports as a
+    failed ingest some minutes into a run.
+    """
+
+    def test_the_dimensions_field_reaches_the_upstream(self, tmp_path):
+        running = _Running(tmp_path)
+        try:
+            _post(
+                f"{running.url}/embeddings",
+                {"model": "embedding-3", "input": ["alpha"], "dimensions": 1024},
+            )
+            assert running.upstream.requests[-1]["dimensions"] == 1024
+        finally:
+            running.stop()
+
+    def test_an_unrecognised_field_is_forwarded_rather_than_dropped(self, tmp_path):
+        # A proxy with an allowlist of field names is a proxy that silently narrows every future client's request.
+        running = _Running(tmp_path)
+        try:
+            _post(
+                f"{running.url}/embeddings",
+                {"model": "embedding-3", "input": ["alpha"], "encoding_format": "float", "user": "bench"},
+            )
+            forwarded = running.upstream.requests[-1]
+            assert forwarded["encoding_format"] == "float"
+            assert forwarded["user"] == "bench"
+        finally:
+            running.stop()
+
+    def test_a_batch_of_misses_keeps_the_fields_and_shrinks_only_the_input(self, tmp_path):
+        running = _Running(tmp_path)
+        try:
+            _post(f"{running.url}/embeddings", {"model": "embedding-3", "input": ["seen"], "dimensions": 8})
+            _post(
+                f"{running.url}/embeddings",
+                {"model": "embedding-3", "input": ["seen", "new"], "dimensions": 8},
+            )
+            forwarded = running.upstream.requests[-1]
+            assert forwarded["input"] == ["new"]
+            assert forwarded["dimensions"] == 8
+            assert forwarded["model"] == "embedding-3"
+        finally:
+            running.stop()
+
+
 class TestCriterionTwoAHitIsTheVectorTheEndpointReturned:
     def test_a_stored_vector_round_trips_exactly(self, tmp_path):
         cache = proxy_module.VectorCache(str(tmp_path / "c.sqlite"))
