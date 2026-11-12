@@ -135,15 +135,31 @@ const IDENTITY: WidthDecision = { reason: 'identity' };
  * @param turns the candidate turns, in arrival order -- the order is kept for ties, because a tie is the
  *   relevance signal saying it has no opinion and the arrival order is the only other rule in the pipeline
  * @param options see {@link WidthPlanOptions}
+ * @param rendered the characters each turn will actually contribute, when that differs from its length.
+ *
+ *   ## Why this parameter exists, and what it cost to notice
+ *
+ *   The registered arm caps one turn at **400 characters on two routes** (`CORTEX_MEMORY_MAX_TURN_CHARS`,
+ *   reaching `multi-session` and `temporal`), so a 5,000-character turn enters the prompt as 400. A plan
+ *   that measures the *raw* turn would then report a budget twelve times the prompt it is budgeting: the
+ *   funded prefix is mostly text the renderer was never going to print, `fitToBudget` reads the cap as
+ *   non-binding, and the mechanism silently does nothing -- on exactly the two routes whose bill the
+ *   experiment exists to reduce. That is not a hypothetical: the first dispatch of this plan
+ *   (`43259468403`) was cancelled for it before it produced a reading.
+ *
+ *   Absent means the turn's length, which is what an arm with no per-turn cap renders and therefore the
+ *   correct default for every configuration that does not have one.
  */
 export function planEvidenceRoom(
   question: string,
   turns: readonly string[],
   options: WidthPlanOptions,
+  rendered?: readonly number[],
 ): WidthDecision {
   if (turns.length === 0) return EMPTY;
   if (options.coverage >= 1) return IDENTITY;
 
+  const charsOf = (index: number): number => rendered?.[index] ?? turns[index]!.length;
   const scores = turns.map((turn) => lexicalRelevance(question, turn));
   const total = scores.reduce((sum, score) => sum + score, 0);
   // A question sharing no content term with any candidate scores zero everywhere. Returning `IDENTITY`
@@ -164,14 +180,15 @@ export function planEvidenceRoom(
   let chars = 0;
   for (const entry of ranked) {
     covered += entry.score;
-    chars += turns[entry.index]!.length;
+    chars += charsOf(entry.index);
     kept += 1;
     if (covered >= target) break;
   }
 
-  const rendered = Math.ceil(chars * options.renderMargin);
-  const funded = Math.max(options.floorChars, rendered);
-  const whole = Math.ceil(turns.reduce((sum, turn) => sum + turn.length, 0) * options.renderMargin);
+  const funded = Math.max(options.floorChars, Math.ceil(chars * options.renderMargin));
+  const whole = Math.ceil(
+    turns.reduce((sum, _turn, index) => sum + charsOf(index), 0) * options.renderMargin,
+  );
   // The prefix already covers every candidate: there is nothing left for a cap to remove, and returning a
   // number here would report a mechanism acting on a question it did not change.
   if (funded >= whole) return IDENTITY;

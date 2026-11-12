@@ -154,6 +154,39 @@ describe('planEvidenceRoom', () => {
     expect(decided).toEqual({ reason: 'identity' });
   });
 
+  it('measures the characters the renderer will print, not the turn', () => {
+    // The registered arm caps one turn at 400 characters on `multi-session` and `temporal`. A plan that
+    // measured raw lengths would fund twelve times the prompt it budgets on a 5,000-character turn, and
+    // `fitToBudget` would then read the plan as non-binding -- the mechanism doing nothing on exactly the
+    // two routes it exists for. `43259468403` was the dispatch that would have read it that way.
+    const turns = [turn('shoes', 5_000), turn('parcel', 5_000), turn('refund', 5_000)];
+    const raw = planEvidenceRoom('shoes', turns, { ...OPTIONS, coverage: 0.5, floorChars: 0 });
+    const capped = planEvidenceRoom(
+      'shoes',
+      turns,
+      { ...OPTIONS, coverage: 0.5, floorChars: 0 },
+      [400, 400, 400],
+    );
+    expect(raw.plan?.evidenceChars).toBe(turns[0]!.length);
+    expect(capped.plan?.evidenceChars).toBe(400);
+    expect(capped.plan?.turnsKept).toBe(raw.plan?.turnsKept);
+  });
+
+  it('declines when the cap makes the whole set fit the plan', () => {
+    // The other direction: once the rendered lengths are small enough that the funded prefix is the whole
+    // set, the plan must say `identity` rather than report a cap of everything. Two turns of 5,000
+    // characters capped at 400 are 800 characters of prompt, and a plan that ranked them by raw length
+    // would still report a cut.
+    const turns = [turn('shoes', 5_000), turn('parcel', 5_000)];
+    const capped = planEvidenceRoom(
+      'shoes',
+      turns,
+      { ...OPTIONS, coverage: 0.5, floorChars: 900 },
+      [400, 400],
+    );
+    expect(capped).toEqual({ reason: 'identity' });
+  });
+
   it('treats coverage 0 as the shortest non-empty prefix rather than as no evidence', () => {
     // 0 is a value a sweep will produce, and the degenerate reading -- a budget of zero, an empty evidence
     // block -- is a different experiment from "the single best turn". `fitToBudget` would assemble the

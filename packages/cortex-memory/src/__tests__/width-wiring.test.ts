@@ -203,6 +203,23 @@ describe('a per-question evidence budget', () => {
     expect(reads.some((read) => read.width?.reason === 'capped')).toBe(true);
   });
 
+  it('budgets the characters the cap lets through, not the ones the turn holds', async () => {
+    // The registered arm caps one turn at 400 characters on two routes, so a plan measured on raw lengths
+    // would fund evidence the renderer was never going to print and the cap would read as non-binding.
+    const loose = await oneQuestion({ maxPromptChars: 24_000, widthPlan: CUTTING });
+    const capped = await oneQuestion({
+      maxPromptChars: 24_000,
+      maxTurnChars: 100,
+      maxTurnCharsRoutes: ['flat'],
+      widthPlan: CUTTING,
+    });
+    expect(loose.width?.plan?.evidenceChars).toBeGreaterThan(0);
+    expect(capped.width?.plan?.evidenceChars).toBeGreaterThan(0);
+    expect(capped.width?.plan?.evidenceChars).toBeLessThan(loose.width!.plan!.evidenceChars);
+    // And the prompt the reader saw follows the budget, not the other way round.
+    expect(capped.prompt.length).toBeLessThan(loose.prompt.length);
+  });
+
   it('reports `unsignalled` for a question that shares no term with its evidence', async () => {
     const seen: string[] = [];
     const llm: LLM = {

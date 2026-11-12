@@ -1463,7 +1463,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // §14.126. After the route filter and before the prompt, because both halves of that ordering are
     // load-bearing: a width computed over turns this route will not see would fund evidence the prompt
     // cannot carry, and a width computed after the prompt would be a description rather than an input.
-    const options = this.#promptOptions(route, this.#widthFor(question, kept)?.plan?.evidenceChars);
+    const options = this.#promptOptions(
+      route,
+      this.#widthFor(question, kept, route)?.plan?.evidenceChars,
+    );
     const ordering = this.#orderingFor(question, questionDate);
     const assembled = this.#withConflicts(
       question,
@@ -1731,6 +1734,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
       this.#widthFor(
         question,
         sessions.flatMap((session) => session.turns),
+        'multi-session',
       )?.plan?.evidenceChars,
     );
     const assembled = buildSessionPrompt(
@@ -2192,7 +2196,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * reader needs: "the plan did not act" and "the plan acted and delivered what it asked for" are
    * different findings about the mechanism, and only the second is evidence that the cut is affordable.
    */
-  #widthFor(question: string, turns: readonly AdmittedTurn[]): WidthDecision | undefined {
+  #widthFor(
+    question: string,
+    turns: readonly AdmittedTurn[],
+    route: TurnCapRoute,
+  ): WidthDecision | undefined {
     const options = this.#options.widthPlan;
     if (options === undefined) {
       // Cleared rather than left alone, so `lastWidth()` describes **this** question. A run that turned
@@ -2205,9 +2213,31 @@ export class CortexMemory implements SessionAwareMemorySystem {
       question,
       turns.map((turn) => turn.content),
       options,
+      // The characters each turn will actually contribute, which is the turn's length only when no cap
+      // reaches this route. The registered arm caps one turn at 400 characters on `multi-session` and
+      // `temporal` (§13.68), so a budget measured on raw lengths would be twelve times the prompt it
+      // budgets on a 5,000-character turn: `fitToBudget` would read the plan as non-binding and the
+      // mechanism would do nothing on exactly the two routes it exists for.
+      this.#renderedChars(turns, route),
     );
     this.#lastWidth = decision;
     return decision;
+  }
+
+  /**
+   * What each of these turns contributes to the prompt, as the renderer will print it.
+   *
+   * Resolved through `#capReaches` rather than by reading `maxTurnChars` directly, for the reason that
+   * predicate exists: the cap's reach is a list, and a plan that assumed the cap reached every route
+   * would under-fund the four routes it does not reach. Absent means the whole turn.
+   */
+  #renderedChars(
+    turns: readonly AdmittedTurn[],
+    route: TurnCapRoute,
+  ): readonly number[] | undefined {
+    const cap = this.#options.maxTurnChars;
+    if (cap === undefined || !this.#capReaches(route)) return undefined;
+    return turns.map((turn) => Math.min(turn.content.length, cap));
   }
 
   #promptOptions(route: TurnCapRoute, evidenceChars?: number): PromptOptions {
