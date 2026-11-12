@@ -20,14 +20,18 @@ predictions, written in advance precisely so that this document could not be a d
 | id     | prediction                                                                                                 | reading                                                                                    | verdict                             |
 | ------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
 | **C2** | median evidence tokens per question falls to **at most 0.70x**                                             | `46,926` → `22,830` characters = **0.487x**                                                | **pass**                            |
-| **C1** | prompt tokens per question fall to **at most 6,000**                                                       | `22,830 / 4.06` = **5,623** tokens at the measured 4.06 chars/token                        | **pass**                            |
+| **C1** | prompt tokens per question fall to **at most 6,000** | `22,830 / 4.06` = 5,623 — a **median of evidence characters**, against a threshold on **mean billed tokens**; the ledger reads **6,077** | **fail**, by 1.3%; `MEASURE-COST-FLOOR.md` §1 |
 | **A**  | overall accuracy is **not more than 2.0 points below** the control (>= 89.4 on the 91.40 first repetition) | **88.20** — `441/500` twice, identical in both repetitions                                 | **fail**, by 1.20 points            |
 | **B**  | the fall is **concentrated in ABS, IE and KU**                                                             | the fall is **entirely in MR and TR**: `-6.61` and `-4.72`, against `0.00 / -0.67 / -1.39` | **fail**, in the opposite direction |
 | **C**  | the abstention route does not gain                                                                         | ABS reads `30/30` at both rooms                                                            | **pass**                            |
 
-`C1` and `C2` — the two rows that had an instrument and no numerator — now have numerators, and both
-clear their thresholds. The cost was **3.20 points**, which `A` refuses, and the shape of the loss,
-which `B` refuses, is the more interesting half.
+`C2` — the row that had an instrument and no numerator — now has one and clears its threshold. **`C1` does
+not, and the cell above is wrong.** It divides the *median* delivered characters by 4.06 and compares the result
+to a threshold written on *mean billed tokens*; the ledger on the same artifact reads **6,077**
+(`feature promptTokens 6,077,236` over 500 questions and two runs), which is 1.3% over the ceiling. Three
+quantities were conflated and `MEASURE-COST-FLOOR.md` §1 separates them. The cost of the room was **3.20
+points**, which `A` refuses, and the shape of the loss, which `B` refuses, is the more interesting half —
+neither of which depends on the row that was misread.
 
 ## 2. What `B`'s failure means, in the registration's own words
 

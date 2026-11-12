@@ -200,6 +200,40 @@ where a dropped turn has only an absence.
 This file therefore does **not** register an arm. It records that the third attempt on the read side of this
 axis is refused before it is paid for, and that the layer which can reach it is the write path.
 
+### 6.1 The paper that licensed §6 registers its own counter-example, on this benchmark
+
+`§6`'s shape comes from the FactConsolidation result — deterministic aggregation over extracted candidates
+reads **78.0%** single-hop with `gpt-4o-mini` and **94.8%** with `gpt-4o`, against 67.2% for the same pipeline
+leaving the judgement to a model. That is a 10.8-point move and it is why the ingest-time slot was written down
+at all.
+
+The same paper runs the transfer this design requires, and reports it in the abstract:
+
+> A cross-benchmark check on `LongMemEval` knowledge-update (conversational memory, real timestamps) shows the
+> mechanism ports from `max(serial)` to `max(timestamp)` but **only ties LLM judgment (57.8% vs 64.4%, n=45)**:
+> deterministic aggregation is the right primitive for current-value conflicts, and must be composed with
+> question-type-aware handling.
+
+Three things follow, and the first is the one that changes a decision.
+
+1. **The predicted repair is withdrawn.** `03-execution-plan.md` §14.123.6 registered "at least 6 of the 9 `KU`
+   failures have their stale value resolvable by a serial". That remains a statement about *resolvability* and it
+   is cheap to keep. It is not a prediction that resolving them raises the score, because the only published
+   check of exactly that step on exactly this benchmark reads a tie, and a 6.6-point deficit inside it.
+2. **The cost is now unopposed.** Ingest-time extraction is "one model call per turn", which is the 275k-call
+   bill `PROTOCOL.md` refuses to pay for Mem0. Paying it against an unestablished benefit is a different
+   decision from paying it against a 10.8-point one, and this file would be wrong to leave the two looking alike.
+3. **The absolute numbers are not comparable, and that is not the excuse.** This arm reads `KU` at **88.2%**
+   (63.5 of 72) where the paper's two pipelines read 57.8 and 64.4, because the pipeline here shows the reader the
+   turns and the date stamps rather than extracted candidates. So the paper's 57.8 is not a prediction about this
+   arm. What transfers is the *relative* claim, and it transfers as a null.
+
+The arm is therefore still registered and its ceiling is re-stated in falsifier form: it must beat the control by
+**at least 3 of 9** on `KU` at unchanged cost per question, and if it does not, the axis closes for the fourth and
+last time — three read-side attempts and one write-side. That is written here rather than in the registration so
+that a future round reading the registration cannot miss what the source paper said about its own mechanism.
+
+
 ## 7. What this does not claim
 
 - It does not claim `'drop'` would fail on accuracy. Nothing was dispatched, so nothing was measured on

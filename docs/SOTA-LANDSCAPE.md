@@ -1182,20 +1182,23 @@ the accuracy registration beside them refuses the same run.
 
 | row | threshold | 48,000 room (`42355323615`) | 24,000 room (`42373407439`) | verdict |
 | --- | --- | ---: | ---: | --- |
-| `C1` prompt tokens per question | ≤ 6,000 | 11,558 | **5,623** | met at the smaller room |
+| `C1` prompt tokens per question | ≤ 6,000 | 11,558 | **6,077** | **not met**, by 1.3%; the 5,623 this row used to print is a median of evidence characters — `MEASURE-COST-FLOOR.md` §1 |
 | `C2` median evidence ratio | ≤ 0.70 | 1.000 (denominator) | **0.487** | **pass** |
 | `A` accuracy within 2.0 of the control | ≥ 89.4 | 91.40 | **88.20** | **fail**, by 1.20 |
 
-So the bar that `C1` and `C2` aim at is reachable, and the price is `-3.20`. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md`
-has the whole reading; the number this page needs is that **cost is no longer unmeasured** — it is
-measured and it is expensive at the whole-window setting.
+So `C2`'s bar is reachable and `C1`'s is not, even at the smaller room: the ledger reads **6,077**. The price
+of trying is `-3.20`. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` has the reading and
+[`MEASURE-COST-FLOOR.md`](MEASURE-COST-FLOOR.md) has the bound that closes the family — at the allocation that
+ships, the two load-bearing capabilities bill **6,167** on their own, so no setting of the other four routes
+reaches 6,000. The number this page needs is that **cost is measured, and it is not met at any dispatched
+setting.**
 
 Against the board, the smaller room is the closest this product has come to a cost win:
 
 | | cortex at 24,000 | MemStrata CL1 | difference |
 | --- | ---: | ---: | ---: |
 | accuracy, original protocol | **88.20%** | 92.6% | **-4.40** |
-| evidence per question | **5,623 tokens** | 24,000-token ceiling | **0.23x** |
+| evidence per question | **5,623 tokens** (median; 5,775 mean) | 24,000-token ceiling | **0.23x** |
 
 Twenty-three percent of the evidence for four and a half points. That is not a win, and it is the first
 time the trade is a number rather than an argument.
@@ -1226,7 +1229,7 @@ This is the fourth instrument in this campaign to predict safety and be contradi
 | accuracy · original protocol · same 500 | **91.40%** (1 rep) / 91.95% (4-rep mean of the previous batch) | MemStrata **92.6%** at 24k tokens | **not SOTA, not behind** — inside the leader's own 7.5–11.5-question label noise, at 0.51x the evidence |
 | accuracy · source-aware grading | **screened, not scored** | MemStrata **95.0%** | **still unmeasured**, but the screen now exists: `tools/source-aware-audit.mjs` splits reader from retrieval on any artifact, and `auditReference` is the protocol. This moved from "no implementation" to "implementation, dispatch pending" |
 | accuracy · self-reported headline | 91.40% | **Recallium 98.4%**, ContextStream 96.8%, Agent Zero 95.60% | **not SOTA**, and none of the three has public code (§`COMPETITOR-CODE-AVAILABILITY.md`) |
-| cost per question | **11,558** registered / **5,623** at the smaller room | Zep ~4,400 published; MemStrata 24,000 | **not SOTA**; the trade is now quantified at `-3.20` for `0.487x` |
+| cost per question | **11,558** registered / **6,077** at the smaller room | Zep ~4,400 published; MemStrata 24,000 | **not SOTA**; the trade is now quantified at `-3.20` for `0.487x`, and the smaller room still misses `C1` by 1.3% |
 | memory pollution | `V1` 0.0pp, `K1` +64.7pp | TEPA **-9.9pp** append-only | at least as good as the field's counter-example, on 17 cases rather than a 50-seed stream |
 | provider portability | `P1` **no reading** | MemStrata -0.2pp | **unmeasured**; the run that would have read it (`42368550937`) died on a provider content filter and that defect is fixed (`ProviderContentRefusal`) |
 | reader strength | `M1` unmeasured | Agent Zero 3.4pp / 8 backbones | **unmeasured** |

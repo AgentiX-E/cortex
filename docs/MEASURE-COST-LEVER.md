@@ -252,3 +252,22 @@ Three things the line says and one it refuses to.
 The composition is the part worth reading beside the total: **6.67 of the 11.08 CNY is output** — 60% of the
 bill is the reader thinking, on prompts whose input is 97.8% cache hits. So the mode is not an input-cost
 question, and the ledger's context-token rows (8,941 per question) are not where that money is.
+
+## 8. Addendum (round 76): the criterion this document measured was never met, and the floor says why
+
+`MEASURE-COST-FLOOR.md` is the correction, and two of this document's readings are its subject.
+
+**The 5,623 in §2 is not a `C1` reading.** It is the *median* delivered **evidence** characters divided by 4.06,
+against a threshold written on *mean billed tokens*; the ledger on the same arm (`42373407439`) reads **6,077**.
+So `C1` was never cleared by any dispatched configuration, and the closest miss is 1.3%.
+
+**The per-route allocation cut the bill and raised the floor.** §5 reads `42383171765` as 9,149 tokens for
+−1.05 points, which is correct, and this document treats the bill as the quantity the allocation moves. It is not
+the only one. The floor — what the load-bearing capabilities bill by themselves — moved **up**, from 6,057 to
+6,167, because the four routes the allocation narrowed were 48.4% of the delivered characters in the 48,000-
+everywhere arm and the floor is the heavy routes' share of that total. Cutting the light routes removes the
+headroom, not only the cost.
+
+The consequence is that `C1` and `S3` cannot both be satisfied here, which no row in this repository said before:
+`S3` needs `MR` at a room it already has and does not reach 85% in, and that room alone exceeds `C1`. What the
+same document prices is the exit — 3,703 tokens per question for a window sized to its own evidence.

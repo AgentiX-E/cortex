@@ -375,8 +375,10 @@ difference the product would also show.
 ### 3.2 The budget was met by halving the room, and the halving is not free
 
 `42373407439` is `42355323615` with `max_prompt_chars` moved from 48,000 to 24,000 and nothing else.
-`C1` reads **5,623** tokens per question on it and `C2` reads **0.487**, so both cost rows clear their
-bars for the first time — and `A`, the accuracy registration written beside them, refuses the result.
+`C2` reads **0.487** and clears its bar for the first time; `C1` reads **6,077** and does not, because the
+figure this section used to quote — 5,623 — is a median of *evidence characters* divided by 4.06, and the row is
+written on *mean billed tokens*. `ACCEPTANCE-MATRIX.md` §3.3 separates the three quantities and puts a floor
+under the row. `A`, the accuracy registration written beside them, refuses the result either way.
 
 | capability | n | 48,000 | 24,000 | delta | `gold-room.py` predicted |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -394,6 +396,42 @@ exposure**: a gold-coverage model is sufficient for a single-turn question and i
 aggregation. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` has the whole reading; §13.302 registers the arm the
 asymmetry licenses — 24,000 on four routes and 48,000 on the two that aggregate, predicted at `-0.36`
 points for `-26%` tokens, every cell of it a measured number rather than a model.
+
+### 3.3 `C1` has never been cleared, and under the shipping allocation it cannot be
+
+Three rounds quoted a `C1` pass. There has not been one. The row's unit is prompt tokens per question per
+repetition, taken from `cost-ledger.py`, which divides `usageBySide.feature.promptTokens` by
+`questionCount x runs` — a **mean** over questions of **billed** tokens. The passing figure was produced by
+dividing the **median** delivered *evidence* characters by **4.06**, an inferred ratio: three substitutions, each
+of which moves the number in the same direction.
+
+| what the row needs | what 5,623 used | what it reads | ledger on `42373407439` |
+| --- | --- | --- | --- |
+| mean over questions and repetitions | median delivered characters | 22,830 → mean is 23,447 | `per question per run 6,077` |
+| billed prompt tokens | evidence characters only | 260 tokens of instructions are billed and are not evidence | `feature promptTokens 6,077,236` |
+| the measured ratio, 3.8528 | 4.06 | `MEASURE-TOKEN-BASIS.md` §1 derives it per artifact | `per correct answer 6,890` |
+
+**6,077 is the closest any dispatched configuration has come**, and it is 1.3% over. The allocation that ships is
+further away, and not for a reason a narrower setting would fix — `tools/cost-floor.mjs` writes the bound out:
+
+| arm | allocation | billed | floor | share | `C1` |
+| --- | --- | --: | --: | --: | :-: |
+| `42310779222` | 48,000 everywhere | 12,105 | 6,057 | 50.0% | blocked |
+| `42373407439` | 24,000 everywhere | 6,077 | 3,070 | 50.5% | bill over by 1.3% |
+| `42533236864` | two at 48,000, four at 24,000 | 9,201 | 6,189 | 67.3% | blocked |
+| `43140878641` | the same, with the label repair | 9,168 | **6,167** | 67.3% | blocked |
+
+The floor is `(heavy characters / delivered characters) x bill`, and the character ratio cancels out of it, so
+none of these numbers rests on 4.06 or on 3.8528. What it says: **the `MR` and `TR` windows bill 6,167 tokens per
+question on their own**, with every other route delivering nothing, and `C1` asks for 6,000. Narrowing the four
+light routes cannot close a gap that is already open before they spend a character, and they cannot narrow much in
+any case — their gold is **124%** (`KU`) and **120%** (`ABS`) of the window they already have.
+
+The row stays at 6,000 because 6,000 is where the incumbents publish (Mem0 6,800, Zep 4,400), and its status
+becomes the one this file already has a word for: **blocked by arithmetic on the current mechanism**, with `C6`
+(`MEASURE-COST-FLOOR.md` §7) as the arm that could reach it. That arm's ceiling is measured in the same document:
+a window sized to each question's own evidence bills **3,703**, which is 40.4% of today's bill, at two times its
+gold per question.
 
 ## 4. How each increment is tested, on four levels
 
