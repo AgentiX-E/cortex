@@ -65,6 +65,18 @@ on:
         required: false
         default: ''
         type: string
+      # A content-addressed cache between the competitor and the embedding endpoint. `tools/competitor-sut/
+      # embed_cache_proxy.py` states the mechanism and `03` section 14.130 the criteria; the reason it exists is
+      # that this workflow ingests the same haystack FOUR times per dispatch (once for the system-under-test step and
+      # once per reading prompt) and the haystack reuses sessions across questions, so the same text is embedded and
+      # paid for repeatedly. The vectors are the endpoint's own and are returned unchanged, so what the system under
+      # test sees does not change -- criterion 3 of 14.130 is that with and without the cache the reader's answers
+      # are identical question by question, and `openai` is the control for it.
+      sut_embed_cache:
+        description: 'Embedder for `mem0`/`letta`: openai-cached (transparent cache in front of the endpoint) or openai (the control)'
+        required: false
+        default: 'openai-cached'
+        type: string
       sut_infer:
         description: 'For `mem0`: 1 runs its LLM extraction at ingest (one model call per turn, ~275k on 500 questions) — 0 stores turns as given'
         required: false
@@ -93,6 +105,8 @@ jobs:
       LIMIT: ${{ github.event.inputs.limit || '10' }}
       READ_QUESTIONS: ${{ github.event.inputs.read_questions || '100' }}
       TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
+      MEM0_EMBEDDER: ${{ github.event.inputs.sut_embed_cache || 'openai-cached' }}
+      MEM0_EMBED_CACHE_PATH: ${{ github.workspace }}/.cache/competitor-embed/embeddings.sqlite
     # 500 questions x 2 arms x 2 calls per arm is ~2,000 calls for ONE reading arm, and this workflow now runs
     # three of them. The measured cost of the first arm alone was about 45 minutes on a runner, so 120 was already
     # marginal and three arms made it a coin flip. Raised rather than cutting the question count: a 500-question
@@ -196,6 +210,38 @@ jobs:
               process.exit(1);
             }
           ' "${{ github.workspace }}/data/longmemeval_s_cleaned.json"
+          # A 64-byte digest, because `hashFiles` is evaluated by the template service under a 120-second budget
+          # for the whole template and the corpus is 100+ MB. Keying on the corpus itself is the failure
+          # `test_embedding_cache_key.py` pins: run 41842684629 died in three minutes with no measurement.
+          node -e '
+            const crypto = require("crypto");
+            const fs = require("fs");
+            const digest = crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex");
+            fs.writeFileSync(process.argv[2], digest + "\n");
+            console.log(`corpus sha256 ${digest}`);
+          ' "${{ github.workspace }}/data/longmemeval_s_cleaned.json" "${{ github.workspace }}/data/dataset.sha256"
+
+      # The cache is carried between dispatches, because the saving is not only within one run.
+      #
+      # Four ingests happen per dispatch: one for the system-under-test step and one per reading prompt, and each is
+      # a separate process that builds its own store. Against a cold cache the second, third and fourth re-embed the
+      # same haystack for nothing. Keyed on the system under test and the corpus digest rather than on the run, so a
+      # re-dispatch after a code change reuses it while a different competitor or a new corpus does not.
+      #
+      # `restore-keys` is what makes the first dispatch of a new key cheaper: a partial cache stops at the first
+      # missing text and the rest is embedded once.
+      - name: Restore the embedder cache
+        if: github.event.inputs.sut != '' && (github.event.inputs.sut_embed_cache || 'openai-cached') == 'openai-cached'
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/competitor-embed
+          key: competitor-embed-${{ github.event.inputs.sut }}-${{ hashFiles('data/dataset.sha256') }}
+          restore-keys: |
+            competitor-embed-${{ github.event.inputs.sut }}-
+
+      - name: Create the embedder cache directory
+        if: github.event.inputs.sut != ''
+        run: mkdir -p "${{ github.workspace }}/.cache/competitor-embed"
 
       # Two tables, deliberately: 100 questions is the H1 subset and 500 is the whole file. Running both costs
       # one extra pass and removes the question of whether a reading came from the sample or the population.

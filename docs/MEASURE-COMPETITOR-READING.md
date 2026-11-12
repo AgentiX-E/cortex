@@ -35,10 +35,14 @@ it exists to fill. That is fixed in `.github/workflows/competitor-retrieval.yml`
 
 ## 1. The table (run B, `43178388235`)
 
+> The two accuracy cells are struck through. Both were read at `temp=default`, before the workflow pinned a
+> sampling field; §3 records the repair and the re-read (`43199357450`). The retrieval and cost columns stand:
+> they are properties of the systems, not of the sampler.
+
 | provider | build | recall@k | all-gold | MRR | **accuracy** | ~tok/question |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `cortex-session` | none | 85.0% | **80.0%** | 0.792 | **11/20 = 55.0%** | 33,556 |
-| **`mem0` 2.2.1** | embedding | **100.0%** | 0.0% | **0.908** | **12/20 = 60.0%** | **1,768** |
+| `cortex-session` | none | 85.0% | **80.0%** | 0.792 | ~~11/20 = 55.0%~~ **withdrawn** | 33,556 |
+| **`mem0` 2.2.1** | embedding | **100.0%** | 0.0% | **0.908** | ~~12/20 = 60.0%~~ **withdrawn** | **1,768** |
 
 Per capability, accuracy:
 
@@ -68,14 +72,14 @@ Two discordant pairs one way, one the other, ten ties: exact McNemar **p = 1.0**
 supposed to help — and `00ca467f` is `MR`, where returning whole sessions instead of extracted facts is supposed
 to help. One question each. **The mechanism story is available; the evidence for it is not, at this size.**
 
-## 3. `H5` failed, and it is the most useful result here
+## 3. `H5` failed — and the cause was the workflow, not the arm
 
 The control arm was read twice, on the same 20 questions, through the same reader and the same judge:
 
-| run | `cortex-session` correct | per-question agreement with the other run |
-| --- | ---: | ---: |
-| A `43170314351` | **13/20** | — |
-| B `43178388235` | **11/20** | **16/20 = 80.0%** |
+| run | reader identity | `cortex-session` correct | per-question agreement |
+| --- | --- | ---: | ---: |
+| A `43170314351` | `temp=default` | **13/20** | — |
+| B `43178388235` | `temp=default` | **11/20** | **16/20 = 80.0%** |
 
 Four questions flipped: `0100672e`, `031748ae`, `031748ae_abs` (right → wrong) and `09ba9854_abs`
 (wrong → right). `H5`'s threshold is 90%, so by the criterion written before the dispatch:
@@ -83,13 +87,25 @@ Four questions flipped: `0100672e`, `031748ae`, `031748ae_abs` (right → wrong)
 > **at n = 20 this arm's run-to-run movement (2 questions) is twice the inter-arm difference (1 question), so no
 > ranking of two systems may be taken from a single 20-question pass.**
 
-This is the same defect class the campaign already found once in this instrument — two invocations of one
-harness disagreed by five questions per arm, which is why `--json-out` exists. It now has a number on the
-accuracy column rather than on the table's provenance.
+**The second half of that sentence stands; the first half was re-attributed one round later.** This file
+called the movement a property of the arm. It was a property of the workflow: `competitor-retrieval.yml`
+forwarded no `TEMPERATURE`, so every T1 row was served at the provider's default, while the product table
+was pinned at 0. `MEASURE-READER-DETERMINISM.md` records the repair and the two dispatches that close it —
+`43197264759` and `43198214714`, identical inputs at `temperature=0`, **13/20 both times, 20/20 = 100.0%
+agreement, zero flips**.
 
-**Nothing about run A is a mistake.** It is the same configuration measuring the same thing, and the difference
-is the instrument's repeatability at this population. Quoting either number as "our retrieval scores 55%" or
-"65%" would be quoting noise; quoting the pair as a 10-point regression would be worse.
+So three things are now separable, and this file had them fused:
+
+| statement | status after the repair |
+| --- | --- |
+| the arm is noisy at n = 20 | **falsified** — the pinned arm is bit-stable on this population |
+| the numbers 55.0% and 60.0% in §2 are quotable | **withdrawn** — they were read at `temp=default`, and the control's own two readings differed by more than the inter-arm difference. Re-read under `43199357450` |
+| n = 20 cannot rank anyone | **not established by `H5` any more.** The gate passes; a ranking objection has to be made with an interval rather than a failed threshold |
+
+This is the same defect class the campaign already found once in this instrument — two invocations of one
+harness disagreed by five questions per arm, which is why `--json-out` exists — except the movement was on
+the accuracy column rather than on the table's provenance, and the mechanism was a missing request field
+rather than a second process.
 
 ## 4. The defect run A found, and the guard on it
 

@@ -52,6 +52,10 @@ USER = "longmemeval"
 # alive after the parent asked it to stop, and the parent would then report a timeout rather than a shutdown.
 _SERVERS: list[Any] = []
 
+# Embedder caches this process started, for the same lifetime reason and one more: the manifest reads its counters
+# at the end of the run, so the object has to outlive `build_config`.
+_CACHES: list[Any] = []
+
 try:  # pragma: no cover - the import failure path is exercised by the parent, not here
     from importlib.metadata import version as _dist_version
 
@@ -128,7 +132,7 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
                 "comparable_to": "a hash-space run only",
             }
         )
-    elif embedder_provider == "openai":
+    elif embedder_provider in ("openai", "openai-cached"):
         # Explicit rather than read from ambient `OPENAI_*`: the whole point of this driver is that the report can
         # say which embedding space the vectors came from, and Mem0's default fallback would silently use
         # `text-embedding-3-small` at 1536 dimensions against whatever endpoint happened to be exported.
@@ -137,17 +141,44 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
             "https://open.bigmodel.cn/api/paas/v4"
         )
         api_key = os.environ.get("ZHIPU_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
+        model = os.environ.get("MEM0_EMBEDDER_MODEL") or os.environ.get("ZHIPU_EMBEDDING_MODEL") or "embedding-3"
+        embedder_notes.update({"model": model, "dims": dimensions, "base_url": base_url})
+        if embedder_provider == "openai-cached":
+            # A content-addressed cache between Mem0 and the endpoint, because the haystack reuses sessions across
+            # questions and this driver re-ingests once per question (`PROTOCOL.md` requires one user per question).
+            # The vectors are the endpoint's own, returned unchanged, so the system under test sees the same input.
+            # `03` section 14.130 states the four criteria and `embed_cache_proxy.py` the mechanism.
+            import embed_cache_proxy
+
+            cache_path = os.environ.get("MEM0_EMBED_CACHE_PATH") or os.path.join(
+                os.environ.get("MEM0_FAISS_PATH", "/tmp/mem0-faiss") + "-embed-cache.sqlite"
+            )
+            proxy = embed_cache_proxy.CachingEmbeddingProxy(
+                upstream=base_url, api_key=api_key, cache_path=cache_path, model=model
+            )
+            upstream_url = base_url
+            base_url = proxy.start()
+            _CACHES.append(proxy)
+            embedder_notes.update(
+                {
+                    "cache": {
+                        "path": cache_path,
+                        "upstreamBaseUrl": upstream_url,
+                        "proxyBaseUrl": base_url,
+                    }
+                }
+            )
+            # Mem0 sees the one provider it knows and the one path it would have used; only the host differs, and
+            # the manifest says which host that was.
+            config["embedder"]["provider"] = "openai"
         config["embedder"]["config"].update(
             {
-                "model": os.environ.get("MEM0_EMBEDDER_MODEL")
-                or os.environ.get("ZHIPU_EMBEDDING_MODEL")
-                or "embedding-3",
+                "model": model,
                 "embedding_dims": dimensions,
                 "openai_base_url": base_url,
                 "api_key": api_key,
             }
         )
-        embedder_notes.update({"model": config["embedder"]["config"]["model"], "dims": dimensions, "base_url": base_url})
     if store == "faiss":
         # A local index rather than a server, so the run has no service to start and no port to collide on.
         config["vector_store"]["config"]["path"] = os.environ.get("MEM0_FAISS_PATH", "/tmp/mem0-faiss")
@@ -229,7 +260,7 @@ class Driver:
         self.timestamped = 0
 
     def manifest(self) -> dict[str, Any]:
-        return {
+        document: dict[str, Any] = {
             "ok": True,
             "name": "mem0",
             # `infer=1` builds the store with a model; `infer=0` only computes vectors. Reported from the same
@@ -238,6 +269,11 @@ class Driver:
             "version": VERSION,
             "notes": json.dumps({**self.notes, "timestamped_sessions": self.timestamped}, sort_keys=True),
         }
+        # Read here rather than stored at construction, because these counters are only meaningful after ingest and
+        # a manifest written before the work would say the cache did nothing on a run that used it.
+        if _CACHES:
+            document["embedCache"] = _CACHES[0].stats()
+        return document
 
     def reset(self) -> dict[str, Any]:
         self.memory.reset()
@@ -329,6 +365,17 @@ def main() -> int:
                     response = driver.search(str(request.get("query") or ""), limit)
             elif op == "shutdown":
                 response = {"ok": True}
+                # The cache reports and closes here rather than being left to process exit. Reported because a
+                # closed connection cannot answer `stats()` afterwards, and closed because a SQLite connection
+                # interrupted mid-transaction is the one way a completed run leaves a cache the next dispatch
+                # cannot read -- which would look like a cache that never warmed.
+                while _CACHES:
+                    cache = _CACHES.pop()
+                    response["embedCache"] = cache.stats()
+                    try:
+                        cache.stop()
+                    except Exception:  # noqa: BLE001 - shutdown must not fail because a close did
+                        pass
             else:
                 response = {"ok": False, "error": f"unknown op {op!r}"}
         except Exception as error:  # noqa: BLE001 - the parent classifies, this reports
