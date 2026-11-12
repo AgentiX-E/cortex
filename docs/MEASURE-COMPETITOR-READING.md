@@ -274,6 +274,12 @@ their absence means.
 
 Three sentences, and the first is the uncomfortable one:
 
+0. **At α = 0.01 this run has no significant line at all.** The same command at `--alpha 0.01` prints three
+   `not significant` verdicts, so the one result below survives at the conventional threshold and nothing
+   stronger. A single p = 0.0347 with three comparisons is also the weakest form of evidence there is
+   (Bonferroni would put it at 0.104), and it is quoted here because it is *against us*: no multiplicity
+   correction is needed to take a loss seriously.
+
 1. **The only real difference in this run is between our two arms.** `cortex/trim-2.8k` is 11 points behind
    `cortex-session` (17 questions lost against 6 gained, p = 0.0347). That is a *cost curve*, not a competitor
    result: cutting 91.6% of the delivered context costs 11 points of accuracy. `C6` measured the same shape from
@@ -327,8 +333,13 @@ the reading (`indeterminate`) whenever the room spread could move a full deliver
 instrument that can answer it. Two readings of one artifact disagreeing is not a matter of taste; the one that was
 wrong is now silent about the question it cannot answer.
 
-### 9.5 Reproduction
+**A third defect, found while writing §9.5: `--alpha` had never worked.** The tool split `argv` on the `--` prefix
+and then read `argv[at + 1]` for the value, so `--alpha 0.01` left `0.01` in the positional list and the run
+printed its usage instead of a table. The flag is documented in the tool's own header, which is the part that makes
+this worse than an absent option: the header promised a comparison at a stated threshold and no invocation could
+ask for one. §9.2's zero-th sentence is the reading it exists for.
 
+### 9.5 Reproduction
 ```sh
 # the reading stage in §9.1: one invocation, three read arms, pinned sampler
 gh workflow run competitor-retrieval.yml \

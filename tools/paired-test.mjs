@@ -40,13 +40,29 @@ import process from 'node:process';
 import { compareArmsInRun, compareRuns } from '../packages/cortex-eval/dist/index.js';
 
 const argv = process.argv.slice(2);
-const positional = argv.filter((arg) => !arg.startsWith('--'));
-const flag = (name) => {
-  const at = argv.indexOf(name);
-  return at === -1 ? undefined : argv[at + 1];
-};
-const alpha = Number(flag('--alpha') ?? 0.05);
-const within = argv.includes('--within');
+/**
+ * Flags and positionals, split by the one rule that has to be stated: a flag's value is not a file.
+ *
+ * The first version filtered `argv` on `--` and then read `argv[at + 1]` for the value, so
+ * `--alpha 0.01` left `0.01` in the positional list and the tool printed its usage instead of running.
+ * The flag was documented in this file's own header and had never once worked -- an option nobody could
+ * reach, which is worse than an absent one because the header says otherwise.
+ */
+const flags = new Map();
+const positional = [];
+for (let index = 0; index < argv.length; index += 1) {
+  const arg = argv[index];
+  if (arg === '--within') {
+    flags.set(arg, true);
+  } else if (arg.startsWith('--')) {
+    flags.set(arg, argv[index + 1]);
+    index += 1;
+  } else {
+    positional.push(arg);
+  }
+}
+const alpha = Number(flags.get('--alpha') ?? 0.05);
+const within = flags.has('--within');
 
 if (within ? positional.length !== 1 : positional.length !== 2) {
   process.stderr.write(
