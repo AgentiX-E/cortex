@@ -68,6 +68,28 @@ sequenced item rather than a next-round item.
 | ContextStream | 96.8% | **none found** | read the paper; reproduce the mechanism only |
 | Agent Zero Memory (`arXiv:2608.29606`) | 95.60% | **none found** | read the paper; its eight-backbone study is quotable as a bound (§16.3) |
 | MemStrata (`arXiv:2610.05343`) | 92.6% / 95.0% | **none found** | read the paper; its arms are single-variable and reproducible in our harness |
+| Synap (`maximem.ai`, 2026-10-28) | 95.6% (478/500) | **system: none. Answers: yes** | see §4.1 — the first row on this board whose 500 verdicts can be audited one at a time |
+
+### 4.1 Synap publishes every answer and every verdict, and that is a class change
+
+`maximem-ai/eval_benchmark_runs_output` (GitHub API, checked 2026-11-12) holds
+`results/longmemeval/question_records.json` — **23.1 MB, 500 per-question records** with the memories
+retrieved, the answer written and the judge's verdict — plus the answering prompt, two run manifests,
+a `retrieval_relevance_gpt4o_top20.jsonl` and a `bench/` harness. Their own table names the judge
+(`gpt-4o`), the answer model (`Gemini 3.8 Flash`), the context per question (**7.4K tokens**) and the
+score date.
+
+Three consequences, and the third is a correction to this document:
+
+1. **Their headline is recountable**, which is what separates them from Recallium (98.4%), ContextStream
+   (96.8%) and Agent Zero (95.60%) — all three of which this section records as "none found".
+2. **Our judge can be run on their answers.** `MEASURE-JUDGE-SENSITIVITY.md` measures a **−3.21-point,
+   one-sided** movement from swapping our own judge, so the 4.35-point gap to Synap is within one
+   judge swap and cannot be read as an ability difference until both sides are graded by one judge.
+3. **"The board's top four have no code" is now "top four minus one".** The system is not open, so a
+   race is still not available; an **answer-level audit is**, and it is cheaper than a race: no
+   ingest, no reader, no dispatch — one re-grade over their 500 records.
+
 
 **A name collision worth recording, because it nearly cost a round.** A search for "Agent Zero Memory
 open source" returns `frdel/agent-zero` and `agent0ai/agent-zero` — a general-purpose agentic

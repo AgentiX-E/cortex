@@ -1109,8 +1109,17 @@ question**.
 same-seed replay of unchanged requests — 7.5 to 11.5 questions.** So the only defensible statement is that the
 two are **indistinguishable at half the evidence**, and that neither is distinguishable from the other on this
 axis at this sample size. That is a better position than any previous round could claim, and it is *not* a SOTA
-claim: 95.0% source-aware, 95.60% (Agent Zero), 96.8% (ContextStream) and 98.4% (Recallium) all sit above it,
-and none of them is on the same protocol as our number.
+claim: 95.0% (MemStrata, source-aware), 95.6% (Synap), 95.60% (Agent Zero), 96.8% (ContextStream) and
+98.4% (Recallium) all sit above it, and none of them is on the same protocol as our number.
+
+**And the protocol that differs is now measured rather than asserted.** `MEASURE-JUDGE-SENSITIVITY.md`
+re-reads this arm's own 467 recorded answers with a second judge at `scorer=full`: **427 → 412 correct,
+−3.21 points, 13 down and 0 up** against a 0.43% same-judge flip rate, with **ten of the thirteen lost
+questions in `IE`** (93.3% → 86.7%). So the band on our headline is ±3.2 points and capability-shaped, which
+puts Synap's 95.6% (4.35 points above this arm's 91.25%) and Mastra's 94.87% (3.62 above) **inside one judge
+swap**. Recallium (+7.15) and ContextStream (+5.55) stay outside it. Synap is also the only one of those five
+that publishes per-question answers and verdicts (§4.1 of `COMPETITOR-CODE-AVAILABILITY.md`), i.e. the only
+one where the comparison can be settled by re-grading instead of by running.
 
 Three of MemStrata's other arms are worth recording because they bound what selection is worth at a fixed budget:
 

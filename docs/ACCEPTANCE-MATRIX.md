@@ -397,6 +397,22 @@ aggregation. `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` has the whole reading; §13.3
 asymmetry licenses — 24,000 on four routes and 48,000 on the two that aggregate, predicted at `-0.36`
 points for `-26%` tokens, every cell of it a measured number rather than a model.
 
+### 3.2b Every row on this page is read under one judge, and the judge is worth 3.2 points
+
+No row here compares two judges, so a judge's strictness cancels in every `S*`, `C*` and `M1` reading:
+both arms of a dispatch are graded by the same instrument, in the same run, on the same template.
+
+That is not true of the **cross-vendor** comparisons the same numbers are quoted against, and the size of
+that difference was unmeasured until now. `MEASURE-JUDGE-SENSITIVITY.md` re-reads this arm's own 467
+recorded answers with `deepseek-v4-pro` at `scorer=full`: **427 → 412 correct, −3.21 points, 13 down and 0
+up**, against a same-judge flip rate of **0.43%**, with ten of the thirteen losses in `IE` (93.3% → 86.7%).
+So a vendor row is decidable against this page only when it is more than about three points away, and the
+rows at 3.6–4.4 points (Mastra 94.87, Synap 95.6) are not.
+
+Two things this does **not** do. It does not move a threshold: a row is a comparison inside one dispatch,
+and the band cancels there. And it does not make the vendored figures comparable — their judge is `gpt-4o`,
+which this project has never called.
+
 ### 3.3 `C1` has never been cleared, and under the shipping allocation it cannot be
 
 Three rounds quoted a `C1` pass. There has not been one. The row's unit is prompt tokens per question per
