@@ -155,7 +155,11 @@ Three readings follow, and the third is why this is a repair rather than a note:
 1. **A deterministic echo gate** (section 4.3). The marker is `[YYYY/MM/DD` at the head of a line, the predicate
    is decidable without a model, and the reply it catches cannot be a correct answer. The repair is one
    consultation that says what the reply did wrong — the same shape as `commitment`, on a disjoint population.
-   Section 5 of `03-execution-plan.md §14.116` registers it.
+   Section 5 of `03-execution-plan.md §14.116` registers it. **It was dispatched and reached nothing**:
+   `43121298653` recorded `echo.attempted: 0` on all 500 questions while its final replies still contain 14
+   dumps. The census this item rests on counts the **last** call, and the gate sits behind the **first**:
+   all 14 were written by the bare-decline retry. `MEASURE-ECHO-REACH.md` reads the run, and re-registers the
+   line in the retry prompt instead — zero added calls for the same 75-question population.
 2. **`preference` as a retrieval type.** Five losses share one cause: the question's terms are absent from the
    session that holds the preference. This is the first loss population in the campaign whose repair is neither a
    prompt nor a pass but a **different index**, and it is also the population where the competitor's write-time
