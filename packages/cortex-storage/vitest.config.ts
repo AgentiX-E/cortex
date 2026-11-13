@@ -102,7 +102,13 @@ export default defineConfig({
     // vitest 5 dropped `**/dist/**` from its default exclude, so `tsc`'s compiled copies of these
     // tests were being collected and run a second time. Restored explicitly -- see
     // cortex-core/vitest.config.ts for the full account.
-    exclude: [...configDefaults.exclude, 'dist/**'],
+    //
+    // `test/pg/**` is excluded so that this config cannot collect the integration suite. Reaching
+    // it here would mean `pnpm test` reported a skipped suite on every machine without a database,
+    // and a skip sitting beside 292 passes reads as accounted for. It is not: nothing ran. The
+    // suite has its own config (`vitest.pg.config.ts`) and its own command (`pnpm test:pg`), so
+    // not running it is a missing command rather than a quiet line in a summary.
+    exclude: [...configDefaults.exclude, 'dist/**', 'test/pg/**'],
     coverage: {
       include: ['src/**/*.ts'],
       exclude: [

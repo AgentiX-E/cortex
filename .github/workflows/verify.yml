@@ -94,6 +94,102 @@ jobs:
           path: check-output.log
           if-no-files-found: ignore
 
+  # The PostgreSQL gate: `PgStorage` against a real server.
+  #
+  # ## Why this job exists, and what it replaced
+  #
+  # `packages/cortex-storage/src/__tests__/storage.test.ts` used to say, at its failed-transaction
+  # test, that the rollback's effect "is asserted against a real PostgreSQL instance in the
+  # integration suite". No such suite existed; `grep -rn 'integration suite' .` matched that comment
+  # and nothing else. `pg-mem` was not PostgreSQL in two ways that mattered: it does not implement
+  # `ROLLBACK`, and it cannot express the prefix filter's escaping. So the adapter's transaction and
+  # predicate behaviour were covered by an engine that had no opinion about them, and the coverage
+  # number -- 100% on `pg.ts` -- recorded that the lines ran, not that the server agreed.
+  #
+  # When the suite was finally written it failed on its first run, on four assertions. Three were
+  # real defects in the adapter: a transaction read an expired row the non-transactional path hides,
+  # `put` left dead rows that `SqlStorage.#put` purges, and `close()` raised `pg`'s message instead
+  # of the package's `StorageClosedError`. The fourth was this suite's own assumption about `JSONB`
+  # key order, which is now recorded as a property rather than asserted as insertion order.
+  #
+  # ## Why the container, and not a service installed in the step
+  #
+  # `apt-get install postgresql` works -- it took 25 seconds when this was measured -- but it leaves
+  # the job depending on whatever version the runner image happens to carry, and it needs a cluster
+  # started by hand with its own failure modes. The service container pins the major version, and
+  # `--health-cmd` makes "the server is up" a declared condition rather than something the first
+  # `SELECT` discovers by failing.
+  #
+  # ## Why the count check is a separate step
+  #
+  # `vitest run` exits 0 when every test is skipped, and the suite skips itself when
+  # `CORTEX_PG_URL` is unset. Deleting the `env:` block above would therefore produce a green job
+  # that asserted nothing -- which is the same shape as the defect this whole job answers. The count
+  # check reads the JSON reporter and fails on a skip, a short count or a missing report.
+  postgres:
+    name: Verify against PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cortex
+          POSTGRES_PASSWORD: cortex
+          POSTGRES_DB: cortex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cortex -d cortex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Trust is not configured: the container's health check and the suite both authenticate with
+      # the password above, so the gate runs against the same authentication path a deployment does.
+      CORTEX_PG_URL: postgresql://cortex:cortex@localhost:5432/cortex
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The suite imports `src/`, so a build is not strictly required -- but `pnpm -r build` is what
+      # the package's own `check` does first, and a type error in `pg.ts` should fail here with a
+      # compiler message rather than as an assertion failure three steps later.
+      - name: Build
+        run: pnpm build
+
+      - name: Run the integration suite
+        run: |
+          set -o pipefail
+          pnpm --filter @agentix-e/cortex-storage test:pg 2>&1 | tee pg-output.log
+
+      - name: The suite ran, and asserted something
+        run: node tools/pg-integration-count.mjs /tmp/cortex-pg-report.json
+
+      - name: Upload the transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-output
+          path: |
+            pg-output.log
+            /tmp/cortex-pg-report.json
+          if-no-files-found: ignore
+
   # The two browser gates, run where a browser exists.
   #
   # `pnpm check` cannot reach them: one needs a bundler and a Chromium, the other needs a second

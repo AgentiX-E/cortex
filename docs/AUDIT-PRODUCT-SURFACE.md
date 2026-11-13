@@ -204,6 +204,17 @@ for predicates without `limit`/`offset` and **row counts** for those with them, 
 unordered result set is a number and not a set — a distinction the first draft of that test got wrong and
 the failure message named.
 
+**Round 88 correction, and it is the more serious of the two.** The paragraph above ends with a sentence
+that is false: *"the escaping fix would have been correct on a server and untestable here."* It is
+correct on a server, and it is testable here — `apt-get install postgresql` takes 25 seconds and the
+server starts in two. What was true is narrower: `pg-mem` does not implement `LIKE ... ESCAPE`. The
+difference between those two sentences is the difference between a limitation of a test double and a
+property of PostgreSQL, and the first was written in the voice of the second. See §11.
+
+The parity suite's *name* is also larger than its coverage, which is how three defects survived a file
+called `predicate-parity`: it compares `query` and nothing else. `get`, `transaction` and `close` had no
+cross-backend assertion anywhere, and all three of the defects found in round 88 were in those methods.
+
 ### 3.6 Nothing on disk is versioned
 
 A stored row is `JSON.stringify(value)` in one column plus a JSON tag array (`kvPutParams`,
@@ -463,7 +474,7 @@ An audit that lists only what it established is a list pretending to be a proof.
 | whether `reuse: true` changes accuracy on a real embedder | it should not by construction, and "should not" is the class of claim this repository has been wrong about three times | P0 acceptance criterion 1, on a real model, with the delta recorded even when it is zero |
 | the volume at which `limit` needs to bound work | nothing has stored more than a few thousand rows; §3.4's concern is analytic | a fixture at 10^5 rows, timed |
 | whether `KnowledgeFact` extraction is affordable | unmeasured | a ceiling harness at the write side, in the shape `bench/measure-spec-ceiling.ts` already uses for the plan layer |
-| whether `PgStorage` is worth a service container in CI | a policy question, not a measurement | the decision recorded in §6 P1-3, whichever direction it goes |
+| whether `PgStorage` is worth a service container in CI | **answered in round 88: yes.** It is not a policy question once the suite exists — installing PostgreSQL took 25 seconds, and the first run found three defects that no emulator could have | §11 |
 
 The pattern the last twelve rounds established holds here too: **the absence of a capability is a fact
 about the code; the size of the absence is not knowable until something is dispatched.**
@@ -518,3 +529,126 @@ these changes touches a reader, a prompt's content, or a ranking — they touch 
 what the store says about itself. A round whose deltas are all zero is exactly the round a cost fix
 should produce, and the acceptance criteria `C5`/`C6` are where that zero is enforced instead of
 asserted.
+
+---
+
+## 11. Round 88: the suite that was named but did not exist
+
+This round did not add a capability. It removed a false statement, and the removal is worth more than
+the three defects it uncovered — because the statement is what kept them uncovered.
+
+### 11.1 Three sentences, and what each one actually said
+
+| where | what it said | what was true |
+| --- | --- | --- |
+| `src/storage/pg.ts`, `query` | "the escaping that would fix both (`LIKE ... ESCAPE`) is implemented by neither `pg-mem` nor any engine this repository can run in a test" | PostgreSQL 16 implements `LIKE ... ESCAPE`; so does SQLite. Only `pg-mem` does not. `apt-get install postgresql` took **25 seconds** on the machine this audit was written on, and the server answered `select version()` two seconds later |
+| `src/__tests__/storage.test.ts:218` | "the rollback's effect on stored data is asserted against a real PostgreSQL instance in the integration suite" | `grep -rn 'integration suite' .` returned that line and nothing else. There was no suite |
+| `predicate-parity.test.ts` (the name) | parity across three backends | parity of `query` across three backends. `get`, `transaction` and `close` had no cross-backend assertion, and all three round-88 defects were in those methods |
+
+The first sentence is the one that matters, because of what it was used for. It is not a note beside a
+decision; it *was* the decision. Having established that no runnable engine supported `ESCAPE`, the file
+moved the prefix filter into JavaScript, wrote "the cost, stated: no index range scan", and moved on. The
+cost is real — a predicate query on `cortex_kv` is a sequential scan of its own table on every backend —
+and it was paid to keep a filter correct on an engine that is not the one the code ships against.
+
+The third is subtler and is the reason this audit exists at all: a file named after a property is read as
+asserting that property. Nobody re-derives a test file's coverage from its name, so "parity" in the
+filename did the work that the missing assertions would have had to do.
+
+### 11.2 What the first real run found
+
+The suite was written before the adapter was touched, and run against PostgreSQL 16.15 through a real
+`pg.Pool`. **26 of 30 passed.** The four failures, in the order they matter:
+
+1. **`transaction.get` read an expired row.** `SqlStorage.#get` calls `#purge(table)` before reading;
+   `PgStorage.makeTx`'s `get` issued a bare `SELECT value ... WHERE table_name = $1 AND key = $2` with no
+   `expires_at` condition and no purge. Every expiry-bearing read the memory layer performs inside
+   `transaction()` returned a row the same store hides outside one.
+2. **`put` left its table's dead rows.** `SqlStorage.#put` purges after writing; `PgStorage.put` did not.
+   A table written to and never queried accumulated expired rows indefinitely — a leak no assertion about
+   returned values can observe.
+3. **`close()` raised the driver's message.** `Cannot use a pool after calling end on the pool` instead
+   of `StorageClosedError`. A caller that caught the documented type worked on SQLite and crashed on
+   PostgreSQL, with the same interface in both hands.
+4. **This suite's own assumption was wrong.** It asserted `JSONB` preserves insertion order. It sorts
+   object keys. Recorded rather than asserted now, because it is a property of the column type: a caller
+   that hashes a serialised payload gets one digest on SQLite and another on PostgreSQL.
+
+Items 1–3 are fixed. Item 4 is documented at the test and in `pg.ts`.
+
+### 11.3 What shipped
+
+| # | change | the assertion that fails if it is reverted |
+| --- | --- | --- |
+| D1 | `test/pg/integration.test.ts` — 31 assertions against a real server, skipping when `CORTEX_PG_URL` is unset | `pnpm test:pg` |
+| D2 | `vitest.pg.config.ts` + `test:pg`, and `test/pg/**` excluded from the unit config | `pnpm test` reports 8 files, never a skipped ninth |
+| D3 | `verify.yml` `postgres` job: `postgres:16` service with `--health-cmd`, `CORTEX_PG_URL`, build, suite, count check | `tools/ci-gate-audit.py` (8 requirements, below) |
+| D4 | `tools/pg-integration-count.mjs` — refuses 0 tests, any skip, any count below the floor | `test_pg_integration_count.py` (10 assertions), including "the floor equals the number of `it(` blocks in the suite" |
+| D5 | `tools/ci-gate-audit.py` — parses the workflow and fails when a gate loses its attachment | `test_ci_gate_audit.py` (15 assertions), one per requirement, each asserted to fail on its own removal |
+| D6 | `src/storage/errors.ts` — `StorageClosedError` and `TransactionOpenError` leave `sql-storage.ts` so both backends raise the same class; `./pg` re-exports it | the parity case that closes and then reads |
+| D7 | `tx.get` and both `put` paths purge; `close()` is idempotent and refuses use | three mutations, below |
+| D8 | `tsconfig.test.json`, and `typecheck` now covers the integration suite | it caught `minWorkers` in `vitest.pg.config.ts` on its first run — a config key vitest 5 had removed, printed as a deprecation that nothing was reading |
+
+### 11.4 The mutations, including the one that did not take
+
+Four edits, each applied to `pg.ts` by text and occurrence, then reverted:
+
+| mutation | line | result |
+| --- | --- | --- |
+| `put` stops purging its table | 97 | **red**, 1 failed |
+| the write inside a transaction stops purging | 223 | **red**, 1 failed |
+| `transaction.get` stops purging | 230 | **red**, 1 failed |
+| `close()` stops refusing use | 212 | **red**, 1 failed |
+
+The third row is green the first time it was run, and that is the finding. The original test wrote a row
+with `ttlMs: -1` through `put` and then read it inside a transaction — but `put` had just been repaired
+to purge, so the row was already gone and the assertion held whether or not `tx.get` purged. **One
+commit, two repairs, one test, and the test was watching the other repair.** The fix is in the test: the
+row is now inserted directly with `now() - interval '1 second'`, which is the only way to produce a row
+that is expired *and present* when the assertion starts. The same change was made to the `put` case, and
+a fourth assertion was added for the transactional write, whose `INSERT` is a separate statement with its
+own missing purge.
+
+A mutation that does not turn the suite red is indistinguishable from a suite that is passing on merit.
+That is why each one is applied by locating its text and printing the line number it landed on.
+
+### 11.5 One defect found, priced, and not fixed
+
+`PgStorage.transaction` does not handle a `ROLLBACK` that itself fails: the body's error is replaced by
+the rollback's, and the connection goes back into the pool in a state the adapter cannot describe
+(`SqlStorage` raises an `AggregateError` here and `pg` destroys a client released with an error).
+
+The repair is four lines. It is not in the code, and the reason is the round's own subject: **no engine
+this repository runs will produce the failure.** `pg-mem` implements `BEGIN`/`COMMIT`/`ROLLBACK` as
+no-ops that never fail, and measured directly: after `pool.end()` mid-transaction, `client.query('ROLLBACK')`
+still resolves. Writing the branch anyway put six unreachable statements into a file the coverage gate
+holds at 95%, and `pg.ts` fell to **93.3 / 92.3 / 94.7**. The first instinct was to exempt the file, widen
+the floor, or annotate the lines — which is what an audit that has spent twelve rounds deleting `v8
+ignore` comments should recognise as the reflex it is. The branch was deleted instead.
+
+What would make it assertable: run the integration suite **with coverage** and merge its report with the
+unit report before the coverage gate reads it. That is a tool (`tools/coverage-merge.mjs`), a second
+`coverage-final.json` and a merge rule for two instruments over one file — priced, not started, and
+listed as P1-3 below.
+
+### 11.6 What is actually left, ordered by what it would change
+
+The list is shorter than the round before it, and every item now has an instrument rather than an
+argument.
+
+| # | item | why it is next | how it is verified |
+| --- | --- | --- | --- |
+| P0-1 | **Verifiable erasure** (`DisclosureSession.forget`, `ErasureRecord`, a sixth card state) | unchanged and still the only row with a product claim, external evidence and no code. The competitor failure mode is public: soft-deleted vectors recover 25.5% of names, 46.4% of locations, 100% of age/sex, 99% top-1 faces | six assertions: three read paths cannot see it, idempotent, the record holds no content, terminal state is irreversible, survives restart, 100% coverage of the paths |
+| P0-2 | **`index` dispatch** (`cortex/self-index`) | the only way to price the per-question postings rebuild; the census now counts `embedTexts`/`memoHits` so the readback exists | one dispatch, three readings: paired accuracy delta, total `embedTexts`, `memoHits` |
+| P1-1 | **`trim-2.8k` into registration** | `C1` is 11.7K tokens/question; the arm already measured 5,183 | `C1` recomputed at ≤ 5.2K with the same accuracy, and a `docs-crosscheck` that fails if the registered number drifts |
+| P1-2 | **`predicate-parity` grows into `backend-parity`** | the name over-promised and three defects lived in the gap. `get`, `del`, `close`, `transaction` and TTL are still uncompared across backends | one file, every `Storage` method, three backends, one answer per method |
+| P1-3 | **Coverage merge for the integration suite** | the priced path to asserting the `ROLLBACK`-failure case, and the only way a database-backed branch can ever count | `coverage:gate` reads a merged report; a mutation removes the `AggregateError` branch and the gate goes red |
+| P2-1 | **Prefix filter back into SQL on PostgreSQL** | the JS filter is a sequential scan per predicate query, chosen for a test double that no longer decides anything. `LIKE ... ESCAPE '\'` against `(table_name, key text_pattern_ops)` is the indexable form | `EXPLAIN` shows an index range scan on the real server; `backend-parity` still returns one answer per shape |
+| P2-2 | **`JSONB` versus `TEXT` for `kv.value`** | `JSONB` re-renders numbers, sorts keys and drops duplicate keys, so a payload hash differs by backend | a parity assertion on the serialised form, or a type change with a migration |
+| P2-3 | **Row-level `Storage` contract** | the interface still does not say whether `get` hides expired rows, whether `query` orders, or what `close()` does to a later call. Three of the four round-88 defects are consequences of that silence | the interface documents each method's observable behaviour, and `backend-parity` asserts it |
+| P3-1 | **`pg-mem` removal** | with a real server in CI the emulator's only remaining job is speed in the unit loop. Keeping it is defensible; keeping it *instead of* the server is what produced this round | the unit suite's `pg-mem` block is either justified in one sentence per test or deleted |
+
+Two of these are the same defect seen twice. P1-2 and P2-3 are both consequences of a `Storage` interface
+with no stated semantics: an interface that says nothing about expiry or ordering cannot be implemented
+consistently by four backends, and cannot be tested for consistency either, because there is nothing to
+compare against. That is the structural item under the three that were found.

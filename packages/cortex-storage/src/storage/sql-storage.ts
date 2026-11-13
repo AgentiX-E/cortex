@@ -49,26 +49,12 @@ import {
   type KvRow,
   type SqlSession,
 } from './sql.js';
+import { StorageClosedError, TransactionOpenError } from './errors.js';
 
-/** Raised when a storage is used after `close()`. */
-export class StorageClosedError extends Error {
-  constructor() {
-    super('storage is closed: reopen a session rather than reusing this instance');
-    this.name = 'StorageClosedError';
-  }
-}
-
-/** Raised when a write arrives from outside while a transaction is open on this connection. */
-export class TransactionOpenError extends Error {
-  constructor(operation: string) {
-    super(
-      `${operation}() was called while a transaction is open on this storage. The connection is ` +
-        `inside BEGIN, so this write would belong to somebody else's unit of work. Use the handle ` +
-        `passed to the transaction body, or await the transaction first.`,
-    );
-    this.name = 'TransactionOpenError';
-  }
-}
+// Re-exported so existing importers of this module keep working, and so the definition has one
+// home. `PgStorage` imports the same two classes; they used to live here, which is why the server
+// backend raised a `pg` message instead of this one.
+export { StorageClosedError, TransactionOpenError } from './errors.js';
 
 export class SqlStorage implements Storage {
   readonly #session: SqlSession;

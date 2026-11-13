@@ -236,6 +236,45 @@ describe('the census CLI reports without enforcing by default', () => {
     const observed = [...new Set(parsed.orphans.map(orphanKey))].sort();
     expect(observed).toEqual([...baseline().knownOrphans].sort());
   });
+
+  /**
+   * ## The half of `totals` that nothing was checking
+   *
+   * `knownOrphans` is reconciled against a fresh census by the test above, so a change to the orphan
+   * set is caught. `totals.exports` and `totals.withCaller` were not: the only assertions on them
+   * were internal (`exports === withCaller + orphaned`), which holds for any pair of numbers that
+   * happens to add up.
+   *
+   * That is why they had drifted by fifteen. The committed baseline read `exports: 1137` while the
+   * census reported **1152** over the same tree, and both numbers satisfied the internal identity
+   * because `orphaned` was stale in the other direction. The size of the drift is the point: a
+   * ledger whose job is to describe the public surface was fifteen symbols behind, and the check
+   * that was supposed to notice compared it against itself.
+   *
+   * A number that no test recomputes is a comment with a colon in it. These four are recomputed.
+   */
+  it(
+    'has totals that a fresh census reproduces, not just ones that add up',
+    { timeout: 30_000 },
+    () => {
+      const parsed = JSON.parse(runCensus(['--json']).output) as {
+        report: {
+          totalSymbols: number;
+          orphanCount: number;
+          referencedLocallyCount: number;
+          unreferencedCount: number;
+        };
+      };
+      const { totals } = baseline();
+
+      expect(totals.exports).toBe(parsed.report.totalSymbols);
+      expect(totals.orphaned).toBe(parsed.report.orphanCount);
+      expect(totals.referencedLocally).toBe(parsed.report.referencedLocallyCount);
+      expect(totals.unreferenced).toBe(parsed.report.unreferencedCount);
+      // Derived rather than stored, so it cannot drift on its own.
+      expect(totals.withCaller).toBe(parsed.report.totalSymbols - parsed.report.orphanCount);
+    },
+  );
 });
 
 describe('the census gate enforces the baseline', () => {

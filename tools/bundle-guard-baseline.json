@@ -12,19 +12,19 @@
     },
     "./opfs": {
       "gzip": 3813,
-      "bytes": 10068
+      "bytes": 10072
     },
     "./opfs/worker": {
       "gzip": 1273,
       "bytes": 2833
     },
     "./pg": {
-      "gzip": 1105,
-      "bytes": 2712
+      "gzip": 1196,
+      "bytes": 2722
     },
     "./sqlite": {
-      "gzip": 7037,
-      "bytes": 21333
+      "gzip": 7028,
+      "bytes": 21323
     }
   }
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { SqliteStorage } from '../storage/sqlite.js';
 import { PgStorage, ensurePgSchema } from '../storage/pg.js';
+import { StorageClosedError } from '../storage/errors.js';
 import { newDb } from 'pg-mem';
 
 describe('SqliteStorage', () => {
@@ -213,9 +214,16 @@ describe('PgStorage (pg-mem)', () => {
         throw new Error('boom');
       }),
     ).rejects.toThrow('boom');
-    // NOTE: pg-mem does not implement ACID ROLLBACK semantics (verified: the
-    // row persists after ROLLBACK), so the rollback's effect on stored data is
-    // asserted against a real PostgreSQL instance in the integration suite.
+    // NOTE: pg-mem does not implement ACID ROLLBACK semantics (verified: the row persists after
+    // ROLLBACK), so this test asserts only that the failure propagates -- not that the row went
+    // away. The rollback's *effect* is asserted in `test/pg/integration.test.ts` against
+    // PostgreSQL 16.
+    //
+    // That sentence used to read "asserted against a real PostgreSQL instance in the integration
+    // suite" while no integration suite existed anywhere in the repository: `grep -rn 'integration
+    // suite' .` matched this comment and nothing else. The claim was not wrong about what ought to
+    // be tested; it was wrong about what had been. When the suite was finally written, three
+    // assertions in it failed -- see the parity block in that file.
     await s.close();
   });
 
@@ -252,9 +260,10 @@ describe('PgStorage (pg-mem)', () => {
     // transaction's own client still holding the row.
     const reader = new PgStorage({ pool: pool as never });
     expect(await reader.get<{ v: number }>('mem', 'committed')).toEqual({ v: 42 });
-    await reader.close();
-    // `s` shares the pool, so closing it here would close the pool `reader` used.
-    // The pool is closed once, after both have finished with it.
+    // Neither instance is closed here. `close()` now ends the pool -- it did not reject a later use
+    // before, it just handed the driver's error to the caller -- so ending a shared pool inside a
+    // test would break the next test in this describe. `pg-mem` holds no handle, so there is
+    // nothing to release; the real pool's lifetime is covered in `test/pg/integration.test.ts`.
   });
 
   it('queries with key prefix and without tags', async () => {
@@ -269,6 +278,65 @@ describe('PgStorage (pg-mem)', () => {
     const all = await s.query<{ v: number }>('mem');
     expect(all).toHaveLength(2);
     await s.close();
+  });
+
+  /**
+   * ## Three behaviours `pg-mem` *can* express, found by the real server first
+   *
+   * These are the parity assertions the integration suite wrote, reproduced where they can run on
+   * every machine. They are here because a defect found against PostgreSQL should not only be
+   * guarded by a suite that needs a database to run: the guard that runs always is the one that
+   * stops the defect coming back on a Tuesday.
+   *
+   * Their first appearance is the interesting part. Each of the three passed on `pg-mem` before the
+   * adapter was fixed -- `pg-mem` accepted a transaction reading an expired row, accepted a write
+   * that left dead rows behind, and had no opinion about the error type raised after `close()`.
+   * Being expressible is not the same as being asserted, and no amount of engine fidelity supplies
+   * an assertion nobody wrote.
+   */
+  it('parity: transaction.get hides an expired row, like the non-transactional read', async () => {
+    const db = newDb();
+    const pool = new (db.adapters.createPg().Pool)() as never;
+    await ensurePgSchema(pool as never);
+    const s = new PgStorage({ pool: pool as never });
+    await s.put('mem', 'expired', { v: 1 }, { ttlMs: -1 });
+
+    // The non-transactional path already hid it, so this is the assertion that makes the two agree.
+    expect(await s.get('mem', 'expired')).toBeUndefined();
+    const insideTransaction = await s.transaction(async (tx) => tx.get('mem', 'expired'));
+    expect(insideTransaction).toBeUndefined();
+  });
+
+  it('parity: put removes its table\u2019s expired rows, like the SQLite backend', async () => {
+    const db = newDb();
+    const pool = new (db.adapters.createPg().Pool)() as never;
+    await ensurePgSchema(pool as never);
+    const s = new PgStorage({ pool: pool as never });
+    await s.put('mem', 'dead', { v: 1 }, { ttlMs: -1 });
+    await s.put('mem', 'live', { v: 2 });
+    // Two rows would mean the dead one is still there: `SqlStorage.#put` purges after writing, so
+    // this adapter has to as well, or a table that is written to and never queried grows forever.
+    const remaining = await s.query('mem', {});
+    expect(remaining).toEqual([{ v: 2 }]);
+  });
+
+  it('parity: a closed store raises StorageClosedError, not the driver\u2019s message', async () => {
+    const db = newDb();
+    const pool = new (db.adapters.createPg().Pool)() as never;
+    await ensurePgSchema(pool as never);
+    const s = new PgStorage({ pool: pool as never });
+    await s.close();
+    // Closing twice is not an error: `close()` sets its flag before the first `await`, and the
+    // second call has to return rather than reach `pool.end()` again. A caller that closes in both
+    // a `finally` and a shutdown hook is the ordinary case, not the exotic one.
+    await s.close();
+    // Before the fix this threw whatever `pg` said -- "Cannot use a pool after calling end on the
+    // pool" -- so a caller that caught the documented type worked on SQLite and crashed here.
+    await expect(s.get('mem', 'k')).rejects.toBeInstanceOf(StorageClosedError);
+    await expect(s.put('mem', 'k', { v: 1 })).rejects.toBeInstanceOf(StorageClosedError);
+    await expect(s.del('mem', 'k')).rejects.toBeInstanceOf(StorageClosedError);
+    await expect(s.query('mem', {})).rejects.toBeInstanceOf(StorageClosedError);
+    await expect(s.transaction(async () => 'no')).rejects.toBeInstanceOf(StorageClosedError);
   });
 });
 
