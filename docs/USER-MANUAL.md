@@ -637,9 +637,18 @@ Five things are true afterwards, and each one is asserted in
 | --- | --- |
 | Four read paths see nothing | the private evidence, the shared evidence, the export, the release log |
 | The record holds no content | `reason` is one of three values, so the field cannot carry a sentence; there is no digest, because a hash of a guessable sentence is an oracle |
+| The row says **which** erasure | the tombstone's `reason` is one of three fixed sentences chosen by the record's own `reason` — `user-request`, `correction` or `retention-policy` — so a correction no longer prints a sentence claiming the owner asked to be forgotten |
 | The id is burned | a later `say(..., { id })` under that id throws; without an id the store mints one |
 | It survives a restart | the record and the tombstone are rows, not state in memory |
 | It is not undoable | `accept`, `edit`, `dismiss`, `refresh` and `attach` all refuse an erased card |
+
+What the tombstone **cannot** say, and this is deliberate: what the card was about. Beyond the rule id
+that claimed it (`rule`, and `null` for a sentence no rule recognised), every candidate field — the
+topic, a summary, even the length of the sentence — is a reconstruction channel, which is exactly what
+AfterDeleteBench's control product kept. So two erased cards claimed by the same rule read the same in
+the export, and comparing two exports will not tell them apart. The erasure log beside the cards is
+what distinguishes them: it carries one record per erased id, with the reason, the time, and what each
+surface lost — and no wording.
 
 What it does **not** reach, because the boundary is the store this process owns: a model that already
 read the sentence in a prompt, a provider's request log, and any transcript pasted somewhere else.

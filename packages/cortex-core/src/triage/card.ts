@@ -515,14 +515,20 @@ export class CardQueue {
         at,
       }));
 
+    // The **record's** reason, not this call's. An interrupted erasure keeps the reason it was
+    // opened with, so a retry that named a different one would leave a card row and the record
+    // beside it giving two different answers to "why is this gone" -- and the row is the line a
+    // person reads. Computed once rather than twice so the stored row and the returned one cannot
+    // drift, which is the same defect one layer down.
+    const erased = plan.card === undefined ? undefined : tombstoneOf(plan.card, at, opened.reason);
     const removed = await this.writer.eraseRows(id, { table: this.table, now: at });
-    if (plan.card !== undefined) await this.put(tombstoneOf(plan.card, at));
+    if (erased !== undefined) await this.put(erased);
     const record = await this.eraseLog.complete(
       opened,
       { facts: removed.facts, cards: plan.card === undefined ? 0 : 1, releases: removed.releases },
       at,
     );
-    return { record, card: plan.card === undefined ? undefined : tombstoneOf(plan.card, at) };
+    return { record, card: erased };
   }
 
   /**
@@ -739,16 +745,41 @@ function proposedCell(card: KnowledgeCard): string {
   return `${atoms} (${card.proposal.withheld.length} withheld)`;
 }
 
-/** The sentence a tombstone carries. Fixed, so two exports of two stores cannot disagree about it. */
-const FORGOTTEN_REASON = "Erased at the owner's request. No wording is kept, and the id is burned.";
+/**
+ * The sentence a tombstone carries, one per erasure reason.
+ *
+ * ## Why this is a table and not one sentence
+ *
+ * It was one sentence — "Erased at the owner's request" — and `forget` accepts three reasons. So an
+ * erasure logged as `correction` printed a row claiming the owner had asked to be forgotten, and a
+ * retention sweep printed the same. The erasure *record* carried the true reason the whole time; the
+ * card row, which is the line a person reads in the export, carried a false one. Two records of one
+ * act disagreeing is worse than either being terse.
+ *
+ * `Record<ErasureReason, string>` rather than a lookup with a fallback: a fourth reason becomes a
+ * compile error here, which is the same device that caught `forgotten` when the state union grew.
+ *
+ * ## What each sentence may say, and what none of them may
+ *
+ * They name the **act**, never the content: no wording, no topic, no count of what was said. The
+ * reason is the one thing about an erasure an auditor needs and the one thing that cannot be
+ * reconstructed into a secret.
+ */
+const TOMBSTONE_REASONS: Readonly<Record<ErasureReason, string>> = {
+  'user-request': "Erased at the owner's request. No wording is kept, and the id is burned.",
+  correction: 'Erased as a correction. No wording is kept, and the id is burned.',
+  'retention-policy':
+    'Erased under the retention policy. No wording is kept, and the id is burned.',
+};
 
 /**
  * What an erased card keeps, and what it must not.
  *
  * Kept: `id` (the record and the tombstone have to be about the same thing), `state`, `reason`
- * (fixed text, not the rule's), `rule` (a rule id, which says *what kind* of thing was erased without
- * saying what it said), `createdAt`, `decidedAt` and `updatedAt` (the timeline of a decision whose
- * content is gone).
+ * (the erasure's own sentence -- one of three fixed texts, never the caller's, see
+ * `TOMBSTONE_REASONS`), `rule` (a rule id, which says *what kind* of thing was erased without saying
+ * what it said), `createdAt`, `decidedAt` and `updatedAt` (the timeline of a decision whose content
+ * is gone).
  *
  * **Not** kept, and each one is a copy of the sentence or of the paragraph around it:
  *
@@ -763,16 +794,24 @@ const FORGOTTEN_REASON = "Erased at the owner's request. No wording is kept, and
  *   record nobody can check;
  * - `decayAt` -- a deadline for re-confirming a fact that will not come back.
  *
+ * **What the tombstone cannot say, on purpose.** It cannot say what the card was *about* beyond the
+ * rule that claimed it: `rule === null` is all that survives of a deferral, and two erased cards
+ * claimed by the same rule are indistinguishable in the export. That is the price of the list above,
+ * not an oversight -- every candidate field ("the topic was X", a short summary, the sentence length)
+ * is a reconstruction channel, and AfterDeleteBench's control is exactly the product that kept them.
+ * The loss is stated here and in the manual rather than left for a reader to discover by comparing
+ * two exports and concluding that one of them is broken.
+ *
  * `text` is `''` rather than absent so `KnowledgeCard` keeps one shape: a tombstone that needed a
  * second type would make every reader branch on the state before it could read a field, and the
  * export -- the surface this exists for -- is one loop over one type.
  */
-function tombstoneOf(card: KnowledgeCard, at: number): KnowledgeCard {
+function tombstoneOf(card: KnowledgeCard, at: number, reason: ErasureReason): KnowledgeCard {
   return {
     id: card.id,
     text: '',
     state: 'forgotten',
-    reason: FORGOTTEN_REASON,
+    reason: TOMBSTONE_REASONS[reason],
     rule: card.rule,
     createdAt: card.createdAt,
     updatedAt: at,

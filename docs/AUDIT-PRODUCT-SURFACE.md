@@ -801,7 +801,7 @@ Erasure moves off the list; what it exposes takes its place.
 | P1-1 | **`trim-2.8k` into registration** | `C1` is 9201 tokens/question against a 6,000 aim; the arm already measured 5,183 | `C1` recomputed at ≤ 5.2K with the same accuracy |
 | P1-2 | **`backend-parity`** | unchanged from round 88: `get`, `del`, `close`, `transaction` and TTL are still uncompared across backends | one file, every `Storage` method, three backends |
 | P1-3 | **Coverage merge for the integration suite** | unchanged: the priced path to asserting a `ROLLBACK` that itself fails | `coverage:gate` reads a merged report |
-| P1-4 | **The tombstone's `reason` is not the rule's** | `forgotten` replaces a deferral's sentence with a fixed one, which loses *why* the card existed. A reader comparing two exports cannot tell an erased confidentiality card from an erased grocery list, though `rule` is still there for the rule-claimed case | the export carries the rule id for every defaulted card, or the field is documented as intentionally lossy |
+| P1-4 | **The tombstone's `reason` is not the rule's** | **shipped in round 90** — see §13.7. It was worse than "lossy": `forget` accepts three reasons and the tombstone printed one fixed sentence for all three, so a `correction` produced a row claiming the owner had asked to be forgotten, while the record beside it kept the truth | the row now carries one of three fixed sentences chosen by the record's own reason (`Record<ErasureReason, string>`, so a fourth reason is a compile error); what the card was *about* is documented in the manual §6.5 as deliberately unrecoverable beyond `rule` |
 | P2-1 | **Retention policy as a schedule** | `ErasureReason` has `retention-policy` and nothing produces it: there is no TTL on a fact, so erasure is only ever manual. GDPR-style policy needs the reason to be reachable without a human | a sweep that erases by age, one record per sentence, `retention-policy`, and a test that it does not touch a re-confirmed row |
 | P3-1 | **`secure_delete` is SQLite-only** | the browser backend (`idb`) has no such switch, and `pg` has no equivalent either. The row-level guarantee travels; the byte-level one does not | the claim in `ARCHITECTURE.md` names the backend it holds for — it does |
 
@@ -918,3 +918,66 @@ Eight mutations, each applied by locating its text and printing the line it land
 
 The last one is the round's own subject. A mutation that restores the defect must fail the test that was
 written for it, or the test was written for the repair's *shape* rather than its *behaviour*.
+
+### 13.7 `P1-4`: the row disagreed with the record about the same act
+
+Round 89 wrote the tombstone's sentence as a constant:
+
+```ts
+const FORGOTTEN_REASON = "Erased at the owner's request. No wording is kept, and the id is burned.";
+```
+
+and `forget()` accepts three reasons. The erasure *record* kept the true one the whole time —
+`ErasureReason` is a closed union and `eraseLog.begin({ reason })` stores it — so the store held two
+accounts of one act, and the one a person reads (the card row, printed in `export`) was the wrong one.
+A `correction` erased a card and then said the owner had asked to be forgotten; a retention sweep
+would have said the same. Repro through the shipped CLI, before the repair:
+
+```
+$ node tools/triage-demo.mjs forget f1 --home /tmp/h --acknowledge erase-permanently --reason correction
+f1  forgotten  Erased at the owner's request. No wording is kept, and the id is burned.
+```
+
+The repair is a total map rather than a branch:
+
+```ts
+const TOMBSTONE_REASONS: Readonly<Record<ErasureReason, string>> = {
+  'user-request': "Erased at the owner's request. No wording is kept, and the id is burned.",
+  correction: 'Erased as a correction. No wording is kept, and the id is burned.',
+  'retention-policy': 'Erased under the retention policy. No wording is kept, and the id is burned.',
+};
+```
+
+Three properties, each one chosen over an alternative:
+
+1. **`Record<ErasureReason, string>`, not a lookup with a fallback.** A fourth reason is a compile
+   error here, the same device that made `forgotten` announce itself when the state union grew.
+2. **The reason comes from `opened.reason`, not from `options.reason`.** An interrupted erasure keeps
+   the reason it was opened with, so a retry naming a different one would move the row away from the
+   record beside it — the same defect one layer down, and the reason it is now computed once and used
+   twice instead of being recomputed at the call site.
+3. **The sentences name the act, never the content.** No wording, no topic, no count; the reason is
+   the one fact about an erasure an auditor needs and the one that cannot be reconstructed into a
+   secret.
+
+After the repair, from the same binary:
+
+```
+$ node tools/triage-demo.mjs forget f1 --home /tmp/h --acknowledge erase-permanently --reason correction
+f1  forgotten  Erased as a correction. No wording is kept, and the id is burned.
+$ node tools/triage-demo.mjs export --home /tmp/h
+| `f1` | forgotten | Erased as a correction. No wording is kept, and the id is burned. | — |
+```
+
+`P1-4`'s other half — *why the card existed* — is answered by refusing to answer it. Beyond `rule`
+(`null` when no rule claimed the sentence), every candidate field is a reconstruction channel, and
+AfterDeleteBench's control product is exactly the one that kept them. That loss is now stated in the
+manual's §6.5 rather than left for a reader to infer from two exports, which is what the item's
+acceptance allowed for and what makes it a decision instead of an omission.
+
+What the two tests pin:
+
+| test | what it fails on |
+| --- | --- |
+| three reasons → three sentences, one per erased row | the constant coming back; any two reasons sharing a sentence |
+| a retry does not rewrite the reason | using `options.reason` instead of `opened.reason`; the row and the record drifting |

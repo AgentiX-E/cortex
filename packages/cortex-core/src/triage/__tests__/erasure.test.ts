@@ -353,6 +353,38 @@ describe('the record', () => {
     expect((await w.queue.erasures()).map((record) => record.id)).toEqual(['f1', 'f2', 'f3']);
     expect(await w.queue.erasure('absent')).toBeUndefined();
     expect((await w.queue.erasure('f2'))?.reason).toBe('retention-policy');
+
+    // The card row says **which** erasure, in that erasure's own words. It used to say "at the
+    // owner's request" for all three, so a correction and a retention sweep each printed a sentence
+    // claiming the owner had asked to be forgotten -- the record and the row disagreeing about one
+    // act, with the row being the line a person actually reads in the export. Listed in `list()`
+    // order (createdAt, then id), which is not the erase order on purpose: the two must not be
+    // confusable.
+    expect((await w.queue.list()).map((card) => [card.id, card.reason])).toEqual([
+      ['f1', "Erased at the owner's request. No wording is kept, and the id is burned."],
+      ['f2', 'Erased under the retention policy. No wording is kept, and the id is burned.'],
+      ['f3', 'Erased as a correction. No wording is kept, and the id is burned.'],
+    ]);
+  });
+
+  it('keeps the reason the erasure was opened with, not the one a retry names', async () => {
+    const w = world();
+    await say(w, SECRET, 'f1');
+    // The state a crash between "record opened" and "rows deleted" leaves behind: a record with one
+    // reason, and a card that still has its wording.
+    await w.log.begin({ id: 'f1', reason: 'correction', acknowledged: ERASURE_TOKEN, at: START });
+
+    const { record, card } = await w.queue.forget('f1', {
+      acknowledge: ERASURE_TOKEN,
+      reason: 'retention-policy',
+    });
+
+    // The record keeps the first reason because the erasure began then; the row has to agree with
+    // it, or the export answers "why is this gone" twice with two different sentences.
+    expect(record.reason).toBe('correction');
+    expect(card?.reason).toMatch(/as a correction/);
+    expect((await w.queue.get('f1'))?.reason).toBe(card?.reason);
+    expect(await w.queue.erasure('f1')).toEqual(record);
   });
 
   it('lists in id order when the store hands ties back in the other order', async () => {
