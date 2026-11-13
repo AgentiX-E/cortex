@@ -975,9 +975,12 @@ AfterDeleteBench's control product is exactly the one that kept them. That loss 
 manual's §6.5 rather than left for a reader to infer from two exports, which is what the item's
 acceptance allowed for and what makes it a decision instead of an omission.
 
-What the two tests pin:
+What the two tests pin, and both were checked by putting the defect back:
 
-| test | what it fails on |
+| mutation | result |
 | --- | --- |
-| three reasons → three sentences, one per erased row | the constant coming back; any two reasons sharing a sentence |
-| a retry does not rewrite the reason | using `options.reason` instead of `opened.reason`; the row and the record drifting |
+| `reason: TOMBSTONE_REASONS['user-request']` — the map exists but the row ignores the reason | **red**, 2 failed (`erasure.test.ts`) |
+| `tombstoneOf(plan.card, at, options.reason)` — the row takes the call's reason, not the record's | **red**, 1 failed |
+
+The first mutation is the defect itself with a better-looking shape, which is why it is the one that
+had to be tried: a total map that nothing indexes by is a constant with extra steps.
