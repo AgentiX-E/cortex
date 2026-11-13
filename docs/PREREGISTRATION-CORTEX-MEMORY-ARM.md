@@ -39785,3 +39785,113 @@ future substitution mechanism must persist `final`.
 **What is not licensed.** A third supersession arm. The registered licence was "an extraction defect visible in the
 census", and `P3a`'s failure is that defect — but a mechanism whose best case is 1 repair against 3 damages is not one
 extraction fix away from 6 of 8. The queue moves to `assemble()`.
+
+## 13.373 The gate's two axes become settable, and the proof they took effect is a census rather than a score
+
+This section registers a **reachability** measurement, not an effect. Nothing here claims the admission
+gate helps. What it fixes is the prior question, which this arm could not answer for a whole campaign:
+when a dispatch sets the gate, does the artifact say whether the gate cut anything?
+
+The answer, until `§92`, was no — and the reason was two independent omissions that hid each other.
+
+| omission                                                                               | where                                                                 | what it made impossible                                            |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| the artifact recorded the gate's **configuration** and not its **effect**              | `memoryArmConfig` carried `threshold`, `sourceTrust`, `confidenceSignal` | the report could say "cut at 0.25" and never "0.25 refused 137 turns" |
+| the gate was pinned at the floor on **both** axes                                       | workflow `env:`, `CORTEX_MEMORY_THRESHOLD: '0'` and `..._CONFIDENCE: 'none'` | under `threshold: 0` every turn satisfies `value >= 0`, so the confidence signal cannot change a single decision |
+
+The second is arithmetic rather than policy: the value function is `confidence * sourceTrust *
+(0.5 + 0.5 * recency)`, every factor is bounded below by 0, so a threshold of 0 admits everything
+whatever the other two terms do. Section 10.9's non-zero excursion (0.25, abstaining on 479 of 500) was
+therefore the only gate experiment this arm could run, and it was run without a field that could say
+whether the cut or the abstention did the damage.
+
+`§92` added the field (`admission`, with `candidates / admitted / rejected / min / max / mean /
+distinct` over **candidate** turns rather than admitted ones — counting admitted turns would report
+`belowThreshold: 0` by construction). This section registers the change that makes the field say
+something other than "nothing happened".
+
+### 13.373.1 What changes, and the two boundaries that do not
+
+| element                          | before                                  | after                                                        |
+| -------------------------------- | --------------------------------------- | ------------------------------------------------------------ |
+| `CORTEX_MEMORY_THRESHOLD`        | workflow literal `'0'`                  | `${{ vars.CORTEX_MEMORY_THRESHOLD \|\| '0' }}`               |
+| `CORTEX_MEMORY_CONFIDENCE`       | workflow literal `'none'`               | `${{ vars.CORTEX_MEMORY_CONFIDENCE \|\| 'none' }}`           |
+| who writes the variables         | nobody                                  | `tools/dispatch-cortex-memory-ab.py`, on **every** dispatch  |
+| how many `workflow_dispatch` inputs | 24 of 25                              | **24 of 25** — unchanged, and asserted                       |
+| the registered configuration     | `0` / `none`                            | `0` / `none` — the literal fallback *is* it                   |
+
+The variable channel rather than an input is forced by GitHub's 25-input ceiling, and the ceiling guard
+(`tools/__tests__/test_dispatch_inputs.py`) refuses a workflow that reaches it: an input here would have to
+be paid for by deleting a registered experiment. The channel already exists for `CORTEX_MEMORY_ORACLE`,
+`_REPLY_REPAIR` and `_CONFLICTS` and costs nothing.
+
+The literal fallback is not a default of convenience. Every archived artifact — including the registered
+91.25% row — was produced under `0` / `none`. A reader who checks out that commit and dispatches it must
+get that configuration back; a variable read alone would hand them whatever the last experiment left.
+
+### 13.373.2 The inherited-value hazard, stated as the cost it is
+
+A dispatch made outside the dispatcher inherits whatever the variables hold. That is a real cost and it is
+the same one the three existing variables pay. It is paid down in two places rather than argued away:
+
+1. the dispatcher writes **both** variables on every dispatch, defaulting to `0` / `none`, so only a
+   hand-made dispatch can inherit;
+2. the artifact names the resolved values twice — `threshold`/`confidenceSignal` on the configuration
+   line, and `admission=…` on the admission line, which says whether those values had an effect.
+
+A gate experiment can therefore no longer be published under a control's name without the artifact
+contradicting itself. That is the same class of check as `§13`'s byte-identical-arms failure, moved to the
+field that records it.
+
+### 13.373.3 The screening criterion, registered before any dispatch
+
+The pair below is **not** dispatched until a screening dispatch satisfies all three:
+
+| # | criterion                                     | what its failure means                                                    |
+| - | --------------------------------------------- | -------------------------------------------------------------------------- |
+| 1 | `admission.candidates > 0`                    | the gate never saw a turn — the arm did not run, or the field did not wire |
+| 2 | `admission.rejected > 0`                      | the threshold cut nothing: **configuration not in effect**, not "no effect" |
+| 3 | `admission.distinct >= 2` (with `distinctSaturated` read as a lower bound) | there was no variation to cut: the confidence signal did not vary |
+
+Criterion 2 is the one this section exists for. Its failure is a defect report, not a result, and the
+screening is repeated after the defect is fixed rather than being written up as evidence that the gate does
+not help. `candidates: 0` is a third state ("the gate saw nothing") and is kept distinct from
+`candidates > 0, admitted: 0` ("the gate refused everything") for the same reason: one is an arm that did
+not run and the other is an arm that ran and was closed.
+
+### 13.373.4 The screening configuration
+
+| axis             | value    | why this value                                                                                             |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `threshold`      | `0.25`   | the arm's one non-zero excursion (10.9), so the screening inherits a known rejection scale rather than a guess |
+| `confidence`     | `length` | the only model-free signal the arm ships: `min(1, turn.length / 2000)`, monotone and cheap                 |
+| `sourceTrust`    | `1`      | the registered value; the screening varies the cut, not the ceiling                                        |
+| `limit`          | `60`     | a screening is priced to answer "did it cut", not "did it help"                                            |
+
+Under `length`, a turn of 500 characters scores `0.25`. The screening's first job is to report the
+distribution it actually met (`min`, `mean`, `max`, `distinct`), because that number — not this paragraph —
+is what the next threshold is chosen from.
+
+### 13.373.5 What this does not license
+
+- **No accuracy claim.** A screening produces no reading of the arm against any baseline, and its numbers
+  stay out of every product table.
+- **No `S10` or `S9` pair.** Both are registered against their own mechanisms (`turnWindow: 'match'`,
+  self-index retrieval) and neither is a gate experiment. Making the gate reachable does not advance them,
+  and their thresholds (≥ −5 and ≥ −15 questions) are untouched.
+- **No change to the registered configuration.** `0` / `none` remains what a dispatch that names nothing
+  runs, which is what keeps the archive's numbers reproducible.
+- **No re-reading of section 10.9.** Its 479-of-500 abstention stands as measured; what changes is that a
+  future recurrence can be attributed to the cut or to the signal instead of to "the gate".
+
+### 13.373.6 The predictions, written so the screening can fail them
+
+| #   | prediction                                                                                  | refuted by                                     |
+| --- | ------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `Q1` | `admission.candidates` equals the turn count the arm reports elsewhere for the same run     | any disagreement — the sink is counting a different population |
+| `Q2` | `rejected > 0` at `0.25` under `length` on the screening cap                                 | `rejected: 0`, which is read as "not in effect" and blocks the pair |
+| `Q3` | `distinct >= 3` at `length` (a two-valued signal would mean `length` is saturating)          | `distinct: 2` with a saturated flag, which sends the next round to a different signal |
+| `Q4` | the control dispatch (`0` / `none`) reports `rejected: 0` and `distinct: 1`                  | any other reading — it would mean the gate moves under the registered configuration |
+
+`Q4` is the one that matters for the archive: it is the assertion that the registered configuration is
+still exactly what it was.

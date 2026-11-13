@@ -25,6 +25,7 @@ configurations.
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -329,3 +330,140 @@ class TestTheReplyRepairSwitch:
         monkeypatch.setenv(module.REPLY_REPAIR_VARIABLE, 'off')
         assert module.main(['--no-budget']) == 0
         assert declared[1] == [], declared
+
+
+class TestTheAdmissionGateSwitches:
+    """The gate's two axes, on the same properties as the three switches above.
+
+    `CORTEX_MEMORY_THRESHOLD` and `CORTEX_MEMORY_CONFIDENCE` used to be literals in the workflow,
+    and the reason was measurable rather than stylistic: with both at their floor (`0` and `none`)
+    the value function is bounded below by the threshold, so `value >= 0` admits every turn and the
+    confidence signal cannot change a single decision. The pair was unreachable, which is why every
+    archived artifact -- including the registered 91.25% row -- carries the same configuration.
+
+    Making them settable is not the same as making them change: what these tests hold is that the
+    *default* still spells the registered configuration, that a value the arm cannot act on is
+    refused here rather than three hours in, and that the names this file carries are the arm's
+    names rather than a second copy that can drift.
+    """
+
+    def test_absent_means_the_registered_configuration(self) -> None:
+        # Both, together: the registered pair is the floor of both axes, and a default that moved one
+        # of them would silently change what "the registered configuration" means for every dispatch
+        # that names nothing.
+        module = _module()
+        assert module.admission_threshold_switch({}) == '0'
+        assert module.admission_threshold_switch({module.ADMISSION_THRESHOLD_VARIABLE: ''}) == '0'
+        assert module.confidence_switch({}) == 'none'
+        assert module.confidence_switch({module.CONFIDENCE_SIGNAL_VARIABLE: ''}) == 'none'
+
+    def test_the_threshold_is_canonicalised_before_it_is_written(self) -> None:
+        # The value crosses four boundaries as a string. `.25`, `0.250`, ` 0.25 ` and `0.25` are one
+        # number and four spellings; a reader diffing the artifact's `threshold` against the
+        # dispatcher's log should be comparing measurements.
+        module = _module()
+        for typed in ('0.25', '.25', '0.250', ' 0.25 ', '0.2500'):
+            assert module.admission_threshold_switch({module.ADMISSION_THRESHOLD_VARIABLE: typed}) == '0.25', typed
+
+    def test_the_two_boundaries_are_values_and_not_special_cases(self) -> None:
+        # `0` is "admit everything" and `1` is "admit only a turn whose value is the ceiling". Both are
+        # legitimate configurations -- the first is the registered one -- so both must round-trip
+        # rather than be refused as degenerate.
+        module = _module()
+        assert module.admission_threshold_switch({module.ADMISSION_THRESHOLD_VARIABLE: '0'}) == '0'
+        assert module.admission_threshold_switch({module.ADMISSION_THRESHOLD_VARIABLE: '1.0'}) == '1'
+
+    @pytest.mark.parametrize('typed', ['1.5', '-0.1', 'quarter', '0,25', 'nan', 'inf', '0.25.1'])
+    def test_a_value_the_arm_cannot_act_on_is_refused_here(self, typed: str) -> None:
+        # `nan` and `inf` are the ones that matter: they parse as floats, they compare false against
+        # every bound, and a gate configured with either rejects nothing for a reason no artifact
+        # states. `Decimal` refuses neither, so the range check is what catches them.
+        module = _module()
+        with pytest.raises(SystemExit) as refusal:
+            module.admission_threshold_switch({module.ADMISSION_THRESHOLD_VARIABLE: typed})
+        assert module.ADMISSION_THRESHOLD_VARIABLE in str(refusal.value)
+
+    def test_every_signal_name_the_arm_accepts_round_trips(self) -> None:
+        module = _module()
+        for name in module.CONFIDENCE_SIGNALS:
+            assert module.confidence_switch({module.CONFIDENCE_SIGNAL_VARIABLE: name}) == name
+
+    def test_the_signal_names_are_the_arms_names(self) -> None:
+        # The one duplication in this file: the dispatcher is Python and the arm is TypeScript, so the
+        # list cannot be imported. Without this test the copy would be a copy -- and a name the arm has
+        # dropped would be refused three hours into a run instead of here.
+        module = _module()
+        source = (REPO / 'packages' / 'cortex-eval' / 'src' / 'bench-memory-arm.ts').read_text(
+            encoding='utf-8'
+        )
+        block = re.search(r'const CONFIDENCE_SIGNALS = \{(.*?)\} as const;', source, re.S)
+        assert block is not None, 'CONFIDENCE_SIGNALS not found in bench-memory-arm.ts'
+        declared = tuple(re.findall(r'^\s{2}(\w+):', block.group(1), re.M))
+        assert declared == tuple(module.CONFIDENCE_SIGNALS), (declared, module.CONFIDENCE_SIGNALS)
+
+    def test_a_misspelled_signal_is_refused_instead_of_read_as_none(self) -> None:
+        # Falling back to `none` would run the constant behaviour and the artifact would read as
+        # evidence that per-turn variation does not help -- a negative result about a mechanism that
+        # was never administered.
+        module = _module()
+        with pytest.raises(SystemExit) as refusal:
+            module.confidence_switch({module.CONFIDENCE_SIGNAL_VARIABLE: 'lenght'})
+        assert module.CONFIDENCE_SIGNAL_VARIABLE in str(refusal.value)
+
+    def test_both_variables_are_written_on_every_dispatch(self, monkeypatch, capsys) -> None:  # noqa: ANN001
+        # The property that stops a `0.25` from outliving the experiment that asked for it: a dispatch
+        # that names nothing must reset the gate to the registered floor, or the next control would run
+        # gated and its artifact would have to be read as a gate experiment nobody registered.
+        module = _module()
+        written: list[tuple[str, str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(
+            module,
+            'write_variable',
+            lambda name, value: written.append((name, value)) or value,
+        )
+        for name in (
+            module.ORACLE_VARIABLE,
+            module.REPLY_REPAIR_VARIABLE,
+            module.CONFLICTS_VARIABLE,
+            module.ADMISSION_THRESHOLD_VARIABLE,
+            module.CONFIDENCE_SIGNAL_VARIABLE,
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        assert module.main(['--no-budget', '--set', 'model=zhipu:glm-4.6']) == 0
+        assert (module.ADMISSION_THRESHOLD_VARIABLE, '0') in written, written
+        assert (module.CONFIDENCE_SIGNAL_VARIABLE, 'none') in written, written
+        out = capsys.readouterr().out
+        assert f'{module.ADMISSION_THRESHOLD_VARIABLE} = 0' in out
+        assert f'{module.CONFIDENCE_SIGNAL_VARIABLE} = none' in out
+
+    def test_a_gated_dispatch_says_so_on_the_log(self, monkeypatch, capsys) -> None:  # noqa: ANN001
+        # The marker is the only place a reader can see that this dispatch differs from the registered
+        # one *before* the artifact exists -- the artifact takes four hours.
+        module = _module()
+        written: list[tuple[str, str]] = []
+        monkeypatch.setattr(module, 'req', lambda *a, **k: {'tree': {'sha': 'b' * 40}})
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(
+            module,
+            'write_variable',
+            lambda name, value: written.append((name, value)) or value,
+        )
+        monkeypatch.setenv(module.ADMISSION_THRESHOLD_VARIABLE, '0.25')
+        monkeypatch.setenv(module.CONFIDENCE_SIGNAL_VARIABLE, 'length')
+        monkeypatch.delenv(module.ORACLE_VARIABLE, raising=False)
+        monkeypatch.delenv(module.REPLY_REPAIR_VARIABLE, raising=False)
+        monkeypatch.delenv(module.CONFLICTS_VARIABLE, raising=False)
+
+        assert module.main(['--no-budget', '--set', 'model=zhipu:glm-4.6']) == 0
+        assert (module.ADMISSION_THRESHOLD_VARIABLE, '0.25') in written, written
+        assert (module.CONFIDENCE_SIGNAL_VARIABLE, 'length') in written, written
+        out = capsys.readouterr().out
+        assert f'{module.ADMISSION_THRESHOLD_VARIABLE} = 0.25 *' in out
+        assert f'{module.CONFIDENCE_SIGNAL_VARIABLE} = length *' in out

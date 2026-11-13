@@ -194,6 +194,55 @@ class TestDispatchInputsAreDeclared(unittest.TestCase):
             (WORKFLOWS / workflow).read_text(encoding="utf-8"),
         )
 
+    def test_the_admission_gate_is_settable_without_spending_an_input(self) -> None:
+        """The gate's two axes reach the arm through `vars`, with the registered values as literals.
+
+        Both halves are load-bearing, and they are load-bearing in opposite directions.
+
+        The **literal fallback** keeps the archive readable: every artifact this arm has ever
+        published -- including the registered 91.25% row -- was produced with `threshold: 0` and
+        `confidenceSignal: none`, so a reader who checks out that commit and dispatches it has to get
+        that configuration back. Reading the variable alone would give them whatever the last
+        experiment left behind, which is a different experiment under the same commit.
+
+        The **variable** keeps the gate reachable without adding an input: this workflow sits at 24 of
+        the 25 `workflow_dispatch` inputs GitHub accepts, and the test below refuses one that reaches
+        the limit. So the assertion is not only that the two lines are wired a particular way -- it is
+        that neither of them became an input. A future round that "fixed" the reachability by adding
+        `cortex_memory_threshold` to the input list would pass every other test in this file and fail
+        here.
+        """
+        workflow = SCRIPT_WORKFLOW["dispatch-cortex-memory-ab.py"]
+        source = (WORKFLOWS / workflow).read_text(encoding="utf-8")
+        for name, registered in (
+            ("CORTEX_MEMORY_THRESHOLD", "'0'"),
+            ("CORTEX_MEMORY_CONFIDENCE", "'none'"),
+        ):
+            with self.subTest(variable=name):
+                self.assertIn(
+                    name + ": ${{ vars." + name + " || " + registered + " }}",
+                    source,
+                    f"{name} does not read `vars` with the registered value `{registered}` as its "
+                    "literal fallback, so either the gate is not settable (the pre-section-92 state) "
+                    "or the fallback has moved away from the configuration every archived artifact "
+                    "was produced under.",
+                )
+        inputs = declared_inputs(workflow)
+        for forbidden in ("cortex_memory_threshold", "cortex_memory_confidence"):
+            self.assertNotIn(
+                forbidden,
+                inputs,
+                f"{forbidden} became a workflow input. The gate is settable through `vars` precisely "
+                "so that no registered experiment has to be traded for the slot.",
+            )
+        self.assertEqual(
+            len(inputs),
+            24,
+            "the cortex-memory workflow's input count moved. It was 24 of GitHub's 25 when the gate "
+            "was made settable through `vars`; a different number means something was added or "
+            "removed without this file being told why.",
+        )
+
     def test_every_mapped_workflow_is_tracked_by_git(self) -> None:
         """A workflow that exists on disk but is not in the repository is not run.
 

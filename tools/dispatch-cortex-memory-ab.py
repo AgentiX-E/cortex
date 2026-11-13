@@ -40,6 +40,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 REPO = "AgentiX-E/cortex"
@@ -78,6 +79,37 @@ REPLY_REPAIR_VARIABLE = "CORTEX_MEMORY_REPLY_REPAIR"
 # `test_dispatch_inputs.py` forbids sitting at it -- and with the same protection: written on every
 # dispatch, so a run can never inherit the previous experiment's treatment.
 CONFLICTS_VARIABLE = "CORTEX_MEMORY_CONFLICTS"
+
+# The admission gate's two axes (`§13.101`'s unreachable pair): the threshold the value function is
+# cut at, and the signal that makes the value vary in the first place.
+#
+# Why they are repository variables rather than workflow inputs: the input ceiling. This workflow
+# sits at 24 of GitHub's 25 `workflow_dispatch` inputs and `test_dispatch_inputs.py` refuses a
+# workflow that reaches it, so adding an input would have to be *traded* against a registered one --
+# a config change paid for with an experiment. The variable channel already exists for exactly this
+# case (`CORTEX_MEMORY_ORACLE`, `_REPLY_REPAIR`, `_CONFLICTS`) and costs no registration slot.
+#
+# Why the workflow keeps a *literal* fallback instead of reading the variable alone: every archived
+# artifact, including the registered 91.25% row, was produced with `threshold: '0'` and
+# `confidence: 'none'`. A reader who checks out that commit and dispatches it must get that
+# configuration back; a variable with no fallback would give them whatever the last experiment left
+# behind. The two literals in the workflow are therefore part of the archive's identity, not
+# defaults of convenience.
+#
+# Why writing them on *every* dispatch is the protection rather than the hazard: an inherited
+# threshold would turn a control dispatch into a gated one, silently. Two things make that visible
+# instead -- the artifact's configuration line prints the resolved `threshold` and
+# `confidenceSignal`, and since `§92` it also prints `admission=candidates/…/rejected/…/distinct`,
+# which says whether the gate it was configured with actually refused anything. A dispatch nobody
+# asked to be gated therefore cannot publish a gated artifact without saying so twice.
+ADMISSION_THRESHOLD_VARIABLE = "CORTEX_MEMORY_THRESHOLD"
+CONFIDENCE_SIGNAL_VARIABLE = "CORTEX_MEMORY_CONFIDENCE"
+
+# The signal names `readConfidenceSignal` in `cortex-eval` accepts. Duplicated rather than imported
+# for the reason every constant in this file is: this is a Python process talking to the API, and an
+# import would make dispatching depend on a TypeScript build. The duplication is checked by
+# `test_dispatch_departures.py`, which reads the names out of `bench-memory-arm.ts`.
+CONFIDENCE_SIGNALS = ("none", "length")
 
 # The values `readReplyRepair` in `cortex-eval` accepts, in the order the artifact spells them.
 REPLY_REPAIRS = ("off", "commitment", "echo", "shape", "both")
@@ -854,6 +886,64 @@ def reply_repair_switch(environ: dict[str, str] | None = None) -> str:
     return raw
 
 
+def admission_threshold_switch(environ: dict[str, str] | None = None) -> str:
+    """The value the admission gate cuts at, `'0'` when the dispatcher names nothing.
+
+    Strict, and canonicalised, for two different readers.
+
+    Strict for the reason the other switches are strict: the arm's `readThreshold` would refuse a
+    typo three hours into a run, and a fallback to `0` would produce an ungated control under a
+    dispatch that asked for a gated treatment -- the artifact would say `threshold=0`, which is true
+    and is not what was asked for.
+
+    Canonicalised because the value crosses three boundaries as a **string** (dispatcher log -> GitHub
+    variable -> workflow env -> arm) and `0.25`, `.25`, `0.250` and ` 0.25 ` are the same number and
+    four different strings. A reader diffing the artifact against the dispatcher's log should be
+    comparing measurements, not spellings.
+    """
+    raw = (
+        (environ if environ is not None else os.environ).get(ADMISSION_THRESHOLD_VARIABLE) or ""
+    ).strip()
+    if raw == "":
+        return "0"
+    try:
+        value = Decimal(raw)
+    except InvalidOperation:
+        raise SystemExit(
+            f"{ADMISSION_THRESHOLD_VARIABLE} must be a decimal in [0, 1] or unset, got {raw!r}. "
+            "Refused rather than defaulted, because a dispatch that fell back to 0 would run an "
+            "ungated arm under the name of a gated one."
+        ) from None
+    if not value.is_finite() or value < 0 or value > 1:
+        raise SystemExit(
+            f"{ADMISSION_THRESHOLD_VARIABLE} must be in [0, 1] or unset, got {raw!r}. The value "
+            "function is a product of terms each in [0, 1], so a threshold outside that range is "
+            "either 'admit everything' or 'admit nothing' spelled as if it were a cut."
+        )
+    return format(value.normalize(), "f")
+
+
+def confidence_switch(environ: dict[str, str] | None = None) -> str:
+    """Which per-turn confidence signal this dispatch supplies, `'none'` when it names nothing.
+
+    Strict on the name, and the reason is `readConfidenceSignal`'s: an unrecognised signal that fell
+    back to `none` would run the constant behaviour and the artifact would read as evidence that
+    per-turn variation does not help -- a negative result about a mechanism that was never
+    administered.
+    """
+    raw = ((environ if environ is not None else os.environ).get(CONFIDENCE_SIGNAL_VARIABLE) or "").strip().lower()
+    if raw == "":
+        return "none"
+    if raw not in CONFIDENCE_SIGNALS:
+        raise SystemExit(
+            f"{CONFIDENCE_SIGNAL_VARIABLE} must be one of "
+            f"{', '.join(repr(name) for name in CONFIDENCE_SIGNALS)} or unset, got {raw!r}. An "
+            "unrecognised signal is refused rather than read as 'none', because the artifact would "
+            "then report a gate that could not vary under a dispatch that asked for one."
+        )
+    return raw
+
+
 def declare_departures(names: list[str]) -> str:
     """Write the departure list where the registration gate will read it.
 
@@ -1111,6 +1201,23 @@ def main(argv: list[str] | None = None) -> int:
     # `both` left behind by the last experiment would administer a treatment this dispatch did not name.
     write_variable(REPLY_REPAIR_VARIABLE, repair)
     print(f"{REPLY_REPAIR_VARIABLE} = {repair}{' *' if repair != 'off' else ''}")
+    # The gate's two axes, written before the dispatch and unconditionally for the reason the three
+    # above are: the workflow reads them when the job starts, and a threshold inherited from the last
+    # experiment would gate an arm this dispatch believed open. Unlike the three above, the values
+    # they take are *numbers and names the arm will echo back in the artifact*, so the reset also
+    # restores the registered configuration that every archived number was produced under.
+    threshold = admission_threshold_switch()
+    confidence = confidence_switch()
+    write_variable(ADMISSION_THRESHOLD_VARIABLE, threshold)
+    write_variable(CONFIDENCE_SIGNAL_VARIABLE, confidence)
+    print(
+        f"{ADMISSION_THRESHOLD_VARIABLE} = {threshold}"
+        f"{' *' if threshold != '0' else ''}"
+    )
+    print(
+        f"{CONFIDENCE_SIGNAL_VARIABLE} = {confidence}"
+        f"{' *' if confidence != 'none' else ''}"
+    )
 
     req(
         "POST",

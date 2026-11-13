@@ -435,16 +435,31 @@ jobs:
           # the §13 failure where two arms came out byte-identical and the verdict was
           # about the dispatch rather than the feature.
           CORTEX_MEMORY: ${{ github.event.inputs.cortex_memory }}
-          # Fixed at `0` rather than dispatched, and this is a reach claim rather than a convenience:
-          # the admission gate has been 0 in every run this arm has ever dispatched, its one non-zero
-          # excursion (section 10.9's 0.25) abstained on 479 of 500 and lost 186 questions, and
-          # section 12.3 measured the hit and miss score distributions to overlap almost completely --
-          # so no cut in the reachable range can carry the arm. Admission-wide-open is the premise of
-          # every experiment here, not a variable within it. Section 13.101 needed the last input slot
-          # for a variable that IS reachable; restoring this one costs a registration, which the
-          # ceiling guard in test_dispatch_inputs.py will demand be traded rather than added.
+          # `0` is the registered configuration, kept as a **literal fallback** rather than as a
+          # dispatched input, and the two halves of that sentence carry different arguments.
+          #
+          # The literal: every archived artifact, including the registered 91.25% row, was produced
+          # with `threshold: 0` and `confidenceSignal: none`. A reader who checks out that commit and
+          # dispatches it must get that configuration back, so the fallback cannot be "whatever the
+          # variable last held".
+          #
+          # The variable instead of an input: this workflow sits at 24 of GitHub's 25
+          # `workflow_dispatch` inputs and `tools/__tests__/test_dispatch_inputs.py` refuses one that
+          # reaches the limit. Section 13.101 needed the last slot for a variable that is reachable,
+          # and section 92 makes this pair settable through the channel the ceiling does not bound --
+          # the same one `CORTEX_MEMORY_ORACLE` and `CORTEX_MEMORY_CONFLICTS` use. No input is added,
+          # and no registered experiment is traded away.
+          #
+          # The cost of that channel is a value that can be inherited by a dispatch made outside
+          # `tools/dispatch-cortex-memory-ab.py`, and the mitigation is in the artifact rather than in
+          # a comment: the dispatcher writes both variables on EVERY dispatch (default `0` / `none`),
+          # the report prints the resolved `threshold` and `confidenceSignal` on its configuration
+          # line, and since section 92 it also prints `admission=candidates/…/rejected/…/distinct`,
+          # which says whether the gate those values describe actually refused anything. An inherited
+          # cut therefore cannot produce a silent reading: it has to pass through two fields that
+          # name it.
           # `retrievalThreshold` stays dispatchable: that one gates a decision runs exercise.
-          CORTEX_MEMORY_THRESHOLD: '0'
+          CORTEX_MEMORY_THRESHOLD: ${{ vars.CORTEX_MEMORY_THRESHOLD || '0' }}
           CORTEX_MEMORY_RETRIEVAL_THRESHOLD: ${{ github.event.inputs.cortex_memory_retrieval_threshold }}
           CORTEX_MEMORY_SESSION_BUDGET: ${{ github.event.inputs.cortex_memory_session_budget }}
           # The ceiling, forwarded for the same reason as the two thresholds. Note that
@@ -464,15 +479,15 @@ jobs:
           # inside it is the same experiment. This variable is what supplies the
           # variation, and PREREGISTRATION-CORTEX-MEMORY-ARM.md 11 records that the
           # pair together is what makes a cut mean anything.
-          # Fixed at `none` rather than dispatched, and this is a reach claim rather than a
-          # convenience: the registered configuration sets BOTH gates to 0, the value function is
-          # bounded below by 0, so `value >= 0` holds for every turn and the confidence signal
-          # cannot change a single admission decision. It is an unreachable variable under the
-          # configuration any dispatch of this arm runs. §13.97 needed the last input slot for a
-          # variable that IS reachable, so the unreachable one became a constant; restoring it as
-          # an input costs a registration, which the ceiling guard in test_dispatch_inputs.py will
-          # demand be traded rather than added.
-          CORTEX_MEMORY_CONFIDENCE: 'none'
+          # `none` is the registered configuration and the literal fallback, for the reason the
+          # threshold above gives -- with one addition that is specific to this variable. Under
+          # `threshold: 0` the value function is bounded below by 0, so `value >= 0` holds for every
+          # turn and the signal cannot change a single admission decision: the pair was unreachable
+          # *as a pair*, and making only one of them settable would have produced an interval that is
+          # populated in appearance only. Section 92 sets both through the same variable channel and
+          # proves they took effect with the admission census, which is the check that was missing
+          # when section 10.9's 0.25 abstained on 479 of 500.
+          CORTEX_MEMORY_CONFIDENCE: ${{ vars.CORTEX_MEMORY_CONFIDENCE || 'none' }}
           # The evidence source (docs/MEASURE-ORACLE-CEILING.md). `1` grades every question against
           # its gold sessions instead of the shipped corpus, which turns the run's accuracy into the
           # reader's ceiling rather than a system score; `0` is the shipped corpus and is what every
