@@ -350,6 +350,39 @@ unbundled:
   so the worker is otherwise requested at a path your bundle never wrote and 404s. Vite and webpack 5
   emit it themselves.
 
+### 5.3 What the store is not: the corpus the memory does not keep
+
+`CortexMemory` never touches a `Storage`, and this section exists because the two chapters above read
+as if it might. The build gives you a store and a memory class, and they do not meet — deliberately,
+and at a cost worth stating plainly.
+
+The contract is `answer(question, context[], sessions?)`: **the caller supplies the corpus on every
+call.** That is the right shape for a system that is being measured, because a harness has to hand the
+baseline and the candidate the same evidence; it is an expensive shape for a deployment, because the
+product cannot keep what it is given.
+
+| what you might expect | what is true |
+| --- | --- |
+| `new CortexMemory({ storage })` | no such option. The twenty-six options all tune *how* a question is answered; none names *from what* |
+| turns survive a restart | they do if you stored them; the product reads only what you pass to this call |
+| the index is built once per corpus | it is built once per **question**. With `index.embed` set, each question offers its whole corpus to the embedder again, and the census reports `2` for that because `embedCalls` counts batches. `CachingEmbedding` from `@agentix-e/cortex-ai` makes the second and later calls free within one process — and no product path uses it |
+| `DisclosureSession` and `CortexMemory` compose into a memory | they do not compose at all. The first persists sentences, the second answers from an array; §6.4 documents the first on its own terms |
+
+What to do until a corpus cache ships (the plan is [`docs/AUDIT-PRODUCT-SURFACE.md`](AUDIT-PRODUCT-SURFACE.md) §6,
+P0-1):
+
+1. **Keep the transcript yourself** and pass it every call. That is what the benchmark arm does, and
+   what every published number was taken with.
+2. **Reuse one `CortexMemory` instance.** It holds no corpus, but it does hold the last call's
+   telemetry, so a new instance per question is not wrong — it is only a memory allocation.
+3. **Wrap your embedder before turning on `index.embed`.** `new CachingEmbedding(model)` from
+   `@agentix-e/cortex-ai` is a drop-in `EmbeddingModel` that embeds each text once per process, which is
+   what makes a per-question index affordable. Without it, `index.embed` on a large corpus pays the
+   corpus for every question. A lexical-only index (`index` with no `embed`) costs no model call at all
+   and is the safe configuration today.
+4. **Do not read `SearchCensus.embedCalls` as a text count.** It is a batch count; one batch is the
+   whole corpus.
+
 ## 6. The composition: `CortexMemory`
 
 ```ts
@@ -462,6 +495,46 @@ try {
   console.log((error as Error).message); // selfConsistency and reviewPass: audit cannot both be on: ...
 }
 ```
+
+### 6.4 The other half: `DisclosureSession`
+
+`CortexMemory` answers questions and stores nothing. `DisclosureSession` stores sentences and answers
+nothing. It is the package's only surface that touches a `Storage`, and it is the one that decides
+**where a sentence may live** — because "a colleague can read this" and "this stays with you" are
+different rows, and the difference has to be enforced by something that knows both.
+
+```ts
+import { DisclosureSession } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+const session = new DisclosureSession({
+  private: new SqliteStorage({ filename: './private.db' }),
+  shared: new SqliteStorage({ filename: './shared.db' }),
+});
+
+const { admission, card } = await session.say('My landlord is Ana Ruiz; she prefers email.');
+console.log(admission.stored, card?.state); // true, 'proposed' | 'withheld' | ...
+
+await session.accept(card!.id);                       // publish the sentence as-is
+console.log(await session.export());                  // the markdown a person reads
+```
+
+Three properties the object exists to hold, in the order they matter:
+
+- **Two stores, not two tables.** `FederatedStorage` treats the table prefix as a routing marker and
+  strips it, so a single engine would put both halves in one `facts` table and the first shared query
+  would return the private rows. The isolation on offer is "the data did not go there".
+- **A proposal is content, not consent.** `propose()` asks a model to split the sentence into atoms and
+  attaches the result; publishing is `accept()`, and accepting an atom goes through `edit()` so the
+  rule table classifies it again at the moment of the click.
+- **A failure is returned, not swallowed.** `propose()` hands back the failure union when no model
+  could be reached, so a UI can render "here is your sentence" instead of an empty card.
+
+What it does **not** have, stated here rather than discovered later: no `close()` (call
+`Storage.close()` yourself), no transaction around `release()`'s two writes, no way to erase a stored
+sentence (`dismiss` refuses a published card, `expire` only marks it `stale`), and no reader — it will
+not answer a question from what it stored. The gaps and their criteria are in
+[`docs/AUDIT-PRODUCT-SURFACE.md`](AUDIT-PRODUCT-SURFACE.md) §3 and §6.
 
 ## 7. Reading a decision back
 
