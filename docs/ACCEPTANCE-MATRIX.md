@@ -75,6 +75,8 @@ unrun    no value could be computed — reported, never counted as a pass
 | C4  | <!-- reading:C4 -->0      | = 0       | pass   | cost                                   | every full-500 arm read, against the registered configuration |
 | C5  | <!-- reading:C5 -->1      | = 1        | pass   | embedding cost                         | synthetic 4-turn corpus, 3 questions: texts the second question embeds |
 | C6  | <!-- reading:C6 -->1      | = 1        | pass   | embedding cost                         | the same three questions, prompts compared byte for byte across the store and `reuse: false` |
+| C7  | <!-- reading:C7 -->0      | = 0        | pass   | verifiable erasure                      | synthetic 2 sentences, 5 surfaces, 2 stores: occurrences of an erased sentence anywhere |
+| C8  | <!-- reading:C8 -->0      | = 0        | pass   | verifiable erasure                      | the same session: private evidence, shared evidence, the export, the release log |
 | M1  | <!-- reading:M1 -->4.3pp  | ≥ 3.0pp   | pass   | reader strength                        | LongMemEval-S, 500 questions, two readers, prompt bytes held |
 | P1  | <!-- reading:P1 -->—      | ≤ 2.0pp   | unrun  | provider portability                   | LongMemEval-S, one dispatch, two providers, prompt bytes held |
 

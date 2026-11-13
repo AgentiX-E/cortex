@@ -31,12 +31,32 @@
 
 import type { FederatedStorage } from '../federation/federated-storage.js';
 import { claimsIn } from './claims.js';
+import {
+  ERASURE_REASONS,
+  ERASURE_TOKEN,
+  ErasureLog,
+  FACET_TABLES,
+  erasureSurfaces,
+  type ErasureSurface,
+  erasureWarning,
+  isErased,
+  type ErasureReason,
+  type ErasureRecord,
+} from './erasure.js';
 import { contentGrounded } from './grounding.js';
 import { type TriageProposal } from './proposer.js';
 import { TriageError, type Admission, type TriageWriter } from './writer.js';
 
-/** Where a card is in its life. `dismissed` and `stale` are the two that need care. */
-export type CardState = 'proposed' | 'accepted' | 'edited' | 'dismissed' | 'stale';
+/**
+ * Where a card is in its life.
+ *
+ * `dismissed` and `stale` are the two that need care; `forgotten` is the one that cannot be left
+ * out. A card whose fact was erased is not a card with no text -- it is a row that has to stay
+ * (so the export can count it) and has to carry nothing (so the erasure is true). Dropping the row
+ * instead would make an erasure indistinguishable from a fact that was never said, which is the
+ * reading an auditor most needs and would lose.
+ */
+export type CardState = 'proposed' | 'accepted' | 'edited' | 'dismissed' | 'stale' | 'forgotten';
 
 /** A question about one fact: may this be shared? */
 export type KnowledgeCard = {
@@ -118,7 +138,27 @@ const DEFAULT_DECAY_MS = 180 * 24 * 60 * 60 * 1000;
  * depending on which card happened to sort first, which is the kind of diff that makes people stop
  * comparing exports.
  */
-const STATE_ORDER: readonly CardState[] = ['proposed', 'accepted', 'edited', 'stale', 'dismissed'];
+const STATE_ORDER: readonly CardState[] = [
+  'proposed',
+  'accepted',
+  'edited',
+  'stale',
+  'dismissed',
+  // Last in the life of a card, and last in this list for the same reason: an erased card has no
+  // state left to change into.
+  'forgotten',
+];
+
+/**
+ * Where cards live.
+ *
+ * One spelling, next to the type it holds. `FACET_TABLES.cards` is the name; this is the path, and the
+ * reason the two are separate strings is that the store prefix is a routing marker rather than part of
+ * the table's identity (`FederatedStorage` strips it). `erasure-surface` asserts that no other file in
+ * the disclosure layer spells a `private/<table>` path by hand, because a hand-spelled copy of this
+ * path is a table the erasure can miss.
+ */
+const CARDS = `private/${FACET_TABLES.cards}`;
 
 /** The sentence a deferral gets. Stored, not composed at render time. */
 const DEFER_REASON =
@@ -130,6 +170,8 @@ export class CardQueue {
   private readonly now: () => number;
   private readonly decayMs: number;
   private readonly table: string;
+  /** The erase log, which is also the list of burned ids. */
+  private readonly eraseLog: ErasureLog;
 
   constructor(federation: FederatedStorage, writer: TriageWriter, options: CardQueueOptions = {}) {
     this.federation = federation;
@@ -137,6 +179,7 @@ export class CardQueue {
     this.now = options.now ?? (() => Date.now());
     this.decayMs = options.decayMs ?? DEFAULT_DECAY_MS;
     this.table = options.table ?? 'facts';
+    this.eraseLog = new ErasureLog(federation);
   }
 
   /**
@@ -209,6 +252,7 @@ export class CardQueue {
    */
   async attach(id: string, proposal: TriageProposal): Promise<KnowledgeCard> {
     const card = await this.require(id);
+    refuseForgotten(card);
     if (card.state !== 'proposed') {
       throw new TriageError(
         `card ${JSON.stringify(id)} is ${card.state}: a proposal is content for an open question, ` +
@@ -244,6 +288,7 @@ export class CardQueue {
   /** Publish a fact and close its card. Idempotent once accepted. */
   async accept(id: string): Promise<KnowledgeCard> {
     const card = await this.require(id);
+    refuseForgotten(card);
     if (card.state === 'accepted' || card.state === 'edited') return card;
     if (card.state === 'dismissed') {
       throw new TriageError(
@@ -308,6 +353,7 @@ export class CardQueue {
    */
   async edit(id: string, text: string): Promise<KnowledgeCard> {
     const card = await this.require(id);
+    refuseForgotten(card);
     if (typeof text !== 'string' || text.trim() === '') {
       throw new TypeError('edit() needs a non-blank sentence');
     }
@@ -356,9 +402,26 @@ export class CardQueue {
     return edited;
   }
 
+  /**
+   * Every erasure record, oldest first.
+   *
+   * The second half of the export: `toMarkdown` shows what is left, this shows what is gone. A person
+   * who erased something last month and wants to know it stayed erased reads this, and so does an
+   * auditor asking for the deletion log.
+   */
+  async erasures(): Promise<ErasureRecord[]> {
+    return this.eraseLog.list();
+  }
+
+  /** One erasure record, or `undefined`. Also the answer to "is this id burned". */
+  async erasure(id: string): Promise<ErasureRecord | undefined> {
+    return this.eraseLog.read(id);
+  }
+
   /** Refuse a card. Terminal; idempotent once dismissed. */
   async dismiss(id: string): Promise<KnowledgeCard> {
     const card = await this.require(id);
+    refuseForgotten(card);
     if (card.state === 'dismissed') return card;
     if (card.state !== 'proposed') {
       throw new TriageError(
@@ -376,6 +439,122 @@ export class CardQueue {
     };
     await this.put(dismissed);
     return dismissed;
+  }
+
+  /**
+   * Erase one fact and every copy of it this store holds. Permanent, idempotent, and burnable.
+   *
+   * ## Why this is the queue's method and not the writer's
+   *
+   * Because the card is a copy. `card.text`, `card.sourceText` and `card.proposal` each hold the
+   * sentence, and `card.origin.turns` holds the paragraph around it -- so a fact-level delete leaves
+   * the sentence readable in the export, which is the audit surface a person actually opens. The
+   * measurement that made this concrete is AfterDeleteBench (`arXiv:2610.31366`): deleting the source
+   * record while a derived copy survives let a single query recover the secret in **68%** of cases,
+   * and retiring the source *and its recorded descendants* took that to zero. In this codebase the
+   * descendants are recorded rather than inferred, so this method can retire all of them and say so.
+   *
+   * ## The order, and what a crash in the middle looks like
+   *
+   * 1. the record opens (`completedAt: null`),
+   * 2. the fact rows go, in both stores,
+   * 3. the release record loses its wording and keeps its override,
+   * 4. the card becomes a tombstone,
+   * 5. the record closes with the counts.
+   *
+   * A crash before 5 leaves a record that says the erasure did not finish and rows that are partly
+   * gone -- visible, and retryable, because a second call re-runs 2-4 (each is idempotent) and closes
+   * the record. The reverse order would produce a record claiming completion over rows that are
+   * still there, which is a false statement about a secret; that is worse than an unfinished one.
+   *
+   * ## Idempotence, and the difference from a retry
+   *
+   * A completed record short-circuits: the second call returns the first record and the tombstone
+   * rather than rewriting timestamps, because a retry after a lost response is not a second erasure
+   * and an audit that counts two is an audit that cannot count. A second call on a *different* id, or
+   * with the wrong token, is refused -- see below.
+   *
+   * @throws {TriageError} when `reason` is not one of the three, when the token is not typed, or when
+   *   nothing is stored under that id -- a record over an id that never held anything would claim a
+   *   deletion that never happened, and this product does not report those as success.
+   */
+  async forget(
+    id: string,
+    options: { acknowledge: string; reason: ErasureReason },
+  ): Promise<{ record: ErasureRecord; card: KnowledgeCard | undefined }> {
+    if (!ERASURE_REASONS.includes(options.reason)) {
+      throw new TriageError(
+        `erasure reason ${JSON.stringify(options.reason)} is not one of the three: a free-text reason ` +
+          'is a field where a caller can paste the sentence it was asked to forget, so the record ' +
+          `accepts only ${ERASURE_REASONS.join(', ')}`,
+      );
+    }
+
+    const plan = await this.plan(id);
+    // The token is checked after the plan, so the prompt can say what will be destroyed. A refusal
+    // that only says "type the token" makes the caller consent to a size they cannot see.
+    if (options.acknowledge !== ERASURE_TOKEN) throw new TriageError(erasureWarning(id, plan));
+
+    const previous = await this.eraseLog.read(id);
+    if (previous !== undefined && isErased(previous)) return { record: previous, card: plan.card };
+
+    if (previous === undefined && plan.facts === 0 && plan.cards === 0 && plan.releases === 0) {
+      throw new TriageError(
+        `nothing is stored under ${JSON.stringify(id)}, so there is nothing to erase: an erasure ` +
+          'record over an id that never held a row would claim a deletion that did not happen.',
+      );
+    }
+
+    const at = this.now();
+    const opened =
+      previous ??
+      (await this.eraseLog.begin({
+        id,
+        reason: options.reason,
+        acknowledged: options.acknowledge,
+        at,
+      }));
+
+    const removed = await this.writer.eraseRows(id, { table: this.table, now: at });
+    if (plan.card !== undefined) await this.put(tombstoneOf(plan.card, at));
+    const record = await this.eraseLog.complete(
+      opened,
+      { facts: removed.facts, cards: plan.card === undefined ? 0 : 1, releases: removed.releases },
+      at,
+    );
+    return { record, card: plan.card === undefined ? undefined : tombstoneOf(plan.card, at) };
+  }
+
+  /**
+   * What one erasure would delete, and the card it would tombstone.
+   *
+   * Read before the token check because the prompt has to name the size of the act: "2 fact rows"
+   * tells a person the sentence had already crossed into the shared store, which is the difference
+   * between erasing a private note and retracting something a colleague has read.
+   */
+  private async plan(id: string): Promise<{
+    card: KnowledgeCard | undefined;
+    facts: number;
+    cards: number;
+    releases: number;
+  }> {
+    const card = await this.get(id);
+    // The list is read from `erasureSurfaces` rather than spelled here, so a surface added to the
+    // erasure is a surface the prompt counts. A prompt that under-reported what it was about to
+    // destroy would be asking for consent to something other than what happens.
+    // Typed by the union rather than by `string`: a role this file misspells would otherwise be a
+    // surface that is silently never counted, and the prompt would under-report the destruction.
+    const held = new Set<ErasureSurface['role']>();
+    for (const surface of erasureSurfaces(this.table)) {
+      const row = await this.federation.get<unknown>(`${surface.scope}/${surface.name}`, id);
+      if (row !== undefined) held.add(surface.role);
+    }
+    return {
+      card,
+      facts: (held.has('private-facts') ? 1 : 0) + (held.has('shared-facts') ? 1 : 0),
+      cards: card === undefined ? 0 : 1,
+      releases: held.has('releases') ? 1 : 0,
+    };
   }
 
   /**
@@ -408,6 +587,7 @@ export class CardQueue {
   /** Re-confirm a stale fact: it answers again, with a fresh interval. */
   async refresh(id: string): Promise<KnowledgeCard> {
     const card = await this.require(id);
+    refuseForgotten(card);
     if (card.state !== 'stale') {
       throw new TriageError(
         `card ${JSON.stringify(id)} is ${card.state}: only a stale card needs refreshing`,
@@ -429,12 +609,12 @@ export class CardQueue {
 
   /** One card, or `undefined`. */
   async get(id: string): Promise<KnowledgeCard | undefined> {
-    return this.federation.get<KnowledgeCard>('private/cards', id);
+    return this.federation.get<KnowledgeCard>(CARDS, id);
   }
 
   /** Every card, oldest first. Dismissed ones included: the export is the audit surface. */
   async list(): Promise<KnowledgeCard[]> {
-    const cards = await this.federation.query<KnowledgeCard>('private/cards', {});
+    const cards = await this.federation.query<KnowledgeCard>(CARDS, {});
     return [...cards].sort((left, right) => {
       if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt;
       // A stable tie-break, because two cards admitted in the same millisecond would otherwise
@@ -448,12 +628,16 @@ export class CardQueue {
   /** The export a person reads. Markdown, because the alternative is a PDF nobody opens. */
   async toMarkdown(): Promise<string> {
     const cards = await this.list();
+    // Keyed by the state union rather than built up from what was found: a state missing from this
+    // object is a compile error, which is how `forgotten` announced itself when it was added. An
+    // export that silently omitted a state would under-count the one thing it exists to show.
     const counts: Record<CardState, number> = {
       proposed: 0,
       accepted: 0,
       edited: 0,
       stale: 0,
       dismissed: 0,
+      forgotten: 0,
     };
     for (const card of cards) counts[card.state] += 1;
 
@@ -493,7 +677,7 @@ export class CardQueue {
           `\`${card.id}\``,
           card.state,
           escapeCell(card.reason),
-          escapeCell(card.text),
+          escapeCell(textCell(card)),
           ...(showSource ? [escapeCell(sourceCell(card))] : []),
           ...(showProposal ? [escapeCell(proposedCell(card))] : []),
         ];
@@ -509,7 +693,7 @@ export class CardQueue {
   }
 
   private async put(card: KnowledgeCard): Promise<void> {
-    await this.federation.put('private/cards', card.id, card);
+    await this.federation.put(CARDS, card.id, card);
   }
 
   private async require(id: string): Promise<KnowledgeCard> {
@@ -524,6 +708,17 @@ export class CardQueue {
 /** A table cell cannot carry a pipe or a newline; the text is the user's, so both are possible. */
 function escapeCell(text: string): string {
   return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/**
+ * The card's wording, with the erased case marked rather than left blank.
+ *
+ * An empty cell would read as "this card is about nothing", and the whole point of keeping the row is
+ * that it is a card about something that has been removed. An em dash is the smallest mark that
+ * distinguishes the two in a table nobody reads twice.
+ */
+function textCell(card: KnowledgeCard): string {
+  return card.state === 'forgotten' ? '—' : card.text;
 }
 
 /** The wording the person used, or nothing when it is what the card already shows. */
@@ -542,4 +737,62 @@ function proposedCell(card: KnowledgeCard): string {
   if (card.proposal === undefined) return '';
   const atoms = card.proposal.facts.map((fact) => fact.text).join('; ');
   return `${atoms} (${card.proposal.withheld.length} withheld)`;
+}
+
+/** The sentence a tombstone carries. Fixed, so two exports of two stores cannot disagree about it. */
+const FORGOTTEN_REASON = "Erased at the owner's request. No wording is kept, and the id is burned.";
+
+/**
+ * What an erased card keeps, and what it must not.
+ *
+ * Kept: `id` (the record and the tombstone have to be about the same thing), `state`, `reason`
+ * (fixed text, not the rule's), `rule` (a rule id, which says *what kind* of thing was erased without
+ * saying what it said), `createdAt`, `decidedAt` and `updatedAt` (the timeline of a decision whose
+ * content is gone).
+ *
+ * **Not** kept, and each one is a copy of the sentence or of the paragraph around it:
+ *
+ * - `text` -- the claim, which is what a person asked to forget;
+ * - `sourceText` -- the turn it came out of;
+ * - `proposal.facts[].text` -- atoms a model offered, i.e. rewrites of the same sentence;
+ * - `origin.turns[]` -- **the surrounding sentences**, which is the one a "keep the metadata"
+ *   tombstone would keep and which is exactly the reconstruction channel AfterDeleteBench measures:
+ *   the secret need not survive verbatim if the parts around it do;
+ * - `refused` -- a rule id and a policy sentence, harmless, but it belongs to a decision about
+ *   wording that no longer exists, and an audit that shows a refusal for a card with no text is a
+ *   record nobody can check;
+ * - `decayAt` -- a deadline for re-confirming a fact that will not come back.
+ *
+ * `text` is `''` rather than absent so `KnowledgeCard` keeps one shape: a tombstone that needed a
+ * second type would make every reader branch on the state before it could read a field, and the
+ * export -- the surface this exists for -- is one loop over one type.
+ */
+function tombstoneOf(card: KnowledgeCard, at: number): KnowledgeCard {
+  return {
+    id: card.id,
+    text: '',
+    state: 'forgotten',
+    reason: FORGOTTEN_REASON,
+    rule: card.rule,
+    createdAt: card.createdAt,
+    updatedAt: at,
+    ...(card.decidedAt === undefined ? {} : { decidedAt: card.decidedAt }),
+  };
+}
+
+/**
+ * Refuse any change to an erased card.
+ *
+ * Called by every mutator rather than by `require()`, because `get`/`list`/`toMarkdown` must return
+ * the tombstone -- the export has to be able to count it -- and only the five methods that would
+ * write are wrong for it. The message is one sentence because the state is one fact: there is no
+ * wording left to publish, edit, decline or refresh.
+ */
+function refuseForgotten(card: KnowledgeCard): void {
+  if (card.state === 'forgotten') {
+    throw new TriageError(
+      `card ${JSON.stringify(card.id)} was erased: it holds no wording, so there is nothing to ` +
+        'publish, edit, decline or refresh. Erasure is terminal for the id as well as the row.',
+    );
+  }
 }

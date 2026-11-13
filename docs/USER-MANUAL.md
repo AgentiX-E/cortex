@@ -591,11 +591,62 @@ Three properties the object exists to hold, in the order they matter:
 - **A failure is returned, not swallowed.** `propose()` hands back the failure union when no model
   could be reached, so a UI can render "here is your sentence" instead of an empty card.
 
+A fourth property is an operation rather than a shape: **`forget()` erases the sentence and the id**,
+and §6.5 is about what it has to reach before it may say so.
+
 What it does **not** have, stated here rather than discovered later: no `close()` (call
-`Storage.close()` yourself), no transaction around `release()`'s two writes, no way to erase a stored
-sentence (`dismiss` refuses a published card, `expire` only marks it `stale`), and no reader — it will
+`Storage.close()` yourself), no transaction across `release()`'s two writes, and no reader — it will
 not answer a question from what it stored. The gaps and their criteria are in
 [`docs/AUDIT-PRODUCT-SURFACE.md`](AUDIT-PRODUCT-SURFACE.md) §3 and §6.
+
+### 6.5 Erasing a sentence, and the four copies it has to reach
+
+Deleting a fact is the easy half and the wrong half. Measured by AfterDeleteBench
+([arXiv:2610.31366](https://arxiv.org/abs/2610.31366)): delete the record an agent was told about and
+ask it anyway, and a single query recovers the secret in **68%** of cases — because a *derived* copy
+survived. This store derives three: a card keeps the wording, the turn it was cut from and the turns
+around it; a release record keeps the wording and its SHA-256. `forget()` reaches all of them, or it
+does not claim to have erased anything.
+
+```ts
+import { ERASURE_TOKEN } from '@agentix-e/cortex-core';
+import { DisclosureSession } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+const session = new DisclosureSession({
+  private: new SqliteStorage({ filename: './private.db' }),
+  shared: new SqliteStorage({ filename: './shared.db' }),
+});
+
+await session.say('Falcon is the code name for the Helix Bio acquisition.', { id: 'f1' });
+await session.accept('f1'); // it crossed into the shared store: two copies now, plus a card
+
+const { record, card } = await session.forget('f1', {
+  acknowledge: ERASURE_TOKEN, // 'erase-permanently'; a refusal prints what it would destroy
+  reason: 'user-request',
+});
+console.log(record.removed); // { facts: 1, cards: 1, releases: 0 }
+console.log(card?.text); // '' -- the tombstone keeps the timeline and nothing else
+console.log(await session.export()); // one card, state 'forgotten', no wording
+```
+
+Five things are true afterwards, and each one is asserted in
+`packages/cortex-memory/src/__tests__/disclosure-erasure.test.ts` against two real files:
+
+| | |
+| --- | --- |
+| Four read paths see nothing | the private evidence, the shared evidence, the export, the release log |
+| The record holds no content | `reason` is one of three values, so the field cannot carry a sentence; there is no digest, because a hash of a guessable sentence is an oracle |
+| The id is burned | a later `say(..., { id })` under that id throws; without an id the store mints one |
+| It survives a restart | the record and the tombstone are rows, not state in memory |
+| It is not undoable | `accept`, `edit`, `dismiss`, `refresh` and `attach` all refuse an erased card |
+
+What it does **not** reach, because the boundary is the store this process owns: a model that already
+read the sentence in a prompt, a provider's request log, and any transcript pasted somewhere else.
+AfterDeleteBench separates reconstruction from write-back and fresh-session recall for exactly this
+reason. On disk, the SQLite backend sets `secure_delete = ON` — with it off, an erased 1.6 kB sentence
+was still findable verbatim in the file after the row was gone, which is the difference between "the
+store forgot it" and "the file no longer holds it".
 
 ## 7. Reading a decision back
 

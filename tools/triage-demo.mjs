@@ -57,6 +57,7 @@ function parse(argv) {
     home: '.cortex-demo',
     atom: undefined,
     acknowledge: undefined,
+    reason: undefined,
     llm: process.env['CORTEX_LLM_BACKEND'] ?? 'none',
     model: undefined,
     // The recorded readings used q4 (about 400 MB for the 0.5B checkpoint). The profile's own
@@ -78,6 +79,7 @@ function parse(argv) {
       else if (name === 'dtype') options.dtype = value;
       else if (name === 'id') options.id = value;
       else if (name === 'acknowledge') options.acknowledge = value;
+      else if (name === 'reason') options.reason = value;
       else throw new Error(`unknown option --${name}`);
       index += 1;
     } else {
@@ -133,7 +135,11 @@ async function buildProposer(backend, model, dtype) {
 
 function renderCard(card) {
   const lines = [`${card.id}  ${card.state}  ${card.reason}`];
-  lines.push(`    text: ${card.text}`);
+  // An erased card has no wording by design, and printing an empty `text:` would read as a card about
+  // nothing rather than as a card about something that was removed.
+  lines.push(
+    `    text: ${card.text === '' ? '(erased: no wording, source, proposal or surrounding turns kept)' : card.text}`,
+  );
   if (card.proposal !== undefined) {
     lines.push(
       `    offered (${card.proposal.promptVersion}, ${card.proposal.model ?? 'unknown model'}):`,
@@ -152,12 +158,12 @@ function renderCard(card) {
 }
 
 async function main() {
-  const { command, args, home, atom, llm, model, dtype, id, acknowledge } = parse(
+  const { command, args, home, atom, llm, model, dtype, id, acknowledge, reason } = parse(
     process.argv.slice(2),
   );
   if (command === undefined) {
     throw new Error(
-      'expected a command: say | facts | cards | propose | accept | dismiss | release | releases | ask | check | export',
+      'expected a command: say | facts | cards | propose | accept | dismiss | release | releases | forget | erasures | ask | check | export',
     );
   }
 
@@ -244,7 +250,11 @@ async function main() {
         const { record } = await session.release(id, { acknowledge: acknowledge ?? '' });
         console.log(`released ${record.id}: rule ${record.rule} overridden`);
         console.log(`  policy: ${record.policy}`);
-        console.log(`  digest: ${record.digestAlgorithm} ${record.digest.slice(0, 16)}…`);
+        console.log(
+          record.digest === null
+            ? '  digest: (redacted with the wording by a later erasure)'
+            : `  digest: ${record.digestAlgorithm} ${record.digest.slice(0, 16)}…`,
+        );
         console.log(
           `  recorded at ${new Date(record.releasedAt).toISOString()}` +
             (record.completedAt === null ? ' (INCOMPLETE)' : ''),
@@ -260,8 +270,9 @@ async function main() {
       console.log(`${records.length} override(s)`);
       for (const record of records) {
         const done = record.completedAt === null ? 'INCOMPLETE' : 'complete';
-        console.log(`  ${record.id}  ${record.rule}  ${done}  ${record.digest.slice(0, 12)}…`);
-        console.log(`      ${record.text}`);
+        const digest = record.digest === null ? 'redacted' : `${record.digest.slice(0, 12)}…`;
+        console.log(`  ${record.id}  ${record.rule}  ${done}  ${digest}`);
+        console.log(`      ${record.text === null ? '(wording redacted by an erasure)' : record.text}`);
       }
     } else if (command === 'facts') {
       // `evidence('private')` is what the *owner* can see, which is both stores -- a private task
@@ -272,6 +283,38 @@ async function main() {
       for (const row of rows) {
         const fact = row.value;
         console.log(`  ${row.key}  [${row.origin}]  rule:${fact.triage.rule ?? '-'}  ${fact.text}`);
+      }
+    } else if (command === 'forget') {
+      const target = args[0];
+      if (target === undefined) throw new Error('forget needs a fact id (see the `facts` command)');
+      try {
+        const { record, card } = await session.forget(target, {
+          acknowledge: acknowledge ?? '',
+          reason: reason ?? 'user-request',
+        });
+        console.log(
+          `erased ${record.id}: ${record.reason}, requested ${new Date(record.requestedAt).toISOString()}`,
+        );
+        console.log(
+          `  removed ${record.removed.facts} fact row(s), ${record.removed.cards} card(s), ` +
+            `${record.removed.releases} release record(s) redacted`,
+        );
+        if (card !== undefined) console.log(renderCard(card));
+        console.log('  nothing of the wording is kept -- not a copy, not a hash; the id is burned.');
+      } catch (error) {
+        // The refusal is the warning, the way `release` refuses: one sentence, one source.
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    } else if (command === 'erasures') {
+      const records = await session.erasures();
+      console.log(`${records.length} erasure(s)`);
+      for (const record of records) {
+        const done = record.completedAt === null ? 'INCOMPLETE' : 'complete';
+        console.log(
+          `  ${record.id}  ${record.reason}  ${done}  ` +
+            `${record.removed.facts}/${record.removed.cards}/${record.removed.releases}`,
+        );
       }
     } else if (command === 'dismiss') {
       const cardId = args[0];

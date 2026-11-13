@@ -29,6 +29,19 @@ class BetterSqliteSession implements SqlSession {
     // WAL is set before the schema because it is a property of the file, and setting it later
     // rewrites the journal mode of a database that already holds rows.
     this.db.pragma('journal_mode = WAL');
+    // ## Why `secure_delete`
+    //
+    // Because erasure is a promise about bytes, and SQLite's default is a promise about rows only:
+    // a deleted row leaves its page content in the file until something overwrites it, so `DELETE`
+    // plus a passing `query` is not evidence that a sentence is gone from the disk. Measured, not
+    // assumed: with this pragma off, a 1.6 kB sentence erased through the product was still findable
+    // verbatim in the file (`disclosure-erasure.test.ts`). `secure_delete = ON` zeroes the freed
+    // content on the delete path, which makes the difference between "the store forgot it" and "the
+    // file no longer holds it".
+    //
+    // It is per-connection and not persisted in the file, which is why it is set here rather than in
+    // a migration: a reader that opens the database later is not the one that has to delete safely.
+    this.db.pragma('secure_delete = ON');
   }
 
   async exec(sql: string): Promise<void> {

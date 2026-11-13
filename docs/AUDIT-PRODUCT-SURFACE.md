@@ -638,7 +638,7 @@ argument.
 
 | # | item | why it is next | how it is verified |
 | --- | --- | --- | --- |
-| P0-1 | **Verifiable erasure** (`DisclosureSession.forget`, `ErasureRecord`, a sixth card state) | unchanged and still the only row with a product claim, external evidence and no code. The competitor failure mode is public: soft-deleted vectors recover 25.5% of names, 46.4% of locations, 100% of age/sex, 99% top-1 faces | six assertions: three read paths cannot see it, idempotent, the record holds no content, terminal state is irreversible, survives restart, 100% coverage of the paths |
+| P0-1 | **Verifiable erasure** | **shipped in round 89** — see §12. The row is kept here rather than deleted because the paragraph beside it is the reason it took two rounds: it was the only row with a product claim, external evidence and no code | §12: `C7` / `C8`, `tools/erasure-census.mjs`, 21 unit assertions, 5 mutations |
 | P0-2 | **`index` dispatch** (`cortex/self-index`) | the only way to price the per-question postings rebuild; the census now counts `embedTexts`/`memoHits` so the readback exists | one dispatch, three readings: paired accuracy delta, total `embedTexts`, `memoHits` |
 | P1-1 | **`trim-2.8k` into registration** | `C1` is 11.7K tokens/question; the arm already measured 5,183 | `C1` recomputed at ≤ 5.2K with the same accuracy, and a `docs-crosscheck` that fails if the registered number drifts |
 | P1-2 | **`predicate-parity` grows into `backend-parity`** | the name over-promised and three defects lived in the gap. `get`, `del`, `close`, `transaction` and TTL are still uncompared across backends | one file, every `Storage` method, three backends, one answer per method |
@@ -652,3 +652,160 @@ Two of these are the same defect seen twice. P1-2 and P2-3 are both consequences
 with no stated semantics: an interface that says nothing about expiry or ordering cannot be implemented
 consistently by four backends, and cannot be tested for consistency either, because there is nothing to
 compare against. That is the structural item under the three that were found.
+
+---
+
+## 12. Round 89: erasure, and the four copies a delete does not reach
+
+Round 87 and round 88 both ended with the same row at the top of the list: erasure was the one
+capability with a product claim, published external evidence, and no code. It is implemented now, and
+the interesting part is not the deletion. It is the count of things that had to be deleted.
+
+### 12.1 The measurement that turned a `del` into a protocol
+
+Two papers published three weeks apart settled the design before a line was written.
+
+| paper | reading | what it forces |
+| --- | --- | --- |
+| AfterDeleteBench, `arXiv:2610.31366` | delete the source record, then ask the agent: a single query recovers the secret in **0.680** of in-distribution cases and **0.640** held-out, against **0 of 200** for a matched never-exposed control. Remove the complete literal from every model-visible state and exact reconstruction still succeeds in **0.615–0.990** of cases, because the parts survive | the unit of deletion is not the row. It is every object traced to the row |
+| the same paper, on defences | **provenance-aware closure** — retire the source *and its recorded descendants* — eliminated recovery in every tested cell. An exact-literal write filter, "the control most products actually ship", blocks reinsertion and does nothing to what is already stored | closure has to be a property of the schema, not a filter on writes |
+| MemCut, `arXiv:2610.21405` | 456 annotated secrets; LLM-guided deletion of ten extra turns from twenty candidates still leaves **39–76%** residual recovery, and the bottleneck is *candidate coverage* | a deletion path that has to *find* the copies will miss some. The copies have to be known |
+
+That last line is where this codebase has an advantage worth naming precisely: AfterDeleteBench has to
+**infer** which summaries descend from a deleted record, because their summaries are model output. Here
+the descendants are **recorded**, because the only code that writes them is five files. So closure is
+arithmetic — enumerate the fields, clear them, and then prove it by reading every row.
+
+### 12.2 The four copies, and the fifth table that must stay empty
+
+`grep` for the sentence is what answered this, not a design document:
+
+| # | surface | what holds the sentence | how it got there |
+| --- | --- | --- | --- |
+| 1 | `private/facts`, `shared/facts` | `AdmittedFact.text` | `admit()` |
+| 2 | `private/cards` | `text`, `sourceText`, `proposal.facts[].text`, **`origin.turns[]`** | `open()`, `attach()` |
+| 3 | `private/releases` | `text` **and `digest`** | `release()` |
+| 4 | `private/erasures` | nothing, by construction | this round |
+| 5 | every SQLite page the row ever touched | the bytes | the engine, not the store |
+
+`origin.turns[]` is the one a "keep the metadata" tombstone would keep: those are the user's
+surrounding sentences, which is exactly the reconstruction channel AfterDeleteBench measures. A card
+that dropped `text` and kept `origin` would pass every field-by-field assertion and fail the question.
+
+Row 3 is a genuine conflict rather than an oversight. `ReleaseRecord` keeps the wording *on purpose* —
+"kept so the record is readable, not just verifiable" — so an erasure that respects the audit trail
+leaves a copy, and one that deletes the record erases the fact that a rule was overridden. The
+resolution is a union: the record keeps `id`, `rule`, `policy`, `releasedAt`, `completedAt` and the
+token, and its wording arm becomes `{ text: null, digestAlgorithm: null, digest: null, redactedAt }`.
+A release is audited by *what* crossed; an erasure must not keep it. Both are true, and the type now
+says so — three nullable fields would have been three ways for the record to disagree with itself.
+
+**No digest on the erasure record.** `ReleaseRecord.digest` exists to prove what was released; an
+erasure record must not keep one, because a SHA-256 of a secret drawn from a small, guessable space is
+an offline oracle rather than a redaction. `reason` is a three-value union for the same reason at the
+type level: `reason: "user asked about Falcon"` is a sentence a caller writes in good faith.
+
+### 12.3 What the first run found
+
+Four things, and the fourth is the round's methodological finding.
+
+1. **`evidence()`'s argument is a scope, not a request object.** My first session test called
+   `evidence({ task: 'shared' })` and got `ScopeViolation: unknown task scope {"task":"shared"}`. The
+   assembler was right; the test was reading its own signature. Recorded because the error message is
+   the only reason this took ten seconds instead of an hour.
+2. **SQLite's default keeps deleted content in the file.** With `secure_delete` off — the default in
+   both journal modes, measured — a 1.6 kB sentence erased through the product was still findable
+   verbatim in `private.db` after the row was gone. Every row-level assertion passed. `SqliteStorage`
+   now sets `secure_delete = ON`, and `disclosure-erasure.test.ts` reads the **file**, not the rows.
+3. **The release door does not close by itself.** After an erasure, a completed `ReleaseRecord` still
+   exists (that is the audit), so `release()` on the same id found its own record and then found no
+   row: it threw `no private fact with id` — correct, and only because `cross()` looks for the shared
+   copy before throwing. Now asserted rather than assumed.
+4. **A mutation that edits a compiled dependency is not a mutation.** Removing `secure_delete = ON`
+   from `sqlite.ts` and re-running `vitest` was **green**: `cortex-memory` imports
+   `@agentix-e/cortex-storage/sqlite` from `dist`, so the test measured the previous build. The
+   mutation script now builds the package before each run, and the mutation goes red. This is round
+   88's lesson one level down: last round the mutation silently did not apply to the *text*; this
+   round it applied to the text and not to the *artifact*.
+
+### 12.4 What shipped
+
+| # | change | the assertion that fails if it is reverted |
+| --- | --- | --- |
+| D1 | `CardQueue.forget(id, { acknowledge, reason })` — plan, token, record-open, delete, tombstone, redact, record-close | 21 assertions in `erasure.test.ts`; 5 mutations below |
+| D2 | `CardState` gains `forgotten`; the tombstone drops `text`, `sourceText`, `proposal`, `origin`, `refused`, `decayAt` and keeps `id`, `state`, `reason`, `rule`, `createdAt`, `decidedAt`, `updatedAt` | `card.ts`'s `Record<CardState, number>` was a compile error until the export counted the new state — the type found the export |
+| D3 | `TriageWriter.eraseRows` deletes both stores and redacts the release record; counts, never throws, so a retry converges | `removed: { facts: 2 }` case, built from the documented partial-promotion state |
+| D4 | `ErasureLog` owns `private/erasures`: `begin` / `complete` / `read` / `list`. `admit()` refuses a burned id, for an explicit id only | the id-reuse test; the retry test preserves `requestedAt` from the first attempt |
+| D5 | `ERASURE_TOKEN = 'erase-permanently'`, `ERASURE_REASONS` (3), `erasureSurfaces(table)` with roles, `erasureWarning(id, found)` built from the plan | the refusal message asserts `fact rows: 2` for the both-stores case |
+| D6 | `SqliteStorage` sets `secure_delete = ON` | the file-bytes test, which reads `private.db` rather than `query()` |
+| D7 | `tools/erasure-census.mjs` + `C7` / `C8`, with a fault injector the test drives | `test_erasure_census.py` (5 assertions), one of which runs the tool with one erasure skipped and requires exit 1 |
+| D8 | `tools/triage-demo.mjs` gains `forget` and `erasures`, and prints `(erased: ...)` instead of an empty `text:` | the demo run in §12.6 |
+
+`erasure-surface.test.ts` — inside `erasure.test.ts` — reads the disclosure layer's own sources and
+fails if any of them spells a `private/<table>` path by hand. The residual assertions are only as
+complete as the surface list, and a hand-spelled fifth table would be invisible to every one of them.
+
+### 12.5 Five mutations, all red
+
+| mutation | line | result |
+| --- | --- | --- |
+| the tombstone stops being written | `card.ts:519` | **red**, 6 failed |
+| the release record keeps its wording | `writer.ts:398` | **red**, 2 failed |
+| the burned id can be reused | `writer.ts:183` | **red**, 1 failed |
+| sqlite goes back to leaving freed pages intact | `sqlite.ts:44` | **red**, 1 failed |
+| the erasure forgets the shared copy | `writer.ts:389` | **red**, 6 failed |
+
+The fourth was green until the script started rebuilding the storage package first. That is the whole
+reason a mutation is applied by locating its text, printing the line it landed on, and rebuilding:
+**an unapplied mutation and a suite passing on merit are indistinguishable from the outside.**
+
+### 12.6 The reading
+
+`node tools/erasure-census.mjs`:
+
+```
+erasure census ok -- 5 occurrence(s) and 4 read path(s) before, 0 and 0 after;
+4 row(s) removed by 1 tombstone and 2 record(s)
+```
+
+`5` before is the control, taken with the same function that reads afterwards: two occurrences in the
+card (the claim and the turn it came from), one in each store's facts table, one in the release
+record. `0` after, across all five surfaces including the erasure record itself.
+
+The CLI, end to end:
+
+```
+$ node tools/triage-demo.mjs say "Falcon is the code name for the Helix Bio acquisition." --home /tmp/h --id f1
+f1  stored private  (rule: none, deferred)
+f1  proposed  No rule recognised this sentence, so it is stored privately. ...
+$ node tools/triage-demo.mjs forget f1 --home /tmp/h
+erasing "f1" is permanent, and it removes every copy this store holds:
+  fact rows:        1
+  card rows:        1 (the sentence, the wording it came from, the turns around it)
+  release records:  0 (the wording and its digest are redacted; the override stays)
+...
+$ node tools/triage-demo.mjs forget f1 --home /tmp/h --acknowledge erase-permanently --reason user-request
+erased f1: user-request, requested 2026-11-13T06:16:59.447Z
+  removed 1 fact row(s), 1 card(s), 0 release record(s) redacted
+f1  forgotten  Erased at the owner's request. No wording is kept, and the id is burned.
+```
+
+### 12.7 What is left, ordered by what it would change
+
+Erasure moves off the list; what it exposes takes its place.
+
+| # | item | why it is next | how it is verified |
+| --- | --- | --- | --- |
+| P0-1 | **`CortexMemory` has no delete** | erasure now covers `DisclosureSession`'s two stores and stops at the package boundary. `CortexMemory` keeps a per-question index and a corpus the caller supplies, so the exposure is smaller, but a product that sells "your memory" and cannot delete from its answering half has a hole shaped like a footnote | `CortexMemory` gains no store until P2-1; if it does, `forget` reaches it. Until then the boundary is stated in the manual, which it now is |
+| P0-2 | **`cortex/self-index` dispatch** | unchanged, still the only way to price the per-question postings rebuild | one dispatch, three readings: paired accuracy delta, total `embedTexts`, `memoHits` |
+| P1-1 | **`trim-2.8k` into registration** | `C1` is 9201 tokens/question against a 6,000 aim; the arm already measured 5,183 | `C1` recomputed at ≤ 5.2K with the same accuracy |
+| P1-2 | **`backend-parity`** | unchanged from round 88: `get`, `del`, `close`, `transaction` and TTL are still uncompared across backends | one file, every `Storage` method, three backends |
+| P1-3 | **Coverage merge for the integration suite** | unchanged: the priced path to asserting a `ROLLBACK` that itself fails | `coverage:gate` reads a merged report |
+| P1-4 | **The tombstone's `reason` is not the rule's** | `forgotten` replaces a deferral's sentence with a fixed one, which loses *why* the card existed. A reader comparing two exports cannot tell an erased confidentiality card from an erased grocery list, though `rule` is still there for the rule-claimed case | the export carries the rule id for every defaulted card, or the field is documented as intentionally lossy |
+| P2-1 | **Retention policy as a schedule** | `ErasureReason` has `retention-policy` and nothing produces it: there is no TTL on a fact, so erasure is only ever manual. GDPR-style policy needs the reason to be reachable without a human | a sweep that erases by age, one record per sentence, `retention-policy`, and a test that it does not touch a re-confirmed row |
+| P3-1 | **`secure_delete` is SQLite-only** | the browser backend (`idb`) has no such switch, and `pg` has no equivalent either. The row-level guarantee travels; the byte-level one does not | the claim in `ARCHITECTURE.md` names the backend it holds for — it does |
+
+Two of these are the same shape as round 88's finding: **a guarantee that is true in the layer that was
+measured and assumed in the layers that were not.** Erasure is now verified at the row, at the read
+path, and at the file — for SQLite. The other two backends have the row guarantee and nothing else,
+and saying that out loud is cheaper than discovering it in an audit.

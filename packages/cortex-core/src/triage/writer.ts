@@ -28,9 +28,11 @@
  */
 
 import type { FederatedStorage } from '../federation/federated-storage.js';
+import { ErasureLog, FACET_TABLES } from './erasure.js';
 import {
   digestOf,
   isIncomplete,
+  redactRelease,
   releaseVerdict,
   releaseWarning,
   RELEASE_TOKEN,
@@ -125,9 +127,11 @@ export type TriageWriterOptions = {
  * Where release records live, inside the private store.
  *
  * A table beside `facts`, not a column on it: the record outlives the row's scope, and a query for
- * facts must not start returning audit rows to a caller that expects sentences.
+ * facts must not start returning audit rows to a caller that expects sentences. The name comes from
+ * `erasure.ts`, because the erasure has to reach this table and two spellings of one table is how one
+ * of them eventually stops matching.
  */
-const RELEASES = 'releases';
+const RELEASES = FACET_TABLES.releases;
 
 /** The scopes this writer will accept from a classifier. Anything else is a failure, not a vote. */
 const KNOWN_SCOPES: readonly TriageScope[] = ['private', 'shared', 'defer'];
@@ -135,10 +139,19 @@ const KNOWN_SCOPES: readonly TriageScope[] = ['private', 'shared', 'defer'];
 export class TriageWriter {
   private readonly federation: FederatedStorage;
   private readonly classifier: (text: string) => TriageDecision;
+  /**
+   * The erasure table, held only to answer "is this id burned".
+   *
+   * The erasure record itself is written by the door that erases, not here -- but a writer that
+   * admitted a burned id would put a row back under an id whose record says nothing is there, so
+   * this read has to exist on the write path, and the table name has to have one owner.
+   */
+  private readonly erasures: ErasureLog;
 
   constructor(federation: FederatedStorage, options: TriageWriterOptions = {}) {
     this.federation = federation;
     this.classifier = options.classify ?? ((text) => classifyWith(text));
+    this.erasures = new ErasureLog(federation);
   }
 
   /**
@@ -159,6 +172,24 @@ export class TriageWriter {
     }
 
     const { record: triage, retention } = this.decide(text);
+
+    // A burned id is refused, and only for an explicit one.
+    //
+    // The check is scoped to `options.id` because a v4 UUID is not going to collide with an erased
+    // id and a read per admission is a tax on the hot path for a case that cannot happen. What can
+    // happen is a caller that imports rows and supplies ids: reusing one would resurrect a row under
+    // an id whose erasure record says it is Gone, and the audit trail would then describe a deletion
+    // that is not true any more. Refusing is the only answer that keeps the record honest.
+    if (options.id !== undefined) {
+      const erased = await this.erasures.read(options.id);
+      if (erased !== undefined) {
+        throw new TriageError(
+          `${JSON.stringify(options.id)} was erased on ${new Date(erased.requestedAt).toISOString()} ` +
+            'and its id is burned: admitting under it would put a row back under an id whose ' +
+            'erasure record says nothing is there. Admit without an id, and the store will mint one.',
+        );
+      }
+    }
     // `decide()` guarantees the scope is one of the three, and `destinationOf` sends `defer` home
     // privately -- so this single expression covers the failure path too. It was a ternary on
     // `triage.failure` first, which was dead: a failure is recorded *as* a deferral.
@@ -331,6 +362,45 @@ export class TriageWriter {
     const completed: ReleaseRecord = { ...record, completedAt: now };
     await this.federation.put(`private/${RELEASES}`, id, completed);
     return { record: completed, fact };
+  }
+
+  /**
+   * Delete every copy of one fact this class is responsible for, and redact the release that moved it.
+   *
+   * This is the **deletion half** of an erasure. The record, the token and the ordering live at the
+   * door that erases (`CardQueue.forget`), because the door is what also has to tombstone the card --
+   * and a protocol split across three classes is a protocol whose order a future caller can change.
+   * What is guaranteed here is only the part this class owns: both stores are tried, because a fact
+   * that was promoted has a shared copy that a colleague can still read, and that is the copy that
+   * matters most.
+   *
+   * Returns counts rather than throwing on an empty id. A retried erasure re-runs this after a crash,
+   * and the second run finds nothing -- which must produce `{facts: 0}` and let the caller finish the
+   * record, not an error that leaves it open forever. The release count is likewise `0` on a second
+   * run: redacting an already-redacted record would report a second redaction, and that number ends
+   * up in an audit export.
+   */
+  async eraseRows(
+    id: string,
+    options: { table?: string; now?: number } = {},
+  ): Promise<{ facts: number; releases: number }> {
+    const table = options.table ?? 'facts';
+    let facts = 0;
+    for (const scope of ['private', 'shared'] as const) {
+      const row = await this.federation.get<AdmittedFact>(`${scope}/${table}`, id);
+      if (row === undefined) continue;
+      await this.federation.del(`${scope}/${table}`, id);
+      facts += 1;
+    }
+
+    const release = await this.federation.get<ReleaseRecord>(`private/${RELEASES}`, id);
+    if (release === undefined || release.text === null) return { facts, releases: 0 };
+    await this.federation.put(
+      `private/${RELEASES}`,
+      id,
+      redactRelease(release, options.now ?? Date.now()),
+    );
+    return { facts, releases: 1 };
   }
 
   /** Every release record, newest last. The audit trail of overrides, and nothing else. */

@@ -310,6 +310,79 @@ export const CRITERIA: readonly Criterion[] = [
       'Revert the store before reading any accuracy from the run: the two arms are no longer one variable ' +
       'apart.',
   },
+  {
+    id: 'C7',
+    capability: 'verifiable erasure',
+    metric: 'occurrences of an erased sentence across every table of both stores',
+    dataset: 'synthetic: 2 sentences, 5 surfaces, `tools/erasure-census.mjs`',
+    comparator: 'equals',
+    threshold: 0,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/erasure/census.json',
+      key: 'residualOccurrences',
+    },
+    competitors: [
+      {
+        name: 'AfterDeleteBench, exact source deletion',
+        value: 0.68,
+        grade: 'C',
+        recipe:
+          'a recovery *rate* over 200 synthetic secrets with a fixed-weight reader, hierarchical memory: 0.680 ' +
+          'in-distribution and 0.640 held-out, against 0 of 200 for never-exposed controls (arXiv:2610.31366). ' +
+          'A behavioural rate where ours is a deterministic occurrence count, so this is the direction and the ' +
+          'magnitude of the failure mode rather than a number we may subtract from',
+      },
+      {
+        name: 'MemCut, LLM-guided deletion of ten extra turns',
+        value: 0.39,
+        grade: 'C',
+        recipe:
+          'residual recovery after deleting ten additional turns from twenty retrieval candidates: 39-76% ' +
+          'across five memory designs and four LLMs (arXiv:2610.21405). The low end is quoted because it is ' +
+          'the best case their baselines reached; ours counts surviving copies instead of asking a reader',
+      },
+    ],
+    onMiss:
+      'A surviving occurrence means a copy outlived the delete, and the copies that leak are the derived ones, ' +
+      'not the row: a card keeps the wording, the turn it came from and the turns around it; a release record ' +
+      'keeps the wording and its digest. Repair the erasure, never the threshold -- relaxing this to "no ' +
+      'verbatim copy in the facts table" measures the one copy that was never in doubt.',
+  },
+  {
+    id: 'C8',
+    capability: 'verifiable erasure',
+    metric: 'read paths that still return an erased sentence',
+    dataset: 'the same session: private evidence, shared evidence, the export, the release log',
+    comparator: 'equals',
+    threshold: 0,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/erasure/census.json',
+      key: 'leakingReadPaths',
+    },
+    competitors: [
+      {
+        name: 'AfterDeleteBench, provenance-aware closure',
+        value: 0,
+        grade: 'B',
+        recipe:
+          'the one defence that eliminated recovery in every tested cell: retire the source *and every ' +
+          'descendant traced to it* (arXiv:2610.31366). It is a behavioural audit rather than a read-path ' +
+          'enumeration, so the grade is B and the claim is "the same mechanism reaches zero", not "we match a ' +
+          'published number"',
+      },
+    ],
+    onMiss:
+      'A leaking read path is the specific failure AfterDeleteBench measures: the store says the row is gone and ' +
+      'a surface still answers with it. Each of the four is a different copy -- the shared one is the one a ' +
+      'colleague read, the card is the one the owner exports -- so check which one answered before touching ' +
+      'anything, and do not treat an empty private scope as evidence that the shared scope is clean.',
+  },
 
   // ---- the assumption ledger (step 29) -----------------------------------------------------------
   {

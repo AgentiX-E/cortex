@@ -42,6 +42,8 @@ import {
   type KnowledgeCard,
   type OutputScan,
   type AdmittedFact,
+  type ErasureReason,
+  type ErasureRecord,
   type ProposalResult,
   type ReleaseRecord,
   type ScopedRow,
@@ -249,6 +251,39 @@ export class DisclosureSession {
     options: { acknowledge: string },
   ): Promise<{ record: ReleaseRecord; fact: AdmittedFact }> {
     return this.writer.release(id, { acknowledge: options.acknowledge, table: this.table });
+  }
+
+  /**
+   * Erase a sentence: the fact, the card, the release wording, and the id.
+   *
+   * The one command on this object that destroys rather than moves, and the only one whose name a
+   * person would use without being taught it. Delegated to the queue because the queue is what knows
+   * the card is a copy -- see `CardQueue.forget`, which enumerates every field a tombstone drops.
+   *
+   * What it does not reach, stated here because the limitation belongs next to the capability rather
+   * than in a footnote: a model that already read the sentence in a prompt, a provider's request log,
+   * and any transcript the user pasted elsewhere. AfterDeleteBench separates reconstruction from
+   * write-back and fresh-session recall for the same reason; this erases the store this process owns,
+   * and claims nothing about weights.
+   *
+   * @throws {TriageError} when the token is not typed, when `reason` is not one of the three, or when
+   *   nothing is stored under the id.
+   */
+  async forget(
+    id: string,
+    options: { acknowledge: string; reason: ErasureReason },
+  ): Promise<{ record: ErasureRecord; card: KnowledgeCard | undefined }> {
+    return this.queue.forget(id, options);
+  }
+
+  /** Every erasure record, oldest first: the deletion log, and it holds no wording. */
+  async erasures(): Promise<ErasureRecord[]> {
+    return this.queue.erasures();
+  }
+
+  /** One erasure record, or `undefined`. This is also the answer to "is this id burned". */
+  async erasure(id: string): Promise<ErasureRecord | undefined> {
+    return this.queue.erasure(id);
   }
 
   /** Every override, oldest first. The audit trail, and nothing else. */

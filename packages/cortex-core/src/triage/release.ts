@@ -47,18 +47,70 @@ export type ReleaseRecord = {
   readonly rule: string;
   /** That rule's policy sentence, copied at release time: policies change, the record does not. */
   readonly policy: string;
-  /** The exact wording that was released. Kept so the record is readable, not just verifiable. */
-  readonly text: string;
-  /** `algorithm` travels with the value: a digest whose algorithm is assumed is a rumour. */
-  readonly digestAlgorithm: 'sha-256';
-  readonly digest: string;
   /** The token the caller typed. */
   readonly acknowledged: string;
   /** When the override was recorded. */
   readonly releasedAt: number;
   /** When the row reached the shared store. `null` means the release did not complete. */
   readonly completedAt: number | null;
-};
+} & (
+  | {
+      /** The exact wording that was released. Kept so the record is readable, not just verifiable. */
+      readonly text: string;
+      /** `algorithm` travels with the value: a digest whose algorithm is assumed is a rumour. */
+      readonly digestAlgorithm: 'sha-256';
+      readonly digest: string;
+      readonly redactedAt?: undefined;
+    }
+  /**
+   * The arm an erasure leaves: no wording, no digest, and the override still on record.
+   *
+   * A union rather than three nullable fields, because the three move together. A record with a `text`
+   * and no `digest` is a record whose audit cannot be checked; a record with a digest and no algorithm
+   * is the substitution `digestAlgorithm` exists to prevent. A tuple that can disagree with itself is
+   * a tuple that eventually will.
+   *
+   * The disagreement between this table and `ErasureRecord` is deliberate: a release is audited by
+   * *what* crossed the boundary, so it keeps the wording; an erasure must not keep it, so the wording
+   * and its digest go and the fact of the override stays. Deleting the whole record instead would
+   * erase the fact that a health rule was ever overridden.
+   */
+  | {
+      readonly text: null;
+      readonly digestAlgorithm: null;
+      readonly digest: null;
+      readonly redactedAt: number;
+    }
+);
+
+/**
+ * Drop the wording and the digest, keep the override.
+ *
+ * This is the release table's half of an erasure, and the reason it is a function here rather than a
+ * field assignment in the writer: the record's shape is owned by this file, and a caller that built
+ * the redacted arm by hand could set `redactedAt` while leaving `text` in place.
+ *
+ * Idempotence is the caller's, not this function's: `TriageWriter.eraseRows` refuses to redact a
+ * record that is already redacted, because a retried erasure must report `releases: 0` -- the count
+ * goes into an audit export, and a second redaction of one record counted twice is a number nobody
+ * can reconcile. The guard lives there rather than here for the same reason it exists at all: this
+ * function has one caller, and a second guard inside it would be a branch that caller has already
+ * made unreachable.
+ */
+export function redactRelease(record: ReleaseRecord, at: number): ReleaseRecord {
+  return {
+    id: record.id,
+    rule: record.rule,
+    policy: record.policy,
+    acknowledged: record.acknowledged,
+    releasedAt: record.releasedAt,
+    completedAt: record.completedAt,
+    text: null,
+    digestAlgorithm: null,
+    digest: null,
+    redactedAt: at,
+  };
+}
 
 /**
  * The sentence a caller is shown before they can override, and the one an auditor reads afterwards.

@@ -138,6 +138,13 @@ export {
 } from './triage/writer.js';
 export { RELEASE_TOKEN, type ReleaseRecord } from './triage/release.js';
 export {
+  ERASURE_REASONS,
+  ERASURE_TOKEN,
+  isErased,
+  type ErasureReason,
+  type ErasureRecord,
+} from './triage/erasure.js';
+export {
   CardQueue,
   type CardQueueOptions,
   type CardState,
