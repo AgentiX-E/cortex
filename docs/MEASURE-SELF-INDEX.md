@@ -50,6 +50,13 @@ Three things would make the pair unreadable, and each is checked rather than ass
    the rendering rather than in the ranking and the delta is not attributable. The artifacts carry per-question
    digests for exactly this check.
 
+**What actually ran, stated here rather than discovered in §6.** The first pair ran at 200 questions × 2
+repetitions — a screening tier, because the first dispatch had already died once on a provider limit and a
+four-hour pair is a bad place to find the next one. Everything else in the table above held (same 22 inputs
+apart from the signal, same reader, judge, corpus and question ids). The delta from that tier is filed under
+`screening` and does **not** satisfy `S9`, whose registered instrument is the 500 × 4 pair: −15 questions is
+−3.0 points there and −7.5 here.
+
 ## 2. The three readings
 
 One dispatch produces all three; none of them is derived from another.
@@ -124,7 +131,58 @@ Two things about this are worth keeping in the record rather than in a changelog
 The screening gate exists for exactly this, and round 90 is the round that paid for it twice: the first
 dispatch was the price of finding the defect, the second is the price of measuring.
 
-## 6. What this cannot tell us
+## 6. What the two dispatches read
+
+The second dispatch (`43395986372`, `self-index`) and its control (`43401057514`, `retrieval-anchored`)
+ran the same day, on the same 200 question ids, the same corpus fingerprint, the same reader and the
+same judge, carrying the same two departures (`limit=200`, `ablation_runs=2`).
+
+| reading | value |
+| --- | --- |
+| 1. paired delta, all-runs means | **−1.50 questions of 200** (first repetition: −1); discordant 8:7; McNemar **p = 1.0** |
+| 2. total `embedTexts` | **153,636** — 768.2 per question, 384.09 per index against a corpus of 425.27 turns, i.e. **0.90 texts per turn** |
+| 3. total `memoHits` | **16,230** — 40.58 per index, **9.54%** of the texts asked for |
+
+Per capability, nothing moved: IE −0.5 (of 86), MR −1.0 (of 29), KU +0.5 (of 28), TR −0.5 (of 28),
+ABS 0 (of 29).
+
+**P1 confirmed** (inside ±8). **P3 confirmed in direction** (`embedTexts` is 9.9% below `turns +
+indexes`, not above it). **P4 confirmed** (`rerankCalls 0`, `rerankDegraded 0`). **P2 falsified**: 9.54%
+against a prediction of under 5%.
+
+### 6.1 What P2's falsification actually says
+
+The prediction was that the store saves nothing because each question brings its own haystack. The number
+says it saves 9.54%, which reads like corpus overlap — and it is not. Two readings settle it:
+
+- the prompts the artifact carries hold **14,574 turns with 79 repeated texts (0.54%)**, two orders of
+  magnitude below 9.54%, so duplication inside a question cannot explain the hits;
+- `16,230 / 425.27 = 38.2`, i.e. **38 of the 200 second passes were served in full** and the other 162
+  re-embedded the whole corpus.
+
+The mechanism is the pool: `createAblationPool` builds one `CortexMemory` per worker and the store lives
+for the instance's lifetime (`memory.ts` resolves it once, at construction), so a repetition answered by a
+different worker finds an empty store and pays for the corpus again. **On this arm `memoHits` measures
+worker affinity.** The consequence is a product decision rather than a footnote: a cost reading is
+conditioned on the concurrency width it was taken at, and the fix is an injectable store (one process, one
+embedder, one store) rather than a process-global one — `SearchIndexOptions.store`'s contract requires the
+store to be tied to one embed function.
+
+### 6.2 Adoption: the rule is satisfied, the decision is not taken
+
+Section 4's pre-committed rule is two conditions, and both hold: the delta is inside the −15 band
+(−1.50), and the cost is at most one text per corpus turn per question (0.90). So `ruleSatisfied` is
+true and the signal is **not** a loser.
+
+It is still not adopted, and the reason is the instrument rather than the mechanism: `S9` is registered on
+500 questions × 4 repetitions, where −15 questions is −3.0 points. On 200 questions the same threshold is
+−7.5 points. **One threshold over two denominators is two rulers**, and passing a gate with the loose one
+is shrinking the instrument. The evidence is filed under `screening`, the matrix key
+(`paired.deltaQuestions`) stays absent, `S9` stays `unrun`, and the arm's registered default does not move
+— `retrieval-anchored` still carries a delivery reading (+21 gold turns, +53 in-pool, §14.50.9) that
+`self-index` has not been measured on.
+
+## 7. What this cannot tell us
 
 It cannot say whether a *different* fusion would do better — one dispatch prices one configuration. It
 cannot price the wall clock: the postings are rebuilt per question and that cost is CPU, which the artifact

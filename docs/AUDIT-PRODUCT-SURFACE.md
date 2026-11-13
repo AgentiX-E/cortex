@@ -984,3 +984,47 @@ What the two tests pin, and both were checked by putting the defect back:
 
 The first mutation is the defect itself with a better-looking shape, which is why it is the one that
 had to be tried: a total map that nothing indexes by is a constant with extra steps.
+
+### 13.8 The screening pair: −1.50 questions, p = 1.0, and a cost that names its width
+
+Two dispatches, same day, same 200 question ids, same corpus fingerprint, same reader and judge, same
+two departures (`limit=200`, `ablation_runs=2`), one variable:
+
+| | control `retrieval-anchored` (`43401057514`) | treatment `self-index` (`43395986372`) |
+| --- | ---: | ---: |
+| all-runs mean | 179.50 / 200 = 89.75% | 178.00 / 200 = 89.00% |
+| IE (86) | 77.00 | 76.50 |
+| MR (29) | 23.50 | 22.50 |
+| KU (28) | 24.00 | 24.50 |
+| TR (28) | 26.00 | 25.50 |
+| ABS (29) | 29.00 | 29.00 |
+
+**Paired delta −1.50 questions** (first repetition −1), discordant 8:7, McNemar **p = 1.0**. The largest
+per-capability move is MR's −1.0 of 29; every other is inside ±0.5. The arm's own noise floor is 1.6–2.2
+points (§13.118.5), i.e. 3.2–4.4 questions, so a −1.50 is a tie with room to spare.
+
+Three things this does **not** say, each written down because the number invites all three:
+
+1. **It does not say `S9` passes.** `S9` is registered on 500 × 4, where −15 questions is −3.0 points; at
+   200 questions the same threshold is −7.5. One threshold over two denominators is two rulers. The
+   evidence is filed under `screening` in `cortex-docs/evidence/longmemeval/self-index.json`, the matrix
+   key `paired.deltaQuestions` stays absent, and the row stays `unrun`.
+2. **It does not license flipping the arm's default.** `retrieval-anchored` carries a delivery reading
+   (§14.50.9: +21 gold turns, +53 in-pool) that `self-index` has not been measured on. A tie on accuracy
+   says nothing about coverage, and changing `INPUTS` would move what every later run measures.
+3. **It does not say the corpus repeats.** `memoHits` is 9.54% of the texts asked for, and P2 predicted
+   under 5%. The falsification is about the mechanism rather than the size: the delivered prompts hold 79
+   repeated texts in 14,574 turns (0.54%), and `16,230 / 425.27 = 38.2`, so 38 of the 200 second passes
+   were served in full and 162 re-embedded 425 turns each. `createAblationPool` builds one `CortexMemory`
+   per worker and the store lives for the instance, so **`memoHits` on this arm measures worker affinity**.
+
+That last point becomes a product requirement rather than a note: **a cost reading on this arm has to name
+the concurrency width it was taken at**, because the same run at one worker would have served the second
+pass every time. The fix is an injectable store (one process, one embed function, one store) — not a
+process-global one, for the reason `SearchIndexOptions.store` already states: the key is
+`(fingerprint, text)`, and two embed functions sharing a store hand each other's vectors across.
+
+The reading itself, in the shape the campaign uses: the product's own ranking is **not worse than the
+harness's by more than noise**, at **0.90 embedded texts per corpus turn**. A product that only ranks when
+someone else hands it a ranking is a component of the harness; as of this round it ranks on its own and
+the difference is 1.5 questions in 200.
