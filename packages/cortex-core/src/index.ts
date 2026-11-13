@@ -51,6 +51,20 @@ export {
   type EmbeddingSpaceRefusal,
 } from './vector/embedding-space.js';
 
+// cache: a text is embedded once, on both surfaces that can ask
+export {
+  EmbeddingMemo,
+  CachingEmbedding,
+  MemoryEmbeddingCacheStore,
+  defaultEmbeddingCacheKey,
+  type EmbedFn,
+  type EmbeddingVector,
+  type EmbeddingCacheStats,
+  type EmbeddingCacheStore,
+  type EmbeddingMemoOptions,
+  type CachingEmbeddingOptions,
+} from './cache/embedding-cache.js';
+
 // retrieval
 export {
   rerankHits,

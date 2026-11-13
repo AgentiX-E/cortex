@@ -39,8 +39,24 @@
  * `selectByRelevance`), so a map that preserved the channel's raw score would silently undo the reranker:
  * the fused order would be recomputed from magnitudes the reranker never saw. Once more than one stage
  * decides the order, the only number that can carry the decision is the rank.
+ *
+ * ## The cost of a rebuilt index, and the one option that removes it
+ *
+ * `prime()` embeds the whole corpus. The corpus arrives per question, so an index is built per question, and
+ * without a store each question pays for the haystack again — on LongMemEval-S that is roughly five hundred
+ * texts per question. `store` is a `EmbeddingMemo`'s backing map supplied by the owner of the instance, so the
+ * second question embeds one text instead of five hundred and one, and `SearchCensus.memoHits` says how many
+ * it did not pay for. What the option refuses is the case where a rebuilt index is silently cheaper than a
+ * changed one: the memo is keyed on the text, so a corpus that gained a turn pays for that turn only.
  */
-import { rerankHits, type RerankScoreFn } from '@agentix-e/cortex-core';
+import {
+  EmbeddingMemo,
+  rerankHits,
+  type EmbedFn,
+  type EmbeddingCacheStore,
+  type EmbeddingVector,
+  type RerankScoreFn,
+} from '@agentix-e/cortex-core';
 
 import { lexicalRelevance, contentTerms } from '../relevance.js';
 
@@ -59,9 +75,38 @@ export type SearchIndexOptions = {
    * than `Float64Array` so a fake in a test and a real client are both natural; the module reads nothing but
    * the values.
    *
+   * The parameter is `string[]` rather than `readonly string[]` so that `EmbeddingModel.embed` is assignable
+   * to it directly. A `readonly` parameter refuses a function that takes a mutable array, which is every
+   * published client, and the friction that produced was one adapter lambda per call site — a real reason the
+   * cache below went unused for a round.
+   *
    * Absent means a lexical index, which is still a working one.
    */
-  readonly embed?: (texts: readonly string[]) => Promise<readonly (readonly number[])[]>;
+  readonly embed?: EmbedFn | undefined;
+  /**
+   * Where vectors are remembered between indexes. Present means texts are embedded once **per store**, not
+   * once per index.
+   *
+   * This is the field that makes an index over a stable corpus affordable. The corpus arrives per question
+   * (`answerSessions`), so without it every question embeds the whole haystack again — the dominant term in
+   * the cost axis, and the one an `import` away from disappearing.
+   *
+   * The store must be scoped to one `embed` function: a bare batch function states no space, so two functions
+   * sharing a store would hand each other's vectors across. `CortexMemory` creates one store per instance for
+   * exactly that reason.
+   */
+  readonly store?: EmbeddingCacheStore | undefined;
+  /**
+   * Whether to memoise through `store`. Defaults to `true`.
+   *
+   * An off switch rather than an on switch, because the safe configuration is the one where a text is paid for
+   * once and the unsafe one is a **non-deterministic** embedder: a model whose vector for one text drifts
+   * between calls would make two questions share a vector neither of them produced. A run that sets this to
+   * `false` is claiming its embedder is not deterministic, and `SearchCensus.reuse` records which claim the
+   * artifact was produced under — two runs that disagree here are not comparable and the census is how a
+   * reader finds out.
+   */
+  readonly reuse?: boolean | undefined;
   /** The cross-encoder stage. Absent means the fused order is the final order. */
   readonly rerank?: RerankScoreFn;
   /** How many hits a search returns. */
@@ -79,15 +124,29 @@ export type SearchHit = {
 /**
  * What the index did, in the terms a report can print.
  *
- * `turns` and `terms` describe the corpus; `vectors` and `embedCalls` describe the vector channel;
- * `rerankCalls` beside `rerankDegraded` is the pair that separates "the stage ran and agreed" from "the
- * stage ran and returned its input because it failed".
+ * `turns` and `terms` describe the corpus; `vectors`, `embedCalls`, `embedTexts`, `memoHits` and `reuse`
+ * describe the vector channel; `rerankCalls` beside `rerankDegraded` is the pair that separates "the stage ran
+ * and agreed" from "the stage ran and returned its input because it failed".
+ *
+ * `embedCalls` counts **batches that reached the model**, and `embedTexts` the texts in them. The pair exists
+ * because a batch count alone cannot describe work: an index over five hundred turns makes two calls whether it
+ * embedded five hundred texts or two, so a report that printed only `embedCalls` would price a cached second
+ * question identically to an uncached first one. `memoHits` is the number that explains the difference, and
+ * `reuse` says whether the run had a store at all — a question whose `embedTexts` equals its corpus size on a
+ * corpus that has already been seen is a question that was asked twice, not a corpus that changed.
  */
 export type SearchCensus = {
   readonly turns: number;
   readonly terms: number;
   readonly vectors: number;
+  /** Batches that reached the model. Zero when every text was served from the store. */
   readonly embedCalls: number;
+  /** Texts that reached the model. The only count on the bill. */
+  readonly embedTexts: number;
+  /** Texts served by the store instead of the model. */
+  readonly memoHits: number;
+  /** Whether a store was in front of the embedder at all. */
+  readonly reuse: boolean;
   readonly rerankCalls: number;
   readonly rerankDegraded: number;
   readonly channels: readonly ('lexical' | 'vector' | 'rerank')[];
@@ -101,7 +160,7 @@ export type SearchCensus = {
  * their first `n` components -- a number that looks like a similarity and is not -- so the caller validates
  * the widths once and this stays arithmetic.
  */
-function cosine(a: readonly number[], b: readonly number[]): number {
+function cosine(a: EmbeddingVector, b: EmbeddingVector): number {
   let dot = 0;
   let left = 0;
   let right = 0;
@@ -121,14 +180,44 @@ export class SearchIndex {
   readonly #turns: string[] = [];
   /** Term to the positions of the turns containing it, one entry per turn. */
   readonly #postings = new Map<string, number[]>();
-  #vectors: readonly (readonly number[])[] = [];
+  /**
+   * The embedder as this index sees it.
+   *
+   * Never the caller's function directly: the counters have to be incremented at the model boundary, and a
+   * memo in between would hide the call entirely. Absent means a lexical index.
+   */
+  readonly #model: EmbedFn | undefined;
+  /** The memo in front of `#model`, when a store was supplied and reuse was not refused. */
+  readonly #memo: EmbeddingMemo | undefined;
+  #vectors: readonly EmbeddingVector[] = [];
   #primed = false;
   #embedCalls = 0;
+  #embedTexts = 0;
   #rerankCalls = 0;
   #rerankDegraded = 0;
 
   constructor(options: SearchIndexOptions = {}) {
     this.#options = options;
+    const embed = options.embed;
+    if (embed === undefined) return;
+
+    // Counted here, at the boundary the bill is drawn on, rather than around the caller's function: with a
+    // memo in front, "how many calls did the index make" and "how many did the model serve" are different
+    // questions, and only the second one is a cost. Counting outside the memo would report a cached question
+    // as if it had re-embedded the corpus.
+    const counted: EmbedFn = async (texts) => {
+      this.#embedCalls += 1;
+      this.#embedTexts += texts.length;
+      return embed(texts);
+    };
+
+    if (options.store === undefined || options.reuse === false) {
+      this.#model = counted;
+      return;
+    }
+    const memo = new EmbeddingMemo(counted, { store: options.store });
+    this.#memo = memo;
+    this.#model = (texts) => memo.embed(texts);
   }
 
   /**
@@ -166,11 +255,10 @@ export class SearchIndex {
    */
   async prime(): Promise<void> {
     this.#primed = true;
-    const { embed } = this.#options;
-    if (embed === undefined || this.#turns.length === 0) return;
+    const model = this.#model;
+    if (model === undefined || this.#turns.length === 0) return;
 
-    const vectors = await embed(this.#turns);
-    this.#embedCalls += 1;
+    const vectors = await model(this.#turns);
     if (vectors.length !== this.#turns.length) {
       throw new Error(
         `the embedder was given ${this.#turns.length} texts and returned ${vectors.length} vector(s); a ` +
@@ -190,9 +278,10 @@ export class SearchIndex {
    */
   async search(question: string, k = this.#options.k ?? DEFAULT_K): Promise<readonly SearchHit[]> {
     const lexical = this.#lexicalOrder(question).slice(0, k);
+    const model = this.#model;
     const vectors =
-      this.#vectors.length > 0 && this.#options.embed !== undefined
-        ? await this.#vectorOrder(question, k)
+      model !== undefined && this.#vectors.length > 0
+        ? await this.#vectorOrder(model, question, k)
         : [];
 
     // One channel and no reranker is not a fusion. The lexical order *is* the answer then, and its scores
@@ -248,6 +337,9 @@ export class SearchIndex {
       terms: this.#postings.size,
       vectors: this.#vectors.length,
       embedCalls: this.#embedCalls,
+      embedTexts: this.#embedTexts,
+      memoHits: this.#memo?.stats().storeHits ?? 0,
+      reuse: this.#memo !== undefined,
       rerankCalls: this.#rerankCalls,
       rerankDegraded: this.#rerankDegraded,
       channels,
@@ -271,12 +363,8 @@ export class SearchIndex {
   }
 
   /** The vector channel's order, at most `k` entries, zero-similarity turns excluded. */
-  async #vectorOrder(question: string, k: number): Promise<number[]> {
-    const embed = this.#options.embed as (
-      texts: readonly string[],
-    ) => Promise<readonly (readonly number[])[]>;
-    const [query] = await embed([question]);
-    this.#embedCalls += 1;
+  async #vectorOrder(model: EmbedFn, question: string, k: number): Promise<number[]> {
+    const [query] = await model([question]);
     if (query === undefined) return [];
 
     // One width, checked once. A corpus embedded at 1,536 dimensions and a query at 1,024 is a client

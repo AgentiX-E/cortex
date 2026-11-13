@@ -27,7 +27,7 @@ import type {
   SessionAwareMemorySystem,
   ValueFunction,
 } from '@agentix-e/cortex-core';
-import { decideRetrieval } from '@agentix-e/cortex-core';
+import { MemoryEmbeddingCacheStore, decideRetrieval } from '@agentix-e/cortex-core';
 import { conflictBlock, insertRelatedStatements } from './conflict.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 import {
@@ -59,7 +59,11 @@ import {
   planAbstentionRecovery,
 } from './abstention-recovery.js';
 import { planReplyRepair } from './reply-repair.js';
-import { SearchIndex, type SearchCensus } from './retrieval/search-index.js';
+import {
+  SearchIndex,
+  type SearchCensus,
+  type SearchIndexOptions,
+} from './retrieval/search-index.js';
 import { planEvidenceRoom, type WidthDecision } from './width.js';
 import {
   adjudicateSupersession,
@@ -438,6 +442,23 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastIndex: SearchCensus | undefined = undefined;
   /**
+   * The index options this instance actually uses, resolved once at construction.
+   *
+   * Differs from `options.index` in exactly one case -- an embedder with reuse on -- where it carries the store.
+   * Kept as a resolved value rather than a getter because the difference is a decision, and a getter would hide
+   * that a *mutable* store is being shared across every question this instance answers.
+   */
+  readonly #indexOptions: SearchIndexOptions | undefined;
+  /**
+   * Where this instance's vectors go, when reuse is on.
+   *
+   * One store per instance, never shared between instances: a bare embed function states no vector space, so a
+   * store spanning two of them would hand one model's vectors to the other and the only symptom would be a
+   * retrieval difference between two runs. Held so the store outlives every index the instance builds -- which
+   * is the entire point, since each index lives for one question.
+   */
+  readonly #embedStore: MemoryEmbeddingCacheStore | undefined;
+  /**
    * How every vote this instance resolved, counted by outcome.
    *
    * Three outcomes rather than two, because "unanimous" and "majority" are different facts about
@@ -654,6 +675,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
     this.#llm = options.llm;
     this.#now = options.now;
     this.#options = options;
+
+    // The retrieval stack is resolved once, here, rather than per question, because one of the two things
+    // resolved is a **mutable** store: a store created inside `#relevanceFor` would be a cache rebuilt with the
+    // index it was meant to make cheap, and the census would report `reuse: true` on a run that never had one.
+    // The second reason is the same one `#roleFilter` has: a configuration that only takes effect on some
+    // questions is a configuration the artifact cannot describe.
+    const index = options.index;
+    if (index?.embed === undefined || index.reuse === false) {
+      // A lexical index needs no store, and `reuse: false` is a claim about the embedder rather than an
+      // omission -- the run says its model is not deterministic and the census has to agree with it.
+      this.#indexOptions = index;
+      return;
+    }
+    this.#embedStore = new MemoryEmbeddingCacheStore();
+    this.#indexOptions = { ...index, store: this.#embedStore };
   }
 
   /**
@@ -2304,7 +2340,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const override = this.#options.relevanceFor;
     if (override !== undefined) return override;
 
-    const index = this.#options.index;
+    const index = this.#indexOptions;
     if (index === undefined || turns.length === 0) return undefined;
 
     const built = new SearchIndex(index);

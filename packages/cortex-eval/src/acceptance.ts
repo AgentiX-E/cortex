@@ -254,6 +254,63 @@ export const CRITERIA: readonly Criterion[] = [
       'The grouping argument is quantitative, so a saving below 30% means the grouping stopped paying. Measure `naive-tokens` beside it and revert the frame-once rendering if the ratio moved.',
   },
 
+  // ---- cost ownership (round 87) ------------------------------------------------------------------
+  //
+  // These two read a census written by `tools/embedding-reuse-census.mjs`, which asks three questions of one
+  // `CortexMemory` over a fixed four-turn corpus twice -- once with the embedding store and once with
+  // `reuse: false`. They are gates rather than aims because both properties were reached the round the store
+  // landed, and because the failure they prevent is a **silent** one: an index that re-embeds its corpus per
+  // question produces exactly the same answers as one that does not, so no accuracy row can see the defect.
+  {
+    id: 'C5',
+    capability: 'embedding cost',
+    metric: 'texts embedded by the second question over an unchanged corpus',
+    dataset: 'synthetic: 4 turns, 3 questions, `tools/embedding-reuse-census.mjs`',
+    comparator: 'equals',
+    threshold: 1,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/embedding-reuse/census.json',
+      key: 'secondQuestionEmbedTexts',
+    },
+    competitors: [
+      {
+        name: 'Mem0',
+        value: 6787,
+        grade: 'B',
+        recipe:
+          'mean tokens of retrieved context per query on LongMemEval (mem0, `memory-benchmarks`); a token ' +
+          'count where ours is a text count, so the two are not the same unit and the figure is context for ' +
+          'the axis rather than a row we may claim a gap against.',
+      },
+    ],
+    onMiss:
+      'A second question that embeds more than its own query means the store did not reach the index. Check ' +
+      'that `CortexMemory` still passes `store` into `SearchIndexOptions` and that `reuse` was not turned off ' +
+      'in the arm under test; do not relax this to "fewer than the corpus".',
+  },
+  {
+    id: 'C6',
+    capability: 'embedding cost',
+    metric: 'prompts identical between the store and `reuse: false`',
+    dataset: 'the same three questions, both arms',
+    comparator: 'equals',
+    threshold: 1,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/embedding-reuse/census.json',
+      key: 'identicalPrompts',
+    },
+    onMiss:
+      'A cache that changes the prompt has changed the ranking, which makes it a defect rather than a result. ' +
+      'Revert the store before reading any accuracy from the run: the two arms are no longer one variable ' +
+      'apart.',
+  },
+
   // ---- the assumption ledger (step 29) -----------------------------------------------------------
   {
     id: 'K0',

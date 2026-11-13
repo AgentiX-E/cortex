@@ -68,9 +68,38 @@ export type ProviderSession = {
 export type ProviderHit = { readonly text: string; readonly score?: number; readonly at?: number };
 
 export type ProviderIngestReport = {
+  /** Sessions the provider now holds. One per **distinct id**, never one per call. */
   readonly sessions: number;
+  /** Turns the provider now holds, summed over those sessions. */
   readonly turns: number;
+  /**
+   * Sessions refused rather than stored, one entry each, written as `<reason>:<id>`.
+   *
+   * Refusal is reserved for input that cannot be evidence at all. A session with no turns is the only such
+   * case here, and it is reported rather than dropped because "the corpus is smaller than the fixture" and
+   * "the fixture was empty" print the same `sessions` count.
+   */
   readonly skipped: readonly string[];
+  /**
+   * Sessions whose id arrived again with **the same** content, and so were not stored twice.
+   *
+   * A count, not a list, because the case is routine: a harness in `global` mode replays an overlapping haystack
+   * once per question, and a list of nine hundred identical ids is noise. The number is what makes the corpus
+   * size legible — `sessions + duplicates` is what the store was asked for, `sessions` is what it holds.
+   */
+  readonly duplicates: number;
+  /**
+   * Sessions whose id arrived again with **different** content. The newer one replaced the older **in place**.
+   *
+   * Upsert rather than refuse, and in place rather than append, for two reasons that point the same way: a real
+   * store upserts, and an appended copy would put the same id at two positions, which the ranked selection in
+   * `search` would then spend two hit slots on. Position is preserved so the arrival order — which the product's
+   * chronological re-sort depends on — does not move when a session is updated.
+   *
+   * Reported because the alternative reading is a silent one: a run whose corpus changed under it, and an
+   * artifact that says nothing about it, cannot be compared with a run where it did not.
+   */
+  readonly replaced: number;
 };
 
 export type ProviderSearchOptions = {
@@ -148,6 +177,8 @@ export class CortexSessionProvider {
   readonly build = 'none' as const;
 
   #sessions: ProviderSession[] = [];
+  /** Id to position in `#sessions`, so a replayed corpus upserts instead of doubling. */
+  readonly #positions = new Map<string, number>();
   #now: number;
   #budget: number;
   #threshold: number;
@@ -163,12 +194,52 @@ export class CortexSessionProvider {
     this.#trim = options.trim ?? false;
   }
 
+  /**
+   * Store sessions, one per distinct id.
+   *
+   * ## Why this is not `push(...sessions)`, and what that cost
+   *
+   * It was, and the receipt is in the audit: a harness in `global` mode replays an overlapping haystack once per
+   * question, so the same nine hundred sessions arrived two hundred and fifty times over a dispatch. The corpus
+   * grew quadratically, `sessions` reported a number that described the call count rather than the store, and
+   * the top-k spent its slots on duplicates of one session — a retrieval number that measures a paperwork error.
+   *
+   * De-duplication by `id` is therefore the first thing `ingest` does, and the identity it uses is the one the
+   * caller already had: no hashing of content, no fuzzy matching. Two sessions are the same session iff the
+   * fixture says so.
+   */
   async ingest(sessions: readonly ProviderSession[]): Promise<ProviderIngestReport> {
-    this.#sessions.push(...sessions);
+    const skipped: string[] = [];
+    let duplicates = 0;
+    let replaced = 0;
+
+    for (const session of sessions) {
+      if (session.turns.length === 0) {
+        // Not stored: an empty session contributes no evidence and would occupy a budget slot forever.
+        skipped.push(`empty:${session.id}`);
+        continue;
+      }
+      const at = this.#positions.get(session.id);
+      if (at === undefined) {
+        this.#positions.set(session.id, this.#sessions.length);
+        this.#sessions.push(session);
+        continue;
+      }
+      const held = this.#sessions[at] as ProviderSession;
+      if (sameSession(held, session)) {
+        duplicates += 1;
+        continue;
+      }
+      this.#sessions[at] = session;
+      replaced += 1;
+    }
+
     return {
       sessions: this.#sessions.length,
       turns: this.#sessions.reduce((total, session) => total + session.turns.length, 0),
-      skipped: [],
+      skipped,
+      duplicates,
+      replaced,
     };
   }
 
@@ -267,5 +338,21 @@ export class CortexSessionProvider {
 
   async reset(): Promise<void> {
     this.#sessions = [];
+    this.#positions.clear();
   }
+}
+
+/**
+ * Whether two sessions of one id say the same thing.
+ *
+ * Compares `at` and every turn's role and content. Roles are compared because a session whose only change is
+ * who said a sentence is a different corpus to a reader, and the selection below ranks turns rather than
+ * sessions once `trim` is on.
+ */
+function sameSession(a: ProviderSession, b: ProviderSession): boolean {
+  if (a.at !== b.at || a.turns.length !== b.turns.length) return false;
+  return a.turns.every((turn, index) => {
+    const other = b.turns[index] as ProviderTurn;
+    return turn.role === other.role && turn.content === other.content;
+  });
 }

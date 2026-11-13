@@ -381,12 +381,21 @@ export type CortexMemoryOptions = {
    * the property `relevance.ts` calls "I/O-free and model-free" and which the product had until now only by
    * refusing to retrieve.
    *
-   * ## The cost, stated because it is real
+   * ## The cost, and the half of it that is gone
    *
    * The corpus arrives per question (`answerSessions(question, sessions)`), so the index is built per
-   * question and its vectors are not shared across questions. That is the protocol's shape, not an
-   * oversight: a system that indexes a haystack once would need an `ingest`, which this contract does not
-   * have. A caller with a stable corpus can hold one `SearchIndex` itself and pass `relevanceFor`.
+   * question. That is the protocol's shape, not an oversight: a system that indexes a haystack once would
+   * need an `ingest`, which this contract does not have.
+   *
+   * The **vectors** used to be rebuilt per question too, which on LongMemEval-S meant roughly five hundred
+   * embedded texts per question for a corpus the instance had already been handed. They no longer are:
+   * `CortexMemory` owns one `EmbeddingCacheStore` for its lifetime and passes it in as `SearchIndexOptions.store`,
+   * so the second question over an unchanged corpus embeds its query and nothing else. `SearchCensus` reports
+   * `embedTexts`, `memoHits` and `reuse`, because a batch count cannot tell five hundred texts from one.
+   *
+   * What is still per question is the postings list, the fusion and the reranker -- CPU rather than model
+   * calls, and `SearchIndex.add` refuses to extend a primed index because a vector table computed over two
+   * turns does not cover a third. A caller with a stable corpus can still hold one `SearchIndex` itself.
    */
   index?: SearchIndexOptions | undefined;
 

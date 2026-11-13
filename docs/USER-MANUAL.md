@@ -280,6 +280,65 @@ whatever it already runs, and this package never learns where the vectors went. 
 `identity + "\0" + text`, so two gateways serving the same model id do not share vectors: the same model
 name behind two endpoints can be two sets of weights.
 
+#### The product pays once without you wrapping anything
+
+`CortexMemory` applies the same memo to its own retrieval stack. Pass `index.embed` and the class creates
+one store for its lifetime; every question after the first embeds its query and any turn the corpus gained:
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
+import type { LLM } from '@agentix-e/cortex-core';
+
+const llm: LLM = {
+  complete: async () => '42',
+  completeStructured: async <T>(): Promise<T> => {
+    throw new Error('unused by this package');
+  },
+};
+const corpus = ['the bicycle was repaired on tuesday', 'a parcel arrived for the neighbour'];
+const embedding = new OpenAIEmbedding({
+  baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  apiKey: process.env.ZHIPU_API_KEY ?? '',
+  model: 'embedding-3',
+  dimensions: 512,
+});
+
+const memory = new CortexMemory({
+  llm,
+  now: Date.UTC(2026, 0, 1),
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
+  index: { embed: embedding.embed },
+});
+
+await memory.answer('when was the bicycle repaired?', corpus); // corpus + question
+console.log(memory.lastIndexCensus()?.embedTexts); // 3
+await memory.answer('did the parcel arrive?', corpus); // the question only
+console.log(memory.lastIndexCensus()?.embedTexts); // 1
+console.log(memory.lastIndexCensus()?.memoHits); // 2
+```
+
+Three things about that option are decisions rather than defaults:
+
+- **`reuse` is `true` and turning it off is the exceptional case.** A memo is only sound in front of a
+  *deterministic* embedder: a model whose vector for one text drifts between calls would make two
+  questions share a vector neither produced. Setting `reuse: false` is a claim about your embedder, and
+  `SearchCensus.reuse` records which claim the run was produced under, so two runs that disagree there
+  are not comparable and a reader can see it.
+- **`embedTexts` is a text count, `embedCalls` is a batch count.** They are printed side by side because
+  a batch count alone cannot price work: an index over five hundred turns makes two calls whether it
+  embedded five hundred texts or two. `memoHits` is the difference, and reading `embedCalls: 2` as "this
+  question was expensive" was a real mistake in an earlier round of this repository's own documents.
+- **The store is per instance, never shared.** A bare batch function states no vector space, so one store
+  spanning two of them would hand one model's vectors to the other and the only symptom would be a
+  retrieval difference between two runs. If you want the memo across instances, wrap your model in
+  `CachingEmbedding` yourself — that surface *does* carry an identity, and that is the difference.
+
+Where the two live is worth knowing when you read the source: the algorithm is `EmbeddingMemo` in
+`@agentix-e/cortex-core`, `CachingEmbedding` is its `EmbeddingModel`-shaped adapter, and `cortex-ai`
+re-exports both. The memo takes a bare batched function, which is what `index.embed` is; the decorator
+takes a model, which is what you have when you want `dimension()` and `identity()` to travel with it.
+
 ### 4.3 What a call cost
 
 ```ts
@@ -365,23 +424,25 @@ product cannot keep what it is given.
 | --- | --- |
 | `new CortexMemory({ storage })` | no such option. The twenty-six options all tune *how* a question is answered; none names *from what* |
 | turns survive a restart | they do if you stored them; the product reads only what you pass to this call |
-| the index is built once per corpus | it is built once per **question**. With `index.embed` set, each question offers its whole corpus to the embedder again, and the census reports `2` for that because `embedCalls` counts batches. `CachingEmbedding` from `@agentix-e/cortex-ai` makes the second and later calls free within one process — and no product path uses it |
+| the index is built once per corpus | the **index** is built once per **question**; the **vectors** are not. `CortexMemory` holds one store, so with `index.embed` set the second question over an unchanged corpus embeds one text and `SearchCensus.memoHits` reports the turns it did not pay for. Postings, fusion and the reranker still run per question, and that cost is CPU rather than model calls |
+| `CachingEmbedding` is how you get reuse | you get it without wrapping anything: pass `index.embed` and the product memoises. `CachingEmbedding` is for the case where the model is yours and you want the memo *outside* one `CortexMemory` — across instances, or in front of an ingest path that is not this class |
 | `DisclosureSession` and `CortexMemory` compose into a memory | they do not compose at all. The first persists sentences, the second answers from an array; §6.4 documents the first on its own terms |
 
-What to do until a corpus cache ships (the plan is [`docs/AUDIT-PRODUCT-SURFACE.md`](AUDIT-PRODUCT-SURFACE.md) §6,
-P0-1):
+Five things to do before you turn `index.embed` on in earnest:
 
 1. **Keep the transcript yourself** and pass it every call. That is what the benchmark arm does, and
    what every published number was taken with.
-2. **Reuse one `CortexMemory` instance.** It holds no corpus, but it does hold the last call's
-   telemetry, so a new instance per question is not wrong — it is only a memory allocation.
-3. **Wrap your embedder before turning on `index.embed`.** `new CachingEmbedding(model)` from
-   `@agentix-e/cortex-ai` is a drop-in `EmbeddingModel` that embeds each text once per process, which is
-   what makes a per-question index affordable. Without it, `index.embed` on a large corpus pays the
-   corpus for every question. A lexical-only index (`index` with no `embed`) costs no model call at all
-   and is the safe configuration today.
-4. **Do not read `SearchCensus.embedCalls` as a text count.** It is a batch count; one batch is the
-   whole corpus.
+2. **Reuse one `CortexMemory` instance.** Not for the corpus — for the vector store, which lives as long
+   as the instance does. A new instance per question re-embeds everything, and the census will say so
+   (`memoHits: 0`, `embedTexts` equal to the corpus size).
+3. **Read `embedTexts`, not `embedCalls`, when you want to know what a question cost.** `embedCalls` is a
+   batch count: an index over five hundred turns makes two calls whether it embedded five hundred texts
+   or one. `embedTexts` is the number on the bill and `memoHits` is the number that explains it.
+4. **Do not set `reuse: false` unless your embedder is non-deterministic.** The option exists for that
+   case and for reproducing a pre-store run; it is not a safety switch, and the census records which
+   claim a run was produced under.
+5. **A lexical-only index still costs nothing.** `index` with no `embed` uses no model at all, and is the
+   configuration to reach for when there is no key, no budget, or no network.
 
 ## 6. The composition: `CortexMemory`
 

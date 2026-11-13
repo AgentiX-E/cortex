@@ -108,9 +108,9 @@ pagination, four backends. The defect is not the abstraction. It is that the pro
 | # | capability | status | evidence |
 | --- | --- | --- | --- |
 | P1 | a store the answering path can read | **absent** | `CortexMemoryOptions`, 26 fields, none a store; `cortex-storage` is a `devDependency` |
-| P2 | turn ingestion with identity | **unreachable**, and wrong when reached | `CortexSessionProvider.ingest` pushes into an array; ingesting a transcript twice doubles it and halves the budget |
-| P3 | a refusal report on ingest | **misreported** | `ProviderIngestReport.skipped` is the literal `[]` (`provider.ts:171`) — nothing is checked, so `skipped.length === 0` means "we did not look", not "all were accepted" |
-| P4 | a corpus lifetime longer than one question | **absent** | `#relevanceFor` constructs a new `SearchIndex` per call (`memory.ts:2310`), and `add` throws after `prime`, so a built index cannot be extended and there is nothing to reuse |
+| P2 | turn ingestion with identity | **repaired in round 87** | `ingest` now holds one session per id and reports `duplicates` / `replaced` beside `sessions`; a replay no longer doubles the corpus. What is still absent is the *store* — the provider's array is its corpus, and a restart begins empty |
+| P3 | a refusal report on ingest | **repaired in round 87** | `skipped` now carries `empty:<id>` for a session with no turns, and `duplicates` / `replaced` are counts rather than an empty list. The old field was the literal `[]`, which read as "all accepted" while meaning "we did not look" |
+| P4 | a corpus lifetime longer than one question | **vectors: repaired in round 87. Postings: absent by design** | `#relevanceFor` still constructs a `SearchIndex` per call, but `CortexMemory` owns one `EmbeddingCacheStore` and passes it as `SearchIndexOptions.store`, so the second question embeds one text. `add` still throws after `prime`, deliberately: a vector table computed over two turns does not cover a third, and the remaining cost is CPU that nobody has measured |
 | P5 | durable index state | **absent** | `SearchIndex` has no serialisation, no `restore`, no `storage` option |
 | P6 | bounding memory | **absent** | `#sessions` has no cap, no TTL, no eviction; `reset()` is the only removal (`provider.ts:268`) |
 | P7 | atomic multi-write | **unreachable** | `Storage.transaction` has **zero** callers outside `FederatedStorage`'s own delegation (`federated-storage.ts:188`) |
@@ -172,8 +172,13 @@ is not argued: `limit: 10` over a million rows reads a million rows. A caller re
 
 - **orphaned** — `PgStorage` and `ensurePgSchema` are in the census's "referenced nowhere" list, as is
   `openBrowserStorage`;
-- **untested** — `parity.test.ts` runs the SQL tier over two SQLite engines and stops there; the browser
-  suite covers OPFS and IndexedDB; PostgreSQL is in no suite at all;
+- **untested against a server** — and the original wording of this bullet, "in no suite at all", was
+  **wrong**: `storage.test.ts` has a `PgStorage (pg-mem)` block with six tests over an in-memory emulator.
+  What is true, and is the part that matters, is that `pg-mem` is not PostgreSQL: it implements neither
+  `ROLLBACK` (a row written inside a transaction that throws survives) nor `substr(text, int, int)`, so
+  the two SQL constructs this adapter would need to be *correct* cannot be exercised in this repository
+  at all. A test that runs against an emulator of the engine is a test of the adapter's syntax, not of
+  its semantics;
 - **divergent** — `kvQuery` in `sql.ts` builds `substr(key, 1, ?) = ?`, and the module comment explains
   at length why `LIKE` is wrong (wildcards in the prefix, ASCII case folding). `idb.ts` uses
   `String.prototype.startsWith` and agrees. `pg.ts:55` uses `` key LIKE $${i} `` with `` `${prefix}%` ``
@@ -183,6 +188,21 @@ is not argued: `limit: 10` over a million rows reads a million rows. A caller re
 
 Three backends, three prefix semantics, one documented contract. The parity suite is the thing that
 would have caught it, and the parity suite does not include the backend.
+
+**Round 87 update.** Two of the four defects are fixed and one is reclassified:
+
+| defect | what happened |
+| --- | --- |
+| `LIKE` with an unescaped pattern | **fixed by removing the SQL.** `query` filters `key.startsWith(prefix)` in JavaScript, which makes `startsWith` the single definition of "prefix" across all three backends. The `substr` repair this document originally proposed is *not* what shipped: `pg-mem` cannot execute `substr`, `LIKE ... ESCAPE` does not parse there either, and PostgreSQL's `LIKE` is case-sensitive where SQLite's is not — so the escaping fix would have been correct on a server and untestable here. Filtering in JS is exact on every engine, and costs nothing the query was not already paying, because the rows are materialised for the tag filter either way |
+| no purge | **fixed.** `#purge` runs the same statement the SQLite backends run before every read |
+| a second tag predicate | **fixed.** `pg.ts` had its own `matchesAllTags`; it now imports `sql.ts`'s |
+| orphaned | **unchanged**, and still true: no non-test consumer |
+
+The parity gap is closed by `predicate-parity.test.ts`, which runs thirteen predicate shapes through
+SQLite, the SQL tier and PostgreSQL over `pg-mem` and asserts one answer per shape. It compares key sets
+for predicates without `limit`/`offset` and **row counts** for those with them, because a page of an
+unordered result set is a number and not a set — a distinction the first draft of that test got wrong and
+the failure message named.
 
 ### 3.6 Nothing on disk is versioned
 
@@ -199,6 +219,13 @@ cannot be read as a default will be the first schema break, and nothing in place
 ---
 
 ## 4. The retrieval stack is affordable only if the deployment discovers an unwired cache
+
+> **Round 87 update.** The cache is no longer unwired: it moved to `cortex-core` as `EmbeddingMemo`,
+> `CachingEmbedding` became its adapter, and `CortexMemory` applies it to `index.embed` by default
+> (`index.reuse`, `SearchCensus.embedTexts` / `memoHits` / `reuse`). The section below is the audit as
+> written, kept because the *shape* of the defect — "the mechanism exists, is tested, and nothing calls
+> it" — is the one that recurred three times in this repository and will recur again. The three facts
+> below were each true on 2026-11-12 and each is false now.
 
 This is the finding that corrects the obvious reading of the code, so it is stated in full.
 
@@ -287,6 +314,17 @@ none.
 ## 6. The ordered plan
 
 Ordered by what unblocks what. Each item states the criterion that would let a reviewer reject the work.
+
+**Delivery state, round 87.** Read the rest of this section as the plan it was; this table is what the
+plan became. Two items moved for reasons that are in §10.
+
+| item | state | where it is checked |
+| --- | --- | --- |
+| P0-1 embedding reuse reachable | **done** | `Acceptance C5`, `C6`; `tools/embedding-reuse-census.mjs`; `index-reuse.test.ts` (6 assertions, 3 of which fail when the store is disconnected) |
+| P1-1 erasure (`forget`) | **not started**, and now the largest product gap | §3.2 P9 — the missing operation `card.ts` names from the inside |
+| P1-2 ingest identity + a true refusal report | **done** | `provider.test.ts` (5 new assertions); `CortexSessionProvider.ingest` |
+| P1-3 PostgreSQL true or absent | **partly done** | prefix semantics and purging fixed and covered by `predicate-parity.test.ts`; "absent" was rejected, and the server-verification half cannot be closed in this repository |
+| P2-1 → P3 | untouched | — |
 
 ### P0 — one item, because every other item is priced against it
 
@@ -429,3 +467,54 @@ An audit that lists only what it established is a list pretending to be a proof.
 
 The pattern the last twelve rounds established holds here too: **the absence of a capability is a fact
 about the code; the size of the absence is not knowable until something is dispatched.**
+
+---
+
+## 10. Round 87: what landed, and the two claims this audit got wrong
+
+The audit was written from the code on 2026-11-12 and the repairs were made on the 13th. Two of its own
+claims did not survive contact with the tests, and both are recorded here rather than quietly edited,
+because an audit that only revises itself upward is a press release.
+
+### 10.1 Two corrections to this document
+
+**`PgStorage` was not untested.** `storage.test.ts` has six tests over `pg-mem`, including pagination
+and a transaction that throws. The accurate statement — now in §3.5 — is that no suite exercises it
+against a *server*, that `pg-mem` implements neither `ROLLBACK` nor `substr`, and that the parity suite
+it was missing is the thing that would have caught the prefix divergence. The distinction matters
+because "untested" is a claim somebody can refute in thirty seconds with `grep`, and one wrong line in a
+document makes the reader discount the other forty.
+
+**The proposed `substr` repair was not implementable.** §3.5 said "`substr` replaces `LIKE`". Measured:
+`pg-mem` raises `function substr(text,integer,integer) does not exist`; `LIKE ... ESCAPE '\'` fails to
+parse; `left`, `starts_with`, `position` and `chr` are all absent; and `pg-mem`'s `LIKE` does not honour
+backslash as a default escape, so an escaped pattern would match *nothing* there while working on a
+server. Three candidate repairs, none of which could be verified in this repository. The one that
+shipped moves the filter into JavaScript, where the definition is `startsWith` — the same word `idb.ts`
+already used — and where it is exact on every engine.
+
+### 10.2 What shipped, and the assertion that makes each one a mechanism
+
+| change | the assertion that would fail if it were reverted |
+| --- | --- |
+| `EmbeddingMemo` in `cortex-core`; `CachingEmbedding` is its adapter; `cortex-ai` re-exports | `embedding-cache.test.ts` (28 assertions, moved with the implementation and extended with five for the bare-function surface) |
+| `index.store` + `index.reuse` (default `true`) + a per-instance store | `index-reuse.test.ts` — and its first assertion is the one that decides whether the change is allowed at all: **prompts and answers byte-identical with the store and without it** |
+| `SearchCensus.embedTexts` / `memoHits` / `reuse` | the same file asserts `5 / 0` on question one and `1 / 4` on question two; `embedCalls` now counts batches **that reached the model**, so a fully cached question reports `1` rather than `2` |
+| `index.embed` widened to `string[]`, vectors typed `ArrayLike<number>` | `EmbeddingModel.embed` is assignable without an adapter lambda; the memo test asserts a `number[]` and a `Float64Array` reply are both accepted |
+| `CortexSessionProvider.ingest` de-duplicates by id | `provider.test.ts` — a replayed corpus reports `sessions: 3, duplicates: 3`, never `6` |
+| `PgStorage` prefix in JS, `#purge`, shared `matchesAllTags` | `predicate-parity.test.ts` — 13 predicate shapes × 3 backends, plus a "removes expired rows" case asserted through a prefix query rather than through `get` |
+
+Three mutations were run against the new tests rather than trusting them to be sincere:
+
+1. Disconnect the store in `CortexMemory`: **3 of 6** reuse assertions fail. The byte-identity test
+   still passes — which is the point, since it is the test that must *not* depend on the mechanism
+   being present.
+2. Change `startsWith(prefix)` to `startsWith(prefix.replace('%','x'))`: `predicate-parity` fails with
+   `prefix that is a LIKE pattern diverged at postgres(pg-mem): expected ['axb'] to deeply equal ['a%b']`.
+3. Revert `ingest` to `push(...sessions)`: the duplicate test reports `6` sessions against `3`.
+
+What is *not* established by any of this is a score. The product table did not move, because none of
+these changes touches a reader, a prompt's content, or a ranking — they touch what the run pays and
+what the store says about itself. A round whose deltas are all zero is exactly the round a cost fix
+should produce, and the acceptance criteria `C5`/`C6` are where that zero is enforced instead of
+asserted.

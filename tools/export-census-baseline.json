@@ -2,9 +2,9 @@
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read. AN ENTRY LEFT, for the first time in four rounds on purpose rather than by rebuild: `cortex-ai: DEFAULT_RETRY_TIMEOUT_MS` was an orphan until \u00a713.227 moved the reader's transport decisions into their own module, which made `cortex-eval` a caller of it -- the deadline the retry budget has to exceed is now read from the package that owns it instead of being copied. Totals 964 -> 964 exports, 549 -> 550 with a caller, 415 -> 414 orphan sites, 375 -> 374 local, 40 nowhere. Every difference is the one symbol, which is the check 13.158.4 asks for before a baseline diff is accepted.",
   "totals": {
     "exports": 1137,
-    "withCaller": 668,
-    "orphaned": 469,
-    "referencedLocally": 423,
+    "withCaller": 669,
+    "orphaned": 468,
+    "referencedLocally": 422,
     "unreferenced": 46
   },
   "groups": [
@@ -542,23 +542,20 @@
       ]
     },
     {
-      "category": "cortex-ai-embedder-cache-api",
-      "count": 6,
-      "rationale": "The embedder cache added at the `EmbeddingModel` boundary. `CachingEmbedding` is a decorator whose caller is a deployment: this repository ships no application, so the only in-tree reader is the user manual's compiled example and the 23 assertions in `embedding-cache.test.ts`, neither of which the census counts. The five others exist because a caller has to be able to name what it uses: `EmbeddingCacheStore` is the documented extension point (a deployment implements three methods over whatever it already runs), `MemoryEmbeddingCacheStore` is the default, `CachingEmbeddingOptions` and `EmbeddingCacheStats` are the constructor's shape and the return of `stats()`, and `defaultEmbeddingCacheKey` is exported so a store that persists keys can reproduce them rather than reimplement them. This is the `PgStorage` shape rather than the dead-code shape: an API whose consumer is outside the repository. Recorded rather than deleted because deleting it would delete the feature; `03` section 22.92 and USER-MANUAL 4.2 are the documents that describe it, and the day a shipped application wires it in, this group shrinks to nothing and that shrinkage is the signal to look for.",
+      "category": "cortex-core-embedder-cache-api",
+      "count": 5,
+      "rationale": "The embedder cache, moved to the base package in round 87 so that the product's index and the `EmbeddingModel` surface share one implementation (`EmbeddingMemo` + `CachingEmbedding` the adapter). The group **shrank from six to two** and the shrinkage is the reading the original rationale predicted: `EmbeddingCacheStore` and `MemoryEmbeddingCacheStore` left this list because `CortexMemory` now imports the store and passes it to every `SearchIndex` it builds, so they have a non-test caller inside the repository. What remains has no in-tree caller by design: `CachingEmbedding` is a decorator whose caller is a deployment (this repository ships no application), `CachingEmbeddingOptions` and `EmbeddingCacheStats` are its constructor shape and the return of `stats()`, `defaultEmbeddingCacheKey` is exported so a store that persists keys can reproduce them rather than reimplement them, and `EmbeddingMemoOptions` is the memo's own option type, named by the constructor and by no call site. The only in-tree readers of `CachingEmbedding` are the user manual's compiled example and the 28 assertions in `cortex-core/src/__tests__/embedding-cache.test.ts`, neither of which the census counts. This is the `PgStorage` shape rather than the dead-code shape: an API whose consumer is outside the repository. Recorded rather than deleted because deleting it would delete the feature; `02` sections 22.92 and 22.94 and USER-MANUAL 4.2 are the documents that describe it.",
       "declarationSites": [
-        "cortex-ai: CachingEmbedding (packages/cortex-ai/src/embedding/cache.ts:170)",
-        "cortex-ai: CachingEmbeddingOptions (packages/cortex-ai/src/embedding/cache.ts:102)",
-        "cortex-ai: EmbeddingCacheStats (packages/cortex-ai/src/embedding/cache.ts:85)",
-        "cortex-ai: EmbeddingCacheStore (packages/cortex-ai/src/embedding/cache.ts:43)",
-        "cortex-ai: MemoryEmbeddingCacheStore (packages/cortex-ai/src/embedding/cache.ts:57)",
-        "cortex-ai: defaultEmbeddingCacheKey (packages/cortex-ai/src/embedding/cache.ts:150)"
+        "cortex-core: CachingEmbedding (packages/cortex-core/src/cache/embedding-cache.ts:312)",
+        "cortex-core: CachingEmbeddingOptions (packages/cortex-core/src/cache/embedding-cache.ts:285)",
+        "cortex-core: EmbeddingCacheStats (packages/cortex-core/src/cache/embedding-cache.ts:106)",
+        "cortex-core: EmbeddingMemoOptions (packages/cortex-core/src/cache/embedding-cache.ts:123)",
+        "cortex-core: defaultEmbeddingCacheKey (packages/cortex-core/src/cache/embedding-cache.ts:166)"
       ]
     }
   ],
   "knownOrphans": [
     "cortex-ai: AvailabilityReport",
-    "cortex-ai: CachingEmbedding",
-    "cortex-ai: CachingEmbeddingOptions",
     "cortex-ai: ChatMessage",
     "cortex-ai: DEFAULT_DTYPE",
     "cortex-ai: DEFAULT_LOCAL_MODEL",
@@ -566,14 +563,11 @@
     "cortex-ai: DEFAULT_RETRY_BASE_DELAY_MS",
     "cortex-ai: DEFAULT_WEIGHT_HOST",
     "cortex-ai: EMBEDDING_CALL_OPTIONS",
-    "cortex-ai: EmbeddingCacheStats",
-    "cortex-ai: EmbeddingCacheStore",
     "cortex-ai: LLMRerankerOptions",
     "cortex-ai: LlmProfile",
     "cortex-ai: LlmUsage",
     "cortex-ai: LocalLLMOptions",
     "cortex-ai: LocalProfile",
-    "cortex-ai: MemoryEmbeddingCacheStore",
     "cortex-ai: OpenAICompatibleLLMOptions",
     "cortex-ai: OpenAICompatibleRerankerOptions",
     "cortex-ai: OpenAIEmbeddingOptions",
@@ -603,7 +597,6 @@
     "cortex-ai: createFeatureExtractor",
     "cortex-ai: createRerankClassifier",
     "cortex-ai: createRetryStatsAggregate",
-    "cortex-ai: defaultEmbeddingCacheKey",
     "cortex-ai: isRetryableStatus",
     "cortex-ai: parseListwiseScores",
     "cortex-ai: parseRerankResponse",
@@ -619,6 +612,8 @@
     "cortex-core: BlockOptions",
     "cortex-core: BudgetFill",
     "cortex-core: BuildUnitInput",
+    "cortex-core: CachingEmbedding",
+    "cortex-core: CachingEmbeddingOptions",
     "cortex-core: CardQueueOptions",
     "cortex-core: CardState",
     "cortex-core: CensusReport",
@@ -628,6 +623,8 @@
     "cortex-core: EDGE_TYPES",
     "cortex-core: EchoCorpusStats",
     "cortex-core: EdgeOrigin",
+    "cortex-core: EmbeddingCacheStats",
+    "cortex-core: EmbeddingMemoOptions",
     "cortex-core: EmbeddingSpaceError",
     "cortex-core: EmbeddingSpaceOptions",
     "cortex-core: EmbeddingSpaceRefusal",
@@ -697,6 +694,7 @@
     "cortex-core: covers",
     "cortex-core: currentFacts",
     "cortex-core: currentValue",
+    "cortex-core: defaultEmbeddingCacheKey",
     "cortex-core: defaultValueFunction",
     "cortex-core: degenerateDfPValue",
     "cortex-core: effectiveAt",
@@ -1028,8 +1026,6 @@
   ],
   "orphanClass": {
     "cortex-ai: AvailabilityReport": "referenced-locally",
-    "cortex-ai: CachingEmbedding": "unreferenced",
-    "cortex-ai: CachingEmbeddingOptions": "referenced-locally",
     "cortex-ai: ChatMessage": "referenced-locally",
     "cortex-ai: DEFAULT_DTYPE": "referenced-locally",
     "cortex-ai: DEFAULT_LOCAL_MODEL": "referenced-locally",
@@ -1037,14 +1033,11 @@
     "cortex-ai: DEFAULT_RETRY_BASE_DELAY_MS": "referenced-locally",
     "cortex-ai: DEFAULT_WEIGHT_HOST": "referenced-locally",
     "cortex-ai: EMBEDDING_CALL_OPTIONS": "referenced-locally",
-    "cortex-ai: EmbeddingCacheStats": "referenced-locally",
-    "cortex-ai: EmbeddingCacheStore": "referenced-locally",
     "cortex-ai: LLMRerankerOptions": "referenced-locally",
     "cortex-ai: LlmProfile": "referenced-locally",
     "cortex-ai: LlmUsage": "referenced-locally",
     "cortex-ai: LocalLLMOptions": "referenced-locally",
     "cortex-ai: LocalProfile": "referenced-locally",
-    "cortex-ai: MemoryEmbeddingCacheStore": "referenced-locally",
     "cortex-ai: OpenAICompatibleLLMOptions": "referenced-locally",
     "cortex-ai: OpenAICompatibleRerankerOptions": "referenced-locally",
     "cortex-ai: OpenAIEmbeddingOptions": "referenced-locally",
@@ -1074,7 +1067,6 @@
     "cortex-ai: createFeatureExtractor": "referenced-locally",
     "cortex-ai: createRerankClassifier": "referenced-locally",
     "cortex-ai: createRetryStatsAggregate": "unreferenced",
-    "cortex-ai: defaultEmbeddingCacheKey": "referenced-locally",
     "cortex-ai: isRetryableStatus": "referenced-locally",
     "cortex-ai: parseListwiseScores": "referenced-locally",
     "cortex-ai: parseRerankResponse": "referenced-locally",
@@ -1090,6 +1082,8 @@
     "cortex-core: BlockOptions": "referenced-locally",
     "cortex-core: BudgetFill": "referenced-locally",
     "cortex-core: BuildUnitInput": "referenced-locally",
+    "cortex-core: CachingEmbedding": "unreferenced",
+    "cortex-core: CachingEmbeddingOptions": "referenced-locally",
     "cortex-core: CardQueueOptions": "referenced-locally",
     "cortex-core: CardState": "referenced-locally",
     "cortex-core: CensusReport": "referenced-locally",
@@ -1099,6 +1093,8 @@
     "cortex-core: EDGE_TYPES": "referenced-locally",
     "cortex-core: EchoCorpusStats": "referenced-locally",
     "cortex-core: EdgeOrigin": "referenced-locally",
+    "cortex-core: EmbeddingCacheStats": "referenced-locally",
+    "cortex-core: EmbeddingMemoOptions": "referenced-locally",
     "cortex-core: EmbeddingSpaceError": "referenced-locally",
     "cortex-core: EmbeddingSpaceOptions": "referenced-locally",
     "cortex-core: EmbeddingSpaceRefusal": "referenced-locally",
@@ -1168,6 +1164,7 @@
     "cortex-core: covers": "unreferenced",
     "cortex-core: currentFacts": "unreferenced",
     "cortex-core: currentValue": "unreferenced",
+    "cortex-core: defaultEmbeddingCacheKey": "referenced-locally",
     "cortex-core: defaultValueFunction": "unreferenced",
     "cortex-core: degenerateDfPValue": "referenced-locally",
     "cortex-core: effectiveAt": "referenced-locally",
@@ -1501,12 +1498,6 @@
     "cortex-ai: AvailabilityReport": [
       "packages/cortex-ai/src/web/platform-language-model.ts:56"
     ],
-    "cortex-ai: CachingEmbedding": [
-      "packages/cortex-ai/src/embedding/cache.ts:170"
-    ],
-    "cortex-ai: CachingEmbeddingOptions": [
-      "packages/cortex-ai/src/embedding/cache.ts:102"
-    ],
     "cortex-ai: ChatMessage": [
       "packages/cortex-ai/src/local/llm.ts:36"
     ],
@@ -1528,12 +1519,6 @@
     "cortex-ai: EMBEDDING_CALL_OPTIONS": [
       "packages/cortex-ai/src/local/pipelines.ts:112"
     ],
-    "cortex-ai: EmbeddingCacheStats": [
-      "packages/cortex-ai/src/embedding/cache.ts:85"
-    ],
-    "cortex-ai: EmbeddingCacheStore": [
-      "packages/cortex-ai/src/embedding/cache.ts:43"
-    ],
     "cortex-ai: LLMRerankerOptions": [
       "packages/cortex-ai/src/rerank/llm-reranker.ts:37"
     ],
@@ -1548,9 +1533,6 @@
     ],
     "cortex-ai: LocalProfile": [
       "packages/cortex-ai/src/profile.ts:64"
-    ],
-    "cortex-ai: MemoryEmbeddingCacheStore": [
-      "packages/cortex-ai/src/embedding/cache.ts:57"
     ],
     "cortex-ai: OpenAICompatibleLLMOptions": [
       "packages/cortex-ai/src/llm/openai-compatible.ts:14"
@@ -1639,9 +1621,6 @@
     "cortex-ai: createRetryStatsAggregate": [
       "packages/cortex-ai/src/retry.ts:580"
     ],
-    "cortex-ai: defaultEmbeddingCacheKey": [
-      "packages/cortex-ai/src/embedding/cache.ts:150"
-    ],
     "cortex-ai: isRetryableStatus": [
       "packages/cortex-ai/src/retry.ts:30"
     ],
@@ -1687,6 +1666,12 @@
     "cortex-core: BuildUnitInput": [
       "packages/cortex-core/src/knowledge/unit.ts:75"
     ],
+    "cortex-core: CachingEmbedding": [
+      "packages/cortex-core/src/cache/embedding-cache.ts:312"
+    ],
+    "cortex-core: CachingEmbeddingOptions": [
+      "packages/cortex-core/src/cache/embedding-cache.ts:285"
+    ],
     "cortex-core: CardQueueOptions": [
       "packages/cortex-core/src/triage/card.ts:96"
     ],
@@ -1713,6 +1698,12 @@
     ],
     "cortex-core: EdgeOrigin": [
       "packages/cortex-core/src/knowledge/edge.ts:49"
+    ],
+    "cortex-core: EmbeddingCacheStats": [
+      "packages/cortex-core/src/cache/embedding-cache.ts:106"
+    ],
+    "cortex-core: EmbeddingMemoOptions": [
+      "packages/cortex-core/src/cache/embedding-cache.ts:123"
     ],
     "cortex-core: EmbeddingSpaceError": [
       "packages/cortex-core/src/vector/embedding-space.ts:55"
@@ -1920,6 +1911,9 @@
     ],
     "cortex-core: currentValue": [
       "packages/cortex-core/src/temporal/bitemporal.ts:18"
+    ],
+    "cortex-core: defaultEmbeddingCacheKey": [
+      "packages/cortex-core/src/cache/embedding-cache.ts:166"
     ],
     "cortex-core: defaultValueFunction": [
       "packages/cortex-core/src/value/value.ts:14"

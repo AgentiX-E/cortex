@@ -48,7 +48,87 @@ function providerOf(options: Partial<CortexSessionProviderOptions> = {}) {
 describe('CortexSessionProvider: the product retrieval as a provider', () => {
   it('reports what it ingested', async () => {
     const provider = providerOf();
-    expect(await provider.ingest(SESSIONS)).toEqual({ sessions: 3, turns: 4, skipped: [] });
+    expect(await provider.ingest(SESSIONS)).toEqual({
+      sessions: 3,
+      turns: 4,
+      skipped: [],
+      duplicates: 0,
+      replaced: 0,
+    });
+  });
+
+  it('holds one session per id when a corpus is replayed', async () => {
+    // The defect this replaces: `push(...sessions)` grew the corpus by the call count, so a `global` harness that
+    // replays an overlapping haystack once per question reported `sessions` as a count of calls and spent its
+    // top-k slots on duplicates. `sessions` is a property of the store; only `duplicates` describes the call.
+    const provider = providerOf();
+    await provider.ingest(SESSIONS);
+    const second = await provider.ingest(SESSIONS);
+
+    expect(second).toEqual({ sessions: 3, turns: 4, skipped: [], duplicates: 3, replaced: 0 });
+    expect((await provider.search('where does the user live', { limit: 10 })).length).toBe(3);
+  });
+
+  it('upserts a changed session in place, so the arrival order does not move', async () => {
+    const provider = providerOf();
+    await provider.ingest(SESSIONS);
+    const changed = {
+      ...(SESSIONS[1] as ProviderSession),
+      turns: [{ role: 'user' as const, content: 'We now have three cats.' }],
+    };
+    const report = await provider.ingest([changed]);
+
+    expect(report).toMatchObject({ sessions: 3, turns: 4, replaced: 1, duplicates: 0 });
+    // Position preserved: the second session is still the second session, and its new text is what a reader
+    // gets. An appended copy would have made `sessions` four and given the same id two rank slots.
+    const hits = await provider.search('how many cats', { limit: 1 });
+    expect(hits[0]?.text).toContain('three cats');
+    expect(hits[0]?.at).toBe(T0 + 10 * DAY);
+  });
+
+  it('counts a moved timestamp or a longer turn list as a replacement, not a repeat', async () => {
+    // The three ways two sessions of one id can differ are not the same comparison: the timestamp and the
+    // length decide *before* any turn is read, and the turn-by-turn comparison only runs when both agree.
+    // Asserting only the content case would leave the cheap check unexecuted -- which is exactly what the
+    // coverage ratchet caught when this branch was first written.
+    const provider = providerOf();
+    await provider.ingest(SESSIONS);
+
+    const movedAt = { ...(SESSIONS[0] as ProviderSession), at: T0 + 1 };
+    const longer = {
+      ...(SESSIONS[1] as ProviderSession),
+      turns: [
+        ...(SESSIONS[1] as ProviderSession).turns,
+        { role: 'user' as const, content: 'more' },
+      ],
+    };
+    const report = await provider.ingest([movedAt, longer]);
+
+    expect(report).toMatchObject({ sessions: 3, replaced: 2, duplicates: 0 });
+    expect(report.turns).toBe(5);
+
+    // Replacement is **in place**, not an append at the end: feeding the original pair back flips the count to
+    // two again rather than growing the store to five. An append would still have reported `duplicates: 0`, so
+    // this is the assertion that separates the two implementations.
+    const back = await provider.ingest([
+      SESSIONS[0] as ProviderSession,
+      SESSIONS[1] as ProviderSession,
+    ]);
+    expect(back).toMatchObject({ sessions: 3, replaced: 2, duplicates: 0, turns: 4 });
+  });
+
+  it('refuses a session with no turns, and says which one', async () => {
+    const provider = providerOf();
+    const report = await provider.ingest([...SESSIONS, { id: 's4', at: T0 + 30 * DAY, turns: [] }]);
+    expect(report).toMatchObject({ sessions: 3, turns: 4, skipped: ['empty:s4'] });
+  });
+
+  it('forgets every id on reset, so a second corpus cannot inherit the first', async () => {
+    const provider = providerOf();
+    await provider.ingest(SESSIONS);
+    await provider.reset();
+    const report = await provider.ingest(SESSIONS);
+    expect(report).toMatchObject({ sessions: 3, duplicates: 0, replaced: 0 });
   });
 
   it('returns whole sessions rather than individual turns', async () => {

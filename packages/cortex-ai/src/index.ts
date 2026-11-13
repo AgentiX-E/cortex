@@ -70,9 +70,11 @@ export {
 } from './usage.js';
 export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai.js';
 /**
- * The embedder cache is exported because it is a **wrapping** decision, and a wrapper a caller cannot name is a
- * wrapper a caller cannot put in a report. `EmbeddingCacheStore` is the extension point: the default store lives
- * as long as the process, and a deployment that wants reuse across restarts injects its own three-method
+ * The embedder cache is re-exported because it is a **wrapping** decision, and a wrapper a caller cannot name is
+ * a wrapper a caller cannot put in a report. The implementation lives in `cortex-core` because the product's
+ * index needs the identical algorithm without an `EmbeddingModel` to hand; this line keeps the published surface
+ * where the last three rounds documented it. `EmbeddingCacheStore` is the extension point: the default store
+ * lives as long as the process, and a deployment that wants reuse across restarts injects its own three-method
  * implementation without this package knowing where the vectors go.
  */
 export {
@@ -82,7 +84,7 @@ export {
   type CachingEmbeddingOptions,
   type EmbeddingCacheStats,
   type EmbeddingCacheStore,
-} from './embedding/cache.js';
+} from '@agentix-e/cortex-core';
 export {
   OpenAICompatibleReranker,
   CrossEncoderReranker,

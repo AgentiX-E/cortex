@@ -24,14 +24,15 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import type { EmbeddingIdentity, EmbeddingModel } from '@agentix-e/cortex-core';
+import type { EmbeddingIdentity, EmbeddingModel } from '../interfaces/embedding.js';
 
 import {
   CachingEmbedding,
+  EmbeddingMemo,
   MemoryEmbeddingCacheStore,
   defaultEmbeddingCacheKey,
   type EmbeddingCacheStore,
-} from '../embedding/cache.js';
+} from '../cache/embedding-cache.js';
 
 /** A model that records every batch it is asked about and derives its vectors from the text. */
 class RecordingEmbedding implements EmbeddingModel {
@@ -331,5 +332,78 @@ describe('the store is an extension point', () => {
     expect(store.size()).toBe(2);
     expect(store.get('one')).toEqual(new Float64Array([2]));
     expect(store.get('missing')).toBeUndefined();
+  });
+});
+
+/**
+ * The surface the product's index uses, tested on its own terms.
+ *
+ * `CachingEmbedding` needs an `EmbeddingModel`; a caller who has only a batched function — which is what
+ * `CortexMemoryOptions.index.embed` is — must get the identical algorithm, and the only way to keep "identical"
+ * true is to assert it here rather than to assume two adapters agree.
+ */
+describe('the memo a bare batched embedder gets', () => {
+  /** A batch function that records what it was asked, with no `EmbeddingModel` around it. */
+  function recorder(): { calls: string[][]; embed: (texts: string[]) => Promise<number[][]> } {
+    const calls: string[][] = [];
+    return {
+      calls,
+      embed: (texts) => {
+        calls.push([...texts]);
+        return Promise.resolve(texts.map((text) => [text.length, text.charCodeAt(0)]));
+      },
+    };
+  }
+
+  it('embeds a text once across two calls, through one store', async () => {
+    const { calls, embed } = recorder();
+    const store = new MemoryEmbeddingCacheStore();
+    const first = new EmbeddingMemo(embed, { store });
+    await first.embed(['alpha', 'beta']);
+    const second = new EmbeddingMemo(embed, { store });
+    await second.embed(['alpha', 'beta', 'gamma']);
+
+    expect(calls).toEqual([['alpha', 'beta'], ['gamma']]);
+    expect(second.stats().storeHits).toBe(2);
+    expect(second.stats().embedderCalls).toBe(1);
+  });
+
+  it('accepts a plain array and a typed array from the same shape of embedder', async () => {
+    // The vector type is `ArrayLike<number>` on purpose: a client that returns `Float64Array` and a test double
+    // that returns `number[]` are both honest, and a signature that admits only one of them makes every caller
+    // write an adapter. This asserts the claim rather than the comment.
+    const plain = new EmbeddingMemo(() => Promise.resolve([[1, 2, 3]]));
+    expect(await plain.embed(['x'])).toEqual([Float64Array.from([1, 2, 3])]);
+
+    const typed = new EmbeddingMemo(() => Promise.resolve([new Float64Array([4, 5, 6])]));
+    expect(await typed.embed(['x'])).toEqual([Float64Array.from([4, 5, 6])]);
+  });
+
+  it('returns a stored vector as a copy, so a caller cannot reach the store through it', async () => {
+    const store = new MemoryEmbeddingCacheStore();
+    const memo = new EmbeddingMemo(() => Promise.resolve([[7, 8]]), { store });
+    const [first] = await memo.embed(['alpha']);
+    (first as Float64Array)[0] = -1;
+    expect([...((await memo.embed(['alpha']))[0] as Float64Array)][0]).toBe(7);
+  });
+
+  it('refuses a short reply rather than mapping it back', async () => {
+    const memo = new EmbeddingMemo(() => Promise.resolve([[1]]));
+    await expect(memo.embed(['alpha', 'beta'])).rejects.toThrow(
+      /returned 1 vector\(s\) for 2 text\(s\)/,
+    );
+  });
+
+  it('reports nothing asked, not a zero rate, before the first call', () => {
+    const memo = new EmbeddingMemo(() => Promise.resolve([]));
+    expect(memo.stats()).toEqual({
+      textsAsked: 0,
+      storeHits: 0,
+      batchRepeats: 0,
+      embedderCalls: 0,
+      saved: 0,
+      reuseRate: null,
+      stored: 0,
+    });
   });
 });
