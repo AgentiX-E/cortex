@@ -153,6 +153,55 @@ export type SearchCensus = {
 };
 
 /**
+ * What the product's own retrieval has cost this instance, across every index it built.
+ *
+ * `lastIndexCensus()` answers "what did the index for *this* question do". This answers "what has the
+ * retrieval stack cost the run so far", and neither is derivable from the other: a per-question census is
+ * overwritten by the next question, and a run whose corpus arrives per question pays for a corpus per
+ * question. Reading the last one and multiplying by the question count would be an estimate of the bill,
+ * which is the exact substitution this repository keeps finding -- so the sum is taken where the censuses
+ * are produced and the artifact reports a counted number.
+ *
+ * `reuse` is `true` only when **every** index in the run had a store in front of its embedder. One index
+ * without one is enough to make the total incomparable with a run that had one throughout, and an `and`
+ * over the per-index flags is the only spelling that says so.
+ */
+export type IndexCost = {
+  /** Indexes built, which for this product is one per ranked question. */
+  readonly indexes: number;
+  /** Corpus turns the indexes were built over, summed. */
+  readonly turns: number;
+  readonly embedCalls: number;
+  readonly embedTexts: number;
+  readonly memoHits: number;
+  /** Whether every index ran behind a store. A mixed run reads `false` and is not comparable. */
+  readonly reuse: boolean;
+  readonly rerankCalls: number;
+  readonly rerankDegraded: number;
+};
+
+/**
+ * One more index's census added to the running total.
+ *
+ * A fold rather than a counter on the index, because the index lives for one question and the total has to
+ * outlive it. Absent input is the first index, so a caller never seeds a zero record it would then have to
+ * keep in step with this type -- a seed is a second copy of the field list, and the copy that drifts is
+ * always the one nothing reads.
+ */
+export function foldIndexCost(previous: IndexCost | undefined, census: SearchCensus): IndexCost {
+  return {
+    indexes: (previous?.indexes ?? 0) + 1,
+    turns: (previous?.turns ?? 0) + census.turns,
+    embedCalls: (previous?.embedCalls ?? 0) + census.embedCalls,
+    embedTexts: (previous?.embedTexts ?? 0) + census.embedTexts,
+    memoHits: (previous?.memoHits ?? 0) + census.memoHits,
+    reuse: (previous?.reuse ?? true) && census.reuse,
+    rerankCalls: (previous?.rerankCalls ?? 0) + census.rerankCalls,
+    rerankDegraded: (previous?.rerankDegraded ?? 0) + census.rerankDegraded,
+  };
+}
+
+/**
  * Cosine similarity over two equal-length vectors, `0` when either is the zero vector.
  *
  * Equal length is a precondition rather than something this function repairs. A `min(a.length, b.length)`

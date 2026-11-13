@@ -79,11 +79,22 @@ class TestTheSampleCountReachesTheVote(unittest.TestCase):
     def test_the_artifact_records_the_mode_and_the_census(self) -> None:
         arm = ARM.read_text(encoding="utf-8")
         self.assertIn("selfConsistency: options.selfConsistency ?? 'none',", arm)
+        # The guard moved when `self-index`'s cost record landed beside this one. Both censuses start
+        # from `report.memoryArmConfig`, so two separate conditional spreads would have let the second
+        # silently drop the first one's field -- a run publishing a configuration with one fewer reading
+        # than it took, and nothing failing. So the assertion is now on the merged shape: the guard names
+        # the report config, and the field is spread only when the fold produced it.
         self.assertRegex(
             arm,
-            r"vote\.voteCounts === undefined \|\| report\.memoryArmConfig === undefined",
+            r"report\.memoryArmConfig === undefined \|\|[\s\S]{0,160}?vote\.voteCounts === undefined",
             "the census is never read from the feature system, so a run could not say whether its "
             "votes ever disagreed",
+        )
+        self.assertIn(
+            "...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),",
+            arm,
+            "the vote census is not merged into the arm config, so the artifact would omit a count it "
+            "measured",
         )
         # §13.244: the census is a sum over every instance the pool answered through, and the
         # enumeration is what makes the denominator the run's. Asserting both pins the fold *and*

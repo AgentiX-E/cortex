@@ -94,6 +94,7 @@ import {
   describeEmbeddingCachePersist,
   describeOracleCensus,
   assertOracleReached,
+  buildsProductIndex,
   oracleEvidenceDataset,
   type OracleEvidenceCensus,
   type OracleEvidenceDataset,
@@ -148,6 +149,9 @@ import {
   // `cortex-eval` through an environment variable, so the shape belongs to this package's surface and
   // the arm only carries a structural copy of it.
   type WidthPlanOptions,
+  // `self-index`'s options record, named here for the reason `WidthPlanOptions` is: the product owns the
+  // shape (its index is the product's own), and the arm supplies an instance of it rather than a copy.
+  type SearchIndexOptions,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -674,6 +678,33 @@ async function main(): Promise<void> {
             ...(armOptions.relevanceSignal === 'retrieval-anchored' ? { anchors: {} } : {}),
           })
         : null;
+  // `self-index`: the product builds and owns the ranking, so nothing is built here.
+  //
+  // This is the one signal whose index does not exist until the question does -- `CortexMemory` builds it
+  // per question over the turns it was handed, which is why the option is an *options* record rather than a
+  // built index: what travels is the embedder, the width and the reranker, and the corpus arrives with the
+  // question. `buildsProductIndex` is the single decision (it is in `cortex-eval`, where a test reaches it),
+  // so this file cannot disagree with the assertion that refuses a reranker with no pool.
+  //
+  // The embedder is the arm's own, so the vectors are the ones the reference pipeline and every other
+  // signal also use, and the process-wide cache sits under them: a question whose haystack the harness has
+  // already embedded pays for its query only. That sharing is what makes the two cost readings comparable
+  // rather than two different bills.
+  const selfIndexOptions: SearchIndexOptions | undefined = buildsProductIndex(
+    armOptions.relevanceSignal,
+  )
+    ? {
+        embed: (texts) => embedding.embed(texts),
+        k: armOptions.relevanceTopK,
+        ...(rerank === undefined ? {} : { rerank }),
+      }
+    : undefined;
+  if (selfIndexOptions !== undefined) {
+    console.log(
+      `Self index: the product ranks its own turns at k=${selfIndexOptions.k ?? 'default'}` +
+        `${rerank === undefined ? '' : ', with the cross-encoder inside the product'}`,
+    );
+  }
   if (relevance !== null) {
     console.log(
       `Relevance index: ${relevance.scoredPairs} scored (question, turn) pairs over ` +
@@ -845,6 +876,13 @@ async function main(): Promise<void> {
       // reproduces the previous prompt byte for byte. `relevance.index`'s lookup is a
       // plain table read, so extracting it from its object does not lose a receiver.
       ...(relevance === null ? {} : { relevanceFor: relevance.relevanceFor }),
+      // `self-index`. Spread only when the run asked for it, for the reason every conditional spread in
+      // this constructor is: absent is the shipped behaviour (the harness's ranking, or arrival order),
+      // which is what every archived artifact was produced under. The two keys cannot both arrive --
+      // `#relevanceFor` returns `relevanceFor` first, and `buildsProductIndex` is the same decision the
+      // relevance index above is built on -- but if they ever did, the product would rank with the
+      // override and the artifact would name a signal that did not run.
+      ...(selfIndexOptions === undefined ? {} : { index: selfIndexOptions }),
       // §13.27's single variable, spread conditionally for the reason `relevanceFor` above
       // is: `turn` IS the shipped behaviour (the budget buys individual turns wherever they
       // score highest) and is expressed by NOT passing the key, so a run that names no unit

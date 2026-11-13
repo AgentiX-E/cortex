@@ -1,8 +1,8 @@
 {
   "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read. AN ENTRY LEFT, for the first time in four rounds on purpose rather than by rebuild: `cortex-ai: DEFAULT_RETRY_TIMEOUT_MS` was an orphan until \u00a713.227 moved the reader's transport decisions into their own module, which made `cortex-eval` a caller of it -- the deadline the retry budget has to exceed is now read from the package that owns it instead of being copied. Totals 964 -> 964 exports, 549 -> 550 with a caller, 415 -> 414 orphan sites, 375 -> 374 local, 40 nowhere. Every difference is the one symbol, which is the check 13.158.4 asks for before a baseline diff is accepted.",
   "totals": {
-    "exports": 1163,
-    "withCaller": 697,
+    "exports": 1166,
+    "withCaller": 700,
     "orphaned": 466,
     "referencedLocally": 420,
     "unreferenced": 46
@@ -141,8 +141,8 @@
         "cortex-core: Reached (packages/cortex-core/src/retrieval/typed.ts:54)",
         "cortex-core: ReadSideOptions (packages/cortex-core/src/federation/read-side.ts:56)",
         "cortex-core: RedactionKind (packages/cortex-core/src/triage/proposer.ts:95)",
-        "cortex-core: ReleaseAllowed (packages/cortex-core/src/triage/release.ts:131)",
-        "cortex-core: ReleaseVerdict (packages/cortex-core/src/triage/release.ts:141)",
+        "cortex-core: ReleaseAllowed (packages/cortex-core/src/triage/release.ts:135)",
+        "cortex-core: ReleaseVerdict (packages/cortex-core/src/triage/release.ts:145)",
         "cortex-core: RerankCandidate (packages/cortex-core/src/retrieval/rerank.ts:41)",
         "cortex-core: RetrievalDecision (packages/cortex-core/src/value/value.ts:35)",
         "cortex-core: RetrievalIntent (packages/cortex-core/src/context/assemble.ts:49)",
@@ -334,7 +334,7 @@
         "cortex-eval: A3Result (packages/cortex-eval/src/a3.ts:75)",
         "cortex-eval: A3Trial (packages/cortex-eval/src/a3.ts:41)",
         "cortex-eval: A3Verdict (packages/cortex-eval/src/a3.ts:72)",
-        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1364)",
+        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1403)",
         "cortex-eval: AbstainReason (packages/cortex-eval/src/natural-language-memory.ts:66)",
         "cortex-eval: BenchmarkRunnerOptions (packages/cortex-eval/src/runner.ts:89)",
         "cortex-eval: BuildCost (packages/cortex-eval/src/competitor.ts:80)",
@@ -350,8 +350,8 @@
         "cortex-eval: ConfigCell (packages/cortex-eval/src/model-portability.ts:255)",
         "cortex-eval: CortexMemoryArmEnv (packages/cortex-eval/src/bench-memory-arm.ts:110)",
         "cortex-eval: CortexMemoryArmOptions (packages/cortex-eval/src/bench-memory-arm.ts:139)",
-        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:3104)",
-        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:2948)",
+        "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:3163)",
+        "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:3007)",
         "cortex-eval: Criterion (packages/cortex-eval/src/acceptance.ts:129)",
         "cortex-eval: DEFAULT_DEEPSEEK_BASE_URL (packages/cortex-eval/src/reader-provider.ts:84)",
         "cortex-eval: DEFAULT_DEEPSEEK_MODEL (packages/cortex-eval/src/reader-provider.ts:85)",
@@ -372,7 +372,7 @@
         "cortex-eval: EmbeddingMemorySystemOptions (packages/cortex-eval/src/embedding-memory.ts:14)",
         "cortex-eval: EmbeddingSourceStats (packages/cortex-eval/src/retrieval.ts:151)",
         "cortex-eval: EmbeddingWithProvenance (packages/cortex-eval/src/embedding-factory.ts:51)",
-        "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:1264)",
+        "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:1402)",
         "cortex-eval: EvidenceScope (packages/cortex-eval/src/model-portability.ts:252)",
         "cortex-eval: FactMemorySystem (packages/cortex-eval/src/fact-memory.ts:16)",
         "cortex-eval: FactMemorySystemOptions (packages/cortex-eval/src/fact-memory.ts:9)",
@@ -394,13 +394,13 @@
         "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
         "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:48)",
         "cortex-eval: RerankFallbackReport (packages/cortex-eval/src/runner.ts:51)",
-        "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:1297)",
+        "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:1435)",
         "cortex-eval: RetrievalMode (packages/cortex-eval/src/harness.ts:52)",
         "cortex-eval: RetryAblationReport (packages/cortex-eval/src/runner.ts:862)",
-        "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1213)",
+        "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1252)",
         "cortex-eval: ReviewCard (packages/cortex-eval/src/review-page.ts:32)",
         "cortex-eval: ReviewCardsFile (packages/cortex-eval/src/review-page.ts:122)",
-        "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:3181)",
+        "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:3240)",
         "cortex-eval: ReviewPageArgs (packages/cortex-eval/src/review-page.ts:83)",
         "cortex-eval: ReviewPageInput (packages/cortex-eval/src/review-page.ts:40)",
         "cortex-eval: ReviewPair (packages/cortex-eval/src/review-page.ts:55)",
@@ -467,7 +467,7 @@
         "cortex-eval: runEmbeddingBenchmark (packages/cortex-eval/src/runner.ts:254)",
         "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
         "cortex-eval: toSessions (packages/cortex-eval/src/competitor.ts:182)",
-        "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:3307)",
+        "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:3366)",
         "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2820)",
         "cortex-eval: truncateText (packages/cortex-eval/src/natural-language-memory.ts:2716)"
       ]
@@ -1807,10 +1807,10 @@
       "packages/cortex-core/src/triage/proposer.ts:95"
     ],
     "cortex-core: ReleaseAllowed": [
-      "packages/cortex-core/src/triage/release.ts:131"
+      "packages/cortex-core/src/triage/release.ts:135"
     ],
     "cortex-core: ReleaseVerdict": [
-      "packages/cortex-core/src/triage/release.ts:141"
+      "packages/cortex-core/src/triage/release.ts:145"
     ],
     "cortex-core: RerankCandidate": [
       "packages/cortex-core/src/retrieval/rerank.ts:41"
@@ -2017,7 +2017,7 @@
       "packages/cortex-eval/src/assumption-ablation.ts:69"
     ],
     "cortex-eval: AblationReportOptions": [
-      "packages/cortex-eval/src/report.ts:1364"
+      "packages/cortex-eval/src/report.ts:1403"
     ],
     "cortex-eval: AblationRow": [
       "packages/cortex-eval/src/assumption-ablation.ts:780"
@@ -2134,10 +2134,10 @@
       "packages/cortex-eval/src/bench-memory-arm.ts:139"
     ],
     "cortex-eval: CortexMemoryArmResult": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:3104"
+      "packages/cortex-eval/src/bench-memory-arm.ts:3163"
     ],
     "cortex-eval: CortexMemoryArmRunOptions": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:2948"
+      "packages/cortex-eval/src/bench-memory-arm.ts:3007"
     ],
     "cortex-eval: CostArtifactShape": [
       "packages/cortex-eval/src/cost-per-capability.ts:178"
@@ -2248,7 +2248,7 @@
       "packages/cortex-eval/src/embedding-factory.ts:51"
     ],
     "cortex-eval: Evaluation": [
-      "packages/cortex-eval/src/acceptance.ts:1264"
+      "packages/cortex-eval/src/acceptance.ts:1402"
     ],
     "cortex-eval: EvidenceScope": [
       "packages/cortex-eval/src/model-portability.ts:252"
@@ -2362,7 +2362,7 @@
       "packages/cortex-eval/src/runner.ts:51"
     ],
     "cortex-eval: Resolvers": [
-      "packages/cortex-eval/src/acceptance.ts:1297"
+      "packages/cortex-eval/src/acceptance.ts:1435"
     ],
     "cortex-eval: RetrievalDiagnostic": [
       "packages/cortex-eval/src/retrieval-diagnostics.ts:41"
@@ -2377,7 +2377,7 @@
       "packages/cortex-eval/src/runner.ts:862"
     ],
     "cortex-eval: RetryFireCounts": [
-      "packages/cortex-eval/src/report.ts:1213"
+      "packages/cortex-eval/src/report.ts:1252"
     ],
     "cortex-eval: ReviewCard": [
       "packages/cortex-eval/src/review-page.ts:32"
@@ -2386,7 +2386,7 @@
       "packages/cortex-eval/src/review-page.ts:122"
     ],
     "cortex-eval: ReviewMechanismTrace": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:3181"
+      "packages/cortex-eval/src/bench-memory-arm.ts:3240"
     ],
     "cortex-eval: ReviewPageArgs": [
       "packages/cortex-eval/src/review-page.ts:83"
@@ -2728,7 +2728,7 @@
       "packages/cortex-eval/src/competitor.ts:182"
     ],
     "cortex-eval: traceReviewMechanisms": [
-      "packages/cortex-eval/src/bench-memory-arm.ts:3307"
+      "packages/cortex-eval/src/bench-memory-arm.ts:3366"
     ],
     "cortex-eval: truncateSession": [
       "packages/cortex-eval/src/natural-language-memory.ts:2820"

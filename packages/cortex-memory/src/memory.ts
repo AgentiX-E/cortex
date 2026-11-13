@@ -61,6 +61,8 @@ import {
 import { planReplyRepair } from './reply-repair.js';
 import {
   SearchIndex,
+  foldIndexCost,
+  type IndexCost,
   type SearchCensus,
   type SearchIndexOptions,
 } from './retrieval/search-index.js';
@@ -442,6 +444,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastIndex: SearchCensus | undefined = undefined;
   /**
+   * What every index this instance built has cost, summed.
+   *
+   * The per-question census above answers what the current index did; this answers what the run has paid.
+   * Two states rather than one, because the arm's artifact has to be able to say "no index was ever built"
+   * (a run with no `index` configured) apart from "an index was built and its store saved nothing"
+   * (`memoHits: 0`, which on a per-question corpus is the true count and a finding in its own right).
+   */
+  #indexCost: IndexCost | undefined = undefined;
+  /**
    * The index options this instance actually uses, resolved once at construction.
    *
    * Differs from `options.index` in exactly one case -- an embedder with reuse on -- where it carries the store.
@@ -817,6 +828,22 @@ export class CortexMemory implements SessionAwareMemorySystem {
   lastIndexCensus(): SearchCensus | undefined {
     const census = this.#lastIndex;
     return census === undefined ? undefined : { ...census, channels: [...census.channels] };
+  }
+
+  /**
+   * What this instance's own retrieval has cost, across every index it built.
+   *
+   * The sibling of {@link lastIndexCensus}, and the one an arm reads: a per-question census is overwritten
+   * by the next question, so a run's bill cannot be recovered from it after the fact. `undefined` means no
+   * index was ever built — `index` was not configured, every question was declined before one was, or the
+   * signal came from `relevanceFor` and the product was not the one ranking.
+   *
+   * Returned by value, for the reason every census on this class is: the arm serialises it straight into
+   * its artifact.
+   */
+  indexCost(): IndexCost | undefined {
+    const cost = this.#indexCost;
+    return cost === undefined ? undefined : { ...cost };
   }
 
   /**
@@ -2352,7 +2379,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // After the lookup, not before: the query embedding and the reranker both fire inside it, so a census
     // taken earlier would report a run that made one model call and never the second -- and `rerankCalls`
     // would be zero on every run, which is the exact count a reader would use to decide the stage ran.
-    this.#lastIndex = built.census();
+    const census = built.census();
+    this.#lastIndex = census;
+    // Folded from the same census object the field above holds, rather than from a second `census()` call:
+    // the two counters would then be free to disagree if that call ever became non-idempotent, and an
+    // artifact whose per-question and cumulative numbers disagree is unreadable in the one place it matters.
+    this.#indexCost = foldIndexCost(this.#indexCost, census);
     return scorer;
   }
 

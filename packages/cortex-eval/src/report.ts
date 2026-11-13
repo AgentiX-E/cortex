@@ -915,6 +915,45 @@ export type MemoryArmConfig = {
    */
   readonly anchors?: { readonly count: number; readonly radius: number; readonly decay: number };
   /**
+   * What the product's own retrieval cost the run, when `relevanceSignal` was `self-index`.
+   *
+   * ## Why a cost record sits beside the ranking fields
+   *
+   * Every signal before this one ranked turns with an index **this package** built, and its cost was the
+   * arm's ordinary embedding bill -- visible in `C1` and in the usage ledger. `self-index` moves the index
+   * inside the product, where the corpus arrives per question (`answerSessions(question, sessions)`), and
+   * that shape means the index is rebuilt for every question. Whether that is affordable is not a detail
+   * of the implementation: it is the difference between a retrieval stack a deployment can run and one it
+   * cannot, and it is invisible in accuracy, in `C1` (which counts the *reader's* prompt tokens) and in
+   * every other field on this page.
+   *
+   * ## Why `embedTexts` and `memoHits` are both here
+   *
+   * `embedTexts` is the bill; `memoHits` is the part of it a store absorbed. A run on a corpus that repeats
+   * and a run on a per-question haystack have the same *configuration* and a hundredfold difference in
+   * `embedTexts`, and printing only the total would make the second look like a regression in the first's
+   * units. `reuse` is the third: `false` means at least one index ran without a store, which makes the
+   * total incomparable with a run that had one throughout.
+   *
+   * `rerankCalls` beside `rerankDegraded` is the pair `SearchCensus` already established: an endpoint that
+   * failed five hundred times and a cross-encoder that agreed every time produce one accuracy.
+   *
+   * Absent means the product did not build an index -- either the signal was not `self-index`, or the run
+   * predates the field. Both are facts a reader should be able to tell from the signal's own value.
+   */
+  readonly selfIndex?:
+    | {
+        readonly indexes: number;
+        readonly turns: number;
+        readonly embedCalls: number;
+        readonly embedTexts: number;
+        readonly memoHits: number;
+        readonly reuse: boolean;
+        readonly rerankCalls: number;
+        readonly rerankDegraded: number;
+      }
+    | undefined;
+  /**
    * Which embedding backend this artifact's numbers were produced against.
    *
    * ## Why the artifact has to say it
@@ -1700,6 +1739,19 @@ export function formatAblationReport(report: AblationReport): string {
           : `, \`anchorParams=count:${memoryArm.anchors.count}` +
             `+radius:${memoryArm.anchors.radius}` +
             `+decay:${memoryArm.anchors.decay}\``) +
+        // `self-index`'s cost, beside the signal that produced it. Rendered only when the record exists, for
+        // the reason the anchors are: the mechanism's name is always on the line, so a signal naming
+        // `self-index` with no record here reads as a run whose product index was never priced -- which is
+        // the state every artifact before this field is in, and a state a reader must be able to see rather
+        // than infer. Joined with `+` because the fields are one measurement of one stack.
+        (memoryArm.selfIndex === undefined
+          ? ''
+          : `, \`selfIndex=indexes:${memoryArm.selfIndex.indexes}` +
+            `+turns:${memoryArm.selfIndex.turns}` +
+            `+texts:${memoryArm.selfIndex.embedTexts}` +
+            `+hits:${memoryArm.selfIndex.memoHits}` +
+            `+reuse:${memoryArm.selfIndex.reuse}` +
+            `+rerank:${memoryArm.selfIndex.rerankCalls}/${memoryArm.selfIndex.rerankDegraded}\``) +
         // The backend, and the check that it was serving. Appended only when the caller
         // named one, so an artifact that predates the field reads as pre-dating it rather
         // than as having run against an unrecorded backend. Both halves are rendered

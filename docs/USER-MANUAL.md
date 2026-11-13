@@ -668,6 +668,8 @@ void memory.abstentionReasons();    // { empty, threshold, llm, answered } -- fo
 void memory.voteCounts();           // { unanimous, majority, split }
 void memory.recoveryCensus();       // { attempted, answered }
 void memory.auditCensus();          // { attempted, changed }, or null when no audit ran
+void memory.lastIndexCensus();      // the last question's index: turns, embedTexts, memoHits, rerank*
+void memory.indexCost();            // the run so far, summed: indexes, turns, embedTexts, memoHits, reuse
 ```
 
 `abstentionReasons` is the one to read first when a run looks wrong. Four outcomes that used to be one
@@ -678,6 +680,36 @@ request; two are the model's.
 `lastRawOutput()` exists because `null` from `parseAnswer` covers three different model behaviours —
 the bare token, a labelled token, and an explanation followed by the token. The parsed answer cannot
 tell them apart; the raw text can.
+
+`lastIndexCensus()` and `indexCost()` are the pair that prices §6.1's `index`. The first describes the
+question just answered; the second is the total, and it is the one a bill is read from — a per-question
+census is overwritten by the next question, so `indexCost()` is the only accessor here that is not
+about "the most recent question":
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+const memory = new CortexMemory({
+  llm,
+  now: 0,
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 8 },
+  // The embedder is injected, so the product never owns a key. Its vectors are memoised in one store
+  // per instance, which is why the second question over a corpus it has already seen is nearly free.
+  index: { embed: async (texts: string[]) => texts.map(() => [1, 0, 0]), k: 64 },
+});
+
+await memory.answerSessions('How many cities did I live in?', [
+  ['I moved to Berlin in 2024.', 'Then Lisbon in 2025.'],
+]);
+
+console.log(memory.indexCost());
+// { indexes: 1, turns: 2, embedCalls: 2, embedTexts: 3, memoHits: 0, reuse: true, rerankCalls: 0, rerankDegraded: 0 }
+// `indexes` is 1 per ranked question, `texts` is one per corpus turn plus one query, and `hits` is what
+// the store answered instead of the model. A run whose `embedTexts` equals `turns + indexes` had no reuse
+// to speak of -- which is the real reading on a corpus that changes every question.
+```
 
 ## 8. Cost control
 

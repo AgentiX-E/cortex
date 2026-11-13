@@ -972,6 +972,20 @@ export const CRITERIA: readonly Criterion[] = [
       'Two ways to miss, and they are different findings. If `changed > 0` and the multi-session category moves by 3 or fewer, **delete the stage**: a mechanism the strongest published pipeline needs and this arm does not is either a difference in the corpus or a difference in what it is reranking, and both are results rather than reasons to keep it. If `changed = 0` with `fallbacks = 0`, the cross-encoder agreed with the fusion on all 500 questions, which settles the reranking question negatively for this corpus at this pool width — also a result, and also a reason to stop paying for it. The row is not reachable by overall accuracy: a stage that buys 3 questions in one category and loses 3 in another has moved the order without improving the answer, so no capability may fall by more than 2 within the same pair.',
   },
 
+  // ---- the product's own retrieval (§13.380) -------------------------------------------------------
+  //
+  // `self-index` is the first signal in this campaign where the ranking is built by the **product**. Every
+  // other one is a callback `cortex-eval` fills before the run, so the arm has been measuring what the
+  // harness can rank, not what the product can. `SearchIndex` has had unit tests and `C5`/`C6` since round 87
+  // and no reading on a real corpus, which is exactly the shape of claim this matrix exists to refuse: a
+  // capability with evidence only on a fixture is a capability nobody has measured.
+  //
+  // The row is a **parity** claim and not an improvement claim, on purpose. The harness's index is a dense
+  // bi-encoder over the same turns with the same width; the product's is postings over `contentTerms` fused
+  // with the same vectors by reciprocal rank, plus two channels instead of one. Which of those wins on 500
+  // real questions is not knowable in advance, and a row that promised a win would be a hypothesis with a
+  // threshold attached.
+
   // ---- the instruction the reference pipeline actually runs (§13.123) ------------------------------
   {
     id: 'S8',
@@ -1014,6 +1028,57 @@ export const CRITERIA: readonly Criterion[] = [
     ],
     onMiss:
       "Section 13.246 corrects what this row is aiming at. The stage was registered as *the reference pipeline's ask*, and the dispatch that measured it (`silent`) administered an ask the reference does not use: `conInstruction` is the single-SESSION skeleton, and the multi-session path calls `buildAggregationQaPrompt`, which enumerates in writing. So a miss here retires *silence*, not the reference's contract, and `silent`'s -26 is re-read as the price of removing the written list. The corrected target is `ask=verbatim`, the aggregation builder migrated whole, with its own predictions in §13.246.6; the assembly check below still applies unchanged. Given a clean pair on `verbatim` — which `41860773768` supplied at +1.8 questions, and section 13.248.4 reads as exhausting the wording — the axis it leaves is the assembly: section 13.279 dispatches the reference order with the same block, and gate 5 (prompt digests on the 379 questions outside the route) is what stops a movement there being read as a leak. Beyond that the evidence axis stands: — section 13.243.2's partial-coverage band reads 48.7% where the full band reads 89.0%, and the reference never produces that band because it retrieves sessions and truncates per session. If MR does not move and declines rise, the reference's decline licence is the mechanism rather than its enumeration.",
+  },
+
+  // ---- the product's own retrieval (§13.380) -------------------------------------------------------
+  //
+  // `self-index` is the first signal in this campaign where the ranking is built by the **product**. Every
+  // other one is a callback `cortex-eval` fills before the run, so the arm has been measuring what the
+  // harness can rank, not what the product can. `SearchIndex` has had unit tests and `C5`/`C6` since round 87
+  // and no reading on a real corpus, which is exactly the shape of claim this matrix exists to refuse: a
+  // capability with evidence only on a fixture is a capability nobody has measured.
+  //
+  // The row is a **parity** claim and not an improvement claim, on purpose. The harness's index is a dense
+  // bi-encoder over the same turns at the same width; the product's is postings over `contentTerms` fused
+  // with those vectors by reciprocal rank, plus two channels instead of one. Which of those wins on 500 real
+  // questions is not knowable in advance, and a row that promised a win would be a hypothesis with a
+  // threshold attached.
+  {
+    id: 'S9',
+    capability: 'self-index retrieval',
+    metric:
+      "correct answers the product's own index delivers against the adopted harness index, paired by question",
+    dataset:
+      'LongMemEval-S, 500 questions, one dispatch per signal, the per-question mean of four repetitions compared across the two',
+    comparator: 'at-least',
+    threshold: -15,
+    unit: 'count',
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/self-index.json',
+      key: 'paired.deltaQuestions',
+    },
+    competitors: [
+      {
+        name: 'Mem0 (graph, published)',
+        value: 0.6824,
+        grade: 'C',
+        recipe:
+          'mean of four published LongMemEval-S readings in their own harness (68.24, 68.44, 66.88, 68.24); ' +
+          'a different reader and a different judge, so the figure locates the axis rather than our gap. What ' +
+          'it does establish is that a system whose retrieval is **its own** is scored end to end there, ' +
+          'while this campaign has so far scored only what a harness hands the product',
+      },
+    ],
+    onMiss:
+      "Below −15 questions the product's own ranking is worse than the harness's by more than the arm's own " +
+      'noise floor (1.6–2.2pp, §13.118.5), and the finding is a **defect in the stack** rather than a reason ' +
+      'to retire the signal: the two channels are the same vectors plus a lexical one, so a loss that large ' +
+      'means the fusion or the postings are mis-weighted, and the repair is `rrfK`, `k` or the lexical ' +
+      "channel's term list rather than the switch. Above the threshold, adopt the signal only if " +
+      '`selfIndex.embedTexts` per question is at or below the corpus size — a product that pays twice for ' +
+      'one corpus has bought nothing with a tie.',
   },
 
   // ---- the cost dimension, which had no row until the 2026-10 board printed a context column -------

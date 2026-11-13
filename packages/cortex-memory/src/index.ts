@@ -37,8 +37,12 @@ export {
 // batch embedder, rank fusion, and an optional cross-encoder pass. Exported because a caller with a stable
 // corpus can build one itself and pass `relevanceFor` -- the per-question build `answerSessions` performs is
 // a consequence of the protocol, not of the design.
+//
+// `IndexCost` is the shape `CortexMemory.indexCost()` returns, so it is on this barrel for the reason
+// `SearchCensus` is: a caller reading the cost of a run should not have to import a module path to name it.
 export {
   SearchIndex,
+  type IndexCost,
   type SearchCensus,
   type SearchIndexOptions,
 } from './retrieval/search-index.js';

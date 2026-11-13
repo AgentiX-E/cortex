@@ -67,6 +67,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
+| S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
@@ -87,6 +88,15 @@ the record of what happens when they are.
 
 `D1` is `unrun` and that is stated rather than hidden: the distillation reading needs an A3 run with a fresh
 prompt, and no such run exists. A row with no value is the honest form of "we have not measured this".
+
+`S9` is the row that turns "the product can rank" from a claim into a reading. Every other `S*` row is
+measured on an arm whose ranking `cortex-eval` builds **before the run** and hands to the product as a
+callback, so all of them say what the harness can rank. `self-index` is the one signal where
+`CortexMemory` builds the index itself (`SearchIndex`: postings, a vector channel, rank fusion, an optional
+cross-encoder), and `docs/MEASURE-SELF-INDEX.md` fixes the three readings and the pre-committed decisions
+before the dispatch. Its threshold is a **parity** band (−15 questions) rather than a win, because the two
+mechanisms use the same vectors and which one orders better on 500 real questions is not knowable in
+advance.
 
 `C1` was added on 2026-11-07, when the October board became the first that prints context length beside
 accuracy. It was `unrun` for an arithmetic reason rather than a scheduling one: `llmUsage.promptTokens` is a

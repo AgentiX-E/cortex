@@ -645,6 +645,44 @@ const RELEVANCE_SIGNALS = {
    * flag, which is the shape of the defects §13.63 and §13.27 both fixed by naming the mechanism.
    */
   'retrieval-anchored': 'retrieval-anchored',
+  /**
+   * The product's own retrieval stack, ranking the turns with no index handed to it.
+   *
+   * ## Why this value has to exist
+   *
+   * Every signal above is built by **this package** (`relevance-index.ts`, `session-relevance.ts`) and
+   * handed to the product as a synchronous callback. That arrangement was right when the product could not
+   * rank, and it became a product problem the moment `CortexMemory` grew one: `SearchIndex` -- postings over
+   * `contentTerms`, a vector channel through an injected batch embedder, reciprocal-rank fusion, an optional
+   * cross-encoder pass -- has unit tests and two acceptance rows (`C5`/`C6`) and **no measured run**, because
+   * no dispatch could reach it. A capability whose only evidence is a synthetic four-turn corpus is a
+   * capability whose behaviour on 500 real questions is unknown, and the artifact of every run so far cannot
+   * say whether it would have helped.
+   *
+   * ## What moves, and what it refuses to move
+   *
+   * The product builds the index over the turns of the question it is answering and returns a lookup; the
+   * arm supplies the embedder and the width and nothing else. So this value is a comparison of two
+   * **rankings**, not of two prompts: the window, the cap, the rendering and the ask are held at whatever the
+   * dispatch names, which is what makes a delta here attributable to the retrieval stack.
+   *
+   * It refuses three things on purpose. It is not a wider `retrieval` (the mechanism is different: fusion
+   * over a lexical channel is a second signal, not more of one). It does not restore an anchor's
+   * neighbourhood (`retrieval-anchored` owns that, and mixing the two would make a delta unattributable to
+   * either). And it does **not** accept a dispatched `relevanceFor`: the two are the same slot in the
+   * product, and an arm that passed both would silently run the override it did not mean to test -- which is
+   * why the run refuses the combination rather than picking one.
+   *
+   * ## What it costs, which is the other half of the reading
+   *
+   * The corpus arrives per question, so the index is built per question. `CortexMemory` owns one
+   * `EmbeddingCacheStore` for its lifetime, so on a corpus that repeats the second question embeds its query
+   * and nothing else. On LongMemEval-S each question brings its own haystack, so the memo may save nothing at
+   * all -- and that is a finding rather than a defect, which is why the artifact carries `embedTexts` and
+   * `memoHits` as counted numbers instead of an argument about them. `C5` is the same property measured on a
+   * corpus that does repeat; this is the measurement that says whether repetition is the real case.
+   */
+  'self-index': 'self-index',
 } as const;
 
 /** The signal a run gets when it does not name one. */
@@ -2552,6 +2590,23 @@ export function toRerankRecord(
   };
 }
 
+/**
+ * Whether this signal makes the **product** build and own the ranking.
+ *
+ * A named predicate rather than a string comparison at each call site, because there are two call sites and
+ * they have to agree: the run wires `index` into the product when this is true and the harness's
+ * `relevanceFor` when it is false, and a file whose two decisions disagreed would pass a callback *and* an
+ * index to a class that resolves one of them first (`#relevanceFor` returns the override), so the artifact
+ * would name the treatment that did not run.
+ *
+ * `bench/**` is outside the coverage boundary, which is the second reason the decision lives here: a
+ * comparison written in the CLI is a comparison no test can reach, and this repository has already paid for
+ * that class once (§14: three broken links, all in the excluded file).
+ */
+export function buildsProductIndex(relevanceSignal: string): boolean {
+  return relevanceSignal === 'self-index';
+}
+
 export function assertRerankReachesRanking(
   relevanceSignal: string,
   rerank: MemoryArmConfig['rerank'] | undefined,
@@ -2565,15 +2620,19 @@ export function assertRerankReachesRanking(
   if (
     relevanceSignal === 'retrieval' ||
     relevanceSignal === 'retrieval-hybrid' ||
-    relevanceSignal === 'retrieval-anchored'
+    relevanceSignal === 'retrieval-anchored' ||
+    // `self-index` builds the pool inside the product (`SearchIndex`), which takes the reranker as its own
+    // option — so the stage has something to reorder here too, and refusing it would make the one signal
+    // that can carry a cross-encoder inside the product the one signal that cannot be dispatched with one.
+    buildsProductIndex(relevanceSignal)
   ) {
     return;
   }
   throw new Error(
     `CORTEX_MEMORY_RERANK is enabled but relevanceSignal="${relevanceSignal}" builds no ranked pool ` +
       'for the stage to reorder, so the reranker would never fire and the artifact would name a ' +
-      'treatment that did not run. Set CORTEX_MEMORY_RELEVANCE=retrieval, retrieval-hybrid or ' +
-      'retrieval-anchored, or leave the reranker off.',
+      'treatment that did not run. Set CORTEX_MEMORY_RELEVANCE=retrieval, retrieval-hybrid, ' +
+      'retrieval-anchored or self-index, or leave the reranker off.',
   );
 }
 
@@ -3784,6 +3843,11 @@ export async function runCortexMemoryArm(
   // happened rather than what was configured. Merged into the arm's config rather than carried at the
   // top level because the configuration line renders it beside the count that produced it.
   const vote = voteCountsAcross(censusSystems);
+  // `self-index`'s bill, read the same way and for the same reason: it counts what the product's own
+  // retrieval did rather than what was configured, so it can only be taken after the questions were
+  // answered. §13.17's index and this one are different instruments -- the harness's census describes a
+  // ranking it built before the run, this one a ranking the product built per question.
+  const indexCost = indexCostAcross(censusSystems);
   const reported: AblationReport = {
     ...report,
     // The evidence is carried twice, and the registered bound has to reach both
@@ -3830,9 +3894,21 @@ export async function runCortexMemoryArm(
     // Spread conditionally on both sides: a run that did not vote has no census, and a report built
     // without an arm config has nowhere to put one. Either absence means "not measured", which the
     // field's optionality already says.
-    ...(vote.voteCounts === undefined || report.memoryArmConfig === undefined
+    //
+    // The two censuses are merged in ONE spread rather than two because both start from
+    // `report.memoryArmConfig`: a second conditional spread would silently drop the first one's field,
+    // and the artifact would lose a count that had been measured. Nothing would fail -- the run would
+    // simply publish a configuration with one fewer reading than it took.
+    ...(report.memoryArmConfig === undefined ||
+    (vote.voteCounts === undefined && indexCost.selfIndex === undefined)
       ? {}
-      : { memoryArmConfig: { ...report.memoryArmConfig, voteCounts: vote.voteCounts } }),
+      : {
+          memoryArmConfig: {
+            ...report.memoryArmConfig,
+            ...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),
+            ...(indexCost.selfIndex === undefined ? {} : { selfIndex: indexCost.selfIndex }),
+          },
+        }),
     questions,
     ...(evidenceReduction === null ? {} : { evidenceReduction }),
   };
@@ -4549,6 +4625,119 @@ function bareRetryAcross(systems: readonly MemorySystem[]): { bareRetry?: BareRe
   return {
     bareRetry: { attempted: total.attempted as number, answered: total.answered as number },
   };
+}
+
+/** The counter fields of a self-index cost record, in the order the artifact lists them. */
+const INDEX_COST_COUNTERS = [
+  'indexes',
+  'turns',
+  'embedCalls',
+  'embedTexts',
+  'memoHits',
+  'rerankCalls',
+  'rerankDegraded',
+] as const;
+
+/** A record with every counter at zero, which is what one instance that built no index contributes. */
+type IndexCostRecord = NonNullable<MemoryArmConfig['selfIndex']>;
+
+/** The same record, writable: the accumulator this file sums into. */
+type IndexCostSums = { -readonly [K in keyof IndexCostRecord]: IndexCostRecord[K] };
+
+function emptyIndexCost(): IndexCostRecord {
+  return {
+    indexes: 0,
+    turns: 0,
+    embedCalls: 0,
+    embedTexts: 0,
+    memoHits: 0,
+    reuse: true,
+    rerankCalls: 0,
+    rerankDegraded: 0,
+  };
+}
+
+/**
+ * One instance's cumulative index cost, `null` when it has no such capability.
+ *
+ * ## Why `undefined` from the accessor is a ZERO rather than an absence
+ *
+ * `CortexMemory.indexCost()` returns `undefined` when the instance never built an index, and under a
+ * pool that is the normal state of a worker that drew no questions from a ranked route. Treating it as
+ * "this system has no census" would discard the whole total on one idle worker -- the truncated-denominator
+ * defect §14.22 records, arriving through a guard that looks like it protects the reader. The distinction
+ * this function draws is therefore the one `voteVerdictsOf` draws: **no accessor** is an absence, an
+ * accessor answering `undefined` is a part that contributed nothing.
+ *
+ * ## Why a malformed value is discarded rather than coerced
+ *
+ * A field that is present but wrong is worse than an absent one: the artifact would carry a cost no
+ * instrument produced, and a reader could not tell it from a measurement. Anything that is not seven
+ * finite non-negative integers plus a boolean is treated as absent, and so is an accessor that throws.
+ */
+function indexCostOf(system: MemorySystem): IndexCostRecord | null {
+  const candidate = (system as { indexCost?: unknown }).indexCost;
+  if (typeof candidate !== 'function') return null;
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    // A throwing accessor is a broken optional capability, not a failed run.
+    return null;
+  }
+  if (payload === undefined) return emptyIndexCost();
+  if (payload === null || typeof payload !== 'object') return null;
+
+  const record = payload as Record<string, unknown>;
+  for (const key of INDEX_COST_COUNTERS) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null;
+  }
+  if (typeof record.reuse !== 'boolean') return null;
+
+  return {
+    indexes: record.indexes as number,
+    turns: record.turns as number,
+    embedCalls: record.embedCalls as number,
+    embedTexts: record.embedTexts as number,
+    memoHits: record.memoHits as number,
+    reuse: record.reuse,
+    rerankCalls: record.rerankCalls as number,
+    rerankDegraded: record.rerankDegraded as number,
+  };
+}
+
+/**
+ * The product's own retrieval cost, summed across every feature instance and then judged.
+ *
+ * Two rules, in this order, for the reason {@link voteCountsAcross} has two:
+ *
+ * 1. **Sum over instances**, all-or-nothing on the capability. A worker that built no index contributes
+ *    zeros; a worker that cannot answer the question at all makes the total unreadable.
+ * 2. **Zero indexes is not a cost record.** A run that never built one did not price the stack, and
+ *    `selfIndex=indexes:0` would put a mechanism on the page that never ran -- the reading §13.101.2 says
+ *    these censuses exist to prevent. The rule applies to the **total** rather than to a part, because a
+ *    worker with no questions is the normal case under a pool.
+ *
+ * `reuse` is the conjunction over the parts that built something. One index without a store makes the
+ * total incomparable with a run that had one throughout, and an idle worker -- which embedded nothing --
+ * must not turn a stored run into an unstored one.
+ */
+function indexCostAcross(systems: readonly MemorySystem[]): {
+  selfIndex?: MemoryArmConfig['selfIndex'];
+} {
+  if (systems.length === 0) return {};
+  const total: IndexCostSums = { ...emptyIndexCost() };
+  let reuse = true;
+  for (const system of systems) {
+    const one = indexCostOf(system);
+    if (one === null) return {};
+    for (const key of INDEX_COST_COUNTERS) total[key] += one[key];
+    if (one.indexes > 0) reuse = reuse && one.reuse;
+  }
+  if (total.indexes === 0) return {};
+  return { selfIndex: { ...total, reuse } };
 }
 
 /**

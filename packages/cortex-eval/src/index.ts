@@ -578,6 +578,10 @@ export {
 
 export {
   assertRerankReachesRanking,
+  // `self-index`: the one signal whose ranking the product builds, so the entry point has to ask this
+  // module which side of the split a run is on. Exported for the same reason the assertion beside it is --
+  // the decision belongs where a test can reach it, and `bench/**` is outside the coverage boundary.
+  buildsProductIndex,
   cortexMemoryArmEmbeddingCachePath,
   cortextMemoryArmOptions,
   describeEmbeddingCachePersist,
