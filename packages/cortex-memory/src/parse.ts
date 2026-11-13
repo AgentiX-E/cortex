@@ -7,7 +7,7 @@
  * collapsing the two moves accuracy, abstention rate and abstention-aware
  * accuracy at once, in the same direction, without any test failing.
  */
-import type { Answer } from '@agentix-e/cortex-eval';
+import type { Answer } from '@agentix-e/cortex-core';
 
 /**
  * The single literal naming an abstention.

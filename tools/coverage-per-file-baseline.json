@@ -42,6 +42,10 @@
       "kind": "nothing-to-execute",
       "reason": "Declaration-only: `VectorIndex`, `VectorHit` and `VectorFilter`. No runtime export."
     },
+    "cortex-core/src/protocol/memory-system.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "Declaration-only: `Answer`, `MemorySystem` and `SessionAwareMemorySystem`, the contract between a memory system and whatever measures it. Moved here from `cortex-eval/src/types.ts` so the shipping class does not implement an interface owned by the harness; it emits no runtime code, which is why it moved as a block and not as a class."
+    },
     "cortex-eval/src/index.ts": {
       "kind": "nothing-to-execute",
       "reason": "The package root: re-exports only, so no counter of its own. The harness modules behind it are each measured."

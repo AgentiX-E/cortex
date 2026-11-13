@@ -20,9 +20,14 @@
  * 2. **The contract is structural.** Plain object literals satisfy it, no class
  *    hierarchy is required, and `answerPreference` is deliberately absent.
  */
-import type { LLM, MemoryValue, ValueFunction } from '@agentix-e/cortex-core';
+import type {
+  Answer,
+  LLM,
+  MemoryValue,
+  SessionAwareMemorySystem,
+  ValueFunction,
+} from '@agentix-e/cortex-core';
 import { decideRetrieval } from '@agentix-e/cortex-core';
-import type { Answer, SessionAwareMemorySystem } from '@agentix-e/cortex-eval';
 import { conflictBlock, insertRelatedStatements } from './conflict.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 import {

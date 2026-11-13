@@ -322,3 +322,8 @@ export {
   type PackageCensus,
   type CensusReport,
 } from './export-census.js';
+
+// The memory-system protocol: the contract between a memory system and whatever measures it.
+// Lives here rather than in the harness because the shipping class implements it and the product may
+// not depend on the instrument that measures it -- see `protocol/memory-system.ts`.
+export type { Answer, MemorySystem, SessionAwareMemorySystem } from './protocol/memory-system.js';
