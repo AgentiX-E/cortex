@@ -39895,3 +39895,45 @@ is what the next threshold is chosen from.
 
 `Q4` is the one that matters for the archive: it is the assertion that the registered configuration is
 still exactly what it was.
+
+### 13.373.7 Correction, written after the dispatch and before the artifact is read
+
+The screening was dispatched at `threshold=0.25`, `confidence=length`, `limit=200`,
+`ablation_runs=2`, `deepseek-chat`, projected **2.85 CNY**. Two things about it are wrong in the
+section above, and this is written while the artifact is still running so that neither can be
+repaired by reading it.
+
+**1. `sourceTrust` is `0.5`, not `1`.** §13.373.4 states `sourceTrust: 1` "the registered value". It
+is not: the arm's registered table carries `cortex_memory_source_trust = 0.5`, and the `1` came from
+the review note this section was written against rather than from `INPUTS`. The dispatch used 0.5.
+The arithmetic consequence is not cosmetic — the value function is `confidence * sourceTrust *
+(0.5 + 0.5 * recency)`, so at trust 0.5 the reachable interval is `[0, 0.5]` and a cut at `0.25`
+requires `min(1, len / 2000) * (0.5 + 0.5 * recency) >= 0.5`, i.e. **a turn of about 1,000
+characters on a fresh turn**. Section 10.9's 0.25 abstaining on 479 of 500 is that same arithmetic
+seen from the failure side: 0.25 was never a middle-of-the-interval value at this trust, and calling
+it one was the error.
+
+**2. The criterion set omitted the arm's survival.** §13.373.3 registers three criteria and all three
+can hold while the arm is gutted: `rejected > 0` and `distinct >= 2` are satisfied by a gate that
+refuses 98% of turns. So a fourth criterion is registered here, before the reading:
+
+| # | criterion                          | reading when it fails                                                                                                     |
+| - | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 4 | `admitted / candidates >= 0.5`     | the cut was not calibrated to this corpus: **inconclusive as designed**, and *not* evidence that gating hurts          |
+
+The distinction is the whole point of the census. A screening that refuses most of the window
+measures a configuration nobody would ship, and the honest verdict on it is "the threshold was a
+guess", not "the mechanism fails". The next screening's threshold is then derived from the
+artifact's own `min / mean / max / distinct` rather than guessed a second time — the distribution is
+what the census exists to publish.
+
+**3. Why `max_turn_chars=400` does not make that impossible.** The dispatched configuration caps turn
+length at 400 characters on the `multi-session` and `temporal` routes, and `confidenceFromLength`
+saturates at 2,000. A reader could reasonably conclude that no turn can ever exceed `0.2` and that
+`0.25` therefore rejects everything. It does not: the signal reads the **stored** turn at admission,
+and the cap is applied when the window is rendered, one layer later. The two numbers are not in
+conflict, and the difference is exactly what the screening will show. `admitted: 0` is ambiguous
+between two causes, and the census separates them without another dispatch: an `admission.max` of
+about `0.2` means the signal is reading the truncated text (a wiring defect), while a `max` at or
+above `0.25` means the turns simply are shorter than the cut (a calibration mistake, and criterion 4
+says so).
