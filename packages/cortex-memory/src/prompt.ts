@@ -730,10 +730,13 @@ export type PromptOptions = {
    *
    * ## The measurement behind it
    *
-   * On the 200 × 2 pair of 2026-11-13 the 400-character cap was reached by **2,569 of 23,609
-   * delivered blocks (10.9%)** -- and the arm runs `turnCutMarker: 'none'`, so a ninth of the
-   * evidence the reader saw was the *beginning* of a turn with no indication that the rest
-   * existed. `a4996e51` is the case on record: the operand arrived and then stopped.
+   * On the 200 × 2 pair of 2026-11-13 (`43424939177`) the 400-character cap is reached by **644 of
+   * the 10,381 items the two capped routes deliver (6.2%)** -- and the arm runs
+   * `turnCutMarker: 'none'`, so one item in sixteen of that evidence was the *beginning* of a turn
+   * with no indication that the rest existed. `a4996e51` is the case on record: the operand arrived
+   * and then stopped. (The 10.9% this comment used to quote is retired: it gave a share to `IE`,
+   * `KU` and `ABS`, which carry no cap, so it was partly counting long turns as cut ones --
+   * `excerpt.ts`'s header records the correction in full.)
    *
    * `'match'` spends the same characters on the part of the turn that answers the question:
    * rank the turn's content terms against the question's, keep the densest window, and mark every
@@ -2208,11 +2211,30 @@ function contentFor(turn: AdmittedTurn, cap: TurnCap): string {
   const max = cap.maxTurnChars;
   if (max === undefined) return turn.content;
   if (cap.turnWindow === 'match' && cap.focusQuery !== undefined) {
-    return excerptAround(turn.content, cap.focusQuery, max);
+    // The dateline is not the window's to spend. On the two capped routes a turn's content arrives with
+    // its own `[date] {role}:` head attached, so an anchor set by content terms lands after it and the
+    // window would cut the date and the role away -- which on `TR`, whose answers are dates, is worse
+    // than the head cut it replaces. The screening of 2026-11-13 (`43427857069`) measured 226 of 10,381
+    // capped-route items losing their dateline before this line existed, 139 of them on `TR`.
+    //
+    // The budget is the remainder's, not the whole: the cap counts the dateline, so spending `max` on
+    // the window as well would overrun it by the head's length.
+    const head = DATELINE.exec(turn.content)?.[0] ?? '';
+    return `${head}${excerptAround(turn.content.slice(head.length), cap.focusQuery, max - head.length)}`;
   }
   if (cap.turnCutMarker !== 'ellipsis') return truncateCodePointSafe(turn.content, max);
   return cutWithMarker(turn.content, max);
 }
+
+/**
+ * The dateline and role a capped route's turn carries inside its own content.
+ *
+ * Anchored and strict rather than permissive: `[2023/05/20 (Sat) 03:51] user: ` is the shape the
+ * multi-session and temporal builders emit, and a turn that only resembles it keeps its bytes -- the
+ * cost of a false negative here is one dateline inside a window, and the cost of a false positive is a
+ * window that starts mid-sentence because eight characters it should have kept were dropped.
+ */
+const DATELINE = /^\[\d{4}\/\d{2}\/\d{2} \([A-Za-z]{3}\) \d{2}:\d{2}\] [a-z]+: /;
 
 /** The character `'ellipsis'` emits, and the reason it is a single UTF-16 unit. */
 const CUT_MARKER = ELISION;

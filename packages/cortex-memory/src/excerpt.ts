@@ -4,10 +4,19 @@
  * ## The measurement this file starts from
  *
  * The registered arm caps one turn at **400 characters** on `multi-session` and `temporal`
- * (`CORTEX_MEMORY_MAX_TURN_CHARS`), and on the 200 × 2 pair of 2026-11-13 the cap was reached by
- * **2,569 of 23,609 delivered blocks -- 10.9%**, split `MR 9.6%`, `TR 9.4%`, `IE 11.9%`, `KU 12.7%`,
- * `ABS 13.1%`. So roughly one block in nine is not the turn: it is the **first** 400 characters of it,
- * and `turnCutMarker` is `'none'` on that arm, so the reader is not told.
+ * (`CORTEX_MEMORY_MAX_TURN_CHARS`), and on the 200 × 2 pair of 2026-11-13 (`43424939177`, whose prompts
+ * are byte-identical to `43401057514`'s) the cap is reached by **644 of the 10,381 items those two
+ * routes deliver -- 6.2%** (`MR` 281/4,495 = 6.25%, `TR` 363/5,886 = 6.17%). So one item in sixteen of
+ * the evidence on those routes is not the turn: it is the **first** 400 characters of it, and
+ * `turnCutMarker` is `'none'` on that arm, so the reader is not told.
+ *
+ * **The number moved, and the reason is recorded rather than the number replaced.** The figure this
+ * file was first written against was 2,569 of 23,609 (10.9%) with a share for each of five
+ * capabilities, and it does not reproduce against either artifact. The tell was inside that table:
+ * `IE`, `KU` and `ABS` carry **no cap** on this arm -- the reach is `multi-session,temporal` -- so a
+ * share of *cut* items cannot exist for them, and what the earlier count measured there was simply
+ * long turns. The defect is real, and it is smaller than claimed; so is the ceiling on what a window
+ * can recover, which is why `MEASURE-TURN-WINDOW.md` §6 prices it as unknown rather than large.
  *
  * Two consequences are on the record. `a4996e51` is an `MR` question whose decisive turn was delivered
  * and then cut mid-sentence at `...I increase my work hours`, and the reader declined -- correctly, on

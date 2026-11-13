@@ -7,12 +7,19 @@ dispatches nothing; the first sentence that needs a number says which number and
 ## 0. One paragraph
 
 The arm caps one turn at 400 characters on `multi-session` and `temporal`, and on the 200 × 2 pair of
-2026-11-13 (`43401057514`) **2,569 of 23,609 delivered blocks reach that cap — 10.9%** — while
-`turnCutMarker` is `'none'`, so not one of them says it was cut. What the reader receives for those blocks is
-the **beginning** of a turn, chosen by position. `a4996e51` is the case on record: the operand arrived and
-then stopped, and the reader declined, correctly, on a prompt that had lost it. `turnWindow: 'match'` spends
-the same characters on the window around the question's densest lexical match, and marks every elision. The
-claim is non-inferiority at an identical bill; the falsifier is −5 questions.
+2026-11-13 (`43424939177`, whose prompts are byte-identical to `43401057514`'s) **644 of the 10,381 items
+those two routes deliver reach that cap — 6.2%** — while `turnCutMarker` is `'none'`, so not one of them
+says it was cut. What the reader receives for those items is the **beginning** of a turn, chosen by
+position. `a4996e51` is the case on record: the operand arrived and then stopped, and the reader declined,
+correctly, on a prompt that had lost it. `turnWindow: 'match'` spends the same characters on the window
+around the question's densest lexical match, and marks every elision. The claim is non-inferiority at an
+identical bill; the falsifier is −5 questions.
+
+**The number is a correction, and §8 records why.** This document was written against 2,569 of 23,609
+(10.9%) split across five capabilities. That table cannot be right: `IE`, `KU` and `ABS` carry no cap on
+this arm — the reach is `multi-session,temporal` — so they cannot have a share of *cut* items, and the
+earlier count was partly measuring long turns. The defect is smaller than claimed and so is the ceiling on
+what a window can recover, which is why §6 prices that ceiling as unknown.
 
 ## 1. Why this is not a cost lever, and why that matters to the reading
 
@@ -95,8 +102,8 @@ series keeps finding: a field validated at the boundary, recorded on the artifac
 - **It cannot price the head cut's total cost.** Only the blocks that reach the cap are in reach, and of
   those only the ones whose decisive sentence sits past it. A question whose answer is in the head of a long
   turn is unaffected by either window, so the ceiling on this mechanism is unknown until the delta exists —
-  and it is likely to be small: 10.9% of blocks × the share whose fact is deep × the share where the reader
-  fails on it.
+  and it is likely to be small: 6.2% of the items on the two capped routes × the share whose fact is deep ×
+  the share where the reader fails on it.
 - **It cannot compare against a competitor.** No published system reports which characters of a turn it
   prints, so the cross-vendor comparison this row carries is a **mechanism** comparison (`Mem0` extracts
   instead of rendering, and pays a model call per turn for it) rather than a number.
@@ -130,3 +137,94 @@ asserting fails instead of passing vacuously. With that fixture the mutation is 
 What this does **not** establish: that the window is better than the head. Four mutations say the tests can
 see the mechanism; only the dispatch can say whether the mechanism helps, and it is `S10`'s job.
 
+
+## 8. What the first dispatch found, and why it is not a verdict
+
+Two screening runs were made on `a0264108`, 200 × 2 each, serial, 2.85 CNY each:
+
+| | run | artifact | `maxTurnChars` | marker | window |
+| --- | --- | --- | --- | --- | --- |
+| control | `43424939177` | `14038312388` | 400 | `none` | absent |
+| treatment | `43427857069` | `14039216945` | 400 | `ellipsis` | `match` |
+
+### 8.1 The correction to §0
+
+The counting rule is stated so it can be re-run: an evidence item is a chunk of `featurePromptTexts`
+matching `^N. `; the cap applies to the rest of that chunk (`[date] role: content`), so an item is cut
+when that remainder is exactly 400 characters.
+
+| route | items | cut | share |
+| --- | --- | --- | --- |
+| `MR` (multi-session) | 4,495 | 281 | 6.25% |
+| `TR` (temporal) | 5,886 | 363 | 6.17% |
+| both capped routes | **10,381** | **644** | **6.20%** |
+| all five routes | 16,762 | 644 (+1,360 long items on the uncapped three) | 3.84% |
+
+The old figure — 2,569 of 23,609, 10.9%, with a share printed for each of five capabilities — does not
+reproduce, and the reason it could not be right is visible in its own table: three of those five routes
+carry no cap, so a share of *cut* items is not a quantity they have. The defect is real and the ceiling
+on this mechanism is correspondingly smaller.
+
+### 8.2 `P2` holds, and by more than the threshold
+
+| | control | treated | delta |
+| --- | --- | --- | --- |
+| mean delivered evidence characters per question | 29,340.19 | 29,338.95 | **−1.24 (−0.004%)** |
+| sum over 200 questions | 5,868,038 | 5,867,790 | −248 |
+| admitted turns | 85,055 | 85,055 | 0 |
+| admitted characters | 76,351,015 | 76,351,015 | 0 |
+
+The threshold was 2%. The window spends one character per mark and gives back whatever the word-boundary
+snap takes, so the bill does not move: this is the premise of calling the change a free accuracy claim,
+and it is the one prediction that held to the character.
+
+### 8.3 `P1` fails, and the failure is the useful part
+
+- the treatment's items at the cap fell from 644 to **17** on the capped routes — not to the **zero** `P1`
+  asked for, because a fallback to a marked head still spends the whole cap;
+- **226 of the 10,381 capped-route items lost their dateline** (`MR` 87, `TR` 139). On the two capped
+  routes a turn's content arrives with its own `[2026/11/13 (Thu) 09:15] user: ` head attached, and the cap
+  has always counted that head. A window anchored on content terms can land *after* it, so the window was
+  cutting away the date and the role.
+
+The second bullet is why this pair is not a verdict. `TR` asks which month something happened in: a window
+that removes the date is worse than the head cut it replaced, and the pair measured a mechanism that was
+not the one registered. Per §5 decision 4 — *no verdict; fix the wiring and re-dispatch* — the accuracy
+numbers below are recorded and **not read**:
+
+| | control | treated | delta |
+| --- | --- | --- | --- |
+| aggregate | 178.50 / 200 = 89.25% | 179.00 / 200 = 89.50% | **+0.50** |
+| discordant | 5 control-only | 6 treated-only | exact sign-flip p = **1.0000** |
+| `MR` | 24.50 | 23.50 | −1.00 |
+| `TR` | 25.00 | 25.00 | 0.00 |
+| `IE` | 76.50 | 77.00 | +0.50 |
+| `KU` | 23.50 | 24.50 | +1.00 |
+| `ABS` | 29.00 | 29.00 | 0.00 |
+
+`P4` is not evaluable on this instrument and that is worth saying plainly: the bucket holds 29 questions,
+so one question is 3.45 points and the 2-point bound is finer than the instrument's own resolution. This
+is the same lesson as round 90's `−1.50` — a threshold registered for 500 questions cannot be read off a
+200-question ruler.
+
+### 8.4 The fix, and the test that would have caught it
+
+`contentFor` now takes the dateline out before it windows the rest, and gives the window
+`max - dateline.length` rather than `max`:
+
+```ts
+const head = DATELINE.exec(turn.content)?.[0] ?? '';
+return `${head}${excerptAround(turn.content.slice(head.length), cap.focusQuery, max - head.length)}`;
+```
+
+Two tests were written first and both were red: the window keeps the dateline when it lands well past it,
+and it keeps it when the cap is too small to hold a window beside it (31 of 40 characters spent on the
+head, so the rule degenerates to a plain cut *of the remainder*). The grammar is anchored rather than
+permissive — a false negative costs one dateline inside a window, a false positive costs a window that
+starts mid-sentence.
+
+**What this says about the instrument rather than about the mechanism:** the pair was checked against three
+readings that are not scores — items at the cap, items carrying an elision, and (added here) items that kept
+their dateline. The first two said "the window reached the prompt". The third said "and it took something
+with it". A reading that only looked at accuracy would have reported `+0.50` and adopted a window that
+deletes dates on the capability that asks about dates.

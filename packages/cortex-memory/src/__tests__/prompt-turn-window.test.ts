@@ -149,6 +149,39 @@ describe('the anchored turn window', () => {
     }
   });
 
+  it('never spends the dateline, even when the window lands well past it', () => {
+    // On the two capped routes a turn's content arrives with its own `[date] {role}:` head attached, so a
+    // window anchored on content terms can land after it and cut the date away. `TR` asks which month
+    // something happened in: the date is the answer, and a window that removes it is worse than the head
+    // it replaced. The screening of 2026-11-13 (43427857069) measured 226 of 10,381 capped-route items
+    // losing their dateline before this rule existed -- 139 of them on `TR`.
+    const dated = `[2024/03/02 (Sat) 09:15] user: ${HEAD_FILLER}${FACT}${TAIL_FILLER}`;
+    const matched = buildPrompt(QUESTION, [turn(dated)], 'abstention', {
+      maxTurnChars: CAP,
+      turnWindow: 'match',
+    }).prompt;
+
+    const block = blockOf(matched);
+    expect(block.startsWith('[2024/03/02 (Sat) 09:15] user: ')).toBe(true);
+    expect(block).toContain('pottery class');
+    expect(block).toContain(ELISION);
+    expect(block.length).toBeLessThanOrEqual(CAP);
+  });
+
+  it('keeps the dateline when the cap is too small to hold a window beside it', () => {
+    // Four characters is the window rule's own floor, and the dateline is 31 of the 40 here: the budget
+    // for the rest is under four, so the rule degenerates to a plain cut -- of the *remainder*, never of
+    // the dateline.
+    const dated = `[2024/03/02 (Sat) 09:15] user: ${HEAD_FILLER}${FACT}`;
+    const matched = buildPrompt(QUESTION, [turn(dated)], 'abstention', {
+      maxTurnChars: 40,
+      turnWindow: 'match',
+    }).prompt;
+    const block = blockOf(matched);
+    expect(block.startsWith('[2024/03/02 (Sat) 09:15] user: ')).toBe(true);
+    expect(block.length).toBeLessThanOrEqual(40);
+  });
+
   it('falls back to a marked head when the question shares nothing with the turn', () => {
     const matched = buildPrompt('How many marathons did they run?', [turn(LONG)], 'abstention', {
       maxTurnChars: CAP,
