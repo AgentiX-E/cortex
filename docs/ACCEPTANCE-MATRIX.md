@@ -95,6 +95,16 @@ than fifteen because the mechanism spends the same characters: it cannot buy acc
 better-chosen slice of it. Its control is the registered configuration at the same cap, so the pair differs in one
 field and the bill is identical -- which is what makes a win here a win rather than a trade.
 
+Two 200 x 2 screening pairs have run and this row stays `unrun`, deliberately. The second one
+(`43433744411` / `43437140082`) reads **-1.00 questions, p = 0.7812**, and the same instrument produced
+**+1.50 questions between two identical-prompt control runs** -- so the effect is smaller than the redraw on
+this sample, and the registered instrument is the 500 x 4 pair for that reason. The first pair found a real
+defect (226 of 10,381 capped-route items lost their dateline, since fixed and measured at zero) and the second
+found that `P1` -- did the mechanism reach the prompt -- cannot be answered by parsing prompt prose: 53 of 200
+prompts split into a different number of chunks because an assistant's numbered list looks like an item head.
+The counter that replaces that parse is the next increment's first item; `MEASURE-TURN-WINDOW.md` sections 8
+and 9 hold both readings in full.
+
 `S9` is the row that turns "the product can rank" from a claim into a reading. Every other `S*` row is
 measured on an arm whose ranking `cortex-eval` builds **before the run** and hands to the product as a
 callback, so all of them say what the harness can rank. `self-index` is the one signal where

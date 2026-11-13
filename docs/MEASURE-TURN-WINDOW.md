@@ -180,8 +180,14 @@ and it is the one prediction that held to the character.
 
 ### 8.3 `P1` fails, and the failure is the useful part
 
-- the treatment's items at the cap fell from 644 to **17** on the capped routes — not to the **zero** `P1`
-  asked for, because a fallback to a marked head still spends the whole cap;
+- the treatment's items at the cap fell from 644 to **17** on the capped routes, and **16 of those 17 carry
+  no elision at all** — so they are items whose unwindowed content is exactly 400 characters rather than
+  cuts, and the single remaining item that lands exactly on 400 *is* windowed and marked. The first version
+  of this paragraph explained the 17 as "fallbacks to a marked head", which was a guess: a fallback marks,
+  these do not, and the artifact says so. `P1`'s first clause — at least 90% of the items the control cut
+  carry an elision — needs an item-level reading, and this pair cannot give one because dropping the
+  dateline changed how many items each prompt splits into (**+187** on the two capped routes), so the two
+  sides no longer align one to one. §9 reads it on the pair that ran after the fix;
 - **226 of the 10,381 capped-route items lost their dateline** (`MR` 87, `TR` 139). On the two capped
   routes a turn's content arrives with its own `[2026/11/13 (Thu) 09:15] user: ` head attached, and the cap
   has always counted that head. A window anchored on content terms can land *after* it, so the window was
@@ -228,3 +234,88 @@ readings that are not scores — items at the cap, items carrying an elision, an
 their dateline. The first two said "the window reached the prompt". The third said "and it took something
 with it". A reading that only looked at accuracy would have reported `+0.50` and adopted a window that
 deletes dates on the capability that asks about dates.
+
+## 9. The pair that ran after the fix, and the instrument it exposed
+
+Both sides at `8443c4f2`, 200 × 2, serial, 2.85 CNY each. The control's prompts are **byte-identical**
+to the previous dispatch's and to `43401057514`'s, so the fix moved nothing on the head path:
+
+| | run | artifact | window | marker |
+| --- | --- | --- | --- | --- |
+| control | `43433744411` | `14042349235` | absent | `none` |
+| treatment | `43437140082` | `14045142548` | `match` | `ellipsis` |
+
+### 9.1 What holds, and it holds hard
+
+| reading | control | treated | delta |
+| --- | --- | --- | --- |
+| delivered evidence characters per question | 29,340.19 | 29,338.74 | **−1.45 (−0.005%)** |
+| admitted turns / admitted characters | 85,055 / 76,351,015 | 85,055 / 76,351,015 | **0** |
+| items that lost their dateline | — | **0** | the fix, measured |
+| chunks at the cap on the capped routes | 644 | 19 | 16 of the 19 are unwindowed items of exactly 400 |
+
+`P2` settles: the window spends two characters per mark and gives back whatever the boundary snap takes.
+The roster is untouched — the same 85,055 turns and the same 76,351,015 characters on both sides — so an
+accuracy delta cannot belong to the amount of evidence.
+
+**A number this round did not have before: the instrument's own noise.** Two control runs, identical
+prompts to the byte, three hours apart:
+
+| | `43424939177` | `43433744411` |
+| --- | --- | --- |
+| aggregate | 178.50 / 200 | **180.00 / 200** |
+
+**1.50 questions between two draws of the same bytes.** Every delta below ±1.50 on this instrument is a
+redraw.
+
+### 9.2 Accuracy: −1.00, which is inside the redraw
+
+| | control | treated | delta |
+| --- | --- | --- | --- |
+| aggregate | 180.00 / 200 = 90.00% | 179.00 / 200 = 89.50% | **−1.00** |
+| discordant | 6 control-only | 3 treated-only | exact sign-flip p = **0.7812** |
+| `MR` | 23.50 | 25.00 | +1.50 |
+| `TR` | 26.00 | 25.50 | −0.50 |
+| `IE` | 77.00 | 75.00 | −2.00 |
+| `KU` | 24.50 | 24.50 | 0.00 |
+| `ABS` | 29.00 | 29.00 | 0.00 |
+
+`P3` holds (−1.00 ≥ −5). **`P4` is not evaluable here and that is a defect in the prediction, not a
+result:** on a 29-question bucket one question is 3.45 points and on an 86-question bucket it is 1.16, so
+a 2-point bound is finer than the instrument on one bucket and coarser on another. `MR`'s +1.50 and `IE`'s
+−2.00 are both one to two questions. Round 90 wrote this lesson down for `S9` and this row repeated the
+mistake: a bound registered for 500 questions cannot be read off a 200-question sample.
+
+### 9.3 `P1` cannot be read from prose, and that is the finding
+
+`P1` asks what share of the items the control cut now carries an elision. Answering it requires knowing
+*which* control items were cut, and the only source is the prompt text. Both parsers available are wrong in
+a way that matters:
+
+- splitting on blank lines undercounts, because a cut prefix that contains a blank line becomes two chunks;
+- splitting on `^N. ` overcounts, because an assistant's numbered list in the turn's own content looks
+  exactly like an item head. **53 of 200 prompts** split differently between the two sides for this
+  reason alone.
+
+On the aligned subset the reading is **60 of 69 at-cap chunks carry an elision, 87%** — under `P1`'s 90%,
+but measured by an instrument whose own error is larger than the 3-point gap. So the honest sentence is:
+**`P1` is unread, not failed.** Its fixture tests (`prompt-turn-window.test.ts`) pin the property on single
+turns; what is missing is a count in the artifact rather than a parse of the prompt.
+
+### 9.4 The pre-committed decision, applied
+
+§5 decision 4 says: if a reading shows the mechanism did not administer as designed, there is no verdict;
+fix the wiring and re-dispatch. Here the wiring is fixed (dateline, measured at zero losses) and the
+*instrument* is not. So:
+
+1. `S10` stays **`unrun`** and the registered value does not move. The 500 × 4 pair is not dispatched yet.
+2. The next increment's first item is the counter, not the dispatch: the arm records, per question, how
+   many delivered turns were **cut**, how many of those were **marked**, and how many arrived **whole** —
+   computed where the cut happens, so that `P1` is a field and not a parse.
+3. The three readings that are instrument-free (P2, the roster equality, the dateline count) are already
+   enough to say the mechanism is honest about the budget; they are not enough to say it helps.
+
+**One thing this pair does establish, and it is negative:** with 1.50 questions of redraw noise on 200
+questions, a mechanism that can only reach 6.2% of the items on two of five capabilities cannot be resolved
+at this sample size. The 500 × 4 instrument exists for exactly that reason, and dispatching it before the
+counter exists would spend 28.5 CNY to answer a question that a parse cannot settle.
