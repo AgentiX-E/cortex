@@ -400,7 +400,8 @@ Three fields are required and each is required for a reason:
 | `maxTurnChars` | `number` | absent (no cap) | Upper bound on what one turn may contribute. |
 | `turnCutMarker` | `'none' \| 'ellipsis'` | absent | Whether a turn the cap cut says so. Only forwarded on routes the cap reaches. |
 | `maxTurnCharsRoutes` | `readonly TurnCapRoute[]` | absent (all routes) | Which routes the per-turn cap reaches. `[]` reaches none. |
-| `relevanceFor` | `(question, turn) => number` | absent | Ranks which turns the budget is spent on. |
+| `relevanceFor` | `(question, turn) => number` | absent | Ranks which turns the budget is spent on. Wins over `index` when both are given. |
+| `index` | `SearchIndexOptions` | absent | The product's **own** retrieval: postings over the turns of this question, an optional vector channel through `embed`, rank fusion, and an optional `rerank`. Absent keeps the previous behaviour byte for byte. |
 | `relevanceUnits` | `'turn' \| 'session' \| 'session-fill' \| 'anchor-window'` | `'turn'` | The unit the budget is spent in. |
 | `windowRadius` | `number` | absent | Same-session turns bought on each side of an anchor, for `'anchor-window'`. |
 | `promptContract` | `'abstention' \| 'abstention-evidence-blocks' \| 'evidence-blocks-instruction-first' \| 'evidence-blocks-unsourced'` | baseline rendering | The instruction block and evidence layout. |
@@ -640,6 +641,37 @@ The cut is funded over the characters each turn **contributes**, not the charact
 so a `maxTurnChars` cap is accounted for: a 5,000-character turn that the cap reduces to 400
 counts as 400. A plan measured on raw lengths would fund twelve times the prompt it budgets
 and silently do nothing on exactly the routes the cap reaches.
+
+**Ranking turns without a caller-supplied signal.**
+
+`relevanceFor` is a function the caller has to write, so a deployment that omits it spends its
+evidence room in arrival order. `index` is the product's own retrieval: it builds postings over
+the turns of the question, optionally adds a vector channel through an injected batch embedder,
+fuses the channels by rank, and optionally reranks the head. `relevanceFor` still wins when both
+are set, so a measured run can keep its declared signal.
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+// Batched, because a per-turn call cannot be priced; the product never constructs a client.
+declare const embed: (texts: readonly string[]) => Promise<readonly (readonly number[])[]>;
+
+const memory = new CortexMemory({
+  llm,
+  now: 0,
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 200 },
+  index: { embed, k: 64 },
+});
+void memory;
+```
+
+Omitting `index` reproduces the previous behaviour byte for byte, which is what keeps the runs
+already on record comparable. The index is built per question, because the session-aware contract
+hands the corpus in per question; a caller with a stable corpus builds one `SearchIndex` itself and
+passes `relevanceFor`. `lastIndexCensus()` reports what the stage did — `rerankCalls` beside
+`rerankDegraded`, because a reranker that failed and one that agreed produce the same accuracy.
 
 **Only user turns, on the two routes where assistant turns are noise.**
 

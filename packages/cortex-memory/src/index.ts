@@ -32,6 +32,17 @@ export {
   type SayResult,
 } from './disclosure/session.js';
 
+// retrieval
+// The product's own index: postings over `contentTerms`, an optional vector channel through an injected
+// batch embedder, rank fusion, and an optional cross-encoder pass. Exported because a caller with a stable
+// corpus can build one itself and pass `relevanceFor` -- the per-question build `answerSessions` performs is
+// a consequence of the protocol, not of the design.
+export {
+  SearchIndex,
+  type SearchCensus,
+  type SearchIndexOptions,
+} from './retrieval/search-index.js';
+
 // admission
 export {
   admitTurns,

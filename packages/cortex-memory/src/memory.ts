@@ -59,6 +59,7 @@ import {
   planAbstentionRecovery,
 } from './abstention-recovery.js';
 import { planReplyRepair } from './reply-repair.js';
+import { SearchIndex, type SearchCensus } from './retrieval/search-index.js';
 import { planEvidenceRoom, type WidthDecision } from './width.js';
 import {
   adjudicateSupersession,
@@ -428,6 +429,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastWidth: WidthDecision | undefined = undefined;
   /**
+   * What the product's own retrieval did for the question being answered, when `index` is configured.
+   *
+   * Recorded for the same reason `#lastWidth` is: a stage whose configuration is described in the artifact
+   * and whose behaviour is not visible anywhere is a configuration a run can claim without operating. The
+   * pair that matters is `rerankCalls` beside `rerankDegraded` -- a reranker that failed and a reranker that
+   * agreed produce one accuracy, and only this census separates them.
+   */
+  #lastIndex: SearchCensus | undefined = undefined;
+  /**
    * How every vote this instance resolved, counted by outcome.
    *
    * Three outcomes rather than two, because "unanimous" and "majority" are different facts about
@@ -755,6 +765,22 @@ export class CortexMemory implements SessionAwareMemorySystem {
     return decision.plan === undefined
       ? { reason: decision.reason }
       : { reason: decision.reason, plan: { ...decision.plan } };
+  }
+
+  /**
+   * What the product's own retrieval did for the most recent question.
+   *
+   * `undefined` is three states and the arm must not conflate them: `index` was not configured, the question
+   * was declined before any index was built, or the signal came from `relevanceFor` and the product was not
+   * the one ranking. The census exists for the fourth state -- an index that was built -- where
+   * `rerankCalls` beside `rerankDegraded` is the pair that separates a reranker that agreed from one that
+   * returned its input because it failed.
+   *
+   * Returned by value, for the reason `lastWidth()` is: the arm serialises this straight into its artifact.
+   */
+  lastIndexCensus(): SearchCensus | undefined {
+    const census = this.#lastIndex;
+    return census === undefined ? undefined : { ...census, channels: [...census.channels] };
   }
 
   /**
@@ -1182,20 +1208,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // earlier version carried a `selected.length === 0` guard here that no test
     // could reach, which is how the redundancy was found.
     //
-    // The relevance signal is threaded through from `relevanceFor`, and the
-    // question is bound here rather than captured anywhere below. Without it the
-    // ranking is `bestValue`, which is `0.5` for every session in the shipped
-    // configuration -- so the budget was spending itself in arrival order while
-    // the artifact named a session budget. See `sessionize.ts` for the
-    // measurement and for why this is a parameter of the budget rather than a
-    // second `confidenceFor`.
-    //
-    // Only this route passes one. `#admit` flattens sessions for the flat routes,
-    // where the turns are re-ranked by `PromptOptions.relevanceFor` inside the
-    // prompt, so a session order there would be discarded before it was read --
-    // and wiring a signal nobody consumes is the inert-configuration defect this
-    // file has already been audited for twice.
-    const relevance = this.#options.relevanceFor;
+    // The relevance signal is resolved once, over every eligible session's turns, so the budget and the
+    // prompt rank the same corpus. Resolving twice would let the product's index narrow one set and rank
+    // another -- and with a vector channel that is not a hypothetical: the budget would order sessions by a
+    // signal the prompt never received.
+    const relevance = await this.#relevanceFor(
+      question,
+      eligible.flatMap((session) => session.turns),
+    );
     const selected = selectSessionBudget(
       eligible,
       this.#options.gate.sessionBudget,
@@ -1215,7 +1235,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // The boundary label is the reason this path exists. Flattening the
     // sessions here would reproduce exactly the behaviour of the flat path and
     // make the MR route decorative.
-    return this.#promptSessionAware(question, selected);
+    return this.#promptSessionAware(question, selected, relevance);
   }
 
   /** Relative-time answering. The date is the reference point, and only this path gets it. */
@@ -1379,6 +1399,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // place would make `lastWidth()` describe a cut that this question never had -- and the arm writes
     // that field once per question.
     this.#lastWidth = undefined;
+    // Same argument one field over: the arm writes this census per question, and a decline from a question
+    // that never built an index must not inherit the previous question's counters.
+    this.#lastIndex = undefined;
     return null;
   }
 
@@ -1471,6 +1494,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const options = this.#promptOptions(
       route,
       this.#widthFor(question, kept, route)?.plan?.evidenceChars,
+      await this.#relevanceFor(question, kept),
     );
     const ordering = this.#orderingFor(question, questionDate);
     const assembled = this.#withConflicts(
@@ -1729,6 +1753,15 @@ export class CortexMemory implements SessionAwareMemorySystem {
   async #promptSessionAware(
     question: string,
     sessions: readonly AdmittedSession[],
+    /**
+     * The signal the caller already resolved for this question, when it did.
+     *
+     * Passed rather than re-resolved here because the session budget above ranked sessions with it: a second
+     * resolution would build a second index, and with a vector channel the two would not be the same index.
+     * `undefined` means the caller resolved nothing and `#promptOptions` falls back to the configured
+     * override, which is the state every pre-`index` call site is in.
+     */
+    relevance?: (question: string, turn: string) => number,
   ): Promise<Answer> {
     // §14.126. The width is decided over the turns this route will render, flattened, so the plan ranks
     // the same set `buildSessionPrompt` will spend the room on. Ranking the sessions instead would make
@@ -1741,6 +1774,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
         sessions.flatMap((session) => session.turns),
         'multi-session',
       )?.plan?.evidenceChars,
+      relevance,
     );
     const assembled = buildSessionPrompt(
       question,
@@ -2245,7 +2279,57 @@ export class CortexMemory implements SessionAwareMemorySystem {
     return turns.map((turn) => Math.min(turn.content.length, cap));
   }
 
-  #promptOptions(route: TurnCapRoute, evidenceChars?: number): PromptOptions {
+  /**
+   * The relevance signal this question is answered with.
+   *
+   * Three states, and the order between them is the contract:
+   *
+   * 1. **`relevanceFor` supplied** -- returned untouched. The arm passes `cortex-eval`'s index through it, so
+   *    a measured run and a shipped run cannot drift: the override is what makes the reading describe the
+   *    product rather than a second implementation of it.
+   * 2. **`index` configured** -- the product builds the index over the turns of *this* question, primes the
+   *    vector channel in one batch, and returns a synchronous lookup. `#lastIndex` records what it did.
+   * 3. **Neither** -- `undefined`, and the prompt keeps its previous behaviour byte for byte: arrival order,
+   *    clipped from the tail. That third state is not a fallback for a broken configuration; it is the
+   *    configuration every run on record was taken with, and changing it silently would move every delta.
+   *
+   * The index is built per question because the corpus arrives per question
+   * (`answerSessions(question, sessions)`). A caller with a stable corpus holds one `SearchIndex` and passes
+   * `relevanceFor`; that is the same path state 1 covers, not a fourth one.
+   */
+  async #relevanceFor(
+    question: string,
+    turns: readonly AdmittedTurn[],
+  ): Promise<((question: string, turn: string) => number) | undefined> {
+    const override = this.#options.relevanceFor;
+    if (override !== undefined) return override;
+
+    const index = this.#options.index;
+    if (index === undefined || turns.length === 0) return undefined;
+
+    const built = new SearchIndex(index);
+    built.add(turns.map((turn) => turn.content));
+    await built.prime();
+    // `k` is spent per channel by the index and again on the fused list, so a caller naming `k` bounds the
+    // pool the budget may draw from rather than only the vector channel's contribution to it.
+    const scorer = await built.lookup(question, index.k);
+    // After the lookup, not before: the query embedding and the reranker both fire inside it, so a census
+    // taken earlier would report a run that made one model call and never the second -- and `rerankCalls`
+    // would be zero on every run, which is the exact count a reader would use to decide the stage ran.
+    this.#lastIndex = built.census();
+    return scorer;
+  }
+
+  #promptOptions(
+    route: TurnCapRoute,
+    evidenceChars?: number,
+    relevance?: (question: string, turn: string) => number,
+  ): PromptOptions {
+    // The resolved signal is the parameter when this route resolved one, and the configured override
+    // otherwise. Threaded as an argument rather than read from `#options` at each call site because the
+    // product's own index is a *per-question* signal: it does not exist until the question is known, and a
+    // lookup that fell back to the field would hand four routes the previous question's ranking.
+    const signal = relevance ?? this.#options.relevanceFor;
     // `promptContract` is absent on every pre-switch construction, and an absent
     // contract means the baseline rendering -- which is the same answer as naming
     // `abstention`. The lookup is guarded rather than defaulted so the record stays a
@@ -2300,9 +2384,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
       // same argument `#admit` makes for applying the session budget in one place.
       // Spread conditionally because `admission.ts` and this class both treat a
       // present-but-undefined key as "configured".
-      ...(this.#options.relevanceFor === undefined
-        ? {}
-        : { relevanceFor: this.#options.relevanceFor }),
+      ...(signal === undefined ? {} : { relevanceFor: signal }),
       // Forwarded for the same reason and from the same place. Only the multi-session
       // route reads it, and that is a property of the route rather than of this
       // forwarding: `buildPrompt` receives no session boundary, so a selection in

@@ -232,3 +232,84 @@ cheapest fact source that cannot hurt is the one the product already computes** 
   not worth building.
 - **It cannot measure.** No run was dispatched for this file; every number above is either a line count, a
   call-chain fact, or a figure quoted from an existing artifact with its run id.
+
+## 9. The four capabilities an answering system needs, and which of them the product had
+
+§3 counted the semantic kernel and found 5 of 19 rows on the shipping path. That count was about the
+*knowledge* layer. A sharper question was asked of it, and the answer is worse: of the four things an
+answering system must do — retrieve, rerank, read, judge — the product owned **one and a half**.
+
+The distinction matters because "the semantic layer is unwired" is a statement about an optional
+capability, and "the product does not retrieve" is a statement about the thing it is sold as.
+
+### 9.1 The table, with the file that decides each row
+
+| capability | where it lived | evidence | verdict |
+| --- | --- | --- | --- |
+| **reader** | `cortex-memory` | `memory.ts:12` states the flow; `prompt.ts` (five contracts, the retry and repair paths), `parse.ts`, `#consult` calls `LLM.complete` | **product. Never was the gap.** |
+| **judge** | `cortex-eval` | `question-record.ts`, `metrics.ts` | **correctly not the product.** A ruler inside the thing it measures measures nothing. |
+| **retrieval** | `cortex-eval` | `relevance-index.ts` (665 lines) builds the index and the rerank, then hands `CortexMemory` a synchronous `(question, turn) => number` through `relevanceFor` (`types.ts:359`) | **not the product.** With no callback the room was spent in arrival order. |
+| **rerank** | `cortex-core` mechanically, `cortex-eval` in practice | `retrieval/rerank.ts` exports `rerankHits`; its callers are `relevance-index.ts:663` and `natural-language-memory.ts`, both in the harness. `cortex-memory` imports neither. | **not the product.** The mechanism existed one layer below and had no product caller — the same shape §3 recorded for `assemble`. |
+
+So the audit's charge is half right, and the half it got right is the half that matters. §4.4 was also half
+right for the same reason: the 91.25% row *does* run `CortexMemory`, and the ranking inside it comes from the
+instrument.
+
+### 9.2 Why "inject the signal" was not a boundary but a hole
+
+`types.ts` defended the callback with the criterion `relevance.ts` states: *"I/O-free and model-free — no
+embedding, no LLM"*, which is what lets this package depend on `cortex-core` alone. The criterion is right.
+The conclusion drawn from it was not: the package that will not read a model still has to **decide what the
+model is asked about**, and there is a difference between *constructing a client* and *composing a mechanism
+whose scoring function is injected*. The package already draws that distinction correctly for the reader —
+`LLM` is an interface it is handed, not a client it builds — and it simply had not drawn it for retrieval.
+
+Two consequences followed, and both are visible in the archived numbers:
+
+1. **The product could not answer without being ranked.** `chooseEvidence` falls back to
+   `truncateCodePointSafe(plan.render(plan.turns), room)` when `relevanceFor` is absent — a prefix of arrival
+   order. That is why `38114272884` measured the gold turn inside the delivered prefix for 12.4% of questions.
+2. **The retrieval that produced every published figure had no product-side counterpart.** A defect in it
+   could only be found by reading `cortex-eval`, and a user of the published package could not reproduce it at
+   all.
+
+### 9.3 The repair, and what it deliberately is not
+
+`retrieval/search-index.ts` composes the missing two:
+
+| stage | decision | why that decision |
+| --- | --- | --- |
+| lexical channel | `contentTerms` + `lexicalRelevance`, the product's own definitions, with postings used only to narrow candidates | a second scorer with the same name would make "lexical" mean two things, and an index whose candidate set disagrees with its scorer can drop the turn the scorer ranks first |
+| vector channel | injected batch `embed`, cosine over the values | batching is the contract because a per-turn call cannot be priced; the package still reads no model |
+| fusion | reciprocal rank, `k = 60` | cosine, lexical and any future BM25 do not share a scale, and a normaliser is a free parameter the benchmark would then be measuring |
+| rerank | `cortex-core`'s `rerankHits` over the fused head, with the scorer wrapped | the core function degrades to the input order on every failure, so `rerankCalls` beside `rerankDegraded` is what separates a stage that agreed from a stage that failed |
+| score after fusion | the position, `1 / (60 + rank)` | the prompt sorts on this number; keeping a channel's raw magnitude would let the sort undo the reranker it never saw |
+
+It is **not** a second retrieval stack beside the harness's. `relevanceFor` still wins when both are supplied,
+so every registered arm keeps its declared signal and the archived runs stay comparable; `index` absent
+reproduces the previous bytes exactly, which is asserted on the flat **and** the session-aware route.
+
+### 9.4 The defect the wiring test caught, which no unit test could
+
+The first version of `lookup` returned `(turn: string) => number`. Every unit test of the index passed. The
+prompt calls `relevanceFor(question, turn)`, so the map was queried with the **question**, missed on every
+turn, scored them all zero, and the selection fell back to arrival order — while the census reported a healthy
+index with `turns: 12, terms: 7`. The failure is invisible in any test of the mechanism and obvious in a test
+that asserts a late topical turn reaches the prompt, which is why `search-wiring.test.ts` exists beside
+`search-index.test.ts`. The returned signature is now the prompt's, and one test pins the parameter that is
+not read by comparing the same turn under two different questions.
+
+The second defect is the census's own timing: it was snapshotted before `lookup`, so `embedCalls` counted the
+corpus batch and never the query, and `rerankCalls` would have been `0` on every run — the exact count a
+reader would use to decide the stage ran. It is taken after the lookup now.
+
+### 9.5 What this does and does not establish
+
+**Does:** the product can retrieve, fuse and rerank on its own; the option reaches the prompt on the flat and
+the session-aware routes; absence is the identity; the override wins; every stage that can silently degrade is
+counted.
+
+**Does not:** measure whether the product's own retrieval is *better* than the harness's. That is a dispatch,
+not a paragraph, and the arm it needs is one whose `relevanceFor` is absent and whose `index` is set — the
+first configuration in this repository's history where the product ranks for itself. Until that reading
+exists, the claim is capability, not quality.

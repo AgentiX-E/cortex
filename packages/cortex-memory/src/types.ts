@@ -9,6 +9,7 @@
  */
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
 import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
+import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { WidthPlanOptions } from './width.js';
 
 /** The knobs the admission gates expose. */
@@ -337,13 +338,19 @@ export type CortexMemoryOptions = {
    * not — a signal that moved admissions would make the next run's delta
    * uninterpretable, two variables having moved at once.
    *
-   * ## Why it is injected rather than computed here
+   * ## Why it is injected, and what changed about that
    *
    * A relevance score is a retrieval measurement, and this package reads no
-   * embedding model: the same boundary `confidenceFor` and `llm` already draw. On
-   * the arm the signal comes from `cortex-eval`'s own retrieval, so the ranking the
-   * reference pipeline uses and the ranking the feature selects with are one
-   * ranking rather than two.
+   * embedding model: the same boundary `confidenceFor` and `llm` already draw.
+   *
+   * That sentence used to be the whole answer, and it was not enough. It left the product unable to rank at
+   * all unless the caller had already ranked -- so with no callback the budget was spent in arrival order
+   * (`chooseEvidence` → `truncateCodePointSafe`), and "retrieval" was something the harness did and this
+   * package consumed. `index` below is the repair: the product builds the index, fuses the channels and
+   * composes the reranker itself, with the model injected the same way `llm` is. `relevanceFor` survives as
+   * the **override** -- the arm passes `cortex-eval`'s index through it so a measured run and a shipped run
+   * cannot drift apart -- and it wins when both are supplied, because a run that names a signal must be the
+   * run that used it.
    *
    * ## What it is for, measured
    *
@@ -357,6 +364,32 @@ export type CortexMemoryOptions = {
    * See `PromptOptions.relevanceFor` for the selection and presentation rules.
    */
   relevanceFor?: (question: string, turn: string) => number;
+  /**
+   * The product's own retrieval: an index built over the turns of the current question.
+   *
+   * Absent means the previous behaviour byte for byte -- `relevanceFor` when supplied, arrival order when
+   * not -- which is what keeps this a single-variable dispatch rather than a silent change to every run
+   * already on record. Present means `CortexMemory` scores the turns itself: postings over `contentTerms`,
+   * an optional vector channel through `embed`, rank fusion (RRF) across the channels, and an optional
+   * cross-encoder pass through `rerank`.
+   *
+   * ## Why the model is inside `index` and not inside this package
+   *
+   * `EmbedFn` is injected for the reason `LLM` is: the class composes a mechanism, and a mechanism that
+   * constructs its own client cannot be run without a key, a network and a bill. An index with no `embed` is
+   * a lexical index and a working one, so the product answers questions with no model at all -- which is
+   * the property `relevance.ts` calls "I/O-free and model-free" and which the product had until now only by
+   * refusing to retrieve.
+   *
+   * ## The cost, stated because it is real
+   *
+   * The corpus arrives per question (`answerSessions(question, sessions)`), so the index is built per
+   * question and its vectors are not shared across questions. That is the protocol's shape, not an
+   * oversight: a system that indexes a haystack once would need an `ingest`, which this contract does not
+   * have. A caller with a stable corpus can hold one `SearchIndex` itself and pass `relevanceFor`.
+   */
+  index?: SearchIndexOptions | undefined;
+
   /**
    * The unit the evidence room is spent in. Absent means `'turn'`.
    *

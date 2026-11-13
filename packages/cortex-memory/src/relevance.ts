@@ -154,8 +154,13 @@ const COVERAGE_WEIGHT = 0.85;
  *
  * Returns duplicates. Coverage needs the distinct set and order needs the sequence, and building one from the
  * other would make the two terms read the same input differently.
+ *
+ * Exported because `retrieval/search-index.ts` builds its postings over the same terms. Two tokenisers would
+ * be two definitions of "the question mentions this", and an index whose candidate set disagrees with the
+ * scorer that ranks it can drop the one turn the scorer would have ranked first -- a difference that
+ * surfaces as a slightly worse ranking rather than as a defect.
  */
-function terms(text: string): string[] {
+export function contentTerms(text: string): string[] {
   const out: string[] = [];
   for (const raw of text.toLowerCase().split(/[^a-z0-9]+/)) {
     if (raw.length < 2) continue;
@@ -176,11 +181,11 @@ function terms(text: string): string[] {
  * "when when" is one question — and every occurrence for order, because adjacency is positional.
  */
 export function lexicalRelevance(question: string, turn: string): number {
-  const asked = terms(question);
+  const asked = contentTerms(question);
   if (asked.length === 0) return 0;
 
   const wanted = [...new Set(asked)];
-  const seen = new Set(terms(turn));
+  const seen = new Set(contentTerms(turn));
 
   let covered = 0;
   for (const term of wanted) {
@@ -190,7 +195,7 @@ export function lexicalRelevance(question: string, turn: string): number {
 
   // Adjacency over the distinct sequence: a question that repeats a term should not have its order score
   // diluted by the repetition, and the pairs that matter are the pairs it asks in.
-  const presented = terms(turn);
+  const presented = contentTerms(turn);
   const adjacent = new Set<string>();
   for (let index = 0; index + 1 < presented.length; index += 1) {
     adjacent.add(`${presented[index]} ${presented[index + 1]}`);
