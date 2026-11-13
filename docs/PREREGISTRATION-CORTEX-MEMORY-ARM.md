@@ -39937,3 +39937,65 @@ between two causes, and the census separates them without another dispatch: an `
 about `0.2` means the signal is reading the truncated text (a wiring defect), while a `max` at or
 above `0.25` means the turns simply are shorter than the cut (a calibration mistake, and criterion 4
 says so).
+
+### 13.373.8 The reading: the census answered, criterion 4 failed, and the run failed its own audit
+
+Run `43465626013` (200 questions x 2 repetitions, 2.85 CNY, head `f83f2318`). Read against
+§13.373.3 and §13.373.7, in the order they were registered.
+
+**The census works, and this is the first artifact that says so.**
+
+```
+admission=candidates:198582+admitted:78884+rejected:119698+min:0.008+max:0.500+mean:0.220+distinct:64+
+```
+
+| # | criterion | reading | verdict |
+| - | --- | --- | --- |
+| 1 | `candidates > 0` | 198,582 | **pass** — the gate saw every turn the run admitted into it |
+| 2 | `rejected > 0` | 119,698 (60.3% of candidates) | **pass** — the threshold cut, and the cut is counted rather than described |
+| 3 | `distinct >= 2` | 64, saturated (`+`) | **pass, as a lower bound** — the signal varies; the true distinct count exceeds the cap |
+| 4 | `admitted / candidates >= 0.5` | **0.397** | **FAIL** |
+
+Criterion 4's failure is the pre-registered one, and it is read exactly as §13.373.7 said it would be:
+**inconclusive as designed**, not "the gate does not help". The cut refused 60% of the corpus on a
+threshold that was a guess, and the distribution says why the guess was wrong: `mean: 0.220`,
+`max: 0.500`. With `sourceTrust = 0.5` the ceiling is `0.5`, so `0.25` is the **midpoint of the
+interval** and not the midpoint of the *population* — half the reachable range is above the mean of
+the values the corpus actually produces. The next threshold is derived from this distribution, not
+chosen again: `0.10`-`0.15` is where `mean - 1 sd` sits for a signal whose within-corpus spread is
+this wide, and the next screening must report its own `admitted / candidates` above 0.5.
+
+**The scores in this artifact are not quotable, and that is a property of the sample rather than of
+the gate.** 200 questions, `IE` 86 of them; the reference pipeline abstains on 72 of those 86 and
+scores 2 of 86 (2.3%), so the reference reads 38.50% overall against the arm's 51.00% (+12.50pp,
+McNemar p = 2.61e-2). §13.361.3 already recorded that the 200-question population reverses sign
+against the 500-question one; nothing here contradicts it, and this reading stays out of every
+product table.
+
+**The run failed its own audit, on `roles`, and the finding is bigger than the check.**
+
+| | |
+| --- | --- |
+| audit line | `FAIL roles evidenceRoles=['user'] on ['multi-session', 'temporal']; 4 window(s) carry an assistant turn, first 28dc39ac` |
+| what `28dc39ac` delivered | **11 turns, 11 of them assistant**; `goldOverlap.carried = 0` of **30** gold user turns |
+| would the product's own classifier have dropped them? | **Yes** — all 11 match `^\[[^\]]+\]\s*(user|assistant)\s*:` and resolve to `assistant` |
+
+So the artifact's `turns` field and the audit's reading of it disagree about what the field means, and
+the disagreement is checkable rather than theoretical: if `turns` were the **delivered** window, a
+filter that classifies all eleven as assistant could not have delivered them; if `turns` were the
+**admitted pool**, the audit is reading a pre-filter field and its sentence names a window it never
+looked at. Either way one of the two is wrong, and this is the class of defect the census was built
+to end — **one field, two meanings** — one layer down from where it was fixed.
+
+What the gate contributed is separate and does not depend on resolving that: `length` is
+`min(1, len / 2000)`, and in this corpus assistant turns are longer than user turns. A length gate
+therefore removes user turns first. On `28dc39ac` it removed **all thirty** gold user turns and left
+assistant text, which is why `goldOverlap.carried` is 0 — a mechanism nobody registered, discovered
+because a run at a guessed threshold was screened before being scored.
+
+**Two things are therefore registered as the next increments, in this order.** First, the artifact
+must say which set `turns` is and carry an `unknown`/`filtered` counter beside it, so a role filter's
+effect — and its escape hatch for unclassifiable turns — is a number rather than an inference from a
+list. Second, the threshold comes from the distribution this artifact published. No 500-question pair
+is dispatched in between: §13.373.5 already says a screening licenses no accuracy claim, and this one
+licenses two defects instead of a reading.
