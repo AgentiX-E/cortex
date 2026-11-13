@@ -39999,3 +39999,70 @@ effect — and its escape hatch for unclassifiable turns — is a number rather 
 list. Second, the threshold comes from the distribution this artifact published. No 500-question pair
 is dispatched in between: §13.373.5 already says a screening licenses no accuracy claim, and this one
 licenses two defects instead of a reading.
+
+### 13.373.9 Correction: the four role `FAIL`s were misattributed records, not a filter that stopped working
+
+§13.373.8 read the audit's `roles` line as "either the filter did not run, or `turns` is the
+pre-filter pool", and separately proposed that a length gate "removes user turns first" as the
+explanation for `goldOverlap.carried: 0`. Both readings are wrong, and the artifact contains the
+refutation of both.
+
+**What the population actually shows.** Of the 57 `MR` and `TR` questions in `43465626013` — the
+only two capabilities `evidenceRolesRoutes` reaches — **53 deliver a window that is 100% user
+turns**. The filter runs. It was never the defect.
+
+**What the four exceptions have in common.** They are the only four records in the artifact with
+`promptVariants: 2`, and all four carry `answer: null`. Their delivered windows are not their own:
+
+| record | first delivered turn | byte-identical to | its own gold |
+| --- | --- | --- | --- |
+| `28dc39ac` | `[2023/05/20 (Sat) 20:20] assistant: Based on your description, it's likely that Hwang's Kitchen's ...` | index 101 (`38146c39`) | 30 user turns about open-world games |
+| `gpt4_4fc4f797` | `[2023/04/24 (Mon) 19:17] assistant: New Orleans is an amazing city! ...` | index 169 (`6aeb4375_abs`) | 11 turns about car suspension |
+| `gpt4_7fce9456` | `[2023/05/20 (Sat) 02:16] assistant: I think there's been a misunderstanding! ...` | index 154 (`6b168ec8`) | 30 turns about viewing properties |
+| `gpt4_a1b77f9c` | `[2023/05/11 (Thu) 02:24] assistant: I'm happy to help! However, I'm a large language model ...` | index 124 (`f9e8c073`) | 36 turns about reading weeks |
+
+`rawOutput` travels with them: `28dc39ac`'s is index 101's `1. [2023/05/27 (Sat) 07:11] Turbinado
+sugar ...`, `gpt4_7fce9456`'s is index 154's `3`, `gpt4_4fc4f797`'s is index 169's
+`INSUFFICIENT_EVIDENCE`. A whole record was copied, not a field.
+
+**The mechanism, and why two slots were already right.** `CortexMemory.#declinedEmpty` cleared
+`#lastWidth` and `#lastIndex`, with an argument that applies verbatim to the six slots it left
+alone — `#lastRetrievedContext`, `#lastAdmittedEvidence`, `#lastPromptEvidenceChars`,
+`#lastPromptText`, `#lastRawOutput`, `#lastReview`/`#lastVote`. Every one of them is per-question
+state that the arm reads exactly once, after the question, so a surviving value is a
+**misattribution** rather than a stale reading. All four records are declines that reached that
+method, and each one inherited the last answered question on its worker.
+
+**So what §13.373.8 got wrong is the attribution, and the direction of the error matters.** The
+published sentence was "`length` gates remove user turns first, which is why `goldOverlap.carried`
+is 0". The number was real; it belonged to another question. That is the failure class this
+campaign is against — not a wrong number, but a right number attached to the wrong row — and it is
+the second time in three sections that a field's meaning had two owners (§92 was the census
+numerator).
+
+**The repair, registered as a property rather than a patch.** `#resetPerQuestion` is now one named
+method called from **both** exits that leave the reader unreached — `#declinedEmpty` and
+`answerAbstention`'s retrieval gate — because the rule had been restated per field at one of two
+call sites. It sets the four reader-side slots and the offer to `null` rather than `[]`, and the
+docstrings are the authority for that choice: `[]` means "the reader was reached and carried
+nothing", `null` means "no reader was reached". The offer is cleared too, even though it *was*
+computed on the abstention path, because the artifact publishes it beside the delivery and
+`question-record.ts` documents `turns.length < evidenceTurns` as "a budget removed turns" — so
+`turns: []` with `evidenceTurns: 5` would read as a cut rather than as an unreached reader.
+
+`decline-resets-capture.test.ts` holds it with six tests, one per exit and one per slot group, and
+six mutations of the repair are killed: the reset reverting to two slots, the offer surviving, the
+raw output surviving, `[]` substituted for `null`, the abstention exit dropping the call, and the
+prompt text surviving.
+
+**What this does not change.** The four questions were `correct: false` before the repair and are
+`correct: false` after it, because `answer` was already `null` — the score of `43465626013` is
+untouched. What changes is that the four rows stop claiming to describe a window, and that any
+future reading of `goldOverlap`, `evidenceTurns`, `unscoredChars` or `promptDigest` on a declined
+question is about that question.
+
+**What it re-opens.** §13.373.8's fourth criterion (`admitted / candidates >= 0.5`) was read on a
+census, not on these records, so it stands. Its failure stands. The next screening still takes its
+threshold from the published distribution, and now it will also be able to say how many questions
+the gate closed outright, because those questions will no longer arrive wearing someone else's
+window.

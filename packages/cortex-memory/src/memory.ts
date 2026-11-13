@@ -1419,6 +1419,9 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // looking at a bug, which is what the widened census's test pins.
     if (!this.#retrievalAdmitted(turns)) {
       this.#reasons.threshold += 1;
+      // The second exit that leaves the reader unreached, and the reason the reset is a named method:
+      // this one was added after the four slots it has to clear, and it did not clear them.
+      this.#resetPerQuestion();
       return null;
     }
 
@@ -1515,6 +1518,55 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #declinedEmpty(): null {
     this.#reasons.empty += 1;
+    this.#resetPerQuestion();
+    return null;
+  }
+
+  /**
+   * Clear every slot a reader of the artifact reads exactly once, after one question.
+   *
+   * ## Why this is one method rather than a paragraph repeated at two exits
+   *
+   * There are two ways to decline before the reader is reached: `#declinedEmpty` (nothing was
+   * admitted, or a filter left nothing) and `answerAbstention`'s retrieval gate (evidence was
+   * admitted, the machine decided the question is unanswerable). Both leave the slots holding the
+   * previous question's values, and both were leaving them. The reset was written for `#lastWidth`
+   * and `#lastIndex` only, at one of the two exits, which is the shape a rule takes when it is
+   * restated per field instead of named once.
+   *
+   * ## What the misattribution cost, named
+   *
+   * Screening run `43465626013` produced four records carrying the **wrong question's** evidence.
+   * `28dc39ac`'s first delivered turn is `[2023/05/20 (Sat) 20:20] assistant: Based on your
+   * description, it's likely that Hwang's Kitchen's ...` and index 101's is the same string, on a
+   * question whose gold is thirty user turns about open-world games. `gpt4_4fc4f797` carries index
+   * 169's `New Orleans is an amazing city!`, `gpt4_7fce9456` index 154's, `gpt4_a1b77f9c` index
+   * 124's. All four are `answer: null`; all four are the only records in that artifact with
+   * `promptVariants: 2`.
+   *
+   * The reading published for them -- `goldOverlap.carried: 0 of 30`, "retrieval never surfaced a
+   * gold turn" -- was about a different question. That is the failure this campaign is against: not
+   * a wrong number, but a right number attached to the wrong row.
+   *
+   * ## Why the offer is cleared too, and not kept as a true reading
+   *
+   * `#lastAdmittedEvidence` really was computed on the abstention path, so keeping it would be
+   * honest in isolation. It is cleared because the artifact publishes it **beside** the delivery,
+   * and `question-record.ts` documents `turns.length < evidenceTurns` as "a budget or a bound
+   * removed turns". `turns: []` with `evidenceTurns: 5` would therefore read as a cut, when the
+   * truth is that no reader was reached. Both are absent instead, which is the state the same
+   * docstring defines for a system that cannot report the pair.
+   *
+   * ## `null` rather than `[]`, and the docstrings are the authority
+   *
+   * `[]` means "the reader was reached and carried nothing"; `null` means "no reader was reached".
+   * Every exit that calls this one is the second kind by definition -- it is taken before
+   * `#consult` -- so `[]` here would be a claim that a prompt was built and left empty.
+   */
+  #resetPerQuestion(): void {
+    this.#lastRawOutput = null;
+    this.#lastReview = null;
+    this.#lastVote = null;
     // No prompt was assembled, so no budget was decided. Leaving the previous question's decision in
     // place would make `lastWidth()` describe a cut that this question never had -- and the arm writes
     // that field once per question.
@@ -1522,7 +1574,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // Same argument one field over: the arm writes this census per question, and a decline from a question
     // that never built an index must not inherit the previous question's counters.
     this.#lastIndex = undefined;
-    return null;
+    this.#lastRetrievedContext = null;
+    this.#lastAdmittedEvidence = null;
+    this.#lastPromptEvidenceChars = null;
+    this.#lastPromptText = null;
   }
 
   /**
