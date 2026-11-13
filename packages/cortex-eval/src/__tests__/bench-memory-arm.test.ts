@@ -4992,8 +4992,52 @@ describe('the cut marker on the arm', () => {
     }
   });
 
-  it('takes one marker at most', () => {
-    expect(() => arm('400:ellipsis:none')).toThrow(/one optional marker/);
+  it('takes a marker and a window, and nothing after them', () => {
+    // §14.143 added the third segment, so the guard moved one place out: three segments parse, four are
+    // refused. The failure this pins is a parser that kept `parts.length > 2` and silently dropped the
+    // window -- a treatment published under a control's prompt.
+    const options = arm('400:ellipsis:match');
+    expect(options.maxTurnChars).toBe(400);
+    expect(options.turnCutMarker).toBe('ellipsis');
+    expect(options.turnWindow).toBe('match');
+    expect(toMemoryArmConfig(options).turnWindow).toBe('match');
+    expect(line(options)).toContain('turnWindow=match');
+
+    expect(() => arm('400:ellipsis:match:extra')).toThrow(/optional window/);
+  });
+
+  it('lets an empty segment mean "not named", so `400::match` is the spelling for a window with no marker', () => {
+    const options = arm('400::match');
+    expect(options.turnWindow).toBe('match');
+    // And the marker it records is the one the prompt prints: a window always marks, so an artifact saying
+    // `turnCutMarker=none` beside a prompt full of `…` would be a configuration contradicting its own output.
+    expect(options.turnCutMarker).toBe('ellipsis');
+    expect(toMemoryArmConfig(options).turnCutMarker).toBe('ellipsis');
+  });
+
+  it('refuses a silent marker on a window that always marks', () => {
+    // The contradiction this guard exists for: the artifact records the marker as a fact about the prompt.
+    expect(() => arm('400:none:match')).toThrow(/always marks its elisions/);
+  });
+
+  it('rejects a window the product does not implement, and names the ones it has', () => {
+    // `none` is a valid *marker* and not a valid window, which is exactly the mix-up this guards: the two
+    // vocabularies sit on the same value and a dispatch that swapped them would be accepted by a parser that
+    // only checked the segment count.
+    expect(() => arm('400:ellipsis:none')).toThrow(/window must be one of "head", "match"/);
+    expect(() => arm('400:match:ellipsis')).toThrow(/window must be one of/);
+  });
+
+  it('leaves the window absent when the run did not name one', () => {
+    // Absent rather than `head`, because every artifact written before the field rendered the head and
+    // writing it now would make "chose the head" and "predates the field" the same bytes.
+    const options = arm('400:ellipsis');
+    expect(options.turnWindow).toBeUndefined();
+    expect('turnWindow' in toMemoryArmConfig(options)).toBe(false);
+    // And the report does not spell `head`, unlike the marker: the marker's default is a state a control
+    // arm has to be able to name, the window's default is what every artifact already did. Printing it
+    // would add a field to every historical comparison without adding a fact.
+    expect(line(options)).not.toContain('turnWindow');
   });
 
   it('still refuses a cap of zero and a fraction, for the §13.67 reasons', () => {

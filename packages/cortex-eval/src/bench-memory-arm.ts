@@ -493,6 +493,23 @@ export type CortexMemoryArmOptions = {
    */
   turnCutMarker?: string | undefined;
   /**
+   * Which slice of a long turn the per-turn cap keeps: `'head'` (absent, and every archived prompt) or
+   * `'match'`.
+   *
+   * The cap decides how much of a turn a prompt carries; this decides which characters, and the two are one
+   * decision's halves -- which is why it rides the cap's value rather than a dispatch input of its own: the
+   * workflow sits one input below GitHub's ceiling and the suite forbids sitting at it.
+   *
+   * `'match'` spends the same characters on the window around the question's densest lexical match and marks
+   * every elision. It is **not** a cost lever: the width does not move, so neither does the bill. What it
+   * answers is the measurement in `MEASURE-TURN-WINDOW.md` -- a ninth of the delivered blocks on this arm
+   * reach the cap, and a head cut chooses them by position rather than by the question.
+   *
+   * A `string` rather than the product's union for the reason `turnCutMarker` is, validated against
+   * `TURN_WINDOWS` at parse time.
+   */
+  turnWindow?: string | undefined;
+  /**
    * The evidence budget in UTF-16 code units, or absent for the product default.
    *
    * What the default *is* has moved (24,000 before §13.82, 48,000 after), which is why an absent
@@ -932,6 +949,18 @@ const TURN_CUT_MARKERS: Record<string, true> = { none: true, ellipsis: true };
 const DEFAULT_TURN_CUT_MARKER = 'none';
 
 /**
+ * The windows the cap's value may carry, and this module's copy of the product's `TurnWindow`.
+ *
+ * Declared here for the reason `TURN_CUT_MARKERS` is: the dependency runs the other way, so `cortex-eval`
+ * cannot import the product's union, and the parity test in `tools/__tests__` asserts the two copies agree.
+ *
+ * `head` is accepted as a spelling even though it is the default, because a dispatched control arm has to be
+ * able to say which window it ran -- the same argument that makes `turnCutMarker` always present on the
+ * artifact.
+ */
+const TURN_WINDOWS: Record<string, true> = { head: true, match: true };
+
+/**
  * Which turn roles the evidence may be built from: `all` (the identity), or a comma-separated
  * list drawn from the roles this dataset's haystack can carry.
  *
@@ -1230,6 +1259,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     // would leave "ran the control" and "predates the field" as the same bytes. It comes from the
     // same parse as the width, so the two can never describe different caps.
     turnCutMarker: turnCap.marker,
+    // Projected from the same parse for the reason the marker is, and absent when the run named neither
+    // window nor width: `head` is what an absent field renders, so writing it would make "ran the default"
+    // and "ran head explicitly" the same bytes on the artifact.
+    ...(turnCap.window === undefined ? {} : { turnWindow: turnCap.window }),
   };
 }
 
@@ -2153,6 +2186,8 @@ function readWidthPlan(raw: string | undefined): WidthPlan | undefined {
 type TurnCapSpec = {
   width?: number;
   marker: string;
+  /** Which slice of a turn the cap keeps; absent is the head, which is every archived prompt. */
+  window?: string;
 };
 
 /**
@@ -2335,12 +2370,27 @@ function readTurnCap(raw: string | undefined): TurnCapSpec {
 
   const parts = trimmed.split(':');
   const widthText = parts[0] ?? '';
-  const markerText = parts[1];
-  if (parts.length > 2) {
+  // An empty segment means "not named" rather than "the empty name". Without it the natural spelling of a
+  // window with the default marker -- `400::match` -- would be refused for naming a marker that is a blank,
+  // and the reader's only recourse would be to spell a marker the window then overrides.
+  const markerText = parts[1] === '' ? undefined : parts[1];
+  const windowText = parts[2] === '' ? undefined : parts[2];
+  if (parts.length > 3) {
     throw new Error(
-      `${MAX_TURN_CHARS_VARIABLE} takes one optional marker, got ${JSON.stringify(raw)}. ` +
-        'The grammar is `<width>` or `<width>:<none|ellipsis>`; the marker is a presentation ' +
-        "of the cap's cut, so it cannot be a list.",
+      `${MAX_TURN_CHARS_VARIABLE} takes an optional marker and an optional window, got ` +
+        `${JSON.stringify(raw)}. The grammar is <width>[:<none|ellipsis>[:<head|match>]]; ` +
+        'all three describe one decision -- how much of a turn a prompt carries, whether the ' +
+        'cut says so, and which characters it keeps -- so none of them is a list.',
+    );
+  }
+  if (windowText !== undefined && !(windowText in TURN_WINDOWS)) {
+    throw new Error(
+      `${MAX_TURN_CHARS_VARIABLE}'s window must be one of ` +
+        `${Object.keys(TURN_WINDOWS)
+          .map((k) => JSON.stringify(k))
+          .join(', ')}, got ${JSON.stringify(raw)}. An unrecognised window is rejected rather ` +
+        'than ignored: the run would render the head while its config claimed an anchored ' +
+        'window, and its result would read as evidence that the window does not matter.',
     );
   }
   if (markerText !== undefined && !(markerText in TURN_CUT_MARKERS)) {
@@ -2367,9 +2417,23 @@ function readTurnCap(raw: string | undefined): TurnCapSpec {
     );
   }
 
+  // A window that always marks cannot be dispatched as a silent one. The refusal is here rather than in the
+  // renderer because the artifact records `turnCutMarker` as a fact about the prompt: a run that named the
+  // window and `none` would print an elision on every block while its own config line said it printed none,
+  // and that is the defect class this file's guards exist for -- a configuration claiming a rendering the
+  // prompt did not have.
+  if (windowText === 'match' && markerText !== undefined && markerText !== 'ellipsis') {
+    throw new Error(
+      `${MAX_TURN_CHARS_VARIABLE}'s window \`match\` always marks its elisions, so its marker can only be ` +
+        `\`ellipsis\` or unnamed, got ${JSON.stringify(raw)}. Dispatch \`<width>::match\` (the default ` +
+        'marker becomes `ellipsis` for this window) or `<width>:ellipsis:match`.',
+    );
+  }
+
   return {
     width: value,
-    marker: markerText ?? DEFAULT_TURN_CUT_MARKER,
+    marker: markerText ?? (windowText === 'match' ? 'ellipsis' : DEFAULT_TURN_CUT_MARKER),
+    ...(windowText === undefined ? {} : { window: windowText }),
   };
 }
 
@@ -2810,6 +2874,11 @@ export function toMemoryArmConfig(
     // from one that predates the field. Projected from the option rather than parsed again, so
     // the config line and the prompt cannot disagree about which marker was rendered.
     turnCutMarker: options.turnCutMarker ?? DEFAULT_TURN_CUT_MARKER,
+    // §14.143. Absent rather than defaulted to `head`, unlike the marker: the marker's default is a state the
+    // *prompt* can be in and a control arm has to be able to name it, whereas the window's default is what
+    // every artifact written before the field already did. Writing `head` on every new run would make "ran the
+    // head window" and "predates the window" the same bytes -- which is the distinction the archive exists for.
+    ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
     // §13.83. Absent means every role, which is what every archived run read; the routes are
     // always present for the reason the cap's are.
     ...(options.evidenceRoles === undefined ? {} : { evidenceRoles: options.evidenceRoles }),

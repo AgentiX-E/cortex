@@ -123,6 +123,11 @@ export {
   // time, and casts at the boundary -- so the union has to be nameable from outside for that cast
   // to be a statement about a real type rather than about `string`.
   type TurnCutMarker,
+  // §14.143's window, exported for the marker's reason exactly: `run-ablation.ts` forwards it at one
+  // boundary where `cortex-eval` carries a `string`, so the union has to be nameable from outside for that
+  // cast to be a statement about a real type. A window added to the union is then a compile error in the
+  // forwarding table rather than a value that reaches a prompt as a `string` nobody branched on.
+  type TurnWindow,
   // Named for the same reason: `run-ablation.ts` forwards this value at one boundary and the
   // forwarding table is keyed by this union, so a unit added here has to be a compile error there
   // rather than a silently-omitted forward. See `RELEVANCE_UNIT_FORWARDING`.

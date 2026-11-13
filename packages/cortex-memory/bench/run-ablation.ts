@@ -909,6 +909,13 @@ async function main(): Promise<void> {
       // why `readTurnCutMarker` throws on anything unrecognised and `assertMarkerNeedsCap` refuses
       // it without a cap.
       ...(armOptions.turnCutMarker === 'ellipsis' ? { turnCutMarker: 'ellipsis' as const } : {}),
+      // §14.143's window. Spread only when named, for the reason every conditional spread in this
+      // constructor is: the head IS the historical rendering and is expressed by NOT passing the key, so a
+      // run that names no window reproduces every archived capped prompt byte for byte. The cast is at this
+      // boundary because `cortex-eval` carries the name as a `string` and validates it against its own copy
+      // at parse time, and the product refuses `match` without a cap -- which is why the two spreads are
+      // adjacent rather than one field: the window without the width is a render option that cannot act.
+      ...(armOptions.turnWindow === 'match' ? { turnWindow: 'match' as const } : {}),
       // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
       // number raises the room without touching a single turn, which is the only lever §13.80 left.
       ...(armOptions.maxPromptChars === undefined
@@ -1034,6 +1041,10 @@ async function main(): Promise<void> {
       // a fact about the evidence section (`none` = the cut stays silent), and it is the only place
       // the log and the artifact config can be compared against the prompt that was rendered.
       `, turnCutMarker=${armOptions.turnCutMarker ?? 'none'}` +
+      // Beside the marker for the reason the marker sits beside the width: the two describe the same cut,
+      // `head` is the archived state, and a run whose window was dropped somewhere between the dispatch and
+      // the renderer is visible here and nowhere else in the log.
+      `, turnWindow=${armOptions.turnWindow ?? 'head'}` +
       `, maxPromptChars=${armOptions.maxPromptChars ?? 'default'}` +
       // §14.126's plan, on the same line as the room it replaces, because a reader comparing a wall clock
       // and a bill needs both: the room says what the route was allowed and the plan says what the

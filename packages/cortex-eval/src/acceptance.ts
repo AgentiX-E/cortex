@@ -1081,6 +1081,48 @@ export const CRITERIA: readonly Criterion[] = [
       'one corpus has bought nothing with a tie.',
   },
 
+  // §14.143's window. Non-inferiority rather than a win, because the mechanism spends the **same**
+  // characters: it can move accuracy only by printing a better sentence, and a row that promised a gain
+  // would be a hypothesis with a threshold attached. The negative form is the number that matters --
+  // below −5 questions (one point on 500) the window costs more than the head it replaced, and the
+  // family closes the way `C6`'s did.
+  {
+    id: 'S10',
+    capability: 'turn window',
+    metric:
+      'correct answers at `turnWindow=match` against the registered configuration, paired by question, at the same cap and the same bill',
+    dataset:
+      'LongMemEval-S, 500 questions, four repetitions per side, one dispatch each, the per-question mean compared across the two',
+    comparator: 'at-least',
+    threshold: -5,
+    unit: 'count',
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/turn-window.json',
+      key: 'paired.deltaQuestions',
+    },
+    competitors: [
+      {
+        name: 'Mem0 (published)',
+        value: 94.4,
+        grade: 'C',
+        recipe:
+          'vendor figure at ~6.8K context tokens per question, produced by single-pass **extraction** rather than by ' +
+          'rendering turns; the axis this row sits on is therefore not theirs to win -- what it locates is that a ' +
+          'system can beat a verbatim window by choosing what text it prints, and that the cheapest version of that ' +
+          'choice is a window inside a turn rather than an extraction call per turn',
+      },
+    ],
+    onMiss:
+      'Below −5 questions the window loses more than it recovers, and the reading is a falsification of the lexical ' +
+      'anchor rather than of windows in general: the mechanism that would survive it is one that ranks **sentences** ' +
+      'rather than placing a span around a match (the `dispatch2` artefact in `MEASURE-READING-STAGE.md` §203 is the ' +
+      'published shape, at +4.0pp on the same capability). Above the threshold it earns its place beside ' +
+      '`turnCutMarker`, and the pair is read together: a window that starts mid-turn is a cut the reader cannot see, ' +
+      'which is the `a4996e51` defect with a different offset.',
+  },
+
   // ---- the cost dimension, which had no row until the 2026-10 board printed a context column -------
   {
     id: 'C1',

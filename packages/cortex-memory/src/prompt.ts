@@ -10,6 +10,12 @@ import type { AdmittedTurn } from './admission.js';
 import type { AdmittedSession } from './sessionize.js';
 import { ABSTAIN_TOKEN } from './parse.js';
 import { classifyQuestionShape, type QuestionShape } from './question-shape.js';
+import { ELISION, excerptAround, truncateCodePointSafe, type TurnWindow } from './excerpt.js';
+
+// Re-exported rather than defined here: the per-turn window rule needs the same surrogate-safe slice, and
+// two copies of a UTF-16 guard are two chances to fix one of them. Every importer that had this path keeps it.
+export { truncateCodePointSafe } from './excerpt.js';
+export type { TurnWindow } from './excerpt.js';
 
 /** The distinct asks `runBenchmark`'s routes correspond to. */
 export type PromptContract =
@@ -719,6 +725,36 @@ export type PromptOptions = {
    * for itself, which is a different trade from the one registered.
    */
   turnCutMarker?: TurnCutMarker;
+  /**
+   * Which slice of a turn a cap keeps. Absent is `'head'`, i.e. every archived prompt's bytes.
+   *
+   * ## The measurement behind it
+   *
+   * On the 200 × 2 pair of 2026-11-13 the 400-character cap was reached by **2,569 of 23,609
+   * delivered blocks (10.9%)** -- and the arm runs `turnCutMarker: 'none'`, so a ninth of the
+   * evidence the reader saw was the *beginning* of a turn with no indication that the rest
+   * existed. `a4996e51` is the case on record: the operand arrived and then stopped.
+   *
+   * `'match'` spends the same characters on the part of the turn that answers the question:
+   * rank the turn's content terms against the question's, keep the densest window, and mark every
+   * elision. The cap's **size** does not move, so the room's arithmetic is unchanged and the
+   * bill is unchanged -- this is not a cost lever (`MEASURE-WIDTH-PLAN.md` closed the family that
+   * removed turns; `MEASURE-COST-FLOOR.md` §3 prices removing evidence at a point per 6.8%).
+   *
+   * ## Why it is a value rather than a default
+   *
+   * A default of `'match'` would make every archived prompt unreproducible from the code, which is
+   * the same argument `turnCutMarker` makes one field up. A run says which window it used, and
+   * `prompt-turn-window.test.ts` pins that the absent field is byte-identical to the head.
+   *
+   * ## What it needs, and what happens without it
+   *
+   * The question. `buildPrompt` and `buildSessionPrompt` are the two builders that have it, and
+   * they pass it here rather than at their call sites, so a route cannot receive a window without
+   * the text it anchors on -- a window with no question would render as the head, which is the
+   * inert-option defect this file has been audited for twice.
+   */
+  turnWindow?: TurnWindow;
   /** How to present the admitted turns. Defaults to the baseline rendering. */
   rendering?: EvidenceRendering;
   /** Which instruction block to use. Defaults to the route's own. */
@@ -2153,18 +2189,33 @@ function instructionsFor(
  * shorter than the cap it would describe one that did not happen. Both cases fall out of the
  * two guards below rather than needing their own.
  */
-function contentFor(
-  turn: AdmittedTurn,
-  maxTurnChars: number | undefined,
-  turnCutMarker: TurnCutMarker | undefined,
-): string {
-  if (maxTurnChars === undefined) return turn.content;
-  if (turnCutMarker !== 'ellipsis') return truncateCodePointSafe(turn.content, maxTurnChars);
-  return cutWithMarker(turn.content, maxTurnChars);
+/**
+ * What shortens one turn's content, resolved once per render.
+ *
+ * A record rather than three positional parameters because the fourth would be the one a future option
+ * forgets, and the paths that render evidence are the ones where a forgotten parameter is invisible: the
+ * prompt still assembles, it just carries a turn the configuration says it bounded.
+ */
+type TurnCap = {
+  readonly maxTurnChars?: number | undefined;
+  readonly turnCutMarker?: TurnCutMarker;
+  readonly turnWindow?: TurnWindow;
+  /** The question, on the runs that chose the anchored window. */
+  readonly focusQuery?: string | undefined;
+};
+
+function contentFor(turn: AdmittedTurn, cap: TurnCap): string {
+  const max = cap.maxTurnChars;
+  if (max === undefined) return turn.content;
+  if (cap.turnWindow === 'match' && cap.focusQuery !== undefined) {
+    return excerptAround(turn.content, cap.focusQuery, max);
+  }
+  if (cap.turnCutMarker !== 'ellipsis') return truncateCodePointSafe(turn.content, max);
+  return cutWithMarker(turn.content, max);
 }
 
 /** The character `'ellipsis'` emits, and the reason it is a single UTF-16 unit. */
-const CUT_MARKER = '…';
+const CUT_MARKER = ELISION;
 
 /**
  * Join the multi-session prompt's sections in the order the run asked for.
@@ -2280,12 +2331,14 @@ const WHITESPACE = /\s/;
  * is inert, so emitting it on the record would let a config line claim a visible cut on a run
  * that cut nothing.
  */
-function capOption(
-  maxTurnChars: number | undefined,
-  turnCutMarker: TurnCutMarker | undefined,
-): { maxTurnChars?: number; turnCutMarker?: TurnCutMarker } {
-  if (maxTurnChars === undefined) return {};
-  return turnCutMarker === undefined ? { maxTurnChars } : { maxTurnChars, turnCutMarker };
+function capOption(options: TurnCap): TurnCap {
+  if (options.maxTurnChars === undefined) return {};
+  return {
+    maxTurnChars: options.maxTurnChars,
+    ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
+    ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
+    ...(options.focusQuery === undefined ? {} : { focusQuery: options.focusQuery }),
+  };
 }
 
 /**
@@ -2316,11 +2369,9 @@ function capOption(
  */
 export function formatEvidence(
   turns: readonly AdmittedTurn[],
-  options: {
+  options: TurnCap & {
     sessionIndex?: number;
     rendering?: EvidenceRendering;
-    maxTurnChars?: number;
-    turnCutMarker?: TurnCutMarker;
     /**
      * The number the first turn carries under `item-ids`, so a block can continue a
      * numbering its caller has already spent (§13.346).
@@ -2350,13 +2401,8 @@ export function formatEvidence(
 
   const body =
     options.rendering === 'sourced'
-      ? formatEvidenceWithSources(turns, options.maxTurnChars, options.turnCutMarker)
-      : turns
-          .map(
-            (turn, i) =>
-              `${label(i)}${contentFor(turn, options.maxTurnChars, options.turnCutMarker)}`,
-          )
-          .join('\n\n');
+      ? formatEvidenceWithSources(turns, options)
+      : turns.map((turn, i) => `${label(i)}${contentFor(turn, options)}`).join('\n\n');
 
   return `${header}${body}`;
 }
@@ -2399,14 +2445,8 @@ export function formatEvidence(
  * yields `''` -- `[].join('\n\n')` is the empty string. The behaviour is identical and
  * the unreachable path is gone rather than papered over.
  */
-function formatEvidenceWithSources(
-  turns: readonly AdmittedTurn[],
-  maxTurnChars?: number,
-  turnCutMarker?: TurnCutMarker,
-): string {
-  return turns
-    .map((turn, i) => `${i + 1}. [${turn.id}] ${contentFor(turn, maxTurnChars, turnCutMarker)}`)
-    .join('\n\n');
+function formatEvidenceWithSources(turns: readonly AdmittedTurn[], cap: TurnCap): string {
+  return turns.map((turn, i) => `${i + 1}. [${turn.id}] ${contentFor(turn, cap)}`).join('\n\n');
 }
 
 /**
@@ -2605,8 +2645,8 @@ export function buildRetryPrompt(
  */
 function renderCarried(turns: readonly AdmittedTurn[], options: PromptOptions): string {
   return options.rendering === 'sourced'
-    ? formatEvidenceWithSources(turns, options.maxTurnChars, options.turnCutMarker)
-    : formatEvidence(turns, capOption(options.maxTurnChars, options.turnCutMarker));
+    ? formatEvidenceWithSources(turns, options)
+    : formatEvidence(turns, capOption(options));
 }
 
 /**
@@ -2762,10 +2802,18 @@ export function buildPrompt(
   // form compared `contract === 'abstention-evidence-blocks'`, which made the
   // rendering unreachable on every route whose ask is something else -- including
   // both of the routes that carried the measured loss.
+  //
+  // The anchored window enters here, once, for the same reason: the question is the thing the window is
+  // anchored on, this is the only builder that has both it and the cap, and a route-level decision would
+  // be a decision a route could miss.
+  const cap = capOption({
+    ...options,
+    ...(options.turnWindow === 'match' ? { focusQuery: question } : {}),
+  });
   const render = (picked: readonly AdmittedTurn[]): string =>
     options.rendering === 'sourced'
-      ? formatEvidenceWithSources(picked, options.maxTurnChars, options.turnCutMarker)
-      : formatEvidence(picked, capOption(options.maxTurnChars, options.turnCutMarker));
+      ? formatEvidenceWithSources(picked, cap)
+      : formatEvidence(picked, cap);
 
   // The ordering is applied to the **carried** set, and this is the only place it can be applied without
   // becoming a second variable. Before the budget, a promotion changes which turns survive the cut --
@@ -3586,15 +3634,7 @@ export function buildSessionPrompt(
   // A closure over these sessions rather than a pre-rendered string, so the
   // selection cannot end up sizing one list while the text holds another.
   const render = (picked: readonly AdmittedTurn[]): string =>
-    sessions.length === 0
-      ? NO_EVIDENCE
-      : renderSessionBlocks(
-          sessions,
-          picked,
-          options.rendering,
-          options.maxTurnChars,
-          options.turnCutMarker,
-        );
+    sessions.length === 0 ? NO_EVIDENCE : renderSessionBlocks(sessions, picked, options, question);
 
   const body = render(flat);
 
@@ -3831,13 +3871,7 @@ function buildSecondPassPrompt(
   // unreachable guard reads as safety while measuring nothing (§57.6). The renderer is total over an
   // empty list anyway; what would be wrong is *claiming* to handle a state the product refuses.
   const render = (picked: readonly AdmittedTurn[]): string =>
-    renderSessionBlocks(
-      sessions,
-      picked,
-      options.rendering,
-      options.maxTurnChars,
-      options.turnCutMarker,
-    );
+    renderSessionBlocks(sessions, picked, options, question);
 
   const body = render(flat);
   const full = [`EVIDENCE:\n${body}`, SESSION_NOTE, `QUESTION: ${question}`, instruction].join(
@@ -3895,9 +3929,8 @@ function buildSecondPassPrompt(
 function renderSessionBlocks(
   sessions: readonly AdmittedSession[],
   picked: readonly AdmittedTurn[],
-  rendering: EvidenceRendering | undefined,
-  maxTurnChars: number | undefined,
-  turnCutMarker: TurnCutMarker | undefined,
+  options: PromptOptions,
+  question: string,
 ): string {
   const kept = new Set(picked);
   // A loop rather than the two-`map` chain this used to be, because `item-ids` needs a counter
@@ -3912,12 +3945,18 @@ function renderSessionBlocks(
     blocks.push(
       formatEvidence(turns, {
         sessionIndex: session.index,
-        ...(rendering === undefined ? {} : { rendering }),
+        ...(options.rendering === undefined ? {} : { rendering: options.rendering }),
         itemNumberStart: nextItem,
         // The cap reaches the blocks through the same renderer the flat route uses, which is
         // why it is threaded here rather than applied to the joined string: a per-turn cap
-        // applied to the joined text would be a per-prompt cap.
-        ...capOption(maxTurnChars, turnCutMarker),
+        // applied to the joined text would be a per-prompt cap. The window follows the cap for
+        // the same reason, and it takes the question with it: an anchored window without the
+        // question would silently render as the head, which is the inert-option shape this
+        // file has been audited for.
+        ...capOption({
+          ...options,
+          ...(options.turnWindow === 'match' ? { focusQuery: question } : {}),
+        }),
       }),
     );
     nextItem += turns.length;
@@ -3928,27 +3967,6 @@ function renderSessionBlocks(
 /** Tells the model that the blocks are separate conversations. */
 const SESSION_NOTE =
   'Some evidence is grouped into sessions. Each session is a separate conversation; do not merge facts across sessions unless the question asks for it.';
-
-/**
- * Truncate to `maxChars` without splitting a surrogate pair.
- *
- * Slicing a four-byte character in half produces a lone surrogate, which is not
- * valid UTF-16 and corrupts the request body on serialisation. The reference
- * pipeline solved this in `sliceCodePointSafe`; reintroducing it here would be
- * a regression against a bug that was already paid for.
- */
-export function truncateCodePointSafe(text: string, maxChars: number): string {
-  if (maxChars <= 0) return '';
-  if (text.length <= maxChars) return text;
-
-  let end = maxChars;
-  const boundary = text.charCodeAt(end);
-  // A low surrogate at the cut point means the high surrogate is at end - 1 and
-  // would be orphaned, so back off one unit.
-  if (boundary >= 0xdc00 && boundary <= 0xdfff) end -= 1;
-
-  return text.slice(0, end);
-}
 
 /**
  * The prompt for the one comparison a `knowledge-update` answer gets back.

@@ -610,6 +610,16 @@ export type MemoryArmConfig = {
    */
   readonly turnCutMarker?: string | undefined;
   /**
+   * Which slice of a long turn the per-turn cap kept: `'head'` or `'match'`, absent before the field existed.
+   *
+   * Recorded for the reason `turnCutMarker` is, and absent for the same reason it is recorded: the window
+   * changes which characters the reader saw without changing a single count in the artifact -- the same
+   * number of turns, the same `evidenceChars` order of magnitude, the same bill -- so two runs that differ
+   * only in the window are indistinguishable below this line. A reading compared across them without this
+   * field would attribute a difference in *which text* was printed to a difference in *how much*.
+   */
+  readonly turnWindow?: string | undefined;
+  /**
    * The turn roles the evidence was built from, or absent for every role.
    *
    * §13.83's field, and it is recorded for the reason the cap's width is: the treatment is a
@@ -1684,6 +1694,10 @@ export function formatAblationReport(report: AblationReport): string {
         // `none` is spelled rather than omitted, for the reason every always-present field here
         // is -- the control ran, and that is information.
         `, \`turnCutMarker=${memoryArm.turnCutMarker ?? 'none'}\`` +
+        // §14.143, rendered only when the run named one: unlike the marker, the window's default is the
+        // archived state rather than a state a control arm has to be able to name, so printing `head` on
+        // every line would add a field to every historical comparison without adding a fact.
+        (memoryArm.turnWindow === undefined ? '' : `, \`turnWindow=${memoryArm.turnWindow}\``) +
         // §13.83, rendered on every run for the reason the cap is: `all` is a fact about the
         // prompt (every turn was eligible) rather than the absence of one, and a reader comparing
         // two artifacts must be able to see which of them filtered.

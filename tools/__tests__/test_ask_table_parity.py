@@ -55,6 +55,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCT = ROOT / "packages" / "cortex-memory" / "src" / "prompt.ts"
+PRODUCT_EXCERPT = ROOT / "packages" / "cortex-memory" / "src" / "excerpt.ts"
 PRODUCT_TYPES = ROOT / "packages" / "cortex-memory" / "src" / "types.ts"
 ARM = ROOT / "packages" / "cortex-eval" / "src" / "bench-memory-arm.ts"
 # The arm's route table lives here as of §13.198: the route-scoped `thinking` value gave the six
@@ -314,6 +315,65 @@ class TestTheTwoMarkerTablesAgree(unittest.TestCase):
         declared = re.search(r"const DEFAULT_TURN_CUT_MARKER = '([A-Za-z-]+)';", source)
         self.assertIsNotNone(declared, "bench-memory-arm.ts declares no DEFAULT_TURN_CUT_MARKER")
         self.assertIn(declared.group(1), arm_markers())
+
+
+def product_windows() -> set[str]:
+    """The members of the product's `TurnWindow` union, read from the module that declares it."""
+    source = PRODUCT_EXCERPT.read_text(encoding="utf-8")
+    union = re.search(r"export type TurnWindow =([^;]+);", source)
+    if union is None:
+        raise AssertionError("excerpt.ts declares no TurnWindow union")
+    members = set(re.findall(r"'([^']+)'", union.group(1)))
+    if not members:
+        raise AssertionError(f"TurnWindow parsed to no members: {union.group(1)[:200]}")
+    return members
+
+
+def arm_windows() -> set[str]:
+    """The keys of the arm's `TURN_WINDOWS` table."""
+    source = ARM.read_text(encoding="utf-8")
+    table = re.search(r"const TURN_WINDOWS: [^=]+= \{([^}]*)\}", source, re.S)
+    if table is None:
+        raise AssertionError("bench-memory-arm.ts declares no TURN_WINDOWS table")
+    keys = set(re.findall(r"([A-Za-z][A-Za-z0-9-]*)\s*:\s*true", table.group(1)))
+    if not keys:
+        raise AssertionError(f"TURN_WINDOWS parsed to no keys: {table.group(1)[:200]}")
+    return keys
+
+
+class TestTheTwoWindowTablesAgree(unittest.TestCase):
+    """§14.143's window, the fourth duplicated declaration.
+
+    The window is dispatched as the third segment of the per-turn cap's value, so a name the arm
+    accepts and the product does not would be validated, recorded on the artifact, and then rendered as
+    the head by a `contentFor` that tests `=== 'match'` -- a run whose configuration claims an anchored
+    window over a prompt that is byte-identical to its control. Nothing in the artifact's numbers could
+    detect it, which is why the parity is a test rather than a sentence beside the table.
+    """
+
+    def test_the_product_and_the_arm_name_the_same_windows(self) -> None:
+        self.assertEqual(
+            sorted(product_windows()),
+            sorted(arm_windows()),
+            f"the product declares {sorted(product_windows())} and the arm {sorted(arm_windows())}. "
+            "A window belongs to both or to neither: the arm's table is what a dispatched value is "
+            "validated against, and the product's union is what `contentFor` branches on.",
+        )
+
+    def test_the_archived_state_is_nameable(self) -> None:
+        # `head` is what every artifact predating the field rendered, and the arm accepts it as a
+        # spelling so a dispatched control can name itself. Dropping it from either side would make
+        # the control unnamable -- the same defect the marker table guards against.
+        self.assertIn("head", product_windows())
+        self.assertIn("head", arm_windows())
+
+    def test_the_grammar_guard_names_the_window(self) -> None:
+        # The third segment is refused by a message rather than silently truncated: a parser that
+        # split on `:` and read `parts[1]` would ignore `:match` entirely, and the run would be a
+        # control published under a treatment's name.
+        source = ARM.read_text(encoding="utf-8")
+        self.assertIn("parts.length > 3", source)
+        self.assertIn("an optional marker and an optional window", source)
 
 
 if __name__ == "__main__":

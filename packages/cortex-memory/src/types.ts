@@ -11,6 +11,7 @@ import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
 import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { WidthPlanOptions } from './width.js';
+import type { TurnWindow } from './excerpt.js';
 
 /** The knobs the admission gates expose. */
 export type GateOptions = {
@@ -299,6 +300,28 @@ export type CortexMemoryOptions = {
    * route can receive the marker without the cap that gives it meaning.
    */
   turnCutMarker?: TurnCutMarker | undefined;
+  /**
+   * Which slice of a long turn the cap keeps. Absent is `'head'`, which is every archived prompt.
+   *
+   * ## What it is for, and what it is not
+   *
+   * `maxTurnChars` caps how much of a turn a prompt carries; this decides **which** characters, and the two
+   * are one decision's halves. The head is the part that happens to be first, and on this arm a ninth of the
+   * delivered blocks reach the cap -- so a ninth of what the reader sees is a turn that stops, chosen by
+   * position rather than by the question. `'match'` spends the same characters on the window around the
+   * question's densest match and marks every elision it makes.
+   *
+   * It is **not** a cost lever. The cap's width does not move, so the bill does not move: `C6` (the width
+   * plan) removed turns and was priced at a point per 6.8% of the bill, and this deliberately does not
+   * touch that axis.
+   *
+   * ## Why absent is not `'match'`
+   *
+   * The same reason `turnCutMarker`'s default is `'none'`: every artifact in the archive was produced by the
+   * head cut, and a default that moved would make each of them unreproducible from the code. A run says
+   * which window it used, and the configuration line records it.
+   */
+  turnWindow?: TurnWindow | undefined;
   /**
    * Which routes the per-turn cap reaches. Absent means all of them.
    *

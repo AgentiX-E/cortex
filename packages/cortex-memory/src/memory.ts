@@ -673,6 +673,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
     //
     // `reviewBareDecline` is deliberately NOT refused: `classifyReply` reads the bare shape first, so a reply this
     // pass acts on is never a bare decline, and the two treatments cannot both fire on one question.
+    // The window needs the cap, and the refusal is here rather than in `prompt.ts` for the reason every
+    // guard in this constructor is: a field that cannot act is a configuration line that names a treatment
+    // the run never administered, and the artifact would then be the only thing claiming it. `'head'` is
+    // exempt because it is what an absent field renders anyway -- there is nothing to refuse.
+    if (options.turnWindow === 'match' && options.maxTurnChars === undefined) {
+      throw new Error(
+        "turnWindow: 'match' needs maxTurnChars: the window decides which characters of a turn a cap " +
+          'keeps, and without a cap every turn renders whole. Dispatch the width with the window ' +
+          '(CORTEX_MEMORY_MAX_TURN_CHARS=<width>[:<marker>[:match]]), or drop the window.',
+      );
+    }
     if (options.replyRepair !== undefined && options.replyRepair !== 'off') {
       if (options.reviewPass !== undefined && options.reviewPass !== 'none') {
         throw new Error(
@@ -2443,6 +2454,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
             ...(this.#options.turnCutMarker === undefined
               ? {}
               : { turnCutMarker: this.#options.turnCutMarker }),
+            // The window rides the same spread for the same reason, and on the same reach: it is a
+            // way of spending the cap, so a route whose cap was withdrawn must not keep a window.
+            ...(this.#options.turnWindow === undefined
+              ? {}
+              : { turnWindow: this.#options.turnWindow }),
           }),
       ...(rendering === undefined ? {} : { rendering }),
       ...(ask === undefined ? {} : { ask }),

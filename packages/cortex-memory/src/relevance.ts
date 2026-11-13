@@ -144,9 +144,9 @@ const COVERAGE_WEIGHT = 0.85;
 /**
  * Split a string into matchable terms, in order.
  *
- * Splitting is on `/[^a-z0-9]+/` after lowercasing, so `alice's` becomes `alice` and `s`, apostrophes don't
- * join words that were never joined, and hyphenated compounds become their parts. Digits survive: a date, a
- * price and a count are content, and a tokeniser that drops them makes every temporal and counting question
+ * Tokens are maximal runs of `[a-z0-9]` after lowercasing, so `alice's` becomes `alice` and `s`, apostrophes
+ * don't join words that were never joined, and hyphenated compounds become their parts. Digits survive: a date,
+ * a price and a count are content, and a tokeniser that drops them makes every temporal and counting question
  * look like an empty question.
  *
  * `length >= 2` drops the single letters the split produces (`s`, `t`, `d`), which carry no meaning and would
@@ -155,20 +155,51 @@ const COVERAGE_WEIGHT = 0.85;
  * Returns duplicates. Coverage needs the distinct set and order needs the sequence, and building one from the
  * other would make the two terms read the same input differently.
  *
- * Exported because `retrieval/search-index.ts` builds its postings over the same terms. Two tokenisers would
- * be two definitions of "the question mentions this", and an index whose candidate set disagrees with the
- * scorer that ranks it can drop the one turn the scorer would have ranked first -- a difference that
- * surfaces as a slightly worse ranking rather than as a defect.
+ * Exported because `retrieval/search-index.ts` builds its postings over the same terms, and because
+ * `excerpt.ts` asks the same question of a turn's **title case** text -- a turn is full of `I` and `The`, and a
+ * cut placed by rules looser than the ranker's would remove the turn the ranker chose. Two tokenisers would be
+ * two definitions of "the question mentions this", and an index whose candidate set disagrees with the scorer
+ * that ranks it can drop the one turn the scorer would have ranked first -- a difference that surfaces as a
+ * slightly worse ranking rather than as a defect.
+ *
+ * Defined as {@link contentTokens}' terms rather than as its own split, so the two cannot drift: a tokeniser
+ * change that reached one and not the other is the shape of defect this repository keeps finding.
  */
 export function contentTerms(text: string): string[] {
-  const out: string[] = [];
-  for (const raw of text.toLowerCase().split(/[^a-z0-9]+/)) {
-    if (raw.length < 2) continue;
-    if (STOPWORDS.has(raw)) continue;
-    out.push(raw);
+  return contentTokens(text).map((token) => token.term);
+}
+
+/**
+ * One matchable term and where it sits in the string it came from.
+ *
+ * The offset is the reason this exists next to {@link contentTerms} rather than inside it: the excerpt rule in
+ * `excerpt.ts` has to place a **window** around a match, and a list of terms with no positions cannot say where
+ * the window goes. Deriving those positions with a second tokeniser would give the repository two definitions of
+ * "the question mentions this word" -- one for ranking, one for cutting -- and a cut placed by a different rule
+ * than the ranking is a cut that can remove the turn the ranking chose.
+ *
+ * `[a-z0-9]+` over the **original** string rather than a split of the lowercased one, because a split loses the
+ * offsets: `text.toLowerCase().split(...)` cannot report where each piece began. The two agree on every input
+ * a corpus holds -- both lowercase before comparing, both treat `alice's` as `alice` and `s`, both keep digits --
+ * and `contentTerms` is now defined as this function's terms so they cannot drift apart.
+ */
+export function contentTokens(text: string): ContentToken[] {
+  const out: ContentToken[] = [];
+  const pattern = /[a-z0-9]+/gi;
+  let match = pattern.exec(text);
+  while (match !== null) {
+    const term = match[0].toLowerCase();
+    if (term.length >= 2 && !STOPWORDS.has(term)) out.push({ term, at: match.index });
+    match = pattern.exec(text);
   }
   return out;
 }
+
+/** A content term, and the index of its first character in the text it was read from. */
+export type ContentToken = {
+  readonly term: string;
+  readonly at: number;
+};
 
 /**
  * How relevant `turn` is to `question`, in `[0, 1]`.

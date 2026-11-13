@@ -68,6 +68,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
+| S10 | <!-- reading:S10 -->—     | ≥ -5      | unrun  | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
@@ -88,6 +89,11 @@ the record of what happens when they are.
 
 `D1` is `unrun` and that is stated rather than hidden: the distillation reading needs an A3 run with a fresh
 prompt, and no such run exists. A row with no value is the honest form of "we have not measured this".
+
+`S10` is the row for the per-turn window (`turnWindow: 'match'`), and its threshold is five questions rather
+than fifteen because the mechanism spends the same characters: it cannot buy accuracy with context, only with a
+better-chosen slice of it. Its control is the registered configuration at the same cap, so the pair differs in one
+field and the bill is identical -- which is what makes a win here a win rather than a trade.
 
 `S9` is the row that turns "the product can rank" from a claim into a reading. Every other `S*` row is
 measured on an arm whose ranking `cortex-eval` builds **before the run** and hands to the product as a

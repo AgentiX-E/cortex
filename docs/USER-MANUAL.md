@@ -493,6 +493,7 @@ Three fields are required and each is required for a reason:
 | `widthPlan` | `WidthPlanOptions` | absent | A per-**question** evidence budget: rank the candidates by relevance and fund the shortest prefix that explains `coverage` of the mass. `fitToBudget` spends the smaller of this and the room. |
 | `maxTurnChars` | `number` | absent (no cap) | Upper bound on what one turn may contribute. |
 | `turnCutMarker` | `'none' \| 'ellipsis'` | absent | Whether a turn the cap cut says so. Only forwarded on routes the cap reaches. |
+| `turnWindow` | `'head' \| 'match'` | absent (`'head'`) | Which slice of a long turn the cap keeps. `'match'` spends the same characters on the window around the question's densest lexical match and marks every elision; needs `maxTurnChars` and is refused without it. |
 | `maxTurnCharsRoutes` | `readonly TurnCapRoute[]` | absent (all routes) | Which routes the per-turn cap reaches. `[]` reaches none. |
 | `relevanceFor` | `(question, turn) => number` | absent | Ranks which turns the budget is spent on. Wins over `index` when both are given. |
 | `index` | `SearchIndexOptions` | absent | The product's **own** retrieval: postings over the turns of this question, an optional vector channel through `embed`, rank fusion, and an optional `rerank`. Absent keeps the previous behaviour byte for byte. |
@@ -931,6 +932,8 @@ const memory = new CortexMemory({
   gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
   maxTurnChars: 400,
   turnCutMarker: 'ellipsis',
+  // The same 400 characters, chosen around the question rather than from the start of the turn.
+  turnWindow: 'match',
   maxTurnCharsRoutes: ['temporal', 'multi-session'],
   promptContract: 'abstention-evidence-blocks',
   ask: 'extractive',
