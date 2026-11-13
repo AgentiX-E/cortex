@@ -809,3 +809,112 @@ Two of these are the same shape as round 88's finding: **a guarantee that is tru
 measured and assumed in the layers that were not.** Erasure is now verified at the row, at the read
 path, and at the file — for SQLite. The other two backends have the row guarantee and nothing else,
 and saying that out loud is cheaper than discovering it in an audit.
+
+---
+
+## 13. Round 90: the product ranks its own turns, and the first dispatch died in ninety milliseconds
+
+The row at the top of round 89's list was `P0-2`: dispatch the run in which the product builds its own
+index. It read like a scheduling item. It was not. It was the only way to find out that the capability had
+never run outside a fixture — and the first real run found that it could not.
+
+### 13.1 The gap was a measurement gap, and it had a direction
+
+Every ranking signal on this arm before `self-index` is built by **`cortex-eval`**, before the run, and
+handed to the product as a synchronous callback. `relevance-index.ts`, `session-relevance.ts`,
+`anchor-recall.ts` — all of them. So every published number on the arm says *this is what the harness can
+rank*, and none of them says *this is what the product can rank*.
+
+`SearchIndex` — postings over `contentTerms`, a vector channel through an injected embedder, reciprocal-rank
+fusion, an optional cross-encoder — shipped in round 87 with unit tests and two acceptance rows (`C5`/`C6`).
+Both rows are measured on a **synthetic four-turn corpus**. That is a fixture, and a capability whose only
+evidence is a fixture is a capability nobody has measured. The audit could have carried that sentence for
+another three rounds; one dispatch replaced it with a reading.
+
+### 13.2 What had to be added, and why three things rather than one
+
+| # | addition | where | what it makes possible |
+| --- | --- | --- | --- |
+| 1 | `CORTEX_MEMORY_RELEVANCE=self-index` | `cortex-eval`'s `RELEVANCE_SIGNALS` | the arm hands the product an embedder and a width instead of a table lookup |
+| 2 | `CortexMemory.indexCost()` | `cortex-memory` | the **run's** cost, summed; `lastIndexCensus()` is overwritten by the next question, so the bill was not recoverable after the fact |
+| 3 | `memoryArmConfig.selfIndex` | `cortex-eval`'s report | the three readings land in the artifact beside the signal, not in a job log that expires |
+
+The signal rides the existing enum rather than taking a dispatch input of its own. That is forced rather
+than preferred: the memory workflow sits at **24 of GitHub's 25** `workflow_dispatch` inputs and
+`tools/__tests__/test_dispatch_inputs.py` refuses a workflow that reaches the limit. The ceiling produced
+this shape twice before (§13.17's split, `CORTEX_MEMORY_CONFLICTS`), and a mechanism that fits inside an
+existing value is a mechanism that cannot be crowded out by the next one.
+
+### 13.3 Four decisions the code now records
+
+1. **Who builds the index is one predicate.** `buildsProductIndex(signal)` is in `cortex-eval`, not in the
+   CLI, because `bench/**` is outside the coverage boundary — and because the two call sites have to agree:
+   the run wires either `index` or `relevanceFor`, and `#relevanceFor` returns the override first, so a file
+   that wired both would rank with the callback while its artifact named `self-index`.
+2. **The fold is the arm's, over every instance.** `indexCostAcross` reads each feature instance the pool
+   built, for the reason `voteCountsAcross` does: a per-instance counter read off worker 0 is the
+   quarter-denominator defect §13.244 already paid for, at one more census.
+3. **An idle worker is a zero, not an absence.** `CortexMemory.indexCost()` returns `undefined` when an
+   instance never built an index — the normal state of a worker that drew no ranked questions. Treating that
+   as "this system has no census" would discard the total on one idle worker, which is a truncated sum
+   wearing the shape of a guard.
+4. **`reuse` is a conjunction over the parts that embedded.** One index without a store makes the total
+   incomparable with a run that had one throughout; a worker that embedded nothing must not turn a stored
+   run into an unstored one.
+
+### 13.4 The ninety milliseconds
+
+The screening dispatch (200 questions × 2 repetitions, 2.85 CNY) died at question 4:
+
+```
+Embedding request failed: 400 Bad Request —
+{"error":{"code":"1214","message":"input数组最大不得超过64条"}}
+    at OpenAIEmbedding.embed (packages/cortex-ai/src/embedding/openai.ts:84:13)
+    at async EmbeddingMemo.embed (packages/cortex-core/src/cache/embedding-cache.ts:238:23)
+    at async SearchIndex.prime (packages/cortex-memory/src/retrieval/search-index.ts:310:21)
+    at async CortexMemory.#relevanceFor (packages/cortex-memory/src/memory.ts:2375:5)
+```
+
+`prime()` embedded the **whole corpus in one request**. A LongMemEval haystack is ~500 turns; Zhipu refuses
+more than 64 inputs per request. So the product's own retrieval could not run against a capped provider at
+all, and no unit test could see it: a fake embedder accepts any batch size. The instrument agreed with the
+code, and both were wrong about the world.
+
+This is the same class as round 87's `secure_delete` finding and round 88's four storage defects — a
+property that is true of the code as tested and false of the thing it runs against — and it is the third
+time a real dispatch has been cheaper than an argument. Ninety milliseconds of a run that had already paid
+for its setup found what twelve rounds of review had not.
+
+### 13.5 The repair, and the counter it made meaningful
+
+`prime()` now walks the corpus in slices of `SearchIndexOptions.batch`, default **64** — Zhipu's documented
+cap, and the constant `cortex-eval`'s `retrieval.ts` already batches at, so a measured run and the product
+cannot disagree about how many texts one request carried. The default is the smallest cap this repository
+measures against, because chunking more finely costs requests and chunking less finely costs a failed run.
+
+The interesting consequence is on the census. `embedCalls` and `embedTexts` were introduced as a pair
+because "a batch count alone cannot price a corpus". Chunking makes them **separately** meaningful for the
+first time: a 130-turn corpus at the default is three requests and 130 texts, plus one request for the
+query. The counters were right before the defect and only became informative after it — which is what a
+census is for.
+
+`batch` is refused below 1 rather than clamped: zero asks for an unbounded number of empty requests, and a
+fraction asks for a loop that cannot advance.
+
+### 13.6 Mutations, and the one that was a no-op
+
+Eight mutations, each applied by locating its text and printing the line it landed on:
+
+| mutation | line | result |
+| --- | --- | --- |
+| `foldIndexCost` stops adding `memoHits` | `search-index.ts:197` | **red**, 1 failed |
+| the census is folded from nothing each time | `memory.ts:2387` | **red**, 1 failed |
+| a record with zero indexes is published | `bench-memory-arm.ts:4739` | **red**, 1 failed |
+| an idle worker's `undefined` reads as an absent capability | `bench-memory-arm.ts:4689` | **red**, 1 failed |
+| `reuse` becomes a disjunction | `bench-memory-arm.ts:4737` | **red**, 1 failed |
+| every signal builds the product's index | `bench-memory-arm.ts:2607` | **red**, 1 failed |
+| the cost stops rendering | `report.ts:1747` | **red**, 1 failed |
+| `prime()` goes back to one request | `search-index.ts:314` | **red**, 1 failed |
+
+The last one is the round's own subject. A mutation that restores the defect must fail the test that was
+written for it, or the test was written for the repair's *shape* rather than its *behaviour*.

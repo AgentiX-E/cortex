@@ -66,6 +66,16 @@ const DEFAULT_K = 64;
 /** The RRF constant. `60` is the value from the original literature and the one `fuse.ts` uses. */
 const DEFAULT_RRF_K = 60;
 
+/**
+ * How many texts one embedding request may carry unless the caller says otherwise.
+ *
+ * `64` is Zhipu's documented per-request cap and the constant `cortex-eval`'s `retrieval.ts` already
+ * batches at, so a measured run and the product cannot disagree about how many texts one request carried.
+ * It is a default rather than a constant because the cap is a property of the deployment, not of this
+ * algorithm: a provider that allows more should be allowed to pay fewer requests for the same corpus.
+ */
+const DEFAULT_BATCH = 64;
+
 export type SearchIndexOptions = {
   /**
    * The vector channel: texts in, one vector per text out, same order.
@@ -111,6 +121,20 @@ export type SearchIndexOptions = {
   readonly rerank?: RerankScoreFn;
   /** How many hits a search returns. */
   readonly k?: number;
+  /**
+   * How many texts one embedding request may carry. Defaults to 64.
+   *
+   * The cap is the deployment's, not the algorithm's: Zhipu refuses more than 64 inputs per request
+   * (`code 1214`), OpenAI allows far more, and a local model may prefer 8. The default is the smallest cap
+   * this repository measures against, which is the safe direction — a corpus is chunked into more requests
+   * rather than into a request the provider rejects. The first dispatch of a run where the product ranked
+   * for itself died on exactly that rejection in 90 ms, which is what this option and `prime()`'s loop are
+   * for: nothing in a unit test with a fake embedder could see it.
+   *
+   * A value below 1 is refused rather than clamped, because a batch of zero asks for an unbounded number
+   * of empty requests and the corpus would never be embedded.
+   */
+  readonly batch?: number;
   /** The RRF constant. Exposed because a second index in the same run must not silently use another one. */
   readonly rrfK?: number;
 };
@@ -244,9 +268,22 @@ export class SearchIndex {
   #embedTexts = 0;
   #rerankCalls = 0;
   #rerankDegraded = 0;
+  /** How many texts one request may carry. Resolved once, so a corpus cannot be chunked two ways. */
+  readonly #batch: number;
 
   constructor(options: SearchIndexOptions = {}) {
     this.#options = options;
+    const batch = options.batch ?? DEFAULT_BATCH;
+    // Refused rather than clamped: a batch of zero asks for an unbounded number of empty requests, and a
+    // negative one asks for a loop that never advances. Both are configuration errors a message can fix.
+    if (!Number.isInteger(batch) || batch < 1) {
+      throw new Error(
+        `SearchIndexOptions.batch must be a positive integer, got ${String(options.batch)}. One request ` +
+          'carries at most this many texts; providers cap it (Zhipu refuses more than 64 per request, ' +
+          'code 1214), and a value below 1 would never embed the corpus the index was built for.',
+      );
+    }
+    this.#batch = batch;
     const embed = options.embed;
     if (embed === undefined) return;
 
@@ -296,24 +333,47 @@ export class SearchIndex {
   }
 
   /**
-   * Compute the vector channel, in one batch.
+   * Compute the vector channel, one request at a time.
    *
    * Called once per corpus, before any question. An index with no embedder primes to a lexical index; an
    * empty corpus primes to nothing and calls no model, because a batch of zero texts is a request whose
    * only possible answer is "there was nothing to embed".
+   *
+   * ## Why this is a loop and not one call
+   *
+   * It was one call, and the first real dispatch died on it in ninety milliseconds:
+   *
+   *     Embedding request failed: 400 Bad Request —
+   *     {"error":{"code":"1214","message":"input数组最大不得超过64条"}}
+   *
+   * A LongMemEval haystack is ~500 turns, so "embed the corpus in one batch" is a request no capped
+   * provider will serve. The property is not Zhipu's: a per-request input cap is the norm, and this
+   * repository already batches at 64 in `cortex-eval`'s `retrieval.ts` for exactly that reason. So the
+   * chunking belongs here, where the corpus size is known, rather than in every embedder a caller might
+   * inject — an `embed` function that silently truncated or chunked would hide either the work or the
+   * failure, and the census below counts what actually crossed the wire.
+   *
+   * The per-index counts change meaning with the loop and that is the point: `embedCalls` becomes the
+   * number of requests the corpus cost (five for 300 turns at the default) while `embedTexts` stays the
+   * number of texts. The pair was built to be read this way — a batch count alone cannot price a corpus.
    */
   async prime(): Promise<void> {
     this.#primed = true;
     const model = this.#model;
     if (model === undefined || this.#turns.length === 0) return;
 
-    const vectors = await model(this.#turns);
-    if (vectors.length !== this.#turns.length) {
-      throw new Error(
-        `the embedder was given ${this.#turns.length} texts and returned ${vectors.length} vector(s); a ` +
-          'short batch would leave turns unscoreable and the index would report a ranking it did not ' +
-          'compute',
-      );
+    const vectors: EmbeddingVector[] = [];
+    for (let at = 0; at < this.#turns.length; at += this.#batch) {
+      const slice = this.#turns.slice(at, at + this.#batch);
+      const part = await model(slice);
+      if (part.length !== slice.length) {
+        throw new Error(
+          `the embedder was given ${slice.length} texts and returned ${part.length} vectors; a ` +
+            'short reply would leave turns unscoreable and the index would report a ranking it did not ' +
+            'compute',
+        );
+      }
+      vectors.push(...part);
     }
     this.#vectors = vectors;
   }
