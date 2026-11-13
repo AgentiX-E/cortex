@@ -4481,6 +4481,10 @@ ATOMIC_CONFIG_FIELDS = frozenset({'maxPromptCharsByRoute'})
 #   * `turnCutMarker` is deliberately NOT reachable from the artifact path `maxTurnChars`. It rides the
 #     same input string, but it is a second switch rather than a value derived from the width, so a
 #     writer who declares only the width has declared only the width.
+#   * `turnWindow` (§14.143) is the third segment of the same string and the same shape again: it is
+#     a way of spending the width, not a value derived from it. It is in this tuple because a gate
+#     that did not name it would report the one field this experiment moves as *derived* and never
+#     compare it -- the inert-option defect, one layer out, in the instrument.
 #   * `model` lands at `reader.model` rather than at a top-level key (§13.192.6).
 DISPATCH_FIELD_ALIASES = {
     'ask': ('ask', 'askRoutes'),
@@ -4495,7 +4499,7 @@ DISPATCH_FIELD_ALIASES = {
     # other is counted as derived -- because an artifact cannot carry both, and requiring a writer
     # to declare the shape they did not run would teach them to paste it in.
     'cortex_memory_max_prompt_chars': ('maxPromptChars', 'maxPromptCharsByRoute'),
-    'cortex_memory_max_turn_chars': ('maxTurnChars', 'turnCutMarker'),
+    'cortex_memory_max_turn_chars': ('maxTurnChars', 'turnCutMarker', 'turnWindow'),
     'cortex_memory_max_turn_chars_routes': ('maxTurnCharsRoutes',),
     'cortex_memory_evidence_roles': ('evidenceRoles',),
     'cortex_memory_evidence_roles_routes': ('evidenceRolesRoutes',),
@@ -4798,7 +4802,9 @@ def two_field_expectation(name: str, raw: str) -> dict | None:
     Two shapes, both registered rather than inferred (§13.188.3, §13.198.1):
 
       * `cortex_memory_max_turn_chars=400:ellipsis` is a width and a marker. The marker is `none`
-        when the value states none, which is the identity §13.188 shipped.
+        when the value states none, which is the identity §13.188 shipped. A third segment names
+        the window (`400::match`), and an unnamed window reads `ABSENT` because the artifact does
+        not carry a field the run never set (§14.143).
       * `thinking` is a mode, until it is a route list; a list means `enabled` on those routes and
         the shipped state everywhere else. `readThinkingReach` owns that grammar in the product --
         this mirror exists because the artifact records the *result* and a reader must be able to
@@ -4809,8 +4815,19 @@ def two_field_expectation(name: str, raw: str) -> dict | None:
     if name == 'cortex_memory_ask':
         return {'ask': raw}
     if name == 'cortex_memory_max_turn_chars':
-        width, _, marker = raw.partition(':')
-        return {'maxTurnChars': int(width), 'turnCutMarker': marker or 'none'}
+        width, _, rest = raw.partition(':')
+        marker, _, window = rest.partition(':')
+        return {
+            'maxTurnChars': int(width),
+            # `match` beside an unnamed marker is `ellipsis` in the arm (`readTurnCap` fills it),
+            # because a window always marks its elisions; writing `none` here would report every
+            # window run as a marker departure. `none` beside `match` is refused at dispatch.
+            'turnCutMarker': marker or ('ellipsis' if window == 'match' else 'none'),
+            # `ABSENT` when the segment is unnamed, which is the state every artifact before §14.143
+            # is in and the state the registered `400` still dispatches. A named value -- including
+            # `head`, which the artifact does carry when it is spelled -- is compared as itself.
+            'turnWindow': window or ABSENT,
+        }
     if name in ('thinking', 'cortex_memory_thinking'):
         if raw in ('enabled', 'disabled') or raw == '':
             return {'reader.thinking': raw or 'disabled', 'reader.thinkingRoutes': ABSENT}

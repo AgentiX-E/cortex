@@ -168,6 +168,7 @@ class TestTwoFieldInputs:
         assert module.two_field_expectation("cortex_memory_max_turn_chars", "400:ellipsis") == {
             "maxTurnChars": 400,
             "turnCutMarker": "ellipsis",
+            "turnWindow": module.ABSENT,
         }
 
     def test_a_width_without_a_marker_states_the_identity(self) -> None:
@@ -177,7 +178,35 @@ class TestTwoFieldInputs:
         assert module.two_field_expectation("cortex_memory_max_turn_chars", "400") == {
             "maxTurnChars": 400,
             "turnCutMarker": "none",
+            "turnWindow": module.ABSENT,
         }
+
+    def test_a_window_segment_is_compared_as_the_artifact_records_it(self) -> None:
+        """Three states, and each resolves to what the artifact holds (§14.143).
+
+        Unnamed: the artifact carries no `turnWindow`, so the expectation is `ABSENT` -- otherwise
+        every pre-window artifact would read as a departure it never made. `400::match`: the empty
+        marker segment means `none` was not named, and the window always marks, so the marker
+        resolves to `ellipsis`. `400:ellipsis:head`: `head` is a name the artifact does carry when it
+        is spelled, so it is compared as itself rather than folded into `ABSENT`.
+        """
+        module = _module()
+        unnamed = module.two_field_expectation("cortex_memory_max_turn_chars", "400")
+        assert unnamed["turnWindow"] is module.ABSENT
+        matched = module.two_field_expectation("cortex_memory_max_turn_chars", "400::match")
+        assert matched == {
+            "maxTurnChars": 400,
+            "turnCutMarker": "ellipsis",
+            "turnWindow": "match",
+        }
+        named = module.two_field_expectation("cortex_memory_max_turn_chars", "400:ellipsis:head")
+        assert named == {"maxTurnChars": 400, "turnCutMarker": "ellipsis", "turnWindow": "head"}
+
+    def test_the_window_is_compared_under_the_width_input(self) -> None:
+        """The alias table has to name the third field, or the gate reports it as derived and never
+        compares the one value this experiment moves."""
+        module = _module()
+        assert "turnWindow" in module.DISPATCH_FIELD_ALIASES["cortex_memory_max_turn_chars"]
 
     @pytest.mark.parametrize("raw", ["disabled", "enabled"])
     def test_a_plain_mode_leaves_the_reach_absent(self, raw: str) -> None:
@@ -384,11 +413,13 @@ class TestWhatIsCounted:
     def test_the_header_states_every_population_it_did_not_compare(self) -> None:
         module = _module()
         text, _ = module.registration_section(report(REAL_41222844945), [])
-        # Twenty inputs the arm records, plus three conditions: `evidenceSource`, `replyRepair` and
-        # `conflicts` are compared on every artifact although no dispatch input carries any of them,
-        # which is what makes a gold-sessions run, a repair run or a related-statements run visible to
-        # a reader who did not ask for one.
-        assert "registration: 23 field(s) compared" in text
+        # Twenty-one inputs the arm records, plus three conditions: `evidenceSource`, `replyRepair`
+        # and `conflicts` are compared on every artifact although no dispatch input carries any of
+        # them, which is what makes a gold-sessions run, a repair run or a related-statements run
+        # visible to a reader who did not ask for one. Twenty-four rather than twenty-three since
+        # §14.143: `cortex_memory_max_turn_chars` now resolves to three fields, and the third is
+        # `ABSENT` on every artifact that predates the window.
+        assert "registration: 24 field(s) compared" in text
         # Two since §13.327: `maxPromptCharsByRoute` is derived on an artifact that carries the
         # scalar, exactly as `maxPromptChars` is derived on one that carries the map. Counted rather
         # than dropped, which is what the header exists to do.
