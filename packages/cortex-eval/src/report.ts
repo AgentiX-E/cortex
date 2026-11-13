@@ -964,6 +964,57 @@ export type MemoryArmConfig = {
       }
     | undefined;
   /**
+   * What the product's write gate computed for every turn it was shown, and what it did.
+   *
+   * ## The defect this closes, and why the field is counts rather than a verdict
+   *
+   * `threshold`, `retrievalThreshold`, `sourceTrust` and `confidenceSignal` are all recorded
+   * on this object, so an artifact could always say what the gate was **configured** with.
+   * Run `37110579101` is the recorded case of that being useless: `retrievalThreshold: 0`
+   * could not close a gate whose maximum observable value was `0.5`, so the repaired program
+   * scored what the unrepaired one did, and the artifact described a mechanism that had not
+   * been reached. In the registered configuration both gates are `0`, which makes
+   * `value >= threshold` true for every turn — a **pass-through**, by arithmetic rather than
+   * by observation.
+   *
+   * `rejected` is the field that turns that into an observation. It is the count of candidate
+   * turns whose value fell below the threshold, so `rejected: 0` on a run whose configuration
+   * is a pass-through is the artifact saying "this gate did not decide anything", and a
+   * reader no longer has to infer it from two zeros in the configuration block.
+   *
+   * ## Why the counts are over candidates and not over admitted turns
+   *
+   * Because a census of admitted turns reports `rejected: 0` for every configuration that has
+   * ever run: the admission test is `value >= threshold`, so every admitted turn is above the
+   * cut by construction. The first draft of this instrument had exactly that shape and was
+   * arithmetically incapable of answering its own question. `cortex-memory`'s
+   * `admission-census.test.ts` records the correction.
+   *
+   * ## Why `distinct` is a floor and says so
+   *
+   * Each instance caps its distinct-value set at 64, and the roll-up across a pool reports the
+   * maximum of the parts. Both are floors. `distinctSaturated` distinguishes "64 distinct
+   * values" from "at least 64", and the criterion this field serves — `distinct >= 2` — is
+   * decided well below the cap, so the floor is enough to answer it.
+   *
+   * Absent means the run admitted nothing at all (no candidate reached any instance), which is
+   * a different statement from a gate that refused everything — the latter has
+   * `candidates > 0` and `admitted: 0`.
+   */
+  readonly admission?:
+    | {
+        readonly threshold: number;
+        readonly candidates: number;
+        readonly admitted: number;
+        readonly rejected: number;
+        readonly min: number;
+        readonly max: number;
+        readonly mean: number;
+        readonly distinct: number;
+        readonly distinctSaturated: boolean;
+      }
+    | undefined;
+  /**
    * Which embedding backend this artifact's numbers were produced against.
    *
    * ## Why the artifact has to say it
@@ -1766,6 +1817,28 @@ export function formatAblationReport(report: AblationReport): string {
             `+hits:${memoryArm.selfIndex.memoHits}` +
             `+reuse:${memoryArm.selfIndex.reuse}` +
             `+rerank:${memoryArm.selfIndex.rerankCalls}/${memoryArm.selfIndex.rerankDegraded}\``) +
+        // §14.146's write-gate census, on the line rather than only in the JSON, because the
+        // numbers above it are conditioned on this gate and the configuration block cannot say
+        // whether it decided anything. `rejected:0` is the disclosure: a gate whose threshold is
+        // below every value is a pass-through, and `37110579101` is the recorded cost of reading
+        // that as a mechanism. Rendered only when the record exists, under the same rule as the
+        // self-index bill: a run whose configuration names a gate it never measured reads as
+        // unmeasured rather than as a zero.
+        //
+        // Joined with `+` and not commas, for the reason the two fields above are: this line
+        // already separates fields with commas, so a comma inside a value would make one
+        // measurement look like several.
+        (memoryArm.admission === undefined
+          ? ''
+          : `, \`admission=candidates:${memoryArm.admission.candidates}` +
+            `+admitted:${memoryArm.admission.admitted}` +
+            `+rejected:${memoryArm.admission.rejected}` +
+            `+min:${memoryArm.admission.min.toFixed(3)}` +
+            `+max:${memoryArm.admission.max.toFixed(3)}` +
+            `+mean:${memoryArm.admission.mean.toFixed(3)}` +
+            `+distinct:${memoryArm.admission.distinct}${
+              memoryArm.admission.distinctSaturated ? '+' : ''
+            }\``) +
         // The backend, and the check that it was serving. Appended only when the caller
         // named one, so an artifact that predates the field reads as pre-dating it rather
         // than as having run against an unrecorded backend. Both halves are rendered

@@ -52,6 +52,8 @@ export {
   admitTurns,
   clockAwareValueFunction,
   admissionOptionsFrom,
+  AdmissionCensusBuilder,
+  type AdmissionCensus,
   type AdmittedTurn,
   type AdmissionOptions,
 } from './admission.js';

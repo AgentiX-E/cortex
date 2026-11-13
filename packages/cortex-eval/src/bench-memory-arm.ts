@@ -3917,6 +3917,11 @@ export async function runCortexMemoryArm(
   // answered. §13.17's index and this one are different instruments -- the harness's census describes a
   // ranking it built before the run, this one a ranking the product built per question.
   const indexCost = indexCostAcross(censusSystems);
+  // The write gate's own census, read here for the same reason: it counts what the gate did
+  // rather than what it was configured with, so it can only be taken after the questions were
+  // answered. §14.146 records why the counts are over candidates -- a census of admitted turns
+  // reports `rejected: 0` for every configuration that has ever run.
+  const admission = admissionCensusAcross(censusSystems);
   const reported: AblationReport = {
     ...report,
     // The evidence is carried twice, and the registered bound has to reach both
@@ -3969,13 +3974,16 @@ export async function runCortexMemoryArm(
     // and the artifact would lose a count that had been measured. Nothing would fail -- the run would
     // simply publish a configuration with one fewer reading than it took.
     ...(report.memoryArmConfig === undefined ||
-    (vote.voteCounts === undefined && indexCost.selfIndex === undefined)
+    (vote.voteCounts === undefined &&
+      indexCost.selfIndex === undefined &&
+      admission.admission === undefined)
       ? {}
       : {
           memoryArmConfig: {
             ...report.memoryArmConfig,
             ...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),
             ...(indexCost.selfIndex === undefined ? {} : { selfIndex: indexCost.selfIndex }),
+            ...(admission.admission === undefined ? {} : { admission: admission.admission }),
           },
         }),
     questions,
@@ -4807,6 +4815,156 @@ function indexCostAcross(systems: readonly MemorySystem[]): {
   }
   if (total.indexes === 0) return {};
   return { selfIndex: { ...total, reuse } };
+}
+
+/**
+ * The counters an admission census must supply as non-negative integers.
+ *
+ * `min`/`max`/`mean` are checked separately because they are fractions rather than counts, and
+ * `threshold` because it is the number the counts are read against.
+ */
+const ADMISSION_COUNTERS = ['candidates', 'admitted', 'rejected', 'distinct'] as const;
+
+/** One instance's admission census, `null` when it has no such capability or reports nonsense. */
+type AdmissionCensusRecord = NonNullable<MemoryArmConfig['admission']>;
+
+/**
+ * One instance's write-gate census, `null` when it has no such capability.
+ *
+ * ## Why the reconciliation is checked here and not left to the reader
+ *
+ * `rejected === candidates - admitted` is not an extra assertion, it is the definition: the
+ * admission test is a single comparison, so a turn is admitted or it is not. A system whose
+ * three counters disagree is describing a gate nobody ran, and an artifact carrying them would
+ * be worse than one carrying nothing — a reader could not tell a measurement from a mistake.
+ * This is the same rule `indexCostOf` applies to `reuse` and that the erasure census applies to
+ * its four surfaces: a field that is present but wrong is worse than an absent one.
+ *
+ * ## Why a missing accessor and a zero census are different
+ *
+ * `admissionCensus()` returns a record with `candidates: 0` on an instance that was never shown
+ * a turn, and reading that as "this system has no census" would discard the whole total on one
+ * idle worker — the truncated-denominator defect §14.22 records, arriving through a guard that
+ * looks like it protects the reader. No accessor is an absence; an accessor answering zero is a
+ * part that contributed nothing.
+ */
+function admissionCensusOf(system: MemorySystem): AdmissionCensusRecord | null {
+  const candidate = (system as { admissionCensus?: unknown }).admissionCensus;
+  if (typeof candidate !== 'function') return null;
+
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    // A throwing accessor is a broken optional capability, not a failed run.
+    return null;
+  }
+  if (payload === null || typeof payload !== 'object') return null;
+
+  const record = payload as Record<string, unknown>;
+  for (const key of ADMISSION_COUNTERS) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null;
+  }
+  for (const key of ['threshold', 'min', 'max', 'mean'] as const) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return null;
+  }
+  if (typeof record.distinctSaturated !== 'boolean') return null;
+
+  const candidates = record.candidates as number;
+  const admitted = record.admitted as number;
+  const rejected = record.rejected as number;
+  // One comparison, so a turn is admitted or it is not: the three counters cannot disagree
+  // without the record describing a gate nobody ran. This single test also subsumes
+  // `admitted > candidates` -- that shape forces `rejected` negative, which the loop above has
+  // already refused -- and a second guard for it would be a branch no input can reach, which
+  // the coverage ratchet reports as debt rather than as safety.
+  if (rejected !== candidates - admitted) return null;
+
+  return {
+    threshold: record.threshold as number,
+    candidates,
+    admitted,
+    rejected,
+    min: record.min as number,
+    max: record.max as number,
+    mean: record.mean as number,
+    distinct: record.distinct as number,
+    distinctSaturated: record.distinctSaturated,
+  };
+}
+
+/**
+ * The run's write-gate census, summed across every feature instance and then judged.
+ *
+ * ## The three rules, in order
+ *
+ * 1. **Every part must report, or the field is absent.** A partial sum is a quarter of a run
+ *    published as the run, which is §13.244's defect.
+ * 2. **Every part must agree about the threshold.** The gate is one configuration, so two parts
+ *    disagreeing means two configurations ran under one artifact — the field cannot name one
+ *    number without being wrong about the other.
+ * 3. **`candidates: 0` in total is not a census.** A run that admitted nothing did not measure
+ *    its gate, and `rejected: 0` there would read exactly like the pass-through this field
+ *    exists to disclose. Absence is the honest value, and it is distinguishable from a gate that
+ *    refused everything (`candidates > 0, admitted: 0`).
+ *
+ * `mean` is re-weighted by each part's candidate count rather than averaged over parts: a worker
+ * that drew two hundred questions and one that drew five must not contribute equally to a number
+ * that describes the run. `distinct` is the maximum over parts, which is a **floor** on the run's
+ * distinct count and is labelled so by `distinctSaturated` when any part hit the cap.
+ */
+function admissionCensusAcross(systems: readonly MemorySystem[]): {
+  admission?: MemoryArmConfig['admission'];
+} {
+  // Every part is read before any arithmetic, so the all-or-nothing rule is one line rather
+  // than a `return` buried in a loop: a partial sum is a quarter of a run published as the run,
+  // which is §13.244's defect.
+  const parts: AdmissionCensusRecord[] = [];
+  for (const system of systems) {
+    const one = admissionCensusOf(system);
+    if (one === null) return {};
+    parts.push(one);
+  }
+  // One gate ran. Two thresholds under one artifact means the field cannot name one number
+  // without being wrong about the other part, so the honest value is absence.
+  //
+  // Expressed as a set rather than as a scan against `parts[0]`, and that is the coverage ratchet
+  // talking rather than taste: the scan needs a `systems.length === 0` guard above it, and that
+  // guard is unreachable through every caller this function has -- so it would be a branch no
+  // test can cover, which is debt this repository's per-file gate reports as such. The set
+  // answers the same question for an empty array (size 0, not 1) with no guard at all.
+  const thresholds = new Set(parts.map((part) => part.threshold));
+  if (thresholds.size !== 1) return {};
+  const [threshold] = [...thresholds] as [number];
+
+  // Idle workers are dropped before the fold rather than inside it: a worker that drew no
+  // question reports `min: 0`, and folding that in would report a run whose values start at
+  // zero when none did.
+  const contributing = parts.filter((part) => part.candidates > 0);
+  if (contributing.length === 0) return {};
+
+  const candidates = contributing.reduce((total, part) => total + part.candidates, 0);
+  const admitted = contributing.reduce((total, part) => total + part.admitted, 0);
+  return {
+    admission: {
+      threshold,
+      candidates,
+      admitted,
+      rejected: candidates - admitted,
+      min: Math.min(...contributing.map((part) => part.min)),
+      max: Math.max(...contributing.map((part) => part.max)),
+      // Re-weighted rather than averaged over parts: a worker that drew five questions must not
+      // weigh as much as one that drew two hundred.
+      mean:
+        contributing.reduce((total, part) => total + part.mean * part.candidates, 0) / candidates,
+      // A floor on the run's distinct count, which no roll-up can compute exactly: each part
+      // caps its own set, so the widest part is the closest thing to the union that stays bounded.
+      distinct: Math.max(...contributing.map((part) => part.distinct)),
+      distinctSaturated: contributing.some((part) => part.distinctSaturated),
+    },
+  };
 }
 
 /**

@@ -28,6 +28,138 @@ export type AdmittedTurn = MemoryValue & {
 };
 
 /**
+ * What the write gate computed for every turn it was shown, and what it did with each.
+ *
+ * ## The defect this exists to close, stated precisely
+ *
+ * The gate's two variables were made reachable (§49: `sourceTrust` raises the ceiling,
+ * `confidenceFor` supplies the variation), and an artifact could then say *what it was
+ * configured with*. It could not say **whether the configuration did anything**. Run
+ * `37110579101` is the recorded case: `retrievalThreshold: 0` could not close a gate whose
+ * maximum observable value was `0.5`, so the repaired program scored what the unrepaired
+ * one did and the artifact described a mechanism that had not been reached. The census is
+ * the difference between "the configuration says 0.25" and "0.25 cut 41% of the turns".
+ *
+ * ## Why the counts are over CANDIDATES and not over admitted turns
+ *
+ * The first draft of this instrument counted the admitted turns only, and it was
+ * arithmetically incapable of answering its own question: every admitted turn is above
+ * the threshold **by construction**, so `rejected` would be 0 in every run and the
+ * acceptance criterion "some turns below, some above" could never be satisfied by any
+ * measurement of any configuration. Counting candidates makes `rejected > 0` the exact
+ * statement "the gate cut something", which is the statement worth being able to make.
+ *
+ * ## Why `distinct` is bounded, and why the bound is visible
+ *
+ * A run of five hundred questions admits a few hundred thousand turns, and a confidence
+ * signal computed from length takes a distinct value on almost all of them. Keeping every
+ * value would put a set of that size into an artifact that is diffed in review. The
+ * builder therefore stops collecting at {@link ADMISSION_DISTINCT_CAP} and reports
+ * `distinctSaturated`, so a reader sees `distinct: 64, distinctSaturated: true` and knows
+ * the count is a floor. Saturated-at-64 and exactly-64 are different facts, and only one
+ * of them is a rounding.
+ */
+export type AdmissionCensus = {
+  /** The gate's threshold, recorded beside the counts so the cut is interpretable. */
+  threshold: number;
+  /** Turns offered to the gate. */
+  candidates: number;
+  /** Turns the gate kept, in total across every admission this census covers. */
+  admitted: number;
+  /** Turns the gate refused. Equal to the count below `threshold`, since the test is `>=`. */
+  rejected: number;
+  /** Smallest value computed. `0` when nothing was offered -- see `candidates`. */
+  min: number;
+  /** Largest value computed. `0` when nothing was offered. */
+  max: number;
+  /** Arithmetic mean over candidates. `0` when nothing was offered. */
+  mean: number;
+  /** Distinct values seen, saturated at {@link ADMISSION_DISTINCT_CAP}. */
+  distinct: number;
+  /** True when `distinct` is a floor rather than a count. */
+  distinctSaturated: boolean;
+};
+
+/**
+ * How many distinct values the census remembers.
+ *
+ * Sixty-four, because the criterion this instrument serves is `distinct >= 2` and every
+ * value above that is reporting rather than evidence.
+ *
+ * Not exported, and the reason is the export census rather than tidiness: an exported
+ * constant nothing outside this file calls is public surface with no consumer, which is the
+ * shape the census gate rejects. What a caller needs is `distinctSaturated` -- the fact that
+ * the count is a floor -- and that is on the record. `admission-census.test.ts` asserts the
+ * cap at its documented value, so moving one without the other fails a test rather than
+ * silently changing what `distinct` means.
+ */
+const ADMISSION_DISTINCT_CAP = 64;
+
+/**
+ * Accumulates the value the gate computed per candidate turn.
+ *
+ * ## Why an accumulator rather than a function over a returned list
+ *
+ * The census has to survive `admitSessions`, which admits each session independently and
+ * keeps only the admitted turns — so a function of the *return value* cannot see the turns
+ * the gate refused, in exactly the path the abstention route takes. Threading one sink
+ * through the calls that already exist is also the only shape that keeps a single loop:
+ * a second pass to collect values would be a second place for "what counts as a candidate"
+ * to be decided, and the two would drift.
+ */
+export class AdmissionCensusBuilder {
+  readonly #values = new Set<number>();
+  #candidates = 0;
+  #admitted = 0;
+  #sum = 0;
+  #min = Number.POSITIVE_INFINITY;
+  #max = Number.NEGATIVE_INFINITY;
+
+  /**
+   * Record one candidate.
+   *
+   * `value` is what `decideWrite` computed, which is already clamped to `[0, 1]` by
+   * `cortex-core`; clamping again here would hide the one class of defect this instrument
+   * is best placed to see (a value function that escapes its documented range).
+   */
+  record(value: number, admitted: boolean): void {
+    this.#candidates += 1;
+    if (admitted) this.#admitted += 1;
+    this.#sum += value;
+    if (value < this.#min) this.#min = value;
+    if (value > this.#max) this.#max = value;
+    if (this.#values.size < ADMISSION_DISTINCT_CAP) this.#values.add(value);
+  }
+
+  /**
+   * The census so far, read against `threshold`. Safe to call at any point; it does not reset.
+   *
+   * The threshold is an argument rather than a constructor field because the counts are
+   * the accumulated fact and the threshold is only how they are read. A builder that
+   * captured it could be constructed before the gate it describes is resolved, and the
+   * value it captured would be `NaN` — which `JSON.stringify` turns into `null`, i.e. an
+   * artifact naming a configuration nobody chose.
+   */
+  census(threshold: number): AdmissionCensus {
+    const saturated = this.#values.size >= ADMISSION_DISTINCT_CAP;
+    return {
+      threshold,
+      candidates: this.#candidates,
+      admitted: this.#admitted,
+      rejected: this.#candidates - this.#admitted,
+      // Zeros rather than infinities when nothing was offered: an artifact cannot carry
+      // `Infinity` (it serialises to `null`), and `candidates: 0` is the field that says
+      // "this is empty" rather than "this is a minimum of zero".
+      min: this.#candidates === 0 ? 0 : this.#min,
+      max: this.#candidates === 0 ? 0 : this.#max,
+      mean: this.#candidates === 0 ? 0 : this.#sum / this.#candidates,
+      distinct: this.#values.size,
+      distinctSaturated: saturated,
+    };
+  }
+}
+
+/**
  * A turn's identity, derived from the turn instead of drawn at random.
  *
  * ## The defect this replaces, and how it was found
@@ -137,6 +269,18 @@ export type AdmissionOptions = {
    * those numbers to keep their meaning.
    */
   confidenceFor?: (turn: string) => number;
+  /**
+   * Where the census goes.
+   *
+   * On the options rather than as a parameter of {@link admitInto}, and the difference is
+   * a measured defect rather than a taste. `CortexMemory` admits on two paths — `#admit`
+   * for the flat and temporal routes, `answerSessions` for the session route — and when the
+   * sink was a parameter only one of them was wired; the other reported `candidates: 0`
+   * while admitting four turns. Putting the sink here means the only way to omit it is to
+   * omit it at `admissionOptionsFrom`, which is the one place a gate becomes admission's
+   * options, and a call site that does not use that function is visible in a diff.
+   */
+  tally?: AdmissionCensusBuilder;
 };
 
 /**
@@ -258,6 +402,23 @@ export function clockAwareValueFunction(now: number): ValueFunction {
  * supplies a `valueFunction`, which is what that field is for.
  */
 export function admitTurns(turns: readonly string[], options: AdmissionOptions): AdmittedTurn[] {
+  return admitInto(turns, options);
+}
+
+/**
+ * The loop.
+ *
+ * The census sink is read from the options rather than taken as a parameter, and that is a
+ * repair rather than a preference. It was a parameter first, and `CortexMemory` has **two**
+ * paths that admit — `#admit`, which serves the flat and temporal routes, and
+ * `answerSessions`, which admits by the session — so exactly one of them was instrumented
+ * and the other reported `candidates: 0`. The census is only a fact about a run if every
+ * path that admits writes to the same sink, and the way to make that structural rather than
+ * remembered is to put the sink where the options are: `admissionOptionsFrom` is the one
+ * place a gate becomes admission's options, and every path goes through it.
+ */
+function admitInto(turns: readonly string[], options: AdmissionOptions): AdmittedTurn[] {
+  const tally = options.tally;
   const valueFn = options.valueFunction ?? clockAwareValueFunction(options.now);
   const sourceTrust = validateSourceTrust(options.sourceTrust ?? DEFAULT_SOURCE_TRUST);
   const confidenceFor = options.confidenceFor;
@@ -292,6 +453,9 @@ export function admitTurns(turns: readonly string[], options: AdmissionOptions):
     });
 
     const decision = decideWrite(memory, valueFn, options.threshold);
+    // Recorded for admitted and refused turns alike, and this is the whole instrument:
+    // a census of the admitted set can only ever report values above the threshold.
+    tally?.record(decision.value, decision.write);
     if (decision.write) {
       admitted.push({ ...memory, value: decision.value, ordinal });
     }
@@ -314,10 +478,20 @@ export function admitTurns(turns: readonly string[], options: AdmissionOptions):
  * coverage gate reported as an uncovered line -- the code was harder to read and
  * the measurement said so.
  */
-export function admissionOptionsFrom(now: number, gate: GateOptions): AdmissionOptions {
+export function admissionOptionsFrom(
+  now: number,
+  gate: GateOptions,
+  /**
+   * Where the census goes. Optional so a caller that only wants turns is not forced to
+   * construct one — but never *defaulted*, because a default would be a sink nobody reads
+   * and the omission would look like a measurement of zero.
+   */
+  tally?: AdmissionCensusBuilder,
+): AdmissionOptions {
   const options: AdmissionOptions = { now, threshold: gate.threshold };
   if (gate.valueFunction !== undefined) options.valueFunction = gate.valueFunction;
   if (gate.sourceTrust !== undefined) options.sourceTrust = gate.sourceTrust;
   if (gate.confidenceFor !== undefined) options.confidenceFor = gate.confidenceFor;
+  if (tally !== undefined) options.tally = tally;
   return options;
 }

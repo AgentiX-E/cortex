@@ -45,6 +45,10 @@ export function admitSessions(
     const turns = sessions[index];
     if (turns === undefined) continue;
 
+    // The census sink travels inside `admissionOptions`, so this function needs no
+    // knowledge of it: every session's admission writes to the caller's tally without
+    // this loop naming one. That is the property that makes the session route impossible
+    // to leave uninstrumented -- see the note on `AdmissionOptions.tally`.
     const kept = admitTurns(turns, admissionOptions);
     if (kept.length === 0) continue;
 

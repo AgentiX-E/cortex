@@ -2,15 +2,28 @@
 
 ## What this file protects
 
-`/root/.pyenv/shims/python3` is an **environment change**, not a committed file. It
-lives outside the repository, so nothing in review would notice it disappearing, and a
-re-image removes it silently. The seventh `Bad substitution` happened *because* the
-guard sat outside the path of a typed command: the rule existed, was tested, and was
-not in the way. This file is the way the guard is in the way, and it asserts so.
+`/root/.pyenv/shims/python3` is an **environment change**: the file that has to sit at
+that address lives outside the repository. The seventh `Bad substitution` happened
+*because* the guard sat outside the path of a typed command -- the rule existed, was
+tested, and was not in the way. This file is the way the guard is in the way, and it
+asserts so.
 
-The tests are written to fail loudly on a re-image rather than skip. A missing net that
-reports nothing is indistinguishable from a net that never fires, which is the exact
-condition that produced the recurrences.
+## What changed when the gate itself was measured on a fresh image
+
+The shim's *source* now lives in `tools/python3-shim.py`, because a hand-written file at
+an address outside the repository is removed by whatever replaces the image, and the
+repository could not tell. On a re-imaged host the check below found **3 failed / `pnpm
+check` red**, and the reason it gave was wrong: `shim_is_installed()` asked "is there an
+executable file at the home", and pyenv's own dispatcher -- which a stock pyenv image
+puts at exactly that path -- answers yes. Every intercept test then ran against a shim
+that does not intercept.
+
+So the predicate is now a three-state **identity** (`absent` / `guard` / `foreign`) owned
+by the installer module, and the skip reason names which stranger is at the address. The
+distinction matters in one direction only, and it is the direction a gate is allowed to
+move in: a host that cannot host the net is *skipped with a diagnosis*, and the rule
+tests below -- which cover `check-shell-interpolation.py`, the committed half -- run
+everywhere regardless.
 
 ## Why the payload rule lives here too
 
@@ -22,21 +35,40 @@ let the caller and the callee drift while both stayed green.
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 GUARD = REPO / 'tools' / 'check-shell-interpolation.py'
+INSTALLER = REPO / 'tools' / 'python3-shim.py'
 
-# The shim's documented home (docs/OPS-SHELL-INTERPOLATION.md 4g).
-SHIM_HOME = Path('/root/.pyenv/shims/python3')
 
-# Where `python3` actually resolves on this host. The shim is an ENVIRONMENT change and
-# is not committed, so on a CI runner it legitimately does not exist -- the runner has no
-# `.pyenv` at all. See `shim_on_path` for why the tests split on this rather than
-# hardcoding `SHIM_HOME` everywhere.
+def _load_installer():
+    """The installer module, so the marker and the identity rule have one owner.
+
+    Imported rather than restated for the reason the payload rule lives beside its
+    caller: a second copy of the marker string is a gate that can be made to believe a
+    stranger is its own instrument, which is the defect this whole file is about.
+    """
+    spec = importlib.util.spec_from_file_location('cortex_python3_shim', INSTALLER)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+installer = _load_installer()
+
+# The shim's documented home (docs/OPS-SHELL-INTERPOLATION.md 4g). Read from the
+# installer, so `--home` and the tests cannot disagree about where the net is.
+SHIM_HOME = installer.default_home()
+
+# Where `python3` actually resolves on this host. The shim is an ENVIRONMENT change, so
+# on a CI runner it legitimately does not exist -- the runner has no `.pyenv` at all.
 SHIM = SHIM_HOME
 
 
@@ -86,43 +118,59 @@ def seq(body: str) -> str:
     return DOLLAR + LBRACE + body + RBRACE
 
 
-def shim_is_installed() -> bool:
-    """Whether this host has the shim at its documented home, executable.
+def shim_identity() -> str:
+    """What is at the shim's home on this host: `absent`, `guard`, or `foreign`.
 
-    ## Why every step is guarded
+    ## Why a boolean was not enough, measured
 
-    `Path.exists()` and `Path.stat()` both raise `PermissionError`, not `False`, when an
-    ANCESTOR directory is unreadable. On a GitHub runner `/root` exists but the runner
-    process cannot traverse it, so this predicate raised at COLLECTION time and took the
-    whole file down with `Interrupted: 1 error during collection` -- including the rule
-    tests that do not need the shim at all.
+    This function used to ask "is there an executable file at the home" and return a
+    bool. On a stock pyenv image that question has a **yes** answer that is not the
+    answer anyone wanted: pyenv writes its own 168-byte dispatcher to precisely this
+    path. The suite then ran three intercept tests against a dispatcher, failed, and the
+    failure read like a code defect -- `Bad substitution` shaped exactly like the one the
+    shim exists to prevent, arriving through the gate that was supposed to prevent it.
 
-    A gate is not allowed to fail; it is only allowed to say no. Returning `False` here
-    means "this host does not have the shim", which is exactly true and is what the
-    `skipif` reason already states. Letting the check raise would make an environment
-    difference indistinguishable from a broken test file, which is the whole class of
-    defect this file exists to catch.
+    Three states let the skip reason say **which** stranger occupies the address, which
+    is the difference between an environment difference and a broken test file.
 
-    `PermissionError` is caught alongside `OSError` (its parent) so a future filesystem
-    quirk lands in the same place rather than reopening this.
+    Never raises. `Path.exists()` and `Path.stat()` raise `PermissionError` when an
+    ANCESTOR is unreadable, and on a GitHub runner `/root` exists but is not traversable
+    -- that raise once happened at COLLECTION time and took the whole file down,
+    including the rule tests that do not need the shim at all.
     """
-    try:
-        if not SHIM_HOME.exists():
-            return False
-        return bool(SHIM_HOME.stat().st_mode & 0o111)
-    except OSError:
-        return False
+    return installer.identity(SHIM_HOME)
+
+
+SHIM_STATE = shim_identity()
 
 
 # The reason strings are the point of using skipif rather than a bare boolean: the log
 # records WHY the class did not run, so a green suite on a CI runner cannot be mistaken
-# for evidence that the guidance in 4g is in place.
+# for evidence that the guidance in 4g is in place. Each state gets its own sentence,
+# because "the net is not here", "our net is here but cannot run" and "something else is
+# at the net's address" are three different facts about the host.
+SHIM_DIAGNOSIS = {
+    'foreign': (
+        'a file is at the home that this repository did not write -- on a stock pyenv '
+        'image it is pyenv\'s own dispatcher, which answers "is there an executable here" '
+        'and does not intercept anything'
+    ),
+    'inert': (
+        'this repository\'s shim is at the home but is not executable, which is an install '
+        'whose mode was lost rather than an install that never happened'
+    ),
+    'absent': 'the shim is not installed, and a re-image removes it',
+}
+
 SHIM_INSTALLED = pytest.mark.skipif(
-    not shim_is_installed(),
+    SHIM_STATE != 'guard',
     reason=(
-        f'the python3 shim is not installed at {SHIM_HOME}; it is an environment change '
-        f'and not a committed file, so this host is not the development image. The rule '
-        f'tests below still cover check-shell-interpolation.py, which IS committed.'
+        f'nothing of this repository\'s is runnable at {SHIM_HOME} (state: `{SHIM_STATE}`): '
+        f'{SHIM_DIAGNOSIS.get(SHIM_STATE, "unknown state")}. '
+        'Install it with `python3 tools/python3-shim.py --install`. The rule tests below '
+        'still cover check-shell-interpolation.py, which IS committed, and '
+        '`TestTheInstallerIsTheShimsSource` exercises the generated shim from a temporary '
+        'path on every host.'
     ),
 )
 
@@ -470,3 +518,218 @@ class TestTheRuleIsCoveredWithoutTheShim:
             'the documented shim wiring must name the entry point it calls, or the two '
             'halves of this guard drift'
         )
+
+
+class TestTheInstallerIsTheShimsSource:
+    """`tools/python3-shim.py` owns the file, the marker and the identity rule.
+
+    ## Why these tests are not gated on the shim being installed
+
+    The classes above skip when the host cannot host the net, and that is right for the
+    claim "the net is up here". It would be wrong for the claim "the net works", because
+    then the mechanism's only coverage would live on exactly one machine -- the one where
+    a regression is least likely to be noticed, since the author is watching. So every
+    test below writes the generated source to a temporary path and runs **that**, which
+    is the same bytes `--install` writes and needs no privileges anywhere.
+    """
+
+    def generated(self) -> str:
+        return installer._bash_source('/bin/echo', str(GUARD))
+
+    def test_the_generated_source_carries_the_marker(self) -> None:
+        # The marker is the ONLY thing separating our shim from pyenv's dispatcher at the
+        # same path, so its presence in the output is the identity mechanism's precondition.
+        assert installer.MARKER in self.generated()
+
+    def test_the_generated_source_calls_the_documented_flag(self) -> None:
+        # A shim that calls the guard with a different flag is a shim that prints a usage
+        # error into stderr and lets the hazard through -- and every refusal test would
+        # still pass if the flag were renamed in both places.
+        assert '--c-payload' in self.generated()
+
+    def test_the_generated_source_names_the_way_out(self) -> None:
+        assert 'exec-python.py' in self.generated()
+
+    def test_the_generated_source_opens_no_interpolation_of_its_own(self) -> None:
+        # The shim sits in the path of every `python3 -c`, so an unquoted opener in it
+        # would make the net a hazard. `--print` output is fed to the committed guard,
+        # which is the same rule it enforces on the repository's own sources.
+        spec = importlib.util.spec_from_file_location('guard_for_installer_test', GUARD)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.scan(self.generated(), '<python3-shim>') == [], (
+            'the shim itself contains a construct the guard refuses'
+        )
+
+    def test_the_installed_shim_and_the_generated_source_agree(self) -> None:
+        # Two ways to obtain the same bytes. If `--install` and `--print` ever diverge, the
+        # docs would describe a shim nobody is running.
+        if SHIM_STATE != 'guard':
+            pytest.skip(f'nothing to compare against: {SHIM_HOME} is `{SHIM_STATE}`')
+        installed = SHIM.read_text()
+        for fingerprint in (installer.MARKER, '--c-payload', 'exec-python.py', 'locate_guard'):
+            assert fingerprint in installed
+
+    def test_identity_reports_absent_for_a_path_that_does_not_exist(self, tmp_path) -> None:
+        assert installer.identity(tmp_path / 'nope') == 'absent'
+
+    def test_identity_reports_foreign_for_another_programs_file(self, tmp_path) -> None:
+        # The measured case: pyenv's dispatcher is 168 bytes, executable, and lives at
+        # exactly the shim's address. A boolean predicate said yes to it.
+        foreign = tmp_path / 'python3'
+        foreign.write_text('#!/usr/bin/env bash\nexec /usr/bin/python3 "$@"\n')
+        foreign.chmod(0o755)
+        assert installer.identity(foreign) == 'foreign'
+
+    def test_identity_reports_guard_for_our_own_source(self, tmp_path) -> None:
+        mine = tmp_path / 'python3'
+        mine.write_text(self.generated())
+        mine.chmod(0o755)
+        assert installer.identity(mine) == 'guard'
+
+    def test_identity_separates_our_source_without_its_mode_from_a_stranger(self, tmp_path) -> None:
+        # `chmod` is not preserved by every archive or image layer, so a copy of OUR shim
+        # can arrive without the executable bit. Both states stop the net from working and
+        # only one of them is fixed by reinstalling -- a diagnosis that merges them sends
+        # the operator to the wrong command.
+        mine = tmp_path / 'python3'
+        mine.write_text(self.generated())
+        mine.chmod(0o644)
+        assert installer.identity(mine) == 'inert'
+        stranger = tmp_path / 'other' / 'python3'
+        stranger.parent.mkdir()
+        stranger.write_text('#!/usr/bin/env bash\nexit 0\n')
+        assert installer.identity(stranger) == 'absent', (
+            'a non-executable file that is not ours is not a shim in any state'
+        )
+
+    def test_check_is_non_zero_for_a_foreign_file(self, tmp_path) -> None:
+        # `--check` is what a human or a CI step runs to ask "is the net up". A zero exit
+        # for a stranger at the address would be the gate reporting the opposite of what
+        # it measured.
+        foreign = tmp_path / 'python3'
+        foreign.write_text('#!/usr/bin/env bash\nexit 0\n')
+        foreign.chmod(0o755)
+        result = subprocess.run(
+            ['python3', str(INSTALLER), '--check', '--home', str(foreign)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 1
+        assert '--install' in result.stderr
+
+    def test_install_then_uninstall_round_trips(self, tmp_path) -> None:
+        home = tmp_path / 'shims' / 'python3'
+        interpreter = installer.resolve_real_python(home)
+        if interpreter is None:
+            pytest.skip('no interpreter on PATH outside the shim home to exec')
+        assert installer.install(home, interpreter, GUARD) == 0
+        assert installer.identity(home) == 'guard'
+        assert home.stat().st_mode & 0o111
+        assert installer.uninstall(home) == 0
+        assert installer.identity(home) == 'absent'
+
+    def test_install_displaces_rather_than_deletes(self, tmp_path) -> None:
+        # The defect this closes is that the first install overwrote pyenv's dispatcher
+        # with no copy taken, so `--uninstall` could not put the host back.
+        home = tmp_path / 'python3'
+        dispatcher = '#!/usr/bin/env bash\n# pyenv dispatcher, 168 bytes in the wild\n'
+        home.write_text(dispatcher)
+        home.chmod(0o755)
+        interpreter = installer.resolve_real_python(home) or '/usr/bin/python3'
+        assert installer.install(home, interpreter, GUARD) == 0
+        backup = home.with_suffix(home.suffix + installer.BACKUP_SUFFIX)
+        assert backup.read_text() == dispatcher
+        assert installer.uninstall(home) == 0
+        assert home.read_text() == dispatcher, 'uninstall did not restore the displaced file'
+
+    def test_install_is_idempotent_and_keeps_the_first_backup(self, tmp_path) -> None:
+        # A second `--install` must not overwrite the only copy of the displaced file with
+        # a copy of ourselves, which would make the host unrecoverable.
+        home = tmp_path / 'python3'
+        home.write_text('#!/usr/bin/env bash\n# original\n')
+        home.chmod(0o755)
+        interpreter = installer.resolve_real_python(home) or '/usr/bin/python3'
+        installer.install(home, interpreter, GUARD)
+        installer.install(home, interpreter, GUARD)
+        backup = home.with_suffix(home.suffix + installer.BACKUP_SUFFIX)
+        assert backup.read_text() == '#!/usr/bin/env bash\n# original\n'
+
+    def test_install_refuses_when_the_shim_would_exec_itself(self, tmp_path) -> None:
+        # `resolve_real_python` excludes the shim home by resolved path, not by name. With
+        # no `python3` anywhere else, installing would create an infinite exec loop, so it
+        # is refused rather than written.
+        empty = tmp_path / 'emptybin'
+        empty.mkdir()
+        result = subprocess.run(
+            [sys.executable, str(INSTALLER), '--install', '--home', str(tmp_path / 'python3')],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={'PATH': str(empty)},
+        )
+        assert result.returncode == 1
+        assert 'exec itself' in result.stderr
+
+    def test_a_generated_shim_written_anywhere_refuses_the_hazard(self, tmp_path) -> None:
+        """The behaviour claim, asserted where CI can see it.
+
+        This is the same refusal `TestTheShimRefusesTheSeventhRecurrence` asserts, reached
+        without installing anything: the generated source is written to a temporary path
+        and run there. If the shim's logic regresses, this test goes red on every host
+        rather than only on the development image.
+        """
+        interpreter = installer.resolve_real_python(tmp_path)
+        if interpreter is None:
+            pytest.skip('no interpreter on PATH outside the shim home to exec')
+        scratch = tmp_path / 'python3'
+        scratch.write_text(installer._bash_source(interpreter, str(GUARD)))
+        scratch.chmod(0o755)
+
+        hazard = 'print(' + seq('x:.3f') + ')'
+        refused = subprocess.run([str(scratch), '-c', hazard], capture_output=True, text=True)
+        assert refused.returncode != 0, 'the generated shim allowed the hazard through'
+        assert 'sits inside a `python` payload' in refused.stderr, (
+            'the payload was refused by the interpreter rather than by the guard: '
+            f'{refused.stderr}'
+        )
+        assert 'exec-python.py' in refused.stderr
+
+        clean = subprocess.run(
+            [str(scratch), '-c', 'print(6 * 7)'], capture_output=True, text=True
+        )
+        assert clean.returncode == 0, clean.stderr
+        assert clean.stdout.strip() == '42'
+
+    def test_a_generated_shim_passes_arguments_through_untouched(self, tmp_path) -> None:
+        # `exec "$REAL_PYTHON" "$@"` is the whole contract for every invocation that is
+        # not a hazardous `-c`. A shim that dropped or reordered an argument would break
+        # `python3 -m pytest`, which is how this repository's own gate runs.
+        interpreter = installer.resolve_real_python(tmp_path)
+        if interpreter is None:
+            pytest.skip('no interpreter on PATH outside the shim home to exec')
+        scratch = tmp_path / 'python3'
+        scratch.write_text(installer._bash_source(interpreter, str(GUARD)))
+        scratch.chmod(0o755)
+        result = subprocess.run(
+            [str(scratch), '-c', 'import sys; print("|".join(sys.argv[1:]))', 'a b', 'c'],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == 'a b|c'
+
+    def test_the_self_test_passes(self, tmp_path) -> None:
+        # The installer ships a `--self-test` so an operator can answer "did the install
+        # work" in one command. A self-test that cannot fail is not a test, so this asserts
+        # it against a real hazard inside the installer itself.
+        result = subprocess.run(
+            ['python3', str(INSTALLER), '--self-test', '--home', str(tmp_path / 'python3')],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'self-test: ok' in result.stdout

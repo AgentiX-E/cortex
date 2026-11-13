@@ -71,11 +71,49 @@ def record(**fields) -> dict:
     return base
 
 
-def artifact(questions: list[dict]) -> Path:
+def artifact(questions: list[dict], name: str | None = None) -> Path:
+    """A one-artifact file with the given questions.
+
+    `name` renames the temporary file to an exact name, which exists because a verdict
+    must not depend on where its input happens to live. `NamedTemporaryFile` draws a
+    random suffix, and one of the drawn suffixes in this suite was `...c1.json` -- the
+    id of a *correct* row -- which made an assertion about the printed TABLE fail on the
+    printed PREAMBLE. Naming the file is how a test states that constraint instead of
+    hoping the randomiser respects it.
+    """
     handle = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, encoding='utf-8')
     with handle:
         json.dump({'questions': questions}, handle)
-    return Path(handle.name)
+    path = Path(handle.name)
+    if name is None:
+        return path
+    renamed = path.with_name(name)
+    path.replace(renamed)
+    return renamed
+
+
+def table_rows(printed: str) -> list[str]:
+    """The row ids the audit printed, in order.
+
+    ## Why the verdict is read from the table and not from the whole output
+
+    The audit prints its account first -- `artifact  : <path>` among it -- and the table
+    after a blank line. Asserting `assertNotIn('c1', printed)` over the whole text
+    therefore asserted something about the *path*: when the temporary file was drawn as
+    `.../tmp0yp58mc1.json`, the substring `c1` appeared in the preamble and the test went
+    red while the audit was correct. Measured, twice: red on the first run, green on the
+    second with no code change.
+
+    A table assertion has to be evaluated at the table's own coordinates, and the ids are
+    the first field of every indented line. Reading them exactly is also a stronger claim
+    than the absence of a substring: it catches a row printed twice and a row printed that
+    should not exist.
+    """
+    return [
+        line.split()[0]
+        for line in printed.splitlines()
+        if line.startswith('  ') and line.strip() and not line.startswith('   ')
+    ]
 
 
 class StampTest(unittest.TestCase):
@@ -379,7 +417,39 @@ class ReportTest(unittest.TestCase):
         printed = out.getvalue()
         self.assertIn('w1', printed)
         self.assertIn('older', printed)
-        self.assertNotIn('c1', printed)
+        self.assertEqual(table_rows(printed), ['w1'], 'the audit printed a row that was correct')
+
+    def test_the_verdict_does_not_depend_on_the_artifact_path(self):
+        """A path that contains a row id must not change what the audit says.
+
+        This is the regression the previous assertion would have hidden: it read the whole
+        output, so an artifact at `.../c1-c2-w1.json` made the *correct* ids appear in the
+        preamble and the test fail against a correct audit. Naming the file moves the
+        coincidence from "sometimes, when the randomiser cooperates" to "always", which is
+        what makes it a test.
+        """
+        path = artifact(
+            [
+                record(questionId='c1'),
+                record(questionId='c2'),
+                record(
+                    questionId='w1',
+                    correct=False,
+                    answer='30 dozen',
+                    turns=[
+                        turn('2023/01/11 (Wed) 23:15', 'we have 30 dozen eggs'),
+                        turn('2023/03/15 (Wed) 08:18', 'we have 20 dozen eggs'),
+                    ],
+                ),
+            ],
+            name='c1-c2-w1-rows.json',
+        )
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            states.main([str(path), '--audit'])
+        printed = out.getvalue()
+        self.assertIn('c1', printed, 'the preamble must still name the file it read')
+        self.assertEqual(table_rows(printed), ['w1'])
 
 
 if __name__ == '__main__':

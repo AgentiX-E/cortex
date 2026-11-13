@@ -19,47 +19,74 @@ npm install @agentix-e/cortex-core @agentix-e/cortex-storage
 ## Why Cortex
 
 Most memory systems solve the "external hard drive" problem (store embeddings, retrieve
-by similarity). Cortex solves the "mind" problem:
+by similarity). Cortex solves the "mind" problem.
 
-- **Value-driven memory** — decide what is worth remembering by estimated future
-  utility, not raw similarity.
-- **Abstention** — refuse to answer when no memory is reliable enough (calibrated
-  confidence), instead of forcing a top-k result.
-- **Asynchronous consolidation** — a background "sleep" process distills episodic
-  memories into semantic knowledge using Hebbian dynamics and an FSRS forgetting
-  curve.
-- **Retrieval-as-consolidation** — every retrieval strengthens what it touches and
-  credits success/failure back to the responsible memories.
-- **Bitemporal facts** — every fact carries *valid time* and *system time*, making
-  knowledge update, contradiction resolution, and audit native.
-- **Provenance & trust** — every memory records its **source** and **source trust**,
-  and every fact carries both time axes, so origin, supersession and as-of
-  reconstruction are native and auditable. **Derivation history is not yet
-  recorded** — see the status note below.
+**Every bullet below carries a status tag, because the honest answer differs per bullet and a
+list that reads uniformly at full strength is the one thing this file must not be.**
+
+| tag | means |
+|---|---|
+| **live** | on the measured path: an edit to it changes a published artifact byte for byte |
+| **library** | implemented and unit-tested in `cortex-core`, with **no product caller** |
+| **absent** | a contract, a design, or nothing at all |
+
+- **Value-driven memory** *(gate live, benefit unproven)* — decide what is worth remembering by
+  estimated future utility, not raw similarity. `cortex-memory` calls `decideWrite` on every
+  candidate turn, and `CortexMemory.admissionCensus()` now reports whether the threshold cut
+  anything — `rejected` is the count it refused. Whether the cut **helps** is what the A/B has
+  not established; a pre-registration is a prediction, not a result.
+- **Abstention** *(live)* — refuse to answer when no memory is reliable enough instead of forcing
+  a top-k result. Measured at 29.25/30 on LongMemEval-S's abstention questions; where the decline
+  originates is recorded per reason (`empty` / `threshold` / `llm` / `answered`), because a
+  decline the model chose and a decline the gate forced are different findings.
+- **Asynchronous consolidation** *(library)* — `consolidate` implements the "sleep" process:
+  Hebbian `MemoryGraph`, FSRS forgetting curve, episodic → semantic promotion. It has **zero
+  callers** in either package, so nothing schedules it and nothing ships it. Its two
+  prerequisites are also absent: there is no store the answering path reads (`context[]` arrives
+  per question), and every admission this layer constructs is stamped `type: 'episodic'` — the
+  `MemoryType` union does have `'semantic'`, and nothing writes or reads it.
+- **Retrieval-as-consolidation** *(absent)* — TD(λ) credit assignment is not implemented; no
+  eligibility traces exist in the codebase.
+- **Bitemporal facts** *(live on the harness path, library for the product)* — `cortex-core`'s
+  `Fact` carries *valid time* and *system time* and is unit-tested, but has **no constructor** in
+  either package. What answers the knowledge-update questions is the evaluation harness's own
+  `(subject, predicate, object, date)` fact store driving `answerKnowledgeUpdate`, which is a
+  different implementation of the same idea. This is why the capability scores and the type is
+  still a contract with no caller.
+- **Provenance & trust** *(live)* — every memory records its `source` and `sourceTrust`, and
+  every fact carries both time axes, so origin and supersession are auditable. **Derivation
+  history is not recorded on `Fact`**: `KnowledgeFact.references` *is* the derivation edge and
+  `revision.ts` cascades over it, but nothing constructs a `KnowledgeFact` on a product path.
 
 > **Status.** `cortex-core` is a validated library of cognitive contracts and pure
-> algorithms: it is fully unit-tested and holds ≥95% coverage on all four
-> dimensions. It is *not* yet the engine behind our published LongMemEval-S number
-> — the evaluation harness drives its own memory implementation and consumes only
-> statistics helpers and one vector index from core. **`cortex-memory` now composes
-> core's value gates into a runnable `MemorySystem`** (129 tests, 100% coverage on
-> all four dimensions, passing the harness's conformance suite unmodified), so the
-> cognitive layer is *reachable*, and the A/B that would say whether it *helps* is
-> now **assembled and pre-registered** — see
-> [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md).
-> The dispatch is the remaining step; a pre-registration is a prediction, not a result.
-> **The sentence above is about `cortex-core`, and it is easy to read as "the product
-> is not connected". Split it by layer instead:** `cortex-memory`'s **prompt contract**
-> is live in every published run — `instructionsFor` chooses the block and an edit to
-> it shows up byte-for-byte in the artifact (94 of 94 reachable `MR` prompts, run
-> `42337560027`) — while its **value gates** are the layer the A/B has yet to measure.
-> Three documented capabilities remain unwired: optimal-transport distillation
-> (`sinkhorn`, exported but uncalled), TD(λ) credit assignment (not implemented), and
-> fact **derivation** history (not implemented — `Fact` carries origin, trust and both
-> time axes, but not *which prior facts* produced it). See
-> [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md) and
-> [`docs/AUDIT-CODE-VS-DOCS.md`](docs/AUDIT-CODE-VS-DOCS.md) for the full,
-> measured reconciliation.
+> algorithms: fully unit-tested, ≥95% coverage on all four dimensions. It is *not* the engine
+> behind our published LongMemEval-S number — the evaluation harness drives its own memory
+> implementation and consumes statistics helpers and one vector index from core.
+> **`cortex-memory` composes core's value gates into a runnable `MemorySystem`**, passing the
+> harness's conformance suite unmodified, so the cognitive layer is *reachable*. Two of its
+> layers are measurable today and one is not:
+>
+> - its **prompt contract** is live in every published run — `instructionsFor` chooses the block
+>   and an edit to it shows up byte-for-byte in the artifact (94 of 94 reachable `MR` prompts,
+>   run `42337560027`);
+> - its **gate** is live and now **observable** — `admissionCensus()` reports candidates,
+>   admitted, rejected, the value range and a distinct count, so an artifact can state that a
+>   configured threshold did or did not decide anything. Run `37110579101` is the case for it:
+>   `retrievalThreshold: 0` could not close a gate whose maximum observable value was `0.5`, so
+>   the repaired program scored what the unrepaired one did;
+> - its **benefit** is unmeasured. Two pre-registered A/B pairs ran and both were judged *not
+>   evidence about the hypothesis* by
+>   [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md)
+>   §7.5, because the registered configuration sets both gates to `0` and a gate that admits
+>   everything cannot be compared against anything.
+>
+> Three documented capabilities remain unwired: optimal-transport distillation (`sinkhorn`,
+> exported but uncalled), TD(λ) credit assignment (not implemented), and fact **derivation**
+> history on `Fact` (not implemented). See
+> [`docs/DESIGN-CORTEX-MEMORY.md`](docs/DESIGN-CORTEX-MEMORY.md),
+> [`docs/AUDIT-CODE-VS-DOCS.md`](docs/AUDIT-CODE-VS-DOCS.md) and
+> [`ARCHITECTURE.md`](ARCHITECTURE.md) §"Implementation status" for the measured
+> reconciliation — that table, not this list, is the authority on what is wired.
 
 ## Packages
 

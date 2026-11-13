@@ -31,9 +31,12 @@ import { MemoryEmbeddingCacheStore, decideRetrieval } from '@agentix-e/cortex-co
 import { conflictBlock, insertRelatedStatements } from './conflict.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 import {
+  AdmissionCensusBuilder,
   admissionOptionsFrom,
   admitTurns,
   clockAwareValueFunction,
+  type AdmissionCensus,
+  type AdmissionOptions,
   type AdmittedTurn,
 } from './admission.js';
 import {
@@ -453,6 +456,19 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #indexCost: IndexCost | undefined = undefined;
   /**
+   * What the write gate computed for every turn this instance was shown, accumulated.
+   *
+   * The sibling of `#indexCost`, and it answers the question the gate's configuration
+   * could not: **did the threshold cut anything**. `types.ts` records the §49 repair that
+   * made the two gate variables reachable; reachable and *reached* are different claims,
+   * and until this field existed an artifact could only make the first one.
+   *
+   * Owned by the instance rather than computed per call because a run's question is asked
+   * once, not five hundred times: a per-question census would be overwritten by the next
+   * question, which is the defect `#indexCost` was added to fix one layer down.
+   */
+  readonly #admission = new AdmissionCensusBuilder();
+  /**
    * The index options this instance actually uses, resolved once at construction.
    *
    * Differs from `options.index` in exactly one case -- an embedder with reuse on -- where it carries the store.
@@ -866,6 +882,36 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * What the write gate computed for every turn this instance has been shown, and what it did.
+   *
+   * ## The question this answers, and the one it does not
+   *
+   * It answers **did the threshold cut anything**: `rejected > 0` is that statement, and
+   * `distinct` is the companion fact that the value function produced more than one value to
+   * cut between. It does **not** answer whether the cut was a good idea — that is an
+   * accuracy question, and this artifact field exists so that a paired run can attribute an
+   * accuracy change to a gate that demonstrably operated rather than to one that was merely
+   * configured.
+   *
+   * ## Why the criterion is not "some admitted turns are below the threshold"
+   *
+   * Because that is arithmetically impossible: the admission test is `value >= threshold`,
+   * so every admitted turn is at or above the cut, and a census of the admitted set would
+   * report `rejected: 0` for every configuration that ever ran. The counts here are over
+   * **candidates**, which is what makes the statement falsifiable — a run whose
+   * configuration is a pass-through reports `rejected: 0` and is visibly a non-experiment.
+   *
+   * ## Why `threshold` is read at the end rather than captured per call
+   *
+   * The gate is fixed at construction, so the two are the same number on this class. It is
+   * read from the live options rather than remembered because the census is a description
+   * of the gate that is *running*, and a remembered copy is a second place for it to drift.
+   */
+  admissionCensus(): AdmissionCensus {
+    return this.#admission.census(this.#options.gate.threshold);
+  }
+
+  /**
    * The evidence the reader was shown for the most recent call, or `null`.
    *
    * One element per turn the **prompt carried**, in the order the prompt printed
@@ -1263,7 +1309,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * which left every other session-taking path unbounded; see `#admit`.
    */
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
-    const admitted = admitSessions(sessions, admissionOptionsFrom(this.#now, this.#options.gate));
+    const admitted = admitSessions(sessions, this.#admissionOptions());
 
     if (admitted.length === 0) return this.#declinedEmpty();
 
@@ -1479,9 +1525,23 @@ export class CortexMemory implements SessionAwareMemorySystem {
     return null;
   }
 
+  /**
+   * The gate as admission's options, with this instance's census sink attached.
+   *
+   * One method rather than a call to `admissionOptionsFrom` at each site: this class admits
+   * on **two** paths — {@link #admit}, which serves the flat and temporal routes, and
+   * `answerSessions`, which admits by the session — and the first version of this wiring
+   * instrumented only the first. `admission-census-run.test.ts`'s
+   * `counts what the session path refused` read `candidates: 0` on its first run and named
+   * the missed site, which is why the sink now travels inside the options.
+   */
+  #admissionOptions(): AdmissionOptions {
+    return admissionOptionsFrom(this.#now, this.#options.gate, this.#admission);
+  }
+
   /** Admit a flat context, or the flattened sessions when the caller supplied them. */
   #admit(context: string[], sessions?: string[][]): AdmittedTurn[] {
-    const admissionOptions = admissionOptionsFrom(this.#now, this.#options.gate);
+    const admissionOptions = this.#admissionOptions();
     if (sessions !== undefined && sessions.length > 0) {
       // Sessions are admitted independently, then flattened, because the flat
       // paths receive no boundary information to present.

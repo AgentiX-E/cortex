@@ -1,8 +1,8 @@
 {
-  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read. AN ENTRY LEFT, for the first time in four rounds on purpose rather than by rebuild: `cortex-ai: DEFAULT_RETRY_TIMEOUT_MS` was an orphan until \u00a713.227 moved the reader's transport decisions into their own module, which made `cortex-eval` a caller of it -- the deadline the retry budget has to exceed is now read from the package that owns it instead of being copied. Totals 964 -> 964 exports, 549 -> 550 with a caller, 415 -> 414 orphan sites, 375 -> 374 local, 40 nowhere. Every difference is the one symbol, which is the check 13.158.4 asks for before a baseline diff is accepted. ONE ENTRY LEFT AND FIVE ARRIVED, ALL WITH CALLERS (round 91, the per-turn window). `cortex-memory: truncateCodePointSafe` left this ledger because `excerpt.ts` calls it: the window rule needs the same code-point-safe cut for its own fallbacks, so the helper moved out of `prompt.ts` instead of being copied, and `prompt.ts` re-exports it so every existing importer keeps the path it had. A helper two modules call is not an orphan and the census says so. The five new exports -- `excerptAround`, `ELISION`, `TurnWindow`, `contentTokens`, `ContentToken` -- are called by `prompt.ts`, `memory.ts`, `types.ts`, `index.ts` and the two new test files, so none of them enters this list: totals 1166 -> 1171 exports, 700 -> 706 with a caller, 466 -> 465 orphan sites, 420 -> 419 local, 46 nowhere. Every difference is the symbols named in this paragraph, which is the check 13.158.4 asks for before a baseline diff is read.",
+  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read. AN ENTRY LEFT, for the first time in four rounds on purpose rather than by rebuild: `cortex-ai: DEFAULT_RETRY_TIMEOUT_MS` was an orphan until \u00a713.227 moved the reader's transport decisions into their own module, which made `cortex-eval` a caller of it -- the deadline the retry budget has to exceed is now read from the package that owns it instead of being copied. Totals 964 -> 964 exports, 549 -> 550 with a caller, 415 -> 414 orphan sites, 375 -> 374 local, 40 nowhere. Every difference is the one symbol, which is the check 13.158.4 asks for before a baseline diff is accepted. ONE ENTRY LEFT AND FIVE ARRIVED, ALL WITH CALLERS (round 91, the per-turn window). `cortex-memory: truncateCodePointSafe` left this ledger because `excerpt.ts` calls it: the window rule needs the same code-point-safe cut for its own fallbacks, so the helper moved out of `prompt.ts` instead of being copied, and `prompt.ts` re-exports it so every existing importer keeps the path it had. A helper two modules call is not an orphan and the census says so. The five new exports -- `excerptAround`, `ELISION`, `TurnWindow`, `contentTokens`, `ContentToken` -- are called by `prompt.ts`, `memory.ts`, `types.ts`, `index.ts` and the two new test files, so none of them enters this list: totals 1166 -> 1171 exports, 700 -> 706 with a caller, 466 -> 465 orphan sites, 420 -> 419 local, 46 nowhere.  ONE ROUND LATER, TWO FEWER EXPORTS AND NO NEW ORPHANS (round 92, the admission census). `cortex-memory: evaluateTurns` and `cortex-memory: ADMISSION_DISTINCT_CAP` were written in this round and removed from the export surface in the same one: the sink travels inside `AdmissionOptions`, so `admitTurns` already returns the turns and writes the counts, and a second entry point returning both would be a second definition of what an admission is. Both were reported as orphans by this gate on the day they were written and neither had a caller outside its own test file, which is the gate doing exactly what it says. The cap stayed as a module-level constant because `distinctSaturated` is the fact a caller needs and the number is documentation. Totals 1171 -> 1173 exports, 706 -> 708 with a caller, 465 orphan sites unchanged, and every difference is accounted for: `AdmissionCensus` and `AdmissionCensusBuilder` arrived because `memory.ts` reads the first as a return type and constructs the second once per instance, so both have a caller; `evaluateTurns` and `ADMISSION_DISTINCT_CAP` never reached a baseline because they were removed in the round that wrote them.",
   "totals": {
-    "exports": 1171,
-    "withCaller": 706,
+    "exports": 1173,
+    "withCaller": 708,
     "orphaned": 465,
     "referencedLocally": 419,
     "unreferenced": 46
@@ -189,14 +189,14 @@
         "cortex-core: squaredEuclideanCostMatrix (packages/cortex-core/src/math/ot.ts:102)",
         "cortex-core: studentTCdf (packages/cortex-core/src/math/stats.ts:119)",
         "cortex-memory: ASK_CHANGES (packages/cortex-memory/src/prompt.ts:440)",
-        "cortex-memory: ASK_CHANGES_WHEN_DERIVATION (packages/cortex-memory/src/prompt.ts:1942)",
+        "cortex-memory: ASK_CHANGES_WHEN_DERIVATION (packages/cortex-memory/src/prompt.ts:1945)",
         "cortex-memory: ASK_CONTROLS (packages/cortex-memory/src/prompt.ts:379)",
         "cortex-memory: AnswerRequest (packages/cortex-memory/src/tally.ts:49)",
         "cortex-memory: CheckOptions (packages/cortex-memory/src/disclosure/session.ts:90)",
         "cortex-memory: ConflictOptions (packages/cortex-memory/src/conflict.ts:84)",
         "cortex-memory: ConflictStatement (packages/cortex-memory/src/conflict.ts:74)",
         "cortex-memory: CortexSessionProviderOptions (packages/cortex-memory/src/provider.ts:110)",
-        "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:893)",
+        "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:896)",
         "cortex-memory: DisclosureSessionOptions (packages/cortex-memory/src/disclosure/session.ts:54)",
         "cortex-memory: ParsedSpec (packages/cortex-memory/src/aggregation/spec.ts:78)",
         "cortex-memory: ProviderHit (packages/cortex-memory/src/provider.ts:68)",
@@ -213,7 +213,7 @@
         "cortex-memory: buildPlanTable (packages/cortex-memory/src/aggregation/plan-prompt.ts:72)",
         "cortex-memory: classifyAnswerRequest (packages/cortex-memory/src/tally.ts:66)",
         "cortex-memory: conflictStatements (packages/cortex-memory/src/conflict.ts:459)",
-        "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:2370)",
+        "cortex-memory: formatEvidence (packages/cortex-memory/src/prompt.ts:2392)",
         "cortex-memory: renderConflicts (packages/cortex-memory/src/conflict.ts:564)",
         "cortex-memory: valueSignature (packages/cortex-memory/src/conflict.ts:428)",
         "cortex-storage: PgStorage (packages/cortex-storage/src/storage/pg.ts:83)",
@@ -333,7 +333,7 @@
         "cortex-eval: A3Result (packages/cortex-eval/src/a3.ts:75)",
         "cortex-eval: A3Trial (packages/cortex-eval/src/a3.ts:41)",
         "cortex-eval: A3Verdict (packages/cortex-eval/src/a3.ts:72)",
-        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1413)",
+        "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1464)",
         "cortex-eval: AbstainReason (packages/cortex-eval/src/natural-language-memory.ts:66)",
         "cortex-eval: BenchmarkRunnerOptions (packages/cortex-eval/src/runner.ts:89)",
         "cortex-eval: BuildCost (packages/cortex-eval/src/competitor.ts:80)",
@@ -396,7 +396,7 @@
         "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:1477)",
         "cortex-eval: RetrievalMode (packages/cortex-eval/src/harness.ts:52)",
         "cortex-eval: RetryAblationReport (packages/cortex-eval/src/runner.ts:862)",
-        "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1262)",
+        "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1313)",
         "cortex-eval: ReviewCard (packages/cortex-eval/src/review-page.ts:32)",
         "cortex-eval: ReviewCardsFile (packages/cortex-eval/src/review-page.ts:122)",
         "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:3309)",
@@ -2014,7 +2014,7 @@
       "packages/cortex-eval/src/assumption-ablation.ts:69"
     ],
     "cortex-eval: AblationReportOptions": [
-      "packages/cortex-eval/src/report.ts:1413"
+      "packages/cortex-eval/src/report.ts:1464"
     ],
     "cortex-eval: AblationRow": [
       "packages/cortex-eval/src/assumption-ablation.ts:780"
@@ -2374,7 +2374,7 @@
       "packages/cortex-eval/src/runner.ts:862"
     ],
     "cortex-eval: RetryFireCounts": [
-      "packages/cortex-eval/src/report.ts:1262"
+      "packages/cortex-eval/src/report.ts:1313"
     ],
     "cortex-eval: ReviewCard": [
       "packages/cortex-eval/src/review-page.ts:32"
@@ -2737,7 +2737,7 @@
       "packages/cortex-memory/src/prompt.ts:440"
     ],
     "cortex-memory: ASK_CHANGES_WHEN_DERIVATION": [
-      "packages/cortex-memory/src/prompt.ts:1942"
+      "packages/cortex-memory/src/prompt.ts:1945"
     ],
     "cortex-memory: ASK_CONTROLS": [
       "packages/cortex-memory/src/prompt.ts:379"
@@ -2758,7 +2758,7 @@
       "packages/cortex-memory/src/provider.ts:110"
     ],
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS": [
-      "packages/cortex-memory/src/prompt.ts:893"
+      "packages/cortex-memory/src/prompt.ts:896"
     ],
     "cortex-memory: DisclosureSessionOptions": [
       "packages/cortex-memory/src/disclosure/session.ts:54"
@@ -2809,7 +2809,7 @@
       "packages/cortex-memory/src/conflict.ts:459"
     ],
     "cortex-memory: formatEvidence": [
-      "packages/cortex-memory/src/prompt.ts:2370"
+      "packages/cortex-memory/src/prompt.ts:2392"
     ],
     "cortex-memory: renderConflicts": [
       "packages/cortex-memory/src/conflict.ts:564"
