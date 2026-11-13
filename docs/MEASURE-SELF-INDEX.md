@@ -94,7 +94,37 @@ the work `C5` measured on a fixture, on a real corpus.
 - **`rerankDegraded > 0` with `rerankCalls > 0`:** the stage degraded, and its accuracy is the input order's.
   Nothing about the ranking can be concluded until that is repaired; the artifact is flagged rather than read.
 
-## 5. What this cannot tell us
+## 5. What the first dispatch found before it measured anything
+
+The screening dispatch (200 questions × 2 repetitions) never reached its first reading. It died at question
+4, ninety milliseconds in, on the provider's own words:
+
+```
+Embedding request failed: 400 Bad Request —
+{"error":{"code":"1214","message":"input数组最大不得超过64条"}}
+```
+
+`SearchIndex.prime()` sent the whole corpus in one request and a LongMemEval haystack is ~500 turns, so the
+product's own retrieval could not run against a capped provider **at all**. Every unit test passed: a fake
+embedder accepts any batch size, and the fixture corpus is four turns. The repair is
+`SearchIndexOptions.batch` (default 64 — Zhipu's cap and the width `cortex-eval` already batches at) plus a
+loop in `prime()`, with `search-batch.test.ts` using an embedder that refuses an oversized slice exactly as
+the provider did.
+
+Two things about this are worth keeping in the record rather than in a changelog:
+
+- **A prediction nobody wrote was the one that failed.** P1–P4 were about accuracy, memo hits and the
+  reranker. None of them was "the corpus fits in one request", because that is not a property of the
+  experiment — it is a property of the world the experiment runs in. The pre-registration discipline prices
+  the readings; it does not price the plumbing, and the plumbing is where a run dies.
+- **It cost 90 ms of a 2.85 CNY dispatch.** The same defect found after the full pass would have cost
+  14.26 CNY and a day of attribution, because a dead run produces no artifact to read and the next thing to
+  suspect would have been the metric.
+
+The screening gate exists for exactly this, and round 90 is the round that paid for it twice: the first
+dispatch was the price of finding the defect, the second is the price of measuring.
+
+## 6. What this cannot tell us
 
 It cannot say whether a *different* fusion would do better — one dispatch prices one configuration. It
 cannot price the wall clock: the postings are rebuilt per question and that cost is CPU, which the artifact
