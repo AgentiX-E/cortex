@@ -60,16 +60,16 @@ positive control in the test, because an assertion that passes on an empty impor
 | ---: | --- | --- | --- | --- |
 | 1 | Original sentence / fact split, span reconstructed by `locate()` | `knowledge/frame.ts:65`, `:156` | `assumption-ablation.ts:176` | **E** |
 | 2 | 9 fact types (closed set) | `knowledge/taxonomy.ts:36` | via frames only | **I** |
-| 3 | Polarity, modality, futurity, plan state | `knowledge/temporality.ts` | `assemble` | **I** |
+| 3 | Polarity, modality, futurity, plan state | `knowledge/temporality.ts` | `assemble`, which reads `isPlan` / `planFactor` on every candidate (§11) | **P** |
 | 4 | 11 edge types + admissibility table | `knowledge/taxonomy.ts:101`, `:161` | `deriveSupersedes`, from `semantic-facts.ts` (§10) | **P** |
 | 5 | Entity identity | `taxonomy.ts:121` — `same-entity` only from a **declared** alias | no alias registry exists | **I** |
-| 6 | Slot identity `slotKey(subject, predicate)` | `knowledge/assumption.ts:159` | revision, assemble | **I** |
+| 6 | Slot identity `slotKey(subject, predicate)` | `knowledge/assumption.ts:159` | `deriveAssumptions` and `assemble`, both reached through `semantic-facts.ts` (§11) | **P** |
 | 7 | Bitemporal `Fact` (`validFrom/Until`, `systemFrom/Until`) | `domain/fact.ts:7`, `:28` | **none: zero constructors** | **T** |
-| 8 | Assumption ledger, 6 kinds, recomputable counts | `assumption.ts:45`, `:124` | `assumption-ablation.ts:192` | **E** |
+| 8 | Assumption ledger, 6 kinds, recomputable counts | `assumption.ts:45`, `:124` | `semantic-facts.ts` (§11) and `assumption-ablation.ts:192` | **P** |
 | 9 | Unit assembly gate (refuse a split that loses a relation) | `knowledge/unit.ts:127` | `tools/knowledge-probe.mjs:118` | **I** |
-| 10 | Revision: supersede, stale cascade, plan lifecycle | `knowledge/revision.ts:128`, cascade at `:264` | `assumption-ablation.ts:536` | **E** |
-| 11 | Answer-side exit: the four questions, `asOf` hard filter | `context/assemble.ts:198` | `assumption-ablation.ts:680` | **E** |
-| 12 | Contradiction: log-odds fusion over a slot | `contradiction/resolve.ts:21` | **none** | **I** |
+| 10 | Revision: supersede, stale cascade, plan lifecycle | `knowledge/revision.ts:128`, cascade at `:264` | `semantic-facts.ts` (§11) and `assumption-ablation.ts:536` | **P** |
+| 11 | Answer-side exit: the four questions, `asOf` hard filter | `context/assemble.ts:198` | `semantic-facts.ts` (§11) and `assumption-ablation.ts:680` | **P** |
+| 12 | Contradiction: log-odds fusion over a slot | `contradiction/resolve.ts:21` | **none — Declined**, `DECISION-SEMANTIC-LAYER-ROUTE.md` §6.1 | **I** |
 | 13 | Consolidation / forgetting (FSRS) | `consolidation/consolidate.ts:40` | **none** | **I** |
 | 14 | Disclosure governance: 12 rules, cards, proposals, echo guard | `triage/*`, `disclosure/session.ts` | product | **P** |
 | 15 | Storage: one KV table | `cortex-storage/src/storage/sql.ts:60` | product | **P** |
@@ -79,8 +79,11 @@ positive control in the test, because an assertion that passes on an empty impor
 | 19 | Aggregation plan over scope / predicate / operation | `aggregation/`, `tally.ts` | product | **P** |
 
 **At `b0fe73f` P is 5 of 19, and three of the five are the semantic ones that survived** (§14, §18, §19:
-disclosure, supersession, aggregation). §10 moves one more — the edge layer — to `P`. That is the honest shape of the gap: the product has *answer-side* semantics
-and no *store-side* semantics. The audit's summary — "a mechanism the shipping path never calls is
+disclosure, supersession, aggregation). §10 moves one more — the edge layer — and §11 moves five: the fact
+source's ledger, its revision and the answer-side exit. **P is now 11 of 19.** What has *not* moved is as
+deliberate as what has: rows 2, 5 and 7 stay `I`/`T` because one member of a closed set being written is not
+the closed set being reachable, no alias registry exists, and the two-axis `Fact` still has zero constructors;
+row 12 is a recorded decline rather than a pending one. The audit's summary — "a mechanism the shipping path never calls is
 decoration with a test suite", quoted from `context/assemble.ts:9` itself — applies to eleven of the
 nineteen rows.
 
@@ -381,3 +384,93 @@ text — the fact source stores it.
   carrying the fact makes an answer **better**, which is E6's question and needs a dispatch this round did not
   spend.
 - **The `−19.62` stands.** Nothing here replaces text with atoms.
+
+## 11. The ledger reaches the block, and the value it refutes stops being served as a fact
+
+§10 built a fact source and this section is what happens when the exit is wired to it. It is the second step of
+`DECISION-SEMANTIC-LAYER-ROUTE.md` §3's order, and it moved five rows.
+
+### 11.1 The defect the wiring exposed
+
+For one round the block looked like this:
+
+```
+UPDATES:
+fact:     30 dozen  [state]
+status:   replaces "20 dozen"
+fact:     20 dozen  [state]
+status:   superseded by "30 dozen"
+```
+
+`20 dozen` is a **refuted** value. It was printed on a `fact:` line, at the same weight as the value that
+replaced it, and the only thing distinguishing them was a relation line the reader had to parse. Nothing was
+wrong with `renderBlocks`; the problem was that **nothing had ever written `refuted`**. The facts carried no
+assumptions at all, so `reviseLedger`'s `apply` found no `persistence` to rewrite and returned each fact
+unchanged — a mechanism that is imported, called, and inert, which is the failure §4.3 priced.
+
+Two changes fix it and neither is optional: `deriveAssumptions` gives each fact a `persistence` and a
+`uniqueness`, and `reviseLedger` runs over the built unit. Then `assemble` — the single exit — refuses the
+refuted fact, and the block becomes the one thing a memory layer should say:
+
+```
+UPDATES:
+fact:     30 dozen  [state]
+status:   replaces "20 dozen"
+assumed:  confirmed
+```
+
+Nothing is lost. The relation line still quotes the value it replaced, so the reader knows both values; what
+changes is that the stale one is no longer *served* as a fact.
+
+### 11.2 The order, and why it is not stylistic
+
+`buildKnowledgeUnit` then `reviseLedger`. A revision applied before the build would write a `refuted` onto a
+fact whose span and grounding had not been checked, so a refused unit would leave a modified fact set behind
+and a caller reading it would see a refutation from a unit that does not exist.
+
+`frame.at` is the later record's instant, and that is also the `openedAt` of every assumption: both facts
+entered one ledger at one moment — the one where the substitution was authorised. The block then reads the
+ledger at that same instant rather than at wall-clock now. Without it `deriveAssumptions` opens every
+assumption at the epoch and `assumptionPenalty` reports `aged` for every unit this module can build. That
+number is invisible — `penalty.reason` is not rendered — which is precisely why it is asserted in a test and
+not left to an artifact.
+
+### 11.3 The kernel gap this closed
+
+`renderBlocks` has carried `omitFrame` since the semantic block was first written, and its own comment names
+this caller. `assemble` had no way to pass it, so the budget it spends on the rendered form was spending room
+on a line the caller cannot print. `AssembleInput.omitFrame` is that option: additive, default `false`, and the
+trial render and the delivered render now measure the same thing. The alternative — take `served` and render
+separately — was rejected because it drops the conflict `flags` `assemble` computes, and nothing in the
+caller's own output would show the loss.
+
+### 11.4 What is declined, and the arithmetic that decided it
+
+Row 12 (`resolveContradiction`) stays `I`, and it is now a **recorded decline** rather than a pending item.
+`DECISION-SEMANTIC-LAYER-ROUTE.md` §6.1 has the table: the function's two inputs (`confidence`, `sourceTrust`)
+do not exist on `KnowledgeFact`, giving both facts the same value is not neutral, and the measured result on
+the pair as the fact source orders it is a winner of **`20 dozen`** — the value the revision just refuted —
+with a posterior of 0.999. The belief ties because the arithmetic is symmetric, and the tie is broken by array
+order. A call site would be decoration that changes an answer for the worse.
+
+### 11.5 The rows
+
+| # | capability | before | now | by |
+| ---: | --- | --- | --- | --- |
+| 3 | polarity, modality, futurity, plan state | `I` | **`P`** | `assemble` evaluates `isPlan` / `planFactor` on every candidate. Stated precisely: no fact the product builds carries a plan state, so the futurity arm answers `1` — the module is called and its plan vocabulary is never exercised |
+| 6 | `slotKey(subject, predicate)` | `I` | **`P`** | called by `deriveAssumptions` and by `assemble`, both reached from `semantic-facts.ts` |
+| 8 | assumption ledger, 6 kinds | `E` | **`P`** | `deriveAssumptions` in `semantic-facts.ts` |
+| 10 | revision: supersede, cascade, plan lifecycle | `E` | **`P`** | `reviseLedger` in `semantic-facts.ts`; the cascade stays off, and that is `revision.ts`'s own published default |
+| 11 | answer-side exit, four questions, `asOf` | `E` | **`P`** | `assemble` in `semantic-facts.ts`, with `omitFrame` and a positional rank |
+| 12 | contradiction, log-odds fusion | `I` | `I` | **Declined** — §11.4 |
+
+### 11.6 What this does not claim
+
+- **No accuracy claim.** `semanticCarry` is still off by default, still zero-reach on a population whose
+  questions each bring their own corpus, and E6 is still `unrun`.
+- **The rank is not a relevance score.** `assemble` needs one number per candidate and this caller supplies a
+  position — `factIds` is the order the fact source asserts. It decides nothing while the ledger is on, because
+  the refuted fact never reaches the ranking; inventing a similarity would be a second retriever nothing else
+  could see, which is `assemble`'s own stated refusal.
+- **Five rows is not five mechanisms.** Rows 3, 6, 8, 10 and 11 are reached through **one** file, over **two**
+  facts per unit, with values this module fixes. The reach is real and it is narrow, and the table says which.

@@ -535,6 +535,12 @@ const memory = new CortexMemory({
 // counts distinguish "nothing was ever authorised" from "one was, and no window asked for it".
 const { absorbed, dropped, matched } = memory.semanticCarryCensus();
 console.log(absorbed, dropped, matched);
+
+// And these two are the ledger's own reading: `withheld` is what the exit refused to serve. On a
+// well-formed unit it equals `served`, and it going to zero while a line still renders is the
+// signature of a revision that stopped writing.
+const { served, withheld } = memory.semanticCarryCensus();
+console.log(served, withheld);
 ```
 
 A substitution is authorised only when the value the reader quotes appears in the evidence character for
@@ -542,6 +548,11 @@ character, the date it names sits on the same evidence record, and that record i
 previous answer rested on. The pair is stored as two facts on one slot — the question is the slot, `answer` is
 the predicate — and the `supersedes` edge comes from the two dates rather than from a guess. The sentence is
 never replaced: the facts are added beside the evidence, in their own block.
+
+The block carries **one** fact, not two. Both facts carry a derived assumption ledger, the revision refutes the
+one that was replaced, and the answer-side exit refuses a refuted fact — so a stale value never appears on a
+`fact:` line of its own. It is still named, by the relation line: `status:   replaces "20 dozen"`. What is
+withheld is not the knowledge that a value changed, it is the claim that the old value still answers.
 
 The reach is bounded by the window, not by a configuration: an update reaches a prompt only when that prompt's
 window still carries the record the change was read from. A workload whose every question brings a fresh corpus

@@ -40284,3 +40284,114 @@ stops that gap from being discovered as a surprise.
 - **A closed E1 in the strong sense.** The criterion asks for the byte delta, and the delta is proven. Whether
   carrying the fact makes an answer **better** is E6, and the prediction above says this population cannot
   answer it.
+
+## 13.376 E2: the ledger reaches the block, and this amends §13.375.3
+
+### 13.376.0 What is being amended, and why it is an amendment rather than an edit
+
+§13.375.3 registered three conditions for E1's byte comparison, and condition C read *"the two facts, both
+status lines"*. That is no longer what the block contains, and the change is not cosmetic: it is the difference
+between a prompt that lists a refuted value at the same weight as the value that replaced it and one that does
+not. §13.375 is left exactly as written, because a registration that can be edited after the fact is not a
+registration; this section states the delta and the reading that motivated it.
+
+### 13.376.1 The defect §13.375 could not see
+
+For one round the block was:
+
+```
+UPDATES:
+fact:     30 dozen  [state]
+status:   replaces "20 dozen"
+fact:     20 dozen  [state]
+status:   superseded by "30 dozen"
+```
+
+`20 dozen` is refuted. It appeared on a `fact:` line, at the same weight as its replacement, and the only thing
+separating them was a relation line the reader had to parse. `renderBlocks` was not at fault; the problem was
+that **nothing in the path had ever written `refuted`**. The two facts carried no assumptions at all, so
+`reviseLedger`'s `apply` found no `persistence` to rewrite and returned each fact unchanged. The mechanism was
+imported, called, and inert — the failure `AUDIT-SEMANTIC-REACH.md` §4.3 prices at 43 mechanism flips for 46
+damages, arrived at by building the wiring in the wrong order.
+
+### 13.376.2 What changed
+
+| step | call | why it cannot be skipped |
+| --- | --- | --- |
+| 1 | `deriveAssumptions(fact, frame)` on both facts | a fact with no ledger entry cannot be refuted; `apply` returns it untouched |
+| 2 | `buildKnowledgeUnit(...)` | validates span and grounding **before** anything writes to the facts, so a refused unit leaves no modified fact behind |
+| 3 | `reviseLedger(unit.facts, { edges: unit.edges })` | writes `refuted` on the replaced fact and `confirmed` on its replacement |
+| 4 | `assemble({ …, omitFrame: true })` | the single exit: it refuses the refuted fact and renders the block, so there is no second render path |
+
+`frame.at` is the later record's instant, and it is also the `openedAt` of every assumption: both facts entered
+one ledger at one moment, the one where the substitution was authorised. The block reads the ledger at that
+same instant rather than at wall-clock now. Without it, `deriveAssumptions` opens at the epoch and
+`assumptionPenalty` reports `aged` for every unit this module can build — invisible, because `penalty.reason` is
+not rendered, which is why it is asserted in a test rather than left to an artifact.
+
+The block is now:
+
+```
+UPDATES:
+fact:     30 dozen  [state]
+status:   replaces "20 dozen"
+assumed:  confirmed
+```
+
+### 13.376.3 The three conditions, restated
+
+| condition | store | `semanticCarry` | prompt carries |
+| --- | --- | --- | --- |
+| A — control | empty | on | no `UPDATES:` |
+| B — switch off | one unit | off | no `UPDATES:`, byte-identical to A |
+| C — both | one unit | on | **one** fact, one relation line, no `fact:` line for the superseded value |
+
+A vs C remains the causal claim. B vs C remains the control that keeps the mechanism from being attributed to
+something else in the same commit. What changed is C's content, and the assertion for the withheld value is
+**negative** (`not.toContain('fact:     20 dozen')`) on purpose: a positive assertion about the newer fact
+passes in both worlds.
+
+### 13.376.4 One new option, one new kernel input, two new counts
+
+| item | value |
+| --- | --- |
+| `AssembleInput.omitFrame?: boolean` | **new**, default `false`. Mirrors `BlockOptions.omitFrame`, which `renderBlocks` has carried since the block was first written and whose comment already names this caller. Without it the budget `assemble` spends on the rendered form was spending room on a line the caller cannot print |
+| `semanticCarryCensus().served` | facts that reached a block |
+| `semanticCarryCensus().withheld` | facts the exit refused |
+| default change | **none**. `omitFrame` absent reproduces every archived `assemble` result byte for byte |
+
+`served` alone cannot fail — a block printing both ends reports `served: 2` and looks healthier than a correct
+one. `withheld` is the half that goes to zero when the revision stops writing, which is the exact state this
+path was in for a round. On a well-formed unit the two are equal, and the tests assert the pair rather than a
+total.
+
+`matched` keeps its meaning and gains a reason to be stated precisely: it counts a window whose **anchor** is
+still present, not a window that received a line. An earlier version wrapped it in `if (lines.length > 0)`,
+which the coverage gate reported as unreachable — it was, because `assemble` always serves the confirmed end of
+a well-formed unit — and the guard also collapsed the two readings the census docblock separates.
+
+### 13.376.5 The rank, stated so it cannot be mistaken for a score
+
+`assemble` needs one number per candidate. This caller supplies a **position**: `factIds` is `[newer, older]`,
+the order the fact source asserts. It decides nothing while the ledger is on, because the refuted fact never
+reaches the ranking — a mutation that reverses it survives, and that is recorded rather than hidden. Inventing a
+similarity would be a second retriever nothing else could see, which is `assemble`'s own stated refusal.
+
+### 13.376.6 `resolveContradiction` is declined, and the arithmetic is the reason
+
+`DECISION-SEMANTIC-LAYER-ROUTE.md` §6.1 carries it. The short form, because it is a closure and not a deferral:
+the function decides between facts claiming **one instant**, and this fact source only produces a strictly
+ordered pair. Fed that pair with the only inputs it can be given — equal `confidence`, equal `sourceTrust`,
+since `KnowledgeFact` carries neither — the posterior ties at 0.999 and the winner is the first key in the
+`Map`, i.e. array order, i.e. **`20 dozen`**, the value the revision just refuted. A call site would be
+decoration that changes an answer for the worse.
+
+### 13.376.7 What is not licensed
+
+- **No accuracy claim.** `semanticCarry` is still off by default, E6 is still `unrun`, `S10` and `S9` stay
+  frozen.
+- **The prediction in §13.375.5 is unchanged and still untested**: on the registered 500-question population
+  `semanticCarry: true` produces byte-identical prompts, so `deltaQuestions === 0`, and a non-zero delta would
+  be a cross-question leak rather than a gain.
+- **Five reach-table rows is not five mechanisms.** Rows 3, 6, 8, 10 and 11 are reached through one file, over
+  two facts per unit, with values this module fixes.

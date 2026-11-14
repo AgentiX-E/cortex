@@ -147,10 +147,39 @@ and "we decided not to" cannot be confused.
 | Mechanism | State | Why, and what would reopen it |
 | --- | --- | --- |
 | `consolidate` (FSRS forgetting clock) | **not yet decided** — E4 owns it | reopening condition: a reading that shows the schedule's inputs (`stability`, elapsed time) are wrong on real windows. Currently no product path produces either |
-| `resolveContradiction` (log-odds fusion over a slot) | **not yet decided** — E4 owns it | reopening condition: E1's facts produce a **conflicted** slot on the product path. `assemble` marks conflicts but refuses to pick, and something has to |
+| `resolveContradiction` (log-odds fusion over a slot) | **Declined, with the arithmetic** (§6.1) | reopening condition: a window in which two values claim **one instant**, and a source-trust signal that is recorded rather than invented |
 | `MemoryGraph` (Hebbian multi-hop) | **Declined, with a reading** | wired into the temporal path and removed on measurement: 77.95% → 70.87%, 15 broken against 6 repaired, exact McNemar p = 0.039. Reopening condition: a multi-hop arm registered with its own criterion |
 | `sinkhorn` (optimal-transport distillation) | **Declined, inert** | has no reading and no caller; deleting it is a separate decision |
 | `Fact`'s `derivedFrom` | **Rejected as written** | `AUDIT-SEMANTIC-REACH.md` §4.2: `KnowledgeFact.references` already is the derivation edge and `revision.ts` cascades over it. A second mechanism on a type nothing builds |
+
+
+### 6.1 `resolveContradiction`: the only defensible inputs return the refuted value
+
+`resolveContradiction(facts: readonly Fact[])` decides between facts that claim **one instant**, by fusing
+`confidence × sourceTrust` into a log-odds posterior per object. The product's fact source
+(`cortex-memory/src/semantic-facts.ts`) produces a pair that is **strictly ordered** — the same-instant case is
+refused before a unit is built, because a same-instant pair is a contradiction and `revision.ts` reports it as a
+refuted `uniqueness` rather than letting an id break the tie. So the function has no input on the shipping path.
+
+The temptation is to wire it anyway, on the pair, and let it pick. That pair carries neither `confidence` nor
+`sourceTrust` — `KnowledgeFact` has no such fields — and those two numbers are the *whole* of the decision.
+Giving both the same value is not neutral. Measured, on the pair as the fact source orders it
+(`[before, after]`):
+
+| order fed | winner | belief |
+| --- | --- | --- |
+| `[before, after]` — the product's order | **`20 dozen`** | 0.999 |
+| `[after, before]` | `30 dozen` | 0.999 |
+
+The belief is identical because it is the same arithmetic over the same inputs; the winner is the first key in
+the `Map` the function builds, i.e. **array order**. So wiring it would return the value the revision had just
+refuted, with a posterior of 0.999, and nothing in the output would show that the answer was decided by a
+`for` loop. That is the `?? 0` failure `resolve.ts`'s own comment documents — a second answer to a question
+that has one — arrived at from the caller instead of from the callee.
+
+What it would take to reopen: a window in which two values genuinely claim **one instant** (a contradictory
+corpus, not an update), *and* a recorded trust signal per source. Both are corpus-model questions, not wiring
+questions, and neither is in E2.
 
 `MemoryGraph` is the one row that is a **decline with evidence** rather than a deferral, and the distinction is
 the point: a mechanism that was measured and lost is not the same as a mechanism nobody reached.

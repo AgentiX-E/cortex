@@ -14,8 +14,8 @@
  *
  * ## Why it is a allowlist rather than a count now
  *
- * Zero was the right assertion while zero was the fact. Now the fact is *three*, and a bare count would be the
- * weaker claim: it would pass if a fourth import appeared and a fifth were removed. So the invariant becomes
+ * Zero was the right assertion while zero was the fact. Now the fact is *seven*, and a bare count would be the
+ * weaker claim: it would pass if an eighth import appeared and a ninth were removed. So the invariant becomes
  * the one an audit can actually use —
  *
  * > every kernel symbol the product imports is named here, with the file that imports it; and every one of
@@ -67,23 +67,38 @@ const SEMANTIC_KERNEL = [
 /**
  * The symbols that are wired today, and the file that owns each wiring.
  *
- * `cortex-memory/src/semantic-facts.ts` is the fact source: it turns the span-and-date authorisation
- * `supersede.ts` already computed into a `KnowledgeUnit` with a `supersedes` edge. `buildKnowledgeUnit`
- * refuses a unit whose span or grounding is wrong, `deriveSupersedes` produces the edge from the two `at`
- * values rather than from a guess, and `renderBlocks` is the renderer the kernel's own `assemble` uses — a
- * second renderer here would be the "two mechanisms with one name" defect this repository has caught three
- * times.
+ * `cortex-memory/src/semantic-facts.ts` is the fact source, and since exit criterion E2 it is the *only* file
+ * that speaks to the kernel. It turns the span-and-date authorisation `supersede.ts` already computed into a
+ * `KnowledgeUnit` with a `supersedes` edge, and then does the three things that make the unit say something a
+ * reader can act on:
  *
- * `assemble`, `reviseLedger` and `resolveContradiction` are **absent on purpose**: they are exit criterion
- * E2, they need the facts this file produces to exist first, and listing them here before they are called
- * would be the decoration the audit charged us with.
+ * - `deriveAssumptions` — a fact with no ledger entry cannot be refuted, and for one round these had none, so
+ *   `reviseLedger` had nothing to write and the block served the superseded value on its own `fact:` line.
+ * - `deriveSupersedes` — the edge, computed from the two `at` values rather than from a guess.
+ * - `reviseLedger` — the refutation itself. An edge that says "B replaced A" beside a persistence that says
+ *   "still open" is the contradiction `revision.ts` exists to prevent.
+ * - `assemble` — the single exit. It is what refuses the refuted fact, and it renders the block, so a caller
+ *   that took served ids and rendered them itself would be a second exit with no conflict flags.
+ *
+ * `buildKnowledgeUnit` is imported for its refusal: a unit whose span or grounding is wrong does not become a
+ * prompt line. `KnowledgeFrame` and `KnowledgeFact` are its parameter types.
+ *
+ * `renderBlocks` has left this map, and that is the point of `assemble`: the renderer is now reached through the
+ * exit rather than beside it, so a second render path cannot disagree with the one the ledger decided for.
+ *
+ * `resolveContradiction` is **declined rather than absent**, and `DECISION-SEMANTIC-LAYER-ROUTE.md` §5 prices
+ * it: the function decides between two facts claiming one instant, this module only ever produces a strictly
+ * ordered pair, and feeding it the pair anyway — the only defensible inputs it could be given — returns the
+ * value the revision just refuted. A call site would be decoration that changes an answer for the worse.
  */
 const WIRED: Readonly<Record<string, string>> = {
   KnowledgeFrame: 'semantic-facts.ts',
   KnowledgeFact: 'semantic-facts.ts',
   buildKnowledgeUnit: 'semantic-facts.ts',
+  deriveAssumptions: 'semantic-facts.ts',
   deriveSupersedes: 'semantic-facts.ts',
-  renderBlocks: 'semantic-facts.ts',
+  reviseLedger: 'semantic-facts.ts',
+  assemble: 'semantic-facts.ts',
 };
 
 /**
@@ -92,7 +107,13 @@ const WIRED: Readonly<Record<string, string>> = {
  * A type has no call site and asserting one would fail for the wrong reason; a value that is imported and
  * never called is the fake wiring this test exists to refuse.
  */
-const WIRED_VALUES = ['buildKnowledgeUnit', 'deriveSupersedes', 'renderBlocks'] as const;
+const WIRED_VALUES = [
+  'buildKnowledgeUnit',
+  'deriveAssumptions',
+  'deriveSupersedes',
+  'reviseLedger',
+  'assemble',
+] as const;
 
 /** Every `.ts` file under a directory, excluding tests. */
 function sources(directory: string): string[] {

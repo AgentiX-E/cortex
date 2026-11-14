@@ -14,12 +14,20 @@
  * | --- | --- | --- | --- |
  * | A — control | empty | on | no `UPDATES:` |
  * | B — switch off | one unit | off | no `UPDATES:` |
- * | C — both | one unit | on | `UPDATES:` with both facts and the relation |
+ * | C — both | one unit | on | `UPDATES:` with the current fact, the relation, and no superseded value |
  *
  * A vs C is the causal claim: **the same corpus, the same question, the same reader** — only the store's
  * content differs. B vs C is the second control, and it is the one that keeps the mechanism from being
  * attributed to something else in the same commit: with the unit present and the switch off, the bytes are the
  * archived bytes.
+ *
+ * ## The third thing C asserts, and it is a negative
+ *
+ * Since exit criterion E2 the block carries **one** fact, not two. The superseded value still appears — quoted
+ * by the relation line — but not as a `fact:` line of its own, because the ledger refuted it and `assemble` is
+ * what refuses a refuted fact. Before that wiring, nothing in the path ever wrote `refuted` and the block
+ * printed the stale value as though it were current. The assertion is `not.toContain` for that reason: a
+ * positive assertion about the newer fact passes in both worlds.
  *
  * ## Why the corpus is two turns and not a window
  *
@@ -106,7 +114,7 @@ async function afterAuthorisation(
 }
 
 describe('an authorised update reaches a prompt, and the controls say it is the reason', () => {
-  it('carries the pair and the relation on a later question over the same corpus', async () => {
+  it('serves the current value and withholds the superseded one, and the block says both', async () => {
     const { memory } = await afterAuthorisation({ semanticCarry: true });
     const seen: string[] = [];
     const revisiting = system(reader(seen), { semanticCarry: true });
@@ -119,8 +127,22 @@ describe('an authorised update reaches a prompt, and the controls say it is the 
     expect(prompt).toContain('UPDATES:');
     expect(prompt).toContain('fact:     30 dozen  [state]');
     expect(prompt).toContain('status:   replaces "20 dozen"');
-    expect(prompt).toContain('fact:     20 dozen  [state]');
-    expect(prompt).toContain('status:   superseded by "30 dozen"');
+    // **The superseded value is not served as a fact.** For one round it was: the unit carried a `supersedes`
+    // edge and both ends, so a reader was told `30 dozen` replaced `20 dozen` *and* handed `20 dozen` on its own
+    // `fact:` line with nothing marking it stale — because neither fact carried an assumption, `reviseLedger`
+    // had nothing to refute, and `assemble` therefore excluded nothing. The assertion is negative on purpose: a
+    // positive one about the newer fact passes whether or not the ledger ran.
+    expect(prompt).not.toContain('fact:     20 dozen');
+    expect(prompt).not.toContain('superseded by "30 dozen"');
+    // What the reader loses by that exclusion is nothing: the relation line still names the value it replaced.
+    expect(prompt).toContain('"20 dozen"');
+    // And the ledger is visible in the one place a reader can use it: the surviving fact says its persistence
+    // was confirmed by the replacement rather than leaving it open.
+    expect(prompt).toContain('assumed:  confirmed');
+    // The two counts are the ledger's halves, and they are equal here by construction — one fact served, one
+    // withheld. Either alone can look healthy while the mechanism is dead.
+    expect(memory.semanticCarryCensus().served).toBe(1);
+    expect(memory.semanticCarryCensus().withheld).toBe(1);
     // The block sits between the evidence and the question: a reader told which value is current before it has
     // seen either value would be reading an answer, not evidence.
     expect(prompt.indexOf('UPDATES:')).toBeLessThan(prompt.indexOf(`QUESTION: ${REVISIT}`));
@@ -176,15 +198,33 @@ describe('an authorised update reaches a prompt, and the controls say it is the 
 describe('the store reports what it did', () => {
   it('counts an absorbed unit and a matched window, and no evictions', async () => {
     const { memory } = await afterAuthorisation({ semanticCarry: true });
-    expect(memory.semanticCarryCensus()).toEqual({ absorbed: 1, dropped: 0, matched: 0 });
+    expect(memory.semanticCarryCensus()).toEqual({
+      absorbed: 1,
+      dropped: 0,
+      matched: 0,
+      served: 0,
+      withheld: 0,
+    });
     await memory.answer(REVISIT, [EARLY, LATE]);
-    expect(memory.semanticCarryCensus()).toEqual({ absorbed: 1, dropped: 0, matched: 1 });
+    expect(memory.semanticCarryCensus()).toEqual({
+      absorbed: 1,
+      dropped: 0,
+      matched: 1,
+      served: 1,
+      withheld: 1,
+    });
   });
 
   it('does not count a match when the switch is off, because no window spent a line', async () => {
     const { memory } = await afterAuthorisation({ semanticCarry: false });
     await memory.answer(REVISIT, [EARLY, LATE]);
-    expect(memory.semanticCarryCensus()).toEqual({ absorbed: 1, dropped: 0, matched: 0 });
+    expect(memory.semanticCarryCensus()).toEqual({
+      absorbed: 1,
+      dropped: 0,
+      matched: 0,
+      served: 0,
+      withheld: 0,
+    });
   });
 
   it('absorbs nothing when the substitution is refused, so the store cannot hold a claim nobody authorised', async () => {
@@ -243,19 +283,37 @@ describe('the bound, and the re-entry it has to allow', () => {
   it('evicts the oldest past eight, counts the drop, and lets an evicted update come back', async () => {
     const memory = system(batchReader(), { semanticCarry: true });
     for (let i = 0; i < 8; i += 1) await memory.answerKnowledgeUpdate(UPDATING, batch(i));
-    expect(memory.semanticCarryCensus()).toEqual({ absorbed: 8, dropped: 0, matched: 0 });
+    expect(memory.semanticCarryCensus()).toEqual({
+      absorbed: 8,
+      dropped: 0,
+      matched: 0,
+      served: 0,
+      withheld: 0,
+    });
 
     // The ninth runs the bound: `SEMANTIC_UPDATES_MAX` is 8, so one leaves and the count says so. A store whose
     // growth is bounded by a silent `shift()` and nothing else would report the same `absorbed` on a run of nine
     // and a run of ninety.
     await memory.answerKnowledgeUpdate(UPDATING, batch(8));
-    expect(memory.semanticCarryCensus()).toEqual({ absorbed: 9, dropped: 1, matched: 0 });
+    expect(memory.semanticCarryCensus()).toEqual({
+      absorbed: 9,
+      dropped: 1,
+      matched: 0,
+      served: 0,
+      withheld: 0,
+    });
 
     // Batch 0 was evicted, so its anchor is no longer held — and asking about it again must be able to re-admit
     // it. A dedup set that kept the key would refuse, turning the bound into a permanent ban on the first eight
     // corpora a worker happened to see.
     await memory.answerKnowledgeUpdate(UPDATING, batch(0));
-    expect(memory.semanticCarryCensus()).toEqual({ absorbed: 10, dropped: 2, matched: 0 });
+    expect(memory.semanticCarryCensus()).toEqual({
+      absorbed: 10,
+      dropped: 2,
+      matched: 0,
+      served: 0,
+      withheld: 0,
+    });
 
     // The re-admitted unit is now in hand, which is the half of the claim the counts cannot show on their own.
     await memory.answer(REVISIT, batch(0));
@@ -286,7 +344,13 @@ describe('what the store refuses to hold', () => {
     );
 
     expect(await memory.answerKnowledgeUpdate(UPDATING, [UNDATED, DATED])).toBe('30 dozen');
-    expect(memory.semanticCarryCensus()).toEqual({ absorbed: 0, dropped: 0, matched: 0 });
+    expect(memory.semanticCarryCensus()).toEqual({
+      absorbed: 0,
+      dropped: 0,
+      matched: 0,
+      served: 0,
+      withheld: 0,
+    });
     await memory.answer(REVISIT, [UNDATED, DATED]);
     expect(memory.lastPromptText()!).not.toContain('UPDATES:');
   });

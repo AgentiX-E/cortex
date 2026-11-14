@@ -120,6 +120,17 @@ export type AssembleInput = {
   readonly asOf?: number;
   /** Token ceiling for the rendered block. Ignored when `budget` is off. */
   readonly budgetTokens?: number;
+  /**
+   * Whether the rendered block leaves out its copy of the frame. Defaults to `false`.
+   *
+   * The same option `BlockOptions.omitFrame` already carries, exposed on the exit rather than only on the
+   * renderer, and for a reason that is measurable rather than tidy: the budget below is spent on the
+   * rendered form, so a caller whose frame is a whole rendered window would have its room consumed by a
+   * sentence the caller is not going to print. Without this, such a caller has two choices — spend the
+   * frame twice, or render separately and lose the conflict lines this function computes. `omitFrame`
+   * removes the choice.
+   */
+  readonly omitFrame?: boolean;
   readonly policy?: AssemblePolicy;
 };
 
@@ -325,7 +336,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   const chosen: ServedFact[] = [];
   for (const entry of ordered) {
     const trial = [...chosen, entry];
-    const lines = render(trial, input.unit);
+    const lines = render(trial, input.unit, input.omitFrame === true);
     if (budgetOn && tokenEstimate(lines.join('\n')) > budget) {
       exclude(entry.factId, 'over-budget');
       continue;
@@ -333,7 +344,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     chosen.push(entry);
   }
 
-  const lines = render(chosen, input.unit);
+  const lines = render(chosen, input.unit, input.omitFrame === true);
   const tokens = chosen.length === 0 ? 0 : tokenEstimate(lines.join('\n'));
 
   const counts: Partial<Record<ExclusionReason, number>> = {};
@@ -364,7 +375,11 @@ export function assemble(input: AssembleInput): AssembleResult {
  * exactly the same code. A budget that measured one form and shipped another would be off by the very
  * lines it added last.
  */
-function render(chosen: readonly ServedFact[], unit: KnowledgeUnit): readonly string[] {
+function render(
+  chosen: readonly ServedFact[],
+  unit: KnowledgeUnit,
+  omitFrame: boolean,
+): readonly string[] {
   if (chosen.length === 0) return [];
   const flags = new Map<string, readonly string[]>();
   for (const entry of chosen) {
@@ -377,6 +392,6 @@ function render(chosen: readonly ServedFact[], unit: KnowledgeUnit): readonly st
   return renderBlocks(
     unit,
     chosen.map((entry) => entry.factId),
-    { flags },
+    { flags, omitFrame },
   );
 }

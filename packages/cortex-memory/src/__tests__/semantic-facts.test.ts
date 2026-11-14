@@ -20,7 +20,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { semanticUpdateFrom, updateAppliesTo, type SemanticUpdate } from '../semantic-facts.js';
+import {
+  assembleSemanticUpdate,
+  semanticUpdateFrom,
+  updateAppliesTo,
+  type SemanticUpdate,
+} from '../semantic-facts.js';
+import type { KnowledgeFact } from '@agentix-e/cortex-core';
 import type { SupersessionVerdict } from '../supersede.js';
 
 type Replace = Extract<SupersessionVerdict, { kind: 'replace' }>;
@@ -303,5 +309,79 @@ describe('the pairs whose unit the kernel refuses, and why this module reports t
     // composed answer — one the reader wrote rather than copied — from becoming a stored claim: `locate`
     // returns the whole frame for it, and grounding is what notices that the words are not there.
     expect(build({ first: 'a figure the evidence never states' })).toBeNull();
+  });
+});
+
+describe('the ledger, because an edge is not a refutation', () => {
+  /** The fact the block must serve, and the one it must not. */
+  function pair(update: SemanticUpdate): { current: KnowledgeFact; stale: KnowledgeFact } {
+    const byId = new Map(update.unit.facts.map((fact) => [fact.id, fact]));
+    return {
+      current: byId.get(update.factIds[0]!)!,
+      stale: byId.get(update.factIds[1]!)!,
+    };
+  }
+
+  it('derives a ledger for both facts, so there is something for a revision to write on', () => {
+    // This is the defect that made the rest of the wiring pointless for one round. `deriveSupersedes` produced
+    // the edge, `renderBlocks` drew it, and both facts went into the block with no assumptions at all — so
+    // `reviseLedger`'s `apply` found no `persistence` to rewrite, returned each fact untouched, and the block
+    // served the superseded value on its own `fact:` line. The mechanism was imported, called, and inert.
+    const { current, stale } = pair(build()!);
+    for (const fact of [current, stale]) {
+      expect(fact.assumptions?.map((assumption) => assumption.kind)).toEqual([
+        'persistence',
+        'uniqueness',
+      ]);
+    }
+  });
+
+  it('opens both ledgers at the instant the substitution was authorised, not at the epoch', () => {
+    // `deriveAssumptions` opens every assumption at `frame.at ?? 0`. With no `frame.at` each one opened at the
+    // epoch, so `assumptionPenalty` read a 2023 statement against a 2026 clock and reported `aged` for every
+    // unit this module can build — invisible, because `penalty.reason` is not rendered, which is precisely why
+    // it is asserted here rather than left to an artifact. Both facts entered one ledger at one moment: the
+    // later record's.
+    const update = build()!;
+    const { current, stale } = pair(update);
+    expect(update.unit.frame.at).toBe(LATE_AT);
+    expect(update.learnedAt).toBe(LATE_AT);
+    for (const fact of [current, stale]) {
+      for (const assumption of fact.assumptions ?? []) expect(assumption.openedAt).toBe(LATE_AT);
+    }
+  });
+
+  it('refutes the value that was replaced and confirms the one that replaced it', () => {
+    // `revision.ts`'s own header states the failure this asserts against: *a system where an edge says "B
+    // replaced A" while A's persistence says "still open" contradicts itself in a way no reader can resolve.*
+    // The ledger is the half that resolves it, and until E2 nothing ran it.
+    const { current, stale } = pair(build()!);
+    const persistence = (fact: KnowledgeFact) =>
+      fact.assumptions?.find((assumption) => assumption.kind === 'persistence');
+    expect(persistence(stale)).toMatchObject({ status: 'refuted', contradict: 1, support: 0 });
+    expect(persistence(current)).toMatchObject({ status: 'confirmed', support: 1, contradict: 0 });
+  });
+
+  it('serves one fact and withholds one, and the ratio is the instrument', async () => {
+    // `served` alone cannot fail: a block that printed both ends would report `served: 2` and look healthier
+    // than a correct one. `withheld` is the number that goes to zero when the revision stops writing, which is
+    // the exact state the path was in before this round.
+    const block = assembleSemanticUpdate(build()!);
+    expect(block.served).toBe(1);
+    expect(block.withheld).toBe(1);
+    const text = block.lines.join('\n');
+    expect(text).toContain('fact:     30 dozen  [state]');
+    expect(text).toContain('status:   replaces "20 dozen"');
+    expect(text).not.toContain('fact:     20 dozen');
+    // The ledger is stated, not merely applied: a reader is told the surviving value's persistence was
+    // confirmed by the replacement rather than left open.
+    expect(text).toContain('assumed:  confirmed');
+  });
+
+  it('omits the frame, because the frame here is the whole rendered window', () => {
+    // `assemble` renders through `renderBlocks`, which states the frame by default. This caller's frame is the
+    // entire evidence, which the prompt already carries verbatim above the block — so the default would spend
+    // the evidence budget printing a copy of the evidence.
+    expect(assembleSemanticUpdate(build()!).lines.join('\n')).not.toContain('frame:');
   });
 });

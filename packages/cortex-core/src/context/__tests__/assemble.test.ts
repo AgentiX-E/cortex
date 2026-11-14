@@ -344,6 +344,55 @@ describe('question 4: does it fit', () => {
     expect(result.served).toHaveLength(6);
     expect(result.census.budget).toBe(0);
   });
+
+  it('charges the budget for what it prints, so a caller that omits the frame pays less', () => {
+    // The frame is a line this function renders and a line the budget is spent on. A caller whose frame is the
+    // whole rendered evidence — `cortex-memory`'s update block — cannot print it, and without this option its
+    // only alternatives were to spend the evidence twice or to render separately and lose the conflict flags
+    // computed here. Both arms are asserted, because an option that is accepted and ignored is the inert
+    // machinery this repository has caught twice.
+    const two = [facts[0]!, facts[1]!];
+    const withFrame = run(two, { budgetTokens: 10_000 });
+    const without = run(two, { budgetTokens: 10_000, omitFrame: true });
+    expect(withFrame.lines.filter((line) => line.startsWith('frame:'))).toHaveLength(1);
+    expect(without.lines.filter((line) => line.startsWith('frame:'))).toHaveLength(0);
+    expect(without.census.tokens).toBeLessThan(withFrame.census.tokens);
+    // The same facts, so the difference is the frame's line and nothing else.
+    expect(without.served.map((entry) => entry.factId)).toEqual(
+      withFrame.served.map((entry) => entry.factId),
+    );
+  });
+
+  it('keeps the conflict line when the frame is omitted, which is the reason not to render separately', () => {
+    // The flag is computed here and passed through `renderBlocks`. A caller that took `served` and rendered it
+    // with its own options would drop exactly this line, and nothing in its own output would show the loss.
+    const left = factOf('a', 'I live in London.', { at: T0, subject: 'user', predicate: 'city' });
+    const right = factOf('b', 'I live in Paris.', { at: T0, subject: 'user', predicate: 'city' });
+    const result = run([left, right], { omitFrame: true });
+    expect(result.census.conflicts).toBe(2);
+    expect(result.lines.filter((line) => line.startsWith('conflict:'))).toHaveLength(2);
+    expect(result.lines.filter((line) => line.startsWith('frame:'))).toHaveLength(0);
+  });
+
+  it('measures the trial render with the same option, or the budget spends a line it will not print', () => {
+    // The budget is spent by rendering each candidate set and measuring it. That trial has to use the caller's
+    // `omitFrame` too, and this is the only test that can notice when it does not: with the trial always
+    // counting the frame, a budget that fits the block the caller will actually receive still refuses a fact,
+    // and every number the exit reports looks healthy while one fact has silently vanished.
+    const two = [facts[0]!, facts[1]!];
+    const withoutFrame = run(two, { budgetTokens: 10_000, omitFrame: true });
+    const withFrame = run(two, { budgetTokens: 10_000 });
+    // The two costs must differ for the test to mean anything; a run where they were equal would pass whatever
+    // the trial did.
+    expect(withFrame.census.tokens).toBeGreaterThan(withoutFrame.census.tokens);
+    // A ceiling strictly between the two: it fits the block this caller receives and not the framed one.
+    const between = Math.floor((withFrame.census.tokens + withoutFrame.census.tokens) / 2);
+    expect(between).toBeGreaterThanOrEqual(withoutFrame.census.tokens);
+    expect(between).toBeLessThan(withFrame.census.tokens);
+    const result = run(two, { budgetTokens: between, omitFrame: true });
+    expect(result.served.map((entry) => entry.factId)).toEqual(two.map((fact) => fact.id));
+    expect(result.census.excluded).toEqual({});
+  });
 });
 
 describe('the conflict the store keeps and the answer refuses to choose', () => {

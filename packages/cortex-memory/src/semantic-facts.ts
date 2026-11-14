@@ -38,13 +38,39 @@
  * a value was replaced, and which of the two is current. That needs both ends and a date on each, which is
  * also exactly what `deriveSupersedes` requires — a fact with no `at`, or with a twin at the same instant,
  * supersedes nothing, and this module therefore returns `null` rather than a unit whose relation is absent.
+ *
+ * ## The ledger has to be told, or the block serves the stale value as a fact
+ *
+ * `deriveSupersedes` produces an *edge*. It does not write anything onto either fact, and for one round that
+ * was the whole story: the unit rendered both ends with a `status:` line each, so a reader was told
+ * `30 dozen` replaced `20 dozen` **and** handed `20 dozen` on its own `fact:` line. Nothing marked it stale,
+ * because `persistence` was `open` on a fact that had no assumptions at all.
+ *
+ * Writing the edge is not the same as recording the refutation, which is the distinction `revision.ts`
+ * exists for and states in its own header: *a system where an edge says "B replaced A" while A's persistence
+ * says "still open" contradicts itself in a way no reader can resolve.* So the facts this module builds carry
+ * `deriveAssumptions`, and `reviseLedger` runs over them before the unit is stored. The older fact's
+ * `persistence` becomes `refuted`, which is what `assemble` — the single exit — reads when it decides what
+ * the block is allowed to say.
+ *
+ * ## Why `assemble` renders the block instead of `renderBlocks`
+ *
+ * Because the exit is where the ledger decision is applied, and a caller that took the served ids and
+ * rendered them itself would be a second exit: it would drop the `flags` `assemble` computes for a conflict
+ * and it would report neither `served` nor `excluded`. The block below is `assemble`'s own `lines`.
+ *
+ * The rank it is given is a **position**, not a similarity: `factIds` is the order this module asserts, and
+ * numbering that order is the only honest score available here. Inventing a relevance number would be a
+ * second retriever that nothing else can see, which `assemble`'s own contract refuses.
  */
 
 import {
+  assemble,
   buildKnowledgeUnit,
+  deriveAssumptions,
   deriveSupersedes,
   locate,
-  renderBlocks,
+  reviseLedger,
   type KnowledgeFact,
   type KnowledgeFrame,
   type KnowledgeUnit,
@@ -84,6 +110,18 @@ export type SemanticUpdate = {
    * content. What is left is the sentence, which is the same bytes in both.
    */
   readonly anchor: string;
+  /**
+   * When this update became true: the later record's own instant.
+   *
+   * Two things read it, and they are the same thing from two sides. The frame carries it as `frame.at`, which
+   * is the `openedAt` of every assumption the two facts derive — and that is not a metaphor: both facts
+   * entered the ledger at the moment the substitution was authorised, which is the later record's instant.
+   * The block then reads the ledger at that same instant rather than at wall-clock now, because the corpus is
+   * historical and ageing a 2023 statement against a 2026 clock would report every unit this module can build
+   * as `aged`. It would not be visible — `penalty.reason` is not rendered — and an invisible wrong number in
+   * a structure an audit reads is exactly the kind of thing this repository has spent three rounds deleting.
+   */
+  readonly learnedAt: number;
   /**
    * What makes two updates the same update, so a corpus seen twice does not render the line twice.
    *
@@ -129,27 +167,30 @@ function anchorOf(recordText: string): string | null {
  */
 function factOf(args: {
   readonly id: string;
-  readonly frameId: string;
-  readonly evidence: string;
+  readonly frame: KnowledgeFrame;
   readonly text: string;
   readonly subject: string;
   readonly at: number;
 }): KnowledgeFact {
-  return {
+  const fact: KnowledgeFact = {
     id: args.id,
-    frameId: args.frameId,
+    frameId: args.frame.id,
     text: args.text,
     type: 'state',
     polarity: 'positive',
     modality: 'actual',
     // Computed from the two strings by `locate`, never reported by a model — the same rule the frame layer
     // states for every other span in the kernel.
-    sourceSpan: locate(args.text, args.evidence),
+    sourceSpan: locate(args.text, args.frame.text),
     references: [],
     subject: args.subject,
     predicate: ANSWER_PREDICATE,
     at: args.at,
   };
+  // The ledger, derived rather than reported. `persistence` always, and `uniqueness` because both facts name
+  // a subject and a predicate — without them `reviseLedger` has nothing to refute, and the refutation is the
+  // whole point of running it.
+  return { ...fact, assumptions: deriveAssumptions(fact, args.frame) };
 }
 
 /**
@@ -178,23 +219,12 @@ export function semanticUpdateFrom(input: SemanticUpdateInput): SemanticUpdate |
 
   const beforeId = `${input.frameId}:before`;
   const afterId = `${input.frameId}:after`;
+  // The frame carries `later.at`, and every assumption the two facts derive is opened by it: the two facts
+  // entered the ledger at one moment, the one where this substitution was authorised.
+  const frame: KnowledgeFrame = { id: input.frameId, text: input.evidence, at: later.at };
   const facts: readonly KnowledgeFact[] = [
-    factOf({
-      id: beforeId,
-      frameId: input.frameId,
-      evidence: input.evidence,
-      text: input.first,
-      subject,
-      at: earlier.at,
-    }),
-    factOf({
-      id: afterId,
-      frameId: input.frameId,
-      evidence: input.evidence,
-      text: input.verdict.value,
-      subject,
-      at: later.at,
-    }),
+    factOf({ id: beforeId, frame, text: input.first, subject, at: earlier.at }),
+    factOf({ id: afterId, frame, text: input.verdict.value, subject, at: later.at }),
   ];
 
   const edges = deriveSupersedes(facts);
@@ -202,29 +232,73 @@ export function semanticUpdateFrom(input: SemanticUpdateInput): SemanticUpdate |
   // equal after folding. Reporting it as no update is the same call the adjudicator makes.
   if (edges.length === 0) return null;
 
-  const frame: KnowledgeFrame = { id: input.frameId, text: input.evidence };
   // `record`, not `strict`: the frame is a whole rendered window, so the relation markers inside it
   // (`but`, `then`, `because`) are not this unit's to resolve. `strict` would refuse every real window and
   // this module would never produce a unit — the option would exist and reach nothing.
   const built = buildKnowledgeUnit({ frame, facts, edges, policy: 'record' });
   if (!built.ok) return null;
 
+  // The build validates; the revision then *records*. Order matters and is not stylistic: a revision applied
+  // before the build would write a `refuted` onto a fact whose span had not been checked yet, so a refused
+  // unit would leave a modified fact set behind and a caller reading it would see a refutation from a unit
+  // that does not exist.
+  const revised = reviseLedger(built.unit.facts, { edges: built.unit.edges });
+
   return {
-    unit: built.unit,
+    unit: { ...built.unit, facts: revised.facts },
     factIds: [afterId, beforeId],
     anchor,
+    learnedAt: later.at,
     key: `${anchor.toLowerCase()}\u0000${input.verdict.value.trim().toLowerCase()}`,
   };
 }
 
+/** What one block says, and what the ledger refused to let it say. */
+type SemanticBlock = {
+  readonly lines: readonly string[];
+  /** Facts that reached the block. One per update while the ledger is doing its job. */
+  readonly served: number;
+  /** Facts the exit refused, by any reason. Non-zero is what makes the wiring load-bearing. */
+  readonly withheld: number;
+};
+
 /**
- * The lines a prompt carries, or none.
+ * The lines a prompt carries, or none — through `assemble`, which is the single exit.
  *
- * `omitFrame: true` because the frame here is the entire rendered evidence — printing it would spend the
- * evidence's own budget a second time on a copy of what the prompt already contains above.
+ * ### Two numbers, because one is not a measurement
+ *
+ * `served` alone cannot fail: a block that printed both ends would report `served: 2` and look healthier than
+ * a correct one. `withheld` is the half that can be zero while everything else looks fine — it is zero when
+ * the revision stopped writing `refuted`, which is the exact failure a unit with no assumptions had for one
+ * round. Together they are a ratio a reader can check (`served === withheld` on every well-formed unit), and
+ * separately neither is.
+ *
+ * ### The rank is a position
+ *
+ * `factIds` is `[newer, older]`, and numbering it is the only score this module can honestly supply. It
+ * decides nothing while the ledger is on — the older fact never reaches the ranking — and it decides the
+ * order of the trial renders the budget makes, which is why it is stated rather than left to a tie-break on
+ * ids.
  */
-export function renderSemanticUpdate(update: SemanticUpdate): readonly string[] {
-  return renderBlocks(update.unit, update.factIds, { omitFrame: true });
+export function assembleSemanticUpdate(update: SemanticUpdate): SemanticBlock {
+  const ranked = update.factIds.map((factId, index) => ({
+    factId,
+    score: update.factIds.length - index,
+  }));
+  const result = assemble({
+    unit: update.unit,
+    ranked,
+    now: update.learnedAt,
+    intent: 'fact',
+    // The frame here is the entire rendered evidence, which the prompt already carries verbatim above this
+    // block. Printing it again would spend the evidence's budget on a copy of itself.
+    omitFrame: true,
+  });
+  return {
+    lines: result.lines,
+    served: result.census.served,
+    withheld: result.excluded.length,
+  };
 }
 
 /**

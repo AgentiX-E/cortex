@@ -81,7 +81,7 @@ import {
 } from './supersede.js';
 import { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
 import {
-  renderSemanticUpdate,
+  assembleSemanticUpdate,
   semanticUpdateFrom,
   updateAppliesTo,
   type SemanticUpdate,
@@ -649,10 +649,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * The three are separate because "the store has knowledge and no prompt used it" and "the store never got
    * any" are different reports, and a single counter would collapse them.
    */
-  #semantic: { absorbed: number; dropped: number; matched: number } = {
+  #semantic: {
+    absorbed: number;
+    dropped: number;
+    matched: number;
+    served: number;
+    withheld: number;
+  } = {
     absorbed: 0,
     dropped: 0,
     matched: 0,
+    served: 0,
+    withheld: 0,
   };
 
   /**
@@ -1104,12 +1112,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
-   * What the semantic store has absorbed, evicted and matched.
+   * What the semantic store has absorbed, evicted, matched and handed over.
    *
    * Returned rather than the units themselves: a caller that reads the units would be reading the store, and
-   * the store is the thing the product is supposed to own. Three counts answer the only questions an outside
-   * reader has — did it get anything, did it lose anything, did a window qualify — and a fourth field would
-   * be the beginning of a second store API.
+   * the store is the thing the product is supposed to own. These counts answer the only questions an outside
+   * reader has — did it get anything, did it lose anything, did a window qualify, and did the ledger then
+   * refuse any of it — and the unit types stay unexported so no caller can turn five counts into an API.
+   *
+   * `served` and `withheld` are the ledger's two halves and neither is a measurement alone. `withheld` is the
+   * one that can be zero while every other number looks healthy: it goes to zero the moment the revision stops
+   * writing `refuted`, which is exactly the state this path was in for one round, when the block printed the
+   * superseded value on its own `fact:` line and nothing said it was stale. On a well-formed unit
+   * `served === withheld`, and a test asserts that rather than a total.
    *
    * `matched` counts **questions whose window still carried an authorised record**, which is the condition
    * for a line, not the line itself: a prompt whose budget refused the block reports a match and carries no
@@ -1120,6 +1134,8 @@ export class CortexMemory implements SessionAwareMemorySystem {
     readonly absorbed: number;
     readonly dropped: number;
     readonly matched: number;
+    readonly served: number;
+    readonly withheld: number;
   } {
     return { ...this.#semantic };
   }
@@ -2122,11 +2138,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
     if (this.#semanticUpdates.length === 0) return [];
     const contents = turns.map((turn) => turn.content);
     const lines: string[] = [];
+    let applied = 0;
     for (const update of this.#semanticUpdates) {
       if (!updateAppliesTo(update, contents)) continue;
-      lines.push(...renderSemanticUpdate(update));
+      applied += 1;
+      const block = assembleSemanticUpdate(update);
+      this.#semantic.served += block.served;
+      this.#semantic.withheld += block.withheld;
+      lines.push(...block.lines);
     }
-    if (lines.length > 0) this.#semantic.matched += 1;
+    // Counted per **prompt**, and on the *anchor* rather than on the lines. Two updates over one corpus are one
+    // question that learned two things, not two questions; and a window whose block the prompt budget later
+    // refused still matched, which is the distinction the census docblock states and which an
+    // `if (lines.length > 0)` guard would collapse. That guard was written first and the coverage gate reported
+    // it as unreachable, which it was: `assemble` always serves the confirmed end of a well-formed unit.
+    if (applied > 0) this.#semantic.matched += 1;
     return lines;
   }
 
