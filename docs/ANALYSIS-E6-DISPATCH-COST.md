@@ -1,5 +1,14 @@
 # What E6's registered dispatch costs, and whether one job can hold it
 
+> **Superseded on the wall clock, kept for the bill.** The measurements below of what a dispatch
+> *costs* stand. The measurement of how long it *takes* does not: this document concluded that
+> `workers=32` puts the registered dispatch at 1.2–3.8 hours, and two dispatches of the same
+> population have since shown that width moves nothing — 7784 s at 4 workers and 7819 s at 32, both
+> equal to `calls x 6 s` because `sharedRequestGate` paces **one process**, not one worker. See
+> `ANALYSIS-E6-SHARDING.md` §1 for the comparison and §6 for the shard counts that replace this
+> section's width argument. The conclusion this document reached — that the registered dispatch is
+> affordable — survives; the mechanism it named for making it fit does not.
+
 **Answer first**: one job can hold it, and my previous sentence — "16,000 calls, one job does not
 fit" — was wrong in the only way that matters. It treated the worker count as fixed and the wall
 clock as the consequence, when the worker count is an **input** and the wall clock is what it moves.

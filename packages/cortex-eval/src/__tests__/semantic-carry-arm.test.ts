@@ -524,3 +524,49 @@ describe('the forward from the arm options into the product constructor', () => 
     expect(ARM).toContain('semanticCarry: armOptions.semanticCarry === true');
   });
 });
+
+/**
+ * The split, wired where it has to be and in the order it has to be in.
+ *
+ * Same weakness as the block above and the same reason: the harness is a script, there is no seam to
+ * call, and every one of these lines decides whether a sixteen-shard dispatch answers the population
+ * or sixteen overlapping slices of it.
+ */
+describe('the split, and where it sits among the selectors', () => {
+  const ARM = readFileSync(
+    new URL('../../../cortex-memory/bench/run-ablation.ts', import.meta.url),
+    'utf8',
+  );
+
+  it('reads both variables through the reader that refuses one without the other', () => {
+    // Two `process.env` reads at the call site would leave the mutual refusal in `shard.ts` unused
+    // and the dispatch free to set one of them.
+    expect(ARM).toContain(
+      "readShardPartition(\n    process.env['CORTEX_SHARD'],\n    process.env['CORTEX_SHARDS'],",
+    );
+  });
+
+  it('cuts the corpus population before the multiplication', () => {
+    // A split taken after `withWindows` puts the two windows of a corpus in two jobs, and the carry
+    // is then written on one machine and read on another -- a reach of zero that has nothing to do
+    // with the semantic layer.
+    const cut = ARM.indexOf('shardDataset(restricted, shardPartition)');
+    const multiplied = ARM.indexOf('withWindows(oracle === undefined ? sharded');
+    expect(cut).toBeGreaterThan(-1);
+    expect(multiplied).toBeGreaterThan(-1);
+    expect(cut).toBeLessThan(multiplied);
+  });
+
+  it('annotates the oracle after the cut, so it describes the questions this job grades', () => {
+    const cut = ARM.indexOf('shardDataset(restricted, shardPartition)');
+    const oracle = ARM.indexOf('oracleEvidenceDataset(sharded)');
+    expect(oracle).toBeGreaterThan(cut);
+  });
+
+  it('records the population for a shard even at one window', () => {
+    // The condition is the pair, not the multiplication: a sharded single-window run has no windows
+    // to record and still has to say that it is a part, or its `corpora` reads as a whole one.
+    expect(ARM).toContain('windows === 1 && shardPartition === undefined');
+    expect(ARM).toContain('shard: { index: shardPartition.shard, shards: shardPartition.shards }');
+  });
+});

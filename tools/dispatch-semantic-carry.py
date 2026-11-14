@@ -56,6 +56,13 @@ WORKFLOW = "semantic-carry.yml"
 # every key here makes the dispatch self-describing, and a workflow default that moved would show up
 # as a diff in this file rather than as a run nobody can explain.
 INPUTS: dict[str, str] = {
+    # Jobs the population is split into. A job's steps are serial but its processes are not, and
+    # the arm's measured wall clock does not move with the worker count (run `43609290786`: the same
+    # population at 32 workers took the same 2 h 09 m as at 4), because the cost is CPU inside one
+    # event loop. Sixteen is the first attempt at the registered population: 1000 questions / 16 is
+    # about 63 per job, and the split is by corpus so both windows of one corpus stay on one
+    # instance. `1` is the single-job dispatch every archived artifact came from.
+    "shards": "16",
     # Two windows is the population `S13` names: the first window absorbs an update, the second is
     # the one a carry can reach. `1` is the registered population, where the reach is zero by
     # construction -- useful only as a control on the population itself.
@@ -70,10 +77,11 @@ INPUTS: dict[str, str] = {
     "ablation_runs": "2",
     "model": "deepseek-chat",
     "thinking": "disabled",
-    # Mirrors the workflow's own default, which moved from 4 to 32 when the registered shape's
-    # arithmetic was corrected: 17,900 calls is 30 hours at four workers and 3.8 at thirty-two, and
-    # the job carries a 300-minute in-run budget that 24 workers lands exactly on.
-    "workers": "32",
+    # Mirrors the workflow's own default, which moved from 32 to 8 when the split made it a
+    # per-shard number: 32 instances in one job each build a relevance index over ~493 K characters
+    # of their own corpus, and a shard owns about 63 questions, so 8 in flight is the whole shard
+    # several times over. A single-job dispatch still wants 24-32.
+    "workers": "8",
     # The ceiling the workflow's own gate reads. Sent rather than left to the workflow, for the
     # reason every other key is: a default the dispatcher does not state is a run whose budget the
     # log cannot explain. See `DEFAULT_BUDGET_CNY` for why this workflow's number is not the other

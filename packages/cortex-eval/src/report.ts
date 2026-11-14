@@ -543,12 +543,33 @@ function renderExpansionCounts(counts: {
  * Python script would be two definitions of one format with nothing checking that they agree.
  */
 export type PopulationRecord = {
-  /** Windows per corpus. `2` is the population `S13` names; `1` is never recorded. */
+  /**
+   * Windows per corpus. `2` is the population `S13` names.
+   *
+   * `1` is recorded only when a shard had to be declared: the shard is an attribute of the
+   * population and a one-window sharded job would otherwise have no field to say which shard it
+   * is, and `corpora` would read as a smaller registered population rather than as a part of one.
+   */
   readonly windows: number;
   /** How many corpora the run graded: `questionCount / windows`, carried rather than divided by a reader. */
   readonly corpora: number;
   /** What a window's id carries, e.g. `#w`. */
   readonly marker: string;
+  /**
+   * Which part of the dispatch this run answered, when the population was split across jobs.
+   *
+   * ## Why a single shard's artifact cannot be read as the population
+   *
+   * `corpora` counts what **this job** graded, and a dispatch split sixteen ways writes `31` on
+   * fifteen artifacts and `32` on one. Without this record, `corpora: 31` is indistinguishable from
+   * a dispatch of 31 corpora, and the merge's `n` would be the only statement that the population
+   * was larger. With it, the artifact says what it is: a part, of how many, and by which scheme
+   * (`shard.ts` -- position in the corpus population, so the parts are disjoint and their union is
+   * the whole).
+   *
+   * Absent for an unsplit dispatch, for the rule every optional field here follows.
+   */
+  readonly shard?: { readonly index: number; readonly shards: number } | undefined;
 };
 
 export type MemoryArmConfig = {
@@ -1733,7 +1754,11 @@ export function formatAblationReport(report: AblationReport): string {
       ? []
       : [
           `- Population: ${report.population.corpora} corpora x ${report.population.windows} windows ` +
-            `(ids carry \`${report.population.marker}N\`, so \`#w2\` is a corpus's second window)`,
+            `(ids carry \`${report.population.marker}N\`, so \`#w2\` is a corpus's second window)` +
+            (report.population.shard === undefined
+              ? ''
+              : `, SHARD ${report.population.shard.index} of ${report.population.shard.shards}: ` +
+                'this artifact is one part of the dispatch and its counts are that part'),
         ]),
     // Both arms, on one line, above every number in the document. The line is what
     // makes a screenshot of this report self-describing, which the per-section labels

@@ -128,6 +128,11 @@ import {
   readWindowCount,
   withWindows,
   WINDOW_MARKER,
+  // §E6's split. A population too large for one job's wall clock is cut by **corpus**, not by
+  // question: one job per shard, each multiplying its own slice into windows, so the two windows of
+  // a corpus are always answered by one instance (`Question.corpus`, `claimRun`).
+  readShardPartition,
+  shardDataset,
   // §E6's pair. `carry` puts one system on both sides with one flag between them; `reference` is the
   // registered pair and what an unset variable means.
   readArmPairing,
@@ -382,6 +387,29 @@ async function main(): Promise<void> {
   // leaves every number below byte-identical to the run before it.
   const restorePlan = readRestorePlanFromEnv(process.env, (path) => readFileSync(path, 'utf8'));
   const restricted = restorePlan === null ? selected : restrictDatasetToPlan(selected, restorePlan);
+  // §E6's split, between the corpus selectors and everything that reads the dataset.
+  //
+  // Before `oracleEvidenceDataset` because the oracle annotates what it is given: sharding after it
+  // would carry annotations for questions this job does not grade. Before the multiplication for the
+  // reason `shard.ts` states -- a split taken afterwards separates `#w1` from `#w2` of one corpus,
+  // and the carry would be written on one machine and read on another.
+  //
+  // Absent means one shard, which is every archived artifact and every dispatch before this one.
+  const shardPartition = readShardPartition(
+    process.env['CORTEX_SHARD'],
+    process.env['CORTEX_SHARDS'],
+  );
+  const sharded =
+    shardPartition === undefined ? restricted : shardDataset(restricted, shardPartition);
+  if (shardPartition !== undefined) {
+    // Printed beside the capability line, because both narrow the population and both change the
+    // denominator of every number below: `31 corpora graded` on an artifact that is one sixteenth of
+    // a 500-corpus dispatch has to be readable without the merge.
+    console.log(
+      `Shard ${shardPartition.shard} of ${shardPartition.shards}: ` +
+        `${sharded.questions.length} of ${restricted.questions.length} corpus/corpora`,
+    );
+  }
   // §1.38.5's oracle condition, applied AFTER the restriction so its census describes the graded
   // population rather than the file. Both arms are handed this dataset, which is what makes the
   // condition a single variable: the two sides differ in their system, never in their evidence.
@@ -391,7 +419,7 @@ async function main(): Promise<void> {
   // Annotated rather than inferred: the union is the whole point of the conditional, and
   // `OracleEvidenceDataset` is the type both the transform and the post-run check agree on.
   const oracle: OracleEvidenceDataset | undefined = armOptions.oracleEvidence
-    ? oracleEvidenceDataset(restricted)
+    ? oracleEvidenceDataset(sharded)
     : undefined;
   // §E6's population, applied LAST among the selectors and for the reason `capability-filter.ts`
   // gives for its own placement: `LIMIT` asks how many corpora and `CORTEX_CAPABILITY` asks which,
@@ -416,16 +444,22 @@ async function main(): Promise<void> {
         'is a dispatch of its own.',
     );
   }
-  const dataset = withWindows(oracle === undefined ? restricted : oracle.dataset, windows);
-  if (windows > 1) {
+  const dataset = withWindows(oracle === undefined ? sharded : oracle.dataset, windows);
+  if (windows > 1 || shardPartition !== undefined) {
     // On a line of its own, before every number below it, because it changes the denominator of
     // all of them: 500 questions and 500 corpora asked twice print the same `questionCount` and
     // mean different things. The marker is printed with the counts so a reader of the artifact's
     // ids does not have to infer what `#w2` means from the data.
+    //
+    // The shard is on the same line because it is the second reason a count can be smaller than
+    // the dispatch: one artifact of sixteen.
     console.log(
       `Population: ${dataset.questions.length / windows} corpora x ${windows} windows = ` +
         `${dataset.questions.length} question(s); ids carry ${JSON.stringify(WINDOW_MARKER)}N, and a ` +
-        'corpus keeps one instance by contract (Question.corpus)',
+        'corpus keeps one instance by contract (Question.corpus)' +
+        (shardPartition === undefined
+          ? ''
+          : `; shard ${shardPartition.shard} of ${shardPartition.shards}`),
     );
   }
   if (oracle !== undefined) {
@@ -1236,17 +1270,23 @@ async function main(): Promise<void> {
       carryPair: pairing === 'carry',
     },
     datasetFingerprint,
-    // §E6's population, when the run multiplied it. Absent for `windows=1` for the reason every
-    // optional field here is absent at its identity: every archived artifact graded one window per
-    // corpus, and a `{ windows: 1 }` record would make those artifacts and a run that named the
-    // identity two different bytes for one fact.
-    ...(windows === 1
+    // §E6's population, when the run multiplied it or answered one part of a split dispatch. Absent
+    // for an unsplit single-window run for the reason every optional field here is absent at its
+    // identity: every archived artifact graded one window per corpus, and a `{ windows: 1 }` record
+    // would make those artifacts and a run that named the identity two different bytes for one fact.
+    //
+    // The shard is recorded at `windows: 1` too, because it is the one field that keeps a part from
+    // being read as a population: `corpora: 31` alone is indistinguishable from a dispatch of 31.
+    ...(windows === 1 && shardPartition === undefined
       ? {}
       : {
           population: {
             windows,
             corpora: dataset.questions.length / windows,
             marker: WINDOW_MARKER,
+            ...(shardPartition === undefined
+              ? {}
+              : { shard: { index: shardPartition.shard, shards: shardPartition.shards } }),
           },
         }),
     // Read from the parsed arm options, not decided here: §13.12 registers the

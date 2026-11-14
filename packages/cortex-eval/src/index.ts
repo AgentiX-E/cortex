@@ -569,6 +569,11 @@ export { readCapabilityFilter, restrictDatasetToCapability } from './capability-
 // clause that explains `#w2` to a reader of a run is the harness's, not this module's.
 export { readWindowCount, withWindows, WINDOW_MARKER } from './two-window.js';
 
+// E6's split, for the same reason and one layer out: the population is cut by corpus so one job can
+// answer a part of it, and the two windows of a corpus stay on one instance. Read together with the
+// count above -- the harness applies this first and multiplies the slice afterwards.
+export { readShardPartition, shardDataset } from './shard.js';
+
 // Which two systems a dispatch puts on its two sides. One reader, one call site: the harness builds
 // the pair differently when this says `carry`, and the artifact records which pairing it built.
 export { readArmPairing } from './arm-pairing.js';

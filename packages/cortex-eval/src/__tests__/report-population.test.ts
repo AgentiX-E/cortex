@@ -86,3 +86,40 @@ describe('population in the report', () => {
     );
   });
 });
+
+describe('a shard says that it is a part', () => {
+  const SHARDED: PopulationRecord = {
+    windows: 2,
+    corpora: 3,
+    marker: '#w',
+    shard: { index: 7, shards: 16 },
+  };
+
+  it('renders the shard beside the counts, so the counts cannot be read as the population', async () => {
+    // `corpora: 31` on an artifact that is one sixteenth of 500 is indistinguishable from a dispatch
+    // of 31. The line has to say both, and it has to say it in the same place the counts are.
+    const markdown = formatAblationReport(await report(SHARDED));
+    expect(markdown).toContain('SHARD 7 of 16');
+    expect(markdown).toContain('one part of the dispatch and its counts are that part');
+  });
+
+  it('says nothing about a shard when the dispatch was not split', async () => {
+    // The identity again: an unsplit run's line must be the line every archived artifact has.
+    const markdown = formatAblationReport(await report(POPULATION));
+    expect(markdown).not.toContain('SHARD');
+  });
+
+  it('is recorded even at one window, which is why the record is not keyed on the multiplication', async () => {
+    // A sharded single-window run has no multiplication to record, and its `population` still has to
+    // exist: without it the artifact carries no statement that it is a part at all.
+    const oneWindowShard: PopulationRecord = {
+      windows: 1,
+      corpora: 31,
+      marker: '#w',
+      shard: { index: 0, shards: 16 },
+    };
+    const sharded = await report(oneWindowShard);
+    expect(sharded.population).toEqual(oneWindowShard);
+    expect(formatAblationReport(sharded)).toContain('SHARD 0 of 16');
+  });
+});

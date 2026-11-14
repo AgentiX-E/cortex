@@ -51,6 +51,11 @@ name: Semantic carry (cortex-memory, two windows)
 on:
   workflow_dispatch:
     inputs:
+      shards:
+        description: 'Jobs the population is split into. One Node process uses one core and run 43609290786 measured the same wall clock at 4 workers and at 32, so the split is the only lever. 1 is a single job; 16 is the first attempt at the registered population (1000 questions / 16 = ~63 per job). The split is by corpus (shard.ts), so both windows of a corpus stay on one instance and the merged result is the population rather than an average of parts'
+        required: false
+        default: '16'
+        type: string
       windows:
         description: 'Windows per corpus. 2 is the population S13 names: the first window absorbs an update, the second is the one a carry can reach. 1 is the registered population, where the reach is zero by construction and the run is only useful as a control'
         required: false
@@ -82,12 +87,12 @@ on:
         default: 'disabled'
         type: string
       workers:
-        description: 'Questions in flight. A corpus is answered by one instance at any width (Question.corpus), so this moves the wall clock and not the treatment. The registered shape needs 24 or more to clear the ceiling below'
+        description: 'Questions in flight **inside one shard**. A corpus is answered by one instance at any width (Question.corpus), so this moves the wall clock and not the treatment -- but it does not move it much, because the cost is CPU rather than waiting. Sized for a shard: 8 on 16 shards, 24-32 for a single-job dispatch'
         required: false
-        default: '32'
+        default: '8'
         type: string
       budget_cny:
-        description: 'The ceiling the spend gate enforces, in CNY. The registered shape (capability=all, four repetitions, two windows) projects at 25-96 CNY depending on the cache mix, so this default is not the other dispatcher 3.00'
+        description: 'The ceiling the spend gate enforces, in CNY, for the **whole dispatch** -- all shards together. The registered shape (capability=all, four repetitions, two windows) projects at 25-96 CNY depending on the cache mix, so this default is not the other dispatcher 3.00'
         required: false
         default: '120'
         type: string
@@ -113,22 +118,63 @@ env:
   CORTEX_READER_TIMEOUT_MS: ${{ vars.CORTEX_READER_TIMEOUT_MS }}
 
 jobs:
-  semantic-carry:
-    name: semantic carry, two windows
+  # The shard count expands into the matrix here rather than being written out as a literal list.
+  # A hard-coded `[0, 1, ..., 15]` would make "16" a decision in this file instead of an input, and
+  # the next attempt at this population (12 shards, or 4) would need a commit rather than a dispatch.
+  plan:
+    name: plan the shards
     runs-on: ubuntu-latest
-    # The arithmetic, so the ceiling is a hang detector rather than a schedule. The screening shape
-    # (78 corpora x 2 windows x 2 repetitions) is 624 answers plus the supersession pass's own call
-    # on every knowledge-update window (624 more), so about 1,250 calls: 1,250 / 4 x 7.1 s is 37
-    # minutes at the width this workflow used to default to.
+    outputs:
+      matrix: ${{ steps.expand.outputs.matrix }}
+    steps:
+      - name: Expand the shard count into a matrix
+        id: expand
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          python3 - "$SHARDS" <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import sys
+
+          raw = sys.argv[1].strip()
+          # The same refusal `readShardPartition` applies, made before sixteen jobs are created: a
+          # matrix that expands to nothing produces a run that succeeds without answering anything.
+          if not raw.isdigit() or int(raw) < 1:
+              raise SystemExit(
+                  f"CORTEX_SHARDS must be a positive whole number of jobs: got {raw!r}. "
+                  "One is a single job; the registered population is 16 on the first attempt."
+              )
+          count = int(raw)
+          print("matrix=" + json.dumps({"shard": list(range(count)), "shards": [count]}))
+          PY
+          grep -q '^matrix=' "$GITHUB_OUTPUT" || {
+            echo "::error::the shard matrix did not expand"
+            exit 1
+          }
+
+  semantic-carry:
+    name: semantic carry, shard ${{ matrix.shard }} of ${{ matrix.shards }}
+    needs: plan
+    runs-on: ubuntu-latest
+    # `fail-fast: false` because one shard dying is one sixteenth of the population, and the other
+    # fifteen are worth having: their artifacts merge only if all of them arrive, so a cancelled run
+    # wastes the money already spent on the rest.
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    # The arithmetic, so the ceiling is a hang detector rather than a schedule.
     #
-    # The registered shape is 17,900 calls, not the 16,000 this comment used to claim: 500 corpora x
-    # 2 windows = 1,000 questions, x 4 repetitions x 2 sides = 8,000 question-runs, x 2.24 calls per
-    # question-run (measured: 1,293 calls over 576 question-runs on run 43590434060). At 24 workers
-    # that is 5.0 hours; at 32 it is 3.8. The ceiling below (300 minutes of in-run budget, 330 of job
-    # timeout) is therefore cleared by the **width**, not by sharding -- `workers` is an input
-    # precisely because it moves the wall clock and not the treatment, since `Question.corpus` keeps
-    # a corpus on one instance at any width.
-    timeout-minutes: 330
+    # A single job over the registered population is 17,900 calls and roughly 2 h 09 m of measured
+    # work (run 43590434060), and run 43609290786 showed 32 workers does not shorten it: the time is
+    # CPU -- the relevance index over ~493 K characters per corpus, the window render, the
+    # per-window supersede scan -- and `Promise.all` overlaps waiting, not arithmetic. So each shard
+    # carries 1000/16 = ~63 questions, which is about a sixteenth of that work plus the fixed setup
+    # (build, corpus fetch, cache restore) that every job pays.
+    #
+    # 200 minutes, not 330: a shard that has not finished in 3 h 20 m is not slow, it is stuck, and
+    # the merge needs all sixteen rather than most of them.
+    timeout-minutes: 200
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -155,6 +201,10 @@ jobs:
       # Before the corpus download, because a dispatch that cannot be afforded should fail in ten
       # seconds rather than after a multi-gigabyte fetch and a build.
       #
+      # The projection prices the **whole** dispatch and every shard prints the same figure. That is
+      # deliberate: the split divides the work, not the bill, and a per-shard fraction would let
+      # sixteen jobs each pass a gate that the dispatch as a whole fails.
+      #
       # `limit: 0` is translated here rather than in the tool: it is the workflow's spelling for
       # "everything", and the tool's own `--limit 0` means the zero questions that would price the
       # largest dispatch at nothing. `capability` and `limit` together are refused by the projection
@@ -169,6 +219,7 @@ jobs:
           THINKING: ${{ inputs.thinking }}
           BUDGET: ${{ inputs.budget_cny }}
         run: |
+          echo "this job answers shard ${{ matrix.shard }} of ${{ matrix.shards }}; the figure below is the whole dispatch"
           if [ "${CAPABILITY}" = "all" ] || [ -z "${CAPABILITY}" ]; then
             limit="${LIMIT}"
             if [ "${limit}" = "0" ]; then
@@ -231,6 +282,11 @@ jobs:
           CORTEX_WINDOWS: ${{ inputs.windows }}
           CORTEX_CAPABILITY: ${{ inputs.capability }}
           CORTEX_MEMORY_WORKERS: ${{ inputs.workers }}
+          # Which part of the population this job answers. Read together by `readShardPartition`,
+          # which refuses one without the other: a count with no index is every job taking shard 0,
+          # and an index with no count is every job answering everything.
+          CORTEX_SHARD: ${{ matrix.shard }}
+          CORTEX_SHARDS: ${{ matrix.shards }}
           # The registered preset, written out here rather than read from the artifact the way
           # `restore-counterfactual.yml` reads a source configuration -- this run is not a
           # counterfactual of another dispatch, it is the dispatch. One departure: `review_pass` is
@@ -257,18 +313,23 @@ jobs:
           CORTEX_MEMORY_EVIDENCE_TURNS: '256'
         run: pnpm --filter @agentix-e/cortex-memory bench
 
+      # Saved by shard 0 only. Sixteen jobs writing one key race, and the losers log a reservation
+      # failure that looks like a defect; the key carries `run_id`, so any one writer is enough and
+      # the other fifteen reach the same entry through `restore-keys` on the next run.
       - name: Save embedding cache
-        if: always()
+        if: always() && matrix.shard == 0
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/data/embedding-cache.bin
           key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # One artifact per shard, named with both numbers so a partial dispatch is visible in the run
+      # list without opening anything: `-shard-7-of-16` says what it is and what is missing.
       - name: Upload the report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: semantic-carry-report
+          name: semantic-carry-shard-${{ matrix.shard }}-of-${{ matrix.shards }}
           path: |
             packages/cortex-memory/benchmark-*.md
             packages/cortex-memory/benchmark-*.json
@@ -279,7 +340,11 @@ jobs:
       # decide whether the dispatch answered its question are three lines. Printed from the JSON
       # rather than from the Markdown, and with the population beside them: a `matched` without the
       # window count is a count of prompts in a population this job chose.
-      - name: Read the reach and the pair
+      #
+      # **This is one shard's reading.** Its delta is over ~63 questions and is not `S12`'s; the
+      # merged figure is the `merge` job's, and the line printed here says which shard it is so the
+      # two cannot be confused in a log a person scrolls.
+      - name: Read the reach and the pair, this shard
         if: always()
         run: |
           set -euo pipefail
@@ -308,5 +373,95 @@ jobs:
               print('::warning::absorbed > 0 and matched == 0: the carry reached no window')
           else:
               print(f"reach: {carry['matched']} window(s) carried an absorbed update")
-          print(f"delta (feature - baseline): {report['ablation']['delta']:+.4f}")
+          print(f"delta (feature - baseline), THIS SHARD: {report['ablation']['delta']:+.4f}")
+          PY
+
+  # The population, once, from the questions. Sixteen artifacts are not a population, and adding
+  # their deltas would be an average of sixteen averages over disjoint samples -- a number that looks
+  # like the reading and answers nothing. `tools/merge-ablation.mjs` concatenates the per-question
+  # vectors in shard order and sums the censuses; what it cannot honestly recompute it names.
+  merge:
+    name: merge the shards
+    needs: [plan, semantic-carry]
+    # `always()` so a failed shard still surfaces the merge's own refusal (a missing shard is named
+    # rather than folded away), but the merge only *succeeds* when every shard did.
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download every shard
+        uses: actions/download-artifact@v4
+        with:
+          pattern: semantic-carry-shard-*
+          path: merged
+
+      - name: Merge into one population
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          mkdir -p merged/out
+          node tools/merge-ablation.mjs --dir merged --shards "${SHARDS}" --out merged/out/merged-evidence.json
+
+      - name: Upload the merged evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-carry-merged
+          path: merged/out/merged-evidence.json
+          retention-days: 90
+
+      # The reading the rows actually take, over the whole population: the second-window delta, its
+      # discordant counts, and the summed census. Computed here from the merged vectors for the
+      # reason `semantic_carry_analysis.py` computes it the same way -- the delta is a difference over
+      # questions, so it has to be taken from the questions and not from sixteen shard-level deltas.
+      - name: Read the merged population
+        run: |
+          set -euo pipefail
+          python3 - merged/out/merged-evidence.json <<'PY'
+          import json
+          import sys
+          from math import comb
+
+          document = json.load(open(sys.argv[1], encoding='utf-8'))
+          marker = document['population']['marker']
+          windows = document['population']['windows']
+          ids = [row['questionId'] for row in document['questions']]
+          baseline = document['ablation']['baselineCorrectByRun']
+          feature = document['ablation']['featureCorrectByRun']
+          carry = document.get('semanticCarry')
+          print(f"population: {document['population']['corpora']} corpora x {windows} windows "
+                f"= {document['questionCount']} questions over {document['merged']['shards']} shards, "
+                f"{document['runs']} repetition(s)")
+          print(f"carry census (summed): {carry}")
+          second = [at for at, qid in enumerate(ids) if qid.endswith(f"{marker}{windows}")]
+          if not second:
+              raise SystemExit(f"refusing: no id ends in {marker}{windows}, so there is no second window")
+          # Every repetition, averaged per question -- the same per-question means the analysis script
+          # takes, so the two cannot disagree about the same artifact.
+          def means(vectors):
+              return {at: sum(1 for bits in vectors if bits[at] == '1') / len(vectors)
+                      for at in second}
+          control, treated = means(baseline), means(feature)
+          delta = sum(treated[at] - control[at] for at in second)
+          b = sum(1 for at in second if control[at] > treated[at])
+          c = sum(1 for at in second if treated[at] > control[at])
+          n = b + c
+          p = 1.0 if n == 0 else min(1.0, 2 * sum(comb(n, k) for k in range(0, min(b, c) + 1)) / 2 ** n)
+          print(f"second window: n={len(second)}  delta={delta:+.4f} question(s)  "
+                f"discordant b={b} c={c}  McNemar p={p:.4f}")
+          reach = None if carry is None else carry['matched']
+          print(f"S13 reach: {reach}  (floor 1)")
+          if reach is None or reach < 1:
+              print('::warning::the merge reached no window, so S12 stays void rather than pass')
+          elif delta < -5:
+              print(f'::error::delta {delta:+.1f} is below the -5 floor: S12 fails')
+          else:
+              print(f"::notice::S12 readable: delta {delta:+.1f} >= -5 with reach {reach}")
           PY
