@@ -12,10 +12,13 @@ each. It does not register a measurement, and it does not authorise a dispatch.
 **Status at the time of writing**: `cortex` `3dbf57c`, semantic layer **E8 closed, E1–E7 open** (1 of 8).
 Reach table `P 5 / E 5 / I 8 / T 1` ([`AUDIT-SEMANTIC-REACH.md`](AUDIT-SEMANTIC-REACH.md) §3).
 
-**Status now**: **6 of 8 closed** — E1 (§10), E2 (§11), E3 (§12), E5, E7, E8. E4 is half done
-(`MemoryGraph`, `resolveContradiction` and `Fact.derivedFrom` are recorded declines in §6; `consolidate` is
-still undecided and E4 owns it). E6 — the paired reading — is `unrun`, which is the one thing the gate on
-`S10`/`S9` waits for. Reach table `P 11 / E 2 / I 5 / T 1` — E3 moved no row of it, because `MemoryType` is not one of the nineteen; it is the precondition §5.2 said row 1 needed.
+**Status now**: **7 of 8 closed** — E1 (§10), E2 (§11), E3 (§12), E4 (§13), E5, E7, E8. E4 closed the way the
+criterion allows and not the way it prefers: four mechanisms are now each either wired or **Declined with an
+argument in §6** (`consolidate` §6.2, `resolveContradiction` §6.1, `MemoryGraph`, `sinkhorn`; `Fact.derivedFrom`
+rejected as a second mechanism). E6 — the paired reading — is `unrun`, which is the one thing the gate on
+`S10`/`S9` waits for. Reach table `P 11 / E 2 / I 5 / T 1`: E3 moved no row of it, because `MemoryType` is not
+one of the nineteen; it is the precondition §5.2 said row 1 needed, and E4 moves none either, because a decline
+that removes a candidate call site does not change what is reachable.
 
 ---
 
@@ -85,7 +88,7 @@ flips for 46 damages** — and the ordering below exists to make it unavailable:
 | 1 | **Fact source** (§E1): the product constructs `KnowledgeFact`s from state it has already computed | constructing facts nothing consumes | a behavioural test in which the same corpus produces **different prompt bytes** because the fact exists |
 | 2 | **Consumers** (§E2): `assemble` → `reviseLedger` → `resolveContradiction` on the product path | importing a symbol without calling it, or calling it on an empty list | `semantic-reach.test.ts` must **name** the symbols it reached; the reach table's rows flip to `P` |
 | 3 | **Representability** (§E3): `MemoryType` writes and reads `'semantic'` — **landed**, `AUDIT-SEMANTIC-REACH.md` §12: `memoryForUpdate` writes the entry, `retention.ts` reads the type and decides which entry the bounded store gives up | a settable label nobody reads | one test: write → read back → behaviour changes — a pair of stores differing in one window's read, which is the only thing that separates "the rule read the type" from "the rule agreed with insertion order" |
-| 4 | **Charter** (§E4): `consolidate` / `resolveContradiction` get a caller or an explicit `Declined` | silence | a `grep` hit outside tests, or a `Declined` in this file's §6 |
+| 4 | **Charter** (§E4): `consolidate` / `resolveContradiction` get a caller or an explicit `Declined` — **landed**, §6.1 and §6.2, with the arithmetic of both | silence | a `grep` hit outside tests, or a `Declined` in this file's §6 — both are, and `semantic-reach.test.ts` fails if a product module starts reading the state the declined mechanism writes |
 | 5 | **One commit** (§E5) | three tables drifting | `pnpm check` green and all three diffs in one commit |
 | 6 | **Measurement** (§E6) | a claim of improvement with no reading | a paired readout with `deltaQuestions ≥ −5`, same convention as `S10` |
 
@@ -151,7 +154,7 @@ and "we decided not to" cannot be confused.
 
 | Mechanism | State | Why, and what would reopen it |
 | --- | --- | --- |
-| `consolidate` (FSRS forgetting clock) | **not yet decided** — E4 owns it | reopening condition: a reading that shows the schedule's inputs (`stability`, elapsed time) are wrong on real windows. Currently no product path produces either |
+| `consolidate` (FSRS forgetting clock) | **Declined, with the arithmetic** (§6.2) | three independent reasons, each measured or grep-checkable: the elapsed time it measures inside a store is **zero by construction** (one clock, one stamp), the state it writes has **no reader** in `cortex-memory` (`0` occurrences of `.stability`), and its direction of action — forget an entry because time passed — is what `not-later` (§13.371) exists to prevent. Reopening condition: a store that holds entries stamped on **more than one** clock, which is the only shape where its input is non-empty |
 | `resolveContradiction` (log-odds fusion over a slot) | **Declined, with the arithmetic** (§6.1) | reopening condition: a window in which two values claim **one instant**, and a source-trust signal that is recorded rather than invented |
 | `MemoryGraph` (Hebbian multi-hop) | **Declined, with a reading** | wired into the temporal path and removed on measurement: 77.95% → 70.87%, 15 broken against 6 repaired, exact McNemar p = 0.039. Reopening condition: a multi-hop arm registered with its own criterion |
 | `sinkhorn` (optimal-transport distillation) | **Declined, inert** | has no reading and no caller; deleting it is a separate decision |
@@ -186,8 +189,61 @@ What it would take to reopen: a window in which two values genuinely claim **one
 corpus, not an update), *and* a recorded trust signal per source. Both are corpus-model questions, not wiring
 questions, and neither is in E2.
 
-`MemoryGraph` is the one row that is a **decline with evidence** rather than a deferral, and the distinction is
-the point: a mechanism that was measured and lost is not the same as a mechanism nobody reached.
+### 6.2 `consolidate`: the clock has one instant in it, and nothing reads what it writes
+
+`consolidate(memories, graph, accesses, { now })` is the "sleep" process: FSRS review per access, Hebbian edge
+strengthening on co-activation, and a cull of everything whose retrievability has fallen below a threshold. It
+is the most plausible of the four to wire, because unlike `resolveContradiction` it does not need a pair of
+facts — it needs a store, and since E3 the product has one with `MemoryValue`s in it.
+
+Three facts, each checkable, say it has nothing to do there.
+
+**1. The elapsed time it measures is zero by construction.** A store carries one clock
+(`CortexMemoryOptions.now`, a single number) and `memoryForUpdate` stamps `createdAt` and `lastAccessedAt` with
+it. So for every entry the product holds, `now - lastAccessedAt === 0`, `retrievability(0, 1) === 1`, and the
+default threshold is `0.01` — four and a half stable intervals away. The cull cannot fire: not rarely, not at a
+boundary, but never, for as long as the store is one instance with one clock. Asserted in
+`semantic-facts.test.ts` under *the forgetting clock this entry would have to run on*, together with the
+counter-assertion that the same entry **is** forgotten when the batch runs a year later, so the first test is
+not passing because forgetting is broken.
+
+**2. The state it writes has no reader.** A review pass moves `stability` and `difficulty`; the forget pass reads
+`stability`. In `packages/cortex-memory/src` the string `.stability` occurs **zero** times. A wired call would
+therefore multiply a field by 1.25 per read and hand it to nobody — a mechanism whose only consumer is itself,
+which is the decoration `AUDIT-SEMANTIC-REACH.md` charged this repository with, reached from the other end.
+`semantic-reach.test.ts` now asserts the zero, so the day a product module does read the FSRS state the decline
+fails loudly instead of quietly becoming wrong.
+
+**3. Its direction of action is the one the block exists to prevent.** Forgetting removes an entry because
+*time* passed. The entry is a substitution whose corpus still says `30 dozen`; dropping it does not make the
+statement false, it makes the prompt fall back to the evidence, where the superseded `20 dozen` sits unmarked —
+the exact outcome the `not-later` guard was written against (§13.371 of the preregistration, and the defect a
+previous round found when a refuted value was printed as a fact). The question the store actually has is *which*
+entry to give up when the bound is crossed, and E3 answers that by read-rank, not by decay.
+
+**A trap found on the way, fixed rather than declined.** The forgetting pass used to read `Date.now()` while the
+entries it aged had been stamped by the caller's clock. Nothing in the suite could see it, because every fixture
+stamps `Date.now()`, so the two clocks agreed on every input the suite had — the same shape as the unit defect
+`AUDIT-CONSOLIDATION-CLOCK.md` records, one argument further along. It matters for exactly the caller who would
+wire it: a replay pins `now` to the corpus date, and a batch consolidated today then measures the difference
+between 2023 and now, `exp(-1343)`, and **deletes the entire store**. `now` is a required parameter now. A
+default of `Date.now()` would have been right only for callers who use wall time, so there is no default, and
+`consolidation-clock.test.ts` carries the two `@ts-expect-error` lines that fail the build if one comes back.
+
+| what the store can pass as an access instant | the review's `r` | the cull's elapsed time | the effect |
+| --- | --- | --- | --- |
+| `now` — the only instant it has | `1` | `0` | nothing is reviewed, nothing is forgotten: the call is a no-op with a counter |
+| a turn's corpus date | a real elapsed time | `now − turn date` | a year of corpus time is enough to forget a statement that is still true, i.e. reason 3 |
+
+What it would take to reopen: a store whose entries are stamped on **more than one** clock — a long-lived
+process that ingests over wall time, rather than a per-instance store pinned to one instant — *and* a decision
+that reads FSRS state to rank retention. Neither exists, and both are design changes rather than wirings.
+
+`MemoryGraph` and `consolidate` are the two rows that are **declines with evidence** rather than deferrals, and
+the difference between them is the kind of evidence: `MemoryGraph` lost a paired arm (77.95% → 70.87%, exact
+McNemar p = 0.039), and `consolidate` has no arm to lose because it has no input. A mechanism that was measured
+and lost is not the same as a mechanism nobody reached, and neither is the same as one whose inputs are the
+empty set.
 
 ---
 

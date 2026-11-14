@@ -194,6 +194,23 @@ describe('the product reaches the semantic kernel exactly where the table says',
     expect(names).toContain('decideRetrieval');
   });
 
+  it("reads no FSRS state, which is what E4's decline for `consolidate` rests on", () => {
+    // `DECISION-SEMANTIC-LAYER-ROUTE.md` §6 declines `consolidate` for two reasons; this is the second, and
+    // it is asserted here because it is a reach claim rather than an arithmetic one. The batch writes
+    // `stability` and `difficulty` and reads them back on the next batch — a closed loop between the module
+    // and `math/fsrs.ts`, with no consumer in the product. Wiring the call without a reader would move a field
+    // and change nothing anyone can observe, which is the decoration `AUDIT-SEMANTIC-REACH.md` charged this
+    // repository with, arrived at from the other side.
+    //
+    // Asserted as a property access rather than as the bare word: `retention.ts` and `memory.ts` discuss
+    // retention in prose, and a comment is not a reader. `.stability` is the only form a decision could take.
+    const readers = files.filter((file) => /\.stability\b/.test(readFileSync(file, 'utf8')));
+    expect(
+      readers.map((file) => path.relative(REPO, file)),
+      'a product module now reads the FSRS state, so the decline needs re-arguing against what it wanted',
+    ).toEqual([]);
+  });
+
   it('does not reach the arm at all, not even for a type', () => {
     // `CortexMemory implements SessionAwareMemorySystem`, and that interface used to live in
     // `cortex-eval` while `cortex-memory`'s `package.json` did not depend on it: the edge was type-only,

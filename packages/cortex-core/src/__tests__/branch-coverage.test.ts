@@ -15,7 +15,9 @@ describe('branch coverage', () => {
     const a = createMemory({ content: 'a' });
     mem.set(a.id, a);
     const g = new MemoryGraph();
-    const stats = consolidate(mem, g, [{ memoryId: a.id, outcome: 'success', at: Date.now() }]);
+    const stats = consolidate(mem, g, [{ memoryId: a.id, outcome: 'success', at: Date.now() }], {
+      now: Date.now(),
+    });
     expect(stats.strengthened).toBe(1);
   });
 

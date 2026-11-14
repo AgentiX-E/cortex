@@ -39,12 +39,17 @@ list that reads uniformly at full strength is the one thing this file must not b
   a top-k result. Measured at 29.25/30 on LongMemEval-S's abstention questions; where the decline
   originates is recorded per reason (`empty` / `threshold` / `llm` / `answered`), because a
   decline the model chose and a decline the gate forced are different findings.
-- **Asynchronous consolidation** *(library)* — `consolidate` implements the "sleep" process:
-  Hebbian `MemoryGraph`, FSRS forgetting curve, episodic → semantic promotion. It has **zero
-  callers** in either package, so nothing schedules it and nothing ships it. Its two
-  prerequisites are also absent: there is no store the answering path reads (`context[]` arrives
-  per question), and every admission this layer constructs is stamped `type: 'episodic'` — the
-  `MemoryType` union does have `'semantic'`, and nothing writes or reads it.
+- **Asynchronous consolidation** *(absent, and declined rather than pending)* — `consolidate` is
+  the "sleep" process: an FSRS review per access, Hebbian strengthening on co-activation, and a
+  cull of everything below a retrievability threshold. It has **zero callers** in either package,
+  and `docs/DECISION-SEMANTIC-LAYER-ROUTE.md` §6.2 declines to add one, with the arithmetic: a
+  store carries a single clock, so the elapsed time the cull measures is `0` for every entry and
+  `retrievability(0, 1) = 1` against a threshold four and a half stable intervals away; the FSRS
+  state it writes has no reader in the product (`.stability` occurs zero times in
+  `cortex-memory/src`, and `semantic-reach.test.ts` now asserts that); and forgetting an entry
+  because time passed is what the `not-later` guard exists to prevent. The mechanism is reachable,
+  tested at 100% coverage, and safe to call — `now` is a required argument, because it used to
+  read `Date.now()` while aging entries stamped by the caller's clock.
 - **Retrieval-as-consolidation** *(absent)* — TD(λ) credit assignment is not implemented; no
   eligibility traces exist in the codebase.
 - **Bitemporal facts** *(live on the harness path, library for the product)* — `cortex-core`'s

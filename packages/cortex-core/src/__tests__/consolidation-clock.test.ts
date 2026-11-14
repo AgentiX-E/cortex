@@ -17,7 +17,7 @@
  * deleted**, including ones never accessed:
  *
  *     const memories = new Map();       // 10 freshly created memories
- *     consolidate(memories, graph, []); // zero accesses
+ *     consolidate(memories, graph, [], { now: Date.now() }); // zero accesses
  *     memories.size  // 0
  *
  * Measured on `dist/` before this test was written. This is not a tuning problem:
@@ -71,7 +71,7 @@ describe('a fresh memory survives the default consolidation', () => {
     const memories = store(
       ...Array.from({ length: 10 }, (_, i) => createMemory({ id: `m${i}`, content: `fact ${i}` })),
     );
-    const stats = consolidate(memories, new MemoryGraph(), []);
+    const stats = consolidate(memories, new MemoryGraph(), [], { now: Date.now() });
 
     expect(stats.forgotten, 'default consolidation forgot a freshly created memory').toBe(0);
     expect(memories.size, 'default consolidation emptied the store').toBe(10);
@@ -83,7 +83,7 @@ describe('a fresh memory survives the default consolidation', () => {
     // unaccessed memory is not a memory system.
     const m = createMemory({ content: 'a', lastAccessedAt: Date.now() - HOUR });
     const memories = store(m);
-    const stats = consolidate(memories, new MemoryGraph(), []);
+    const stats = consolidate(memories, new MemoryGraph(), [], { now: Date.now() });
 
     expect(stats.forgotten, 'an hour-old memory was forgotten').toBe(0);
     expect(memories.has(m.id)).toBe(true);
@@ -94,7 +94,7 @@ describe('a fresh memory survives the default consolidation', () => {
     // clock. A year untouched is past any plausible durability.
     const m = createMemory({ content: 'a', lastAccessedAt: Date.now() - 365 * DAY });
     const memories = store(m);
-    const stats = consolidate(memories, new MemoryGraph(), []);
+    const stats = consolidate(memories, new MemoryGraph(), [], { now: Date.now() });
 
     expect(stats.forgotten, 'a year-old memory should be forgotten').toBe(1);
     expect(memories.has(m.id)).toBe(false);
@@ -104,7 +104,10 @@ describe('a fresh memory survives the default consolidation', () => {
     // The existing test's mechanism must keep working; only the default was broken.
     const m = createMemory({ content: 'a', lastAccessedAt: Date.now() });
     const memories = store(m);
-    const stats = consolidate(memories, new MemoryGraph(), [], { forgettingThreshold: 2 });
+    const stats = consolidate(memories, new MemoryGraph(), [], {
+      now: Date.now(),
+      forgettingThreshold: 2,
+    });
     expect(stats.forgotten).toBe(1);
   });
 });
@@ -169,9 +172,12 @@ describe('a successful access extends a memory lifetime', () => {
       createMemory({ id: 'a', content: 'a', lastAccessedAt: now - MINUTE }),
       createMemory({ id: 'b', content: 'b', lastAccessedAt: now - HOUR }),
     );
-    const stats = consolidate(memories, new MemoryGraph(), [
-      { memoryId: 'a', outcome: 'success', at: now - MINUTE },
-    ]);
+    const stats = consolidate(
+      memories,
+      new MemoryGraph(),
+      [{ memoryId: 'a', outcome: 'success', at: now - MINUTE }],
+      { now },
+    );
     expect(stats.forgotten, 'a recent reviewed memory was forgotten').toBe(0);
     expect(memories.size).toBe(2);
   });
@@ -189,9 +195,12 @@ describe('the access clock is the access record, not the batch', () => {
     const accessAt = Date.now() - HOUR;
     const build = () => {
       const mem = createMemory({ id: 'm', content: 'a', lastAccessedAt: accessAt - DAY });
-      consolidate(store(mem), new MemoryGraph(), [
-        { memoryId: 'm', outcome: 'success', at: accessAt },
-      ]);
+      consolidate(
+        store(mem),
+        new MemoryGraph(),
+        [{ memoryId: 'm', outcome: 'success', at: accessAt }],
+        { now: Date.now() },
+      );
       return mem.stability;
     };
 
@@ -217,16 +226,22 @@ describe('the access clock is the access record, not the batch', () => {
     const fresh = createMemory({ id: 'f', content: 'b', lastAccessedAt: now - MINUTE });
     const staleGain = (() => {
       const before = stale.stability;
-      consolidate(store(stale), new MemoryGraph(), [
-        { memoryId: 's', outcome: 'success', at: now - DAY },
-      ]);
+      consolidate(
+        store(stale),
+        new MemoryGraph(),
+        [{ memoryId: 's', outcome: 'success', at: now - DAY }],
+        { now: Date.now() },
+      );
       return stale.stability / before;
     })();
     const freshGain = (() => {
       const before = fresh.stability;
-      consolidate(store(fresh), new MemoryGraph(), [
-        { memoryId: 'f', outcome: 'success', at: now - MINUTE },
-      ]);
+      consolidate(
+        store(fresh),
+        new MemoryGraph(),
+        [{ memoryId: 'f', outcome: 'success', at: now - MINUTE }],
+        { now: Date.now() },
+      );
       return fresh.stability / before;
     })();
 
@@ -241,3 +256,66 @@ describe('the access clock is the access record, not the batch', () => {
 function retreivabilityIsSane(stabilityMs: number): boolean {
   return retrievability(DAY, stabilityMs) > 0.01;
 }
+
+describe('the batch runs on the caller clock, not on the wall clock', () => {
+  /**
+   * A corpus instant, and a store stamped with it.
+   *
+   * These tests exist because the forget pass used to read `Date.now()` while the
+   * entries it aged had been stamped by the caller's clock. Nothing in the suite
+   * caught it: every fixture stamps `Date.now()`, so the two clocks agreed on
+   * every input the suite had — the same shape as the unit defect above, one
+   * argument further along.
+   */
+  const T = Date.UTC(2023, 2, 12, 11, 40);
+  const build = () => {
+    const m = createMemory({ id: 'm', content: 'a', lastAccessedAt: T, createdAt: T });
+    return store(m);
+  };
+
+  it('keeps an entry stamped at the batch instant, however far that instant is from today', () => {
+    const memories = build();
+    const stats = consolidate(memories, new MemoryGraph(), [], { now: T });
+
+    // Under the wall clock this is `exp(-1095)` at the time of writing, i.e. below
+    // the default threshold, so the assertion below is the one that fails if the
+    // second clock comes back.
+    expect(stats.forgotten, 'the batch clock was ignored and the entry was aged by wall time').toBe(
+      0,
+    );
+    expect(memories.size).toBe(1);
+  });
+
+  it('forgets the same entry when the batch runs a year after it', () => {
+    // The counter-assertion: pinning the clock must not disable forgetting. Same
+    // store, same entry, one argument changed — and the outcome is the opposite,
+    // which is what makes the first test a statement about the clock rather than
+    // about the threshold.
+    const memories = build();
+    const stats = consolidate(memories, new MemoryGraph(), [], { now: T + 365 * DAY });
+
+    expect(stats.forgotten, 'a year of elapsed time should be forgotten').toBe(1);
+    expect(memories.size).toBe(0);
+  });
+
+  it('puts `now` in the signature so the omission cannot compile', () => {
+    // The parameter is required rather than defaulted to `Date.now()`, because a
+    // default is right only for callers that stamp with wall time. Asserted as a
+    // type-level fact rather than as a runtime one: `@ts-expect-error` fails the
+    // build when the line beneath it compiles, and `noUnusedLocals` would catch a
+    // dead suppression.
+    //
+    // Two lines, because they are two different refusals. The first says the batch
+    // cannot be consolidated without naming a clock; the second says an author who
+    // supplies *other* options still cannot leave the clock out — which is the
+    // realistic omission, and the one an optional field with a fallback would let
+    // through.
+    // @ts-expect-error -- no options at all: the batch instant has no default.
+    const noOptions = () => consolidate(build(), new MemoryGraph(), []);
+    // @ts-expect-error -- other options given, clock still missing, still refused.
+    const noClock = () => consolidate(build(), new MemoryGraph(), [], { decay: false });
+
+    expect(noOptions, '`now` must not have a default').toBeTypeOf('function');
+    expect(noClock, '`now` must be required alongside the other options').toBeTypeOf('function');
+  });
+});

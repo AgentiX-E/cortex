@@ -70,7 +70,7 @@ positive control in the test, because an assertion that passes on an empty impor
 | 10 | Revision: supersede, stale cascade, plan lifecycle | `knowledge/revision.ts:128`, cascade at `:264` | `semantic-facts.ts` (§11) and `assumption-ablation.ts:536` | **P** |
 | 11 | Answer-side exit: the four questions, `asOf` hard filter | `context/assemble.ts:198` | `semantic-facts.ts` (§11) and `assumption-ablation.ts:680` | **P** |
 | 12 | Contradiction: log-odds fusion over a slot | `contradiction/resolve.ts:21` | **none — Declined**, `DECISION-SEMANTIC-LAYER-ROUTE.md` §6.1 | **I** |
-| 13 | Consolidation / forgetting (FSRS) | `consolidation/consolidate.ts:40` | **none** | **I** |
+| 13 | Consolidation / forgetting (FSRS) | `consolidation/consolidate.ts:40` | **none — Declined**, `DECISION-SEMANTIC-LAYER-ROUTE.md` §6.2 (§13 here) | **I** |
 | 14 | Disclosure governance: 12 rules, cards, proposals, echo guard | `triage/*`, `disclosure/session.ts` | product | **P** |
 | 15 | Storage: one KV table | `cortex-storage/src/storage/sql.ts:60` | product | **P** |
 | 16 | Semantic gates K0–K3 / V1 / T1–T4 over a 17-case set | `cortex-eval/src/acceptance.ts:259` | arm | **E** |
@@ -83,7 +83,7 @@ disclosure, supersession, aggregation). §10 moves one more — the edge layer �
 source's ledger, its revision and the answer-side exit. **P is now 11 of 19.** What has *not* moved is as
 deliberate as what has: rows 2, 5 and 7 stay `I`/`T` because one member of a closed set being written is not
 the closed set being reachable, no alias registry exists, and the two-axis `Fact` still has zero constructors;
-row 12 is a recorded decline rather than a pending one. The audit's summary — "a mechanism the shipping path never calls is
+rows 12 and 13 are recorded declines rather than pending ones — and row 13's decline is a statement about its *inputs* (one clock, one instant) rather than about its cost. The audit's summary — "a mechanism the shipping path never calls is
 decoration with a test suite", quoted from `context/assemble.ts:9` itself — applies to eleven of the
 nineteen rows.
 
@@ -597,3 +597,124 @@ which is what says the pair is causal rather than parallel.
 - **`dropped` is now a function of the read history, not of arrival order.** On a run where every question
   brings its own corpus no window ever reads an entry, so the count is identical to the one `shift()` produced —
   and the difference only appears where the mechanism is supposed to exist.
+
+## 13. The forgetting clock has one instant in it, and nothing reads what it writes
+
+E4 asks for one of two things: a caller, or an explicit `Declined` with the reasons written down. `consolidate`
+gets the second, and this section is the evidence rather than the verdict —
+[`DECISION-SEMANTIC-LAYER-ROUTE.md`](DECISION-SEMANTIC-LAYER-ROUTE.md) §6.2 is the verdict.
+
+### 13.1 What the mechanism needs, and what the product has
+
+`consolidate(memories, graph, accesses, { now })` does three things: an FSRS review per access record, Hebbian
+strengthening on co-activation, and a cull of every entry whose retrievability has fallen below a threshold
+(default `0.01`, i.e. `exp(-4.6)` ≈ 4.6 stable intervals). Its inputs are therefore **time** — an access instant
+per record and a batch instant — and **a store whose entries were stamped by the same clock**.
+
+The product, since E3, has such a store: `CortexMemory`'s semantic slot holds `MemoryValue`s built by
+`memoryForUpdate`. What it does not have is a second instant. `CortexMemoryOptions.now` is a single number per
+instance, and `memoryForUpdate` stamps `createdAt` and `lastAccessedAt` with it. So:
+
+| quantity | value | why |
+| --- | --- | --- |
+| `now − lastAccessedAt` for every entry | `0` | one clock, one stamp |
+| `retrievability(0, 1)` | `1` | `exp(0)`; stability defaults to one day |
+| the default threshold | `0.01` | `exp(-4.6)`, i.e. **4.6 stable days away** |
+| entries the cull can remove | `0` | the gap is not small, it is unbridgeable inside one instance |
+
+The cull cannot fire. Not at a boundary and not rarely — never, for as long as the store is one instance with
+one clock. And a review pass with no access records has nothing to review, so the batch is a no-op that returns
+a counter.
+
+### 13.2 The state it writes has no reader
+
+A review moves `stability` and `difficulty`; the cull reads `stability`. In `packages/cortex-memory/src` the
+access `.stability` occurs **zero** times, and `.difficulty` likewise. So the FSRS state is a closed loop
+between `consolidation/consolidate.ts` and `math/fsrs.ts`: written by one, read by the other, and by nothing
+that decides anything. A wired call would multiply a field by `1.25` per read — `review`'s no-spacing floor —
+and hand the result to nobody.
+
+That is the decoration `AUDIT-SEMANTIC-REACH.md` §4.3 priced, arrived at from the other side: not a symbol
+imported and never called, but a call whose output has no consumer. `semantic-reach.test.ts` now asserts the
+zero, which makes the decline **self-cancelling**: the day a product module reads `.stability`, that test fails
+and the decline has to be re-argued against whatever the module wanted it for.
+
+### 13.3 Its direction of action is what `not-later` exists to prevent
+
+Forgetting removes an entry because time passed. The entry is not an observation of a window; it is a
+substitution whose corpus still says `30 dozen`. Dropping it does not make that statement false — it makes the
+prompt fall back to the evidence, where the superseded `20 dozen` sits unmarked. That is the exact outcome
+§13.371's `not-later` guard was written against, and the defect a previous round found when a refuted value was
+printed as a fact beside its replacement.
+
+The question the store genuinely has is *which* entry to give up when the bound is crossed, and E3 answered it by
+read-rank (`lastAccessedAt`, then the read count). A decay rule would be a **second** eviction rule over the same
+eight slots — and the two would disagree on exactly the case that matters, an entry that is old but carrying the
+current answer.
+
+### 13.4 The trap this found, and the repair
+
+The forgetting pass read `Date.now()` while the entries it aged had been stamped by the caller's clock. No test
+could see it: every fixture in `consolidation-clock.test.ts` and `consolidate.test.ts` stamps `Date.now()`, so the
+two clocks agreed on every input the suite had. That is the same shape as the unit defect
+[`AUDIT-CONSOLIDATION-CLOCK.md`](AUDIT-CONSOLIDATION-CLOCK.md) records — a fixture that happens to satisfy the
+code — one argument further along.
+
+It bites exactly the caller who would wire it. A replay pins `now` to the corpus date; a batch consolidated
+today then measures `2023-03-12` against today, `exp(-1343)`, and **deletes the entire store**:
+
+| caller | entry stamped | batch clock used | `forgotten` |
+| --- | --- | --- | --- |
+| a fresh process, `now = Date.now()` | now | now | `0` |
+| a replay, `now` pinned to the corpus | 2023-03-12 | wall clock | **every entry** |
+| a replay, after the repair | 2023-03-12 | `now` | `0` |
+
+`now` is a required parameter now, and there is no default: a default of `Date.now()` would be right only for
+callers who stamp with wall time, and silently wrong for everyone else. The module header says the batch is
+"pure, side-effect-free orchestration", which was false while it read a wall clock; it is true now, and the
+signature is what enforces it.
+
+Two `@ts-expect-error` lines in `consolidation-clock.test.ts` pin the shape:
+
+```ts
+// @ts-expect-error -- no options at all: the batch instant has no default.
+const noOptions = () => consolidate(build(), new MemoryGraph(), []);
+// @ts-expect-error -- other options given, clock still missing, still refused.
+const noClock = () => consolidate(build(), new MemoryGraph(), [], { decay: false });
+```
+
+The second is the one that matters. The first only says the fourth argument is required; the second says an
+author who supplies *other* options still cannot omit the clock — which is the realistic omission, and the one an
+optional field with a `?? Date.now()` fallback would let through.
+
+### 13.5 Mutations
+
+| # | mutation | killed by |
+| ---: | --- | --- |
+| 1 | the forget pass back on `Date.now()` | *keeps an entry stamped at the batch instant* — `1 failed` |
+| 2 | `now?: number` with `?? Date.now()` | `tsc`: `TS2578 Unused '@ts-expect-error' directive` |
+| 3 | `lastAccessedAt` ← `learnedAt` instead of the store clock | the stamp test **and** the elapsed-time test — `2 failed` |
+| 4 | a product module reads `.stability` | the reach alarm in `semantic-reach.test.ts` — `1 failed` |
+
+Mutation 2 is a type-level kill rather than a runtime one, and it is the one that keeps the trap closed: a
+fallback reintroduces the second clock without changing a single assertion, because every fixture passes `now`
+explicitly.
+
+### 13.6 A fact about this repository's test topology, found by being wrong
+
+The first run of the new memory-side test failed with `forgotten === 1` **against correct source**, because
+`cortex-memory` imports `@agentix-e/cortex-core` through the package barrel, i.e. through `dist/`. A signature
+change in core is invisible to memory's tests until `pnpm build` runs — the assertion was reading the previous
+build, which still consults the wall clock. `pnpm check` builds first, so the gate was never at risk, but a
+reader running one package's tests after editing another's source is. Recorded here rather than fixed: the
+alternative is `paths` aliasing every package to its source, which changes what every test in the repo is
+actually importing.
+
+### 13.7 What this does not claim
+
+- **No accuracy claim.** `semanticCarry` is still off by default and E6 is still `unrun`.
+- **The decline does not say a forgetting clock is wrong for a memory layer.** It says this store has no clock
+  to run it on and no reader for its output. Reopening conditions are in §6.2 of the decision: entries stamped on
+  more than one clock, and a decision that ranks retention by FSRS state.
+- **`consolidate` is not worse off for it.** It gained a required clock, two type-level guards and a test whose
+  fixtures no longer agree with the code by accident. Its coverage is 100/100/100/100.

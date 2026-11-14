@@ -7,6 +7,21 @@
  * strengthening, and threshold-based forgetting. It does not perform
  * optimal-transport distillation (see `math/ot.ts`, which is exported but not
  * yet wired here) and it does not implement TD(lambda) credit assignment.
+ *
+ * ## Time is an argument, and that is load-bearing
+ *
+ * `now` is required. The first version read `Date.now()` for the forgetting pass
+ * and for edge decay, which made this module impure despite the sentence above,
+ * and — the part that matters — compared **wall time** against timestamps the
+ * caller had stamped with **its own** clock. Every timestamp in this domain is an
+ * injected epoch millisecond (`MemoryValue.createdAt`, `AccessRecord.at`,
+ * `CortexMemoryOptions.now`), so a caller replaying a corpus pinned to its own
+ * instant would have had every entry aged by the difference between that instant
+ * and today: `retrievability(3 years, 1 day)` is `exp(-1095)`, below the default
+ * threshold of `0.01`, and the whole store would be forgotten on the first batch.
+ * A default of `Date.now()` would keep the trap — it is right only for callers who
+ * happen to use wall time — so the parameter is mandatory and the compiler is what
+ * catches the omission.
  */
 import type { MemoryValue } from '../domain/memory.js';
 import type { MemoryGraph } from '../graph/memory-graph.js';
@@ -43,15 +58,21 @@ export function consolidate(
   accesses: readonly AccessRecord[],
   options: {
     /**
+     * The instant this batch is consolidated at, in epoch milliseconds — the
+     * caller's clock, the same one that stamped the entries. Required; see the
+     * module header for what a default cost.
+     */
+    now: number;
+    /**
      * Retrievability below which a memory is forgotten. Defaults to `0.01`, i.e.
      * `exp(-4.6)` stable intervals since the last access.
      */
     forgettingThreshold?: number;
     decay?: boolean;
-  } = {},
+  },
 ): ConsolidationStats {
   const forgettingThreshold = options.forgettingThreshold ?? 0.01;
-  const now = Date.now();
+  const now = options.now;
   let strengthened = 0;
   let forgotten = 0;
 

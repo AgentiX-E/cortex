@@ -27,7 +27,7 @@ import {
   updateAppliesTo,
   type SemanticUpdate,
 } from '../semantic-facts.js';
-import { createMemory } from '@agentix-e/cortex-core';
+import { consolidate, createMemory, MemoryGraph } from '@agentix-e/cortex-core';
 import type { KnowledgeFact } from '@agentix-e/cortex-core';
 import type { SupersessionVerdict } from '../supersede.js';
 
@@ -453,5 +453,66 @@ describe('the store entry an update becomes', () => {
     expect(memory.sourceTrust).toBe(bare.sourceTrust);
     expect(memory.stability).toBe(bare.stability);
     expect(memory.difficulty).toBe(bare.difficulty);
+  });
+});
+
+/**
+ * E4's decline for `consolidate`, made checkable rather than argued.
+ *
+ * `DECISION-SEMANTIC-LAYER-ROUTE.md` §6 allows exit criterion E4 to close either with a caller or with an
+ * explicit `Declined`. `consolidate` gets the second, and a decline that rests on arithmetic has to be able to
+ * show the arithmetic — otherwise it is a deferral wearing a decision's clothes. So the two facts the decline
+ * rests on are asserted here, on the **entry the product actually writes** rather than on a fixture shaped to
+ * suit the mechanism:
+ *
+ * 1. an entry is stamped at the store's clock, and the store has one clock, so the elapsed time a decay rule
+ *    would measure inside an instance is **zero** — the rule cannot fire;
+ * 2. the only state a review pass would write is `stability`, and **no module in this package reads it** — so a
+ *    call could move it and change nothing that anyone can observe.
+ *
+ * The second is a reopening alarm as much as a measurement: the day a product module reads `stability`, this
+ * file fails, and the decline has to be re-argued against whatever that module wanted it for.
+ */
+describe('the forgetting clock this entry would have to run on', () => {
+  const NOW = 1_759_470_000_000;
+  const DAY = 86_400_000;
+
+  const productEntry = () => {
+    const update = build()!;
+    const block = assembleSemanticUpdate(update);
+    return memoryForUpdate({ update, lines: block.lines, now: NOW });
+  };
+
+  it('measures no elapsed time at the instant the store runs at, so a decay rule cannot fire', () => {
+    const memory = productEntry();
+    const before = memory.stability;
+    const memories = new Map([[memory.id, memory]]);
+
+    const stats = consolidate(memories, new MemoryGraph(), [], { now: NOW });
+
+    // Zero, and not because decay is disabled: the threshold is the default `0.01` and the entry's own
+    // `stability` is one day, so an entry stamped at `NOW` and consolidated at `NOW` is at full
+    // retrievability. The store has exactly one clock, so this is the only instant it can ever run at.
+    expect(stats.forgotten).toBe(0);
+    expect(memories.size).toBe(1);
+    // A batch with no access records has nothing to review, so the state is untouched. The pass is not
+    // inert because it is unimplemented — it is inert because its inputs are the empty set.
+    expect(memory.stability).toBe(before);
+  });
+
+  it('would delete the entry a year later, which is the direction of action the decline refuses', () => {
+    // The counter-assertion, and the reason this is a decline rather than a "not yet": the mechanism works.
+    // Give it a year of elapsed time and it forgets an entry whose corpus still says `30 dozen`, i.e. a
+    // statement that is true of the world and still referenced by the window the block was built from. A rule
+    // that removes knowledge because time passed is anti-correlated with what this store is for; the bound in
+    // `SEMANTIC_UPDATES_MAX` and the read-ranked eviction from E3 already answer the question that is
+    // genuinely open, which is *which* entry to give up, not *whether* to give any up.
+    const memory = productEntry();
+    const memories = new Map([[memory.id, memory]]);
+
+    const stats = consolidate(memories, new MemoryGraph(), [], { now: NOW + 365 * DAY });
+
+    expect(stats.forgotten).toBe(1);
+    expect(memories.size).toBe(0);
   });
 });
