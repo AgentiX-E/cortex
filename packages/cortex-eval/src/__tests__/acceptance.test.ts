@@ -617,3 +617,75 @@ describe('attestationOf: a reading has to say it is about this system', () => {
     expect(missing.status).toBe('unrun');
   });
 });
+
+/**
+ * `S11`: the product with no ranking configured.
+ *
+ * The arm's `DEFAULT_RELEVANCE_SIGNAL` is `none`, which is also what a caller who installs the package and
+ * configures nothing runs: no table, no index, the budget spends arrival order. Three arms therefore exist
+ * (`none`, `self-index`, `retrieval-anchored`) and two of them had a registered reading while the default —
+ * the one nobody has to choose — did not. A default that is never scored is a delivery shape the project
+ * cannot describe, and this row is that description.
+ *
+ * The tests below are about the **row**, not about the number: the number arrives with a dispatch. What has
+ * to be right before that dispatch is that the row names the arm it measures, that its threshold is derived
+ * from a figure this repository already registered rather than chosen, and that missing it has a stated
+ * consequence.
+ */
+describe('S11: the no-ranking arm, priced against a tolerance rather than a round number', () => {
+  function row(): Criterion {
+    const found = CRITERIA.filter((criterion) => criterion.id === 'S11');
+    expect(found).toHaveLength(1);
+    return found[0]!;
+  }
+
+  it('names `relevanceSignal: none` in the dataset, so the row says which of the three arms it is', () => {
+    // Without this clause the row is "the product scores X", which is true of all three arms. The arm is the
+    // measurement here: `none`, `self-index` and `retrieval-anchored` differ by who builds the ranking.
+    expect(row().dataset).toContain('relevanceSignal: none');
+    expect(row().capability).toMatch(/no ranking|none/);
+  });
+
+  it('is an aim rather than a gate, because it is expected to be missed on the way to a decision', () => {
+    // The reading is the *price* of ranking. If it lands below the threshold the finding is that ranking is
+    // required for delivery, which is a fact to act on and not a regression to fix; blocking a build on it
+    // would make the honest answer red.
+    expect(row().kind).toBe('aim');
+    expect(row().comparator).toBe('at-least');
+    expect(verdictOf(row(), 0.5).blocking).toBe(false);
+  });
+
+  it('derives its threshold from S1 and S9, so the three rows cannot drift apart', () => {
+    const s1 = CRITERIA.find((criterion) => criterion.id === 'S1');
+    const s9 = CRITERIA.find((criterion) => criterion.id === 'S9');
+    if (s1 === undefined || s9 === undefined)
+      throw new Error('S1 and S9 are the rows this one is priced against');
+    // `S9` already registered how much ranking may be given up: −15 questions over 500, which is 3.0 points.
+    // `S11` asks the harder question — what if there is no ranking at all — and reuses that tolerance rather
+    // than inventing one. A bare-install reading inside S1's own 3.0-point tolerance would say ranking is not
+    // a delivery requirement; below it, S9's 3.0 points are the price of *which* ranking, not of having one.
+    const tolerance = Math.abs(s9.threshold) / 500;
+    expect(row().threshold).toBeCloseTo(s1.threshold - tolerance, 10);
+    expect(row().unit).toBe(s1.unit);
+  });
+
+  it('reads a file that no run has written yet, so it reports unrun rather than a guessed value', () => {
+    // Equality rather than field-by-field on purpose: when the first dispatch lands, an `attest` clause has
+    // to be added here (a path is not an identity — `S1` read a live file describing a retired configuration
+    // for three rounds). That edit fails this test, which is the point: it cannot be skipped quietly.
+    expect(row().source).toEqual({
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/no-ranking.json',
+      key: 'overall.accuracy',
+    });
+    expect(currentOf(row(), { artifact: () => undefined } as unknown as Resolvers)).toBeUndefined();
+  });
+
+  it('states the consequence of a miss as a delivery change, because that is what it decides', () => {
+    // A row whose `onMiss` says "investigate" has no consequence. This one decides whether the Quick Start
+    // may ship a bare construction: if ranking is worth more than S9's tolerance, the documented minimal
+    // configuration is the one that passes `index`.
+    expect(row().onMiss).toContain('Quick Start');
+    expect(row().onMiss).toContain('`index`');
+  });
+});

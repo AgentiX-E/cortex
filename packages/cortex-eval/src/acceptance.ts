@@ -1123,6 +1123,54 @@ export const CRITERIA: readonly Criterion[] = [
       'which is the `a4996e51` defect with a different offset.',
   },
 
+  // ---- the arm nobody chooses, which is also the one every caller starts on ------------------------
+  //
+  // `RELEVANCE_SIGNALS.none` is `DEFAULT_RELEVANCE_SIGNAL` in `bench-memory-arm.ts`, and it is what
+  // `CortexMemory` does when neither `relevanceFor` nor `index` is configured: the budget spends the
+  // arrival-order prefix. Three arms therefore exist -- `retrieval-anchored` (the harness ranks, `S1`),
+  // `self-index` (the product ranks, `S9`) and `none` (nobody ranks) -- and the third is the one a caller gets
+  // without choosing. It had no row, so the delivery shape that costs nothing to reach was the only one the
+  // matrix could not describe.
+  {
+    id: 'S11',
+    capability: 'end-to-end memory, no ranking configured',
+    metric:
+      'overall LongMemEval-S accuracy with `relevanceSignal: none` -- no table, no index, the budget spends the ' +
+      'arrival-order prefix from the tail',
+    dataset:
+      'LongMemEval-S, 500 questions, one dispatch, four repetitions, the same reader, judge and prompt as S1, ' +
+      'arm `relevanceSignal: none`',
+    comparator: 'at-least',
+    // 0.88 is S1's 0.91 minus S9's registered tolerance, and the reuse is the point rather than an economy.
+    // `S9` already priced how much ranking this project is willing to give up: 15 questions over 500, i.e. 3.0
+    // points. This row asks the harder question -- what if there is no ranking at all -- so it inherits that
+    // tolerance instead of inventing a second one. A bare-install reading inside S1's own 3.0 points would say
+    // ranking is not a delivery requirement; below it, S9's 3.0 points are the price of *which* ranking and
+    // not of having one. The dependency is asserted in `acceptance.test.ts`, so the three rows cannot drift.
+    threshold: 0.88,
+    unit: 'ratio',
+    kind: 'aim',
+    // No competitor rows, deliberately. Every other benchmark row places this arm against a system built by
+    // someone else; this one places it against the other two arms of the same product, and a peer figure would
+    // invite a gap that is not a gap -- the difference between bare and ranked is not a difference in readers,
+    // budgets or datasets, which is exactly what makes it readable.
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/no-ranking.json',
+      key: 'overall.accuracy',
+    },
+    onMiss:
+      'Below 88.0% the bare construction is not a shippable configuration, and the consequence is a delivery ' +
+      'change rather than a code change: the Quick Start has to pass an `index` in its minimal example, which ' +
+      'also means the caller owns an embedder before the first answer. The mechanism reading says that is the ' +
+      'likely outcome rather than a hypothesis -- under arrival order the gold turn was inside the evidence the ' +
+      'model actually read for **11.6%** of questions, 14 of 121 (run `38142407062`, PREREGISTRATION 13.17.1), ' +
+      'against a ceiling of 92.1%. At or above the threshold the conclusion inverts and is worth more than the ' +
+      'row: it would mean the room itself carries the answer on enough questions that ranking cannot be shown ' +
+      'to matter, which is a statement about the budget rather than about the ranker and has to be read beside ' +
+      '`C1` and `S10`.',
+  },
+
   // ---- the cost dimension, which had no row until the 2026-10 board printed a context column -------
   {
     id: 'C1',

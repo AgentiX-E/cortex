@@ -229,6 +229,9 @@ cheapest fact source that cannot hurt is the one the product already computes** 
 - **It does not claim the kernel should be deleted.** Eleven rows at `I`/`E` are the reason the semantic
   work is a wiring problem rather than a research problem; deleting them would turn a known gap into an
   unknown one.
+- **It does not claim §9.1's verdicts are the current state.** Two of the four are historical by construction:
+  the retrieval and rerank cells describe `b0fe73f`, and §9.3 is the repair. The present state lives in
+  `ARCHITECTURE.md`'s layer map and in the acceptance matrix's `S9` / `S11` rows, not in this table.
 - **It does not claim the 91.25% is wrong.** §4.4: the product is in the measured path. What is missing from
   that number is the store's own quality, which no current gate measures.
 - **It does not claim extraction is the answer.** The campaign's own −19.62 for replacing text with
@@ -252,12 +255,21 @@ capability, and "the product does not retrieve" is a statement about the thing i
 | --- | --- | --- | --- |
 | **reader** | `cortex-memory` | `memory.ts:12` states the flow; `prompt.ts` (five contracts, the retry and repair paths), `parse.ts`, `#consult` calls `LLM.complete` | **product. Never was the gap.** |
 | **judge** | `cortex-eval` | `question-record.ts`, `metrics.ts` | **correctly not the product.** A ruler inside the thing it measures measures nothing. |
-| **retrieval** | `cortex-eval` | `relevance-index.ts` (665 lines) builds the index and the rerank, then hands `CortexMemory` a synchronous `(question, turn) => number` through `relevanceFor` (`types.ts:359`) | **not the product.** With no callback the room was spent in arrival order. |
-| **rerank** | `cortex-core` mechanically, `cortex-eval` in practice | `retrieval/rerank.ts` exports `rerankHits`; its callers are `relevance-index.ts:663` and `natural-language-memory.ts`, both in the harness. `cortex-memory` imports neither. | **not the product.** The mechanism existed one layer below and had no product caller — the same shape §3 recorded for `assemble`. |
+| **retrieval** | `cortex-eval` | `relevance-index.ts` (665 lines) builds the index and the rerank, then hands `CortexMemory` a synchronous `(question, turn) => number` through `relevanceFor` (`types.ts:359`) | **not the product — until §9.3.** With no callback the room was spent in arrival order. |
+| **rerank** | `cortex-core` mechanically, `cortex-eval` in practice | `retrieval/rerank.ts` exports `rerankHits`; its callers are `relevance-index.ts:663` and `natural-language-memory.ts`, both in the harness. `cortex-memory` imports neither. | **not the product — until §9.3.** The mechanism existed one layer below and had no product caller — the same shape §3 recorded for `assemble`. |
 
 So the audit's charge is half right, and the half it got right is the half that matters. §4.4 was also half
 right for the same reason: the 91.25% row *does* run `CortexMemory`, and the ranking inside it comes from the
 instrument.
+
+**Two of the four verdicts above are historical, and the table now says so.** They read `not the product`
+because that was true at `b0fe73f`; §9.3 records the repair — `retrieval/search-index.ts`, 560 lines, the
+product's own postings, optional vector channel, RRF and optional rerank — and the acceptance matrix carries the
+two rows that measure it: `S9` (the product ranks its own evidence) and `S11` (nothing ranks). The past tense
+stays, because an audit has to keep saying what it found. What changed is that the bold verdict no longer stands
+alone: a reader who stops at this table was reading a claim about 2026-08 as if it were about today, and that has
+already happened once — a question about where the semantic layer lives was answered off this table by an author
+who had the §9.3 repair in front of them and did not follow the arrow.
 
 ### 9.2 Why "inject the signal" was not a boundary but a hole
 

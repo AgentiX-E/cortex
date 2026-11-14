@@ -69,6 +69,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | S10 | <!-- reading:S10 -->—     | ≥ -5      | unrun  | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
+| S11 | <!-- reading:S11 -->—     | ≥ 88.0%   | unrun  | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
@@ -81,6 +82,21 @@ unrun    no value could be computed — reported, never counted as a pass
 | C8  | <!-- reading:C8 -->0      | = 0        | pass   | verifiable erasure                      | the same session: private evidence, shared evidence, the export, the release log |
 | M1  | <!-- reading:M1 -->4.3pp  | ≥ 3.0pp   | pass   | reader strength                        | LongMemEval-S, 500 questions, two readers, prompt bytes held |
 | P1  | <!-- reading:P1 -->—      | ≤ 2.0pp   | unrun  | provider portability                   | LongMemEval-S, one dispatch, two providers, prompt bytes held |
+
+`S1`, `S9` and `S11` are one product measured with three answers to one question -- who builds the ranking --
+and they differ in nothing else: same dataset, same reader, same judge, same prompt, same repetitions.
+
+| row | `relevanceSignal` | who ranks | reading |
+| --- | --- | --- | --- |
+| `S11` | `none`, the arm **default** | nobody: the budget spends the arrival-order prefix | `unrun` |
+| `S9`  | `self-index` | the product -- `SearchIndex`, 560 lines: postings, optional vector channel, RRF, optional rerank | `unrun` (a 200 x 2 screening pair reads **-1.50 questions, p = 1.0**) |
+| `S1`  | `retrieval-anchored` | the harness -- `cortex-eval`'s relevance index | **91.1%**, gate |
+
+Read together they price the ranking itself. `S1` answers "what does the product score when the instrument
+supplies a ranking", which is not the same question as "what does a caller get", because a caller supplies
+nothing: `none` is what `CortexMemory` does when neither `relevanceFor` nor `index` is configured, and it was the
+one arm with no row. `S9` is the third answer -- a caller who wants the product to rank its own evidence -- and
+its -1.50 is the only measurement of the product's own stack against the harness's.
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;
