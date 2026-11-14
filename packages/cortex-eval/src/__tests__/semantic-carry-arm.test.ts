@@ -481,7 +481,25 @@ describe('the forward from the arm options into the product constructor', () => 
   );
 
   it('spreads the switch into the constructor, so the treatment has an on-switch at all', () => {
-    expect(ARM).toContain('armOptions.semanticCarry === true ? { semanticCarry: true } : {}');
+    // The spread reads the construction's own argument rather than the parsed option, because under
+    // `CORTEX_MEMORY_AB=carry` the same construction is asked for twice with one flag between them --
+    // the feature side carrying, the baseline side not. Reading `armOptions` here would build the
+    // treatment on both sides and publish a null result for a comparison that never happened.
+    expect(ARM).toContain('...(carry ? { semanticCarry: true } : {})');
+    expect(ARM).toContain('const buildFeature = (): CortexMemory => buildCortex(armOptions.semanticCarry === true);');
+  });
+
+  it('builds the control from the same construction, differing in that flag alone', () => {
+    // The pair is one literal and one argument. A second literal for the control would be a second
+    // definition of the arm's twenty-six options, and the two would agree until one of them was edited.
+    expect(ARM).toContain("pairing === 'carry' ? buildCortex(false) : buildBaseline()");
+  });
+
+  it('refuses a carry pair whose treatment side was left off', () => {
+    // Two sides of one system with the carry off on both is the one run this round exists to make
+    // impossible: `delta = 0` with a census of `0`, read as "the layer carried nothing" when the truth
+    // is "the layer was never asked". Refused before the first call, so it costs nothing.
+    expect(ARM).toContain("pairing === 'carry' && armOptions.semanticCarry !== true");
   });
 
   it('names the same identifier that the product option type declares', () => {

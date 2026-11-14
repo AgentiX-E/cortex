@@ -67,6 +67,10 @@ TOOLS = ROOT / "tools"
 SCRIPT_WORKFLOW = {
     "dispatch-b7-ab.py": "benchmark.yml",
     "dispatch-cortex-memory-ab.py": "benchmark-cortex-memory.yml",
+    # The semantic layer's own instrument. Its inputs are a population (`windows`, `capability`,
+    # `limit`) and a reader, not an arm configuration, which is why they could not ride the arm's
+    # workflow: that file sits one input below GitHub's ceiling of 25.
+    "dispatch-semantic-carry.py": "semantic-carry.yml",
 }
 
 

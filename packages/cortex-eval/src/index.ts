@@ -564,6 +564,15 @@ export {
 // the parsed filter as well to keep that line honest.
 export { readCapabilityFilter, restrictDatasetToCapability } from './capability-filter.js';
 
+// E6's population. `bench/run-ablation.ts` reads the count, applies the multiplication, and prints
+// the marker on the configuration line, so all three are named here -- the marker because the log
+// clause that explains `#w2` to a reader of a run is the harness's, not this module's.
+export { readWindowCount, withWindows, WINDOW_MARKER } from './two-window.js';
+
+// Which two systems a dispatch puts on its two sides. One reader, one call site: the harness builds
+// the pair differently when this says `carry`, and the artifact records which pairing it built.
+export { readArmPairing } from './arm-pairing.js';
+
 // `withTemperature` stays module-private: `llm-factory` is its only consumer, and an exported
 // decorator with one in-package caller is an export the census reports as an orphan. The reader
 // is `readTemperature`, which `bench/run.ts` needs so the `default` sentinel does not arrive as

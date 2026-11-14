@@ -1,0 +1,266 @@
+# The semantic layer's own instrument (§E6): carry off against carry on, over two windows of one
+# corpus, in ONE job.
+#
+# ## Why a workflow of its own
+#
+# `benchmark-cortex-memory.yml` declares 24 inputs against GitHub's ceiling of 25, and
+# `test_dispatch_inputs.py` refuses a workflow that reaches the ceiling -- so "add three inputs" is
+# not available, and the file's own instruction for that case is to split rather than to remove a
+# knob. It is also the right shape independently: this is not a dispatch of the arm's headline pair.
+# It runs one system against itself with one flag between the two sides.
+#
+# ## The three facts this workflow exists to supply, none of which a dispatch of the registered
+# ## population could
+#
+# 1. **Two windows over one corpus.** `updateAppliesTo` is a substring test on the record an update
+#    was authorised by (`semantic-facts.ts:383`), and every LongMemEval-S question brings its own
+#    haystack -- so on the registered population no question's window ever carries another
+#    question's record and the reach is zero by construction (`AUDIT-SEMANTIC-REACH.md` §15.2).
+#    `CORTEX_WINDOWS=2` asks each corpus twice: the first window absorbs, the second is the one a
+#    carry can reach. `S13` is that reach, and it is why the population had to change before the row
+#    could be read rather than dispatched again.
+# 2. **The pair.** `CORTEX_MEMORY_AB=carry` puts the same cognitive system on both sides with
+#    `semanticCarry` off on the baseline and on on the feature, so the delta is the carry's rather
+#    than a difference between two systems. Two dispatches would pair two runs; this pairs two sides
+#    of one pass, which is the invariant `PREREGISTRATION` §2.2 fixes for the whole arm (time-of-day
+#    drift on this corpus is 1.7-2.1pp, larger than most effects an arm could find).
+# 3. **A window that one store answers.** `Question.corpus` is a contract: a corpus's windows are
+#    contiguous and are answered by one instance. The pool gives each worker its own `CortexMemory`,
+#    so a second window answered by a second instance reads a store that never absorbed the first.
+#    `claimRun` in `benchmark.ts` claims a whole corpus atomically, which is what makes `workers=4`
+#    safe on this population rather than a way to erase the treatment.
+#
+# ## The one departure from the registered preset, and why it is not optional
+#
+# `cortex_memory_review_pass` is `supersede` here, not the registered `bare`. Absorption happens only
+# in that pass, on that route (`memory.ts`'s `reviewPass === 'supersede' && route === 'knowledge-update'`),
+# so a carry run on the registered pass would dispatch a mechanism with nothing to carry -- the exact
+# "treatment administered, reached nothing" shape `S13` was added to refuse. The pass is on BOTH
+# sides, so the pair still isolates the carry; what it does not isolate is the pass, and an artifact
+# reading this line should say so. `memoryArmConfig.reviewPass` on the artifact is the check.
+#
+# ## Why `KU`
+#
+# The mechanism's reach is one route. `CORTEX_CAPABILITY=KU` grades the 78 knowledge-update questions,
+# which are the population where a supersession can be the failure mode at all; the other 422
+# questions cost a reader call each and cannot produce a `matched` window. A run over all 500 is the
+# registered instrument and stays available through the input -- `windows=2, capability=all` -- and
+# the `population` block on the artifact states which one ran.
+name: Semantic carry (cortex-memory, two windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: 'Windows per corpus. 2 is the population S13 names: the first window absorbs an update, the second is the one a carry can reach. 1 is the registered population, where the reach is zero by construction and the run is only useful as a control'
+        required: false
+        default: '2'
+        type: string
+      capability:
+        description: 'Population selector, as in the arm: `KU` (the default) grades the 78 knowledge-update questions where a supersession can be the failure mode at all; `all` is the registered 500 and the instrument S12 is registered on'
+        required: false
+        default: 'KU'
+        type: string
+      limit:
+        description: 'Corpora to sample before the capability filter, 0 = the whole file. Sampled before the multiplication, so 0 and 78 mean the same population for `KU`'
+        required: false
+        default: '0'
+        type: string
+      ablation_runs:
+        description: 'Repetitions. 2 is the screening default (78 corpora x 2 windows x 2 repetitions = 312 answers per side); S12 is registered at 4, which is the confirmation run'
+        required: false
+        default: '2'
+        type: string
+      model:
+        description: "Reader model, optionally provider-prefixed exactly as the arm reads it ('deepseek-chat', 'zhipu:glm-4.6')"
+        required: false
+        default: 'deepseek-chat'
+        type: string
+      thinking:
+        description: "Thinking mode: 'disabled', 'enabled', or a '+'-separated route list. The registered preset is 'multi-session+temporal'; 'disabled' is the screening default because this pair compares two sides of one pass and a cheaper reader sharpens the difference rather than blurring it"
+        required: false
+        default: 'disabled'
+        type: string
+      workers:
+        description: 'Questions in flight. A corpus is answered by one instance at any width (Question.corpus), so this moves the wall clock and not the treatment'
+        required: false
+        default: '4'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  CORTEX_MEMORY_BUDGET_MINUTES: '300'
+  CORTEX_MEMORY_RERANK_BASE_URL: https://open.bigmodel.cn/api/paas/v4
+  CORTEX_MEMORY_RERANK_MODEL: rerank
+  CORTEX_MEMORY_RERANK_MAX_DOCUMENTS: '128'
+  CORTEX_MEMORY_RERANK_MAX_DOCUMENT_CHARS: '4096'
+  RERANK_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+  # The transport numbers the registered artifact carries, read from repository variables for the
+  # reason the arm's own workflow gives: they are the pipe, not the experiment. An unset variable
+  # interpolates to the empty string, which the parser reads as unset rather than as zero.
+  CORTEX_LLM_MIN_INTERVAL_MS: ${{ vars.CORTEX_LLM_MIN_INTERVAL_MS }}
+  CORTEX_LLM_RETRY_BUDGET_MS: ${{ vars.CORTEX_LLM_RETRY_BUDGET_MS }}
+  CORTEX_READER_TIMEOUT_MS: ${{ vars.CORTEX_READER_TIMEOUT_MS }}
+
+jobs:
+  semantic-carry:
+    name: semantic carry, two windows
+    runs-on: ubuntu-latest
+    # The arithmetic, so the ceiling is a hang detector rather than a schedule. The registered arm
+    # answers 4,000 questions in 118 minutes at four workers (run 41222844945), i.e. 7.1 s per
+    # answer per worker. This population at 78 corpora x 2 windows x 2 repetitions is 624 answers
+    # plus the supersession pass's own call on every knowledge-update window (624 more), so about
+    # 1,250 calls: 1,250 / 4 x 7.1 s is 37 minutes. The full `capability=all, ablation_runs=4`
+    # configuration is 16,000 calls and does not fit in one job, which is why the in-run ceiling
+    # below is what has to fire first if a reading is asked for at that scale.
+    timeout-minutes: 330
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Download LongMemEval-S
+        run: |
+          mkdir -p "${{ github.workspace }}/data"
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+          # The digest file, not the corpus: the cache key below reads it, and a missing file hashes
+          # to the empty string -- which would resolve to a key that never matches the entry the main
+          # benchmark wrote, re-embedding every turn while reporting a miss as normal.
+          ACTUAL_SHA="$(sha256sum "${{ github.workspace }}/data/longmemeval_s_cleaned.json" | cut -d' ' -f1)"
+          echo "corpus sha256: $ACTUAL_SHA"
+          printf '%s  longmemeval_s_cleaned.json\n' "$ACTUAL_SHA" > "${{ github.workspace }}/data/dataset.sha256"
+
+      # The two-window population embeds the same corpus twice per run, so a warm cache is worth more
+      # here than on any other arm: the second window's turns are byte-identical to the first's, and
+      # the hits are counted as cache hits rather than billed as embeddings.
+      - name: Restore embedding cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-
+            longmemeval-embedding-
+
+      - name: Run the two-window carry pair
+        env:
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
+          LIMIT: ${{ inputs.limit }}
+          ABLATION_RUNS: ${{ inputs.ablation_runs }}
+          TEMPERATURE: '0'
+          DEEPSEEK_MODEL: ${{ inputs.model }}
+          DEEPSEEK_THINKING: ${{ inputs.thinking }}
+          EMBEDDING_BATCH_INTERVAL_MS: '0'
+          # §E6's three, and the reason this workflow exists. `AB=carry` builds the baseline from the
+          # same constructor as the feature with the carry off; `SEMANTIC_CARRY=1` is what the feature
+          # side carries with, and the arm refuses the combination when it is absent.
+          CORTEX_MEMORY: '1'
+          CORTEX_MEMORY_AB: carry
+          CORTEX_MEMORY_SEMANTIC_CARRY: '1'
+          CORTEX_WINDOWS: ${{ inputs.windows }}
+          CORTEX_CAPABILITY: ${{ inputs.capability }}
+          CORTEX_MEMORY_WORKERS: ${{ inputs.workers }}
+          # The registered preset, written out here rather than read from the artifact the way
+          # `restore-counterfactual.yml` reads a source configuration -- this run is not a
+          # counterfactual of another dispatch, it is the dispatch. One departure: `review_pass` is
+          # `supersede`, because the carry has nothing to carry without the pass that absorbs.
+          CORTEX_MEMORY_THRESHOLD: '0'
+          CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '0'
+          CORTEX_MEMORY_SESSION_BUDGET: ''
+          CORTEX_MEMORY_SOURCE_TRUST: '0.5'
+          CORTEX_MEMORY_CONFIDENCE: none
+          CORTEX_MEMORY_PROMPT_CONTRACT: evidence-blocks-unsourced
+          CORTEX_MEMORY_ASK: verbatim-acts
+          CORTEX_MEMORY_REVIEW_PASS: supersede
+          CORTEX_MEMORY_SELF_CONSISTENCY: none
+          CORTEX_MEMORY_QUERY_EXPANSION: none
+          CORTEX_MEMORY_RELEVANCE: retrieval-anchored
+          CORTEX_MEMORY_RELEVANCE_TOP_K: '256'
+          CORTEX_MEMORY_RELEVANCE_UNITS: turn
+          CORTEX_MEMORY_MAX_TURN_CHARS: '400'
+          CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: multi-session,temporal
+          CORTEX_MEMORY_MAX_PROMPT_CHARS: 'abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000'
+          CORTEX_MEMORY_EVIDENCE_ROLES: user
+          CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: multi-session,temporal
+          CORTEX_MEMORY_RERANK: none
+          CORTEX_MEMORY_EVIDENCE_TURNS: '256'
+        run: pnpm --filter @agentix-e/cortex-memory bench
+
+      - name: Save embedding cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/data/embedding-cache.bin
+          key: longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-carry-report
+          path: |
+            packages/cortex-memory/benchmark-*.md
+            packages/cortex-memory/benchmark-*.json
+            packages/cortex-memory/benchmark-error.log
+          retention-days: 90
+
+      # The reading, printed into the log because the artifact is 20 MB and the three numbers that
+      # decide whether the dispatch answered its question are three lines. Printed from the JSON
+      # rather than from the Markdown, and with the population beside them: a `matched` without the
+      # window count is a count of prompts in a population this job chose.
+      - name: Read the reach and the pair
+        if: always()
+        run: |
+          set -euo pipefail
+          REPORT=packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          test -f "$REPORT" || {
+            echo "::warning::no report was written, so there is no reach to read"
+            exit 0
+          }
+          python3 - "$REPORT" <<'PY'
+          import json
+          import sys
+
+          report = json.load(open(sys.argv[1], encoding='utf-8'))
+          population = report.get('population')
+          carry = report.get('semanticCarry')
+          config = report.get('memoryArmConfig', {})
+          print(f"population: {population}")
+          print(f"reviewPass: {config.get('reviewPass')}  semanticCarry: {config.get('semanticCarry')}")
+          print(f"carry census: {carry}")
+          # The three states this dispatch can be in, named rather than left to a reader: no census
+          # (an older build), a treatment that ran and reached nothing, and a treatment that reached
+          # a window. `matched == 0` is a reading; `carry is None` is an instrument that was not there.
+          if carry is None:
+              print('::warning::the artifact carries no semanticCarry census, so S13 cannot be read')
+          elif carry['matched'] == 0:
+              print('::warning::absorbed > 0 and matched == 0: the carry reached no window')
+          else:
+              print(f"reach: {carry['matched']} window(s) carried an absorbed update")
+          print(f"delta (feature - baseline): {report['ablation']['delta']:+.4f}")
+          PY

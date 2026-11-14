@@ -59,6 +59,27 @@ export type AblationReport = {
    */
   datasetFingerprint?: string | undefined;
   /**
+   * The shape of the population this run graded, when it was not one window per corpus.
+   *
+   * ## Why the artifact has to carry it
+   *
+   * `datasetFingerprint` identifies the **file** and `questionCount` counts what was graded, and
+   * neither can tell two populations apart: a run over 500 LongMemEval-S questions and a run over
+   * 500 corpora asked twice carry the same fingerprint, and the second carries twice the count --
+   * which a reader would take for a bigger file rather than for a population of pairs.
+   *
+   * That distinction is load-bearing for exactly one row. `S12`'s paired delta has `500` as its
+   * registered denominator, and a two-window population's delta is computed over the second windows
+   * (`#w2`) -- so an artifact that did not say how many windows it graded would let a reader pair
+   * it against a single-window run and read the difference as a mechanism rather than a population.
+   *
+   * Absent rather than `{ windows: 1 }` when the run asked for no multiplication, for the rule every
+   * optional field in this type follows: every archived artifact was produced under one window per
+   * corpus, and a default would make those artifacts and a run that named `windows=1` two different
+   * bytes for one fact.
+   */
+  population?: PopulationRecord | undefined;
+  /**
    * Coverage of the pre-registered cohort, when the arm declares one.
    *
    * Part of the report rather than a side-channel return value because a
@@ -513,6 +534,22 @@ function renderExpansionCounts(counts: {
 }): string {
   return `, \`expansion=${String(counts.questions)}q/${String(counts.phrases)}p/${String(counts.refused)}r\``;
 }
+
+/**
+ * How many questions one corpus was asked, and what the artifact's ids say about it.
+ *
+ * `marker` travels with the counts rather than being assumed by a reader: the analysis that pairs
+ * the windows splits ids on it, and a marker that lived only in a TypeScript constant and in a
+ * Python script would be two definitions of one format with nothing checking that they agree.
+ */
+export type PopulationRecord = {
+  /** Windows per corpus. `2` is the population `S13` names; `1` is never recorded. */
+  readonly windows: number;
+  /** How many corpora the run graded: `questionCount / windows`, carried rather than divided by a reader. */
+  readonly corpora: number;
+  /** What a window's id carries, e.g. `#w`. */
+  readonly marker: string;
+};
 
 export type MemoryArmConfig = {
   /**
@@ -1546,6 +1583,14 @@ export type AblationReportOptions = {
    */
   datasetFingerprint?: string;
   /**
+   * The shape of the population, when the caller multiplied it. See `AblationReport.population`.
+   *
+   * Passed in for the reason the fingerprint above is: this module is handed a dataset, and a
+   * dataset carries ids rather than a statement about how many windows it holds. Only the selector
+   * that multiplied it knows, so it states it and this function carries it.
+   */
+  population?: PopulationRecord;
+  /**
    * Workers in flight, forwarded to the ablation. See `AblationOptions.pool`.
    *
    * Absent means one worker, so every caller that does not name it keeps the serial pass
@@ -1630,6 +1675,7 @@ export async function runAblationReport(
     ...(options.datasetFingerprint === undefined
       ? {}
       : { datasetFingerprint: options.datasetFingerprint }),
+    ...(options.population === undefined ? {} : { population: options.population }),
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     ...(options.questions === undefined ? {} : { questions: options.questions }),
     ...(options.memoryArmConfig === undefined ? {} : { memoryArmConfig: options.memoryArmConfig }),
@@ -1678,6 +1724,17 @@ export function formatAblationReport(report: AblationReport): string {
     ...(report.datasetFingerprint === undefined
       ? []
       : [`- Dataset file: \`${report.datasetFingerprint}\``]),
+    // Under the fingerprint, because the two describe the same thing at different resolutions: the
+    // file, and how many times this run asked each corpus in it. Both are unconditional-when-present
+    // for the reason the fingerprint is -- one window per corpus is the archived state and is not
+    // worth a line, while a multiplied population that went unmentioned would be read as a bigger
+    // dataset rather than as pairs.
+    ...(report.population === undefined
+      ? []
+      : [
+          `- Population: ${report.population.corpora} corpora x ${report.population.windows} windows ` +
+            `(ids carry \`${report.population.marker}N\`, so \`#w2\` is a corpus's second window)`,
+        ]),
     // Both arms, on one line, above every number in the document. The line is what
     // makes a screenshot of this report self-describing, which the per-section labels
     // below are too far down the page to do.

@@ -819,7 +819,45 @@ export async function runBenchmark(
   // over a pre-sliced array -- slicing by worker would make a slow worker's slice the whole
   // pass's critical path and would make the index/worker binding invisible in the artifact.
   let next = 0;
-  const claim = (): number => next++;
+  /**
+   * The next question, or **every** question that reads the same corpus as it.
+   *
+   * ## Why a claim can be more than one index
+   *
+   * `Question.corpus` states the contract: the questions of one corpus are contiguous and are
+   * answered by one system instance, in ascending order. The pool gives each worker its own
+   * instance (`AblationPool`), so two windows of one corpus claimed by two workers would be
+   * answered against two stores -- and the second window would read a store that never absorbed
+   * the first one's update. The treatment would be administered and reach nothing, which is the
+   * reading `S13` exists to refuse, so the pairing has to be structural rather than hoped for.
+   *
+   * The claim stays **dynamic**, which is the property the comment above defends: a run is claimed
+   * when a worker is free, not sliced before the pass. Slicing would make a slow worker's share the
+   * whole pass's critical path; a run of two adjacent questions is the smallest unit that keeps a
+   * corpus together and is still claimed on demand.
+   *
+   * Claiming is synchronous, so the run is taken atomically: no second worker can observe a corpus
+   * whose first index was taken and whose second was not.
+   *
+   * A question with no `corpus` -- every dataset loaded before the field existed -- claims exactly
+   * one index, which is the pass every archived artifact was produced by.
+   */
+  const claimRun = (): number[] => {
+    if (next >= total) return [];
+    const start = next;
+    const corpus = dataset.questions[start]?.corpus;
+    if (corpus === undefined) {
+      next += 1;
+      return [start];
+    }
+    const claimed = [start];
+    next += 1;
+    while (next < total && dataset.questions[next]?.corpus === corpus) {
+      claimed.push(next);
+      next += 1;
+    }
+    return claimed;
+  };
   // Per pass, not per process: one process answers several runs, and a process-wide counter would
   // refuse a fourth run for the first three's losses. Incremented under the same single-threaded
   // claim rule as `next`. One counter for both kinds of transport loss, because the ceiling they
@@ -829,9 +867,14 @@ export async function runBenchmark(
   const runWorker = async (worker: number): Promise<void> => {
     const workerSystem = pool === undefined ? system : pool.systemFor(worker);
     const accessors = accessorsFor(workerSystem);
+    // The run this worker is inside, emptied question by question. A local queue rather than an
+    // inner `for` loop over the claim, so the body below keeps the shape it has (one `index` per
+    // iteration) and the diff is a claim instead of a re-indent of three hundred lines.
+    let pending: number[] = [];
     for (;;) {
-      const index = claim();
-      if (index >= total) {
+      if (pending.length === 0) pending = claimRun();
+      const index = pending.shift();
+      if (index === undefined) {
         return;
       }
       const q = dataset.questions[index]!;

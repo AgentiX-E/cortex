@@ -122,6 +122,16 @@ import {
   // both answer "which questions", and both are applied before the relevance index is built.
   readCapabilityFilter,
   restrictDatasetToCapability,
+  // §E6's population. The reader parses `CORTEX_WINDOWS`, the transform multiplies the corpus
+  // population by it, and the marker is printed on the run's own line so the ids an artifact carries
+  // are explained by the log of the run that wrote them.
+  readWindowCount,
+  withWindows,
+  WINDOW_MARKER,
+  // §E6's pair. `carry` puts one system on both sides with one flag between them; `reference` is the
+  // registered pair and what an unset variable means.
+  readArmPairing,
+  type MemorySystem,
   type BenchmarkProgress,
   type EmbeddingPreflight,
   type ExpansionTarget,
@@ -383,7 +393,41 @@ async function main(): Promise<void> {
   const oracle: OracleEvidenceDataset | undefined = armOptions.oracleEvidence
     ? oracleEvidenceDataset(restricted)
     : undefined;
-  const dataset = oracle === undefined ? restricted : oracle.dataset;
+  // §E6's population, applied LAST among the selectors and for the reason `capability-filter.ts`
+  // gives for its own placement: `LIMIT` asks how many corpora and `CORTEX_CAPABILITY` asks which,
+  // so both have to see the corpora rather than the windows. `windows=1` returns the same object, so
+  // an ordinary run's dataset is the one it always was and every archived artifact stays
+  // reproducible.
+  //
+  // The multiplication is what gives the semantic layer a window to carry into: on a population of
+  // one window per corpus the reach is zero by construction (`AUDIT-SEMANTIC-REACH.md` §15.2), and
+  // `S13` exists so that a zero cannot be read as a pass.
+  const windows = readWindowCount(process.env['CORTEX_WINDOWS']);
+  if (windows > 1 && restorePlan !== null) {
+    // A restore plan names question **ids** from a recorded artifact, and the multiplication renames
+    // every one of them (`#w1`, `#w2`). Applied together, `restrictDatasetToPlan` would match nothing
+    // and refuse -- but only after the dataset download, and with a message about the plan rather
+    // than about the two selectors that cannot both be true. Refused here instead: a counterfactual
+    // restores one window of a recorded pass, which is the opposite of asking a corpus twice.
+    throw new Error(
+      'CORTEX_WINDOWS > 1 cannot be combined with CORTEX_RESTORE_PLAN: the plan matches recorded ' +
+        'question ids and the multiplication renames them, so the restriction would select nothing. ' +
+        'A restore counterfactual replays one window of a recorded pass; a two-window population ' +
+        'is a dispatch of its own.',
+    );
+  }
+  const dataset = withWindows(oracle === undefined ? restricted : oracle.dataset, windows);
+  if (windows > 1) {
+    // On a line of its own, before every number below it, because it changes the denominator of
+    // all of them: 500 questions and 500 corpora asked twice print the same `questionCount` and
+    // mean different things. The marker is printed with the counts so a reader of the artifact's
+    // ids does not have to infer what `#w2` means from the data.
+    console.log(
+      `Population: ${dataset.questions.length / windows} corpora x ${windows} windows = ` +
+        `${dataset.questions.length} question(s); ids carry ${JSON.stringify(WINDOW_MARKER)}N, and a ` +
+        'corpus keeps one instance by contract (Question.corpus)',
+    );
+  }
   if (oracle !== undefined) {
     // Printed before the fingerprint line, because that line describes the FILE and this one
     // describes the run: two runs of the same file, one shipped and one oracle, share a digest
@@ -771,7 +815,7 @@ async function main(): Promise<void> {
   // concurrency attributes one question's prompt to another without throwing. Every value the
   // factory closes over is either immutable or shared on purpose (the answer cache, the embedding
   // client, the relevance table).
-  const buildFeature = (): CortexMemory =>
+  const buildCortex = (carry: boolean): CortexMemory =>
     new CortexMemory({
       // Decorated only when the run restores (§13.274). `featureLlm` IS `llm` otherwise, so an
       // ordinary run constructs the identical object it always did.
@@ -835,7 +879,14 @@ async function main(): Promise<void> {
       // control is `0`. Spread conditionally like every other treatment here -- absent is the shipped
       // configuration every archived artifact was produced under -- and projected into the artifact's config
       // so a run that did not administer it cannot be read as one that administered it and saw nothing.
-      ...(armOptions.semanticCarry === true ? { semanticCarry: true } : {}),
+      //
+      // An argument rather than `armOptions.semanticCarry`, because under `CORTEX_MEMORY_AB=carry` the
+      // SAME construction is asked for twice with one flag between them: the feature side carries
+      // (`armOptions.semanticCarry`, which the workflow sets) and the baseline side is the same system
+      // with this line's expression false. Reading the parsed option here instead would build the
+      // treatment on both sides, and the delta would be zero with a census of zero -- a null result
+      // reported for a comparison that never happened.
+      ...(carry ? { semanticCarry: true } : {}),
       // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
       // the key, for the reason every other conditional spread here is: every archived artifact was
       // produced without a pass, and a present-but-inert key would make the option indistinguishable
@@ -971,6 +1022,32 @@ async function main(): Promise<void> {
           }),
     });
 
+  // §E6's second half: WHICH two systems these sides are.
+  //
+  // `reference` is the registered pair -- the reference pipeline against the cognitive one -- and it is
+  // what an unset variable means, so every archived artifact stays the run it was. `carry` puts the same
+  // cognitive system on both sides with one flag between them, which is `S12`'s instrument and the only
+  // pair whose delta is the semantic layer's carry rather than two systems' difference.
+  //
+  // Built here rather than as two literals so the two sides cannot drift: `buildCortex` is one
+  // construction, and the carry state is its argument. A second literal for the control would be a second
+  // definition of the arm's 26 options, and the two would agree until one of them was edited.
+  const pairing = readArmPairing(process.env['CORTEX_MEMORY_AB']);
+  if (pairing === 'carry' && armOptions.semanticCarry !== true) {
+    // Refused before the first call, because the run this would produce is the one the whole round exists
+    // to make impossible: two sides of one system with the treatment off on both, a delta of zero, and a
+    // census of zero that reads as "the layer carried nothing" when it is "the layer was never asked".
+    throw new Error(
+      'CORTEX_MEMORY_AB=carry pairs the cognitive system against itself with `semanticCarry` off, so the ' +
+        'feature side must be the side that carries: set CORTEX_MEMORY_SEMANTIC_CARRY=1. Without it both ' +
+        'sides are the control, and the artifact would publish a null result for a comparison that never ' +
+        'administered the treatment.',
+    );
+  }
+  const buildFeature = (): CortexMemory => buildCortex(armOptions.semanticCarry === true);
+  const buildPairBaseline = (): MemorySystem =>
+    pairing === 'carry' ? buildCortex(false) : buildBaseline();
+
   // Workers in flight (§14.22). The first worker reuses the instances just built rather than
   // constructing a second pair, so a serial run is byte-identical to what it always was and a
   // concurrent one differs only in how many questions are open at once.
@@ -981,7 +1058,7 @@ async function main(): Promise<void> {
   // per pass**: the set of instances a run answered through was a function of (worker, pass) and no
   // reader could have listed it, which is how `41773546221` published a census covering a quarter of
   // its questions while every other field in the artifact agreed with itself.
-  const baseline0 = buildBaseline();
+  const baseline0 = buildPairBaseline();
   const feature0 = buildFeature();
   const workers = readWorkers(process.env);
   const pool =
@@ -990,7 +1067,7 @@ async function main(): Promise<void> {
       : createAblationPool({
           workers,
           first: { baseline: baseline0, feature: feature0 },
-          baselineFor: () => buildBaseline(),
+          baselineFor: () => buildPairBaseline(),
           featureFor: () => buildFeature(),
         });
 
@@ -1053,6 +1130,14 @@ async function main(): Promise<void> {
       // it is on. The artifact carries the reach beside this value; the log carries the value alone, which is
       // enough to answer the question an operator asks a scrollback: did my dispatch turn it on?
       `, semanticCarry=${armOptions.semanticCarry === true}` +
+      // §E6's other two facts, on the same line because they decide what the number above MEANS. `ab`
+      // names the pair: under `carry` the baseline is the same cognitive system with this flag off, so
+      // `semanticCarry=true` describes the treatment side and the control is implied rather than
+      // printed. `windows` names the population: `semanticCarry=true` on one window per corpus is a
+      // treatment that cannot reach anything, and a reader comparing two logs needs to see which one
+      // multiplied the population before comparing a delta across them.
+      `, ab=${pairing}` +
+      `, windows=${windows}` +
       // Beside the marker for the reason the marker sits beside the width: the two describe the same cut,
       // `head` is the archived state, and a run whose window was dropped somewhere between the dispatch and
       // the renderer is visible here and nowhere else in the log.
@@ -1144,8 +1229,26 @@ async function main(): Promise<void> {
       // artifacts a carry dispatch compares differ by exactly this entry, and a reader of the JSON has no other
       // place to see that the treatment was administered rather than merely dispatched.
       semanticCarry: armOptions.semanticCarry === true,
+      // §E6's pair, beside the switch it pairs with. `carry` is the run whose baseline is the same
+      // cognitive system with the carry off, so an artifact carrying this flag and `semanticCarry:
+      // true` says both halves of what its delta compares -- and an artifact without it is the
+      // registered pair, where the baseline is the reference pipeline and the delta is not the carry's.
+      carryPair: pairing === 'carry',
     },
     datasetFingerprint,
+    // §E6's population, when the run multiplied it. Absent for `windows=1` for the reason every
+    // optional field here is absent at its identity: every archived artifact graded one window per
+    // corpus, and a `{ windows: 1 }` record would make those artifacts and a run that named the
+    // identity two different bytes for one fact.
+    ...(windows === 1
+      ? {}
+      : {
+          population: {
+            windows,
+            corpora: dataset.questions.length / windows,
+            marker: WINDOW_MARKER,
+          },
+        }),
     // Read from the parsed arm options, not decided here: §13.12 registers the
     // bound, and a value written in this file would never appear in the
     // environment the pre-registration guard compares against `§10.3`.

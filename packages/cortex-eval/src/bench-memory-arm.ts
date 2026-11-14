@@ -87,6 +87,7 @@ import {
   formatAblationReport,
   runAblationReport,
   type FeatureConfig,
+  type PopulationRecord,
 } from './report.js';
 import type { AblationPool } from './ablation.js';
 import type { ReaderPacing } from './reader-transport.js';
@@ -3152,6 +3153,14 @@ export type CortexMemoryArmRunOptions = {
    */
   datasetFingerprint?: string;
   /**
+   * The shape of the population this run graded, when it multiplied it.
+   *
+   * Set by the entry point for the reason the fingerprint above is: this function is handed a
+   * dataset and cannot tell 500 corpora from 250 corpora asked twice without reading the ids.
+   * `AblationReport.population` states why the artifact has to carry the distinction.
+   */
+  population?: PopulationRecord;
+  /**
    * §13.85's policy, so the gold denominator follows the filter the product applied.
    *
    * ## Why the run needs it when the product already has it
@@ -3889,6 +3898,7 @@ export async function runCortexMemoryArm(
       ...(options.datasetFingerprint === undefined
         ? {}
         : { datasetFingerprint: options.datasetFingerprint }),
+      ...(options.population === undefined ? {} : { population: options.population }),
       ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
       memoryArmConfig: options.memoryArmConfig,
       ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),

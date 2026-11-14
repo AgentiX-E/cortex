@@ -35,6 +35,36 @@ export type Question = {
   /** The date the question was asked; needed for relative-time (TR) answers. */
   questionDate?: string;
   /**
+   * The corpus this question reads, when the population answers one corpus more than once.
+   *
+   * ## The contract, which is a property of the array's ORDER
+   *
+   * Questions sharing this value are **contiguous** in `questions`, and they are answered by
+   * **one** system instance, in ascending index order. Both halves are requirements rather than
+   * observations:
+   *
+   * - contiguous, because `runBenchmark` claims a whole run of equal `corpus` values atomically
+   *   (`claimRun` in `benchmark.ts`), and a population that scattered a corpus's windows would
+   *   leave each of them claimed alone;
+   * - one instance, because a later window is later **in one store**. The pool gives each worker
+   *   its own `MemorySystem` (`AblationPool` in `ablation.ts`), so a window answered by a second
+   *   instance reads a store that never absorbed the first window's update -- the treatment would
+   *   be administered and reach nothing, which is the exact reading `S13` exists to refuse.
+   *
+   * This is what a two-window population needs and what the registered one cannot supply: every
+   * LongMemEval-S question brings its own haystack, so no question's window ever carries another
+   * question's record (`AUDIT-SEMANTIC-REACH.md` §15.2). `two-window.ts` builds the one population
+   * where both windows read one corpus.
+   *
+   * ## Why absent is the archived state
+   *
+   * Every dataset loaded before this field existed carries no `corpus`, so a question with none is
+   * claimed and answered exactly as it always was: one index, one claim, no ordering requirement.
+   * A default of `id` would have made every question a one-window corpus and put every archived
+   * run's behaviour behind a new branch, which is a change to the pass nobody could see.
+   */
+  corpus?: string;
+  /**
    * The dataset's **gold turns**, rendered exactly as they appear in `context`.
    *
    * ## What this is, and why it is not `expected`
