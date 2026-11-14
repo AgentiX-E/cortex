@@ -82,9 +82,14 @@ on:
         default: 'disabled'
         type: string
       workers:
-        description: 'Questions in flight. A corpus is answered by one instance at any width (Question.corpus), so this moves the wall clock and not the treatment'
+        description: 'Questions in flight. A corpus is answered by one instance at any width (Question.corpus), so this moves the wall clock and not the treatment. The registered shape needs 24 or more to clear the ceiling below'
         required: false
-        default: '4'
+        default: '32'
+        type: string
+      budget_cny:
+        description: 'The ceiling the spend gate enforces, in CNY. The registered shape (capability=all, four repetitions, two windows) projects at 25-96 CNY depending on the cache mix, so this default is not the other dispatcher 3.00'
+        required: false
+        default: '120'
         type: string
 
 permissions:
@@ -111,13 +116,18 @@ jobs:
   semantic-carry:
     name: semantic carry, two windows
     runs-on: ubuntu-latest
-    # The arithmetic, so the ceiling is a hang detector rather than a schedule. The registered arm
-    # answers 4,000 questions in 118 minutes at four workers (run 41222844945), i.e. 7.1 s per
-    # answer per worker. This population at 78 corpora x 2 windows x 2 repetitions is 624 answers
-    # plus the supersession pass's own call on every knowledge-update window (624 more), so about
-    # 1,250 calls: 1,250 / 4 x 7.1 s is 37 minutes. The full `capability=all, ablation_runs=4`
-    # configuration is 16,000 calls and does not fit in one job, which is why the in-run ceiling
-    # below is what has to fire first if a reading is asked for at that scale.
+    # The arithmetic, so the ceiling is a hang detector rather than a schedule. The screening shape
+    # (78 corpora x 2 windows x 2 repetitions) is 624 answers plus the supersession pass's own call
+    # on every knowledge-update window (624 more), so about 1,250 calls: 1,250 / 4 x 7.1 s is 37
+    # minutes at the width this workflow used to default to.
+    #
+    # The registered shape is 17,900 calls, not the 16,000 this comment used to claim: 500 corpora x
+    # 2 windows = 1,000 questions, x 4 repetitions x 2 sides = 8,000 question-runs, x 2.24 calls per
+    # question-run (measured: 1,293 calls over 576 question-runs on run 43590434060). At 24 workers
+    # that is 5.0 hours; at 32 it is 3.8. The ceiling below (300 minutes of in-run budget, 330 of job
+    # timeout) is therefore cleared by the **width**, not by sharding -- `workers` is an input
+    # precisely because it moves the wall clock and not the treatment, since `Question.corpus` keeps
+    # a corpus on one instance at any width.
     timeout-minutes: 330
     steps:
       - name: Checkout
@@ -136,6 +146,42 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The gate this workflow did not have. `benchmark-cortex-memory.yml` prices every dispatch
+      # through `dispatch-cortex-memory-ab.py`; this workflow was written separately, for a different
+      # question, and inherited none of it -- so the one dispatch in this repository that can cost
+      # 25-96 CNY was also the one nobody printed a figure for before starting.
+      #
+      # Before the corpus download, because a dispatch that cannot be afforded should fail in ten
+      # seconds rather than after a multi-gigabyte fetch and a build.
+      #
+      # `limit: 0` is translated here rather than in the tool: it is the workflow's spelling for
+      # "everything", and the tool's own `--limit 0` means the zero questions that would price the
+      # largest dispatch at nothing. `capability` and `limit` together are refused by the projection
+      # (the sampler round-robins), which is the behaviour this step wants -- a wrong input pair has
+      # to fail here and not silently price a different run.
+      - name: Check the dispatch against the spend gate
+        env:
+          LIMIT: ${{ inputs.limit }}
+          RUNS: ${{ inputs.ablation_runs }}
+          WINDOWS: ${{ inputs.windows }}
+          CAPABILITY: ${{ inputs.capability }}
+          THINKING: ${{ inputs.thinking }}
+          BUDGET: ${{ inputs.budget_cny }}
+        run: |
+          if [ "${CAPABILITY}" = "all" ] || [ -z "${CAPABILITY}" ]; then
+            limit="${LIMIT}"
+            if [ "${limit}" = "0" ]; then
+              limit="$(node -p 'require("./tools/spend-baseline.json").questionCount')"
+            fi
+            node tools/spend-projection.mjs --report tools/spend-baseline.json \
+              --limit "${limit}" --runs "${RUNS}" --windows "${WINDOWS}" \
+              --thinking "${THINKING}" --budget "${BUDGET}"
+          else
+            node tools/spend-projection.mjs --report tools/spend-baseline.json \
+              --limit 0 --capability "${CAPABILITY}" --runs "${RUNS}" --windows "${WINDOWS}" \
+              --thinking "${THINKING}" --budget "${BUDGET}"
+          fi
 
       - name: Build packages
         run: pnpm build

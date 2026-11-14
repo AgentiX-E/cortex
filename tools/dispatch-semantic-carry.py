@@ -71,7 +71,32 @@ INPUTS: dict[str, str] = {
     "model": "deepseek-chat",
     "thinking": "disabled",
     "workers": "4",
+    # The ceiling the workflow's own gate reads. Sent rather than left to the workflow, for the
+    # reason every other key is: a default the dispatcher does not state is a run whose budget the
+    # log cannot explain. See `DEFAULT_BUDGET_CNY` for why this workflow's number is not the other
+    # dispatcher's 3.00.
+    "budget_cny": "120",
 }
+
+# The gate. A dispatch is billed the moment it starts and there is no refund for one whose
+# configuration was wrong, so the projection is printed before the call rather than after the
+# artifact -- the same argument `dispatch-cortex-memory-ab.py` records at length.
+SPEND_TOOL = Path(__file__).resolve().parent / "spend-projection.mjs"
+SPEND_BASELINE = Path(__file__).resolve().parent / "spend-baseline.json"
+
+# What a dispatch of this workflow may cost without anyone saying so.
+#
+# **Not 3.00.** That number belongs to `dispatch-cortex-memory-ab.py`, where it separates "a run that
+# answers a question about a change" from "a run that publishes a point estimate" -- and on this
+# workflow the point estimate *is* the run that exists: `S12` is registered on 500 corpora x 2
+# windows x 4 repetitions, which is 25-96 CNY depending on the cache mix. A 3.00 default here would
+# refuse the only dispatch that can fill the row while passing the screening pair it was never meant
+# to protect.
+#
+# 120 carries headroom above the top of that band: the 96 CNY end is the 50%-cache case, and a cold
+# first repetition is the one thing about the mix this history cannot bound. `--budget N` states a
+# different ceiling; `--no-budget` disables the gate and says so in the log.
+DEFAULT_BUDGET_CNY = 120.0
 
 
 _TOKEN: str | None = None
@@ -157,11 +182,18 @@ def apply_overrides(inputs: dict[str, str], overrides: list[str]) -> dict[str, s
     return inputs
 
 
-def parse_argv(argv: list[str]) -> tuple[list[str], bool, bool]:
-    """The `--set` values, `--watch`, and `--allow-stale-tree`."""
+def parse_argv(argv: list[str]) -> tuple[list[str], bool, bool, float | None]:
+    """The `--set` values, `--watch`, `--allow-stale-tree`, and the budget.
+
+    `--budget` is spelled `--budget=N` like `--set=KEY=VALUE`, and for the same reason: two
+    arguments would make the command line's meaning depend on order, which is the defect `--set`'s
+    own refusal names. `--no-budget` is a different flag from `--budget 0`, because a zero budget
+    refuses every dispatch and "do not gate this one" is not "gate it at nothing".
+    """
     sets: list[str] = []
     watch = False
     allow_stale = False
+    budget: float | None = DEFAULT_BUDGET_CNY
     for argument in argv:
         if argument == "--watch":
             watch = True
@@ -169,13 +201,21 @@ def parse_argv(argv: list[str]) -> tuple[list[str], bool, bool]:
         if argument == "--allow-stale-tree":
             allow_stale = True
             continue
+        if argument == "--no-budget":
+            budget = None
+            continue
+        if argument.startswith("--budget="):
+            budget = float(argument[len("--budget=") :])
+            continue
         if argument.startswith("--set="):
             sets.append(argument[len("--set=") :])
             continue
         if argument == "--set":
             raise SystemExit("use --set=KEY=VALUE; two arguments would make order matter")
+        if argument == "--budget":
+            raise SystemExit("use --budget=N; two arguments would make order matter")
         raise SystemExit(f"unrecognised argument {argument!r}")
-    return sets, watch, allow_stale
+    return sets, watch, allow_stale, budget
 
 
 def local_tree() -> str | None:
@@ -195,8 +235,76 @@ def local_tree() -> str | None:
     return completed.stdout.strip() or None
 
 
+def projected_spend(inputs: dict[str, str], budget: float | None) -> None:
+    """Print this dispatch's projected bill and refuse when it breaches `budget`.
+
+    Delegated to `spend-projection.mjs` rather than re-implemented: that tool owns the dated prices,
+    the cache split and the three refusals, and a second copy of the arithmetic here would be two
+    readers of one number who can disagree while both are right.
+
+    Two arguments are not passed straight through, and both are the difference between pricing the
+    dispatch that happens and pricing a different one:
+
+    - `limit: '0'` is the workflow's spelling for the whole file. Priced literally it is zero
+      questions, which would make the largest dispatch in this repository cost nothing.
+    - `capability` and `limit` together are not projectable, so with a capability the whole file is
+      named explicitly and the capability selects from it. Passing both would be refused by the
+      projection -- correctly -- and passing only `limit` would price a bigger run than the sampler
+      produces.
+
+    A missing or unreadable baseline does not block the dispatch: the gate is an instrument, and an
+    instrument that cannot run is not a reason to stop working. The log says the run went unpriced,
+    so nobody later reads its absence as a measurement of zero.
+    """
+    if not SPEND_BASELINE.exists():
+        print(f"spend: no baseline at {SPEND_BASELINE.name}, this dispatch is not priced")
+        return
+    try:
+        baseline = json.loads(SPEND_BASELINE.read_text())
+    except (OSError, ValueError) as error:
+        print(f"spend: baseline is unreadable ({error}), this dispatch is not priced")
+        return
+    raw_limit = str(inputs.get("limit", "0") or "0")
+    limit = str(baseline.get("questionCount")) if raw_limit == "0" else raw_limit
+    capability = str(inputs.get("capability", "all") or "all").strip()
+    scoped = capability != "" and capability.upper() != "ALL"
+    # A capability and a limit together are refused rather than resolved, because the sampler
+    # round-robins over buckets: `limit=40` then `capability=KU` selects however many KU questions
+    # the first forty happened to include. Guessing would price a different run than the one that
+    # happens, and silently dropping the operator's limit would dispatch a bigger run than they
+    # asked for -- the two failure shapes this file refuses elsewhere for the same reason.
+    if scoped and raw_limit != "0":
+        raise SystemExit(
+            f"refusing: capability={capability} with limit={raw_limit} is not projectable -- the "
+            "sampler round-robins, so the surviving count is a property of the bucket order rather "
+            "than of either input. Send limit=0 with a capability, or the capability alone."
+        )
+    arguments = [
+        "node",
+        str(SPEND_TOOL),
+        "--report",
+        str(SPEND_BASELINE),
+        "--runs",
+        str(inputs.get("ablation_runs", "1")),
+        "--windows",
+        str(inputs.get("windows", "1")),
+        "--thinking",
+        inputs.get("thinking", "disabled"),
+    ]
+    if scoped:
+        arguments.extend(["--limit", "0", "--capability", capability])
+    else:
+        arguments.extend(["--limit", limit])
+    if budget is not None:
+        arguments.extend(["--budget", str(budget)])
+    completed = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    print(completed.stdout, end="")
+    if completed.returncode != 0:
+        raise SystemExit(completed.stderr.strip() or "the spend projection refused this dispatch")
+
+
 def main(argv: list[str]) -> int:
-    sets, watch, allow_stale = parse_argv(argv)
+    sets, watch, allow_stale, budget = parse_argv(argv)
     inputs = apply_overrides(dict(INPUTS), sets)
 
     head = req("GET", f"/repos/{REPO}/git/ref/heads/master")["object"]["sha"]
@@ -214,6 +322,11 @@ def main(argv: list[str]) -> int:
     print(f"workflow: {WORKFLOW}  ref: master  head: {head[:12]}")
     for key in sorted(inputs):
         print(f"  {key} = {inputs[key]!r}")
+
+    # Before the call, because after it the run exists and there is no refund for one that was
+    # mispriced. The ceiling is passed rather than read from the file so a deliberate purchase is a
+    # number somebody typed in this invocation.
+    projected_spend(inputs, budget)
 
     req(
         "POST",

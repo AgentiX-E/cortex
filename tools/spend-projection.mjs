@@ -166,6 +166,7 @@ export function project({
   observedRuns,
   limit,
   runs,
+  windows = 1,
   census,
   observedCensus,
   capability,
@@ -229,10 +230,27 @@ export function project({
     selectedQuestions = limit;
   }
 
+  // `CORTEX_WINDOWS`: one corpus asked `windows` times is `windows` more prompts, and the axis is a
+  // multiplication of the question count rather than a sample of the file. Expressing two windows as
+  // `limit = 2N` would be the same arithmetic under a name that means something else -- `limit` is a
+  // sample of the file, so on a 500-question baseline `limit = 1000` reads as a sample larger than
+  // its population, and a reader who noticed would be right to distrust every other number here.
+  //
+  // The guard is `refuse` rather than `requireCount` for zero: zero is a non-negative integer, so the
+  // count guard would pass it and the projection would price a run that answers nothing at 0.00 CNY,
+  // which reads as the cheapest dispatch on the board rather than as a mistake.
+  requireCount('windows', windows);
+  if (windows === 0) {
+    return refuse(
+      'a window count of zero asks no question, so the projection would price a run that answers nothing',
+    );
+  }
+  const corpora = selectedQuestions;
+  selectedQuestions *= windows;
+
   const questionFactor = selectedQuestions / observedQuestions;
   const runFactor = runs / observedRuns;
   const factor = questionFactor * runFactor;
-
   const scaledUsage = {
     promptTokens: scale(observed.promptTokens, factor),
     cacheHitPromptTokens: scale(observed.cacheHitPromptTokens ?? 0, factor),
@@ -245,6 +263,10 @@ export function project({
     factor,
     questionFactor,
     runFactor,
+    // The population the factor was taken over, named rather than implied: `corpora` questions asked
+    // `windows` times. It is what a two-window dispatch is, and the only place the multiplication is
+    // visible in a log that otherwise reports a single scale factor.
+    population: { corpora, windows, questions: selectedQuestions },
     usage: scaledUsage,
     cost,
     perQuestionPerRun: price(
@@ -342,6 +364,15 @@ export function describe(projection, { limit, runs, capability } = {}) {
   const hitShare = usage.promptTokens === 0 ? 0 : usage.cacheHitPromptTokens / usage.promptTokens;
   return [
     `Projected spend for ${capability === undefined ? `${limit} questions` : `capability ${capability.join('+')}`} x ${runs} runs (scale ${factor.toFixed(3)} of the observed run${projection.lowerBoundBecause === 'population' ? ', LOWER BOUND: per-question cost is route-scoped and the census scales by count' : ''})`,
+    // Printed only when the multiplication happened. A one-window dispatch is the population every
+    // archived artifact was produced over, and a line saying so on every run would be a constant
+    // dressed as a reading. Optional-chained because `describe` is also called on hand-built
+    // projections in the tests, and a projection without a population is a one-window one.
+    ...((projection.population?.windows ?? 1) > 1
+      ? [
+          `  population: ${projection.population.corpora} corpora x ${projection.population.windows} windows = ${projection.population.questions} questions`,
+        ]
+      : []),
     `  input cached    ${(usage.cacheHitPromptTokens / 1e6).toFixed(2)}M  ${cost.cached.toFixed(2)} CNY`,
     `  input uncached  ${((usage.promptTokens - usage.cacheHitPromptTokens) / 1e6).toFixed(2)}M  ${cost.uncached.toFixed(2)} CNY`,
     `  output          ${(usage.completionTokens / 1e6).toFixed(2)}M  ${cost.output.toFixed(2)} CNY`,
@@ -391,6 +422,7 @@ async function main(argv) {
     observedRuns: report.runs,
     limit: options.limit,
     runs: options.runs,
+    windows: options.windows,
     census: options.census,
     observedCensus,
     capability: options.capability,
@@ -427,7 +459,7 @@ function capabilityCensus(questions) {
 }
 
 function parseArgs(argv) {
-  const options = { limit: 500, runs: 4 };
+  const options = { limit: 500, runs: 4, windows: 1 };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     const next = () => {
@@ -440,6 +472,7 @@ function parseArgs(argv) {
     if (argument === '--report') options.path = next();
     else if (argument === '--limit') options.limit = Number(next());
     else if (argument === '--runs') options.runs = Number(next());
+    else if (argument === '--windows') options.windows = Number(next());
     else if (argument === '--budget') options.budget = Number(next());
     else if (argument === '--thinking') options.thinking = next();
     else if (argument === '--capability') options.capability = next().split(',').map((name) => name.trim().toUpperCase()).filter((name) => name !== '');
@@ -453,11 +486,13 @@ function parseArgs(argv) {
 function usage() {
   return [
     'usage: node tools/spend-projection.mjs --report <artifact.json> --limit N --runs N',
-    '                                      [--budget CNY] [--thinking multi-session+temporal]',
+    '                                      [--windows N] [--budget CNY] [--thinking multi-session+temporal]',
     '                                      [--capability MR|MR,TR]',
     '                                      [--side llmUsage|feature|baseline]',
     '',
     'Projects what a dispatch will be billed, by scaling a run that already was.',
+    '`--windows` is the two-window population: `--limit 500 --windows 2` is 1,000 questions,',
+    'which is `semantic-carry.yml` and is NOT the same input as `--limit 1000`.',
   ].join('\n');
 }
 

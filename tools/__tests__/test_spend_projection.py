@@ -151,6 +151,37 @@ class TestProject:
         assert projection["scaled"] is False
         assert "zero" in projection["reason"]
 
+    def test_a_second_window_is_a_second_question_per_corpus(self):
+        # `windows` is the axis `CORTEX_WINDOWS` adds: one corpus asked twice is two prompts, so the
+        # question axis doubles and nothing else does. Priced as `limit = 2N` it would be the same
+        # arithmetic under a name that means something else -- and `limit` is a sample of the file,
+        # so on a 500-question baseline `limit = 1000` reads as a sample larger than its population.
+        single = _call(_project(OBSERVED_QUESTIONS, OBSERVED_RUNS))
+        doubled = _call(_project(OBSERVED_QUESTIONS, OBSERVED_RUNS, windows=2))
+        assert doubled["population"]["windows"] == 2
+        assert doubled["factor"] == 2
+        assert doubled["usage"]["promptTokens"] == 2 * single["usage"]["promptTokens"]
+        assert doubled["usage"]["completionTokens"] == 2 * single["usage"]["completionTokens"]
+        assert doubled["cost"]["total"] == pytest.approx(2 * single["cost"]["total"])
+
+    def test_one_window_is_the_identity_and_is_still_reported(self):
+        # Absent and `1` are the same population, and the field is present either way: a projection
+        # that omitted it would leave a reader unable to tell a one-window run from an old artifact.
+        projection = _call(_project(OBSERVED_QUESTIONS, OBSERVED_RUNS))
+        assert projection["population"]["windows"] == 1
+        assert projection["population"]["corpora"] == OBSERVED_QUESTIONS
+        assert projection["factor"] == 1
+
+    def test_a_zero_window_count_is_refused_rather_than_priced_at_nothing(self):
+        projection = _call(_project(OBSERVED_QUESTIONS, OBSERVED_RUNS, windows=0))
+        assert projection["scaled"] is False
+        assert "window" in projection["reason"]
+
+    def test_a_fractional_window_count_is_refused(self):
+        result = _call_error(_project(OBSERVED_QUESTIONS, OBSERVED_RUNS, windows=1.5))
+        assert result.returncode != 0
+        assert "windows must be a non-negative integer" in result.stderr
+
     def test_a_sample_that_moves_the_capability_shares_is_not_projected(self):
         # Removing multi-session is the case that matters: it is where thinking is enabled, so a
         # sample without it is cheaper per question than the run it would be scaled from.
@@ -230,6 +261,32 @@ class TestCli:
         result = _cli("--report", str(report), "--limit", "10", "--runs", "1")
         assert result.returncode == 1
         assert "needs a run that was billed" in result.stderr
+
+    def test_the_command_line_prices_a_two_window_population(self, tmp_path):
+        # The run this exists for is `semantic-carry.yml`, whose population is one corpus asked
+        # twice. The bill for it has to be printable from the same tool the gate reads, or the two
+        # will disagree about what was dispatched -- which is the defect the gate was written for.
+        report = tmp_path / "report.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "questionCount": OBSERVED_QUESTIONS,
+                    "runs": OBSERVED_RUNS,
+                    "llmUsage": OBSERVED,
+                    "ablation": {"questionsByCapability": {"IE": 60, "MR": 40}},
+                    "memoryArmConfig": {"reader": {"thinkingRoutes": []}},
+                }
+            )
+        )
+        single = _cli("--report", str(report), "--limit", "100", "--runs", "2")
+        doubled = _cli("--report", str(report), "--limit", "100", "--runs", "2", "--windows", "2")
+        assert single.returncode == 0, single.stderr
+        assert doubled.returncode == 0, doubled.stderr
+        # The population line is the only place the multiplication is visible in the log, which is
+        # the reason `two-window.ts` prints one too.
+        assert "population" in doubled.stdout
+        assert "100 corpora x 2 windows = 200 questions" in doubled.stdout
+        assert "population" not in single.stdout
 
 
 class TestShippedArtifact:
