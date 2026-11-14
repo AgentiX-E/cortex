@@ -246,6 +246,16 @@ describe('renderBlocks: the caller owns the order', () => {
   it('returns nothing for an empty request', () => {
     expect(renderBlocks(unit, [])).toEqual([]);
   });
+
+  it('can leave the frame line out, for a caller whose frame is the evidence already above it', () => {
+    // `cortex-memory`'s semantic update block is grounded in the whole rendered evidence, and the prompt carries
+    // that evidence immediately above the block: printing the frame there would spend the evidence budget on a
+    // copy of itself. The default stays on, because a block read on its own has to be intelligible.
+    const lines = renderBlocks(unit, ['a1', 'a3'], { omitFrame: true });
+    expect(lines.some((line) => line.startsWith('frame:'))).toBe(false);
+    expect(lines[0]).toContain('fact:');
+    expect(renderBlocks(unit, ['a1'])[0]).toContain('frame:');
+  });
 });
 
 describe('reciprocalRankFusion: ranks, not scores', () => {

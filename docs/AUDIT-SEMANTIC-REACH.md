@@ -47,7 +47,8 @@ TriageError TriageProposer TriageWriter ValueFunction createMemory decideRetriev
 Of the semantic kernel's exports — `KnowledgeFrame`, `KnowledgeFact`, `FactType`, `EdgeType`,
 `buildKnowledgeUnit`, `deriveAssumptions`, `deriveSupersedes`, `reviseLedger`, `assemble`,
 `resolveContradiction`, `consolidate`, `MemoryGraph`, `slotKey`, `renderBlocks`, `isFactCurrentAt` — the
-count is **zero**. Two of the 22 (`decideWrite`, `decideRetrieval`) are why the package exists; they are the
+count is **zero at `b0fe73f`**. It is no longer zero: §10 records what moved, which row of the table below
+moved with it, and what deliberately has not. Two of the 22 (`decideWrite`, `decideRetrieval`) are why the package exists; they are the
 positive control in the test, because an assertion that passes on an empty import list would prove nothing.
 
 ## 3. The reach table
@@ -60,7 +61,7 @@ positive control in the test, because an assertion that passes on an empty impor
 | 1 | Original sentence / fact split, span reconstructed by `locate()` | `knowledge/frame.ts:65`, `:156` | `assumption-ablation.ts:176` | **E** |
 | 2 | 9 fact types (closed set) | `knowledge/taxonomy.ts:36` | via frames only | **I** |
 | 3 | Polarity, modality, futurity, plan state | `knowledge/temporality.ts` | `assemble` | **I** |
-| 4 | 11 edge types + admissibility table | `knowledge/taxonomy.ts:101`, `:161` | `deriveSupersedes` | **I** |
+| 4 | 11 edge types + admissibility table | `knowledge/taxonomy.ts:101`, `:161` | `deriveSupersedes`, from `semantic-facts.ts` (§10) | **P** |
 | 5 | Entity identity | `taxonomy.ts:121` — `same-entity` only from a **declared** alias | no alias registry exists | **I** |
 | 6 | Slot identity `slotKey(subject, predicate)` | `knowledge/assumption.ts:159` | revision, assemble | **I** |
 | 7 | Bitemporal `Fact` (`validFrom/Until`, `systemFrom/Until`) | `domain/fact.ts:7`, `:28` | **none: zero constructors** | **T** |
@@ -77,8 +78,8 @@ positive control in the test, because an assertion that passes on an empty impor
 | 18 | Answer-level supersession with span-and-date authorisation | `supersede.ts:405`, `memory.ts:1603` | product | **P** |
 | 19 | Aggregation plan over scope / predicate / operation | `aggregation/`, `tally.ts` | product | **P** |
 
-**P is 5 of 19, and three of the five are the semantic ones that survived** (§14, §18, §19: disclosure,
-supersession, aggregation). That is the honest shape of the gap: the product has *answer-side* semantics
+**At `b0fe73f` P is 5 of 19, and three of the five are the semantic ones that survived** (§14, §18, §19:
+disclosure, supersession, aggregation). §10 moves one more — the edge layer — to `P`. That is the honest shape of the gap: the product has *answer-side* semantics
 and no *store-side* semantics. The audit's summary — "a mechanism the shipping path never calls is
 decoration with a test suite", quoted from `context/assemble.ts:9` itself — applies to eleven of the
 nineteen rows.
@@ -313,3 +314,70 @@ counted.
 not a paragraph, and the arm it needs is one whose `relevanceFor` is absent and whose `index` is set — the
 first configuration in this repository's history where the product ranks for itself. Until that reading
 exists, the claim is capability, not quality.
+
+## 10. What moved, and the defect that had to be fixed before anything could
+
+`docs/DECISION-SEMANTIC-LAYER-ROUTE.md` chose route B — wire the kernel — and fixed the order: a fact source
+first, because `assemble`, `reviseLedger` and `resolveContradiction` all consume `KnowledgeFact[]` and a wiring
+that hands them an empty list is indistinguishable from working. This section records the first step of that
+order and the defect it uncovered.
+
+### 10.1 The row that moved
+
+| # | capability | before | now | by |
+| ---: | --- | --- | --- | --- |
+| 4 | 11 edge types + admissibility table | `I` | **`P`** | `semantic-facts.ts` calls `deriveSupersedes` over the two facts it builds; `memory.ts` calls `semantic-facts.ts` |
+| 2 | 9 fact types (closed set) | `I` | `I` | the fact source writes `type: 'state'` and the checker validates it against `FACT_TYPES`; one member of nine being written is not the closed set being reachable |
+| 7 | Bitemporal `Fact` (two axes) | `T` | `T` | untouched. The facts the product builds are `KnowledgeFact`, which carries one time; the two-axis type still has zero constructors |
+| 11 | `assemble`, four questions, `asOf` | `E` | `E` | exit criterion E2, and it needs the facts this step produces before it can be called on anything |
+
+### 10.2 The fact source, in one paragraph
+
+`supersede.ts` reaches `replace` only after three checks — the quote is in the evidence character for character,
+the date is on the same record as the quote, and that record is later than the one the previous answer rests on.
+That is the strongest authorisation in the campaign, and until `semantic-facts.ts` existed its result was thrown
+away one frame after being computed. The module builds two `KnowledgeFact`s on one slot (`subject` = the
+question, `predicate` = `'answer'`), dated from the two records, with the `supersedes` edge `deriveSupersedes`
+derives from the dates rather than from a guess. `renderBlocks` renders them; `prompt.ts` puts the block between
+the evidence and the question. Zero model calls, and the sentence stays — the facts are added beside the
+evidence, never in place of it, because the campaign's `−19.62` for atom substitution stands unretracted.
+
+### 10.3 The defect: the record splitter never split a real prompt
+
+This was found by needing the record's own date, and it is the largest thing in this round.
+
+`evidenceRecords` used to open a record at a line whose first non-space character was `[`. **No line of a real
+prompt starts with a bracket**: `formatEvidence`'s default label is `` `${index + 1}. ` ``, so a delivered turn
+opens `1. [2023/01/15 (Sun) 09:10] user: …`. The splitter therefore produced **one record holding the entire
+evidence**, on every question, in every run that used the pass.
+
+Three consequences, in order of severity:
+
+| consequence | what it meant |
+| --- | --- |
+| `answerRecord === last.index === 0` always | the ordering check skips a comparison inside one record **by design**, so `§13.371`'s `not-later` guard — written to stop a correct answer being replaced by the value it supersedes — **never ran on the shipping path** |
+| the "same line" date rule degraded | from *the date is on this record* to *the date is somewhere in the window*, which is a different and much weaker claim |
+| `record` was a constant `0` | the field the census publishes described nothing |
+
+**Why no test caught it.** Every fixture in `supersede.test.ts` was an unnumbered string. The guard's own test —
+the `ed4ddc30` case, which is the reason the guard exists — passed because the fixture was a rendering the
+product never produces. This is the third instance in this repository of a test that agreed with the code
+rather than with the system, and the first where the disagreement was a *whole-population* one: not a rare
+input, but every input.
+
+**Repair.** `RECORD_OPENS = /^\s*(?:#\d+\s|\d+\.\s)?\[/` — the position label is optional, so an unnumbered
+evidence keeps the exact split it had and every fixture written before this repair still describes what it
+described. Four tests now pin the numbered shape, including the `not-later` case that could not previously
+fire. The trailing newlines a `\n\n` separator leaves on a record are stripped, so a record's text is the turn's
+text — the fact source stores it.
+
+### 10.4 What is deliberately not claimed
+
+- **No dispatch was made.** Every number in this section is a line count, a call-chain fact, or a test result.
+  The mechanism is off by default and E6 — the paired reading — is `unrun`.
+- **E1 is not "closed" by this section alone.** The criterion is *a behavioural test in which the same corpus
+  produces different prompt bytes because of the fact*, and that exists
+  (`semantic-carry.test.ts`, three conditions: empty store, switch off, both). What is not established is that
+  carrying the fact makes an answer **better**, which is E6's question and needs a dispatch this round did not
+  spend.
+- **The `−19.62` stands.** Nothing here replaces text with atoms.

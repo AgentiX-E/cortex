@@ -775,6 +775,39 @@ export type CortexMemoryOptions = {
    * fired and moved nothing" distinguishable from "the mechanism was administered".
    */
   windowOrdering?: WindowOrdering;
+  /**
+   * Whether a prompt may carry a semantic update the store has already authorised. Absent is off.
+   *
+   * ## What it turns on
+   *
+   * `supersede.ts` decides that one value in a window replaced another, and every one of those decisions was
+   * thrown away one frame after being made. With this on, an authorised substitution becomes a typed fact pair
+   * with a `supersedes` edge, and a later question whose window still **carries the record the authorisation
+   * was read from** is told which of the two values is current.
+   *
+   * ## Why it defaults to off, stated as three reasons rather than one
+   *
+   * 1. **Reproducibility.** A default that changes a prompt makes every published artifact unreproducible from
+   *    the code, which `prompt.ts` argues against in four separate field docstrings.
+   * 2. **Registration.** There is no reading behind this mechanism yet — semantic-layer exit criterion E6 is
+   *    `unrun` — so shipping it on would administer a treatment before it was registered.
+   * 3. **Scope.** The switch is what makes the byte delta **assertable** before it is shipped: a test can run
+   *    one corpus twice with nothing but this option differing, which is the only form of evidence that
+   *    attributes a prompt's change to the semantic layer rather than to something else.
+   *
+   * The store absorbs authorised substitutions whether or not this is on — building one costs no model call,
+   * and `semanticCarryCensus()` distinguishes "the store has knowledge and no prompt used it" from "the store
+   * never got any". Collapsing those two into one switch would make an off switch look like an empty store.
+   *
+   * ## Reach
+   *
+   * The five routes that assemble through `buildPrompt` (`flat`, `abstention`, `assistant`, `knowledge-update`,
+   * and the `temporal` path when it does not take the session builder). `answerSessions` renders through
+   * `buildSessionPrompt`, whose section order is a separately registered variable (`assembly`), and this option
+   * does not reach it — adding a second prompt change to a run that is measuring the first is how two variables
+   * get attributed to one.
+   */
+  semanticCarry?: boolean;
 };
 
 /**

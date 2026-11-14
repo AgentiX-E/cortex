@@ -52,7 +52,7 @@ describe('what counts as one evidence record', () => {
     ].join('\n');
     const verdict = adjudicateSupersession(report(), '1250', multiline);
 
-    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 1 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 1 });
   });
 
   it('fails closed on evidence that opens with no date at all', () => {
@@ -75,7 +75,7 @@ describe('how a span is compared to the evidence', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: 'FRIDAY', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: 'FRIDAY', record: 0 });
   });
 
   it('keeps the characters that are part of a value, so a stripped one is not authorised', () => {
@@ -93,8 +93,8 @@ describe('how a span is compared to the evidence', () => {
       evidence,
     );
 
-    expect(stripped).toEqual({ kind: 'keep', reason: 'not-in-evidence' });
-    expect(exact).toEqual({ kind: 'replace', value: '$3,750', record: 0 });
+    expect(stripped).toMatchObject({ kind: 'keep', reason: 'not-in-evidence' });
+    expect(exact).toMatchObject({ kind: 'replace', value: '$3,750', record: 0 });
   });
 });
 
@@ -166,7 +166,7 @@ describe('the adjudication', () => {
   it('replaces when the span is in the evidence and its date is on the same record', () => {
     const verdict = adjudicateSupersession(report(), '1250', EVIDENCE);
 
-    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 2 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 2 });
   });
 
   it('refuses a claim that is not in the evidence, and says so by name', () => {
@@ -234,7 +234,7 @@ describe('the adjudication', () => {
     // of the six were the gate's own targets. The span is how the reader demonstrates that it copied; the
     // numeral inside it is what the answer becomes.
     const sentence = 'Small update, I crossed 1300 followers last week.';
-    expect(adjudicateSupersession(report({ later: sentence }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ later: sentence }), '1250', EVIDENCE)).toMatchObject({
       kind: 'replace',
       value: '1300 followers',
       record: 2,
@@ -254,7 +254,7 @@ describe('the adjudication', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '30 dozen', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '30 dozen', record: 0 });
   });
 
   it('drops a word that is not a unit, so an adverb is not part of the value', () => {
@@ -270,7 +270,7 @@ describe('the adjudication', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 0 });
   });
 
   it('takes the last new numeral in a span, because a span that states two states the second about the first', () => {
@@ -286,7 +286,7 @@ describe('the adjudication', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '1300 followers', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '1300 followers', record: 0 });
   });
 
   it('refuses a span whose numerals are all already in the answer, and names it a restatement', () => {
@@ -319,7 +319,7 @@ describe('the adjudication', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: 'Friday', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: 'Friday', record: 0 });
   });
 
   it('refuses a clause that carries no numeral, because a clause is not a value', () => {
@@ -369,7 +369,7 @@ describe('the adjudication', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 0 });
   });
 
   it('carries no unit when the next token is not a word', () => {
@@ -387,12 +387,12 @@ describe('the adjudication', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '300', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '300', record: 0 });
   });
 
   it('accepts a span that carries a line break, because the value is one token of it', () => {
     const wrapped = '1300 followers\nlast week';
-    expect(adjudicateSupersession(report({ later: wrapped }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ later: wrapped }), '1250', EVIDENCE)).toMatchObject({
       kind: 'replace',
       value: '1300 followers',
       record: 2,
@@ -427,7 +427,7 @@ describe('the adjudication', () => {
   it('accepts a quote the reader wrapped in quotation marks, and returns it trimmed', () => {
     const verdict = adjudicateSupersession(report({ later: '"1300"' }), '1250', EVIDENCE);
 
-    expect(verdict).toEqual({ kind: 'replace', value: '"1300"', record: 2 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '"1300"', record: 2 });
   });
 });
 
@@ -480,7 +480,7 @@ describe('the ordering check, which the span and the date cannot supply', () => 
       EGG_EVIDENCE,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 1 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
   });
 
   it('does not order two statements in one record, and takes the reader at its word', () => {
@@ -501,7 +501,7 @@ describe('the ordering check, which the span and the date cannot supply', () => 
       oneTurn,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '1300', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 0 });
   });
 
   it('does not order against an answer whose own statement is not in the evidence', () => {
@@ -519,7 +519,7 @@ describe('the ordering check, which the span and the date cannot supply', () => 
       EGG_EVIDENCE,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 1 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
   });
 });
 
@@ -555,7 +555,7 @@ describe('the stamps the ordering check can and cannot read', () => {
       undated,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '30 dozen', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '30 dozen', record: 0 });
   });
 
   it('skips the ordering when the answer is empty, because there is nothing to locate', () => {
@@ -566,7 +566,7 @@ describe('the stamps the ordering check can and cannot read', () => {
       evidence,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 0 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 0 });
   });
 });
 
@@ -590,7 +590,7 @@ describe('two records that carry the same stamp', () => {
       twice,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '20 dozen', record: 1 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
   });
 });
 
@@ -614,6 +614,159 @@ describe('an answer whose own record carries no date at all', () => {
       mixed,
     );
 
-    expect(verdict).toEqual({ kind: 'replace', value: '30 dozen', record: 1 });
+    expect(verdict).toMatchObject({ kind: 'replace', value: '30 dozen', record: 1 });
+  });
+});
+
+describe('evidence the renderer numbered, which is every prompt the product sends', () => {
+  // `formatEvidence` labels each turn `${index + 1}. `, so a delivered record opens `1. [2023/…] user: …` and
+  // **no line of a real window starts with a bracket**. The splitter used to require exactly that, which made
+  // every real prompt one record — and the three consequences are what these tests pin, because each of them
+  // was invisible while the fixtures were unnumbered strings.
+  const NUMBERED = [
+    '1. [2023/01/11 (Wed) 12:18] user: we have 30 dozen at the moment',
+    '',
+    '2. [2023/03/15 (Wed) 10:52] user: we have 20 dozen stocked up in the fridge right now',
+  ].join('\n');
+
+  it('splits a numbered window into one record per turn', () => {
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '30 dozen',
+      NUMBERED,
+    );
+    // `record: 1`, not `0`. On the old splitter this was always `0` because there was always one record, and a
+    // census reading `record` was reading a constant.
+    expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
+  });
+
+  it('runs the ordering check on a numbered window, which it never did before', () => {
+    // `ed4ddc30`'s shape: the answer is the March value and the reader offers the January one. On the old
+    // splitter `answerRecord === last.index === 0`, the guard skipped a comparison inside one record, and the
+    // correct answer was replaced by the value it supersedes — the exact direction the mechanism is named for.
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '30 dozen at the moment',
+        when: '2023/01/11 (Wed) 12:18',
+        shape: 'three-lines',
+      },
+      '20 dozen stocked up',
+      NUMBERED,
+    );
+    expect(verdict).toEqual({ kind: 'keep', reason: 'not-later' });
+  });
+
+  it('requires the date on the record the quote is on, not anywhere in the window', () => {
+    // With one record this passed: `comparisonKey(record.text).includes(when)` searched the whole window, so a
+    // date from the *other* turn satisfied the rule. That is not what the instruction says, and it is the
+    // weaker of the two claims by a wide margin.
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '30 dozen at the moment',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      'nothing at all',
+      NUMBERED,
+    );
+    expect(verdict).toEqual({ kind: 'keep', reason: 'date-not-on-line' });
+  });
+
+  it('reads a record position written as `#n ` too, so the other rendering is not a second splitter', () => {
+    const itemIds = [
+      '#3 [2023/01/11 (Wed) 12:18] user: we have 30 dozen at the moment',
+      '#4 [2023/03/15 (Wed) 10:52] user: we have 20 dozen stocked up',
+    ].join('\n\n');
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '30 dozen',
+      itemIds,
+    );
+    expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
+  });
+});
+
+describe('the receipt the verdict carries', () => {
+  const NUMBERED = [
+    '1. [2023/01/11 (Wed) 12:18] user: we have 30 dozen at the moment',
+    '',
+    '2. [2023/03/15 (Wed) 10:52] user: we have 20 dozen stocked up in the fridge right now',
+  ].join('\n');
+
+  it('names both records, so a caller does not re-split the evidence to learn what it was told', () => {
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '30 dozen',
+      NUMBERED,
+    );
+    expect(verdict.kind).toBe('replace');
+    if (verdict.kind !== 'replace') throw new Error('expected a replacement');
+    // Verbatim, header included: a caller that wants the sentence has to be able to find it in the evidence by
+    // the bytes it was given, and a normalised copy would not be findable.
+    expect(verdict.authorised.later.text).toBe(
+      '2. [2023/03/15 (Wed) 10:52] user: we have 20 dozen stocked up in the fridge right now',
+    );
+    expect(verdict.authorised.earlier!.text).toBe(
+      '1. [2023/01/11 (Wed) 12:18] user: we have 30 dozen at the moment',
+    );
+  });
+
+  it('converts each stamp to epoch milliseconds, so the two axes have numbers', () => {
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up',
+        when: '2023/03/15 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '30 dozen',
+      NUMBERED,
+    );
+    if (verdict.kind !== 'replace') throw new Error('expected a replacement');
+    expect(verdict.authorised.later.at).toBe(Date.UTC(2023, 2, 15, 10, 52));
+    expect(verdict.authorised.earlier!.at).toBe(Date.UTC(2023, 0, 11, 12, 18));
+  });
+
+  it('answers `null` for a stamp that is not a calendar date, rather than letting the clock correct it', () => {
+    // `Date.UTC(2023, 12, 45)` normalises to 2024-02-14 instead of refusing. A fact dated with the corrected
+    // instant would no longer match the record it quotes, and every downstream comparison — ordering,
+    // `deriveSupersedes`, the window filter — would be reasoning about a date the corpus never said.
+    const impossible = [
+      '1. [2023/01/11 (Wed) 12:18] user: we have 30 dozen at the moment',
+      '',
+      '2. [2023/13/45 (Wed) 10:52] user: we have 20 dozen stocked up',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 dozen stocked up',
+        when: '2023/13/45 (Wed) 10:52',
+        shape: 'three-lines',
+      },
+      '30 dozen',
+      impossible,
+    );
+
+    expect(verdict.kind).toBe('replace');
+    if (verdict.kind !== 'replace') throw new Error('expected a replacement');
+    expect(verdict.authorised.later.at).toBeNull();
+    expect(verdict.authorised.later.date).toBe('2023/13/45 (Wed) 10:52');
   });
 });

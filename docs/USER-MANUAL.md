@@ -510,7 +510,43 @@ Three fields are required and each is required for a reason:
 | `selfConsistency` | `number` | absent (1) | Consultations per question and majority reduction. Must be a positive integer; refused with `reviewPass: 'audit'`. |
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder, as two injections. |
 | `conflicts` | `boolean` | absent (off) | Prints the statements that state one detail twice, in evidence order, between the evidence and the question. Reaches flat, temporal, knowledge-update and assistant; abstention and multi-session are excluded. §6.4. |
+| `semanticCarry` | `boolean` | absent (off) | Whether a prompt may carry a value change the store has already authorised. When a `knowledge-update` answer is replaced by a later dated span, the pair becomes a typed fact with a `supersedes` edge, and a later question whose window still carries the record the change was read from is told which value is current. Off by default: absent reproduces every archived prompt byte for byte. §6.5. |
 <!-- /contract-table -->
+
+### 6.1.1 Turning on the semantic carry, and what it cannot do
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+
+const memory = new CortexMemory({
+  llm,
+  now: Date.UTC(2026, 0, 1),
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
+  // Off by default. `true` lets a later question over the same corpus be told which of two
+  // values is current, when this instance already had one of them replaced.
+  semanticCarry: true,
+  reviewPass: 'supersede',
+});
+
+// The store absorbs an authorised substitution whether or not the switch is on, so these three
+// counts distinguish "nothing was ever authorised" from "one was, and no window asked for it".
+const { absorbed, dropped, matched } = memory.semanticCarryCensus();
+console.log(absorbed, dropped, matched);
+```
+
+A substitution is authorised only when the value the reader quotes appears in the evidence character for
+character, the date it names sits on the same evidence record, and that record is later than the one the
+previous answer rested on. The pair is stored as two facts on one slot — the question is the slot, `answer` is
+the predicate — and the `supersedes` edge comes from the two dates rather than from a guess. The sentence is
+never replaced: the facts are added beside the evidence, in their own block.
+
+The reach is bounded by the window, not by a configuration: an update reaches a prompt only when that prompt's
+window still carries the record the change was read from. A workload whose every question brings a fresh corpus
+— a benchmark, for instance — therefore never sees a line, which is the property that makes this switch safe to
+run beside a measurement.
 
 ### 6.2 `GateOptions`
 

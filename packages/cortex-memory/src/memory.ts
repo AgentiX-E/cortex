@@ -80,6 +80,12 @@ import {
   type SupersessionVerdict,
 } from './supersede.js';
 import { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
+import {
+  renderSemanticUpdate,
+  semanticUpdateFrom,
+  updateAppliesTo,
+  type SemanticUpdate,
+} from './semantic-facts.js';
 import { buildLedger } from './aggregation/ledger.js';
 import { parseEventSpec } from './aggregation/spec.js';
 import { executeSpec } from './aggregation/execute.js';
@@ -89,6 +95,16 @@ import { authoriseSpecSubstitution } from './aggregation/authorization.js';
 import type { SpecAuthorization } from './aggregation/authorization.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
 import type { CortexMemoryOptions, RoleCensus, TurnCapRoute } from './types.js';
+
+/**
+ * How many semantic updates one instance holds before it evicts the oldest.
+ *
+ * Eight rather than a size in characters, because the unit that matters is the prompt: a window that still
+ * carries nine authorised records is a window the reader has to resolve nine changes in, and the failures
+ * this mechanism is aimed at are single substitutions. The bound is also what keeps the per-prompt block
+ * bounded, which is the one property a prompt option has to have.
+ */
+const SEMANTIC_UPDATES_MAX = 8;
 
 /**
  * The offer's size, counted the way the record counts the delivery.
@@ -595,6 +611,51 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #lastRoute: TurnCapRoute | null = null;
 
   /**
+   * Every semantic update this instance has authorised, oldest first.
+   *
+   * ## What is stored, and what it costs
+   *
+   * A {@link SemanticUpdate} is a `KnowledgeUnit` with two facts and one `supersedes` edge, built from the
+   * pair of records `adjudicateSupersession` already authorised. Absorbing one costs no model call — the
+   * substitution it describes was already made — and the construction is arithmetic over two strings the
+   * verdict carried.
+   *
+   * ## Why this is not reset per question
+   *
+   * Every other slot in this class is a **reader-side reading**, so a question that reached no reader has
+   * none. This is not a reading of the last question: it is the store's own knowledge, and a question about
+   * a corpus the store has already seen a change in is exactly the question it exists for. {@link #lastRoute}
+   * states the same rule from the other side.
+   *
+   * ## Why it is bounded, and why a bound is a drop count rather than a silent truncation
+   *
+   * A store that grows with every question is a leak, and one whose growth changes prompt bytes as the run
+   * proceeds would make two repetitions of one question differ. The bound is per instance, the eviction is
+   * oldest-first, and `dropped` counts it — a number a reader can compare against `absorbed` instead of
+   * having to infer a bound from the code.
+   */
+  #semanticUpdates: SemanticUpdate[] = [];
+
+  /** Dedup keys, so a corpus seen twice does not produce the same update line twice. */
+  readonly #semanticKeys = new Set<string>();
+
+  /** A monotone id for each frame, so two units cannot collide on fact ids. */
+  #semanticSeq = 0;
+
+  /**
+   * What the semantic store did, as three counts.
+   *
+   * `absorbed` minus `dropped` is what is in hand; `applied` is how many prompts actually carried a line.
+   * The three are separate because "the store has knowledge and no prompt used it" and "the store never got
+   * any" are different reports, and a single counter would collapse them.
+   */
+  #semantic: { absorbed: number; dropped: number; matched: number } = {
+    absorbed: 0,
+    dropped: 0,
+    matched: 0,
+  };
+
+  /**
    * The evidence characters the most recent prompt carried, or `null`.
    *
    * ## Why this is not `#lastRetrievedContext.length`
@@ -1040,6 +1101,27 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const census = this.#lastRoleCensus;
     if (census === null) return null;
     return { counts: { ...census.counts }, unclassified: census.unclassified, total: census.total };
+  }
+
+  /**
+   * What the semantic store has absorbed, evicted and matched.
+   *
+   * Returned rather than the units themselves: a caller that reads the units would be reading the store, and
+   * the store is the thing the product is supposed to own. Three counts answer the only questions an outside
+   * reader has — did it get anything, did it lose anything, did a window qualify — and a fourth field would
+   * be the beginning of a second store API.
+   *
+   * `matched` counts **questions whose window still carried an authorised record**, which is the condition
+   * for a line, not the line itself: a prompt whose budget refused the block reports a match and carries no
+   * line. The two are separated deliberately, because collapsing them would make an eviction and a budget
+   * refusal the same number — and `prompt-digest` is what observes the bytes.
+   */
+  semanticCarryCensus(): {
+    readonly absorbed: number;
+    readonly dropped: number;
+    readonly matched: number;
+  } {
+    return { ...this.#semantic };
   }
 
   /**
@@ -1825,6 +1907,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
       await this.#relevanceFor(question, kept),
     );
     const ordering = this.#orderingFor(question, questionDate);
+    // Computed before the prompt and after the route filter, for the same reason the width is: an update whose
+    // record this route will not show is not an update about this prompt. Absent from the options entirely
+    // when no line survived — an always-present key holding `[]` reads as "configured" to the `!== undefined`
+    // checks this file uses elsewhere, and this one has to be inert when it has nothing to say.
+    const updates = this.#updatesFor(kept);
     const assembled = this.#withConflicts(
       question,
       kept,
@@ -1836,6 +1923,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
         {
           ...options,
           ...(questionDate === undefined ? {} : { questionDate }),
+          ...(updates.length === 0 ? {} : { knownUpdates: updates }),
         },
         ordering,
       ),
@@ -1971,8 +2059,75 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // substitution written anywhere later would be a substitution the artifact could report without the text
     // that decided it, which is the state §14.110.1 had to pay a second dispatch to escape.
     this.#supersessions.rewrites.push({ first, final: verdict.value });
+    // Absorbed before the answer is returned, on the same rule the rewrite pair follows: a unit built later
+    // would be a unit the artifact could report without the decision that produced it. Unconditional with
+    // respect to `semanticCarry` — the store having the knowledge and a prompt using it are two facts, and
+    // collapsing them would make "the switch is off" and "nothing was ever authorised" the same reading.
+    this.#semanticAbsorb(question, first, verdict, built.evidence);
     this.#lastReview = { first, final: verdict.value, changed: true };
     return verdict.value;
+  }
+
+  /**
+   * Turn one authorised substitution into a typed unit, or decline to.
+   *
+   * `semanticUpdateFrom` returns `null` for every case where the two records do not support a relation — no
+   * date on one end, both values on one instant, the same text twice — and this method stores the cases it
+   * does not refuse. It does not report a refusal count: `supersede.ts` has already published why each
+   * substitution was accepted, and a second census of the same population would be a second place for the
+   * two to disagree.
+   */
+  #semanticAbsorb(
+    question: string,
+    first: string,
+    verdict: Extract<SupersessionVerdict, { kind: 'replace' }>,
+    evidence: string,
+  ): void {
+    this.#semanticSeq += 1;
+    const update = semanticUpdateFrom({
+      evidence,
+      frameId: `semantic:${this.#semanticSeq}`,
+      question,
+      first,
+      verdict,
+    });
+    if (update === null) return;
+    if (this.#semanticKeys.has(update.key)) return;
+    this.#semanticKeys.add(update.key);
+    this.#semantic.absorbed += 1;
+    this.#semanticUpdates.push(update);
+    if (this.#semanticUpdates.length <= SEMANTIC_UPDATES_MAX) return;
+    // `shift()` on a non-empty array. The `undefined` branch an earlier version checked for was unreachable —
+    // the guard above has already established that the array is one past the bound — and the coverage gate
+    // reported it as the dead branch it was.
+    const evicted = this.#semanticUpdates.shift() as SemanticUpdate;
+    this.#semantic.dropped += 1;
+    // The key leaves with the unit. A set that kept it would refuse to re-absorb an update the store has
+    // since evicted, so a corpus that returns after nine other changes would silently lose a line it
+    // qualifies for — a bound becoming a permanent ban.
+    this.#semanticKeys.delete(evicted.key);
+  }
+
+  /**
+   * The update lines this window earns, or none.
+   *
+   * Two gates, and both are needed. `semanticCarry` is the switch: absent means every archived prompt's
+   * bytes, which is what lets the delta be asserted before it is shipped. The anchor test is the scope: an
+   * update is about a record, and a window that no longer carries that record is not the window the update
+   * describes — so a benchmark whose questions each bring their own corpus reaches nothing, by construction
+   * rather than by a hope about the data.
+   */
+  #updatesFor(turns: readonly AdmittedTurn[]): readonly string[] {
+    if (this.#options.semanticCarry !== true) return [];
+    if (this.#semanticUpdates.length === 0) return [];
+    const contents = turns.map((turn) => turn.content);
+    const lines: string[] = [];
+    for (const update of this.#semanticUpdates) {
+      if (!updateAppliesTo(update, contents)) continue;
+      lines.push(...renderSemanticUpdate(update));
+    }
+    if (lines.length > 0) this.#semantic.matched += 1;
+    return lines;
   }
 
   /**

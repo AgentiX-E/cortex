@@ -119,7 +119,50 @@ export type SupersessionRefusal =
 /** What the pass should answer, and the record of how it decided. */
 export type SupersessionVerdict =
   | { readonly kind: 'keep'; readonly reason: SupersessionRefusal }
-  | { readonly kind: 'replace'; readonly value: string; readonly record: number };
+  | {
+      readonly kind: 'replace';
+      readonly value: string;
+      readonly record: number;
+      /**
+       * The two records the decision was authorised by.
+       *
+       * ## Why the receipt travels with the verdict
+       *
+       * `adjudicateSupersession` has already established three things when it reaches `replace`: the quote
+       * is in the evidence character for character, the date is on the same record as the quote, and that
+       * record is later than the one the previous answer rests on. Those three checks are the strongest
+       * authorisation this campaign has, and until now the function threw away everything it learned except
+       * a value and an index — so the only way for a caller to know *which records* were authorised was to
+       * re-split the evidence itself, which is a second implementation of a decision that had already been
+       * made.
+       *
+       * Returning them is not extra information: it is the same information, in the form the caller needs it.
+       * `semantic-facts.ts` turns this pair into a bitemporal fact, and a fact built from a re-derived split
+       * would be able to disagree with the verdict that authorised it.
+       *
+       * `earlier` is `null` when the previous answer could not be located in the evidence — a composed answer
+       * has no record to be later than, which the ordering check already treats as "skip the comparison"
+       * rather than as a failure.
+       */
+      readonly authorised: SupersessionAuthorisation;
+    };
+
+/** One evidence record a substitution was authorised by, as the record itself said it. */
+type AuthorisedRecord = {
+  /** The record's own text, verbatim, header and continuation lines included. */
+  readonly text: string;
+  /** The stamp the record opens with, exactly as written; `null` for a record that opens with no bracket. */
+  readonly date: string | null;
+  /** That stamp as epoch milliseconds, or `null` when it does not parse. Both axes need a time. */
+  readonly at: number | null;
+};
+
+type SupersessionAuthorisation = {
+  /** The record the substituted value was quoted from. */
+  readonly later: AuthorisedRecord;
+  /** The record the previous answer was located in, or `null` when it was not located at all. */
+  readonly earlier: AuthorisedRecord | null;
+};
 
 /**
  * The numeral inside one whitespace-delimited token. `7:30` is a time, not two counts.
@@ -274,8 +317,13 @@ function substitutedValue(
  * The renderer writes `[2023/03/12 (Sun) 11:40]`, and the weekday is dropped because it is derivable and
  * because a comparison over it would order two same-day records by the spelling of a day name. Minutes are
  * included: `a2f3aa27`'s two statements are on the same day, and the whole question is which came second.
+ *
+ * A named tuple rather than `readonly number[]` because the five components are consumed positionally by
+ * both the ordering and the epoch conversion, and an array type would let either read past the end.
  */
-function stampKey(date: string | null): readonly number[] | null {
+type StampKey = readonly [number, number, number, number, number];
+
+function stampKey(date: string | null): StampKey | null {
   if (date === null) return null;
   const match = /(\d{4})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{1,2})(?:[^\d]*(\d{1,2}):(\d{2}))?/.exec(
     date,
@@ -303,17 +351,78 @@ function stampOrder(key: readonly number[]): number {
   return key.reduce((total, part, index) => total + part * 10 ** (8 - index * 2), 0);
 }
 
+/**
+ * The same stamp as epoch milliseconds, or `null` when it is not a calendar date.
+ *
+ * ## Why the round trip is checked
+ *
+ * `Date.UTC` normalises rather than refuses: a stamp of `2023/13/45` becomes 2024-02-14, and a fact dated
+ * with the corrected instant is a fact whose `at` no longer matches the record it quotes. Everything
+ * downstream of this function — ordering, `deriveSupersedes`, the window filter — would then be reasoning
+ * about a date the corpus never said. The renderer cannot emit such a stamp, but the value arrives through
+ * `[\d{1,2}]` capture groups that *can*, and the check costs one comparison.
+ */
+function stampEpoch(key: StampKey | null): number | null {
+  if (key === null) return null;
+  const [year, month, day, hour, minute] = key;
+  const epoch = Date.UTC(year, month - 1, day, hour, minute);
+  if (!Number.isFinite(epoch)) return null;
+  const check = new Date(epoch);
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day ||
+    check.getUTCHours() !== hour ||
+    check.getUTCMinutes() !== minute
+  ) {
+    return null;
+  }
+  return epoch;
+}
+
+/** One record as the authorisation it is. */
+function recordAt(record: EvidenceRecord): AuthorisedRecord {
+  return { text: record.text, date: record.date, at: stampEpoch(stampKey(record.date)) };
+}
+
 /** One evidence record: the line that opens it, and the continuation lines under it. */
 type EvidenceRecord = { readonly text: string; readonly date: string | null };
+
+/**
+ * A line that opens an evidence record.
+ *
+ * ## The defect this pattern exists to repair
+ *
+ * The previous form was `line.trimStart().startsWith('[')`, and it was wrong on **every real prompt**. The
+ * renderer numbers its turns — `formatEvidence`'s default label is `` `${index + 1}. ` `` — so a delivered
+ * record opens `1. [2023/01/15 (Sun) 09:10] user: …` and no line of a real window starts with a bracket. The
+ * splitter therefore produced **one record holding the entire evidence**, and three things followed:
+ *
+ * - `record` was `0` on every substitution, so the field the census publishes described nothing;
+ * - the "same line" date rule degraded from *the date is on this record* to *the date is somewhere in the
+ *   window*, which is a different and much weaker claim;
+ * - **the ordering check never ran.** `answerRecord` and `last.index` were both `0`, and the guard skips a
+ *   comparison inside one record by design — so `§13.371`'s `not-later` guard, the one written to stop a
+ *   correct answer being replaced by the value it supersedes, was unreachable on the shipping path.
+ *
+ * The fixtures in `supersede.test.ts` were unnumbered, which is why every unit test of the guard passed while
+ * the guard did nothing: they were testing a rendering the product never produces. Found while building the
+ * fact source, which needs the record's own date and therefore needed the split to be real.
+ *
+ * The prefix is optional so an unnumbered evidence — a caller's own rendering, and every fixture written
+ * before this repair — keeps the exact split it had.
+ */
+const RECORD_OPENS = /^\s*(?:#\d+\s|\d+\.\s)?\[/;
 
 /**
  * Split the rendered evidence into records, by the date bracket that opens each turn.
  *
  * The renderer keeps a turn's own text verbatim, and a turn may contain newlines, so a line is not the
- * unit: the **record** is. A record opens at a line whose first non-space character is `[` and owns
- * every following line up to the next such line. That is the shape `formatEvidence` produces from the
- * dataset's `[2023/02/15 (Wed) 01:41] speaker: text` rendering, and it is the shape the "same line"
- * rule in the instruction refers to.
+ * unit: the **record** is. A record opens at a line whose first non-space character — after the renderer's
+ * position label, which {@link RECORD_OPENS} accounts for — is `[`, and owns every following line up to the
+ * next such line. That is the shape `formatEvidence` produces from the dataset's
+ * `[2023/02/15 (Wed) 01:41] speaker: text` rendering, and it is the shape the "same line" rule in the
+ * instruction refers to.
  *
  * Evidence that opens with no bracket at all becomes a single record, which is the honest reading:
  * there is no boundary to split on, so a date requirement against it can only fail closed.
@@ -321,7 +430,7 @@ type EvidenceRecord = { readonly text: string; readonly date: string | null };
 function evidenceRecords(evidence: string): readonly EvidenceRecord[] {
   const records: { text: string; date: string | null }[] = [];
   for (const line of evidence.split('\n')) {
-    const opens = line.trimStart().startsWith('[');
+    const opens = RECORD_OPENS.test(line);
     if (opens || records.length === 0) {
       records.push({ text: line, date: null });
       continue;
@@ -333,7 +442,15 @@ function evidenceRecords(evidence: string): readonly EvidenceRecord[] {
     const match = /\[\s*([^\]]+?)\s*\]/.exec(record.text);
     // The capture group is non-optional, so a match always has one; the only absence is the record that
     // opens with no bracket at all.
-    return { text: record.text, date: match === null ? null : (match[1] as string) };
+    //
+    // The trailing newlines are the separator the renderer put *between* turns (`\n\n`), not part of the turn
+    // that follows them, and they are stripped so a record's text is the turn's text. Nothing that reads this
+    // compares raw bytes — `comparisonKey` folds whitespace — but a caller that stores the text, which the fact
+    // source does, would otherwise carry a separator into a sentence.
+    return {
+      text: record.text.replace(/\n+$/, ''),
+      date: match === null ? null : (match[1] as string),
+    };
   });
 }
 
@@ -468,7 +585,17 @@ export function adjudicateSupersession(
       return { kind: 'keep', reason: 'not-later' };
     }
   }
-  return { kind: 'replace', value: value.value, record: last.index };
+  return {
+    kind: 'replace',
+    value: value.value,
+    record: last.index,
+    authorised: {
+      later: recordAt(last.record),
+      // `answerRecord` is the index the ordering check already located, so reusing it is what keeps the
+      // receipt and the check from disagreeing about which record the previous answer came from.
+      earlier: answerRecord === null ? null : recordAt(records[answerRecord] as EvidenceRecord),
+    },
+  };
 }
 
 /**

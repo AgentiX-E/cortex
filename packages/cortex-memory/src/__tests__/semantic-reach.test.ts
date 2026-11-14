@@ -1,25 +1,35 @@
 /**
- * The semantic kernel is not reachable from the shipping package, and this test says so out loud.
+ * The semantic kernel is reachable from the shipping package, and only where the reach table says it is.
  *
- * ## Why an assertion instead of a paragraph
+ * ## What this test used to assert, and why the assertion inverted
  *
- * `docs/AUDIT-SEMANTIC-REACH.md` records that `cortex-core` carries 2,899 lines of typed-fact machinery
- * -- frames, taxonomy, edges, assumptions, revision, units, `assemble`, contradiction, consolidation --
- * that no module in `cortex-memory` imports. That claim has the same failure mode as every other
- * document in this repository: it is true when written and silently false after one commit that adds an
- * import. A reader who trusts it would understate the product; a reader who re-derives it would pay for
- * the audit twice.
+ * `docs/AUDIT-SEMANTIC-REACH.md` records that `cortex-core` carried 2,899 lines of typed-fact machinery that
+ * no module in `cortex-memory` imported. That claim has the same failure mode as every other document in this
+ * repository: true when written, silently false after one commit that adds an import. So it was made
+ * executable — an assertion on **zero** kernel imports, which fails and names the symbol the moment a later
+ * change wires something.
  *
- * So the claim is executable. If a later change wires the kernel into the product, this test fails and
- * names the symbol, which forces the audit's reach table to move at the same time the code does. That is
- * the only ordering under which a reach table stays true.
+ * It fired, exactly once, on the commit that added the fact source. That is the assertion working: the reach
+ * table and the code could not drift apart without this test printing which row moved.
+ *
+ * ## Why it is a allowlist rather than a count now
+ *
+ * Zero was the right assertion while zero was the fact. Now the fact is *three*, and a bare count would be the
+ * weaker claim: it would pass if a fourth import appeared and a fifth were removed. So the invariant becomes
+ * the one an audit can actually use —
+ *
+ * > every kernel symbol the product imports is named here, with the file that imports it; and every one of
+ * > them is **called** from that file, not merely imported.
+ *
+ * The second half is what refuses a fake wiring. `import { assemble }` with no call compiles, passes a lint
+ * rule, moves nothing, and would let a reach table say `P` — the failure `AUDIT-SEMANTIC-REACH.md` §4.3 priced
+ * at 43 mechanism flips for 46 damages. A call is the smallest evidence that a symbol is load-bearing.
  *
  * ## What it deliberately does not assert
  *
- * It does not assert that the kernel *should* be unreachable. Reachability is a decision recorded in the
- * audit with its prerequisites; the test only refuses to let the record rot. And it does not look at
- * `cortex-eval`, which is the arm rather than the product -- what the arm calls is the subject of a
- * different measurement.
+ * It does not assert that the kernel *should* be reachable at this width. Which rows are `P` is a decision
+ * recorded in the audit; the test only refuses to let the record rot. And it does not look at `cortex-eval`,
+ * which is the arm rather than the product — what the arm calls is the subject of a different measurement.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -33,8 +43,8 @@ const PRODUCT = path.join(REPO, 'packages/cortex-memory/src');
 /**
  * The kernel, by the exports a wiring would have to import.
  *
- * Named rather than derived from a directory: a directory list would make this test pass by moving a
- * file, and the claim is about the mechanism, not about where the mechanism is filed.
+ * Named rather than derived from a directory: a directory list would make this test pass by moving a file,
+ * and the claim is about the mechanism, not about where the mechanism is filed.
  */
 const SEMANTIC_KERNEL = [
   'KnowledgeFrame',
@@ -53,6 +63,36 @@ const SEMANTIC_KERNEL = [
   'slotKey',
   'renderBlocks',
 ] as const;
+
+/**
+ * The symbols that are wired today, and the file that owns each wiring.
+ *
+ * `cortex-memory/src/semantic-facts.ts` is the fact source: it turns the span-and-date authorisation
+ * `supersede.ts` already computed into a `KnowledgeUnit` with a `supersedes` edge. `buildKnowledgeUnit`
+ * refuses a unit whose span or grounding is wrong, `deriveSupersedes` produces the edge from the two `at`
+ * values rather than from a guess, and `renderBlocks` is the renderer the kernel's own `assemble` uses — a
+ * second renderer here would be the "two mechanisms with one name" defect this repository has caught three
+ * times.
+ *
+ * `assemble`, `reviseLedger` and `resolveContradiction` are **absent on purpose**: they are exit criterion
+ * E2, they need the facts this file produces to exist first, and listing them here before they are called
+ * would be the decoration the audit charged us with.
+ */
+const WIRED: Readonly<Record<string, string>> = {
+  KnowledgeFrame: 'semantic-facts.ts',
+  KnowledgeFact: 'semantic-facts.ts',
+  buildKnowledgeUnit: 'semantic-facts.ts',
+  deriveSupersedes: 'semantic-facts.ts',
+  renderBlocks: 'semantic-facts.ts',
+};
+
+/**
+ * The wired names that are values rather than types, so a call site is required.
+ *
+ * A type has no call site and asserting one would fail for the wrong reason; a value that is imported and
+ * never called is the fake wiring this test exists to refuse.
+ */
+const WIRED_VALUES = ['buildKnowledgeUnit', 'deriveSupersedes', 'renderBlocks'] as const;
 
 /** Every `.ts` file under a directory, excluding tests. */
 function sources(directory: string): string[] {
@@ -90,24 +130,39 @@ function coreImports(file: string): { names: string[]; typeOnly: boolean }[] {
   return found;
 }
 
-describe('the product does not reach the semantic kernel', () => {
+describe('the product reaches the semantic kernel exactly where the table says', () => {
   const files = sources(PRODUCT);
 
-  it('imports no symbol from the kernel, and names the audit when one appears', () => {
+  it('imports no kernel symbol outside the allowlist, and names the audit when one appears', () => {
     const hits: string[] = [];
     for (const file of files) {
       for (const imported of coreImports(file)) {
         for (const name of imported.names) {
-          if ((SEMANTIC_KERNEL as readonly string[]).includes(name)) {
+          if (!(SEMANTIC_KERNEL as readonly string[]).includes(name)) continue;
+          if (WIRED[name] !== path.basename(file)) {
             hits.push(`${path.relative(REPO, file)} imports ${name}`);
           }
         }
       }
     }
     // The assertion is on the list, so a failure prints what was wired rather than just a count.
-    expect(hits, 'docs/AUDIT-SEMANTIC-REACH.md §3: move the reach table row to P first').toEqual(
-      [],
-    );
+    expect(
+      hits,
+      'docs/AUDIT-SEMANTIC-REACH.md §3: move the reach table row to P in the same commit',
+    ).toEqual([]);
+  });
+
+  it('calls every wired value, so an import with no call site cannot pass as wiring', () => {
+    const silent: string[] = [];
+    for (const name of WIRED_VALUES) {
+      const owner = WIRED[name]!;
+      const text = readFileSync(path.join(PRODUCT, owner), 'utf8');
+      // Import statements themselves match `name (` only if written `name({`, which no import is, so a
+      // call-shaped occurrence is evidence of a call rather than of the import that brought the name in.
+      if (!new RegExp(`\\b${name}\\s*\\(`).test(text))
+        silent.push(`${owner} imports ${name} and never calls it`);
+    }
+    expect(silent, 'A wired symbol with no call site is the decoration §4.3 refuses').toEqual([]);
   });
 
   it('still imports the value gates, so the assertion above is not vacuous', () => {

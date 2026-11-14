@@ -40155,3 +40155,132 @@ now visible as a **disagreement** rather than as a surprising number — the cen
   experiment; making a record legible does not advance them.
 - **No new reading of `43465626013`.** Its score stands as published and stays out of every product
   table: a 200-question population reverses sign against the 500-question one (§13.361.3).
+
+## 13.375 The semantic layer's first product path: an authorised substitution becomes a fact
+
+### 13.375.0 One paragraph
+
+`docs/AUDIT-SEMANTIC-REACH.md` counted the semantic kernel's exports that the shipping package imports: zero,
+out of 22. `docs/DECISION-SEMANTIC-LAYER-ROUTE.md` chose to wire it rather than retract it, and fixed the
+order — fact source first, because a consumer handed an empty list is indistinguishable from a consumer that
+works. This section registers that first step, the defect it uncovered, and the one prediction that can be
+falsified by a run nobody has made.
+
+### 13.375.1 The source, and why it is the only one that survives its predecessors
+
+| candidate | status |
+| --- | --- |
+| extract atoms from the corpus at ingest (a model call per turn) | deferred — the corpus-ownership programme, not this one |
+| infer supersession from surface tokens | **closed**, three times: `MEASURE-SUPERSEDE-REACH.md` §2 measured the tightest rule touching 77 windows, deleting the gold from 36, and removing the stale value from **none of the four** questions the arm was registered for |
+| reuse the span-and-date authorisation `supersede.ts` already computed | **this section** |
+
+`adjudicateSupersession` reaches `replace` only after establishing that the quote is in the evidence character
+for character, that the date sits on the same record as the quote, and that the record is later than the one
+the previous answer rests on. That result was discarded one frame after being computed. `semantic-facts.ts`
+turns it into two `KnowledgeFact`s on one slot — `subject` = the question, `predicate` = `'answer'` — dated from
+the two records, plus the `supersedes` edge `deriveSupersedes` derives from the dates. Zero model calls, and the
+sentence is untouched: the facts are added beside the evidence, never in place of it.
+
+Two facts rather than one, because one fact says `the answer is 1300`, which the evidence already says. The
+knowledge is the **relation** — a value was replaced, and which of the two is current — and a relation needs
+both ends and a date on each. Every pair that cannot support one is refused rather than approximated: no date
+on either end, the same instant on both (a contradiction, which `revision.ts` reports as a refuted
+`uniqueness`), two texts that fold to the same string, a record whose content is only a dateline.
+
+### 13.375.2 The defect: the record splitter never split a real prompt
+
+Found by needing the record's own date, and larger than the feature.
+
+`evidenceRecords` opened a record at a line whose first non-space character was `[`. No line of a real prompt
+starts with a bracket — `formatEvidence`'s default label is `` `${index + 1}. ` `` — so the splitter produced
+**one record holding the entire evidence**, on every question of every run that used the pass. Consequences, in
+order of severity:
+
+1. `answerRecord === last.index === 0` always, so the ordering check — which skips a comparison inside one
+   record **by design** — never ran. **`§13.371`'s `not-later` guard, written to stop a correct answer being
+   replaced by the value it supersedes, was unreachable on the shipping path.**
+2. The "same line" date rule degraded from *the date is on this record* to *the date is somewhere in the
+   window*.
+3. `record` was the constant `0`, so the field the census publishes described nothing.
+
+**Why no test caught it.** Every fixture in `supersede.test.ts` was an unnumbered string. The guard's own test —
+the `ed4ddc30` case that is the reason the guard exists — passed because the fixture was a rendering the product
+never produces. This is the third test in this repository that agreed with the code instead of with the system,
+and the first whose disagreement was a **whole population** rather than a rare input.
+
+`RECORD_OPENS = /^\s*(?:#\d+\s|\d+\.\s)?\[/`. The label is optional, so every fixture written before the repair
+still describes what it described and an unnumbered evidence keeps its exact split. Four tests pin the numbered
+shape, including the `not-later` case that could not previously fire. The trailing newlines a `\n\n` separator
+leaves on a record are stripped, so a record's text is the turn's text.
+
+### 13.375.3 The three conditions, and the byte comparison that is the criterion
+
+E1 is not "the product can build a `KnowledgeFact`". It is *same corpus, different prompt bytes, because of
+that fact*. `semantic-carry.test.ts` isolates three:
+
+| condition | store | `semanticCarry` | prompt carries |
+| --- | --- | --- | --- |
+| A — control | empty | on | no `UPDATES:` |
+| B — switch off | one unit | off | no `UPDATES:`, byte-identical to A |
+| C — both | one unit | on | the two facts, both status lines, between the evidence and the question |
+
+A vs C is the causal claim — only the store's content differs. B vs C is what keeps the mechanism from being
+attributed to something else in the same commit.
+
+### 13.375.4 What is registered, and the default
+
+| item | value |
+| --- | --- |
+| new option | `CortexMemoryOptions.semanticCarry?: boolean`, **absent = off** |
+| new prompt option | `PromptOptions.knownUpdates?: readonly string[]`, absent = every archived prompt's bytes |
+| new store | bounded at 8 units, oldest-first eviction, `dropped` counted |
+| new census | `semanticCarryCensus(): { absorbed, dropped, matched }` |
+| reach table | row 4 (`deriveSupersedes`) `I → P`; a new row for the carry path |
+| default change | **none**. `0` / `none` still runs and produces the bytes it produced. |
+
+Off by default for three reasons, each sufficient on its own: an on default makes every published artifact
+unreproducible from the code; E6 has not run, so a treatment would be administered before it was registered; and
+the switch is what makes the byte delta **assertable** rather than merely present.
+
+The store absorbs whether or not the switch is on. Building a unit costs no model call, and
+`semanticCarryCensus()` has to be able to distinguish "the store has knowledge and no prompt used it" from "the
+store never got any" — an off switch that also meant an empty store would collapse two different reports into
+one.
+
+### 13.375.5 The prediction, written so a run can fail it
+
+**On the registered 500-question population, `semanticCarry: true` produces byte-identical prompts to
+`semanticCarry: false`, and therefore `deltaQuestions === 0`.**
+
+The reason is structural rather than empirical: an update reaches a prompt only when the window still carries
+the record the authorisation was read from, and each question of this benchmark brings its own corpus. Every
+question is a first question.
+
+That makes the prediction falsifiable in the direction that matters. A **non-zero** delta on this population
+would not be a gain — it would mean an update from one question reached another question's window, which is a
+cross-question leak in the one place a benchmark cannot tolerate one: `CortexMemory` is constructed once per
+worker, so a leak would move every published number and be invisible in any per-question record.
+
+The measurement that would actually exercise the mechanism is a **session** population — several questions over
+one corpus — which this campaign does not have and would have to construct. Registering this prediction is what
+stops that gap from being discovered as a surprise.
+
+### 13.375.6 What this licenses, and what it does not
+
+**Licenses**
+
+- **E1.** A non-test construction site exists (`memory.ts` → `semantic-facts.ts`), its input is the
+  `supersede.ts` verdict, and the byte delta is asserted under three conditions.
+- **The `not-later` guard is live.** It was registered in §13.371, measured on `ed4ddc30`, and had been
+  unreachable. It fires now, and a numbered-evidence test is the reason it cannot go quiet again.
+- **`deriveSupersedes` is on the shipping path.** The reach table's row 4 moves to `P`, in the same commit as
+  the test that would notice it moving back.
+
+**Does not license**
+
+- **Any accuracy claim.** No dispatch was made. E6 is `unrun`, `S10` and `S9` stay frozen.
+- **E2, E3, E4.** `assemble`, `reviseLedger` and `resolveContradiction` are still unreached; `MemoryType` still
+  cannot write `'semantic'`; `consolidate` still has no caller. E1 was their prerequisite, not their substitute.
+- **A closed E1 in the strong sense.** The criterion asks for the byte delta, and the delta is proven. Whether
+  carrying the fact makes an answer **better** is E6, and the prediction above says this population cannot
+  answer it.

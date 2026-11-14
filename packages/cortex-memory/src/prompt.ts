@@ -837,6 +837,40 @@ export type PromptOptions = {
    * changes, which is what makes a movement attributable to order.
    */
   assembly?: 'instruction-first';
+  /**
+   * Lines this store has already authorised a change for, rendered by `renderBlocks`.
+   *
+   * ## What it says that the evidence cannot
+   *
+   * The evidence states both values; nothing in it says which is current. A reader handed
+   * `20 dozen` in January and `30 dozen` in March has to notice the two are about the same thing and
+   * order them — and `MEASURE-FAILURE-STABILITY.md` §3 reads six of the seven stable `KU` failures as
+   * exactly that comparison not being made, across a median window of 23,084 characters.
+   *
+   * The block states the pair and the relation, from records the store already authorised:
+   *
+   * ```
+   * UPDATES:
+   * fact:     30 dozen  [state]
+   * status:   replaces "20 dozen"
+   * fact:     20 dozen  [state]
+   * status:   superseded by "30 dozen"
+   * ```
+   *
+   * ## Absent is every archived prompt's bytes
+   *
+   * The option is absent unless a caller both enables it and has a unit whose record is still in the
+   * window. On a run where neither holds, the assembled array is the one it always was — which is what
+   * makes this testable as a byte delta rather than only as a capability.
+   *
+   * ## Why it is an option at all
+   *
+   * The field's own rule, stated four times in this file: a default that changes a prompt makes every
+   * published artifact unreproducible from the code. This one also has no reading behind it yet
+   * (semantic-layer exit criterion E6), so shipping it on would be a treatment administered before it
+   * was registered. It is off, it is switchable, and the switch is what a dispatch sets.
+   */
+  knownUpdates?: readonly string[];
 };
 
 /** The unit the evidence room is spent in. */
@@ -2859,7 +2893,18 @@ export function buildPrompt(
   // unrepresentable rather than merely tested for.
   const instruction = instructionsFor(contract, date, options.ask);
 
-  const prompt = [evidenceBlock, '', `QUESTION: ${question}`, '', instruction].join('\n');
+  // Absent or empty means the array is the one every archived run produced, byte for byte. The block sits
+  // between the evidence and the question because it is *about* the evidence: a reader that met it before
+  // the turns would be told which value is current without having seen either.
+  const updates = options.knownUpdates ?? [];
+  const prompt = [
+    evidenceBlock,
+    '',
+    ...(updates.length === 0 ? [] : ['UPDATES:', ...updates, '']),
+    `QUESTION: ${question}`,
+    '',
+    instruction,
+  ].join('\n');
 
   if (
     prompt.length <= maxChars &&
@@ -2889,6 +2934,7 @@ export function buildPrompt(
     'EVIDENCE:\n',
     undefined,
     options.maxEvidenceChars,
+    options.knownUpdates ?? [],
   );
 }
 
@@ -3002,6 +3048,12 @@ function fitToBudget(
   header: string,
   assembly?: 'instruction-first',
   evidenceCap?: number,
+  /**
+   * The semantic update block, already rendered. A positional parameter rather than a field on
+   * `EvidencePlan`, because it is not evidence and the plan is: the plan owns what the room may be spent
+   * on, and these lines are owed to the reader whether or not a single turn fits.
+   */
+  updates: readonly string[] = [],
 ): AssembledPrompt {
   const SEPARATOR = '\n\n';
 
@@ -3031,6 +3083,15 @@ function fitToBudget(
     };
   }
   remaining -= SEPARATOR.length;
+
+  // The update block is bought before the note and before the evidence, and the ordering is the argument:
+  // it is the only section that says which of two values is current, and a note explaining a truncation is
+  // worth less than that. Whole or not at all, on the same rule as the note -- half a fact block states a
+  // relation whose other end is missing, which reads as an assertion.
+  const updatesText = updates.length === 0 ? '' : ['UPDATES:', ...updates].join('\n');
+  const updatesBlock =
+    updatesText.length > 0 && updatesText.length + SEPARATOR.length <= remaining ? updatesText : '';
+  if (updatesBlock.length > 0) remaining -= updatesBlock.length + SEPARATOR.length;
 
   // Allocated whole or not at all. A half-note would name boundaries without
   // explaining them, which is the state this allocation exists to leave.
@@ -3076,7 +3137,11 @@ function fitToBudget(
   const evidence = plan.ordering === undefined ? selected.evidence : plan.render(ordered);
 
   const head = `${header}${evidence}`;
-  const sections = noteText.length === 0 ? [head] : [head, noteText];
+  const sections = [
+    head,
+    ...(noteText.length === 0 ? [] : [noteText]),
+    ...(updatesBlock.length === 0 ? [] : [updatesBlock]),
+  ];
 
   return {
     prompt: assembleSections([...sections, questionLine], instruction, assembly),

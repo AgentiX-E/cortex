@@ -123,6 +123,15 @@ export type BlockOptions = {
    * second line to say stays with whoever worked it out.
    */
   readonly flags?: ReadonlyMap<string, readonly string[]>;
+  /**
+   * Whether to leave the `frame:` line out. Defaults to `false`, i.e. every block states its sentence.
+   *
+   * Exists for the one caller whose frame is the whole rendered evidence: `cortex-memory`'s semantic update
+   * block is grounded in the evidence the prompt already carries above it, so printing the frame would spend
+   * the evidence's budget a second time on a copy. Stating it is the right default — a block read on its own
+   * has to be intelligible — and this is the caller that can prove the frame is already in view.
+   */
+  readonly omitFrame?: boolean;
 };
 
 /**
@@ -202,7 +211,7 @@ export function renderBlocks(
   // The frame line first, then every selected fact as `fact` + its relations. `renderBlock` is reused
   // for the relation lines by dropping the copy of the frame it appends, so the two renderers cannot
   // disagree about how a relation is written.
-  const lines: string[] = [`frame:    "${unit.frame.text}"`];
+  const lines: string[] = options.omitFrame === true ? [] : [`frame:    "${unit.frame.text}"`];
   const referenced = new Set(selected.map((fact) => fact.id));
   for (const fact of selected) {
     const block = renderBlock(fact, unit.frame, unit.edges, facts, { ...options, referenced });
