@@ -12,6 +12,11 @@ each. It does not register a measurement, and it does not authorise a dispatch.
 **Status at the time of writing**: `cortex` `3dbf57c`, semantic layer **E8 closed, E1–E7 open** (1 of 8).
 Reach table `P 5 / E 5 / I 8 / T 1` ([`AUDIT-SEMANTIC-REACH.md`](AUDIT-SEMANTIC-REACH.md) §3).
 
+**Status now**: **6 of 8 closed** — E1 (§10), E2 (§11), E3 (§12), E5, E7, E8. E4 is half done
+(`MemoryGraph`, `resolveContradiction` and `Fact.derivedFrom` are recorded declines in §6; `consolidate` is
+still undecided and E4 owns it). E6 — the paired reading — is `unrun`, which is the one thing the gate on
+`S10`/`S9` waits for. Reach table `P 11 / E 2 / I 5 / T 1` — E3 moved no row of it, because `MemoryType` is not one of the nineteen; it is the precondition §5.2 said row 1 needed.
+
 ---
 
 ## 1. Why this needs a decision at all
@@ -79,7 +84,7 @@ flips for 46 damages** — and the ordering below exists to make it unavailable:
 | ---: | --- | --- | --- |
 | 1 | **Fact source** (§E1): the product constructs `KnowledgeFact`s from state it has already computed | constructing facts nothing consumes | a behavioural test in which the same corpus produces **different prompt bytes** because the fact exists |
 | 2 | **Consumers** (§E2): `assemble` → `reviseLedger` → `resolveContradiction` on the product path | importing a symbol without calling it, or calling it on an empty list | `semantic-reach.test.ts` must **name** the symbols it reached; the reach table's rows flip to `P` |
-| 3 | **Representability** (§E3): `MemoryType` writes and reads `'semantic'` | a settable label nobody reads | one test: write → read back → behaviour changes |
+| 3 | **Representability** (§E3): `MemoryType` writes and reads `'semantic'` — **landed**, `AUDIT-SEMANTIC-REACH.md` §12: `memoryForUpdate` writes the entry, `retention.ts` reads the type and decides which entry the bounded store gives up | a settable label nobody reads | one test: write → read back → behaviour changes — a pair of stores differing in one window's read, which is the only thing that separates "the rule read the type" from "the rule agreed with insertion order" |
 | 4 | **Charter** (§E4): `consolidate` / `resolveContradiction` get a caller or an explicit `Declined` | silence | a `grep` hit outside tests, or a `Declined` in this file's §6 |
 | 5 | **One commit** (§E5) | three tables drifting | `pnpm check` green and all three diffs in one commit |
 | 6 | **Measurement** (§E6) | a claim of improvement with no reading | a paired readout with `deltaQuestions ≥ −5`, same convention as `S10` |

@@ -204,6 +204,7 @@ describe('the store reports what it did', () => {
       matched: 0,
       served: 0,
       withheld: 0,
+      stored: { episodic: 0, procedural: 0, semantic: 1 },
     });
     await memory.answer(REVISIT, [EARLY, LATE]);
     expect(memory.semanticCarryCensus()).toEqual({
@@ -212,6 +213,7 @@ describe('the store reports what it did', () => {
       matched: 1,
       served: 1,
       withheld: 1,
+      stored: { episodic: 0, procedural: 0, semantic: 1 },
     });
   });
 
@@ -224,6 +226,7 @@ describe('the store reports what it did', () => {
       matched: 0,
       served: 0,
       withheld: 0,
+      stored: { episodic: 0, procedural: 0, semantic: 1 },
     });
   });
 
@@ -289,6 +292,7 @@ describe('the bound, and the re-entry it has to allow', () => {
       matched: 0,
       served: 0,
       withheld: 0,
+      stored: { episodic: 0, procedural: 0, semantic: 8 },
     });
 
     // The ninth runs the bound: `SEMANTIC_UPDATES_MAX` is 8, so one leaves and the count says so. A store whose
@@ -301,6 +305,7 @@ describe('the bound, and the re-entry it has to allow', () => {
       matched: 0,
       served: 0,
       withheld: 0,
+      stored: { episodic: 0, procedural: 0, semantic: 8 },
     });
 
     // Batch 0 was evicted, so its anchor is no longer held — and asking about it again must be able to re-admit
@@ -313,6 +318,7 @@ describe('the bound, and the re-entry it has to allow', () => {
       matched: 0,
       served: 0,
       withheld: 0,
+      stored: { episodic: 0, procedural: 0, semantic: 8 },
     });
 
     // The re-admitted unit is now in hand, which is the half of the claim the counts cannot show on their own.
@@ -350,6 +356,7 @@ describe('what the store refuses to hold', () => {
       matched: 0,
       served: 0,
       withheld: 0,
+      stored: { episodic: 0, procedural: 0, semantic: 0 },
     });
     await memory.answer(REVISIT, [UNDATED, DATED]);
     expect(memory.lastPromptText()!).not.toContain('UPDATES:');

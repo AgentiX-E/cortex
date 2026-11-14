@@ -67,6 +67,7 @@
 import {
   assemble,
   buildKnowledgeUnit,
+  createMemory,
   deriveAssumptions,
   deriveSupersedes,
   locate,
@@ -74,6 +75,7 @@ import {
   type KnowledgeFact,
   type KnowledgeFrame,
   type KnowledgeUnit,
+  type MemoryValue,
 } from '@agentix-e/cortex-core';
 import type { SupersessionVerdict } from './supersede.js';
 
@@ -111,6 +113,15 @@ export type SemanticUpdate = {
    */
   readonly anchor: string;
   /**
+   * The header the newer value was quoted from, `[date] speaker:`, with the sentence removed.
+   *
+   * It is the store entry's provenance. `MemoryValue.source` exists for "provenance and poisoning defense",
+   * and the honest value for a statement the product authorised is the record it was authorised *from* rather
+   * than the name of the code path that read it — `'supersede'` would tell a reader which mechanism fired and
+   * nothing about where the claim came from, which is the direction that field points.
+   */
+  readonly source: string;
+  /**
    * When this update became true: the later record's own instant.
    *
    * Two things read it, and they are the same thing from two sides. The frame carries it as `frame.at`, which
@@ -137,25 +148,41 @@ export type SemanticUpdate = {
 const ANSWER_PREDICATE = 'answer';
 
 /**
- * The body of one evidence record: everything after the `[date] speaker:` header, first line only.
+ * A record split into its header and the sentence under it, or `null` when there is no sentence.
  *
- * First line rather than the whole record for the reason the anchor exists: a continuation line is part of
- * the same turn but the renderer may reflow it, and an anchor that fails to match would silently make the
- * update unreachable — the inert-option failure this repository has caught twice.
+ * One function rather than two regexes, because the header and the body have to come from the **same** match:
+ * a separate `source` pass that failed where the anchor pass succeeded would stamp an entry with the provenance
+ * of one record and the sentence of another, and nothing downstream could tell.
  *
- * `null` when there is nothing left after the header, which is a record whose content is entirely a
- * dateline. There is no sentence to anchor on and therefore no update to report.
+ * ## The position prefix is stripped, for the reason the anchor drops the header
+ *
+ * `formatEvidence` labels each turn `${index + 1}. ` before its dateline, so the record a fact is read from
+ * begins `2. [2023/03/12 …] user:`. That number is a **position in one window** — the same sentence is `5. `
+ * in a window with three more turns in front of it — so a `source` that kept it would be provenance that
+ * changes between two renderings of one record. The prefix pattern is the one `supersede.ts` uses to find record
+ * boundaries, restated here rather than imported because that module's constant is about splitting a block and
+ * this one is about reading a single record; a shared regex would tie two different jobs to one spelling.
+ *
+ * The body is the **first line** rather than the whole record for the reason the anchor exists: a continuation
+ * line is part of the same turn but the renderer may reflow it, and an anchor that fails to match would
+ * silently make the update unreachable — the inert-option failure this repository has caught twice.
+ *
+ * `null` when there is nothing left after the header, which is a record whose content is entirely a dateline.
+ * There is no sentence to anchor on and therefore no update to report.
  */
-function anchorOf(recordText: string): string | null {
-  const match = /^[^\n]*?\]\s*[^\s:]+\s*:\s*([\s\S]*)$/.exec(recordText);
+function splitRecord(
+  recordText: string,
+): { readonly source: string; readonly body: string } | null {
+  const match = /^\s*(?:#\d+\s|\d+\.\s)?([^\n]*?\]\s*[^\s:]+\s*:)\s*([\s\S]*)$/.exec(recordText);
   if (match === null) return null;
-  // The capture group is `[\s\S]*`, so it always matches — possibly with nothing in it — and `split` always
-  // yields at least one element. Both assertions are facts about the two patterns rather than hopes, and the
-  // `?? ''` that used to stand here was a branch no input could reach, which the per-file coverage gate reported
-  // as the dead code it was.
-  const line = (match[1] as string).split('\n', 1)[0] as string;
+  // The second capture group is `[\s\S]*`, so it always matches — possibly with nothing in it — and `split`
+  // always yields at least one element. Both assertions are facts about the two patterns rather than hopes, and
+  // the `?? ''` that used to stand here was a branch no input could reach, which the per-file coverage gate
+  // reported as the dead code it was.
+  const line = (match[2] as string).split('\n', 1)[0] as string;
   const trimmed = line.trim();
-  return trimmed.length === 0 ? null : trimmed;
+  if (trimmed.length === 0) return null;
+  return { source: (match[1] as string).trim(), body: trimmed };
 }
 
 /**
@@ -214,8 +241,8 @@ export function semanticUpdateFrom(input: SemanticUpdateInput): SemanticUpdate |
   const subject = input.question.trim();
   if (subject.length === 0) return null;
 
-  const anchor = anchorOf(later.text);
-  if (anchor === null) return null;
+  const split = splitRecord(later.text);
+  if (split === null) return null;
 
   const beforeId = `${input.frameId}:before`;
   const afterId = `${input.frameId}:after`;
@@ -247,9 +274,10 @@ export function semanticUpdateFrom(input: SemanticUpdateInput): SemanticUpdate |
   return {
     unit: { ...built.unit, facts: revised.facts },
     factIds: [afterId, beforeId],
-    anchor,
+    anchor: split.body,
+    source: split.source,
     learnedAt: later.at,
-    key: `${anchor.toLowerCase()}\u0000${input.verdict.value.trim().toLowerCase()}`,
+    key: `${split.body.toLowerCase()}\u0000${input.verdict.value.trim().toLowerCase()}`,
   };
 }
 
@@ -299,6 +327,50 @@ export function assembleSemanticUpdate(update: SemanticUpdate): SemanticBlock {
     served: result.census.served,
     withheld: result.excluded.length,
   };
+}
+
+/**
+ * The store entry an authorised update becomes, typed so the store can tell it from an observation.
+ *
+ * ## Why this function is E3 rather than a convenience wrapper
+ *
+ * Semantic-layer exit criterion E3 is **representability**: `MemoryType` writes and reads `'semantic'`, the
+ * fake it refuses is *a settable label nobody reads*, and the check is *write → read back → behaviour changes*.
+ * Until this function existed the product constructed every `MemoryValue` with a literal `'episodic'` in
+ * `admission.ts` and no code path so much as compared the field, so the union's three members were a taxonomy
+ * the type system asserted and the runtime did not have. This is the write side; `retention.ts` is the read.
+ *
+ * ## Why the entry is built through `createMemory`
+ *
+ * The same rule `admission.ts` states: FSRS defaults have exactly one owner, and the composition layer must not
+ * become a second. Every field this function does not pass is `createMemory`'s default, which is also what an
+ * admitted turn carries — so nothing here invents a number. `value`, `confidence` and `sourceTrust` are the
+ * three that would be easiest to invent and are deliberately all absent: the store's eviction reads a count it
+ * observes itself (`retention.ts`), not a utility estimate this module would have had to make up.
+ *
+ * ## What the fields that *are* passed are grounded in
+ *
+ * | field | value | where it comes from |
+ * | --- | --- | --- |
+ * | `id` | `update.key` | the dedup key, so one update is one entry and re-seeing a corpus cannot mint a second |
+ * | `content` | the rendered block | the characters the prompt would actually carry, computed by `assemble` rather than described here |
+ * | `type` | `'semantic'` | the claim: this is a statement about the world, not a reading of a window |
+ * | `source` | the record header | the provenance the authorisation was read from |
+ * | `createdAt` / `lastAccessedAt` | `now` | the store's injected clock — the moment the instance recorded it, not `learnedAt`, which is the corpus's own instant and may be years earlier |
+ */
+export function memoryForUpdate(args: {
+  readonly update: SemanticUpdate;
+  readonly lines: readonly string[];
+  readonly now: number;
+}): MemoryValue {
+  return createMemory({
+    id: args.update.key,
+    content: args.lines.join('\n'),
+    type: 'semantic',
+    source: args.update.source,
+    createdAt: args.now,
+    lastAccessedAt: args.now,
+  });
 }
 
 /**

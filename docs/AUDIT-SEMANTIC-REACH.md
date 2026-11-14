@@ -474,3 +474,126 @@ order. A call site would be decoration that changes an answer for the worse.
   could see, which is `assemble`'s own stated refusal.
 - **Five rows is not five mechanisms.** Rows 3, 6, 8, 10 and 11 are reached through **one** file, over **two**
   facts per unit, with values this module fixes. The reach is real and it is narrow, and the table says which.
+
+## 12. `MemoryType` gets a value it writes and a reader that acts on it
+
+§5.2's finding was that `'semantic'` appeared in this repository exactly once — in the declaration of the
+union — and that "cortex has semantic memory" was therefore not merely unwired but **unrepresentable**. This
+section closes it. E3 (`DECISION-SEMANTIC-LAYER-ROUTE.md` §3 row 3) states the criterion as *`MemoryType` writes
+and reads `'semantic'`*, names the fake as *a settable label nobody reads*, and names the check as *one test:
+write → read back → behaviour changes*.
+
+### 12.1 What was actually missing
+
+The store the product owns is `CortexMemory`'s semantic slot: eight authorised substitutions, each a
+`KnowledgeUnit` with two facts and a `supersedes` edge. It held `SemanticUpdate` — a unit, a fact order, an
+anchor — and **no `MemoryValue` at all**. So the one place in the product where a memory about the world (as
+opposed to a reading of a window) exists was the one place the product's own memory type never reached.
+
+That is why E3 is not decoration dressed as a type. A memory layer's taxonomy is the claim that not all
+memories are the same kind of thing; a store that has two kinds of content and one type for both cannot say so,
+and the eviction is where it pays: `shift()` gave up the entry that had been held longest, which is the right
+rule for observations and the wrong one for knowledge.
+
+### 12.2 The write
+
+`semantic-facts.ts` gains `memoryForUpdate`: the `MemoryValue` an authorised update *is*. Five fields are
+given a value and each has a source, and the three easiest to invent are deliberately absent.
+
+| field | value | where it comes from |
+| --- | --- | --- |
+| `id` | `update.key` | the dedup key, so one update is one entry |
+| `content` | the rendered block | the characters a prompt would carry, produced by `assemble` |
+| `type` | `'semantic'` | the claim |
+| `source` | the record header | the record the authorisation was read from — not `'supersede'`, which names the mechanism rather than the provenance |
+| `createdAt` / `lastAccessedAt` | `now` | the store's injected clock, **not** `learnedAt`: an entry absorbed in 2026 whose corpus is dated 2023 must not read as older than the store holding it |
+
+`value`, `confidence`, `sourceTrust`, `stability` and `difficulty` are left to `createMemory`, which is exactly
+what an admitted turn carries. A semantic entry with `value: 1` would be a claim about future utility that no
+observation supports.
+
+Building the entry forced one repair in the splitter. `source` initially came back as `2. [2023/03/12 …] user:`
+— the renderer's **position prefix**, which is a position in one window and not a property of the record. The
+same sentence is `5. ` in a window with three more turns in front of it, so the provenance would have changed
+between two renderings of one record. `splitRecord` now strips the prefix with the pattern `supersede.ts` uses
+to find record boundaries.
+
+### 12.3 The read
+
+`retention.ts` is a `Record<MemoryType, RetentionRule>` and `leastRetained` compares the pair it produces.
+
+| type | rank | why |
+| --- | --- | --- |
+| `semantic` | `[lastAccessedAt, reads]` | kept by being *used*; an entry no window has carried is the first to lose |
+| `episodic` | `[createdAt, 0]` | a turn is a reading of one window; how often a later window quoted it says nothing |
+| `procedural` | `[createdAt, 0]` | same, stated rather than defaulted so the table has no silent member |
+
+A table rather than `if (type === 'semantic')` for a specific reason: the union would otherwise have two
+members that exist as a comment, and a fourth member added later would fall through to whatever the `else` did.
+
+The second element is a **read count**, and the reason is not a preference. The clock is injected and fixed
+(`CortexMemoryOptions.now`), and the store stamps one instant on every entry, so within an instance every
+`lastAccessedAt` is equal whether or not a window ever carried the entry. A rank of `[lastAccessedAt]` alone
+would order nothing, and a test asserting it would pass on a store where the read-back never happened. The
+count is the quantity the store genuinely observes, so the tie-break is that count.
+
+`reads` lives on the store's own record and not in `MemoryValue.value`, whose contract is `[0, 1]` and whose
+producer is the admission gate — two scales sharing one field is the defect `math/fsrs.ts` spent a docstring
+repairing in the time domain.
+
+### 12.4 The pair that makes it a criterion and not an assertion
+
+`semantic-memory-type.test.ts` runs two stores through nine absorptions — the eighth fills the bound, the ninth
+crosses it — and differs in **one event**:
+
+| condition | what the store saw | what is evicted |
+| --- | --- | --- |
+| A — control | eight updates, no window in between | `record 0`, the oldest |
+| B — mechanism | eight updates, one window over `record 0` | `record 1`, the one after it |
+
+Under a store that ignored `type` — and under the `shift()` this replaced — A and B reach the same store. Only
+the pair separates "the rule read the type" from "the rule happened to agree with insertion order", which is
+why B alone would have been an assertion about the code rather than about the product.
+
+`semanticCarryCensus()` gained `stored`, a count **over `MemoryType`** rather than over events. Eight
+`episodic` entries would be eight absorptions by every other number in that object; the type census is the only
+place the product's own taxonomy appears in a reading.
+
+### 12.5 What the census found without being asked
+
+`tools/export-census.mjs` reported `cortex-core: MemoryType` **leaving** the orphan ledger this round, because
+`retention.ts` imports it. It had been listed as `referenced-locally` — the symbol has a live call site and only
+its `export` keyword is unnecessary — but for a union member that classification was the whole problem: the
+type was exported, documented, and read by nothing.
+
+The gate also caught two exports written in this round and withdrawn in it: `retentionRank` (the ranking and
+the choice it feeds are one decision, so the boundary is `leastRetained`) and `Retainable` (nothing outside
+names the parameter type). That is the fifth round running in which this gate reported a symbol in the round
+that declared it.
+
+### 12.6 Mutations, all eight killed
+
+| # | mutation | killed by |
+| ---: | --- | --- |
+| 1 | `type: 'semantic'` → `'episodic'` | all four end-to-end tests |
+| 2 | `leastRetained` → `return 0` (the old `shift()`) | the mechanism test **only** — the control stays green |
+| 3 | `stored.reads += 1` → `+= 0` | the mechanism test only |
+| 4 | the position-prefix strip removed | the `source` test |
+| 5 | `content` → `''` | the `content` test |
+| 6 | `id` → `crypto.randomUUID()` | the `id` test |
+| 7 | `createdAt` → `learnedAt` | the stamp test |
+| 8 | `source` → the body | the `source` test |
+
+Mutations 2 and 3 are the ones that matter: each kills **only** the mechanism test and leaves the control green,
+which is what says the pair is causal rather than parallel.
+
+### 12.7 What this does not claim
+
+- **No accuracy claim, again.** `semanticCarry` is still off by default, still zero-reach on a population whose
+  questions each bring their own corpus, and E6 is still `unrun`.
+- **The retype does not change any archived bytes.** The store is rebuilt per instance, the block's content is
+  unchanged, and `semantic-carry.test.ts`'s byte-for-byte comparison between condition B and a control store is
+  still the assertion it was.
+- **`dropped` is now a function of the read history, not of arrival order.** On a run where every question
+  brings its own corpus no window ever reads an entry, so the count is identical to the one `shift()` produced —
+  and the difference only appears where the mechanism is supposed to exist.

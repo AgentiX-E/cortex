@@ -23,6 +23,7 @@
 import type {
   Answer,
   LLM,
+  MemoryType,
   MemoryValue,
   SessionAwareMemorySystem,
   ValueFunction,
@@ -82,10 +83,12 @@ import {
 import { isTallyQuestion, parseTallyLedger, renderTally, tallyTotal } from './tally.js';
 import {
   assembleSemanticUpdate,
+  memoryForUpdate,
   semanticUpdateFrom,
   updateAppliesTo,
   type SemanticUpdate,
 } from './semantic-facts.js';
+import { leastRetained } from './retention.js';
 import { buildLedger } from './aggregation/ledger.js';
 import { parseEventSpec } from './aggregation/spec.js';
 import { executeSpec } from './aggregation/execute.js';
@@ -105,6 +108,36 @@ import type { CortexMemoryOptions, RoleCensus, TurnCapRoute } from './types.js';
  * bounded, which is the one property a prompt option has to have.
  */
 const SEMANTIC_UPDATES_MAX = 8;
+
+/**
+ * One entry in the semantic store, holding both the knowledge and the memory that represents it.
+ *
+ * ## Why the block is stored rather than rendered on read
+ *
+ * `assemble` is deterministic in the four things it is given — the unit, the rank, `learnedAt` and `omitFrame`
+ * — and all four are fixed at absorption. Rendering on read would therefore recompute a constant once per
+ * prompt, and the two costs are not the interesting part: the interesting part is that a store which renders on
+ * read has two places where "what this entry says" is decided, and the store's own content field would drift
+ * from the prompt's on the first change to either.
+ *
+ * The census is still accumulated **at read time**, because `served` and `withheld` are counts of what prompts
+ * carried, not counts of what the store holds. Caching the block must not move those numbers, and the tests
+ * that read them per `answer()` are what say so.
+ *
+ * ## Why `reads` is mutable and lives here rather than in `MemoryValue`
+ *
+ * It is the quantity {@link retentionRank} tie-breaks on, and it is an observation the store makes: how many
+ * windows carried this entry. `MemoryValue` has no field for it — `value` is the field for utility and its
+ * contract is `[0, 1]` — so putting a count there would be two scales sharing one field.
+ */
+type StoredUpdate = {
+  readonly update: SemanticUpdate;
+  readonly block: ReturnType<typeof assembleSemanticUpdate>;
+  /** The {@link MemoryValue} this update *is*: `type: 'semantic'`, built once at absorption. */
+  readonly memory: MemoryValue;
+  /** How many windows have carried this entry. Mutated on read; the store's own observation. */
+  reads: number;
+};
 
 /**
  * The offer's size, counted the way the record counts the delivery.
@@ -611,14 +644,14 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #lastRoute: TurnCapRoute | null = null;
 
   /**
-   * Every semantic update this instance has authorised, oldest first.
+   * Every semantic update this instance has authorised, in absorption order.
    *
    * ## What is stored, and what it costs
    *
-   * A {@link SemanticUpdate} is a `KnowledgeUnit` with two facts and one `supersedes` edge, built from the
-   * pair of records `adjudicateSupersession` already authorised. Absorbing one costs no model call — the
-   * substitution it describes was already made — and the construction is arithmetic over two strings the
-   * verdict carried.
+   * A {@link StoredUpdate} is a {@link SemanticUpdate} — a `KnowledgeUnit` with two facts and one `supersedes`
+   * edge — plus the rendered block and the {@link MemoryValue} that represents it. Absorbing one costs no model
+   * call: the substitution it describes was already made, and the construction is arithmetic over two strings
+   * the verdict carried.
    *
    * ## Why this is not reset per question
    *
@@ -627,14 +660,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * a corpus the store has already seen a change in is exactly the question it exists for. {@link #lastRoute}
    * states the same rule from the other side.
    *
-   * ## Why it is bounded, and why a bound is a drop count rather than a silent truncation
+   * ## Why it is bounded, and what decides the victim
    *
    * A store that grows with every question is a leak, and one whose growth changes prompt bytes as the run
-   * proceeds would make two repetitions of one question differ. The bound is per instance, the eviction is
-   * oldest-first, and `dropped` counts it — a number a reader can compare against `absorbed` instead of
-   * having to infer a bound from the code.
+   * proceeds would make two repetitions of one question differ. Past {@link SEMANTIC_UPDATES_MAX} one entry
+   * leaves, and since this round the choice is `retention.ts`'s rule rather than `shift()`: the ranking is
+   * read from the entry's `MemoryType`, so a knowledge entry a window has carried outlives one no window has
+   * seen, and an entry that is neither read nor recent is what goes. `dropped` counts it, so the bound is a
+   * number a reader can compare against `absorbed` instead of inferring from the code.
    */
-  #semanticUpdates: SemanticUpdate[] = [];
+  #semanticUpdates: StoredUpdate[] = [];
 
   /** Dedup keys, so a corpus seen twice does not produce the same update line twice. */
   readonly #semanticKeys = new Set<string>();
@@ -1129,6 +1164,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * for a line, not the line itself: a prompt whose budget refused the block reports a match and carries no
    * line. The two are separated deliberately, because collapsing them would make an eviction and a budget
    * refusal the same number — and `prompt-digest` is what observes the bytes.
+   *
+   * `stored` is the one field here that is not a count of events but a census **over `MemoryType`**, and it
+   * exists because the other five cannot distinguish the two things the store is supposed to hold. Eight
+   * `episodic` entries would be eight absorptions by every other number in this object — the type is the only
+   * place the product's own taxonomy shows up in a reading, which is what semantic-layer exit criterion E3
+   * asks for. It is a count of the entries in hand, so `absorbed - dropped` equals its sum.
    */
   semanticCarryCensus(): {
     readonly absorbed: number;
@@ -1136,8 +1177,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     readonly matched: number;
     readonly served: number;
     readonly withheld: number;
+    readonly stored: Readonly<Record<MemoryType, number>>;
   } {
-    return { ...this.#semantic };
+    const stored: Record<MemoryType, number> = { episodic: 0, semantic: 0, procedural: 0 };
+    for (const entry of this.#semanticUpdates) stored[entry.memory.type] += 1;
+    return { ...this.#semantic, stored };
   }
 
   /**
@@ -2111,17 +2155,27 @@ export class CortexMemory implements SessionAwareMemorySystem {
     if (this.#semanticKeys.has(update.key)) return;
     this.#semanticKeys.add(update.key);
     this.#semantic.absorbed += 1;
-    this.#semanticUpdates.push(update);
+    // Rendered, typed and stored in one expression, so an entry cannot be held without the block a prompt would
+    // serve or without the `MemoryValue` the eviction ranks. The ordering this replaced was `push` then compute;
+    // splitting them is how a store comes to hold a unit whose `content` was never rendered.
+    const block = assembleSemanticUpdate(update);
+    this.#semanticUpdates.push({
+      update,
+      block,
+      memory: memoryForUpdate({ update, lines: block.lines, now: this.#options.now }),
+      reads: 0,
+    });
     if (this.#semanticUpdates.length <= SEMANTIC_UPDATES_MAX) return;
-    // `shift()` on a non-empty array. The `undefined` branch an earlier version checked for was unreachable —
-    // the guard above has already established that the array is one past the bound — and the coverage gate
-    // reported it as the dead branch it was.
-    const evicted = this.#semanticUpdates.shift() as SemanticUpdate;
+    // `leastRetained` on a non-empty array. The guard above has already established that the array is one past
+    // the bound, which is the same fact that makes the `splice` safe — the `undefined` branch an earlier version
+    // checked for was unreachable, and the coverage gate reported it as the dead branch it was.
+    const victim = leastRetained(this.#semanticUpdates);
+    const [evicted] = this.#semanticUpdates.splice(victim, 1) as [StoredUpdate];
     this.#semantic.dropped += 1;
     // The key leaves with the unit. A set that kept it would refuse to re-absorb an update the store has
     // since evicted, so a corpus that returns after nine other changes would silently lose a line it
     // qualifies for — a bound becoming a permanent ban.
-    this.#semanticKeys.delete(evicted.key);
+    this.#semanticKeys.delete(evicted.update.key);
   }
 
   /**
@@ -2139,13 +2193,18 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const contents = turns.map((turn) => turn.content);
     const lines: string[] = [];
     let applied = 0;
-    for (const update of this.#semanticUpdates) {
-      if (!updateAppliesTo(update, contents)) continue;
+    for (const stored of this.#semanticUpdates) {
+      if (!updateAppliesTo(stored.update, contents)) continue;
       applied += 1;
-      const block = assembleSemanticUpdate(update);
-      this.#semantic.served += block.served;
-      this.#semantic.withheld += block.withheld;
-      lines.push(...block.lines);
+      // The read-back, in the one place a window can perform it. `reads` is what {@link retentionRank} ranks a
+      // `semantic` entry by after its stamp, and the stamp cannot do the job alone: the clock is injected and
+      // fixed, so every entry in this store carries the same `lastAccessedAt` whether or not a window ever
+      // carried it. That is why the count exists as a field and why it is incremented here rather than at
+      // absorption — an entry absorbed is not an entry used.
+      stored.reads += 1;
+      this.#semantic.served += stored.block.served;
+      this.#semantic.withheld += stored.block.withheld;
+      lines.push(...stored.block.lines);
     }
     // Counted per **prompt**, and on the *anchor* rather than on the lines. Two updates over one corpus are one
     // question that learned two things, not two questions; and a window whose block the prompt budget later

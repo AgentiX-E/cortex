@@ -22,10 +22,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assembleSemanticUpdate,
+  memoryForUpdate,
   semanticUpdateFrom,
   updateAppliesTo,
   type SemanticUpdate,
 } from '../semantic-facts.js';
+import { createMemory } from '@agentix-e/cortex-core';
 import type { KnowledgeFact } from '@agentix-e/cortex-core';
 import type { SupersessionVerdict } from '../supersede.js';
 
@@ -137,6 +139,17 @@ describe('what an authorised substitution becomes', () => {
         expect(covered).toContain(word);
       }
     }
+  });
+
+  it('keeps the record header as the entry provenance, stripped of the sentence', () => {
+    // `MemoryValue.source` exists for provenance and poisoning defence, and the honest value for a statement
+    // the product authorised is the record it was authorised *from*. The name of the mechanism (`'supersede'`)
+    // would tell a reader which code path fired and nothing about where the claim came from, which is the
+    // direction the field points. The trailing colon is kept: it is what marks the string as a header rather
+    // than a full record, and a reader comparing it against `anchor` can see the two are one record split.
+    expect(build()!.source).toBe('[2023/03/12 (Sun) 11:40] user:');
+    expect(build()!.anchor).toBe('I am at 30 dozen at the moment.');
+    expect(build()!.source).not.toContain(build()!.anchor);
   });
 });
 
@@ -383,5 +396,62 @@ describe('the ledger, because an edge is not a refutation', () => {
     // entire evidence, which the prompt already carries verbatim above the block — so the default would spend
     // the evidence budget printing a copy of the evidence.
     expect(assembleSemanticUpdate(build()!).lines.join('\n')).not.toContain('frame:');
+  });
+});
+
+describe('the store entry an update becomes', () => {
+  const NOW = 1_759_470_000_000;
+
+  function entry(now = NOW) {
+    const update = build()!;
+    const block = assembleSemanticUpdate(update);
+    return { update, block, memory: memoryForUpdate({ update, lines: block.lines, now }) };
+  }
+
+  it('is typed `semantic`, which is the claim the entry makes about itself', () => {
+    // E3's write half. Before this round every `MemoryValue` the product built carried a literal `'episodic'`
+    // and nothing ever compared the field, so the union's three members were a taxonomy the type system
+    // asserted and the runtime did not have.
+    expect(entry().memory.type).toBe('semantic');
+  });
+
+  it('carries the block the prompt would serve, not a description of it', () => {
+    // `content` is "human-readable content", and the readable form of this entry is the characters a prompt
+    // would carry. A second rendering written here would be a second place the entry's meaning is decided —
+    // and the store and the prompt would drift on the first change to either.
+    const { block, memory } = entry();
+    expect(memory.content).toBe(block.lines.join('\n'));
+    expect(memory.content).toContain('fact:     30 dozen  [state]');
+  });
+
+  it('uses the dedup key as its id, so one update cannot become two entries', () => {
+    // The key is `anchor \0 value`, which is exactly the identity `#semanticKeys` dedups on. A random id would
+    // make the store's own identity and the dedup set disagree, and a corpus seen twice would be one entry by
+    // the set and two by the array.
+    const { update, memory } = entry();
+    expect(memory.id).toBe(update.key);
+  });
+
+  it('stamps the store clock and not the corpus date', () => {
+    // `learnedAt` is the later record's instant — 2023 — and `createdAt` is when this instance recorded the
+    // entry. Stamping `learnedAt` would make an entry absorbed in 2026 read as older than the store that holds
+    // it, and the eviction ranks by the stamp.
+    const { update, memory } = entry();
+    expect(memory.createdAt).toBe(NOW);
+    expect(memory.lastAccessedAt).toBe(NOW);
+    expect(memory.createdAt).not.toBe(update.learnedAt);
+  });
+
+  it('invents no utility, confidence or trust number', () => {
+    // The three fields easiest to make up, and all three are left to `createMemory`, which is also what an
+    // admitted turn carries. A semantic entry with `value: 1` would be a claim about future utility that no
+    // observation supports, and the eviction must not be decided by a number this module guessed.
+    const { memory } = entry();
+    const bare = createMemory({ content: 'x' });
+    expect(memory.value).toBe(bare.value);
+    expect(memory.confidence).toBe(bare.confidence);
+    expect(memory.sourceTrust).toBe(bare.sourceTrust);
+    expect(memory.stability).toBe(bare.stability);
+    expect(memory.difficulty).toBe(bare.difficulty);
   });
 });
