@@ -70,7 +70,10 @@ INPUTS: dict[str, str] = {
     "ablation_runs": "2",
     "model": "deepseek-chat",
     "thinking": "disabled",
-    "workers": "4",
+    # Mirrors the workflow's own default, which moved from 4 to 32 when the registered shape's
+    # arithmetic was corrected: 17,900 calls is 30 hours at four workers and 3.8 at thirty-two, and
+    # the job carries a 300-minute in-run budget that 24 workers lands exactly on.
+    "workers": "32",
     # The ceiling the workflow's own gate reads. Sent rather than left to the workflow, for the
     # reason every other key is: a default the dispatcher does not state is a run whose budget the
     # log cannot explain. See `DEFAULT_BUDGET_CNY` for why this workflow's number is not the other
