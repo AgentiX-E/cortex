@@ -78,7 +78,15 @@ list that reads uniformly at full strength is the one thing this file must not b
 >   evidence about the hypothesis* by
 >   [`docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md`](docs/PREREGISTRATION-CORTEX-MEMORY-ARM.md)
 >   §7.5, because the registered configuration sets both gates to `0` and a gate that admits
->   everything cannot be compared against anything.
+>   everything cannot be compared against anything;
+> - its **evidence assembly** is now self-describing, which it was not: `lastRoute()` reports which
+>   of the six paths a question took, and `lastRoleCensus()` reports which roles the window it was
+>   shown actually contained — counted by the same classifier the `evidenceRoles` filter uses, with
+>   `unclassified` kept separate because a turn whose role cannot be read is kept rather than
+>   dropped. Both reach the artifact per question. Before §13.374 an audit had to infer the path
+>   from the dataset's `capability` and re-derive the roles with its own copy of the prefix regex,
+>   and on run `43465626013` those two inferences disagreed with each other about four records for
+>   a reason neither could see.
 >
 > Three documented capabilities remain unwired: optimal-transport distillation (`sinkhorn`,
 > exported but uncalled), TD(λ) credit assignment (not implemented), and fact **derivation**

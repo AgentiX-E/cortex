@@ -14,6 +14,9 @@ export type {
   CortexMemoryOptions,
   ReplyRepair,
   ReviewPass,
+  // The filter's effect as a value: the artifact records a census, so the shape has to be nameable at
+  // the boundary where the arm serialises it.
+  RoleCensus,
   TurnCapRoute,
   // §13.153: the arm constructs both readers from `cortex-eval`'s turn clock and window
   // resolver, and the type has to be nameable at that boundary or the arm would restate it.

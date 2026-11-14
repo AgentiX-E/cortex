@@ -279,6 +279,37 @@ export type AdmittedEvidence = {
 export type RetrievedTurns = readonly string[];
 
 /**
+ * The roles a delivered window carried, as the product's own classifier counted them.
+ *
+ * ## Why this is a structural mirror rather than the product's type
+ *
+ * `cortex-eval` cannot import `cortex-memory` — the dependency runs the other way, which is why
+ * `RetrievedTurns` and `AdmittedEvidence` above are shapes as well. `RoleCensus` in that package is the
+ * same three fields with the same invariant (`sum(counts) + unclassified === total`), and the arm's
+ * conformance tests are what keep the two from drifting.
+ *
+ * ## What question this answers that the filter's configuration could not
+ *
+ * Screening run `43465626013` recorded `evidenceRoles: ["user"]` on every record and nothing about what
+ * that filter did. Its audit then reported four windows carrying an assistant turn, and separating "the
+ * filter stopped working" from "the audit read the wrong set" required reconstructing four records by
+ * hand — which found a third answer neither reading had.
+ *
+ * `counts` beside the configuration is that question answered per question: `assistant: 0` under
+ * `evidenceRoles: ["user"]` is a filter that ran, `assistant: 3` is a filter that did not reach the
+ * route, and `unclassified: 3` is neither — the contract keeps a turn whose role cannot be read, so it
+ * is the escape hatch working rather than a defect.
+ */
+export type DeliveredRoleCensus = {
+  /** Delivered turns per role the classifier named. */
+  readonly counts: Readonly<Record<string, number>>;
+  /** Delivered turns the classifier returned `undefined` for. */
+  readonly unclassified: number;
+  /** Delivered turns in the window. Always `sum(counts) + unclassified`. */
+  readonly total: number;
+};
+
+/**
  * How much of the dataset's gold evidence the carried context contained.
  *
  * ## Why two numbers and not a boolean
@@ -769,6 +800,33 @@ export type AblationResult = {
    * entry means the system exposes no prompt, which is not an empty prompt.
    */
   featurePromptTexts?: readonly (string | null)[];
+  /**
+   * The path the product says each question took, in dataset order.
+   *
+   * ## Why an audit needs this and the capability is not a substitute
+   *
+   * `capability` is the **dataset's** word for a question's shape; a route is the **arm's** word for the path
+   * it took, and the two diverge exactly where an audit is most likely to be wrong. A `TR` question on a
+   * system that does not declare `answerTemporal` falls through to the flat path, and `ABS` can carry
+   * `single-session-assistant`. An audit that checks a per-route option against a capability therefore checks
+   * it against a path the question may never have taken — which is one of the two readings screening run
+   * `43465626013` could not distinguish.
+   *
+   * `null` per question means the system does not report a route. That is a different statement from "it took
+   * the flat path", and folding them would let an unreported route read as a routed one.
+   */
+  featureRoutes?: readonly (string | null)[];
+  /**
+   * The roles the delivered window carried on the feature side, per question, in dataset order.
+   *
+   * The filter's **effect**, beside its configuration. `evidenceRoles: ["user"]` beside `assistant: 0` is a
+   * filter that ran; the same configuration beside `assistant: 3` is a filter that did not reach the route;
+   * and `unclassified: 3` is neither, because the contract keeps a turn whose role cannot be read.
+   *
+   * `null` per question means the system was not given a classifier, which is a different statement from a
+   * window in which every turn was unclassifiable.
+   */
+  featureRoleCensuses?: readonly (DeliveredRoleCensus | null)[];
   /**
    * How many distinct prompts each question cost across the repetitions, in dataset order.
    *

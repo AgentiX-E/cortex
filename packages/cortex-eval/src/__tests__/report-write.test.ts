@@ -50,6 +50,14 @@ function reportWithEvidence(
   turnsPerQuestion: number,
   questions: number,
   gold: { carried: number; total: number } | null = null,
+  /**
+   * Whether the records state a route and a role census.
+   *
+   * `true` by default because most tests are about a record that has them, and `false` for the two
+   * branches the reducer's `?? null` needs: a record whose system reported neither is the state the
+   * coercion exists for, and a test that never produces it leaves half of that expression unread.
+   */
+  routing = true,
 ): AblationReport {
   // One turn per unit, since §13.16.6: a list of the units the capture reports, so the
   // record's `turns` is a count of turns rather than of the lines they printed.
@@ -72,6 +80,20 @@ function reportWithEvidence(
       // The offer, equal to the carried context here because this fixture builds a
       // report by hand and no budget stands between the two.
       admitted: { turns: turnsPerQuestion, chars },
+      // The reduction this file tests is the one that must not drop them, so the fixture states both. The
+      // census counts the turns **before** the bound, which is what makes it a check on the reduction rather
+      // than a copy of it: a rebuilt record that recounted would report the reduced number and read exactly
+      // like a record that never had a census.
+      ...(routing
+        ? {
+            route: 'multi-session',
+            roleCensus: {
+              counts: { user: turnsPerQuestion },
+              unclassified: 0,
+              total: turnsPerQuestion,
+            },
+          }
+        : { route: null, roleCensus: null }),
     })),
     // The cohort-level configuration, passed as the builder's second parameter
     // exactly as the arm passes it. It is here so a reduction that drops it is
@@ -126,6 +148,58 @@ describe('serializeReportOrReduce', () => {
     const parsed = JSON.parse(result.json) as AblationReport;
     expect(parsed.questionCount).toBe(2);
     expect(parsed.questions).toHaveLength(2);
+  });
+
+  it('keeps the route and the role census through the reduction', () => {
+    // The rebuild every reduced record goes through is `buildQuestionRecords`, and `featureConfig` and
+    // `promptChars` were each silently dropped by one that did not list them. These two are required on the
+    // input type so a rebuild cannot omit them by accident -- but `record.route ?? null` satisfies the
+    // compiler, so the assertion has to be behavioural: a reduced artifact that lost its route would send the
+    // next audit back to `capability`, which is the inference the field exists to end.
+    const report = reportWithEvidence(5, 2);
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('"turn 4"')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+
+    const result = serializeReportOrReduce(report, exploding, { maxTurnsPerRecord: 2 });
+
+    const parsed = JSON.parse(result.json) as AblationReport;
+    expect(parsed.questions!.map((question) => question.route)).toEqual([
+      'multi-session',
+      'multi-session',
+    ]);
+    // The census is not recounted: it counted the delivery before the bound, and the bound is an artifact
+    // setting applied after the run. Recounting would change what the artifact says the model read.
+    expect(parsed.questions![0]!.roleCensus).toEqual({
+      counts: { user: 5 },
+      unclassified: 0,
+      total: 5,
+    });
+    expect(parsed.questions![0]!.turns.length).toBeLessThan(5);
+  });
+
+  it('keeps a record that stated neither route nor census stating neither', () => {
+    // The other half of the two `?? null` branches, and the state a system without the accessors produces.
+    // Coercing absence to a value here would be the defect the fields exist to prevent, arriving in the one
+    // artifact a run writes when it is out of room -- the artifact nobody re-runs to check.
+    const report = reportWithEvidence(5, 2, null, false);
+    const exploding: ReportWriterDeps = {
+      serialize: (value) => {
+        const text = JSON.stringify(value);
+        if (text.includes('"turn 4"')) throw new RangeError('Invalid string length');
+        return text;
+      },
+    };
+
+    const result = serializeReportOrReduce(report, exploding, { maxTurnsPerRecord: 2 });
+
+    const parsed = JSON.parse(result.json) as AblationReport;
+    expect(parsed.questions!.every((question) => !('route' in question))).toBe(true);
+    expect(parsed.questions!.every((question) => !('roleCensus' in question))).toBe(true);
   });
 
   it('names what was reduced and by how much', () => {

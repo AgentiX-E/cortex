@@ -88,7 +88,7 @@ import { buildSpecPrompt } from './aggregation/plan-prompt.js';
 import { authoriseSpecSubstitution } from './aggregation/authorization.js';
 import type { SpecAuthorization } from './aggregation/authorization.js';
 import { parseAnswer, voteAnswers, type Vote } from './parse.js';
-import type { CortexMemoryOptions, TurnCapRoute } from './types.js';
+import type { CortexMemoryOptions, RoleCensus, TurnCapRoute } from './types.js';
 
 /**
  * The offer's size, counted the way the record counts the delivery.
@@ -547,6 +547,54 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #lastRetrievedContext: readonly string[] | null = null;
 
   /**
+   * The roles the most recent window carried, or `null` when no classifier was injected.
+   *
+   * ## Why the filter needed an effect and not only a configuration
+   *
+   * `evidenceRoles` was recorded in every artifact as `evidenceRoles: ["user"]`, and a reader of that
+   * line could not tell a filter that ran from one that was configured and never reached a route.
+   * Screening run `43465626013` is where that ambiguity cost a round: its audit reported four windows
+   * carrying an assistant turn, and separating "the filter stopped working" from "the audit read the
+   * wrong set" required reconstructing four records by hand.
+   *
+   * `null` rather than an all-`unclassified` census when `roleOf` is absent, because the two say
+   * different things: no classifier means this arm cannot answer the question at all, while
+   * `unclassified: n` means it asked the classifier and got no answer. Collapsing them would make a
+   * missing injection read as a corpus of unreadable turns.
+   *
+   * ## Same window as `#lastRetrievedContext`, by construction
+   *
+   * Both are written in {@link #recordCoverage} from the same `assembled.carried`, so
+   * `sum(counts) + unclassified === total === lastRetrievedContext().length` holds as an invariant
+   * rather than as a hope. A census taken one layer away — on the offer instead of the delivery —
+   * would satisfy its own arithmetic and describe a different window, which is the `§13.262` split
+   * between delivery and coverage arriving on a new field.
+   */
+  #lastRoleCensus: RoleCensus | null = null;
+
+  /**
+   * Which of the six paths the most recent question took, or `null` before any question.
+   *
+   * ## Why this survives a decline when every other per-question slot does not
+   *
+   * The other slots are **reader-side** readings, so a question that never reached a reader has no
+   * reading and reports `null` — that is what {@link #resetPerQuestion} is for. The route is not a
+   * reader-side reading: it is where the question **entered**, and it is known before any gate runs.
+   * `answerSessions` on an empty session list declined, and "this question took the multi-session path
+   * and closed before the reader" is exactly the fact that would have settled `43465626013` from the
+   * artifact alone.
+   *
+   * ## Why the audit reads this instead of `capability`
+   *
+   * `capability` is the **dataset's** word for a question's shape (`IE`, `MR`, `TR`, `KU`, `ABS`); a
+   * route is the **arm's** word for the path it took. They diverge precisely where an audit is most
+   * likely to be wrong: `ABS` can carry `single-session-assistant`, and a `TR` question whose system
+   * does not declare `answerTemporal` falls through to the flat path. An audit that inferred the route
+   * from the capability would check `evidenceRoles` against a path the question never took.
+   */
+  #lastRoute: TurnCapRoute | null = null;
+
+  /**
    * The evidence characters the most recent prompt carried, or `null`.
    *
    * ## Why this is not `#lastRetrievedContext.length`
@@ -962,6 +1010,39 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * Which of the six paths the most recent question took, or `null` before any question.
+   *
+   * Read instead of inferring a route from a dataset's `capability`, because the two are different
+   * vocabularies and they diverge exactly where an audit is most likely to be wrong: a `TR` question on a
+   * system that does not declare `answerTemporal` takes the flat path, and an `ABS` question can carry
+   * `single-session-assistant`. An audit that checked `evidenceRoles` against a capability would be
+   * checking it against a path the question never took — which is one of the two readings screening run
+   * `43465626013` could not distinguish.
+   *
+   * Not cleared by a decline: see {@link #lastRoute}.
+   */
+  lastRoute(): TurnCapRoute | null {
+    return this.#lastRoute;
+  }
+
+  /**
+   * How many turns of the most recent window each role accounted for, or `null` without a classifier.
+   *
+   * The filter's **effect**, as distinct from its configuration. `evidenceRoles: ["user"]` beside
+   * `counts.assistant: 0` is a filter that ran; the same configuration beside `counts.assistant: 3` is a
+   * filter that did not reach the route; and `unclassified: 3` is neither, because the contract keeps a
+   * turn whose role cannot be read.
+   *
+   * Returned by value, for the reason {@link abstentionReasons} is: the arm serialises this straight into
+   * its artifact, and a consumer that mutated what it read would change what the next reader sees.
+   */
+  lastRoleCensus(): RoleCensus | null {
+    const census = this.#lastRoleCensus;
+    if (census === null) return null;
+    return { counts: { ...census.counts }, unclassified: census.unclassified, total: census.total };
+  }
+
+  /**
    * The evidence characters the most recent prompt carried, or `null`.
    *
    * Exactly the field `§13.11.5` needs and `lastRetrievedContext` cannot supply:
@@ -1118,6 +1199,33 @@ export class CortexMemory implements SessionAwareMemorySystem {
   ): void {
     this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content);
     this.#lastAdmittedEvidence = admittedEvidenceOf(admitted);
+    // Written from the same `carried` the line above reads, so the census and the window cannot
+    // describe different sets. `§13.262` is the reason this is not computed from `admitted`: the offer
+    // and the delivery are the same set only when the budget did not bind, and every question of run
+    // `38044858147` is a case where it did.
+    this.#lastRoleCensus = this.#censusOf(this.#lastRetrievedContext);
+  }
+
+  /**
+   * The roles in a window, by the classifier the filter itself used.
+   *
+   * The classifier is not re-derived here and it is not optional per call: `#roleFilterForRoute`
+   * resolves the same `roleOf` for the filter, so a census and a filter that disagree about a turn's
+   * role are unrepresentable rather than merely unlikely. An audit that re-implemented the parse — as
+   * the one on `43465626013` did, with its own copy of the dataset's prefix regex — could report a
+   * filter defect that was a parser divergence.
+   */
+  #censusOf(turns: readonly string[]): RoleCensus | null {
+    const roleOf = this.#options.roleOf;
+    if (roleOf === undefined) return null;
+    const counts: Record<string, number> = {};
+    let unclassified = 0;
+    for (const turn of turns) {
+      const role = roleOf(turn);
+      if (role === undefined) unclassified += 1;
+      else counts[role] = (counts[role] ?? 0) + 1;
+    }
+    return { counts, unclassified, total: turns.length };
   }
 
   /**
@@ -1294,6 +1402,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * absent, and for `single-session-preference`.
    */
   async answer(question: string, context: string[], _sessions?: string[][]): Promise<Answer> {
+    this.#enterRoute('flat');
     return this.#respond(question, context, 'extractive');
   }
 
@@ -1309,6 +1418,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * which left every other session-taking path unbounded; see `#admit`.
    */
   async answerSessions(question: string, sessions: string[][]): Promise<Answer> {
+    this.#enterRoute('multi-session');
     const admitted = admitSessions(sessions, this.#admissionOptions());
 
     if (admitted.length === 0) return this.#declinedEmpty();
@@ -1365,6 +1475,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     questionDate?: string,
     sessions?: string[][],
   ): Promise<Answer> {
+    this.#enterRoute('temporal');
     const turns = this.#admit(context, sessions);
     if (turns.length === 0) return this.#declinedEmpty();
 
@@ -1410,6 +1521,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     context: string[],
     sessions?: string[][],
   ): Promise<Answer> {
+    this.#enterRoute('abstention');
     const turns = this.#admit(context, sessions);
     if (turns.length === 0) return this.#declinedEmpty();
 
@@ -1475,6 +1587,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     context: string[],
     sessions?: string[][],
   ): Promise<Answer> {
+    this.#enterRoute('assistant');
     const turns = this.#admit(context, sessions);
     if (turns.length === 0) return this.#declinedEmpty();
 
@@ -1495,6 +1608,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     context: string[],
     sessions?: string[][],
   ): Promise<Answer> {
+    this.#enterRoute('knowledge-update');
     const turns = this.#admit(context, sessions);
     if (turns.length === 0) return this.#declinedEmpty();
 
@@ -1578,6 +1692,31 @@ export class CortexMemory implements SessionAwareMemorySystem {
     this.#lastAdmittedEvidence = null;
     this.#lastPromptEvidenceChars = null;
     this.#lastPromptText = null;
+    // The census goes with the window it describes: a window that was never shown has no roles, and a
+    // census that survived would report the previous question's composition under this question's name --
+    // the exact shape of the defect this method exists for.
+    //
+    // `#lastRoute` is deliberately **not** reset. Everything above is a reader-side reading, so a question
+    // that never reached a reader has none. The route is where the question entered, it is known before any
+    // gate runs, and "took the multi-session path and closed before the reader" is the finding a decline
+    // still carries -- clearing it would remove the one fact an audit of a decline most needs.
+    this.#lastRoleCensus = null;
+  }
+
+  /**
+   * Record where this question entered, before any gate runs.
+   *
+   * One method rather than six assignments for the reason {@link #resetPerQuestion} is one method: the
+   * rule is "every public answering entry states its route", and a rule restated at six sites is a rule
+   * that one site will eventually miss — the shape that cost the previous round seven uncleared slots.
+   *
+   * Calling it first in each method is not decoration. A route recorded only on the way to a prompt would
+   * be absent on every question that declined, and a decline is exactly the case an audit needs the route
+   * for: `answerSessions` on an empty session list never reaches a builder, and "took the multi-session
+   * path and closed before the reader" is a different finding from "no question ran".
+   */
+  #enterRoute(route: TurnCapRoute): void {
+    this.#lastRoute = route;
   }
 
   /**

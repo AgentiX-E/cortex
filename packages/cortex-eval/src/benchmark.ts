@@ -5,6 +5,7 @@ import type {
   AdmittedEvidence,
   Answer,
   BenchmarkDataset,
+  DeliveredRoleCensus,
   MemorySystem,
   RetrievedTurns,
   SessionAwareMemorySystem,
@@ -544,13 +545,67 @@ type BenchmarkRawOutputCallback = (raw: string | null, index: number) => void;
  * caller is this module's own loop, and an export nothing outside could use is
  * the `1 NEW orphan(s)` the census gate reports.
  */
-type BenchmarkRetrievedCallback = (
-  retrieved: RetrievedTurns | null,
-  promptChars: number | null,
-  admitted: AdmittedEvidence | null,
-  promptText: string | null,
-  index: number,
-) => void;
+type BenchmarkRetrievedCallback = (capture: RetrievalCapture, index: number) => void;
+
+/**
+ * Everything one capture yields about the question it was taken for.
+ *
+ * ## Why this became an object
+ *
+ * It was six positional parameters, and the sixth was the reason to stop: the route and the role census
+ * are the fifth and sixth facts about **one request**, and a callback that took them in order would have
+ * made a caller that wanted only the last one spell four `null`s. The four that were already here are one
+ * fact each, and each of them was added one at a time by a round that needed it.
+ *
+ * The two new ones are added together because they answer the two halves of one question an audit could
+ * not settle from the artifact: **which path did this question take**, and **which roles did the window it
+ * was shown actually contain**. Screening run `43465626013` failed its own audit with
+ * `FAIL roles evidenceRoles=['user'] on ['multi-session','temporal']`, and the artifact held neither field —
+ * so the reading required reconstructing four records by hand, which found a third answer neither the
+ * audit nor its reader had.
+ *
+ * `route` is a plain `string` rather than the product's `TurnCapRoute` for the reason every type in this
+ * package is: the dependency runs the other way. `null` means the system does not report one, which is a
+ * different statement from "it took the flat path" and is kept different.
+ */
+type RetrievalCapture = {
+  /** The turns the reader was shown. See {@link RetrievedTurns}. */
+  readonly context: RetrievedTurns | null;
+  /** The prompt characters the evidence took, after the builder's budget. */
+  readonly promptEvidenceChars: number | null;
+  /** The offer, before any budget. See {@link AdmittedEvidence}. */
+  readonly admittedEvidence: AdmittedEvidence | null;
+  /** The prompt itself, for the fingerprint. */
+  readonly promptText: string | null;
+  /**
+   * The path the product says this question took; `null` when it does not report one.
+   *
+   * Read instead of inferring it from a dataset's `capability`, because those are two vocabularies: a `TR`
+   * question falls through to the flat path when the system does not declare `answerTemporal`, and `ABS`
+   * can carry `single-session-assistant`. An audit that checks a role filter against a capability is
+   * checking it against a path the question may never have taken.
+   */
+  readonly route: string | null;
+  /** The roles the delivered window carried, by the product's own classifier. */
+  readonly roleCensus: DeliveredRoleCensus | null;
+};
+
+/**
+ * The two vectors a retrieval capture produces beyond the four it already produced.
+ *
+ * Declared as a separate shape and intersected into the evaluation rather than threaded through
+ * `scoreEvaluation`'s argument list, which already carries five optional vectors. The distinction that
+ * matters is where they are **produced**: `scoreEvaluation` computes metrics from answers and attaches the
+ * captures it is handed, while these two are collected by the loop that ran the questions. Keeping them a
+ * separate intersection says that, where adding two more optional parameters would have said the
+ * scorer is where a route comes from.
+ */
+export type RetrievalCaptureVectors = {
+  /** Per question: the route the product reported, or `null`. */
+  readonly routes?: readonly (string | null)[];
+  /** Per question: the delivered window's role census, or `null`. */
+  readonly roleCensuses?: readonly (DeliveredRoleCensus | null)[];
+};
 
 /**
  * A sink for each answer as it is produced, so a throw does not erase the pass.
@@ -723,6 +778,28 @@ export async function runBenchmark(
         ? undefined
         : 'lastPromptText' in worker
           ? (worker as { lastPromptText: () => string | null }).lastPromptText.bind(worker)
+          : undefined,
+    // The two facts about the request that the four above do not carry: which path the question took, and
+    // which roles the window it was shown actually contained. Resolved under the same rule and at the same
+    // point as the four, because a run that captures one of them and not the others has no use for any of
+    // them -- the whole capture is one request.
+    //
+    // Optional capabilities rather than members of the injection contract, so a system that does not report
+    // them costs nothing and reaches the record as **absent**. That is what keeps a `null` here meaning "this
+    // system cannot say" rather than "this question had no route".
+    route:
+      onRetrieved === undefined
+        ? undefined
+        : 'lastRoute' in worker
+          ? (worker as { lastRoute: () => string | null }).lastRoute.bind(worker)
+          : undefined,
+    roleCensus:
+      onRetrieved === undefined
+        ? undefined
+        : 'lastRoleCensus' in worker
+          ? (worker as { lastRoleCensus: () => DeliveredRoleCensus | null }).lastRoleCensus.bind(
+              worker,
+            )
           : undefined,
   });
   // Every branch below routes through this, rather than calling the vector itself. Seven
@@ -1018,10 +1095,16 @@ export async function runBenchmark(
       // above so that a run wanting only one of the two captures does not pay for the other.
       if (onRetrieved !== undefined) {
         onRetrieved(
-          accessors.retrievedContext === undefined ? null : accessors.retrievedContext(),
-          accessors.promptEvidence === undefined ? null : accessors.promptEvidence(),
-          accessors.admittedEvidence === undefined ? null : accessors.admittedEvidence(),
-          accessors.promptText === undefined ? null : accessors.promptText(),
+          {
+            context: accessors.retrievedContext === undefined ? null : accessors.retrievedContext(),
+            promptEvidenceChars:
+              accessors.promptEvidence === undefined ? null : accessors.promptEvidence(),
+            admittedEvidence:
+              accessors.admittedEvidence === undefined ? null : accessors.admittedEvidence(),
+            promptText: accessors.promptText === undefined ? null : accessors.promptText(),
+            route: accessors.route === undefined ? null : accessors.route(),
+            roleCensus: accessors.roleCensus === undefined ? null : accessors.roleCensus(),
+          },
           index,
         );
       }
@@ -1095,12 +1178,14 @@ export async function evaluateWithScorerDetailed(
   budgetMs?: number,
   /** Workers in flight. See {@link BenchmarkWorkerPool}; absent means the serial pass. */
   pool?: BenchmarkWorkerPool,
-): Promise<ScoredEvaluation> {
+): Promise<ScoredEvaluation & RetrievalCaptureVectors> {
   const rawOutputs: (string | null)[] = [];
   const retrievedContexts: (RetrievedTurns | null)[] = [];
   const promptEvidenceChars: (number | null)[] = [];
   const admittedEvidence: (AdmittedEvidence | null)[] = [];
   const promptTexts: (string | null)[] = [];
+  const routes: (string | null)[] = [];
+  const roleCensuses: (DeliveredRoleCensus | null)[] = [];
   // Placed by index, not appended. Four vectors are captured from the same call and all four
   // are paired with `featureAnswers`/`correct[]` by question index downstream, so under a pool
   // a push would silently rotate every explanation one question out of phase -- a defect that
@@ -1116,18 +1201,20 @@ export async function evaluateWithScorerDetailed(
         }
       : undefined,
     captureRetrievedContext
-      ? (retrieved, chars, admitted, prompt, index) => {
-          retrievedContexts[index] = retrieved;
-          promptEvidenceChars[index] = chars;
-          admittedEvidence[index] = admitted;
-          promptTexts[index] = prompt;
+      ? (capture, index) => {
+          retrievedContexts[index] = capture.context;
+          promptEvidenceChars[index] = capture.promptEvidenceChars;
+          admittedEvidence[index] = capture.admittedEvidence;
+          promptTexts[index] = capture.promptText;
+          routes[index] = capture.route;
+          roleCensuses[index] = capture.roleCensus;
         }
       : undefined,
     onAnswer,
     budgetMs,
     pool,
   );
-  return scoreEvaluation(
+  const scored = await scoreEvaluation(
     dataset,
     answers,
     scorer,
@@ -1137,4 +1224,9 @@ export async function evaluateWithScorerDetailed(
     captureRetrievedContext ? admittedEvidence : undefined,
     captureRetrievedContext ? promptTexts : undefined,
   );
+  // Intersected rather than handed to `scoreEvaluation`, and conditional on the same flag as the four above:
+  // a run that did not ask for the capture gets an evaluation with **no** such field rather than with an
+  // all-`null` vector, so "not requested" stays distinguishable from "every system declined to report" --
+  // the rule `captureRawOutput` states for its own vector.
+  return captureRetrievedContext ? { ...scored, routes, roleCensuses } : scored;
 }

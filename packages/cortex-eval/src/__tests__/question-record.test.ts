@@ -66,6 +66,10 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
       turns: retrieved.filter((unit) => unit.trim().length > 0).length,
       chars: joinedLength(retrieved),
     },
+    // `null` for both, because this fixture is a system that reports neither. The two are required on the
+    // input type so that a producer cannot leave them out by accident; a test that is about them states them.
+    route: null,
+    roleCensus: null,
     // `null` rather than a zero object: this fixture names no gold session, and the
     // absent state is what says "not measured" where a zero would say "measured as a
     // miss". Tests about coverage override it.
@@ -925,5 +929,53 @@ describe('the specification authorization columns', () => {
     ]) {
       expect(Object.hasOwn(record!, key)).toBe(false);
     }
+  });
+});
+
+describe('the route and the role census reach the record without being invented', () => {
+  it('omits both fields when the producer reports neither', () => {
+    // Omission rather than a `null` placeholder, which is the rule `promptChars` and `admitted` already
+    // follow: a field that is present and null reads as a value the producer chose, and there is no value
+    // here. `'route' in record` rather than `record.route === undefined` is the assertion that says so --
+    // the second would pass on a record that wrote the key and set it to nothing.
+    const [record] = buildQuestionRecords([input()]);
+    expect('route' in record!).toBe(false);
+    expect('roleCensus' in record!).toBe(false);
+  });
+
+  it('carries a reported route through unchanged, including `flat`', () => {
+    // `'flat'` and absent are different statements and this is where they are held apart. An audit that read
+    // an absent route as the flat path would check a per-route filter against a route nothing observed, which
+    // is one of the two readings screening run `43465626013` could not rule out.
+    const [record] = buildQuestionRecords([input({ route: 'flat' })]);
+    expect(record!.route).toBe('flat');
+
+    const [silent] = buildQuestionRecords([input({ route: null })]);
+    expect('route' in silent!).toBe(false);
+  });
+
+  it('carries a census through unchanged, including a window of unclassifiable turns', () => {
+    // Three states, and the record must be able to hold all three: absent (no classifier), a census whose
+    // `unclassified` equals its `total` (a classifier that read nothing), and a census with roles. Folding
+    // the first two would make an uninjected classifier read as a corpus of unreadable turns.
+    const census = { counts: { user: 2 }, unclassified: 1, total: 3 };
+    const [record] = buildQuestionRecords([input({ roleCensus: census })]);
+    expect(record!.roleCensus).toEqual(census);
+
+    const blind = { counts: {}, unclassified: 3, total: 3 };
+    const [opaqueRecord] = buildQuestionRecords([input({ roleCensus: blind })]);
+    expect(opaqueRecord!.roleCensus).toEqual(blind);
+  });
+
+  it('keeps the census on the same set as `turns` and not as `evidenceTurns`', () => {
+    // The invariant the artifact checks the two against each other with. `turns` is the delivery and
+    // `evidenceTurns` the offer, so a census whose `total` matched the offer would satisfy its own arithmetic
+    // and describe a window the model never saw -- the split `§13.262` records for the prompt fields.
+    const retrieved = Array.from({ length: 6 }, (_, i) => `turn ${i}`);
+    const [record] = buildQuestionRecords([
+      input({ retrieved, roleCensus: { counts: { user: 6 }, unclassified: 0, total: 6 } }),
+    ]);
+    expect(record!.roleCensus!.total).toBe(record!.turns.length);
+    expect(record!.turns.length).toBeLessThanOrEqual(record!.evidenceTurns!);
   });
 });

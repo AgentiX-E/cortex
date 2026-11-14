@@ -365,6 +365,12 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // is that the input type requires it. A record that never had an offer rebuilds
         // to one that does not, so the absence round-trips as an absence.
         admitted: admittedFromRecord(record),
+        // Required on the input type, so this cannot be the fourth field a rebuild silently drops. `?? null`
+        // rather than a forwarded `undefined`, because the record omits the field when the system reported
+        // nothing and the input's `null` is how that absence is restated -- a reduction must not turn "nobody
+        // said" into a route.
+        route: record.route ?? null,
+        roleCensus: record.roleCensus ?? null,
         // Forwarded for the reason `featureConfig` above is: a field the rebuild
         // does not carry is a field a reduction silently drops. This one is the
         // prompt's own evidence size, so losing it would leave a reduced artifact

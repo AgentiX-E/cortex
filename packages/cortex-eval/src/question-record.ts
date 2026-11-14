@@ -40,7 +40,12 @@
  */
 
 import type { TurnLike } from './candidate-context.js';
-import type { AdmittedEvidence, GoldOverlap, RetrievedTurns } from './types.js';
+import type {
+  AdmittedEvidence,
+  DeliveredRoleCensus,
+  GoldOverlap,
+  RetrievedTurns,
+} from './types.js';
 import type { FeatureConfig } from './report.js';
 
 /**
@@ -204,6 +209,44 @@ export type QuestionRecord = {
    * characters against a 24,000-character budget is the whole of it.
    */
   readonly evidenceChars?: number | undefined;
+  /**
+   * The path the product says this question took, when it reports one.
+   *
+   * ## Why this is beside `capability` rather than derived from it
+   *
+   * They are two vocabularies. `capability` is the **dataset's** word for a question's shape (`IE`, `MR`,
+   * `TR`, `KU`, `ABS`); a route is the **arm's** word for the path it took. They diverge exactly where an
+   * audit is most likely to be wrong: a `TR` question on a system that does not declare `answerTemporal`
+   * falls through to the flat path, and `ABS` can carry `single-session-assistant`.
+   *
+   * Screening run `43465626013` is what the divergence cost. Its own audit checked `evidenceRoles` against
+   * `['multi-session','temporal']` computed from `capability`, reported four failures, and the artifact held
+   * nothing that could say which path those four actually took — so settling it required reconstructing four
+   * records by hand, which found that the four were declines carrying the **previous** question's capture.
+   *
+   * Absent when the system does not report a route. That is a different statement from "it took the flat
+   * path", which is why this is omitted rather than defaulted: an audit that read an absent field as `flat`
+   * would check a filter against a path nothing was said about.
+   */
+  readonly route?: string | undefined;
+  /**
+   * The roles the delivered window carried, counted by the product's own classifier.
+   *
+   * The filter's **effect**, beside its configuration (`featureConfig.evidenceRoles`). `assistant: 0` under
+   * `evidenceRoles: ["user"]` is a filter that ran; `assistant: 3` is a filter that did not reach the route;
+   * `unclassified: 3` is neither, because the contract keeps a turn whose role cannot be read.
+   *
+   * ## Why the census is taken on the delivery and not on the offer
+   *
+   * Its `total` equals `turns.length`, not `evidenceTurns`, so a reader can check the two against each other
+   * rather than infer one from the other. A census taken on the offer would satisfy its own arithmetic and
+   * describe a window the model never saw — the split between delivery and coverage that `§13.262` records
+   * for the prompt fields, arriving on a new one.
+   *
+   * Absent when the system was given no classifier, which is different from a window in which every turn was
+   * unclassifiable.
+   */
+  readonly roleCensus?: DeliveredRoleCensus | undefined;
   /**
    * The characters of evidence the prompt actually carried, when it is known.
    *
@@ -534,6 +577,28 @@ export type QuestionRecordInput = {
    * the way through four hops.
    */
   readonly admitted: AdmittedEvidence | null;
+  /**
+   * The path the product says this question took, or `null` when it does not report one.
+   *
+   * ## Why required and nullable, which is the same argument `admitted` makes one field up
+   *
+   * **Required** so every producer states it and the compiler enumerates the producers — including the bound
+   * reducer's own rebuild, which remaps records through this type. `featureConfig` and `promptChars` were
+   * each dropped by a reducer that forgot to forward them, and a dropped route is worse than a dropped
+   * character count: the audit that reads it would then infer the route from `capability`, which is the
+   * defect this field exists to end.
+   *
+   * **Nullable** because a system may legitimately have no accessor for it, and the dishonest alternative is
+   * a default of `flat`, which would have an audit check a role filter against a path nothing was said about.
+   */
+  readonly route: string | null;
+  /**
+   * The roles the delivered window carried, or `null` when the system was given no classifier.
+   *
+   * Required and nullable for the reason `route` gives immediately above. `null` reaches the record as an
+   * **absent** field, so a reader never sees a placeholder where a census belongs.
+   */
+  readonly roleCensus: DeliveredRoleCensus | null;
   /**
    * The evidence characters the prompt carried, when the caller can report it.
    *
@@ -886,6 +951,12 @@ export function buildQuestionRecords(
       ...(input.admitted === null
         ? {}
         : { evidenceTurns: input.admitted.turns, evidenceChars: input.admitted.chars }),
+      // Both new fields follow the omission rule the pair above states: `null` is the producer saying "this
+      // system cannot report it", which is not a value and must not reach the artifact as a placeholder. An
+      // absent `route` is therefore "nobody said", distinct from `'flat'`; an absent `roleCensus` is "no
+      // classifier was injected", distinct from a window in which every turn was unclassifiable.
+      ...(input.route === null ? {} : { route: input.route }),
+      ...(input.roleCensus === null ? {} : { roleCensus: input.roleCensus }),
       // `null` is the caller saying "this system cannot report it", which is not a
       // prompt that carried nothing -- so it is omitted rather than written.
       ...(input.promptChars === undefined || input.promptChars === null
@@ -1480,6 +1551,12 @@ export function buildRecordsFromDataset(
         // its `retrieved` is rebuilt from units rather than kept as the delivered list, so
         // a membership count against the pool would be a number about the rebuild.
         windowComposition: null,
+        // `null` because a `DecisionTrace` carries neither: it records the refusals, the latency and the
+        // rendered context, and it is the reference pipeline's product rather than this arm's. Defaulting a
+        // route here would invent one -- and an audit reading it would check a per-route option against a
+        // path nothing observed, which is the failure this field exists to end.
+        route: null,
+        roleCensus: null,
       };
     }),
     featureConfig,

@@ -5140,3 +5140,93 @@ describe('the reply-contract repair', () => {
     expect(line).toContain('replyRepair=both');
   });
 });
+
+/**
+ * The route and the role census, from the product to the artifact.
+ *
+ * ## Why this needs its own arm run
+ *
+ * Every hop in this chain is tested somewhere else: `cortex-memory` reports both accessors
+ * (`evidence-census.test.ts`), the loop captures them (`benchmark-retrieval-capture.test.ts`), the record
+ * holds them (`question-record.test.ts`), and the reduction keeps them (`report-write.test.ts`). None of
+ * those can see the hop that matters here, which is the **arm's own read** of
+ * `AblationResult.featureRoutes` — and that hop is exactly the kind `bench-arm-options.ts` records the cost
+ * of: "deleting the spread that carries the toggle into the arm each left every test green, because no test
+ * could import the file the line lived in."
+ *
+ * A mutation that replaced `routes[i] ?? null` with a constant survived every test above. This is the test
+ * that kills it.
+ */
+function routingSystem(
+  name: string,
+  answer: Answer,
+  route: string,
+): MemorySystem & {
+  lastRoute: () => string | null;
+  lastRoleCensus: () => {
+    counts: Record<string, number>;
+    unclassified: number;
+    total: number;
+  } | null;
+} {
+  return {
+    name,
+    answer: () => answer,
+    lastRoute: () => route,
+    lastRoleCensus: () => ({ counts: { user: 2 }, unclassified: 1, total: 3 }),
+  };
+}
+
+describe('the artifact records the path the product took and the roles it delivered', () => {
+  it("writes the feature system's route, which is not the dataset's capability", async () => {
+    // `multi-session` on an `IE` question is the whole point: the two vocabularies differ, and an artifact
+    // that recorded the capability would look correct on every dataset whose shapes and paths happen to
+    // coincide. The fixture makes them differ so that a fallback to `capability` cannot pass.
+    const dataset = {
+      name: 'fixture',
+      questions: [
+        {
+          id: 'q1',
+          capability: 'IE',
+          questionType: 'single-session-user',
+          question: 'Where?',
+          expected: 'Lisbon',
+          context: ['user: I went to Lisbon.'],
+          sessions: [['user: I went to Lisbon.']],
+        },
+      ],
+    } as unknown as BenchmarkDataset;
+
+    const { report } = await runCortexMemoryArm(
+      dataset,
+      constantSystem('reference-pipeline', 'Lisbon'),
+      routingSystem('cortex-memory', 'Lisbon', 'multi-session'),
+      {
+        runs: 1,
+        scorer: exactMatchScorer,
+        generatedAt: '1970-01-01T00:00:00.000Z',
+        memoryArmConfig: {
+          threshold: 0,
+          retrievalThreshold: 0,
+          sessionBudget: null,
+          sourceTrust: 0.5,
+          confidenceSignal: 'none',
+          promptContract: 'abstention',
+          relevanceSignal: 'none',
+          relevanceTopK: DEFAULT_RELEVANCE_TOP_K,
+          relevanceUnits: 'turn',
+          renderingRoutes: [],
+          ask: 'route',
+          askRoutes: [],
+          reviewPass: 'none',
+          reviewBareDecline: false,
+        },
+      },
+    );
+
+    const [record] = report.questions!;
+    expect(record!.capability).toBe('IE');
+    expect(record!.route).toBe('multi-session');
+    expect(record!.roleCensus).toEqual({ counts: { user: 2 }, unclassified: 1, total: 3 });
+  });
+});

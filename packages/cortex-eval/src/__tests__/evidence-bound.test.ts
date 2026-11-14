@@ -69,6 +69,10 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
       turns: retrieved.filter((unit) => unit.trim().length > 0).length,
       chars: joinedLength(retrieved),
     },
+    // `null` for both, because this fixture is a system that reports neither. The two are required on the
+    // input type so that a producer cannot leave them out by accident; a test that is about them states them.
+    route: null,
+    roleCensus: null,
     // No dataset annotation in this fixture, so coverage is unmeasurable rather
     // than measured as zero -- the absent state `goldOverlapOf` returns for `[]`.
     goldOverlap: null,
@@ -404,5 +408,30 @@ describe('boundRetrievedContexts keeps the second evidence copy in step', () => 
     expect(() => boundRetrievedContexts([['a']], { maxTurnsPerRecord: 0 })).toThrow(
       /maxTurnsPerRecord/,
     );
+  });
+});
+
+describe('a bound must not drop what it does not reduce', () => {
+  it('carries the route and the census through a truncated record', () => {
+    // The reduction rebuilds every record through `buildQuestionRecords`, and `featureConfig` and `promptChars`
+    // were each dropped by a rebuild that did not list them. These two are required on the input type so that
+    // the reducer cannot forget them -- but the compiler is satisfied by `record.route ?? null`, so the
+    // assertion has to be behavioural: a reduced artifact that lost its route would send the next audit back to
+    // `capability`, which is the inference these fields exist to end.
+    const retrieved = Array.from({ length: 10 }, (_, i) => `turn ${i}`);
+    const census = { counts: { user: 10 }, unclassified: 0, total: 10 };
+    const [record] = buildQuestionRecords(
+      [input({ retrieved, route: 'multi-session', roleCensus: census })],
+      undefined,
+      undefined,
+      { maxTurnsPerRecord: 2 },
+    );
+
+    expect(record!.turns.length).toBeLessThan(10);
+    expect(record!.route).toBe('multi-session');
+    // The census is **not** reduced: it counted the delivery before the bound, and the bound is an artifact
+    // setting applied after the run. Reducing it would change what the artifact says the model read, which is
+    // the reduction's one job not to do.
+    expect(record!.roleCensus).toEqual(census);
   });
 });

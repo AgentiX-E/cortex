@@ -131,6 +131,43 @@ export const TURN_CAP_ROUTES = [
 /** One of the six paths `CortexMemory` builds a prompt for. */
 export type TurnCapRoute = (typeof TURN_CAP_ROUTES)[number];
 
+/**
+ * The roles the window a question was shown actually contained.
+ *
+ * ## What question this answers that a boolean could not
+ *
+ * Screening run `43465626013` failed its own audit with
+ * `FAIL roles evidenceRoles=['user'] on ['multi-session','temporal']; 4 window(s) carry an assistant
+ * turn`. Settling it took a manual reconstruction of four records, because the artifact recorded the
+ * filter's **configuration** and nothing about its **effect**. This is the effect.
+ *
+ * `counts` is keyed by whatever strings the classifier returns, so a census cannot run out of buckets
+ * when a dataset introduces a role this package has never heard of. The arithmetic is closed:
+ * `sum(counts) + unclassified === total`, and `total` is the length of the same window
+ * {@link CortexMemory.lastRetrievedContext} reports — so the artifact can check the two against each
+ * other rather than infer one from the other.
+ *
+ * ## Why `unclassified` is a bucket of its own and not a role named `unknown`
+ *
+ * The filter's contract says a turn whose role cannot be read is **kept** — dropping it would turn a
+ * classifier bug into an empty prompt, which reads as a dataset with no evidence. So
+ * `unclassified > 0` is the escape hatch working and `assistant > 0` under `evidenceRoles: ['user']`
+ * is the filter not working. A single field could not tell those apart, and telling them apart is the
+ * whole reason the audit's line was ambiguous.
+ *
+ * The name matters: a classifier is free to return the string `"unknown"` as a role — the vocabulary
+ * belongs to the caller — and a field named `unknown` would then mean two things at once. `counts`
+ * holds whatever the classifier says; `unclassified` holds the turns it said **nothing** about.
+ */
+export type RoleCensus = {
+  /** Delivered turns per role the classifier named. */
+  readonly counts: Readonly<Record<string, number>>;
+  /** Delivered turns the classifier returned `undefined` for. */
+  readonly unclassified: number;
+  /** Delivered turns in the window. Always `sum(counts) + unclassified`. */
+  readonly total: number;
+};
+
 /** Construction options for {@link CortexMemory}. */
 export type CortexMemoryOptions = {
   /**

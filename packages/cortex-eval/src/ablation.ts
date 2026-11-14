@@ -23,7 +23,11 @@ import type {
   PerCapabilityPairedStats,
 } from './types.js';
 import { classifyTransitions } from './answer-transition.js';
-import { evaluateWithScorerDetailed, type BenchmarkWorkerPool } from './benchmark.js';
+import {
+  evaluateWithScorerDetailed,
+  type BenchmarkWorkerPool,
+  type RetrievalCaptureVectors,
+} from './benchmark.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import { correctnessMask } from './question-record.js';
 import { transportRetryReport } from './retrieval-diagnostics.js';
@@ -484,7 +488,7 @@ export async function runAblation(
       completed,
     });
   }
-  let featFirst: ScoredEvaluation;
+  let featFirst: ScoredEvaluation & RetrievalCaptureVectors;
   try {
     featFirst = await evaluateWithScorerDetailed(
       dataset,
@@ -856,6 +860,13 @@ export async function runAblation(
     // is the hop that already has `node:crypto`. `§13.168.8` reads the fingerprint built
     // from it to decide whether four passes were four repetitions or four prompts.
     featurePromptTexts: featFirst.promptTexts!,
+    // The two facts about each request the four captures above cannot answer: which path the question took,
+    // and which roles the window it was shown actually contained. Asserted present for the reason the four
+    // above are: `runAblation` requests the retrieval capture unconditionally on the call that evaluates the
+    // feature, so a `=== undefined` branch here would be unreachable code reading as a safety net -- and it
+    // would file a capture that failed as a system that reports no route.
+    featureRoutes: featFirst.routes!,
+    featureRoleCensuses: featFirst.roleCensuses!,
     // `§13.174`. How many different prompts each question cost across the repetitions, which is the number
     // the cache prediction is a claim about: `1` everywhere means the repeats were repeats, and a larger
     // number means this arm sent that many requests and called them repetitions. Absent at one repetition;

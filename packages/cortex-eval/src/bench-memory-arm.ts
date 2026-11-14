@@ -4360,6 +4360,17 @@ function buildArmRoster(
   // when the ablation ran one pass, and `null` per question when a pass declined to report; both reach
   // the record as absent, which is the rule `promptDigest` follows one field over.
   const promptVariantCounts = ablation.featurePromptVariants;
+  // The two facts about each request that the four captures above cannot answer: which path the question
+  // took, and which roles the window it was shown actually contained. Read with `!` for the same reason as
+  // `retrievedContexts`: `runAblation` requests the retrieval capture unconditionally on the line that
+  // evaluates the feature, so the vectors are present on every path that reaches this function. A `?? []`
+  // guard here would file a capture that FAILED as an artifact in which no system reported a route.
+  //
+  // A `null` entry flows through and is not a defect: it is the system saying it has no accessor, which the
+  // record then omits. That is what keeps "this system cannot say which path it took" distinct from "it took
+  // the flat path", which an audit would otherwise have to guess from `capability`.
+  const routes = ablation.featureRoutes!;
+  const roleCensuses = ablation.featureRoleCensuses!;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -4437,6 +4448,11 @@ function buildArmRoster(
       // The within-run half: how many different prompts this question cost. `undefined` at one pass,
       // which the record renders as absent rather than as the constant it would otherwise print.
       promptVariants: promptVariantCounts?.[i] ?? null,
+      // The path and the window's role composition, carried per question. Both reach the record as
+      // **absent** when the system reports `null`, so a reader of the artifact can tell an unreported route
+      // from a flat one and an uninjected classifier from a window of unreadable turns.
+      route: routes[i] ?? null,
+      roleCensus: roleCensuses[i] ?? null,
       // §13.145.6. Two fields rather than one because a retry that fired and declined again is `attempted`
       // without `answered`, and that half is what says the mechanism ran rather than which way it went.
       ...traceOf(recoveryTrace, question.question, auditTrace, supersessionTrace),

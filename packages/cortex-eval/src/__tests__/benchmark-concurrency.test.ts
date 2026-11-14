@@ -99,8 +99,8 @@ describe('a concurrent pass measures what a serial pass measures', () => {
       undefined,
       0,
       undefined,
-      (_retrieved, _chars, _admitted, prompt, index) => {
-        serialPrompts[index] = prompt;
+      (capture, index) => {
+        serialPrompts[index] = capture.promptText;
       },
     );
 
@@ -112,8 +112,8 @@ describe('a concurrent pass measures what a serial pass measures', () => {
       undefined,
       0,
       undefined,
-      (_retrieved, _chars, _admitted, prompt, index) => {
-        concurrentPrompts[index] = prompt;
+      (capture, index) => {
+        concurrentPrompts[index] = capture.promptText;
       },
       undefined,
       undefined,

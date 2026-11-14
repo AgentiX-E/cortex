@@ -40066,3 +40066,92 @@ census, not on these records, so it stands. Its failure stands. The next screeni
 threshold from the published distribution, and now it will also be able to say how many questions
 the gate closed outright, because those questions will no longer arrive wearing someone else's
 window.
+
+## 13.374 The artifact answers "which path" and "which roles" without being asked to infer either
+
+This section registers the other half of the instrument §13.373 began. That section gave the gate an
+axis it could turn and a census that says whether it cut. This one makes the **record** able to say
+two things about each question that no field in the artifact could say before, and it exists because
+§13.373.8's reading of the four `roles` failures was wrong in a way the artifact could not refute.
+
+### 13.374.1 The two questions, and why the fields the artifact already had could not answer them
+
+| question | what the artifact had | why it was not an answer |
+| --- | --- | --- |
+| which path did this question take? | `capability` (`IE` / `MR` / `TR` / `KU` / `ABS`) | the **dataset's** word for a shape, not the **arm's** word for a path; a `TR` question falls through to the flat path when the system does not declare `answerTemporal`, and `ABS` can carry `single-session-assistant` |
+| which roles did the window it was shown contain? | `memoryArmConfig.evidenceRoles` (`["user"]`) | the filter's **instruction**, not its result; an instruction cannot distinguish "the filter ran and excluded three turns" from "the filter never reached this route" |
+
+Both gaps had the same consequence on the same run. `43465626013`'s audit computed the routes it
+should check from `capability`, reported four failures, and neither the audit nor the reader could tell
+which of two readings was true — so the record set was reconstructed by hand, and the answer was a
+third thing neither reading had: the four were declines carrying the **previous** question's capture
+(§13.373.9).
+
+### 13.374.2 What changed, at which layer
+
+| layer | field | what it says |
+| --- | --- | --- |
+| `cortex-memory` | `lastRoute(): TurnCapRoute \| null` | where the question **entered**, set before any gate; survives a decline |
+| `cortex-memory` | `lastRoleCensus(): RoleCensus \| null` | the delivered window's roles, counted by the same classifier the filter used |
+| `cortex-eval` | `RetrievalCapture.route` / `.roleCensus` | the per-question capture, under the same flag as the four it sits beside |
+| `cortex-eval` | `RetrievalCaptureVectors` | the two vectors `evaluateWithScorerDetailed` returns and `ablation.ts` forwards |
+| `cortex-eval` | `QuestionRecord.route` / `.roleCensus` | what the artifact carries; **absent** when the system reported nothing |
+| `cortex-eval` | `QuestionRecordInput.route` / `.roleCensus` | **required and nullable**, so the bound reducer cannot drop them the way it dropped `featureConfig` and `promptChars` |
+
+The callback that hands a capture to its consumer was six positional parameters for one round; it is
+one object now. The two new facts are what made the argument, and the argument is not style: the
+sixth parameter would have been the second of a pair that always travels together, and a caller
+wanting only the last one would have spelled four `null`s to say so.
+
+### 13.374.3 The three states, stated as arithmetic rather than as prose
+
+`RouteCensus` and `roleCensus` each have three states and each pair is kept apart on purpose:
+
+| state | `route` | `roleCensus` | what it means |
+| --- | --- | --- | --- |
+| reported | `'flat'` / `'multi-session'` / … | `{counts, unclassified, total}` | the system said |
+| reported-as-nothing | — | `{counts: {}, unclassified: n, total: n}` | a classifier that read no turn's role |
+| absent | field omitted | field omitted | the system has no accessor for it |
+
+The census is closed arithmetic: `sum(counts) + unclassified === total`, and `total` is the length of
+the **same window** the artifact's `turns` carries — not `evidenceTurns`, which is the offer. A census
+taken one layer up would satisfy its own sum and describe a window the model never saw, which is the
+delivery/coverage split `§13.262` records for the prompt fields arriving on a new one. `evidence-bound`
+and `report-write` both assert it survives a reduction **unchanged**: the census counted the delivery
+before the bound, and the bound is an artifact setting applied after the run.
+
+`unclassified` is a bucket of its own rather than a role named `unknown` because the classifier's
+vocabulary belongs to the caller: a classifier is free to return the string `"unknown"` as a role, and
+a field called `unknown` would then mean two things. The filter's contract says a turn whose role
+cannot be read is **kept**, so `unclassified > 0` is the escape hatch working and `assistant > 0` under
+`evidenceRoles: ["user"]` is the filter not working. Those are the two readings the audit could not
+separate, and this is the field that separates them.
+
+### 13.374.4 What this retracts about §13.373.8
+
+One sentence. §13.373.8 wrote that `length` gates "remove user turns first", and that this explains
+`goldOverlap.carried: 0` on `28dc39ac`. The number was real and it belonged to another question.
+§13.373.9 records the retraction; this section records why the artifact could not have caught it: the
+record carried `goldOverlap` computed against a window it did not own, and no field said so. With
+`route` beside `capability` and a census beside the window, a record whose window is not its own is
+now visible as a **disagreement** rather than as a surprising number — the census of a
+`multi-session` question filtered to `user` cannot contain eleven assistant turns.
+
+### 13.374.5 What this licenses
+
+- **E8 closes.** The three requirements were: a behavioural test that a decline does not inherit the
+  previous question's capture (done, §13.373.9); a behavioural test that a declared
+  `evidenceRoles: ['user']` window contains no excluded role (already held by `evidence-roles.test.ts`);
+  and an artifact that states its own semantics with an `unknown`-class counter (this section).
+- **The next screening can be read per question.** When criterion 4 fails again — and it will, because
+  the threshold is still a guess — the artifact will say whether the questions it closed were closed by
+  the cut or by a role filter reading truncated text, which is the distinction §13.373.7 predicted
+  would need `admission.max` and now does not have to.
+
+### 13.374.6 What this does not license
+
+- **No accuracy claim, and no change to the registered configuration.** `0` / `none` still runs.
+- **No `S10` or `S9` pair.** Both are registered against their own mechanisms and neither is a gate
+  experiment; making a record legible does not advance them.
+- **No new reading of `43465626013`.** Its score stands as published and stays out of every product
+  table: a 200-question population reverses sign against the 500-question one (§13.361.3).
