@@ -138,6 +138,25 @@ export type Criterion = {
   readonly unit: Unit;
   readonly kind: Kind;
   /**
+   * The rows this number is only a reading of when they pass.
+   *
+   * ## Why a criterion needs its preconditions written down
+   *
+   * A number can be computable and still mean nothing. The case this was added for is `S12`: the semantic
+   * layer's paired delta, whose registered form is `deltaQuestions >= -5` and whose mechanism **can be on and
+   * reach nothing** -- an update is about the record it was authorised by, and a window that does not carry
+   * that record is not the window it describes. On a population whose questions each bring their own corpus the
+   * reach is zero by construction, so the delta is `0` because nothing was administered, not because nothing
+   * was gained. `0` satisfies `>= -5`, so without a declared prerequisite the row would **pass** and say
+   * nothing.
+   *
+   * A prerequisite that is itself `unrun` makes the dependent row `void` rather than `pass`: not a number, not a
+   * regression, and not "we did not measure" either -- "we measured something that cannot answer the question".
+   * The distinction matters because the repairs differ: an `unrun` row needs a dispatch, a `void` row needs a
+   * population.
+   */
+  readonly requires?: readonly string[];
+  /**
    * A known miss the project has decided not to fix, with the reason in `onMiss`.
    *
    * Reported, never hidden — and never counted as a build failure, because a criterion that is deliberately
@@ -1171,6 +1190,63 @@ export const CRITERIA: readonly Criterion[] = [
       '`C1` and `S10`.',
   },
 
+  // ---- the semantic layer's own measurement (§E6) -------------------------------------------------
+  {
+    id: 'S12',
+    capability: 'semantic layer: carrying an authorised update into a later window',
+    metric: 'questions answered differently from the same-configuration control, paired',
+    dataset:
+      'LongMemEval-S, 500 questions, four repetitions, `CORTEX_MEMORY_SEMANTIC_CARRY` on against the same ' +
+      'configuration with it unset, the same reader, judge and prompt',
+    comparator: 'at-least',
+    // The convention `S10` registered, not a second one: a treatment earns its place if it costs at most five
+    // of five hundred questions, which is one percentage point.
+    threshold: -5,
+    unit: 'count',
+    kind: 'aim',
+    // **The clause that makes this row a measurement.** `0` satisfies `>= -5`, and `0` is also what a mechanism
+    // that never reached a window produces. `S13` is the reach, so a null result can only be read when
+    // something was actually carried; without this, the row would pass on a population the mechanism cannot
+    // act on and say nothing at all.
+    requires: ['S13'],
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/semantic-carry.json',
+      key: 'paired.deltaQuestions',
+    },
+    onMiss:
+      'Below -5 the semantic layer is a negative result, and `DECISION-SEMANTIC-LAYER-ROUTE.md` §7 names the ' +
+      'consequence in advance: it enters `RETRACTIONS` and Route A -- declare store-side semantics out of ' +
+      'scope, retract the product sheet rows that claim them -- is reconsidered **with a reading in hand**, ' +
+      'which the decision document says is the better position. This is the only row in the matrix whose miss ' +
+      'changes what the product is rather than what it scores.',
+  },
+  {
+    id: 'S13',
+    capability: 'semantic layer: whether the treatment reached any window at all',
+    metric: 'prompts whose window still carried a record an absorbed update was authorised by',
+    dataset:
+      'the `semanticCarry: true` arm of `S12`, 500 questions, four repetitions, summed over every worker ' +
+      'instance the run answered through',
+    comparator: 'at-least',
+    threshold: 1,
+    unit: 'count',
+    // An aim rather than a gate, and the reason is `S11`'s: a zero here is an **expected** finding about the
+    // population rather than a regression, and a gate would make the honest answer a red build.
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/semantic-carry.json',
+      key: 'semanticCarry.matched',
+    },
+    onMiss:
+      'Zero means the treatment was administered and reached no window, which makes `S12` `void` rather than ' +
+      '`pass`. On the registered population that is the predicted outcome and not a defect: every question ' +
+      "brings its own corpus, so no window carries another question's record, and the reach is zero by " +
+      'construction (`DECISION-SEMANTIC-LAYER-ROUTE.md` §5). The repair is a population with more than one ' +
+      'window over one corpus -- the same corpus asked about twice -- not a dispatch of this one.',
+  },
+
   // ---- the cost dimension, which had no row until the 2026-10 board printed a context column -------
   {
     id: 'C1',
@@ -1501,8 +1577,13 @@ export type Evaluation = {
    * pass, because the number is about something else; it is not a fail, because nothing regressed; and it is
    * not `unrun`, because the run exists and its number is known. Collapsing it into any of the three is the
    * failure that produced an eight-and-a-half-point error in this matrix's own headline row.
+   *
+   * **`void` is the fifth, and it is the one a computable number needed**: the value exists and the row is
+   * well-formed, but a row it declares in `requires` did not pass, so this number cannot answer this row's
+   * question. `S12`'s `0` on a population that cannot carry the mechanism is the case it was added for --
+   * `0 >= -5` is a pass, and a pass that means "the treatment did not run" is worse than no row at all.
    */
-  readonly status: 'pass' | 'fail' | 'unrun' | 'stale';
+  readonly status: 'pass' | 'fail' | 'unrun' | 'stale' | 'void';
   /**
    * Whether this miss should stop a build.
    *
@@ -1637,6 +1718,83 @@ export function verdictOf(
 function reasonOf(criterion: Criterion): string {
   const { source } = criterion;
   return source.kind === 'unrun' ? source.reason : `no value at ${describe(source)}`;
+}
+
+/**
+ * One row, with the verdict `verdictOf` gave it.
+ *
+ * Not exported. The census counts an export with no caller as an orphan, and the only caller is the function
+ * below: a consumer that wants this shape already has `Criterion` and `Evaluation` and can spell it. Exporting it
+ * would also let a second module construct an entry pair, which is the one thing {@link applyRequirements} has to
+ * be able to assume it produced.
+ */
+type EvaluationEntry = {
+  readonly criterion: Criterion;
+  readonly evaluation: Evaluation;
+};
+
+/**
+ * Turn rows whose declared preconditions did not pass into `void`.
+ *
+ * A second pass rather than a third argument to {@link verdictOf}, because the two answer different questions:
+ * `verdictOf` compares a number against a threshold and needs nothing but the row, while this needs **every
+ * other row's verdict** and can only run once they are all computed. Folding the two would make `verdictOf`
+ * depend on a registry it is deliberately independent of -- four different entry points call it, and only one of
+ * them holds the whole matrix.
+ *
+ * ## The two ways this could be a decoration, and what stops each
+ *
+ * 1. **A prerequisite that does not exist.** A typo in `requires` would leave the row `void` forever with a note
+ *    naming an id nobody can find -- plausible enough to be ignored. So an unknown id throws: the registry is
+ *    data, and data that names a row which is not there is a defect in the file rather than a reading of a run.
+ * 2. **A prerequisite that is itself `void`.** Chained preconditions would then make a row `void` because
+ *    something else was `void`, one step removed from the cause. The note names the rows that are not `pass`
+ *    rather than the reason, so the chain is one grep long rather than a recursion with no bottom.
+ */
+export function applyRequirements(entries: readonly EvaluationEntry[]): readonly EvaluationEntry[] {
+  const known = new Set(entries.map((entry) => entry.evaluation.id));
+  for (const { criterion } of entries) {
+    for (const required of criterion.requires ?? []) {
+      if (!known.has(required)) {
+        throw new Error(
+          `${criterion.id} requires ${required}, which is not a row in this matrix -- a precondition that ` +
+            'names nothing would make this row void forever, with a note a reader cannot act on.',
+        );
+      }
+    }
+  }
+  const results = new Map(entries.map((entry) => [entry.evaluation.id, entry.evaluation]));
+  // To a fixpoint, because a precondition can be satisfied by a number that is itself void further up a chain:
+  // `S12` reads `0`, `verdictOf` says `pass`, and `S13` says the `0` was not a reading. One pass over the input
+  // statuses would let a row depend on that vacuous pass and stay a pass itself, which is the defect the whole
+  // function exists to close one row further out. Termination is structural: a status only ever moves **into**
+  // `void`, and a note only ever grows as more rows become void, so each of the two is bounded by the registry.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const { criterion, evaluation } of entries) {
+      const unmet = (criterion.requires ?? []).filter((id) => results.get(id)!.status !== 'pass');
+      if (unmet.length === 0) continue;
+      const note =
+        `void: ${unmet.join(', ')} ${unmet.length === 1 ? 'is' : 'are'} not a pass, so this number ` +
+        'does not answer this row';
+      const previous = results.get(evaluation.id)!;
+      if (previous.status === 'void' && previous.note === note) continue;
+      results.set(evaluation.id, {
+        ...evaluation,
+        status: 'void',
+        // Not blocking: `void` is not a regression and not a missing measurement. It is a number that cannot
+        // answer the question the row asks, and the repair is a population rather than a dispatch.
+        blocking: false,
+        note,
+      });
+      changed = true;
+    }
+  }
+  return entries.map(({ criterion, evaluation }) => ({
+    criterion,
+    evaluation: results.get(evaluation.id)!,
+  }));
 }
 
 /** A short human description of a source, used in the table and in notes. */

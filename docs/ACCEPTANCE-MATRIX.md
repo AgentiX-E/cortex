@@ -70,6 +70,8 @@ unrun    no value could be computed — reported, never counted as a pass
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | S10 | <!-- reading:S10 -->—     | ≥ -5      | unrun  | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | S11 | <!-- reading:S11 -->—     | ≥ 88.0%   | unrun  | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
+| S12 | <!-- reading:S12 -->—     | ≥ -5      | void   | semantic layer, paired                 | LongMemEval-S, 500 questions, four repetitions, `CORTEX_MEMORY_SEMANTIC_CARRY` on against unset |
+| S13 | <!-- reading:S13 -->—     | ≥ 1       | unrun  | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
@@ -97,6 +99,21 @@ supplies a ranking", which is not the same question as "what does a caller get",
 nothing: `none` is what `CortexMemory` does when neither `relevanceFor` nor `index` is configured, and it was the
 one arm with no row. `S9` is the third answer -- a caller who wants the product to rank its own evidence -- and
 its -1.50 is the only measurement of the product's own stack against the harness's.
+
+`S12` and `S13` are the same construction on the semantic layer, and the pair exists because one of them alone
+would be a lie. `S12` is the paired delta -- `deltaQuestions >= -5`, the convention `S10` registered -- and its
+predicted value on the registered population is **`0`**, because every question brings its own corpus and an
+update only reaches a window that still carries the record it was authorised by. `0` satisfies `>= -5`, so the
+row would **pass** while saying that a mechanism which reached nothing cost nothing. `S13` is the reach, and
+`S12` declares it in `requires`: when the reach is not a pass, `S12` is reported **`void`** -- a number that
+exists and cannot answer the question the row asks -- rather than `pass`. That state is printed as `void` and
+counted with the rows that have no usable value, because a release that shipped on it would be shipping on a
+reading nobody can act on.
+
+Read in that order, `S13` is the honest statement about the registered population: the semantic layer has no
+surface on a one-question-per-corpus benchmark, and the repair is a population with two windows over one corpus
+rather than another dispatch of this one.
+
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The
 `benchmark.yml` workflow measures a different system (the reference pipeline) and reads 43.40% end to end;

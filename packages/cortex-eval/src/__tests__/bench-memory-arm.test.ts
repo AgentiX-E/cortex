@@ -1015,6 +1015,9 @@ describe('source trust reaches the artifact', () => {
       // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
       // is a fact about the run, not a missing field.
       conflicts: false,
+      // §E6. Stated on every artifact for the same reason the two fields above are: `false`
+      // is a fact about the run, not a missing field.
+      semanticCarry: false,
       threshold: 0.2,
       retrievalThreshold: 0.25,
       sessionBudget: null,
@@ -1538,6 +1541,9 @@ describe('runCortexMemoryArm', () => {
         // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
         // is a fact about the run, not a missing field.
         conflicts: false,
+        // §E6. Stated on every artifact for the same reason the two fields above are: `false`
+        // is a fact about the run, not a missing field.
+        semanticCarry: false,
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
@@ -1976,6 +1982,10 @@ describe('blank values from unfilled dispatch inputs', () => {
       // Projected on a disabled arm for the reason the two reaches are: it cut nothing, so the
       // only truthful value is the one that says so.
       turnCutMarker: 'none',
+      // §E6. Projected on a disabled arm for the reason `turnCutMarker` is: it answered no question, so no
+      // window carried anything, and `true` here would put a treatment on the record of a run that never
+      // consulted a model.
+      semanticCarry: false,
     });
   });
 
@@ -1995,6 +2005,9 @@ describe('blank values from unfilled dispatch inputs', () => {
       // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
       // is a fact about the run, not a missing field.
       conflicts: false,
+      // §E6. Stated on every artifact for the same reason the two fields above are: `false`
+      // is a fact about the run, not a missing field.
+      semanticCarry: false,
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,

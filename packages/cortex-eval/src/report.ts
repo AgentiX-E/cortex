@@ -179,6 +179,30 @@ export type AblationReport = {
     readonly refusals: Readonly<Record<string, number>>;
   };
   /**
+   * What the semantic layer did: units absorbed, units evicted, and the windows that carried one.
+   *
+   * A seventh field, absent unless the system exposes `semanticCarryCensus()`, for the reason `audit` above is
+   * absent unless the run carried its pass.
+   *
+   * ## Why this field decides whether E6 can be read at all
+   *
+   * E6's registered form is `deltaQuestions >= -5`, and `0` satisfies it. `0` is also what a mechanism that never
+   * ran produces, and what a mechanism that ran on a population it cannot reach produces -- so the delta alone
+   * cannot separate a null result from a missing treatment. The reach can:
+   *
+   * | `memoryArmConfig.semanticCarry` | `semanticCarry.matched` | what the delta means |
+   * | --- | --- | --- |
+   * | `false` | `0` | the control ran |
+   * | `true` | `0` | **administered, reached nothing** -- the delta is `0` by construction, not by effect |
+   * | `true` | `> 0` | a reading of the mechanism |
+   *
+   * `matched` counts **prompts**, not lines and not questions: two updates over one corpus are one question that
+   * learned two things. `served` and `withheld` are the ledger's two halves over the same block -- a fact served
+   * and a fact refused -- and either alone can look healthy while the ledger is dead (§E2), which is why both are
+   * on the record.
+   */
+  semanticCarry?: SemanticCarryCensus | undefined;
+  /**
    * The switches this run was configured with, recorded in the report itself.
    *
    * Every number in the report is conditioned on this object, and without it the
@@ -677,6 +701,24 @@ export type MemoryArmConfig = {
    * "ran the control" and "predates the field" the same row.
    */
   readonly conflicts?: boolean | undefined;
+  /**
+   * Whether the run carried the semantic layer's authorised updates into a later window (§E6).
+   *
+   * Always present, `false` included, for the reason {@link MemoryArmConfig.conflicts} is: an artifact has to
+   * answer what the run did, and a field that is only present under treatment makes "ran the control" and
+   * "predates the field" the same row.
+   *
+   * ## Why this switch is different from every other one on this record
+   *
+   * Every other treatment here changes the bytes of the prompt it is administered on, so its effect is visible
+   * in the answers even when the mechanism fires on every question. This one can be **on and reach nothing**:
+   * an update is about the record it was authorised by, and a window that no longer carries that record is not
+   * the window it describes. On the registered 500 questions -- each of which brings its own corpus -- the reach
+   * is zero by construction, so `semanticCarry: true` on this record is a statement that the treatment was
+   * administered, and the reach is a separate number on the same artifact (`AblationReport.semanticCarry`).
+   * Reading either without the other is what makes a null result look like a finding.
+   */
+  readonly semanticCarry?: boolean | undefined;
   /**
    * The multi-session consultation count the run used (§13.101).
    *
@@ -1343,6 +1385,33 @@ export type RecoveryCensus = {
 };
 
 /**
+ * What the semantic layer's carry path did over a run (§E6).
+ *
+ * The product's own accessor (`CortexMemory.semanticCarryCensus()`) is the source, and the six counts are its
+ * shape rather than a re-description of it -- the two are compared by the field's own test, so a product that
+ * grew a seventh counter could not be summarised here as though it had six.
+ *
+ * `absorbed` and `dropped` are the store's intake: an authored substitution became a typed unit, or the bound of
+ * eight gave one up. `matched`, `served` and `withheld` are the prompts: a window carried the record an update
+ * was about, and the ledger either served the current fact or refused a refuted one. `stored` is the eviction
+ * rule's input -- how many entries of each `MemoryType` the store holds -- and it is the number that makes
+ * `dropped` interpretable, because an eviction out of one entry is a different event from an eviction out of
+ * eight.
+ */
+export type SemanticCarryCensus = {
+  readonly absorbed: number;
+  readonly dropped: number;
+  readonly matched: number;
+  readonly served: number;
+  readonly withheld: number;
+  readonly stored: {
+    readonly episodic: number;
+    readonly procedural: number;
+    readonly semantic: number;
+  };
+};
+
+/**
  * The bare-decline retry's own tally.
  *
  * Same shape as {@link RecoveryCensus} and deliberately a separate type: two structurally identical records whose
@@ -1768,6 +1837,10 @@ export function formatAblationReport(report: AblationReport): string {
         // fact about the run rather than a missing field, and the artifact this experiment compares
         // differs from this one only in this value.
         `, \`conflicts=${memoryArm.conflicts === true}\`` +
+        // §E6. Rendered on every run for the reason `conflicts` is: `false` is a fact about the run (it carried
+        // nothing between windows) rather than a missing field, and the dispatch that administers the semantic
+        // layer has to be distinguishable from its control on the line a human reads, not only in the JSON.
+        `, \`semanticCarry=${memoryArm.semanticCarry === true}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
         // refused whole. One field rather than three so the line stays a configuration

@@ -847,3 +847,104 @@ concern, which is the opposite of what the reach table says.
 The map is now complete at directory level and states the two counts that make the kernel's weight visible. That
 is the repair; the deeper one — a generated map, checked like `docs-crosscheck` checks its markers — is not done,
 and recording it here is the alternative to pretending the drift cannot recur.
+
+---
+
+## 15. E6 had no arm, and every round that called it `unrun` was describing the wrong obstacle
+
+E6 is the eighth and last semantic-layer exit criterion: *a paired readout with `deltaQuestions >= -5`*. Six
+rounds have closed with the sentence "E6 is `unrun`", and each one read that as a note about budget — the next
+step being a dispatch. It was not. **The treatment could not be administered at all.**
+
+### 15.1 What was missing, as three separate objects
+
+| # | Object | The fact | Where it showed |
+| ---: | --- | --- | --- |
+| 1 | the arm's option surface | `CortexMemoryArmOptions` carried no `semanticCarry` field, `cortextMemoryArmOptions` read no environment variable for it, and `bench/run-ablation.ts` forwarded twenty-five product options into the constructor — every one of them with a paragraph on why absence is the shipped configuration. Twenty-six was not among them. | a run could not turn the mechanism on |
+| 2 | the artifact's census | `CortexMemory.semanticCarryCensus()` exists, is tested, and no reader in `cortex-eval` named it. `traceCensus` reads three accessors (`recoveryCensus`, `auditCensus`, `supersessionCensus`); the carry census was a fourth with no caller. | a dispatch, had one been possible, would have produced `delta = 0` with nothing on the record to say whether the layer carried nothing or never ran |
+| 3 | the criterion | `S9` and `S10` and `S11` exist for the ranking's three arms; the semantic layer had no row at all. | even a reading would have been compared against nothing |
+
+The three are one chain, and the third is why the first two were invisible: a criterion with no row cannot be
+`unrun` in any way a reader would notice, because the only record of it was a sentence in a document.
+
+### 15.2 Why `0` is the number this population must produce, and why that is a design fact
+
+An update is about the record it was authorised by. `updateAppliesTo` is a substring test on that record against
+each turn of the window (`semantic-facts.ts:383`), and the docblock above it says why a softer test would be
+wrong: a similarity would let an update about one corpus reach a question about another, which on a benchmark is
+a cross-question leak. The registered population answers every question from its own corpus, so **no question's
+window ever carries another question's record**, and the reach is zero by construction — `DECISION-SEMANTIC-
+LAYER-ROUTE.md` §5 states this, and `semantic-carry.test.ts` asserts it for the one-instant case.
+
+So E6 on this population is `0`, and `0 >= -5` is a pass. A pass that means *the treatment did not run* is worse
+than no row, which is what §15.4 is for.
+
+### 15.3 The repair, in three parts
+
+1. **`CORTEX_MEMORY_SEMANTIC_CARRY`**, read by `readToggle` like every other boolean in the arm (`'1'` on, absent
+   is the control), projected into `CortexMemoryArmOptions` in both the enabled and the disabled state, forwarded
+   conditionally into the constructor, echoed on the run's config line, and recorded in `featureConfig`. The
+   conditional spread is the house shape and its reason is the same one every other option gives: absent is the
+   state every archived artifact was produced under, so a present-but-false key would make "the control ran" and
+   "the treatment was configured off" two facts the artifact cannot tell apart.
+2. **`semanticCarry` on the report**, folded over every instance the run answered through (`censusSourcesOf`,
+   §13.244), absent when the build has no accessor. The fold carries the store's own arithmetic as a check:
+   `absorbed - dropped` equals the sum of `stored`, because `stored` counts the entries in hand. A record that
+   breaks it is dropped rather than published, which is the rule `supersessionAcross` applies to
+   `attempted === replaced + refused`.
+3. **`S12` and `S13`**, with `S12.requires = ['S13']` and a fifth evaluation state, `void`, for a number that
+   exists and cannot answer its row's question.
+
+### 15.4 Why the row needed a new state rather than a stricter threshold
+
+No threshold separates "the layer gained nothing" from "the layer did nothing": both read `0`. No comparison of
+one number can either. What separates them is a second number — the reach — and the only way to make a row's
+verdict depend on another row is to declare it. So `Criterion.requires` exists, `applyRequirements` is a second
+pass over the whole matrix (it needs every verdict, which `verdictOf` deliberately does not), and `void` is the
+state it produces. `void` is counted with `unrun` and `stale` by the release gate and labelled separately,
+because the repairs differ: a dispatch, an artifact re-hung, a population.
+
+### 15.5 Mutations
+
+Seventeen, all killed, each run in isolation against the suite that owns it:
+
+| # | Mutation | Killed by |
+| ---: | --- | --- |
+| 1 | parser returns `false` regardless of the variable | "turns it on for the strict string `1`" |
+| 2 | `readToggle(..., { defaultOn: true })` | "an unset variable is the control" |
+| 3 | disabled arm projects `semanticCarry: true` | "projects the control on a disabled arm" |
+| 4 | `options.semanticCarry !== false` in the config projection | the hand-built options case: `undefined` must record `false` |
+| 5 | the census is not attached to the report | "carries the census" |
+| 6 | `served` summed as `0` | the pool test's `served === 3` |
+| 7 | `withheld` summed as `0` | the pool test's `withheld === 3` |
+| 8 | `stored` overwritten per instance instead of summed | the pool test's `stored.semantic === 3` |
+| 9 | the `absorbed - dropped` invariant dropped | "omits a census that contradicts itself" |
+| 10 | the three-name `stored` check dropped | "refuses a `stored` census over more or fewer names" |
+| 11 | the constructor spread deleted | the text assertion in `semantic-carry-arm.test.ts` |
+| 12 | the log clause deleted | the same |
+| 13 | `featureConfig` drops the entry | the same |
+| 14 | `applyRequirements`'s fixpoint replaced by one pass over the input statuses | "names every unmet precondition", whose list puts the dependent row **first** |
+| 15 | the unknown-id throw removed | "refuses a precondition that names no row" |
+| 16 | `blocking: false` flipped to `true` on a `void` row | "cannot pass while its precondition has not" |
+| 17 | `requires` read as an empty list | "cannot pass while its precondition has not" |
+
+Mutations 11–13 are **text** assertions, and that is the weakest thing in this round: `bench/**` is excluded from
+coverage as an entry point, so the line that carries the treatment from the parsed options into the constructor
+cannot be executed by any test. Every other treatment in this arm has the same gap and the same compensation
+(`maxTurnChars` documents it in the constructor). What is different here is that the artifact now carries the
+reach beside the switch, so a spread deleted in a future change would show up as `semanticCarry: true` with
+`absorbed: 0` on a run that asked knowledge-update questions — visible, but only to a reader who looks.
+
+### 15.6 What this round does not claim
+
+- **No reading.** Nothing was dispatched: this environment has no reader credential and cannot reach the
+  dataset host. `S12` is `void` and `S13` is `unrun`, and the matrix prints exactly that.
+- **No claim that the registered population can carry the mechanism.** It cannot, by §15.2, and `S13`'s `onMiss`
+  says what the repair is: two windows over one corpus rather than another dispatch of this one.
+- **No claim that a dispatch of `S12`/`S13` would be informative.** On the registered population it would produce
+  `0` over `0`, which is `void` — a correct report of a population that cannot answer the question.
+- **No accuracy claim.** `semanticCarry` remains off by default; `CORTEX_MEMORY_SEMANTIC_CARRY` unset is the
+  state every archived artifact was produced under, and it still is.
+
+One sentence: **this round did not give the semantic layer a number — it gave it the ability to have one, and
+made the row refuse to pass until it does.**

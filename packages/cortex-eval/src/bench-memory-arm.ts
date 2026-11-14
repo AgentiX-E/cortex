@@ -67,6 +67,7 @@ import type {
   ReplyRepairCensus,
   MemoryArmConfig,
   RecoveryCensus,
+  SemanticCarryCensus,
 } from './report.js';
 import {
   boundRetrievedContexts,
@@ -312,6 +313,30 @@ export type CortexMemoryArmOptions = {
    * were cancelled for having a ceiling below their population's noise.
    */
   conflicts?: boolean | undefined;
+  /**
+   * Whether the product carries an authorised semantic update into a later window (§E6).
+   *
+   * ## Why this option had to exist before E6 could be called `unrun`
+   *
+   * Exit criterion E6 is a paired reading of the semantic layer, and for six rounds it was recorded as `unrun`
+   * as though the obstacle were a dispatch. It was not: the arm could not administer the treatment. Every
+   * option in this type reaches `CortexMemory` through a conditional spread in `bench/run-ablation.ts`, and
+   * `semanticCarry` was absent from that list -- so the mechanism had no on-switch in any measurement this
+   * project can run, and `deltaQuestions` would have been `0` for the same reason a control is `0`.
+   *
+   * Optional, and absent is the shipped configuration: every archived artifact was produced with the layer off,
+   * so a missing field cannot mean a treatment that was not administered. `toMemoryArmConfig` normalises it, so
+   * the artifact always states a value.
+   *
+   * ## Why the switch alone is not the measurement
+   *
+   * `semanticCarry: true` guarantees that the store is asked, not that any window answers: an update is about the
+   * record it was authorised by, and a window that does not carry that record is not the window it describes. On
+   * a population whose questions each bring their own corpus the reach is zero **by construction**, so the
+   * artifact carries the reach beside the switch (`AblationReport.semanticCarry`) and neither number means
+   * anything without the other.
+   */
+  semanticCarry?: boolean | undefined;
   /**
    * How many times the multi-session route consults the model on one prompt (§13.101).
    *
@@ -1185,6 +1210,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // answers where the filter would have applied, and a run that turned the arm off cannot
       // leave a stale reach behind it.
       evidenceRolesRoutes: ALL_TURN_CAP_ROUTES,
+      // Projected in the disabled state as well, because it is a state rather than a treatment: a disabled arm
+      // answers no question, so no window carried anything, and `false` is the only truthful statement about it.
+      // Projecting `true` here would put a treatment on the record of a run that never consulted a model.
+      semanticCarry: false,
       // Projected too, because it is a state rather than a treatment: a disabled arm cuts
       // nothing, so the only truthful value is the one that says so.
       turnCutMarker: DEFAULT_TURN_CUT_MARKER,
@@ -1225,6 +1254,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     replyRepair: readReplyRepair(env[REPLY_REPAIR_VARIABLE]),
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     conflicts: readToggle(env, CONFLICTS_VARIABLE),
+    semanticCarry: readToggle(env, SEMANTIC_CARRY_VARIABLE),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
@@ -1842,6 +1872,17 @@ function readSelfConsistency(raw: string | undefined): string {
 
 /** The variable this arm reads for §13.97's query expansion. */
 const CONFLICTS_VARIABLE = 'CORTEX_MEMORY_CONFLICTS';
+/**
+ * The variable this arm reads for §E6's carry switch.
+ *
+ * Its own variable rather than a value of anything else, for the reason `replyRepair` was split out of
+ * `REVIEW_PASS`: it is a different mechanism on a different population. The grammar is `readToggle`'s -- `'1'`
+ * on, `'0'` off, absent is the control -- rather than a bespoke strict parser, because a treatment that silently
+ * did not run is caught by the artifact rather than by the parser: the config records the value it actually
+ * chose, and the census records what it reached. A reader holding both cannot mistake one for the other, and a
+ * parser that threw would only move the failure from Thursday's artifact to Tuesday's log.
+ */
+const SEMANTIC_CARRY_VARIABLE = 'CORTEX_MEMORY_SEMANTIC_CARRY';
 const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
 
 /**
@@ -2795,6 +2836,9 @@ export function toMemoryArmConfig(
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and "predates
     // the field" as the same bytes.
     conflicts: options.conflicts === true,
+    // §E6. Always present for the reason `conflicts` is: `false` is a state a run can be dispatched to, so an
+    // artifact that spelled nothing would leave "ran the control" and "predates the field" as the same bytes.
+    semanticCarry: options.semanticCarry === true,
     // §13.101. Always present for the reason `queryExpansion` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.
@@ -3884,6 +3928,12 @@ export async function runCortexMemoryArm(
     ...replyRepairAcross(censusSystems),
     ...auditAcross(censusSystems),
     ...supersessionAcross(censusSystems),
+    // §E6. The reach beside the switch, and neither means anything alone: `semanticCarry: true` with
+    // `matched: 0` is a treatment that ran and reached no window, while `matched: 0` on a control is what the
+    // control is supposed to produce. `deltaQuestions >= -5` is satisfied by zero, so without this field a
+    // criterion for the semantic layer could not fail -- which is the defect this field exists to make
+    // unavailable rather than to describe.
+    ...semanticCarryAcross(censusSystems),
   };
   const questions = buildArmRoster(
     dataset,
@@ -3965,6 +4015,9 @@ export async function runCortexMemoryArm(
     // "the pass superseded 40 answers" and "this build has no pass" are different bytes rather than the
     // same zeros.
     ...(census.supersession === undefined ? {} : { supersession: census.supersession }),
+    // §E6's reach, on the same absence rule as the two above: a build without the carry path writes no field, so
+    // "the layer reached no window" and "this build has no layer" are different bytes rather than the same zeros.
+    ...(census.semanticCarry === undefined ? {} : { semanticCarry: census.semanticCarry }),
     // Spread conditionally on both sides: a run that did not vote has no census, and a report built
     // without an arm config has nowhere to put one. Either absence means "not measured", which the
     // field's optionality already says.
@@ -5188,6 +5241,121 @@ function supersessionOf(system: MemorySystem):
     replaced: record.replaced as number,
     refused: record.refused as number,
     refusals,
+  };
+}
+
+/**
+ * The semantic layer's carry census, summed over every instance the run answered through.
+ *
+ * ## Why the invariant is a check and not a comment
+ *
+ * `CortexMemory.semanticCarryCensus()`'s own docblock ends with the arithmetic that ties the two halves of this
+ * record together: `stored` is a count of the entries **in hand**, so `absorbed - dropped` equals the sum of its
+ * three fields. That equality is a property of the store rather than of the run, which makes it the one thing a
+ * fold across workers can verify without knowing anything about the questions -- and therefore the one thing that
+ * can turn a broken instrument into an absent field instead of a plausible table.
+ *
+ * `supersessionAcross` states the same rule one mechanism over (`attempted === replaced + refused`). Both are
+ * here rather than in the product because a census is being *read*, and a reader that accepted a self-
+ * contradictory record would be publishing the store's arithmetic error as the run's finding.
+ *
+ * ## Why `stored` is summed field by field and not carried as an object
+ *
+ * Because the sum is what the invariant is about. `summedOver` flattens a record of numbers, and `stored` is a
+ * record of numbers one level down; passing it through the same helper is what makes the total obey the same
+ * rule as the five event counts above it, rather than being a second aggregation with its own arithmetic.
+ */
+function semanticCarryAcross(systems: readonly MemorySystem[]): {
+  semanticCarry?: SemanticCarryCensus;
+} {
+  // No empty-list guard, unlike `supersessionAcross`. The caller is `censusSourcesOf`, which returns either the
+  // one instance the arm was handed or the pool's enumeration -- and that enumeration throws unless it includes
+  // the same instance. So the list has at least one element by construction, and a guard for the empty case would
+  // be a branch no run can take: the kind the coverage gate reports as dead, which is how the unreachable
+  // `undefined` check in `#semanticAbsorb` was found.
+  let absorbed = 0;
+  let dropped = 0;
+  let matched = 0;
+  let served = 0;
+  let withheld = 0;
+  const stored: Record<string, number> = {};
+  for (const system of systems) {
+    const one = semanticCarryOf(system);
+    if (one === undefined) return {};
+    absorbed += one.absorbed;
+    dropped += one.dropped;
+    matched += one.matched;
+    served += one.served;
+    withheld += one.withheld;
+    for (const [type, count] of Object.entries(one.stored)) {
+      stored[type] = (stored[type] ?? 0) + count;
+    }
+  }
+  if (absorbed - dropped !== Object.values(stored).reduce((sum, count) => sum + count, 0))
+    return {};
+  return {
+    semanticCarry: {
+      absorbed,
+      dropped,
+      matched,
+      served,
+      withheld,
+      // The sums of three counts the reader has already refused to publish unless all three were present, so the
+      // asserted type is the reader's own guarantee rather than a default supplied here.
+      stored: {
+        episodic: stored['episodic'] as number,
+        procedural: stored['procedural'] as number,
+        semantic: stored['semantic'] as number,
+      },
+    },
+  };
+}
+
+/**
+ * Read the carry census off one instance, or `undefined` when the instance carries no such accessor.
+ *
+ * The same three steps as `supersessionOf`, and `undefined` rather than `{}` for the same reason: this reader
+ * feeds a fold that has to stop on the first instance that cannot report, because a sum over the instances that
+ * happened to have a census is the truncated denominator `41773546221` published.
+ */
+function semanticCarryOf(system: MemorySystem): SemanticCarryCensus | undefined {
+  const candidate = (system as { semanticCarryCensus?: unknown }).semanticCarryCensus;
+  if (typeof candidate !== 'function') return undefined;
+  let payload: unknown;
+  try {
+    payload = (candidate as () => unknown).call(system);
+  } catch {
+    return undefined;
+  }
+  if (payload === null || typeof payload !== 'object') return undefined;
+  const record = payload as Record<string, unknown>;
+  for (const key of ['absorbed', 'dropped', 'matched', 'served', 'withheld'] as const) {
+    const value = record[key];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return undefined;
+  }
+  const stored = record['stored'];
+  if (stored === null || typeof stored !== 'object') return undefined;
+  // Exactly the three `MemoryType` names, each a non-negative integer. A fourth key means the build's taxonomy and
+  // this reader's disagree, and a missing one means the record is describing fewer entry kinds than the store can
+  // hold -- either way the census is not the shape the type declares, and a projection that filled the gap with
+  // zero would publish three numbers on the strength of a record it did not understand.
+  const counts = stored as Record<string, unknown>;
+  for (const name of ['episodic', 'procedural', 'semantic'] as const) {
+    const value = counts[name];
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return undefined;
+  }
+  if (Object.keys(counts).length !== 3) return undefined;
+  return {
+    absorbed: record['absorbed'] as number,
+    dropped: record['dropped'] as number,
+    matched: record['matched'] as number,
+    served: record['served'] as number,
+    withheld: record['withheld'] as number,
+    stored: {
+      episodic: counts['episodic'] as number,
+      procedural: counts['procedural'] as number,
+      semantic: counts['semantic'] as number,
+    },
   };
 }
 

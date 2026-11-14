@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CRITERIA,
   CONFIGURATION_ATTESTED,
+  applyRequirements,
   attestationOf,
   currentOf,
   describe as describeSource,
@@ -687,5 +688,107 @@ describe('S11: the no-ranking arm, priced against a tolerance rather than a roun
     // configuration is the one that passes `index`.
     expect(row().onMiss).toContain('Quick Start');
     expect(row().onMiss).toContain('`index`');
+  });
+});
+
+/**
+ * `S12` and `S13`: the semantic layer's own reading, and the clause that stops it passing vacuously.
+ *
+ * E6 is the last of the eight semantic-layer exit criteria and it has been `unrun` for six rounds. Its registered
+ * form is `deltaQuestions >= -5`, and the number it will most likely produce is `0` -- because the registered
+ * population answers each question from its own corpus, so no window carries another question's record, so the
+ * layer reaches nothing there. `0 >= -5` is a pass. A pass that means "the treatment did not run" is worse than
+ * no row at all, which is why the row declares its precondition and why the matrix has a state for it.
+ */
+describe('S12 and S13: a paired reading of the semantic layer, with its reach declared', () => {
+  function row(id: 'S12' | 'S13'): Criterion {
+    const found = CRITERIA.filter((criterion) => criterion.id === id);
+    expect(found).toHaveLength(1);
+    return found[0]!;
+  }
+
+  it('prices the treatment with the convention S10 already registered', () => {
+    expect(row('S12').threshold).toBe(-5);
+    expect(row('S12').comparator).toBe('at-least');
+    expect(row('S12').unit).toBe('count');
+    // An aim, because a miss is a finding about the product's positioning rather than a regression: `onMiss`
+    // says the layer enters `RETRACTIONS`, which is a decision to take, not a build to fix.
+    expect(row('S12').kind).toBe('aim');
+  });
+
+  it('names the switch in its dataset, because "the product scores X" is true of both arms', () => {
+    expect(row('S12').dataset).toContain('CORTEX_MEMORY_SEMANTIC_CARRY');
+    expect(row('S13').dataset).toContain('semanticCarry: true');
+  });
+
+  it('declares the reach as a precondition, and the reach is a row in this matrix', () => {
+    expect(row('S12').requires).toEqual(['S13']);
+    // The registry integrity check `applyRequirements` performs, asserted here as well so a rename of the
+    // reach row fails in the suite rather than in the gate.
+    expect(CRITERIA.some((criterion) => criterion.id === 'S13')).toBe(true);
+  });
+
+  it('cannot pass while its precondition has not, even though its number would', () => {
+    // The whole reason `void` exists. `0` satisfies `>= -5`, so `verdictOf` alone says `pass` -- and that pass
+    // would be a statement about a mechanism that never ran.
+    const s12 = row('S12');
+    expect(verdictOf(s12, 0).status).toBe('pass');
+    const judged = applyRequirements([
+      { criterion: s12, evaluation: verdictOf(s12, 0) },
+      { criterion: row('S13'), evaluation: verdictOf(row('S13'), 0) },
+    ]);
+    expect(judged[0]!.evaluation.status).toBe('void');
+    expect(judged[0]!.evaluation.blocking).toBe(false);
+    expect(judged[0]!.evaluation.note).toContain('S13');
+  });
+
+  it('reads as a pass once the reach is there, so the clause is a condition and not a veto', () => {
+    // The control the previous test needs: a rule that made every dependent row `void` unconditionally would
+    // pass it. Rows are matched by id out of the returned list rather than by position, so a reordering of the
+    // matrix cannot turn this into a test of something else.
+    const judged = applyRequirements([
+      { criterion: row('S13'), evaluation: verdictOf(row('S13'), 4) },
+      { criterion: row('S12'), evaluation: verdictOf(row('S12'), -2) },
+    ]);
+    const byId = new Map(judged.map((entry) => [entry.evaluation.id, entry.evaluation]));
+    expect(byId.get('S13')!.status).toBe('pass');
+    expect(byId.get('S12')!.status).toBe('pass');
+  });
+
+  it('names every unmet precondition, so a chain is one grep and not a recursion', () => {
+    // A row with two preconditions is `void` once, not twice, and the note has to say which two -- otherwise a
+    // reader who fixed the first would find the row still void and no reason on the page.
+    const dependent = { ...criterionOf(), id: 'S97', requires: ['S13', 'S12'] } as Criterion;
+    // The dependent row is listed **first**, and that ordering is half the assertion: `S12` is a vacuous pass
+    // on its own number and becomes `void` only because `S13` is not a pass. A single pass over the input
+    // statuses would judge this row against `S12`'s `pass` and let it through -- so the list order decides
+    // whether the rule is a rule or a coincidence of registry order.
+    const judged = applyRequirements([
+      { criterion: dependent, evaluation: verdictOf(dependent, 1) },
+      { criterion: row('S12'), evaluation: verdictOf(row('S12'), 0) },
+      { criterion: row('S13'), evaluation: verdictOf(row('S13'), 0) },
+    ]);
+    const byId = new Map(judged.map((entry) => [entry.evaluation.id, entry.evaluation]));
+    expect(byId.get('S97')!.status).toBe('void');
+    expect(byId.get('S97')!.note).toContain('S13, S12');
+    expect(byId.get('S97')!.note).toContain('are not a pass');
+  });
+
+  it('refuses a precondition that names no row, rather than making a row void forever', () => {
+    // A typo in `requires` leaves a note a reader cannot act on, and a note nobody can act on is ignored. The
+    // registry is data, and data that names a row which is not there is a defect in the file.
+    const orphan = { ...criterionOf(), id: 'S99', requires: ['S98'] } as Criterion;
+    expect(() =>
+      applyRequirements([{ criterion: orphan, evaluation: verdictOf(orphan, 1) }]),
+    ).toThrow(/S98/);
+  });
+
+  it('is unrun on both rows today, because no run has written the file either reads', () => {
+    expect(
+      currentOf(row('S12'), { artifact: () => undefined } as unknown as Resolvers),
+    ).toBeUndefined();
+    expect(
+      currentOf(row('S13'), { artifact: () => undefined } as unknown as Resolvers),
+    ).toBeUndefined();
   });
 });

@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CRITERIA,
+  applyRequirements,
   attestationOf,
   CONFIGURATION_ATTESTED,
   currentOf,
@@ -211,12 +212,18 @@ function registryDefects(skipped) {
 const registrySkipped = [];
 const registry = registryDefects(registrySkipped);
 
-const evaluations = CRITERIA.map((criterion) => {
-  const value = currentOf(criterion, resolve);
-  const current = value === undefined ? null : value;
-  const stale = attestationOf(criterion, resolve);
-  return { criterion, evaluation: verdictOf(criterion, current, stale) };
-});
+// The second pass, after every verdict exists: a row whose declared precondition did not pass is `void` --
+// a number that cannot answer the question the row asks, which is the state `S12` is in whenever the semantic
+// layer's reach is zero. Kept here rather than folded into `verdictOf` so that function stays a comparison of
+// one row against one threshold, and because only this file holds the whole matrix.
+const evaluations = applyRequirements(
+  CRITERIA.map((criterion) => {
+    const value = currentOf(criterion, resolve);
+    const current = value === undefined ? null : value;
+    const stale = attestationOf(criterion, resolve);
+    return { criterion, evaluation: verdictOf(criterion, current, stale) };
+  }),
+);
 
 const pct = (value) => `${(100 * value).toFixed(1)}%`;
 /** A unit decides how a number is written; a ratio printed as points is how a 28pp gap reads as 0.28. */
@@ -237,6 +244,10 @@ const label = (criterion, evaluation) => {
   // `stale` is not `FAIL`: nothing was compared, because the number describes a different system. It is not
   // `unrun` either, because the value exists and is printed beside the label.
   if (evaluation.status === 'stale') return 'STALE';
+  // `void` is not `unrun`: the value exists and is printed beside the label, and what is missing is a
+  // precondition rather than the number. It prints the word because a reader who saw `—` here would go looking
+  // for a dispatch that would not help.
+  if (evaluation.status === 'void') return 'void';
   if (evaluation.status === 'pass') return 'pass';
   if (criterion.accepted === true) return 'accept';
   return criterion.kind === 'gate' ? 'FAIL' : 'aim';
@@ -299,8 +310,14 @@ if (asJson) {
   // `stale` counts as missing for the release gate, because a row whose number is about another system is
   // not a measurement of this one. It is listed separately so the repair differs: a stale row needs the
   // artifact re-hung, an unrun row needs a dispatch.
+  // `void` joins them for the release gate's purposes: a number that cannot answer its row's question is not a
+  // measurement, and a release that shipped on one would be shipping on a reading nobody can act on. The three
+  // are listed separately because the repairs differ -- a dispatch, an artifact re-hung, a population.
   const missing = evaluations.filter(
-    (entry) => entry.evaluation.status === 'unrun' || entry.evaluation.status === 'stale',
+    (entry) =>
+      entry.evaluation.status === 'unrun' ||
+      entry.evaluation.status === 'stale' ||
+      entry.evaluation.status === 'void',
   );
 
   if (failed.length > 0) {
@@ -326,10 +343,15 @@ if (asJson) {
 
   if (missing.length > 0) {
     process.stdout.write(
-      `\n${missing.length} without a usable value — reported as unrun or stale, never as a pass\n`,
+      `\n${missing.length} without a usable value — reported as unrun, stale or void, never as a pass\n`,
     );
     for (const { criterion, evaluation } of missing) {
-      const tag = evaluation.status === 'stale' ? 'stale' : 'unrun';
+      const tag =
+        evaluation.status === 'stale'
+          ? 'stale'
+          : evaluation.status === 'void'
+            ? 'void'
+            : 'unrun';
       process.stdout.write(
         `  ${pad(criterion.id, 5)}${pad(tag, 6)}${describe(criterion.source)}: ${evaluation.note}\n`,
       );

@@ -15,8 +15,12 @@ Reach table `P 5 / E 5 / I 8 / T 1` ([`AUDIT-SEMANTIC-REACH.md`](AUDIT-SEMANTIC-
 **Status now**: **7 of 8 closed** — E1 (§10), E2 (§11), E3 (§12), E4 (§13), E5, E7, E8. E4 closed the way the
 criterion allows and not the way it prefers: four mechanisms are now each either wired or **Declined with an
 argument in §6** (`consolidate` §6.2, `resolveContradiction` §6.1, `MemoryGraph`, `sinkhorn`; `Fact.derivedFrom`
-rejected as a second mechanism). E6 — the paired reading — is `unrun`, which is the one thing the gate on
-`S10`/`S9` waits for. Reach table `P 11 / E 2 / I 5 / T 1`: E3 moved no row of it, because `MemoryType` is not
+rejected as a second mechanism). E6 — the paired reading — is the last one open. It has since been given the two
+things it was missing: an arm that can administer the treatment and an artifact that records whether it reached
+anything (`AUDIT-SEMANTIC-REACH.md` §15). It is registered as `S12` / `S13` in the acceptance matrix rather than as
+a sentence here, and `S12` declares the reach as a precondition, so its `0` cannot pass while the layer reached
+nothing — on the registered population that is the predicted outcome, and §5 is the reason. The gate on
+`S10`/`S9` waits for that reading. Reach table `P 11 / E 2 / I 5 / T 1`: E3 moved no row of it, because `MemoryType` is not
 one of the nineteen; it is the precondition §5.2 said row 1 needed, and E4 moves none either, because a decline
 that removes a candidate call site does not change what is reachable.
 

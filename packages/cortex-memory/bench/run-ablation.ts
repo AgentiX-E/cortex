@@ -829,6 +829,13 @@ async function main(): Promise<void> {
       // does not name it reproduces the previous prompt byte for byte -- which `conflict-reach.test.ts`
       // asserts on all six routes rather than assuming.
       ...(armOptions.conflicts === true ? { conflicts: true } : {}),
+      // §E6. The semantic layer's carry switch, and the option whose absence is why six rounds recorded
+      // "E6 is `unrun`" as though the obstacle were a dispatch: the treatment had no on-switch in any
+      // measurement this project can run, so `deltaQuestions` would have been `0` for the same reason a
+      // control is `0`. Spread conditionally like every other treatment here -- absent is the shipped
+      // configuration every archived artifact was produced under -- and projected into the artifact's config
+      // so a run that did not administer it cannot be read as one that administered it and saw nothing.
+      ...(armOptions.semanticCarry === true ? { semanticCarry: true } : {}),
       // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
       // the key, for the reason every other conditional spread here is: every archived artifact was
       // produced without a pass, and a present-but-inert key would make the option indistinguishable
@@ -1041,6 +1048,11 @@ async function main(): Promise<void> {
       // a fact about the evidence section (`none` = the cut stays silent), and it is the only place
       // the log and the artifact config can be compared against the prompt that was rendered.
       `, turnCutMarker=${armOptions.turnCutMarker ?? 'none'}` +
+      // §E6. Printed on every run, unlike the two ranking properties above, because `false` is a fact about the
+      // run rather than a missing field -- and because this is the one treatment whose reading can be `0` while
+      // it is on. The artifact carries the reach beside this value; the log carries the value alone, which is
+      // enough to answer the question an operator asks a scrollback: did my dispatch turn it on?
+      `, semanticCarry=${armOptions.semanticCarry === true}` +
       // Beside the marker for the reason the marker sits beside the width: the two describe the same cut,
       // `head` is the archived state, and a run whose window was dropped somewhere between the dispatch and
       // the renderer is visible here and nowhere else in the log.
@@ -1124,7 +1136,15 @@ async function main(): Promise<void> {
     // §13.153's mechanism is recorded beside the flag that says the arm ran at all, because the two
     // artifacts this dispatch compares differ by exactly this entry: the config line is the only place
     // a reader of the JSON can see that the treatment was administered rather than merely dispatched.
-    featureConfig: { cortexMemory: true, windowReorder, conflicts: armOptions.conflicts === true },
+    featureConfig: {
+      cortexMemory: true,
+      windowReorder,
+      conflicts: armOptions.conflicts === true,
+      // §E6. Beside the flag that says the arm ran at all, for the reason the comment above gives: the two
+      // artifacts a carry dispatch compares differ by exactly this entry, and a reader of the JSON has no other
+      // place to see that the treatment was administered rather than merely dispatched.
+      semanticCarry: armOptions.semanticCarry === true,
+    },
     datasetFingerprint,
     // Read from the parsed arm options, not decided here: §13.12 registers the
     // bound, and a value written in this file would never appear in the
