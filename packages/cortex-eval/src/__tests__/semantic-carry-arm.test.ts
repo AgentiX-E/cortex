@@ -486,7 +486,9 @@ describe('the forward from the arm options into the product constructor', () => 
     // the feature side carrying, the baseline side not. Reading `armOptions` here would build the
     // treatment on both sides and publish a null result for a comparison that never happened.
     expect(ARM).toContain('...(carry ? { semanticCarry: true } : {})');
-    expect(ARM).toContain('const buildFeature = (): CortexMemory => buildCortex(armOptions.semanticCarry === true);');
+    expect(ARM).toContain(
+      'const buildFeature = (): CortexMemory => buildCortex(armOptions.semanticCarry === true);',
+    );
   });
 
   it('builds the control from the same construction, differing in that flag alone', () => {
