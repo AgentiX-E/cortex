@@ -163,6 +163,49 @@ class TestTheMerge:
         assert readings["deltaMeanAccuracy"] == pytest.approx(-2 / 12)
         assert readings["deltaMeanAccuracy"] != pytest.approx(-0.1875)
 
+    def test_a_per_job_census_inside_the_config_block_is_not_a_layer_difference(self, tmp_path):
+        # The defect run 43622841638's merge job hit, in the shape it hit it: `memoryArmConfig`
+        # carries `admission`, which the arm folds the per-run admission census into. Two shards of
+        # one dispatch differ there for the only reason they should -- `candidates` 10020 against
+        # 9428, because they read different corpora -- and every configured field is identical.
+        # Comparing the block whole refuses every real sharded dispatch, which is worse than a
+        # missing check: it makes the merge unusable on the population it was built for.
+        left = artifact(0, 2, ["a"])
+        right = artifact(1, 2, ["b"])
+        left["memoryArmConfig"] = dict(CONFIG, admission={"candidates": 9428, "admitted": 9428})
+        right["memoryArmConfig"] = dict(CONFIG, admission={"candidates": 10020, "admitted": 10020})
+        result, out = merged(tmp_path, 2, [left, right])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert document["questionCount"] == 4
+        assert "memoryArmConfig.admission" in document["merged"]["notRecomputed"]
+
+    def test_a_configuration_field_inside_that_block_is_still_a_layer_difference(self, tmp_path):
+        # The other direction, and the one that matters more: excluding the census must not turn the
+        # block into something nobody compares. `reviewPass` is configuration, and two passes are two
+        # experiments.
+        left = artifact(0, 2, ["a"])
+        right = artifact(1, 2, ["b"])
+        left["memoryArmConfig"] = dict(CONFIG, admission={"candidates": 1})
+        right["memoryArmConfig"] = dict(CONFIG, admission={"candidates": 1}, reviewPass="bare")
+        result, out = merged(tmp_path, 2, [left, right])
+        assert result.returncode == 1
+        assert "memoryArmConfig" in result.stderr
+
+    def test_unequal_shards_sum_their_corpora_instead_of_multiplying_one(self, tmp_path):
+        # 78 corpora over 16 shards is fourteen jobs with 5 and two with 4. A merge that multiplied
+        # the first part by the count would report 80 -- a population 2.6 % larger than the dispatch,
+        # and the error is invisible in a document whose own `parts` list shows the sizes.
+        result, out = merged(
+            tmp_path,
+            3,
+            [artifact(0, 3, ["a", "b"]), artifact(1, 3, ["c", "d"]), artifact(2, 3, ["e"])],
+        )
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert document["population"]["corpora"] == 5
+        assert [part["corpora"] for part in document["merged"]["parts"]] == [2, 2, 1]
+
     def test_the_document_names_what_it_did_not_recompute(self, tmp_path):
         # The fields `runAblation` owns are absent rather than copied from one shard, and the list of
         # them is in the document: a reader who looks for `ablation.delta` has to be told where it

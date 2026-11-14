@@ -74,6 +74,33 @@ const LAYER_KEYS = [
 ];
 
 /**
+ * Keys **inside** `memoryArmConfig` that are censuses rather than configuration.
+ *
+ * The arm folds per-run readings into the configuration block: `admission` carries
+ * `candidates`/`admitted`/`rejected` for the questions this job graded, which differ between two
+ * shards of one dispatch for the only reason they should -- they read different corpora. Comparing
+ * the block whole therefore refuses every real sharded dispatch, which is what run `43622841638`'s
+ * merge job did: `shard 1 differs from shard 0 in memoryArmConfig`, with `candidates` 10020 against
+ * 9428 and every configured field identical.
+ *
+ * A list rather than a rule ("skip keys that contain counts") because the direction of the mistake
+ * matters: a new **configuration** field must join the comparison by default, and a new census has
+ * to be named here deliberately. The reverse default would let two genuinely different dispatches
+ * merge whenever the differing field happened to look numeric.
+ */
+const CENSUS_IN_CONFIG = new Set(['admission']);
+
+/** `memoryArmConfig` with its censuses removed, for the layer comparison only. */
+function configurationOnly(config) {
+  if (config === null || typeof config !== 'object') return config;
+  const kept = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (!CENSUS_IN_CONFIG.has(key)) kept[key] = value;
+  }
+  return kept;
+}
+
+/**
  * Canonical JSON, so two objects that differ only in key insertion order compare equal.
  *
  * `JSON.stringify` preserves insertion order, and `memoryArmConfig` is assembled by spreads at
@@ -183,8 +210,14 @@ function merge(dir, shards) {
   const reference = parts[0];
   for (const part of parts.slice(1)) {
     for (const key of LAYER_KEYS) {
-      const left = canonical(reference.document[key]);
-      const right = canonical(part.document[key]);
+      const left = canonical(
+        key === 'memoryArmConfig'
+          ? configurationOnly(reference.document[key])
+          : reference.document[key],
+      );
+      const right = canonical(
+        key === 'memoryArmConfig' ? configurationOnly(part.document[key]) : part.document[key],
+      );
       if (left !== right) {
         throw new Error(
           `shard ${part.shard.index} (${part.path}) differs from shard ${reference.shard.index} ` +
@@ -308,7 +341,11 @@ function merge(dir, shards) {
     runs,
     population: {
       windows: reference.document.population.windows,
-      corpora: reference.document.population.corpora * shards,
+      // Summed, not `first x shards`. The parts are not equal: 78 corpora over 16 shards is
+      // fourteen jobs with 5 and two with 4, so multiplying one part by the count reports 80 -- a
+      // population 2.6 % larger than the dispatch, which is exactly the kind of arithmetic a reader
+      // cannot check from the merged document alone.
+      corpora: ordered.reduce((sum, part) => sum + part.document.population.corpora, 0),
       marker: reference.document.population.marker,
       ...(reference.document.population.shard === undefined
         ? {}
@@ -359,15 +396,18 @@ function merge(dir, shards) {
         'ablation.discordant',
         'ablation.perCapability',
         'ablation.transitions',
+        'memoryArmConfig.admission',
         'costEfficiency',
       ],
       notRecomputedWhy:
         'These are functions of the whole population produced by `runAblation`, which answers ' +
         'questions rather than summarising verdicts; a second implementation here would agree with ' +
-        'the first until one of them was edited. The rows that matter are read from the vectors: ' +
-        '`semantic_carry_analysis.py` takes `deltaQuestions`, `n` and the McNemar counts off ' +
-        '`ablation.featureCorrectByRun` and `ablation.baselineCorrectByRun`, which this document ' +
-        'carries for exactly that reason.',
+        'the first until one of them was edited. `admission` is a per-job census that the arm folds ' +
+        'into the configuration block, so it is excluded from the layer comparison rather than ' +
+        'summed: its `min`/`max`/`mean`/`distinct` are not counts and a sum of them would be ' +
+        'nonsense. The rows that matter are read from the vectors: `semantic_carry_analysis.py` ' +
+        'takes `deltaQuestions`, `n` and the McNemar counts off `ablation.featureCorrectByRun` and ' +
+        '`ablation.baselineCorrectByRun`, which this document carries for exactly that reason.',
     },
   };
 
