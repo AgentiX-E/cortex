@@ -1195,9 +1195,16 @@ export const CRITERIA: readonly Criterion[] = [
     id: 'S12',
     capability: 'semantic layer: carrying an authorised update into a later window',
     metric: 'questions answered differently from the same-configuration control, paired',
+    // The population is the row's other half, and it changed in the round that made the row
+    // measurable. `AUDIT-SEMANTIC-REACH.md` §15.2 gives the arithmetic: an update is about the record
+    // it was authorised by, and a population that answers every question from its own haystack cannot
+    // carry one. So the instrument asks each corpus twice over one store and pairs the **second**
+    // window -- the only one a carry can reach -- which keeps the 500 the threshold is expressed in.
     dataset:
-      'LongMemEval-S, 500 questions, four repetitions, `CORTEX_MEMORY_SEMANTIC_CARRY` on against the same ' +
-      'configuration with it unset, the same reader, judge and prompt',
+      'LongMemEval-S, 500 corpora each asked twice over one store, four repetitions, ' +
+      '`CORTEX_MEMORY_AB=carry` against itself: the same system with `CORTEX_MEMORY_SEMANTIC_CARRY` ' +
+      'on against the same configuration with it unset, the same reader, judge and prompt, paired on ' +
+      'the second window',
     comparator: 'at-least',
     // The convention `S10` registered, not a second one: a treatment earns its place if it costs at most five
     // of five hundred questions, which is one percentage point.
@@ -1226,8 +1233,8 @@ export const CRITERIA: readonly Criterion[] = [
     capability: 'semantic layer: whether the treatment reached any window at all',
     metric: 'prompts whose window still carried a record an absorbed update was authorised by',
     dataset:
-      'the `semanticCarry: true` arm of `S12`, 500 questions, four repetitions, summed over every worker ' +
-      'instance the run answered through',
+      'the `semanticCarry: true` arm of `S12`, over the same two-window population, summed over ' +
+      'every worker instance the run answered through',
     comparator: 'at-least',
     threshold: 1,
     unit: 'count',

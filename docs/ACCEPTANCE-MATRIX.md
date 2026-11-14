@@ -70,8 +70,8 @@ unrun    no value could be computed — reported, never counted as a pass
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | S10 | <!-- reading:S10 -->—     | ≥ -5      | unrun  | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | S11 | <!-- reading:S11 -->—     | ≥ 88.0%   | unrun  | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
-| S12 | <!-- reading:S12 -->—     | ≥ -5      | void   | semantic layer, paired                 | LongMemEval-S, 500 questions, four repetitions, `CORTEX_MEMORY_SEMANTIC_CARRY` on against unset |
-| S13 | <!-- reading:S13 -->—     | ≥ 1       | unrun  | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record |
+| S12 | <!-- reading:S12 -->—     | ≥ -5      | unrun  | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |
+| S13 | <!-- reading:S13 -->8     | ≥ 1       | pass   | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record, summed over every worker instance |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
@@ -101,18 +101,30 @@ one arm with no row. `S9` is the third answer -- a caller who wants the product 
 its -1.50 is the only measurement of the product's own stack against the harness's.
 
 `S12` and `S13` are the same construction on the semantic layer, and the pair exists because one of them alone
-would be a lie. `S12` is the paired delta -- `deltaQuestions >= -5`, the convention `S10` registered -- and its
-predicted value on the registered population is **`0`**, because every question brings its own corpus and an
-update only reaches a window that still carries the record it was authorised by. `0` satisfies `>= -5`, so the
-row would **pass** while saying that a mechanism which reached nothing cost nothing. `S13` is the reach, and
-`S12` declares it in `requires`: when the reach is not a pass, `S12` is reported **`void`** -- a number that
-exists and cannot answer the question the row asks -- rather than `pass`. That state is printed as `void` and
-counted with the rows that have no usable value, because a release that shipped on it would be shipping on a
-reading nobody can act on.
+would be a lie. `S12` is the paired delta -- `deltaQuestions >= -5`, the convention `S10` registered -- and the
+value a one-window population predicts for it is **`0`**, because every question brings its own corpus and an
+update only reaches a window that still carries the record it was authorised by. `0` satisfies `>= -5`, so on
+that population the row would **pass** while saying that a mechanism which reached nothing cost nothing.
+`S13` is the reach, and `S12` declares it in `requires`: when the reach is not a pass, `S12` is reported
+**`void`** -- a number that exists and cannot answer the question the row asks -- rather than `pass`. That state
+is printed as `void` and counted with the rows that have no usable value, because a release that shipped on it
+would be shipping on a reading nobody can act on.
 
-Read in that order, `S13` is the honest statement about the registered population: the semantic layer has no
-surface on a one-question-per-corpus benchmark, and the repair is a population with two windows over one corpus
-rather than another dispatch of this one.
+**Both rows were dispatched on a screening population** (`semantic-carry.yml`, run
+[`43590434060`](https://github.com/AgentiX-E/cortex/actions/runs/43590434060)): 72 corpora asked twice over one
+store, two repetitions, `CORTEX_MEMORY_AB=carry`. **`S13` reads `8` and passes** -- eight questions answered from
+a window that still carried a record one of the three absorbed updates authorised, summed over four workers.
+That is the first non-zero reach this project has measured; every earlier dispatch reported `0`, and `0` is also
+what a mechanism that does nothing reports, which is why the row is a count. **`S12` stays `unrun`**: the
+screening pair writes its delta under `screening.deltaQuestions` and leaves `paired.deltaQuestions` absent, so
+the row that reads that key has no value -- a `void`-to-`pass` transition on 72 corpora at two repetitions would
+be a claim about 500 at four. The delta the screening pair did produce is **`0.0`** over the second window
+(`n = 72`, McNemar `b = 3 / c = 1`, `p = 0.625`), i.e. the mechanism reached eight windows and moved none of
+them; the reading lives in `cortex-docs/evidence/longmemeval/semantic-carry.json` under `screening`, and
+`AUDIT-SEMANTIC-REACH.md` §16.7 is the table around it.
+
+The registered row is therefore blocked on a population rather than on a mechanism, and that is now a scheduling
+fact rather than an open question: 500 corpora x 4 repetitions x 2 windows x 2 sides does not fit in one job.
 
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The

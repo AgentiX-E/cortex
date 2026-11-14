@@ -948,3 +948,188 @@ reach beside the switch, so a spread deleted in a future change would show up as
 
 One sentence: **this round did not give the semantic layer a number — it gave it the ability to have one, and
 made the row refuse to pass until it does.**
+
+## 16. E6's obstacle was a population, and it took four objects to make one
+
+§15 ended with the sentence *"this round did not give the semantic layer a number — it gave it the
+ability to have one, and made the row refuse to pass until it does."* Eight rounds of that sentence
+is enough to ask what the ability was still missing, and the answer is not a reader credential. It is
+a **population**: `S13`'s own `onMiss` names it — *"two windows over one corpus"* — and until this
+round nothing in the repository could build one.
+
+### 16.1 What the row needed, as three objects again
+
+| # | Object | The fact | Where it showed |
+| ---: | --- | --- | --- |
+| 1 | the population | `loadLongMemEval` produces one question per instance and every instance carries its own haystack. There was no selector that asked a corpus twice, so `semanticCarry`'s reach could only ever be zero (`S13.onMiss`, and §15.2's arithmetic). | the mechanism had no population to act on |
+| 2 | the pair | `CORTEX_MEMORY_SEMANTIC_CARRY` said what the **feature** side does; nothing said what the baseline was. `S9` compared two dispatches and paid the drift `PREREGISTRATION` §2.2 exists to bound. | the delta would have been between two runs, not two sides of one pass |
+| 3 | the store | the pool gives each worker its own `CortexMemory`, and the claim loop handed out one **index** at a time. Two windows of one corpus could be answered by two workers, so the second read a store that never absorbed the first. | the treatment would run and reach nothing — the reading `S13` refuses |
+
+The three are one chain in the same sense §15.1's were, and the third is again the one that would
+have been invisible: a split corpus produces `matched: 0`, and `matched: 0` is exactly what a
+mechanism that carried nothing produces.
+
+### 16.2 The multiplication, and where it sits among the selectors
+
+`two-window.ts` takes the loaded dataset and asks each corpus `windows` times: ids take `#wN`, the
+questions of one corpus stay adjacent, and `windows = 1` returns the argument **itself**.
+
+- **The identity is the same object, not a copy.** Every archived artifact was produced under one
+  window per corpus, and a copy with the same contents would still be a second code path through the
+  dataset. The `toBe` in `two-window.test.ts` is that sentence as an assertion.
+- **The order is corpus-major, and that is a contract rather than a preference.** `Question.corpus`
+  states it: contiguous, one instance, ascending. §16.3 is what enforces it.
+- **It runs last among the selectors.** `LIMIT` asks how many corpora and `CORTEX_CAPABILITY` asks
+  which, so both must see corpora rather than windows — otherwise `LIMIT=78, capability=KU,
+  windows=2` would mean "156 questions, half of them second windows", and the sample size would
+  depend on a multiplication nobody could see in the log.
+- **It refuses a restore plan.** A plan names recorded question ids and the multiplication renames
+  them, so the restriction would select nothing — after the dataset download and with a message about
+  the plan rather than about the two selectors that cannot both be true.
+
+### 16.3 One corpus, one instance — and why the claim stayed dynamic
+
+The pool's claim loop is `next++`: the index is taken atomically and the worker that took it answers
+it. That is right for an independent population and wrong for a corpus, and the fix is not a
+pre-sliced array — the comment above the counter says why: slicing makes a slow worker's share the
+whole pass's critical path.
+
+`claimRun` takes the **run** instead: starting at the claimed index, it takes every following index
+whose `corpus` is equal, and the worker answers them in order on its own instance. Still claimed on
+demand, so the load balance is unchanged; just atomic, so a corpus cannot be split. A question with no
+`corpus` claims exactly one index, which is the pass every archived artifact was produced by.
+
+### 16.4 The control is the same system, and the pair refuses to be two controls
+
+`arm-pairing.ts` reads `CORTEX_MEMORY_AB`: `reference` is the registered pair (the reference pipeline
+against the cognitive one) and the default; `carry` builds **both** sides from one constructor with
+one flag between them. `run-ablation.ts` therefore has one `buildCortex(carry)` and two callers, not
+two literals that would agree until one was edited.
+
+The refusal is the part worth writing down. `ab=carry` with `semanticCarry` off on the feature side is
+two controls, a delta of `0`, and a census of `0` — a null result published for a comparison that
+never administered the treatment. It is refused **before the first call**, so it costs nothing to
+find out.
+
+### 16.5 The dispatch
+
+`semantic-carry.yml` + `tools/dispatch-semantic-carry.py`, on a real runner, with the preset written
+out in the open and one declared departure: `review_pass: supersede`, because absorption happens only
+in that pass on that route. A carry run on the registered `bare` pass would dispatch a mechanism with
+nothing to carry. The pass is on **both** sides, so the pair still isolates the carry; what it does
+not isolate is the pass, and `memoryArmConfig.reviewPass` on the artifact is where a reader checks it.
+
+### 16.6 Thirteen mutations, and the one that lived until the test was fixed
+
+Each mutation is applied to the source, the suite that owns it is run, and the source is restored. A
+mutation **survives** when the owning suite still passes, which means the suite is not testing the line
+the mutation removed.
+
+| # | Mutation | Owning suite | Verdict |
+| ---: | --- | --- | --- |
+| 1 | `claimRun` claims one index at a time, even when a corpus is present | `corpus-run-claim.test.ts` | killed |
+| 2 | a corpus's windows are claimed in descending order | `corpus-run-claim.test.ts` | killed |
+| 3 | `withWindows` returns a copy at one window instead of the argument | `two-window.test.ts` | killed |
+| 4 | the window marker becomes a prefix (`#w1q` rather than `q#w1`) | `two-window.test.ts` | killed |
+| 5 | the corpus is left off the multiplied question | `two-window.test.ts` | killed |
+| 6 | `readWindowCount` accepts zero | `two-window.test.ts` | killed |
+| 7 | an unset `CORTEX_WINDOWS` means two | `two-window.test.ts` | killed |
+| 8 | an unset `CORTEX_MEMORY_AB` means `carry` | `arm-pairing.test.ts` | killed |
+| 9 | the population is dropped on the way into the report | `report-population.test.ts` | killed |
+| 10 | the population line is dropped from the Markdown | `report-population.test.ts` | killed |
+| 11 | the carry pair is built without the flag, reading the arm instead | `semantic-carry-arm.test.ts` | killed |
+| 12 | the control side is the reference pipeline in both pairings | `semantic-carry-arm.test.ts` | killed |
+| 13 | a carry pair whose treatment side was left off is not refused | `semantic-carry-arm.test.ts` | killed |
+
+Number 1 is the one to write down, because it survived the first time and it survived *because the
+test was wrong in a way that looks like success*. `runBenchmark` takes nine positional arguments and
+`corpus-run-claim.test.ts` passed the worker pool into the eighth, which is `budgetMs`. TypeScript does
+not catch it — a pool object where a number belongs is not a shape error at the call site, because the
+parameter is typed `unknown`-tolerant in that position — and the suite then ran a **serial pass wearing
+a concurrent pass's arguments**: one worker, one `claimRun` at a time, so a `claimRun` mutated into
+`claim()` still answered everything correctly and the mutation lived. Two named helpers
+(`runPooled`/`runSerial`) plus a comment at the helper is the fix: the suite now fails when the run is
+not pooled, which is the only way that mutation reads as a mutation.
+
+The lesson generalises past this file: a mutation that survives is a question about the *suite* first
+and the source second, and the answer here was that the suite had been measuring a different
+instrument than the one it named.
+
+A mutation whose target text is not found is reported as `SETUP-FAIL` and **counted as a survivor**.
+That is deliberate and it is the same rule: a mutation that was never applied cannot be told apart from
+one that was applied and killed nothing, and a harness that treated "could not find the line" as a pass
+would report a clean board after a refactor renamed the line.
+
+### 16.7 The reading
+
+Run [`43590434060`](https://github.com/AgentiX-E/cortex/actions/runs/43590434060), artifact
+`14115493476`, `completed success`, about two hours. Preset: `capability=KU`, `ablation_runs=2`,
+`workers=4`, `thinking=disabled`, `CORTEX_MEMORY_AB=carry`, `CORTEX_MEMORY_SEMANTIC_CARRY=1`,
+`CORTEX_WINDOWS=2`, `review_pass=supersede`.
+
+| Object | Reading |
+| --- | --- |
+| population | `72 corpora x 2 windows` = 144 questions, ids carry `#w` |
+| carry census | `absorbed 3 / dropped 0 / matched 8 / served 8 / withheld 8`; `stored {episodic 0, procedural 0, semantic 3}` |
+| the invariant | `absorbed - dropped = 3 = stored.episodic + stored.procedural + stored.semantic` — the store's own arithmetic holds across the four workers `semanticCarryAcross` folded |
+| correct answers | control `245/288 = 85.07%`, treatment `244/288 = 84.72%`, **one question** over two repetitions |
+| delta, second window | **`0.0`** over `n = 72` (`baselineOnly 1`, `featureOnly 1`) |
+| delta, first window | `-0.5` over `n = 72` — the absorbing window, which the mechanism cannot move |
+| delta, all windows | `-0.5` over `n = 144` |
+| McNemar, second window, first repetition | `b = 3`, `c = 1`, `p = 0.6250` |
+| the discordant four | gained `c4ea545c#w2`; lost `10e09553#w2`, `50635ada#w2`, `f685340e#w2` |
+| supersession | `attempted 285 / replaced 13 / refused 272` — `no-change 204`, `restates 63`, `not-later 4`, `date-not-on-line 1`, and `unreadable`, `no-quote`, `agrees`, `not-in-evidence` all `0` |
+
+The matrix, after this run:
+
+```
+S12  —    >= -5   unrun   semantic layer: carrying an authorised update into a later window
+S13  8    >= 1    pass    semantic layer: whether the treatment reached any window at all
+```
+
+**`S13` is a pass for the first time, and it is a pass on `8`, not on `0`.** Eight questions answered
+from a window that still carried a record one of the three absorbed updates authorised. That is the
+first evidence this project has that `semanticCarry` reaches anything at all; every previous dispatch
+reported `0`, and `0` is also what a mechanism that does nothing reports, which is why the row is a
+count rather than a delta.
+
+**`S12` is `unrun`, and that is the designed outcome rather than a failure.** The dispatch was a
+screening pair — 72 corpora, 2 repetitions — and `semantic_carry_analysis.py --tier screening` writes
+its delta under `screening.deltaQuestions` and leaves `paired.deltaQuestions` **absent**, so the row
+that reads that key has no value. A `void`-to-`pass` transition on this population would have been a
+claim about 500 corpora at four repetitions measured on 72 at two. The number the screening pair did
+produce is `0.0` over the second window, and it is published — in
+`cortex-docs/evidence/longmemeval/semantic-carry.json`, under a key the matrix does not read.
+
+**One reading that is not the reading, written down because I nearly published it.** Every one of the
+144 questions carries `supersessionConsultations: 4`, and `0ddfec37#w2` carries four
+`supersessionReplacements` with no refusals at all. It is tempting to read those as the carry arriving.
+They are not: the consultations are the *supersession pass* reading each window's candidate facts, they
+are uniform across the population (144 of 144), and they appear on the control side too. The carry's
+only evidence in this artifact is the census — `matched`, `served`, `withheld` — because the census is
+the one field produced by the semantic store rather than by the pass in front of it. A per-question
+column that is the same number on every row cannot be evidence of a treatment that reached eight of
+them.
+
+### 16.8 What this round does not claim
+
+- **No claim that the carry is worth anything yet.** The second-window delta is `0.0`, the McNemar pair
+  is `3` against `1` (`p = 0.625`), and one question was lost over two repetitions. The mechanism
+  reached; whether reaching helps is unanswered, and `S12` stays `unrun` until the registered
+  population is dispatched.
+- **No claim that `S13`'s `8` is stable.** It is one run, four workers, two repetitions, and the
+  census is a sum over instances: a second dispatch of the same shape could read a different number
+  without either being wrong. What the run establishes is that the counter is not structurally zero.
+- **No claim about the registered population.** 500 corpora x 4 repetitions is 4,000 questions x 2
+  sides x 4 features, which is not one job. The number `8` is over 72 corpora and does not scale by
+  arithmetic: the second window is where a carry can land, and how many of the 500 carry one is exactly
+  what the registered dispatch would measure.
+- **No claim that the pass is free.** `review_pass=supersede` is on both sides, so the pair isolates
+  the carry and not the pass; 272 of 285 supersession attempts were refused, and the four refusals that
+  are *not* `no-change`/`restates` (`not-later 4`, `date-not-on-line 1`) are the pass declining on
+  grounds a future round may want to audit.
+- **No default was changed.** `CORTEX_MEMORY_SEMANTIC_CARRY` is still unset everywhere outside these
+  workflows, and every archived artifact was produced with it unset.
+
+One sentence: **the semantic layer reached eight windows and moved none of them, and the row that
+measures the movement is now waiting on a population rather than on a mechanism.**
