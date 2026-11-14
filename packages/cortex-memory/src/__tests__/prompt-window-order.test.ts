@@ -39,6 +39,7 @@ function stamped(date: string, body: string): AdmittedTurn {
     lastAccessedAt: 0,
     stability: 1,
     difficulty: 5,
+    reads: 0,
     ordinal: nextOrdinal++,
   };
 }
@@ -225,6 +226,7 @@ describe('the ordering is a permutation of the delivered set', () => {
       lastAccessedAt: 0,
       stability: 1,
       difficulty: 5,
+      reads: 0,
       ordinal: nextOrdinal++,
     };
     const turns = [undated, stamped('2023/02/10', 'in-window')];

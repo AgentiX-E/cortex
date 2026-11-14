@@ -718,3 +718,120 @@ actually importing.
   more than one clock, and a decision that ranks retention by FSRS state.
 - **`consolidate` is not worse off for it.** It gained a required clock, two type-level guards and a test whose
   fixtures no longer agree with the code by accident. Its coverage is 100/100/100/100.
+
+## 14. The eviction rule moved to the domain, and the count it ranks by had to move first
+
+### 14.1 What was in the wrong package, and why the signature was the tell
+
+§12 built `leastRetained` in `cortex-memory`, and the argument for the placement was never made — the file was
+written where the store is. It is a pure function over a `MemoryValue`: no clock, no store, no I/O, nothing to
+await. `cortex-core` states that as its own reason to exist (*"contracts + pure algorithms (zero I/O, Node +
+browser)"*, `packages/cortex-core/package.json`), so on the package's own terms the rule was on the wrong side of
+the boundary for one round.
+
+The signature is what made it visible. It read:
+
+```
+leastRetained(entries: readonly { readonly memory: MemoryValue; readonly reads: number }[]): number
+```
+
+Every input of a pure rule should be a value the domain can name. `reads` was not: `MemoryValue` had no field for
+it, the store kept it on its own `StoredUpdate` record, and the caller passed it in. A rule that needs an input the
+domain type cannot express is a rule the domain cannot describe, and the second parameter is where that shows up.
+
+This is not a tidiness claim. Had the count stayed outside, the rank would have been a function of the entry
+**plus** whatever the caller claimed about it, and nothing would have stopped two callers from claiming different
+counts for the same entry. The field makes the count a property of the entry, so the rank is a function of the
+entry alone.
+
+### 14.2 The repair, in the order it had to happen
+
+1. `cortex-core/src/domain/memory.ts` — `MemoryValue.reads: number`, required, defaulted to `0` in `createMemory`.
+   Required rather than optional, for the reason §12 gave about `MemoryType`: a field that a constructor may omit
+   is a field half the fixtures will omit, and the compiler is the only reader that never forgets.
+2. `cortex-core/src/domain/retention.ts` — the table, the rank and `leastRetained`, with
+   `RetentionRule = (memory: MemoryValue) => readonly [number, number]` and no second argument.
+3. `cortex-memory/src/memory.ts` — `StoredUpdate` loses its `reads` field; the eviction projects the records onto
+   the entries they hold (`leastRetained(this.#semanticUpdates.map((stored) => stored.memory))`), and the read-back
+   increments `stored.memory.reads`.
+4. `cortex-memory/src/retention.ts` and its test are deleted. There is no re-export: a compatibility shim would
+   have kept two import paths for one rule and made the census count it twice.
+
+`reads` is **not** `MemoryValue.value`, and that distinction is the whole reason the field exists rather than the
+count being folded into the utility the domain already had. `value` is `[0, 1]` by contract and is computed by an
+admission gate from a caller-supplied `valueFunction`; these entries never pass that gate. A use count is
+unbounded and observed. One field holding two scales is the defect `math/fsrs.ts` spent a docstring repairing in
+the time domain, and the repair there was to stop sharing a literal rather than to add a second meaning.
+
+### 14.3 What the required field cost, counted
+
+`tsc` reported **17** errors across 13 test files, and every one was the same shape: a hand-written `MemoryValue`
+literal in a fixture that had listed the twelve fields it cared about and would now have to list thirteen. Fifteen
+of them were a single stub (`stability: 1, difficulty: 5,` followed by the new `reads: 0,`).
+
+That is worth recording rather than apologising for: the 17 errors are the count of places this repository
+constructs a `MemoryValue` by hand instead of through `createMemory`. **Zero** production modules needed a change
+— `memoryForUpdate`, `admitInto` and every other constructor already go through `createMemory` or spread its
+result — so the cost of the field is exactly the cost of the fixtures that were bypassing it.
+
+`cortex-storage` was checked before the field was added and does not serialise `MemoryValue` at all (zero
+occurrences in `packages/cortex-storage/src`), so no schema, no migration and no persisted artefact is involved.
+
+### 14.4 What the tests now assert that they could not before
+
+§12's five assertions are unchanged in intent and rewritten in shape: entries rather than `{ memory, reads }`
+pairs. Three are new.
+
+| # | assertion | what it is for |
+| ---: | --- | --- |
+| 1 | `createMemory(...)` has `reads === 0` **and** `value === 0.5` | independence: the count was not folded into the utility field |
+| 2 | `const wrongShape: readonly MemoryValue[] = [{ memory, reads: 3 }]` under `@ts-expect-error` | the old shape is not assignable, so the caller-side count cannot come back without a compile error |
+| 3 | `leastRetained([])` returns `0` and a single entry returns `0` | the documented contract, including the `-1` sentinel the implementation refuses to add |
+
+### 14.5 The mutations this round is built to kill
+
+| # | mutation | killed by |
+| ---: | --- | --- |
+| 1 | `semantic: (memory) => [memory.lastAccessedAt, 0]` | the semantic case dies; the episodic control stays green — which is what proves the count is the causal input |
+| 2 | `leastRetained` returns `0` | every assertion whose expectation is non-zero |
+| 3 | the parameter goes back to `{ memory, reads }[]` | `tsc`: `TS2578 Unused '@ts-expect-error' directive` |
+| 4 | `reads` written into `value` instead of its own field | the independence assertion in 14.4 |
+
+Mutation 1 is the pair again: on its own, "the unread entry loses" is a statement about one code path. What makes
+it a measurement is that the **same counts** on `episodic` produce the opposite victim, so the type is doing the
+work rather than the index.
+
+### 14.6 Why `semantic-facts.ts` stays in `cortex-memory`, asked once so it need not be asked again
+
+It imports seven semantic-kernel symbols from `cortex-core` (`assemble`, `buildKnowledgeUnit`,
+`deriveAssumptions`, `deriveSupersedes`, `locate`, `reviseLedger`, and the `KnowledgeUnit` types) and one thing
+core does not have: `SupersessionVerdict` from `./supersede.js`, whose producer decides with a model call. Moving
+the module up would drag the LLM interface and a prompt into a package whose contract is zero I/O.
+
+The split that survives both questions is: **pure decisions live where the domain is; the composition of a
+decision with a model call lives where the model is.** `leastRetained` is the first. `semantic-facts.ts` is the
+second, and `memory.ts`'s `#semanticAbsorb` — which splices, counts and mutates — is the third.
+
+### 14.7 What this round does not claim
+
+- **No accuracy claim, and none is possible from a move.** `semanticCarry` is still off by default and E6 is still
+  `unrun`; a refactor that changes no behaviour predicts `deltaQuestions === 0`, and a non-zero reading would mean
+  the move leaked across questions.
+- **No claim that the rest of `cortex-memory` is correctly placed.** This round adjudicated one file with a pure
+  rule in it. `question-shape.ts`, `confidence.ts` and `tally.ts` were not examined, and the layer map's staleness
+  (§14.8) is the reason to suspect at least one more.
+- **No claim that the layer map is now complete.** It lists directories, not files; a file added inside a listed
+  directory is still invisible to it.
+
+### 14.8 The documentation defect that prompted the question
+
+The question this round answered — *"is the semantic layer really in `cortex-memory`?"* — was reasonable, and the
+architecture document is why. `ARCHITECTURE.md` §2 listed eight `cortex-core` directories and omitted
+`knowledge/` (2,089 lines) and `triage/` (4,188 lines): **6,277 of the package's 11,085 non-test lines, 56.6% of
+it**, and the whole of the semantic kernel. It likewise listed thirteen `cortex-memory` modules and omitted
+`semantic-facts.ts`. A reader taking the map at face value would conclude that the semantic layer is a `memory`
+concern, which is the opposite of what the reach table says.
+
+The map is now complete at directory level and states the two counts that make the kernel's weight visible. That
+is the repair; the deeper one — a generated map, checked like `docs-crosscheck` checks its markers — is not done,
+and recording it here is the alternative to pretending the drift cannot recur.

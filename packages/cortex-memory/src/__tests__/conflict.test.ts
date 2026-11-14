@@ -39,6 +39,7 @@ function turn(content: string): AdmittedTurn {
     lastAccessedAt: 0,
     stability: 1,
     difficulty: 5,
+    reads: 0,
     memoryType: 'episodic',
     activation: 0.5,
     decay: 0.5,

@@ -34,6 +34,7 @@ function turn(content: string, ordinal: number) {
     lastAccessedAt: NOW,
     stability: 1,
     difficulty: 5,
+    reads: 0,
     ordinal,
   };
 }

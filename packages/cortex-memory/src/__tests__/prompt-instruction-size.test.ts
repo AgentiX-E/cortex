@@ -43,6 +43,7 @@ function turns(count: number, length: number): AdmittedTurn[] {
     lastAccessedAt: 0,
     stability: 1,
     difficulty: 5,
+    reads: 0,
     sessionId: `s${String(index % 2)}`,
     ordinal: index,
   })) as unknown as AdmittedTurn[];

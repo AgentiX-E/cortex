@@ -69,6 +69,7 @@ function turn(content: string): AdmittedTurn {
     lastAccessedAt: 0,
     stability: 1,
     difficulty: 5,
+    reads: 0,
     ordinal: 0,
   };
 }

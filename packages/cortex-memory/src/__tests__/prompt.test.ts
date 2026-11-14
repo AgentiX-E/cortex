@@ -32,6 +32,7 @@ function admitted(content: string, value = 0.8): AdmittedTurn {
     lastAccessedAt: 0,
     stability: 1,
     difficulty: 5,
+    reads: 0,
     ordinal: 0,
   };
 }

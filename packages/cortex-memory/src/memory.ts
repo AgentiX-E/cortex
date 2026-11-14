@@ -28,7 +28,7 @@ import type {
   SessionAwareMemorySystem,
   ValueFunction,
 } from '@agentix-e/cortex-core';
-import { MemoryEmbeddingCacheStore, decideRetrieval } from '@agentix-e/cortex-core';
+import { MemoryEmbeddingCacheStore, decideRetrieval, leastRetained } from '@agentix-e/cortex-core';
 import { conflictBlock, insertRelatedStatements } from './conflict.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 import {
@@ -88,7 +88,6 @@ import {
   updateAppliesTo,
   type SemanticUpdate,
 } from './semantic-facts.js';
-import { leastRetained } from './retention.js';
 import { buildLedger } from './aggregation/ledger.js';
 import { parseEventSpec } from './aggregation/spec.js';
 import { executeSpec } from './aggregation/execute.js';
@@ -124,19 +123,22 @@ const SEMANTIC_UPDATES_MAX = 8;
  * carried, not counts of what the store holds. Caching the block must not move those numbers, and the tests
  * that read them per `answer()` are what say so.
  *
- * ## Why `reads` is mutable and lives here rather than in `MemoryValue`
+ * ## Where the read count lives now
  *
- * It is the quantity {@link retentionRank} tie-breaks on, and it is an observation the store makes: how many
- * windows carried this entry. `MemoryValue` has no field for it — `value` is the field for utility and its
- * contract is `[0, 1]` — so putting a count there would be two scales sharing one field.
+ * On `MemoryValue.reads`, which is why the domain type grew the field. It lived here for one round: it is
+ * the quantity `retentionRank` tie-breaks on, an observation the store makes and a count of windows rather
+ * than of the entry's own content. Keeping it here made the eviction call pass `{ memory, reads }` into a
+ * pure rule — a store-side count crossing into a function that should have needed nothing but the entry.
+ *
+ * The rule moved to `cortex-core` and the count went with it, which is the general form of that repair: a
+ * quantity a domain rule ranks by is a quantity the domain has to be able to hold. This record keeps the
+ * rendered block and the update it renders; the count is on the {@link MemoryValue} it holds.
  */
 type StoredUpdate = {
   readonly update: SemanticUpdate;
   readonly block: ReturnType<typeof assembleSemanticUpdate>;
-  /** The {@link MemoryValue} this update *is*: `type: 'semantic'`, built once at absorption. */
+  /** The {@link MemoryValue} this update *is*: `type: 'semantic'`, built once at absorption. `reads` moves on use. */
   readonly memory: MemoryValue;
-  /** How many windows have carried this entry. Mutated on read; the store's own observation. */
-  reads: number;
 };
 
 /**
@@ -2163,13 +2165,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
       update,
       block,
       memory: memoryForUpdate({ update, lines: block.lines, now: this.#options.now }),
-      reads: 0,
     });
     if (this.#semanticUpdates.length <= SEMANTIC_UPDATES_MAX) return;
     // `leastRetained` on a non-empty array. The guard above has already established that the array is one past
     // the bound, which is the same fact that makes the `splice` safe — the `undefined` branch an earlier version
     // checked for was unreachable, and the coverage gate reported it as the dead branch it was.
-    const victim = leastRetained(this.#semanticUpdates);
+    //
+    // The rule takes entries and nothing else, so the store projects its records onto the `MemoryValue`s they
+    // already hold. A projection rather than a parallel array of counts: a second array would be a second place
+    // the count lives, and the point of moving it onto the entry was that there is one.
+    const victim = leastRetained(this.#semanticUpdates.map((stored) => stored.memory));
     const [evicted] = this.#semanticUpdates.splice(victim, 1) as [StoredUpdate];
     this.#semantic.dropped += 1;
     // The key leaves with the unit. A set that kept it would refuse to re-absorb an update the store has
@@ -2196,12 +2201,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     for (const stored of this.#semanticUpdates) {
       if (!updateAppliesTo(stored.update, contents)) continue;
       applied += 1;
-      // The read-back, in the one place a window can perform it. `reads` is what {@link retentionRank} ranks a
-      // `semantic` entry by after its stamp, and the stamp cannot do the job alone: the clock is injected and
-      // fixed, so every entry in this store carries the same `lastAccessedAt` whether or not a window ever
+      // The read-back, in the one place a window can perform it. `MemoryValue.reads` is what the eviction rule
+      // ranks a `semantic` entry by after its stamp, and the stamp cannot do the job alone: the clock is injected
+      // and fixed, so every entry in this store carries the same `lastAccessedAt` whether or not a window ever
       // carried it. That is why the count exists as a field and why it is incremented here rather than at
       // absorption — an entry absorbed is not an entry used.
-      stored.reads += 1;
+      stored.memory.reads += 1;
       this.#semantic.served += stored.block.served;
       this.#semantic.withheld += stored.block.withheld;
       lines.push(...stored.block.lines);

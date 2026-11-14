@@ -258,6 +258,7 @@ describe('buildRetryPrompt, which the retry sends', () => {
     lastAccessedAt: NOW,
     stability: 1,
     difficulty: 5,
+    reads: 0,
     ordinal: 0,
   };
 

@@ -28,30 +28,44 @@ Everything else — storage, model calls, embeddings — is delegated through an
 ## 2. Layer map
 
 ```
-cortex-core        contracts + pure algorithms. Zero I/O, Node + browser, no native module.
+cortex-core        11,085 non-test lines. Contracts + pure algorithms. Zero I/O, Node + browser, no native module.
   ├─ interfaces/   Storage · VectorIndex · LLM · EmbeddingModel
-  ├─ domain/       MemoryValue · Fact (bitemporal: valid time + system time)
+  ├─ domain/       MemoryValue (incl. `reads`) · Fact (bitemporal) · retention -- which entry a bounded store gives up
+  ├─ protocol/     MemorySystem · SessionAwareMemorySystem -- the contract between a system and its measurement
   ├─ math/         vector · stats · optimal-transport · fsrs
   ├─ graph/        associative MemoryGraph (Hebbian edges + spreading activation)
   ├─ value/        write and retrieval value functions
   ├─ temporal/     bitemporal queries
   ├─ contradiction/ Bayesian evidence fusion
   ├─ consolidation/ retrieval-as-consolidation
+  ├─ knowledge/    2,089 lines -- taxonomy · unit · frame · edge · assumption · revision · temporality · markers
+  ├─ triage/       4,188 lines -- proposer · rules · writer · card · claims · grounding · release · erasure · guard
+  ├─ context/      assemble -- the semantic block a prompt carries, and the lines it renders to
+  ├─ retrieval/    fuse · rerank · typed expansion over the edge set
+  ├─ cache/        embedding memo
+  ├─ vector/       brute-force index · embedding space
   └─ federation/   FederatedStorage (routes by table prefix) · ReadSideAssembler
 
-cortex-memory      the composition layer: core's gates -> one object that answers
+cortex-memory      15,238 non-test lines. The composition layer: core's gates -> one object that answers
   ├─ admission     value-gated write admission (the first production caller of decideWrite)
   ├─ sessionize    per-session admission + turn-budget selection
   ├─ retrieval     SearchIndex: postings, optional vector channel, RRF fusion, optional rerank
   ├─ relevance     the lexical signal the budget and the prompt both rank by
   ├─ width         the per-question evidence budget
   ├─ prompt        one builder parameterised by a prompt contract and an ask
+  ├─ question-shape  which of six routes a question takes: a count of things, or a value from numbers
+  ├─ excerpt       where in a long turn the per-turn cap spends its characters
   ├─ parse         raw model output -> Answer (null is a decline)
+  ├─ reply-repair  the one consultation a reply earns when it broke its contract
+  ├─ confidence    a per-turn confidence signal, computed from the turn itself
+  ├─ tally         the arithmetic half of a count: the reader tags items, the product adds them
   ├─ conflict      related sentences, so a contradiction is visible in the prompt
-  ├─ supersede     decide whether a later turn overrides an earlier answer
+  ├─ supersede     decide whether a later turn overrides an earlier answer (the one model call here)
+  ├─ semantic-facts  the semantic update: an authorisation -> KnowledgeUnit -> MemoryValue -> rendered block
   ├─ aggregation   a compiled ledger, a typed plan, an executor, a renderer
   ├─ disclosure    DisclosureSession: the one persisted surface -- triage, cards, releases, erasure, read side
   ├─ provider      CortexSessionProvider: a retrieval adapter, for measuring the room in chars
+  ├─ types         the public types, so a consumer never imports a module path
   └─ memory        CortexMemory: the only async module in the package
 
 cortex-storage     one subpath per backend; the package root exports nothing on purpose
@@ -68,6 +82,20 @@ cortex-ai          one subpath per dependency profile
 cortex-eval        the instrument, not the product: dataset types, the memory-system contract,
                    scoring, paired statistics, ablation reports
 ```
+
+Two notes on that map, because an earlier version of it misled a reader:
+
+- **The semantic kernel is `knowledge/` plus `triage/` — 6,277 lines, 56.6% of `cortex-core`.** The previous
+  map listed neither, which made the semantic layer read as a `cortex-memory` concern. Those two directories
+  reach the shipping object through `disclosure/session.ts` (`TriageWriter`, `CardQueue`, `OutputGuard`,
+  `TriageProposer`) and `semantic-facts.ts` (`assemble`, `buildKnowledgeUnit`, `deriveAssumptions`,
+  `deriveSupersedes`); `cortex-memory` imports 45 symbols from `cortex-core` in all.
+- **The split is purity, not subject matter.** `domain/retention.ts` decides *which* entry a bounded store
+  gives up and lives in core, because it is a pure function over a `MemoryValue`; `memory.ts` decides *when*
+  and does the splice. `semantic-facts.ts` stays in `cortex-memory` despite being semantic, because its input
+  is a `SupersessionVerdict` produced by a model call. See
+  [`docs/AUDIT-SEMANTIC-REACH.md`](docs/AUDIT-SEMANTIC-REACH.md) §14 for the round that moved the first, and
+  for the two counters that keep the second where it is.
 
 The dependency edges run **downward only**: `cortex-memory` and `cortex-eval` both depend on
 `cortex-core`, and neither depends on the other — `cortex-eval` does not import the product and does
@@ -229,7 +257,7 @@ are load-bearing today, so no reader infers more coverage than exists.
 | `decideWrite` / `decideRetrieval` / `defaultValueFunction` | Implemented, tested, **composed and armed**            | `cortex-memory` is their first production caller. The pre-registered A/B that measures whether the gated composition _helps_ is assembled; the dispatch is the remaining step — a pre-registration is a prediction, not a result                                                                                                                                                                                                                                                                                                         |
 | Bitemporal facts                                           | Implemented, tested, **fact source wired; `Fact` itself still has zero constructors** | The arm's `answerKnowledgeUpdate` is bitemporal, and the facts it reads are built by `cortex-eval`'s own `fact-store.ts` — `(subject, predicate, object, date)` triples turned into a per-subject timeline. `cortex-core`'s `Fact` (two time axes, `isFactCurrentAt`) has **zero constructors** in either package, and `CortexMemory` never builds one. So the capability is delivered on the measured path by a different implementation, and the type that models it is a contract with no caller. The reach table and the count are in [`docs/AUDIT-SEMANTIC-REACH.md`](docs/AUDIT-SEMANTIC-REACH.md) §3. What happens to this gap is a decision rather than a backlog item: [`docs/DECISION-SEMANTIC-LAYER-ROUTE.md`](docs/DECISION-SEMANTIC-LAYER-ROUTE.md) chooses to **wire** the kernel (route B) over retracting it (route A), prices route A item by item, and fixes the order that makes a fake wiring unavailable. The first step of that order has landed: `cortex-memory/src/semantic-facts.ts` builds a `KnowledgeUnit` — two `KnowledgeFact`s on one slot plus the `supersedes` edge `deriveSupersedes` computes — out of the span-and-date authorisation `supersede.ts` had already computed and then discarded, and `renderBlocks` renders it into a prompt. `Fact` (the two-axis type) is untouched and still unconstructed: the facts the product now builds are `KnowledgeFact`, and the row below states what is left |
 | Semantic update carry (`semanticCarry`)                     | Implemented, tested, **wired and off by default** | The first product path from a typed fact to a prompt. `supersede.ts` decides that one value replaced another, `semantic-facts.ts` turns that decision into two facts and a `supersedes` edge, and a later question whose window still carries the record the decision was read from is told which value is current. Off by default for the reason every prompt-changing option in this repository is: an on default would make every published artifact unreproducible from the code, and semantic-layer exit criterion E6 — the paired reading — has not run. The reach is asserted rather than argued: an update only reaches a window that still contains its anchor record, so on a benchmark, where each question brings its own corpus, it is **zero** (`semantic-carry.test.ts`). `semanticCarryCensus()` reports `absorbed`, `dropped`, `matched`, `served` and `withheld`, and the store absorbs whether or not the switch is on — an off switch that also meant an empty store would collapse two different reports into one. The block carries **one** fact, not two: the two facts carry `deriveAssumptions`, `reviseLedger` refutes the replaced one, and `assemble` — the single exit, which also renders the block — refuses it. Before that wiring nothing in the path wrote `refuted`, so the superseded value was served on its own `fact:` line with only the relation line to distinguish it |
-| Semantic store typing (`MemoryType`)                       | Implemented, tested, **written and read** | Until E3 the union had three members, `admission.ts` wrote a literal `'episodic'`, and no code compared the field — a taxonomy the type system asserted and the runtime did not have (`AUDIT-SEMANTIC-REACH.md` §5.2). `semantic-facts.ts`'s `memoryForUpdate` now builds each authorised substitution as a `MemoryValue` with `type: 'semantic'`, a `source` taken from the record the authorisation was read from, and no invented utility number; `retention.ts` reads the type to decide which entry a bounded store gives up — a semantic entry is kept by the windows that carried it, an episodic one by when it was recorded. The census reported `cortex-core: MemoryType` leaving the orphan ledger in the round that wired it. |
+| Semantic store typing (`MemoryType`)                       | Implemented, tested, **written and read** | Until E3 the union had three members, `admission.ts` wrote a literal `'episodic'`, and no code compared the field — a taxonomy the type system asserted and the runtime did not have (`AUDIT-SEMANTIC-REACH.md` §5.2). `semantic-facts.ts`'s `memoryForUpdate` now builds each authorised substitution as a `MemoryValue` with `type: 'semantic'`, a `source` taken from the record the authorisation was read from, and no invented utility number; `cortex-core`'s `domain/retention.ts` reads the type to decide which entry a bounded store gives up — a semantic entry is kept by the windows that carried it, an episodic one by when it was recorded. The census reported `cortex-core: MemoryType` leaving the orphan ledger in the round that wired it. |
 | FSRS (`retrievability` / `review`)                         | Implemented, tested, **reachable only through `consolidate`, which is Declined** | `consolidate` is the only caller, and `DECISION-SEMANTIC-LAYER-ROUTE.md` §6.2 declines to wire it: a store carries one clock, so the elapsed time it measures is `0` for every entry, and the state it writes has no reader in the product. Two defects are recorded rather than implied: stability's unit was milliseconds once, which made the shipped defaults delete every memory on the first run (`AUDIT-CONSOLIDATION-CLOCK.md`); and the cull read `Date.now()` while aging entries stamped by the caller's clock, so a replayed corpus pinned to its own instant was deleted in full. `now` is now a required argument — a default is right only for callers who stamp with wall time |
 | Hebbian graph (`MemoryGraph`)                              | Implemented, tested, **not on the eval path**          | Graph recall was wired into the temporal path and removed on measurement: 77.95% → 70.87%, 15 questions broken against 6 repaired, exact McNemar p = 0.039. Closed, not pending                                                                                                                                                                                                                                                                                                                                                          |
 | Contradiction resolution                                   | Implemented, tested, **not on the eval path — Declined** | `DECISION-SEMANTIC-LAYER-ROUTE.md` §6.1. It decides between two facts claiming one instant, and the fact source only produces a strictly ordered pair; on that pair, with the only defensible inputs, it returns the value the revision just refuted at a posterior of 0.999                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
