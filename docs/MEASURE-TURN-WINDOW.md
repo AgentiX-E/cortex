@@ -455,3 +455,84 @@ The treatment arm was dispatched before the repair and will fail the same step f
 and its merged artifact are unaffected, so the pair is readable; the failure is recorded here rather than
 re-run, for the reason §10.5 gives about the fold — the defect is in the readback, and the readback is testable,
 so it is fixed and tested rather than paid around.
+
+## 11. The registered reading
+
+Two dispatches, one per arm, `windows=1`, `capability=all`, 500 corpora, four repetitions, sixteen shards
+each. Both run to `completed` with every shard successful; both conclude `failure` for the reason §10.6
+records, which is a print step and not the arm. The pair is read from the shards, folded locally at the
+reading commit, and each fold was compared key by key against the artifact CI published: **every key other
+than the added census is identical**, so the census is a statement about these shards and not about the fold.
+
+| | control `400` | treatment `400::match` |
+| --- | ---: | ---: |
+| `memoryArmConfig.turnWindow` | absent (head) | `match` |
+| `memoryArmConfig.turnCutMarker` | `none` | `ellipsis` |
+| `turnWindow.cut` | 2,426 | 2,457 |
+| `turnWindow.marked` | 0 | 2,457 |
+| `turnWindow.whole` | 32,034 | 32,287 |
+| `turnWindow.questions` | 378 | 378 |
+| `turnWindow.unreported` | 122 | 122 |
+| feature accuracy, mean of four runs | 86.75% | 87.25% |
+| baseline accuracy, mean of four runs | 44.20% | 43.75% |
+
+`P1` — did the mechanism reach the prompt — reads `marked / cut = 2,457 / 2,426 = 1.0128` on a run-level
+basis. It is above 1 because the two `cut` sets overlap without being equal, which is exactly why
+`turn_window_analysis.py` labels the ratio `reachedBasis: run-level` rather than calling it a share. The two
+census fields that carry the identity are the ones that settle it: `questions + unreported = 500` on both
+sides, so neither arm lost a question, and `marked = 0` on the control against `marked = cut` on the
+treatment, so the two strings really did parse into two renderings.
+
+### 11.1 The number, and the ruler beside it
+
+| side | control | treatment | paired delta | b | c | p |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| feature, the treated system | 86.75% | 87.25% | **+2.50 questions** | 13 | 19 | 0.3771 |
+| baseline, untouched by the treatment | 44.20% | 43.75% | **-2.25 questions** | 7 | 4 | 0.5488 |
+| difference in differences | | | **+4.75** | | | |
+
+The second row is the part that makes the first row readable. `buildBaseline` in
+`cortex-memory/bench/run-ablation.ts` constructs `NaturalLanguageMemorySystem` **without** `maxTurnChars`,
+so the baseline cannot see either string; any movement there is redraw on an identical population with an
+identical reader. It moved 2.25 questions. So the treated side's `+2.50` is the same order as the noise on
+an instrument that was not touched, and the registered floor — "not worse by five" — is met while no gain is
+demonstrated. Difference in differences is +4.75, which is the largest of the three numbers and the one this
+document declines to lead with: it is a difference of two noisy differences, and its own interval is wider
+than either.
+
+### 11.2 What the pair cannot separate
+
+`400::match` is not one variable. The parser refuses `match` with any marker but `ellipsis` — a window always
+marks its elisions, and a run that named `none` would print a mark on every cut while its own config line
+said it printed none. So the treatment is **the anchored window plus the elision marker**, and the delta
+above belongs to that bundle.
+
+The design admits a third cell that would separate them, and it has not run:
+
+| cap string | window | marker | state |
+| --- | --- | --- | --- |
+| `400` | head | `none` | control, run `43673528695` |
+| `400::match` | match | `ellipsis` | treatment, run `43673618979` |
+| `400:ellipsis` | head | `ellipsis` | **not run** |
+| `400::none::match`-shaped | match | `none` | refused by design, and that refusal is correct |
+
+The third cell is dispatchable at the same cap and the same bill, and it would price the marker alone: the
+marker changes the prompt by a few characters per cut turn — 2,457 cuts over 378 questions in the treatment
+— which is a real token cost and a real signal to the reader. Until it runs, this row's reading is "the
+registered bundle is not worse than the head cut", and a gain attributed to *the window* would be
+over-attributing.
+
+### 11.3 Cost
+
+| | control + treatment |
+| --- | ---: |
+| LLM calls | 11,168 |
+| prompt tokens | 43,233,849 |
+| cache-hit prompt tokens | 38,021,380 (87.9%) |
+| completion tokens | 722,545 |
+| projected spend | 28.52 CNY |
+
+The projection was 14.26 CNY per arm and the pair came in at the projection, which is the second time this
+instrument has been priced before it ran (§9, `ANALYSIS-E6-DISPATCH-COST.md`). The cache-hit share is the
+lever that made it affordable: 87.9% of prompt tokens were served from the shared cache, because the two
+arms ask the same 500 questions over the same haystacks and the second arm finds the first arm's prefixes.

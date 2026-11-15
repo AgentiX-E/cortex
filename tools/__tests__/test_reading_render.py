@@ -19,11 +19,26 @@ cannot tell the two apart gets deleted the first time CI is red for an unrelated
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 import shutil
 import subprocess
 
 import pytest
+
+
+def whole(value: float) -> str:
+    """`toFixed(0)`, which is what the cross-check writes -- not Python's `round`.
+
+    `round(2.5)` is `2` (banker's rounding) and `(2.5).toFixed(0)` is `'3'` (half away from zero).
+    The two agree on every value that is not exactly on a half, which is why they agreed for as long
+    as every count was either an integer or a repeating decimal. `S10` reads `+2.50` -- a mean of four
+    repetitions over 500 questions, so exactly on a half -- and the first run of this suite after that
+    reading landed went red with `S10 renders as '3'`. The divergence was in the test's own third
+    implementation of the rule, not in either tool, and the repair is to use the rule the documents
+    are written with rather than a second one that happens to agree most of the time.
+    """
+    return f"{math.floor(value + 0.5) if value >= 0 else math.ceil(value - 0.5):d}"
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DIST = REPO / "packages" / "cortex-eval" / "dist" / "acceptance.js"
@@ -77,8 +92,38 @@ class TestTheTwoRendersAgree:
         assert counts, "no countable row has a value in this checkout, so the rule is untested"
         for row in counts:
             shown = markers[row["id"]]
-            assert shown == f"{round(row['current']):d}", (
+            assert shown == whole(row["current"]), (
                 f"{row['id']} renders as {shown!r} in the cross-check; a count is a whole number"
+            )
+
+    def test_the_rule_is_stated_at_the_value_where_two_rules_disagree(self, matrix, markers):
+        """A value exactly on a half, which is the only place a rounding rule is observable.
+
+        Written because the row above could not see the difference: it compared the cross-check
+        against Python's `round`, and `round` is banker's -- so a `+2.50` reading made the *test* red
+        while both tools agreed. This case pins the rule the documents are written with (half away
+        from zero) and names the row that carries it today, so a future reading that lands on a half
+        cannot quietly be rounded the other way.
+        """
+        halves = [
+            row
+            for row in matrix
+            if row["unit"] == "count"
+            and row["current"] is not None
+            and abs(row["current"] % 1) == 0.5
+        ]
+        if not halves:
+            pytest.skip("no count is exactly on a half in this checkout, so the rule is unobservable")
+        for row in halves:
+            expected = whole(row["current"])
+            assert markers[row["id"]] == expected, (
+                f"{row['id']} reads {row['current']} and is written as {markers[row['id']]!r}; "
+                f'a count is rounded half away from zero, which is {expected!r}'
+            )
+            # The two rules disagree here, or the case is not testing what it claims to.
+            assert int(expected) != round(row["current"]), (
+                f"{row['id']} is on a half but both rounding rules agree on it, so this case would "
+                "pass without the rule being stated at all"
             )
 
     def test_the_cost_row_is_the_case_that_exposed_the_two_rules(self, matrix, markers):

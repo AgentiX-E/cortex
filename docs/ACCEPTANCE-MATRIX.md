@@ -68,7 +68,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
-| S10 | <!-- reading:S10 -->—     | ≥ -5      | unrun  | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
+| S10 | <!-- reading:S10 -->3      | ≥ -5      | pass   | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | S11 | <!-- reading:S11 -->—     | ≥ 88.0%   | unrun  | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
 | S12 | <!-- reading:S12 -->-2    | ≥ -5      | pass   | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |
 | S13 | <!-- reading:S13 -->27    | ≥ 1       | pass   | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record, summed over every worker instance |
@@ -151,15 +151,28 @@ than fifteen because the mechanism spends the same characters: it cannot buy acc
 better-chosen slice of it. Its control is the registered configuration at the same cap, so the pair differs in one
 field and the bill is identical -- which is what makes a win here a win rather than a trade.
 
-Two 200 x 2 screening pairs have run and this row stays `unrun`, deliberately. The second one
-(`43433744411` / `43437140082`) reads **-1.00 questions, p = 0.7812**, and the same instrument produced
-**+1.50 questions between two identical-prompt control runs** -- so the effect is smaller than the redraw on
-this sample, and the registered instrument is the 500 x 4 pair for that reason. The first pair found a real
-defect (226 of 10,381 capped-route items lost their dateline, since fixed and measured at zero) and the second
-found that `P1` -- did the mechanism reach the prompt -- cannot be answered by parsing prompt prose: 53 of 200
-prompts split into a different number of chunks because an assistant's numbered list looks like an item head.
-The counter that replaces that parse is the next increment's first item; `MEASURE-TURN-WINDOW.md` sections 8
-and 9 hold both readings in full.
+Two 200 x 2 screening pairs ran and this row stayed `unrun` on purpose; the registered pair has now run. It
+reads **+2.50 questions, `p = 0.3771`** (b = 13, c = 19) -- the matrix cell says `3` because the formatter
+rounds to whole questions, the same way `S12`'s `-1.75` is printed as `-2`.
+
+The second screening pair (`43433744411` / `43437140082`) read **-1.00 questions, p = 0.7812**, and the same
+instrument produced **+1.50 questions between two identical-prompt control runs** -- so the effect was smaller
+than the redraw on that sample, and the registered instrument is the 500 x 4 pair for that reason. The first
+pair found a real defect (226 of 10,381 capped-route items lost their dateline, since fixed and measured at
+zero) and the second found that `P1` -- did the mechanism reach the prompt -- cannot be answered by parsing
+prompt prose: 53 of 200 prompts split into a different number of chunks because an assistant's numbered list
+looks like an item head. That parse is gone: the census is now a field carried through five hops, and the
+registered pair's own census reads **cut 2,457 / marked 2,457** on the treatment against **cut 2,426 /
+marked 0** on the control, with `questions + unreported = 378 + 122 = 500` on both -- the roster.
+
+The registered pair (`43673528695` control / `43673618979` treatment) also carries the noise ruler the
+screening pairs lacked, and it does not flatter the window. The **baseline** side is
+`NaturalLanguageMemorySystem` built without a cap, so it cannot see the treatment; it moved **-2.25
+questions** between the two arms (b = 7, c = 4, p = 0.5488) on an identical population and an identical
+reader. The treated side moved **+2.50**. The difference in differences is **+4.75**, and the honest reading
+of the row is therefore: the anchored window is **not worse than the head cut**, by a margin inside the
+measured redraw of an untouched system -- which is exactly what a non-inferiority floor asks and no more.
+`MEASURE-TURN-WINDOW.md` §11 holds the reading in full, including the one thing the pair cannot separate.
 
 `S9` is the row that turns "the product can rank" from a claim into a reading. Every other `S*` row is
 measured on an arm whose ranking `cortex-eval` builds **before the run** and hands to the product as a
