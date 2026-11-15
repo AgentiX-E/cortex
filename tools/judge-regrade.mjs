@@ -70,6 +70,7 @@ import {
   createLlmJudge,
   describeScorerChannels,
   judgeScorer,
+  resolveJudgeIdentity,
   scorerChannelStats,
   toJudgeQuestionType,
 } from '../packages/cortex-eval/dist/index.js';
@@ -210,6 +211,13 @@ export function tally(rows) {
     up,
     down,
     p: signTest(up, down),
+    // The other side of the difference this reading is. Without it, `regradedCorrect` is a number
+    // with no reference: a re-grade that rescued 13 and revoked 28 and one that rescued 0 and
+    // revoked 15 read identically at 412, and `Δ` -- the quantity a cross-vendor comparison puts
+    // side by side -- cannot be recovered from `artifactOnly`/`regradeOnly` alone, because a tie's
+    // composition is not recorded. Two readings of one artifact have to be able to state both of
+    // their own sides before either can be subtracted from the other.
+    recordedCorrect: rows.filter((row) => row.recorded).length,
     // The first pass is a re-grade of the same bytes with the same template, so any disagreement with
     // the artifact is itself a judge reading: `recorded` is what the run's own grading said.
     agreesWithArtifact: rows.filter((row) => row.verdicts[0] === row.recorded).length,
@@ -311,13 +319,36 @@ async function main() {
   }
 
   const judge = createJudgeFromEnv(judgeEnv);
+  // Resolved *here* rather than beside `judgeEnvFor` above, because `--plan-only` promises to run
+  // with no model at all: a `custom:` selection with no endpoint throws on resolution, and a plan
+  // that cannot be printed is a plan nobody reviews. Both this call and `createJudgeFromEnv` read
+  // the same environment through the same function, so the identity recorded below is the identity
+  // that was used rather than a second opinion about it.
+  const regradeIdentity = resolveJudgeIdentity(judgeEnv);
   // Two instruments, named rather than implied, because they answer different questions about the
   // same bytes. `judge` is the judge channel: one question to a model per answer, which is the
   // whole verdict for a preference question (no gold string exists) and is NOT an arm's accuracy for
   // the other five capabilities -- an answer `exact` would have accepted is submitted to the model
   // instead. `full` is `judgeScorer`: the artifact's own instrument, deterministic channels first,
   // the model only where they cannot decide (`J8`).
-  const judgeOneAnswer = createLlmJudge(judge);
+  //
+  // The counter rides the judge rather than the scorer, so it sees the judge channel under both
+  // instruments: `judgeScorer` submits to the function it is given, which is this one.
+  const parse = { calls: 0, unrecognised: 0, samples: [] };
+  const countedJudge = createLlmJudge(judge, {
+    // See `parseJudgeVerdict` in `judge.ts`: a reply the grammar cannot read is a `false` verdict,
+    // which is right for an answer and indistinguishable from "the judge rejected everything" in a
+    // *difference between judges*. The samples are what make a later grammar change evaluable
+    // offline instead of by another dispatch.
+    onUnrecognised: (raw) => {
+      parse.unrecognised += 1;
+      if (parse.samples.length < 5) parse.samples.push(raw.slice(0, 200));
+    },
+  });
+  const judgeOneAnswer = (...args) => {
+    parse.calls += 1;
+    return countedJudge(...args);
+  };
   const grade =
     scorer === 'full'
       ? (source) =>
@@ -379,6 +410,14 @@ async function main() {
   // again, wearing the full scorer's name.
   const channels = scorerChannelStats();
   if (scorer === 'full') console.log(`  ${describeScorerChannels(channels)}`);
+  // Printed unconditionally, because a zero here is the evidence that the judge answered in the
+  // grammar the campaign was graded in -- and a non-zero one is the only warning that a `Δ` between
+  // two judges might be a `Δ` between two reply formats. `tools/judge-cross-vendor.mjs` refuses a
+  // reading whose count exceeds the decision threshold, so this line is what that refusal quotes.
+  console.log(
+    `  judge replies ${parse.calls} consulted, ${parse.unrecognised} unreadable` +
+      (parse.unrecognised === 0 ? '' : ' -- a cross-vendor difference measured with these is not yet about the judge'),
+  );
 
   // `J9d`. The vector `tally` builds and throws away. Two re-grades of two arms are a paired
   // comparison, and the aggregate file has no pairing in it: the flips are counts and the ids are only
@@ -416,13 +455,28 @@ async function main() {
           provider: identity.provider,
           model: identity.model,
           temperature: identity.temperature,
+          // `reader`, `pinned`, or `null` when the artifact predates the field. This is the fact
+          // `I1` turns on: an artifact whose judge *was* its reader cannot be evidence about
+          // same-family favouritism, because there was only one family in the building.
+          judgeSource: identity.source,
         },
         regrade: {
           selection: judgeEnv[JUDGE_MODEL_VARIABLE] ?? null,
+          // The vendor, not the selection string. `zhipu:glm-4.6` and `glm-4.6` are the same judge,
+          // and a comparison that had to re-parse the grammar to find that out would be a second
+          // reader of the same syntax -- the shape §13.312 was.
+          providerId: regradeIdentity.provider.id,
+          // Whether the judge followed the reader (`reader`) or was pinned (`pinned`). A pinned
+          // cross-vendor judge and a cross-vendor *reader* are different experiments, and only this
+          // field tells them apart.
+          source: regradeIdentity.source,
           temperature: judgeEnv.TEMPERATURE ?? null,
           thinking: 'disabled',
         },
         matchesArtifact: matches,
+        // How much of the reading could be read at all. `null` is not zero and this block is never
+        // omitted: a reading without it cannot say its `Δ` is about the judge.
+        parse,
       },
       reading,
     };

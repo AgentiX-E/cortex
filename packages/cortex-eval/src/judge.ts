@@ -192,27 +192,69 @@ export function buildJudgePrompt(
   }
 }
 
-/** Parse the judge response into a boolean; defaults to false on ambiguity. */
-export function parseJudgeResponse(raw: string): boolean {
+/**
+ * The verdict, and whether the reply was in a form this parser reads at all.
+ *
+ * ## Why `false` needed a second field beside it
+ *
+ * `parseJudgeResponse` returns `false` for an unrecognised reply, and for a *verdict* that is the
+ * right default: a judge that did not say yes has not established equivalence, and scoring it as a
+ * yes would inflate every accuracy in the campaign. For an *instrument reading* it is the wrong
+ * default, and the failure is silent. A judge from a vendor whose chat template wraps its answer in
+ * markdown -- `**Yes**, the response matches.` -- is rejected by `startsWith('YES')` on every single
+ * question, so a re-grade under that judge reports an arm score of zero and a judge gap the size of
+ * the whole judge channel. Nothing in the reading would distinguish that from "the judge is very
+ * strict", which is a claim about models rather than about a parser.
+ *
+ * So the recognition is reported rather than folded into the verdict. The verdict is unchanged --
+ * every caller of `parseJudgeResponse` sees exactly the boolean it saw before, which is what keeps
+ * the archived readings comparable -- and a caller that is about to publish a *difference between
+ * judges* can refuse the reading when too many replies were unreadable.
+ *
+ * ## Why this is not a tolerant parser
+ *
+ * Substring matching would be the obvious repair and it is wrong here: the abstention template asks
+ * "Does the model correctly identify the question as unanswerable?", which contains the word
+ * "answerable", and a reply quoting the prompt back would then be read as a verdict. The grammar
+ * stays a prefix test; when a real judge writes outside it, the count says so and the grammar is
+ * widened deliberately, with the widening measured against replies that were actually recorded.
+ */
+function parseJudgeVerdict(raw: string): { verdict: boolean; recognised: boolean } {
   const trimmed = raw.trim().toUpperCase();
   if (trimmed.startsWith('YES')) {
-    return true;
+    return { verdict: true, recognised: true };
   }
   if (trimmed.startsWith('NO')) {
-    return false;
+    return { verdict: false, recognised: true };
   }
   // Tolerate numeric encodings used by some judge models.
   if (trimmed === '1' || trimmed === 'TRUE') {
-    return true;
+    return { verdict: true, recognised: true };
   }
   if (trimmed === '0' || trimmed === 'FALSE') {
-    return false;
+    return { verdict: false, recognised: true };
   }
-  return false;
+  return { verdict: false, recognised: false };
 }
 
-/** Create a deterministic, cached LLM judge. */
-export function createLlmJudge(llm: LLM): AnswerJudge {
+/** Parse the judge response into a boolean; defaults to false on ambiguity. */
+export function parseJudgeResponse(raw: string): boolean {
+  return parseJudgeVerdict(raw).verdict;
+}
+
+/**
+ * Create a deterministic, cached LLM judge.
+ *
+ * `onUnrecognised` is called with the raw reply whenever the parser could not read it, and is the
+ * only way a caller outside this module can see that distinction -- `AnswerJudge` returns a boolean
+ * because that is what a scorer consumes. It fires only on a cache miss: a cached verdict was
+ * already counted by the call that produced it, and counting it again on every pass would make the
+ * rate a property of how many passes the caller ran.
+ */
+export function createLlmJudge(
+  llm: LLM,
+  hooks: { readonly onUnrecognised?: (raw: string) => void } = {},
+): AnswerJudge {
   return async (question, predicted, expected, type = 'default') => {
     const prompt = buildJudgePrompt(question, predicted, expected, type);
     const cached = judgeCache.get(prompt);
@@ -220,7 +262,8 @@ export function createLlmJudge(llm: LLM): AnswerJudge {
       return cached;
     }
     const raw = await llm.complete(prompt, { temperature: 0 });
-    const verdict = parseJudgeResponse(raw);
+    const { verdict, recognised } = parseJudgeVerdict(raw);
+    if (!recognised) hooks.onUnrecognised?.(raw);
     judgeCache.set(prompt, verdict);
     return verdict;
   };

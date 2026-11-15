@@ -18,7 +18,12 @@
  * recorded separately) instead of being typed by an operator, and the comparison between the
  * recorded and the chosen judge is a value the reading carries rather than a line in a log that
  * expires.
+ *
+ * The one import is the provider declaration, and the docblock of `credentialForJudge` says why this
+ * module could not render that value itself.
  */
+
+import { resolveReaderProvider } from '../packages/cortex-eval/dist/index.js';
 
 /**
  * The variable the judge is pinned in, mirroring `llm-factory.ts`'s `JUDGE_MODEL_VARIABLE`.
@@ -27,6 +32,8 @@
  * through it would be changing the thing the artifact's arm was measuring. Two roles, two variables.
  */
 export const JUDGE_MODEL_VARIABLE = 'CORTEX_JUDGE_MODEL';
+
+
 
 /**
  * The judge an artifact was graded with, as the artifact recorded it.
@@ -75,6 +82,54 @@ export function selectionFor(provider, model) {
   if (model === null) return null;
   if (provider === null || provider === 'deepseek') return model;
   return `${provider}:${model}`;
+}
+
+/**
+ * Which variable holds the credential the judge this process would build needs.
+ *
+ * ## Why this function imports the factory's table instead of restating it
+ *
+ * Every other function in this module avoids the package, because each of them renders a value it
+ * built itself. This one does not have that option: "which variable does provider `zhipu` read" is a
+ * fact that lives in `reader-provider.ts`'s declaration table, and a second copy here would be a
+ * second answer to it. The failure that copy produces is not cosmetic -- it is `judge-audit.yml`
+ * exporting `DEEPSEEK_API_KEY` while the judge was pinned to `zhipu:`, which sends one vendor's
+ * credential to another and collects a 401 on every question of a 500-question pass, or (worse)
+ * sends nothing and dies before the first one.
+ *
+ * ## Why it takes the artifact
+ *
+ * Because on the dispatch that matters, `CORTEX_JUDGE_MODEL` is *empty*: the judge is whatever graded
+ * the artifact. A check that resolved the credential from the environment alone would answer about
+ * `deepseek` -- the default -- on the one run whose whole point was a judge from somewhere else.
+ *
+ * ## `origin`, and why it is not a boolean
+ *
+ * "The dispatch pinned it", "the artifact recorded it" and "neither said, so it follows the reader"
+ * are three different facts about how confident the name is, and the third one is the state in which
+ * a wrong credential is most likely: nothing told the job which vendor it was about to call.
+ */
+export function credentialForJudge(report, env = {}) {
+  const resolved = judgeEnvFor(report, env);
+  const identity = artifactJudgeIdentity(report);
+  const fromArtifact = selectionFor(identity.provider, identity.model);
+  const pinned = (env[JUDGE_MODEL_VARIABLE] ?? '').trim();
+  const origin =
+    pinned !== '' ? 'the dispatch' : fromArtifact !== null ? 'the artifact' : 'the reader';
+  const provider = resolveReaderProvider(resolved, JUDGE_MODEL_VARIABLE);
+  const variable = provider.credentialVariable;
+  const value = resolved[variable];
+  const present = typeof value === 'string' && value.trim() !== '';
+  return {
+    selection: (resolved[JUDGE_MODEL_VARIABLE] ?? '').trim() || null,
+    origin,
+    providerId: provider.id,
+    variable,
+    present,
+    // The length, never the value. An operator needs to know that *a* key arrived and that the wrong
+    // one did not; both are answered by a number, and neither by the secret.
+    length: present ? value.trim().length : 0,
+  };
 }
 
 /**

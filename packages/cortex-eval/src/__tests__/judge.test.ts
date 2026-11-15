@@ -69,6 +69,60 @@ describe('createLlmJudge', () => {
 });
 
 /**
+ * `onUnrecognised` is the difference between a verdict and an instrument reading.
+ *
+ * `parseJudgeResponse` calls an unreadable reply `false`, which is the right verdict and the wrong
+ * fact: on a re-grade it is indistinguishable from "the judge rejected this answer", and a judge
+ * writing markdown would then look like a judge rejecting the whole population. `I1` needs to tell
+ * those apart without changing any verdict, so the hook reports the reply and the boolean stays
+ * exactly what it was.
+ */
+describe('createLlmJudge unrecognised-reply reporting', () => {
+  it('reports the raw reply and still returns the boolean the parser always returned', async () => {
+    clearJudgeCache();
+    const seen: string[] = [];
+    const judge = createLlmJudge(
+      scriptedLlm(() => '**Yes**, the response matches.'),
+      {
+        onUnrecognised: (raw) => seen.push(raw),
+      },
+    );
+    expect(await judge('q', 'a', 'a')).toBe(false);
+    expect(seen).toEqual(['**Yes**, the response matches.']);
+  });
+
+  it('says nothing about a reply it read', async () => {
+    clearJudgeCache();
+    const seen: string[] = [];
+    const judge = createLlmJudge(
+      scriptedLlm(() => 'NO'),
+      {
+        onUnrecognised: (raw) => seen.push(raw),
+      },
+    );
+    expect(await judge('q', 'a', 'a')).toBe(false);
+    expect(seen).toEqual([]);
+  });
+
+  it('reports one request once, not once per cached read of it', async () => {
+    // The count has to describe the judge's replies, not the caller's loop: a two-pass re-grade reads
+    // every prompt twice, and a hook firing on a cache hit would double a rate that is being compared
+    // against a threshold in questions.
+    clearJudgeCache();
+    const seen: string[] = [];
+    const judge = createLlmJudge(
+      scriptedLlm(() => 'maybe'),
+      {
+        onUnrecognised: (raw) => seen.push(raw),
+      },
+    );
+    await judge('q', 'a', 'a');
+    await judge('q', 'a', 'a');
+    expect(seen).toEqual(['maybe']);
+  });
+});
+
+/**
  * The official LongMemEval protocol dispatches its grading prompt by question
  * type and is deliberately looser than straight equivalence: the default and
  * multi-session templates credit a response that CONTAINS the gold answer or

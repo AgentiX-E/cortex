@@ -79,6 +79,16 @@ jobs:
       # passed — which is the one failure mode a configuration mistake produces here that a reader
       # could mistake for the audit finding nothing.
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      # The cross-vendor half (`I1`). `createJudgeFromEnv` reads the credential of the provider the
+      # **selection** names, so a dispatch pinned to `zhipu:glm-4.6` needs this one and would
+      # otherwise collect a 401 on every question of a 500-question pass. It was absent here for as
+      # long as the judge could only be a DeepSeek model, which made "measure a judge from another
+      # vendor" unreachable rather than merely unattempted.
+      #
+      # Exported unconditionally rather than conditionally on the selection: a job-level `env:` with
+      # an expression in it would be a second reading of `CORTEX_JUDGE_MODEL`, and the first reading
+      # is `tools/judge-identity.mjs`'s -- the module that also decides which name to *refuse* on.
+      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
       # `CORTEX_JUDGE_MODEL`, not `CORTEX_LLM_MODEL`. The latter is `cortex-ai`'s profile variable
       # (`packages/cortex-ai/src/profile.ts`), read by `resolveLlmProfile` in the *other* generation
       # path; the factory this workflow builds its judge from reads the reader's selection and its own
@@ -121,18 +131,6 @@ jobs:
       - name: Build
         run: pnpm -r build
 
-      - name: Refuse to start without a credential
-        run: |
-          set -euo pipefail
-          if [ -z "${DEEPSEEK_API_KEY}" ]; then
-            echo "DEEPSEEK_API_KEY is empty: the org secret DEEPSEEK_API_KEY is not visible to this job" >&2
-            exit 1
-          fi
-          echo "credential present (length ${#DEEPSEEK_API_KEY}); value never printed"
-          # The judge's name is not a credential, so it is printed. An unnamed judge is the defect
-          # §13.312 registers, and the one place it can be caught before spending credits is here.
-          echo "judge requested: ${CORTEX_JUDGE_MODEL:-<the judge this artifact recorded>}"
-
       - name: Fetch the artifact under audit
         run: |
           set -euo pipefail
@@ -140,6 +138,22 @@ jobs:
           gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
             --name longmemeval-s-report --dir readings/artifact
           ls -la readings/artifact
+
+      # After the fetch, because the credential is the *judge's* and the judge is normally the one
+      # the artifact recorded: checking it before the artifact exists would check the default
+      # provider, which is the substitution `I1` is about rather than a guard against it.
+      #
+      # The check is a tool rather than a shell test on purpose. The old step tested
+      # `DEEPSEEK_API_KEY` by name, which stayed true while the judge became configurable -- so a
+      # `zhipu:` dispatch would have passed a check written for a credential it does not use. A
+      # `case` over provider names would be a third copy of `reader-provider.ts`'s table; the tool
+      # resolves through that table, so the check and the request cannot name different variables.
+      - name: Refuse to start without the credential the judge needs
+        run: |
+          set -euo pipefail
+          echo "judge requested: ${CORTEX_JUDGE_MODEL:-<the judge this artifact recorded>}"
+          node tools/judge-credential.mjs \
+            --artifact readings/artifact/benchmark-cortex-memory-ablation-report.json
 
       - name: Plan only (no model) — the case list has to be reviewable before it is spent on
         if: env.MODE != 'regrade'
