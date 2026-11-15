@@ -45,6 +45,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The sibling repository, checked out where the tools expect it.
+      #
+      # `tools/__tests__/test_semantic_carry_analysis.py` runs
+      # `cortex-docs/evidence/longmemeval/scripts/semantic_carry_analysis.py` as a subprocess,
+      # because that script is what decides whether `S12` gets a registered number or none -- the
+      # branch a screening pair must not take. A test that skipped when the script was absent would
+      # be a test of nothing on the only machine that matters, and the first push proved it: 13
+      # tests failed here with "No such file or directory" while passing locally, where the two
+      # repositories sit side by side.
+      #
+      # Public, so no credential is involved; `fetch-depth: 1` because the test reads one file.
+      - name: Checkout cortex-docs
+        uses: actions/checkout@v4
+        with:
+          repository: AgentiX-E/cortex-docs
+          path: cortex-docs
+          fetch-depth: 1
+
       # The `tools/` Python scripts are part of the delivery path, not scratch
       # work: one publishes to GitHub, one dispatches the benchmark, and one
       # makes the resolver usable. `pnpm check` runs their tests, so the

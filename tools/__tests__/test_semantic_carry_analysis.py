@@ -265,3 +265,20 @@ def test_an_incomplete_usage_block_is_refused() -> None:
 
     assert done.returncode != 0, done.stdout
     assert 'llmUsage' in done.stderr and 'promptTokens' in done.stderr
+
+
+def test_the_script_is_where_the_sibling_checkout_puts_it() -> None:
+    """The layout this file assumes is the layout CI builds, and a missing script is not a skip.
+
+    `verify.yml` checks `AgentiX-E/cortex-docs` out at `path: cortex-docs`, which is where the local
+    checkout already sits, so the same relative path resolves in both places. When that step was
+    absent the suite failed with thirteen "No such file or directory" lines and no statement of the
+    cause. This test states it, and it fails rather than skips: the other thirteen still fail beside it,
+    which is the point -- a suite that goes green when its subject is missing has stopped measuring.
+    """
+    assert SCRIPT.exists(), (
+        f'{SCRIPT} is missing. The analysis script lives in the sibling repository, and CI checks it out '
+        'with `actions/checkout` at `path: cortex-docs` in `.github/workflows/verify.yml`. Restore that '
+        'step rather than skipping this suite: the branch under test decides whether S12 gets a '
+        'registered number or none.'
+    )
