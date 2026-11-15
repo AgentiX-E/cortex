@@ -127,8 +127,20 @@ describe('erasing through the session', () => {
       reason: 'retention-policy',
     });
     expect(erasedCard.card?.state).toBe('forgotten');
-    expect(erasedCard.record.removed).toEqual({ facts: 1, cards: 1, releases: 0, vectors: 0 });
-    expect(erasedHealth.record.removed).toEqual({ facts: 1, cards: 0, releases: 1, vectors: 0 });
+    expect(erasedCard.record.removed).toEqual({
+      facts: 1,
+      cards: 1,
+      releases: 0,
+      vectors: 0,
+      turns: 0,
+    });
+    expect(erasedHealth.record.removed).toEqual({
+      facts: 1,
+      cards: 0,
+      releases: 1,
+      vectors: 0,
+      turns: 0,
+    });
 
     // 1. The four read paths a person and a colleague actually use.
     expect(await first.evidence('shared')).toEqual([]);

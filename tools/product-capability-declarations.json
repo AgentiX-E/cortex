@@ -86,12 +86,11 @@
     },
     {
       "id": 10,
-      "capability": "erasure across seven surfaces and their bytes",
-      "expect": "product-blocked",
+      "capability": "erasure across eight surfaces and their bytes",
+      "expect": "product",
       "symbol": "DisclosureSession",
       "site": "packages/cortex-memory/src/disclosure/session.ts",
-      "d3": "declared: reads the private and shared stores it was constructed over",
-      "reason": "The class is exported, `forget()` empties five tables and the vector cache it is handed, and the erasure census reads zero residue across all seven surfaces, but no product file instantiates it: its callers are tools/a3-review.mjs, tools/erasure-census.mjs and tools/triage-demo.mjs. A customer installing the product cannot erase anything, and the cache is the surface that made this row's old wording wrong -- a session with no eraser reports a complete erasure over two surviving vectors (CORTEX_ERASURE_CENSUS_FAULT=no-vector-forget)."
+      "d3": "declared: reads the private and shared stores it was constructed over, and the transcript it is handed"
     },
     {
       "id": 11,
@@ -111,12 +110,11 @@
     },
     {
       "id": 13,
-      "capability": "storage backends",
-      "expect": "product-blocked",
-      "symbol": "SqliteStorage",
-      "site": "packages/cortex-storage/src/storage/sqlite.ts",
-      "d3": "declared: the store is the state, but the product offers no option that accepts one",
-      "reason": "Four backends exist and are tested against each other, and the only caller of the SQLite one is tools/a3-review.mjs. `CortexMemory`'s option type has no `storage` field, so the backend a customer can reach is none."
+      "capability": "an injected store: any Storage backend",
+      "expect": "product",
+      "symbol": "Corpus",
+      "site": "packages/cortex-memory/src/corpus.ts",
+      "d3": "declared: the transcript is the state, and the port is an interface the caller implements"
     },
     {
       "id": 14,
@@ -129,11 +127,10 @@
     {
       "id": 15,
       "capability": "disclosure boundary: rules, cards, publication",
-      "expect": "product-blocked",
+      "expect": "product",
       "symbol": "CardQueue",
       "site": "packages/cortex-core/src/triage/card.ts",
-      "d3": "declared: reads the claims the product extracted and its own policy table",
-      "reason": "The triage rule set, the card queue and the publication path are implemented and tested; no product file constructs any of them. Same shape as row 10: the capability exists for the review tool, not for the customer."
+      "d3": "declared: reads the claims the product extracted and its own policy table"
     },
     {
       "id": 16,
@@ -272,10 +269,9 @@
       ]
     },
     {
-      "category": "disclosure-and-storage-reached-only-by-a-tool",
-      "rationale": "The erasure session and the SQLite backend: the two capabilities the audit called 'implemented, tested, uncallable'. Their only callers are the review tool and the erasure census, so the tool that measures erasure is also the only thing that can perform it.",
+      "category": "storage-adapter-reached-only-by-a-tool",
+      "rationale": "The concrete SQLite adapter, whose only callers are the review tool and the erasure census. The capability it serves is no longer instrument-only: `Corpus` takes any `Storage` and `assembleMemory({ storage })` is the product caller, so what remains here is this adapter and the ones beside it. They are recorded rather than moved because a backend has to live somewhere, and the package that owns it exists for exactly one reason: to be the file a deployment imports to get a file `Storage`. The distinction this group preserves is the one that matters -- the port is product, a particular engine is a leaf.",
       "symbols": [
-        "DisclosureSession",
         "SqliteStorage"
       ]
     },

@@ -145,6 +145,10 @@ export {
   isErased,
   type ErasureReason,
   type ErasureRecord,
+  // The contract for a copy of a wording that lives outside the enumerated rows. Exported because the
+  // objects that implement it are owned by other packages: `Corpus` here is the transcript surface, and a
+  // deployment's own store is a third. A contract no implementer can name is a contract nobody can meet.
+  type TextEraser,
 } from './triage/erasure.js';
 export {
   CardQueue,

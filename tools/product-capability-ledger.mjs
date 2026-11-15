@@ -278,7 +278,16 @@ function derivedState(row, index, reach) {
  * recorded as `product`. Reachability has to be transitive or it is not
  * reachability.
  */
-const ENTRY_FILES = ['packages/cortex-memory/src/memory.ts'];
+const ENTRY_FILES = [
+  'packages/cortex-memory/src/memory.ts',
+  // The second entry, added when it started existing. `memory.ts` is the class; `assemble.ts` is the
+  // function an installer actually calls, and until this round the package shipped the class and no worked
+  // construction of it -- the only non-test one lived in `bench/`, which `files: ["dist"]` does not ship.
+  // An entry list that named the class and not the composition root would keep reporting the boundary as
+  // unreachable after the product started reaching it, which is a `blocked` row that is wrong in the
+  // direction that costs a customer: it says "you cannot use this" about something you can.
+  'packages/cortex-memory/src/assemble.ts',
+];
 
 /**
  * Every identifier a file's **code** contains, as a set.

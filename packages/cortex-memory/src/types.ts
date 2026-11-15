@@ -8,6 +8,7 @@
  * else. See `docs/AUDIT-CODE-VS-DOCS.md` §6.
  */
 import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
+import type { Corpus } from './corpus.js';
 import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { WidthPlanOptions } from './width.js';
@@ -808,6 +809,34 @@ export type CortexMemoryOptions = {
    * get attributed to one.
    */
   semanticCarry?: boolean;
+
+  /**
+   * The transcript this instance holds, if any.
+   *
+   * ## Why the product had no answer to "where is the memory" until this field
+   *
+   * `answer(question, context)` takes its evidence as an argument, so every caller owned the transcript and the
+   * library owned none of it. That is a correct contract for a harness and a strange one for a memory library,
+   * and it made three capabilities unreachable rather than merely unused: `DisclosureSession` was built over a
+   * `Storage` with no reader to feed it, `CortexMemory` had a reader with no store, and the two had no
+   * composition at all. `docs/PRODUCT-CAPABILITY-LEDGER.md` rows 10, 13 and 15 are that hole, and this field is
+   * the product-side half of closing it.
+   *
+   * ## Absent is the identity
+   *
+   * Every archived artifact was produced with the harness passing `context`, so an absent corpus leaves
+   * `answer`, `answerSessions` and the six other routes **byte-identical** — `corpus-equivalence.test.ts`
+   * asserts the prompt digest on every route with and without one. What an instance with a corpus gains is two
+   * methods (`remember`, `askStored`); nothing it already did changes.
+   *
+   * ## Why a `Corpus` and not a `Storage`
+   *
+   * Because a `Storage` is a key/value port and a corpus is a data model with an order, an identity and a
+   * dedupe rule. `Corpus` takes any `Storage` (`corpus.ts`), so the storage decision stays with the caller —
+   * SQLite or PostgreSQL in Node, OPFS or IndexedDB in a browser — while the order the transcript is read back
+   * in stays in one place. A `Storage` field here would put that order in this class and in `assemble.ts`.
+   */
+  corpus?: Corpus;
 };
 
 /**

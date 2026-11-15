@@ -54,11 +54,38 @@ const FORBIDDEN = [
   /^crypto$/,
 ];
 
-/** Byte budget for the whole closure of a guarded entry. */
+/**
+ * Byte budget for the whole closure of a guarded entry, unless the entry names its own.
+ *
+ * The budget is not a size target: it is the tripwire for an accidental heavy dependency -- one import of
+ * an ONNX runtime is ninety megabytes of weights and would pass every other check in this file. A single
+ * number for every entry therefore has to be either useless (huge enough for the product) or wrong (small
+ * enough to be meaningful for a utility package), so an entry that is legitimately large states its own.
+ */
 const BUDGET = 300 * 1024;
 
 /** Entries to guard, per package. Anything not listed is unguarded on purpose. */
 const PLAN = {
+  // The product entry, guarded since the corpus gave it state.
+  //
+  // `cortex-memory` was unguarded until this round, and the omission was structural rather than
+  // deliberate: the plan listed the two packages that had a *browser* claim to defend, and this one had
+  // no storage of its own to make the claim with. A corpus changes that -- `Corpus` takes any `Storage`,
+  // and the manual documents SQLite, PostgreSQL, OPFS and IndexedDB against one assembly -- so the entry
+  // closure now carries the claim, and a `node:` builtin reached from it would be the browser axis
+  // failing in somebody else's bundler rather than here.
+  'packages/cortex-memory': [
+    {
+      entry: 'src/index.ts',
+      portable: true,
+      // 1 MiB rather than 300 KiB, and the number is arithmetic rather than a haircut: this entry is the
+      // whole product -- six prompt builders, the disclosure boundary, the retrieval stack, the
+      // aggregation layer, and now the corpus and the composition root -- and its closure measures 818 KiB
+      // of source. The tripwire is unchanged in kind: an ONNX runtime or a native driver would still be two
+      // orders of magnitude over it.
+      budget: 1024 * 1024,
+    },
+  ],
   'packages/cortex-ai': [
     // The root is the remote-provider entry: a service that talks HTTP must not inherit an ONNX
     // runtime and 90 MB of weights.
@@ -240,9 +267,10 @@ function check(pkgDir, entries) {
         `${pkgDir}/${item.entry}: reaches ${bad.join(', ')} -- a portable entry must not`,
       );
     }
-    if (result.bytes > BUDGET) {
+    const budget = item.budget ?? BUDGET;
+    if (result.bytes > budget) {
       failures.push(
-        `${pkgDir}/${item.entry}: closure is ${result.bytes} bytes, over the ${BUDGET} budget`,
+        `${pkgDir}/${item.entry}: closure is ${result.bytes} bytes, over the ${budget} budget`,
       );
     }
     report.push({

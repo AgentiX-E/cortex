@@ -186,6 +186,41 @@ export { classifyReply, planReplyRepair } from './reply-repair.js';
 // composition
 export { CortexMemory } from './memory.js';
 
+/**
+ * The transcript the product holds, and the two arguments it becomes.
+ *
+ * `Corpus` is on the barrel because a caller with an existing transcript should be able to build the object
+ * the memory takes, rather than being handed one through `assembleMemory` or nothing. `turnId` is here for the
+ * same reason `defaultEmbeddingCacheKey` is on `cortex-core`'s: the identity of a row is the one thing a
+ * caller and the store have to agree on, and restating `${session}/${pad(ordinal)}` at a call site is how the
+ * two come to disagree.
+ */
+export {
+  CORPUS_SCHEMA,
+  Corpus,
+  CorpusError,
+  turnId,
+  type AppendReport,
+  type CorpusErrorCode,
+  type CorpusOptions,
+  type CorpusTurn,
+  type StoredTurn,
+} from './corpus.js';
+
+/**
+ * The known-good assembly: the one function an integrator calls.
+ *
+ * Exported by name rather than as a namespace because the profiles are the product decision this package
+ * could not previously state — `minimal` / `reader` / `full`, each driven end to end by
+ * `assemble.test.ts` from `remember` to `askStored`.
+ */
+export {
+  assembleMemory,
+  type AssembleOptions,
+  type AssemblyProfile,
+  type Installation,
+} from './assemble.js';
+
 export {
   CortexSessionProvider,
   type CortexSessionProviderOptions,

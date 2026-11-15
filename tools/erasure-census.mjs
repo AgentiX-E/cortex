@@ -27,7 +27,7 @@
  * Both are then erased with one call each. The readings are: occurrences of each sentence per
  * surface, the number of read paths that still return a sentence, and the rows each erasure removed.
  *
- * ## Why there are seven surfaces and not four
+ * ## Why there are eight surfaces and not four
  *
  * Four tables were the enumeration this repository shipped, and it was right about the tables. It was
  * wrong about the **cache**: an embedding store addressed by text is a seventh copy, and until this
@@ -44,6 +44,14 @@
  * instrument: a key is `sha256(text)`, so it never held the wording to begin with. What makes that
  * reading non-vacuous is its own guard -- entries must exist before the erasure, or nothing was ever
  * cached and "no wording in the keys" is a statement about an empty list.
+ *
+ * ## And the eighth, which the product created for itself
+ *
+ * A memory that stores what it was told keeps the sentence again, in a `Corpus` row addressed by
+ * `(sessionId, ordinal)`. That copy is invisible to the boundary unless the boundary is handed the
+ * corpus, and a session constructed over two stores and a cache with no corpus erases everything it can
+ * name and leaves the transcript readable -- which is why `no-turn-forget` exists as a fault and why it
+ * is the shape of the last two rounds rather than a contrivance.
  *
  * ## What it does not measure
  *
@@ -66,6 +74,7 @@ const { ERASURE_TOKEN, RELEASE_TOKEN, EmbeddingMemo } = await import(
 const { DisclosureSession } = await import(
   join(REPO, 'packages/cortex-memory/dist/disclosure/session.js')
 );
+const { Corpus } = await import(join(REPO, 'packages/cortex-memory/dist/corpus.js'));
 const { SqliteStorage } = await import(
   join(REPO, 'packages/cortex-storage/dist/storage/sqlite.js')
 );
@@ -92,6 +101,9 @@ const SURFACES = [
   { role: 'cards', kind: 'row', scope: 'private', table: 'cards' },
   { role: 'releases', kind: 'row', scope: 'private', table: 'releases' },
   { role: 'erasures', kind: 'row', scope: 'private', table: 'erasures' },
+  // The transcript. Two tables, read together: `corpus.turn` holds the wording and `corpus.session` holds
+  // the ordinals that place it, and a leak in either one is a leak about the sentence.
+  { role: 'corpus-turns', kind: 'corpus', tables: ['corpus.turn', 'corpus.session'] },
   { role: 'embedding-keys', kind: 'keys' },
   { role: 'embedding-vectors', kind: 'vectors' },
 ];
@@ -162,11 +174,17 @@ const vectors = new EmbeddingMemo((texts) => Promise.resolve(texts.map(() => [0,
  * configuration this product shipped until this round** -- a session over two stores and no eraser.
  */
 const FAULT = process.env['CORTEX_ERASURE_CENSUS_FAULT'];
+const corpusStore = new SqliteStorage({ filename: join(dir, 'corpus.db') });
+const corpus = new Corpus({ store: corpusStore, now: NOW });
 const session = new DisclosureSession({
   private: privateStore,
   shared: sharedStore,
   now: () => NOW,
   ...(FAULT === 'no-vector-forget' ? {} : { vectors }),
+  // `no-turn-forget` is the fault that models a composition mistake rather than a missing method: the
+  // corpus exists, the session is built over the same deployment, and nobody passes the object across. That
+  // is what `full` looked like before this round, and every count would have said the erasure was complete.
+  ...(FAULT === 'no-turn-forget' ? {} : { turns: corpus }),
 });
 
 await session.say(SECRET, { id: 's1' });
@@ -178,6 +196,14 @@ await session.release('h1', { acknowledge: RELEASE_TOKEN });
 // primed *after* the rows exist and *before* the control is read, because the control has to see the
 // copy it is meant to detect.
 await vectors.embed([SECRET, HEALTH, UNRELATED]);
+// The transcript, holding the same two sentences plus the survivor. Written through `append` rather than
+// through the session, because a corpus is what the caller brought: the erasure's job is to reach it, not to
+// have produced it.
+await corpus.append([
+  { sessionId: 's1', ordinal: 0, text: SECRET },
+  { sessionId: 'h1', ordinal: 0, text: HEALTH },
+  { sessionId: 'u1', ordinal: 0, text: UNRELATED },
+]);
 
 /** Every surface, read as its kind requires. */
 async function residue() {
@@ -199,6 +225,18 @@ async function residue() {
         rows: vectors.held([SECRET, HEALTH]),
         secret: vectors.held([SECRET]),
         health: vectors.held([HEALTH]),
+      });
+      continue;
+    }
+    if (surface.kind === 'corpus') {
+      const rows = [];
+      for (const table of surface.tables) rows.push(...(await corpusStore.query(table)));
+      const text = JSON.stringify(rows);
+      readings.push({
+        role: surface.role,
+        rows: rows.length,
+        secret: occurrences(text, 'Falcon'),
+        health: occurrences(text, 'diagnosed'),
       });
       continue;
     }
@@ -248,8 +286,12 @@ const afterPaths = {
   releaseWording: (await session.releases()).some((record) => record.text?.includes('diagnosed')),
 };
 
+// Read before the stores close: a control taken afterwards would be a control taken of a closed file, and
+// the error would name the store rather than the erasure.
+const survivorTurns = await corpus.held([UNRELATED]);
 await privateStore.close();
 await sharedStore.close();
+await corpusStore.close();
 rmSync(dir, { recursive: true, force: true });
 
 const sum = (readings, key) => readings.reduce((total, reading) => total + reading[key], 0);
@@ -288,6 +330,7 @@ const census = {
       erasedHealth.record.removed.cards +
       erasedHealth.record.removed.releases,
     vectors: erasedSecret.record.removed.vectors + erasedHealth.record.removed.vectors,
+    turns: (erasedSecret.record.removed.turns ?? 0) + (erasedHealth.record.removed.turns ?? 0),
   },
   // The two readings the matrix gates on. Numbers, because "identical" is a 1 or a defect.
   residualOccurrences: sum(after, 'secret') + sum(after, 'health'),
@@ -305,6 +348,9 @@ const census = {
   },
   survivor: {
     cached: vectors.held([UNRELATED]),
+    // The corpus control, taken through the corpus rather than by counting rows: an erasure that emptied the
+    // transcript would satisfy every zero above.
+    turns: survivorTurns,
   },
   tombstones: surfaceOf(after, 'cards').rows,
   records: surfaceOf(after, 'erasures').rows,
@@ -346,8 +392,9 @@ if (census.controlOccurrences === 0 || census.controlReadPaths === 0) {
     `erasure census ok -- ${String(census.surfaces)} surfaces; ${String(census.controlOccurrences)} ` +
       `occurrence(s) and ${String(census.controlReadPaths)} read path(s) before, ` +
       `${String(census.residualOccurrences)} and ${String(census.leakingReadPaths)} after; ` +
-      `${String(census.removed.total)} row(s) and ${String(census.removed.vectors)} vector(s) removed by ` +
-      `${String(census.tombstones)} tombstone and ${String(census.records)} record(s); ` +
-      `${String(census.survivor.cached)} unrelated vector(s) survived`,
+      `${String(census.removed.total)} row(s), ${String(census.removed.vectors)} vector(s) and ` +
+      `${String(census.removed.turns)} turn(s) removed by ${String(census.tombstones)} tombstone and ` +
+      `${String(census.records)} record(s); ${String(census.survivor.cached)} unrelated vector(s) and ` +
+      `${String(census.survivor.turns)} unrelated turn(s) survived`,
   );
 }

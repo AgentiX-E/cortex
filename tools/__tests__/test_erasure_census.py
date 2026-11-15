@@ -18,12 +18,14 @@ this file asserts the exit code of each run:
 | --- | --- |
 | clean | exit 0, `residualOccurrences == 0`, `controlOccurrences > 0` |
 | one erasure skipped | exit 1, `FAILED`, and the artifact says how much survived |
-| no vector eraser (the shipped configuration until this round) | exit 1, `FAILED`, rows clean and the cache still holding both sentences |
+| no vector eraser (the shipped configuration until the round before last) | exit 1, `FAILED`, rows clean and the cache still holding both sentences |
+| no transcript eraser (the composition mistake) | exit 1, `FAILED`, rows and read paths clean and the corpus still holding both sentences |
 
-The second fault is the interesting one: the rows are all erased and every read path is closed, so an
-artifact that measured only the four tables would report a complete erasure while two vectors still
-answered "was this stored?". That is the shape AfterDeleteBench measures at 68%, reproduced here as a
-configuration rather than as a mistake.
+The last two faults are the interesting ones, because neither is a contrivance: both are configurations
+this product shipped. In each, the rows are all erased and every enumerated read path is closed, so an
+artifact that measured only the tables would report a complete erasure while the sentence was still in a
+store it did not enumerate. That is the shape AfterDeleteBench measures at 68%, reproduced here as a
+composition rather than as a mistake.
 
 The clean run is executed **last** on purpose: the tool writes the artifact the acceptance matrix
 reads, so a test that left a faulted reading in place would fail every later gate in the chain.
@@ -82,24 +84,30 @@ class TestCleanRun:
             'cards': 1,
             'releases': 0,
             'vectors': 1,
+            'turns': 1,
         }
         assert census['removed']['released'] == {
             'facts': 1,
             'cards': 0,
             'releases': 1,
             'vectors': 1,
+            'turns': 1,
         }
         assert census['removed']['total'] == 4
         # The seventh surface, counted separately from the rows because it is not one: one cached vector
         # per sentence, both erased. This is the number that would have read `0` while two vectors were
         # still answering `get(keyOf(text))` before the store had a `delete`.
         assert census['removed']['vectors'] == 2
+        # And the eighth: one transcript turn per sentence. Separate from the rows for the same reason --
+        # a turn is not a row of a table the boundary owns, it is the sentence again in a store the
+        # boundary has to be told about.
+        assert census['removed']['turns'] == 2
 
-    def test_reads_seven_surfaces_and_the_key_list_carries_no_wording(self) -> None:
+    def test_reads_eight_surfaces_and_the_key_list_carries_no_wording(self) -> None:
         result = run()
         assert result.returncode == 0, result.stderr
         census = artifact()
-        assert census['surfaces'] == 7
+        assert census['surfaces'] == 8
         roles = [entry['role'] for entry in census['before']['surfaces']]
         assert roles == [
             'private-facts',
@@ -107,6 +115,7 @@ class TestCleanRun:
             'cards',
             'releases',
             'erasures',
+            'corpus-turns',
             'embedding-keys',
             'embedding-vectors',
         ]
@@ -119,6 +128,12 @@ class TestCleanRun:
         # The control on the cache: a sentence that was never erased keeps its vector, so a session that
         # cleared the whole store would not pass.
         assert census['survivor']['cached'] == 1
+        # The same control on the transcript: the survivor's turn is still there, so an erasure that
+        # emptied the corpus would fail here rather than pass every zero above.
+        assert census['survivor']['turns'] == 1
+        surfaces = {entry['role']: entry for entry in census['after']['surfaces']}
+        assert surfaces['corpus-turns']['secret'] == 0
+        assert surfaces['corpus-turns']['health'] == 0
 
     def test_leaves_a_tombstone_and_a_record_and_nothing_else(self) -> None:
         result = run()
@@ -159,6 +174,21 @@ class TestFaultInjection:
         vectors = {entry['role']: entry for entry in census['after']['surfaces']}['embedding-vectors']
         assert vectors['secret'] == 1
         assert vectors['health'] == 1
+
+    def test_a_session_that_was_never_given_the_transcript_fails_the_run(self) -> None:
+        # The composition mistake, and the reason this surface exists at all: the corpus is present, the
+        # session is built over the same deployment, and the object is not passed across. Every row is gone
+        # and every read path the boundary knows about is closed -- so `leakingReadPaths == 0` while two
+        # sentences are still readable in the transcript.
+        result = run('no-turn-forget')
+        assert result.returncode != 0, 'the guard did not fire when the corpus kept the turns'
+        assert 'FAILED' in result.stderr
+        census = artifact()
+        assert census['residualOccurrences'] == 2
+        assert census['leakingReadPaths'] == 0
+        turns = {entry['role']: entry for entry in census['after']['surfaces']}['corpus-turns']
+        assert turns['secret'] == 1
+        assert turns['health'] == 1
 
     def test_the_artifact_is_restored_by_the_next_clean_run(self) -> None:
         assert run('no-forget').returncode != 0

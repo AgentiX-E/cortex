@@ -22,6 +22,7 @@
  */
 import type {
   Answer,
+  EmbeddingCacheStore,
   LLM,
   MemoryType,
   MemoryValue,
@@ -30,6 +31,7 @@ import type {
 } from '@agentix-e/cortex-core';
 import { MemoryEmbeddingCacheStore, decideRetrieval, leastRetained } from '@agentix-e/cortex-core';
 import { conflictBlock, insertRelatedStatements } from './conflict.js';
+import type { AppendReport, Corpus, CorpusTurn } from './corpus.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 import {
   AdmissionCensusBuilder,
@@ -536,7 +538,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * retrieval difference between two runs. Held so the store outlives every index the instance builds -- which
    * is the entire point, since each index lives for one question.
    */
-  readonly #embedStore: MemoryEmbeddingCacheStore | undefined;
+  readonly #embedStore: EmbeddingCacheStore | undefined;
   /**
    * How every vote this instance resolved, counted by outcome.
    *
@@ -797,6 +799,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastAdmittedEvidence: { turns: number; chars: number } | null = null;
 
+  /**
+   * The transcript this instance holds, when the caller gave it one.
+   *
+   * Absent is the historical contract — every archived artifact ran with the harness passing `context` as an
+   * argument — and it stays the default so that adding the corpus changed no published number. Present is
+   * what makes `remember`/`askStored` meaningful: the memory stops being a function of its arguments and
+   * becomes an object with state, which is what an installer expects of a memory library.
+   *
+   * Held as a `Corpus` rather than as a `Storage` because the two questions are different: "where do rows go"
+   * belongs to the corpus (which is why it takes any `Storage`), and "what does a stored transcript look
+   * like as `context[]` and `sessions[][]`" belongs here. A second copy of that mapping in this class is how
+   * the two paths would come to disagree about order.
+   */
+  readonly #corpus: Corpus | undefined;
+
   constructor(options: CortexMemoryOptions) {
     // A filter that cannot run is refused here rather than silently kept. `evidenceRoles`
     // without a classifier would leave the artifact recording a filter the run never applied,
@@ -879,6 +896,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     this.#llm = options.llm;
     this.#now = options.now;
     this.#options = options;
+    this.#corpus = options.corpus;
 
     // The retrieval stack is resolved once, here, rather than per question, because one of the two things
     // resolved is a **mutable** store: a store created inside `#relevanceFor` would be a cache rebuilt with the
@@ -892,7 +910,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
       this.#indexOptions = index;
       return;
     }
-    this.#embedStore = new MemoryEmbeddingCacheStore();
+    // A store the caller supplied is kept, not replaced.
+    //
+    // This used to be `store: new MemoryEmbeddingCacheStore()` unconditionally, which was wrong in two
+    // directions at once. The smaller one: a caller passing a durable store (a file, a database) got an
+    // in-memory map instead, silently, and the reuse it was buying across restarts never happened. The
+    // larger one: `assemble.ts`'s `full` profile constructs one store and hands it to both the index and the
+    // disclosure boundary, because erasure has to reach the entries the index wrote -- and with the store
+    // replaced, the boundary's eraser was pointed at a map nothing ever filled. The measurement is in
+    // `assemble.test.ts`: `removed.vectors` read `0` over a sentence the index had embedded, while every
+    // row-based count said the erasure was complete.
+    this.#embedStore = index.store ?? new MemoryEmbeddingCacheStore();
     this.#indexOptions = { ...index, store: this.#embedStore };
   }
 
@@ -1610,6 +1638,67 @@ export class CortexMemory implements SessionAwareMemorySystem {
   async answer(question: string, context: string[], _sessions?: string[][]): Promise<Answer> {
     this.#enterRoute('flat');
     return this.#respond(question, context, 'extractive');
+  }
+
+  /**
+   * Append turns to the corpus this instance holds.
+   *
+   * ## Why this is on the class and not on the corpus alone
+   *
+   * Because a caller who has a memory should not have to keep a second reference to its storage in order to
+   * tell it something. The corpus is reachable here (`install.disclosure`/`install.corpus` in
+   * `assemble.ts`), but the common case — "remember these turns" then "ask about them" — reads as two
+   * methods on one object, and that is the shape the user manual documents.
+   *
+   * ## What the report is for
+   *
+   * `{appended, duplicates}` rather than `void`. A restart replays, and a caller that cannot tell a replay
+   * from an insert cannot tell whether its corpus doubled. The corpus refuses a rewrite at the same position
+   * rather than reporting it here: an edit to history is not a count, it is an error.
+   *
+   * @throws when the instance was constructed without `corpus` — a memory that was never given a transcript
+   *   cannot be told about one later, because the corpus is what names the store.
+   */
+  async remember(turns: readonly CorpusTurn[]): Promise<AppendReport> {
+    return this.#requireCorpus('remember').append(turns);
+  }
+
+  /**
+   * Answer from the stored corpus instead of from an argument.
+   *
+   * ## The delegation is the design
+   *
+   * It reads `sessions()` and calls the public {@link answerSessions} — it does not build a prompt, and it
+   * does not flatten to the flat route. That is what makes "a stored corpus answers the same way as a passed
+   * one" checkable as **byte equality of two prompts** rather than as a claim about similarity: the argument
+   * list `askStored` produces is exactly the argument list a caller would have produced by hand, and the same
+   * method consumes both (`corpus-equivalence.test.ts` asserts the digests are equal).
+   *
+   * ## Why the grouped view and not the flat one
+   *
+   * A stored corpus knows its session boundaries by construction, so the flat route would be throwing away
+   * the only thing storage adds. This is the same argument `answerSessions` exists for, and the opposite of
+   * `answer`'s: that method stays flat because *forwards* would silently re-route 150 of the 467 graded
+   * questions onto a different prompt. Here the caller asked for the stored path by name.
+   *
+   * @throws when the instance was constructed without `corpus`.
+   */
+  async askStored(question: string): Promise<Answer> {
+    const sessions = await this.#requireCorpus('askStored').sessions();
+    return this.answerSessions(question, sessions);
+  }
+
+  /** The corpus, or the reason there is none. Absent is a configuration, not a runtime state. */
+  #requireCorpus(method: string): Corpus {
+    const corpus = this.#corpus;
+    if (corpus === undefined) {
+      throw new Error(
+        `${method} needs options.corpus: this instance was constructed without a transcript store, so it ` +
+          'has nothing to remember and nothing to read. Construct it with a `Corpus` (assemble.ts does that ' +
+          'from any `Storage`), or keep passing `context` explicitly through answer().',
+      );
+    }
+    return corpus;
   }
 
   /**

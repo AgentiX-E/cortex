@@ -35,12 +35,12 @@ table.
 | 7 | plan-based aggregation (spec) | product | **product (gated)** | ✓ | ✓ | declared: builds its ledger from the sessions the route admitted | ✓ | 2, e.g. `packages/cortex-memory/bench/measure-spec-ceiling.ts` | `packages/cortex-memory/src/aggregation/ledger.ts` |
 | 8 | parse and abstain, null is not empty | product | **product** | ✓ | ✓ | declared: reads the reader's reply; the abstention token is the product's own | ✓ | 3, e.g. `packages/cortex-memory/bench/reparse-report.ts` | `packages/cortex-memory/src/parse.ts` |
 | 9 | reply contract repair | product | **product (gated)** | ✓ | ✓ | declared: classifies the reply the product received and plans a repair from its own policy | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/reply-repair.ts` |
-| 10 | erasure across seven surfaces and their bytes | product-blocked | **blocked** | ✓ | ✓ | declared: reads the private and shared stores it was constructed over | ✗ | — | `packages/cortex-memory/src/disclosure/session.ts` |
+| 10 | erasure across eight surfaces and their bytes | product | **product** | ✓ | ✓ | declared: reads the private and shared stores it was constructed over, and the transcript it is handed | ✓ | `packages/cortex-memory/src/assemble.ts` | `packages/cortex-memory/src/disclosure/session.ts` |
 | 11 | retrieval: postings, vectors, RRF | product | **product** | ✓ | ✓ | declared: indexes the turns the memory was given and queries its own index | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/retrieval/search-index.ts` |
-| 12 | embedding memoisation | product | **product** | ✓ | ✓ | declared: keys its own cache on the text hash; the provider is injected | ✓ | `packages/cortex-memory/src/retrieval/search-index.ts` | `packages/cortex-core/src/cache/embedding-cache.ts` |
-| 13 | storage backends | product-blocked | **blocked** | ✓ | ✓ | declared: the store is the state, but the product offers no option that accepts one | ✗ | — | `packages/cortex-storage/src/storage/sqlite.ts` |
+| 12 | embedding memoisation | product | **product** | ✓ | ✓ | declared: keys its own cache on the text hash; the provider is injected | ✓ | 2, e.g. `packages/cortex-memory/src/assemble.ts` | `packages/cortex-core/src/cache/embedding-cache.ts` |
+| 13 | an injected store: any Storage backend | product | **product** | ✓ | ✓ | declared: the transcript is the state, and the port is an interface the caller implements | ✓ | 3, e.g. `packages/cortex-memory/src/assemble.ts` | `packages/cortex-memory/src/corpus.ts` |
 | 14 | per-type retention and eviction | product | **product** | ✓ | ✓ | declared: a pure function of the entries the product holds | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-core/src/domain/retention.ts` |
-| 15 | disclosure boundary: rules, cards, publication | product-blocked | **blocked** | ✓ | ✓ | declared: reads the claims the product extracted and its own policy table | ✗ | unreachable: 1 via `packages/cortex-memory/src/disclosure/session.ts` | `packages/cortex-core/src/triage/card.ts` |
+| 15 | disclosure boundary: rules, cards, publication | product | **product** | ✓ | ✓ | declared: reads the claims the product extracted and its own policy table | ✓ | `packages/cortex-memory/src/disclosure/session.ts` | `packages/cortex-core/src/triage/card.ts` |
 | 16 | semantic update carrying | product | **product (gated)** | ✓ | ✓ | declared: records the update in the memory's own update list and renders it on later turns | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/semantic-facts.ts` |
 | 17 | relevance ranking signal | instrument | **instrument** | ✗ | ✗ | declared: ranks the caller's context array from a per-question relevance table the harness builds | ✗ | `packages/cortex-memory/bench/run-ablation.ts` | `packages/cortex-eval/src/relevance-index.ts` |
 | 18 | anchor neighbourhood recovery | instrument | **instrument** | ✗ | ✗ | declared: expands around anchors the harness located in the caller's context | ✗ | — | `packages/cortex-eval/src/anchor-recall.ts` |
@@ -57,14 +57,14 @@ table.
 
 | | rows |
 | --- | ---: |
-| product | 12 |
-| blocked | 4 |
+| product | 15 |
+| blocked | 1 |
 | instrument | 9 |
 | gap | 1 |
 | of the product rows, behind a configuration switch | 4 |
 | **total** | **26** |
 
-Product completeness by this measure: **12/26** capabilities are reachable by a customer. The rest are 4 blocked, 9 owned by the instrument and 1 absent.
+Product completeness by this measure: **15/26** capabilities are reachable by a customer. The rest are 1 blocked, 9 owned by the instrument and 1 absent.
 
 ## Why `D3` is declared and not derived
 
@@ -83,7 +83,7 @@ So the column records the claim and says what it was based on. Where the claim i
 work — the rows the audit grouped as "the instrument ranks, the product does not" — the
 evidence is the `state` column, which is derived.
 
-## The boundary (54 product exports)
+## The boundary (53 product exports)
 
 Product exports whose only callers are the instrument. This is the audit's §3.3 argument as a
 set of names rather than a paragraph, and `pnpm ledger:check` fails on a new member: a
@@ -108,11 +108,11 @@ Assumption-ablation plumbing -- policy types, modality inference, plan reconcili
 
 `AssembleCensus`, `AssemblePolicy`, `Resolution`, `inferTemporality`, `modalityOf`, `reconcilePlans`
 
-### disclosure-and-storage-reached-only-by-a-tool (2)
+### storage-adapter-reached-only-by-a-tool (1)
 
-The erasure session and the SQLite backend: the two capabilities the audit called 'implemented, tested, uncallable'. Their only callers are the review tool and the erasure census, so the tool that measures erasure is also the only thing that can perform it.
+The concrete SQLite adapter, whose only callers are the review tool and the erasure census. The capability it serves is no longer instrument-only: `Corpus` takes any `Storage` and `assembleMemory({ storage })` is the product caller, so what remains here is this adapter and the ones beside it. They are recorded rather than moved because a backend has to live somewhere, and the package that owns it exists for exactly one reason: to be the file a deployment imports to get a file `Storage`. The distinction this group preserves is the one that matters -- the port is product, a particular engine is a leaf.
 
-`DisclosureSession`, `SqliteStorage`
+`SqliteStorage`
 
 ### provider-wiring-and-usage-accounting (15)
 

@@ -69,6 +69,17 @@ function specifierMap() {
   return map;
 }
 
+/** Every `.d.ts` under a build directory, so a type can be found wherever it is declared. */
+function declarationFiles(root) {
+  const found = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) found.push(...declarationFiles(path));
+    else if (entry.name.endsWith('.d.ts')) found.push(readFileSync(path, 'utf8'));
+  }
+  return found;
+}
+
 /** Every ```ts fence, with the line its first content line sits on. */
 function examples(lines) {
   const found = [];
@@ -92,11 +103,30 @@ function examples(lines) {
   return found;
 }
 
-/** The keys of a `export type NAME = { ... }` declaration in a `.d.ts` file. */
-function typeKeys(source, name) {
+/**
+ * The keys of an `export type NAME = { ... }` declaration, across the package's declaration files.
+ *
+ * ## Why this is a list and not one file
+ *
+ * It used to read `dist/types.d.ts` alone, which was true while every type a table could name lived in
+ * `types.ts`. `AssembleOptions` lives in `assemble.ts` -- beside the function that consumes it, which is
+ * where it belongs -- and a checker that could only see one file would either refuse to document it or,
+ * worse, be worked around by moving the type somewhere it did not belong. Looking through every emitted
+ * declaration keeps the guard and lets the type sit where it is read.
+ */
+function typeKeys(sources, name) {
+  for (const source of sources) {
+    const keys = typeKeysIn(source, name);
+    if (keys !== null) return keys;
+  }
+  throw new Error(`type ${name} is not declared in any of the package's declarations`);
+}
+
+/** One file's keys, or `null` when the type is not declared there. */
+function typeKeysIn(source, name) {
   const head = `export type ${name} = {`;
   const start = source.indexOf(head);
-  if (start === -1) throw new Error(`type ${name} is not declared in the declarations`);
+  if (start === -1) return null;
   let depth = 0;
   let i = start + head.length - 1;
   for (; i < source.length; i += 1) {
@@ -226,7 +256,7 @@ function checkPage(path, known, failures) {
   const blocks = examples(lines);
   const tables = contractTables(lines);
 
-  const declarations = readFileSync(join(REPO, 'packages/cortex-memory/dist/types.d.ts'), 'utf8');
+  const declarations = declarationFiles(join(REPO, 'packages/cortex-memory/dist'));
   for (const table of tables) {
     const declared = typeKeys(declarations, table.name);
     const seen = new Set();

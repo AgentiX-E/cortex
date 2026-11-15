@@ -413,29 +413,58 @@ unbundled:
   so the worker is otherwise requested at a path your bundle never wrote and 404s. Vite and webpack 5
   emit it themselves.
 
-### 5.3 What the store is not: the corpus the memory does not keep
+### 5.3 What the store is now: the corpus the memory keeps
 
-`CortexMemory` never touches a `Storage`, and this section exists because the two chapters above read
-as if it might. The build gives you a store and a memory class, and they do not meet — deliberately,
-and at a cost worth stating plainly.
+Until this release the two chapters above read as if the memory might touch a `Storage`, and it never
+did: `answer(question, context[], sessions?)` took the corpus as an **argument on every call**, so a
+harness could hand the baseline and the candidate the same evidence and the product kept nothing. That
+is the right shape for a system being measured and an impossible one for a deployment, and it made
+three capabilities unreachable rather than merely unused — the disclosure boundary had a store and no
+reader, the memory had a reader and no store, and the two had no composition.
 
-The contract is `answer(question, context[], sessions?)`: **the caller supplies the corpus on every
-call.** That is the right shape for a system that is being measured, because a harness has to hand the
-baseline and the candidate the same evidence; it is an expensive shape for a deployment, because the
-product cannot keep what it is given.
+`Corpus` is the answer, and it is deliberately small: it turns stored rows into the two arguments the
+memory already accepts, and it does not enter prompt assembly. That constraint is what makes the
+equivalence checkable — because the stored path only produces arguments, "it answers the same way" is
+byte equality of two prompts rather than a claim about similarity.
+
+```ts
+import { Corpus } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+const corpus = new Corpus({ store: new SqliteStorage({ filename: './corpus.db' }), now: Date.UTC(2026, 0, 1) });
+
+// A transcript arrives one conversation at a time. `{appended, duplicates}` is the report, not `void`:
+// a restart replays, and a caller that cannot tell a replay from an insert cannot tell whether its
+// transcript doubled.
+const report = await corpus.append([
+  { sessionId: 's1', ordinal: 0, text: 'I moved to Berlin in March.' },
+  { sessionId: 's1', ordinal: 1, text: 'My landlord is called Anke.' },
+]);
+// { appended: 2, duplicates: 0 }
+
+await corpus.context();   // string[]      -- what answer(question, context) takes
+await corpus.sessions();  // string[][]    -- what answerSessions(question, sessions) takes
+```
 
 | what you might expect | what is true |
 | --- | --- |
-| `new CortexMemory({ storage })` | no such option. The twenty-six options all tune *how* a question is answered; none names *from what* |
-| turns survive a restart | they do if you stored them; the product reads only what you pass to this call |
-| the index is built once per corpus | the **index** is built once per **question**; the **vectors** are not. `CortexMemory` holds one store, so with `index.embed` set the second question over an unchanged corpus embeds one text and `SearchCensus.memoHits` reports the turns it did not pay for. Postings, fusion and the reranker still run per question, and that cost is CPU rather than model calls |
-| `CachingEmbedding` is how you get reuse | you get it without wrapping anything: pass `index.embed` and the product memoises. `CachingEmbedding` is for the case where the model is yours and you want the memo *outside* one `CortexMemory` — across instances, or in front of an ingest path that is not this class |
-| `DisclosureSession` and `CortexMemory` compose into a memory | they do not compose at all. The first persists sentences, the second answers from an array; §6.4 documents the first on its own terms |
+| a new `Storage` option on `CortexMemory` | no. A corpus is a data model with an order, an identity and a dedupe rule; a store is a key/value port. `Corpus` takes **any** `Storage` — SQLite or PostgreSQL in Node, OPFS or IndexedDB in a browser — and the order stays in one place |
+| the memory remembers what you `say` to the disclosure session | not automatically. `remember`/`askStored` are the memory's transcript; `DisclosureSession` is the boundary for what a person said *and may withdraw*. `assembleMemory` wires both, which is why it exists |
+| turns survive a restart | they do now, if you gave the memory a corpus. That is the difference this release buys |
+| the index is built once per corpus | the **index** is still built once per **question**; the **vectors** are not. With `index.embed` set, the second question over an unchanged corpus embeds one text and `SearchCensus.memoHits` reports the turns it did not pay for. Postings, fusion and the reranker still run per question, and that cost is CPU rather than model calls |
+| `CachingEmbedding` is how you get reuse | you get it without wrapping anything: pass `index.embed` and the product memoises into the store you gave it. `CachingEmbedding` is for the case where the model is yours and you want the memo *outside* one `CortexMemory` — across instances, or in front of an ingest path that is not this class |
 
-Five things to do before you turn `index.embed` on in earnest:
+**A replay is a duplicate; a rewrite is an error.** The identity of a turn is `(sessionId, ordinal)`.
+Appending the same ordinal with the same text is what a restart does, and it reports `duplicates`.
+Appending it with *different* text is refused, because every number in `docs/MEASURE-*` was taken from a
+corpus and a corpus that can be edited in place makes those numbers unreproducible in a way no artifact
+records.
 
-1. **Keep the transcript yourself** and pass it every call. That is what the benchmark arm does, and
-   what every published number was taken with.
+Five things to know before you turn `index.embed` on in earnest:
+
+1. **`askStored` reads the whole transcript per question.** That is O(corpus), and it is not a new
+   ceiling: `answerSessions` already admits every turn it is given. Measured at 10⁵ turns the read is
+   **0.13×** the assembly it feeds (`tools/corpus-read-census.mjs`, `evidence/corpus/read-cost.json`).
 2. **Reuse one `CortexMemory` instance.** Not for the corpus — for the vector store, which lives as long
    as the instance does. A new instance per question re-embeds everything, and the census will say so
    (`memoHits: 0`, `embedTexts` equal to the corpus size).
@@ -514,6 +543,7 @@ Three fields are required and each is required for a reason:
 | `selfConsistency` | `number` | absent (1) | Consultations per question and majority reduction. Must be a positive integer; refused with `reviewPass: 'audit'`. |
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder, as two injections. |
 | `conflicts` | `boolean` | absent (off) | Prints the statements that state one detail twice, in evidence order, between the evidence and the question. Reaches flat, temporal, knowledge-update and assistant; abstention and multi-session are excluded. §6.4. |
+| `corpus` | `Corpus` | absent | The transcript this instance holds. Present, `remember()` and `askStored()` work and the memory stops being a function of its arguments; absent, every route is byte-identical to before this option existed. §5.3. |
 | `semanticCarry` | `boolean` | absent (off) | Whether a prompt may carry a value change the store has already authorised. When a `knowledge-update` answer is replaced by a later dated span, the pair becomes a typed fact with a `supersedes` edge, and a later question whose window still carries the record the change was read from is told which value is current. Off by default: absent reproduces every archived prompt byte for byte. §6.5. |
 <!-- /contract-table -->
 
@@ -651,15 +681,16 @@ What it does **not** have, stated here rather than discovered later: no `close()
 not answer a question from what it stored. The gaps and their criteria are in
 [`docs/AUDIT-PRODUCT-SURFACE.md`](AUDIT-PRODUCT-SURFACE.md) §3 and §6.
 
-### 6.5 Erasing a sentence, and the seven surfaces it has to reach
+### 6.5 Erasing a sentence, and the eight surfaces it has to reach
 
 Deleting a fact is the easy half and the wrong half. Measured by AfterDeleteBench
 ([arXiv:2610.31366](https://arxiv.org/abs/2610.31366)): delete the record an agent was told about and
 ask it anyway, and a single query recovers the secret in **68%** of cases — because a *derived* copy
 survived. This store derives four: a card keeps the wording, the turn it was cut from and the turns
-around it; a release record keeps the wording and its SHA-256; and a **vector cache** keeps an
-embedding addressed by the text. `forget()` reaches all of them, or it does not claim to have erased
-anything.
+around it; a release record keeps the wording and its SHA-256; a **vector cache** keeps an embedding
+addressed by the text; and the **transcript** keeps the sentence again under an identity — `(sessionId,
+ordinal)` — that this boundary never sees. `forget()` reaches all of them, or it does not claim to have
+erased anything.
 
 The cache is the one that was missing, and it was missing in the way that matters: the store had no
 `delete` at all, so an erasure emptied five tables and left a vector that answered
@@ -675,12 +706,18 @@ kinds of defence:
   trade flipped: the plaintext key was a copy in a table the disclosure boundary does not know about,
   and the digest's oracle problem only exists for entries that are still there.
 
-Pass the cache in when you build the session, or nothing will tell it about the erasure:
+The transcript is the eighth, and it is the one this release created for itself: a memory that stores
+what it was told keeps a second copy of every sentence, and a `Corpus` built over the same deployment is
+**not** automatically erasable — `forget()` reaches what it is handed. `Corpus` implements the same
+contract the cache does (`TextEraser`), so the composition root passes the object it already
+constructed:
+
+Pass both in when you build the session, or nothing will tell them about the erasure:
 
 ```ts
 import { EmbeddingMemo, ERASURE_TOKEN } from '@agentix-e/cortex-core';
 import type { EmbedFn } from '@agentix-e/cortex-core';
-import { DisclosureSession } from '@agentix-e/cortex-memory';
+import { Corpus, DisclosureSession } from '@agentix-e/cortex-memory';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 
 declare const embed: EmbedFn;
@@ -691,6 +728,9 @@ const session = new DisclosureSession({
   // The same object the retrieval path embeds through, or nothing tells the cache about the erasure:
   // `SearchIndex` implements this interface, so a product that has an index passes that index.
   vectors: new EmbeddingMemo((texts) => embed(texts), { fingerprint: 'zhipu/embedding-3/v1/2048' }),
+  // And the transcript, if this deployment keeps one. Erasure is by wording rather than by row: the
+  // boundary never learns which corpus turn a card was cut from, and the sentence is the same sentence.
+  turns: new Corpus({ store: new SqliteStorage({ filename: './corpus.db' }) }),
 });
 
 await session.say('Falcon is the code name for the Helix Bio acquisition.', { id: 'f1' });
@@ -700,13 +740,14 @@ const { record, card } = await session.forget('f1', {
   acknowledge: ERASURE_TOKEN, // 'erase-permanently'; a refusal prints what it would destroy
   reason: 'user-request',
 });
-console.log(record.removed); // { facts: 1, cards: 1, releases: 0, vectors: 0 }
+console.log(record.removed); // { facts: 1, cards: 1, releases: 0, vectors: 0, turns: 1 }
 console.log(card?.text); // '' -- the tombstone keeps the timeline and nothing else
 console.log(await session.export()); // one card, state 'forgotten', no wording
 ```
 
-Six things are true afterwards, and each one is asserted in
-`packages/cortex-memory/src/__tests__/disclosure-erasure.test.ts` against two real files:
+Seven things are true afterwards, and each one is asserted in
+`packages/cortex-memory/src/__tests__/disclosure-erasure.test.ts` and `assemble.test.ts` against real
+files:
 
 | | |
 | --- | --- |
@@ -717,6 +758,7 @@ Six things are true afterwards, and each one is asserted in
 | It survives a restart | the record and the tombstone are rows, not state in memory |
 | It is not undoable | `accept`, `edit`, `dismiss`, `refresh` and `attach` all refuse an erased card |
 | The cache no longer answers for it | `record.removed.vectors` counts the entries removed, and the vectors of a sentence nobody erased are still there |
+| The transcript no longer holds it | `record.removed.turns` counts the turns removed, and a sentence nobody erased is still there — `tools/erasure-census.mjs` reads the corpus as its eighth surface |
 
 What the tombstone **cannot** say, and this is deliberate: what the card was about. Beyond the rule id
 that claimed it (`rule`, and `null` for a sentence no rule recognised), every candidate field — the
@@ -732,6 +774,90 @@ AfterDeleteBench separates reconstruction from write-back and fresh-session reca
 reason. On disk, the SQLite backend sets `secure_delete = ON` — with it off, an erased 1.6 kB sentence
 was still findable verbatim in the file after the row was gone, which is the difference between "the
 store forgot it" and "the file no longer holds it".
+
+### 6.6 `assembleMemory`: the three profiles
+
+The class has thirty-five options, and until this release the only assembly known to work lived in
+`bench/run-ablation.ts` — which the package does not ship (`files: ["dist"]`). An integrator got a class
+and no worked example of which combination runs. `assembleMemory` is that example, in three sizes:
+
+| profile | what it adds over the one before | what it is for |
+| --- | --- | --- |
+| `minimal` | nothing: an identity gate and no index | the smallest conformant memory. Answers from the turns it is given, in the order it is given them |
+| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking this repository has priced at several points of accuracy |
+| `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it |
+
+`minimal` is the default, so a call that names nothing gets the cheapest configuration that conforms.
+
+<!-- contract-table: AssembleOptions -->
+| option | type | default | effect |
+| --- | --- | --- | --- |
+| `llm` | `LLM` | — (required) | The reader. Injected, because this package owns no provider and no credential. |
+| `now` | `number` | — (required) | Epoch milliseconds for every time-stamped decision. |
+| `storage` | `Storage` | — (required) | Where the transcript goes, and for `full` the private side of the boundary. Any backend: SQLite, PostgreSQL, OPFS, IndexedDB. |
+| `profile` | `'minimal' \| 'reader' \| 'full'` | `'minimal'` | How much of the product to wire up. |
+| `embed` | `EmbedFn` | absent | The vector channel, as a batch function over texts. Absent leaves lexical retrieval, which is the registered arm's ranking signal. |
+| `shared` | `Storage` | absent | The public side of the disclosure boundary. Required by `full`, ignored by the other two. |
+| `name` | `string` | `'cortex-memory'` | Attribution label, carried through to the memory. |
+| `gate` | `Partial<GateOptions>` | identity (`0` / `0` / unbounded) | Overrides for the admission and retrieval gates, §6.2. |
+| `index` | `Omit<SearchIndexOptions, 'embed' \| 'store'>` | absent | Retrieval knobs other than the embedder and the store, which this function owns: `k`, `reuse`, the reranker. |
+| `corpus` | `Corpus` | a new one over `storage` | An existing transcript, when you already have one — a second assembly over a live corpus. |
+<!-- /contract-table -->
+
+```ts
+import { assembleMemory } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+import type { EmbedFn, LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+declare const embed: EmbedFn;
+const storage = new SqliteStorage({ filename: './private.db' });
+const shared = new SqliteStorage({ filename: './shared.db' });
+const now = Date.UTC(2026, 0, 1);
+
+// The smallest thing. No index, no boundary, no ranking: the cheapest configuration that conforms.
+const smallest = assembleMemory({ llm, now, storage, profile: 'minimal' });
+
+// The same corpus, ranked. `embed` is optional; without it the index is lexical and costs no model call.
+const reader = assembleMemory({ llm, now, storage, profile: 'reader', embed, index: { k: 40 } });
+
+// A deployment. `shared` is what makes the boundary a boundary, and `name` is what makes the report
+// attributable when two of these run in one process.
+const install = assembleMemory({
+  llm,
+  now,
+  storage,
+  shared,
+  profile: 'full',
+  embed,
+  name: 'support-desk',
+  gate: { sessionBudget: 64 },
+});
+
+await install.memory.remember([
+  { sessionId: 's1', ordinal: 0, text: 'I moved to Berlin in March.' },
+  { sessionId: 's1', ordinal: 1, text: 'My landlord is called Anke.' },
+]);
+console.log(await install.memory.askStored('Where did I move?')); // routed to answerSessions
+
+// A second assembly over the transcript the first one is writing. `corpus` is shared, the gate is not.
+const second = assembleMemory({ llm, now, storage, corpus: install.corpus, profile: 'reader' });
+void second;
+void smallest;
+void reader;
+```
+
+Two things are deliberately **not** defaulted:
+
+- **`maxPromptChars`.** The per-route room table is the registered arm's configuration, and a second
+  default here would be a second arm: a run that changed only this file's constant would move every
+  published number while claiming to have changed nothing. State the bound you want.
+- **`shared`.** A `full` profile without a second store throws at assembly rather than at the first
+  publication. Two sides of a boundary in one file is not a boundary.
+
+The function is named `assembleMemory` rather than `createMemory` because `cortex-core` already exports
+`createMemory` for the domain's `Memory` value, and two functions with one name an import apart is how a
+reader calls the wrong one.
 
 ## 7. Reading a decision back
 

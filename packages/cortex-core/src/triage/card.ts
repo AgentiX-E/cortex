@@ -42,6 +42,7 @@ import {
   type ErasureSurface,
   erasureWarning,
   isErased,
+  type TextEraser,
   type ErasureReason,
   type ErasureRecord,
 } from './erasure.js';
@@ -137,6 +138,17 @@ export type CardQueueOptions = {
    * `stringsIn` for why all of them rather than the field this file knows about.
    */
   vectors?: VectorEraser | undefined;
+  /**
+   * The transcript that may hold the same wording, if the caller has one.
+   *
+   * Separate from {@link vectors} because the two are different copies with different counts: a vector is
+   * one sentence's image, a transcript turn is the sentence again in a conversation. Collapsing them into a
+   * single eraser would make every consumer implement a union it cannot report on, and the record's two
+   * numbers would become one.
+   *
+   * Absent is honest: a queue that was never given a transcript holds none, and reporting zero is true.
+   */
+  turns?: TextEraser | undefined;
 };
 
 const DEFAULT_DECAY_MS = 180 * 24 * 60 * 60 * 1000;
@@ -184,6 +196,8 @@ export class CardQueue {
   private readonly eraseLog: ErasureLog;
   /** The vector store this queue can erase, when the caller supplied one. */
   private readonly vectors: VectorEraser | undefined;
+  /** The transcript this queue can erase, when the caller supplied one. */
+  private readonly turns: TextEraser | undefined;
 
   constructor(federation: FederatedStorage, writer: TriageWriter, options: CardQueueOptions = {}) {
     this.federation = federation;
@@ -192,6 +206,7 @@ export class CardQueue {
     this.decayMs = options.decayMs ?? DEFAULT_DECAY_MS;
     this.table = options.table ?? 'facts';
     this.vectors = options.vectors;
+    this.turns = options.turns;
     this.eraseLog = new ErasureLog(federation);
   }
 
@@ -539,7 +554,12 @@ export class CardQueue {
     // The seventh surface, and the only one that is not a row. After the rows are gone and before the
     // record closes, so an interrupted erasure leaves a record that says so and a retry erases what is
     // left; the other order would close a record over a sentence that a store can still be asked about.
+    // The eighth surface: the transcript holds the sentence again, under an identity this boundary never
+    // sees, and it is erased by wording rather than by row. After the rows and beside the vectors, for the
+    // same reason: an interrupted erasure must leave a record that says it was interrupted, so the record is
+    // closed last and a retry erases what is left.
     const vectors = this.vectors?.forget(plan.texts) ?? 0;
+    const turns = (await this.turns?.forget(plan.texts)) ?? 0;
     const record = await this.eraseLog.complete(
       opened,
       {
@@ -547,6 +567,7 @@ export class CardQueue {
         cards: plan.card === undefined ? 0 : 1,
         releases: removed.releases,
         vectors,
+        turns,
       },
       at,
     );
@@ -566,6 +587,7 @@ export class CardQueue {
     cards: number;
     releases: number;
     vectors: number;
+    turns: number;
     texts: readonly string[];
   }> {
     const card = await this.get(id);
@@ -594,6 +616,7 @@ export class CardQueue {
       // texts" is a question only the store can answer, and a promise in the consent prompt that the
       // store had nothing would be a number this file made up.
       vectors: this.vectors?.held(texts) ?? 0,
+      turns: (await this.turns?.held(texts)) ?? 0,
       texts,
     };
   }

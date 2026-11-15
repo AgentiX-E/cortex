@@ -30,7 +30,7 @@
  * comes in as an interface so this file stays importable in a browser; the clock comes in so a decay
  * test does not wait six months; the rendering lives in the CLI and in `toMarkdown`.
  */
-import type { Storage, VectorEraser } from '@agentix-e/cortex-core';
+import type { Storage, TextEraser, VectorEraser } from '@agentix-e/cortex-core';
 import {
   CardQueue,
   FederatedStorage,
@@ -91,6 +91,23 @@ export type DisclosureSessionOptions = {
    * `vectors: 0` truthfully.
    */
   readonly vectors?: VectorEraser | undefined;
+  /**
+   * The transcript that may hold the same wording, if the caller has one.
+   *
+   * ## Why the boundary has to be told, rather than the store being shared
+   *
+   * A corpus built over the same `Storage` is *not* automatically erasable: `forget()` enumerates the tables
+   * the boundary owns, and a corpus row is not one of them. Erasure reaches what it is given, so a session
+   * that was never handed the transcript erases five tables, a vector and nothing else — which is the shape
+   * of defect this repository has already shipped once, at the vector surface.
+   *
+   * `Corpus` implements this contract directly, so the composition root passes the object it constructed and
+   * there is no second copy of "which turns hold this sentence".
+   *
+   * Absent is not a defect: a caller assembling the boundary without a corpus has no transcript, and its
+   * records report `turns: 0` truthfully.
+   */
+  readonly turns?: TextEraser | undefined;
 };
 
 export type SayResult = {
@@ -126,6 +143,7 @@ export class DisclosureSession {
       ...(options.decayMs === undefined ? {} : { decayMs: options.decayMs }),
       ...(options.table === undefined ? {} : { table: options.table }),
       ...(options.vectors === undefined ? {} : { vectors: options.vectors }),
+      ...(options.turns === undefined ? {} : { turns: options.turns }),
     });
     this.assembler = new ReadSideAssembler(federation);
     this.proposer = options.proposer;

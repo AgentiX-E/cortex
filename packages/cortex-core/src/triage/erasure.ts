@@ -218,13 +218,52 @@ export type ErasureRecord = {
      * class of statement this record exists to avoid.
      */
     readonly vectors: number;
+    /**
+     * Transcript turns erased, or `0` when the erasure owned no corpus.
+     *
+     * The eighth surface, and the one the product created for itself: a memory that stores what it was told
+     * keeps a second copy of every sentence, under an identity -- `(sessionId, ordinal)` -- that the
+     * disclosure boundary never sees. It is a count for the reason `vectors` is: one sentence can appear in
+     * several sessions, and "some turns" is the kind of statement that reads as an erasure without being one.
+     */
+    readonly turns: number;
   };
+};
+
+/**
+ * Something that holds a **copy** of a wording outside the rows this store enumerates.
+ *
+ * ## Why this contract exists in the triage module
+ *
+ * Erasure has three surfaces that are not rows: a vector cache (a sentence's image), a transcript (the
+ * sentence again, under an identity the boundary never sees), and whatever the next layer adds. Each is
+ * owned by a different object in a different package, and each answers the same two questions -- "how
+ * many copies of these texts do you hold" and "drop them". Naming that once is what lets `forget()` reach a
+ * surface that `cortex-core` cannot import: the queue holds the contract, the owner holds the data.
+ *
+ * ## Both members may be asynchronous
+ *
+ * A vector store is a `Map` and answers synchronously; a transcript is a `Storage` and cannot. The union is
+ * on the contract rather than on each call site, because a synchronous-only contract would have forced
+ * either a second interface or a synchronous-looking method that quietly returns a promise.
+ *
+ * ## `held` is not an optimisation
+ *
+ * `forget()` reports what it erased, and the consent prompt reports what it is about to erase. Both numbers
+ * have to come from the store: a count composed by the caller would be a prediction, and the two would then
+ * be free to disagree with each other and with the store.
+ */
+export type TextEraser = {
+  /** Erase every copy of these texts. Returns how many entries were removed. */
+  forget(texts: readonly string[]): number | Promise<number>;
+  /** How many entries these texts currently have. Read for the prompt, never to decide anything. */
+  held(texts: readonly string[]): number | Promise<number>;
 };
 
 /** The message a caller is shown before anything is deleted, and the one an auditor reads after. */
 export function erasureWarning(
   id: string,
-  found: { facts: number; cards: number; releases: number; vectors: number },
+  found: { facts: number; cards: number; releases: number; vectors: number; turns: number },
 ): string {
   return [
     `erasing ${JSON.stringify(id)} is permanent, and it removes every copy this store holds:`,
@@ -232,6 +271,7 @@ export function erasureWarning(
     `  card rows:        ${String(found.cards)} (the sentence, the wording it came from, the turns around it)`,
     `  release records:  ${String(found.releases)} (the wording and its digest are redacted; the override stays)`,
     `  cached vectors:   ${String(found.vectors)} (a vector cannot be read back as text, but it answers "was this stored?")`,
+    `  transcript turns: ${String(found.turns)} (the same wording, anywhere it appears in the corpus)`,
     'nothing of the wording is kept -- not a copy, not a hash: a hash of a guessable sentence is an',
     'oracle, not a redaction. The id is burned, so a later admission cannot reuse it.',
     `to proceed, pass acknowledge: ${JSON.stringify(ERASURE_TOKEN)}`,
@@ -284,7 +324,7 @@ export class ErasureLog {
       acknowledged: record.acknowledged,
       requestedAt: record.at,
       completedAt: null,
-      removed: { facts: 0, cards: 0, releases: 0, vectors: 0 },
+      removed: { facts: 0, cards: 0, releases: 0, vectors: 0, turns: 0 },
     };
     await this.federation.put(`private/${this.table}`, opened.id, opened);
     return opened;
