@@ -78,8 +78,16 @@ function flag(name) {
   return index === -1 ? undefined : (process.argv[index + 1] ?? '');
 }
 
-/** A refusal: a message for stderr and an exit code that is not "the arithmetic came out zero". */
-class Refusal extends Error {}
+/**
+ * A refusal: a message for stderr and an exit code that is not "the arithmetic came out zero".
+ *
+ * Named `ComparisonRefused` and not `Refusal` because `tools/` is inside the export census's walk and
+ * the census attributes a caller by **name**, not by import: a local class called `Refusal` was
+ * counted as a caller of `cortex-storage`'s exported `Refusal` type, which un-orphaned it in the
+ * ledger without a single import. That is a limitation of the census worth knowing about (it is
+ * recorded in `cortex-docs`'s audit notes) and not one to reproduce by choosing a shadowing name.
+ */
+class ComparisonRefused extends Error {}
 
 /**
  * One reading, as the fields this comparison is entitled to read.
@@ -92,14 +100,14 @@ export function describeReading(payload, label) {
   const reading = payload?.reading;
   const judge = payload?.judge;
   if (reading === undefined || judge === undefined) {
-    throw new Refusal(
+    throw new ComparisonRefused(
       `${label}: not a regrade reading (no ${reading === undefined ? '`reading`' : '`judge`'} block)`,
     );
   }
   const regrade = judge.regrade ?? {};
   const recorded = reading.recordedCorrect;
   if (typeof recorded !== 'number' || !Number.isInteger(recorded)) {
-    throw new Refusal(
+    throw new ComparisonRefused(
       `${label}: the reading does not record \`recordedCorrect\`. Two sides of a difference are what ` +
         'a difference is; re-take it with the current tools/judge-regrade.mjs, which writes the ' +
         'recorded side beside the re-graded one',
@@ -107,27 +115,27 @@ export function describeReading(payload, label) {
   }
   const regraded = reading.regradedCorrect;
   if (typeof regraded !== 'number' || !Number.isInteger(regraded)) {
-    throw new Refusal(`${label}: the reading does not record \`regradedCorrect\``);
+    throw new ComparisonRefused(`${label}: the reading does not record \`regradedCorrect\``);
   }
   if (typeof reading.judged !== 'number' || !Number.isInteger(reading.judged)) {
-    throw new Refusal(`${label}: the reading does not record how many questions it judged`);
+    throw new ComparisonRefused(`${label}: the reading does not record how many questions it judged`);
   }
   if (typeof regrade.providerId !== 'string' || regrade.providerId.trim() === '') {
-    throw new Refusal(
+    throw new ComparisonRefused(
       `${label}: the reading does not name the vendor of its judge (\`judge.regrade.providerId\`), ` +
         'so it cannot be compared with a judge from somewhere else',
     );
   }
   const unreadable = judge.parse?.unrecognised;
   if (typeof unreadable !== 'number' || !Number.isInteger(unreadable)) {
-    throw new Refusal(
+    throw new ComparisonRefused(
       `${label}: the reading does not say how many judge replies were \`unrecognised\`, and an ` +
         'unknown parse rate is not a zero one: a reply the parser cannot read is scored as a ' +
         'rejection, so this count is the upper bound on how much of the difference is format',
     );
   }
   if (unreadable > MAX_UNREADABLE) {
-    throw new Refusal(
+    throw new ComparisonRefused(
       `${label}: ${unreadable} judge replies were unrecognised, above the ${MAX_UNREADABLE} this ` +
         'comparison can tolerate. Widen the grammar against the recorded samples and re-take the ' +
         'reading; a gap measured with this many is a gap between two reply formats',
@@ -158,13 +166,13 @@ function pair(samePath, crossPath) {
   const same = describeReading(JSON.parse(readFileSync(samePath, 'utf8')), 'same-vendor');
   const cross = describeReading(JSON.parse(readFileSync(crossPath, 'utf8')), 'cross-vendor');
   if (same.providerId === cross.providerId) {
-    throw new Refusal(
+    throw new ComparisonRefused(
       `both readings name the same provider (${JSON.stringify(same.providerId)}): this comparison ` +
         'exists to separate strictness from same-family favouritism, and one family cannot do that',
     );
   }
   if (same.judged !== cross.judged || same.recordedCorrect !== cross.recordedCorrect) {
-    throw new Refusal(
+    throw new ComparisonRefused(
       `the two readings describe different populations: ${same.judged} judged / ` +
         `${same.recordedCorrect} recorded correct against ${cross.judged} / ` +
         `${cross.recordedCorrect}. Two deltas are only comparable on the same questions`,
@@ -186,7 +194,7 @@ function main() {
   try {
     compared = pair(samePath, crossPath);
   } catch (error) {
-    if (error instanceof Refusal) {
+    if (error instanceof ComparisonRefused) {
       console.error(`refused: ${error.message}`);
       return 1;
     }
