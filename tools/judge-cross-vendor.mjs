@@ -224,8 +224,8 @@ function main() {
       'the two judges move the artifact by the same number of questions to within one, so ' +
       'strictness explains the gap and same-family favouritism is not detectable here',
     inconclusive:
-      'the gap is real but too small to decide between the two readings, and it is reported as ' +
-      'inconclusive rather than rounded to either',
+      'the gap is above the undetectable line and below the decision line, so neither reading is ' +
+      'supported: it is reported as inconclusive rather than rounded to either',
     'split-required':
       'the gap is larger than the decision line, so the published effect must be reported as two ' +
       'halves -- how much the reader is read better, and how much the judge reads wider',

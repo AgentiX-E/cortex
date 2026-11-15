@@ -190,9 +190,26 @@ function isTie(row) {
   return row.verdicts.filter((verdict) => verdict).length * 2 === row.verdicts.length;
 }
 
-/** Count what the passes did, from the verdict vectors alone. */
+/**
+ * Count what the passes did, from the verdict vectors alone.
+ *
+ * ## Why a one-pass reading reports `null` and not zero
+ *
+ * A single pass cannot disagree with itself, so its flip count is zero **by construction** and a
+ * published `0.0%` would read as "this judge is perfectly reproducible". That is the one misreading
+ * this tool was originally built to prevent, and the first fix -- refusing fewer than two passes --
+ * charged twice the credits for every reading to prevent it, on a quantity that half the readings
+ * do not need: a cross-vendor *gap* is one pass, and at three seconds a call the second pass turns a
+ * job into a timeout rather than a variance measurement.
+ *
+ * So the absence is carried as an absence. `varianceMeasured: false` plus `null` in all five
+ * variance fields: there is no number for a reader to mistake, and `onePass` in the log says which
+ * reading this is.
+ */
 export function tally(rows) {
   const judged = rows.length;
+  const passes = rows[0]?.verdicts.length ?? 0;
+  const measuresVariance = passes > 1;
   const flips = rows.filter((row) => new Set(row.verdicts).size > 1);
   const up = flips.filter((row) => row.verdicts[0] === false).length;
   const down = flips.length - up;
@@ -206,11 +223,15 @@ export function tally(rows) {
   }
   return {
     judged,
-    flips: flips.length,
-    rate: judged === 0 ? 0 : flips.length / judged,
-    up,
-    down,
-    p: signTest(up, down),
+    varianceMeasured: measuresVariance,
+    passes,
+    // `null`, not `0`: see the docblock. The two states are "measured, and it did not move" and
+    // "not measured", and only the first one is evidence.
+    flips: measuresVariance ? flips.length : null,
+    rate: measuresVariance ? (judged === 0 ? 0 : flips.length / judged) : null,
+    up: measuresVariance ? up : null,
+    down: measuresVariance ? down : null,
+    p: measuresVariance ? signTest(up, down) : null,
     // The other side of the difference this reading is. Without it, `regradedCorrect` is a number
     // with no reference: a re-grade that rescued 13 and revoked 28 and one that rescued 0 and
     // revoked 15 read identically at 412, and `Δ` -- the quantity a cross-vendor comparison puts
@@ -254,8 +275,8 @@ async function main() {
     return 2;
   }
   const passes = Number(flag('--passes') ?? '2');
-  if (!Number.isInteger(passes) || passes < 2) {
-    console.error(`--passes must be an integer >= 2, got ${flag('--passes')}`);
+  if (!Number.isInteger(passes) || passes < 1) {
+    console.error(`--passes must be an integer >= 1, got ${flag('--passes')}`);
     return 2;
   }
   const limit = Number(flag('--limit') ?? '500');
@@ -385,8 +406,11 @@ async function main() {
   const percent = (value) => `${(value * 100).toFixed(1)}%`;
   console.log('\njudge flips on byte-identical questions');
   console.log(
-    `  ${reading.flips}/${reading.judged} = ${percent(reading.rate)}   ` +
-      `up ${reading.up} / down ${reading.down}   exact sign test p = ${reading.p.toFixed(3)}`,
+    reading.varianceMeasured
+      ? `  ${reading.flips}/${reading.judged} = ${percent(reading.rate)}   ` +
+          `up ${reading.up} / down ${reading.down}   exact sign test p = ${reading.p.toFixed(3)}`
+      : `  NOT measured: one pass cannot disagree with itself, so there is no flip rate to report ` +
+          `and none is implied. Pass --passes 2 for the variance half.`,
   );
   console.log(
     `  first pass agrees with the artifact on ${reading.agreesWithArtifact}/${reading.judged}`,

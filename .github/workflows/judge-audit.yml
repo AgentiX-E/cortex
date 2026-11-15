@@ -38,7 +38,7 @@ on:
         default: 'false-accept'
         type: string
       passes:
-        description: 'Regrade only: how many times each recorded answer is re-judged. Below 2 there is no second reading and the flip rate would be zero by construction'
+        description: 'Regrade only: how many times each recorded answer is re-judged. 1 is legal and means the variance half is NOT measured -- the reading then reports `flips` as null rather than 0, because a single pass cannot disagree with itself. Use 1 when the reading is a gap (`I1` cross-vendor) rather than a flip rate: at three seconds a call the second pass is the difference between a job and a timeout'
         required: false
         default: '2'
         type: string

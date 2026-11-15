@@ -190,11 +190,51 @@ def test_plan_reports_the_recorded_correct_count(tmp_path: Path) -> None:
     assert 'recorded correct 2 / 2' in result.stdout
 
 
-def test_a_single_pass_is_refused(tmp_path: Path) -> None:
-    """One pass has no second reading, so a flip rate from it would be 0 by construction."""
-    result = run('--artifact', str(artifact(tmp_path)), '--passes', '1', '--plan-only')
+def test_a_single_pass_is_legal_and_says_it_did_not_measure_variance(tmp_path: Path) -> None:
+    """The refusal was about a *misreading*, and the misreading is now unrepresentable.
+
+    One pass cannot disagree with itself, so a flip rate computed from it is 0 by construction --
+    which reads as "the judge is perfectly stable". That is why the count used to be refused
+    outright. The refusal cost twice the credits on every reading, and it cost them on the half of
+    the reading that `I1` does not need: a cross-vendor gap is one pass, and a judge that takes
+    three seconds a call turns the second pass into a timed-out job rather than a variance
+    measurement.
+
+    So a single pass is allowed and the *payload* carries the absence: `flips`, `rate`, `up`, `down`
+    and `p` are `null` rather than zero, and `varianceMeasured` is `false`. A reader cannot mistake
+    that for a stable judge, because there is no number to mistake.
+    """
+    out = tmp_path / 'one-pass.json'
+    with judge_stub('YES') as (base_url, _):
+        result = run_with(
+            judge_env(base_url),
+            '--artifact',
+            str(artifact(tmp_path)),
+            '--passes',
+            '1',
+            '--scorer',
+            'judge',
+            '--out',
+            str(out),
+        )
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(out.read_text(encoding='utf-8'))
+    assert payload['passes'] == 1
+    assert payload['reading']['varianceMeasured'] is False
+    assert payload['reading']['flips'] is None
+    assert payload['reading']['rate'] is None
+    assert payload['reading']['up'] is None
+    assert payload['reading']['p'] is None
+    # The verdicts themselves are still counted: one pass is a complete accuracy reading.
+    assert payload['reading']['regradedCorrect'] == 2
+    assert 'NOT measured' in result.stdout
+
+
+def test_zero_passes_is_still_refused(tmp_path: Path) -> None:
+    """No pass at all grades nothing, which is a different failure from a variance not measured."""
+    result = run('--artifact', str(artifact(tmp_path)), '--passes', '0', '--plan-only')
     assert result.returncode == 2
-    assert 'passes must be an integer >= 2' in result.stderr
+    assert 'passes must be an integer >= 1' in result.stderr
 
 
 def test_a_non_integer_pass_count_is_refused(tmp_path: Path) -> None:
