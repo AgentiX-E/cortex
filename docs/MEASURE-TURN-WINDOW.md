@@ -417,3 +417,41 @@ the fold. Two consequences, both stated before the numbers arrive rather than af
 Re-dispatching to get the field through CI would cost 28.52 CNY and two hours to reproduce artifacts that
 already exist on the branch, which is the trade this document rejects everywhere else: the defect is in the
 fold, and the fold is testable, so it is fixed and tested rather than paid around.
+
+### 10.6 The first arm came back red, and what was red was a print step
+
+Run [`43673528695`](https://github.com/AgentiX-E/cortex/actions/runs/43673528695) — the control arm — concluded
+`failure`. Its evidence is intact: all sixteen shards succeeded, `merge the shards` succeeded through step 6,
+and the merged artifact was uploaded before anything failed. What failed is step 7:
+
+```
+refusing: no id ends in #w1, so there is no second window
+population: 500 corpora x 1 windows = 500 questions over 16 shards, 4 repetition(s)
+carry census (summed): {'absorbed': 0, 'dropped': 0, 'matched': 0, ...}
+```
+
+The readback step required every question id to end in `<marker><windows>` so that it could find the **second**
+window and pair against it. That is right for `S12`, which is registered on two windows. `S10` is registered on
+one, so there is no second window and the suffix is absent by construction — the step refused a dispatch that
+was behaving exactly as registered, and it did so *after* printing the population that proved it.
+
+This is the same class as §10.1's fold, one layer up, and it was found the same way — by reading the step
+before trusting the run. Two things made it cost a red run instead of nothing:
+
+- **The step was inline Python in the workflow.** Nothing in `tools/__tests__` could reach it, so the shape
+  assumption was unexercisable. It is now `tools/read-merged-population.py` with a `--windows` / `--pairing`
+  contract and ten tests, five of which are about what it declines to read rather than what it refuses.
+- **A refusal was written as unconditional.** The marker check is a real refusal at two windows — without it
+  the step would pair the first window against itself and publish `+0` — so the fix is not to remove it but to
+  make it conditional on there being a second window to find.
+
+The other half of the repair is about what a red job *means*. `::warning::the merge reached no window` fired
+on a `reference` dispatch, where the carry is off on both sides by construction and `matched: 0` is the
+configuration rather than a finding. That warning is now conditioned on `pairing=carry`; a reference dispatch
+prints the census with the reason it is zeros. A warning that fires on correct behaviour is worse than no
+warning, because it is the one a reader learns to skip.
+
+The treatment arm was dispatched before the repair and will fail the same step for the same reason. Its shards
+and its merged artifact are unaffected, so the pair is readable; the failure is recorded here rather than
+re-run, for the reason §10.5 gives about the fold — the defect is in the readback, and the readback is testable,
+so it is fixed and tested rather than paid around.

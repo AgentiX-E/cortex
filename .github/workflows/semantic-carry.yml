@@ -473,50 +473,19 @@ jobs:
           retention-days: 90
 
       # The reading the rows actually take, over the whole population: the second-window delta, its
-      # discordant counts, and the summed census. Computed here from the merged vectors for the
-      # reason `semantic_carry_analysis.py` computes it the same way -- the delta is a difference over
+      # discordant counts, and the summed census. Computed from the merged vectors for the reason
+      # `semantic_carry_analysis.py` computes it the same way -- the delta is a difference over
       # questions, so it has to be taken from the questions and not from sixteen shard-level deltas.
+      #
+      # The script is `tools/read-merged-population.py` rather than a heredoc because this step used
+      # to require a second window unconditionally, and run 43673528695 -- `S10`'s control arm, one
+      # window per corpus by registration -- failed on it after all sixteen shards had succeeded.
+      # Inline Python in the workflow could not be tested; a file with a `--windows` contract can.
       - name: Read the merged population
+        env:
+          WINDOWS: ${{ inputs.windows }}
+          PAIRING: ${{ inputs.pairing }}
         run: |
           set -euo pipefail
-          python3 - merged/out/merged-evidence.json <<'PY'
-          import json
-          import sys
-          from math import comb
-
-          document = json.load(open(sys.argv[1], encoding='utf-8'))
-          marker = document['population']['marker']
-          windows = document['population']['windows']
-          ids = [row['questionId'] for row in document['questions']]
-          baseline = document['ablation']['baselineCorrectByRun']
-          feature = document['ablation']['featureCorrectByRun']
-          carry = document.get('semanticCarry')
-          print(f"population: {document['population']['corpora']} corpora x {windows} windows "
-                f"= {document['questionCount']} questions over {document['merged']['shards']} shards, "
-                f"{document['runs']} repetition(s)")
-          print(f"carry census (summed): {carry}")
-          second = [at for at, qid in enumerate(ids) if qid.endswith(f"{marker}{windows}")]
-          if not second:
-              raise SystemExit(f"refusing: no id ends in {marker}{windows}, so there is no second window")
-          # Every repetition, averaged per question -- the same per-question means the analysis script
-          # takes, so the two cannot disagree about the same artifact.
-          def means(vectors):
-              return {at: sum(1 for bits in vectors if bits[at] == '1') / len(vectors)
-                      for at in second}
-          control, treated = means(baseline), means(feature)
-          delta = sum(treated[at] - control[at] for at in second)
-          b = sum(1 for at in second if control[at] > treated[at])
-          c = sum(1 for at in second if treated[at] > control[at])
-          n = b + c
-          p = 1.0 if n == 0 else min(1.0, 2 * sum(comb(n, k) for k in range(0, min(b, c) + 1)) / 2 ** n)
-          print(f"second window: n={len(second)}  delta={delta:+.4f} question(s)  "
-                f"discordant b={b} c={c}  McNemar p={p:.4f}")
-          reach = None if carry is None else carry['matched']
-          print(f"S13 reach: {reach}  (floor 1)")
-          if reach is None or reach < 1:
-              print('::warning::the merge reached no window, so S12 stays void rather than pass')
-          elif delta < -5:
-              print(f'::error::delta {delta:+.1f} is below the -5 floor: S12 fails')
-          else:
-              print(f"::notice::S12 readable: delta {delta:+.1f} >= -5 with reach {reach}")
-          PY
+          python3 tools/read-merged-population.py merged/out/merged-evidence.json \
+            --windows "${WINDOWS}" --pairing "${PAIRING}"

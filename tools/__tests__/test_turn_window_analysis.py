@@ -32,10 +32,21 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SCRIPT = (
-    REPO.parent / 'cortex-docs' / 'evidence' / 'longmemeval' / 'scripts' / 'turn_window_analysis.py'
+# Two roots, because the two checkouts are siblings locally and nested in CI. `actions/checkout` with
+# `path:` resolves against `$GITHUB_WORKSPACE` rather than against its parent, so a CI checkout lands
+# *inside* the repository directory. That is the same pair `test_semantic_carry_analysis.py` resolves,
+# and the reason both spell it out: the first version of this file declared the candidates, then ran
+# the script from the first one unconditionally, so the suite was green locally (where the sibling
+# exists) and red in CI (where it does not).
+DOCS_CANDIDATES = (
+    REPO.parent / 'cortex-docs',
+    REPO / 'cortex-docs',
 )
-CANDIDATES = (SCRIPT, REPO / 'cortex-docs' / 'evidence' / 'longmemeval' / 'scripts' / 'turn_window_analysis.py')
+DOCS = next(
+    (root for root in DOCS_CANDIDATES if (root / 'evidence' / 'longmemeval' / 'scripts').is_dir()),
+    DOCS_CANDIDATES[0],
+)
+SCRIPT = DOCS / 'evidence' / 'longmemeval' / 'scripts' / 'turn_window_analysis.py'
 
 IDS = ['q1', 'q2', 'q3', 'q4']
 
@@ -208,10 +219,16 @@ def test_repetitions_must_agree_between_the_two_sides() -> None:
 
 
 def test_the_script_is_where_one_of_the_two_checkouts_puts_it() -> None:
-    """The layout this file resolves is the layout CI builds, and a missing script is not a skip."""
-    found = next((path for path in CANDIDATES if path.exists()), None)
-    assert found is not None, (
-        f'turn_window_analysis.py is missing; tried {", ".join(str(path) for path in CANDIDATES)}. '
+    """The layout this file resolves is the layout CI builds, and a missing script is not a skip.
+
+    Asserted on `SCRIPT` and not on the candidate list: the first version of this test searched the
+    candidates for one that exists while every other test ran `SCRIPT` regardless, so it was green in
+    the same run that failed eight times with `can't open file`. A guard that checks a path the code
+    does not use is a guard on nothing.
+    """
+    assert SCRIPT.exists(), (
+        f'{SCRIPT} is missing; the roots tried were {", ".join(str(root) for root in DOCS_CANDIDATES)}. '
         'It lives in the sibling repository, checked out at `path: cortex-docs` by '
-        '`.github/workflows/verify.yml`.'
+        '`.github/workflows/verify.yml`, which resolves against `$GITHUB_WORKSPACE` and therefore '
+        'lands inside the repository directory in CI and beside it locally.'
     )
