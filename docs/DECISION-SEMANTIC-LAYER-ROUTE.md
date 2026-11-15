@@ -12,17 +12,26 @@ each. It does not register a measurement, and it does not authorise a dispatch.
 **Status at the time of writing**: `cortex` `3dbf57c`, semantic layer **E8 closed, E1–E7 open** (1 of 8).
 Reach table `P 5 / E 5 / I 8 / T 1` ([`AUDIT-SEMANTIC-REACH.md`](AUDIT-SEMANTIC-REACH.md) §3).
 
-**Status now**: **7 of 8 closed** — E1 (§10), E2 (§11), E3 (§12), E4 (§13), E5, E7, E8. E4 closed the way the
-criterion allows and not the way it prefers: four mechanisms are now each either wired or **Declined with an
-argument in §6** (`consolidate` §6.2, `resolveContradiction` §6.1, `MemoryGraph`, `sinkhorn`; `Fact.derivedFrom`
-rejected as a second mechanism). E6 — the paired reading — is the last one open. It has since been given the two
-things it was missing: an arm that can administer the treatment and an artifact that records whether it reached
-anything (`AUDIT-SEMANTIC-REACH.md` §15). It is registered as `S12` / `S13` in the acceptance matrix rather than as
-a sentence here, and `S12` declares the reach as a precondition, so its `0` cannot pass while the layer reached
-nothing — on the registered population that is the predicted outcome, and §5 is the reason. The gate on
-`S10`/`S9` waits for that reading. Reach table `P 11 / E 2 / I 5 / T 1`: E3 moved no row of it, because `MemoryType` is not
-one of the nineteen; it is the precondition §5.2 said row 1 needed, and E4 moves none either, because a decline
-that removes a candidate call site does not change what is reachable.
+**Status now**: **8 of 8 closed** — E1 (§10), E2 (§11), E3 (§12), E4 (§13), E5, E6, E7, E8. E4 closed the
+way the criterion allows and not the way it prefers: four mechanisms are now each either wired or **Declined
+with an argument in §6** (`consolidate` §6.2, `resolveContradiction` §6.1, `MemoryGraph`, `sinkhorn`;
+`Fact.derivedFrom` rejected as a second mechanism).
+
+E6 — the paired reading — is the last row to close, and it closed on a measurement rather than on a design.
+Run [`43624717757`](https://github.com/AgentiX-E/cortex/actions/runs/43624717757) asks 500 corpora twice over
+one store at four repetitions with `CORTEX_MEMORY_AB=carry`, split into 16 shards and merged back into one
+population: `S12` reads **-1.75** questions against a `-5` floor (pass), `S13` reads **27** carried windows
+(pass). The two objects that were missing until the previous round were an arm that can administer the
+treatment and a population whose windows can carry it (`AUDIT-SEMANTIC-REACH.md` §15, §16); §17 is the reading.
+`S12` still declares the reach as a precondition, so the row cannot pass on a population the layer cannot act
+on — and the reading above is only meaningful because `27` says it did act.
+
+**The `S10` / `S9` gate is therefore open**, and this document does not spend it: the two rows stay frozen
+until a dispatch is scheduled on their own terms.
+
+Reach table `P 11 / E 2 / I 5 / T 1`: E3 moved no row of it, because `MemoryType` is not one of the nineteen;
+it is the precondition §5.2 said row 1 needed, and E4 moves none either, because a decline that removes a
+candidate call site does not change what is reachable.
 
 ---
 

@@ -70,8 +70,8 @@ unrun    no value could be computed — reported, never counted as a pass
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | S10 | <!-- reading:S10 -->—     | ≥ -5      | unrun  | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | S11 | <!-- reading:S11 -->—     | ≥ 88.0%   | unrun  | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
-| S12 | <!-- reading:S12 -->—     | ≥ -5      | unrun  | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |
-| S13 | <!-- reading:S13 -->8     | ≥ 1       | pass   | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record, summed over every worker instance |
+| S12 | <!-- reading:S12 -->-2    | ≥ -5      | pass   | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |
+| S13 | <!-- reading:S13 -->27    | ≥ 1       | pass   | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record, summed over every worker instance |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
@@ -110,21 +110,32 @@ that population the row would **pass** while saying that a mechanism which reach
 is printed as `void` and counted with the rows that have no usable value, because a release that shipped on it
 would be shipping on a reading nobody can act on.
 
-**Both rows were dispatched on a screening population** (`semantic-carry.yml`, run
-[`43590434060`](https://github.com/AgentiX-E/cortex/actions/runs/43590434060)): 72 corpora asked twice over one
-store, two repetitions, `CORTEX_MEMORY_AB=carry`. **`S13` reads `8` and passes** -- eight questions answered from
-a window that still carried a record one of the three absorbed updates authorised, summed over four workers.
-That is the first non-zero reach this project has measured; every earlier dispatch reported `0`, and `0` is also
-what a mechanism that does nothing reports, which is why the row is a count. **`S12` stays `unrun`**: the
-screening pair writes its delta under `screening.deltaQuestions` and leaves `paired.deltaQuestions` absent, so
-the row that reads that key has no value -- a `void`-to-`pass` transition on 72 corpora at two repetitions would
-be a claim about 500 at four. The delta the screening pair did produce is **`0.0`** over the second window
-(`n = 72`, McNemar `b = 3 / c = 1`, `p = 0.625`), i.e. the mechanism reached eight windows and moved none of
-them; the reading lives in `cortex-docs/evidence/longmemeval/semantic-carry.json` under `screening`, and
-`AUDIT-SEMANTIC-REACH.md` §16.7 is the table around it.
+**Both rows were dispatched twice: once on a screening population and once on the registered one.** The
+screening pair (`semantic-carry.yml`, run
+[`43590434060`](https://github.com/AgentiX-E/cortex/actions/runs/43590434060)) asked 72 corpora twice over one
+store at two repetitions and read `S13 = 8` — the first non-zero reach this project measured; every earlier
+dispatch reported `0`, and `0` is also what a mechanism that does nothing reports, which is why the row is a
+count. That run left `S12` `unrun` on purpose: a screening pair writes its delta under
+`screening.deltaQuestions` and leaves `paired.deltaQuestions` absent, because a `void`-to-`pass` transition on 72
+corpora at two repetitions would be a claim about 500 at four.
 
-The registered row is therefore blocked on a population rather than on a mechanism, and that is now a scheduling
-fact rather than an open question: 500 corpora x 4 repetitions x 2 windows x 2 sides does not fit in one job.
+**The registered pair now exists** — run
+[`43624717757`](https://github.com/AgentiX-E/cortex/actions/runs/43624717757), 500 corpora asked twice over one
+store, four repetitions, `CORTEX_MEMORY_AB=carry`, split into **16 shards** and merged back into one population
+(`population.corpora = 500`, `population.merged = { shards: 16, parts: 16 }`, 1,000 questions). `S13` reads
+**`27`** prompts whose window still carried a record an absorbed update authorised, and `S12` reads
+**`-1.75`** questions over the second windows — `-2` in the table above, because a four-repetition delta is a
+sum of per-question means and need not be an integer. The threshold is `>= -5`, so the row **passes for the
+first time**. Four absorbed updates reached twenty-seven of five hundred second windows, and the answer moved
+`15` times against the control and `10` times for it (`n = 500`, McNemar on the first repetition `b = 8 / c = 8`,
+`p = 1.0`): the mechanism is administered, it reaches, and at this population it neither helps nor hurts.
+
+The reading is in `cortex-docs/evidence/longmemeval/semantic-carry.json` at `paired.deltaQuestions` —
+**`paired`, not `screening`**, and the distinction is the tier the analysis script was run under. The three
+screening readings (`matched` 8, 9 and 11 over the same 78 corpora) are beside it in
+`AUDIT-SEMANTIC-REACH.md` §16.7; they differ because `supersede` asks an LLM which updates are authorised, so
+each run absorbs a different set (`absorbed` 3, 3, 4), which is a fact about the treatment rather than noise in
+the counter.
 
 
 Every `S*` row and `R1` are the **`cortex-memory`** arm, measured by `benchmark-cortex-memory.yml`. The

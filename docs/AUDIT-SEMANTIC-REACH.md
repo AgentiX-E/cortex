@@ -1116,7 +1116,7 @@ them.
 - **No claim that the carry is worth anything yet.** The second-window delta is `0.0`, the McNemar pair
   is `3` against `1` (`p = 0.625`), and one question was lost over two repetitions. The mechanism
   reached; whether reaching helps is unanswered, and `S12` stays `unrun` until the registered
-  population is dispatched.
+  population is dispatched (§17 is that dispatch, and it reads `-1.75`).
 - **No claim that `S13`'s `8` is stable.** It is one run, four workers, two repetitions, and the
   census is a sum over instances: a second dispatch of the same shape could read a different number
   without either being wrong. What the run establishes is that the counter is not structurally zero.
@@ -1133,3 +1133,90 @@ them.
 
 One sentence: **the semantic layer reached eight windows and moved none of them, and the row that
 measures the movement is now waiting on a population rather than on a mechanism.**
+
+## 17. The registered population, and the number `S12` gets
+
+Run [`43624717757`](https://github.com/AgentiX-E/cortex/actions/runs/43624717757) is the dispatch §16 could
+not make: 500 corpora asked twice over one store, four repetitions, `CORTEX_MEMORY_AB=carry`, split into
+**16 shards** and merged back into one population. Every shard finished in **65m52s to 75m35s** against a
+200-minute bound, `fail-fast: false` was never needed, and `rateLimited` summed to **0** across sixteen
+concurrent jobs — the first evidence that the 6-second gate is conservative at that width, not only at four
+workers.
+
+### 17.1 The population the merge reproduces
+
+| Field | Value |
+| --- | --- |
+| `questionCount` | **1,000** |
+| `population.corpora` / `.windows` | **500** / 2, marker `#w` |
+| `population.merged` | `shards 16 / parts 16` |
+| `parts[]` | **4** × (32 corpora, 64 questions) and **12** × (31, 62) — 500 corpora, 1,000 questions after summing |
+
+The four 32s are the remainder of 500 over 16. §16's repair to `population.corpora` — sum the parts, do not
+multiply the first one — is verified here for the first time on a real 500, and the two totals agree with
+`parts[]` element by element rather than by arithmetic on one row.
+
+### 17.2 The census, and the number that is not what I predicted
+
+| Reading | Value |
+| --- | --- |
+| `semanticCarry.absorbed` | **5** |
+| `semanticCarry.matched` / `served` / `withheld` | **27** / 27 / 27 |
+| `stored` | `semantic: 5`, `episodic: 0`, `procedural: 0` |
+| supersession | attempted `567`, replaced `24`, refused `543` (`no-change 401`, `restates 133`, `not-later 8`, `not-in-evidence 1`) |
+
+**I predicted `matched ≈ 55` and the run read `27`.** The prediction extrapolated from 78 corpora at 8–11
+matches to 500 by the ratio of corpora, which is the wrong driver. The reach is a function of `absorbed`, not
+of corpus count:
+
+| Run | Corpora | `absorbed` | `matched` | Windows per absorbed update |
+| --- | ---: | ---: | ---: | ---: |
+| `43590434060` | 78 | 3 | 8 | 2.67 |
+| `43609290786` | 78 | 3 | 9 | 3.00 |
+| `43622841638` | 72 | 4 | 11 | 2.75 |
+| **`43624717757`** | **500** | **5** | **27** | **5.40** |
+
+`absorbed` went from 3–4 to 5 while the population grew 6.4×. Whether an update is absorbed depends on
+whether its anchor record's corpus contains a later and more specific value — an LLM decision about content,
+almost independent of how many corpora the population holds. So the mechanism's density on LongMemEval-S is
+**five authorised updates and twenty-seven reachable windows per five hundred corpora**, and that ceiling is
+the structural reason it cannot move many questions.
+
+### 17.3 The delta, and the control that prices it
+
+| Window | `n` | delta | baseline-only / feature-only |
+| --- | ---: | ---: | --- |
+| all | 1,000 | **−1.25** | 27 / 25 |
+| first | 500 | **+0.5** | 12 / 15 |
+| **second** | **500** | **−1.75** | **15 / 10** |
+
+McNemar on the first repetition over the second window: `b = 8`, `c = 8`, `p = 1.0`. Per-repetition correct
+counts are `861 / 857 / 856 / 865` on the control and `862 / 862 / 857 / 853` on the treatment — 86.10%
+against 86.20% over four repetitions.
+
+**The first window is the control this run needed and nobody asked for.** A carry cannot reach the window
+that absorbs, so the `+0.5` there is the treatment moving where it cannot act: it prices the two arms'
+difference at roughly half a question out of five hundred. Against that, `−1.75` on the window a carry *can*
+reach is not a harm — it is the noise scale, measured on the same run, in the same population.
+
+### 17.4 What closes, and what does not
+
+`S12` reads `−1.75` against a `-5` floor and **passes for the first time**; `S13` reads `27` and passes, so
+`S12` is not `void`. E6 — the eighth and last semantic-layer exit criterion — is **closed**, and the freeze on
+`S10` / `S9` that §6 of the completion record declared is released.
+
+- **No accuracy claim.** 86.10% → 86.20% with `p = 1.0`. At a density of 27 reachable windows per 500
+  questions the ceiling is 5.4% of the population, and the move measured here is inside the noise the first
+  window prices. The mechanism neither helps nor hurts, which is what the criterion asked.
+- **No claim that `27` reproduces.** The three screening readings of the same 78 corpora were 8, 9 and 11,
+  because `supersede` asks an LLM which updates are authorised. What reproduces is "non-zero, with a
+  magnitude", not this integer.
+- **No claim that a merged population equals a single-job run of it.** The merge reproduces the population
+  and the pairing, not the prefix-cache state or the execution order. Sixteen processes each holding their
+  own gate is why it finished at all, and `population.merged` records what it was built from.
+- **No claim that closing E6 is a verdict on the layer's worth.** E6 asks whether there is a measurement and
+  whether it costs accuracy. Both are now answered. Whether the layer earns its default is a question about
+  `absorbed` density — a property of the supersession pass, not of the carry.
+
+One sentence: **twenty-seven windows were carried and the answer moved one and three-quarter questions,
+which is what a 5.4% density looks like when it is finally measured instead of predicted.**
