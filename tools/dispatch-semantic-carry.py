@@ -76,7 +76,7 @@ INPUTS: dict[str, str] = {
     "pairing": "carry",
     # `head` is the registered rendering every archived artifact used; `match` is the anchored window, i.e.
     # `S10`'s treatment. The cap stays 400 on the two capped routes either way.
-    "turn_window": "head",
+    "turn_rendering": "head",
     # `supersede` is required by `pairing=carry` (absorption happens only in that pass). `bare` is the
     # registered preset and the pass `S10` measures under.
     "review_pass": "supersede",

@@ -9,10 +9,11 @@
 # arithmetic, and the two would agree until one of them was edited -- the argument `arm-pairing.ts` makes for
 # pairing two sides of one pass rather than two dispatches.
 #
-# | question | `pairing` | `turn_window` | population |
+# | question | `pairing` | `turn_rendering` | population |
 # | --- | --- | --- | --- |
 # | `S12`, the semantic layer's carry | `carry` | `head` | two windows over one corpus, `KU` |
 # | `S10`, the per-turn window | `reference` | `match` (and `head` as its control) | the registered 500, `all` |
+# | `S10`, the marker alone | `reference` | `ellipsis` (against `head`) | the registered 500, `all` |
 #
 # ## The semantic carry, in one paragraph
 #
@@ -81,8 +82,8 @@ on:
         required: false
         default: carry
         type: string
-      turn_window:
-        description: 'Which characters of a capped turn the prompt keeps: `head` is the registered rendering (the default, and what every archived artifact used); `match` is the anchored window -- S10''s treatment. `match` is refused by the product without a cap, which this workflow always sets'
+      turn_rendering:
+        description: 'How a capped turn is rendered. `head` is the registered rendering: the first 400 characters, cut silently (the default, and what every archived artifact used). `ellipsis` is the same cut with the omission printed -- it moves no characters, only the mark. `match` is the anchored window around the query match, and the product forces `ellipsis` for it, so a window that cut silently cannot be dispatched at all. The three are one input rather than two because `<window> + <marker>` admits a fourth combination the parser refuses, and an input that can only name the three legal renderings cannot produce it'
         required: false
         default: head
         type: string
@@ -249,13 +250,45 @@ jobs:
         env:
           PAIRING: ${{ inputs.pairing }}
           PASS: ${{ inputs.review_pass }}
+          RENDERING: ${{ inputs.turn_rendering }}
         run: |
+          if [ "${PAIRING}" = "carry" ] && [ "${RENDERING}" != "head" ]; then
+            echo "::error::pairing=carry requires turn_rendering=head: the carry pair holds the rendering"
+            echo "::error::at the registered one so the delta is the flag's, and a run that moved the"
+            echo "::error::rendering would publish a carry effect measured through a window change."
+            exit 1
+          fi
           if [ "${PAIRING}" = "carry" ] && [ "${PASS}" != "supersede" ]; then
             echo "::error::pairing=carry requires review_pass=supersede: absorption happens only in that pass,"
             echo "::error::so a carry run under review_pass=${PASS} has nothing to carry and would publish a"
             echo "::error::reach of zero for a mechanism that was never administered."
             exit 1
           fi
+
+      # The rendering, mapped in one place and **fail-closed**. It used to be an expression with a
+      # `|| '400'` tail, which meant a misspelled value fell through to the registered rendering and
+      # the run became control-against-control: no error, no reading, two hours. The three legal
+      # renderings are the three the parser accepts, so a fourth is refused in ten seconds here.
+      #
+      # `400::match` is the window with the marker it forces; `400:ellipsis` is the head cut with the
+      # marker alone, which is the cell that prices the mark without moving a character; `400` is the
+      # registered rendering and what an unnamed dispatch sends.
+      - name: Map the rendering to the cap string
+        env:
+          RENDERING: ${{ inputs.turn_rendering }}
+        run: |
+          set -euo pipefail
+          case "${RENDERING}" in
+            head)     echo "CORTEX_MEMORY_MAX_TURN_CHARS=400" >> "${GITHUB_ENV}" ;;
+            ellipsis) echo "CORTEX_MEMORY_MAX_TURN_CHARS=400:ellipsis" >> "${GITHUB_ENV}" ;;
+            match)    echo "CORTEX_MEMORY_MAX_TURN_CHARS=400::match" >> "${GITHUB_ENV}" ;;
+            *)
+              echo "::error::turn_rendering must be head, ellipsis or match, got '${RENDERING}'."
+              echo "::error::The expression this replaced fell through to the registered rendering, so a"
+              echo "::error::misspelled value produced control-against-control with no error."
+              exit 1
+              ;;
+          esac
 
       - name: Check the dispatch against the spend gate
         env:
@@ -359,7 +392,6 @@ jobs:
           # `400` is the registered rendering; `400::match` asks the prompt for the anchored window. One
           # value rather than two variables, because the window is a way of spending the cap and the product
           # refuses it without one -- `readMaxTurnChars` parses the whole decision from this string.
-          CORTEX_MEMORY_MAX_TURN_CHARS: ${{ inputs.turn_window == 'match' && '400::match' || '400' }}
           CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: multi-session,temporal
           CORTEX_MEMORY_MAX_PROMPT_CHARS: 'abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000'
           CORTEX_MEMORY_EVIDENCE_ROLES: user

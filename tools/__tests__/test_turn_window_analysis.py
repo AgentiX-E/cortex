@@ -58,6 +58,8 @@ def artifact(
     reader: str = 'deepseek-chat',
     ids: list[str] | None = None,
     shuffle: bool = False,
+    cap: int = 400,
+    marker: str | None = None,
 ) -> dict:
     """One dispatch: `runs` repetitions of `bits`, over `ids`, with an optional window census."""
     slots = list(ids if ids is not None else IDS)
@@ -71,7 +73,10 @@ def artifact(
         'memoryArmConfig': {
             'reader': {'model': reader},
             'judge': {'model': 'deepseek-chat'},
-            'maxTurnChars': 400,
+            'maxTurnChars': cap,
+            # Absent means `none`: a run that named no marker rendered its cuts silently, and the
+            # artifact expresses that by not carrying the field.
+            **({} if marker is None else {'turnCutMarker': marker}),
         },
         'questions': [{'questionId': qid} for qid in slots],
         'ablation': {
@@ -232,3 +237,34 @@ def test_the_script_is_where_one_of_the_two_checkouts_puts_it() -> None:
         '`.github/workflows/verify.yml`, which resolves against `$GITHUB_WORKSPACE` and therefore '
         'lands inside the repository directory in CI and beside it locally.'
     )
+
+
+def test_the_marker_is_recorded_on_both_sides() -> None:
+    """`head` plus a marker and `head` without one are two renderings, and a reader has to see which.
+
+    `S10`'s registered pair moves the window *and* the marker, because `match` forces `ellipsis`. The
+    third cell holds the window at `head` and moves only the marker, and both pairs would otherwise
+    print `window: head -> head` on one side and be indistinguishable in the evidence file -- which is
+    the same defect class as a census that reports three zeros for "no cap was applied".
+    """
+    control = artifact(bits=['1111'])
+    treatment = artifact(bits=['1111'], marker='ellipsis')
+
+    evidence = evidence_of(control, treatment)
+
+    assert evidence['arm']['marker'] == {'control': 'none', 'treatment': 'ellipsis'}
+    assert evidence['arm']['window'] == {'control': 'head', 'treatment': 'head'}
+
+
+def test_a_pair_at_two_caps_is_refused() -> None:
+    """The row is registered at one cap, so a pair that moved the width measures two things.
+
+    A width change and a rendering change at once cannot attribute a delta to either, and the artifact
+    would look like a normal pair: both sides carry a `maxTurnChars`, both carry a reader, and the
+    difference shows up only in the number.
+    """
+    done = analyse((artifact(bits=['1111']), artifact(bits=['1111'], cap=320)))
+
+    assert done.returncode == 1
+    assert 'different caps' in done.stderr
+    assert '400' in done.stderr and '320' in done.stderr

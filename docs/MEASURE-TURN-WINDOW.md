@@ -385,19 +385,30 @@ the difference.
 ### 10.4 The dispatch this round also makes possible
 
 `semantic-carry.yml` grew three inputs so the pair can be dispatched without a second workflow: `pairing`
-(`carry` for `S12`, `reference` for this row), `turn_window` (`head` / `match`), and `review_pass`. Each is
-an expression rather than a literal, so the registered configuration remains what an unnamed dispatch
-produces. A guard refuses `pairing=carry` under any pass but `supersede`: absorption happens only in that
-pass, and a carry run without it would publish a reach of zero for a mechanism that was never administered --
-ten seconds here against two hours and 25 CNY of nothing.
+(`carry` for `S12`, `reference` for this row), `turn_rendering`, and `review_pass`. The registered
+configuration remains what an unnamed dispatch produces. Two guards run before the corpus download: one
+refuses `pairing=carry` under any pass but `supersede` (absorption happens only in that pass, so a carry run
+without it would publish a reach of zero for a mechanism that was never administered), and one refuses
+`pairing=carry` under any rendering but `head` (the carry pair holds the rendering fixed so its delta is the
+flag's).
 
-| arm | `turn_window` | `review_pass` | `pairing` | projected |
+| arm | `turn_rendering` | `review_pass` | `pairing` | projected |
 | --- | --- | --- | --- | ---: |
 | control | `head` | `bare` | `reference` | 14.26 CNY |
 | treatment | `match` | `bare` | `reference` | 14.26 CNY |
+| marker cell | `ellipsis` | `bare` | `reference` | 14.26 CNY |
 
-Sixteen shards each, 500 questions, four repetitions, `capability=all`, `windows=1`. The two arms are the
-same population, the same reader and the same bill; the only difference is the string the cap parses.
+Sixteen shards each, 500 questions, four repetitions, `capability=all`, `windows=1`. The three arms are the
+same population, the same reader and the same bill; the only thing that changes is the string the cap parses.
+
+`turn_rendering` is **one** input with three values rather than a window input plus a marker input, and the
+reason is that the product refuses `<match> + <none>`: two free inputs would let a dispatch name a
+combination the parser rejects, so the invalid state would be expressible and would fail two hours in. One
+input with three legal values cannot express it. The mapping to the cap string is a shell `case` that
+refuses a fourth value; it replaced an expression with a `|| '400'` tail, which meant a misspelled value fell
+through to the registered rendering and the dispatch ran control against control with no error at all.
+`tools/__tests__/test_turn_rendering_input.py` runs that `case` block out of the workflow file and feeds each
+string it produces to `cortextMemoryArmOptions`, so a typo fails in the suite rather than in a run.
 
 ### 10.5 The reading will be folded locally, and why that is not a workaround
 
