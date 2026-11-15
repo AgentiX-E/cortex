@@ -328,7 +328,7 @@ read.
 
 ### 10.1 Where the number is produced
 
-Four hops, each of which has to carry the value or the reading is lost:
+Five hops, each of which has to carry the value or the reading is lost:
 
 | hop | what it does | why it is that hop |
 | --- | --- | --- |
@@ -336,10 +336,21 @@ Four hops, each of which has to carry the value or the reading is lost:
 | `AssembledPrompt.turnWindow` | publishes the tally of the rendering that was **delivered** | the budget path renders twice -- the candidate set, then the selected subset -- so a tally that accumulated would count the same turns twice |
 | `CortexMemory.lastTurnWindowCensus()` | copies it out per question, by value | the same rule `lastRoleCensus` follows: the arm serialises what it reads |
 | artifact `turnWindow` | sums the per-question censuses, carrying `questions` and `unreported` | a sum over a subset and a sum over the whole population are different readings; the smaller one must not be able to pass for the larger |
+| `merge-ablation.mjs` | sums the census across the sixteen shards | the row is registered on the merged population, and the merged document is the only artifact `turn_window_analysis.py` opens -- a per-job census that the fold rebuilds away is a field the reading cannot see |
 
 `cut + whole` is the delivered turn count **per question**, which is the identity that makes the sum a
 measurement rather than a total. `marked` is a subset of `cut`, never a sibling: a window always marks, and
 the head cut marks when asked, so `cut 644, marked 0` is a head cut and `cut 644, marked 644` is a window.
+
+The fifth hop was the one that was missing, and the shape of the miss is worth more than the fix. The first
+four hops were each written with a test that asserts the field arrives; the fold is a `for` loop over a list of
+census keys, and `turnWindow` was not in the list. Nothing failed, because the four tests stop at the artifact
+and the fold's own tests exercised `semanticCarry`. The reading would not have failed either: the analysis
+script reports an absent census as *no census*, which is the same output as a run that never counted, so `P1`
+would have gone back to being unreadable one hop after it stopped being a parse -- and the only signal would
+have been the dispatch's own cost, spent to answer a question whose answer had been quietly dropped. Found by
+reading the fold before the artifacts landed, not by a test; `test_merge_ablation.py` now carries three tests
+for it, one of which is that a shard missing the key is refused rather than folded away.
 
 ### 10.2 Two branches that had to be wrong before they were right
 
@@ -387,3 +398,22 @@ ten seconds here against two hours and 25 CNY of nothing.
 
 Sixteen shards each, 500 questions, four repetitions, `capability=all`, `windows=1`. The two arms are the
 same population, the same reader and the same bill; the only difference is the string the cap parses.
+
+### 10.5 The reading will be folded locally, and why that is not a workaround
+
+The pair was dispatched at `f590c6cc`, which is the commit that carries the four hops and does **not** carry
+the fold. Two consequences, both stated before the numbers arrive rather than after:
+
+- **The CI merge will publish a document without `turnWindow`.** Not because the census is absent from the
+  shards -- it is on every one of the sixteen -- but because the fold at that commit rebuilds the top level
+  from a key list the field is not on. The merged artifact is still the right document for `S12`'s vectors.
+- **The census will be read from a local fold of the same sixteen shard artifacts**, using the repaired
+  `merge-ablation.mjs` at the reading commit. Every key other than `turnWindow` is then compared against the
+  CI merged artifact and has to be identical; if any of them differs, the local fold read something different
+  from what CI read and the census is not reportable from it. That comparison is the whole warrant: the fold
+  is a pure function of the shards, so a document that agrees with CI on every other key and differs only by
+  the added census is the same population plus one field.
+
+Re-dispatching to get the field through CI would cost 28.52 CNY and two hours to reproduce artifacts that
+already exist on the branch, which is the trade this document rejects everywhere else: the defect is in the
+fold, and the fold is testable, so it is fixed and tested rather than paid around.

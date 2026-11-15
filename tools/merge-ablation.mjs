@@ -20,8 +20,16 @@
  * A **merged evidence** document, not a synthesised report. It carries exactly the keys the reading
  * scripts read -- `questions` (for ids and order), `ablation.baselineCorrectByRun` and
  * `ablation.featureCorrectByRun` (the paired verdict vectors), `population`, `semanticCarry`,
- * `supersession`, `memoryArmConfig`, `runs` -- with the per-question vectors concatenated in shard
- * order and the censuses summed.
+ * `supersession`, `turnWindow`, `memoryArmConfig`, `runs` -- with the per-question vectors
+ * concatenated in shard order and the censuses summed.
+ *
+ * `turnWindow` was missing from that list for one round, and the omission was invisible because the
+ * list is prose: the four hops that carry the census end at the artifact, every one of them has a
+ * test, and this tool silently rebuilt the document without it. `turn_window_analysis.py` reads the
+ * field off the merged document and reports its absence as "no census", which is the same bytes as a
+ * run that never counted -- so `P1` would have gone back to being unreadable at the last hop, after
+ * the dispatch that was priced on the strength of it. The list below is the mechanism; this paragraph
+ * is why the mechanism now includes every key a reading script names.
  *
  * It does **not** emit `baseline.metrics`, `feature.metrics`, `ablation.pValue`, `ablation.delta`,
  * the confidence intervals or `perCapability`. Those are functions of the whole population computed
@@ -413,10 +421,15 @@ function merge(dir, shards) {
 
   // Censuses are counts, so they are summed. `semanticCarry` and `supersession` are the two the
   // rows read; `llmUsage`, `usageBySide` and `transportRetry` are carried because a cost audit of
-  // the merged dispatch needs them and a sum of tokens is a sum of tokens.
+  // the merged dispatch needs them and a sum of tokens is a sum of tokens. `turnWindow` is carried
+  // because `turn_window_analysis.py` reads `cut` and `marked` off it to report `P1`, and every one
+  // of its five numbers is a count of turns or of questions -- the two identities the four hops
+  // below the artifact were written to make checkable (`cut + whole` per question, `questions` and
+  // `unreported` summing to the roster) only survive the fold if the fold sums them.
   for (const key of [
     'semanticCarry',
     'supersession',
+    'turnWindow',
     'llmUsage',
     'usageBySide',
     'transportRetry',

@@ -206,6 +206,39 @@ class TestTheMerge:
         assert document["population"]["corpora"] == 5
         assert [part["corpora"] for part in document["merged"]["parts"]] == [2, 2, 1]
 
+    def test_the_turn_window_census_is_summed_like_every_other_census(self, tmp_path):
+        # This test exists because the key was missing from the fold for a full round and nothing
+        # noticed. The census reaches the artifact through four tested hops and then this tool
+        # rebuilt the document without it, so `turn_window_analysis.py` would have read "no census"
+        # off the merged file -- the same bytes as a run that never counted -- and `P1` would have
+        # gone back to being unreadable at the last hop. A refusal suite that exercises only
+        # `semanticCarry` passes while a key is absent from the list, which is exactly what happened.
+        left = artifact(0, 2, ["a"])
+        right = artifact(1, 2, ["b"])
+        for document in (left, right):
+            document["turnWindow"] = {
+                "cut": 3,
+                "marked": 0,
+                "whole": 2,
+                "questions": 2,
+                "unreported": 0,
+            }
+        result, out = merged(tmp_path, 2, [left, right])
+        assert result.returncode == 0, result.stderr
+        census = json.loads(out.read_text())["turnWindow"]
+        assert census == {"cut": 6, "marked": 0, "whole": 4, "questions": 4, "unreported": 0}
+        # The identity the four hops were written to make checkable, in the one form that survives a
+        # fold: every question either reported a census or was counted as not reporting one.
+        assert census["questions"] + census["unreported"] == 4
+
+    def test_no_shard_reporting_a_window_leaves_the_field_absent(self, tmp_path):
+        # Absence is not zero. `{cut: 0, marked: 0, whole: 0}` and a document with no field are the
+        # same reading only if nothing downstream can tell "the cap cut nothing" from "no cap was
+        # applied", and `turn_window_analysis.py` distinguishes exactly that when it reports `P1`.
+        result, out = merged(tmp_path, 2, [artifact(0, 2, ["a"]), artifact(1, 2, ["b"])])
+        assert result.returncode == 0, result.stderr
+        assert "turnWindow" not in json.loads(out.read_text())
+
     def test_the_document_names_what_it_did_not_recompute(self, tmp_path):
         # The fields `runAblation` owns are absent rather than copied from one shard, and the list of
         # them is in the document: a reader who looks for `ablation.delta` has to be told where it
@@ -307,6 +340,18 @@ class TestTheRefusals:
         result, out = merged(tmp_path, 2, [artifact(0, 2, ["a"]), without])
         assert result.returncode == 1
         assert "carries no `supersession`" in result.stderr
+
+    def test_a_turn_window_missing_from_one_shard_is_refused(self, tmp_path):
+        # The same refusal as the one above, for the key whose absence was silent: a build that
+        # changed mid-dispatch. Skipping the missing shard would publish a census that omits one
+        # job's turns, and the ratio `P1` reports (`treatment.marked / control.cut`) would then be
+        # taken over a denominator that is a fraction of the population.
+        without = artifact(1, 2, ["b"])
+        present = artifact(0, 2, ["a"])
+        present["turnWindow"] = {"cut": 3, "marked": 0, "whole": 2, "questions": 2, "unreported": 0}
+        result, out = merged(tmp_path, 2, [present, without])
+        assert result.returncode == 1
+        assert "carries no `turnWindow`" in result.stderr
 
     def test_an_empty_directory_is_refused(self, tmp_path):
         result = cli("--dir", str(tmp_path), "--shards", "2", "--out", str(tmp_path / "m.json"))
