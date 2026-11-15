@@ -39,7 +39,7 @@
     "guard:bundle": "node tools/bundle-guard.mjs --self-test && node tools/bundle-guard.mjs",
     "guard:browser": "node tools/browser-reading-check.mjs --committed packages/cortex-storage/test/browser/last-run.json --fresh packages/cortex-storage/test/browser/last-run-firefox.json",
     "guard:triage": "node tools/triage-parity.mjs",
-    "test:browser": "pnpm --filter @agentix-e/cortex-storage test:browser",
+    "test:browser": "pnpm --filter @agentix-e/cortex-storage test:browser && pnpm --filter @agentix-e/cortex-memory test:browser",
     "acceptance": "node tools/acceptance-check.mjs",
     "acceptance:check": "node tools/acceptance-check.mjs",
     "docs:crosscheck": "node tools/docs-crosscheck.mjs",

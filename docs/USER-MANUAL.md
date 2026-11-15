@@ -911,6 +911,76 @@ Three properties are worth stating because they are the ones an integrator would
   delta on any prompt whose delivered set does not move is the marker's length times the number of
   marked turns.
 
+### 6.8 The browser deployment, end to end
+
+The chapters above are Node-shaped because every reading this project has published was taken there.
+Nothing in the assembly is: `storage` is a port, and §5.2's two browser tiers implement it. This is the
+whole product in an origin-private filesystem, with no server:
+
+```ts
+import { assembleMemory } from '@agentix-e/cortex-memory';
+import { openOpfsStorage } from '@agentix-e/cortex-storage/opfs';
+import type { EmbedFn, LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+declare const embed: EmbedFn;
+
+const SQLITE = new URL('sqlite-wasm/dist/index.mjs', import.meta.url).href;
+// The worker as a second build entry, per §5.2: esbuild does not emit worker assets.
+const WORKER = new URL('./storage-worker.js', import.meta.url).href;
+
+// Two stores, because `full` needs two: the transcript, and the public side of the boundary. Two pool
+// names rather than one, because a pool name is a directory in OPFS and two workers on one directory is
+// two database handles on one file.
+const transcript = await openOpfsStorage({
+  sqliteModuleUrl: SQLITE,
+  workerUrl: WORKER,
+  databasePath: '/transcript.sqlite3',
+  poolName: 'transcript',
+});
+const published = await openOpfsStorage({
+  sqliteModuleUrl: SQLITE,
+  workerUrl: WORKER,
+  databasePath: '/published.sqlite3',
+  poolName: 'published',
+});
+
+const install = assembleMemory({
+  llm,
+  now: Date.UTC(2026, 0, 1),
+  storage: transcript.storage,
+  shared: published.storage,
+  profile: 'full',
+  embed,
+});
+
+await install.memory.remember([
+  { sessionId: 's1', ordinal: 0, text: 'I moved to Berlin in March.' },
+  { sessionId: 's1', ordinal: 1, text: 'My landlord is called Anke.' },
+]);
+console.log(await install.memory.askStored('Where did I move?'));
+```
+
+Four things about that deployment are worth knowing before you ship it, and each is measured rather than
+asserted:
+
+- **The prompt is the same bytes as on the server.** The suite in `packages/cortex-memory/test/browser`
+  runs this scenario twice — once under `node:sqlite` in the probe's own process, once here — and requires
+  the prompt digests to be equal, before and after a browser restart. That equality is the claim, not "it
+  did not throw": a prompt is the product's output at the point where its cost is counted, so equality
+  covers the assembly, the ordering, the retrieval and the renderer at once. The committed reading is
+  `packages/cortex-memory/test/browser/corpus-run.json`, and criterion `B3` reads it.
+- **Durability is the browser's, not yours.** The transcript survives the tab closing — the suite closes
+  Chromium and reopens it — because OPFS is on disk, per **origin**. A second origin is a different memory,
+  and "clear site data" is a delete with no warning. If your deployment needs a copy the user cannot lose,
+  export it; the memory is not the backup.
+- **Ordering is data, not engine behaviour.** `Storage.query` has no `ORDER BY`, so the corpus stores the
+  order the sessions arrived in and sorts by it. The suite's third check reads the transcript on a second
+  engine and requires that order, which is why the invariant is not a property of SQLite's row order.
+- **Erasure reaches the transcript here too.** `forget` on the boundary erases the turn as well as the
+  card, and the suite sweeps every table on both stores for the sentence afterwards rather than checking
+  the one field the product already fixed. That is the eighth surface of §6.5, on wasm, across a restart.
+
 ## 7. Reading a decision back
 
 A memory layer that cannot explain itself is a black box with extra steps. Every route records what

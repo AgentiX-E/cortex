@@ -19,6 +19,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --coverage",
+    "test:browser": "node test/browser/corpus-probe.mjs",
     "lint": "eslint src/ bench/",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.bench.json",
     "clean": "rm -rf dist *.tsbuildinfo coverage",

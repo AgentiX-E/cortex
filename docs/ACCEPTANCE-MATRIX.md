@@ -75,6 +75,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
+| B3  | <!-- reading:B3 -->0      | = 0       | pass   | browser composition                    | committed corpus reading, 11 checks: the `full` profile over OPFS, across a restart, prompt digest against `node:sqlite` |
 | C2  | <!-- reading:C2 -->48.7%  | ≤ 70.0%   | pass   | cost                                   | LongMemEval-S, paired, median evidence tokens per question   |
 | C3  | <!-- reading:C3 -->—      | ≤ 100.0%   | unrun  | cost                                   | LongMemEval-S, billed prompt tokens per question at the reduced budget, as a fraction of the registered configuration |
 | C4  | <!-- reading:C4 -->0      | = 0       | pass   | cost                                   | every full-500 arm read, against the registered configuration |
@@ -204,6 +205,15 @@ the context the reader had to read.
 Five rows were added on 2026-11-07, and they are of three different kinds because the page had three different
 holes. `LANDSCAPE-CONTROLLED-BOARD.md` §7 is the argument; this is the record of what changed.
 
+- **`B3` is the row `B1` and `B2` could not be.** Those price the storage *tier*, and a tier is not the
+  product: both were green for rounds while `assembleMemory` had never been handed a transcript in a browser,
+  because a tier that opens and moves rows and a composition that produces a prompt are two different claims
+  and only the first had a suite. `B3` reads the corpus suite's reading, whose eleven checks are the three
+  acceptance clauses of that round — the `full` profile assembles under OPFS, the transcript survives the
+  browser closing, and the prompt bytes equal the ones `node:sqlite` produces for the same transcript. The
+  third is an equality rather than a count (`summary.digestMatches`), which is why it is not a row of its own:
+  a boolean has no unit, and two of the eleven checks already are that equality, so `failed: 0` cannot be true
+  while the digests disagree.
 - **`B1` and `B2` are the first rows with a value on the browser axis**, and they cost nothing: the readings
   (`packages/cortex-storage/test/browser/last-run.json` and its Firefox twin) were already committed and are
   already regenerated in CI. They read `summary.failed` rather than `summary.passed` because a `passed: 24`

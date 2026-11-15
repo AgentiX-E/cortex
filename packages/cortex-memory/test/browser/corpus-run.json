@@ -1,0 +1,245 @@
+{
+  "chrome": "/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
+  "origin": "http://127.0.0.1:41893",
+  "built": {
+    "mainInputs": 82,
+    "workerInputs": 3,
+    "mainBytes": 419227,
+    "workerBytes": 5721
+  },
+  "baseline": {
+    "promptChars": 580,
+    "promptDigest": 536714097,
+    "promptCount": 1,
+    "corpusSize": 4,
+    "sessionOrder": [
+      "Anke raised the rent in June.",
+      "Falcon is the code name for the Helix Bio acquisition. | The quarterly numbers ship on Friday.",
+      "The invoice for the bicycle repair was paid late again."
+    ]
+  },
+  "scenario": {
+    "now": 1759470000000,
+    "question": "What is the code name?",
+    "turns": [
+      {
+        "sessionId": "s3",
+        "ordinal": 0,
+        "text": "Anke raised the rent in June."
+      },
+      {
+        "sessionId": "s1",
+        "ordinal": 0,
+        "text": "Falcon is the code name for the Helix Bio acquisition."
+      },
+      {
+        "sessionId": "s1",
+        "ordinal": 1,
+        "text": "The quarterly numbers ship on Friday."
+      },
+      {
+        "sessionId": "s2",
+        "ordinal": 0,
+        "text": "The invoice for the bicycle repair was paid late again."
+      }
+    ]
+  },
+  "phases": {
+    "write": {
+      "checks": [
+        {
+          "name": "the `full` profile assembles in a browser",
+          "ok": true,
+          "detail": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete) (transcript) + sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete) (shared)"
+        },
+        {
+          "name": "a transcript goes in and a question comes out",
+          "ok": true,
+          "detail": "4 turns, one prompt, answer \"Berlin\""
+        },
+        {
+          "name": "the order the sessions arrived in is the order the corpus reports",
+          "ok": true,
+          "detail": "4 turns in arrival order"
+        },
+        {
+          "name": "the prompt is the same bytes as the one `node:sqlite` produces",
+          "ok": true,
+          "detail": "580 chars, digest 536714097, same as node:sqlite"
+        }
+      ],
+      "facts": {
+        "tier": "opfs",
+        "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
+        "appendMs": 13.699999809265137,
+        "askMs": 4.5,
+        "answer": "Berlin",
+        "census": {
+          "corpusSize": 4,
+          "sessionOrder": [
+            "Anke raised the rent in June.",
+            "Falcon is the code name for the Helix Bio acquisition. | The quarterly numbers ship on Friday.",
+            "The invoice for the bicycle repair was paid late again."
+          ],
+          "promptCount": 1,
+          "promptChars": 580,
+          "promptDigest": 536714097
+        }
+      },
+      "tier": "opfs"
+    },
+    "read": {
+      "checks": [
+        {
+          "name": "the transcript survives the browser closing",
+          "ok": true,
+          "detail": "4 turns still present"
+        },
+        {
+          "name": "the same question after the restart produces the same prompt",
+          "ok": true,
+          "detail": "580 chars, digest 536714097 after a restart"
+        },
+        {
+          "name": "the boundary opens over the persisted stores and cuts a card",
+          "ok": true,
+          "detail": "1 card(s), the sentence itself"
+        },
+        {
+          "name": "erasure removes the turn, keeps its sibling, and rewrites the index row",
+          "ok": true,
+          "detail": "1 turn(s), 3 session rows, s1 ordinals [1]"
+        },
+        {
+          "name": "the erased sentence reaches neither the corpus nor the reader",
+          "ok": true,
+          "detail": "prompt 521 chars, no erased text"
+        },
+        {
+          "name": "the card is gone from the boundary as well",
+          "ok": true,
+          "detail": "1 card(s) left, 3 turn rows, none carrying it"
+        },
+        {
+          "name": "no table on either store still holds the sentence",
+          "ok": true,
+          "detail": "7 tables over two stores, none carrying it"
+        }
+      ],
+      "facts": {
+        "beforeAsk": {
+          "corpusSize": 4,
+          "sessionOrder": [
+            "Anke raised the rent in June.",
+            "Falcon is the code name for the Helix Bio acquisition. | The quarterly numbers ship on Friday.",
+            "The invoice for the bicycle repair was paid late again."
+          ],
+          "promptCount": 0,
+          "promptChars": 0,
+          "promptDigest": 0
+        },
+        "afterAsk": {
+          "corpusSize": 4,
+          "sessionOrder": [
+            "Anke raised the rent in June.",
+            "Falcon is the code name for the Helix Bio acquisition. | The quarterly numbers ship on Friday.",
+            "The invoice for the bicycle repair was paid late again."
+          ],
+          "promptCount": 1,
+          "promptChars": 580,
+          "promptDigest": 536714097
+        },
+        "cards": 1,
+        "removed": {
+          "facts": 1,
+          "cards": 1,
+          "releases": 0,
+          "vectors": 1,
+          "turns": 1
+        },
+        "sizeAfter": 3,
+        "promptAfterForget": {
+          "chars": 521,
+          "digest": 2152487024
+        },
+        "cardsAfter": "",
+        "sweep": {
+          "private:facts": 0,
+          "private:cards": 1,
+          "private:releases": 0,
+          "private:erasures": 1,
+          "private:turn": 3,
+          "private:session": 3,
+          "shared:facts": 0
+        }
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "the `full` profile assembles in a browser",
+      "ok": true,
+      "detail": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete) (transcript) + sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete) (shared)"
+    },
+    {
+      "name": "a transcript goes in and a question comes out",
+      "ok": true,
+      "detail": "4 turns, one prompt, answer \"Berlin\""
+    },
+    {
+      "name": "the order the sessions arrived in is the order the corpus reports",
+      "ok": true,
+      "detail": "4 turns in arrival order"
+    },
+    {
+      "name": "the prompt is the same bytes as the one `node:sqlite` produces",
+      "ok": true,
+      "detail": "580 chars, digest 536714097, same as node:sqlite"
+    },
+    {
+      "name": "the transcript survives the browser closing",
+      "ok": true,
+      "detail": "4 turns still present"
+    },
+    {
+      "name": "the same question after the restart produces the same prompt",
+      "ok": true,
+      "detail": "580 chars, digest 536714097 after a restart"
+    },
+    {
+      "name": "the boundary opens over the persisted stores and cuts a card",
+      "ok": true,
+      "detail": "1 card(s), the sentence itself"
+    },
+    {
+      "name": "erasure removes the turn, keeps its sibling, and rewrites the index row",
+      "ok": true,
+      "detail": "1 turn(s), 3 session rows, s1 ordinals [1]"
+    },
+    {
+      "name": "the erased sentence reaches neither the corpus nor the reader",
+      "ok": true,
+      "detail": "prompt 521 chars, no erased text"
+    },
+    {
+      "name": "the card is gone from the boundary as well",
+      "ok": true,
+      "detail": "1 card(s) left, 3 turn rows, none carrying it"
+    },
+    {
+      "name": "no table on either store still holds the sentence",
+      "ok": true,
+      "detail": "7 tables over two stores, none carrying it"
+    }
+  ],
+  "failures": [],
+  "summary": {
+    "checks": 11,
+    "passed": 11,
+    "failed": 0,
+    "digestMatches": true,
+    "digestClaim": "the prompt digest a browser reproduces equals the one node:sqlite produced for the same transcript, before and after a restart",
+    "survivesRestart": true
+  },
+  "note": "One run, two Chromium launches on one profile and one origin. `node:sqlite` is the same process; OPFS is sqlite-wasm in a worker. The equality asserted is between the prompt bytes those two produce for one transcript, which is why it can fail without a model."
+}

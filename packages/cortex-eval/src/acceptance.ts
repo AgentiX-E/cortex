@@ -1351,6 +1351,32 @@ export const CRITERIA: readonly Criterion[] = [
     onMiss:
       'Same repair as B1. It is a separate row rather than a sum because the two engines fail for different reasons — Firefox has no `createSyncAccessHandle` on the main thread, so a tier that degrades silently on Chromium can be outright absent here — and a summed count would let one engine fail while the total looked plausible.',
   },
+  // `B3` is the row `B1`/`B2` could not be: those price the storage **tier**, and a tier is not the
+  // product. They were green for rounds while `assembleMemory` had never been handed a transcript in a
+  // browser, because a tier that moves rows and a composition that produces a prompt are two claims.
+  // So this row reads the reading of the composition suite, and the three acceptance clauses it answers
+  // are the suite's own check names: the `full` profile assembles, the transcript survives a browser
+  // restart, and the prompt bytes equal the ones `node:sqlite` produces for the same transcript
+  // (`summary.digestMatches`, which the reading check compares but which has no unit this table can
+  // hold — a boolean is not a count of anything, so it lives in `onMiss` rather than as a fake zero).
+  {
+    id: 'B3',
+    capability: 'browser composition',
+    metric: 'checks that failed in the committed corpus reading',
+    dataset:
+      'cortex-memory corpus suite: 11 checks, the `full` profile over OPFS in a real Chromium, across a browser restart, the prompt digest compared with `node:sqlite`',
+    comparator: 'equals',
+    threshold: 0,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex/packages/cortex-memory/test/browser/corpus-run.json',
+      key: 'summary.failed',
+    },
+    onMiss:
+      'A non-zero count means the composition — not the tier — stopped working in a browser, so "a customer can run this in a browser" is false as of this commit. The repair is the same as `B1`\u2019s: re-run `pnpm test:browser`, commit the fresh reading, and fix the composition if the failure is real. Two things this row is not. First, it is not `B1` with a different file: `B1` reads a suite that opens a tier and moves rows, and the defect that motivated this row was a composition no tier test can reach \u2014 `assembleMemory` had never been handed a transcript in a browser at all, and every unit test in `cortex-memory` was green while that was true. Second, `failed: 0` is not the whole claim: the suite\u2019s central assertion is an equality, `summary.digestMatches`, that the prompt the browser reproduces equals the one `node:sqlite` produced before it. A reading with `failed: 0` and `digestMatches: false` cannot exist \u2014 two of the eleven checks are that equality \u2014 which is why the boolean is not a separate row: it has no unit, and a threshold on a boolean is a row that either duplicates this one or is decoration.',
+  },
 
   // ---- cost, part two: the criterion section 13.297.7 said was registered and was not ---------------
   //

@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>cortex-memory corpus suite</title>
+  </head>
+  <body>
+    <pre id="log"></pre>
+    <script type="module">
+      /**
+       * The product, assembled in a real browser, over real OPFS, across a real restart.
+       *
+       * ## The question this page answers that no Node test can
+       *
+       * `assembleMemory` is the one function an integrator calls, and its `storage` is a port. Every
+       * reading this repository has published came from `SqliteStorage` under `node:sqlite`; the browser
+       * tier exists, is tested as a tier, and had **never been handed a transcript**. So "the product
+       * runs in a browser" was an inference from two separately measured facts:
+       *
+       *   - `tools/entry-guard.mjs` proves the entry's import closure contains no `node:` builtin;
+       *   - `page.html` proves the tier opens and moves rows.
+       *
+       * An import closure is a property of the sources and a tier is a property of the engine. Neither
+       * says the composition runs: that needs a page to call it, which is what this is. The central
+       * claim is stated as an equality that can fail rather than as "it did not throw" -- **the same
+       * transcript, on a different engine in a different runtime, produces the same prompt bytes** --
+       * and `corpus-probe.mjs` hands this page the digest it computed under `node:sqlite`.
+       *
+       * ## Why the scenario arrives as an argument
+       *
+       * Because the comparison is against a run in another process, so the two runs must be the same
+       * scenario. A constant copied into this file would be the one thing that could drift silently;
+       * taking it from the request means there is one copy, and a missing field fails on the first
+       * assertion instead of producing two runs that agree with themselves.
+       *
+       * ## Why the assertions are named checks rather than a test framework
+       *
+       * The page reports facts; the runner decides. A thrown assertion would abort the scenario and hide
+       * the checks after it, and the checks after it are the interesting ones when the first fails.
+       *
+       * ## Why `write` and `read` are two modes
+       *
+       * Durability is not "the rows are in the same storage object" -- that is a cache. It is "the rows
+       * are there after the process that wrote them is gone", and the only way to ask that is a second
+       * launch on the same profile and origin. So `write` builds and asks; the browser is closed; `read`
+       * opens a second assembly over the same OPFS database and must reproduce the prompt.
+       */
+      import { assembleMemory, openOpfsStorage, ERASURE_TOKEN } from '/bundle/main.js';
+
+      const SQLITE = '/vendor/index.mjs';
+      const WORKER = '/bundle/worker.js';
+
+      const log = (line) => {
+        document.getElementById('log').textContent += `${line}\n`;
+      };
+
+      /** FNV-1a over UTF-16 code units, the same function the Node baseline uses. */
+      function digestOf(text) {
+        let hash = 0x811c9dc5;
+        for (let index = 0; index < text.length; index += 1) {
+          hash ^= text.charCodeAt(index);
+          hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return hash >>> 0;
+      }
+
+      const checks = [];
+      async function check(name, fn) {
+        try {
+          const detail = await fn();
+          checks.push({ name, ok: true, detail: detail === undefined ? '' : String(detail) });
+        } catch (error) {
+          checks.push({ name, ok: false, detail: String((error && error.message) || error) });
+        }
+      }
+
+      const assert = (condition, message) => {
+        if (!condition) throw new Error(message);
+      };
+
+      /**
+       * The reader, as an integrator would inject one.
+       *
+       * It records every prompt it is handed and answers with a constant, which is what makes the digest
+       * a function of the product's own assembly rather than of a model's sampling. `completeStructured`
+       * throws because this package never calls it -- if that ever changes, the failure names the path
+       * instead of silently returning a string where a structure was asked for.
+       */
+      function recordingLlm(seen) {
+        return {
+          complete: async (prompt) => {
+            seen.push(prompt);
+            return 'Berlin';
+          },
+          completeStructured: async () => {
+            throw new Error('unused by this package');
+          },
+        };
+      }
+
+      /** A deterministic vector channel: the ranking may use it, the digest can depend on it, nothing varies. */
+      const embed = (texts) => Promise.resolve(texts.map(() => [1, 0, 0]));
+
+      /**
+       * One assembly over OPFS: the transcript in one database, the boundary's public side in another.
+       *
+       * Two pools rather than one, because a pool name is an OPFS directory: two workers sharing it would
+       * be two database handles on one directory, which is the shape a lock conflict shows up in. Two
+       * names is also what the boundary means -- the public side is a second store, not a second table.
+       */
+      async function assemble(now) {
+        const transcript = await openOpfsStorage({
+          sqliteModuleUrl: SQLITE,
+          workerUrl: WORKER,
+          databasePath: '/corpus.sqlite3',
+          poolName: 'corpus-transcript',
+        });
+        const published = await openOpfsStorage({
+          sqliteModuleUrl: SQLITE,
+          workerUrl: WORKER,
+          databasePath: '/corpus-shared.sqlite3',
+          poolName: 'corpus-published',
+        });
+        const seen = [];
+        const install = assembleMemory({
+          llm: recordingLlm(seen),
+          now,
+          storage: transcript.storage,
+          shared: published.storage,
+          profile: 'full',
+          embed,
+        });
+        return { install, seen, transcript, published };
+      }
+
+      /** What both phases report, so the restart comparison is a comparison of one shape. */
+      async function census(install, seen) {
+        const sessions = await install.corpus.sessions();
+        const prompt = seen[seen.length - 1];
+        return {
+          corpusSize: await install.corpus.size(),
+          sessionOrder: sessions.map((session) => session.join(' | ')),
+          promptCount: seen.length,
+          promptChars: prompt === undefined ? 0 : prompt.length,
+          promptDigest: prompt === undefined ? 0 : digestOf(prompt),
+        };
+      }
+
+      window.__run = async (request) => {
+        checks.length = 0;
+        const facts = {};
+        const { now, secret, question, turns, arrival, baseline } = request.scenario;
+
+        if (request.mode === 'write') {
+          let opened;
+          await check('the `full` profile assembles in a browser', async () => {
+            opened = await assemble(now);
+            facts.tier = opened.transcript.tier;
+            facts.engine = opened.transcript.engine;
+            assert(
+              opened.transcript.tier === 'opfs',
+              `transcript tier was ${opened.transcript.tier}`,
+            );
+            assert(opened.published.tier === 'opfs', `shared tier was ${opened.published.tier}`);
+            assert(opened.install.disclosure !== undefined, 'the full profile has no boundary');
+            return `${opened.transcript.engine} (transcript) + ${opened.published.engine} (shared)`;
+          });
+          if (opened === undefined) return { checks, facts };
+
+          const { install, seen } = opened;
+          await check('a transcript goes in and a question comes out', async () => {
+            const appendStarted = performance.now();
+            const report = await install.memory.remember(turns);
+            facts.appendMs = performance.now() - appendStarted;
+            assert(
+              report.appended === turns.length,
+              `appended ${report.appended} of ${turns.length}`,
+            );
+            const askStarted = performance.now();
+            const answer = await install.memory.askStored(question);
+            facts.askMs = performance.now() - askStarted;
+            assert(
+              typeof answer === 'string' && answer.length > 0,
+              `answer ${JSON.stringify(answer)}`,
+            );
+            facts.answer = answer;
+            return `${report.appended} turns, one prompt, answer ${JSON.stringify(answer)}`;
+          });
+
+          await check(
+            'the order the sessions arrived in is the order the corpus reports',
+            async () => {
+              // The ids were chosen so a key-ordered engine answers in a different order. The corpus sorts
+              // by its own arrival index, which is data it stored -- this is that invariant on another engine.
+              const order = await install.corpus.context();
+              assert(
+                JSON.stringify(order) === JSON.stringify(arrival),
+                `got ${JSON.stringify(order.map((text) => text.slice(0, 20)))}`,
+              );
+              return `${order.length} turns in arrival order`;
+            },
+          );
+
+          await check(
+            'the prompt is the same bytes as the one `node:sqlite` produces',
+            async () => {
+              const mine = await census(install, seen);
+              facts.census = mine;
+              assert(
+                mine.promptChars === baseline.promptChars,
+                `length ${mine.promptChars} != ${baseline.promptChars} (node:sqlite)`,
+              );
+              assert(
+                mine.promptDigest === baseline.promptDigest,
+                `digest ${mine.promptDigest} != ${baseline.promptDigest} (node:sqlite)`,
+              );
+              return `${mine.promptChars} chars, digest ${mine.promptDigest}, same as node:sqlite`;
+            },
+          );
+
+          await opened.transcript.storage.close();
+          await opened.published.storage.close();
+          return { checks, facts };
+        }
+
+        // `read`: a second browser, the same profile, the same origin, a second assembly.
+        const opened = await assemble(now);
+        const { install, seen } = opened;
+
+        await check('the transcript survives the browser closing', async () => {
+          const mine = await census(install, seen);
+          facts.beforeAsk = mine;
+          assert(
+            mine.corpusSize === request.written.corpusSize,
+            `size ${mine.corpusSize} != ${request.written.corpusSize}`,
+          );
+          assert(
+            JSON.stringify(mine.sessionOrder) === JSON.stringify(request.written.sessionOrder),
+            `order ${JSON.stringify(mine.sessionOrder)}`,
+          );
+          return `${mine.corpusSize} turns still present`;
+        });
+
+        await check('the same question after the restart produces the same prompt', async () => {
+          await install.memory.askStored(question);
+          const mine = await census(install, seen);
+          facts.afterAsk = mine;
+          assert(
+            mine.promptDigest === request.written.promptDigest,
+            `digest ${mine.promptDigest} != ${request.written.promptDigest} (before the restart)`,
+          );
+          assert(
+            mine.promptDigest === baseline.promptDigest,
+            `digest ${mine.promptDigest} != ${baseline.promptDigest} (node:sqlite)`,
+          );
+          return `${mine.promptChars} chars, digest ${mine.promptDigest} after a restart`;
+        });
+
+        await check('the boundary opens over the persisted stores and cuts a card', async () => {
+          await install.disclosure.say(secret, { id: 's1' });
+          await install.disclosure.accept('s1');
+          const cards = await install.disclosure.cards();
+          facts.cards = cards.length;
+          assert(cards.length >= 1, 'the deferral produced no card');
+          assert(
+            secret.includes(cards[0].text),
+            `the card is not the sentence: ${JSON.stringify(cards[0].text)}`,
+          );
+          return `${cards.length} card(s), the sentence itself`;
+        });
+
+        await check(
+          'erasure removes the turn, keeps its sibling, and rewrites the index row',
+          async () => {
+            const erased = await install.disclosure.forget('s1', {
+              acknowledge: ERASURE_TOKEN,
+              reason: 'user-request',
+            });
+            facts.removed = erased.record.removed;
+            assert(
+              erased.record.removed.turns >= 1,
+              `removed ${erased.record.removed.turns} turns`,
+            );
+            const size = await install.corpus.size();
+            facts.sizeAfter = size;
+            assert(size === turns.length - 1, `${size} turns left, expected ${turns.length - 1}`);
+            // The session row is rewritten rather than dropped, because one of its two turns survives.
+            // That is the branch a row count alone would not distinguish from a correct erasure, and the
+            // row count is the same either way -- so the assertion is on the ordinals, not on the length.
+            const rows = await opened.transcript.storage.query('corpus.session');
+            const expectedSessions = new Set(turns.map((turn) => turn.sessionId)).size;
+            assert(
+              rows.length === expectedSessions,
+              `${rows.length} session rows, expected ${expectedSessions}`,
+            );
+            const s1 = rows.find((row) => row.sessionId === 's1');
+            assert(s1 !== undefined, 'the session row was dropped instead of rewritten');
+            assert(
+              JSON.stringify(s1.ordinals) === JSON.stringify([1]),
+              `s1 ordinals ${JSON.stringify(s1.ordinals)}`,
+            );
+            return `${erased.record.removed.turns} turn(s), ${rows.length} session rows, s1 ordinals [1]`;
+          },
+        );
+
+        await check('the erased sentence reaches neither the corpus nor the reader', async () => {
+          assert(
+            (await install.corpus.held([secret])) === 0,
+            'the corpus still holds the sentence',
+          );
+          const context = await install.corpus.context();
+          assert(!context.includes(secret), 'the transcript still contains the sentence');
+          await install.memory.askStored(question);
+          const last = seen[seen.length - 1];
+          assert(!last.includes(secret), 'the prompt still carries the erased sentence');
+          facts.promptAfterForget = { chars: last.length, digest: digestOf(last) };
+          return `prompt ${last.length} chars, no erased text`;
+        });
+
+        await check('the card is gone from the boundary as well', async () => {
+          const cards = await install.disclosure.cards();
+          // Joined rather than an array of one string: the reading is committed and prettier-collapsed, so
+          // a shape that round-trips through `JSON.stringify` and prettier differently is a dirty tree.
+          facts.cardsAfter = cards.map((card) => card.text.slice(0, 40)).join(' | ');
+          assert(
+            cards.every((card) => card.text !== secret),
+            `a card still carries it: ${JSON.stringify(cards.map((c) => c.text.slice(0, 20)))}`,
+          );
+          const rows = await opened.transcript.storage.query('corpus.turn');
+          assert(
+            rows.every((row) => row.text !== secret),
+            `${rows.length} turn rows, one still carries the sentence`,
+          );
+          return `${cards.length} card(s) left, ${rows.length} turn rows, none carrying it`;
+        });
+
+        await check('no table on either store still holds the sentence', async () => {
+          // The same shape `tools/erasure-census.mjs` uses, in the browser: read every surface the assembly
+          // is constructed over and search the serialised rows rather than the fields this page knows about.
+          // A field nobody enumerated is exactly where a second copy survives, and a check written against
+          // `card.text` would be a check written against the field the product already fixed.
+          const surfaces = [
+            ['private:facts', opened.transcript.storage, 'facts'],
+            ['private:cards', opened.transcript.storage, 'cards'],
+            ['private:releases', opened.transcript.storage, 'releases'],
+            ['private:erasures', opened.transcript.storage, 'erasures'],
+            ['private:turn', opened.transcript.storage, 'corpus.turn'],
+            ['private:session', opened.transcript.storage, 'corpus.session'],
+            ['shared:facts', opened.published.storage, 'facts'],
+          ];
+          const found = [];
+          facts.sweep = {};
+          for (const [label, store, table] of surfaces) {
+            const rows = await store.query(table);
+            facts.sweep[label] = rows.length;
+            if (JSON.stringify(rows).includes(secret)) found.push(label);
+          }
+          assert(found.length === 0, `the sentence survives in ${found.join(', ')}`);
+          return `${surfaces.length} tables over two stores, none carrying it`;
+        });
+
+        await opened.transcript.storage.close();
+        await opened.published.storage.close();
+        return { checks, facts };
+      };
+
+      window.__ready = true;
+      log('corpus suite ready');
+    </script>
+  </body>
+</html>

@@ -273,6 +273,10 @@ jobs:
         env:
           CORTEX_ROWS: '400'
           CORTEX_RESULTS: /tmp/fresh-browser-run.json
+          # A third override rather than a shared one: three suites write three readings, and one
+          # variable would have them overwrite each other and the comparisons below report one
+          # suite's checks against another's.
+          CORTEX_RESULTS_CORPUS: /tmp/fresh-corpus-run.json
         run: pnpm test:browser
 
       - name: The committed reading still describes this tree
@@ -281,6 +285,15 @@ jobs:
             --committed packages/cortex-storage/test/browser/last-run.json \
             --fresh /tmp/fresh-browser-run.json
 
+      # The corpus reading is a second committed artefact, so it needs the same treatment: the probe
+      # re-runs here, writes somewhere else, and this compares the two. Without it the committed file
+      # would be a log of a run nobody repeats.
+      - name: The committed corpus reading still describes this tree
+        run: |
+          node tools/browser-reading-check.mjs \
+            --committed packages/cortex-memory/test/browser/corpus-run.json \
+            --fresh /tmp/fresh-corpus-run.json
+
       - name: Upload the readings
         if: always()
         uses: actions/upload-artifact@v4
@@ -288,5 +301,7 @@ jobs:
           name: browser-readings
           path: |
             /tmp/fresh-browser-run.json
+            /tmp/fresh-corpus-run.json
             packages/cortex-storage/test/browser/bundle-run.json
+            packages/cortex-memory/test/browser/corpus-run.json
           if-no-files-found: ignore
