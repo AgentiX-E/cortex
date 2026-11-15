@@ -28,7 +28,12 @@ import { runCortexMemoryArm } from '../bench-memory-arm.js';
 import type { MemoryArmConfig } from '../report.js';
 import { exactMatchScorer } from '../metrics.js';
 import { DEFAULT_RELEVANCE_TOP_K } from '../relevance-index.js';
-import type { Answer, BenchmarkDataset, DeliveredTurnWindowCensus, MemorySystem } from '../types.js';
+import type {
+  Answer,
+  BenchmarkDataset,
+  DeliveredTurnWindowCensus,
+  MemorySystem,
+} from '../types.js';
 
 const GATE = {
   threshold: 0,
@@ -76,11 +81,22 @@ async function run(feature: MemorySystem, count = 1) {
   });
 }
 
-type WithWindow = { turnWindow?: { cut: number; marked: number; whole: number; questions: number; unreported: number } };
+type WithWindow = {
+  turnWindow?: {
+    cut: number;
+    marked: number;
+    whole: number;
+    questions: number;
+    unreported: number;
+  };
+};
 
 describe('the arm records the turn window census on the artifact', () => {
   it('sums what each question reported', async () => {
-    const result = await run(reporting(() => ({ cut: 2, marked: 1, whole: 5 })), 2);
+    const result = await run(
+      reporting(() => ({ cut: 2, marked: 1, whole: 5 })),
+      2,
+    );
 
     expect((result.report as WithWindow).turnWindow).toEqual({
       cut: 4,
@@ -121,7 +137,10 @@ describe('the arm records the turn window census on the artifact', () => {
   });
 
   it('writes no field when every question declined', async () => {
-    const result = await run(reporting(() => null), 2);
+    const result = await run(
+      reporting(() => null),
+      2,
+    );
 
     expect((result.report as WithWindow).turnWindow).toBeUndefined();
   });

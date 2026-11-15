@@ -95,6 +95,24 @@ describe('the turn window census', () => {
     expect(census!.marked).toBeLessThanOrEqual(census!.cut);
   });
 
+  it('counts the rendering that was delivered, not every rendering it took to choose one', () => {
+    // The budget path renders twice: once the whole candidate set, then the selected subset. A tally that
+    // accumulated across both would report more cuts than there are delivered turns -- and the identity
+    // `cut + whole === carried.length` is the only assertion that can see it, because both renderings cut
+    // the same turns and each number looks plausible on its own.
+    const turns = [turn(LONG, 0), turn(LONG, 1), turn(LONG, 2)];
+    const assembled = buildPrompt(QUESTION, turns, 'abstention', {
+      maxTurnChars: CAP,
+      maxChars: 600,
+    });
+
+    // The budget had to drop at least one turn, or the second rendering never happened and the test
+    // asserts the identity on a path that cannot break it.
+    expect(assembled.carried.length).toBeLessThan(turns.length);
+    expect(assembled.turnWindow).toBeDefined();
+    expect(assembled.turnWindow!.cut + assembled.turnWindow!.whole).toBe(assembled.carried.length);
+  });
+
   it('reports nothing when the prompt carries no evidence', () => {
     // `undefined`, not `{cut: 0, marked: 0, whole: 0}`: an empty census and an absent one are the
     // same three zeros, and a reader could not tell "the window cut nothing" from "no window ran".

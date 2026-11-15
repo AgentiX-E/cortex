@@ -319,3 +319,71 @@ fix the wiring and re-dispatch. Here the wiring is fixed (dateline, measured at 
 questions, a mechanism that can only reach 6.2% of the items on two of five capabilities cannot be resolved
 at this sample size. The 500 × 4 instrument exists for exactly that reason, and dispatching it before the
 counter exists would spend 28.5 CNY to answer a question that a parse cannot settle.
+
+## 10. The counter, before the dispatch
+
+§9.4 made the counter the first item of the next increment and this round is that item. The dispatch below
+it is the same 500 x 4 pair §9 declined to spend, and it is being spent only because `P1` now has a field to
+read.
+
+### 10.1 Where the number is produced
+
+Four hops, each of which has to carry the value or the reading is lost:
+
+| hop | what it does | why it is that hop |
+| --- | --- | --- |
+| `contentFor` | charges `cut` / `marked` / `whole` at the branch that decides whether a turn is printed whole | the only line that knows; a count taken anywhere else is the parse §9.3 already failed at |
+| `AssembledPrompt.turnWindow` | publishes the tally of the rendering that was **delivered** | the budget path renders twice -- the candidate set, then the selected subset -- so a tally that accumulated would count the same turns twice |
+| `CortexMemory.lastTurnWindowCensus()` | copies it out per question, by value | the same rule `lastRoleCensus` follows: the arm serialises what it reads |
+| artifact `turnWindow` | sums the per-question censuses, carrying `questions` and `unreported` | a sum over a subset and a sum over the whole population are different readings; the smaller one must not be able to pass for the larger |
+
+`cut + whole` is the delivered turn count **per question**, which is the identity that makes the sum a
+measurement rather than a total. `marked` is a subset of `cut`, never a sibling: a window always marks, and
+the head cut marks when asked, so `cut 644, marked 0` is a head cut and `cut 644, marked 644` is a window.
+
+### 10.2 Two branches that had to be wrong before they were right
+
+**The tally is reset per render.** `buildPrompt` renders once to assemble and `fitToBudget` renders the final
+set again after the ordering permutation (§13.153), so a tally that survived the first call counted the
+candidate set and the delivered set together. The first version of the tests could not see it: every prompt
+in them fitted the budget, so only one rendering ever happened. The mutation table below is what found it --
+`M4` survived six suites, and the test that now kills it asserts the identity on a prompt whose budget forced
+a second rendering (`carried.length < turns.length`, `cut + whole === carried.length`).
+
+**Absence is not zero.** A prompt that carries no evidence omits the census rather than reporting
+`{cut: 0, marked: 0, whole: 0}`, and the artifact omits its field when every question declined. Three zeros
+beside `carried: []` is the same bytes as a run whose cap cut nothing, and only one of those is a
+measurement -- the shape that made §10.10's wrong reading possible one census over.
+
+### 10.3 Six mutations, six kills
+
+| # | mutation | suites that went red |
+| --- | --- | --- |
+| 1 | every turn counted whole | 2 |
+| 2 | `marked` never charged | 1 |
+| 3 | the window does not mark | 1 |
+| 4 | the tally is not reset per render | **0 first, 1 after the test below** |
+| 5 | a `null` census is not counted as unreported | 1 |
+| 6 | a reported census does not count its question | 1 |
+
+`M4` is the one worth recording, and its first result was the useful part: six suites, no failure, on a
+mechanism that reported **double** the cuts it delivered. Every other test asserted a number that looked
+right on its own -- the count of a single rendering -- and only the identity across two renderings could tell
+the difference.
+
+### 10.4 The dispatch this round also makes possible
+
+`semantic-carry.yml` grew three inputs so the pair can be dispatched without a second workflow: `pairing`
+(`carry` for `S12`, `reference` for this row), `turn_window` (`head` / `match`), and `review_pass`. Each is
+an expression rather than a literal, so the registered configuration remains what an unnamed dispatch
+produces. A guard refuses `pairing=carry` under any pass but `supersede`: absorption happens only in that
+pass, and a carry run without it would publish a reach of zero for a mechanism that was never administered --
+ten seconds here against two hours and 25 CNY of nothing.
+
+| arm | `turn_window` | `review_pass` | `pairing` | projected |
+| --- | --- | --- | --- | ---: |
+| control | `head` | `bare` | `reference` | 14.26 CNY |
+| treatment | `match` | `bare` | `reference` | 14.26 CNY |
+
+Sixteen shards each, 500 questions, four repetitions, `capability=all`, `windows=1`. The two arms are the
+same population, the same reader and the same bill; the only difference is the string the cap parses.
