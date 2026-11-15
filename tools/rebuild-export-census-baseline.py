@@ -22,7 +22,7 @@ RATIONALE = {
         "The census module's own exports. Three of them (`censusPackage`, `buildCensusReport`, "
         "`listOrphans`) are called by tools/export-census.mjs and so are already counted. The rest "
         "are internal seams extracted for direct unit testing: `extractExportedSymbols`, "
-        "`countCallers`, `identifierPattern`, `isTestFile` and friends exist so a test can drive "
+        "`countCallers`, `identifierPattern`, `isTestFile`, `isInstrumentFile` and friends exist so a test can drive "
         "one rule in isolation instead of round-tripping through the CLI. They are exported "
         "because TypeScript has no package-private visibility. This is the one place where an "
         "orphan is a deliberate design choice rather than debt, and it is recorded as debt anyway "

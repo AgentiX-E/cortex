@@ -171,6 +171,22 @@ function main() {
       `(${report.referencedLocallyCount} used only in their own file, ` +
       `${report.unreferencedCount} referenced nowhere)\n`,
   );
+  // Printed because it is the number the boundary argument never had, and it is
+  // deliberately not part of the orphan count: these symbols are reached on every
+  // benchmark run by code the customer does not install. Reported, not gated --
+  // the gate for a claimed capability is `tools/capability-ledger.mjs`, which can
+  // say which capability a symbol was supposed to serve.
+  //
+  // Two numbers, because only one of them is a breach: a symbol the harness
+  // declares and the harness calls is the harness working, while a symbol the
+  // *product* declares and only the harness calls is a capability that exists for
+  // the measurement.
+  process.stdout.write(
+    `  boundary: ${report.productInstrumentOnlyCount} product export(s) are called ONLY by the ` +
+      `instrument (tools/** or packages/cortex-eval/**); ` +
+      `${report.instrumentOnlyCount - report.productInstrumentOnlyCount} more instrument ` +
+      `internals are called only by the instrument, which is the instrument working\n`,
+  );
 
   if (orphans.length === 0) {
     process.stdout.write('no orphans: every exported symbol has a non-test caller\n');

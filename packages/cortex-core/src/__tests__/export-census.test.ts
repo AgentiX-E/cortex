@@ -30,6 +30,7 @@ import {
   isTestFile,
   isBarrelFile,
   isCallerOnlyFile,
+  isInstrumentFile,
   extractExportedSymbols,
   countCallers,
   identifierPattern,
@@ -57,6 +58,40 @@ function entryFor(
   const [entry] = countCallers([symbol], files);
   if (entry === undefined) throw new Error('countCallers returned nothing for one symbol');
   return entry;
+}
+
+/**
+ * A call site: a file that imports `name` from `declaring`, then uses it.
+ *
+ * The fixtures below were written as bare mentions, and they passed until the
+ * census started requiring the import -- the change registered as `P1-census` in
+ * `docs/AUDIT-CENSUS-CALLER-BY-NAME.md`. A fixture that only spells the name is a
+ * fixture *of the defect*, so the shape is named once here and no test has to
+ * spell it out.
+ */
+function callSite(
+  path: string,
+  body: string,
+  declaring: string = SUBJECT.file,
+  name = 'fuseRerank',
+): { path: string; text: string } {
+  return file(path, `import { ${name} } from '${relativeTo(path, declaring)}';\n${body}`);
+}
+
+/** A relative import specifier from one fixture path to another. */
+function relativeTo(from: string, to: string): string {
+  const fromDir = from.split('/').slice(0, -1);
+  const toParts = to.replace(/\.ts$/, '.js').split('/');
+  const toDir = toParts.slice(0, -1);
+  let common = 0;
+  while (common < fromDir.length && common < toDir.length && fromDir[common] === toDir[common]) {
+    common += 1;
+  }
+  const up = fromDir.length - common;
+  const tail = [...new Array(up).fill('..'), ...toParts.slice(common)].join('/');
+  // A sibling import is written `./x.js`, not `x.js`: without the prefix it reads
+  // as a bare specifier and the resolver -- correctly -- finds no module.
+  return tail.startsWith('..') ? tail : `./${tail}`;
 }
 
 const SUBJECT: ExportedSymbol = {
@@ -199,6 +234,43 @@ describe('extracting exported symbols', () => {
     expect(extractExportedSymbols('export default 1;', 'packages/a/src/x.ts')).toEqual([]);
   });
 
+  it("does not read a declaration inside an ambient module as this package's export", () => {
+    // `packages/cortex-ai/src/local/huggingface-transformers.d.ts` declares the
+    // slice of an *optional peer* the package uses. Those names (`env`,
+    // `pipeline`, `AutoTokenizer`) belong to `@huggingface/transformers`, not to
+    // cortex-ai, and counting them as exports made the census report four
+    // ambient names in a package that does not export them -- each with whatever
+    // caller happened to mention the word.
+    const source = [
+      "declare module '@huggingface/transformers' {",
+      '  export function pipeline(task: string): unknown;',
+      '  export const env: { remoteHost: string };',
+      '  export class AutoTokenizer {}',
+      '}',
+    ].join('\n');
+    expect(extractExportedSymbols(source, 'packages/x/src/peer.d.ts')).toEqual([]);
+  });
+
+  it('still reads a declaration after an ambient module block closes', () => {
+    const source = [
+      "declare module 'peer' {",
+      '  export const env: unknown;',
+      '}',
+      'export function real(): void {}',
+    ].join('\n');
+    const symbols = extractExportedSymbols(source, 'packages/x/src/peer.d.ts');
+    // Line number preserved from the original text, so a failure names the right
+    // place even though a whole block was skipped.
+    expect(symbols.map((symbol) => [symbol.name, symbol.line])).toEqual([['real', 4]]);
+  });
+
+  it('reads an `export declare` outside any ambient block', () => {
+    const source = 'export declare function typed(x: number): string;\n';
+    expect(extractExportedSymbols(source, 'packages/x/src/types.d.ts').map((s) => s.name)).toEqual([
+      'typed',
+    ]);
+  });
+
   it('ignores a mention of a declaration inside a string or a comment', () => {
     const source = [
       '// export const commented = 1;',
@@ -216,7 +288,7 @@ describe('counting callers', () => {
   it('counts a non-test source file that references the symbol', () => {
     const entry = entryFor(SUBJECT, [
       file(SUBJECT.file, 'export function fuseRerank() {}'),
-      file('packages/cortex-eval/src/use.ts', 'import { fuseRerank } from "core";\nfuseRerank();'),
+      callSite('packages/cortex-eval/src/use.ts', 'fuseRerank();'),
     ]);
     expect(entry.callerCount).toBe(1);
     expect(entry.callers).toEqual(['packages/cortex-eval/src/use.ts']);
@@ -231,7 +303,7 @@ describe('counting callers', () => {
         'packages/cortex-core/src/__tests__/rerank.test.ts',
         "import { fuseRerank } from '../rerank.js';",
       ),
-      file('packages/cortex-core/src/rerank.test.ts', 'fuseRerank();'),
+      callSite('packages/cortex-core/src/rerank.test.ts', 'fuseRerank();'),
     ]);
     expect(entry.callerCount).toBe(0);
     expect(entry.callers).toEqual([]);
@@ -275,6 +347,10 @@ describe('counting callers', () => {
           'packages/cortex-core/src/vector/brute-force.ts',
           'export class BruteForceVectorIndex {}',
         ),
+        // The barrel hop, which `P1-census` names as the thing that must keep
+        // working: `cortex-eval` imports the package, not the file, so a rule
+        // that stopped at the specifier would lose all 118 cross-package uses.
+        file('packages/cortex-core/src/index.ts', "export * from './vector/brute-force.js';"),
         file(
           'packages/cortex-eval/src/embedding-memory.ts',
           "import { BruteForceVectorIndex } from '@agentix-e/cortex-core';",
@@ -294,7 +370,7 @@ describe('counting callers', () => {
     // the previous test green and turns this one red.
     const files = [
       file('packages/core/src/a.ts', 'export function helper() {}'),
-      file('packages/eval/src/b.ts', 'helper();'),
+      callSite('packages/eval/src/b.ts', 'helper();', 'packages/core/src/a.ts', 'helper'),
     ];
     const core = censusPackage('core', files);
     expect(core.entries.map((e) => [e.symbol.name, e.callerCount])).toEqual([['helper', 1]]);
@@ -303,7 +379,7 @@ describe('counting callers', () => {
   it('de-duplicates a symbol referenced several times in one file', () => {
     const entry = entryFor(SUBJECT, [
       file(SUBJECT.file, 'export function fuseRerank() {}'),
-      file('packages/cortex-eval/src/use.ts', 'fuseRerank();\nfuseRerank();\nfuseRerank();'),
+      callSite('packages/cortex-eval/src/use.ts', 'fuseRerank();\nfuseRerank();\nfuseRerank();'),
     ]);
     // One caller, not three: the question is "does any non-test code mention
     // this", and a file is mentioned or not.
@@ -313,9 +389,9 @@ describe('counting callers', () => {
   it('sorts callers so the report is stable across filesystems', () => {
     const entry = entryFor(SUBJECT, [
       file(SUBJECT.file, 'export function fuseRerank() {}'),
-      file('packages/z/src/c.ts', 'fuseRerank();'),
-      file('packages/a/src/a.ts', 'fuseRerank();'),
-      file('packages/m/src/b.ts', 'fuseRerank();'),
+      callSite('packages/z/src/c.ts', 'fuseRerank();'),
+      callSite('packages/a/src/a.ts', 'fuseRerank();'),
+      callSite('packages/m/src/b.ts', 'fuseRerank();'),
     ]);
     expect(entry.callers).toEqual([
       'packages/a/src/a.ts',
@@ -331,7 +407,7 @@ describe('counting callers', () => {
     ];
     const entries = countCallers(symbols, [
       file('packages/a/src/x.ts', 'export function used() {}\nexport function unused() {}'),
-      file('packages/a/src/y.ts', 'used();'),
+      callSite('packages/a/src/y.ts', 'used();', 'packages/a/src/x.ts', 'used'),
     ]);
     expect(entries.map((e) => [e.symbol.name, e.callerCount])).toEqual([
       ['used', 1],
@@ -379,7 +455,12 @@ describe('counting callers', () => {
           'packages/cortex-eval/src/hash.ts',
           'export function hashText(t: string): string { return t; }',
         ),
-        file('packages/cortex-eval/src/use.ts', 'const key = `t-${hashText(turn)}`;'),
+        callSite(
+          'packages/cortex-eval/src/use.ts',
+          'const key = `t-${hashText(turn)}`;',
+          'packages/cortex-eval/src/hash.ts',
+          'hashText',
+        ),
       ],
     );
     expect(entry.callerCount).toBe(1);
@@ -403,6 +484,367 @@ describe('counting callers', () => {
       ],
     );
     expect(entry.callerCount).toBe(0);
+  });
+});
+
+describe('partitioning callers into product and instrument', () => {
+  it('names the two trees that are the instrument', () => {
+    // The definition is one line and every other assertion rests on it, so it is
+    // tested directly rather than inferred from a caller list.
+    expect(isInstrumentFile('tools/capability-ledger.mjs')).toBe(true);
+    expect(isInstrumentFile('packages/cortex-eval/src/judge.ts')).toBe(true);
+    expect(isInstrumentFile('packages/cortex-memory/src/memory.ts')).toBe(false);
+    expect(isInstrumentFile('packages/cortex-core/src/export-census.ts')).toBe(false);
+    // A path that merely carries the word, in a product package, is product.
+    expect(isInstrumentFile('packages/cortex-core/src/tools/helpers.ts')).toBe(false);
+  });
+
+  it('classifies a tool script as an instrument caller and not a product one', () => {
+    const entry = entryFor(SUBJECT, [
+      file(SUBJECT.file, 'export function fuseRerank() {}'),
+      callSite('tools/prompt-anatomy.mjs', 'fuseRerank();'),
+    ]);
+    // The symbol still has a caller, so the orphan ledger does not move. That is
+    // deliberate and it is exactly why the partition has to exist: "called by
+    // something" and "called by the product" are different facts, and only the
+    // second one says a customer can reach the capability.
+    expect(entry.callerCount).toBe(1);
+    expect(entry.productCallers).toEqual([]);
+    expect(entry.instrumentCallers).toEqual(['tools/prompt-anatomy.mjs']);
+  });
+
+  it('classifies a cortex-eval source file as an instrument caller', () => {
+    const entry = entryFor(SUBJECT, [
+      file(SUBJECT.file, 'export function fuseRerank() {}'),
+      callSite('packages/cortex-eval/src/bench/run-ablation.ts', 'fuseRerank();'),
+    ]);
+    expect(entry.productCallers).toEqual([]);
+    expect(entry.instrumentCallers).toEqual(['packages/cortex-eval/src/bench/run-ablation.ts']);
+  });
+
+  it('keeps a product caller when both sides call the symbol', () => {
+    const entry = entryFor(SUBJECT, [
+      file(SUBJECT.file, 'export function fuseRerank() {}'),
+      callSite('packages/cortex-memory/src/memory.ts', 'fuseRerank();'),
+      callSite('tools/prompt-anatomy.mjs', 'fuseRerank();'),
+    ]);
+    expect(entry.callerCount).toBe(2);
+    expect(entry.productCallers).toEqual(['packages/cortex-memory/src/memory.ts']);
+    expect(entry.instrumentCallers).toEqual(['tools/prompt-anatomy.mjs']);
+  });
+
+  it('partitions every caller: the two lists are `callers`, split', () => {
+    // A property rather than an example, because the failure it prevents is a
+    // caller that lands in neither list -- a symbol the product cannot reach and
+    // the instrument is not credited with either, which reads as dead code.
+    const entry = entryFor(SUBJECT, [
+      file(SUBJECT.file, 'export function fuseRerank() {}'),
+      callSite('packages/cortex-memory/src/a.ts', 'fuseRerank();'),
+      callSite('packages/cortex-eval/src/b.ts', 'fuseRerank();'),
+      callSite('tools/c.mjs', 'fuseRerank();'),
+      callSite('packages/cortex-storage/src/d.ts', 'fuseRerank();'),
+    ]);
+    expect([...(entry.productCallers ?? []), ...(entry.instrumentCallers ?? [])].sort()).toEqual([
+      ...entry.callers,
+    ]);
+    expect((entry.productCallers ?? []).length + (entry.instrumentCallers ?? []).length).toBe(
+      entry.callerCount,
+    );
+  });
+
+  it('reports the DisclosureSession shape: three callers, none of them product', () => {
+    // THE FINDING THIS PARTITION EXISTS FOR. `DisclosureSession` is exported,
+    // fully tested, and instantiated nowhere in the product; its three callers
+    // are `tools/a3-review.mjs`, `tools/erasure-census.mjs` and
+    // `tools/triage-demo.mjs`. Before the partition, the census read that as a
+    // called symbol and the boundary breach was invisible to the gate that was
+    // built to see boundary breaches.
+    const entry = entryFor(
+      {
+        name: 'DisclosureSession',
+        file: 'packages/cortex-memory/src/disclosure/session.ts',
+        line: 98,
+        kind: 'class',
+      },
+      [
+        file(
+          'packages/cortex-memory/src/disclosure/session.ts',
+          'export class DisclosureSession {}',
+        ),
+        callSite(
+          'tools/a3-review.mjs',
+          'new DisclosureSession({});',
+          'packages/cortex-memory/src/disclosure/session.ts',
+          'DisclosureSession',
+        ),
+        callSite(
+          'tools/erasure-census.mjs',
+          'new DisclosureSession({});',
+          'packages/cortex-memory/src/disclosure/session.ts',
+          'DisclosureSession',
+        ),
+        callSite(
+          'tools/triage-demo.mjs',
+          'new DisclosureSession({});',
+          'packages/cortex-memory/src/disclosure/session.ts',
+          'DisclosureSession',
+        ),
+      ],
+    );
+    expect(entry.callerCount).toBe(3);
+    expect(entry.productCallers).toEqual([]);
+    expect(entry.instrumentCallers).toHaveLength(3);
+  });
+
+  it('leaves both lists empty for an orphan', () => {
+    const entry = entryFor(SUBJECT, [file(SUBJECT.file, 'export function fuseRerank() {}')]);
+    expect(entry.callerCount).toBe(0);
+    expect(entry.productCallers).toEqual([]);
+    expect(entry.instrumentCallers).toEqual([]);
+  });
+
+  it('counts the boundary breach apart from the instrument owning its own code', () => {
+    // The number the boundary argument never had. An orphan is unreachable by
+    // anybody; an instrument-only export IS reachable, by the harness. Summing
+    // them would overstate the dead code and understate the breach.
+    const symbols: ExportedSymbol[] = [
+      { name: 'calledByProduct', file: 'packages/a/src/x.ts', line: 1, kind: 'function' },
+      { name: 'calledByHarness', file: 'packages/a/src/x.ts', line: 2, kind: 'function' },
+      { name: 'calledByNobody', file: 'packages/a/src/x.ts', line: 3, kind: 'function' },
+      {
+        name: 'harnessInternal',
+        file: 'packages/cortex-eval/src/harness-internal.ts',
+        line: 1,
+        kind: 'function',
+      },
+    ];
+    const report = buildCensusReport([
+      {
+        packageName: 'a',
+        entries: countCallers(symbols, [
+          file(
+            'packages/a/src/x.ts',
+            ['calledByProduct() {}', 'calledByHarness() {}', 'calledByNobody() {}'].join('\n'),
+          ),
+          callSite(
+            'packages/a/src/y.ts',
+            'calledByProduct();',
+            'packages/a/src/x.ts',
+            'calledByProduct',
+          ),
+          callSite(
+            'packages/cortex-eval/src/z.ts',
+            'calledByHarness();',
+            'packages/a/src/x.ts',
+            'calledByHarness',
+          ),
+          file('packages/cortex-eval/src/harness-internal.ts', 'harnessInternal();'),
+          callSite(
+            'packages/cortex-eval/src/other.ts',
+            'harnessInternal();',
+            'packages/cortex-eval/src/harness-internal.ts',
+            'harnessInternal',
+          ),
+        ]),
+      },
+    ]);
+    expect(report.orphanCount).toBe(1);
+    // Both instrument-only symbols are counted here...
+    expect(report.instrumentOnlyCount).toBe(2);
+    // ...and only the one declared in a product package is the breach. The other
+    // is the harness calling the harness, which is the harness working.
+    expect(report.productInstrumentOnlyCount).toBe(1);
+  });
+});
+
+describe('resolving what a caller can see', () => {
+  /** One fixture tree, with every import shape this repository actually uses. */
+  function tree(): { path: string; text: string }[] {
+    return [
+      file(
+        'packages/a/src/index.ts',
+        ["export * from './deep/thing.js';", "export { plain } from './plain.js';"].join('\n'),
+      ),
+      file('packages/a/src/deep/thing.ts', 'export function thing() {}'),
+      file('packages/a/src/plain.ts', 'export function plain() {}'),
+      file('packages/a/src/dir/index.ts', 'export function fromDir() {}'),
+      file('packages/a/src/subpath.ts', 'export function sub() {}'),
+      file(
+        'packages/a/src/consumer.ts',
+        [
+          "import { thing } from '@agentix-e/a';",
+          "import { plain } from './plain.js';",
+          "import { fromDir } from './dir';",
+          "import { sub } from '@agentix-e/a/subpath';",
+          'export const all = [thing, plain, fromDir, sub];',
+        ].join('\n'),
+      ),
+      file(
+        'tools/probe.mjs',
+        "import { thing } from '../packages/a/dist/deep/thing.js';\nthing();",
+      ),
+    ];
+  }
+
+  function entries(files: readonly { readonly path: string; readonly text: string }[]) {
+    const symbols = files
+      .filter(
+        (candidate) =>
+          candidate.path.endsWith('thing.ts') ||
+          candidate.path === 'packages/a/src/plain.ts' ||
+          candidate.path === 'packages/a/src/dir/index.ts' ||
+          candidate.path === 'packages/a/src/subpath.ts',
+      )
+      .flatMap((candidate) => extractExportedSymbols(candidate.text, candidate.path));
+    return new Map(countCallers(symbols, files).map((entry) => [entry.symbol.name, entry]));
+  }
+
+  it('follows a relative specifier with an extension', () => {
+    expect(entries(tree()).get('plain')?.productCallers).toEqual(['packages/a/src/consumer.ts']);
+  });
+
+  it('follows a relative specifier that names a directory', () => {
+    expect(entries(tree()).get('fromDir')?.productCallers).toEqual(['packages/a/src/consumer.ts']);
+  });
+
+  it('follows a bare package specifier through the barrel, including `export * from`', () => {
+    // The 118 cross-package uses `P1-census` requires to survive: the consumer
+    // names the package, the barrel names the file, and the file declares the
+    // symbol. Two hops, one caller.
+    expect(entries(tree()).get('thing')?.productCallers).toEqual(['packages/a/src/consumer.ts']);
+  });
+
+  it('follows a subpath export, which the package `exports` map declares', () => {
+    expect(entries(tree()).get('sub')?.productCallers).toEqual(['packages/a/src/consumer.ts']);
+  });
+
+  it("maps a tool's `dist` import back to the source that produced it", () => {
+    // Without this, every symbol a tool imports reads as orphaned -- and the tools
+    // are where the harness lives, so the loss would be entirely one-sided.
+    expect(entries(tree()).get('thing')?.instrumentCallers).toEqual(['tools/probe.mjs']);
+  });
+
+  it('does not mistake a sibling module for the declaring one', () => {
+    // `consumer.ts` imports `plain` from `./plain.js` and `sub` from a subpath;
+    // neither name satisfies the other.
+    const table = entries(tree());
+    expect(table.get('plain')?.callerCount).toBe(1);
+    expect(table.get('sub')?.callerCount).toBe(1);
+  });
+
+  it('terminates on a re-export cycle', () => {
+    const cyclic = [
+      file('packages/a/src/one.ts', "export * from './two.js';\nexport function one() {}"),
+      file('packages/a/src/two.ts', "export * from './one.js';\nexport function two() {}"),
+      file('packages/a/src/use.ts', "import { two } from '@agentix-e/a';\nexport const t = two;"),
+      file('packages/a/src/index.ts', "export * from './one.js';"),
+    ];
+    const symbols = extractExportedSymbols(cyclic[1]?.text ?? '', 'packages/a/src/two.ts');
+    const entry = countCallers(symbols, cyclic)[0];
+    expect(entry?.productCallers).toEqual(['packages/a/src/use.ts']);
+  });
+
+  it('treats a bare specifier that is not a workspace package as no module', () => {
+    const files = [
+      file('packages/a/src/plain.ts', 'export function plain() {}'),
+      // `node:fs` is a builtin, not a package: it must not resolve to anything, and
+      // a file that only imports it cannot be a caller of anything here.
+      file('packages/a/src/tool.ts', "import { readFileSync } from 'node:fs';\nplain;"),
+    ];
+    expect(entries(files).get('plain')?.callerCount).toBe(0);
+  });
+
+  it('falls back to the package entry when a subpath names no file', () => {
+    // `@agentix-e/a/nope` is a typo or a removed export. The package entry is where
+    // an unresolved subpath lands, which is also where the symbol actually is --
+    // and guessing `[]` instead would report the caller as absent.
+    const files = [
+      file('packages/a/src/plain.ts', 'export function plain() {}'),
+      file('packages/a/src/index.ts', "export * from './plain.js';"),
+      file(
+        'packages/a/src/typo.ts',
+        "import { plain } from '@agentix-e/a/nope';\nexport const p = plain;",
+      ),
+    ];
+    expect(entries(files).get('plain')?.productCallers).toEqual(['packages/a/src/typo.ts']);
+  });
+
+  it('resolves an import between two files at the repository root', () => {
+    // `dirOf('loose.ts')` has no slash to split on. The branch exists because a
+    // fixture at the root is legal input, and a resolver that assumed every path
+    // has a directory would throw on it.
+    const entry = countCallers(
+      [{ name: 'loose', file: 'loose.ts', line: 1, kind: 'function' }],
+      [
+        file('loose.ts', 'export function loose() {}'),
+        file('user.ts', "import { loose } from './loose.js';\nexport const u = loose;"),
+      ],
+    )[0];
+    expect(entry?.productCallers).toEqual(['user.ts']);
+  });
+
+  it('ignores an empty import specifier', () => {
+    // `import x from ''` is not valid TypeScript, and a parser that treated it as
+    // a specifier would resolve it against the directory and match a barrel.
+    const files = [
+      file('packages/a/src/plain.ts', 'export function plain() {}'),
+      file('packages/a/src/index.ts', "export * from './plain.js';"),
+      file('packages/a/src/odd.ts', "import { plain } from '';\nexport const p = plain;"),
+    ];
+    expect(entries(files).get('plain')?.callerCount).toBe(0);
+  });
+
+  it('does not follow an import that resolves to no file', () => {
+    const files = [
+      file('packages/a/src/plain.ts', 'export function plain() {}'),
+      file('packages/a/src/broken.ts', "import { plain } from './missing.js';\nplain;"),
+    ];
+    expect(entries(files).get('plain')?.callerCount).toBe(0);
+  });
+
+  it('does not read a specifier out of a comment', () => {
+    const files = [
+      file('packages/a/src/plain.ts', 'export function plain() {}'),
+      file(
+        'packages/a/src/doc.ts',
+        "// import { plain } from './plain.js';\n/* import { plain } from './plain.js'; */\nplain;",
+      ),
+    ];
+    expect(entries(files).get('plain')?.callerCount).toBe(0);
+  });
+});
+
+describe('ambient module blocks', () => {
+  it('closes the block on the line that balances the brace', () => {
+    const source = [
+      "declare module 'peer' {",
+      '  export const a: number;',
+      '}',
+      'export function after() {}',
+      "declare module 'other' {",
+      '  export const b: number;',
+      '}',
+    ].join('\n');
+    expect(extractExportedSymbols(source, 'packages/x/src/peer.d.ts').map((s) => s.name)).toEqual([
+      'after',
+    ]);
+  });
+
+  it('reads a block whose opening brace is on the next line', () => {
+    const source = ["declare module 'peer'", '{', '  export const a: number;', '}'].join('\n');
+    expect(extractExportedSymbols(source, 'packages/x/src/peer.d.ts')).toEqual([]);
+  });
+
+  it('does not treat a brace inside an ambient docblock as code', () => {
+    const source = [
+      '/**',
+      " * A block that mentions { a brace } in prose, declaring module 'peer'.",
+      ' */',
+      'export function real() {}',
+    ].join('\n');
+    expect(extractExportedSymbols(source, 'packages/x/src/x.ts').map((s) => s.name)).toEqual([
+      'real',
+    ]);
   });
 });
 
@@ -620,7 +1062,12 @@ describe('stripping comments before matching a name', () => {
     };
     const entry = entryFor(symbol, [
       file('packages/core/src/a.ts', 'export function extractedHelper() {}'),
-      file('packages/core/src/other.ts', 'const x = extractedHelper();\n'),
+      callSite(
+        'packages/core/src/other.ts',
+        'const x = extractedHelper();\n',
+        'packages/core/src/a.ts',
+        'extractedHelper',
+      ),
     ]);
     expect(entry.callerCount).toBe(1);
     expect(entry.callers).toEqual(['packages/core/src/other.ts']);
@@ -638,7 +1085,12 @@ describe('stripping comments before matching a name', () => {
     };
     const entry = entryFor(symbol, [
       file('packages/core/src/a.ts', 'export function extractedHelper() {}'),
-      file('packages/core/src/other.ts', '// see extractedHelper\nconst y = extractedHelper();\n'),
+      callSite(
+        'packages/core/src/other.ts',
+        '// see extractedHelper\nconst y = extractedHelper();\n',
+        'packages/core/src/a.ts',
+        'extractedHelper',
+      ),
     ]);
     expect(entry.callerCount).toBe(1);
   });
@@ -1139,7 +1591,7 @@ describe('separating a local reference from no reference at all', () => {
     // would make it a second, redundant spelling of `callerCount > 0`.
     const entry = entryFor(SUBJECT, [
       file(SUBJECT.file, 'export function fuseRerank() { return fuseRerank(); }'),
-      file('packages/cortex-eval/src/use.ts', 'fuseRerank();'),
+      callSite('packages/cortex-eval/src/use.ts', 'fuseRerank();'),
     ]);
     expect(entry.callerCount).toBe(1);
     expect(entry.referencedLocally).toBeUndefined();

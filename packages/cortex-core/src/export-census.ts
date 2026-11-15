@@ -79,6 +79,26 @@ export type SymbolCensusEntry = {
   /** The qualifying caller files, sorted, for the failure message. */
   readonly callers: readonly string[];
   /**
+   * The callers that are the product: everything outside `tools/` and `cortex-eval`.
+   *
+   * Empty while `callers` is not is a **boundary breach**, not an orphan: the
+   * symbol is reachable, but only by the harness. That state has no name in the
+   * vocabulary above -- `callerCount > 0` reads as "in use" -- and it is the
+   * state every capability the instrument owns is in, so it needs one.
+   *
+   * The two lists partition `callers`. Anything counted in one is not counted in
+   * the other, and their lengths sum to `callerCount`, so a caller cannot land in
+   * neither and be reported as nothing.
+   *
+   * Absent on entries assembled by hand or read from an older record, like
+   * `referencedLocally` below. Read absent as **product**: the other reading
+   * invents a boundary breach out of a missing field, and "the harness owns this"
+   * is a claim that has to be paid for with a caller list.
+   */
+  readonly productCallers?: readonly string[];
+  /** The callers that are the instrument: `tools/**` and `packages/cortex-eval/**`. */
+  readonly instrumentCallers?: readonly string[];
+  /**
    * For an orphan, whether its own declaring file still refers to it.
    *
    * This is the distinction that turns an undifferentiated debt number into a
@@ -109,6 +129,28 @@ export type CensusReport = {
   readonly referencedLocallyCount: number;
   /** Orphans nothing refers to anywhere: a dead-code candidate. */
   readonly unreferencedCount: number;
+  /**
+   * Exports whose only callers are the instrument.
+   *
+   * Deliberately **not** folded into `orphanCount`. An orphan is unreachable by
+   * anybody; an instrument-only export is reached on every benchmark run, by code
+   * the customer does not install. Adding them would inflate the dead-code debt
+   * and delete the finding. Measured on this repository when the partition
+   * arrived, `DisclosureSession` had three callers and none of them was product.
+   */
+  readonly instrumentOnlyCount: number;
+  /**
+   * The subset of `instrumentOnlyCount` that is **declared in a product package**.
+   *
+   * This is the boundary breach as a number, and the other one is not. Most of
+   * `instrumentOnlyCount` is the harness's own internals -- an eval file called
+   * only by eval files is the instrument being self-contained, which is what it
+   * should be. A symbol declared in `cortex-memory` and reached only from
+   * `cortex-eval` is a capability that exists for the measurement. On this
+   * repository the two numbers are 57 and 326; quoting the larger one as a breach
+   * would accuse the harness of owning its own code.
+   */
+  readonly productInstrumentOnlyCount: number;
 };
 
 /** Extensions treated as source. Only TypeScript, which is all this repo has. */
@@ -137,12 +179,18 @@ const CALLER_ONLY_EXTENSION = /\.mjs$/;
  * line, so the alternation is anchored and consumed left to right.
  */
 const DECLARATION_PATTERNS: readonly { readonly kind: ExportKind; readonly source: string }[] = [
-  { kind: 'function', source: 'export\\s+(?:async\\s+)?function\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
-  { kind: 'class', source: 'export\\s+(?:abstract\\s+)?class\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
+  {
+    kind: 'function',
+    source: 'export\\s+(?:declare\\s+)?(?:async\\s+)?function\\s+([A-Za-z_$][A-Za-z0-9_$]*)',
+  },
+  {
+    kind: 'class',
+    source: 'export\\s+(?:declare\\s+)?(?:abstract\\s+)?class\\s+([A-Za-z_$][A-Za-z0-9_$]*)',
+  },
   { kind: 'interface', source: 'export\\s+interface\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
   { kind: 'type', source: 'export\\s+type\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
   { kind: 'enum', source: 'export\\s+enum\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
-  { kind: 'const', source: 'export\\s+const\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
+  { kind: 'const', source: 'export\\s+(?:declare\\s+)?const\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
   { kind: 'let', source: 'export\\s+let\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
   { kind: 'var', source: 'export\\s+var\\s+([A-Za-z_$][A-Za-z0-9_$]*)' },
 ];
@@ -177,6 +225,27 @@ export function isCallerOnlyFile(path: string): boolean {
 }
 
 /**
+ * Whether a path belongs to the instrument rather than the product.
+ *
+ * Two trees, and the boundary is a fact about installation rather than taste:
+ * `packages/cortex-eval/**` is the harness and `tools/**` are the scripts that
+ * drive it. Neither ships to a user who installs the product, so a symbol whose
+ * only references are here is a capability the customer cannot reach -- however
+ * many callers it has and however green its tests are.
+ *
+ * Matched on the **leading** path segments, not on a substring: a product file at
+ * `packages/cortex-core/src/tools/helpers.ts` contains the word `tools` and is
+ * product, and a substring test would classify it as instrument and quietly move
+ * a capability across the boundary in the permissive direction.
+ *
+ * @param path repository-relative path with forward slashes.
+ */
+export function isInstrumentFile(path: string): boolean {
+  if (path.startsWith('tools/')) return true;
+  return /^packages\/cortex-eval\//.test(path);
+}
+
+/**
  * Whether a path is a test file, and so must not be counted as a caller.
  *
  * Matches the repo's two conventions: a `__tests__` directory anywhere in the
@@ -204,6 +273,45 @@ export function isBarrelFile(path: string): boolean {
 }
 
 /**
+ * Which lines sit inside an `declare module '…' { … }` block.
+ *
+ * A `.d.ts` that says `declare module '@huggingface/transformers' { export function
+ * pipeline(...) }` is declaring **another package's** module, and the names in it
+ * are not exports of the package the file lives in. The census read them as four
+ * exports of `cortex-ai` (`env`, `pipeline`, `AutoTokenizer`,
+ * `AutoModelForSequenceClassification`), each credited to whichever file happened
+ * to say the word -- `env` collected twelve "callers" that were all reading their
+ * own environment.
+ *
+ * Braces are counted on a text with comments and string bodies already blanked, so
+ * a brace in a docblock cannot open or close a block, and line numbering is
+ * preserved by both blankings (see `stripStringContent`).
+ */
+function ambientModuleLines(source: string): readonly boolean[] {
+  const lines = stripStringContent(stripComments(source)).split('\n');
+  const inside: boolean[] = [];
+  let depth = 0;
+  let open = false;
+  for (const line of lines) {
+    if (!open && /^\s*declare\s+module\s+['"]/.test(line)) {
+      open = true;
+      depth = 0;
+    }
+    if (!open) {
+      inside.push(false);
+      continue;
+    }
+    for (const character of line) {
+      if (character === '{') depth += 1;
+      else if (character === '}') depth -= 1;
+    }
+    inside.push(true);
+    if (depth <= 0 && line.includes('}')) open = false;
+  }
+  return inside;
+}
+
+/**
  * Extracts every top-level exported symbol from one file's text.
  *
  * Pure and synchronous: takes text, returns symbols. It does not read the
@@ -223,7 +331,10 @@ export function isBarrelFile(path: string): boolean {
 export function extractExportedSymbols(source: string, path: string): readonly ExportedSymbol[] {
   const found: ExportedSymbol[] = [];
   const lines = source.split('\n');
+  const ambient = ambientModuleLines(source);
   for (let index = 0; index < lines.length; index += 1) {
+    // An ambient block declares someone else's module. See `ambientModuleLines`.
+    if (ambient[index] === true) continue;
     // Non-null is correct here, not a cast to silence the checker: `index` is
     // bounded by `lines.length`, so the element exists. A `?? ''` fallback would
     // be an unreachable branch — the kind of dead guard that inflates a
@@ -385,6 +496,173 @@ export function isReferencedLocally(symbol: ExportedSymbol, declaringFileText: s
  * @param files every source file in the repository, with its text.
  * @returns one entry per symbol, in the same order as `symbols`.
  */
+/** The directory of a repository-relative path. */
+function dirOf(path: string): string {
+  const at = path.lastIndexOf('/');
+  return at === -1 ? '' : path.slice(0, at);
+}
+
+/** Resolve `.` and `..` in a repository-relative path without a path library. */
+function normalisePath(path: string): string {
+  const parts: string[] = [];
+  for (const segment of path.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
+      parts.pop();
+      continue;
+    }
+    parts.push(segment);
+  }
+  return parts.join('/');
+}
+
+/**
+ * A built path mapped back to the source that produced it.
+ *
+ * `tools/*.mjs` import `packages/<pkg>/dist/*.js`, so an import-aware rule that
+ * only resolves `.ts` specifiers finds nothing in the one place tools live and
+ * reports every symbol they use as orphaned. The mapping is the tsc layout, which
+ * is fixed in this repository's `tsconfig.json` files.
+ */
+function sourceOf(path: string): string {
+  const built = /^packages\/([\w-]+)\/(?:dist|lib)\/(.*)\.(?:js|mjs|cjs)$/.exec(path);
+  if (built !== null) return `packages/${built[1]}/src/${built[2]}.ts`;
+  return path.replace(/\.(?:js|mjs|cjs)$/, '.ts');
+}
+
+/** Every `from '…'` specifier in a file's text, comments removed. */
+function specifiersIn(text: string): readonly string[] {
+  const blanked = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const found: string[] = [];
+  const pattern = /\bfrom\s+['"]([^'"]+)['"]/g;
+  for (let match = pattern.exec(blanked); match !== null; match = pattern.exec(blanked)) {
+    // `noUncheckedIndexedAccess` is off, but a capture group can be undefined at
+    // runtime for a `from ''` -- and the empty specifier is not a module.
+    if (match[1] !== undefined && match[1] !== '') found.push(match[1]);
+  }
+  return found;
+}
+
+/**
+ * The modules one specifier can name, as repository paths that exist.
+ *
+ * Only two shapes occur here: a relative path (`./memory`, `./disclosure`,
+ * `../core/dist/x.js`) and a workspace package (`@agentix-e/cortex-core`). A
+ * directory resolves to its `index.ts`, which is the barrel hop the audit's
+ * `P1-census` bar requires to survive.
+ */
+function resolveSpecifier(
+  from: string,
+  specifier: string,
+  texts: ReadonlyMap<string, string>,
+): readonly string[] {
+  const candidates: string[] = [];
+  if (specifier.startsWith('.')) {
+    const base = normalisePath(`${dirOf(from)}/${specifier}`);
+    const stem = sourceOf(base);
+    // `sourceOf` already maps a built path to a `.ts` source, so appending `.ts`
+    // to it produces `x.ts.ts` and silently resolves nothing. That mistake cost
+    // 22 symbols their callers on the first run of this rule, and every one of
+    // them was a file imported from a `dist` path -- the tools.
+    if (/\.tsx?$/.test(stem)) {
+      candidates.push(stem);
+    } else {
+      candidates.push(stem, `${stem}.ts`, `${stem}.tsx`);
+    }
+    candidates.push(`${stem}/index.ts`, `${stem}/index.tsx`);
+    return candidates.filter((candidate) => texts.has(candidate));
+  }
+  const workspace = /^@agentix-e\/([\w-]+)(\/.*)?$/.exec(specifier);
+  if (workspace === null) return [];
+  const subpath = workspace[2] ?? '';
+  const root = `packages/${workspace[1]}/src`;
+  if (subpath === '') return [`${root}/index.ts`].filter((candidate) => texts.has(candidate));
+  // A subpath export (`@agentix-e/cortex-storage/sqlite`) is declared in that
+  // package's `exports` map, which this pure function cannot read. The suffix
+  // search over the paths it was given is exact for the shapes in use and falls
+  // back to the package entry, which is where a missed subpath would land anyway.
+  const suffix = subpath.replace(/^\//, '');
+  const matches = [...texts.keys()]
+    .filter((path) => {
+      const relative = path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null;
+      if (relative === null) return false;
+      return (
+        relative === `${suffix}.ts` ||
+        relative === `${suffix}/index.ts` ||
+        relative.endsWith(`/${suffix}.ts`) ||
+        relative.endsWith(`/${suffix}/index.ts`)
+      );
+    })
+    .sort();
+  return matches.length > 0 ? matches : [`${root}/index.ts`].filter((p) => texts.has(p));
+}
+
+/**
+ * Every module whose declarations `file` can see, following **export** statements.
+ *
+ * This is the repair for `AUDIT-CENSUS-CALLER-BY-NAME.md`'s registered
+ * `P1-census`, and the shape of it is dictated by that document's second bar: the
+ * 118 cross-package uses must keep counting, so the walk cannot stop at "the file
+ * imports the package". It follows `export … from` and `export * from`, which is
+ * exactly how a declaration travels from its module to a name a caller can import.
+ *
+ * A plain import does not propagate: if `a.ts` imports `x` from `./b` and only
+ * re-*exports* it, a file importing `a.ts` can see `x` -- and if `a.ts` merely
+ * uses it, it cannot. That distinction is the difference between a barrel and a
+ * module.
+ */
+function visibleModules(
+  file: string,
+  texts: ReadonlyMap<string, string>,
+  memo: Map<string, readonly string[]>,
+): readonly string[] {
+  const cached = memo.get(file);
+  if (cached !== undefined) return cached;
+  // Seeded before the recursion so a re-export cycle terminates instead of
+  // recursing until the stack dies.
+  memo.set(file, [file]);
+  // Cast, not a fallback: the map's key set *is* the file set, and every path this
+  // function is called with came out of `resolveSpecifier`, which reads that map.
+  // A `?? ''` fallback here is a branch nothing can take, and an unreachable branch
+  // inflates the denominator it is measured on; a guard is worse still, because it
+  // reads as a state a reader would have to reason about.
+  const text = texts.get(file) as string;
+  const reached = new Set<string>([file]);
+  for (const specifier of specifiersIn(text)) {
+    for (const target of resolveSpecifier(file, specifier, texts)) {
+      // No self-import guard: a file that imports itself reaches the memo entry
+      // seeded above and stops there, so the guard would be a branch that nothing
+      // can take.
+      for (const module of visibleModules(target, texts, memo)) reached.add(module);
+    }
+    // An import that is not a re-export still names a module whose declarations
+    // the file can use, so it is collected here and filtered by the caller of
+    // this function -- see `importedModules`.
+  }
+  const closure = [...reached].sort();
+  memo.set(file, closure);
+  return closure;
+}
+
+/**
+ * The modules a file imports from, without the ones it merely re-exports.
+ *
+ * The split matters for the caller question and not for the visibility question:
+ * a barrel imports everything it re-exports, so the two sets coincide there, but a
+ * module that imports a symbol to pass it on has a caller's relationship to it.
+ */
+function importedModules(file: string, texts: ReadonlyMap<string, string>): readonly string[] {
+  const text = texts.get(file) as string;
+  const memo = new Map<string, readonly string[]>();
+  const modules = new Set<string>();
+  for (const specifier of specifiersIn(text)) {
+    for (const target of resolveSpecifier(file, specifier, texts)) {
+      for (const module of visibleModules(target, texts, memo)) modules.add(module);
+    }
+  }
+  return [...modules].sort();
+}
+
 export function countCallers(
   symbols: readonly ExportedSymbol[],
   files: readonly { readonly path: string; readonly text: string }[],
@@ -406,13 +684,39 @@ export function countCallers(
     // comment marker, so the comment scanner must decide what is a comment while
     // the strings are still intact. See `stripStringContent`.
     .map((file) => ({ path: file.path, text: stripStringContent(stripComments(file.text)) }));
+  // The import closure is computed once per file, not once per symbol: 1,194
+  // symbols against 600 files is 700k resolutions otherwise, and the answer does
+  // not depend on the symbol.
+  // One structure, not a set of paths and a map of texts: two views of the same
+  // list can drift, and the drift would be a code path that only runs when they do.
+  const texts = new Map(files.map((file) => [file.path, file.text]));
+  const imported = new Map(
+    countable.map((file) => [file.path, new Set(importedModules(file.path, texts))]),
+  );
   return symbols.map((symbol) => {
     const pattern = identifierPattern(symbol.name);
     const callers = countable
-      .filter((file) => file.path !== symbol.file && pattern.test(file.text))
+      .filter(
+        (file) =>
+          file.path !== symbol.file &&
+          pattern.test(file.text) &&
+          // The name match is necessary and not sufficient. See
+          // `AUDIT-CENSUS-CALLER-BY-NAME.md`: a file that spells a name is not a
+          // caller of it, and the proof is an import. The direction of this
+          // extra condition is the safe one -- it can only remove a caller, and
+          // the test that compares the ledger against its baseline fails in both
+          // directions, so a removal has to be explained rather than absorbed.
+          imported.get(file.path)?.has(symbol.file) === true,
+      )
       .map((file) => file.path)
       .sort();
-    if (callers.length > 0) return { symbol, callerCount: callers.length, callers };
+    // The partition is computed once, here, so that every branch below carries
+    // both lists and no caller can be dropped between them.
+    const productCallers = callers.filter((caller) => !isInstrumentFile(caller));
+    const instrumentCallers = callers.filter((caller) => isInstrumentFile(caller));
+    if (callers.length > 0) {
+      return { symbol, callerCount: callers.length, callers, productCallers, instrumentCallers };
+    }
     const declaringFile = files.find((file) => file.path === symbol.file);
     if (declaringFile === undefined) {
       // The declaring file was not passed in, which happens when a caller builds
@@ -420,12 +724,14 @@ export function countCallers(
       // orphan must not be reported as dead, so it is left unclassified: the
       // report reads the absence as `unreferenced`, the direction that gets
       // checked.
-      return { symbol, callerCount: callers.length, callers };
+      return { symbol, callerCount: callers.length, callers, productCallers, instrumentCallers };
     }
     return {
       symbol,
       callerCount: callers.length,
       callers,
+      productCallers,
+      instrumentCallers,
       // The declaring file is normalised for the same reason: `isReferencedLocally`
       // asks whether the symbol is used *as code* inside its own file, and a
       // doc comment or a thrown message restating the name is not a use. Without
@@ -854,6 +1160,20 @@ export function buildCensusReport(packages: readonly PackageCensus[]): CensusRep
   const totalSymbols = packages.reduce((sum, pkg) => sum + pkg.entries.length, 0);
   const orphans = packages.flatMap((pkg) => pkg.entries.filter((entry) => entry.callerCount === 0));
   const referencedLocallyCount = orphans.filter((entry) => entry.referencedLocally === true).length;
+  // Disjoint from `orphans` by construction: these have a caller, it is just not
+  // one the product ships. Computed from the partitioned list rather than from
+  // `callers`, so an entry assembled by hand without the partition reads as
+  // product -- the direction that does not invent a breach.
+  const instrumentOnly = packages.flatMap((pkg) =>
+    pkg.entries.filter(
+      (entry) => entry.callerCount > 0 && (entry.productCallers?.length ?? 1) === 0,
+    ),
+  );
+  // Same set, narrowed to the declarations a customer installs. See the field's
+  // docblock for why the two numbers must not be reported as one.
+  const productInstrumentOnly = instrumentOnly.filter(
+    (entry) => !isInstrumentFile(entry.symbol.file),
+  );
   return {
     packages,
     totalSymbols,
@@ -863,6 +1183,8 @@ export function buildCensusReport(packages: readonly PackageCensus[]): CensusRep
     // unreferenced. An entry with the flag absent is unclassified, and reading
     // an unknown as "fine" is how debt goes unreported.
     unreferencedCount: orphans.length - referencedLocallyCount,
+    instrumentOnlyCount: instrumentOnly.length,
+    productInstrumentOnlyCount: productInstrumentOnly.length,
   };
 }
 
