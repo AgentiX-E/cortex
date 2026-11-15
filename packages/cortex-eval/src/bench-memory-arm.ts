@@ -96,6 +96,7 @@ import { traceUsage, type UsageSide } from './usage-by-side.js';
 import { mirrorMembers } from './system-mirror.js';
 import type { AnswerScorer } from './metrics.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
+import type { DeliveredTurnWindowCensus } from './types.js';
 import {
   deserializeEmbeddingCache,
   mergeEmbeddingCache,
@@ -3798,6 +3799,45 @@ function traceCensus<T>(
   return traced;
 }
 
+/**
+ * The run's window census, summed over the questions that reported one, or `undefined` when none did.
+ *
+ * `cut + whole` over the whole run is the delivered turn count, so `marked / cut` is `P1`'s ratio of two
+ * counts of the same event. `unreported` counts questions whose system declined to report; it is published
+ * rather than folded away because a sum over a subset of the population and a sum over all of it are
+ * different readings, and only one of them is a measurement of the mechanism.
+ */
+function turnWindowSpread(censuses: readonly (DeliveredTurnWindowCensus | null)[] | undefined):
+  | {
+      turnWindow: {
+        cut: number;
+        marked: number;
+        whole: number;
+        questions: number;
+        unreported: number;
+      };
+    }
+  | Record<string, never> {
+  if (censuses === undefined || censuses.length === 0) return {};
+  let cut = 0;
+  let marked = 0;
+  let whole = 0;
+  let questions = 0;
+  let unreported = 0;
+  for (const census of censuses) {
+    if (census === null) {
+      unreported += 1;
+      continue;
+    }
+    cut += census.cut;
+    marked += census.marked;
+    whole += census.whole;
+    questions += 1;
+  }
+  if (questions === 0) return {};
+  return { turnWindow: { cut, marked, whole, questions, unreported } };
+}
+
 export async function runCortexMemoryArm(
   dataset: BenchmarkDataset,
   baseline: MemorySystem,
@@ -4028,6 +4068,12 @@ export async function runCortexMemoryArm(
     // §E6's reach, on the same absence rule as the two above: a build without the carry path writes no field, so
     // "the layer reached no window" and "this build has no layer" are different bytes rather than the same zeros.
     ...(census.semanticCarry === undefined ? {} : { semanticCarry: census.semanticCarry }),
+    // `S10`'s `P1`, as a field. The reading this replaces could not be made from the prompt text at all
+    // (`MEASURE-TURN-WINDOW.md` §9.3: two parsers, 53 of 200 prompts splitting differently), so the count
+    // travels from the code that decides whether to cut. Absent when no question reported one, which is a
+    // different statement from a run whose cap cut nothing -- and `unreported` is carried rather than
+    // silently dropped, because a sum over a subset would read as a smaller total.
+    ...turnWindowSpread(report.ablation.featureTurnWindowCensuses),
     // Spread conditionally on both sides: a run that did not vote has no census, and a report built
     // without an arm config has nowhere to put one. Either absence means "not measured", which the
     // field's optionality already says.

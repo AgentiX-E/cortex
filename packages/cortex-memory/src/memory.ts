@@ -54,6 +54,7 @@ import {
   buildTallyPrompt,
   type AssembledPrompt,
   type EvidenceOrdering,
+  type TurnWindowCensus,
   type PromptContract,
   type PromptOptions,
 } from './prompt.js';
@@ -624,6 +625,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #lastRoleCensus: RoleCensus | null = null;
 
   /**
+   * What the cap did to the turns the most recent prompt delivered.
+   *
+   * The field `MEASURE-TURN-WINDOW.md` §9.4 asks for: `P1` -- whether at least 90% of the turns the control
+   * cut now carry an elision -- could not be read from the prompt text, because both parsers available
+   * disagree with each other on 53 of 200 prompts before any mechanism is involved. Written from the same
+   * `assembled` the window was rendered into, so the census and the delivered prompt cannot describe
+   * different sets.
+   */
+  #lastTurnWindowCensus: TurnWindowCensus | null = null;
+
+  /**
    * Which of the six paths the most recent question took, or `null` before any question.
    *
    * ## Why this survives a decline when every other per-question slot does not
@@ -1149,6 +1161,24 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
+   * What the cap did to the turns the most recent prompt delivered: cut, cut-and-marked, and whole.
+   *
+   * `P1`'s reading, as a field. `MEASURE-TURN-WINDOW.md` §9.3 records the attempt to read it from the prompt
+   * text and why that failed -- two parsers, 53 of 200 prompts splitting differently, a 3-point gap measured
+   * by an instrument whose own error was larger. This accessor is the repair: the number is produced by the
+   * code that decides whether to cut, so `marked / cut` is a ratio of two counts of the same event rather
+   * than of a parse of the result.
+   *
+   * Returned by value for the reason {@link lastRoleCensus} is: the arm serialises this straight into its
+   * artifact, and a consumer that mutated what it read would change what the next reader sees.
+   */
+  lastTurnWindowCensus(): TurnWindowCensus | null {
+    const census = this.#lastTurnWindowCensus;
+    if (census === null) return null;
+    return { cut: census.cut, marked: census.marked, whole: census.whole };
+  }
+
+  /**
    * What the semantic store has absorbed, evicted, matched and handed over.
    *
    * Returned rather than the units themselves: a caller that reads the units would be reading the store, and
@@ -1339,7 +1369,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #recordCoverage(
     admitted: readonly AdmittedTurn[],
-    assembled: Pick<AssembledPrompt, 'carried'>,
+    assembled: Pick<AssembledPrompt, 'carried' | 'turnWindow'>,
   ): void {
     this.#lastRetrievedContext = assembled.carried.map((turn) => turn.content);
     this.#lastAdmittedEvidence = admittedEvidenceOf(admitted);
@@ -1348,6 +1378,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // and the delivery are the same set only when the budget did not bind, and every question of run
     // `38044858147` is a case where it did.
     this.#lastRoleCensus = this.#censusOf(this.#lastRetrievedContext);
+    // `null` when the prompt carried no evidence, which is the same state `carried: []` reports: no window
+    // ran, as distinct from a window that cut nothing. The arm serialises the null as absent rather than as
+    // three zeros, for the reason `AssembledPrompt.turnWindow` documents.
+    this.#lastTurnWindowCensus = assembled.turnWindow ?? null;
   }
 
   /**
@@ -1845,6 +1879,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // gate runs, and "took the multi-session path and closed before the reader" is the finding a decline
     // still carries -- clearing it would remove the one fact an audit of a decline most needs.
     this.#lastRoleCensus = null;
+    this.#lastTurnWindowCensus = null;
   }
 
   /**

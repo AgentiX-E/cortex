@@ -867,6 +867,11 @@ export async function runAblation(
     // would file a capture that failed as a system that reports no route.
     featureRoutes: featFirst.routes!,
     featureRoleCensuses: featFirst.roleCensuses!,
+    // What the cap did to the window each question was shown. Beside the role census because they are the
+    // two fields that describe the delivered turn set, and both are asserted present for the same reason:
+    // the capture is requested unconditionally on this call, so an absent vector is a capture that failed
+    // rather than a system that reports nothing.
+    featureTurnWindowCensuses: featFirst.turnWindowCensuses!,
     // `§13.174`. How many different prompts each question cost across the repetitions, which is the number
     // the cache prediction is a claim about: `1` everywhere means the repeats were repeats, and a larger
     // number means this arm sent that many requests and called them repetitions. Absent at one repetition;

@@ -1,5 +1,20 @@
-# The semantic layer's own instrument (§E6): carry off against carry on, over two windows of one
-# corpus, in ONE job.
+# The paired ablations of the cognitive arm: the semantic carry (`S12`), and the per-turn window (`S10`).
+#
+# ## Why one workflow for two questions
+#
+# They need the same four things and differ in one input each: a population that can be split by corpus, a
+# 6-second gate that is per **process** (so the split is the only lever on the wall clock), a merge that folds
+# the parts back into one population, and a spend gate that prices the whole dispatch before the corpus
+# download. A second workflow carrying its own copy of the shard matrix would be a second statement of that
+# arithmetic, and the two would agree until one of them was edited -- the argument `arm-pairing.ts` makes for
+# pairing two sides of one pass rather than two dispatches.
+#
+# | question | `pairing` | `turn_window` | population |
+# | --- | --- | --- | --- |
+# | `S12`, the semantic layer's carry | `carry` | `head` | two windows over one corpus, `KU` |
+# | `S10`, the per-turn window | `reference` | `match` (and `head` as its control) | the registered 500, `all` |
+#
+# ## The semantic carry, in one paragraph
 #
 # ## Why a workflow of its own
 #
@@ -60,6 +75,21 @@ on:
         description: 'Windows per corpus. 2 is the population S13 names: the first window absorbs an update, the second is the one a carry can reach. 1 is the registered population, where the reach is zero by construction and the run is only useful as a control'
         required: false
         default: '2'
+        type: string
+      pairing:
+        description: 'Which two systems the sides are. `carry` puts the same cognitive system twice with `semanticCarry` off against on -- S12''s instrument. `reference` is the arm''s registered pair (the reference pipeline against the cognitive one), which is what S10 needs: its two sides are two dispatches of one configuration differing by the turn window, so neither side is a carry arm'
+        required: false
+        default: carry
+        type: string
+      turn_window:
+        description: 'Which characters of a capped turn the prompt keeps: `head` is the registered rendering (the default, and what every archived artifact used); `match` is the anchored window -- S10''s treatment. `match` is refused by the product without a cap, which this workflow always sets'
+        required: false
+        default: head
+        type: string
+      review_pass:
+        description: 'The supersession pass. `supersede` is required by `pairing=carry` (absorption happens only in that pass, so a carry run on another pass has nothing to carry); `bare` is the registered preset, and it is what S10 measures'
+        required: false
+        default: supersede
         type: string
       capability:
         description: 'Population selector, as in the arm: `KU` (the default) grades the 78 knowledge-update questions where a supersession can be the failure mode at all; `all` is the registered 500 and the instrument S12 is registered on'
@@ -210,6 +240,23 @@ jobs:
       # largest dispatch at nothing. `capability` and `limit` together are refused by the projection
       # (the sampler round-robins), which is the behaviour this step wants -- a wrong input pair has
       # to fail here and not silently price a different run.
+      # The pairing's own precondition, and the reason it is checked here rather than in the arm: the arm
+      # refuses `pairing=carry` with `semanticCarry` unset, but it cannot refuse a carry run on a pass that
+      # never absorbs. `memory.ts` writes a unit only under `reviewPass === 'supersede'`, so `carry` + `bare`
+      # administers nothing and publishes `matched: 0` -- which reads as "the layer reached no window" when it
+      # is "the layer was never given one". Ten seconds here, as against two hours and 25 CNY of nothing.
+      - name: Check the pairing against the pass
+        env:
+          PAIRING: ${{ inputs.pairing }}
+          PASS: ${{ inputs.review_pass }}
+        run: |
+          if [ "${PAIRING}" = "carry" ] && [ "${PASS}" != "supersede" ]; then
+            echo "::error::pairing=carry requires review_pass=supersede: absorption happens only in that pass,"
+            echo "::error::so a carry run under review_pass=${PASS} has nothing to carry and would publish a"
+            echo "::error::reach of zero for a mechanism that was never administered."
+            exit 1
+          fi
+
       - name: Check the dispatch against the spend gate
         env:
           LIMIT: ${{ inputs.limit }}
@@ -277,8 +324,13 @@ jobs:
           # same constructor as the feature with the carry off; `SEMANTIC_CARRY=1` is what the feature
           # side carries with, and the arm refuses the combination when it is absent.
           CORTEX_MEMORY: '1'
-          CORTEX_MEMORY_AB: carry
-          CORTEX_MEMORY_SEMANTIC_CARRY: '1'
+          # `carry` against itself is S12's instrument; `reference` is the arm's registered pair and what
+          # S10 measures, where the two sides differ by the turn window rather than by a flag of this class.
+          CORTEX_MEMORY_AB: ${{ inputs.pairing }}
+          # Set only when the pairing is the carry one. The arm refuses the combination where it is absent,
+          # so a `carry` dispatch that forgot this fails before the first call rather than publishing a null
+          # result for a comparison that never administered the treatment.
+          CORTEX_MEMORY_SEMANTIC_CARRY: ${{ inputs.pairing == 'carry' && '1' || '' }}
           CORTEX_WINDOWS: ${{ inputs.windows }}
           CORTEX_CAPABILITY: ${{ inputs.capability }}
           CORTEX_MEMORY_WORKERS: ${{ inputs.workers }}
@@ -298,13 +350,16 @@ jobs:
           CORTEX_MEMORY_CONFIDENCE: none
           CORTEX_MEMORY_PROMPT_CONTRACT: evidence-blocks-unsourced
           CORTEX_MEMORY_ASK: verbatim-acts
-          CORTEX_MEMORY_REVIEW_PASS: supersede
+          CORTEX_MEMORY_REVIEW_PASS: ${{ inputs.review_pass }}
           CORTEX_MEMORY_SELF_CONSISTENCY: none
           CORTEX_MEMORY_QUERY_EXPANSION: none
           CORTEX_MEMORY_RELEVANCE: retrieval-anchored
           CORTEX_MEMORY_RELEVANCE_TOP_K: '256'
           CORTEX_MEMORY_RELEVANCE_UNITS: turn
-          CORTEX_MEMORY_MAX_TURN_CHARS: '400'
+          # `400` is the registered rendering; `400::match` asks the prompt for the anchored window. One
+          # value rather than two variables, because the window is a way of spending the cap and the product
+          # refuses it without one -- `readMaxTurnChars` parses the whole decision from this string.
+          CORTEX_MEMORY_MAX_TURN_CHARS: ${{ inputs.turn_window == 'match' && '400::match' || '400' }}
           CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: multi-session,temporal
           CORTEX_MEMORY_MAX_PROMPT_CHARS: 'abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000'
           CORTEX_MEMORY_EVIDENCE_ROLES: user

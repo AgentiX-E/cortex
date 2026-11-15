@@ -2241,9 +2241,59 @@ type TurnCap = {
   readonly focusQuery?: string | undefined;
 };
 
-function contentFor(turn: AdmittedTurn, cap: TurnCap): string {
+/**
+ * How many delivered turns the cap cut, how many of those said so, and how many arrived whole.
+ *
+ * ## Why this is a field rather than a parse of the prompt
+ *
+ * `MEASURE-TURN-WINDOW.md` §9.3 records `P1` -- *at least 90% of the items the control cut carry an
+ * elision* -- as **unread**: the only source was the prompt text, blank-line splitting undercounts a cut
+ * prefix containing a blank line, and `^N. ` overcounts an assistant's own numbered list, so 53 of 200
+ * prompts split differently between the two sides before any mechanism was involved. §9.4 makes this
+ * counter the first item of the next increment for that reason: the number has to be produced where the
+ * cut happens, by the code that decides it.
+ *
+ * `marked` is a subset of `cut`, never a sibling: a window always marks its elisions and the head cut marks
+ * only when asked, so a run reporting `cut 644, marked 0` is a head cut and a run reporting
+ * `cut 644, marked 644` is a window. Counting them as independent tallies would let a branch that forgot to
+ * mark look like a branch that had nothing to mark.
+ */
+export type TurnWindowCensus = {
+  readonly cut: number;
+  readonly marked: number;
+  readonly whole: number;
+};
+
+/** The mutable accumulator `contentFor` writes into, and the reason it is not the published type. */
+type TurnWindowTally = { cut: number; marked: number; whole: number };
+
+/**
+ * Charge one rendered turn to the tally, and hand the text back unchanged.
+ *
+ * `whole` is decided by comparing the rendered text with the turn's own content rather than by asking the
+ * cap whether it *would* cut: the window can land on a span that happens to be the whole turn, and the head
+ * cut of a turn exactly at the cap emits every character. A tally derived from the configured width would
+ * report those as cuts, which is the same class of error as the parse this replaces.
+ */
+function chargeTurn(
+  tally: TurnWindowTally | undefined,
+  turn: AdmittedTurn,
+  text: string,
+  marked: boolean,
+): string {
+  if (tally === undefined) return text;
+  if (text === turn.content) {
+    tally.whole += 1;
+    return text;
+  }
+  tally.cut += 1;
+  if (marked) tally.marked += 1;
+  return text;
+}
+
+function contentFor(turn: AdmittedTurn, cap: TurnCap, tally?: TurnWindowTally): string {
   const max = cap.maxTurnChars;
-  if (max === undefined) return turn.content;
+  if (max === undefined) return chargeTurn(tally, turn, turn.content, false);
   if (cap.turnWindow === 'match' && cap.focusQuery !== undefined) {
     // The dateline is not the window's to spend. On the two capped routes a turn's content arrives with
     // its own `[date] {role}:` head attached, so an anchor set by content terms lands after it and the
@@ -2254,10 +2304,15 @@ function contentFor(turn: AdmittedTurn, cap: TurnCap): string {
     // The budget is the remainder's, not the whole: the cap counts the dateline, so spending `max` on
     // the window as well would overrun it by the head's length.
     const head = DATELINE.exec(turn.content)?.[0] ?? '';
-    return `${head}${excerptAround(turn.content.slice(head.length), cap.focusQuery, max - head.length)}`;
+    const windowed = `${head}${excerptAround(turn.content.slice(head.length), cap.focusQuery, max - head.length)}`;
+    // Always marked: an excerpt that does not say it is an excerpt is the defect the window repairs, which
+    // is why `MEASURE-TURN-WINDOW.md` §2 calls the window and the mark one decision rather than two.
+    return chargeTurn(tally, turn, windowed, true);
   }
-  if (cap.turnCutMarker !== 'ellipsis') return truncateCodePointSafe(turn.content, max);
-  return cutWithMarker(turn.content, max);
+  if (cap.turnCutMarker !== 'ellipsis') {
+    return chargeTurn(tally, turn, truncateCodePointSafe(turn.content, max), false);
+  }
+  return chargeTurn(tally, turn, cutWithMarker(turn.content, max), true);
 }
 
 /**
@@ -2440,6 +2495,7 @@ export function formatEvidence(
      */
     itemNumberStart?: number;
   } = {},
+  tally?: TurnWindowTally,
 ): string {
   if (turns.length === 0) return '';
 
@@ -2457,8 +2513,8 @@ export function formatEvidence(
 
   const body =
     options.rendering === 'sourced'
-      ? formatEvidenceWithSources(turns, options)
-      : turns.map((turn, i) => `${label(i)}${contentFor(turn, options)}`).join('\n\n');
+      ? formatEvidenceWithSources(turns, options, tally)
+      : turns.map((turn, i) => `${label(i)}${contentFor(turn, options, tally)}`).join('\n\n');
 
   return `${header}${body}`;
 }
@@ -2501,8 +2557,14 @@ export function formatEvidence(
  * yields `''` -- `[].join('\n\n')` is the empty string. The behaviour is identical and
  * the unreachable path is gone rather than papered over.
  */
-function formatEvidenceWithSources(turns: readonly AdmittedTurn[], cap: TurnCap): string {
-  return turns.map((turn, i) => `${i + 1}. [${turn.id}] ${contentFor(turn, cap)}`).join('\n\n');
+function formatEvidenceWithSources(
+  turns: readonly AdmittedTurn[],
+  cap: TurnCap,
+  tally?: TurnWindowTally,
+): string {
+  return turns
+    .map((turn, i) => `${i + 1}. [${turn.id}] ${contentFor(turn, cap, tally)}`)
+    .join('\n\n');
 }
 
 /**
@@ -2620,6 +2682,20 @@ export type AssembledPrompt = {
    * which nothing rather than how much.
    */
   readonly carried: readonly AdmittedTurn[];
+
+  /**
+   * What the cap did to the turns this prompt carries.
+   *
+   * Absent when the prompt carries no evidence at all, which is the same state `carried: []` reports and
+   * a different fact from a census of three zeros: a prompt with no window has nothing to count, and
+   * `{ cut: 0, marked: 0, whole: 0 }` beside `carried: []` would read as "the window cut nothing" when it
+   * is "no window ran".
+   *
+   * Present on every prompt that carries turns, including runs with no cap -- there every turn is `whole`
+   * and the zero on `cut` is a measurement rather than an absence. That is what makes `P1` comparable
+   * across the two sides of `S10`: the control's cut count and the treatment's are the same field.
+   */
+  readonly turnWindow?: TurnWindowCensus;
 };
 
 /**
@@ -2866,10 +2942,19 @@ export function buildPrompt(
     ...options,
     ...(options.turnWindow === 'match' ? { focusQuery: question } : {}),
   });
-  const render = (picked: readonly AdmittedTurn[]): string =>
-    options.rendering === 'sourced'
-      ? formatEvidenceWithSources(picked, cap)
-      : formatEvidence(picked, cap);
+  // The census of the **last** rendering, which is the one the reader reads. `fitToBudget` re-renders the
+  // final set after the ordering permutation (§13.153), so a tally that accumulated across calls would
+  // count the same turns twice and report a `cut` larger than the number of turns delivered. Resetting
+  // here rather than at the call sites keeps the two renderers and the budget path on one rule.
+  const tally: TurnWindowTally = { cut: 0, marked: 0, whole: 0 };
+  const render = (picked: readonly AdmittedTurn[]): string => {
+    tally.cut = 0;
+    tally.marked = 0;
+    tally.whole = 0;
+    return options.rendering === 'sourced'
+      ? formatEvidenceWithSources(picked, cap, tally)
+      : formatEvidence(picked, cap, tally);
+  };
 
   // The ordering is applied to the **carried** set, and this is the only place it can be applied without
   // becoming a second variable. Before the budget, a promotion changes which turns survive the cut --
@@ -2913,7 +2998,12 @@ export function buildPrompt(
     // `ordered`, not `turns`: this path carries every admitted turn, so the promoted list is the whole
     // set and reporting the unrereordered one would make the artifact describe a prompt the model did
     // not read. The set is identical, which is why nothing above this line depends on the choice.
-    return { prompt, evidenceChars: evidence.length, carried: ordered };
+    return {
+      prompt,
+      evidenceChars: evidence.length,
+      carried: ordered,
+      ...(ordered.length === 0 ? {} : { turnWindow: { ...tally } }),
+    };
   }
 
   // Over budget: shrink the evidence, never the question, and never the
@@ -2927,6 +3017,7 @@ export function buildPrompt(
       // function of the mechanism, which is the one thing this increment may not be.
       turns,
       render,
+      tally,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
       ...(ordering === undefined ? {} : { ordering }),
     },
@@ -2950,6 +3041,14 @@ export function buildPrompt(
 type EvidencePlan = {
   readonly turns: readonly AdmittedTurn[];
   readonly render: (picked: readonly AdmittedTurn[]) => string;
+  /**
+   * The accumulator `render` charges its turns to.
+   *
+   * On the plan rather than in a closure that `fitToBudget` could not read: the function that returns the
+   * prompt is the one that has to publish the census, and a counter visible only to `buildPrompt` would
+   * make the budget path report the count of a rendering it did not deliver.
+   */
+  readonly tally?: TurnWindowTally;
   /**
    * Rides with the question, and is therefore allocated after it.
    *
@@ -3147,6 +3246,7 @@ function fitToBudget(
     prompt: assembleSections([...sections, questionLine], instruction, assembly),
     evidenceChars: evidence.length,
     carried: ordered,
+    ...(ordered.length === 0 || plan.tally === undefined ? {} : { turnWindow: { ...plan.tally } }),
   };
 }
 

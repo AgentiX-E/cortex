@@ -70,6 +70,16 @@ INPUTS: dict[str, str] = {
     # `KU` grades the 78 knowledge-update questions, which are the population where a supersession
     # can be the failure mode at all. `all` is the registered 500 and the instrument `S12` is
     # registered on.
+    # Which two systems the sides are. `carry` is `S12`'s instrument -- one system twice with the carry off
+    # against on. `reference` is the arm's registered pair, which is what `S10` needs: its two sides are two
+    # dispatches of one configuration differing only by the turn window.
+    "pairing": "carry",
+    # `head` is the registered rendering every archived artifact used; `match` is the anchored window, i.e.
+    # `S10`'s treatment. The cap stays 400 on the two capped routes either way.
+    "turn_window": "head",
+    # `supersede` is required by `pairing=carry` (absorption happens only in that pass). `bare` is the
+    # registered preset and the pass `S10` measures under.
+    "review_pass": "supersede",
     "capability": "KU",
     "limit": "0",
     # Two repetitions is the screening scale (78 corpora x 2 windows x 2 repetitions = 312 answers

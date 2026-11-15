@@ -6,6 +6,7 @@ import type {
   Answer,
   BenchmarkDataset,
   DeliveredRoleCensus,
+  DeliveredTurnWindowCensus,
   MemorySystem,
   RetrievedTurns,
   SessionAwareMemorySystem,
@@ -588,6 +589,13 @@ type RetrievalCapture = {
   readonly route: string | null;
   /** The roles the delivered window carried, by the product's own classifier. */
   readonly roleCensus: DeliveredRoleCensus | null;
+  /**
+   * What the turn cap did to this question's delivered window, by the product's own count.
+   *
+   * `null` when the system does not report one. Absent and zero are different facts here too: a system with
+   * no cap reports `cut: 0` on every question, while a system that cannot say reports `null`.
+   */
+  readonly turnWindow: DeliveredTurnWindowCensus | null;
 };
 
 /**
@@ -605,6 +613,8 @@ export type RetrievalCaptureVectors = {
   readonly routes?: readonly (string | null)[];
   /** Per question: the delivered window's role census, or `null`. */
   readonly roleCensuses?: readonly (DeliveredRoleCensus | null)[];
+  /** Per question: what the cap did to the delivered window, or `null`. */
+  readonly turnWindowCensuses?: readonly (DeliveredTurnWindowCensus | null)[];
 };
 
 /**
@@ -800,6 +810,16 @@ export async function runBenchmark(
           ? (worker as { lastRoleCensus: () => DeliveredRoleCensus | null }).lastRoleCensus.bind(
               worker,
             )
+          : undefined,
+    // The same optional-capability probe, for the same reason: a system that cannot report one costs nothing
+    // and reaches the record as **absent**, so `null` means "cannot say" rather than "cut nothing".
+    turnWindow:
+      onRetrieved === undefined
+        ? undefined
+        : 'lastTurnWindowCensus' in worker
+          ? (
+              worker as { lastTurnWindowCensus: () => DeliveredTurnWindowCensus | null }
+            ).lastTurnWindowCensus.bind(worker)
           : undefined,
   });
   // Every branch below routes through this, rather than calling the vector itself. Seven
@@ -1147,6 +1167,7 @@ export async function runBenchmark(
             promptText: accessors.promptText === undefined ? null : accessors.promptText(),
             route: accessors.route === undefined ? null : accessors.route(),
             roleCensus: accessors.roleCensus === undefined ? null : accessors.roleCensus(),
+            turnWindow: accessors.turnWindow === undefined ? null : accessors.turnWindow(),
           },
           index,
         );
@@ -1229,6 +1250,7 @@ export async function evaluateWithScorerDetailed(
   const promptTexts: (string | null)[] = [];
   const routes: (string | null)[] = [];
   const roleCensuses: (DeliveredRoleCensus | null)[] = [];
+  const turnWindowCensuses: (DeliveredTurnWindowCensus | null)[] = [];
   // Placed by index, not appended. Four vectors are captured from the same call and all four
   // are paired with `featureAnswers`/`correct[]` by question index downstream, so under a pool
   // a push would silently rotate every explanation one question out of phase -- a defect that
@@ -1251,6 +1273,7 @@ export async function evaluateWithScorerDetailed(
           promptTexts[index] = capture.promptText;
           routes[index] = capture.route;
           roleCensuses[index] = capture.roleCensus;
+          turnWindowCensuses[index] = capture.turnWindow;
         }
       : undefined,
     onAnswer,
@@ -1271,5 +1294,5 @@ export async function evaluateWithScorerDetailed(
   // a run that did not ask for the capture gets an evaluation with **no** such field rather than with an
   // all-`null` vector, so "not requested" stays distinguishable from "every system declined to report" --
   // the rule `captureRawOutput` states for its own vector.
-  return captureRetrievedContext ? { ...scored, routes, roleCensuses } : scored;
+  return captureRetrievedContext ? { ...scored, routes, roleCensuses, turnWindowCensuses } : scored;
 }

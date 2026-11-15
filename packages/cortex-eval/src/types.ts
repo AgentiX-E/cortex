@@ -330,6 +330,21 @@ export type RetrievedTurns = readonly string[];
  * route, and `unclassified: 3` is neither — the contract keeps a turn whose role cannot be read, so it
  * is the escape hatch working rather than a defect.
  */
+/**
+ * What the turn cap did to one delivered window: how many turns it cut, how many of those said so, and how
+ * many arrived whole.
+ *
+ * Declared here rather than imported from `cortex-memory` for the reason `DeliveredRoleCensus` is: the
+ * dependency runs the other way, and the package that owns the product cannot be a type dependency of the
+ * package that scores it. The two shapes are kept identical by the census accessor's signature, and
+ * `prompt-turn-window-census.test.ts` pins the arithmetic (`cut + whole === carried`).
+ */
+export type DeliveredTurnWindowCensus = {
+  readonly cut: number;
+  readonly marked: number;
+  readonly whole: number;
+};
+
 export type DeliveredRoleCensus = {
   /** Delivered turns per role the classifier named. */
   readonly counts: Readonly<Record<string, number>>;
@@ -857,6 +872,22 @@ export type AblationResult = {
    * window in which every turn was unclassifiable.
    */
   featureRoleCensuses?: readonly (DeliveredRoleCensus | null)[];
+  /**
+   * What the turn cap did to the delivered window, per question, in dataset order.
+   *
+   * `cut` counts delivered turns the cap shortened, `marked` the subset that says so, and `whole` the turns
+   * that arrived intact. `cut + whole` is the delivered turn count, so a census that does not add up is a
+   * branch the counter missed -- which is why the ratio `S10`'s `P1` asks for (`marked / cut`) is a ratio of
+   * two counts of one event rather than of a parse of the prompt.
+   *
+   * The reading this replaces could not be made at all: `MEASURE-TURN-WINDOW.md` §9.3 tried to count cut
+   * items in the prompt text, and the two available parsers disagreed on 53 of 200 prompts before any
+   * mechanism was involved.
+   *
+   * `null` per question means the system does not report one, which is not the same as a window that cut
+   * nothing.
+   */
+  featureTurnWindowCensuses?: readonly (DeliveredTurnWindowCensus | null)[];
   /**
    * How many distinct prompts each question cost across the repetitions, in dataset order.
    *
