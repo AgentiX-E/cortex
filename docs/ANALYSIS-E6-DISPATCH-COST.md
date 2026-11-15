@@ -255,3 +255,23 @@ The gate that prices this shape now exists: `tools/spend-projection.mjs` grew a 
 `tools/dispatch-semantic-carry.py` grew the projection, and `semantic-carry.yml` grew a step that
 refuses an over-budget dispatch before the corpus download. The arithmetic in this document is
 reproducible from the repository with the two commands in the changelog of that commit.
+
+### 6.2 What the run read, against the forecast
+
+Run [`43624717757`](https://github.com/AgentiX-E/cortex/actions/runs/43624717757) landed after this
+document was written. Two of the five forecasts were right, one was wrong in its driver, and two were
+bounds that held:
+
+| reading | forecast | read | verdict |
+| --- | --- | --- | --- |
+| `semanticCarry.matched` | **~55** | **27** | **wrong, and wrong in the driver**: 8/144 is not a per-question rate that scales with questions. The reach is a function of `absorbed` (5 here, 3–4 on 72–78 corpora), and authorisation barely moves with population size |
+| `paired.deltaQuestions` | 0 ± 3 | **-1.75** | inside |
+| matrix outcome | `S13` pass; `S12` pass or fail | **both pass** | as one of the two branches allowed |
+| cost | 25–96 CNY, gate printed 28.53 | **23.75 CNY** | the projection is an upper bound, by 20.1%; cache hit 97.30% against the 96.3% it assumed |
+| wall clock | 1.2–3.8 h at `workers=32` | **66–76 min per shard**, 16 shards | the width column was the wrong axis entirely (`ANALYSIS-E6-SHARDING.md` §10) |
+
+The `matched` miss is the one worth keeping. A forecast that extrapolated the *reach* from the
+*population size* read as arithmetic and was a category error: what the census counts is prompts whose
+window still carries an absorbed update's anchor, and there were five absorbed updates. Twenty-seven
+windows over five updates is 5.4 per update; eight over three was 2.67. Those two numbers are not the
+same quantity, and only a dispatch could say so.

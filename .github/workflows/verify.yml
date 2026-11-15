@@ -56,6 +56,10 @@ jobs:
       # repositories sit side by side.
       #
       # Public, so no credential is involved; `fetch-depth: 1` because the test reads one file.
+      #
+      # `path` resolves against `$GITHUB_WORKSPACE`, so this lands at `cortex/cortex-docs` -- inside the
+      # checkout, not beside it as on a developer's machine. The test resolves both roots; the first
+      # attempt wrote `path: cortex-docs` and assumed it meant `../cortex-docs`, which it does not.
       - name: Checkout cortex-docs
         uses: actions/checkout@v4
         with:

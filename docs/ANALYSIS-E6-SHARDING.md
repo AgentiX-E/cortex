@@ -198,3 +198,29 @@ assertion matched `CORTEX_SHARD\b`, which the wrong message also satisfies.
    worker count or ordering. `merged.parts` records what it was made of so the two can be compared.
 4. **That 16 concurrent jobs cannot draw a 429 storm.** Untested, and the reason `shards` is an
    input rather than a constant.
+
+## 10. The dispatch came back: sixteen shards, seventy-five minutes worst case
+
+Run [`43624717757`](https://github.com/AgentiX-E/cortex/actions/runs/43624717757) is the shape §6 chose
+and §9 declined to promise. Every claim §9 listed as unproven is now either measured or still open for
+a reason the run states:
+
+| §9 claim | What the run read |
+| --- | --- |
+| 16 shards finish inside 200 minutes | **65m52s–75m35s** per shard; the worst used **37.8%** of the ceiling |
+| the merge reproduces the population | 500 corpora, 1,000 questions; `parts` = 4 × (32, 64) + 12 × (31, 62), summing to both totals |
+| a 429 storm is possible, not proven | `rateLimited` summed to **0** across 16 concurrent jobs |
+| lowering the pace is a separate dispatch | unchanged: still a separate dispatch, still unmeasured |
+| a merged delta is not a single-job delta | unchanged, and now qualified by the reading: `-1.75` was produced by sixteen gates, not one |
+
+The forecast in §6 was 1 h 52 m of reader time per shard. The measured worst case is 75m35s, **32.6%
+faster**, and the direction is the one the arithmetic predicted: `calls x 6 s` is an upper bound, and
+the shards that read cached prefixes come in under it.
+
+**`shards` stays an input.** Sixteen worked, so the twelve in §6 is not needed this round — but it
+costs nothing to keep the axis, and the run that would make it matter is a population twice this size
+or a pace half this one.
+
+One correction to §6's table, on the strength of the run: the bound it prints (1.9 h at 16 shards) was
+right as a bound and 32.6% high as an estimate. A bound that is also an estimate is the useful kind;
+this one was, and the gap is the cache.

@@ -37,7 +37,22 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-SCRIPT = REPO.parent / 'cortex-docs' / 'evidence' / 'longmemeval' / 'scripts' / 'semantic_carry_analysis.py'
+
+# The sibling repository is in two places depending on who is running this: beside this checkout on a
+# developer's machine (`../cortex-docs`), and nested inside it in CI, because `actions/checkout` resolves
+# `path` against `$GITHUB_WORKSPACE` and refuses to write outside it. The first push assumed the first
+# layout only and thirteen tests failed with "No such file or directory" -- the same file existed, one
+# directory away. Both roots are named here rather than discovered by a glob, so the failure message can
+# say which paths were tried.
+DOCS_CANDIDATES = (
+    REPO.parent / 'cortex-docs',
+    REPO / 'cortex-docs',
+)
+DOCS = next(
+    (root for root in DOCS_CANDIDATES if (root / 'evidence' / 'longmemeval' / 'scripts').is_dir()),
+    DOCS_CANDIDATES[0],
+)
+SCRIPT = DOCS / 'evidence' / 'longmemeval' / 'scripts' / 'semantic_carry_analysis.py'
 
 # Eight corpora asked twice: sixteen questions, and the second window is the eight a carry can reach.
 # Eight rather than four because `withinThreshold` is `>= -5` and a four-question window cannot go below
@@ -267,18 +282,20 @@ def test_an_incomplete_usage_block_is_refused() -> None:
     assert 'llmUsage' in done.stderr and 'promptTokens' in done.stderr
 
 
-def test_the_script_is_where_the_sibling_checkout_puts_it() -> None:
-    """The layout this file assumes is the layout CI builds, and a missing script is not a skip.
+def test_the_script_is_where_one_of_the_two_checkouts_puts_it() -> None:
+    """The layout this file resolves is the layout CI builds, and a missing script is not a skip.
 
-    `verify.yml` checks `AgentiX-E/cortex-docs` out at `path: cortex-docs`, which is where the local
-    checkout already sits, so the same relative path resolves in both places. When that step was
-    absent the suite failed with thirteen "No such file or directory" lines and no statement of the
-    cause. This test states it, and it fails rather than skips: the other thirteen still fail beside it,
-    which is the point -- a suite that goes green when its subject is missing has stopped measuring.
+    `verify.yml` checks `AgentiX-E/cortex-docs` out at `path: cortex-docs`, which on a runner lands
+    **inside** this checkout rather than beside it. When that step was absent the suite failed with
+    thirteen "No such file or directory" lines and no statement of the cause; when the step was added
+    at the developer-machine layout it failed the same way, one directory away. This test states the
+    two roots, and it fails rather than skips: the other thirteen still fail beside it, which is the
+    point -- a suite that goes green when its subject is missing has stopped measuring.
     """
+    tried = ', '.join(str(root) for root in DOCS_CANDIDATES)
     assert SCRIPT.exists(), (
-        f'{SCRIPT} is missing. The analysis script lives in the sibling repository, and CI checks it out '
-        'with `actions/checkout` at `path: cortex-docs` in `.github/workflows/verify.yml`. Restore that '
-        'step rather than skipping this suite: the branch under test decides whether S12 gets a '
-        'registered number or none.'
+        f'{SCRIPT} is missing; the roots tried were {tried}. The analysis script lives in the sibling '
+        'repository, and CI checks it out with `actions/checkout` at `path: cortex-docs` in '
+        '`.github/workflows/verify.yml`. Restore that step rather than skipping this suite: the branch '
+        'under test decides whether S12 gets a registered number or none.'
     )
