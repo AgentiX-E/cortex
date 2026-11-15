@@ -23,7 +23,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { ERASURE_TOKEN, RELEASE_TOKEN } from '@agentix-e/cortex-core';
+import {
+  EmbeddingMemo,
+  ERASURE_TOKEN,
+  MemoryEmbeddingCacheStore,
+  RELEASE_TOKEN,
+} from '@agentix-e/cortex-core';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 import { DisclosureSession } from '../disclosure/session.js';
 
@@ -122,8 +127,8 @@ describe('erasing through the session', () => {
       reason: 'retention-policy',
     });
     expect(erasedCard.card?.state).toBe('forgotten');
-    expect(erasedCard.record.removed).toEqual({ facts: 1, cards: 1, releases: 0 });
-    expect(erasedHealth.record.removed).toEqual({ facts: 1, cards: 0, releases: 1 });
+    expect(erasedCard.record.removed).toEqual({ facts: 1, cards: 1, releases: 0, vectors: 0 });
+    expect(erasedHealth.record.removed).toEqual({ facts: 1, cards: 0, releases: 1, vectors: 0 });
 
     // 1. The four read paths a person and a colleague actually use.
     expect(await first.evidence('shared')).toEqual([]);
@@ -188,5 +193,73 @@ describe('erasing through the session', () => {
     // off by default, so this asserts what the *product* removed, not what the engine scrubs.
     const bytes = readFileSync(parts.paths[0]).toString('latin1');
     expect(bytes.includes('Helix Bio acquisition')).toBe(false);
+  });
+});
+
+/**
+ * The seventh surface: a vector cache, which is the one copy `forget()` could not reach before this round.
+ *
+ * ## Why this needs a session-level test rather than only the store's
+ *
+ * The store test proves `delete` works. This proves the *act* reaches it: that `forget()` knows which texts
+ * the erased rows held, that it asks the store through the key function the store wrote with, and that the
+ * record's count is the store's answer rather than a number this layer made up. The three failures it
+ * separates are different defects — a store with no eraser, a session that never sends the texts, and a
+ * count that reports a deletion nobody made.
+ *
+ * ## The unrelated text is the control
+ *
+ * A cache is shared by every question a person asked. An erasure that cleared it would pass every
+ * assertion about the erased sentence and destroy the corpus, so the second sentence is primed and checked
+ * for survival with the same call.
+ */
+describe('erasing a sentence erases its cached vector', () => {
+  const UNRELATED = 'the invoice for the bicycle repair was paid late again';
+
+  it('removes the vector of the erased wording, keeps the rest, and says how many it removed', async () => {
+    const parts = stores();
+    const store = new MemoryEmbeddingCacheStore();
+    // A stub embedder: this file is about the erasure path, and a bag-of-words vector would add a second
+    // thing that can be wrong before the assertion is reached.
+    const memo = new EmbeddingMemo((texts) => Promise.resolve(texts.map(() => [1, 2, 3])), {
+      store,
+    });
+    const first = new DisclosureSession({
+      private: parts.private,
+      shared: parts.shared,
+      now: () => START,
+      vectors: memo,
+    });
+
+    const said = await first.say(SECRET, { id: 's1' });
+    await first.accept('s1');
+    const [card] = await first.cards();
+    const embedded = [card?.text ?? SECRET, card?.sourceText ?? SECRET, UNRELATED];
+    await memo.embed(embedded);
+    // The positive control, taken with the same call that reads afterwards: two of these are the sentence.
+    expect(memo.held([SECRET, UNRELATED])).toBe(2);
+
+    const erased = await first.forget('s1', {
+      acknowledge: ERASURE_TOKEN,
+      reason: 'user-request',
+    });
+
+    // The record counts what the store actually removed, so the erasure is arithmetic rather than a claim.
+    expect(erased.record.removed.vectors).toBeGreaterThanOrEqual(1);
+    expect(memo.held([card?.text ?? SECRET])).toBe(0);
+    expect(memo.held([card?.sourceText ?? SECRET])).toBe(0);
+    // The control: a session that cleared the cache would satisfy every line above.
+    expect(memo.held([UNRELATED])).toBe(1);
+    expect(said.card?.id).toBe('s1');
+  });
+
+  it('reports zero vectors when no cache was supplied, rather than failing the erasure', async () => {
+    // Absent is not an error: a session with no vector store has no vectors, and a record claiming otherwise
+    // would be the same class of statement as a count written before the work.
+    const parts = stores();
+    const first = session(parts);
+    await first.say(SECRET, { id: 's1' });
+    const erased = await first.forget('s1', { acknowledge: ERASURE_TOKEN, reason: 'correction' });
+    expect(erased.record.removed.vectors).toBe(0);
   });
 });

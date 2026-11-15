@@ -56,6 +56,7 @@ import {
   type EmbeddingCacheStore,
   type EmbeddingVector,
   type RerankScoreFn,
+  type VectorEraser,
 } from '@agentix-e/cortex-core';
 
 import { lexicalRelevance, contentTerms } from '../relevance.js';
@@ -248,7 +249,7 @@ function cosine(a: EmbeddingVector, b: EmbeddingVector): number {
   return dot / Math.sqrt(left * right);
 }
 
-export class SearchIndex {
+export class SearchIndex implements VectorEraser {
   readonly #options: SearchIndexOptions;
   readonly #turns: string[] = [];
   /** Term to the positions of the turns containing it, one entry per turn. */
@@ -434,6 +435,27 @@ export class SearchIndex {
       if (!byText.has(text)) byText.set(text, hit.score);
     }
     return (_question: string, turn: string) => byText.get(turn) ?? 0;
+  }
+
+  /**
+   * Erase the vectors this index's store holds for these texts.
+   *
+   * The retrieval side of `forget()`. It lives on the index because the index is the object a product
+   * composition root already holds — the caller that erased a sentence has a `CortexMemory`, not the map
+   * the memo writes into — and because the memo's key function is the only thing that can name the entry.
+   *
+   * Returns `0` on an index with no store, and that is a true statement rather than a silent no-op: no store
+   * means no vector outlived the question that embedded it, so there is nothing to erase. A caller that
+   * wanted an erasure to fail loudly on a missing store is asking for a configuration check, and the index
+   * already answers that question in `census().reuse`.
+   */
+  forget(texts: readonly string[]): number {
+    return this.#memo?.forget(texts) ?? 0;
+  }
+
+  /** How many of these texts the store holds. See {@link VectorEraser.held}. */
+  held(texts: readonly string[]): number {
+    return this.#memo?.held(texts) ?? 0;
   }
 
   /** What the corpus, the channels and the stages did. */

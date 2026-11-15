@@ -274,11 +274,15 @@ you paid for in an earlier call, a **batch repeat** is the same text twice insid
 **embedder call** is text that cost money. The first two numbers are the saving; the third is the bill.
 `reuseRate` is `null` before anything has been asked, which is a different fact from a rate of zero.
 
-`EmbeddingCacheStore` is the extension point — three methods, `get` / `set` / `size`. The default lives as
-long as the process; a deployment that wants reuse across restarts implements the three methods over
-whatever it already runs, and this package never learns where the vectors went. The key is
-`identity + "\0" + text`, so two gateways serving the same model id do not share vectors: the same model
-name behind two endpoints can be two sets of weights.
+`EmbeddingCacheStore` is the extension point — four methods, `get` / `set` / `delete` / `size`. The default
+lives as long as the process; a deployment that wants reuse across restarts implements the four over
+whatever it already runs, and this package never learns where the vectors went. `delete` is not bookkeeping:
+it is the erasure path (§6.5), and a store without it is a copy of the text with no way to withdraw it.
+
+The key is `identity + "\0" + sha256(text)`, so two gateways serving the same model id do not share vectors —
+the same model name behind two endpoints can be two sets of weights — and the store holds no wording, only a
+digest it cannot read back. `EmbeddingMemo.forget(texts)` erases through the same key function that wrote, so
+an erasure never has to reconstruct how a text became a key.
 
 #### The product pays once without you wrapping anything
 
@@ -647,23 +651,46 @@ What it does **not** have, stated here rather than discovered later: no `close()
 not answer a question from what it stored. The gaps and their criteria are in
 [`docs/AUDIT-PRODUCT-SURFACE.md`](AUDIT-PRODUCT-SURFACE.md) §3 and §6.
 
-### 6.5 Erasing a sentence, and the four copies it has to reach
+### 6.5 Erasing a sentence, and the seven surfaces it has to reach
 
 Deleting a fact is the easy half and the wrong half. Measured by AfterDeleteBench
 ([arXiv:2610.31366](https://arxiv.org/abs/2610.31366)): delete the record an agent was told about and
 ask it anyway, and a single query recovers the secret in **68%** of cases — because a *derived* copy
-survived. This store derives three: a card keeps the wording, the turn it was cut from and the turns
-around it; a release record keeps the wording and its SHA-256. `forget()` reaches all of them, or it
-does not claim to have erased anything.
+survived. This store derives four: a card keeps the wording, the turn it was cut from and the turns
+around it; a release record keeps the wording and its SHA-256; and a **vector cache** keeps an
+embedding addressed by the text. `forget()` reaches all of them, or it does not claim to have erased
+anything.
+
+The cache is the one that was missing, and it was missing in the way that matters: the store had no
+`delete` at all, so an erasure emptied five tables and left a vector that answered
+`get(keyOf(text)) !== undefined` for the erased sentence. Two changes close it, and they are different
+kinds of defence:
+
+- **The entries are erasable.** `EmbeddingCacheStore.delete(key)` is part of the interface now, so a
+  store that cannot erase is a store that does not implement it — and `forget()` reports the number it
+  removed in `record.removed.vectors`.
+- **The keys hold no wording.** A key is `<fingerprint>\0sha256(text)`, so the store never held a copy
+  of the sentence to begin with, even in the window before an erasure reaches it. That is a reversal of
+  this repository's earlier judgement, and `packages/cortex-core/src/cache/sha256.ts` records why the
+  trade flipped: the plaintext key was a copy in a table the disclosure boundary does not know about,
+  and the digest's oracle problem only exists for entries that are still there.
+
+Pass the cache in when you build the session, or nothing will tell it about the erasure:
 
 ```ts
-import { ERASURE_TOKEN } from '@agentix-e/cortex-core';
+import { EmbeddingMemo, ERASURE_TOKEN } from '@agentix-e/cortex-core';
+import type { EmbedFn } from '@agentix-e/cortex-core';
 import { DisclosureSession } from '@agentix-e/cortex-memory';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+declare const embed: EmbedFn;
 
 const session = new DisclosureSession({
   private: new SqliteStorage({ filename: './private.db' }),
   shared: new SqliteStorage({ filename: './shared.db' }),
+  // The same object the retrieval path embeds through, or nothing tells the cache about the erasure:
+  // `SearchIndex` implements this interface, so a product that has an index passes that index.
+  vectors: new EmbeddingMemo((texts) => embed(texts), { fingerprint: 'zhipu/embedding-3/v1/2048' }),
 });
 
 await session.say('Falcon is the code name for the Helix Bio acquisition.', { id: 'f1' });
@@ -673,12 +700,12 @@ const { record, card } = await session.forget('f1', {
   acknowledge: ERASURE_TOKEN, // 'erase-permanently'; a refusal prints what it would destroy
   reason: 'user-request',
 });
-console.log(record.removed); // { facts: 1, cards: 1, releases: 0 }
+console.log(record.removed); // { facts: 1, cards: 1, releases: 0, vectors: 0 }
 console.log(card?.text); // '' -- the tombstone keeps the timeline and nothing else
 console.log(await session.export()); // one card, state 'forgotten', no wording
 ```
 
-Five things are true afterwards, and each one is asserted in
+Six things are true afterwards, and each one is asserted in
 `packages/cortex-memory/src/__tests__/disclosure-erasure.test.ts` against two real files:
 
 | | |
@@ -689,6 +716,7 @@ Five things are true afterwards, and each one is asserted in
 | The id is burned | a later `say(..., { id })` under that id throws; without an id the store mints one |
 | It survives a restart | the record and the tombstone are rows, not state in memory |
 | It is not undoable | `accept`, `edit`, `dismiss`, `refresh` and `attach` all refuse an erased card |
+| The cache no longer answers for it | `record.removed.vectors` counts the entries removed, and the vectors of a sentence nobody erased are still there |
 
 What the tombstone **cannot** say, and this is deliberate: what the card was about. Beyond the rule id
 that claimed it (`rule`, and `null` for a sentence no rule recognised), every candidate field — the

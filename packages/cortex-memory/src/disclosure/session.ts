@@ -30,7 +30,7 @@
  * comes in as an interface so this file stays importable in a browser; the clock comes in so a decay
  * test does not wait six months; the rendering lives in the CLI and in `toMarkdown`.
  */
-import type { Storage } from '@agentix-e/cortex-core';
+import type { Storage, VectorEraser } from '@agentix-e/cortex-core';
 import {
   CardQueue,
   FederatedStorage,
@@ -79,6 +79,18 @@ export type DisclosureSessionOptions = {
   readonly now?: () => number;
   /** How long a confirmed fact stays current; forwarded to the queue. */
   readonly decayMs?: number;
+  /**
+   * The vector store that may hold embeddings of what this session stores.
+   *
+   * A session that is given an index and never tells it about an erasure leaves the sentence in a place
+   * `forget()` claims to have emptied. `SearchIndex` implements this interface, so the composition root that
+   * already holds one passes the same object here — one object, one key function, no second copy of the
+   * knowledge of how a text became a key.
+   *
+   * Absent is not a defect: a session with no vector store has no vectors to erase, and its records report
+   * `vectors: 0` truthfully.
+   */
+  readonly vectors?: VectorEraser | undefined;
 };
 
 export type SayResult = {
@@ -113,6 +125,7 @@ export class DisclosureSession {
       now: options.now ?? (() => Date.now()),
       ...(options.decayMs === undefined ? {} : { decayMs: options.decayMs }),
       ...(options.table === undefined ? {} : { table: options.table }),
+      ...(options.vectors === undefined ? {} : { vectors: options.vectors }),
     });
     this.assembler = new ReadSideAssembler(federation);
     this.proposer = options.proposer;
@@ -254,11 +267,14 @@ export class DisclosureSession {
   }
 
   /**
-   * Erase a sentence: the fact, the card, the release wording, and the id.
+   * Erase a sentence: the fact, the card, the release wording, the id, and its cached vectors.
    *
    * The one command on this object that destroys rather than moves, and the only one whose name a
    * person would use without being taught it. Delegated to the queue because the queue is what knows
-   * the card is a copy -- see `CardQueue.forget`, which enumerates every field a tombstone drops.
+   * the card is a copy -- see `CardQueue.forget`, which enumerates every field a tombstone drops, and
+   * which now also tells the vector store (when one was supplied) about every string those rows held.
+   * Until it did, this method emptied five surfaces and left a sixth holding a vector that answered
+   * "was this sentence stored?" for the erased id.
    *
    * What it does not reach, stated here because the limitation belongs next to the capability rather
    * than in a footnote: a model that already read the sentence in a prompt, a provider's request log,

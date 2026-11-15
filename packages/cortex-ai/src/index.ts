@@ -74,8 +74,8 @@ export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai
  * a wrapper a caller cannot put in a report. The implementation lives in `cortex-core` because the product's
  * index needs the identical algorithm without an `EmbeddingModel` to hand; this line keeps the published surface
  * where the last three rounds documented it. `EmbeddingCacheStore` is the extension point: the default store
- * lives as long as the process, and a deployment that wants reuse across restarts injects its own three-method
- * implementation without this package knowing where the vectors go.
+ * lives as long as the process, and a deployment that wants reuse across restarts injects its own
+ * four-method implementation without this package knowing where the vectors go.
  */
 export {
   CachingEmbedding,
@@ -84,6 +84,7 @@ export {
   type CachingEmbeddingOptions,
   type EmbeddingCacheStats,
   type EmbeddingCacheStore,
+  type VectorEraser,
 } from '@agentix-e/cortex-core';
 export {
   OpenAICompatibleReranker,

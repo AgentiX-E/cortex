@@ -142,6 +142,36 @@ export function erasureSurfaces(table: string): readonly ErasureSurface[] {
 }
 
 /**
+ * Every string a stored row holds, at any depth.
+ *
+ * ## Why the erasure is handed all of them rather than the field it knows about
+ *
+ * Because the surface that is wrong is always the one nobody enumerated. The four table surfaces are
+ * declared, so a copy in a *field* of a declared row is exactly the case a declared list cannot see: this
+ * project has already paid for it once (`origin.turns`, the paragraph around the claim, which a tombstone
+ * that kept "metadata" would have kept). A vector cache is addressed by the text it embedded, and the
+ * question "which string of this row did somebody embed?" has no answer the erasure can check.
+ *
+ * The asymmetry is what decides it: erasing a key that was never written is a `Map.delete` that returns
+ * `false`, while failing to erase one that was written is the defect AfterDeleteBench measured. So collect
+ * all of them, and let the count say how many existed (`vectors` in {@link ErasureRecord.removed} reports
+ * what was actually there, not what was offered).
+ *
+ * Ids, states and rule names come along, which costs one hash each and no correctness: they are strings
+ * the caller may legitimately have embedded, and no wording is at risk either way.
+ */
+export function stringsIn(value: unknown, into: string[] = []): string[] {
+  if (typeof value === 'string') {
+    into.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) stringsIn(item, into);
+  } else if (value !== null && typeof value === 'object') {
+    for (const item of Object.values(value)) stringsIn(item, into);
+  }
+  return into;
+}
+
+/**
  * How many rows each surface lost, carried on the record.
  *
  * A named type would be nicer to read and would be a third name for a shape that has one owner
@@ -178,19 +208,30 @@ export type ErasureRecord = {
     readonly facts: number;
     readonly cards: number;
     readonly releases: number;
+    /**
+     * Cached embeddings erased, or `0` when the erasure owned no vector store.
+     *
+     * The seventh surface. It was missing for as long as the store had no `delete`: the row went, the card
+     * went, the release wording went, and the cache went on answering `get(keyOf(text))` with a vector for
+     * the erased sentence. It is a count and not a flag because a store may hold one entry or several
+     * (a sentence quoted back under two renderings), and an erasure that reported "some" would be the
+     * class of statement this record exists to avoid.
+     */
+    readonly vectors: number;
   };
 };
 
 /** The message a caller is shown before anything is deleted, and the one an auditor reads after. */
 export function erasureWarning(
   id: string,
-  found: { facts: number; cards: number; releases: number },
+  found: { facts: number; cards: number; releases: number; vectors: number },
 ): string {
   return [
     `erasing ${JSON.stringify(id)} is permanent, and it removes every copy this store holds:`,
     `  fact rows:        ${String(found.facts)}`,
     `  card rows:        ${String(found.cards)} (the sentence, the wording it came from, the turns around it)`,
     `  release records:  ${String(found.releases)} (the wording and its digest are redacted; the override stays)`,
+    `  cached vectors:   ${String(found.vectors)} (a vector cannot be read back as text, but it answers "was this stored?")`,
     'nothing of the wording is kept -- not a copy, not a hash: a hash of a guessable sentence is an',
     'oracle, not a redaction. The id is burned, so a later admission cannot reuse it.',
     `to proceed, pass acknowledge: ${JSON.stringify(ERASURE_TOKEN)}`,
@@ -243,7 +284,7 @@ export class ErasureLog {
       acknowledged: record.acknowledged,
       requestedAt: record.at,
       completedAt: null,
-      removed: { facts: 0, cards: 0, releases: 0 },
+      removed: { facts: 0, cards: 0, releases: 0, vectors: 0 },
     };
     await this.federation.put(`private/${this.table}`, opened.id, opened);
     return opened;

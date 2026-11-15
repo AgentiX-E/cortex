@@ -32,6 +32,7 @@
  * deterministic endpoint is the one configuration where this memo is wrong, which is why every surface that
  * turns it on says so and reports it (`SearchCensus.reuse`).
  */
+import { sha256Hex } from './sha256.js';
 import type { EmbeddingIdentity, EmbeddingModel } from '../interfaces/embedding.js';
 
 /**
@@ -56,14 +57,29 @@ export type EmbedFn = (texts: string[]) => Promise<readonly EmbeddingVector[]>;
 /**
  * Where vectors are kept between calls.
  *
- * Deliberately three methods and no iteration: a store that could be enumerated would invite eviction policies,
- * and a policy is a behavioural difference between two runs of one configuration. Durability is the injector's
- * business — an in-memory map for a single run, a file or a database for a deployment — and
+ * Deliberately four methods and no iteration: a store that could be enumerated would invite eviction
+ * policies, and a policy is a behavioural difference between two runs of one configuration. Durability is
+ * the injector's business — an in-memory map for a single run, a file or a database for a deployment — and
  * `MemoryEmbeddingCacheStore` is the default so the option is never absent.
+ *
+ * ## Why `delete` is on the interface and not only on the default store
+ *
+ * Because a cache is a second copy of the text, and a product that sells erasure cannot have a copy whose
+ * deletion path exists only in the class it ships. The measurement that made this concrete is
+ * AfterDeleteBench (`arXiv:2610.31366`): the source row was gone in every case it tested, and the secret
+ * was still recoverable in 68% of them because a *derived* copy survived. A vector store is the derived
+ * copy this repository had not counted — `forget()` deleted the fact, the card and the release wording,
+ * and the store went on answering `get(keyOf(text))` with a vector for the erased sentence.
+ *
+ * `boolean` rather than `void` because the erasure record counts what it removed, and a count derived from
+ * a `get` followed by a `delete` is two answers to one question. A store that cannot say whether it held
+ * the key returns whether it removed one, which is the same fact.
  */
 export interface EmbeddingCacheStore {
   get(key: string): Float64Array | undefined;
   set(key: string, vector: Float64Array): void;
+  /** Remove one entry. Returns whether it was there. */
+  delete(key: string): boolean;
   /** Number of distinct texts held. Reported, never used to decide anything. */
   size(): number;
 }
@@ -87,9 +103,40 @@ export class MemoryEmbeddingCacheStore implements EmbeddingCacheStore {
     this.#vectors.set(key, Float64Array.from(vector));
   }
 
+  delete(key: string): boolean {
+    return this.#vectors.delete(key);
+  }
+
   size(): number {
     return this.#vectors.size;
   }
+}
+
+/**
+ * Something that can erase the vectors it holds for a set of texts.
+ *
+ * The eraser is an object rather than a `(texts) => number` function because the **key function belongs to
+ * the memo**: a store is addressed by a string, and only the object that wrote the entries knows how a text
+ * became one. A caller holding a `DisclosureSession` and a store would otherwise have to reconstruct the
+ * fingerprint and the key composition, which is the same knowledge in two places and a silent no-op the day
+ * they disagree — a deletion that reports success and removes nothing.
+ *
+ * `readonly string[]` rather than a single text: an erasure destroys a row, and a row is several strings
+ * (its value, the wording of the record around it, the card's origin turns). Handing over all of them costs
+ * a hash per string and removes a class of "we forgot which field was embedded" defects; handing over the
+ * wrong one deletes nothing and says nothing.
+ */
+export interface VectorEraser {
+  /** Erase the vectors held for these texts. Returns how many entries were removed. */
+  forget(texts: readonly string[]): number;
+  /**
+   * How many of these texts are currently held.
+   *
+   * Read before an erasure so the consent prompt can name the count, which is the same reason
+   * `ErasureRecord.removed` exists: a person agreeing to destroy something is entitled to its size, and a
+   * store that was reported as empty and then produced three deletions is an erasure nobody could check.
+   */
+  held(texts: readonly string[]): number;
 }
 
 /**
@@ -148,23 +195,34 @@ const UNSTATED_FINGERPRINT = 'unstated';
 /**
  * The identity of one vector: which space, over exactly which text.
  *
- * ## Why this is not a hash
+ * ## Why the text is hashed
  *
- * Because the entry points that reach this module have to load where there is no `node:crypto`, and an import
- * closure test enforces it: a hash here would move the whole product entry behind a Node built-in, which is the
- * browser axis giving up a feature to save a few bytes of map key. The text is already in memory — a `Map`
- * keyed on it holds a reference rather than a copy — so hashing would buy nothing and cost a platform.
+ * The first version of this function was `${fingerprint}\u0000${text}`, and its argument was that a
+ * concatenation has no collisions while a digest makes a 2^-128 argument out of the same fact. That
+ * argument is still true and it was answering the wrong question: it asked whether a key can confuse two
+ * texts, and the interesting question is what the key **is**. A plaintext key is a copy of the sentence,
+ * held in a store the disclosure boundary does not know about, for every text the product ever embedded —
+ * including text that was never admitted, never published, and later erased from the tables it did reach.
  *
- * It is also the more honest key. A collision in a cache is a vector attributed to the wrong text, and a
- * concatenation has no collisions at all; a `sha256` would make that a 2^-128 argument where the direct key
- * makes it a statement. A store that needs a bounded key — a SQLite table, a file name — hashes on its own
- * side, where the platform is known.
+ * So the key is `sha256(text)`. The reasoning behind the reversal is in `sha256.ts`, including what the
+ * digest does *not* buy (a key list is still a membership oracle for a guessable sentence, and salting
+ * would break the cross-process lookup that makes an injected store worth having).
  *
- * The NUL is the separator because no model id and no natural text contains one, so `("a", "bc")` and `("ab",
- * "c")` cannot collide.
+ * ## Why the digest is in this package and not `node:crypto`
+ *
+ * The entry points that reach this module have to load where there is no `node:crypto`, and an import
+ * closure test enforces it. WebCrypto's `crypto.subtle.digest` is the standard answer and it is async,
+ * which a key function cannot be: `EmbeddingMemo` calls this inside the loop that decides hit or miss, and
+ * an await per text would undo the batch ordering the memo is built to keep.
+ *
+ * ## The separator survives the reversal
+ *
+ * The fingerprint is still concatenated verbatim rather than folded into the digest, so a reader can tell
+ * which space a key belongs to without a lookup, and so a store can be inspected for what it holds without
+ * being able to do anything with it.
  */
 export function defaultEmbeddingCacheKey(fingerprint: string, text: string): string {
-  return `${fingerprint}\u0000${text}`;
+  return `${fingerprint}\u0000${sha256Hex(text)}`;
 }
 
 /**
@@ -189,7 +247,7 @@ export function defaultEmbeddingCacheKey(fingerprint: string, text: string): str
  * count that appears on a bill, and it is the one a report subtracts; an invocation count would say `2` for a
  * batch of five hundred and for a batch of one.
  */
-export class EmbeddingMemo {
+export class EmbeddingMemo implements VectorEraser {
   readonly #inner: EmbedFn;
   readonly #store: EmbeddingCacheStore;
   readonly #keyOf: (fingerprint: string, text: string) => string;
@@ -267,6 +325,43 @@ export class EmbeddingMemo {
     return out;
   }
 
+  /**
+   * Erase the vectors held for these texts, through the key function that wrote them.
+   *
+   * ## Why this is on the memo and not offered to callers as a store operation
+   *
+   * Because the memo is the only object that knows how a text became a key: the fingerprint is its own, and
+   * `keyOf` is a caller-supplied override. An eraser that reconstructed either would be a second copy of a
+   * decision, and the failure it produces is the worst kind — `delete` returns `false`, the count reads
+   * zero, and the erasure reports success over an entry that is still there.
+   *
+   * ## What it does to the counters
+   *
+   * Nothing. `stats()` describes what the embedder was asked, and an erasure is not a request. `stored` is
+   * read from the store live, so it drops by exactly the number this returns, and the next question that
+   * needs one of these texts pays for it again — which is the correct consequence and the one
+   * `index-reuse.test.ts` asserts.
+   *
+   * Duplicates in `texts` are removed before the loop: two calls to the same sentence are one entry, and a
+   * count that incremented twice for it would over-report an erasure.
+   */
+  forget(texts: readonly string[]): number {
+    let removed = 0;
+    for (const text of new Set(texts)) {
+      if (this.#store.delete(this.#keyOf(this.#fingerprint, text))) removed += 1;
+    }
+    return removed;
+  }
+
+  /** How many of these texts the store currently holds. See {@link VectorEraser.held}. */
+  held(texts: readonly string[]): number {
+    let count = 0;
+    for (const text of new Set(texts)) {
+      if (this.#store.get(this.#keyOf(this.#fingerprint, text)) !== undefined) count += 1;
+    }
+    return count;
+  }
+
   /** What the memo did. Read, never reset — a report asks once, at the end. */
   stats(): EmbeddingCacheStats {
     const saved = this.#textsAsked - this.#embedderCalls;
@@ -309,7 +404,7 @@ function fingerprintOf(model: EmbeddingModel): string {
  * needs them without an `EmbeddingModel` to hand. What this class adds is the two facts a model states and a
  * batch function does not — `dimension()` and, when the wrapped model states one, `identity()`.
  */
-export class CachingEmbedding implements EmbeddingModel {
+export class CachingEmbedding implements EmbeddingModel, VectorEraser {
   readonly #inner: EmbeddingModel;
   readonly #memo: EmbeddingMemo;
 
@@ -352,5 +447,15 @@ export class CachingEmbedding implements EmbeddingModel {
   /** What the cache did. Read, never reset — a report asks once, at the end. */
   stats(): EmbeddingCacheStats {
     return this.#memo.stats();
+  }
+
+  /** Erase the vectors held for these texts. See {@link EmbeddingMemo.forget}. */
+  forget(texts: readonly string[]): number {
+    return this.#memo.forget(texts);
+  }
+
+  /** How many of these texts the cache holds. See {@link VectorEraser.held}. */
+  held(texts: readonly string[]): number {
+    return this.#memo.held(texts);
   }
 }

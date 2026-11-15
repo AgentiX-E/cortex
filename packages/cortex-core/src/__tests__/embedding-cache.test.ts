@@ -33,6 +33,7 @@ import {
   defaultEmbeddingCacheKey,
   type EmbeddingCacheStore,
 } from '../cache/embedding-cache.js';
+import { sha256Hex } from '../cache/sha256.js';
 
 /** A model that records every batch it is asked about and derives its vectors from the text. */
 class RecordingEmbedding implements EmbeddingModel {
@@ -285,6 +286,7 @@ describe('the store is an extension point', () => {
         return undefined;
       },
       set: () => undefined,
+      delete: () => false,
       size: () => 0,
     };
     const model = new CachingEmbedding(new RecordingEmbedding(3, SPACE), { store });
@@ -313,15 +315,25 @@ describe('the store is an extension point', () => {
     expect(store.size()).toBe(1);
   });
 
-  it('keys on the identity, a NUL, and the whole text', () => {
-    // Pinned so a rewrite that changes the composition is visible. Not a digest: the root entry of this package has
-    // to load with no `node:crypto`, and a collision here is a vector attributed to the wrong text.
-    expect(defaultEmbeddingCacheKey('a/b/c/3', 'alpha')).toBe('a/b/c/3\u0000alpha');
+  it('keys on the identity and a digest of the text, never on the text', () => {
+    // Pinned so a rewrite that changes the composition is visible. The second assertion is the one that
+    // matters and it is not a readability preference: a key that contains the sentence is a copy of the
+    // sentence in a store the disclosure boundary does not know about, which is the defect `forget()`
+    // cannot fix from the outside because it does not know which texts were embedded.
+    const key = defaultEmbeddingCacheKey('a/b/c/3', 'alpha');
+    const [space, digest] = key.split('\u0000');
+    expect(space).toBe('a/b/c/3');
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(key).toContain(sha256Hex('alpha'));
+    expect(key).not.toContain('alpha');
     expect(defaultEmbeddingCacheKey('a/b/c/3', 'alpha')).not.toBe(
       defaultEmbeddingCacheKey('a/b/c/3', 'alphb'),
     );
-    // The NUL separator, so a split cannot collide: concatenation without it would make these two equal.
-    expect(defaultEmbeddingCacheKey('a', 'bc')).not.toBe(defaultEmbeddingCacheKey('ab', 'c'));
+    // The fingerprint stays outside the digest, so a store can be inspected for which space a key belongs
+    // to without the store being able to say anything about the text.
+    expect(defaultEmbeddingCacheKey('a/b/c/3', 'alpha')).not.toBe(
+      defaultEmbeddingCacheKey('a/b/c/4', 'alpha'),
+    );
   });
 
   it('counts distinct texts in the default store', () => {
@@ -405,5 +417,112 @@ describe('the memo a bare batched embedder gets', () => {
       reuseRate: null,
       stored: 0,
     });
+  });
+});
+
+/**
+ * The seventh surface: a vector the store can still be asked about after the sentence was erased.
+ *
+ * ## Why this is a test of the cache and not only of `DisclosureSession`
+ *
+ * `forget()` on a session is the act, but the erasure is only true if the store can be told to drop an
+ * entry — and a store with no `delete` is a copy with no deletion path, which is exactly the shape
+ * AfterDeleteBench measured at 68% recovery. These assertions are the ones the session's tests delegate
+ * to: the session decides *which* texts, this file decides whether erasing a text erases its vector.
+ *
+ * ## What is asserted, and what would make each assertion vacuous
+ *
+ * 1. `held` counts only what is there, so an erasure cannot report a deletion it did not make;
+ * 2. `forget` removes exactly the texts it was given and leaves the rest, because a cache that cleared
+ *    itself would pass an erasure test and destroy a corpus;
+ * 3. after the erasure the *same* memo re-embeds that text, which is the observable form of "the entry is
+ *    gone" — a store that returned a stale vector would pass a `size()` check and fail this one;
+ * 4. an unknown text is a no-op that reports zero, so a session handing over every string of a row (which
+ *    is what it does, on purpose) does not report deletions of keys nobody wrote.
+ */
+describe('erasing a vector is an operation of the store', () => {
+  /** An embedder that records every batch it is asked for, so a re-embed is visible rather than inferred. */
+  function recorder(): {
+    calls: string[][];
+    embed: (texts: string[]) => Promise<number[][]>;
+  } {
+    const calls: string[][] = [];
+    return {
+      calls,
+      embed: (texts) => {
+        calls.push([...texts]);
+        return Promise.resolve(texts.map((text) => [text.length]));
+      },
+    };
+  }
+
+  it('reports how many of the offered texts it holds, and erases exactly those', async () => {
+    const { calls, embed } = recorder();
+    const store = new MemoryEmbeddingCacheStore();
+    const memo = new EmbeddingMemo(embed, { store });
+    await memo.embed(['alpha', 'beta', 'gamma']);
+
+    // The offered list is the shape a session sends: every string of the erased rows, most of which were
+    // never embedded. `held` is the number of real entries among them.
+    const offered = ['alpha', 'not-embedded', 'beta'];
+    expect(memo.held(offered)).toBe(2);
+    expect(memo.forget(offered)).toBe(2);
+    expect(memo.stats().stored).toBe(1);
+    // Gamma survived: a cache that cleared itself on forget would pass the count and lose the corpus.
+    expect(memo.held(['gamma'])).toBe(1);
+
+    // The entry is gone, not stale: the next question that needs it pays for it again.
+    await memo.embed(['alpha']);
+    expect(calls).toEqual([['alpha', 'beta', 'gamma'], ['alpha']]);
+  });
+
+  it('reports zero for an unknown text, so an over-broad offer is not a false deletion', () => {
+    const memo = new EmbeddingMemo(() => Promise.resolve([[1]]));
+    expect(memo.held(['never-embedded'])).toBe(0);
+    expect(memo.forget(['never-embedded'])).toBe(0);
+  });
+
+  it('is idempotent: a second erasure of the same text removes nothing', async () => {
+    const memo = new EmbeddingMemo(() => Promise.resolve([[1]]));
+    await memo.embed(['alpha']);
+    expect(memo.forget(['alpha'])).toBe(1);
+    expect(memo.forget(['alpha'])).toBe(0);
+  });
+
+  it('counts a text offered twice once, because the store holds one entry for it', async () => {
+    const memo = new EmbeddingMemo(() => Promise.resolve([[1]]));
+    await memo.embed(['alpha']);
+    expect(memo.held(['alpha', 'alpha'])).toBe(1);
+    expect(memo.forget(['alpha', 'alpha'])).toBe(1);
+  });
+
+  it('forgets through the same key function that wrote, including a caller override', async () => {
+    // The reason the eraser is the memo and not the store: a caller-supplied `keyOf` is not reconstructible
+    // from outside, and an eraser that guessed the default key would delete nothing here and report zero.
+    const seen: string[] = [];
+    const store = new MemoryEmbeddingCacheStore();
+    const memo = new EmbeddingMemo(() => Promise.resolve([[1]]), {
+      store,
+      keyOf: (fingerprint, text) => {
+        const key = `${fingerprint}|${text.length}|${text}`;
+        seen.push(key);
+        return key;
+      },
+    });
+    await memo.embed(['alpha']);
+    expect(memo.forget(['alpha'])).toBe(1);
+    expect(store.size()).toBe(0);
+    // get, set, then the delete — three calls, and the third is the one the assertion is about: the
+    // erasure reached the override rather than the default composition, which was never in the store.
+    expect(seen).toHaveLength(3);
+    expect(seen[2]).toBe('unstated|5|alpha');
+  });
+
+  it('is reachable from a model wrapper, which is the surface cortex-ai publishes', async () => {
+    const model = new CachingEmbedding(new RecordingEmbedding(3, SPACE));
+    await model.embed(['alpha', 'beta']);
+    expect(model.held(['alpha'])).toBe(1);
+    expect(model.forget(['alpha'])).toBe(1);
+    expect(model.stats().stored).toBe(1);
   });
 });

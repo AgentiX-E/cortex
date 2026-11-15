@@ -27,6 +27,24 @@
  * Both are then erased with one call each. The readings are: occurrences of each sentence per
  * surface, the number of read paths that still return a sentence, and the rows each erasure removed.
  *
+ * ## Why there are seven surfaces and not four
+ *
+ * Four tables were the enumeration this repository shipped, and it was right about the tables. It was
+ * wrong about the **cache**: an embedding store addressed by text is a seventh copy, and until this
+ * round it had no `delete` at all, so `forget()` emptied the four tables and left a vector that
+ * answered `get(keyOf(text)) !== undefined` for the erased sentence. Two surfaces were missing, and
+ * they are different in kind from the four:
+ *
+ * | surface | what a leak looks like | how it is read |
+ * | --- | --- | --- |
+ * | `embedding-keys` | the key **is** the sentence | occurrences of the wording in the key strings |
+ * | `embedding-vectors` | the store still answers "was this stored?" | entries addressing a sentence |
+ *
+ * The key surface reads zero **before** the erasure as well, which is the design rather than a broken
+ * instrument: a key is `sha256(text)`, so it never held the wording to begin with. What makes that
+ * reading non-vacuous is its own guard -- entries must exist before the erasure, or nothing was ever
+ * cached and "no wording in the keys" is a statement about an empty list.
+ *
  * ## What it does not measure
  *
  * Bytes on disk are `sqlite`'s business and are asserted in `disclosure-erasure.test.ts` (the
@@ -42,11 +60,15 @@ import { fileURLToPath } from 'node:url';
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = resolve(REPO, '../cortex-docs/evidence/erasure/census.json');
 
-const { ERASURE_TOKEN, RELEASE_TOKEN } = await import(join(REPO, 'packages/cortex-core/dist/index.js'));
+const { ERASURE_TOKEN, RELEASE_TOKEN, EmbeddingMemo } = await import(
+  join(REPO, 'packages/cortex-core/dist/index.js')
+);
 const { DisclosureSession } = await import(
   join(REPO, 'packages/cortex-memory/dist/disclosure/session.js')
 );
-const { SqliteStorage } = await import(join(REPO, 'packages/cortex-storage/dist/storage/sqlite.js'));
+const { SqliteStorage } = await import(
+  join(REPO, 'packages/cortex-storage/dist/storage/sqlite.js')
+);
 
 const NOW = 1_759_470_000_000;
 
@@ -54,14 +76,58 @@ const NOW = 1_759_470_000_000;
 const SECRET = 'Falcon is the code name for the Helix Bio acquisition.';
 const HEALTH = 'I have been diagnosed with a condition I have not told anyone at work about.';
 
-/** The four surfaces the product can write a sentence to, plus the record that must hold none. */
+/** A third sentence, never erased. The control on the cache: an erasure that cleared it would pass. */
+const UNRELATED = 'The invoice for the bicycle repair was paid late again.';
+
+/**
+ * Every surface a sentence can survive on, seven of them.
+ *
+ * `kind` is what decides how a surface is read, and it is a property of the surface rather than of the
+ * reading code: a table is searched as text, a key list is searched as text *and* expected to hold none
+ * of it, and a vector store is asked whether it addresses the sentence at all.
+ */
 const SURFACES = [
-  { role: 'private-facts', scope: 'private', table: 'facts' },
-  { role: 'shared-facts', scope: 'shared', table: 'facts' },
-  { role: 'cards', scope: 'private', table: 'cards' },
-  { role: 'releases', scope: 'private', table: 'releases' },
-  { role: 'erasures', scope: 'private', table: 'erasures' },
+  { role: 'private-facts', kind: 'row', scope: 'private', table: 'facts' },
+  { role: 'shared-facts', kind: 'row', scope: 'shared', table: 'facts' },
+  { role: 'cards', kind: 'row', scope: 'private', table: 'cards' },
+  { role: 'releases', kind: 'row', scope: 'private', table: 'releases' },
+  { role: 'erasures', kind: 'row', scope: 'private', table: 'erasures' },
+  { role: 'embedding-keys', kind: 'keys' },
+  { role: 'embedding-vectors', kind: 'vectors' },
 ];
+
+/**
+ * A vector store the census can enumerate.
+ *
+ * The product's interface refuses iteration on purpose -- a store that could be listed would invite an
+ * eviction policy, and a policy is a behavioural difference between two runs of one configuration. The
+ * instrument is allowed to enumerate because the instrument is not a product: "which keys does this
+ * store hold" *is* the measurement, and a store that could not answer it would leave the key surface
+ * unmeasurable while still being a surface.
+ */
+class RecordingStore {
+  #vectors = new Map();
+
+  get(key) {
+    return this.#vectors.get(key);
+  }
+
+  set(key, vector) {
+    this.#vectors.set(key, vector);
+  }
+
+  delete(key) {
+    return this.#vectors.delete(key);
+  }
+
+  size() {
+    return this.#vectors.size;
+  }
+
+  keys() {
+    return [...this.#vectors.keys()];
+  }
+}
 
 function occurrences(haystack, needle) {
   const hay = haystack.toLowerCase();
@@ -75,10 +141,67 @@ function occurrences(haystack, needle) {
   return hits;
 }
 
-/** Every row of every surface, serialised. Generic on purpose: an unknown field still counts. */
-async function residue(stores) {
+const dir = mkdtempSync(join(tmpdir(), 'cortex-erasure-census-'));
+const privateStore = new SqliteStorage({ filename: join(dir, 'private.db') });
+const sharedStore = new SqliteStorage({ filename: join(dir, 'shared.db') });
+const stores = { private: privateStore, shared: sharedStore };
+
+/** The cache under test. A stub embedder: this file measures erasure, not vector quality. */
+const vectorStore = new RecordingStore();
+const vectors = new EmbeddingMemo((texts) => Promise.resolve(texts.map(() => [0, 0, 0])), {
+  store: vectorStore,
+  fingerprint: 'census/stub/3',
+});
+
+/**
+ * A deliberate fault, so the guards below can be shown to fire rather than assumed to.
+ * `test_erasure_census.py` runs this tool once per fault and asserts one exit code each. A gate nobody
+ * has seen fail is a gate that may be evaluating nothing.
+ *
+ * `no-vector-forget` is the fault that matters most here: it is not a contrivance, it is **the
+ * configuration this product shipped until this round** -- a session over two stores and no eraser.
+ */
+const FAULT = process.env['CORTEX_ERASURE_CENSUS_FAULT'];
+const session = new DisclosureSession({
+  private: privateStore,
+  shared: sharedStore,
+  now: () => NOW,
+  ...(FAULT === 'no-vector-forget' ? {} : { vectors }),
+});
+
+await session.say(SECRET, { id: 's1' });
+await session.accept('s1');
+await session.say(HEALTH, { id: 'h1' });
+await session.release('h1', { acknowledge: RELEASE_TOKEN });
+
+// What a retrieval index would have embedded: the two sentences and one that must survive. The store is
+// primed *after* the rows exist and *before* the control is read, because the control has to see the
+// copy it is meant to detect.
+await vectors.embed([SECRET, HEALTH, UNRELATED]);
+
+/** Every surface, read as its kind requires. */
+async function residue() {
   const readings = [];
   for (const surface of SURFACES) {
+    if (surface.kind === 'keys') {
+      const keys = vectorStore.keys().join('\n');
+      readings.push({
+        role: surface.role,
+        rows: vectorStore.size(),
+        secret: occurrences(keys, 'Falcon'),
+        health: occurrences(keys, 'diagnosed'),
+      });
+      continue;
+    }
+    if (surface.kind === 'vectors') {
+      readings.push({
+        role: surface.role,
+        rows: vectors.held([SECRET, HEALTH]),
+        secret: vectors.held([SECRET]),
+        health: vectors.held([HEALTH]),
+      });
+      continue;
+    }
     const store = surface.scope === 'private' ? stores.private : stores.shared;
     const rows = await store.query(surface.table);
     const text = JSON.stringify(rows);
@@ -92,18 +215,7 @@ async function residue(stores) {
   return readings;
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'cortex-erasure-census-'));
-const privateStore = new SqliteStorage({ filename: join(dir, 'private.db') });
-const sharedStore = new SqliteStorage({ filename: join(dir, 'shared.db') });
-const stores = { private: privateStore, shared: sharedStore };
-const session = new DisclosureSession({ private: privateStore, shared: sharedStore, now: () => NOW });
-
-await session.say(SECRET, { id: 's1' });
-await session.accept('s1');
-await session.say(HEALTH, { id: 'h1' });
-await session.release('h1', { acknowledge: RELEASE_TOKEN });
-
-const before = await residue(stores);
+const before = await residue();
 const beforePaths = {
   privateEvidence: (await session.evidence('private')).some((row) =>
     JSON.stringify(row.value).includes('Falcon'),
@@ -115,20 +227,16 @@ const beforePaths = {
   releaseWording: (await session.releases()).some((record) => record.text?.includes('diagnosed')),
 };
 
-// A deliberate fault, so the guards below can be shown to fire rather than assumed to. `test_erasure_census.py`
-// runs this tool twice: once clean, once with this set, and asserts one exit code each. A gate nobody has
-// seen fail is a gate that may be evaluating nothing.
-const FAULT = process.env['CORTEX_ERASURE_CENSUS_FAULT'];
 const erasedSecret =
   FAULT === 'no-forget'
-    ? { record: { removed: { facts: 0, cards: 0, releases: 0 } } }
+    ? { record: { removed: { facts: 0, cards: 0, releases: 0, vectors: 0 } } }
     : await session.forget('s1', { acknowledge: ERASURE_TOKEN, reason: 'user-request' });
 const erasedHealth = await session.forget('h1', {
   acknowledge: ERASURE_TOKEN,
   reason: 'retention-policy',
 });
 
-const after = await residue(stores);
+const after = await residue();
 const afterPaths = {
   privateEvidence: (await session.evidence('private')).some((row) =>
     JSON.stringify(row.value).includes('Falcon'),
@@ -146,18 +254,29 @@ rmSync(dir, { recursive: true, force: true });
 
 const sum = (readings, key) => readings.reduce((total, reading) => total + reading[key], 0);
 const leaking = (paths) => Object.values(paths).filter(Boolean).length;
+const surfaceOf = (readings, role) => readings.find((reading) => reading.role === role);
 
 const census = {
   $comment:
-    'Written by tools/erasure-census.mjs. One DisclosureSession over two SQLite files, two sentences ' +
-    'with different lineage (a deferred card, a released rule-claimed row), erased with one call ' +
-    'each. `residue` reads every row of every surface and counts occurrences of the sentence, so a ' +
-    'field nobody thought of fails the criterion rather than escaping it. `before` is the control: a ' +
-    'run whose control finds nothing is reported as a failure, not as a clean erasure.',
-  dataset: 'synthetic: 2 sentences, 2 erasure calls, 5 surfaces, 2 stores',
-  sentences: { deferred: 's1', released: 'h1' },
-  before: { surfaces: before, occurrences: sum(before, 'secret') + sum(before, 'health'), readPaths: beforePaths },
-  after: { surfaces: after, occurrences: sum(after, 'secret') + sum(after, 'health'), readPaths: afterPaths },
+    'Written by tools/erasure-census.mjs. One DisclosureSession over two SQLite files and one vector ' +
+    'store, two sentences with different lineage (a deferred card, a released rule-claimed row), erased ' +
+    'with one call each. `residue` reads all seven surfaces -- five tables, the cache key list and the ' +
+    'cache entries -- and counts what still answers about each sentence, so a field nobody thought of ' +
+    'fails the criterion rather than escaping it. `before` is the control: a run whose control finds ' +
+    'nothing is reported as a failure, not as a clean erasure.',
+  dataset: 'synthetic: 2 sentences + 1 survivor, 2 erasure calls, 7 surfaces, 2 stores, 1 cache',
+  sentences: { deferred: 's1', released: 'h1', survivor: 'unrelated' },
+  surfaces: SURFACES.length,
+  before: {
+    surfaces: before,
+    occurrences: sum(before, 'secret') + sum(before, 'health'),
+    readPaths: beforePaths,
+  },
+  after: {
+    surfaces: after,
+    occurrences: sum(after, 'secret') + sum(after, 'health'),
+    readPaths: afterPaths,
+  },
   removed: {
     deferred: erasedSecret.record.removed,
     released: erasedHealth.record.removed,
@@ -168,26 +287,51 @@ const census = {
       erasedHealth.record.removed.facts +
       erasedHealth.record.removed.cards +
       erasedHealth.record.removed.releases,
+    vectors: erasedSecret.record.removed.vectors + erasedHealth.record.removed.vectors,
   },
   // The two readings the matrix gates on. Numbers, because "identical" is a 1 or a defect.
   residualOccurrences: sum(after, 'secret') + sum(after, 'health'),
   leakingReadPaths: leaking(afterPaths),
   controlOccurrences: sum(before, 'secret') + sum(before, 'health'),
   controlReadPaths: leaking(beforePaths),
-  tombstones: after.find((reading) => reading.role === 'cards').rows,
-  records: after.find((reading) => reading.role === 'erasures').rows,
+  // The key surface is read as a design property rather than as a before/after count: it must hold no
+  // wording in either arm, and the guard below refuses a run where it held nothing at all.
+  keySurface: {
+    rowsBefore: surfaceOf(before, 'embedding-keys').rows,
+    wordingBefore:
+      surfaceOf(before, 'embedding-keys').secret + surfaceOf(before, 'embedding-keys').health,
+    wordingAfter:
+      surfaceOf(after, 'embedding-keys').secret + surfaceOf(after, 'embedding-keys').health,
+  },
+  survivor: {
+    cached: vectors.held([UNRELATED]),
+  },
+  tombstones: surfaceOf(after, 'cards').rows,
+  records: surfaceOf(after, 'erasures').rows,
 };
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(census, null, 2)}\n`);
 
-// Two vacuity guards, in the tool rather than in the reader. A control that found nothing means the
-// instrument is broken; a non-zero residual means the erasure is. Both make the run a failure rather
-// than a number somebody has to interpret.
+// Three vacuity guards, in the tool rather than in the reader. A control that found nothing means the
+// instrument is broken; a non-zero residual means the erasure is; a key list holding wording means the key
+// composition regressed. Each makes the run a failure rather than a number somebody has to interpret.
 if (census.controlOccurrences === 0 || census.controlReadPaths === 0) {
   console.error(
     'FAILED: the control found nothing before the erasure, so "nothing after" is a statement about ' +
       'the search rather than about the deletion',
+  );
+  process.exitCode = 1;
+} else if (census.keySurface.rowsBefore === 0) {
+  console.error(
+    'FAILED: the cache held no entries before the erasure, so "no wording in the keys" is a statement ' +
+      'about an empty list rather than about the key composition',
+  );
+  process.exitCode = 1;
+} else if (census.keySurface.wordingBefore !== 0 || census.keySurface.wordingAfter !== 0) {
+  console.error(
+    `FAILED: ${String(census.keySurface.wordingBefore)} key(s) carried the wording before the erasure ` +
+      `and ${String(census.keySurface.wordingAfter)} after -- a cache key must be a digest of the text`,
   );
   process.exitCode = 1;
 } else if (census.residualOccurrences !== 0 || census.leakingReadPaths !== 0) {
@@ -199,9 +343,11 @@ if (census.controlOccurrences === 0 || census.controlReadPaths === 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    `erasure census ok -- ${String(census.controlOccurrences)} occurrence(s) and ` +
-      `${String(census.controlReadPaths)} read path(s) before, ${String(census.residualOccurrences)} ` +
-      `and ${String(census.leakingReadPaths)} after; ${String(census.removed.total)} row(s) removed by ` +
-      `${String(census.tombstones)} tombstone and ${String(census.records)} record(s)`,
+    `erasure census ok -- ${String(census.surfaces)} surfaces; ${String(census.controlOccurrences)} ` +
+      `occurrence(s) and ${String(census.controlReadPaths)} read path(s) before, ` +
+      `${String(census.residualOccurrences)} and ${String(census.leakingReadPaths)} after; ` +
+      `${String(census.removed.total)} row(s) and ${String(census.removed.vectors)} vector(s) removed by ` +
+      `${String(census.tombstones)} tombstone and ${String(census.records)} record(s); ` +
+      `${String(census.survivor.cached)} unrelated vector(s) survived`,
   );
 }

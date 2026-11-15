@@ -64,6 +64,7 @@ export {
   type EmbeddingCacheStore,
   type EmbeddingMemoOptions,
   type CachingEmbeddingOptions,
+  type VectorEraser,
 } from './cache/embedding-cache.js';
 
 // retrieval

@@ -203,7 +203,7 @@ describe('what one erasure removes, surface by surface', () => {
 
     expect(record.reason).toBe('user-request');
     expect(record.completedAt).toBe(START);
-    expect(record.removed).toEqual({ facts: 1, cards: 1, releases: 0 });
+    expect(record.removed).toEqual({ facts: 1, cards: 1, releases: 0, vectors: 0 });
 
     // The tombstone: identity and timeline survive, every copy of the wording does not.
     expect(erased?.state).toBe('forgotten');
@@ -269,7 +269,7 @@ describe('what one erasure removes, surface by surface', () => {
       acknowledge: ERASURE_TOKEN,
       reason: 'user-request',
     });
-    expect(record.removed).toEqual({ facts: 1, cards: 0, releases: 1 });
+    expect(record.removed).toEqual({ facts: 1, cards: 0, releases: 1, vectors: 0 });
 
     const [kept] = await w.writer.releases();
     expect(kept?.text).toBe(null);
@@ -332,7 +332,7 @@ describe('the record', () => {
       acknowledged: ERASURE_TOKEN,
       requestedAt: START,
       completedAt: START,
-      removed: { facts: 1, cards: 1, releases: 0 },
+      removed: { facts: 1, cards: 1, releases: 0, vectors: 0 },
     });
   });
 
@@ -447,7 +447,7 @@ describe('the record', () => {
     expect(record.requestedAt).toBe(START - 5);
     expect(record.completedAt).toBe(START + 1_000);
     expect(record.reason).toBe('retention-policy');
-    expect(record.removed).toEqual({ facts: 1, cards: 1, releases: 0 });
+    expect(record.removed).toEqual({ facts: 1, cards: 1, releases: 0, vectors: 0 });
     for (const reading of await residue(w, 'Falcon')) expect(reading.hits).toBe(0);
   });
 });

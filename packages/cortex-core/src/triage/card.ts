@@ -30,6 +30,7 @@
  */
 
 import type { FederatedStorage } from '../federation/federated-storage.js';
+import type { VectorEraser } from '../cache/embedding-cache.js';
 import { claimsIn } from './claims.js';
 import {
   ERASURE_REASONS,
@@ -37,6 +38,7 @@ import {
   ErasureLog,
   FACET_TABLES,
   erasureSurfaces,
+  stringsIn,
   type ErasureSurface,
   erasureWarning,
   isErased,
@@ -127,6 +129,14 @@ export type CardQueueOptions = {
   decayMs?: number;
   /** Logical table for facts, matching `TriageWriter`. */
   table?: string;
+  /**
+   * The vector store that may hold embeddings of what this queue stores, if the caller has one.
+   *
+   * Absent is the honest default: a queue that was never given a store cannot reach one, and reporting an
+   * erasure of zero is true. Present, `forget()` erases every string the erased rows held — see
+   * `stringsIn` for why all of them rather than the field this file knows about.
+   */
+  vectors?: VectorEraser | undefined;
 };
 
 const DEFAULT_DECAY_MS = 180 * 24 * 60 * 60 * 1000;
@@ -172,6 +182,8 @@ export class CardQueue {
   private readonly table: string;
   /** The erase log, which is also the list of burned ids. */
   private readonly eraseLog: ErasureLog;
+  /** The vector store this queue can erase, when the caller supplied one. */
+  private readonly vectors: VectorEraser | undefined;
 
   constructor(federation: FederatedStorage, writer: TriageWriter, options: CardQueueOptions = {}) {
     this.federation = federation;
@@ -179,6 +191,7 @@ export class CardQueue {
     this.now = options.now ?? (() => Date.now());
     this.decayMs = options.decayMs ?? DEFAULT_DECAY_MS;
     this.table = options.table ?? 'facts';
+    this.vectors = options.vectors;
     this.eraseLog = new ErasureLog(federation);
   }
 
@@ -523,9 +536,18 @@ export class CardQueue {
     const erased = plan.card === undefined ? undefined : tombstoneOf(plan.card, at, opened.reason);
     const removed = await this.writer.eraseRows(id, { table: this.table, now: at });
     if (erased !== undefined) await this.put(erased);
+    // The seventh surface, and the only one that is not a row. After the rows are gone and before the
+    // record closes, so an interrupted erasure leaves a record that says so and a retry erases what is
+    // left; the other order would close a record over a sentence that a store can still be asked about.
+    const vectors = this.vectors?.forget(plan.texts) ?? 0;
     const record = await this.eraseLog.complete(
       opened,
-      { facts: removed.facts, cards: plan.card === undefined ? 0 : 1, releases: removed.releases },
+      {
+        facts: removed.facts,
+        cards: plan.card === undefined ? 0 : 1,
+        releases: removed.releases,
+        vectors,
+      },
       at,
     );
     return { record, card: erased };
@@ -543,6 +565,8 @@ export class CardQueue {
     facts: number;
     cards: number;
     releases: number;
+    vectors: number;
+    texts: readonly string[];
   }> {
     const card = await this.get(id);
     // The list is read from `erasureSurfaces` rather than spelled here, so a surface added to the
@@ -551,15 +575,26 @@ export class CardQueue {
     // Typed by the union rather than by `string`: a role this file misspells would otherwise be a
     // surface that is silently never counted, and the prompt would under-report the destruction.
     const held = new Set<ErasureSurface['role']>();
+    const texts: string[] = [];
     for (const surface of erasureSurfaces(this.table)) {
       const row = await this.federation.get<unknown>(`${surface.scope}/${surface.name}`, id);
-      if (row !== undefined) held.add(surface.role);
+      if (row === undefined) continue;
+      held.add(surface.role);
+      stringsIn(row, texts);
     }
+    // The card too, and for the reason the tombstone exists: `text`, `sourceText`, the proposal and the
+    // origin turns are all copies, and any of them may be what a caller embedded.
+    stringsIn(card, texts);
     return {
       card,
       facts: (held.has('private-facts') ? 1 : 0) + (held.has('shared-facts') ? 1 : 0),
       cards: card === undefined ? 0 : 1,
       releases: held.has('releases') ? 1 : 0,
+      // Asked of the eraser rather than counted here: "how many vectors does this store hold for these
+      // texts" is a question only the store can answer, and a promise in the consent prompt that the
+      // store had nothing would be a number this file made up.
+      vectors: this.vectors?.held(texts) ?? 0,
+      texts,
     };
   }
 

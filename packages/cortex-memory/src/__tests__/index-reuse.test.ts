@@ -23,9 +23,16 @@
  *    function states no vector space and a store spanning two of them would mix two models' outputs.
  */
 import { describe, expect, it } from 'vitest';
-import type { LLM, MemoryValue, ValueFunction } from '@agentix-e/cortex-core';
+import {
+  MemoryEmbeddingCacheStore,
+  defaultEmbeddingCacheKey,
+  type LLM,
+  type MemoryValue,
+  type ValueFunction,
+} from '@agentix-e/cortex-core';
 
 import { CortexMemory } from '../memory.js';
+import { SearchIndex } from '../retrieval/search-index.js';
 import type { CortexMemoryOptions } from '../types.js';
 
 const NOW = 1_759_470_000_000;
@@ -196,5 +203,64 @@ describe('an index over a stable corpus embeds it once', () => {
       memoHits: 4,
       reuse: true,
     });
+  });
+});
+
+/**
+ * The other half of "the corpus is embedded once": it can be un-embedded.
+ *
+ * ## Why the reverse assertion belongs in this file
+ *
+ * `index-reuse` exists to pin a cost property, and a store is a *copy* of the corpus in a place the
+ * disclosure boundary does not reach. So the same three questions have a second reading: after a sentence
+ * is erased, is its vector still there to be asked about? Before this round the answer was yes for every
+ * erased sentence, because the store had no `delete` at all — `forget()` emptied five surfaces and left a
+ * sixth that answered `get(keyOf(text)) !== undefined` for the erased id.
+ *
+ * ## What is asserted, and why each one is not enough alone
+ *
+ * 1. `size()` drops by exactly one — a count, and a cache that cleared itself would pass it;
+ * 2. `get(keyOf(text))` is `undefined` for that text and defined for the others — the entry, not the count;
+ * 3. the next question re-embeds that one text — the observable form of "the entry is gone rather than
+ *    marked", because a store that returned a stale vector would satisfy 1 and 2 only if it also lied
+ *    about its size;
+ * 4. the *semantic* reading is unchanged: question two still costs one text, which is what this file's
+ *    original five assertions are for and what an erasure must not disturb.
+ */
+describe('erasing a text erases its vector, and only its vector', () => {
+  const ERASED = 'the invoice was paid late again';
+
+  it('drops the entry, leaves the rest, and pays for it again on the next question', async () => {
+    const store = new MemoryEmbeddingCacheStore();
+    const embedder = recordingEmbed();
+    const index = new SearchIndex({ embed: embedder.embed, store });
+    index.add(corpus());
+    await index.prime();
+
+    const key = defaultEmbeddingCacheKey('unstated', ERASED);
+    expect(store.size()).toBe(4);
+    expect(store.get(key)).toBeDefined();
+    expect(index.held([ERASED])).toBe(1);
+
+    expect(index.forget([ERASED])).toBe(1);
+    expect(store.size()).toBe(3);
+    expect(store.get(key)).toBeUndefined();
+    // The neighbours are untouched: an erasure that emptied the store would pass every count above.
+    expect(store.get(defaultEmbeddingCacheKey('unstated', corpus()[0] as string))).toBeDefined();
+
+    // A second index over the same corpus pays for the erased turn and nothing else.
+    const second = new SearchIndex({ embed: embedder.embed, store });
+    second.add(corpus());
+    await second.prime();
+    expect(second.census()).toMatchObject({ reuse: true, embedTexts: 1, memoHits: 3 });
+  });
+
+  it('reports zero on an index that has no store, which is a true statement rather than a no-op', () => {
+    // No store means no vector outlived the question that embedded it, so "how many did you erase" has an
+    // answer and it is zero. A test that expected an error here would be asking for a configuration check
+    // `census().reuse` already answers.
+    const index = new SearchIndex({});
+    expect(index.held(['anything'])).toBe(0);
+    expect(index.forget(['anything'])).toBe(0);
   });
 });
