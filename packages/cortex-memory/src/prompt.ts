@@ -11,6 +11,7 @@ import type { AdmittedSession } from './sessionize.js';
 import { ABSTAIN_TOKEN } from './parse.js';
 import { classifyQuestionShape, type QuestionShape } from './question-shape.js';
 import { ELISION, excerptAround, truncateCodePointSafe, type TurnWindow } from './excerpt.js';
+import { renderSupersededInline, type SupersededMarks } from './superseded.js';
 
 // Re-exported rather than defined here: the per-turn window rule needs the same surrogate-safe slice, and
 // two copies of a UTF-16 guard are two chances to fix one of them. Every importer that had this path keeps it.
@@ -758,6 +759,35 @@ export type PromptOptions = {
    * inert-option defect this file has been audited for twice.
    */
   turnWindow?: TurnWindow;
+  /**
+   * The turns whose statements a later turn replaces, and what to do to them.
+   *
+   * ## What it changes, and what it is forbidden to change
+   *
+   * Only the rendering of the marked turns. The carried set, the ordering, the instruction block and the
+   * question are the ones the same options produce without it, and `conflict.ts` — which decides what the
+   * statements are — is not consulted differently: `supersededTurns` reads its selection. That is the
+   * property the acceptance clause is written against, because a mechanism that also moved the delivered
+   * multiset could not be priced against the control `conflicts` was priced against.
+   *
+   * ## Why it is charged to the budget, unlike the side block
+   *
+   * `insertRelatedStatements` runs **after** `fitToBudget` on the assembled prompt, so its ~1.2k
+   * characters sit outside the room and a prompt carrying it can exceed `maxPromptChars`. That is
+   * affordable for a block and not for a mark: the mark lives *inside* the evidence, so a renderer that
+   * hid it from the length arithmetic would let a run deliver a prompt longer than the room it reports —
+   * and the room is the number a cost reading is taken against. So the mark is measured, which makes the
+   * delta exact on every prompt the same set is delivered under: `SUPERSEDED_MARKER.length` per marked
+   * turn. The one case where the delivered set can move is a prompt within one mark of its budget, and
+   * `superseded-inline.test.ts` constructs that case deliberately rather than leaving it to be found.
+   *
+   * ## Absent is every archived prompt's bytes
+   *
+   * The option is absent unless a caller both enables it and has a turn to mark, and `off` is not two
+   * spellings of the same thing: `off` is a caller saying it chose not to, and the memory does not build
+   * a mark map for it.
+   */
+  superseded?: SupersededMarks;
   /** How to present the admitted turns. Defaults to the baseline rendering. */
   rendering?: EvidenceRendering;
   /** Which instruction block to use. Defaults to the route's own. */
@@ -2239,6 +2269,15 @@ type TurnCap = {
   readonly turnWindow?: TurnWindow;
   /** The question, on the runs that chose the anchored window. */
   readonly focusQuery?: string | undefined;
+  /**
+   * The turns whose statements a later turn replaces, and how to render them.
+   *
+   * On the cap record rather than beside it because the cap is what turns a turn into what the reader
+   * sees, and {@link contentFor} is the only function that does that. Present without a
+   * {@link TurnCap.maxTurnChars}, unlike `turnCutMarker`: a mark is not inert without a cap — it is the
+   * whole mechanism — and the routes this was built for run uncapped.
+   */
+  readonly superseded?: SupersededMarks;
 };
 
 /**
@@ -2291,7 +2330,51 @@ function chargeTurn(
   return text;
 }
 
+/**
+ * One turn as the reader will see it: the cap's rendering of it, and then the superseded mark.
+ *
+ * ## Why the cap and the mark are one function with two stages rather than two calls
+ *
+ * Because the mark is appended to whatever the cap produced, and a caller that could apply one without
+ * the other would be able to deliver a capped turn whose mark was cut away by the cap that ran after
+ * it — the failure mode being a mechanism that reports itself on and leaves no trace in the prompt.
+ * `mark` therefore runs strictly second, which also makes its character delta exact: the base is
+ * whatever it was, and the mark adds `SUPERSEDED_MARKER.length` to it.
+ *
+ * ## Why `collapse` does not go through the cap
+ *
+ * Because it discards the base. Charging the cap's counters for a rendering it did not deliver would
+ * make `cut` a count of turns the cap never decided about, and the census is read as "what the cap did
+ * to this window" — see `TurnWindowCensus`. A collapsed turn is charged as a **cut** for the different
+ * and true reason that the delivered text is not the turn's own content, which is exactly what `cut`
+ * counts; `marked` stays 0 because it counts elisions and a collapse emits none.
+ *
+ * ## Absent marks are the identity, by construction
+ *
+ * With `cap.superseded` absent there is no map lookup, no branch taken and no copy: the base goes out
+ * as it came in, which is the byte-identity every archived prompt is reproduced under.
+ */
 function contentFor(turn: AdmittedTurn, cap: TurnCap, tally?: TurnWindowTally): string {
+  const marks = cap.superseded;
+  if (marks !== undefined) {
+    const sentence = marks.turns.get(turn.id);
+    if (sentence !== undefined) {
+      if (marks.rendering === 'collapse') {
+        return chargeTurn(
+          tally,
+          turn,
+          renderSupersededInline(turn.content, sentence, 'collapse'),
+          false,
+        );
+      }
+      return renderSupersededInline(cappedContent(turn, cap, tally), sentence, 'mark');
+    }
+  }
+  return cappedContent(turn, cap, tally);
+}
+
+/** {@link contentFor}'s first stage: what the per-turn cap does to the turn's own content. */
+function cappedContent(turn: AdmittedTurn, cap: TurnCap, tally?: TurnWindowTally): string {
   const max = cap.maxTurnChars;
   if (max === undefined) return chargeTurn(tally, turn, turn.content, false);
   if (cap.turnWindow === 'match' && cap.focusQuery !== undefined) {
@@ -2443,12 +2526,17 @@ const WHITESPACE = /\s/;
  * that cut nothing.
  */
 function capOption(options: TurnCap): TurnCap {
-  if (options.maxTurnChars === undefined) return {};
+  // Checked before the cap, and folded into both returns, because the mark is the one field here that
+  // does not need a cap to be meaningful. Written once rather than in two places so that the uncapped
+  // and capped records cannot disagree about whether a mechanism was configured.
+  const marks = options.superseded === undefined ? {} : { superseded: options.superseded };
+  if (options.maxTurnChars === undefined) return marks;
   return {
     maxTurnChars: options.maxTurnChars,
     ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
     ...(options.focusQuery === undefined ? {} : { focusQuery: options.focusQuery }),
+    ...marks,
   };
 }
 

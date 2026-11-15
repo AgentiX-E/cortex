@@ -30,7 +30,7 @@ table.
 | 2 | question-shape routing | product | **product** | ✓ | ✓ | declared: reads the question only, from no external table | ✓ | 2, e.g. `packages/cortex-memory/src/prompt.ts` | `packages/cortex-memory/src/question-shape.ts` |
 | 3 | per-route evidence room | product | **product** | ✓ | ✓ | declared: the route comes from the product's own classifier | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/width.ts` |
 | 4 | turn window, truncation made visible | product | **product** | ✓ | ✓ | declared: reads the turn it was handed; the cap comes from the arm's options | ✓ | `packages/cortex-memory/src/prompt.ts` | `packages/cortex-memory/src/excerpt.ts` |
-| 5 | inline superseded rendering | gap | **absent** | — | — | declared: not implemented; `conflict.ts` attaches a side block and returns the prompt unchanged when `conflicts !== true` | — | — | — |
+| 5 | inline superseded rendering | product | **product (gated)** | ✓ | ✓ | declared: appends its clause to the turn the product's own statement selection named, and reads no value it did not compute | ✓ | `packages/cortex-memory/src/prompt.ts` | `packages/cortex-memory/src/superseded.ts` |
 | 6 | count arithmetic (tally) | product | **product (gated)** | ✓ | ✓ | declared: sums the ledger parsed out of the reply the product itself requested | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/tally.ts` |
 | 7 | plan-based aggregation (spec) | product | **product (gated)** | ✓ | ✓ | declared: builds its ledger from the sessions the route admitted | ✓ | 2, e.g. `packages/cortex-memory/bench/measure-spec-ceiling.ts` | `packages/cortex-memory/src/aggregation/ledger.ts` |
 | 8 | parse and abstain, null is not empty | product | **product** | ✓ | ✓ | declared: reads the reader's reply; the abstention token is the product's own | ✓ | 3, e.g. `packages/cortex-memory/bench/reparse-report.ts` | `packages/cortex-memory/src/parse.ts` |
@@ -57,14 +57,14 @@ table.
 
 | | rows |
 | --- | ---: |
-| product | 15 |
+| product | 16 |
 | blocked | 1 |
 | instrument | 9 |
-| gap | 1 |
-| of the product rows, behind a configuration switch | 4 |
+| gap | 0 |
+| of the product rows, behind a configuration switch | 5 |
 | **total** | **26** |
 
-Product completeness by this measure: **15/26** capabilities are reachable by a customer. The rest are 1 blocked, 9 owned by the instrument and 1 absent.
+Product completeness by this measure: **16/26** capabilities are reachable by a customer. The rest are 1 blocked, 9 owned by the instrument and 0 absent.
 
 ## Why `D3` is declared and not derived
 

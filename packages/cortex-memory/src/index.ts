@@ -208,6 +208,23 @@ export {
 } from './corpus.js';
 
 /**
+ * The inline superseded mark: what the reader sees where the replaced statement is.
+ *
+ * The marker and the sentence are exported together because the acceptance clause is arithmetic on the
+ * first and a reach assertion on the second, and a test that had to restate either string would be
+ * asserting a copy rather than the product's decision.
+ */
+export {
+  SUPERSEDED_COLLAPSED,
+  SUPERSEDED_MARKER,
+  renderSupersededInline,
+  supersededTurns,
+  type SupersededMarks,
+  type SupersededRendering,
+  type SupersededTurn,
+} from './superseded.js';
+
+/**
  * The known-good assembly: the one function an integrator calls.
  *
  * Exported by name rather than as a namespace because the profiles are the product decision this package

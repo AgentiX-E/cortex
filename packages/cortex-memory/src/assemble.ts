@@ -41,6 +41,7 @@ import { Corpus } from './corpus.js';
 import { DisclosureSession } from './disclosure/session.js';
 import { CortexMemory } from './memory.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
+import type { SupersededRendering } from './superseded.js';
 import type { GateOptions } from './types.js';
 
 /** How much of the product one call wires up. See the table in the module comment. */
@@ -85,6 +86,15 @@ export type AssembleOptions = {
   readonly index?: Omit<SearchIndexOptions, 'embed' | 'store'> | undefined;
   /** An existing corpus, when the caller already has one — a second assembly over a live transcript. */
   readonly corpus?: Corpus | undefined;
+  /**
+   * What the rendering does to a turn whose value the evidence later replaces. Absent is `off`.
+   *
+   * On the assembly rather than on each call because it is a product decision about how a transcript is
+   * shown, and a caller who has one should not have to remember to pass it to six routes. `assemble.test.ts`
+   * drives both arms through `askStored`, so "the option reached the prompt" is a claim about the composed
+   * product rather than about the class.
+   */
+  readonly supersededRendering?: SupersededRendering | undefined;
 };
 
 /** What a profile wires up, as the objects themselves rather than as a bag of booleans. */
@@ -146,6 +156,9 @@ export function assembleMemory(options: AssembleOptions): Installation {
     corpus,
     ...(index === undefined ? {} : { index }),
     ...(options.name === undefined ? {} : { name: options.name }),
+    ...(options.supersededRendering === undefined
+      ? {}
+      : { supersededRendering: options.supersededRendering }),
   });
 
   return { profile, memory, corpus, disclosure };

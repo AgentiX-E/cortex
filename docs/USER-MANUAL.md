@@ -543,6 +543,7 @@ Three fields are required and each is required for a reason:
 | `selfConsistency` | `number` | absent (1) | Consultations per question and majority reduction. Must be a positive integer; refused with `reviewPass: 'audit'`. |
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder, as two injections. |
 | `conflicts` | `boolean` | absent (off) | Prints the statements that state one detail twice, in evidence order, between the evidence and the question. Reaches flat, temporal, knowledge-update and assistant; abstention and multi-session are excluded. §6.4. |
+| `supersededRendering` | `'off' \| 'mark' \| 'collapse'` | absent (off) | Marks the turn whose own words state a value the evidence later replaces, **inside** that turn's rendering. `'mark'` appends one bracketed clause; `'collapse'` keeps only the sentence at issue. Reaches multi-session and the four flat routes; abstention is excluded. §6.7. |
 | `corpus` | `Corpus` | absent | The transcript this instance holds. Present, `remember()` and `askStored()` work and the memory stops being a function of its arguments; absent, every route is byte-identical to before this option existed. §5.3. |
 | `semanticCarry` | `boolean` | absent (off) | Whether a prompt may carry a value change the store has already authorised. When a `knowledge-update` answer is replaced by a later dated span, the pair becomes a typed fact with a `supersedes` edge, and a later question whose window still carries the record the change was read from is told which value is current. Off by default: absent reproduces every archived prompt byte for byte. §6.5. |
 <!-- /contract-table -->
@@ -802,6 +803,7 @@ and no worked example of which combination runs. `assembleMemory` is that exampl
 | `gate` | `Partial<GateOptions>` | identity (`0` / `0` / unbounded) | Overrides for the admission and retrieval gates, §6.2. |
 | `index` | `Omit<SearchIndexOptions, 'embed' \| 'store'>` | absent | Retrieval knobs other than the embedder and the store, which this function owns: `k`, `reuse`, the reranker. |
 | `corpus` | `Corpus` | a new one over `storage` | An existing transcript, when you already have one — a second assembly over a live corpus. |
+| `supersededRendering` | `'off' \| 'mark' \| 'collapse'` | absent (off) | What the rendering does to a turn whose value the evidence later replaces. On the assembly rather than per call, because it is a product decision about how a transcript is shown. §6.7. |
 <!-- /contract-table -->
 
 ```ts
@@ -843,6 +845,10 @@ console.log(await install.memory.askStored('Where did I move?')); // routed to a
 // A second assembly over the transcript the first one is writing. `corpus` is shared, the gate is not.
 const second = assembleMemory({ llm, now, storage, corpus: install.corpus, profile: 'reader' });
 void second;
+
+// The same transcript, with the statement a later turn replaces marked where the reader meets it.
+const marked = assembleMemory({ llm, now, storage, profile: 'full', shared, supersededRendering: 'mark' });
+void marked;
 void smallest;
 void reader;
 ```
@@ -858,6 +864,52 @@ Two things are deliberately **not** defaulted:
 The function is named `assembleMemory` rather than `createMemory` because `cortex-core` already exports
 `createMemory` for the domain's `Memory` value, and two functions with one name an import apart is how a
 reader calls the wrong one.
+
+### 6.7 Marking the statement a later turn replaces
+
+A transcript that updates a value — a follower count, a class day, a price — states the old value first.
+The failure that costs the most on `knowledge-update` questions is not retrieval: the later statement is
+delivered, the instruction block already says to prefer the later date, and the reply answers with the
+earlier one anyway. The comparison is one the reader has to **find** inside 23,084 characters of
+conversation before it can perform.
+
+`supersededRendering` puts one bracketed clause next to the statement itself:
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+const memory = new CortexMemory({
+  llm,
+  now: 0,
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 8 },
+  supersededRendering: 'mark',
+});
+```
+
+| value | the reader sees | what it costs |
+| --- | --- | --- |
+| `'off'` (absent) | the turn, unchanged | nothing; the prompt is byte-identical to the one before this option existed |
+| `'mark'` | the turn, then `[this states a value a later turn replaces]` | the marker's length per marked turn |
+| `'collapse'` | `[replaced value] ` and the one sentence at issue | the sentence instead of the turn |
+
+Three properties are worth stating because they are the ones an integrator would otherwise discover:
+
+- **It is not `conflicts`.** `conflicts` adds a section *after* the evidence; this appends to a turn
+  *inside* it. The section was priced on the `KU` twin questions at **-4.75** over four repetitions (all
+  four negative, monotone deepening), and the reading is that a block read after the answer is formed
+  asks the reader to re-decide. The mark names no value and asks no question, so it is a different
+  treatment with a different hypothesis — it is off by default and its own dispatch decides.
+- **It reaches multi-session**, which `conflicts` does not. A mark inside a turn does not flatten session
+  boundaries, and `askStored` — the only asking method `assembleMemory` gives you — routes there. A reach
+  copied from `conflicts` would have shipped a mechanism no customer could reach; `assemble.test.ts`
+  asserts the composition rather than the route method.
+- **It is charged to the evidence budget.** The mark lives inside the evidence, so it is counted when the
+  room is spent; a prompt within one marker of its budget delivers one turn fewer with the mark on than
+  with it off. That is the price of putting it inside rather than beside, and it is arithmetic — the
+  delta on any prompt whose delivered set does not move is the marker's length times the number of
+  marked turns.
 
 ## 7. Reading a decision back
 

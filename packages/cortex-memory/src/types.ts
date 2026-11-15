@@ -11,6 +11,7 @@ import type { LLM, ValueFunction } from '@agentix-e/cortex-core';
 import type { Corpus } from './corpus.js';
 import type { EvidenceAsk, PromptContract, RelevanceUnits, TurnCutMarker } from './prompt.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
+import type { SupersededRendering } from './superseded.js';
 import type { WidthPlanOptions } from './width.js';
 import type { TurnWindow } from './excerpt.js';
 
@@ -567,6 +568,51 @@ export type CortexMemoryOptions = {
    * existed.
    */
   conflicts?: boolean;
+  /**
+   * What the rendering does to a turn whose own words state a value the evidence later replaces.
+   *
+   * ## Why this is not `conflicts`
+   *
+   * `conflicts` adds a **section**: two statements, in evidence order, between the evidence and the
+   * question. It was priced, and it moves the `KU` twin questions by **-4.75** across four repetitions,
+   * all four negative and monotone deepening. The reading that explains the sign is in its own cost
+   * case: a block after the evidence is read after the reader has formed an answer, and a block naming
+   * both statements tells the reader they are both candidates.
+   *
+   * This moves the mark instead. One bracketed clause is appended **inside** the turn that states the
+   * replaced value, so the reader meets it at the sentence it is about, and the clause names no value and
+   * asks no question — it states the one fact the reader can check against the evidence it already has.
+   * The judgement is not touched: `supersededTurns` reads the statement selection `conflict.ts` already
+   * makes, so the two arms cannot disagree about which turns are in question.
+   *
+   * ## The three values, and what each one costs
+   *
+   * | value | what the reader gets | characters |
+   * | --- | --- | --- |
+   * | `'off'` | the turn, unchanged | 0 |
+   * | `'mark'` | the turn, then `[this states a value a later turn replaces]` | +`SUPERSEDED_MARKER.length` per marked turn |
+   * | `'collapse'` | `[replaced value] ` and the one sentence at issue | the sentence, instead of the turn |
+   *
+   * `'collapse'` is a **cost** lever and its reading is a cost reading: a shorter turn buys more turns in
+   * the same room, so its delivered multiset differs from its control's by construction and a paired
+   * accuracy comparison of that arm is confounded. `'mark'` is the accuracy arm and is priced against the
+   * control the same way the side block was.
+   *
+   * ## Why the mark is charged to the budget and the side block is not
+   *
+   * The block is inserted after `fitToBudget` decided the carried set, so a run carrying it delivers
+   * exactly what its control delivered and can exceed `maxPromptChars` by the block's size. The mark
+   * cannot do that: it lives inside the evidence, so hiding it from the length arithmetic would let a
+   * run report a room it does not fit in. It is therefore measured, which makes the delta exact —
+   * the marker's length per marked turn — on every prompt whose delivered set does not move.
+   *
+   * ## Absent, and what it means for a caller
+   *
+   * Absent means off, and an off run's prompts are byte-identical to the ones before this option
+   * existed. The reach is the five routes that assemble through `#answerWithBareRetry` minus the
+   * abstention route — the same reach `conflicts` declares, for the same one-variable reason.
+   */
+  supersededRendering?: SupersededRendering;
   /**
    * The kinds of turn the evidence may be built from. Absent means every turn.
    *

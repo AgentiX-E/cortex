@@ -31,6 +31,7 @@ import type {
 } from '@agentix-e/cortex-core';
 import { MemoryEmbeddingCacheStore, decideRetrieval, leastRetained } from '@agentix-e/cortex-core';
 import { conflictBlock, insertRelatedStatements } from './conflict.js';
+import { supersededTurns, type SupersededMarks } from './superseded.js';
 import type { AppendReport, Corpus, CorpusTurn } from './corpus.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
 import {
@@ -2126,6 +2127,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // when no line survived — an always-present key holding `[]` reads as "configured" to the `!== undefined`
     // checks this file uses elsewhere, and this one has to be inert when it has nothing to say.
     const updates = this.#updatesFor(kept);
+    // Before the prompt, for the reason the width and the updates are: the mark is a rendering of the
+    // turns this route will deliver, and a mark computed after the assembly would be a description of a
+    // prompt rather than an input to one.
+    const superseded = this.#supersededMarks(question, kept, route);
     const assembled = this.#withConflicts(
       question,
       kept,
@@ -2138,6 +2143,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
           ...options,
           ...(questionDate === undefined ? {} : { questionDate }),
           ...(updates.length === 0 ? {} : { knownUpdates: updates }),
+          ...(superseded === undefined ? {} : { superseded }),
         },
         ordering,
       ),
@@ -2501,13 +2507,21 @@ export class CortexMemory implements SessionAwareMemorySystem {
       )?.plan?.evidenceChars,
       relevance,
     );
+    const sessionTurns = sessions.flatMap((session) => session.turns);
+    const superseded = this.#supersededMarks(question, sessionTurns, 'multi-session');
     const assembled = buildSessionPrompt(
       question,
       sessions,
       // The multi-session route, named here rather than defaulted: this builder is the one
       // §13.72 measured at +13, so a default would make the measurement's route the one route
       // whose reach is never written down.
-      options,
+      //
+      // The superseded mark is the one option composed here rather than read from `#promptOptions`,
+      // because `#promptOptions` is shared with the five flat routes and this is the route the
+      // composition root's `askStored` reaches. A mark computed over the flattened sessions rather than
+      // over what each block will carry is the same set: `buildSessionPrompt` renders every admitted turn
+      // of every session, and the budget's subset is keyed by turn id.
+      superseded === undefined ? options : { ...options, superseded },
     );
 
     this.#lastReview = null;
@@ -2911,6 +2925,55 @@ export class CortexMemory implements SessionAwareMemorySystem {
   #promptCharsFor(route: TurnCapRoute): number | undefined {
     const named = this.#options.maxPromptCharsByRoute?.[route];
     return named ?? this.#options.maxPromptChars;
+  }
+
+  /**
+   * The turns whose own words state a value the evidence later replaces, or `undefined` when the arm is
+   * off.
+   *
+   * ## Why the reach is five routes, and why that is one more than the side block's
+   *
+   * `conflicts` reaches four: the block is excluded from abstention (its gold is a decline) and from
+   * multi-session, where "a block that flattened the sessions back into one order would undo the one
+   * thing that builder is for". Neither reason transfers to a mark. A mark is not a section — it is
+   * appended to a turn **inside** its block, so the session boundaries are exactly where the renderer
+   * drew them — and it names no value, so it is not an invitation to answer.
+   *
+   * The first draft of this method copied `conflicts`' reach anyway, on the argument that an arm which
+   * reached one route more than its own control is two variables. Composing the product then showed what
+   * that costs: `askStored` — the only method `assembleMemory` gives a customer for asking a question of
+   * a transcript — routes to **multi-session**, so a mark excluded there would have been a mechanism that
+   * exists in the package and is unreachable from the composition root. The reach is five, and the test
+   * that catches this class is in `assemble.test.ts`, where it is asserted through `askStored` rather than
+   * through a route method.
+   *
+   * Abstention stays excluded, and its reason is the same one the side block gives: `ABS`'s gold is a
+   * decline and its evidence arrives to be declined over.
+   *
+   * ## Why it is computed here and not inside the builder
+   *
+   * Because the selection is a function of the **route-filtered** turns, and only this depth knows which
+   * turns those are. A mark computed over the unfiltered list would name a turn the route then dropped,
+   * which renders as a mechanism that fired with nothing to show.
+   *
+   * ## `undefined` for both "off" and "nothing to mark", because the two produce the same prompt
+   *
+   * They are not the same fact about the run, and the run says which one it is: the configuration is in
+   * the artifact (`supersededRendering`), and whether it had anything to mark is what a paired reading
+   * against the control measures. Returning an empty map instead would put a `superseded` key on every
+   * prompt options record, which is the always-present-key defect the `knownUpdates` comment records.
+   */
+  #supersededMarks(
+    question: string,
+    turns: readonly AdmittedTurn[],
+    route: TurnCapRoute,
+  ): SupersededMarks | undefined {
+    const rendering = this.#options.supersededRendering;
+    if (rendering === 'off' || rendering === undefined) return undefined;
+    if (route === 'abstention') return undefined;
+    const replaced = supersededTurns(question, turns);
+    if (replaced.length === 0) return undefined;
+    return { rendering, turns: new Map(replaced.map((entry) => [entry.id, entry.sentence])) };
   }
 
   /**

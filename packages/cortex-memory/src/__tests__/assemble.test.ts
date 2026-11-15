@@ -25,6 +25,7 @@ import { ERASURE_TOKEN } from '@agentix-e/cortex-core';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 
 import { assembleMemory, type AssemblyProfile } from '../assemble.js';
+import { SUPERSEDED_MARKER } from '../superseded.js';
 
 const NOW = 1_759_470_000_000;
 
@@ -134,6 +135,71 @@ describe('each profile gets from a transcript to an answer', () => {
     await vector.memory.askStored('Where did I move?');
     expect(calls.length).toBeGreaterThan(0);
     expect(vector.memory.indexCost()?.embedTexts ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('the superseded mark is reachable from the composition root', () => {
+  /**
+   * Two statements of one detail in two sessions, which is what a transcript actually looks like.
+   *
+   * The wording is `a2f3aa27`'s, the `KU` question that answers 1250 against a gold of 1300 in all four
+   * repetitions of its run.
+   */
+  const CHANGED = [
+    {
+      sessionId: 's1',
+      ordinal: 0,
+      text: 'I have got 1250 followers on Instagram now, so insights would help.',
+    },
+    {
+      sessionId: 's2',
+      ordinal: 0,
+      text: 'I think I am close to 1300 followers on Instagram now, honestly.',
+    },
+  ];
+  const ASK = 'How many followers do I have on Instagram now?';
+
+  /** One assembly, one question, the prompt the model was handed. */
+  async function promptThrough(
+    rendering: 'mark' | undefined,
+    profile: AssemblyProfile = 'reader',
+  ): Promise<string> {
+    const seen: string[] = [];
+    const install = assembleMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      storage: new SqliteStorage(),
+      profile,
+      ...(profile === 'full' ? { shared: new SqliteStorage() } : {}),
+      ...(rendering === undefined ? {} : { supersededRendering: rendering }),
+    });
+    await install.memory.remember(CHANGED);
+    await install.memory.askStored(ASK);
+    expect(seen).toHaveLength(1);
+    return seen[0]!;
+  }
+
+  /**
+   * This is the assertion §16 of the plan exists for: the capability is *composed*, not merely present.
+   *
+   * `askStored` is the only method `assembleMemory` gives a customer for asking a transcript a question,
+   * and it routes to **multi-session** — the route `conflicts` excludes. A reach copied from `conflicts`
+   * would have passed every unit test in `superseded-inline.test.ts` and delivered a mark no customer
+   * could ever see. So the assertion is made here, through the product's own entry point, and it would
+   * fail on the earlier wiring.
+   */
+  it('marks the replaced statement through `remember` → `askStored`', async () => {
+    const off = await promptThrough(undefined);
+    const on = await promptThrough('mark');
+    expect(off).not.toContain(SUPERSEDED_MARKER);
+    expect(on).toContain(`${CHANGED[0]!.text}${SUPERSEDED_MARKER}`);
+    expect(on.replace(SUPERSEDED_MARKER, '')).toBe(off);
+    expect(on.length - off.length).toBe(SUPERSEDED_MARKER.length);
+  });
+
+  it('is off by default, and `full` reaches the same mechanism', async () => {
+    expect(await promptThrough(undefined, 'full')).not.toContain(SUPERSEDED_MARKER);
+    expect(await promptThrough('mark', 'full')).toContain(SUPERSEDED_MARKER);
   });
 });
 
