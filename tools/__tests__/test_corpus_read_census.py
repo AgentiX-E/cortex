@@ -74,8 +74,15 @@ def artifact() -> dict:
     return json.loads(ARTIFACT.read_text(encoding='utf-8'))
 
 
-def digest() -> str:
-    return hashlib.sha256(ARTIFACT.read_bytes()).hexdigest()
+def digest() -> str | None:
+    """The tracked artifact's hash, or `None` when this checkout does not have the other repository.
+
+    `cortex`'s CI checks out `cortex` alone; the evidence lives in `cortex-docs`. The previous version of
+    this file could not notice because it only ever **wrote** that path -- `mkdirSync` created the
+    directory tree, and `writeFileSync` made a file inside a repository that was not in the runner. So a
+    gate "passed" in CI by producing evidence for a checkout nobody could read.
+    """
+    return None if not ARTIFACT.exists() else hashlib.sha256(ARTIFACT.read_bytes()).hexdigest()
 
 
 @pytest.fixture(scope='module')
@@ -158,6 +165,11 @@ class TestTheGateIsNotAWriter:
         # This is the defect the change fixes, asserted as a property rather than described in a comment:
         # `pnpm check` runs the tool, the tool used to rewrite a tracked file in another repository, and the
         # value it wrote depends on what else the machine was doing.
+        #
+        # Both branches assert the same property. When the sibling repository is checked out the file must be
+        # byte-identical afterwards; when it is not -- `cortex`'s CI checks out one repository -- the file
+        # must still not exist, which is the stronger statement of the same rule and the one the old tool
+        # would have failed by creating it.
         before = digest()
         done = run()
         assert done.returncode == 0, done.stderr
@@ -179,6 +191,14 @@ class TestTheGateIsNotAWriter:
         assert '--out needs a path' in done.stderr
 
 
+@pytest.mark.skipif(
+    not ARTIFACT.exists(),
+    reason=(
+        'the evidence lives in the sibling `cortex-docs` checkout, and this repository\'s CI checks out '
+        '`cortex` alone; a test that required it here would fail for the checkout shape rather than for a '
+        'defect'
+    ),
+)
 class TestTheCommittedArtifact:
     def test_the_committed_reading_is_the_clean_one_and_still_inside_the_clause(self) -> None:
         # The evidence a reader cites. Held to the clause here rather than trusted: an artifact recorded
