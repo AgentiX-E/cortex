@@ -80,6 +80,19 @@ REPLY_REPAIR_VARIABLE = "CORTEX_MEMORY_REPLY_REPAIR"
 # dispatch, so a run can never inherit the previous experiment's treatment.
 CONFLICTS_VARIABLE = "CORTEX_MEMORY_CONFLICTS"
 
+# §18's inline superseded rendering. A repository variable for the same three reasons the three above
+# are, and with one difference that is worth stating: its value is a *name* rather than a toggle, so a
+# stale `mark` left behind would administer a rendering the next dispatch did not ask for while the
+# artifact — which records what the product applied — would say `mark` and be right. That is why the
+# reset is unconditional here as well: the artifact cannot be wrong about this field, and a reader
+# comparing two artifacts must not have to know what the previous experiment left in a variable.
+#
+# The names are duplicated from `cortex-eval`'s reader rather than imported, for the reason every
+# constant in this file is, and `test_superseded_wiring.py` checks the list against the product's own
+# `SupersededRendering` union so a value added on one side and not the other fails there.
+SUPERSEDED_VARIABLE = "CORTEX_MEMORY_SUPERSEDED"
+SUPERSEDED_RENDERINGS = ("off", "mark", "collapse")
+
 # The admission gate's two axes (`§13.101`'s unreachable pair): the threshold the value function is
 # cut at, and the signal that makes the value vary in the first place.
 #
@@ -843,6 +856,32 @@ def conflicts_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def superseded_switch(environ: dict[str, str] | None = None) -> str:
+    """The rendering this dispatch asks for: `off`, `mark` or `collapse`.
+
+    Read from the dispatcher's environment for the reason `conflicts_switch` is: `--set` is checked
+    against the registered table, and this is deliberately not a workflow input. Strict on the value,
+    because a typo that fell back to `off` would produce a control reading under a dispatch that asked
+    for the marker -- and the artifact would say `superseded=off`, which is true and useless.
+
+    A name rather than a toggle because §18 registers two treatments: `mark` is charged against the
+    evidence budget and `collapse` is not, so a boolean would have to pick one and publish the other
+    under its name.
+    """
+    raw = ((environ if environ is not None else os.environ).get(SUPERSEDED_VARIABLE) or "").strip()
+    if raw in ("", "off"):
+        return "off"
+    if raw in SUPERSEDED_RENDERINGS:
+        return raw
+    raise SystemExit(
+        f"{SUPERSEDED_VARIABLE} must be one of {SUPERSEDED_RENDERINGS} (or unset): got {raw!r}. An "
+        "unrecognised rendering is refused rather than defaulted, because the mechanism this switch "
+        "prices carries a measured prior of -4.75 questions: a run that silently rendered the control "
+        "would be read as evidence that marking costs knowledge-update accuracy, which is the "
+        "opposite of what an unwired dispatch demonstrates."
+    )
+
+
 def oracle_switch(environ: dict[str, str] | None = None) -> str:
     """`'1'` when this dispatch grades gold evidence, `'0'` otherwise.
 
@@ -1175,6 +1214,9 @@ def main(argv: list[str] | None = None) -> int:
     # only when the condition is on -- declaring a field the run left at its registered value would be
     # the "names a field this run did not move" case the gate reports as an intention.
     conflicts = conflicts_switch()
+    # §18. Read here, before the declaration, because the declaration is derived from it: the artifact's
+    # own field name joins the list only when the run moves it, and `off` is the registered value.
+    superseded = superseded_switch()
     declared = sorted(
         {
             *declared,
@@ -1184,6 +1226,11 @@ def main(argv: list[str] | None = None) -> int:
             # `false` is the registered arm, and declaring it would be the "names a field this run
             # did not move" case the gate reports as an intention.
             *(("conflicts",) if conflicts == "1" else ()),
+            # §18, on the same rule and for the same reason. `memoryArmConfig.supersededRendering` is
+            # always present on the artifact, and the gate compares it against the registered arm --
+            # so the declaration is what tells the gate that a departure is intended rather than left
+            # behind by the previous experiment.
+            *(("supersededRendering",) if superseded != "off" else ()),
         }
     )
     declare_departures(declared)
@@ -1201,6 +1248,11 @@ def main(argv: list[str] | None = None) -> int:
     # `both` left behind by the last experiment would administer a treatment this dispatch did not name.
     write_variable(REPLY_REPAIR_VARIABLE, repair)
     print(f"{REPLY_REPAIR_VARIABLE} = {repair}{' *' if repair != 'off' else ''}")
+    # Written unconditionally for the reason the four above are, and this one is the strongest case of
+    # the four: a stale `mark` would administer a rendering this dispatch never named, and because the
+    # artifact records what the product *applied*, the record would be accurate about the wrong run.
+    write_variable(SUPERSEDED_VARIABLE, superseded)
+    print(f"{SUPERSEDED_VARIABLE} = {superseded}{' *' if superseded != 'off' else ''}")
     # The gate's two axes, written before the dispatch and unconditionally for the reason the three
     # above are: the workflow reads them when the job starts, and a threshold inherited from the last
     # experiment would gate an arm this dispatch believed open. Unlike the three above, the values

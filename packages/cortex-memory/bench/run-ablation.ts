@@ -167,6 +167,10 @@ import {
   // `self-index`'s options record, named here for the reason `WidthPlanOptions` is: the product owns the
   // shape (its index is the product's own), and the arm supplies an instance of it rather than a copy.
   type SearchIndexOptions,
+  // §18's rendering, named here for the reason `PromptContract` is: the arm carries it as `string`
+  // because `cortex-eval` cannot import this package, and the cast at the constructor states that the
+  // value has already been validated against the product's own list rather than re-checking it.
+  type SupersededRendering,
 } from '../src/index.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -907,6 +911,18 @@ async function main(): Promise<void> {
       // does not name it reproduces the previous prompt byte for byte -- which `conflict-reach.test.ts`
       // asserts on all six routes rather than assuming.
       ...(armOptions.conflicts === true ? { conflicts: true } : {}),
+      // §18. The inline superseded rendering, spread conditionally for the reason `conflicts` is: `off`
+      // IS the shipped behaviour and is expressed by NOT passing the key, so a run that does not name a
+      // rendering reproduces every archived prompt byte for byte. The cast is at this boundary for the
+      // reason `promptContract`'s is: `cortex-eval` carries the value as `string` because the dependency
+      // runs the other way, and `readSuperseded` validates it against the arm's own list at parse time,
+      // throwing on anything unrecognised -- so by the time execution reaches here the value IS one of
+      // the union's members, and the assertion states that rather than re-checking it.
+      ...(armOptions.supersededRendering === undefined || armOptions.supersededRendering === 'off'
+        ? {}
+        : {
+            supersededRendering: armOptions.supersededRendering as SupersededRendering,
+          }),
       // §E6. The semantic layer's carry switch, and the option whose absence is why six rounds recorded
       // "E6 is `unrun`" as though the obstacle were a dispatch: the treatment had no on-switch in any
       // measurement this project can run, so `deltaQuestions` would have been `0` for the same reason a

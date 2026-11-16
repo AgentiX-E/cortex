@@ -778,6 +778,21 @@ export type MemoryArmConfig = {
    */
   readonly semanticCarry?: boolean | undefined;
   /**
+   * What the run did to a turn a later turn replaces: `'off'`, `'mark'` or `'collapse'` (§18).
+   *
+   * Always present, `off` included, for the reason {@link MemoryArmConfig.conflicts} is: an artifact
+   * has to answer what the run did, and a field that is only present under treatment makes "ran the
+   * control" and "predates the field" the same row -- which is the exact ambiguity that made the
+   * mechanism's own prior (`-4.75`, four repetitions, all negative) unattributable to this rendering
+   * rather than to the block it replaced.
+   *
+   * A string rather than a boolean because there are two treatments and they spend the prompt
+   * differently: `mark` appends a clause **inside** the turn and is charged against the evidence
+   * budget, while `collapse` replaces the value with a shorter form and is not. A boolean would have
+   * to name one of them, and the reading is the comparison between them.
+   */
+  readonly supersededRendering?: string | undefined;
+  /**
    * The multi-session consultation count the run used (§13.101).
    *
    * Always present, `none` included, for the reason {@link MemoryArmConfig.reviewPass} is: an artifact
@@ -1923,6 +1938,12 @@ export function formatAblationReport(report: AblationReport): string {
         // nothing between windows) rather than a missing field, and the dispatch that administers the semantic
         // layer has to be distinguishable from its control on the line a human reads, not only in the JSON.
         `, \`semanticCarry=${memoryArm.semanticCarry === true}\`` +
+        // §18. Rendered on every run for the reason `semanticCarry` is, and as a value rather than a
+        // boolean because the two treatments spend the prompt differently: `mark` is charged against
+        // the evidence budget, `collapse` is not. A run whose artifact spelled only a boolean would
+        // leave the two indistinguishable on the line a human reads, and the reading is exactly the
+        // comparison between them.
+        `, \`superseded=${memoryArm.supersededRendering ?? 'off'}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
         // refused whole. One field rather than three so the line stays a configuration

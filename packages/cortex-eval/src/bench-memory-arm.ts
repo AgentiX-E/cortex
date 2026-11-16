@@ -316,6 +316,29 @@ export type CortexMemoryArmOptions = {
    */
   conflicts?: boolean | undefined;
   /**
+   * What the product does to a turn a later turn replaces (§18).
+   *
+   * ## Why the arm needs its own switch rather than reading `conflicts`
+   *
+   * The two mechanisms act on the same evidence and are priced very differently, and the difference
+   * is **where the sentence appears**. `conflicts` prints a block *after* the evidence, so a reader
+   * has already formed an answer when it arrives; its four repetitions on the registered roster read
+   * `-1 / -4 / -6 / -8` questions, all negative and monotonically deeper. The inline rendering appends
+   * a clause **inside** the turn that states the value, so it is read at the moment the value is.
+   * That distinction is a hypothesis until a run administers one and not the other, which is what this
+   * option exists to make possible.
+   *
+   * A string rather than a boolean because there are two treatments rather than a state and its
+   * absence: `mark` appends `\n[this states a value a later turn replaces]` and is therefore charged
+   * against the evidence budget, while `collapse` replaces the value with `[replaced value] ` and is
+   * not. A run that could only spell `true` would measure one of them and publish it under both names.
+   *
+   * The mechanism is `cortex-memory/src/superseded.ts`; it spends **zero model calls**, and it lives
+   * behind the product's own option (`CortexMemoryOptions.supersededRendering`), whose default is
+   * `off` -- so an arm that names nothing here reproduces every archived prompt byte for byte.
+   */
+  supersededRendering?: string | undefined;
+  /**
    * Whether the product carries an authorised semantic update into a later window (§E6).
    *
    * ## Why this option had to exist before E6 could be called `unrun`
@@ -1219,6 +1242,11 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // Projected too, because it is a state rather than a treatment: a disabled arm cuts
       // nothing, so the only truthful value is the one that says so.
       turnCutMarker: DEFAULT_TURN_CUT_MARKER,
+      // Projected in the disabled state as well, and as `off` rather than by omission, for the reason
+      // `turnCutMarker` is: a disabled arm renders no prompt, so the only truthful value is the one
+      // that says the mechanism did nothing. Reading the variable here instead would let a run that
+      // consulted no model carry a treatment on its record.
+      supersededRendering: DEFAULT_SUPERSEDED_RENDERING,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
@@ -1295,6 +1323,11 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     // window nor width: `head` is what an absent field renders, so writing it would make "ran the default"
     // and "ran head explicitly" the same bytes on the artifact.
     ...(turnCap.window === undefined ? {} : { turnWindow: turnCap.window }),
+    // §18. Always present for the reason `turnCutMarker` is, and read through the parser that refuses
+    // an unknown name: `off` is a state this experiment dispatches as its control, so a run that
+    // spelled nothing and a run that spelled `off` must not be the same bytes -- the difference
+    // between them is whether the mechanism existed when the artifact was written.
+    supersededRendering: readSuperseded(env[SUPERSEDED_VARIABLE]),
   };
 }
 
@@ -1886,6 +1919,58 @@ const CONFLICTS_VARIABLE = 'CORTEX_MEMORY_CONFLICTS';
  */
 const SEMANTIC_CARRY_VARIABLE = 'CORTEX_MEMORY_SEMANTIC_CARRY';
 const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
+
+/** The variable this arm reads for §18's inline superseded rendering. */
+const SUPERSEDED_VARIABLE = 'CORTEX_MEMORY_SUPERSEDED';
+
+/**
+ * The renderings this arm can dispatch, and what each spends.
+ *
+ * Duplicated from `cortex-memory/src/superseded.ts` rather than imported, because the dependency
+ * runs the other way: `cortex-eval` cannot see the product, which is the same reason
+ * `PROMPT_CONTRACTS` is a local table. The duplication is not left to trust -- `readSuperseded`
+ * rejects anything outside this list, and the arm test asserts the list against the product's own
+ * `SUPERSEDED_RENDERINGS`, so a value added on one side and not the other fails here rather than
+ * producing a run that names a rendering the product silently ignored.
+ */
+const SUPERSEDED_RENDERINGS = {
+  /** The shipped state: the turn is rendered exactly as it was stored. */
+  off: 'off',
+  /** The clause is appended inside the turn, and is charged against the evidence budget. */
+  mark: 'mark',
+  /** The replaced value is shortened in place, and the shortening is not charged. */
+  collapse: 'collapse',
+} as const;
+
+/** The rendering a run gets when it names none, which is what every archived artifact carried. */
+const DEFAULT_SUPERSEDED_RENDERING = SUPERSEDED_RENDERINGS.off;
+
+/**
+ * The rendering this run asks for, refusing a name the product cannot apply.
+ *
+ * Strict rather than defaulting, for the reason `readPromptContract` is strict: a run dispatched to
+ * price the marker that silently rendered nothing would publish the control's reading under the
+ * treatment's name, and the artifact -- whose whole point is that it says what ran -- would agree with
+ * the dispatch rather than with the code. `off` is spelled rather than omitted at the call site so
+ * that a blank variable is a *state* the record can carry, not a missing field.
+ */
+function readSuperseded(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_SUPERSEDED_RENDERING;
+
+  const value = raw.trim();
+  const known = Object.keys(SUPERSEDED_RENDERINGS);
+  if (!known.includes(value)) {
+    throw new Error(
+      `${SUPERSEDED_VARIABLE} must be one of ${known.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}. An unrecognised rendering is rejected rather than ` +
+        'defaulted to off: the mechanism this variable exists to price has a measured prior of ' +
+        '-4.75 questions, so a run that asked for it and silently rendered the control would be ' +
+        'read as evidence that marking does not move knowledge-update, which is the opposite of ' +
+        'what an unwired dispatch demonstrates.',
+    );
+  }
+  return value;
+}
 
 /**
  * The expansions this arm can dispatch, in the order the config line spells them.
@@ -2841,6 +2926,12 @@ export function toMemoryArmConfig(
     // §E6. Always present for the reason `conflicts` is: `false` is a state a run can be dispatched to, so an
     // artifact that spelled nothing would leave "ran the control" and "predates the field" as the same bytes.
     semanticCarry: options.semanticCarry === true,
+    // §18. Always present for the reason `semanticCarry` is, and defaulted rather than required because
+    // a caller that builds this object by hand -- several tests do -- leaves the field `undefined`, and
+    // a projection written as `options.supersededRendering` would then put no value on the record while
+    // a reader took the absence for `off`, which is exactly the "predates the field" ambiguity every
+    // always-present member of this block exists to remove.
+    supersededRendering: options.supersededRendering ?? DEFAULT_SUPERSEDED_RENDERING,
     // §13.101. Always present for the reason `queryExpansion` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.

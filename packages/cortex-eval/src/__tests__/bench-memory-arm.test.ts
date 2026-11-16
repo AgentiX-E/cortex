@@ -1018,6 +1018,10 @@ describe('source trust reaches the artifact', () => {
       // §E6. Stated on every artifact for the same reason the two fields above are: `false`
       // is a fact about the run, not a missing field.
       semanticCarry: false,
+      // §18. Stated on every artifact for the same reason the three fields above are: `off` is the
+      // rendering every archived prompt was produced under, and a run that spelled nothing would be
+      // indistinguishable from one written before the field existed.
+      supersededRendering: 'off',
       threshold: 0.2,
       retrievalThreshold: 0.25,
       sessionBudget: null,
@@ -1544,6 +1548,8 @@ describe('runCortexMemoryArm', () => {
         // §E6. Stated on every artifact for the same reason the two fields above are: `false`
         // is a fact about the run, not a missing field.
         semanticCarry: false,
+        // §18. Stated on every artifact, for the same reason.
+        supersededRendering: 'off',
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
@@ -1986,6 +1992,10 @@ describe('blank values from unfilled dispatch inputs', () => {
       // window carried anything, and `true` here would put a treatment on the record of a run that never
       // consulted a model.
       semanticCarry: false,
+      // §18. Projected on a disabled arm for the reason `semanticCarry` is: it rendered no prompt, so no
+      // turn was marked, and reading the variable here would put a rendering on the record of a run that
+      // assembled nothing.
+      supersededRendering: 'off',
     });
   });
 
@@ -2008,6 +2018,10 @@ describe('blank values from unfilled dispatch inputs', () => {
       // §E6. Stated on every artifact for the same reason the two fields above are: `false`
       // is a fact about the run, not a missing field.
       semanticCarry: false,
+      // §18. Stated on every artifact for the same reason the three fields above are: `off` is the
+      // rendering every archived prompt was produced under, and a run that spelled nothing would be
+      // indistinguishable from one written before the field existed.
+      supersededRendering: 'off',
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,
