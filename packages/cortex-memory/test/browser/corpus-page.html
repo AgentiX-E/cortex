@@ -45,7 +45,12 @@
        * launch on the same profile and origin. So `write` builds and asks; the browser is closed; `read`
        * opens a second assembly over the same OPFS database and must reproduce the prompt.
        */
-      import { assembleMemory, openOpfsStorage, ERASURE_TOKEN } from '/bundle/main.js';
+      import {
+        assembleMemory,
+        openOpfsStorage,
+        ERASURE_TOKEN,
+        StorageEmbeddingCache,
+      } from '/bundle/main.js';
 
       const SQLITE = '/vendor/index.mjs';
       const WORKER = '/bundle/worker.js';
@@ -159,6 +164,14 @@
           databasePath: '/corpus-shared.sqlite3',
           poolName: 'corpus-published',
         });
+        // The vector cache, on the transcript's own store. This is the difference between a page that
+        // re-embeds the corpus on every load and one that pays once: `open` reads the rows a previous
+        // assembly flushed, and the caller flushes after the work. The width is stated so a vector of
+        // another space is a miss rather than a hit -- the cheapest available answer to "the embedder
+        // changed and the cache did not".
+        const vectors = await StorageEmbeddingCache.open(transcript.storage, {
+          dimension: EMBED_DIMS,
+        });
         const seen = [];
         const install = assembleMemory({
           llm: recordingLlm(seen),
@@ -167,8 +180,9 @@
           shared: published.storage,
           profile: 'full',
           embed,
+          embeddingStore: vectors,
         });
-        return { install, seen, transcript, published };
+        return { install, seen, transcript, published, vectors };
       }
 
       /** What both phases report, so the restart comparison is a comparison of one shape. */
@@ -201,6 +215,13 @@
             );
             assert(opened.published.tier === 'opfs', `shared tier was ${opened.published.tier}`);
             assert(opened.install.disclosure !== undefined, 'the full profile has no boundary');
+            // A virgin store hydrates nothing. This is the control for the read phase's number: without it,
+            // "the restart hydrated N rows" would be a claim that holds on a database nobody ever wrote.
+            facts.embedCacheOnFirstLoad = opened.vectors.report;
+            assert(
+              opened.vectors.report.hydrated === 0 && opened.vectors.report.skipped === 0,
+              `a fresh store reported ${JSON.stringify(opened.vectors.report)}`,
+            );
             return `${opened.transcript.engine} (transcript) + ${opened.published.engine} (shared)`;
           });
           if (opened === undefined) return { checks, facts };
@@ -286,6 +307,10 @@
             },
           );
 
+          // The flush, before the stores close: this is the only moment the vectors reach the disk, and a
+          // page that closed first would leave the next load with an empty cache and no symptom.
+          facts.embedCacheFlush = await opened.vectors.flush();
+          facts.embedCacheSize = opened.vectors.size();
           await opened.transcript.storage.close();
           await opened.published.storage.close();
           return { checks, facts };
@@ -322,6 +347,41 @@
             `digest ${mine.promptDigest} != ${baseline.promptDigest} (node:sqlite)`,
           );
           return `${mine.promptChars} chars, digest ${mine.promptDigest} after a restart`;
+        });
+
+        await check('the second assembly pays nothing for a corpus it has already embedded', async () => {
+          // The claim the cache exists for, stated as a bill: the first page load embedded five texts over
+          // two calls, and this one — a different browser process, the same profile and origin — sends
+          // nothing upstream. Both halves are asserted, because either alone is a different story:
+          // `hydrated > 0` without `texts === 0` is a cache that loads and misses, and `texts === 0`
+          // without `hydrated > 0` is an embedder that was never wired.
+          facts.embedCacheAfterRestart = opened.vectors.report;
+          facts.embedAfterRestart = {
+            calls: embedded.calls,
+            texts: embedded.texts,
+            distinct: embedded.vectors.size,
+          };
+          assert(
+            opened.vectors.report.hydrated > 0,
+            `the restart hydrated ${opened.vectors.report.hydrated} row(s)`,
+          );
+          assert(
+            opened.vectors.report.hydrated === request.written.embedCacheFlush?.written,
+            `hydrated ${opened.vectors.report.hydrated} row(s) against the ` +
+              `${request.written.embedCacheFlush?.written} the first load wrote`,
+          );
+          assert(
+            opened.vectors.report.skipped === 0,
+            `the restart skipped ${opened.vectors.report.skipped} row(s)`,
+          );
+          assert(
+            embedded.texts === 0,
+            `${embedded.texts} text(s) went upstream after a restart, so the cache missed`,
+          );
+          return (
+            `${opened.vectors.report.hydrated} row(s) hydrated, ` +
+            `${embedded.texts} texts over ${embedded.calls} call(s) after the restart`
+          );
         });
 
         await check('the boundary opens over the persisted stores and cuts a card', async () => {
@@ -414,6 +474,10 @@
             ['private:erasures', opened.transcript.storage, 'erasures'],
             ['private:turn', opened.transcript.storage, 'corpus.turn'],
             ['private:session', opened.transcript.storage, 'corpus.session'],
+            // The ninth surface. It cannot match the sentence by search — its keys are `sha256(text)` by
+            // construction — which is exactly why it needs its own count rather than the plaintext sweep:
+            // a table the sweep cannot see is a table whose erasure nothing here would notice.
+            ['private:embedding_cache', opened.transcript.storage, 'embedding_cache'],
             ['shared:facts', opened.published.storage, 'facts'],
           ];
           const found = [];
@@ -425,6 +489,27 @@
           }
           assert(found.length === 0, `the sentence survives in ${found.join(', ')}`);
           return `${surfaces.length} tables over two stores, none carrying it`;
+        });
+
+        await check('the erasure reached the vector cache, not only the tables', async () => {
+          // `delete` is synchronous because the eraser's contract is, and the disk is not. So the erasure
+          // is complete only after this flush, and the count is the only form of that claim a report can
+          // subtract: a flush that removed nothing after a `forget()` is a finding, not a no-op.
+          facts.embedCacheFlush = await opened.vectors.flush();
+          facts.embedCacheSize = opened.vectors.size();
+          facts.erasedVectors = facts.removed?.vectors;
+          assert(
+            (facts.removed?.vectors ?? 0) >= 1,
+            `the memo erased ${facts.removed?.vectors} vector(s), so nothing reached the cache`,
+          );
+          assert(
+            facts.embedCacheFlush.removed >= 1,
+            `the flush removed ${facts.embedCacheFlush.removed} row(s) from the cache on disk`,
+          );
+          return (
+            `${facts.removed?.vectors} vector(s) erased in memory, ` +
+            `${facts.embedCacheFlush.removed} row(s) removed from the store`
+          );
         });
 
         await opened.transcript.storage.close();

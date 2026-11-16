@@ -34,7 +34,7 @@
  * one name, one import apart, is how a reader ends up calling the wrong one and getting a type error that
  * says nothing about which. This function is named for what it does to the parts it is given.
  */
-import type { EmbedFn, LLM, Storage } from '@agentix-e/cortex-core';
+import type { EmbedFn, EmbeddingCacheStore, LLM, Storage } from '@agentix-e/cortex-core';
 import { EmbeddingMemo, MemoryEmbeddingCacheStore } from '@agentix-e/cortex-core';
 
 import { Corpus } from './corpus.js';
@@ -70,6 +70,30 @@ export type AssembleOptions = {
    * has its own readings.
    */
   readonly embed?: EmbedFn | undefined;
+  /**
+   * Where the vectors live between assemblies. Defaults to a process-lifetime map.
+   *
+   * ## Why this is an option rather than an internal detail
+   *
+   * Because the default loses work a deployment has already paid for, and it does so silently. A page load
+   * re-embeds the corpus; the corpus suite measured it at five texts and two calls per assembly, which is
+   * small enough to ignore and exactly the wrong shape for a product -- the number scales with the corpus
+   * and nothing in the transcript records that it was paid twice.
+   *
+   * `SearchIndexOptions` has taken a `store` since the memo was introduced, so a caller who builds a
+   * `CortexMemory` by hand could always have done this. The gap was here: `assembleMemory` created a memory
+   * map unconditionally, so the composition root -- the only construction path the published package offers --
+   * could not. `@agentix-e/cortex-core`'s `StorageEmbeddingCache` is the implementation for a store that has
+   * to outlive the process: it hydrates from any `Storage` and is durable at `flush()`.
+   *
+   * ## Why the option is refused when nothing would use it
+   *
+   * A store supplied to `minimal` is a store no index reads, and a store supplied without an embedder is a
+   * store nothing writes. Both are configuration lines that name something the run never did, which is the
+   * defect class every other guard in this package exists for -- see, in `memory.ts`, the pair that refuses
+   * `turnWindow: 'match'` without a cap and `replyRepair` beside a `reviewPass`.
+   */
+  readonly embeddingStore?: EmbeddingCacheStore | undefined;
   /**
    * The public side of the disclosure boundary. Required by `full` and refused by the other two.
    *
@@ -133,11 +157,28 @@ export function assembleMemory(options: AssembleOptions): Installation {
   };
   const corpus = options.corpus ?? new Corpus({ store: options.storage, now: options.now });
 
-  // One store for the vectors, created here rather than inside the index, because two objects have to share
+  // One store for the vectors, resolved here rather than inside the index, because two objects have to share
   // it: the index memoises every text it embeds, and the erasure has to reach the same entries. A store
   // created per question would make an erasure able to name a key nobody wrote.
+  //
+  // A store the caller supplied is kept, not replaced -- the same correction `memory.ts` records for
+  // `index.store`, one level up: the caller's durable store used to be dropped at this exact line, and the
+  // vectors it was meant to hold were written into a map that died with the process.
   const embed = options.embed;
-  const vectors = embed === undefined ? undefined : new MemoryEmbeddingCacheStore();
+  const supplied = options.embeddingStore;
+  if (supplied !== undefined && embed === undefined) {
+    throw new Error(
+      'embeddingStore needs options.embed: a vector store is written by the index the embedder creates, so ' +
+        'a store without an embedder is a cache nothing fills. Supply the embedder, or drop the store.',
+    );
+  }
+  if (supplied !== undefined && profile === 'minimal') {
+    throw new Error(
+      "embeddingStore is not reachable on profile: 'minimal': that profile builds no index, so nothing " +
+        'would read the vectors. Use reader (retrieval without the boundary) or full, or drop the store.',
+    );
+  }
+  const vectors = embed === undefined ? undefined : (supplied ?? new MemoryEmbeddingCacheStore());
 
   const index =
     profile === 'minimal'
@@ -174,7 +215,7 @@ function boundary(
   options: AssembleOptions,
   corpus: Corpus,
   embed: EmbedFn | undefined,
-  vectors: MemoryEmbeddingCacheStore | undefined,
+  vectors: EmbeddingCacheStore | undefined,
 ): DisclosureSession {
   const shared = options.shared;
   if (shared === undefined) {

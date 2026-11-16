@@ -1,10 +1,10 @@
 {
   "chrome": "/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-  "origin": "http://127.0.0.1:32955",
+  "origin": "http://127.0.0.1:38401",
   "built": {
-    "mainInputs": 82,
+    "mainInputs": 83,
     "workerInputs": 3,
-    "mainBytes": 418396,
+    "mainBytes": 423372,
     "workerBytes": 5709
   },
   "baseline": {
@@ -81,8 +81,12 @@
       "facts": {
         "tier": "opfs",
         "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
-        "appendMs": 32,
-        "askMs": 4.5,
+        "embedCacheOnFirstLoad": {
+          "hydrated": 0,
+          "skipped": 0
+        },
+        "appendMs": 40,
+        "askMs": 5.800000190734863,
         "answer": "Berlin",
         "embed": {
           "calls": 2,
@@ -99,7 +103,12 @@
           "promptCount": 1,
           "promptChars": 580,
           "promptDigest": 536714097
-        }
+        },
+        "embedCacheFlush": {
+          "written": 5,
+          "removed": 0
+        },
+        "embedCacheSize": 5
       },
       "tier": "opfs"
     },
@@ -114,6 +123,11 @@
           "name": "the same question after the restart produces the same prompt",
           "ok": true,
           "detail": "580 chars, digest 536714097 after a restart"
+        },
+        {
+          "name": "the second assembly pays nothing for a corpus it has already embedded",
+          "ok": true,
+          "detail": "5 row(s) hydrated, 0 texts over 0 call(s) after the restart"
         },
         {
           "name": "the boundary opens over the persisted stores and cuts a card",
@@ -138,7 +152,12 @@
         {
           "name": "no table on either store still holds the sentence",
           "ok": true,
-          "detail": "7 tables over two stores, none carrying it"
+          "detail": "8 tables over two stores, none carrying it"
+        },
+        {
+          "name": "the erasure reached the vector cache, not only the tables",
+          "ok": true,
+          "detail": "1 vector(s) erased in memory, 1 row(s) removed from the store"
         }
       ],
       "facts": {
@@ -164,6 +183,15 @@
           "promptChars": 580,
           "promptDigest": 536714097
         },
+        "embedCacheAfterRestart": {
+          "hydrated": 5,
+          "skipped": 0
+        },
+        "embedAfterRestart": {
+          "calls": 0,
+          "texts": 0,
+          "distinct": 0
+        },
         "cards": 1,
         "removed": {
           "facts": 1,
@@ -185,8 +213,15 @@
           "private:erasures": 1,
           "private:turn": 3,
           "private:session": 3,
+          "private:embedding_cache": 5,
           "shared:facts": 0
-        }
+        },
+        "embedCacheFlush": {
+          "written": 0,
+          "removed": 1
+        },
+        "embedCacheSize": 4,
+        "erasedVectors": 1
       }
     }
   },
@@ -227,6 +262,11 @@
       "detail": "580 chars, digest 536714097 after a restart"
     },
     {
+      "name": "the second assembly pays nothing for a corpus it has already embedded",
+      "ok": true,
+      "detail": "5 row(s) hydrated, 0 texts over 0 call(s) after the restart"
+    },
+    {
       "name": "the boundary opens over the persisted stores and cuts a card",
       "ok": true,
       "detail": "1 card(s), the sentence itself"
@@ -249,13 +289,18 @@
     {
       "name": "no table on either store still holds the sentence",
       "ok": true,
-      "detail": "7 tables over two stores, none carrying it"
+      "detail": "8 tables over two stores, none carrying it"
+    },
+    {
+      "name": "the erasure reached the vector cache, not only the tables",
+      "ok": true,
+      "detail": "1 vector(s) erased in memory, 1 row(s) removed from the store"
     }
   ],
   "failures": [],
   "summary": {
-    "checks": 12,
-    "passed": 12,
+    "checks": 14,
+    "passed": 14,
     "failed": 0,
     "digestMatches": true,
     "digestClaim": "the prompt digest a browser reproduces equals the one node:sqlite produced for the same transcript, before and after a restart",

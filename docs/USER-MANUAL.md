@@ -798,6 +798,7 @@ and no worked example of which combination runs. `assembleMemory` is that exampl
 | `storage` | `Storage` | — (required) | Where the transcript goes, and for `full` the private side of the boundary. Any backend: SQLite, PostgreSQL, OPFS, IndexedDB. |
 | `profile` | `'minimal' \| 'reader' \| 'full'` | `'minimal'` | How much of the product to wire up. |
 | `embed` | `EmbedFn` | absent | The vector channel, as a batch function over texts. Absent leaves lexical retrieval, which is the registered arm's ranking signal. |
+| `embeddingStore` | `EmbeddingCacheStore` | absent (a process-lifetime map) | Where the vectors live between assemblies. Supply `await StorageEmbeddingCache.open(storage)` to keep them across a restart, and flush it after the work. Refused on `minimal` and refused without `embed`, because neither would read or write it. |
 | `shared` | `Storage` | absent | The public side of the disclosure boundary. Required by `full`, ignored by the other two. |
 | `name` | `string` | `'cortex-memory'` | Attribution label, carried through to the memory. |
 | `gate` | `Partial<GateOptions>` | identity (`0` / `0` / unbounded) | Overrides for the admission and retrieval gates, §6.2. |
@@ -809,6 +810,7 @@ and no worked example of which combination runs. `assembleMemory` is that exampl
 ```ts
 import { assembleMemory } from '@agentix-e/cortex-memory';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+import { StorageEmbeddingCache } from '@agentix-e/cortex-core';
 import type { EmbedFn, LLM } from '@agentix-e/cortex-core';
 
 declare const llm: LLM;
@@ -851,6 +853,27 @@ const marked = assembleMemory({ llm, now, storage, profile: 'full', shared, supe
 void marked;
 void smallest;
 void reader;
+
+// A vector cache that survives the process. `open` hydrates from the store you already have, and the
+// assembly uses it instead of a map that dies with the process; `flush` is what makes the entries
+// durable, so it goes after the work rather than after the assembly.
+async function durableAssembly(): Promise<void> {
+  const cache = await StorageEmbeddingCache.open(storage, { dimension: 2048 });
+  const durable = assembleMemory({
+    llm,
+    now,
+    storage,
+    profile: 'reader',
+    embed,
+    embeddingStore: cache,
+  });
+  await durable.memory.remember([
+    { sessionId: 's1', ordinal: 0, text: 'I moved to Berlin in March.' },
+  ]);
+  await durable.memory.askStored('Where did I move?');
+  console.log(await cache.flush()); // { written: 2, removed: 0 } -- the rows are on disk now
+}
+void durableAssembly;
 ```
 
 Two things are deliberately **not** defaulted:

@@ -1,11 +1,11 @@
 {
  "note": "Debt ledger for `node tools/export-census.mjs --check`. Records the exports that had no non-test caller when the gate was introduced. This is NOT an allowlist of acceptable orphans: it is a snapshot of an unresolved backlog. The gate fails on any orphan ABSENT from this file, so its only job is to stop new ones appearing silently. Removing an entry requires deleting the export or giving it a caller; adding one requires a reason recorded here. `knownOrphans` holds `pkg: name` keys WITHOUT line numbers, because a line number changes when any unrelated line above it moves; this is the list the checker consults. `locations` maps each key to every file:line that declares it. `groups` carries the rationale, and its `declarationSites` are counted per site, so their total exceeds `knownOrphans.length` by the number of TypeScript overloads: one name, several declaration lines, one identity. `totals.referencedLocally` and `totals.unreferenced` split the orphan count by whether the declaring file still mentions the symbol. They sum to `totals.orphaned`. `orphanClass` maps each key to its class: `referenced-locally` means the symbol has a live call site and only the `export` keyword is unnecessary, `unreferenced` means nothing mentions it anywhere and it is a dead-code candidate. The ledger was rebuilt once to correct the caller matcher, and the size of that correction is the reason it is recorded here. The matcher used to test a symbol's name against each file's raw text, so a name written in a comment counted as a call: `referencedLocally`/`unreferenced` moved 185/48 from 196/16 and 21 exports entered the list the moment comments stopped counting. Every one of the 21 had ONLY comment matches outside its declaring file -- verified by diffing raw-text matches against comment-stripped matches for each. The worst part of the old behaviour was its direction: documenting a symbol silently retired its finding, so the report looked cleanest on the code someone had taken most trouble to explain. `stripComments` in `export-census.ts` now blanks comments before matching while copying string and template literals through verbatim, because template literals hold real calls (`hashText` is called six times that way). TWO FURTHER REBUILDS, and both were instrument defects rather than code changes. **String bodies stopped counting.** A tool that prints the sentence \"Comparability is a five-tuple...\" retired the `Comparability` type from this population -- 396 to 395 -- while no source file imported it: the census matched a symbol's name against raw text, and a printed sentence is text. `stripStringContent` now blanks string bodies and keeps `${...}` substitutions, because a substitution is a call: `hashText` is invoked six times inside template literals and would otherwise read as dead. The six names whose last apparent caller was prose came back -- `Comparability`, `covers`, `Arm`, `Ablation`, `unrun`, `TransformersEmbedding` -- and each is named here so the next reader can check the claim instead of trusting the count. **The line grid was not the file's.** `stripComments` blanked the newlines inside a block comment, so its output carried a different line grid from the file it came from: measured on `export-census.ts`, 909 lines read as 511. Every symbol carries a 1-based line that is read back out of that output, so each line-keyed judgement became a guess -- including the declaration span that decides which lines are allowed to count as a reference, and an out-of-range guard that answered \"no local reference\" for any declaration past the shortened grid. Against the previous ledger 91 of 396 entries changed class, 62 from `unreferenced` to `referenced-locally` and 29 the other way; `referencedLocally`/`unreferenced` moved from 329/66 to 366/36. Four were verified by hand in each direction before the diff was accepted: `clampAwayFromZero` (called at stats.ts:282-294) and `identifierPattern` (called at export-census.ts:344 and :410) are genuinely used inside their own files, while `sinkhorn` (its only in-file mentions are two thrown message strings), `findContradictions`, `consolidate` and `l2Distance` are declared and never used, so their `export` keyword is the only thing to remove. The census now asserts both properties: `stripStringContent` keeps substitutions, and `stripComments` keeps the line count. A THIRD REBUILD, and it moved the population in both directions for the first time in three rounds. Two entries left and each names the import that explains it: `cortex-memory: DECLINE_TOKEN` and `cortex-eval: classifyAggregationKind` are now imported by `tools/mr-failure-census.mjs`, which reads the arm's declines through the product's own predicate and cross-checks the arm's question classifier against the reference pipeline's. One entry arrived, `cortex-memory: ASK_CHANGES_WHEN_DERIVATION`, and it names the same-named thing that used to hide it: nothing did -- it is new, and its reader is `ask-changes.test.ts`. Totals 914 -> 917 exports, 512 -> 516 with a caller, 402 -> 401 orphan sites, 366 -> 364 local, 36 -> 37 nowhere; every one of the five differences is accounted for above, which is the check `13.158.4` asks for before a diff is read. AN ENTRY LEFT, for the first time in four rounds on purpose rather than by rebuild: `cortex-ai: DEFAULT_RETRY_TIMEOUT_MS` was an orphan until §13.227 moved the reader's transport decisions into their own module, which made `cortex-eval` a caller of it -- the deadline the retry budget has to exceed is now read from the package that owns it instead of being copied. Totals 964 -> 964 exports, 549 -> 550 with a caller, 415 -> 414 orphan sites, 375 -> 374 local, 40 nowhere. Every difference is the one symbol, which is the check 13.158.4 asks for before a baseline diff is accepted. ONE ENTRY LEFT AND FIVE ARRIVED, ALL WITH CALLERS (round 91, the per-turn window). `cortex-memory: truncateCodePointSafe` left this ledger because `excerpt.ts` calls it: the window rule needs the same code-point-safe cut for its own fallbacks, so the helper moved out of `prompt.ts` instead of being copied, and `prompt.ts` re-exports it so every existing importer keeps the path it had. A helper two modules call is not an orphan and the census says so. The five new exports -- `excerptAround`, `ELISION`, `TurnWindow`, `contentTokens`, `ContentToken` -- are called by `prompt.ts`, `memory.ts`, `types.ts`, `index.ts` and the two new test files, so none of them enters this list: totals 1166 -> 1171 exports, 700 -> 706 with a caller, 466 -> 465 orphan sites, 420 -> 419 local, 46 nowhere.  ONE ROUND LATER, TWO FEWER EXPORTS AND NO NEW ORPHANS (round 92, the admission census). `cortex-memory: evaluateTurns` and `cortex-memory: ADMISSION_DISTINCT_CAP` were written in this round and removed from the export surface in the same one: the sink travels inside `AdmissionOptions`, so `admitTurns` already returns the turns and writes the counts, and a second entry point returning both would be a second definition of what an admission is. Both were reported as orphans by this gate on the day they were written and neither had a caller outside its own test file, which is the gate doing exactly what it says. The cap stayed as a module-level constant because `distinctSaturated` is the fact a caller needs and the number is documentation. Totals 1171 -> 1173 exports, 706 -> 708 with a caller, 465 orphan sites unchanged, and every difference is accounted for: `AdmissionCensus` and `AdmissionCensusBuilder` arrived because `memory.ts` reads the first as a return type and constructs the second once per instance, so both have a caller; `evaluateTurns` and `ADMISSION_DISTINCT_CAP` never reached a baseline because they were removed in the round that wrote them. THREE NEW EXPORTS AND NO NEW ORPHANS (round 93, the route and the role census). `cortex-memory: RoleCensus` is the return type of `lastRoleCensus()` and the payload the artifact serialises; `cortex-eval: DeliveredRoleCensus` is its structural mirror in the package that cannot import it, read by `benchmark.ts`, `question-record.ts` and `types.ts`; `cortex-eval: RetrievalCaptureVectors` is the intersection `evaluateWithScorerDetailed` returns and `ablation.ts` forwards into `AblationResult`. All three have callers, so none enters this list: totals 1173 -> 1176 exports, 708 -> 711 with a caller, 465 orphan sites unchanged, 419 local, 46 nowhere, and every difference is the three names. A fourth export was written and withdrawn in the same round -- `RetrievalCapture`, the payload a capture hands the callback -- because this gate reported it as an orphan within the hour: the callback type that names it is module-private, so nothing outside needed to name the payload either. Twice in two rounds the gate has now caught an export written in the round that wrote it, which is the argument for running it before a commit rather than after a dispatch. The semantic fact source (§13.375) adds four: `semanticUpdateFrom`, `renderSemanticUpdate`, `updateAppliesTo` and the `SemanticUpdate` type, all consumed by `memory.ts`; totals 1176 -> 1180 exports, 711 -> 715 with a caller, 465 orphan sites unchanged, 419 local, 46 nowhere. Three more exports were written in that round and withdrawn before the commit, again because this gate reported them: `SemanticUpdateInput` (the parameter type of a function whose callers never name it), `AuthorisedRecord` and `SupersessionAuthorisation` (both reached only through `SupersessionVerdict`, whose consumers destructure the fields rather than name the types). Three in one round, after two in the two before it -- the gate is now the single most productive reader in this repository. E2 moved the semantic block's public surface without changing any total: `renderSemanticUpdate` left and `assembleSemanticUpdate` arrived (it renders through `assemble` rather than beside it, so the renderer is reached through the exit), 1180 exports and 715 callers either way, 465 orphan sites unchanged. One more export was written and withdrawn before the commit, and this gate is what reported it: `SemanticBlock`, the return type of that function, which no caller names. That is the fourth round running in which the census caught a symbol the author had just declared. ONE ENTRY LEFT AND TWO ARRIVED, AND THE DEPARTURE IS THE POINT (round 98, E3). `cortex-core: MemoryType` leaves this ledger because `cortex-memory/src/retention.ts` now **reads** it: the eviction ranks a bounded store by `type`, so `semantic` entries are kept by the windows that carried them and `episodic` ones by when they were recorded. Until this round the union had three members, one code path wrote `'episodic'` as a literal, and nothing compared the field — which is why the census listed it here as `referenced-locally` while the package's own docs claimed a taxonomy. The two arrivals, `memoryForUpdate` and `leastRetained`, are called by `memory.ts`, so neither enters this list. Totals 1180 -> 1182 exports, 715 -> 718 with a caller, 465 -> 464 orphan sites, 419 -> 418 local, 46 nowhere; every one of the four differences is accounted for by those three names, which is the check 13.158.4 asks for before a baseline diff is read. `retentionRank` and `Retainable` were written in this round and withdrawn from the export surface in the same one — the first because the ranking and the choice it feeds are one decision, the second because nothing outside names the parameter type — and this gate is what reported both. That is the fifth round running in which the census caught a symbol the author had just declared. ONE FILE MOVED AND NOT ONE TOTAL DID (round 100, the domain placement). `cortex-memory: retention.ts` became `cortex-core: domain/retention.ts`, so `leastRetained` changed package without changing its caller: `packages/cortex-memory/src/memory.ts` still imports it, now through the barrel. Totals 1182 exports, 718 with a caller, 464 orphan sites, 418 local, 46 nowhere -- unchanged on every one of the five. What made the move possible is `MemoryValue.reads`, a required field that gives the rule's second rank element a home in the domain; without it the signature had to carry `{ memory, reads }`, and no census would have noticed, because a parameter is not an export. `semantic-facts.ts` was asked the same question and stayed: it imports `SupersessionVerdict` from `./supersede.js`, whose producer calls a model, so moving it would have put an LLM interface inside the zero-I/O package. Both adjudications are in `docs/AUDIT-SEMANTIC-REACH.md` 14.2 and 14.6, recorded there because the next reader will ask again. TWO NEW CALLERS, AND THE BASELINE MOVED BY EXACTLY TWO (round 102, E6's arm). `applyRequirements` (called by `tools/acceptance-check.mjs`) and `SemanticCarryCensus` (used by `bench-memory-arm.ts`'s fold) are the first exports this ledger has gained without gaining an orphan: 1182 to 1184, 718 to 720, 464 and 418 and 46 unchanged on every other line. The count that did not move is the point. The alternative -- exporting the entry shape `applyRequirements` returns -- was written first, was counted as an orphan within the same round, and was un-exported rather than ledgered, because an export with no caller is a defect unless a roadmap owns it. TWO NEW CALLERS AND NO NEW ORPHANS (round 106, S10's counter). `cortex-memory: TurnWindowCensus` is the return type of `lastTurnWindowCensus()` and the payload `AssembledPrompt.turnWindow` carries; `cortex-eval: DeliveredTurnWindowCensus` is its structural mirror in the package that cannot import it, read by `benchmark.ts` and summed by `bench-memory-arm.ts`. Both have callers: totals 1191 -> 1193 exports, 727 -> 729 with a caller, 464 / 418 / 46 unchanged on every other line, and every difference is the two names. A third export was written and withdrawn in the same round -- `TurnWindowTally`, the mutable accumulator `contentFor` charges -- because it is module-private by construction: a caller that could supply a tally could make the census describe a rendering the reader never saw. THREE ARRIVED AND THREE LEFT IN ONE ROUND, AND THE DEPARTURES ARE THE INTERESTING HALF (round 113, the inline superseded mark). The three that arrived are the mechanism's own surface and each has a reader that the census cannot count: `SUPERSEDED_MARKER` and `SUPERSEDED_COLLAPSED` are the exact strings the acceptance arithmetic is written against -- a run's prompt must be longer than its control's by the first one's length per marked turn -- so a test that restated them would be asserting a copy of the product's decision rather than the decision; `SupersededTurn` is the shape `supersededTurns` returns and no caller names it, because the memory maps it straight into `SupersededMarks`. All three are `referenced-locally`: the module uses them in the function that is its entry point. The three that left are the reason the orphan count did not move: `conflictStatements`, `valueSignature` and `ConflictOptions` had no caller outside `conflict.ts` and its test until `superseded.ts` read them, which is the whole argument for deriving the mark from the statement selection rather than re-selecting beside it -- two selections would have been two populations, and the side block would have printed a pair the mark did not mark. Every difference is accounted for and the totals say so: 1208 -> 1215 exports, 719 -> 726 with a caller, and 489 / 438 / 51 unchanged on every orphan line, which is the check 13.158.4 asks for before a baseline diff is accepted.",
  "totals": {
-  "exports": 1215,
+  "exports": 1219,
   "withCaller": 723,
-  "orphaned": 492,
-  "referencedLocally": 440,
-  "unreferenced": 52
+  "orphaned": 496,
+  "referencedLocally": 443,
+  "unreferenced": 53
  },
  "groups": [
   {
@@ -207,7 +207,7 @@
     "cortex-memory: DEFAULT_MAX_PROMPT_CHARS (packages/cortex-memory/src/prompt.ts:960)",
     "cortex-memory: DEFAULT_PROMPT_CONTRACT (packages/cortex-memory/src/prompt.ts:55)",
     "cortex-memory: DisclosureSessionOptions (packages/cortex-memory/src/disclosure/session.ts:54)",
-    "cortex-memory: Installation (packages/cortex-memory/src/assemble.ts:101)",
+    "cortex-memory: Installation (packages/cortex-memory/src/assemble.ts:125)",
     "cortex-memory: PROMPT_CONTRACTS (packages/cortex-memory/src/prompt.ts:40)",
     "cortex-memory: ParsedSpec (packages/cortex-memory/src/aggregation/spec.ts:78)",
     "cortex-memory: ProviderHit (packages/cortex-memory/src/provider.ts:68)",
@@ -228,7 +228,7 @@
     "cortex-memory: TallyEntry (packages/cortex-memory/src/tally.ts:73)",
     "cortex-memory: TallyLedger (packages/cortex-memory/src/tally.ts:86)",
     "cortex-memory: WidthPlan (packages/cortex-memory/src/width.ts:90)",
-    "cortex-memory: assembleMemory (packages/cortex-memory/src/assemble.ts:126)",
+    "cortex-memory: assembleMemory (packages/cortex-memory/src/assemble.ts:150)",
     "cortex-memory: buildPlanTable (packages/cortex-memory/src/aggregation/plan-prompt.ts:72)",
     "cortex-memory: classifyAnswerRequest (packages/cortex-memory/src/tally.ts:66)",
     "cortex-memory: contentTerms (packages/cortex-memory/src/conflict.ts:238)",
@@ -569,6 +569,17 @@
     "cortex-eval: StabilityReading (packages/cortex-eval/src/failure-stability.ts:78)",
     "cortex-eval: StabilitySelection (packages/cortex-eval/src/failure-stability.ts:154)"
    ]
+  },
+  {
+   "category": "storage-embedding-cache-api",
+   "count": 4,
+   "rationale": "THE STORE A DEPLOYMENT KEEPS. `StorageEmbeddingCache` is the durable half of the memo in `cortex-core/src/cache/embedding-cache.ts`: the same synchronous four-method interface the capability ledger's row 12 already sells, over the `Storage` a deployment already has. Its construction site cannot be inside the product, and that is a property of the interface rather than a missing wire: `open` is asynchronous because every backend this repository ships is (a SQLite worker behind a `MessageChannel`, `IndexedDB`, a Postgres socket), while `EmbeddingMemo.embed` asks `get(key)` inside the loop that decides hit or miss, so the store itself has to be synchronous. Durability is therefore a pair of edges -- hydrate before the assembly, flush after it -- and both are the caller's to place. The in-repo caller is `packages/cortex-memory/test/browser/corpus-page.html`, a page that drives the built bundle in a real Chromium across a restart; the census excludes test files by design, so this group measures the absence of a shipped application, exactly as `browser-storage-surface` does. The other three exist because a caller has to be able to name what it uses: `StorageEmbeddingCacheOptions` is the constructor's shape (which table, and the width that turns a stale vector into a miss), `StorageEmbeddingCacheReport` is what `report` returns after hydration, and `DEFAULT_EMBEDDING_CACHE_TABLE` is the table name a deployment inspects to confirm the rows are where the product said they would be -- a name rather than a literal copied out of a docblock. What makes them worth keeping is one number: after a browser restart the second assembly hydrated five rows and sent zero texts upstream, with the prompt digest unchanged at 536714097.",
+   "declarationSites": [
+    "cortex-core: DEFAULT_EMBEDDING_CACHE_TABLE (packages/cortex-core/src/cache/storage-embedding-cache.ts:54)",
+    "cortex-core: StorageEmbeddingCache (packages/cortex-core/src/cache/storage-embedding-cache.ts:93)",
+    "cortex-core: StorageEmbeddingCacheOptions (packages/cortex-core/src/cache/storage-embedding-cache.ts:71)",
+    "cortex-core: StorageEmbeddingCacheReport (packages/cortex-core/src/cache/storage-embedding-cache.ts:86)"
+   ]
   }
  ],
  "knownOrphans": [
@@ -637,6 +648,7 @@
   "cortex-core: CensusReport",
   "cortex-core: ConsolidationStats",
   "cortex-core: DEFAULT_ECHO_WIDTH",
+  "cortex-core: DEFAULT_EMBEDDING_CACHE_TABLE",
   "cortex-core: DistillationOf",
   "cortex-core: EDGE_TYPES",
   "cortex-core: EchoCorpusStats",
@@ -694,6 +706,9 @@
   "cortex-core: ScopeViolation",
   "cortex-core: ServedFact",
   "cortex-core: SinkhornResult",
+  "cortex-core: StorageEmbeddingCache",
+  "cortex-core: StorageEmbeddingCacheOptions",
+  "cortex-core: StorageEmbeddingCacheReport",
   "cortex-core: SymbolCensusEntry",
   "cortex-core: TriageProposerOptions",
   "cortex-core: TriageRecord",
@@ -1131,6 +1146,7 @@
   "cortex-core: CensusReport": "referenced-locally",
   "cortex-core: ConsolidationStats": "referenced-locally",
   "cortex-core: DEFAULT_ECHO_WIDTH": "referenced-locally",
+  "cortex-core: DEFAULT_EMBEDDING_CACHE_TABLE": "referenced-locally",
   "cortex-core: DistillationOf": "referenced-locally",
   "cortex-core: EDGE_TYPES": "referenced-locally",
   "cortex-core: EchoCorpusStats": "referenced-locally",
@@ -1188,6 +1204,9 @@
   "cortex-core: ScopeViolation": "referenced-locally",
   "cortex-core: ServedFact": "referenced-locally",
   "cortex-core: SinkhornResult": "referenced-locally",
+  "cortex-core: StorageEmbeddingCache": "unreferenced",
+  "cortex-core: StorageEmbeddingCacheOptions": "referenced-locally",
+  "cortex-core: StorageEmbeddingCacheReport": "referenced-locally",
   "cortex-core: SymbolCensusEntry": "referenced-locally",
   "cortex-core: TriageProposerOptions": "referenced-locally",
   "cortex-core: TriageRecord": "referenced-locally",
@@ -1755,6 +1774,9 @@
   "cortex-core: DEFAULT_ECHO_WIDTH": [
    "packages/cortex-core/src/triage/echo-corpus.ts:51"
   ],
+  "cortex-core: DEFAULT_EMBEDDING_CACHE_TABLE": [
+   "packages/cortex-core/src/cache/storage-embedding-cache.ts:54"
+  ],
   "cortex-core: DistillationOf": [
    "packages/cortex-core/src/triage/grounding.ts:497"
   ],
@@ -1925,6 +1947,15 @@
   ],
   "cortex-core: SinkhornResult": [
    "packages/cortex-core/src/math/ot.ts:8"
+  ],
+  "cortex-core: StorageEmbeddingCache": [
+   "packages/cortex-core/src/cache/storage-embedding-cache.ts:93"
+  ],
+  "cortex-core: StorageEmbeddingCacheOptions": [
+   "packages/cortex-core/src/cache/storage-embedding-cache.ts:71"
+  ],
+  "cortex-core: StorageEmbeddingCacheReport": [
+   "packages/cortex-core/src/cache/storage-embedding-cache.ts:86"
   ],
   "cortex-core: SymbolCensusEntry": [
    "packages/cortex-core/src/export-census.ts:75"
@@ -2896,7 +2927,7 @@
    "packages/cortex-memory/src/disclosure/session.ts:54"
   ],
   "cortex-memory: Installation": [
-   "packages/cortex-memory/src/assemble.ts:101"
+   "packages/cortex-memory/src/assemble.ts:125"
   ],
   "cortex-memory: PROMPT_CONTRACTS": [
    "packages/cortex-memory/src/prompt.ts:40"
@@ -2959,7 +2990,7 @@
    "packages/cortex-memory/src/width.ts:90"
   ],
   "cortex-memory: assembleMemory": [
-   "packages/cortex-memory/src/assemble.ts:126"
+   "packages/cortex-memory/src/assemble.ts:150"
   ],
   "cortex-memory: buildPlanTable": [
    "packages/cortex-memory/src/aggregation/plan-prompt.ts:72"

@@ -33,6 +33,16 @@
  * and a network call in either arm would swamp both. `maxPromptChars` is the registered arm's room, because
  * the alternative — no cap on 10^5 turns — builds a twelve-megabyte prompt and measures string concatenation
  * instead.
+ *
+ * ## Why every reading is the fastest of three, not one sample
+ *
+ * Because the artifact is read by a gate that asserts an ordering between two of them — `stored >= assemble`,
+ * i.e. the stored path does at least the work the assembly path does — and two single samples of a loaded
+ * machine do not preserve an ordering that holds for the code. Measured on 2026-11-16 while a browser suite
+ * ran beside this: `assemble` 2004.87 ms against `stored` 1848.67 ms, an inversion of 8% in a relationship
+ * that is a *decomposition* of the same work. The check was right and the estimator was not: load only ever
+ * adds time, so the minimum over repetitions is the sample least contaminated by it, and it is the estimator
+ * every later comparison in this file uses.
  */
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -42,10 +52,14 @@ import { fileURLToPath } from 'node:url';
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = resolve(REPO, '../cortex-docs/evidence/corpus/read-cost.json');
 
-const { MemoryEmbeddingCacheStore } = await import(join(REPO, 'packages/cortex-core/dist/index.js'));
+const { MemoryEmbeddingCacheStore } = await import(
+  join(REPO, 'packages/cortex-core/dist/index.js')
+);
 const { Corpus } = await import(join(REPO, 'packages/cortex-memory/dist/corpus.js'));
 const { CortexMemory } = await import(join(REPO, 'packages/cortex-memory/dist/memory.js'));
-const { SqliteStorage } = await import(join(REPO, 'packages/cortex-storage/dist/storage/sqlite.js'));
+const { SqliteStorage } = await import(
+  join(REPO, 'packages/cortex-storage/dist/storage/sqlite.js')
+);
 
 const NOW = 1_759_470_000_000;
 const SESSIONS = 500;
@@ -116,18 +130,38 @@ await memory.answerSessions(question, await corpus.sessions());
  */
 const FAULT = process.env['CORTEX_CORPUS_READ_CENSUS_FAULT'];
 const SLOW_READS = FAULT === 'slow-read' ? 25 : 1;
-const readStart = process.hrtime.bigint();
-let readSessions = await corpus.sessions();
-for (let attempt = 1; attempt < SLOW_READS; attempt += 1) readSessions = await corpus.sessions();
-const readMs = Number(process.hrtime.bigint() - readStart) / 1e6;
 
-const assembleStart = process.hrtime.bigint();
-await memory.answerSessions(question, readSessions);
-const assembleMs = Number(process.hrtime.bigint() - assembleStart) / 1e6;
+/**
+ * The fastest of {@link REPS} runs, and the last value the run produced.
+ *
+ * `REPS` rather than one: see the header on why an ordering between two single samples is not a measurement.
+ * The value is returned so a repeated run can hand its result to the next measurement — `read` produces the
+ * session array the assembly is timed over, and re-reading it three times must still leave one array behind.
+ */
+const REPS = 3;
+async function fastest(fn) {
+  let best = Number.POSITIVE_INFINITY;
+  let value;
+  for (let attempt = 0; attempt < REPS; attempt += 1) {
+    const started = process.hrtime.bigint();
+    value = await fn();
+    const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
+    if (elapsed < best) best = elapsed;
+  }
+  return { ms: best, value };
+}
 
-const storedStart = process.hrtime.bigint();
-await memory.askStored(question);
-const storedMs = Number(process.hrtime.bigint() - storedStart) / 1e6;
+const read = await fastest(async () => {
+  let sessions = await corpus.sessions();
+  for (let attempt = 1; attempt < SLOW_READS; attempt += 1) sessions = await corpus.sessions();
+  return sessions;
+});
+const readMs = read.ms;
+const readSessions = read.value;
+
+const assembleMs = (await fastest(() => memory.answerSessions(question, readSessions))).ms;
+
+const storedMs = (await fastest(() => memory.askStored(question))).ms;
 
 const turns = await corpus.size();
 const ratio = readMs / assembleMs;
@@ -138,7 +172,8 @@ const census = {
   $comment:
     'Written by tools/corpus-read-census.mjs. A corpus of 10^5 turns in a real SQLite file, then three ' +
     'timings: the read (`corpus.sessions()`), the assembly (`answerSessions` over the same array with a stub ' +
-    'reader at the registered 48k room), and the two together through `askStored()`. The ratio is the ' +
+    'reader at the registered 48k room), and the two together through `askStored()`. Each is the fastest of ' +
+    `${String(REPS)} runs, because load only adds time and the gate compares two of them. The ratio is the ` +
     'registered falsifiable clause: above 2.0 the read-amplification design does not hold and `askStored` is ' +
     'withdrawn in favour of `remember` alone.',
   dataset: `${String(turns)} turns, ${String(SESSIONS)} sessions x ${String(TURNS_PER_SESSION)}, one SQLite file`,

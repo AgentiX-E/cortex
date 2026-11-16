@@ -21,7 +21,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { EmbedFn, LLM } from '@agentix-e/cortex-core';
-import { ERASURE_TOKEN } from '@agentix-e/cortex-core';
+import { ERASURE_TOKEN, MemoryEmbeddingCacheStore } from '@agentix-e/cortex-core';
 import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 
 import { assembleMemory, type AssemblyProfile } from '../assemble.js';
@@ -200,6 +200,124 @@ describe('the superseded mark is reachable from the composition root', () => {
   it('is off by default, and `full` reaches the same mechanism', async () => {
     expect(await promptThrough(undefined, 'full')).not.toContain(SUPERSEDED_MARKER);
     expect(await promptThrough('mark', 'full')).toContain(SUPERSEDED_MARKER);
+  });
+});
+
+describe('the vector store a deployment hands in', () => {
+  /** An embedder that records every text it is asked for. The bill is the only thing that changes. */
+  function recordingEmbed(): { embed: EmbedFn; texts: string[] } {
+    const texts: string[] = [];
+    return {
+      texts,
+      embed: (batch) => {
+        texts.push(...batch);
+        return Promise.resolve(batch.map(() => [1, 0, 0]));
+      },
+    };
+  }
+
+  const TURNS = CONVERSATION.map((turn) => turn.text);
+
+  it('does not pay again for a corpus a previous assembly embedded', async () => {
+    // The claim, in the units a bill can subtract. Two assemblies over one store, the same transcript: the
+    // second one must send no corpus text upstream. A store this function replaced rather than kept would make
+    // both runs pay and every assertion in the profile smoke tests would still pass.
+    const store = new MemoryEmbeddingCacheStore();
+
+    const first = recordingEmbed();
+    const firstInstall = assembleMemory({
+      llm: recordingLlm(),
+      now: NOW,
+      storage: new SqliteStorage(),
+      profile: 'reader',
+      embed: first.embed,
+      embeddingStore: store,
+    });
+    await firstInstall.memory.remember(CONVERSATION);
+    await firstInstall.memory.askStored('Where did I move?');
+    expect(first.texts).toEqual(expect.arrayContaining(TURNS));
+
+    const second = recordingEmbed();
+    const secondInstall = assembleMemory({
+      llm: recordingLlm(),
+      now: NOW,
+      storage: new SqliteStorage(),
+      profile: 'reader',
+      embed: second.embed,
+      embeddingStore: store,
+    });
+    await secondInstall.memory.remember(CONVERSATION);
+    await secondInstall.memory.askStored('Where did I move?');
+
+    expect(second.texts.filter((text) => TURNS.includes(text))).toEqual([]);
+    // Stronger than the corpus-only claim, and it is what the run actually shows: the question was embedded
+    // by the first assembly too, so the second one sends *nothing* upstream.
+    expect(second.texts).toEqual([]);
+    // The control, and the reason this is not a test of a dead embedder: the first assembly did call it, for
+    // both the turns and the question.
+    expect(first.texts).toEqual(expect.arrayContaining([...TURNS, 'Where did I move?']));
+    expect(store.size()).toBeGreaterThan(0);
+  });
+
+  it('points the erasure at the store it was handed', async () => {
+    // `full`, because that is the profile with a boundary. The subtle failure this pins is the one `memory.ts`
+    // records for `index.store`: a store replaced here, plus a boundary wired to the original, is an erasure
+    // that reports a count over a vector the store still answers.
+    const store = new MemoryEmbeddingCacheStore();
+    const install = assembleMemory({
+      llm: recordingLlm(),
+      now: NOW,
+      storage: new SqliteStorage(),
+      shared: new SqliteStorage(),
+      profile: 'full',
+      embed: (batch) => Promise.resolve(batch.map(() => [1, 0, 0])),
+      embeddingStore: store,
+    });
+    const disclosure = install.disclosure;
+    if (disclosure === undefined) throw new Error('the full profile must have a boundary');
+
+    await install.memory.remember([
+      { sessionId: 's1', ordinal: 0, text: SECRET },
+      { sessionId: 's2', ordinal: 0, text: UNRELATED },
+    ]);
+    await disclosure.say(SECRET, { id: 's1' });
+    await disclosure.accept('s1');
+    await install.memory.askStored('What is the code name?');
+    const before = store.size();
+    expect(before).toBeGreaterThan(0);
+
+    const erased = await disclosure.forget('s1', {
+      acknowledge: ERASURE_TOKEN,
+      reason: 'user-request',
+    });
+    expect(erased.record.removed.vectors).toBeGreaterThanOrEqual(1);
+    // The store the caller can inspect is the one the erasure reached: this is the assertion a boundary given
+    // its own memo would fail while the record above still counted a removal.
+    expect(store.size()).toBeLessThan(before);
+  });
+
+  it('refuses a store no embedder would fill, and names the option', () => {
+    expect(() =>
+      assembleMemory({
+        llm: recordingLlm(),
+        now: NOW,
+        storage: new SqliteStorage(),
+        profile: 'reader',
+        embeddingStore: new MemoryEmbeddingCacheStore(),
+      }),
+    ).toThrow(/embeddingStore needs options\.embed/);
+  });
+
+  it('refuses a store on the profile that builds no index', () => {
+    expect(() =>
+      assembleMemory({
+        llm: recordingLlm(),
+        now: NOW,
+        storage: new SqliteStorage(),
+        embeddingStore: new MemoryEmbeddingCacheStore(),
+        embed: (batch) => Promise.resolve(batch.map(() => [1, 0, 0])),
+      }),
+    ).toThrow(/not reachable on profile: 'minimal'/);
   });
 });
 

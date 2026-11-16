@@ -216,6 +216,7 @@ RATIONALE = {
     "embedding-space-public-api": """The error surface of `EmbeddingSpace`, which is the one part of the guard a caller is expected to branch on. `EmbeddingSpace` itself is `with-caller`: `cortex-eval/src/retrieval.ts` and `cortex-eval/src/embedding-memory.ts` both open one, so the guard runs on every retrieved question rather than waiting for a user to adopt it. The three names here are what catching it requires -- `EmbeddingSpaceError` is the thrown class, `EmbeddingSpaceRefusal` is the discriminant its `reason` field carries so a caller can tell "this store is in another space" from "this model is broken", and `EmbeddingSpaceOptions` is the parameter type of `open`, which a wrapper that forwards its own options cannot name without. No in-repo caller catches the error: the two call sites let it fail the run, which is the correct behaviour for a benchmark whose whole point is that a space mismatch is not a recoverable condition. Recorded as debt rather than de-exported for the reason `export-surface.test.ts` states.""",
     "failure-stability-public-api": """The declared shapes and one constant of `docs/MEASURE-FAILURE-STABILITY.md`\'s partition, in the same position `cost-per-capability-public-api` occupies and for the same reason: `stabilityOf` returns `StabilityReading`, `repetitionNull` returns `NullReading` and `conversionCeiling` returns `CeilingReading`, each taking a `StabilityArtifactShape` and producing a structure a consumer outside the package cannot name without these declarations. `tools/failure-stability.mjs` is the in-package caller and it is a `.mjs`, so it reaches `stabilityOf`, `repetitionNull`, `conversionCeiling`, `renderStability` and `renderCeilings` through `dist` and the types are erased before it sees them -- which is why those five are `with-caller` and the eight here are not. `STABILITY_REFUSALS` is the last because its six reasons are the module\'s contract for a caller that renders them, and a mechanism arm whose target set is refused has to say which refusal it hit. `StabilityQuestionShape` and `StabilitySelection` are the two parameter types of the public functions, which a wrapper that forwards its own options cannot name without. Recorded as debt rather than de-exported for the reason `export-surface.test.ts` states.""",
     "conflict-surfacing-public-api": """The pieces of `cortex-memory/src/conflict.ts` that `CortexMemory` does not itself read. `conflictBlock` is not here: `#withConflicts` calls it on every flat-route prompt, so it is `with-caller` and the guard runs on every retrieved question rather than waiting for an arm to be dispatched with the option on. The four names here are what a consumer of the mechanism needs to talk about it -- `conflictStatements` is the population before it is rendered (the reading in `docs/MEASURE-CONFLICT-SURFACING.md` section 2 counts statements per question and needs the structures, not the string), `renderConflicts` is the rendering on its own so a caller that wants the block in a different position is not forced to take `conflictBlock`\'s, `valueSignature` is the population's own definition -- which tokens count as a value -- and a reader who wants to know why a block did or did not appear on one question needs to be able to call it rather than infer it from a docblock, and `ConflictStatement` plus `ConflictOptions` are the return and parameter types those three functions cannot be called without naming. The reason they are exported at all is the one `export-surface.test.ts` states, and it is also why they are recorded as debt rather than de-exported: a mechanism whose population cannot be inspected is one whose reach has to be taken on faith, and this campaign has spent three rounds learning what that costs.""",
+    "storage-embedding-cache-api": """THE STORE A DEPLOYMENT KEEPS. `StorageEmbeddingCache` is the durable half of the memo in `cortex-core/src/cache/embedding-cache.ts`: the same synchronous four-method interface the capability ledger's row 12 already sells, over the `Storage` a deployment already has. Its construction site cannot be inside the product, and that is a property of the interface rather than a missing wire: `open` is asynchronous because every backend this repository ships is (a SQLite worker behind a `MessageChannel`, `IndexedDB`, a Postgres socket), while `EmbeddingMemo.embed` asks `get(key)` inside the loop that decides hit or miss, so the store itself has to be synchronous. Durability is therefore a pair of edges -- hydrate before the assembly, flush after it -- and both are the caller's to place. The in-repo caller is `packages/cortex-memory/test/browser/corpus-page.html`, a page that drives the built bundle in a real Chromium across a restart; the census excludes test files by design, so this group measures the absence of a shipped application, exactly as `browser-storage-surface` does. The other three exist because a caller has to be able to name what it uses: `StorageEmbeddingCacheOptions` is the constructor's shape (which table, and the width that turns a stale vector into a miss), `StorageEmbeddingCacheReport` is what `report` returns after hydration, and `DEFAULT_EMBEDDING_CACHE_TABLE` is the table name a deployment inspects to confirm the rows are where the product said they would be -- a name rather than a literal copied out of a docblock. What makes them worth keeping is one number: after a browser restart the second assembly hydrated five rows and sent zero texts upstream, with the prompt digest unchanged at 536714097.""",
 
 
 }
@@ -234,6 +235,7 @@ GROUP_ORDER = [
     "failure-stability-public-api",
     "conflict-surfacing-public-api",
     "cortex-ai-embedder-cache-api",
+    "storage-embedding-cache-api",
 ]
 
 # The three single-file groups, matched by suffix so a package rename does not silently
@@ -246,6 +248,7 @@ EMBEDDING_SPACE_PATH = "cortex-core/src/vector/embedding-space.ts"
 FAILURE_STABILITY_PATH = "cortex-eval/src/failure-stability.ts"
 CONFLICT_SURFACING_PATH = "cortex-memory/src/conflict.ts"
 EMBEDDER_CACHE_PATH = "cortex-ai/src/embedding/cache.ts"
+STORAGE_EMBEDDING_CACHE_PATH = "cortex-core/src/cache/storage-embedding-cache.ts"
 
 ABLATION_KEYS = (
     "ablation",
@@ -269,6 +272,12 @@ def category(orphan: str) -> str:
         return "census-tool-public-api"
     if "cortex-storage/src/browser/" in path:
         return "browser-storage-surface"
+    if path.endswith(STORAGE_EMBEDDING_CACHE_PATH):
+        # The durable half of the same memo, in a file of its own for the reason the class comment gives:
+        # a synchronous cache that is durable at `flush()` is a different contract from a process-lifetime
+        # map, and folding it into `embedding-cache.ts` would have made the default look like the durable
+        # option. One file, one argument, in the position `cortex-ai-embedder-cache-api` occupies.
+        return "storage-embedding-cache-api"
     if path.endswith(EMBEDDER_CACHE_PATH):
         # One file, one argument, in the position `embedding-space-public-api` and the three measurement
         # groups occupy. Folding it into the cortex-ai catch-all would have put a cache API next to `retry.ts`

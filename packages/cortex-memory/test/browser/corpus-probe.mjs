@@ -70,7 +70,7 @@ const RESULTS = process.env.CORTEX_RESULTS_CORPUS ?? join(HERE, 'corpus-run.json
 const CONSUMER_ENTRY = [
   "export { assembleMemory } from '@agentix-e/cortex-memory';",
   "export { openOpfsStorage } from '@agentix-e/cortex-storage/opfs';",
-  "export { ERASURE_TOKEN } from '@agentix-e/cortex-core';",
+  "export { ERASURE_TOKEN, StorageEmbeddingCache } from '@agentix-e/cortex-core';",
   '',
 ].join('\n');
 
@@ -175,6 +175,9 @@ async function main() {
             corpusSize: phases.write.facts?.census?.corpusSize,
             sessionOrder: phases.write.facts?.census?.sessionOrder,
             promptDigest: phases.write.facts?.census?.promptDigest,
+            // What the first page load flushed, so the second one can be held to the same number rather
+            // than to "more than zero".
+            embedCacheFlush: phases.write.facts?.embedCacheFlush,
           },
         })})`,
       );

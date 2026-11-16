@@ -67,6 +67,14 @@ export {
   type VectorEraser,
 } from './cache/embedding-cache.js';
 
+// cache, durable: the same memo over the `Storage` a deployment already has
+export {
+  StorageEmbeddingCache,
+  DEFAULT_EMBEDDING_CACHE_TABLE,
+  type StorageEmbeddingCacheOptions,
+  type StorageEmbeddingCacheReport,
+} from './cache/storage-embedding-cache.js';
+
 // retrieval
 export {
   rerankHits,
