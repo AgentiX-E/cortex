@@ -782,13 +782,20 @@ The class has thirty-five options, and until this release the only assembly know
 `bench/run-ablation.ts` — which the package does not ship (`files: ["dist"]`). An integrator got a class
 and no worked example of which combination runs. `assembleMemory` is that example, in three sizes:
 
-| profile | what it adds over the one before | what it is for |
-| --- | --- | --- |
-| `minimal` | nothing: an identity gate and no index | the smallest conformant memory. Answers from the turns it is given, in the order it is given them |
-| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking this repository has priced at several points of accuracy |
-| `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it |
+| profile | what it adds over the one before | what it is for | measured (LongMemEval-S, 500 × 4) |
+| --- | --- | --- | --- |
+| `minimal` | nothing: an identity gate and no index | the smallest conformant memory. Answers from the turns it is given, in the order it is given them | **39.55%** — the `relevanceSignal=none` arm |
+| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking a knowledge-update or count-bearing question needs | **91.40%** — the `self-index` arm; paired against the harness's own index at −1.5 questions (p = 1.0) |
+| `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it | the same ranking; the boundary is not an accuracy mechanism |
 
-`minimal` is the default, so a call that names nothing gets the cheapest configuration that conforms.
+`reader` is the default. It was `minimal` until the ranking was priced, and the two numbers in the last column
+are one measurement of one difference: without a relevance signal the prompt keeps the head of the transcript
+and drops the newest turn, which is the turn a knowledge-update question asks about. The gap is **51.85
+points**, so "the cheapest configuration that conforms" was a true sentence with a price nobody had read out
+loud. `minimal` still exists — a conformance check wants a memory that ranks nothing — but you have to name it.
+
+The default is the strongest profile that needs **no** extra input. `full` is stronger and is not the default
+because it needs a second store: a default that throws when you name nothing is not a default.
 
 <!-- contract-table: AssembleOptions -->
 | option | type | default | effect |
@@ -796,9 +803,10 @@ and no worked example of which combination runs. `assembleMemory` is that exampl
 | `llm` | `LLM` | — (required) | The reader. Injected, because this package owns no provider and no credential. |
 | `now` | `number` | — (required) | Epoch milliseconds for every time-stamped decision. |
 | `storage` | `Storage` | — (required) | Where the transcript goes, and for `full` the private side of the boundary. Any backend: SQLite, PostgreSQL, OPFS, IndexedDB. |
-| `profile` | `'minimal' \| 'reader' \| 'full'` | `'minimal'` | How much of the product to wire up. |
+| `profile` | `'minimal' \| 'reader' \| 'full'` | `'reader'` | How much of the product to wire up. See the table above for what each one scores. |
 | `embed` | `EmbedFn` | absent | The vector channel, as a batch function over texts. Absent leaves lexical retrieval, which is the registered arm's ranking signal. |
 | `embeddingStore` | `EmbeddingCacheStore` | absent (a process-lifetime map) | Where the vectors live between assemblies. Supply `await StorageEmbeddingCache.open(storage)` to keep them across a restart, and flush it after the work. Refused on `minimal` and refused without `embed`, because neither would read or write it. |
+| `maxPromptChars` | `number` | absent (the memory's own 48,000) | The room for one assembled prompt. Deliberately not defaulted here, because the registered arm states a room per route and a constant in this file would be a second arm; the field is how you state a bound. |
 | `shared` | `Storage` | absent | The public side of the disclosure boundary. Required by `full`, ignored by the other two. |
 | `name` | `string` | `'cortex-memory'` | Attribution label, carried through to the memory. |
 | `gate` | `Partial<GateOptions>` | identity (`0` / `0` / unbounded) | Overrides for the admission and retrieval gates, §6.2. |
@@ -819,8 +827,13 @@ const storage = new SqliteStorage({ filename: './private.db' });
 const shared = new SqliteStorage({ filename: './shared.db' });
 const now = Date.UTC(2026, 0, 1);
 
-// The smallest thing. No index, no boundary, no ranking: the cheapest configuration that conforms.
+// The smallest thing: no index, no boundary, no ranking. Named on purpose -- it is the configuration the
+// instrument priced at 39.55%, so a call that omits `profile` does not get this one.
 const smallest = assembleMemory({ llm, now, storage, profile: 'minimal' });
+
+// A bound you state. `maxPromptChars` has no default here, and the room is what a ranking competes for.
+const bounded = assembleMemory({ llm, now, storage, maxPromptChars: 6_000 });
+void bounded;
 
 // The same corpus, ranked. `embed` is optional; without it the index is lexical and costs no model call.
 const reader = assembleMemory({ llm, now, storage, profile: 'reader', embed, index: { k: 40 } });
@@ -880,7 +893,9 @@ Two things are deliberately **not** defaulted:
 
 - **`maxPromptChars`.** The per-route room table is the registered arm's configuration, and a second
   default here would be a second arm: a run that changed only this file's constant would move every
-  published number while claiming to have changed nothing. State the bound you want.
+  published number while claiming to have changed nothing. State the bound you want — the field is there; what
+  is absent is a value. Before this release the sentence said "state it" over an option list that had no such
+  field, which made an omission look like a discipline.
 - **`shared`.** A `full` profile without a second store throws at assembly rather than at the first
   publication. Two sides of a boundary in one file is not a boundary.
 

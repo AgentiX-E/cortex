@@ -1,4 +1,4 @@
-"""`S11`'s producer, and the four refusals that keep it from publishing the wrong product.
+"""`S11`'s producer, and the five refusals that keep it from publishing the wrong product.
 
 The row was registered without a tool that writes it. That is the state `S10` was in for a round, and
 what it costs is specific: a dispatch can be paid for and its artifact uploaded while the file the
@@ -13,6 +13,9 @@ correct and be wrong:
     number is a genuine measurement of it.
   - **A smaller population**: the threshold is expressed on 500 x 4, and this row has no screening
     tier for a small run to go to.
+  - **An undeclared departure**: the fifth, added when the first real artifact for this row was refused.
+    The row's arm is *by construction* a departure from the registration, so a writer that only accepted
+    exact matches accepted nothing this row would ever produce.
 """
 
 import json
@@ -194,3 +197,111 @@ def test_the_written_file_carries_what_the_criterion_reads(tmp_path):
     assert written["arm"]["relevanceSignal"] == "none"
     assert written["configurationFingerprint"].startswith("sha256:")
     assert written["dataset"]["questions"] == 500
+
+
+def departure(tmp_path):
+    """The S11 artifact beside the registration it departs from, which is the shape a real run has.
+
+    The row's arm **is** a departure -- `relevanceSignal: none` against a registration that records
+    `retrieval-anchored` -- so the strict path refuses every artifact this tool was built to read. Before
+    these tests that was the tool's behaviour, and `test_an_unregistered_configuration_is_refused` above
+    pinned it: the row could be dispatched, paid for, and its evidence file could never exist.
+
+    The baseline carries a **projected `dispatch` block**, because that is what a recorded registration
+    is: `arm-config-record.py` writes one from a real artifact, and without it `differences()` can only
+    say that no input can be compared -- which would let these tests pass on a fixture that never reached
+    the field-level path they exist for.
+    """
+    sys.path.insert(0, str(TOOL.parent))
+    record = __import__("importlib").import_module("arm-config-record")
+    report = artifact(signal="none")
+    registered = artifact(signal="retrieval-anchored")
+    path = baseline_for(registered, tmp_path)
+    baseline = json.loads(path.read_text(encoding="utf-8"))
+    baseline["dispatch"] = record.project(registered)
+    path.write_text(json.dumps(baseline), encoding="utf-8")
+    return report, path
+
+
+def test_a_departure_without_a_declaration_is_refused_and_names_the_field(tmp_path):
+    report, baseline = departure(tmp_path)
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(pathlib.Path(tmp_path) / "out.json"),
+        "--run",
+        "1",
+        "--baseline",
+        str(baseline),
+    )
+    assert done.returncode == 1
+    # The field name, not just "the configuration differs": the reader has to know which line moved.
+    assert "cortex_memory_relevance" in done.stderr
+    assert "not a measurement of the registered configuration" in done.stderr
+    assert not (pathlib.Path(tmp_path) / "out.json").exists()
+
+
+def test_a_declared_departure_is_written_and_the_file_says_which_field_moved(tmp_path):
+    report, baseline = departure(tmp_path)
+    out = pathlib.Path(tmp_path) / "out.json"
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(out),
+        "--run",
+        "43793677739",
+        "--departs",
+        "cortex_memory_relevance",
+        "--baseline",
+        str(baseline),
+    )
+    assert done.returncode == 0, done.stderr
+    written = json.loads(out.read_text())
+    # Always present, for the reason every always-present field in this campaign exists: a file that
+    # omitted it would make "no departures" and "written before the field" the same bytes.
+    assert written["declaredDepartures"] == ["cortex_memory_relevance"]
+    assert written["tier"] == "declared-departure"
+    assert written["overall"]["accuracy"] == pytest.approx(1.0)
+    assert "declared: cortex_memory_relevance" in done.stdout
+
+
+def test_a_declaration_that_names_a_field_which_did_not_move_is_refused(tmp_path):
+    # A declaration is a claim about a run that happened. Naming an input the artifact agrees with the
+    # registry on would let a later reader believe a control was a treatment.
+    report, baseline = departure(tmp_path)
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(pathlib.Path(tmp_path) / "out.json"),
+        "--run",
+        "1",
+        "--departs",
+        "cortex_memory_max_turn_chars",
+        "--baseline",
+        str(baseline),
+    )
+    assert done.returncode == 1
+    assert "cortex_memory_max_turn_chars" in done.stderr
+    assert "did not move" in done.stderr
+    assert not (pathlib.Path(tmp_path) / "out.json").exists()
+
+
+def test_the_tier_is_registered_when_nothing_departs(tmp_path):
+    report = artifact()
+    out = pathlib.Path(tmp_path) / "out.json"
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(out),
+        "--run",
+        "1",
+        "--baseline",
+        str(baseline_for(report, tmp_path)),
+    )
+    assert done.returncode == 0, done.stderr
+    assert json.loads(out.read_text())["declaredDepartures"] == []
+    assert "declared: none" in done.stdout

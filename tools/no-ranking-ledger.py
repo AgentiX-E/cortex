@@ -20,7 +20,7 @@ the one that bites:
   four-repetition figure until the two diverged, which is exactly when a reader would need them to
   agree. `S10`'s tool recomputes for the same reason and states it there.
 
-## The four refusals
+## The five refusals
 
 1. **`--write` without `--run`.** An evidence file that does not name its run is a number nobody can
    re-derive.
@@ -35,9 +35,17 @@ the one that bites:
    the row's threshold is expressed on them. Unlike `S10`, this file has no `screening` tier: the
    criterion reads `overall.accuracy` with no switch, so a smaller run has nowhere honest to go and is
    refused rather than written under a label the row would still read.
+5. **A departure the artifact does not declare.** This one was missing, and it made the tool refusable by
+   the only row it serves: `S11`'s arm **is** a departure on `relevanceSignal`, the declaration was checked
+   at dispatch time and printed to the log, and then dropped -- so the first real artifact produced for
+   this row was refused as "not a measurement of the registered configuration" and the money bought a
+   number no file could carry. The declaration is now an argument (`--departs`), it is required to name
+   exactly the inputs that moved, and it is written into the file so a reader can see which fields the
+   number was bought at.
 
 Usage:
-  python3 tools/no-ranking-ledger.py <artifact> --run <id> --write ../cortex-docs/evidence/longmemeval/no-ranking.json
+  python3 tools/no-ranking-ledger.py <artifact> --run <id> --departs cortex_memory_relevance \
+      --write ../cortex-docs/evidence/longmemeval/no-ranking.json
 """
 
 from __future__ import annotations
@@ -100,7 +108,7 @@ def fingerprint(report: dict) -> str:
     return registration.fingerprint(report.get('memoryArmConfig'))
 
 
-def ledger(report: dict, run: str | None) -> dict:
+def ledger(report: dict, run: str | None, declared: list[str]) -> dict:
     arm = report.get('memoryArmConfig', {})
     signal = arm.get('relevanceSignal')
     overall = accuracy(report)
@@ -113,6 +121,10 @@ def ledger(report: dict, run: str | None) -> dict:
         ),
         'row': 'S11',
         'run': run,
+        # Always present, and the reason is the one every always-present field in this campaign has: a
+        # file that omitted it would make "no departure" and "written before the field existed" the same
+        # bytes, and the row exists precisely because one field *did* move.
+        'declaredDepartures': list(declared),
         'arm': {
             'name': report.get('kind'),
             'relevanceSignal': signal,
@@ -130,7 +142,10 @@ def ledger(report: dict, run: str | None) -> dict:
         },
         'overall': overall,
         'configurationFingerprint': fingerprint(report),
-        'tier': 'registered',
+        # `registered` is a claim the strict path has verified; a departure is a different claim and gets a
+        # different word, because the two files are read by the same criterion and only one of them is the
+        # configuration the project ships.
+        'tier': 'declared-departure' if declared else 'registered',
     }
 
 
@@ -143,6 +158,7 @@ def render(result: dict) -> str:
         f"  population: {overall['questions']} questions x {overall['runs']} repetitions",
         '  per run: ' + ', '.join(f'{value * 100:.2f}%' for value in overall['accuracyPerRun']),
         f"  overall: {overall['accuracy'] * 100:.2f}%  (S11 floor 88.0%)",
+        '  declared: ' + (', '.join(result['declaredDepartures']) or 'none'),
         f"  verdict: {'pass' if overall['accuracy'] >= 0.88 else 'miss'}",
     ]
     return '\n'.join(lines)
@@ -155,6 +171,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--write', type=Path, help='write the evidence file to this path')
     parser.add_argument('--run', help='the workflow run id this report came from')
     parser.add_argument('--baseline', type=Path, default=REGISTRATION, help='the registration record')
+    parser.add_argument(
+        '--departs',
+        default='',
+        metavar='FIELDS',
+        help=(
+            'comma-separated dispatch inputs this artifact moved away from the registration, so its '
+            'evidence may be written; every difference must be named here and every name here must be a '
+            'difference. Empty means the artifact claims to be the registration, which is the strict '
+            'default'
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.write is not None and not args.run:
@@ -178,13 +205,19 @@ def main(argv: list[str]) -> int:
                 'no screening tier -- the criterion reads `overall.accuracy` with no switch -- so a smaller '
                 'run would pass the row on an instrument the threshold was not written for.'
             )
-        registration_reading = registration.attestation(
-            report, json.loads(args.baseline.read_text(encoding='utf-8'))
-        )
-        if not registration_reading['matched']:
-            raise SystemExit(registration.refusal(registration_reading, args.baseline))
+        baseline = json.loads(args.baseline.read_text(encoding='utf-8'))
+        declared = [name.strip() for name in args.departs.split(',') if name.strip()]
+        if not declared:
+            registration_reading = registration.attestation(report, baseline)
+            if not registration_reading['matched']:
+                raise SystemExit(registration.refusal(registration_reading, args.baseline))
+        else:
+            reading = registration.declared_attestation(report, baseline, declared)
+            if not reading['accepted']:
+                raise SystemExit(registration.declaration_refusal(reading, args.baseline))
 
-    result = ledger(report, args.run)
+    declared = [name.strip() for name in args.departs.split(',') if name.strip()]
+    result = ledger(report, args.run, declared)
     if args.write is not None:
         args.write.parent.mkdir(parents=True, exist_ok=True)
         args.write.write_text(json.dumps(result, indent=2) + '\n')

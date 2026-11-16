@@ -71,9 +71,13 @@ describe('each profile gets from a transcript to an answer', () => {
     expect(await install.corpus.size()).toBe(4);
   });
 
-  it('is `minimal` when no profile is named, because that is the cheapest conformant assembly', () => {
+  it('is `reader` when no profile is named, which is the profile a reading was taken under', () => {
     const install = assembleMemory({ llm: recordingLlm(), now: NOW, storage: new SqliteStorage() });
-    expect(install.profile).toBe('minimal');
+    // Not the cheapest profile. `minimal` was the default for one release and it is the `relevanceSignal=none`
+    // arm, measured at 39.55% against `self-index`'s 91.40% on the same instrument; the reason lives in
+    // `assemble.ts`'s table and the property is asserted in the last block of this file.
+    expect(install.profile).toBe('reader');
+    // A boundary is still not defaulted, because it needs a second store to exist at all.
     expect(install.disclosure).toBeUndefined();
     // The default attribution is the class's own, so an artifact from an unnamed assembly is still nameable.
     expect(install.memory.name).toBe('cortex-memory');
@@ -90,7 +94,14 @@ describe('each profile gets from a transcript to an answer', () => {
   });
 
   it('has no ranking on `minimal` and a ranking on the other two', async () => {
-    const minimal = assembleMemory({ llm: recordingLlm(), now: NOW, storage: new SqliteStorage() });
+    const minimal = assembleMemory({
+      llm: recordingLlm(),
+      now: NOW,
+      storage: new SqliteStorage(),
+      // Named, because the default is `reader` now: a test about the profile that ranks nothing has to be
+      // the test that asks for it, or a change to the default would silently move which arm this asserts.
+      profile: 'minimal',
+    });
     await minimal.memory.remember(CONVERSATION);
     await minimal.memory.askStored('Where did I move?');
     // `undefined` rather than zeros: the profile built no index, and a census of zeroes would read as an
@@ -314,6 +325,7 @@ describe('the vector store a deployment hands in', () => {
         llm: recordingLlm(),
         now: NOW,
         storage: new SqliteStorage(),
+        profile: 'minimal',
         embeddingStore: new MemoryEmbeddingCacheStore(),
         embed: (batch) => Promise.resolve(batch.map(() => [1, 0, 0])),
       }),
@@ -396,5 +408,114 @@ describe('the disclosure boundary', () => {
     // The control: the sentence nobody erased is still there, so an erasure that emptied the corpus would fail
     // here rather than pass every assertion above.
     expect(await install.corpus.context()).toEqual([UNRELATED]);
+  });
+});
+
+/**
+ * The default profile, and the two claims the module docblock makes about it.
+ *
+ * ## Why this is asserted here rather than in the manual
+ *
+ * The registered instrument prices two configurations of this product and nothing else: with a ranking
+ * (`relevanceSignal=self-index`, 500 questions x 4 passes, **91.40%**) and without one (`none`, same
+ * instrument, **39.55%**). The difference is **51.85 points** and the paired split is 66 questions against
+ * 38 (McNemar p = 7.8e-3), because an unsignalled prompt clips the arrival-ordered list from the tail --
+ * `chooseEvidence`'s first branch -- so the newest turn is the first one lost.
+ *
+ * A default that names `minimal` therefore ships the second of those two numbers. The tests below assert the
+ * property rather than the name: an assembly that names no profile must rank, and a turn that arrival order
+ * would clip must still reach the reader. A docblock cannot hold that, and this file has already paid once
+ * for a comment that described behaviour the code did not have.
+ *
+ * ## The control in every case
+ *
+ * `minimal` is assembled beside the default in each test and must fail the same assertion. Without it, a
+ * corpus whose answer happened to sit in the head would make the ranking test pass with no ranking at all.
+ */
+describe('the default profile carries the ranking a reading was taken under', () => {
+  /** Ten turns that share no content word with the question, so lexical ranking has exactly one candidate. */
+  const FILLER = [
+    'The bicycle repair invoice was paid late again.',
+    'A parcel from the courier arrived on Tuesday morning.',
+    'The landlord repainted the hallway in a pale grey.',
+    'My neighbour keeps a greyhound called Otto.',
+    'The coffee grinder needs a new burr every two years.',
+    'We planted tomatoes along the south wall in April.',
+    'The train to the coast leaves at a quarter past seven.',
+    'A wasp built a nest under the kitchen window.',
+    'The library extended its opening hours until eight.',
+    'The radiators were serviced before the cold spell.',
+  ];
+  /** The answer, last in arrival order, and the only turn that shares a word with the question. */
+  const ANSWER = 'I now live in Lisbon, and the flat is two streets from the river.';
+  const QUESTION = 'Which city do I live in now?';
+
+  function transcript(): { sessionId: string; ordinal: number; text: string }[] {
+    return [
+      ...FILLER.map((text, ordinal) => ({ sessionId: 's1', ordinal, text })),
+      { sessionId: 's1', ordinal: FILLER.length, text: ANSWER },
+    ];
+  }
+
+  it('names the profile that builds an index, so the ranking exists without being asked for', async () => {
+    const seen: string[] = [];
+    const install = assembleMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      storage: new SqliteStorage(),
+    });
+    await install.memory.remember(transcript());
+    await install.memory.askStored(QUESTION);
+
+    expect(install.profile).toBe('reader');
+    // The mechanism, not the label: `indexCost()` is written only by the product's own index, and the
+    // assembly that has none leaves it absent. This is the same field `minimal`'s test asserts is `undefined`.
+    expect(install.memory.indexCost()).toBeDefined();
+  });
+
+  it('reaches a turn that arrival order would clip, and minimal does not', async () => {
+    const ranked: string[] = [];
+    const clipped: string[] = [];
+    // A room that holds the head of the transcript and not its tail: with no signal the evidence is
+    // `truncateCodePointSafe(render(turns), room)`, which is exactly what loses the newest turn.
+    const room = 600;
+    const reader = assembleMemory({
+      llm: recordingLlm(ranked),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxPromptChars: room,
+    });
+    const smallest = assembleMemory({
+      llm: recordingLlm(clipped),
+      now: NOW,
+      storage: new SqliteStorage(),
+      profile: 'minimal',
+      maxPromptChars: room,
+    });
+
+    await reader.memory.remember(transcript());
+    await smallest.memory.remember(transcript());
+    await reader.memory.askStored(QUESTION);
+    await smallest.memory.askStored(QUESTION);
+
+    expect(ranked[0]).toContain('Lisbon');
+    // The control, and the reason the default moved: the same corpus, the same room, the same question.
+    expect(clipped[0]).not.toContain('Lisbon');
+    // And the bound is a bound: both prompts are the room's, not the corpus's.
+    expect(ranked[0]!.length).toBeLessThan(1_200);
+    expect(clipped[0]!.length).toBeLessThan(1_200);
+  });
+
+  it('takes maxPromptChars, because the docblock that refuses to default it says a caller states it', async () => {
+    // The omission is deliberate -- a second default here would be a second arm -- but an omission is only
+    // defensible if the caller can state the value. Before this field the two sentences could not both be
+    // true, and the sentence that survived was the one a reader trusted.
+    const install = assembleMemory({
+      llm: recordingLlm(),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxPromptChars: 1_500,
+    });
+    expect(install.profile).toBe('reader');
   });
 });

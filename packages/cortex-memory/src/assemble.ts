@@ -12,11 +12,30 @@
  *
  * ## Three profiles, and why the list is closed
  *
- * | profile | what it adds over the one before | what it is for |
- * | --- | --- | --- |
- * | `minimal` | nothing — an identity gate and no index | the smallest conformant memory; answers from the turns it is given, in the order it is given them |
- * | `reader` | the retrieval index (lexical, plus a vector channel when an embedder is supplied) | the ranking this repository has priced at several points of accuracy |
- * | `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it |
+ * | profile | what it adds over the one before | what it is for | measured on the registered instrument |
+ * | --- | --- | --- | --- |
+ * | `minimal` | nothing — an identity gate and no index | the smallest conformant memory; answers from the turns it is given, in the order it is given them | **39.55%** — the `relevanceSignal=none` arm, 500 questions × 4 passes |
+ * | `reader` | the retrieval index (lexical, plus a vector channel when an embedder is supplied) | the ranking a count-bearing or superseded-value question needs | **91.40%** — the `self-index` arm, same instrument, paired against the harness's own index at −1.5 questions (p = 1.0) |
+ * | `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it | same ranking; the boundary is not an accuracy mechanism |
+ *
+ * ## Why the default is `reader` and not the cheapest profile
+ *
+ * It **was** `minimal`, and the sentence that defended it — "the cheapest configuration that conforms" —
+ * was true and cost **51.85 points**. The two numbers in the table are one measurement of one difference:
+ * the same reader, budget, corpus and judge, with a ranking and without one. The unsignalled prompt is
+ * `truncateCodePointSafe(render(turns), room)` (`prompt.ts`, `chooseEvidence`'s first branch), so it keeps
+ * the head of the transcript and loses the newest turn — which is the turn a knowledge-update question
+ * asks about and the turn a count-bearing question's last item sits in. `answerSessions` delivered
+ * 48,460 characters of conversation and the answer was cut off the end of it.
+ *
+ * A library whose selling point is a measured number cannot default to the configuration the instrument
+ * priced at less than half of it. `minimal` remains, because a smoke test and a conformance check want a
+ * memory that ranks nothing, but it has to be **named** — and `assemble.test.ts` holds both ends: the
+ * default builds an index, and `minimal` on the same corpus still loses the same turn.
+ *
+ * The default is the strongest profile that needs **no** additional input. `full` is stronger and is not the
+ * default because it requires a second store: a default that throws on a call naming nothing is not a
+ * default.
  *
  * Three rather than a matrix because a matrix of thirty options is what the class already is. Each profile
  * is a **worked** configuration — smoke-tested end to end through `remember` → `askStored` — and a caller who
@@ -26,7 +45,10 @@
  *
  * `maxPromptChars` has **no default here**. The per-route room table is the registered arm's configuration,
  * and a second default would be a second arm: a run that changed only this file's constant would move every
- * published number while claiming to have changed nothing. A caller who wants a bound states it.
+ * published number while claiming to have changed nothing. A caller who wants a bound states it — and this
+ * paragraph said so for one release while `AssembleOptions` had no field to state it in, which made the
+ * omission a missing capability rather than a discipline. The field exists now; the absence of a default did
+ * not change, only the truth of the sentence beside it.
  *
  * ## Why `assembleMemory` and not the `createMemory` the design sketch names
  *
@@ -59,8 +81,20 @@ export type AssembleOptions = {
    * corpus reads and writes nothing else, which is what makes the same assembly run on all four.
    */
   readonly storage: Storage;
-  /** Defaults to `minimal`, so a caller who names nothing gets the cheapest configuration that conforms. */
+  /** Defaults to `reader`, so a call that names nothing gets the configuration that has a published reading. */
   readonly profile?: AssemblyProfile | undefined;
+  /**
+   * The room, in characters, for one assembled prompt. Absent means the memory's own default (48,000).
+   *
+   * No default here, for the reason the module comment gives: the registered arm states a room per route
+   * and this function must not become a second arm by holding a number of its own. The field exists so the
+   * omission is a **choice a caller can undo** rather than a bound nothing can reach.
+   *
+   * One number rather than the per-route table, because a table is the registered arm's calibration and not
+   * a shape a caller assembles by hand; a caller who needs it composes `CortexMemory` from the fields, which
+   * is what `maxPromptCharsByRoute` is for.
+   */
+  readonly maxPromptChars?: number | undefined;
   /**
    * The vector channel, as a batch function over texts.
    *
@@ -148,7 +182,7 @@ export type Installation = {
  * difference in the mechanisms above it rather than in a gate nobody named.
  */
 export function assembleMemory(options: AssembleOptions): Installation {
-  const profile = options.profile ?? 'minimal';
+  const profile = options.profile ?? 'reader';
   const gate: GateOptions = {
     threshold: 0,
     retrievalThreshold: 0,
@@ -197,6 +231,7 @@ export function assembleMemory(options: AssembleOptions): Installation {
     corpus,
     ...(index === undefined ? {} : { index }),
     ...(options.name === undefined ? {} : { name: options.name }),
+    ...(options.maxPromptChars === undefined ? {} : { maxPromptChars: options.maxPromptChars }),
     ...(options.supersededRendering === undefined
       ? {}
       : { supersededRendering: options.supersededRendering }),

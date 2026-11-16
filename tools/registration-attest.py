@@ -252,6 +252,77 @@ def attestation(report: dict, baseline: dict) -> dict:
     }
 
 
+def field_of(line: str) -> str:
+    """The dispatch input a difference line names.
+
+    Every line `differences()` and `condition_differences()` build starts with the input's name and a
+    colon -- that format is this module's own, and it is the reason a declaration can be checked against a
+    reading without a second projection: the reader that has to be convinced is the same one that wrote
+    the line.
+    """
+    return line.split(':', 1)[0].strip()
+
+
+def declared_attestation(report: dict, baseline: dict, declared) -> dict:
+    """The attestation read the way a **departure** arm needs it read.
+
+    ## Why this is a second function and not a flag on `attestation`
+
+    `attestation()['matched']` is fingerprint equality, and it has to stay that way: the strict readers
+    (`readout-arm-run.py --registration`, and the workflow step that gates on it) must keep refusing an
+    artifact whose configuration moved. A row whose arm **is** a departure -- `S11` is `relevanceSignal:
+    none` against a registration that records `retrieval-anchored` -- can never be byte-equal to the
+    registration, so widening `matched` would trade one row's ability to write evidence for every row's
+    ability to catch a drift.
+
+    ## The three states, and why the third one is a refusal rather than a tolerance
+
+    1. Every difference declared and every declared field moved -> `accepted`.
+    2. A difference nobody named -> refused. This is the case the strict path already catches; the
+       difference here is that the message can say which declaration was missing.
+    3. A declared field that did **not** move -> refused. A declaration is a claim about a run that
+       happened. Evidence that the input did not move makes the claim false, and a file carrying it would
+       let a later reader believe a control was a treatment -- which no number in the file would
+       contradict.
+    """
+    reading = attestation(report, baseline)
+    moved = {field_of(line) for line in reading['differences']}
+    names = list(declared)
+    undeclared = [line for line in reading['differences'] if field_of(line) not in names]
+    stale = [name for name in names if name not in moved]
+    return {
+        **reading,
+        'declared': names,
+        'undeclared': undeclared,
+        'stale': stale,
+        'accepted': bool(names) and not undeclared and not stale,
+    }
+
+
+def declaration_refusal(reading: dict, baseline_path: Path) -> str:
+    """The sentence a writer prints instead of writing, naming the declaration problem.
+
+    Two problems, printed as two lists, because they have two different repairs: an undeclared difference
+    needs a `--departs` entry, and a stale declaration needs the entry removed. A single "the declaration
+    does not match" would send the reader to diff the two JSON files this function just diffed.
+    """
+    lines = [f'this artifact does not carry a declaration that matches it ({baseline_path}).']
+    for line in reading['undeclared']:
+        lines.append(f'  undeclared: {line}')
+    for name in reading['stale']:
+        lines.append(
+            f'  {name}: declared, and this artifact did not move it -- a declaration names a field the '
+            'run moved, and an input that did not move did not move'
+        )
+    if not lines[1:]:
+        lines.append('  (no difference to explain, and nothing declared)')
+    lines.append(
+        'Refusing to write an evidence file from it. Declare exactly the inputs the artifact moved, or '
+        'regenerate the artifact from the registered configuration.'
+    )
+    return '\n'.join(lines)
+
+
 def refusal(reading: dict, baseline_path: Path) -> str:
     """The sentence a writer prints instead of writing, naming every field that moved.
 

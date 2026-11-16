@@ -69,7 +69,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | S10 | <!-- reading:S10 -->3      | ≥ -5      | pass   | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
-| S11 | <!-- reading:S11 -->—     | ≥ 88.0%   | unrun  | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
+| S11 | <!-- reading:S11 -->39.6%   | ≥ 88.0%   | fail   | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
 | S12 | <!-- reading:S12 -->-2    | ≥ -5      | pass   | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |
 | S13 | <!-- reading:S13 -->27    | ≥ 1       | pass   | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record, summed over every worker instance |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
