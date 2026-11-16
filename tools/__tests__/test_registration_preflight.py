@@ -26,6 +26,8 @@ what was *asked for*, and every blank is a question nobody asked.
 | one moved | `limit` = `60` | `0` | fail, `DEPARTED` |
 | declared | the same departures | same | pass |
 | declared idle | a key that did not move | same | pass, with a note |
+| declared unresolvable | a name no gate can read | same | fail |
+| declared condition | a name a repository variable carries | same | pass, handed to the artifact gate |
 | no payload | nothing to read | same | fail |
 
 The `limit` case is the one an environment read cannot see: the workflow writes
@@ -129,6 +131,35 @@ class PreflightTest(unittest.TestCase):
         )
         self.assertEqual(code, 0, out)
         self.assertIn("declared but unchanged: cortex_memory_relevance_top_k", out)
+
+    def test_a_declaration_no_gate_can_resolve_is_refused_here(self) -> None:
+        """`43829744532` declared `indexEmbedding` and was refused by the gate it had paid for.
+
+        The preflight is the free gate and it saw the declaration: it printed
+        *"declared but unchanged: indexEmbedding -- the declaration names a field this dispatch did
+        not move"*. That sentence was false in the direction that matters -- the dispatch **had**
+        moved it, through a repository variable this gate does not read -- and the verdict was
+        `match`. Eighty-seven minutes later `readout-arm-run.py --registration` resolved the same
+        name to nothing and refused the run.
+
+        A name that neither the payload carries nor the artifact gate compares is a declaration
+        nothing will ever read. Refusing it here costs no money; refusing it there costs the run.
+        """
+        code, out = self.run_preflight(dict(self.registered), declared="indexEmbeddingNowhere")
+        self.assertEqual(code, 1, out)
+        self.assertIn("cannot be resolved by either gate", out)
+
+    def test_a_condition_is_carried_to_the_artifact_rather_than_read_here(self) -> None:
+        """`indexEmbedding` is declarable, and this gate still cannot see it move.
+
+        The variable reaches the run through `vars.CORTEX_MEMORY_INDEX_EMBEDDING`, not through the
+        payload, so the honest output names the channel and hands the question to the gate that reads
+        the artifact. Saying "unchanged" would assert something this file has not looked at.
+        """
+        code, out = self.run_preflight(dict(self.registered), declared="indexEmbedding")
+        self.assertEqual(code, 0, out)
+        self.assertIn("carried to the artifact", out)
+        self.assertNotIn("declared but unchanged: indexEmbedding", out)
 
     def test_the_declared_list_accepts_both_shapes_it_has_carried(self) -> None:
         """The variable has been a JSON array and a comma separated list.

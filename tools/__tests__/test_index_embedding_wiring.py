@@ -22,12 +22,13 @@ type error: it is a run that publishes the registered arm's number under the lex
 | the fallback is the literal `injected` | an unset variable and a variable set to the empty string become the same bytes in the dispatch record, so "nobody chose" and "the default was chosen" cannot be told apart |
 | the dispatcher writes it on every dispatch | a `none` left behind withholds a capability from the next run, which would reproduce the registered configuration with a hole in it and no dispatch asked for the hole |
 | the dispatcher declares the departure | the registration gate reads `memoryArmConfig.indexEmbedding`; an undeclared `none` is a measurement of a configuration nobody registered, refused after the money is spent |
+| every declarable name is one the gate can resolve | the declaration travels to a gate that has never heard of the name, so the gate refuses the run -- and it refuses it at the end, on a complete artifact that cost two hours |
 | the arm's names and the constructor's test agree | a value added on one side only: the arm records `none`, the constructor keeps the embedder, and the artifact publishes the registered arm as the lexical one -- which is the direction that reads as *good news* about a deployment with no embedder |
 | absence, not `undefined` | `SearchIndex` decides on `!== undefined`, so a present-but-undefined `embed` key reads as configured and the lexical arm silently keeps a vector channel |
 
 ## What it deliberately does not check
 
-Whether the channel is worth having. That is `S12`'s acceptance criterion: it needs a dispatch, and a
+Whether the channel is worth having. That is `S14`'s acceptance criterion: it needs a dispatch, and a
 direction asserted here would make this file fail for a result rather than for a defect.
 """
 
@@ -167,3 +168,98 @@ def test_the_arms_names_are_the_dispatchers_names_and_the_constructors_condition
         'the channel is not spread conditionally, so the lexical arm is expressed by something other '
         'than the absence of `embed`'
     )
+
+
+READOUT = ROOT / 'tools/readout-arm-run.py'
+
+
+def declarable_names() -> list[str]:
+    """Every name the dispatcher can put into `CORTEX_DECLARED_DEPARTURES`.
+
+    Read from the `declared = sorted({...})` block rather than from a list written here, so a name
+    added to the dispatcher is covered by this check the day it is added. The block is the only place
+    the dispatcher assembles a declaration, which is what makes a static read equivalent to running
+    every dispatch shape.
+    """
+    block = re.search(r'declared = sorted\(\s*\{(.*?)\n    \)\n', read(DISPATCH), re.S)
+    assert block is not None, 'the dispatcher has no `declared = sorted({...})` block'
+    return sorted(set(re.findall(r'\("(\w+)",\)', block.group(1))))
+
+
+def adjudicable_names() -> set[str]:
+    """Every name `readout-arm-run.py --registration` can resolve a declaration against.
+
+    Three sources, and all three are needed: the dispatch table (a name the artifact comparison reads
+    off a dispatch input), the aliases (a dispatch input that lands somewhere other than its own name),
+    and the conditions (a value no input carries and the artifact records anyway).
+    """
+    spec = importlib.util.spec_from_file_location('readout_arm_run', READOUT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    dispatch = load_dispatch()
+    return (
+        {str(name) for name in dispatch.INPUTS}
+        | set(module.DISPATCH_FIELD_ALIASES)
+        | set(module.REGISTERED_CONDITIONS)
+    )
+
+
+def test_every_declarable_name_is_one_the_registration_gate_can_resolve() -> None:
+    """`S14` was refused by the gate it had already paid for.
+
+    Run `43829744532` asked for `indexEmbedding=none`, wrote the declaration, ran 87 minutes, produced a
+    complete 500-question artifact -- and `readout-arm-run.py --registration` refused it:
+
+        refused: --departs names ['indexEmbedding'], which neither the dispatch table sends nor the
+        artifact records as a condition
+
+    The refusal is right and it is late. The declaration named a field the gate had no seat for, and
+    nothing failed until the money was spent, because the dispatcher's declaration list and the gate's
+    vocabulary are two lists in two files that no check compared. `supersededRendering` is the same
+    name in the opposite direction: the dispatcher may declare it, the gate cannot resolve it, and an
+    artifact rendered under a non-default rendering therefore passes as the shipped arm -- a false pass
+    is worse than a refusal, and it is silent.
+
+    So the two vocabularies are held to each other here. A name the dispatcher can declare must be a
+    name the gate can resolve, or the declaration is a sentence no reader will ever check.
+    """
+    resolvable = adjudicable_names()
+    missing = [name for name in declarable_names() if name not in resolvable]
+    assert not missing, (
+        f'the dispatcher can declare {missing} and the registration gate cannot resolve '
+        f'{"" if len(missing) > 1 else "it"}: a declared departure that resolves to nothing is refused '
+        'after the run has spent, and one the gate never compares passes as the registered arm. Add the '
+        'name to `REGISTERED_CONDITIONS` in tools/readout-arm-run.py with the value the project ships.'
+    )
+
+
+def test_the_gate_holds_the_two_conditions_this_session_declares() -> None:
+    """The values, not just the names: a wrong registered value is a departure nobody made.
+
+    `injected` and `off` are what the shipped arm runs, and they are read here from the code that
+    produces them rather than typed again: the dispatcher's `index_embedding_switch` defaults to
+    `injected` on an absent variable, and `superseded_switch` to `off`. A gate that held a different
+    constant would refuse every registered run -- which is a gate that gets read as noise and then
+    ignored, the state these checks exist to end.
+    """
+    spec = importlib.util.spec_from_file_location('readout_arm_run', READOUT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    dispatch = load_dispatch()
+    conditions = module.REGISTERED_CONDITIONS
+    for name, shipped in (
+        ('indexEmbedding', dispatch.index_embedding_switch({})),
+        ('supersededRendering', dispatch.superseded_switch({})),
+    ):
+        assert name in conditions, f'{name} is not a registered condition'
+        path, registered = conditions[name][0], conditions[name][1]
+        assert path == name, (
+            f'{name} is compared at {path!r}: a condition whose path is not its own name compares a '
+            'different field and reports agreement it never read'
+        )
+        assert registered == shipped, (
+            f'{name} is registered as {registered!r} and the shipped arm produces {shipped!r}, so every '
+            'run that leaves it alone departs from the registration'
+        )

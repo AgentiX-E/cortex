@@ -692,6 +692,73 @@ describe('S11: the no-ranking arm, priced against a tolerance rather than a roun
 });
 
 /**
+ * `S14`: the retrieval index without a vector channel.
+ *
+ * `S11` priced one absent mechanism -- ranking -- and the reading (39.55%) made it a delivery
+ * requirement. The index has a second documented option that had never been priced: `embed` absent means
+ * the lexical index, which is what a caller with no embedding provider runs. Every published number came
+ * from the arm that embeds, so that deployment had no reading at all.
+ *
+ * The row is registered as `S11` is -- same instrument, same tolerance, same producer -- because it is the
+ * same question asked in a second place, and a project that answered it with two thresholds could answer it
+ * two ways. The tests below are about the row; the number arrives with the dispatch.
+ */
+describe('S14: the lexical index, priced against the same tolerance as the ranking row', () => {
+  function row(): Criterion {
+    const found = CRITERIA.filter((criterion) => criterion.id === 'S14');
+    expect(found).toHaveLength(1);
+    return found[0]!;
+  }
+
+  it('names both fields that make its arm, so the row cannot be read as the registered one', () => {
+    // `S11` and `S14` are the same product with different mechanisms withheld, so a row that named one
+    // field would describe both arms at once.
+    expect(row().dataset).toContain('relevanceSignal: self-index');
+    expect(row().dataset).toContain('CORTEX_MEMORY_INDEX_EMBEDDING=none');
+  });
+
+  it('is an aim rather than a gate, for the reason S11 is', () => {
+    // The miss is the finding. If the vector channel is worth more than the tolerance the project granted
+    // itself, the consequence is documentation that stops calling the lexical index equivalent, not a red
+    // build on a run that behaved as predicted.
+    expect(row().kind).toBe('aim');
+    expect(row().comparator).toBe('at-least');
+    expect(verdictOf(row(), 0.5).blocking).toBe(false);
+  });
+
+  it('derives its threshold from S1 and S9 exactly as S11 does, so the two cannot drift apart', () => {
+    const s1 = CRITERIA.find((criterion) => criterion.id === 'S1');
+    const s9 = CRITERIA.find((criterion) => criterion.id === 'S9');
+    const s11 = CRITERIA.find((criterion) => criterion.id === 'S11');
+    if (s1 === undefined || s9 === undefined || s11 === undefined)
+      throw new Error('S1, S9 and S11 are the rows this one is priced against');
+    expect(row().threshold).toBeCloseTo(s1.threshold - Math.abs(s9.threshold) / 500, 10);
+    // Equality with `S11` rather than a coincidence of arithmetic: one question, one tolerance.
+    expect(row().threshold).toBe(s11.threshold);
+    expect(row().unit).toBe(s1.unit);
+  });
+
+  it('attests the two fields that say which arm produced the number', () => {
+    // A path is not an identity. This row and `S11` differ in one field of `memoryArmConfig`, so an
+    // evidence file re-pointed at an `injected` run would publish the registered arm's reading under the
+    // row that exists to price its absence. The attestation turns that into `stale`.
+    const source = row().source;
+    if (source.kind !== 'artifact') throw new Error('S14 reads an artifact');
+    expect(source.path).toBe('cortex-docs/evidence/longmemeval/lexical-index.json');
+    expect(source.key).toBe('overall.accuracy');
+    expect(source.attest).toEqual([
+      { key: 'row', equals: 'S14' },
+      { key: 'arm.indexEmbedding', equals: 'none' },
+    ]);
+  });
+
+  it('states the consequence of a miss as documentation that stops implying equivalence', () => {
+    expect(row().onMiss).toContain('requirement rather than an optimisation');
+    expect(row().onMiss).toContain('lexical-only');
+  });
+});
+
+/**
  * `S12` and `S13`: the semantic layer's own reading, and the clause that stops it passing vacuously.
  *
  * E6 is the last of the eight semantic-layer exit criteria and it has been `unrun` for six rounds. Its registered

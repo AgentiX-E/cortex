@@ -72,6 +72,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S11 | <!-- reading:S11 -->39.6%   | ≥ 88.0%   | fail   | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
 | S12 | <!-- reading:S12 -->-2    | ≥ -5      | pass   | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |
 | S13 | <!-- reading:S13 -->27    | ≥ 1       | pass   | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record, summed over every worker instance |
+| S14 | <!-- reading:S14 -->85.8% | ≥ 88.0%   | aim    | index channel, no vector channel       | LongMemEval-S, 500 questions, `CORTEX_MEMORY_INDEX_EMBEDDING=none`, paired against the `injected` arm of S9 question by question |
 | C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |

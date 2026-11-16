@@ -34,7 +34,7 @@ likely to be about.
 
 ## Why `--write` needs both run ids
 
-Same rule as `tools/no-ranking-ledger.py` and `tools/cost-ledger.py`: an evidence file that cannot
+Same rule as `tools/arm-reading-ledger.py` and `tools/cost-ledger.py`: an evidence file that cannot
 state where it came from is a number with no address. Two readings, two runs, both named.
 """
 

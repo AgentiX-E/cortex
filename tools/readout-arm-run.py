@@ -4558,6 +4558,30 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, object]] = {
     # against `false`. Carried by a repository variable rather than an input for the reason §13.352.5
     # states, which is why it is a condition here and not a `DISPATCH_FIELD_ALIASES` entry.
     'conflicts': ('conflicts', False),
+    # §27.1. Whether the product embeds the index at all, and which rendering of a superseded memory
+    # the reader sees, are the same shape as `conflicts`: carried by a repository variable, recorded
+    # on every artifact, and not sent by any dispatch input. Neither was on this table, and the two
+    # failures are opposite directions of the same omission --
+    #
+    #   * run `43829744532` (`S14`) declared `indexEmbedding`, ran 87 minutes, produced a complete
+    #     artifact, and was refused by this gate: *"neither the dispatch table sends nor the artifact
+    #     records as a condition"*. The artifact did record it. The table had no seat for it, so a
+    #     legitimate departure became unreadable after the money was spent.
+    #   * `supersededRendering` was never declared by a dispatch, so nothing refused it -- and nothing
+    #     compared it either. An artifact rendered under a non-default rendering agrees with every
+    #     input, and this gate would have called it *"the registered configuration, field for field"*.
+    #     A false pass on a rendered-control run is the worse direction: it publishes a treatment's
+    #     number as the arm's, silently.
+    #
+    # Both values are the ones the shipped arm writes: `injected` because `toMemoryArmConfig` defaults
+    # the channel on, `off` because `superseded_switch` reads an absent variable as `off`. The check
+    # that keeps this table equal to those two defaults is
+    # `tools/__tests__/test_index_embedding_wiring.py::test_the_gate_holds_the_two_conditions_this_session_declares`,
+    # and the check that keeps the dispatcher's declaration list inside this table's vocabulary is
+    # `test_every_declarable_name_is_one_the_registration_gate_can_resolve` -- the list and the
+    # vocabulary are two files, and one of them being one name longer is what S14 cost.
+    'indexEmbedding': ('indexEmbedding', 'injected'),
+    'supersededRendering': ('supersededRendering', 'off'),
 }
 
 ABSENT = '<-absent->'

@@ -1190,6 +1190,60 @@ export const CRITERIA: readonly Criterion[] = [
       '`C1` and `S10`.',
   },
 
+  // ---- the second absent-mechanism row, registered after the first one was priced (§27) -----------
+  //
+  // `S11` asked what a bare install scores and answered it: 39.55%. That reading made ranking a delivery
+  // requirement, and it left the *next* documented option unpriced. `index` has been optional since the
+  // index existed -- `SearchIndexOptions.embed` absent means the lexical index, and the manual said so in
+  // as many words -- so every caller without an embedding provider was running a configuration that no
+  // published number came from. This row is that configuration.
+  //
+  // It is registered exactly as `S11` is: same instrument, same population, same tolerance, same producer
+  // (`tools/arm-reading-ledger.py --row S14`). The two rows are one question asked twice -- *what does one
+  // absent mechanism cost?* -- and the project may not answer it with two different thresholds.
+  {
+    id: 'S14',
+    capability: 'index channel: the retrieval index without a vector channel',
+    metric:
+      'overall LongMemEval-S accuracy with `CORTEX_MEMORY_INDEX_EMBEDDING=none`, i.e. the lexical index ' +
+      'alone, read against the registered instrument and paired by question with the `injected` arm',
+    dataset:
+      'LongMemEval-S, 500 questions, one dispatch, four repetitions, `relevanceSignal: self-index` with ' +
+      '`CORTEX_MEMORY_INDEX_EMBEDDING=none`, the same reader, judge and prompt as S1 and S9, paired ' +
+      'question by question against run `43778036604`',
+    comparator: 'at-least',
+    // `S1`'s threshold less the same 3.0 points `S9` registered and `S11` inherited -- `s1.threshold -
+    // |s9.threshold| / 500` -- rather than a second number. A mechanism whose absence costs less than the
+    // tolerance this project already granted itself is an optimisation; one that costs more is a
+    // requirement, and the manual has to say which.
+    threshold: 0.88,
+    unit: 'ratio',
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/lexical-index.json',
+      key: 'overall.accuracy',
+      // A path is not an identity, and this row's whole content is which arm produced the number: `S14`
+      // and `S11` differ in one field, and an evidence file re-pointed at an `injected` run would publish
+      // the registered arm's 91.40% as the reading for a deployment that owns no embedder. The attestation
+      // is what makes that re-pointing a `stale` verdict instead of a pass.
+      attest: [
+        { key: 'row', equals: 'S14' },
+        { key: 'arm.indexEmbedding', equals: 'none' },
+      ],
+    },
+    onMiss:
+      'Below 88.0% the vector channel is a requirement rather than an optimisation, and the consequence is ' +
+      'documentation that stops implying otherwise: the manual may not present a lexical-only index as an ' +
+      'equivalent deployment, and the number a caller trades by omitting `embed` has to be printed beside ' +
+      'the option. The mechanism reading says where the cost lands rather than whether there is one -- the ' +
+      '`self-index` arm retrieves by embedding the query and the corpus, so a lexical-only index fails on ' +
+      'the questions whose wording does not appear in the evidence, which is the integration and ' +
+      'knowledge-update populations. At or above the threshold the conclusion inverts: the embedding ' +
+      'provider is optional for accuracy, and `S6`/`S7` become the rows that decide whether it is worth ' +
+      'buying for anything else.',
+  },
+
   // ---- the semantic layer's own measurement (§E6) -------------------------------------------------
   {
     id: 'S12',

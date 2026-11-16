@@ -474,8 +474,28 @@ Five things to know before you turn `index.embed` on in earnest:
 4. **Do not set `reuse: false` unless your embedder is non-deterministic.** The option exists for that
    case and for reproducing a pre-store run; it is not a safety switch, and the census records which
    claim a run was produced under.
-5. **A lexical-only index still costs nothing.** `index` with no `embed` uses no model at all, and is the
-   configuration to reach for when there is no key, no budget, or no network.
+5. **A lexical-only index costs no model calls — and 5.6 points.** `index` with no `embed` calls no
+   embedding model at all: 2,000 indexes over 742,080 turns with `embedCalls: 0`, which is the
+   configuration to reach for when there is no key, no budget, or no network. What it does not give you
+   is the accuracy. Measured on the same 500 questions, four repetitions, same reader and judge, the
+   lexical index scores **85.75%** against **91.40%** with a vector channel — paired, **−28 questions**,
+   exact McNemar **p = 2.5e-5**. The loss is not spread evenly and that is what makes it a design
+   decision rather than a caveat:
+
+   | capability | questions | lexical | with vectors | delta |
+   | --- | --- | --- | --- | --- |
+   | integration of evidence (`IE`) | 150 | 81.33% | 92.00% | **−10.67** |
+   | knowledge update (`KU`) | 72 | 81.94% | 93.06% | **−11.11** |
+   | temporal reasoning (`TR`) | 127 | 89.76% | 94.49% | −4.72 |
+   | multi-session reasoning (`MR`) | 121 | 84.30% | 82.64% | **+1.65** |
+   | abstention (`ABS`) | 30 | 100.00% | 100.00% | 0.00 |
+
+   The two populations that lose are the ones where the question's wording does not appear in the
+   evidence — the vector channel buys **recall**, not reasoning. `MR`, which reasons over turns the
+   window already holds, does not move. So: if your corpus is searched by wording you expect to recur,
+   the lexical index is a real deployment; if it is a hundred thousand turns of someone's life and the
+   question asks about it in different words, the embedder is what makes the memory worth having.
+   (`S14` in `docs/ACCEPTANCE-MATRIX.md`; evidence in `cortex-docs/evidence/longmemeval/lexical-index.json`.)
 
 ## 6. The composition: `CortexMemory`
 
@@ -785,7 +805,7 @@ and no worked example of which combination runs. `assembleMemory` is that exampl
 | profile | what it adds over the one before | what it is for | measured (LongMemEval-S, 500 × 4) |
 | --- | --- | --- | --- |
 | `minimal` | nothing: an identity gate and no index | the smallest conformant memory. Answers from the turns it is given, in the order it is given them | **39.55%** — the `relevanceSignal=none` arm |
-| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking a knowledge-update or count-bearing question needs | **91.40%** — the `self-index` arm; paired against the harness's own index at −1.5 questions (p = 1.0) |
+| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking a knowledge-update or count-bearing question needs | **91.40%** with a vector channel; **85.75%** lexical-only (`S14`, paired −28 questions, p = 2.5e-5). Paired against the harness's own index at −1.5 questions (p = 1.0) |
 | `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it | the same ranking; the boundary is not an accuracy mechanism |
 
 `reader` is the default. It was `minimal` until the ranking was priced, and the two numbers in the last column
@@ -797,6 +817,11 @@ loud. `minimal` still exists — a conformance check wants a memory that ranks n
 The default is the strongest profile that needs **no** extra input. `full` is stronger and is not the default
 because it needs a second store: a default that throws when you name nothing is not a default.
 
+The vector channel is the one input the default cannot supply, and it now has a price rather than a
+description: `reader` with `embed` scores **91.40%**, `reader` without it **85.75%** (`S14`). Both are real
+deployments and the manual says which is which — a caller with no provider gets lexical ranking and no model
+calls, and is told the 5.6 points before writing the integration rather than after.
+
 <!-- contract-table: AssembleOptions -->
 | option | type | default | effect |
 | --- | --- | --- | --- |
@@ -804,7 +829,7 @@ because it needs a second store: a default that throws when you name nothing is 
 | `now` | `number` | — (required) | Epoch milliseconds for every time-stamped decision. |
 | `storage` | `Storage` | — (required) | Where the transcript goes, and for `full` the private side of the boundary. Any backend: SQLite, PostgreSQL, OPFS, IndexedDB. |
 | `profile` | `'minimal' \| 'reader' \| 'full'` | `'reader'` | How much of the product to wire up. See the table above for what each one scores. |
-| `embed` | `EmbedFn` | absent | The vector channel, as a batch function over texts. Absent leaves lexical retrieval, which is the registered arm's ranking signal. |
+| `embed` | `EmbedFn` | absent | The vector channel, as a batch function over texts. Absent leaves lexical retrieval: the same index, the same ranking, **5.6 points** less accuracy (`S14`, paired −28 of 500 questions, p = 2.5e-5), concentrated in the two populations whose questions are worded differently from their evidence — see §3.5 item 5. Costs no model calls either way when absent. |
 | `embeddingStore` | `EmbeddingCacheStore` | absent (a process-lifetime map) | Where the vectors live between assemblies. Supply `await StorageEmbeddingCache.open(storage)` to keep them across a restart, and flush it after the work. Refused on `minimal` and refused without `embed`, because neither would read or write it. |
 | `maxPromptChars` | `number` | absent (the memory's own 48,000) | The room for one assembled prompt. Deliberately not defaulted here, because the registered arm states a room per route and a constant in this file would be a second arm; the field is how you state a bound. |
 | `shared` | `Storage` | absent | The public side of the disclosure boundary. Required by `full`, ignored by the other two. |

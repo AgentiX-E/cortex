@@ -56,9 +56,39 @@ answered.
 ## The declared departures list
 
 `CORTEX_DECLARED_DEPARTURES` is written by `dispatch-cortex-memory-ab.py` for exactly the
-departures it is making. A departure that is not on that list fails this gate, and so does
-a listed key that did not actually move -- the second because a declaration that describes
-an intention rather than a dispatch is the same class of defect as the missing one.
+departures it is making. A departure that is not on that list fails this gate, and so does a
+listed key that resolves to nothing -- the second because a declaration that describes an
+intention rather than a dispatch is the same class of defect as the missing one.
+
+## The third category, and the run that found it
+
+Two kinds of declaration are legal and this gate can see only one of them.
+
+* A **dispatch input** that moved is visible in the payload, and that is what `departures()`
+  reads.
+* A **condition** -- `conflicts`, `indexEmbedding`, `supersededRendering` and the rest of
+  `readout-arm-run.py`'s `REGISTERED_CONDITIONS` -- travels by a repository variable and is
+  recorded by the arm on every artifact. The payload never mentions it, so this gate cannot
+  say whether it moved, and it must not pretend to.
+
+Run `43829744532` is why the distinction is now enforced rather than noted. It declared
+`indexEmbedding`, and this gate printed *"declared but unchanged: indexEmbedding -- the
+declaration names a field this dispatch did not move"* and then said `match`. The sentence
+was false: the dispatch had moved the field, through a channel this file does not read.
+Eighty-seven minutes and a complete artifact later, `readout-arm-run.py --registration`
+resolved the same name to nothing -- because *that* table had no seat for it either -- and
+refused the run. Two gates, each certain the other had looked.
+
+So a declaration is now sorted into three buckets, not two:
+
+| the declared name | this gate | the artifact gate |
+| --- | --- | --- |
+| a dispatch input that moved | confirmed departure | compares it against §10.3 |
+| a registered condition | reported as carried to the artifact | compares it against §10.3 |
+| neither | **refused here**, before the money | would refuse it after |
+
+The third row is the one worth the price of admission: it costs nothing to refuse a name no
+gate can resolve, and it costs a run to discover it at the end.
 """
 
 from __future__ import annotations
@@ -77,14 +107,35 @@ TOOLS = Path(__file__).resolve().parent
 # reading the registration rather than reading a fourth copy of it.
 DISPATCH = TOOLS / "dispatch-cortex-memory-ab.py"
 
+# The artifact gate's condition table, read rather than copied. A second copy of "which names can
+# be resolved" would be a second thing to forget, which is the defect this file is being taught to
+# refuse: the two gates must agree about the vocabulary, and the only way to keep two lists in
+# agreement is to have one list.
+READOUT = TOOLS / "readout-arm-run.py"
 
-def registration(path: Path = DISPATCH) -> dict[str, str]:
-    """The values the pre-registration fixed, from the table the dispatcher sends."""
-    spec = importlib.util.spec_from_file_location("dispatch_cortex_memory_ab", path)
+
+def _load(path: Path, name: str):  # noqa: ANN202 - a module loaded by path
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:  # pragma: no cover - import machinery
         raise SystemExit(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def conditions(path: Path = READOUT) -> frozenset[str]:
+    """The names `readout-arm-run.py --registration` can resolve a declaration against.
+
+    Imported from the artifact gate's own table so that the two gates cannot disagree about what a
+    declaration may name. The import costs the whole module's load, which is milliseconds and happens
+    once per dispatch.
+    """
+    return frozenset(_load(path, "readout_arm_run").REGISTERED_CONDITIONS)
+
+
+def registration(path: Path = DISPATCH) -> dict[str, str]:
+    """The values the pre-registration fixed, from the table the dispatcher sends."""
+    module = _load(path, "dispatch_cortex_memory_ab")
     return {str(key): str(value) for key, value in module.INPUTS.items()}
 
 
@@ -151,10 +202,26 @@ def render(
     registered: dict[str, str],
     moved: dict[str, str | None],
     declared: list[str],
+    carried: frozenset[str] = frozenset(),
 ) -> tuple[list[str], bool]:
-    """The block a reader opens, and whether the dispatch may proceed."""
+    """The block a reader opens, and whether the dispatch may proceed.
+
+    `carried` is the set of names that reach the artifact through a channel this gate does not
+    read. They are neither confirmed nor denied here: the artifact gate compares them against the
+    registration, and claiming in this file that one ``did not move`` would be a statement about a
+    payload that never held it.
+    """
     undeclared = sorted(key for key in moved if key not in declared)
-    idle = sorted(key for key in declared if key not in moved)
+    idle = sorted(key for key in declared if key not in moved and key not in carried and key in registered)
+    delegations = sorted(key for key in declared if key not in moved and key in carried)
+    # A name that is neither a dispatch input nor a condition is a declaration no gate can read.
+    # Refusing it here costs nothing and refusing it at the artifact gate costs the run, which is
+    # exactly what `43829744532` paid: the free gate said `match` and the paid gate said `refused`.
+    unresolvable = sorted(
+        key
+        for key in declared
+        if key not in moved and key not in carried and key not in registered
+    )
     lines = [
         f"registration preflight: {DISPATCH.name} INPUTS",
         f"  asked {len(asked)} field(s), {len(registered)} registered, "
@@ -168,12 +235,30 @@ def render(
             )
         else:
             lines.append(f'    DEPARTED  {key}: "{registered[key]}" (registered) -> "{value}" (asked)')
+    for key in delegations:
+        lines.append(
+            f"  carried to the artifact: {key} -- a repository variable carries it and this gate "
+            "does not read that channel, so whether it moved is `readout-arm-run.py "
+            "--registration`'s question rather than this one's"
+        )
     for key in idle:
         lines.append(
             f"  declared but unchanged: {key} -- the declaration names a field this "
             "dispatch did not move, so the record describes an intention rather than "
             "what was asked"
         )
+    if unresolvable:
+        lines.append(
+            f"  verdict: {len(unresolvable)} declared name(s) cannot be resolved by either gate: "
+            f"{unresolvable}"
+        )
+        lines.append(
+            "  no dispatch input sends them and `readout-arm-run.py --registration` has no condition "
+            "under those names, so the declaration is a sentence nothing will read -- and the gate "
+            "that reads the artifact will refuse the run after it has spent. Name the artifact's "
+            "field, or register the condition in `REGISTERED_CONDITIONS`"
+        )
+        return lines, False
     if undeclared:
         lines.append(
             f"  verdict: {len(moved)} field(s) departed and {len(undeclared)} "
@@ -231,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
 
     moved = departures(asked, registered)
     declared = parse_declared(args.declared)
-    lines, ok = render(asked, registered, moved, declared)
+    lines, ok = render(asked, registered, moved, declared, conditions())
     print("\n".join(lines))
     return 0 if ok else 1
 

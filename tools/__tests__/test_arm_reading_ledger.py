@@ -1,0 +1,605 @@
+"""The producer for the two rows that price an absent mechanism, and the refusals that keep it honest.
+
+Both rows were registered before a tool could write them. That is the state `S10` was in for a round,
+and what it costs is specific: a dispatch can be paid for and its artifact uploaded while the file the
+criterion reads never exists, so the row stays `unrun` and the money buys a number no row can see.
+
+`S11` is the arm where nothing ranks; `S14` is the arm where the index has no vector channel. They are
+one file because the refusals are identical -- an arm, a population, a registration, a declaration --
+and only the values the arm must hold differ. Two files would be two copies of the refusals, and the
+second copy is the one that would be wrong.
+
+The refusals are the whole value of the file. Every one of them describes a reading that would look
+correct and be wrong:
+
+  - **No `--run`**: a figure nobody can re-derive.
+  - **An unregistered configuration**: the attestation, reused from `registration-attest.py`.
+  - **An arm that is not the row's arm**: `relevanceSignal` other than `none` for `S11`, or a vector
+    channel for `S14`, measures a different product, and the number is a genuine measurement of it.
+  - **A smaller population**: the threshold is expressed on 500 x 4, and neither row has a screening
+    tier for a small run to go to.
+  - **An undeclared departure**: added when the first real artifact for `S11` was refused. Both rows'
+    arms are *by construction* departures from the registration, so a writer that only accepted exact
+    matches accepted nothing either row would ever produce.
+  - **A pair that is not a pair**: two artifacts of different corpora, rosters or repetition counts.
+
+The last group is `S14`'s, and it exists because the row's honest sentence is a *paired* one. "85.75%
+against 91.40%" is two means taken in different weeks; "of 500 questions, N answered by one arm and not
+the other" is a measurement of the mechanism. The p-value behind it is computed here, and
+`test_the_exact_mcnemar_agrees_with_the_one_cortex_eval_wrote` holds this implementation to the one
+`cortex-eval` already ships, using a real artifact's own field as the witness.
+"""
+
+import json
+import pathlib
+import subprocess
+import sys
+
+import pytest
+
+TOOL = pathlib.Path(__file__).resolve().parents[1] / "arm-reading-ledger.py"
+
+
+def artifact(bits=None, signal="none", questions=500, config=None):
+    bits = bits or ["1" * questions for _ in range(4)]
+    return {
+        "kind": "cortex-memory",
+        "dataset": "longmemeval",
+        "datasetFingerprint": "sha256:" + "a" * 64,
+        "questionCount": questions,
+        "runs": len(bits),
+        "memoryArmConfig": config
+        if config is not None
+        else {
+            "relevanceSignal": signal,
+            "reader": {"model": "deepseek-chat"},
+            "judge": {"model": "deepseek-chat"},
+            "promptContract": "evidence-blocks-unsourced",
+        },
+        "questions": [{"questionId": f"q{index}"} for index in range(questions)],
+        "ablation": {"featureCorrectByRun": bits},
+    }
+
+
+def baseline_for(report, tmp_path):
+    """A registration record that matches `report`, so the write path can be exercised."""
+    sys.path.insert(0, str(TOOL.parent))
+    module = __import__("importlib").import_module("registration-attest")
+    record = {
+        "memoryArmConfigFingerprint": module.fingerprint(report["memoryArmConfig"]),
+        "run": "test",
+        "adoptedBy": "test",
+        "memoryArmConfig": report["memoryArmConfig"],
+    }
+    path = pathlib.Path(tmp_path) / "baseline.json"
+    path.write_text(json.dumps(record), encoding="utf-8")
+    return path
+
+
+def run(tmp_path, report, *args, row="S11"):
+    source = pathlib.Path(tmp_path) / "artifact.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    return subprocess.run(
+        [sys.executable, str(TOOL), str(source), "--row", row, *args],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_the_accuracy_is_the_mean_of_the_repetitions_not_the_first(tmp_path):
+    # Four repetitions at 4/4, 3/4, 2/4 and 1/4 -> 62.5%. The first repetition alone is 100%, and
+    # `questions[].correct` is exactly that one-repetition reading.
+    report = artifact(bits=["1111", "1110", "1100", "1000"], questions=4)
+    done = run(tmp_path, report, "--json", "--run", "1")
+    assert done.returncode == 0, done.stderr
+    overall = json.loads(done.stdout)["overall"]
+    assert overall["accuracy"] == pytest.approx(0.625)
+    assert overall["accuracyPerRun"] == [1.0, 0.75, 0.5, 0.25]
+    assert overall["runs"] == 4
+
+
+def test_a_ranked_arm_is_refused(tmp_path):
+    # The number would be real and the product would be wrong: S11's content is that nothing ranked.
+    done = run(tmp_path, artifact(signal="self-index"), "--run", "1")
+    assert done.returncode == 1
+    assert "S11 is the" in done.stderr and "arm where nothing ranks" in done.stderr
+    assert "wrong product" in done.stderr
+
+
+def test_an_artifact_with_no_signal_field_is_refused(tmp_path):
+    report = artifact()
+    del report["memoryArmConfig"]["relevanceSignal"]
+    done = run(tmp_path, report, "--run", "1")
+    assert done.returncode == 1
+    assert "reads None" in done.stderr
+
+
+def test_a_smaller_population_cannot_be_written(tmp_path):
+    report = artifact(questions=200)
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(pathlib.Path(tmp_path) / "out.json"),
+        "--run",
+        "1",
+        "--baseline",
+        str(baseline_for(report, tmp_path)),
+    )
+    assert done.returncode == 1
+    assert "200 questions over 4 repetitions" in done.stderr
+    assert "500 x 4" in done.stderr
+    assert "no screening tier" in done.stderr
+    assert not (pathlib.Path(tmp_path) / "out.json").exists()
+
+
+def test_a_three_repetition_run_cannot_be_written(tmp_path):
+    report = artifact(bits=["1" * 500 for _ in range(3)])
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(pathlib.Path(tmp_path) / "out.json"),
+        "--run",
+        "1",
+        "--baseline",
+        str(baseline_for(report, tmp_path)),
+    )
+    assert done.returncode == 1
+    assert "3 repetitions" in done.stderr
+
+
+def test_write_without_a_run_is_refused(tmp_path):
+    report = artifact()
+    done = run(tmp_path, report, "--write", str(pathlib.Path(tmp_path) / "out.json"))
+    assert done.returncode == 1
+    assert "--write requires --run" in done.stderr
+
+
+def test_an_unregistered_configuration_is_refused(tmp_path):
+    report = artifact()
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(pathlib.Path(tmp_path) / "out.json"),
+        "--run",
+        "1",
+        "--baseline",
+        str(TOOL.parent / "arm-config-baseline.json"),
+    )
+    assert done.returncode == 1
+    assert "not a measurement of the registered configuration" in done.stderr
+    assert not (pathlib.Path(tmp_path) / "out.json").exists()
+
+
+def test_a_vector_that_is_not_aligned_with_the_roster_is_refused(tmp_path):
+    report = artifact(questions=500, bits=["1" * 499 for _ in range(4)])
+    done = run(tmp_path, report, "--run", "1")
+    assert done.returncode == 1
+    assert "not aligned with the roster" in done.stderr
+
+
+def test_an_artifact_without_vectors_is_refused(tmp_path):
+    # `questions[].correct` is one repetition; a four-repetition row cannot be built from it.
+    report = artifact()
+    del report["ablation"]
+    done = run(tmp_path, report, "--run", "1")
+    assert done.returncode == 1
+    assert "one-repetition reading" in done.stderr
+
+
+def test_the_written_file_carries_what_the_criterion_reads(tmp_path):
+    report = artifact()
+    out = pathlib.Path(tmp_path) / "out.json"
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(out),
+        "--run",
+        "44123456",
+        "--baseline",
+        str(baseline_for(report, tmp_path)),
+    )
+    assert done.returncode == 0, done.stderr
+    written = json.loads(out.read_text())
+    # The key `acceptance.ts` reads, a ratio rather than a percentage.
+    assert written["overall"]["accuracy"] == pytest.approx(1.0)
+    assert written["run"] == "44123456"
+    assert written["tier"] == "registered"
+    assert written["arm"]["relevanceSignal"] == "none"
+    assert written["configurationFingerprint"].startswith("sha256:")
+    assert written["dataset"]["questions"] == 500
+
+
+def departure(tmp_path):
+    """The S11 artifact beside the registration it departs from, which is the shape a real run has.
+
+    The row's arm **is** a departure -- `relevanceSignal: none` against a registration that records
+    `retrieval-anchored` -- so the strict path refuses every artifact this tool was built to read. Before
+    these tests that was the tool's behaviour, and `test_an_unregistered_configuration_is_refused` above
+    pinned it: the row could be dispatched, paid for, and its evidence file could never exist.
+
+    The baseline carries a **projected `dispatch` block**, because that is what a recorded registration
+    is: `arm-config-record.py` writes one from a real artifact, and without it `differences()` can only
+    say that no input can be compared -- which would let these tests pass on a fixture that never reached
+    the field-level path they exist for.
+    """
+    sys.path.insert(0, str(TOOL.parent))
+    record = __import__("importlib").import_module("arm-config-record")
+    report = artifact(signal="none")
+    registered = artifact(signal="retrieval-anchored")
+    path = baseline_for(registered, tmp_path)
+    baseline = json.loads(path.read_text(encoding="utf-8"))
+    baseline["dispatch"] = record.project(registered)
+    path.write_text(json.dumps(baseline), encoding="utf-8")
+    return report, path
+
+
+def test_a_departure_without_a_declaration_is_refused_and_names_the_field(tmp_path):
+    report, baseline = departure(tmp_path)
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(pathlib.Path(tmp_path) / "out.json"),
+        "--run",
+        "1",
+        "--baseline",
+        str(baseline),
+    )
+    assert done.returncode == 1
+    # The field name, not just "the configuration differs": the reader has to know which line moved.
+    assert "cortex_memory_relevance" in done.stderr
+    assert "not a measurement of the registered configuration" in done.stderr
+    assert not (pathlib.Path(tmp_path) / "out.json").exists()
+
+
+def test_a_declared_departure_is_written_and_the_file_says_which_field_moved(tmp_path):
+    report, baseline = departure(tmp_path)
+    out = pathlib.Path(tmp_path) / "out.json"
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(out),
+        "--run",
+        "43793677739",
+        "--departs",
+        "cortex_memory_relevance",
+        "--baseline",
+        str(baseline),
+    )
+    assert done.returncode == 0, done.stderr
+    written = json.loads(out.read_text())
+    # Always present, for the reason every always-present field in this campaign exists: a file that
+    # omitted it would make "no departures" and "written before the field" the same bytes.
+    assert written["declaredDepartures"] == ["cortex_memory_relevance"]
+    assert written["tier"] == "declared-departure"
+    assert written["overall"]["accuracy"] == pytest.approx(1.0)
+    assert "declared: cortex_memory_relevance" in done.stdout
+
+
+def test_a_declaration_that_names_a_field_which_did_not_move_is_refused(tmp_path):
+    # A declaration is a claim about a run that happened. Naming an input the artifact agrees with the
+    # registry on would let a later reader believe a control was a treatment.
+    report, baseline = departure(tmp_path)
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(pathlib.Path(tmp_path) / "out.json"),
+        "--run",
+        "1",
+        "--departs",
+        "cortex_memory_max_turn_chars",
+        "--baseline",
+        str(baseline),
+    )
+    assert done.returncode == 1
+    assert "cortex_memory_max_turn_chars" in done.stderr
+    assert "did not move" in done.stderr
+    assert not (pathlib.Path(tmp_path) / "out.json").exists()
+
+
+def test_the_tier_is_registered_when_nothing_departs(tmp_path):
+    report = artifact()
+    out = pathlib.Path(tmp_path) / "out.json"
+    done = run(
+        tmp_path,
+        report,
+        "--write",
+        str(out),
+        "--run",
+        "1",
+        "--baseline",
+        str(baseline_for(report, tmp_path)),
+    )
+    assert done.returncode == 0, done.stderr
+    assert json.loads(out.read_text())["declaredDepartures"] == []
+    assert "declared: none" in done.stdout
+
+
+# --------------------------------------------------------------------------------------------------
+# `S14`: the row that prices the vector channel.
+# --------------------------------------------------------------------------------------------------
+
+
+def lexical_artifact(bits=None, signal="self-index", embedding="none", questions=500, **overrides):
+    report = artifact(bits=bits, signal=signal, questions=questions, **overrides)
+    report["memoryArmConfig"]["indexEmbedding"] = embedding
+    return report
+
+
+def test_the_row_is_named_rather_than_inferred(tmp_path):
+    """`--row` is required, and an unknown one is refused with the list.
+
+    A row inferred from the artifact would be a guess, and one artifact can satisfy two rows: `S11`'s
+    arm and `S14`'s differ in two fields, and the asker is the only thing that knows which question was
+    asked.
+    """
+    done = run(tmp_path, lexical_artifact(), "--run", "1", row="S99")
+    assert done.returncode == 1
+    assert "S99" in done.stderr and "S11" in done.stderr and "S14" in done.stderr
+
+
+def test_the_lexical_row_refuses_an_artifact_that_had_an_embedder(tmp_path):
+    """The failure this row exists to prevent, in the direction that reads as good news.
+
+    A `self-index` artifact with `indexEmbedding: injected` is the registered arm. Written under `S14`
+    it would publish 91.40% as the no-embedder reading, and nothing in the number would look wrong.
+    """
+    done = run(tmp_path, lexical_artifact(embedding="injected"), "--run", "1", row="S14")
+    assert done.returncode == 1
+    assert "`indexEmbedding` reads 'injected'" in done.stderr
+    assert "no embedding provider" in done.stderr
+
+
+def test_the_lexical_row_refuses_an_artifact_that_predates_the_field(tmp_path):
+    """Absence reads as `injected`, because that is what every published figure was produced under.
+
+    An artifact from before the channel existed is therefore *not* the lexical one, and treating a
+    missing key as "no embedder" would silently file the registered arm under `S14`.
+    """
+    report = lexical_artifact()
+    del report["memoryArmConfig"]["indexEmbedding"]
+    done = run(tmp_path, report, "--run", "1", row="S14")
+    assert done.returncode == 1
+    assert "`indexEmbedding` reads 'injected'" in done.stderr
+
+
+def test_the_two_rows_refuse_each_other_s_arm(tmp_path):
+    """The pair is symmetric, which is what makes either refusal evidence rather than a policy.
+
+    `S11` on a lexical artifact and `S14` on a `none`-ranking artifact are both refused, and each message
+    names its own row's content rather than the field that disagreed.
+    """
+    ranked_none = artifact(signal="none")
+    assert run(tmp_path, ranked_none, "--run", "1", row="S14").returncode == 1
+    assert run(tmp_path, lexical_artifact(), "--run", "1", row="S11").returncode == 1
+
+
+def test_the_exact_mcnemar_agrees_with_the_one_cortex_eval_wrote():
+    """The Python implementation is held to the anchors `a3.test.ts` already pins.
+
+    `packages/cortex-eval/src/__tests__/a3.test.ts` asserts `exactMcNemar(0, 0) === 1`,
+    `exactMcNemar(3, 3) === 1` and `exactMcNemar(0, 10) ≈ 2/1024`. Those are the definition of the
+    statistic -- two-sided exact McNemar on the discordant pairs -- so agreeing with them is agreeing
+    with the implementation the artifacts were produced by, without a second copy of the code.
+
+    The last case is the closed form for a fully discordant pair: with `c = 0` the only term is
+    `C(n, 0)`, so the answer is exactly `2 / 2^n`, which no accumulation can drift.
+    """
+    module = _tool()
+    assert module.exact_mcnemar(0, 0) == 1.0
+    assert module.exact_mcnemar(3, 3) == 1.0
+    assert module.exact_mcnemar(0, 10) == pytest.approx(2 / 1024, rel=1e-15)
+    assert module.exact_mcnemar(0, 40) == pytest.approx(2 / (1 << 40), rel=1e-15)
+    # The witness, not an anchor: run `43829744532`'s own artifact carries `ablation.mcnemarPValue =
+    # 1.0483893925056894e-49` for its 13-and-220 discordant pair, computed by `cortex-eval`'s
+    # `exactMcNemar`. This implementation returns `1.0483893925059404e-49` -- agreement to thirteen
+    # significant digits, which is the difference between two orderings of the same float sums and not
+    # between two statistics.
+    assert module.exact_mcnemar(13, 220) == pytest.approx(1.0483893925056894e-49, rel=1e-11)
+    # Symmetry: the test is two-sided, so the direction of the difference cannot matter to the p-value.
+    for left, right in ((2, 9), (7, 7), (0, 1), (13, 31)):
+        assert module.exact_mcnemar(left, right) == module.exact_mcnemar(right, left)
+
+
+def _tool():
+    """The tool as a module, registered before it executes.
+
+    `dataclasses.dataclass` resolves `sys.modules[cls.__module__]` while the class body runs, so a module
+    loaded by path without being registered raises `AttributeError` at the decorator. Registering it
+    first is what makes an import-by-path work for a file that uses the standard library normally.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("arm_reading_ledger", TOOL)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["arm_reading_ledger"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_pair_is_written_with_its_four_cells_and_the_p(tmp_path):
+    """The row's sentence is paired, so the file carries the pair.
+
+    Eight questions: four both, two only this arm, one only control, one neither. `deltaQuestions` is
+    `+1`, and the p-value is the exact test on `b = 2, c = 1`.
+    """
+    control = lexical_artifact(
+        bits=["11111110", "11111110", "11111110", "11111110"], embedding="injected", questions=8
+    )
+    treatment = lexical_artifact(
+        bits=["11111011", "11111011", "11111011", "11111011"], questions=8
+    )
+    done = run(
+        tmp_path,
+        treatment,
+        "--row",
+        "S14",
+        "--json",
+        "--run",
+        "1",
+        "--control-artifact",
+        _write(tmp_path, control, "control.json"),
+    )
+    assert done.returncode == 0, done.stderr
+    paired = json.loads(done.stdout)["paired"]
+    assert paired["cells"] == {"both": 6, "onlyTreatment": 1, "onlyControl": 1, "neither": 0}
+    assert paired["deltaQuestions"] == 0
+    assert paired["mcnemarP"] == 1.0
+    assert paired["control"]["relevanceSignal"] == "self-index"
+    assert paired["control"]["indexEmbedding"] == "injected"
+
+
+def _write(tmp_path, report, name):
+    path = pathlib.Path(tmp_path) / name
+    path.write_text(json.dumps(report), encoding="utf-8")
+    return str(path)
+
+
+def test_a_pair_across_two_corpora_is_refused(tmp_path):
+    """A different fingerprint is a different population, and a paired test on it is a real number
+    about the wrong comparison."""
+    control = lexical_artifact(questions=500)
+    control["datasetFingerprint"] = "sha256:" + "b" * 64
+    done = run(
+        tmp_path,
+        lexical_artifact(),
+        "--row",
+        "S14",
+        "--run",
+        "1",
+        "--control-artifact",
+        _write(tmp_path, control, "control.json"),
+    )
+    assert done.returncode == 1
+    assert "different corpora" in done.stderr
+
+
+def test_a_pair_across_two_rosters_is_refused(tmp_path):
+    """The same fingerprint with a different question list is a broken artifact, not a population."""
+    control = lexical_artifact()
+    control["questions"] = control["questions"][:499]
+    done = run(
+        tmp_path,
+        lexical_artifact(),
+        "--row",
+        "S14",
+        "--run",
+        "1",
+        "--control-artifact",
+        _write(tmp_path, control, "control.json"),
+    )
+    assert done.returncode == 1
+    assert "different roster" in done.stderr
+
+
+def test_a_pair_across_two_repetition_counts_is_refused(tmp_path):
+    """Two means over different numbers of passes are not the same statistic."""
+    control = lexical_artifact(bits=["1" * 500 for _ in range(2)])
+    done = run(
+        tmp_path,
+        lexical_artifact(),
+        "--row",
+        "S14",
+        "--run",
+        "1",
+        "--control-artifact",
+        _write(tmp_path, control, "control.json"),
+    )
+    assert done.returncode == 1
+    assert "4 repetitions in this artifact against 2" in done.stderr
+
+
+def test_the_reading_names_the_channel_it_was_measured_without(tmp_path):
+    """The line a reader copies has to carry the field the row is about.
+
+    `S11` and `S14` are the same product with different mechanisms withheld, so a reading that printed
+    only `relevanceSignal` would be identical in shape for both and would not say which one it was.
+    """
+    done = run(tmp_path, lexical_artifact(), "--row", "S14", "--run", "1")
+    assert done.returncode == 0, done.stderr
+    assert "indexEmbedding=none" in done.stdout
+    assert "S14 floor 88.0%" in done.stdout
+
+
+def test_the_capability_denominator_is_the_population_not_the_sum_of_two_artifacts(tmp_path):
+    """The first version of this function reported `ABS 60 questions` for a 30-question population.
+
+    It summed the roster over both artifacts, so every denominator doubled and every percentage stayed
+    right -- which is the shape that survives review: the deltas looked plausible and the populations
+    did not match the ones the published matrix uses. A capability's denominator is a property of the
+    population, and both sides are graded on the same questions.
+    """
+    def with_capability(signal, embedding, bits):
+        report = lexical_artifact(bits=bits, signal=signal, embedding=embedding, questions=4)
+        for entry, capability in zip(report["questions"], ["IE", "IE", "KU", "KU"]):
+            entry["capability"] = capability
+        return report
+
+    # IE is the first two questions and KU the second two: the treatment keeps one IE answer and both
+    # KU answers, the control keeps both IE answers and no KU answer.
+    treatment = with_capability("self-index", "none", ["1011"] * 4)
+    control = with_capability("self-index", "injected", ["1100"] * 4)
+    done = run(
+        tmp_path,
+        treatment,
+        "--row",
+        "S14",
+        "--json",
+        "--run",
+        "1",
+        "--control-artifact",
+        _write(tmp_path, control, "control.json"),
+    )
+    assert done.returncode == 0, done.stderr
+    by_capability = json.loads(done.stdout)["paired"]["byCapability"]
+    assert by_capability["IE"]["questions"] == 2
+    assert by_capability["KU"]["questions"] == 2
+    assert by_capability["IE"]["treatment"] == 0.5
+    assert by_capability["IE"]["control"] == 1.0
+    assert by_capability["IE"]["deltaPoints"] == pytest.approx(-50.0)
+    assert by_capability["KU"]["treatment"] == 1.0
+    assert by_capability["KU"]["control"] == 0.0
+
+
+def test_the_file_names_the_arm_it_measured(tmp_path):
+    """`S11`'s committed file has `"name": null`, written before the fallback existed.
+
+    The artifact names its arm under `feature.name`; an older shape carries a top-level `kind`. A file
+    that reads `null` there cannot say which product the number is about, which is the one thing the
+    file exists to say.
+    """
+    report = lexical_artifact()
+    report["feature"] = {"name": "cortex-memory"}
+    done = run(tmp_path, report, "--row", "S14", "--json", "--run", "1")
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout)["arm"]["name"] == "cortex-memory"
+
+
+def test_a_control_without_a_run_id_prints_the_one_it_was_given(tmp_path):
+    """A raw report carries no run id of its own, so the pairing needs `--control-run`.
+
+    Without it the file says `control.run: null`, and a paired block whose control cannot be named is a
+    comparison nobody can re-derive -- which is the whole reason `--write` requires `--run`.
+    """
+    done = run(
+        tmp_path,
+        lexical_artifact(),
+        "--row",
+        "S14",
+        "--json",
+        "--run",
+        "1",
+        "--control-run",
+        "43778036604",
+        "--control-artifact",
+        _write(tmp_path, lexical_artifact(embedding="injected"), "control.json"),
+    )
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout)["paired"]["control"]["run"] == "43778036604"
