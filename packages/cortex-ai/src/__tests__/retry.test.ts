@@ -7,6 +7,7 @@ import {
   retryStats,
   resetRetryStats,
   isRetryableStatus,
+  isQuotaExhausted,
   parseRetryAfterMs,
   DEFAULT_MAX_RETRIES,
   DEFAULT_RETRY_BASE_DELAY_MS,
@@ -1775,5 +1776,135 @@ describe('a pacer spaces the attempts and is not charged to the retry budget', (
     );
     expect(res.status).toBe(200);
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+/**
+ * A `429` is two events wearing one status code.
+ *
+ * ## What telling them apart is worth
+ *
+ * Run `43866639154` -- the `I7` bottom-right cell -- spent two hours, reached repetition 3 of 8, and
+ * then read `{"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}`: an account with no
+ * balance. The ladder retried it seven more times over roughly 127 seconds, because
+ * `isRetryableStatus` reads the status and nothing else, and then threw away every graded answer it
+ * had. Each of those waits was spent on an event that could not become true before morning.
+ *
+ * The distinction has to be drawn from the body, because the status is identical. What it must **not**
+ * grow into is "match anything that looks like a quota": a provider's ordinary throttle is
+ * `rate_limit_exceeded`, and retrying that is the entire purpose of the ladder. `S9` needed it --
+ * `16,166` calls, `0` retries, a provider that throttles.
+ */
+describe('a 429 that says the account cannot pay is not retried', () => {
+  const zhipu = (): Response =>
+    new Response(
+      JSON.stringify({ error: { code: '1113', message: '余额不足或无可用资源包,请充值。' } }),
+      { status: 429 },
+    );
+
+  it('stops at the first attempt and names the reason', async () => {
+    resetRetryStats();
+    const outcome = await retryableFetchWithStats(
+      () => Promise.resolve(zhipu()),
+      'http://x',
+      {},
+      { retryBudgetMs: 120_000 },
+    );
+
+    expect(outcome.response.status).toBe(429);
+    // One request. Not eight, and not eight plus a 127-second ladder.
+    expect(outcome.attempts).toBe(1);
+    expect(outcome.retried).toBe(0);
+    expect(outcome.refusal?.reason).toBe('quota-exhausted');
+    // Counted as a refusal rather than as a clean call: the request was answered and not served.
+    expect(retryStats().refusedCalls).toBe(1);
+    expect(retryStats().cleanCalls).toBe(0);
+  });
+
+  it('leaves the body readable for the adapter that has to classify it', async () => {
+    // The refusal path hands back the response it received, and the adapter above turns a `!res.ok`
+    // into an error naming what the provider said. A body consumed by the classifier would leave that
+    // message empty, and the provider's own sentence is the only evidence a reader of the failure has.
+    // `retryBudgetMs: -1` is how the ladder is told to run unbudgeted, and this is the arm that covers
+    // it: a quota refusal reports `remainingMs: null` because the allowance was never the problem.
+    const outcome = await retryableFetchWithStats(
+      () => Promise.resolve(zhipu()),
+      'http://x',
+      {},
+      {
+        retryBudgetMs: -1,
+      },
+    );
+    expect(await outcome.response.text()).toContain('余额不足');
+    expect(outcome.refusal?.remainingMs).toBeNull();
+  });
+
+  it('still retries an ordinary throttle, which is what the ladder exists for', async () => {
+    resetRetryStats();
+    let calls = 0;
+    const outcome = await retryableFetchWithStats(
+      () => {
+        calls += 1;
+        return Promise.resolve(
+          calls === 1
+            ? new Response(JSON.stringify({ error: { code: 'rate_limit_exceeded' } }), {
+                status: 429,
+              })
+            : new Response('{"data":[]}', { status: 200 }),
+        );
+      },
+      'http://x',
+      {},
+      { baseDelayMs: 1 },
+    );
+    expect(calls).toBe(2);
+    expect(outcome.attempts).toBe(2);
+    expect(outcome.response.status).toBe(200);
+  });
+
+  it('leaves a bodiless 429 to the ladder, because an empty body states no balance', async () => {
+    // The reachable half of "the body is the only evidence". A provider that answers `429` with no body
+    // has said nothing this client can read as unpaid, and inventing a fatal error from silence would
+    // turn every bodyless throttle into a stopped run. `withBufferedBody` hands this response through
+    // untouched (`body === null`), so the classifier sees an empty string and the ladder runs.
+    let calls = 0;
+    const outcome = await retryableFetchWithStats(
+      () => {
+        calls += 1;
+        return Promise.resolve(new Response(null, { status: 429 }));
+      },
+      'http://x',
+      {},
+      { maxRetries: 1, baseDelayMs: 1 },
+    );
+    expect(calls).toBe(2);
+    expect(outcome.refusal?.reason).toBe('attempts-exhausted');
+  });
+
+  it('reads the two vendors that publish a quota code and refuses the rest', () => {
+    // The table is the whole rule. Each `false` is a shape a looser matcher would swallow, and
+    // swallowing one of them turns a recoverable throttle into a fatal error.
+    const cases: readonly [number, string, boolean][] = [
+      [429, '{"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}', true],
+      [429, '{"error":{"code":"insufficient_quota","type":"insufficient_quota"}}', true],
+      [
+        429,
+        '{"error":{"message":"You exceeded your current quota, please check your plan"}}',
+        true,
+      ],
+      [429, '{"error":{"type":"billing_hard_limit_reached"}}', true],
+      // A throttle, in the two spellings the providers actually use.
+      [429, '{"error":{"code":"rate_limit_exceeded"}}', false],
+      [429, '{"error":{"type":"rate_limit_error","message":"Rate limit reached"}}', false],
+      // A status that cannot be a quota: a 200 carrying the string is a body worth reading on its own
+      // terms, and a 503 is the provider being unavailable rather than unpaid.
+      [200, '{"error":{"code":"1113"}}', false],
+      [503, '{"error":{"code":"1113"}}', false],
+      // No body at all.
+      [429, '', false],
+    ];
+    for (const [status, body, expected] of cases) {
+      expect(isQuotaExhausted(status, body), `${status} ${body}`).toBe(expected);
+    }
   });
 });

@@ -68,6 +68,7 @@ function cost(overrides: Partial<Cost> = {}): Cost {
     reuse: true,
     rerankCalls: 0,
     rerankDegraded: 0,
+    embedDegraded: 0,
     ...overrides,
   };
 }
@@ -201,6 +202,7 @@ describe('the product index cost reaches the artifact', () => {
       reuse: true,
       rerankCalls: 0,
       rerankDegraded: 0,
+      embedDegraded: 0,
     });
   });
 
@@ -282,7 +284,7 @@ describe('the product index cost reaches the artifact', () => {
 
     // Joined with `+` for the reason `anchorParams` is: the line already separates fields with commas.
     expect(markdown).toContain(
-      'selfIndex=indexes:50+turns:200+texts:250+hits:200+reuse:true+rerank:0/0',
+      'selfIndex=indexes:50+turns:200+texts:250+hits:200+reuse:true+rerank:0/0+degraded:0',
     );
     // A run without the record still renders the signal's own field, so the absence is a missing reading
     // rather than a missing configuration.
@@ -290,5 +292,38 @@ describe('the product index cost reaches the artifact', () => {
     const plain = formatAblationReport(withoutCost.report);
     expect(plain).not.toContain('selfIndex=');
     expect(plain).toContain('relevanceSignal=none');
+  });
+
+  it('carries the count of retrievals that fell back to lexical scoring', async () => {
+    // The number that decides whether the accuracy beside it belongs to the arm the artifact names. A run
+    // whose embedder emptied its balance mid-way is neither the `injected` arm nor the `none` arm: some
+    // questions were ranked over two channels and the rest over one. `S14` priced that one channel at
+    // 85.75%, so the count is what lets a reader weigh the mixture instead of taking the headline.
+    const mixed = await armRun(
+      4,
+      1,
+      new CostSystem('cortex-memory', cost({ embedDegraded: 37 })),
+      undefined,
+    );
+    const markdown = formatAblationReport(mixed.report);
+    expect(markdown).toContain('+degraded:37');
+    expect(mixed.report.memoryArmConfig?.selfIndex?.embedDegraded).toBe(37);
+  });
+
+  it('sums the count across workers, because one worker degrading is the run degrading', async () => {
+    // `indexCostAcross` folds every instance's census. A worker whose retrievals were all lexically scored
+    // is not a worker to average away: the headline accuracy is a mixture whichever instance produced it,
+    // and a total that took one worker's count would understate the mixture by the pool size.
+    const pool = createAblationPool({
+      workers: 2,
+      first: {
+        baseline: bareSystem('reference-pipeline'),
+        feature: new CostSystem('f0', cost({ embedDegraded: 5 })),
+      },
+      baselineFor: () => bareSystem('reference-pipeline'),
+      featureFor: (worker) => new CostSystem(`f${worker}`, cost({ embedDegraded: 5 })),
+    });
+    const result = await armRun(9, 2, pool.featureInstances()[0]!, pool);
+    expect(result.report.memoryArmConfig?.selfIndex?.embedDegraded).toBe(10);
   });
 });

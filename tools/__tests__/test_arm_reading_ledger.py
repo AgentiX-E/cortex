@@ -603,3 +603,72 @@ def test_a_control_without_a_run_id_prints_the_one_it_was_given(tmp_path):
     )
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout)["paired"]["control"]["run"] == "43778036604"
+
+
+def test_a_degraded_artifact_is_refused_by_both_rows(tmp_path):
+    """A run whose embedder emptied its balance is neither arm, and the reading would look fine.
+
+    `SearchIndex.onEmbedFailure: 'lexical'` turns a mid-run provider failure into a retrieval scored
+    the way the product scores when there is no embedder -- which is the whole point of it, and the
+    reason a long benchmark no longer dies at 86% of its third repetition (run `43866639154`). The
+    consequence for the evidence file is the one this refuses: some questions were ranked over two
+    channels and the rest over one, so the artifact's accuracy is a mixture of the arm and `S14`'s
+    measured fallback, and writing it under either row would publish a number no deployment produced.
+
+    Absence is not a degradation. Every artifact written before the field existed was produced by a
+    build with no such policy, so it cannot have degraded and reading it as zero is the true reading
+    rather than a lenient one.
+    """
+    for row, report in (
+        ('S11', lexical_artifact(signal='none', embedding='injected')),
+        ('S14', lexical_artifact()),
+    ):
+        report['memoryArmConfig']['selfIndex'] = {
+            'indexes': 500,
+            'turns': 742_080,
+            'embedCalls': 10_422,
+            'embedTexts': 536_099,
+            'memoHits': 205_377,
+            'reuse': True,
+            'rerankCalls': 0,
+            'rerankDegraded': 0,
+            'embedDegraded': 40,
+        }
+        done = run(tmp_path, report, '--run', '1', row=row)
+        assert done.returncode == 1, done.stdout
+        assert 'embedDegraded' in done.stderr
+        assert '40' in done.stderr
+        # The sentence names what the mixture is, because "this is the wrong artifact" would send a
+        # reader looking for a dispatch mistake that did not happen.
+        assert 'fell back to lexical scoring' in done.stderr
+
+
+def test_an_artifact_that_predates_the_policy_is_read_as_undegraded(tmp_path):
+    """`S9` and `S14` carry no `selfIndex.embedDegraded`, and both are pure arms.
+
+    The field arrives with the mechanism. A build without the policy cannot degrade a retrieval, so
+    the missing key is a statement about the build rather than an unknown, and refusing here would
+    reject the two artifacts this file exists to publish.
+    """
+    report = lexical_artifact()
+    assert 'selfIndex' not in report['memoryArmConfig']
+    done = run(tmp_path, report, '--row', 'S14', '--run', '1')
+    assert done.returncode == 0, done.stderr
+
+
+def test_zero_degradations_is_a_reading_and_not_a_refusal(tmp_path):
+    """The healthy case, asserted so the guard cannot be satisfied by "any selfIndex block"."""
+    report = lexical_artifact()
+    report['memoryArmConfig']['selfIndex'] = {
+        'indexes': 500,
+        'turns': 742_080,
+        'embedCalls': 10_422,
+        'embedTexts': 536_099,
+        'memoHits': 205_377,
+        'reuse': True,
+        'rerankCalls': 0,
+        'rerankDegraded': 0,
+        'embedDegraded': 0,
+    }
+    done = run(tmp_path, report, '--row', 'S14', '--run', '1')
+    assert done.returncode == 0, done.stderr

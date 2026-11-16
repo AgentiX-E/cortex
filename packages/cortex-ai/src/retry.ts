@@ -31,6 +31,54 @@ export function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+/**
+ * Markers a provider puts in a `429` body when the account cannot pay, rather than when the caller is
+ * asking too fast.
+ *
+ * Every entry is a phrase a vendor publishes for "this will not succeed until someone tops up": OpenAI's
+ * `insufficient_quota` and `billing_hard_limit_reached`, the `quota_exhausted` spelling used by several
+ * OpenAI-compatible gateways, and Zhipu's Chinese message. Absent from the list on purpose are
+ * `rate_limit_exceeded` and `rate_limit_error`, which are the ordinary throttle — retrying those is what
+ * the ladder is for.
+ */
+const QUOTA_MARKERS: readonly string[] = [
+  'insufficient_quota',
+  'quota_exhausted',
+  'exceeded your current quota',
+  'billing_hard_limit',
+  '余额不足',
+  '无可用资源包',
+];
+
+/**
+ * Whether a response is the provider saying "this account cannot pay" instead of "slow down".
+ *
+ * ## Why the status alone cannot answer this
+ *
+ * Both events are `429`, and the difference is not cosmetic: a throttle becomes true on its own within
+ * a minute, and an empty balance does not become true at all. Treating the second as the first costs
+ * the ladder's whole allowance and then fails anyway — run `43866639154` spent 127 seconds retrying
+ * `{"code":"1113","message":"余额不足或无可用资源包,请充值。"}` seven times before throwing away two
+ * hours of graded answers.
+ *
+ * ## Why the matcher is a whitelist and the status is checked first
+ *
+ * A loose matcher is worse than none: `429` is the ladder's main case, and a rule that swallowed
+ * `rate_limit_exceeded` would convert every recoverable throttle into a fatal error — the exact
+ * inversion of the defect this repairs. `S9` ran `16,166` calls against a throttling provider and
+ * needed every retry it got. The status check comes first because the same string in a `200` or a
+ * `503` is a different event; only a `429` can be a balance.
+ *
+ * Zhipu's `1113` is matched with its key rather than as a bare substring, so a message that happens to
+ * mention the number cannot be read as a code.
+ */
+export function isQuotaExhausted(status: number, body: string): boolean {
+  if (status !== 429 || body.length === 0) return false;
+  const lowered = body.toLowerCase();
+  if (QUOTA_MARKERS.some((marker) => lowered.includes(marker.toLowerCase()))) return true;
+  return /"code"\s*:\s*"?1113"?/.test(body);
+}
+
 /** Resolve after `ms` milliseconds. */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -278,7 +326,16 @@ export type RetryStats = {
  * after 133 s was reported as a rate limit the provider never sent.
  */
 export type RetryRefusal = {
-  reason: 'attempts-exhausted' | 'budget-exhausted' | 'retry-after-beyond-budget';
+  /**
+   * Why the ladder declined to keep asking.
+   *
+   * `quota-exhausted` is the odd one: the other three are this client's decisions (the count, the
+   * budget, a window longer than the budget), and this one is a fact about the account that no local
+   * parameter can change. It is a refusal rather than an exhaustion because the provider answered —
+   * it answered "never" rather than "not yet".
+   */
+  reason:
+    'attempts-exhausted' | 'budget-exhausted' | 'retry-after-beyond-budget' | 'quota-exhausted';
   /** Requests issued before the ladder gave up. */
   attempts: number;
   /** Retries performed before the ladder gave up. */
@@ -933,6 +990,38 @@ export async function retryableFetchWithStats(
     if (res.status === 429) {
       stats.rateLimited += 1;
     }
+    // A 429 whose body says the balance is empty is terminal, and asking again spends the allowance on
+    // an event that does not become true. Checked before the retry decision rather than inside
+    // `isRetryableStatus`, because that function takes a status and this one needs the body — and
+    // because the body is already buffered here, so the read is free and the response stays replayable
+    // for the adapter that has to report what the provider said.
+    if (res.status === 429 && (await bodySaysQuotaExhausted(res))) {
+      return withRefusal(
+        res,
+        stats,
+        {
+          reason: 'quota-exhausted',
+          attempts: stats.attempts,
+          retried: stats.retried,
+          retryAfterMs: retryAfterMs(res),
+          // Not a budget reading: the allowance was not spent, it was never going to be enough.
+          remainingMs: null,
+        },
+        {
+          url,
+          attempts: stats.attempts,
+          retried: stats.retried,
+          rateLimited: stats.rateLimited,
+          elapsedMs: Date.now() - sequenceStart,
+          attemptsMs,
+          timeoutMs,
+          retryBudgetMs: budgetEnforced ? retryBudgetMs : null,
+          cause:
+            `${String(res.status)} ${res.statusText}`.trim() +
+            ' — the provider reports an exhausted quota',
+        },
+      );
+    }
     if (res.ok || !isRetryableStatus(res.status)) {
       return withResponse(res, stats);
     }
@@ -1030,6 +1119,25 @@ async function withBufferedBody(res: Response): Promise<Response> {
     statusText: res.statusText,
     headers: res.headers,
   });
+}
+
+/**
+ * Read a buffered response's body to test it for a quota refusal, without consuming it.
+ *
+ * The clone is what keeps the response replayable: the adapter above turns a `!res.ok` into an error
+ * naming what the provider said, and a body consumed here would leave that message empty — the one
+ * piece of evidence a reader of the failure needs.
+ *
+ * ## Why there is no `try` around the read
+ *
+ * There was one, returning `false` on a read failure, and the coverage ratchet reported it as a branch
+ * no test could reach. It was right: `withBufferedBody` hands back either the original response with a
+ * null body or a fresh response over an `ArrayBuffer`, and neither can refuse `clone().text()`. A guard
+ * for an impossible failure is worse than no guard — it reads as a handled case, so the next reader
+ * stops looking for the real one — and this repository removes that shape rather than annotating it.
+ */
+async function bodySaysQuotaExhausted(res: Response): Promise<boolean> {
+  return isQuotaExhausted(res.status, await res.clone().text());
 }
 
 function withResponse(response: Response, stats: RetryStats): RetryOutcome {

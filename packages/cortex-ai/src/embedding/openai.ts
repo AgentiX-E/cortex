@@ -3,7 +3,8 @@
  * Float64Array so downstream Cortex math retains full precision.
  */
 import type { EmbeddingIdentity, EmbeddingModel } from '@agentix-e/cortex-core';
-import { retryableFetch } from '../retry.js';
+import { isQuotaExhausted, retryableFetch } from '../retry.js';
+import { EmbeddingQuotaExhaustedError } from './quota-error.js';
 
 export type OpenAIEmbeddingOptions = {
   baseUrl: string;
@@ -81,6 +82,17 @@ export class OpenAIEmbedding implements EmbeddingModel {
       // detail" instead of masking the status the provider did publish.
       const bodyText = await res.text().catch(() => '');
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
+      // An exhausted balance is a different event from a rejected request, and the ladder above has
+      // already decided not to retry it. Naming it here is what lets a caller choose between stopping
+      // and running without the provider — the retriever's `onEmbedFailure` policy reads this type,
+      // and so does the benchmark that records how many retrievals fell back to lexical scoring.
+      if (isQuotaExhausted(res.status, bodyText)) {
+        throw new EmbeddingQuotaExhaustedError(
+          `Embedding provider has no quota left: ${res.status} ${res.statusText}${detail}`,
+          res.status,
+          bodyText.slice(0, 400),
+        );
+      }
       throw new Error(`Embedding request failed: ${res.status} ${res.statusText}${detail}`);
     }
     const json = (await res.json()) as { data?: { embedding?: number[] }[] };

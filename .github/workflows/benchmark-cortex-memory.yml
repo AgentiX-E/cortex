@@ -817,16 +817,31 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          python3 tools/readout-arm-run.py --spend \
-            packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          report=packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          partial=packages/cortex-memory/benchmark-cortex-memory-partial.json
+          # A run that dies writes no report, and the bill it ran up is in the failure record: `llmUsage`
+          # is attached at the throw, beside the transport counters. Run `43866639154` is why this
+          # fallback exists -- two hours, 15,571 calls, and a `429` whose body said the balance was
+          # empty. The step exited 2 with `[Errno 2] No such file or directory`, so the run could be
+          # described as having died and not as having cost anything, and a budget that cannot price
+          # its failures is not a budget.
+          if [ -f "$report" ]; then
+            measured="$report"
+          elif [ -f "$partial" ]; then
+            measured="$partial"
+            echo "::notice::no report: the run did not finish. Reading the bill the failure record carries."
+          else
+            echo "::notice::no report and no partial record: this run left no bill to read."
+            exit 0
+          fi
+          python3 tools/readout-arm-run.py --spend "$measured"
           # Beside the spend, because the two are what a run cost: `--spend` counts the calls that
           # RETURNED and this counts the requests that were MADE. A run whose provider rejected a
           # third of its attempts costs the same tokens and several times the wall clock, and only
           # the transport section can say so (§13.216, run 41346610318). Separate invocations rather
           # than one: each readout is its own command line and its own exit code, so a corrupt block
           # in one cannot suppress the other.
-          python3 tools/readout-arm-run.py --transport \
-            packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          python3 tools/readout-arm-run.py --transport "$measured"
 
       # §13.220. The artifact's configuration against the dispatch table, and it is a GATE.
       #

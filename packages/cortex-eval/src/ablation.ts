@@ -9,7 +9,7 @@
  *   introduce sampling variance (stochastic temperature), because a t-test over
  *   identical deterministic repeats is undefined.
  */
-import { retryStats } from '@agentix-e/cortex-ai';
+import { llmUsage, retryStats } from '@agentix-e/cortex-ai';
 import { stddev, wilsonScoreInterval } from '@agentix-e/cortex-core';
 import type {
   AblationResult,
@@ -114,6 +114,10 @@ function attachPartial(error: unknown, partial: PartialAblation): unknown {
     (error as { partial?: PartialAblation }).partial = {
       ...partial,
       transportRetry: transportRetryReport(retryStats(), { provider: 'run' }),
+      // Read here rather than passed in: the counters live in the transport layer and this is the one
+      // place that knows a run is ending abnormally, so a snapshot taken anywhere else would be a copy
+      // that can drift from the calls it claims to price.
+      llmUsage: llmUsage(),
     };
   }
   return error;

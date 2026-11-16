@@ -7,6 +7,7 @@ import {
   OpenAICompatibleLLM,
 } from '../llm/openai-compatible.js';
 import { OpenAIEmbedding } from '../embedding/openai.js';
+import { EmbeddingQuotaExhaustedError } from '../embedding/quota-error.js';
 import { TransformersEmbedding } from '../local/embedding.js';
 import type { TransformersModule } from '../local/pipelines.js';
 import { llmUsage, usageDelta } from '../usage.js';
@@ -507,6 +508,105 @@ describe('OpenAIEmbedding request body', () => {
     });
     await emb.embed(['hello']);
     expect('dimensions' in captured!).toBe(false);
+  });
+});
+
+/**
+ * An exhausted balance is its own event, and the adapter is where it gets its name.
+ *
+ * ## Why the ladder's decision is not enough
+ *
+ * `retry.ts` stops asking after the first `429` that reports an empty balance, which is what saves the
+ * 127 seconds. It hands the response back, and the adapter turns a `!res.ok` into an `Error` — so
+ * without this block a caller that wants to *run without the provider* has to match the provider's
+ * wording to find out that it can. Run `43866639154` is the motivation: two hours, repetition 3 of 8,
+ * and a run that died because nothing above could tell "unpaid" from "broken".
+ */
+describe('OpenAIEmbedding quota refusal', () => {
+  const quotaFetch = (status = 429) => {
+    const seen: string[] = [];
+    const fetchFn = async (url: string): Promise<Response> => {
+      seen.push(url);
+      return new Response(
+        JSON.stringify({ error: { code: '1113', message: '余额不足或无可用资源包,请充值。' } }),
+        { status, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    return { fetchFn: fetchFn as never, seen };
+  };
+
+  it("throws a typed error that carries the provider's own words", async () => {
+    const { fetchFn } = quotaFetch();
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: 'k',
+      model: 'embedding-3',
+      dimensions: 1024,
+      fetchFn,
+    });
+
+    const error = await emb.embed(['hello']).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(EmbeddingQuotaExhaustedError);
+    const typed = error as EmbeddingQuotaExhaustedError;
+    expect(typed.status).toBe(429);
+    // The message a person reads to decide what to do next, verbatim rather than paraphrased.
+    expect(typed.detail).toContain('余额不足');
+    expect(typed.message).toContain('no quota left');
+    // Not an `Error` subclass that a `catch (e) { if (e.message === ...) }` would have to find.
+    expect(typed.name).toBe('EmbeddingQuotaExhaustedError');
+  });
+
+  it('asks once, because the ladder already decided not to retry', async () => {
+    // The property the whole repair exists for: a 429 that names an empty balance costs one request,
+    // not one request plus an eight-rung ladder.
+    const { fetchFn, seen } = quotaFetch();
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://example.invalid',
+      apiKey: 'k',
+      model: 'm',
+      dimensions: 3,
+      fetchFn,
+    });
+    await emb.embed(['hello']).catch(() => undefined);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('leaves an ordinary rejection as an ordinary error', async () => {
+    // The contrast that keeps the type meaningful. A 400 is the caller's request being wrong, and a
+    // caller that treated it as "no quota" would stop a run that only needed a fixed payload.
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://example.invalid',
+      apiKey: 'k',
+      model: 'm',
+      dimensions: 3,
+      maxRetries: 0,
+      fetchFn: (async () =>
+        new Response(JSON.stringify({ error: { message: 'bad input' } }), {
+          status: 400,
+        })) as never,
+    });
+    const error = await emb.embed(['hello']).catch((caught: unknown) => caught);
+    expect(error).not.toBeInstanceOf(EmbeddingQuotaExhaustedError);
+    expect((error as Error).message).toMatch(/Embedding request failed: 400/);
+  });
+
+  it('leaves a throttle as an ordinary error too, after the ladder has spent itself', async () => {
+    // A provider that is simply busy must not be reported as unpaid: the repair for one is to wait and
+    // for the other to stop.
+    const emb = new OpenAIEmbedding({
+      baseUrl: 'https://example.invalid',
+      apiKey: 'k',
+      model: 'm',
+      dimensions: 3,
+      maxRetries: 0,
+      fetchFn: (async () =>
+        new Response(JSON.stringify({ error: { code: 'rate_limit_exceeded' } }), {
+          status: 429,
+        })) as never,
+    });
+    const error = await emb.embed(['hello']).catch((caught: unknown) => caught);
+    expect(error).not.toBeInstanceOf(EmbeddingQuotaExhaustedError);
+    expect((error as Error).message).toMatch(/Embedding request failed: 429/);
   });
 });
 

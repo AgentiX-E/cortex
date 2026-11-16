@@ -3483,6 +3483,93 @@ class TestWhatAFailedRunLeftBehind:
         assert 'no questions in the dataset' in r.stdout, r.stdout
 
 
+    def test_the_bill_a_failed_run_ran_up_can_be_read_from_the_failure_record(
+        self, tmp_path: Path
+    ) -> None:
+        """`--spend` on the one artifact a dead run produces.
+
+        Run `43866639154` is why this exists. Two hours, repetition 3 of 8, 432 graded answers in
+        memory, and the workflow's spend step exited 2 with `[Errno 2] No such file or directory` --
+        so the run could be described as having died and not as having cost anything. A budget that
+        cannot price its failures is not a budget, and the numbers were in the process the whole time.
+
+        The divisor is the part worth pinning: a partial states `run` (the ordinal that died) rather
+        than `runs`, and `--spend` used to attribute nothing without `runs`. Reading `completed` is
+        what turns the bill into a per-pass figure -- the same three repetitions the partial reader
+        prints, from the same field.
+        """
+        record = self._record(
+            run=3,
+            completed=[
+                {'run': 0, 'baselineAnswers': ['a'], 'featureAnswers': ['a']},
+                {'run': 1, 'baselineAnswers': ['a'], 'featureAnswers': ['a']},
+                {'run': 2, 'baselineAnswers': ['a'], 'featureAnswers': ['a']},
+            ],
+            llmUsage={
+                'calls': 15571,
+                'unpricedCalls': 0,
+                'promptTokens': 9_100_000,
+                'completionTokens': 320_000,
+                'cacheHitPromptTokens': 7_400_000,
+            },
+        )
+        path = tmp_path / 'benchmark-cortex-memory-partial.json'
+        path.write_text(json.dumps(record), encoding='utf-8')
+        r = subprocess.run(
+            [sys.executable, str(TOOL), '--spend', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+        assert r.returncode == 0, r.stderr
+        assert 'calls        15,571' in r.stdout, r.stdout
+        assert '9,100,000 tokens' in r.stdout, r.stdout
+        # Three finished repetitions, from `completed`, not from a `runs` field the record cannot have.
+        assert 'repetitions  3,' in r.stdout, r.stdout
+
+    def test_a_failure_record_without_a_bill_says_so_rather_than_reading_as_free(
+        self, tmp_path: Path
+    ) -> None:
+        """Absence is not zero, on the failure record too.
+
+        `41346610318` predates `llmUsage`, and a record that prints nothing for spend reads as a run
+        that cost nothing -- which is the opposite of what a 429-dying run did.
+        """
+        path = tmp_path / 'benchmark-cortex-memory-partial.json'
+        path.write_text(json.dumps(self._record()), encoding='utf-8')
+        r = subprocess.run(
+            [sys.executable, str(TOOL), '--spend', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+        assert r.returncode == 2
+        assert 'no llmUsage block' in r.stderr, r.stderr
+        assert 'neither is a zero-spend run' in r.stderr, r.stderr
+
+    def test_a_failure_record_is_still_refused_by_the_roster_guard_for_its_own_modes(
+        self, tmp_path: Path
+    ) -> None:
+        """`--spend` moved before the guard and nothing else did.
+
+        The guard exists because the per-question modes need a roster a partial cannot have. Moving
+        `--spend` past it is licensed by `--spend` needing only the bill; moving the others would
+        turn a true refusal into a crash on a missing key.
+        """
+        path = tmp_path / 'benchmark-cortex-memory-partial.json'
+        path.write_text(json.dumps(self._record(llmUsage=self._usage())), encoding='utf-8')
+        r = subprocess.run(
+            [sys.executable, str(TOOL), '--coverage', str(path)],
+            capture_output=True, text=True, check=False,
+        )
+        assert r.returncode == 2
+        assert 'no per-question roster and no ablation block' in r.stderr, r.stderr
+
+    @staticmethod
+    def _usage() -> dict:
+        return {
+            'calls': 1, 'unpricedCalls': 0, 'promptTokens': 1,
+            'completionTokens': 1, 'cacheHitPromptTokens': 0,
+        }
+
+
+
 class TestTheCoverageSplit:
     """`--split`: a question is full when every gold turn the pool surfaced reached the window.
 

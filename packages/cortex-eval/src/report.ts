@@ -1086,6 +1086,15 @@ export type MemoryArmConfig = {
         readonly reuse: boolean;
         readonly rerankCalls: number;
         readonly rerankDegraded: number;
+        /**
+         * Retrievals that fell back to lexical scoring because the embedder failed.
+         *
+         * Always present when a product index exists, so `0` and "this artifact predates the field" are
+         * different readings. Non-zero means this run's accuracy was produced by a stack that vectorised
+         * some questions and lexically scored others, which is neither the `injected` arm nor the `none`
+         * arm; a reader comparing it with either is comparing two products.
+         */
+        readonly embedDegraded: number;
       }
     | undefined;
   /**
@@ -2007,7 +2016,11 @@ export function formatAblationReport(report: AblationReport): string {
             `+texts:${memoryArm.selfIndex.embedTexts}` +
             `+hits:${memoryArm.selfIndex.memoHits}` +
             `+reuse:${memoryArm.selfIndex.reuse}` +
-            `+rerank:${memoryArm.selfIndex.rerankCalls}/${memoryArm.selfIndex.rerankDegraded}\``) +
+            `+rerank:${memoryArm.selfIndex.rerankCalls}/${memoryArm.selfIndex.rerankDegraded}` +
+            // The channel's own failure count, on the line, because it is the one number that says whether
+            // the accuracy beside it was produced by the configuration the arm names. `0` is a healthy
+            // vector channel; anything else is a mixed stack and the run is not the arm.
+            `+degraded:${memoryArm.selfIndex.embedDegraded}\``) +
         // §14.146's write-gate census, on the line rather than only in the JSON, because the
         // numbers above it are conditioned on this gate and the configuration block cannot say
         // whether it decided anything. `rejected:0` is the disclosure: a gate whose threshold is

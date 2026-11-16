@@ -464,3 +464,76 @@ class TestTheAuthorizationIsCheckedAgainstItsOwnIdentities:
 
         assert result.returncode != 0
         assert 'FAIL  spec-authorization' in result.stdout
+
+
+class TestTheVectorChannelsOwnFailureCount:
+    """The one number that says whether the accuracy above it belongs to the configuration named.
+
+    `SearchIndexOptions.onEmbedFailure: 'lexical'` keeps a long run alive when its provider stops
+    answering: run `43866639154` configured its embedder, passed the one-vector preflight, ran two
+    hours, and met `code 1113` -- an empty balance -- at 86% of its third repetition, with 432 graded
+    answers in memory. The policy is right. The artifact it produces is a **mixture**: some questions
+    ranked over two channels and the rest over one, while the configuration line still reads
+    `indexEmbedding=injected`.
+
+    Two fields of one run disagreeing is the only kind of claim `--audit` makes, and this is the one
+    where a green build does the most damage: a mixed reading archived under a registered row is a
+    number no deployment produced, and nothing else in the pipeline looks at it.
+
+    Absence is skipped rather than read as zero. The field arrives with the policy, so an artifact
+    without it came from a build that could not degrade a retrieval -- which is `S9` and `S14`, the two
+    artifacts every published figure comes from.
+    """
+
+    @staticmethod
+    def _with_self_index(**fields: object) -> dict:
+        report = _report(audit={'attempted': 0, 'changed': 0}, counts=[0, 0, 0, 0])
+        report['memoryArmConfig']['selfIndex'] = {
+            'indexes': 2000,
+            'turns': 742080,
+            'embedCalls': 10422,
+            'embedTexts': 536099,
+            'memoHits': 205377,
+            'reuse': True,
+            'rerankCalls': 0,
+            'rerankDegraded': 0,
+            **fields,
+        }
+        return report
+
+    def test_a_healthy_vector_channel_passes(self, tmp_path: Path) -> None:
+        result = _run(tmp_path, self._with_self_index(embedDegraded=0))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'PASS  embedDegraded' in result.stdout
+        assert 'belongs to this configuration' in result.stdout
+
+    def test_a_mixed_run_is_a_failure_and_exits_non_zero(self, tmp_path: Path) -> None:
+        # The direction that matters. A tool that printed this and exited 0 could not gate a dispatch,
+        # and this is the one failure whose consequence is an archived number rather than a lost run.
+        result = _run(tmp_path, self._with_self_index(embedDegraded=40))
+        assert result.returncode != 0
+        assert 'FAIL  embedDegraded' in result.stdout
+        assert '40 of 2000 index(es)' in result.stdout
+        # The sentence names what the mixture IS, because a reader who gets "the artifact is wrong"
+        # goes looking for a dispatch mistake that did not happen.
+        assert 'lexically because the embedder failed' in result.stdout
+        assert '85.75%' in result.stdout
+
+    def test_an_artifact_that_predates_the_policy_is_skipped_with_a_reason(self, tmp_path: Path) -> None:
+        # `S9` and `S14` are in this shape and neither may fail: a build without the policy cannot have
+        # degraded a retrieval, so the missing key is a fact about the build rather than an unknown.
+        result = _run(tmp_path, _report(audit={'attempted': 0, 'changed': 0}, counts=[0, 0, 0, 0]))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'SKIP  embedDegraded' in result.stdout
+        assert 'cannot have degraded a retrieval' in result.stdout
+
+    @pytest.mark.parametrize('value', ['40', 40.5, -1, True, None])
+    def test_a_count_that_cannot_be_read_is_a_failure_not_a_zero(
+        self, tmp_path: Path, value: object
+    ) -> None:
+        # `True == 1` in Python, and a bool where a count belongs is a flag: reading it as one
+        # degradation would be arithmetic on a boolean. The gate has to refuse the shape rather than
+        # coerce it, for the reason every reader in this tool refuses a corrupt block.
+        result = _run(tmp_path, self._with_self_index(embedDegraded=value))
+        assert result.returncode != 0
+        assert 'FAIL  embedDegraded' in result.stdout

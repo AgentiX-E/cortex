@@ -1110,7 +1110,13 @@ def spend_section(report: dict) -> str:
 
     runs = report.get('runs')
     if isinstance(runs, bool) or not isinstance(runs, int) or runs < 1:
-        runs = None
+        # A partial record states `run` -- the ordinal that died -- rather than `runs`, and it carries
+        # every repetition that FINISHED before that one. Reading the completed list is what turns "the
+        # bill cannot be attributed per pass" into a real divisor on the one artifact that has no other
+        # source for it. Falling back rather than demanding `runs` keeps this section usable on the
+        # failure record, which is where a reader most needs to know what a dead run cost.
+        completed = report.get('completed')
+        runs = len(completed) if isinstance(completed, list) and completed else None
 
     lines = ['provider spend (llmUsage)']
     priced = f', {unpriced:,} unpriced' if unpriced else ''
@@ -2023,6 +2029,55 @@ def audit_section(
             '  SKIP  unjudged this artifact predates the census (cortex-eval#unjudged); the '
             'verdict count is then only bounded by the scorer-channel line in the run log, which '
             'expires with the job'
+        )
+
+    # 8. The vector channel's own failure count, which is the one number that says whether the
+    # accuracy above it belongs to the configuration the artifact names.
+    #
+    # `SearchIndexOptions.onEmbedFailure: 'lexical'` is what keeps a long run alive when its provider
+    # stops answering mid-way: run `43866639154` configured its embedder, passed the one-vector
+    # preflight, ran two hours, and met `code 1113` -- an empty balance -- at 86% of its third
+    # repetition. The policy is right and the artifact it produces is a MIXTURE: some questions ranked
+    # over two channels and the rest over one, while the configuration line still reads
+    # `indexEmbedding=injected`. That is a contradiction between two fields of one run, which is the
+    # only kind of claim this section makes, and it is the contradiction that matters most here: CI
+    # going green on it is how a mixed reading gets archived under a registered row.
+    #
+    # Absence is skipped rather than read as zero. The field arrives with the policy, so an artifact
+    # without it was produced by a build that could not degrade a retrieval -- that is `S9` and `S14`,
+    # the two artifacts this project's published numbers come from.
+    # Presence is a key test rather than a null test: an explicit `null` is an unreadable count, and
+    # folding it into "the field is not here" would let a corrupt block take the skip branch -- which is
+    # the one shape this whole section refuses, an unreadable value impersonating a healthy absence.
+    self_index = config.get('selfIndex')
+    has_count = isinstance(self_index, dict) and 'embedDegraded' in self_index
+    if not has_count:
+        lines.append(
+            '  SKIP  embedDegraded this artifact predates the fallback policy'
+            ' (cortex-memory#SearchIndexOptions.onEmbedFailure); a build without it cannot have '
+            'degraded a retrieval, so there is nothing here to count'
+        )
+    else:
+        degraded = self_index['embedDegraded']
+        readable = not isinstance(degraded, bool) and isinstance(degraded, int) and degraded >= 0
+        total_retrievals = self_index.get('indexes')
+        share = (
+            f' of {total_retrievals} index(es)'
+            if isinstance(total_retrievals, int) and total_retrievals
+            else ''
+        )
+        check(
+            'embedDegraded',
+            readable and degraded == 0,
+            f'{degraded!r}{share}: '
+            + (
+                'every retrieval had its vector channel, so the accuracy belongs to this configuration'
+                if readable and degraded == 0
+                else 'these retrievals were scored lexically because the embedder failed, so this '
+                'artifact is a mixture of the arm it names and the lexical index `S14` priced '
+                '(85.75%). Its accuracy belongs to no configuration a deployment can run, and the '
+                'provider failure that caused it is this run\'s finding rather than its reading'
+            ),
         )
 
     header = [
@@ -5811,6 +5866,43 @@ def main(argv: list[str]) -> int:
         # is not allowed to exit 0 just because the rest of the sentence was legible.
         return 2 if state == TRANSPORT_CORRUPT else 0
 
+    # Before the roster guard, for the reason `--partial` is: a partial record has no roster, and the
+    # guard would reject it with a true sentence about a file this section was never meant to read. The
+    # bill is the one reading a failure record can still supply, and `41346610318` is the run that
+    # proved a dead artifact could say where it died and not what it cost.
+    if args.spend:
+        try:
+            print(spend_section(report))
+        except ValueError as error:
+            print(f'{args.report}: {error}', file=sys.stderr)
+            return 2
+        return 0
+
+    if args.transport:
+        section, state = transport_section(report)
+        if state == TRANSPORT_ABSENT:
+            print(
+                f'{args.report}: no transportRetry block. An artifact produced before '
+                '§13.216 predates the field, and this is not a run that never retried -- '
+                'which is what a table of zeroes would say. The counters are attached '
+                'unconditionally, so absence only ever means the field did not exist.',
+                file=sys.stderr,
+            )
+            return 2
+        if state == TRANSPORT_CORRUPT:
+            # Separate from the branch above on purpose: this block EXISTS and cannot be read,
+            # so "the run predates the field" would be a false explanation for a present field.
+            print(
+                f'{args.report}: the transportRetry block is present and unreadable -- every '
+                'count must be a non-negative whole number (a bool is a flag, not a count). '
+                'This is a producer defect, not an old artifact.',
+                file=sys.stderr,
+            )
+            return 2
+        print(section)
+        return 0
+
+
     questions = _questions(report)
     if questions is None and 'ablation' not in report:
         print(
@@ -5900,13 +5992,6 @@ def main(argv: list[str]) -> int:
         print(section)
         return 0
 
-    if args.spend:
-        try:
-            print(spend_section(report))
-        except ValueError as error:
-            print(f'{args.report}: {error}', file=sys.stderr)
-            return 2
-        return 0
 
     if args.audit:
         replay = None
@@ -6202,30 +6287,6 @@ def main(argv: list[str]) -> int:
             print(
                 f'{args.report}: no record carries a goldOverlap.pool. A run that consulted '
                 'no ranking has none, and an artifact produced before §13.62 predates the field.',
-                file=sys.stderr,
-            )
-            return 2
-        print(section)
-        return 0
-
-    if args.transport:
-        section, state = transport_section(report)
-        if state == TRANSPORT_ABSENT:
-            print(
-                f'{args.report}: no transportRetry block. An artifact produced before '
-                '§13.216 predates the field, and this is not a run that never retried -- '
-                'which is what a table of zeroes would say. The counters are attached '
-                'unconditionally, so absence only ever means the field did not exist.',
-                file=sys.stderr,
-            )
-            return 2
-        if state == TRANSPORT_CORRUPT:
-            # Separate from the branch above on purpose: this block EXISTS and cannot be read,
-            # so "the run predates the field" would be a false explanation for a present field.
-            print(
-                f'{args.report}: the transportRetry block is present and unreadable -- every '
-                'count must be a non-negative whole number (a bool is a flag, not a count). '
-                'This is a producer defect, not an old artifact.',
                 file=sys.stderr,
             )
             return 2

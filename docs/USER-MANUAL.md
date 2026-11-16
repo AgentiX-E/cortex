@@ -1454,6 +1454,69 @@ internal control: if they move when you change `ask`, the change reached further
 | `the remote backend needs CORTEX_LLM_MODEL, ...` | missing environment | the message lists every missing name at once |
 | a run is slow with no errors | `minIntervalMs` pacing, or thinking mode on a 48k prompt | lower `thinking`, or raise `retryBudgetMs` above `timeoutMs` |
 | answers are right but the score is not | the judge, not the reader | see the harness's judge audit; a 0-false-accept record is reported separately |
+| `429` with `insufficient_quota` or `余额不足` in the body | the account cannot pay, which no retry can fix | top up, or pass no `embed` and run the lexical index (§12.1) |
+| the vector channel stopped ranking halfway through a run | the embedder started failing | see §12.1: the default is to throw, and `onEmbedFailure: 'lexical'` is the documented alternative |
+
+### 12.1 When the embedder stops answering
+
+A retrieval stack has one input it cannot supply itself, and it is the only one that can fail for a
+reason the caller cannot fix by adjusting a parameter. Two events arrive as the same `429`:
+
+| the body says | what it means | what this product does |
+| --- | --- | --- |
+| `rate_limit_exceeded`, `rate_limit_error` | you are asking too fast | retries with backoff, honouring `Retry-After` |
+| `insufficient_quota`, `quota_exhausted`, `billing_hard_limit_reached`, `余额不足`, `code 1113` | the account cannot pay | stops at once — a wait cannot make this true |
+
+The second row is not a tuning problem, so it is not retried: `EmbeddingQuotaExhaustedError` carries the
+provider's own words and the status, and a caller can tell it from a rejected request with `instanceof`.
+Wrapping it in a retry ladder spends the whole allowance and then fails anyway.
+
+What happens to the *retrieval* is your decision, and it is stated once:
+
+| `onEmbedFailure` | behaviour |
+| --- | --- |
+| `'fail'` (default) | the error propagates. A deployment that asked for a vector channel and silently got lexical scoring would believe the channel was working. |
+| `'lexical'` | this retrieval is scored lexically, `lastIndexCensus().embedDegraded` counts it, and `embedFailure` keeps the provider's message |
+
+The fallback is a real configuration rather than a broken one — it is the same index the product runs
+when you pass no `embed` at all — and its cost is measured: **85.75% against 91.40%** on
+LongMemEval-S, paired at −28 of 500 questions (exact McNemar p = 2.5e-5). Prefer `'fail'` in a service,
+where a wrong answer is worse than an error. Prefer `'lexical'` for a long batch job, where losing the
+whole run is worse than a quarter of it being scored the cheaper way — and read `embedDegraded` before
+quoting the number, because a run with any degradations is neither arm.
+
+`lastIndexCensus()` answers for the most recent index and `indexCost()` for the whole instance; the second
+is the one to read after a run, because a per-question census is overwritten by the next question and a
+degradation in question 3 is invisible by question 4.
+
+The policy is passed the same way every other index option is:
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
+
+const llm: LLM = {
+  complete: async (_prompt: string, _opts?: CompleteOptions) => 'INSUFFICIENT_EVIDENCE',
+  completeStructured: async <T>(_prompt: string, _schema: JsonSchema): Promise<T> => {
+    throw new Error('unused');
+  },
+};
+
+const memory = new CortexMemory({
+  llm,
+  now: Date.UTC(2026, 0, 1),
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
+  index: {
+    k: 64,
+    onEmbedFailure: 'lexical',
+    embed: async (texts: string[]) => texts.map(() => new Float64Array(1024).fill(0)),
+  },
+});
+
+// After a batch: how much of the run was scored the cheaper way.
+const degraded = memory.indexCost()?.embedDegraded ?? 0;
+console.log(degraded); // 0 means every retrieval had its vector channel
+```
 
 ## 13. Stability
 

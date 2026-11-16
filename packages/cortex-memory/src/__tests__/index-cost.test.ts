@@ -117,6 +117,7 @@ describe('the product reports what its own retrieval cost a run', () => {
       reuse: true,
       rerankCalls: 0,
       rerankDegraded: 0,
+      embedDegraded: 0,
     });
     // The counter and the model agree: four turns once, then one question per question.
     expect(system.indexCost()?.embedTexts).toBe(embedder.texts());
@@ -169,6 +170,8 @@ function census(overrides: Partial<SearchCensus> = {}): SearchCensus {
     reuse: true,
     rerankCalls: 0,
     rerankDegraded: 0,
+    embedDegraded: 0,
+    embedFailure: null,
     channels: ['lexical', 'vector'],
     ...overrides,
   };
@@ -185,6 +188,7 @@ describe('foldIndexCost', () => {
       reuse: true,
       rerankCalls: 0,
       rerankDegraded: 0,
+      embedDegraded: 0,
     });
   });
 
@@ -198,6 +202,9 @@ describe('foldIndexCost', () => {
         memoHits: 4,
         rerankCalls: 3,
         rerankDegraded: 1,
+        // One index that fell back to lexical scoring. A field present in the per-question census and
+        // missing from this fold would make the two tables disagree about the same run.
+        embedDegraded: 1,
       }),
     );
     expect(total).toEqual({
@@ -209,6 +216,7 @@ describe('foldIndexCost', () => {
       reuse: true,
       rerankCalls: 3,
       rerankDegraded: 1,
+      embedDegraded: 1,
     });
   });
 

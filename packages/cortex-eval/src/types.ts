@@ -1,4 +1,5 @@
 import type { ConfidenceInterval } from '@agentix-e/cortex-core';
+import type { UsageSnapshot } from '@agentix-e/cortex-ai';
 import type { TransportRetryReport } from './retrieval-diagnostics.js';
 
 /**
@@ -244,6 +245,28 @@ export type PartialAblation = {
    * as "nothing was retried".
    */
   transportRetry?: TransportRetryReport | undefined;
+  /**
+   * What the provider billed before the failure, read at the moment of the throw.
+   *
+   * ## Why a failure record needs the bill at all
+   *
+   * `transportRetry` says what the provider did with the requests; this says what it charged for the
+   * ones that were answered. Run `43866639154` is the case: two hours, everything up to repetition 3
+   * answered, and the artifact carried no token count anywhere — so the run could be described as
+   * having died and not as having cost anything, and a budget that cannot price its failures cannot
+   * be planned. The number was available in the process the whole time; nothing was reading it.
+   *
+   * ## Why it is a snapshot rather than a delta
+   *
+   * The counters are process-wide and monotonic, and a partial is written once, at the throw. There is
+   * no "before" to subtract from — the run's own reading IS the difference from zero, because the
+   * process started with it.
+   *
+   * Optional for the reason every field here that predates an instrument is optional: a partial written
+   * before this existed has none, and its absence has to read as "not priced" rather than as "cost
+   * nothing".
+   */
+  llmUsage?: UsageSnapshot | undefined;
 };
 
 /** One finished repetition, both sides, in dataset order. */

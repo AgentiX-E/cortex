@@ -69,6 +69,7 @@ export {
   type UsageTally,
 } from './usage.js';
 export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai.js';
+export { EmbeddingQuotaExhaustedError } from './embedding/quota-error.js';
 /**
  * The embedder cache is re-exported because it is a **wrapping** decision, and a wrapper a caller cannot name is
  * a wrapper a caller cannot put in a report. The implementation lives in `cortex-core` because the product's
@@ -105,6 +106,7 @@ export {
   retryableFetch,
   retryableFetchWithStats,
   isRetryableStatus,
+  isQuotaExhausted,
   parseRetryAfterMs,
   sleep,
   RetryStatsAggregate,

@@ -5033,6 +5033,7 @@ const INDEX_COST_COUNTERS = [
   'memoHits',
   'rerankCalls',
   'rerankDegraded',
+  'embedDegraded',
 ] as const;
 
 /** A record with every counter at zero, which is what one instance that built no index contributes. */
@@ -5086,6 +5087,7 @@ function emptyIndexCost(): IndexCostRecord {
     reuse: true,
     rerankCalls: 0,
     rerankDegraded: 0,
+    embedDegraded: 0,
   };
 }
 
@@ -5137,6 +5139,7 @@ function indexCostOf(system: MemorySystem): IndexCostRecord | null {
     reuse: record.reuse,
     rerankCalls: record.rerankCalls as number,
     rerankDegraded: record.rerankDegraded as number,
+    embedDegraded: record.embedDegraded as number,
   };
 }
 

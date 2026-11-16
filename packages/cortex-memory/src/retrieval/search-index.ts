@@ -138,6 +138,31 @@ export type SearchIndexOptions = {
   readonly batch?: number;
   /** The RRF constant. Exposed because a second index in the same run must not silently use another one. */
   readonly rrfK?: number;
+  /**
+   * What to do when the embedder cannot produce a query vector.
+   *
+   * `'fail'` (default) rethrows. `'lexical'` degrades **this retrieval** to the lexical channel, counts it
+   * in {@link SearchCensus.embedDegraded}, and keeps the provider's message in
+   * {@link SearchCensus.embedFailure}.
+   *
+   * ## Why the default is the loud one
+   *
+   * `indexEmbedding: injected` in an artifact means the vector channel ranked. A deployment that silently
+   * scored lexically instead would publish numbers under a configuration it did not run — and the numbers
+   * would look entirely reasonable, because the lexical index is a working index (`S14`: 85.75%). The
+   * failure mode of a quiet default is therefore a plausible wrong reading rather than a crash, which is
+   * the one shape this repository refuses to leave in place.
+   *
+   * ## Why the opt-in exists at all
+   *
+   * Because the alternative is worse than degrading. Run `43866639154` configured the embedder, passed the
+   * one-vector preflight, ran for two hours, and then met an exhausted provider balance at repetition 3 of
+   * 8 — taking `432` graded answers with it. A long benchmark cannot buy insurance against a balance that
+   * empties mid-run; what it can do is state in advance that a retrieval it cannot vectorise will be
+   * scored the way the product scores when there is no embedder, and record how often that happened. The
+   * cost of that choice is already measured, so a reader can price it rather than guess.
+   */
+  readonly onEmbedFailure?: 'fail' | 'lexical';
 };
 
 /** One retrieved turn: its position in the corpus, and the score the prompt will sort on. */
@@ -174,6 +199,17 @@ export type SearchCensus = {
   readonly reuse: boolean;
   readonly rerankCalls: number;
   readonly rerankDegraded: number;
+  /**
+   * Retrievals whose vector channel failed and were scored lexically instead.
+   *
+   * Always present, so an artifact cannot say "no failures" and "the field predates this run" with the
+   * same bytes. Zero on a run whose embedder worked. Non-zero means the census's `channels` describe what
+   * this index **is** rather than what it managed to do on every question, and a reader comparing it with
+   * a run at zero is comparing two products.
+   */
+  readonly embedDegraded: number;
+  /** The provider's own message from the most recent failure, or `null` when none failed. */
+  readonly embedFailure: string | null;
   readonly channels: readonly ('lexical' | 'vector' | 'rerank')[];
 };
 
@@ -203,6 +239,8 @@ export type IndexCost = {
   readonly reuse: boolean;
   readonly rerankCalls: number;
   readonly rerankDegraded: number;
+  /** Retrievals across the run that fell back to lexical scoring. See `SearchCensus.embedDegraded`. */
+  readonly embedDegraded: number;
 };
 
 /**
@@ -223,6 +261,7 @@ export function foldIndexCost(previous: IndexCost | undefined, census: SearchCen
     reuse: (previous?.reuse ?? true) && census.reuse,
     rerankCalls: (previous?.rerankCalls ?? 0) + census.rerankCalls,
     rerankDegraded: (previous?.rerankDegraded ?? 0) + census.rerankDegraded,
+    embedDegraded: (previous?.embedDegraded ?? 0) + census.embedDegraded,
   };
 }
 
@@ -269,6 +308,10 @@ export class SearchIndex implements VectorEraser {
   #embedTexts = 0;
   #rerankCalls = 0;
   #rerankDegraded = 0;
+  /** Retrievals scored lexically because the embedder failed. See `SearchIndexOptions.onEmbedFailure`. */
+  #embedDegraded = 0;
+  /** The most recent embedder failure message, or `null`. Kept because the repairs differ by cause. */
+  #embedFailure: string | null = null;
   /** How many texts one request may carry. Resolved once, so a corpus cannot be chunked two ways. */
   readonly #batch: number;
 
@@ -364,17 +407,33 @@ export class SearchIndex implements VectorEraser {
     if (model === undefined || this.#turns.length === 0) return;
 
     const vectors: EmbeddingVector[] = [];
-    for (let at = 0; at < this.#turns.length; at += this.#batch) {
-      const slice = this.#turns.slice(at, at + this.#batch);
-      const part = await model(slice);
-      if (part.length !== slice.length) {
-        throw new Error(
-          `the embedder was given ${slice.length} texts and returned ${part.length} vectors; a ` +
-            'short reply would leave turns unscoreable and the index would report a ranking it did not ' +
-            'compute',
-        );
+    try {
+      for (let at = 0; at < this.#turns.length; at += this.#batch) {
+        const slice = this.#turns.slice(at, at + this.#batch);
+        const part = await model(slice);
+        if (part.length !== slice.length) {
+          throw new Error(
+            `the embedder was given ${slice.length} texts and returned ${part.length} vectors; a ` +
+              'short reply would leave turns unscoreable and the index would report a ranking it did not ' +
+              'compute',
+          );
+        }
+        vectors.push(...part);
       }
-      vectors.push(...part);
+    } catch (error) {
+      // `CortexMemory` primes one index per question, so a refusal here costs the whole retrieval stack
+      // for that question rather than one ranking -- and it is reached before any question is asked, which
+      // is why the alternative to degrading is a run that dies on its first question after the balance
+      // empties. The policy is the caller's for the reason `onEmbedFailure` gives.
+      if (this.#options.onEmbedFailure !== 'lexical') throw error;
+      this.#embedDegraded += 1;
+      this.#embedFailure = error instanceof Error ? error.message : String(error);
+      // `#vectors` stays empty. ``vectors`` above holds whatever batches arrived, and assigning a short
+      // table would shift every entry: `#vectors[position]` must describe `#turns[position]`, so two
+      // vectors for three turns would score each turn against its neighbour's vector -- a ranking that
+      // reads as the channel disagreeing and is a table that moved. A lexical index is a configuration
+      // this product ships; a shifted vector table is a wrong answer nothing can detect.
+      return;
     }
     this.#vectors = vectors;
   }
@@ -389,10 +448,24 @@ export class SearchIndex implements VectorEraser {
   async search(question: string, k = this.#options.k ?? DEFAULT_K): Promise<readonly SearchHit[]> {
     const lexical = this.#lexicalOrder(question).slice(0, k);
     const model = this.#model;
-    const vectors =
-      model !== undefined && this.#vectors.length > 0
-        ? await this.#vectorOrder(model, question, k)
-        : [];
+    let vectors: number[] = [];
+    if (model !== undefined && this.#vectors.length > 0) {
+      let query: EmbeddingVector | undefined;
+      try {
+        [query] = await model([question]);
+      } catch (error) {
+        // The `try` wraps the embedder call and **only** the embedder call. `#orderByVector` also refuses
+        // a ragged width, and that refusal has to escape: two embedders wired together is a client defect
+        // whose symptom is a plausible, wrong ranking, which no policy should be allowed to hide behind a
+        // lexical fallback. Splitting the method is what makes the boundary enforceable rather than a
+        // comment -- an earlier version wrapped the whole call and swallowed the width check, and the test
+        // that was written to pin the distinction is the one that caught it.
+        if (this.#options.onEmbedFailure !== 'lexical') throw error;
+        this.#embedDegraded += 1;
+        this.#embedFailure = error instanceof Error ? error.message : String(error);
+      }
+      if (query !== undefined) vectors = this.#orderByVector(query, k);
+    }
 
     // One channel and no reranker is not a fusion. The lexical order *is* the answer then, and its scores
     // are already the channel's -- re-basing them on rank would make a run with an index and a run with
@@ -473,6 +546,8 @@ export class SearchIndex implements VectorEraser {
       reuse: this.#memo !== undefined,
       rerankCalls: this.#rerankCalls,
       rerankDegraded: this.#rerankDegraded,
+      embedDegraded: this.#embedDegraded,
+      embedFailure: this.#embedFailure,
       channels,
     };
   }
@@ -493,11 +568,15 @@ export class SearchIndex implements VectorEraser {
       .map((entry) => entry.position);
   }
 
-  /** The vector channel's order, at most `k` entries, zero-similarity turns excluded. */
-  async #vectorOrder(model: EmbedFn, question: string, k: number): Promise<number[]> {
-    const [query] = await model([question]);
-    if (query === undefined) return [];
-
+  /**
+   * The vector channel's order for an already-embedded query, at most `k` entries, zero-similarity turns
+   * excluded.
+   *
+   * Synchronous, and separated from the embedding call on purpose: the embedder is the only step that can
+   * fail for a reason a caller may want to survive, so keeping the arithmetic out of that call's `try` is
+   * what leaves the width check below unsuppressable.
+   */
+  #orderByVector(query: EmbeddingVector, k: number): number[] {
     // One width, checked once. A corpus embedded at 1,536 dimensions and a query at 1,024 is a client
     // defect, and the failure it produces without this check is a similarity computed over the first 1,024
     // components of each -- plausible numbers, wrong ranking, nothing in the artifact to say so.

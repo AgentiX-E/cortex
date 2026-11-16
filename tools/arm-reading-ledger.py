@@ -462,6 +462,32 @@ def arm_refusal(report: dict, row: Row) -> str | None:
             f'{row.index_embedding!r}. The two rows differ only in this field: `injected` is the '
             'deployment every published figure came from, `none` is a caller with no embedding provider'
         )
+    # A run whose embedder failed mid-way is neither arm. `SearchIndex.onEmbedFailure: 'lexical'` scores
+    # such a retrieval the way this product scores when there is no embedder at all -- which is what
+    # keeps a long benchmark alive (run `43866639154` died at 86% of its third repetition with 432 graded
+    # answers in memory) and what makes the artifact a MIXTURE: some questions ranked over two channels
+    # and the rest over one. Its accuracy is therefore between the arm and `S14`'s measured fallback, and
+    # no deployment produced it.
+    #
+    # Absence reads as zero, and that is the true reading rather than a lenient one: the field arrives
+    # with the policy, so a build without the policy cannot degrade a retrieval. Every artifact written
+    # before it existed -- `S9`, `S14` -- is a pure arm.
+    self_index = arm.get('selfIndex')
+    degraded = 0 if self_index is None else (self_index or {}).get('embedDegraded', 0)
+    if isinstance(degraded, bool) or not isinstance(degraded, int) or degraded < 0:
+        return (
+            f"refusing: `selfIndex.embedDegraded` reads {degraded!r}, which is not a count. The field is "
+            'absent or a non-negative integer, and a corrupt one cannot be read as "no degradations" -- '
+            'that is the reading an unreadable block must never be allowed to impersonate'
+        )
+    if degraded > 0:
+        return (
+            f"refusing: `selfIndex.embedDegraded` reads {degraded}, so {degraded} retrieval(s) fell "
+            f'back to lexical scoring while the rest used the vector channel. That is a mixture of {row.id} '
+            f'and the lexical index `S14` priced, not {row.id} itself: the accuracy this file would '
+            'publish belongs to no configuration any deployment can run, and the provider failure that '
+            'caused it is the run\'s finding rather than its reading'
+        )
     return None
 
 

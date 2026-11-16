@@ -786,6 +786,16 @@ async function main(): Promise<void> {
   )
     ? {
         ...(productIndexEmbedded ? { embed: (texts: string[]) => embedding.embed(texts) } : {}),
+        // The arm opts in, and only the arm that has an embedder. A run of this length cannot buy
+        // insurance against a balance that empties mid-run -- `43866639154` configured its embedder, passed
+        // the one-vector preflight, ran two hours, and met `code 1113` at repetition 3 of 8 with 432 graded
+        // answers in memory. What it can do is state in advance that a retrieval it cannot vectorise is
+        // scored the way this product scores when there is no embedder, and count how often that happened;
+        // `selfIndex.embedDegraded` is the count and `S14` is the price of the path it falls back to.
+        //
+        // The `none` arm does not name the policy: it passes no `embed`, so `prime()` returns before any
+        // call and there is nothing for the policy to govern.
+        ...(productIndexEmbedded ? { onEmbedFailure: 'lexical' as const } : {}),
         k: armOptions.relevanceTopK,
         ...(rerank === undefined ? {} : { rerank }),
       }
