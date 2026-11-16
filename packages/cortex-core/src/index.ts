@@ -20,18 +20,14 @@ export { leastRetained } from './domain/retention.js';
 
 // math
 export { dot, norm, normalize, cosineSimilarity, l2Distance } from './math/vector.js';
-export {
-  kahanSum,
-  mean,
-  variance,
-  stddev,
-  welchTTest,
-  studentTCdf,
-  logGamma,
-  binomialCdf,
-  wilsonScoreInterval,
-  type ConfidenceInterval,
-} from './math/stats.js';
+// `#25`. `kahanSum` is the one statistic the product itself computes: `norm` reduces a vector with
+// it. Everything else that lived beside it -- `mean`, `variance`, `stddev`, `welchTTest`,
+// `studentTCdf`, `logGamma`, `binomialCdf`, `wilsonScoreInterval` and `type ConfidenceInterval` from
+// this barrel, plus the file-level `degenerateDfPValue` and `clampAwayFromZero` -- moved to
+// `@agentix-e/cortex-eval`, where every consumer already was. They were exported here for as long as
+// the barrel was treated as "where arithmetic lives", and the cost was a product surface advertising
+// a paired t-test the product never ran.
+export { kahanSum } from './math/kahan.js';
 export { sinkhorn, squaredEuclideanCostMatrix, type SinkhornResult } from './math/ot.js';
 export {
   retrievability,

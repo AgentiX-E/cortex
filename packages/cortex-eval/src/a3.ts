@@ -30,7 +30,7 @@
  * null into a trend by reporting a point estimate without the verdict.
  */
 
-import { binomialCdf, wilsonScoreInterval, type ConfidenceInterval } from '@agentix-e/cortex-core';
+import { binomialCdf, wilsonScoreInterval, type ConfidenceInterval } from './stats.js';
 
 /** The two presentations. `source` is the sentence alone; `atoms` is the model's split of it. */
 export type A3Arm = 'source' | 'atoms';

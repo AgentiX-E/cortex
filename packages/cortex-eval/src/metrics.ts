@@ -3,7 +3,7 @@
  * accuracy, per-capability breakdown, and run aggregation. All statistics reuse
  * the high-precision primitives from @agentix-e/cortex-core.
  */
-import { binomialCdf, mean, variance, welchTTest } from '@agentix-e/cortex-core';
+import { binomialCdf, mean, variance, welchTTest } from './stats.js';
 import type {
   AdmittedEvidence,
   AggregateStats,

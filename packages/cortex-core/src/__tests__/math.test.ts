@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { cosineSimilarity, dot, l2Distance, normalize, norm } from '../math/vector.js';
-import { mean, variance, welchTTest } from '../math/stats.js';
 import { sinkhorn, squaredEuclideanCostMatrix } from '../math/ot.js';
 import { retrievability, review } from '../math/fsrs.js';
 
@@ -36,27 +35,6 @@ describe('vector', () => {
   it('l2 distance matches manual computation', () => {
     const d = l2Distance(new Float64Array([0, 0]), new Float64Array([3, 4]));
     expect(d).toBeCloseTo(5, 12);
-  });
-});
-
-describe('stats', () => {
-  it('mean of [1,2,3] is 2', () => {
-    expect(mean([1, 2, 3])).toBeCloseTo(2, 12);
-  });
-
-  it('sample variance of [1,2,3] is 1', () => {
-    expect(variance([1, 2, 3])).toBeCloseTo(1, 12);
-  });
-
-  it('welch t-test rejects clearly different means', () => {
-    const a = [1, 1.1, 0.9, 1.05, 0.95];
-    const b = [10, 10.1, 9.9, 10.05, 9.95];
-    expect(welchTTest(a, b)).toBeLessThan(0.001);
-  });
-
-  it('welch t-test accepts identical samples', () => {
-    const a = [1, 2, 3, 4, 5];
-    expect(welchTTest(a, a)).toBeCloseTo(1, 12);
   });
 });
 

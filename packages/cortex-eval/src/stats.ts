@@ -1,20 +1,40 @@
 /**
- * High-precision statistics. Sums use Kahan compensation; variance uses Welford's
- * online algorithm; the two-sample test uses Welch's t-test (no equal-variance
- * assumption).
+ * Paired statistics: the arithmetic a reading is made of.
+ *
+ * ## Why this file is in `cortex-eval` rather than in `cortex-core`
+ *
+ * It was in `cortex-core` until `#25`, and the move is a correction rather than a
+ * preference. The product barrel exported these twelve functions while the product
+ * used **one** of them: `vector.ts` needs a compensated sum to compute a
+ * magnitude, and nothing on the product's path needs a t-test, a Wilson interval or
+ * an incomplete beta. The consumers were `metrics.ts`, `ablation.ts`, `a3.ts`,
+ * `efficiency-frontier.ts` and `types.ts` -- all of them in this package, all of
+ * them harness code.
+ *
+ * An export is a claim about what a package is for. Twelve statistics under
+ * `@agentix-e/cortex-core` advertised a general-purpose numerics library, and a
+ * reader sizing the product's surface had to count them and then discover that the
+ * product never called them. `tools/export-census.py` classified each as
+ * `exported-unreferenced`, which is exactly right: the census reads the barrel, and
+ * from the barrel's side the product was offering eleven capabilities it did not
+ * have.
+ *
+ * `kahanSum` stayed behind (`cortex-core/src/math/kahan.ts`) and is imported here
+ * rather than copied. Two implementations of one numerical routine agree until the
+ * first edit, and then two paths report different sums for the same input with
+ * nothing in the artifact to say which one ran.
+ *
+ * ## What the file contains
+ *
+ * Sums use Kahan compensation; variance uses Welford's online algorithm; the
+ * two-sample test uses Welch's t-test (no equal-variance assumption). The
+ * incomplete-beta machinery under `studentTCdf` and `binomialCdf` is here because
+ * both of those are read by a paired verdict, and a verdict that is wrong at the
+ * third decimal is a verdict that was decided by the implementation rather than by
+ * the data.
  */
 
-export function kahanSum(values: Iterable<number>): number {
-  let sum = 0;
-  let c = 0;
-  for (const v of values) {
-    const y = v - c;
-    const t = sum + y;
-    c = t - sum - y;
-    sum = t;
-  }
-  return sum;
-}
+import { kahanSum } from '@agentix-e/cortex-core';
 
 export function mean(values: readonly number[]): number {
   if (values.length === 0) {

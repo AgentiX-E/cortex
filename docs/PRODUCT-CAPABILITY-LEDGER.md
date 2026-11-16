@@ -50,7 +50,7 @@ table.
 | 22 | turn clock annotation | instrument | **instrument** | ✗ | ✗ | declared: reads timestamps off the turns it was given; the product receives windows and never reads its own clock | ✗ | — | `packages/cortex-eval/src/turn-clock.ts` |
 | 23 | LLM query expansion | instrument | **instrument** | ✗ | ✗ | declared: expands the question with the harness's own model call | ✗ | `packages/cortex-memory/bench/run-ablation.ts` | `packages/cortex-eval/src/query-expansion.ts` |
 | 24 | judge | instrument | **instrument** | ✗ | ✗ | declared: takes the question, the prediction and the gold string as arguments | ✗ | — | `packages/cortex-eval/src/judge.ts` |
-| 25 | paired statistics, noise floor, resolution | instrument-misplaced | **blocked** | ✓ | ✓ | declared: a pure function of the observations it is handed | ✗ | — | `packages/cortex-core/src/math/stats.ts` |
+| 25 | paired statistics, noise floor, resolution | instrument | **instrument** | ✗ | ✗ | declared: a pure function of the observations it is handed | ✗ | — | `packages/cortex-eval/src/stats.ts` |
 | 26 | competitor adapters | instrument | **instrument** | — | — | declared: wraps the product behind a MemorySystem and drives the competitor's harness against it | — | — | `tools/competitor-sut.mjs` |
 
 ## Summary
@@ -58,13 +58,13 @@ table.
 | | rows |
 | --- | ---: |
 | product | 16 |
-| blocked | 1 |
-| instrument | 9 |
+| blocked | 0 |
+| instrument | 10 |
 | gap | 0 |
 | of the product rows, behind a configuration switch | 5 |
 | **total** | **26** |
 
-Product completeness by this measure: **16/26** capabilities are reachable by a customer. The rest are 1 blocked, 9 owned by the instrument and 0 absent.
+Product completeness by this measure: **16/26** capabilities are reachable by a customer. The rest are 0 blocked, 10 owned by the instrument and 0 absent.
 
 ## Why `D3` is declared and not derived
 
@@ -83,18 +83,12 @@ So the column records the claim and says what it was based on. Where the claim i
 work — the rows the audit grouped as "the instrument ranks, the product does not" — the
 evidence is the `state` column, which is derived.
 
-## The boundary (60 product exports)
+## The boundary (54 product exports)
 
 Product exports whose only callers are the instrument. This is the audit's §3.3 argument as a
 set of names rather than a paragraph, and `pnpm ledger:check` fails on a new member: a
 mechanism that just became instrument-only is the change this repository wants to be told
 about.
-
-### statistics-in-a-product-package (6)
-
-Measurement machinery declared in cortex-core and called only by cortex-eval's metrics, ablation and stability modules. The product ships a Welch test, a binomial CDF and a Wilson interval that it never calls. Moving them beside `variance.ts` in cortex-eval is a file move, and it is the audit's D2 criterion applied to a package instead of a file.
-
-`ConfidenceInterval`, `binomialCdf`, `stddev`, `variance`, `welchTTest`, `wilsonScoreInterval`
 
 ### retrieval-prototypes-in-a-product-package (5)
 

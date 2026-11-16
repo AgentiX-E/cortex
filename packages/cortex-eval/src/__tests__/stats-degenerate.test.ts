@@ -28,7 +28,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { clampAwayFromZero, degenerateDfPValue } from '../math/stats.js';
+import { clampAwayFromZero, degenerateDfPValue } from '../stats.js';
 
 describe('clampAwayFromZero', () => {
   it('returns values at or above the threshold unchanged', () => {

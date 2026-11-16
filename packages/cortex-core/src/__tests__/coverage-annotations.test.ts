@@ -14,7 +14,15 @@
  * count is pinned, every entry carries its reason, and adding a new one fails
  * until it is declared here.
  *
- * ## The stated reasons in `math/stats.ts` were FALSE when written
+ * ## The stated reasons in the statistics module were FALSE when written
+ *
+ * That module lived in this package until `#25` and now lives in
+ * `cortex-eval/src/stats.ts`, because the product called one of its functions and the
+ * harness called the other eleven. The history below stays where it happened rather than
+ * moving with the file: what it teaches is about annotations, and an annotation does not
+ * become a different lesson by changing packages. The code it drove is out of this
+ * package's coverage set now, so nothing here depends on it -- `math/kahan.ts` is what
+ * remains, and it carries no annotation.
  *
  * An earlier version of this comment claimed the annotations were verified
  * correct by a 29.9-order-of-magnitude margin. **That verification was wrong**,
@@ -107,7 +115,7 @@
  * ## What this test does NOT do
  *
  * It does not verify that each annotation's stated reason is true, and the
- * `math/stats.ts` case above shows why that matters: the reasons are prose, and
+ * statistics case above shows why that matters: the reasons are prose, and
  * prose cannot be checked by pattern-matching the file. Reachability has to be
  * *measured* — by perturbing the code and observing behaviour from outside it,
  * which is what the throwing-sentinel method does and what the counter-based
@@ -118,7 +126,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { studentTCdf } from '../math/stats.js';
 import { join, relative } from 'node:path';
 import * as ts from 'typescript';
 
@@ -206,7 +213,10 @@ const EXPECTED: Record<string, { count: number; reason: string }> = {
   // came from an adjacency key, and the BFS queue starts at a node whose presence was checked.
   // What the annotation said was "unreachable via valid inputs"; what the code says now is why.
   // `cortex-core: math/stats.ts` used to be declared here with `count: 6`, and its
-  // removal is worth a note because the count went to zero rather than changing.
+  // removal is worth a note because the count went to zero rather than changing. The file
+  // itself has since moved to `cortex-eval/src/stats.ts` (`#25`), which changes nothing
+  // about the note: the annotations were removed, and a removed annotation does not
+  // return by being carried to another package.
   //
   // The six annotations were on the underflow guards in `betaContinuedFraction`
   // and the Welch df check. The previous note in this file was right that the
@@ -229,7 +239,9 @@ const EXPECTED: Record<string, { count: number; reason: string }> = {
   // read 5. The protection is unchanged, now verified, and the file clears the
   // floor with no exclusions. `stats.ts` therefore has no entry: a file with no
   // annotations must not appear in this registry, which is what the pinned-count
-  // assertion below enforces.
+  // assertion below enforces. (`#25` later moved that file to `cortex-eval`, which is why
+  // this registry has no key for it in either package: the rule the paragraph above states
+  // is about annotations, and the file arrived at having none.)
   'cortex-eval: fact-memory.ts': {
     count: 1,
     reason:
@@ -475,7 +487,7 @@ describe('the coverage-ignore annotation set is pinned', () => {
     // immediately -- on `answerTemporal?: (` in `cortex-eval/src/types.ts`, a
     // multi-line function-type member of an interface, which any line-oriented
     // rule reads as runtime code. That is the same lesson as this file's
-    // `math/stats.ts` section: a claim about the code cannot be verified by
+    // statistics section: a claim about the code cannot be verified by
     // matching how the code is spelled. The AST is the compiler's own answer.
     for (const rel of [
       'packages/cortex-core/src/interfaces/embedding.ts',
@@ -563,32 +575,5 @@ describe('the coverage-ignore annotation set is pinned', () => {
     // file with real statements and none of them executed. That would be a
     // genuine hole hiding behind the same `0%` rendering.
     expect(untestedFilesFound, 'a file with runtime statements was never executed').toBe(0);
-  });
-
-  it('pins the stats.ts guard behaviour that replaced the removed annotations', () => {
-    // This is the one assertion in this file that pins BEHAVIOUR rather than the
-    // annotation set, and it is the residue of an older, now-resolved dispute.
-    //
-    // `studentTCdf` used to carry five in-loop underflow guards annotated
-    // "unreachable via valid inputs", and that reason was false when written:
-    // `Infinity` is a valid input, the suite already passed it, and replacing each
-    // guard body with a throwing sentinel failed six tests per guard. Chasing the
-    // contradiction uncovered two real defects (see the header), after which the
-    // guards became genuinely unreachable -- and then the annotations were removed
-    // anyway, because the provider does not honour them and a suppression is not a
-    // fix. The guards are now `clampAwayFromZero` / `degenerateDfPValue`, tested in
-    // `stats-degenerate.test.ts`.
-    //
-    // What remains here is the contract those guards exist to protect, asserted at
-    // the asymptotic inputs that started the whole investigation. If a future
-    // change makes `studentTCdf(±Infinity, df)` throw or return a non-CDF value,
-    // this fails here, next to the history that explains why anyone looked.
-    expect(studentTCdf(Infinity, 10)).toBeCloseTo(1, 12);
-    expect(studentTCdf(-Infinity, 10)).toBeCloseTo(0, 12);
-
-    // A finite but extreme t is the same regime without relying on infinities,
-    // so the claim does not rest on one special value.
-    expect(studentTCdf(-1e300, 10)).toBeCloseTo(0, 12);
-    expect(studentTCdf(0, 10)).toBeCloseTo(0.5, 12);
   });
 });

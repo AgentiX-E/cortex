@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import fc from 'fast-check';
 import { consolidate } from '../consolidation/consolidate.js';
 import { resolveContradiction } from '../contradiction/resolve.js';
 import { MemoryGraph } from '../graph/memory-graph.js';
 import { sinkhorn } from '../math/ot.js';
-import { studentTCdf, logGamma } from '../math/stats.js';
 import { currentValue } from '../temporal/bitemporal.js';
 import { createMemory } from '../domain/memory.js';
 import type { Fact } from '../domain/fact.js';
@@ -350,92 +348,6 @@ describe('branch coverage', () => {
     // chance to be tested. Reporting non-convergence is the honest answer.
     expect(res.iterations).toBe(1);
     expect(res.converged).toBe(false);
-  });
-
-  it('logGamma reflection formula handles z < 0.5', () => {
-    expect(Number.isFinite(logGamma(0.3))).toBe(true);
-    // Γ(z)Γ(1-z) = π/sin(πz)
-    const gz = Math.exp(logGamma(0.3));
-    const g1z = Math.exp(logGamma(0.7));
-    expect(gz * g1z).toBeCloseTo(Math.PI / Math.sin(Math.PI * 0.3), 6);
-  });
-
-  it('logGamma is finite and correct for negative non-integer inputs', () => {
-    // REGRESSION. The version of this test above asserts only `z = 0.3` and
-    // `z = 0.7`, which are both POSITIVE, so despite its name it never took the
-    // `z < 0.5` branch with a negative argument. The reflection formula was
-    // therefore free to divide by a negative sine and take `Math.log` of the
-    // result, which is NaN -- and it did:
-    //
-    //   logGamma(-0.5) returned NaN, and so did every other negative
-    //   non-integer z in (-1, 0), (-3, -2), ... .
-    //
-    // `logGamma(-1.5)` kept working only because `sin(-1.5 * pi)` happens to be
-    // positive, which is exactly why the defect survived: a spot check on the
-    // wrong half-period looks healthy.
-    //
-    // Reference values are `math.lgamma` from the C library. The sign of the
-    // sine carries no information -- it only says which half-period z is in --
-    // so the identity uses `|sin(pi z)|`.
-    const reference: [number, number][] = [
-      [-2.5, -0.05624371649767457],
-      [-1.75, 1.0160888092144358],
-      [-1.5, 0.8600470153764812],
-      [-1.25, 1.3664317612369756],
-      [-0.75, 1.5757045971498589],
-      [-0.5, 1.265512123484645],
-      [-0.25, 1.5895753125511862],
-    ];
-    for (const [z, expected] of reference) {
-      const actual = logGamma(z);
-      expect(Number.isFinite(actual), `logGamma(${z}) must be finite`).toBe(true);
-      expect(actual, `logGamma(${z})`).toBeCloseTo(expected, 12);
-    }
-  });
-
-  it('logGamma satisfies the reflection identity across both half-periods', () => {
-    // The identity is the property the implementation is built on, so assert it
-    // directly rather than only through a table of constants: it must hold for
-    // negative z as well, where the sign of the sine flips.
-    for (const z of [-0.25, -0.5, -0.75, -1.25, -1.5, 0.25, 0.3, 0.7]) {
-      const lhs = logGamma(z) + logGamma(1 - z);
-      const rhs = Math.log(Math.PI / Math.abs(Math.sin(Math.PI * z)));
-      expect(lhs, `reflection identity at z=${z}`).toBeCloseTo(rhs, 10);
-    }
-  });
-
-  it('logGamma is finite for EVERY non-integer z, generated not tabulated', () => {
-    // A table of hand-picked constants is what failed to catch this defect the
-    // first time: eight points, chosen by hand, all in the two half-periods that
-    // happen to work. The generalisable guard is a generator over the whole
-    // non-integer line.
-    //
-    // The generator avoids the non-positive integers themselves (`Γ` has poles
-    // there, so `logGamma` legitimately returns `Infinity`), and avoids values
-    // whose distance to a pole is below `1e-6`, where `sin(pi z)` loses all
-    // precision and the identity cannot be asserted to `1e-10`. Neither
-    // exclusion weakens the test: the defect was NaN at *ordinary* negative
-    // non-integer inputs such as -0.5 and -2.5, which remain fully in scope.
-    const nearPole = (z: number) => Math.abs(Math.sin(Math.PI * z)) < 1e-6;
-    fc.assert(
-      fc.property(fc.double({ min: -50, max: 50, noNaN: true }), (raw) => {
-        const z = Math.round(raw) + 0.37;
-        fc.pre(!nearPole(z));
-        const actual = logGamma(z);
-        expect(Number.isFinite(actual), `logGamma(${z}) must be finite`).toBe(true);
-        const lhs = actual + logGamma(1 - z);
-        const rhs = Math.log(Math.PI / Math.abs(Math.sin(Math.PI * z)));
-        expect(lhs, `reflection identity at z=${z}`).toBeCloseTo(rhs, 10);
-      }),
-      { numRuns: 400 },
-    );
-  });
-
-  it('studentTCdf is a valid CDF at extremes', () => {
-    expect(studentTCdf(0, 10)).toBeCloseTo(0.5, 12);
-    expect(studentTCdf(Infinity, 10)).toBeCloseTo(1, 12);
-    expect(studentTCdf(-Infinity, 10)).toBeCloseTo(0, 12);
-    expect(studentTCdf(1, 10)).toBeGreaterThan(0.5);
   });
 
   it('currentValue replaces the best candidate by confidence', () => {

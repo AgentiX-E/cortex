@@ -215,11 +215,11 @@
   {
    "id": 25,
    "capability": "paired statistics, noise floor, resolution",
-   "expect": "instrument-misplaced",
+   "expect": "instrument",
    "symbol": "welchTTest",
-   "site": "packages/cortex-core/src/math/stats.ts",
+   "site": "packages/cortex-eval/src/stats.ts",
    "d3": "declared: a pure function of the observations it is handed",
-   "reason": "Instrument code in a product package: `math/stats.ts` is declared in cortex-core and its only callers are cortex-eval's metrics, ablation and failure-stability modules. It belongs beside `variance.ts`, which is already in cortex-eval. Movement, not deletion: the product should not ship a Welch test it never calls."
+   "reason": "PAID. This row said `instrument-misplaced` while `math/stats.ts` sat in `cortex-core` and its only callers were `cortex-eval`'s metrics, ablation and failure-stability modules. The file has moved to `packages/cortex-eval/src/stats.ts`, beside `variance.ts`, and the row says `instrument` because that is now what the code is: the paired statistics live in the package that reads them. The move was not a copy -- `kahanSum` stayed in `cortex-core/src/math/kahan.ts` because `vector.ts` reduces a vector with it, and the moved file imports it rather than carrying a second implementation of one numerical routine. What the product's barrel no longer exports is the eleven names it never called, and `index.test.ts` now asserts their ABSENCE rather than dropping the lines, because a deleted assertion and an assertion that was never written leave the same trace in a diff."
   },
   {
    "id": 26,
@@ -232,18 +232,6 @@
   }
  ],
  "boundary": [
-  {
-   "category": "statistics-in-a-product-package",
-   "rationale": "Measurement machinery declared in cortex-core and called only by cortex-eval's metrics, ablation and stability modules. The product ships a Welch test, a binomial CDF and a Wilson interval that it never calls. Moving them beside `variance.ts` in cortex-eval is a file move, and it is the audit's D2 criterion applied to a package instead of a file.",
-   "symbols": [
-    "binomialCdf",
-    "ConfidenceInterval",
-    "stddev",
-    "variance",
-    "welchTTest",
-    "wilsonScoreInterval"
-   ]
-  },
   {
    "category": "retrieval-prototypes-in-a-product-package",
    "rationale": "The natural-language-memory and embedding-memory hypotheses: a brute-force vector index, an embedding-space abstraction and rank fusion, all declared in cortex-core and reached only by cortex-eval's own prototype memory systems. They are research arms, not the shipping retrieval path (`SearchIndex` is), and a customer installs them.",

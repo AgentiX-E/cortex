@@ -85,7 +85,7 @@
  * be stated, and it is documented as incomparable to any competitor's context figure. Conflating them
  * would let this project claim to be cheaper than it is in the only unit the field publishes.
  */
-import { wilsonScoreInterval } from '@agentix-e/cortex-core';
+import { wilsonScoreInterval } from './stats.js';
 
 // Re-exported so `tools/efficiency-frontier.mjs` can reach them through the built module it documents as
 // its entry point; the implementations live in `paired-test.ts` and only there.

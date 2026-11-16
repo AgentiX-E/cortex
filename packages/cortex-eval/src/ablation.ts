@@ -10,7 +10,7 @@
  *   identical deterministic repeats is undefined.
  */
 import { llmUsage, retryStats } from '@agentix-e/cortex-ai';
-import { stddev, wilsonScoreInterval } from '@agentix-e/cortex-core';
+import { stddev, wilsonScoreInterval } from './stats.js';
 import type {
   AblationResult,
   Answer,

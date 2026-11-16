@@ -25,6 +25,14 @@ import { configDefaults, defineConfig } from 'vitest/config';
  * `c8 ignore` guard bodies in `src/math/stats.ts` plus the annotated guard at
  * its line 76.
  *
+ * That file is now `cortex-eval/src/stats.ts` (`#25`, which moved the paired
+ * statistics to the package that calls them), so the paragraphs below that name it
+ * describe a module this config no longer measures. They are kept as written because
+ * what they establish -- that the reported figure was not reproducible, and why -- is
+ * the reason this gate exists at all, and it would still be true if the file had never
+ * moved. The clause at the end of the next section is the one that changed: the 100%
+ * it quotes for this package is now measured over `math/kahan.ts` alone.
+ *
  * ## The guards those annotations covered are now extracted, not suppressed
  *
  * The annotations stated a reason that was false when written ("unreachable via

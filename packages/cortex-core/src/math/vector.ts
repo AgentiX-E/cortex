@@ -2,7 +2,7 @@
  * High-precision vector primitives operating on Float64Array. All reductions use
  * Kahan compensated summation to avoid catastrophic cancellation.
  */
-import { kahanSum } from './stats.js';
+import { kahanSum } from './kahan.js';
 
 export function dot(a: Float64Array, b: Float64Array): number {
   if (a.length !== b.length) {

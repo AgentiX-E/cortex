@@ -8,7 +8,26 @@ describe('cortex-core package exports', () => {
     expect(typeof cortexCore.isFactCurrentAt).toBe('function');
     // math
     expect(typeof cortexCore.cosineSimilarity).toBe('function');
-    expect(typeof cortexCore.welchTTest).toBe('function');
+    // `#25`. The one statistic the product computes itself, because `norm` reduces a vector with
+    // it. Everything else that used to be asserted on this line -- `welchTTest`, `mean`, `variance`,
+    // `stddev`, `studentTCdf`, `logGamma`, `binomialCdf`, `wilsonScoreInterval` -- moved to
+    // `@agentix-e/cortex-eval`. Asserted as an ABSENCE below rather than merely dropped, because a
+    // deleted line and a line that was never there leave the same trace in a diff.
+    expect(typeof cortexCore.kahanSum).toBe('function');
+    for (const moved of [
+      'welchTTest',
+      'mean',
+      'variance',
+      'stddev',
+      'studentTCdf',
+      'logGamma',
+      'binomialCdf',
+      'wilsonScoreInterval',
+    ]) {
+      expect(cortexCore, `${moved} belongs to the harness, not to the product`).not.toHaveProperty(
+        moved,
+      );
+    }
     expect(typeof cortexCore.sinkhorn).toBe('function');
     expect(typeof cortexCore.retrievability).toBe('function');
     // graph

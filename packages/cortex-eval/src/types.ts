@@ -1,4 +1,4 @@
-import type { ConfidenceInterval } from '@agentix-e/cortex-core';
+import type { ConfidenceInterval } from './stats.js';
 import type { UsageSnapshot } from '@agentix-e/cortex-ai';
 import type { TransportRetryReport } from './retrieval-diagnostics.js';
 

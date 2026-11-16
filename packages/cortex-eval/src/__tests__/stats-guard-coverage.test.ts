@@ -62,7 +62,7 @@
 
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { binomialCdf, studentTCdf } from '../math/stats.js';
+import { binomialCdf, studentTCdf } from '../stats.js';
 
 describe('underflow guards in the regularized incomplete beta', () => {
   it('produces a finite CDF for the asymptotic t that drives every d/c guard', () => {
