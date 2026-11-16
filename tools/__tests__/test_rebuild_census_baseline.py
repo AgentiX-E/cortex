@@ -37,6 +37,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "tools" / "rebuild-export-census-baseline.py"
+LEDGER = ROOT / "tools" / "export-census-baseline.json"
 
 
 def load():
@@ -153,3 +154,33 @@ def test_main_builds_the_note_through_the_merge() -> None:
     assert re.search(r"merged_note\s*=\s*merge_note\(", body), "main() must merge the note"
     assert re.search(r'"note":\s*merged_note', body), "the document must take the merged note"
     assert not re.search(r'"note":\s*\(', body), "main() still carries the literal inline"
+
+
+def test_the_serialiser_reproduces_the_committed_ledger_byte_for_byte() -> None:
+    """A generator that cannot rewrite its own file makes "review the diff" unexecutable.
+
+    The script used `indent=2` while the committed ledger was written at `indent=1`, so the first rebuild
+    in a year produced a 3,022-line diff in which three added orphans were invisible: the whole file
+    changed and nothing changed. The instruction at the top of the tool is *review the diff*, and that
+    instruction is only obeyable if the serialiser is the one the file was written with. This is the same
+    defect class as `§19.3`'s committed reading that prettier rewrote, and the same repair: a file a tool
+    owns has to be a file the tool can rewrite identically.
+    """
+    import json
+
+    ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
+    canonical = json.dumps(ledger, indent=1, ensure_ascii=False) + "\n"
+    assert LEDGER.read_text(encoding="utf-8") == canonical, (
+        'tools/export-census-baseline.json is not in the form its generator writes: a rebuild would '
+        'rewrite the whole file and hide the entries that actually moved'
+    )
+
+
+def test_the_generator_writes_that_same_form() -> None:
+    """And the writer, not only the file: pinning the file alone would pass after a `--write` by hand."""
+    import re
+
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert re.search(r"json\.dump\(document, handle, indent=1, ensure_ascii=False\)", source), (
+        'the generator serialises at another indent, so every rebuild is an unreviewable diff'
+    )

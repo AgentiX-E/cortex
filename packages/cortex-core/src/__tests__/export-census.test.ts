@@ -158,6 +158,22 @@ describe('path classification', () => {
     expect(isTestFile('packages/a/src/contest.ts')).toBe(false);
   });
 
+  it('recognises the third convention: a package-root test directory', () => {
+    // `packages/<pkg>/test/**` holds probe scripts in four packages, and until this
+    // rule existed every one of them counted as a **product caller** -- which is the
+    // single fact the capability ledger derives its `product` verdict from (§19.6).
+    expect(isTestFile('packages/cortex-ai/test/profile/run.ts')).toBe(true);
+    expect(isTestFile('packages/cortex-storage/test/browser/probe.ts')).toBe(true);
+    expect(isTestFile('packages/cortex-core/test/echo/x.ts')).toBe(true);
+    // Matched at the package root, not on any `test/` segment: a source directory that
+    // happens to be called `test` is source, and treating it as disposable is the
+    // permissive direction of the same mistake.
+    expect(isTestFile('packages/a/src/test/x.ts')).toBe(false);
+    expect(isTestFile('packages/a/srctest/x.ts')).toBe(false);
+    // A file named `test.ts` at the package root is a module, not a directory.
+    expect(isTestFile('packages/a/test.ts')).toBe(false);
+  });
+
   it('recognises a barrel', () => {
     expect(isBarrelFile('packages/a/src/index.ts')).toBe(true);
     expect(isBarrelFile('packages/a/src/index.tsx')).toBe(true);

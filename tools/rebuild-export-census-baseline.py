@@ -192,7 +192,22 @@ RATIONALE = {
         "cannot be declared, and it is NOT inlined into `UsageSnapshot` because the two are "
         "different facts: a per-response report has no call count, and a ledger total has no "
         "single response it describes. Merging them would let a caller pass a total where a report "
-        "belongs."
+        "belongs. "
+        "THE THIRD TEST SPELLING (this rebuild) moves THREE entries in and corrects a sentence the "
+        "paragraphs above state four times. `isTestFile` recognised `__tests__/` and "
+        "`.test.ts`/`.spec.ts`, and did not recognise `packages/<pkg>/test/**` -- which four "
+        "packages use for their probe scripts. Every one of those scripts was therefore counted as "
+        "a **product caller**, and the paragraphs above cite `test/echo/run.mjs`, "
+        "`test/card-volume/run.mjs` and `test/mr-census/run.mjs` as callers on exactly that "
+        "basis. They are callers of the measurement, not of the product, so those sentences "
+        "describe the census's old classification rather than a shipped path. Recognising the third "
+        "spelling moves `buildProposerPrompt` (whose only caller was `test/proposer/`), "
+        "`rollingHashes` and `splitSentences` into this ledger, and nothing else: the three "
+        "`withCaller` positions lost across the whole repository are those three, which is the "
+        "measurement that this was a narrow defect rather than a miscount in the hundreds. The "
+        "same change moved seven of `cortex-ai`'s provider-wiring exports out of 'called by the "
+        "product' and into the capability ledger's boundary, where they are adjudicated rather "
+        "than counted."
     ),
     "anchor-recall-signature": """The two types in `restoreAnchorNeighbourhoods`' signature. TypeScript has no package-private visibility, so a function exported for its one real caller (`relevance-index.ts`) forces its parameter and return types to be exported as well -- a caller cannot name what it was handed otherwise. They are recorded as debt rather than argued away, which is the rule this file states for every entry: the number stays honest. The mechanism's other symbols are module-private (`selectAnchors`, the three defaults) precisely so this bucket stays at two.""",
     "source-aware-protocol-awaiting-its-dispatch": """The second grading protocol (`arXiv:2610.05343` / `arXiv:2610.09193`) is implemented and tested at 100% on all four coverage measures, and it has no caller yet -- because wiring it needs an audit cache, the cache needs a 500-call generation pass, and that pass needs the dataset file the artifact deliberately does not carry. `renderAuditCache` has no writer and `sourceAwareScorer` has no scorer construction to wrap. They are recorded as debt rather than wired into `bench/run-ablation.ts` behind an environment variable, because a scorer that is reachable only through an unset variable is a pipeline stage the build does not have: the census would go green and the protocol would still never run. What exists today is the half that needs no model -- `tools/source-aware-audit.mjs`, which screens an existing artifact for lexical reachability and reports the reader/retrieval split -- and the whole reading is in `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` and `docs/SOTA-LANDSCAPE.md` §17. The two names move out of this ledger in the commit that gives them a caller.""",
@@ -513,7 +528,14 @@ def main() -> int:
     }
 
     with open(LEDGER_PATH, "w", encoding="utf-8") as handle:
-        json.dump(document, handle, indent=2)
+        # `indent=1`, because that is what the committed ledger is. The generator used `indent=2`
+        # while the file on disk had been written at 1, so the first rebuild in a year produced a
+        # 3,022-line diff in which three added orphans were invisible -- the whole file changed and
+        # nothing changed. The instruction at the top of this script is *review the diff*, and a
+        # generator that cannot reproduce its own output byte for byte makes that instruction
+        # unexecutable. This is the same defect class as `§19.3`'s committed reading that prettier
+        # rewrote: a file a tool owns has to be a file the tool can rewrite identically.
+        json.dump(document, handle, indent=1, ensure_ascii=False)
         handle.write("\n")
     print(
         f"wrote {len(document['knownOrphans'])} known orphans in {len(ledger)} groups "

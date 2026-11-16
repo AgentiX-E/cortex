@@ -276,7 +276,7 @@
   },
   {
    "category": "provider-wiring-and-usage-accounting",
-   "rationale": "Provider construction (OpenAI embedding, rerankers, retry budgets, thinking modes) and token accounting live in cortex-ai and are reached only by cortex-eval's factories and arm. The audit's §3.4 row 10: env-to-option mapping sits in bench/, so a customer configuring a provider writes code where the harness writes a variable.",
+   "rationale": "Provider construction (OpenAI embedding, rerankers, retry budgets, thinking modes), the profile seam that turns a deployment's environment into a provider, and token accounting. All of it lives in `cortex-ai` and none of it is reached from `memory.ts`, because `CortexMemory` takes an injected `llm` rather than building one -- so the caller is the **deployment**, and this repository ships no deployment. THE SEVEN NAMES ADDED HERE ARE A CORRECTION RATHER THAN NEW DEBT. `readApiKey`, `resolveLlmProfile`, `describeProfile`, `createLocalLLM`, `OpenAICompatibleLLM`, `ProfileError` and `PROPOSER_PROMPT_VERSION` were recorded as 'called by the product' until `isTestFile` learned the third test spelling (`packages/<pkg>/test/**`); their only in-repository callers were scripts under `packages/cortex-ai/test/profile/`, and the census had been counting those as product callers. What changed is the classification, not the code -- and the classification was wrong in the permissive direction, which is the one that lets a capability look reached when nothing in the product reaches it. THE RECIPE IS INSTEAD VERIFIED WHERE IT IS WRITTEN: `docs/USER-MANUAL.md` documents this exact construction (`new OpenAICompatibleLLM({ ...resolveLlmProfile({ backend: 'remote' }, process.env) })`) in a fenced example, and `tools/manual-examples.mjs` compiles all 35 examples against the packages' built declarations on every push -- so a renamed export or a changed profile shape fails the build at the manual's own line number. The unit surface behind it is four test files (`profile.test.ts`, `local-llm.test.ts`, `llm.test.ts`, `profile-transport.test.ts`), and the two files these exports are declared in -- `profile.ts` and `local/llm.ts` -- read 100% on all four coverage measures, which is a per-file gate rather than a summary. The audit's §3.4 row 10 still stands as the open question: env-to-option mapping sits in `bench/`, so a customer configuring a provider writes code where the harness writes a variable -- and the resolution is the documented recipe, not a second implementation.",
    "symbols": [
     "createUsageTally",
     "DEFAULT_RETRY_BUDGET_MS",
@@ -292,7 +292,14 @@
     "ThinkingMode",
     "UsageSnapshot",
     "UsageTally",
-    "usageDelta"
+    "usageDelta",
+    "createLocalLLM",
+    "describeProfile",
+    "OpenAICompatibleLLM",
+    "PROPOSER_PROMPT_VERSION",
+    "ProfileError",
+    "readApiKey",
+    "resolveLlmProfile"
    ]
   },
   {

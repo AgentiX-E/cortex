@@ -248,14 +248,32 @@ export function isInstrumentFile(path: string): boolean {
 /**
  * Whether a path is a test file, and so must not be counted as a caller.
  *
- * Matches the repo's two conventions: a `__tests__` directory anywhere in the
- * path, and a `*.test.ts` / `*.spec.ts` suffix anywhere in the tree. Both are in
- * use, so checking only one would silently count some tests as production.
+ * Matches the repo's **three** conventions: a `__tests__` directory anywhere in the
+ * path, a `*.test.ts` / `*.spec.ts` suffix anywhere in the tree, and a `test/`
+ * directory at the root of a package (`packages/<pkg>/test/**`).
+ *
+ * ## Why the third spelling is here, and what its absence was costing
+ *
+ * The first two were the ones this file's author knew about; the third was in use in
+ * four packages and unrecognised, so every script under it was counted as a **product
+ * caller**. That is not a cosmetic error, because "the product calls this" is the
+ * single fact the capability ledger derives its `product` verdict from: a probe script
+ * that imports the SQLite adapter was enough to contradict the record that only the
+ * instrument uses it (`§19.6`, where moving one probe into `src/__tests__` was the
+ * workaround available at the time), and seven of `cortex-ai`'s provider-wiring
+ * exports looked reached by the product when the only file that touched them was
+ * `packages/cortex-ai/test/profile/`.
+ *
+ * Matched on the package root rather than on any `test/` segment, for the reason
+ * `isInstrumentFile` matches leading segments: `packages/cortex-core/src/test/...`
+ * would be a source directory that happens to be called `test`, and treating it as
+ * disposable is the permissive direction of the same mistake.
  *
  * @param path repository-relative path with forward slashes.
  */
 export function isTestFile(path: string): boolean {
   if (/(^|\/)__tests__\//.test(path)) return true;
+  if (/^packages\/[^/]+\/test\//.test(path)) return true;
   return /\.(test|spec)\.tsx?$/.test(path);
 }
 
