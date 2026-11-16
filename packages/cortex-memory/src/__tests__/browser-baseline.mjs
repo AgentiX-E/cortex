@@ -83,8 +83,66 @@ export function recordingLlm(seen) {
   };
 }
 
-/** A deterministic vector channel: the ranking may use it, the digest can depend on it, nothing varies. */
-export const embed = (texts) => Promise.resolve(texts.map(() => [1, 0, 0]));
+/**
+ * A deterministic vector channel: a hashed bag of words, integer-only, no model.
+ *
+ * ## Why not a constant vector
+ *
+ * The first version of this baseline returned `[1, 0, 0]` for every text, which exercises the *plumbing* --
+ * the index asks for vectors, gets an array of the right width, stores it, and reads it back -- and measures
+ * nothing about the channel itself: with one vector for every text, every cosine is 1 and the ranking the
+ * vectors produce is the arrival order wearing a different name. A run that cannot distinguish "the vector
+ * channel works" from "the vector channel is a constant" is a run whose green result is about the shape of
+ * an array.
+ *
+ * So the channel is a real one, as far as a probe can afford: lowercase, split on non-alphanumerics, hash
+ * each token with FNV-1a, add `+1` or `-1` into one of sixteen buckets by the hash's sign and modulus, then
+ * L2-normalise. Two properties matter and both are asserted:
+ *
+ *   - **it discriminates** -- different texts produce different vectors, so the dense channel can order them;
+ *   - **it is identical in both runtimes** -- integer arithmetic only, no `crypto`, no locale-sensitive
+ *     collation, no iteration over an object's keys. The digest equality between `node:sqlite` and OPFS is
+ *     therefore also an equality of the vectors the two runtimes fed the index, which is what makes
+ *     `the two runtimes embed the same texts` a check and not a hope.
+ *
+ * It is not a semantic model and this file does not pretend otherwise: a hashed bag of words has no notion
+ * of similarity beyond shared tokens. The point is a channel that *varies with the text*, computed the same
+ * way twice.
+ */
+export const EMBED_DIMS = 16;
+
+export function hashedEmbed(texts, counters) {
+  return texts.map((text) => {
+    const vector = new Array(EMBED_DIMS).fill(0);
+    for (const token of text.toLowerCase().split(/[^a-z0-9]+/)) {
+      if (token === '') continue;
+      let hash = 0x811c9dc5;
+      for (let index = 0; index < token.length; index += 1) {
+        hash ^= token.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+      }
+      vector[hash % EMBED_DIMS] += (hash & 0x80000000) === 0 ? 1 : -1;
+    }
+    let norm = 0;
+    for (const value of vector) norm += value * value;
+    norm = Math.sqrt(norm) || 1;
+    const unit = vector.map((value) => Number((value / norm).toFixed(12)));
+    if (counters !== undefined) {
+      counters.texts += 1;
+      counters.vectors.add(JSON.stringify(unit));
+    }
+    return unit;
+  });
+}
+
+/** The counters a run reports: how many texts it embedded, and how many distinct vectors that produced. */
+export function embedCounters() {
+  return { calls: 0, texts: 0, vectors: new Set() };
+}
+
+export function embedReport(counters) {
+  return { calls: counters.calls, texts: counters.texts, distinct: counters.vectors.size };
+}
 
 /**
  * The same scenario under `node:sqlite`, which is where every published reading came from.
@@ -96,6 +154,11 @@ export const embed = (texts) => Promise.resolve(texts.map(() => [1, 0, 0]));
  */
 export async function nodeBaseline(scenario) {
   const seen = [];
+  const counters = embedCounters();
+  const embed = (texts) => {
+    counters.calls += 1;
+    return Promise.resolve(hashedEmbed(texts, counters));
+  };
   const install = assembleMemory({
     llm: recordingLlm(seen),
     now: scenario.now,
@@ -115,5 +178,6 @@ export async function nodeBaseline(scenario) {
     promptCount: seen.length,
     corpusSize: await install.corpus.size(),
     sessionOrder: sessions.map((session) => session.join(' | ')),
+    embed: embedReport(counters),
   };
 }

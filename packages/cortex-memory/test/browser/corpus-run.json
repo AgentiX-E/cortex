@@ -1,11 +1,11 @@
 {
   "chrome": "/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-  "origin": "http://127.0.0.1:41893",
+  "origin": "http://127.0.0.1:32955",
   "built": {
     "mainInputs": 82,
     "workerInputs": 3,
-    "mainBytes": 419227,
-    "workerBytes": 5721
+    "mainBytes": 418396,
+    "workerBytes": 5709
   },
   "baseline": {
     "promptChars": 580,
@@ -16,7 +16,12 @@
       "Anke raised the rent in June.",
       "Falcon is the code name for the Helix Bio acquisition. | The quarterly numbers ship on Friday.",
       "The invoice for the bicycle repair was paid late again."
-    ]
+    ],
+    "embed": {
+      "calls": 2,
+      "texts": 5,
+      "distinct": 5
+    }
   },
   "scenario": {
     "now": 1759470000000,
@@ -63,6 +68,11 @@
           "detail": "4 turns in arrival order"
         },
         {
+          "name": "the vector channel discriminates, and costs the same as it does under node:sqlite",
+          "ok": true,
+          "detail": "5 texts over 2 call(s), 5 distinct vectors, same as node:sqlite"
+        },
+        {
           "name": "the prompt is the same bytes as the one `node:sqlite` produces",
           "ok": true,
           "detail": "580 chars, digest 536714097, same as node:sqlite"
@@ -71,9 +81,14 @@
       "facts": {
         "tier": "opfs",
         "engine": "sqlite-wasm 3.54.1 on opfs-sahpool (journal: delete)",
-        "appendMs": 13.699999809265137,
+        "appendMs": 32,
         "askMs": 4.5,
         "answer": "Berlin",
+        "embed": {
+          "calls": 2,
+          "texts": 5,
+          "distinct": 5
+        },
         "census": {
           "corpusSize": 4,
           "sessionOrder": [
@@ -192,6 +207,11 @@
       "detail": "4 turns in arrival order"
     },
     {
+      "name": "the vector channel discriminates, and costs the same as it does under node:sqlite",
+      "ok": true,
+      "detail": "5 texts over 2 call(s), 5 distinct vectors, same as node:sqlite"
+    },
+    {
       "name": "the prompt is the same bytes as the one `node:sqlite` produces",
       "ok": true,
       "detail": "580 chars, digest 536714097, same as node:sqlite"
@@ -234,8 +254,8 @@
   ],
   "failures": [],
   "summary": {
-    "checks": 11,
-    "passed": 11,
+    "checks": 12,
+    "passed": 12,
     "failed": 0,
     "digestMatches": true,
     "digestClaim": "the prompt digest a browser reproduces equals the one node:sqlite produced for the same transcript, before and after a restart",

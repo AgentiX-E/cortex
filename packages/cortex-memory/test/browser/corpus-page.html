@@ -98,8 +98,46 @@
         };
       }
 
-      /** A deterministic vector channel: the ranking may use it, the digest can depend on it, nothing varies. */
-      const embed = (texts) => Promise.resolve(texts.map(() => [1, 0, 0]));
+      /**
+       * A deterministic vector channel: a hashed bag of words, integer-only, no model.
+       *
+       * The first version returned `[1, 0, 0]` for every text, which exercises the plumbing and measures
+       * nothing: with one vector for every text every cosine is 1, and the order the dense channel produces
+       * is the arrival order wearing a different name. The counters are the point -- `texts` says how much
+       * the channel was asked to embed and `distinct` says whether the result can order anything at all.
+       *
+       * Identical integer arithmetic to `browser-baseline.mjs`, deliberately: the digest equality between
+       * the two runtimes is then also an equality of the vectors they fed the index, which is what makes
+       * `the two runtimes embed the same texts` a check rather than a hope. A `crypto.subtle` digest here
+       * would be asynchronous, locale-free and correctly hashed — and would produce different buckets in
+       * the two runtimes for reasons this suite would then have to explain.
+       */
+      const EMBED_DIMS = 16;
+      const embedded = { calls: 0, texts: 0, vectors: new Set() };
+      const embed = (texts) => {
+        embedded.calls += 1;
+        return Promise.resolve(
+          texts.map((text) => {
+            const vector = new Array(EMBED_DIMS).fill(0);
+            for (const token of text.toLowerCase().split(/[^a-z0-9]+/)) {
+              if (token === '') continue;
+              let hash = 0x811c9dc5;
+              for (let index = 0; index < token.length; index += 1) {
+                hash ^= token.charCodeAt(index);
+                hash = Math.imul(hash, 0x01000193) >>> 0;
+              }
+              vector[hash % EMBED_DIMS] += (hash & 0x80000000) === 0 ? 1 : -1;
+            }
+            let norm = 0;
+            for (const value of vector) norm += value * value;
+            norm = Math.sqrt(norm) || 1;
+            const unit = vector.map((value) => Number((value / norm).toFixed(12)));
+            embedded.texts += 1;
+            embedded.vectors.add(JSON.stringify(unit));
+            return unit;
+          }),
+        );
+      };
 
       /**
        * One assembly over OPFS: the transcript in one database, the boundary's public side in another.
@@ -198,6 +236,36 @@
                 `got ${JSON.stringify(order.map((text) => text.slice(0, 20)))}`,
               );
               return `${order.length} turns in arrival order`;
+            },
+          );
+
+          await check(
+            'the vector channel discriminates, and costs the same as it does under node:sqlite',
+            async () => {
+              // Two claims, and neither implies the other. The first is about the channel: a constant vector
+              // would pass every other check in this file, because the plumbing does not care what is in the
+              // array. The second is about the runtime: the same text must cost the same one embed call,
+              // which is the only way "the same vectors reached the index" is checkable from outside.
+              facts.embed = {
+                calls: embedded.calls,
+                texts: embedded.texts,
+                distinct: embedded.vectors.size,
+              };
+              assert(
+                embedded.texts > 0,
+                'the index asked for no vectors, so this assembly has no dense channel',
+              );
+              assert(
+                embedded.vectors.size > 1,
+                `${embedded.texts} texts collapsed to ${embedded.vectors.size} vector(s), so the ` +
+                  'dense channel cannot order anything',
+              );
+              assert(
+                embedded.texts === baseline.embed.texts,
+                `${embedded.texts} texts embedded here against ${baseline.embed.texts} under ` +
+                  'node:sqlite: the two runtimes did not feed the index the same work',
+              );
+              return `${embedded.texts} texts over ${embedded.calls} call(s), ${embedded.vectors.size} distinct vectors, same as node:sqlite`;
             },
           );
 
