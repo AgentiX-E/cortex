@@ -519,3 +519,87 @@ describe('the default profile carries the ranking a reading was taken under', ()
     expect(install.profile).toBe('reader');
   });
 });
+
+/**
+ * The vector channel, through the composition root, on a turn the lexical channel cannot see.
+ *
+ * ## Why this is a product test and not a second index test
+ *
+ * `search-index.test.ts` proves the channel works on the class. What it cannot prove is that a user of the
+ * **published** package can reach it: `embed` is an `AssembleOptions` field, and a field the composition
+ * root dropped would leave every index test green and every deployment lexical. The registered arm
+ * (`CORTEX_MEMORY_INDEX_EMBEDDING`) is about to withhold exactly this option and publish a number for the
+ * withholding, so the two sides have to be checkable against each other: the reading says what the channel
+ * is worth end to end, and this says the channel in the reading is the one a user supplies.
+ *
+ * ## What is asserted, and what is deliberately not
+ *
+ * The paraphrase shares no content term with the question, so the lexical channel cannot reach it at any
+ * room -- measured across 400, 430, 470, 520 and 600 characters, where the lexical arm never contains the
+ * answer and the vector arm does from 400 up. That is the assertion, and it is the one the option is for.
+ *
+ * Not asserted: that the answer is *first*. Reciprocal-rank fusion rewards a turn that **both** channels
+ * found, so a decoy with lexical rank 1 and vector rank 2 outranks a paraphrase with vector rank 1 and no
+ * lexical rank. That is `fuse.ts`'s documented rule rather than a defect, and asserting an order here
+ * would pin this test to a fusion constant instead of to the option's reach.
+ */
+describe('the vector channel is reachable from the composition root', () => {
+  const QUESTION = 'Which city do I live in now?';
+  /** Shares `live` with the question, so the lexical channel always finds it. */
+  const DECOY = 'I live near the station, and the flat is above a bakery.';
+  /** Shares no content term with the question: only a vector channel can reach it. */
+  const ANSWER = 'These days I am based in Lisbon, two streets from the river.';
+  const FILLER = [
+    'The bakery closes on Mondays and reopens on Wednesday.',
+    'My landlord repainted the hallway in a pale grey.',
+    'A parcel from the courier arrived on Tuesday morning.',
+  ];
+
+  /**
+   * A two-dimensional space with the question and the paraphrase in one direction and every other turn in
+   * the other, so the channel's verdict is unambiguous rather than a matter of degree.
+   *
+   * A table rather than similarity the test computes: this is a fake, and a fake that derived its answers
+   * from the same words the lexical channel sees would be measuring that channel.
+   */
+  const ABOUT_LISBON = [QUESTION, ANSWER];
+  const embed: EmbedFn = (texts) =>
+    Promise.resolve(texts.map((text) => (ABOUT_LISBON.includes(text) ? [1, 0] : [0, 1])));
+
+  function transcript(): { sessionId: string; ordinal: number; text: string }[] {
+    return [DECOY, ...FILLER, ANSWER].map((text, ordinal) => ({ sessionId: 's1', ordinal, text }));
+  }
+
+  it('reaches a paraphrase the lexical channel cannot, when a caller supplies an embedder', async () => {
+    const lexical: string[] = [];
+    const vector: string[] = [];
+    // Enough for the note and two turns, not for the five-turn corpus: the arms have to choose.
+    const room = 520;
+
+    const withoutEmbedder = assembleMemory({
+      llm: recordingLlm(lexical),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxPromptChars: room,
+    });
+    const withEmbedder = assembleMemory({
+      llm: recordingLlm(vector),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxPromptChars: room,
+      embed,
+    });
+    await withoutEmbedder.memory.remember(transcript());
+    await withEmbedder.memory.remember(transcript());
+    await withoutEmbedder.memory.askStored(QUESTION);
+    await withEmbedder.memory.askStored(QUESTION);
+
+    // The control ranks, and it ranks: the decoy shares a term, so an arm that delivered nothing would
+    // be failing for a reason other than the channel.
+    expect(lexical[0]).toContain('station');
+    expect(lexical[0]).not.toContain('Lisbon');
+    // The treatment, with one option more and every other input identical.
+    expect(vector[0]).toContain('Lisbon');
+    expect(vector[0]).toContain('station');
+  });
+});

@@ -274,6 +274,37 @@ class TestAConditionIsComparedAndNeverSilentlyAbsent:
         newer = artifact({**CONFIG, "conflicts": False, "replyRepair": "off"})
         assert attest.condition_differences(newer, baseline_of()) == []
 
+    def test_a_census_that_differs_is_not_a_departure(self) -> None:
+        """Counted-after-the-run fields disagree between any two runs of one configuration.
+
+        `selfIndex`, `admission`, `voteCounts` and `queryExpansionCounts` live in `memoryArmConfig`
+        because the configuration line renders them beside the count that produced it -- but they are
+        measurements, not inputs. Treating a difference there as a departure would make every re-run of
+        the registered configuration a departure, and the declaration mechanism would be unusable for the
+        rows it exists for. `indexEmbedding`'s own bill is the sharpest case: it is the reading that
+        *contradicts* a wrong channel claim, so it must be free to differ.
+        """
+        newer = artifact(
+            {
+                **CONFIG,
+                "indexEmbedding": "injected",
+                "selfIndex": {"indexes": 501, "turns": 2_500, "embedCalls": 5, "embedTexts": 500,
+                              "memoHits": 0, "reuse": True, "rerankCalls": 0, "rerankDegraded": 0},
+                "admission": {"admitted": 2_500, "rejected": 0},
+            }
+        )
+        recorded = baseline_of({**CONFIG, "indexEmbedding": "injected"})
+        assert attest.differences(newer, recorded) == []
+        assert attest.unprojected_differences(newer, recorded) == []
+
+    def test_a_channel_that_moved_is_named_even_though_the_census_is_ignored(self) -> None:
+        # The control for the test above: ignoring censuses must not ignore the field beside them. A
+        # `none` artifact against an `injected` record is a departure and has to say so.
+        newer = artifact({**CONFIG, "indexEmbedding": "none"})
+        recorded = baseline_of({**CONFIG, "indexEmbedding": "injected"})
+        lines = attest.unprojected_differences(newer, recorded)
+        assert any(line.startswith("indexEmbedding:") for line in lines)
+
     def test_a_condition_that_moved_is_named_with_both_values(self) -> None:
         newer = artifact({**CONFIG, "conflicts": True, "replyRepair": "repair"})
         lines = attest.condition_differences(newer, baseline_of())

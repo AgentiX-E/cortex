@@ -93,6 +93,17 @@ CONFLICTS_VARIABLE = "CORTEX_MEMORY_CONFLICTS"
 SUPERSEDED_VARIABLE = "CORTEX_MEMORY_SUPERSEDED"
 SUPERSEDED_RENDERINGS = ("off", "mark", "collapse")
 
+# §19's index channel: whether the product's own index is handed the arm's embedder. A repository
+# variable for the same three reasons the four above are, and with the same reset rule -- a stale
+# `none` left behind would withhold the embedder from an experiment that never asked, and the artifact
+# (which records the channel) would be accurate about a run nobody dispatched.
+#
+# The names are duplicated from `cortex-eval`'s reader rather than imported, and
+# `test_index_embedding_wiring.py` checks them against the construct site in `bench/run-ablation.ts`
+# in both directions, so a value added on one side and not the other fails a gate.
+INDEX_EMBEDDING_VARIABLE = "CORTEX_MEMORY_INDEX_EMBEDDING"
+INDEX_EMBEDDINGS = ("injected", "none")
+
 # The admission gate's two axes (`§13.101`'s unreachable pair): the threshold the value function is
 # cut at, and the signal that makes the value vary in the first place.
 #
@@ -882,6 +893,33 @@ def superseded_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def index_embedding_switch(environ: dict[str, str] | None = None) -> str:
+    """The index channel this dispatch asks for: `injected` or `none`.
+
+    Read from the dispatcher's environment for the reason `superseded_switch` is: `--set` is checked
+    against the registered table, and this is deliberately not a workflow input. Strict on the value,
+    because a typo that fell back to `injected` would produce the registered arm's accuracy under a
+    dispatch that asked whether a deployment needs an embedder -- and the artifact would say
+    `indexEmbedding=injected`, which is true and answers a different question.
+
+    Two names rather than a toggle because the two states are two deployments rather than one
+    mechanism's on and off: `injected` is what every published number was produced under, `none` is a
+    user who owns no embedding provider.
+    """
+    raw = ((environ if environ is not None else os.environ).get(INDEX_EMBEDDING_VARIABLE) or "").strip()
+    if raw == "":
+        return "injected"
+    if raw in INDEX_EMBEDDINGS:
+        return raw
+    raise SystemExit(
+        f"{INDEX_EMBEDDING_VARIABLE} must be one of {INDEX_EMBEDDINGS} (or unset): got {raw!r}. An "
+        "unrecognised channel is refused rather than defaulted, because a run that silently kept the "
+        "embedder would publish the registered arm's accuracy under the lexical arm's name, and the "
+        "conclusion -- that an embedding provider is worth nothing -- is the one this row exists to "
+        "settle the other way round."
+    )
+
+
 def oracle_switch(environ: dict[str, str] | None = None) -> str:
     """`'1'` when this dispatch grades gold evidence, `'0'` otherwise.
 
@@ -1217,6 +1255,9 @@ def main(argv: list[str] | None = None) -> int:
     # §18. Read here, before the declaration, because the declaration is derived from it: the artifact's
     # own field name joins the list only when the run moves it, and `off` is the registered value.
     superseded = superseded_switch()
+    # §19. Read before the declaration for the same reason: the artifact's own field name joins the list
+    # only when the run moves it, and `injected` is the registered value.
+    index_embedding = index_embedding_switch()
     declared = sorted(
         {
             *declared,
@@ -1231,6 +1272,10 @@ def main(argv: list[str] | None = None) -> int:
             # so the declaration is what tells the gate that a departure is intended rather than left
             # behind by the previous experiment.
             *(("supersededRendering",) if superseded != "off" else ()),
+            # §19, on the same rule. `memoryArmConfig.indexEmbedding` is always present on the artifact,
+            # so the gate compares it against the registered arm -- and a `none` run that declared
+            # nothing would be filed as a measurement of the configuration the project ships.
+            *(("indexEmbedding",) if index_embedding != "injected" else ()),
         }
     )
     declare_departures(declared)
@@ -1253,6 +1298,15 @@ def main(argv: list[str] | None = None) -> int:
     # artifact records what the product *applied*, the record would be accurate about the wrong run.
     write_variable(SUPERSEDED_VARIABLE, superseded)
     print(f"{SUPERSEDED_VARIABLE} = {superseded}{' *' if superseded != 'off' else ''}")
+    # Written unconditionally for the reason the five above are, and this one withholds a capability
+    # rather than adding one: a stale `none` would strip the vector channel from a run that meant to
+    # reproduce the registered configuration, and the only trace would be a config line the operator
+    # had no reason to look at.
+    write_variable(INDEX_EMBEDDING_VARIABLE, index_embedding)
+    print(
+        f"{INDEX_EMBEDDING_VARIABLE} = {index_embedding}"
+        f"{' *' if index_embedding != 'injected' else ''}"
+    )
     # The gate's two axes, written before the dispatch and unconditionally for the reason the three
     # above are: the workflow reads them when the job starts, and a threshold inherited from the last
     # experiment would gate an arm this dispatch believed open. Unlike the three above, the values

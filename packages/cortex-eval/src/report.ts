@@ -793,6 +793,16 @@ export type MemoryArmConfig = {
    */
   readonly supersededRendering?: string | undefined;
   /**
+   * Whether the product's own index was handed the arm's embedder: `'injected'` or `'none'` (§19).
+   *
+   * Always present, `injected` included, for the reason {@link MemoryArmConfig.supersededRendering} is.
+   * Under `none` the {@link MemoryArmConfig.embedding} block above describes the **reference pipeline's**
+   * backend rather than the treatment's, because the treatment made no embedding call at all -- so an
+   * artifact that carried only the provider would describe a run whose embedded texts were zero and a
+   * run whose embedded texts were half a million with the same bytes.
+   */
+  readonly indexEmbedding?: string | undefined;
+  /**
    * The multi-session consultation count the run used (§13.101).
    *
    * Always present, `none` included, for the reason {@link MemoryArmConfig.reviewPass} is: an artifact
@@ -1944,6 +1954,11 @@ export function formatAblationReport(report: AblationReport): string {
         // leave the two indistinguishable on the line a human reads, and the reading is exactly the
         // comparison between them.
         `, \`superseded=${memoryArm.supersededRendering ?? 'off'}\`` +
+        // §19. Rendered on every run for the reason `superseded` is: the channel is a fact about the
+        // run rather than a missing field, and the two arms differ by 51.85 points of *ranking* is not
+        // the question this field answers -- it answers whether the ranking had a vector channel, which
+        // is what a reader deciding on an embedding provider needs on the line rather than in the JSON.
+        `, \`indexEmbedding=${memoryArm.indexEmbedding ?? 'injected'}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
         // refused whole. One field rather than three so the line stays a configuration

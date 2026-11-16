@@ -615,6 +615,13 @@ jobs:
           # fallback rather than a blank, because `readSuperseded` distinguishes an unset variable
           # (`off`, the state of every archived artifact) from a value a dispatch chose to name.
           CORTEX_MEMORY_SUPERSEDED: ${{ vars.CORTEX_MEMORY_SUPERSEDED || 'off' }}
+          # Section 19's index channel. A repository variable for the same reason the four above are --
+          # this workflow sits one below GitHub's ceiling of 25 dispatch inputs -- with the same
+          # protection: the dispatcher writes it on every dispatch, so a run cannot inherit the previous
+          # experiment's withheld capability. The literal `injected` is the fallback rather than a blank,
+          # because `readIndexEmbedding` distinguishes an unset variable (the registered configuration)
+          # from a value a dispatch chose to name.
+          CORTEX_MEMORY_INDEX_EMBEDDING: ${{ vars.CORTEX_MEMORY_INDEX_EMBEDDING || 'injected' }}
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}

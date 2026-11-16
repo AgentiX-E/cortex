@@ -202,17 +202,27 @@ def unprojected_differences(report: dict, baseline: dict) -> list[str]:
     found: list[str] = []
     for field in sorted(set(config) - set(registered_config)):
         kind = record.classification(field) or "undecided"
+        # A census the record predates is an instrument added after the record, not a configuration the
+        # run moved: `selfIndex` and `admission` were both added that way, and reporting them would put
+        # two lines about counting on every refusal that is actually about a dispatch input.
+        if kind == "census":
+            continue
         found.append(
             f"{field}: this artifact carries {config[field]!r} and the record does not -- classified "
             f"`{kind}`, so the field was added to the arm after the record was written"
         )
     for field in sorted(set(registered_config) - set(config)):
+        if record.classification(field) == "census":
+            continue
         found.append(
             f"{field}: the record carries {registered_config[field]!r} and this artifact does not, "
             "so the artifact predates a field the record was written with"
         )
     for field in sorted(set(config) & set(registered_config)):
-        if record.classification(field) in ("projected", "condition"):
+        # `census` joins the two: a field counted after the run is a measurement of that run, so two
+        # artifacts of one configuration differ there by design. Reporting it as a departure would make
+        # every re-run a departure and the declaration mechanism unusable.
+        if record.classification(field) in ("projected", "condition", "census"):
             continue
         if config[field] != registered_config[field]:
             found.append(

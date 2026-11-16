@@ -38,10 +38,12 @@ field it has no class for. The two classes are:
 - `PROJECTED` — the field is the artifact's record of a dispatch input, so it can be compared
   against the table. `render` says how to spell the artifact's shape as the input's string.
 - `UNPROJECTED` — the field is not a dispatch input, and the entry says why. The reasons are of
-  three kinds and the distinction matters: `derived` (computed from a projected field, so comparing
+  four kinds and the distinction matters: `derived` (computed from a projected field, so comparing
   it would compare the same number twice and report a second violation for one defect), `constant`
-  (fixed by the workflow or a module default, so there is no second copy to disagree with), and
-  `identity` (the value is resolved at run time from the environment the artifact cannot see).
+  (fixed by the workflow or a module default, so there is no second copy to disagree with),
+  `identity` (the value is resolved at run time from the environment the artifact cannot see), and
+  `census` (counted after the questions were answered, so two runs of one configuration disagree
+  there by design and a difference is a measurement rather than a departure).
 
 The partition is asserted in both directions by `tools/__tests__/test_arm_config_baseline.py`.
 Without the reverse direction a new arm option would land in the artifact, be silently absent from
@@ -146,6 +148,67 @@ REPORT_LEVEL: dict[str, tuple[str, str]] = {
 # `artifact field -> (kind, why)`. `kind` is one of `derived`, `constant`, `identity`, `condition` --
 # the last one also being derived from `conditions()` below rather than restated here.
 UNPROJECTED: dict[str, tuple[str, str]] = {
+    # The two switches that reach this arm through a **repository variable** rather than a dispatch
+    # input, because §13.352.5 records why: the workflow sits one below GitHub's ceiling of 25 inputs,
+    # and `test_dispatch_inputs.py` forbids sitting at it. Classified `identity` rather than `constant`
+    # because the value is resolved at run time from an environment the projection cannot see -- the
+    # artifact records what the arm resolved, and the baseline has no input to compare it against.
+    #
+    # They were both unclassified until this change, and the cost was deferred rather than absent:
+    # `--record` refuses an artifact carrying a field no class covers, so the next baseline re-record
+    # would have failed on a field that had already been shipped in two rounds.
+    "supersededRendering": (
+        "identity",
+        "dispatch-time repository variable (`CORTEX_MEMORY_SUPERSEDED`); the artifact records the "
+        "rendering the arm resolved, and there is no dispatch input to project it from",
+    ),
+    "indexEmbedding": (
+        "identity",
+        "dispatch-time repository variable (`CORTEX_MEMORY_INDEX_EMBEDDING`) on the same rule; the "
+        "artifact records whether the product index was handed the embedder, and `selfIndex.embedTexts` "
+        "is the independent reading that can contradict it",
+    ),
+    # The rest of the type, which no class covered when this list was written. The completeness is now
+    # asserted against `MemoryArmConfig` itself -- `arm-config-classification.test.ts` parses the
+    # interface and requires every field to name a class -- because the previous mechanism only checked
+    # the *recorded* configuration, so a field could ship and escape the partition until the next
+    # `--record` refused it. Four of these had shipped that way.
+    "maxPromptChars": (
+        "derived",
+        "the scalar room. The dispatch table sends the per-route map (`cortex_memory_max_prompt_chars`), "
+        "so this field is what an unset route resolved to; `effectivePromptChars` is the number the "
+        "prompt was assembled under and the one §13.299 exists to make readable",
+    ),
+    "turnWindow": (
+        "derived",
+        "the second half of `CORTEX_MEMORY_MAX_TURN_CHARS`'s grammar (`400:ellipsis:window`), parsed in "
+        "one place so the width and the way it is spent cannot disagree",
+    ),
+    "semanticCarry": (
+        "identity",
+        "dispatch-time repository variable (`CORTEX_MEMORY_SEMANTIC_CARRY`); the artifact records whether "
+        "the layer ran, and the census beside it records what it reached",
+    ),
+    "voteCounts": (
+        "census",
+        "counted after the questions were answered, so two runs of one configuration disagree here; a "
+        "difference is a measurement, not a departure",
+    ),
+    "selfIndex": (
+        "census",
+        "the product's own index bill, read from the instances after the run; `embedTexts` is also the "
+        "reading that contradicts `indexEmbedding` when the channel claim is wrong",
+    ),
+    "admission": (
+        "census",
+        "the write gate's own tally, taken after the run for the reason §14.146 records: a census over "
+        "candidates rather than over admitted turns, and it is the only way to see that a gate was a "
+        "pass-through",
+    ),
+    "queryExpansionCounts": (
+        "census",
+        "how far §13.97's expansion reached, which only the process that made the calls can say",
+    ),
     "threshold": (
         "constant",
         "fixed at 0 by the workflow since §13.101.3 -- admission-wide-open is the premise of every "

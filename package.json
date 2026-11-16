@@ -48,6 +48,7 @@
     "test:pg": "pnpm --filter @agentix-e/cortex-storage test:pg",
     "erasure:census": "node tools/erasure-census.mjs",
     "corpus:census": "node tools/corpus-read-census.mjs",
+    "corpus:census:write": "node tools/corpus-read-census.mjs --out ../cortex-docs/evidence/corpus/read-cost.json",
     "ledger:check": "node tools/product-capability-ledger.mjs --check",
     "ledger:write": "node tools/product-capability-ledger.mjs --write"
   },

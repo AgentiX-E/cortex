@@ -3280,62 +3280,105 @@ function fitToBudget(
     updatesText.length > 0 && updatesText.length + SEPARATOR.length <= remaining ? updatesText : '';
   if (updatesBlock.length > 0) remaining -= updatesBlock.length + SEPARATOR.length;
 
-  // Allocated whole or not at all. A half-note would name boundaries without
-  // explaining them, which is the state this allocation exists to leave.
-  const note = plan.note ?? '';
-  const noteText = note.length + SEPARATOR.length <= remaining ? note : '';
-  if (noteText.length > 0) remaining -= noteText.length + SEPARATOR.length;
+  // Both allocations below run against this: what the instruction, the question and the update block
+  // left. The note is the only section whose purchase is conditional on what the **evidence** can still
+  // become, so it is the only one that needs a second attempt.
+  const afterUpdates = remaining;
 
-  // Two budgets, and the smaller one wins. `remaining` is what the prompt's total room left after the
-  // instruction, the question, the note and the header; `evidenceCap` is what this question is worth,
-  // decided by `planEvidenceRoom` from its own relevance mass. They are separate quantities because they
-  // are set by different things -- the route's room and the question's shape -- and a single number could
-  // only express one of them. `??` rather than `||` for the reason `#promptCharsFor` uses it: a cap of
-  // zero is a value a sweep will produce, and substituting the room for it would make the artifact
-  // describe a prompt that was never assembled.
-  const evidenceRoom =
-    evidenceCap === undefined
-      ? remaining - header.length
-      : Math.min(remaining - header.length, evidenceCap);
-  const selected =
-    evidenceRoom <= 0 ? NOTHING_CARRIED : chooseEvidence(question, plan, evidenceRoom);
+  /**
+   * Spend the rest, with or without the note.
+   *
+   * ## Why this is a function rather than the straight-line code it replaces
+   *
+   * Because the note is bought before the evidence and can take the room the evidence needed, and the
+   * result was a prompt that carried no evidence at all while still saying "Some evidence is grouped into
+   * sessions" -- a sentence about a structure the prompt did not deliver, under an instruction to answer
+   * "using only the evidence above". `branch-coverage.test.ts` measures it as a band of budgets: a
+   * 214-character room delivered the first turn, a 353-character room delivered none, because 148
+   * characters of note fitted in the larger one.
+   *
+   * ## Why the note yields and the update block does not
+   *
+   * The update block states a fact about the world ("X superseded Y") and is owed to the reader whether or
+   * not a single turn fits -- that is its documented rule, and a caller that supplied it supplied a
+   * conclusion the run reached by other means. The note states a fact about the **evidence**: that some of
+   * it is grouped into sessions. With no evidence there is no such structure, so the sentence is not
+   * merely unhelpful, it is false about the prompt it sits in.
+   *
+   * ## What this does not change
+   *
+   * The priority order. The note is still bought before the evidence and still whole-or-not-at-all; what is
+   * added is a floor under the evidence: if buying the note leaves no room for a single turn, the note is
+   * released and the allocation is redone. A budget that bought evidence before this change still buys it,
+   * and a budget that bought nothing still buys nothing.
+   */
+  const spend = (buyNote: boolean): AssembledPrompt => {
+    let left = afterUpdates;
+    const note = plan.note ?? '';
+    const noteText = buyNote && note.length + SEPARATOR.length <= left ? note : '';
+    if (noteText.length > 0) left -= noteText.length + SEPARATOR.length;
 
-  if (selected.evidence.length === 0) {
-    // Unchanged, including the order: with nothing to carry, this is the prompt
-    // the two earlier versions converged on, and the budget sweep pins it.
-    return { prompt: `${instruction}${SEPARATOR}${questionLine}`, evidenceChars: 0, carried: [] };
-  }
+    // Two budgets, and the smaller one wins. `left` is what the prompt's total room left after the
+    // instruction, the question, the note and the header; `evidenceCap` is what this question is worth,
+    // decided by `planEvidenceRoom` from its own relevance mass. They are separate quantities because
+    // they are set by different things -- the route's room and the question's shape -- and a single
+    // number could only express one of them. `??` rather than `||` for the reason `#promptCharsFor` uses
+    // it: a cap of zero is a value a sweep will produce, and substituting the room for it would make the
+    // artifact describe a prompt that was never assembled.
+    const evidenceRoom =
+      evidenceCap === undefined
+        ? left - header.length
+        : Math.min(left - header.length, evidenceCap);
+    const selected =
+      evidenceRoom <= 0 ? NOTHING_CARRIED : chooseEvidence(question, plan, evidenceRoom);
 
-  // The selecting path knows its set, so it hands it over rather than having the
-  // set re-derived from the text it just produced.
-  const carried = selected.carried ?? wholeTurnsIn(plan, selected.evidence.length);
+    if (selected.evidence.length === 0) {
+      // Unchanged, including the order: with nothing to carry, this is the prompt the two earlier
+      // versions converged on, and the budget sweep pins it.
+      return { prompt: `${instruction}${SEPARATOR}${questionLine}`, evidenceChars: 0, carried: [] };
+    }
 
-  // §13.153's stage, and it is last on purpose: the set is final here, so a permutation cannot change it.
-  // The re-render is not a second selection -- `render` is a function of the turns alone -- and it cannot
-  // exceed the room, because a permutation of `n` numbered blocks has the same total length.
-  //
-  // The one path where that equality is not exact is the character clip, whose delivered text can end
-  // inside a turn. `carried` there is the largest prefix of **whole** turns, so re-rendering it drops the
-  // partial tail: the delivered *turns* are unchanged and the prompt gets strictly shorter. Recorded here
-  // rather than left to be discovered, because the difference is a byte count a reader could otherwise
-  // attribute to the ordering.
-  const ordered =
-    plan.ordering === undefined ? carried : partitionLead(carried, plan.ordering.leadWhen);
-  const evidence = plan.ordering === undefined ? selected.evidence : plan.render(ordered);
+    // The selecting path knows its set, so it hands it over rather than having the
+    // set re-derived from the text it just produced.
+    const carried = selected.carried ?? wholeTurnsIn(plan, selected.evidence.length);
 
-  const head = `${header}${evidence}`;
-  const sections = [
-    head,
-    ...(noteText.length === 0 ? [] : [noteText]),
-    ...(updatesBlock.length === 0 ? [] : [updatesBlock]),
-  ];
+    // §13.153's stage, and it is last on purpose: the set is final here, so a permutation cannot change
+    // it. The re-render is not a second selection -- `render` is a function of the turns alone -- and it
+    // cannot exceed the room, because a permutation of `n` numbered blocks has the same total length.
+    //
+    // The one path where that equality is not exact is the character clip, whose delivered text can end
+    // inside a turn. `carried` there is the largest prefix of **whole** turns, so re-rendering it drops
+    // the partial tail: the delivered *turns* are unchanged and the prompt gets strictly shorter.
+    // Recorded here rather than left to be discovered, because the difference is a byte count a reader
+    // could otherwise attribute to the ordering.
+    const ordered =
+      plan.ordering === undefined ? carried : partitionLead(carried, plan.ordering.leadWhen);
+    const evidence = plan.ordering === undefined ? selected.evidence : plan.render(ordered);
 
-  return {
-    prompt: assembleSections([...sections, questionLine], instruction, assembly),
-    evidenceChars: evidence.length,
-    carried: ordered,
-    ...(ordered.length === 0 || plan.tally === undefined ? {} : { turnWindow: { ...plan.tally } }),
+    const head = `${header}${evidence}`;
+    const sections = [
+      head,
+      ...(noteText.length === 0 ? [] : [noteText]),
+      ...(updatesBlock.length === 0 ? [] : [updatesBlock]),
+    ];
+
+    return {
+      prompt: assembleSections([...sections, questionLine], instruction, assembly),
+      evidenceChars: evidence.length,
+      carried: ordered,
+      ...(ordered.length === 0 || plan.tally === undefined
+        ? {}
+        : { turnWindow: { ...plan.tally } }),
+    };
   };
+
+  const withNote = spend(true);
+  const note = plan.note ?? '';
+  // `spend(false)` is the same allocation whenever the note was never going to be bought, so the second
+  // attempt is skipped on the empty case rather than re-running identical arithmetic.
+  if (withNote.evidenceChars > 0 || note.length === 0) return withNote;
+  const withoutNote = spend(false);
+  return withoutNote.evidenceChars > 0 ? withoutNote : withNote;
 }
 
 /** Nothing carried, and the two fields that say so. */

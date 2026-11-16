@@ -1022,6 +1022,7 @@ describe('source trust reaches the artifact', () => {
       // rendering every archived prompt was produced under, and a run that spelled nothing would be
       // indistinguishable from one written before the field existed.
       supersededRendering: 'off',
+      indexEmbedding: 'injected',
       threshold: 0.2,
       retrievalThreshold: 0.25,
       sessionBudget: null,
@@ -1550,6 +1551,7 @@ describe('runCortexMemoryArm', () => {
         semanticCarry: false,
         // §18. Stated on every artifact, for the same reason.
         supersededRendering: 'off',
+        indexEmbedding: 'injected',
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
@@ -1996,6 +1998,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       // turn was marked, and reading the variable here would put a rendering on the record of a run that
       // assembled nothing.
       supersededRendering: 'off',
+      indexEmbedding: 'injected',
     });
   });
 
@@ -2022,6 +2025,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       // rendering every archived prompt was produced under, and a run that spelled nothing would be
       // indistinguishable from one written before the field existed.
       supersededRendering: 'off',
+      indexEmbedding: 'injected',
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,

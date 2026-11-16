@@ -16,17 +16,30 @@ slower (it runs it twenty-five times) rather than multiplying a number. The two 
 | clean | exit 0, `ratio <= 2.0`, `turns == 100_000`, a positive read and assembly time |
 | slow read | exit 1, `FAILED`, and a ratio above the clause |
 
-The clean run is executed **last**, because the tool writes the artifact the round's report cites.
+## Why the runs write to a temporary directory, and what that fixes
+
+They used to write the tracked artifact, one after the other, with the clean run last so the file ended up
+correct. That made `pnpm check` a **writer into another repository**: three rounds of commits carried a
+re-timing nobody had asked for (0.11 → 0.13), because the gate ran the tool and the tool rewrote a tracked
+file whose value depends on machine load. The tool now prints its census and writes only when given
+`--out` -- which is what `pnpm corpus:census:write` passes -- so these tests pass `--out` into `tmp_path`
+and the suite reads the same numbers without touching the tree.
+
+Two tests are the mechanism that keeps that honest: `TestTheGateIsNotAWriter` runs the bare tool and hashes
+the tracked file before and after, and `TestTheCommittedArtifact` holds the committed file to the same
+clause -- so a stale artifact fails the build rather than ageing quietly, and the gate still proves what it
+is for.
 
 ## Why 10^5 turns in a test suite
 
 Because the ratio is the whole point and it is not scale-free: on a ten-turn corpus both arms are
-microseconds and the comparison is noise. The suite pays about fifteen seconds for the honest size, which is
+microseconds and the comparison is noise. The suite pays about fifty seconds for the honest size, which is
 the same trade `test_erasure_census.py` makes for runtime over a synthetic store.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -39,13 +52,16 @@ TOOL = REPO / 'tools' / 'corpus-read-census.mjs'
 ARTIFACT = REPO.parent / 'cortex-docs' / 'evidence' / 'corpus' / 'read-cost.json'
 
 
-def run(fault: str | None = None) -> subprocess.CompletedProcess[str]:
+def run(fault: str | None = None, out: Path | None = None) -> subprocess.CompletedProcess[str]:
     environment = dict(os.environ)
     environment.pop('CORTEX_CORPUS_READ_CENSUS_FAULT', None)
     if fault is not None:
         environment['CORTEX_CORPUS_READ_CENSUS_FAULT'] = fault
+    command = ['node', str(TOOL)]
+    if out is not None:
+        command += ['--out', str(out)]
     return subprocess.run(
-        ['node', str(TOOL)],
+        command,
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -58,19 +74,33 @@ def artifact() -> dict:
     return json.loads(ARTIFACT.read_text(encoding='utf-8'))
 
 
-@pytest.fixture(scope='module')
-def readings() -> dict[str, dict]:
-    """Both runs, taken once each, in the order the artifact has to end up in.
+def digest() -> str:
+    return hashlib.sha256(ARTIFACT.read_bytes()).hexdigest()
 
-    A clean run here costs about ten seconds -- ten to the five turns in a real file, twice over -- so a
-    fixture rather than one call per assertion. The faulted run goes **first** so that the committed artifact
-    is the clean one, which is the same ordering rule `test_erasure_census.py` follows and for the same
-    reason: a suite that left a faulted reading behind would fail every later gate in the chain.
+
+@pytest.fixture(scope='module')
+def readings(tmp_path_factory) -> dict[str, dict]:
+    """Both runs, taken once each, into a directory of their own.
+
+    A clean run here costs about fifteen seconds -- ten to the five turns in a real file, three times over
+    for the estimator -- so a fixture rather than one call per assertion. Neither run touches the tracked
+    artifact: the paths are handed to the tool, which is the change these tests were rewritten for.
     """
-    faulted = run('slow-read')
-    faulted_census = artifact()
-    clean = run()
-    return {'faulted': {'process': faulted, 'census': faulted_census}, 'clean': {'process': clean, 'census': artifact()}}
+    directory = tmp_path_factory.mktemp('corpus-census')
+    faulted_out = directory / 'faulted.json'
+    clean_out = directory / 'clean.json'
+    faulted = run('slow-read', faulted_out)
+    clean = run(None, clean_out)
+    return {
+        'faulted': {
+            'process': faulted,
+            'census': json.loads(faulted_out.read_text(encoding='utf-8')),
+        },
+        'clean': {
+            'process': clean,
+            'census': json.loads(clean_out.read_text(encoding='utf-8')),
+        },
+    }
 
 
 class TestCleanRun:
@@ -99,6 +129,11 @@ class TestCleanRun:
         recomputed = census['readMs'] / census['assembleMs']
         assert abs(recomputed - census['ratio']) < 0.02
 
+    def test_says_where_it_wrote(self, readings) -> None:
+        # The path is printed rather than implied, because "which file did this run produce" is the question
+        # the previous form answered wrongly: it produced one nobody had named.
+        assert 'wrote ' in readings['clean']['process'].stdout
+
 
 class TestFaultInjection:
     def test_a_dominating_read_fails_the_clause(self, readings) -> None:
@@ -106,11 +141,54 @@ class TestFaultInjection:
         assert result.returncode != 0, 'the clause did not fire on a read that dominated assembly'
         assert 'FAILED' in result.stderr
         census = readings['faulted']['census']
-        # The fault is a real cost -- the scan ran twenty-five times -- so the artifact's ratio is a
-        # measurement of a slower read and not a number the tool wrote down.
+        # The fault is a real cost -- the scan ran twenty-five times -- so the census is a measurement of a
+        # slower read and not a number the tool wrote down.
         assert census['fault'] == 'slow-read'
         assert census['ratio'] > 2.0
 
-    def test_the_artifact_is_restored_by_the_next_clean_run(self, readings) -> None:
+    def test_the_two_runs_are_different_files(self, readings) -> None:
+        # The ordering rule the old fixture needed -- faulted first, clean last -- existed because both runs
+        # wrote one path. Two paths means a faulted run cannot leave a faulted reading behind for a gate.
         assert readings['faulted']['census']['fault'] == 'slow-read'
         assert readings['clean']['census']['fault'] is None
+
+
+class TestTheGateIsNotAWriter:
+    def test_a_bare_run_prints_the_census_and_leaves_the_tracked_file_alone(self) -> None:
+        # This is the defect the change fixes, asserted as a property rather than described in a comment:
+        # `pnpm check` runs the tool, the tool used to rewrite a tracked file in another repository, and the
+        # value it wrote depends on what else the machine was doing.
+        before = digest()
+        done = run()
+        assert done.returncode == 0, done.stderr
+        assert digest() == before, (
+            f'{ARTIFACT} changed when the tool was run without --out. A gate that rewrites a tracked '
+            'measurement makes every later diff unreliable and attributes a re-timing to whatever commit '
+            'happened to be next.'
+        )
+        # It still measured: the stdout carries the same object the file would have held.
+        printed = json.loads(done.stdout[done.stdout.index('{') :])
+        assert printed['ratio'] <= 2.0
+        assert printed['dataset'].startswith('100000 turns')
+
+    def test_out_refuses_to_run_without_a_path(self) -> None:
+        # `--out` with nothing after it must not fall back to the tracked path: an unparsed flag that
+        # quietly wrote the old destination would reintroduce exactly the write this change removes.
+        done = run(out=Path('--'))
+        assert done.returncode != 0
+        assert '--out needs a path' in done.stderr
+
+
+class TestTheCommittedArtifact:
+    def test_the_committed_reading_is_the_clean_one_and_still_inside_the_clause(self) -> None:
+        # The evidence a reader cites. Held to the clause here rather than trusted: an artifact recorded
+        # months ago is a measurement of an older prompt builder, and this is the cheapest place to notice.
+        committed = artifact()
+        assert committed['fault'] is None
+        assert committed['ratio'] <= 2.0
+        assert committed['readMs'] > 0
+        assert committed['assembleMs'] > 0
+        assert committed['dataset'].startswith('100000 turns')
+
+    def test_the_committed_reading_was_taken_at_the_registered_room(self) -> None:
+        assert artifact()['room'] == 48_000

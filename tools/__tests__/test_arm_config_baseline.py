@@ -32,6 +32,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -56,6 +57,33 @@ def baseline() -> dict:
     return json.loads(BASELINE.read_text(encoding="utf-8"))
 
 
+def config_type_fields() -> list[str]:
+    """Every field of `MemoryArmConfig`, read from the interface rather than from an artifact.
+
+    Why the type and not the recorded file: the recorded file is written from a run, so a field added to
+    the arm **after** that run is not in it -- which is how `ask`, `semanticCarry`, `maxPromptChars`,
+    `turnWindow`, `voteCounts`, `selfIndex`, `admission` and `queryExpansionCounts` all shipped without a
+    class. `--record` would have refused the next baseline, but that is a refusal months after the field
+    reached production, and nothing failed in between. The type is where a new field appears first.
+
+    Brace-matched rather than regexed to the closing brace, because the interface contains nested object
+    literals (`selfIndex`, `admission`, `reader`) whose braces would end a naive scan early.
+    """
+    source = (ROOT / "packages/cortex-eval/src/report.ts").read_text(encoding="utf-8")
+    opening = "export type MemoryArmConfig = {"
+    start = source.index(opening) + len(opening)
+    depth = 1
+    index = start
+    while depth and index < len(source):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+        index += 1
+    body = source[start : index - 1]
+    return re.findall(r"^  readonly (\w+)\??:", body, re.M)
+
+
 class TestThePartitionIsComplete(unittest.TestCase):
     """Every field of a real `memoryArmConfig` is either projected or explained.
 
@@ -68,6 +96,37 @@ class TestThePartitionIsComplete(unittest.TestCase):
     def test_every_recorded_field_is_classified(self) -> None:
         config = baseline()["memoryArmConfig"]
         self.assertEqual(tool.unclassified(config), [])
+
+    def test_every_field_of_the_config_type_is_classified(self) -> None:
+        """Completeness over the **source of truth**, which is the interface, not an artifact.
+
+        The test above reads `arm-config-baseline.json`, so it can only see the fields that existed when
+        that file was written. Eight fields reached `memoryArmConfig` after it and none of them were
+        classified, which left `--record` unusable for the next baseline and left `registration-attest`
+        unable to say whether a difference in them was a departure or a measurement. This test reads the
+        type: a field added there with no class fails here, in the change that adds it.
+        """
+        fields = config_type_fields()
+        # A guard against the parser silently finding nothing, which would make the assertion vacuous.
+        self.assertGreater(len(fields), 30, 'the interface parse found almost no fields')
+        undecided = [name for name in fields if tool.classification(name) is None]
+        self.assertEqual(
+            undecided,
+            [],
+            'these fields of `MemoryArmConfig` are in neither `PROJECTED` nor `UNPROJECTED`, so a '
+            'difference in them is reported as an undecided field rather than as a departure or as a '
+            'census',
+        )
+
+    def test_no_class_outlives_the_field_it_explains(self) -> None:
+        """The reverse direction: a classified name the interface no longer has.
+
+        An entry that outlives its field is an exemption for something that does not exist, and the next
+        field of that name would inherit the exemption without anyone deciding it.
+        """
+        fields = set(config_type_fields())
+        classified = set(tool.PROJECTED) | set(tool.UNPROJECTED) | set(tool.conditions())
+        self.assertEqual(sorted(classified - fields), [])
 
     def test_the_fingerprint_is_a_function_of_the_configuration_beside_it(self) -> None:
         # The baseline carries `memoryArmConfig` verbatim and the fingerprint of it, and the fingerprint is

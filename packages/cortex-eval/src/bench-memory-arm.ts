@@ -339,6 +339,19 @@ export type CortexMemoryArmOptions = {
    */
   supersededRendering?: string | undefined;
   /**
+   * Whether the product's own index is handed the arm's embedder. §19's single variable.
+   *
+   * `injected` is the registered configuration and the one every published number was taken under;
+   * `none` withholds `SearchIndexOptions.embed`, which the product documents as a working lexical
+   * index rather than a broken one.
+   *
+   * A string rather than a boolean because the two states are not "on" and "off" of a mechanism: they
+   * are two deployments, and the artifact has to be able to say which one produced its number without
+   * a reader reconstructing it from the `embedding` block -- which, under `none`, describes the
+   * **reference pipeline's** backend. That sentence is the reason the field exists.
+   */
+  indexEmbedding?: string | undefined;
+  /**
    * Whether the product carries an authorised semantic update into a later window (§E6).
    *
    * ## Why this option had to exist before E6 could be called `unrun`
@@ -1247,6 +1260,11 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // that says the mechanism did nothing. Reading the variable here instead would let a run that
       // consulted no model carry a treatment on its record.
       supersededRendering: DEFAULT_SUPERSEDED_RENDERING,
+      // Projected as the registered value, not as the variable, for the reason `supersededRendering`
+      // is projected as `off`: a disabled arm builds no index, so it embedded nothing and the variable
+      // reached nothing. Writing `none` here would put a treatment on the record of a run that answered
+      // no question.
+      indexEmbedding: DEFAULT_INDEX_EMBEDDING,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
@@ -1328,6 +1346,12 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     // spelled nothing and a run that spelled `off` must not be the same bytes -- the difference
     // between them is whether the mechanism existed when the artifact was written.
     supersededRendering: readSuperseded(env[SUPERSEDED_VARIABLE]),
+    // §19. Always present for the reason `supersededRendering` is: `injected` is what every archived
+    // artifact was produced under, so a run that spelled nothing and a run that spelled `injected`
+    // must not be the same bytes -- the difference between them is whether the channel existed when
+    // the artifact was written. Read through the parser that refuses an unknown name, because the
+    // quiet failure here is the registered arm publishing under the control's name.
+    indexEmbedding: readIndexEmbedding(env[INDEX_EMBEDDING_VARIABLE]),
   };
 }
 
@@ -1922,6 +1946,75 @@ const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
 
 /** The variable this arm reads for §18's inline superseded rendering. */
 const SUPERSEDED_VARIABLE = 'CORTEX_MEMORY_SUPERSEDED';
+
+/**
+ * The variable this arm reads for §19's index channel: whether the product's own index is handed the
+ * arm's embedder.
+ *
+ * ## Why this is a variable and not a constructor argument
+ *
+ * Because the question it answers is a question about a **deployment**, and a constructor argument
+ * would only answer it for the one caller who knew to ask. `SearchIndexOptions.embed` has been optional
+ * since the index was built -- "absent means a lexical index, which is still a working one" -- and the
+ * manual's option table says so. What the manual could not say is what that costs, because every
+ * published reading of this product was taken with the embedder injected. A user deciding whether to
+ * buy an embedding quota needs the middle number, and the middle number only exists if a dispatch can
+ * withhold the embedder while holding everything else.
+ *
+ * ## Why the two values are `injected` and `none`, and neither is called `off`
+ *
+ * `off` names a mechanism that was switched off; this is a channel that was never supplied, and the
+ * product's own word for it is "absent". `injected` names what actually happens in the registered
+ * configuration: the arm's embedder is handed to the index by the constructor, which is the same
+ * arrangement the manual documents for a user.
+ */
+const INDEX_EMBEDDING_VARIABLE = 'CORTEX_MEMORY_INDEX_EMBEDDING';
+
+/**
+ * The two channel states this arm can dispatch.
+ *
+ * Duplicated from the product's own option rather than imported, for the reason `SUPERSEDED_RENDERINGS`
+ * is: the dependency runs the other way. The duplication is not left to trust -- `readIndexEmbedding`
+ * rejects anything outside this list, and `tools/__tests__/test_index_embedding_wiring.py` asserts the
+ * list against the construct site in `bench/run-ablation.ts`, so a value added on one side and not the
+ * other fails a gate rather than producing a run that names a channel it never withheld.
+ */
+const INDEX_EMBEDDINGS = {
+  /** The registered configuration: the arm's embedder reaches `SearchIndexOptions.embed`. */
+  injected: 'injected',
+  /** The lexical index: `embed` is absent, so the vector channel does not exist for this run. */
+  none: 'none',
+} as const;
+
+/** The channel a run gets when it names none, which is what every archived artifact carried. */
+const DEFAULT_INDEX_EMBEDDING = INDEX_EMBEDDINGS.injected;
+
+/**
+ * The channel this run asks for, refusing a name the arm cannot administer.
+ *
+ * Strict rather than defaulting, for the reason `readSuperseded` is strict, and the size of this one is
+ * larger: `91.40 - 39.55` is the measured price of having **a** ranking at all, and the registered
+ * 91.40 was produced with the embedder. A dispatch that asked for `none` and silently kept the embedder
+ * would publish the registered arm's accuracy under the control's name, and the conclusion drawn from
+ * it -- that an embedding provider is worth nothing -- is the one this row exists to settle the other
+ * way round.
+ */
+function readIndexEmbedding(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_INDEX_EMBEDDING;
+
+  const value = raw.trim();
+  const known = Object.keys(INDEX_EMBEDDINGS);
+  if (!known.includes(value)) {
+    throw new Error(
+      `${INDEX_EMBEDDING_VARIABLE} must be one of ${known.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `or unset, got ${JSON.stringify(raw)}. An unrecognised channel is rejected rather than ` +
+        'defaulted to injected: this variable exists to price a deployment that owns no embedder, and ' +
+        'a run that asked for that arm and kept the embedder would read as evidence that the vector ' +
+        'channel is free, which is the opposite of what an unwired dispatch demonstrates.',
+    );
+  }
+  return value;
+}
 
 /**
  * The renderings this arm can dispatch, and what each spends.
@@ -2932,6 +3025,11 @@ export function toMemoryArmConfig(
     // a reader took the absence for `off`, which is exactly the "predates the field" ambiguity every
     // always-present member of this block exists to remove.
     supersededRendering: options.supersededRendering ?? DEFAULT_SUPERSEDED_RENDERING,
+    // §19. Always present for the reason `supersededRendering` is, and defaulted for the same reason:
+    // a caller that builds this object by hand leaves the field `undefined`, and a projection written
+    // as `options.indexEmbedding` would then put no value on the record while a reader took the
+    // absence for the registered arm.
+    indexEmbedding: options.indexEmbedding ?? DEFAULT_INDEX_EMBEDDING,
     // §13.101. Always present for the reason `queryExpansion` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.
@@ -4108,6 +4206,12 @@ export async function runCortexMemoryArm(
   // answered. §13.17's index and this one are different instruments -- the harness's census describes a
   // ranking it built before the run, this one a ranking the product built per question.
   const indexCost = indexCostAcross(censusSystems);
+  // §19's contradiction check, and the reason it is here rather than in the dispatch: the arm says
+  // which channel the product's index was given, and the bill says what the index actually did. Those
+  // are two statements about one run and only one of them can be wrong -- a `none` arm that embedded
+  // two hundred and fifty texts is the registered arm wearing the control's name, and every other
+  // field in the artifact would agree with the label.
+  assertIndexEmbeddingReached(report.memoryArmConfig, indexCost.selfIndex);
   // The write gate's own census, read here for the same reason: it counts what the gate did
   // rather than what it was configured with, so it can only be taken after the questions were
   // answered. §14.146 records why the counts are over candidates -- a census of admitted turns
@@ -4933,6 +5037,41 @@ const INDEX_COST_COUNTERS = [
 
 /** A record with every counter at zero, which is what one instance that built no index contributes. */
 type IndexCostRecord = NonNullable<MemoryArmConfig['selfIndex']>;
+
+/**
+ * Refuse an artifact whose bill contradicts its channel, rather than writing it.
+ *
+ * ## The two failure directions, and why only one of them is checked here
+ *
+ * A `none` arm that embedded anyway is the quiet one: the run's accuracy is the registered arm's, the
+ * configuration says otherwise, and the dispatch that was bought to answer "does a deployment need an
+ * embedder" would answer "no". The other direction -- an `injected` arm that embedded **nothing** -- is
+ * not a wiring bug this project can produce: the index only exists because an embedder was handed to it,
+ * and `CortexMemory.indexCost()` is written by that index. Asserting it here would refuse a legitimate
+ * run whose corpus arrived empty.
+ *
+ * ## Why `undefined` is not a violation
+ *
+ * `indexCost.selfIndex` is absent when the feature side reported no index at all -- a system built
+ * without one, which is every `relevanceSignal` other than `self-index`. Those runs do not claim a
+ * channel either: `indexEmbedding` describes the product index, so a run with no product index has
+ * nothing for the claim to be about. The check is therefore conditional on there being a bill.
+ */
+function assertIndexEmbeddingReached(
+  config: MemoryArmConfig | undefined,
+  bill: IndexCostRecord | undefined,
+): void {
+  if (config?.indexEmbedding !== 'none' || bill === undefined) return;
+  if (bill.embedCalls === 0 && bill.embedTexts === 0) return;
+  throw new Error(
+    `indexEmbedding=none says the product's index received no embedder, and this run measured ` +
+      `${String(bill.embedTexts)} text(s) over ${String(bill.embedCalls)} call(s) at ` +
+      `${String(bill.indexes)} index(es). The two cannot both be true: either the arm's embedder ` +
+      'reached `SearchIndexOptions.embed` and the run is the registered configuration, or the ' +
+      'variable did not reach the constructor and the run is the lexical arm. Refusing to write an ' +
+      'artifact that would publish one as the other.',
+  );
+}
 
 /** The same record, writable: the accumulator this file sums into. */
 type IndexCostSums = { -readonly [K in keyof IndexCostRecord]: IndexCostRecord[K] };

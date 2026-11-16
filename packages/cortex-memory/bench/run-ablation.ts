@@ -772,11 +772,20 @@ async function main(): Promise<void> {
   // signal also use, and the process-wide cache sits under them: a question whose haystack the harness has
   // already embedded pays for its query only. That sharing is what makes the two cost readings comparable
   // rather than two different bills.
+  // §19's channel. `none` withholds `SearchIndexOptions.embed`, which the product documents as a
+  // working lexical index rather than a broken one -- and the withheld key is expressed by NOT passing
+  // it, because `SearchIndex` decides on `!== undefined` and an always-present key holding `undefined`
+  // would read as configured (the same rule `confidenceFor` and `promptContract` follow above).
+  //
+  // The reference pipeline keeps its embedder in either arm. That asymmetry is the measurement rather
+  // than a defect: the control is the instrument's own retrieval, and the question is whether a
+  // deployment that owns no embedder still gets a ranking from this product.
+  const productIndexEmbedded = armOptions.indexEmbedding !== 'none';
   const selfIndexOptions: SearchIndexOptions | undefined = buildsProductIndex(
     armOptions.relevanceSignal,
   )
     ? {
-        embed: (texts) => embedding.embed(texts),
+        ...(productIndexEmbedded ? { embed: (texts: string[]) => embedding.embed(texts) } : {}),
         k: armOptions.relevanceTopK,
         ...(rerank === undefined ? {} : { rerank }),
       }
@@ -784,6 +793,7 @@ async function main(): Promise<void> {
   if (selfIndexOptions !== undefined) {
     console.log(
       `Self index: the product ranks its own turns at k=${selfIndexOptions.k ?? 'default'}` +
+        `${productIndexEmbedded ? ' over its lexical and vector channels' : ' over its lexical channel alone'}` +
         `${rerank === undefined ? '' : ', with the cross-encoder inside the product'}`,
     );
   }

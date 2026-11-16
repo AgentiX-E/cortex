@@ -196,6 +196,45 @@ describe('prompt budget boundaries', () => {
     }
   });
 
+  it('keeps the evidence once it appears, at every budget on the route that also carries a note', () => {
+    // The flat builder had this sweep and the multi-session builder did not, and the note is the
+    // difference: it is bought before the evidence, so there is a band of budgets where the note fits
+    // and the evidence does not. Measured before the fix: a 350-character room delivered the first turn
+    // and a 360-character room delivered *nothing*, while the prompt still said "Some evidence is
+    // grouped into sessions" and the instruction still said "using only the evidence above".
+    //
+    // Two properties, and the second is the one a reader would notice:
+    //   1. once a budget buys evidence, every larger budget buys evidence too (the prefix search is
+    //      monotone in the room, so a non-monotone answer means something else was spending it);
+    //   2. a prompt with no evidence does not carry the note, because the note describes the structure
+    //      of evidence that is not there.
+    const question = 'Which city do I live in now?';
+    const sessions = [
+      ['I live near the station and the flat is above a bakery.', 'The bakery closes on Mondays.'],
+      ['These days I am based in Lisbon, two streets from the river.'],
+    ];
+    const admitted = admitSessions(sessions, { now: NOW, threshold: 0 });
+    const full = buildSessionPrompt(question, admitted).prompt.length;
+
+    let firstWithEvidence = 0;
+    for (let budget = 1; budget <= full; budget += 1) {
+      const assembled = buildSessionPrompt(question, admitted, { maxChars: budget });
+      expect(assembled.prompt.length).toBeLessThanOrEqual(budget);
+      if (assembled.evidenceChars > 0) {
+        if (firstWithEvidence === 0) firstWithEvidence = budget;
+      } else {
+        expect(assembled.prompt).not.toContain('Some evidence is grouped into sessions');
+        if (firstWithEvidence > 0) {
+          throw new Error(
+            `the ${String(budget)}-character room dropped evidence the ${String(firstWithEvidence)}` +
+              '-character room delivered',
+          );
+        }
+      }
+    }
+    expect(firstWithEvidence).toBeGreaterThan(0);
+  });
+
   it('returns an empty prompt when the budget cannot hold a single character', () => {
     // `maxChars: 0` is a caller error, but a thrown exception here would abort
     // a whole benchmark run over one bad option. An empty string is the honest

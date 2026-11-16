@@ -50,7 +50,31 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = resolve(REPO, '../cortex-docs/evidence/corpus/read-cost.json');
+
+/**
+ * Where the artifact goes **when the caller says so**, and nowhere by default.
+ *
+ * ## Why this is not the tracked path with a default
+ *
+ * Because `pnpm check` runs this file, and the tracked path lives in another repository
+ * (`cortex-docs/evidence/corpus/read-cost.json`). A gate that writes a tracked file is a gate whose
+ * output depends on the machine's load, and this one dirtied three rounds of commits with an
+ * 0.11 → 0.13 re-timing that no round had asked for. The value is a measurement, so it belongs in a
+ * commit that says "re-timed"; the gate only has to know the clause still holds.
+ *
+ * `pnpm corpus:census` therefore reads, and `pnpm corpus:census:write` writes. Both run the same
+ * arithmetic -- there is no second code path a reader has to trust -- and the only difference is where
+ * the JSON ends up.
+ */
+const OUT = (() => {
+  const at = process.argv.indexOf('--out');
+  if (at === -1) return undefined;
+  const target = process.argv[at + 1];
+  if (target === undefined || target.startsWith('--')) {
+    throw new Error('--out needs a path, e.g. --out ../cortex-docs/evidence/corpus/read-cost.json');
+  }
+  return resolve(process.cwd(), target);
+})();
 
 const { MemoryEmbeddingCacheStore } = await import(
   join(REPO, 'packages/cortex-core/dist/index.js')
@@ -193,8 +217,18 @@ function round(value) {
   return Math.round(value * 100) / 100;
 }
 
-mkdirSync(dirname(OUT), { recursive: true });
-writeFileSync(OUT, `${JSON.stringify(census, null, 2)}\n`);
+// A reader by default and a writer only when told where: the JSON is the same value either way, so a
+// gate that reads it and a round that records it cannot disagree about what was measured.
+//
+// The JSON is printed **last** on the read path, so `stdout` is one parseable object rather than an object
+// followed by a sentence about it. That ordering is not cosmetic: the test that asserts this tool no longer
+// writes the tracked file parses the output, and a summary line after the closing brace would make it fail
+// for the format rather than for the write.
+if (OUT !== undefined) {
+  mkdirSync(dirname(OUT), { recursive: true });
+  writeFileSync(OUT, `${JSON.stringify(census, null, 2)}\n`);
+  console.log(`wrote ${OUT}`);
+}
 
 // The clause, in the tool rather than in a reader. `answerSessions` is the comparison rather than a
 // hand-built prompt: it is the work `askStored` delegates to, so the difference between the two timings is
@@ -213,4 +247,5 @@ if (census.ratio > 2) {
       `${String(census.assembleMs)}ms, stored ${String(census.storedMs)}ms; ratio ${String(census.ratio)}x ` +
       `(clause: <= 2.0x)`,
   );
+  if (OUT === undefined) process.stdout.write(`${JSON.stringify(census, null, 2)}\n`);
 }
