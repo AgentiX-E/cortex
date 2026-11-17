@@ -862,7 +862,8 @@ reachable as a default any more; state it per route if you want to reproduce an 
 | `profile` | `'minimal' \| 'reader' \| 'full'` | `'reader'` | How much of the product to wire up. See the table above for what each one scores. |
 | `embed` | `EmbedFn` | absent | The vector channel, as a batch function over texts. Absent leaves lexical retrieval: the same index, the same ranking, **5.6 points** less accuracy (`S14`, paired −28 of 500 questions, p = 2.5e-5), concentrated in the two populations whose questions are worded differently from their evidence — see §3.5 item 5. Costs no model calls either way when absent. |
 | `embeddingStore` | `EmbeddingCacheStore` | absent (a process-lifetime map) | Where the vectors live between assemblies. Supply `await StorageEmbeddingCache.open(storage)` to keep them across a restart, and flush it after the work. Refused on `minimal` and refused without `embed`, because neither would read or write it. |
-| `maxPromptChars` | `number` | absent (the memory's own 48,000) | The room for one assembled prompt. Deliberately not defaulted here, because the registered arm states a room per route and a constant in this file would be a second arm; the field is how you state a bound. |
+| `maxPromptChars` | `number` | the registered table, per route | One room, in characters, for every route that names none of its own. Stating a number replaces the table on all six routes — you are choosing a shape, not filling a gap. No default here for one release, on the argument that a constant in this file would be a second arm; the argument was sound and its conclusion was inverted, because a call that declined to name the registered arm inherited the class's flat 48,000 instead, which is no cell the campaign priced. |
+| `maxPromptCharsByRoute` | `Partial<Record<TurnCapRoute, number>>` | the registered table | Per-route rooms, merged **over** the table: `{ temporal: 8_000 }` moves one route and leaves the other five at their registered widths. A route named here wins over `maxPromptChars` too, because the more specific field is your answer. |
 | `shared` | `Storage` | absent | The public side of the disclosure boundary. Required by `full`, ignored by the other two. |
 | `name` | `string` | `'cortex-memory'` | Attribution label, carried through to the memory. |
 | `gate` | `Partial<GateOptions>` | identity (`0` / `0` / unbounded) | Overrides for the admission and retrieval gates, §6.2. |
@@ -887,9 +888,15 @@ const now = Date.UTC(2026, 0, 1);
 // instrument priced at 39.55%, so a call that omits `profile` does not get this one.
 const smallest = assembleMemory({ llm, now, storage, profile: 'minimal' });
 
-// A bound you state. `maxPromptChars` has no default here, and the room is what a ranking competes for.
+// A call that names no room gets the registered table: 48,460 characters on `multi-session`, 24,000 on the
+// other five, which is 91.25% at 7,448 prompt tokens per question. Say one number to replace it everywhere,
+// or name the routes you want to move and leave the rest as measured.
+const registered = assembleMemory({ llm, now, storage });
+void registered;
 const bounded = assembleMemory({ llm, now, storage, maxPromptChars: 6_000 });
 void bounded;
+const quietTemporal = assembleMemory({ llm, now, storage, maxPromptCharsByRoute: { temporal: 8_000 } });
+void quietTemporal;
 
 // The same corpus, ranked. `embed` is optional; without it the index is lexical and costs no model call.
 const reader = assembleMemory({ llm, now, storage, profile: 'reader', embed, index: { k: 40 } });
@@ -945,15 +952,19 @@ async function durableAssembly(): Promise<void> {
 void durableAssembly;
 ```
 
-Two things are deliberately **not** defaulted:
+One thing is deliberately **not** defaulted:
 
-- **`maxPromptChars`.** The per-route room table is the registered arm's configuration, and a second
-  default here would be a second arm: a run that changed only this file's constant would move every
-  published number while claiming to have changed nothing. State the bound you want — the field is there; what
-  is absent is a value. Before this release the sentence said "state it" over an option list that had no such
-  field, which made an omission look like a discipline.
 - **`shared`.** A `full` profile without a second store throws at assembly rather than at the first
   publication. Two sides of a boundary in one file is not a boundary.
+
+**`maxPromptChars` is defaulted, and it took a round to see why.** The argument for omitting it was that the
+per-route table is the registered arm's configuration, so a constant in this file would be a second arm. The
+premise is right and the inference was backwards: the registered table is the **first** arm, so a composition
+root that declined to name it did not decline to have one — it inherited the class's flat 48,000 on all six
+routes, a configuration nobody dispatched, at a bill above the one that was measured. The default is now
+`REGISTERED_ROOMS` (`multi-session` 48,460, the other five 24,000), `assemble-rooms.test.ts` pins it to
+`tools/arm-config-baseline.json` so the two cannot drift apart, and `profile: 'minimal'` is the one exception
+because its 39.55% was measured at the wide table and it ranks nothing.
 
 The function is named `assembleMemory` rather than `createMemory` because `cortex-core` already exports
 `createMemory` for the domain's `Memory` value, and two functions with one name an import apart is how a

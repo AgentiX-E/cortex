@@ -237,6 +237,11 @@ export {
   type AssemblyProfile,
   type Installation,
 } from './assemble.js';
+// The room table the composition root defaults to. Exported so a deployment can read the budget it is
+// spending and state it explicitly where a config file wants a number rather than a default. One constant,
+// pinned to `tools/arm-config-baseline.json` by `assemble-rooms.test.ts`; the export exists for legibility,
+// not so a caller can assemble a second table.
+export { REGISTERED_ROOMS } from './rooms.js';
 
 export {
   CortexSessionProvider,

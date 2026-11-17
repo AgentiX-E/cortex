@@ -265,3 +265,30 @@ Mem0's 6,800** and **1.006× Maximem's 7,400** — i.e. the bill is now the same
 and the accuracy is 4.35 points below it. The gap that remains is not a room: it is `MR` at 83.47%
 against MemCog's published 92.48%, and §31.8 of the plan shows that on 48,000 characters the gold
 turns are already delivered for 17 of the 21 `MR` questions this arm answers wrong.
+
+## 9. What a call that names no room actually gets
+
+Everything above is a table, and a table is worth nothing to a deployment that assembles the product and
+never sets one. Until this release it got `CortexMemory`'s global 48,000 on all six routes: not the 91.25%
+arm, not either cut cell, and **dearer than the arm that was measured**.
+
+`assembleMemory` now defaults to `REGISTERED_ROOMS` — `multi-session` 48,460, the other five 24,000. Three
+cases, and the difference between them is what a caller wrote:
+
+| what the caller wrote | what the six routes get |
+| --- | --- |
+| nothing | the registered table |
+| `maxPromptChars: N` | `N` on all six (a shape, not a gap — the table is not merged in) |
+| `maxPromptCharsByRoute: { … }` | the map **over** the table, so one route moves and five stay as measured |
+| `profile: 'minimal'` | the class's global 48,000, because that profile's 39.55% was measured there and it ranks nothing |
+
+`assemble-rooms.test.ts` holds both ends of that: the default is byte-identical to stating the table
+explicitly, and it is **not** the global — asserted through `answer` on a 57,000-character corpus, where the
+24,000 and 48,000 rooms produce different prompts. The same file reads `tools/arm-config-baseline.json` and
+fails if this constant and the dispatched arm disagree in either direction, which is the only way a
+product constant and a benchmark registration can be kept honest about being the same configuration.
+
+One consequence is worth stating plainly, because it is the kind of thing a default hides: **the shipping
+product is now the arm every published reading was taken on.** "What ships is what was measured" was true of
+the code paths and false of the configuration for nine rounds, and the fix was not a new mechanism — it was
+naming the first arm as the default instead of inheriting a fourth one.

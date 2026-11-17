@@ -47,14 +47,23 @@
  * is a **worked** configuration — smoke-tested end to end through `remember` → `askStored` — and a caller who
  * needs a fourth composes `CortexMemory` directly, which is what the fields are for.
  *
- * ## The one deliberate omission
+ * ## The room a call that names none gets
  *
- * `maxPromptChars` has **no default here**. The per-route room table is the registered arm's configuration,
- * and a second default would be a second arm: a run that changed only this file's constant would move every
- * published number while claiming to have changed nothing. A caller who wants a bound states it — and this
- * paragraph said so for one release while `AssembleOptions` had no field to state it in, which made the
- * omission a missing capability rather than a discipline. The field exists now; the absence of a default did
- * not change, only the truth of the sentence beside it.
+ * `{@link REGISTERED_ROOMS}`: `multi-session` at 48,460 characters and the other five at 24,000, which is
+ * the table `S16` measured at **91.25% / 7,448 prompt tokens per question**. A caller who states a room
+ * replaces the table; a caller who states a map overrides the routes it names and keeps the rest.
+ *
+ * This paragraph used to argue the opposite, and the argument is worth keeping because it was sound and its
+ * conclusion was inverted. "The per-route table is the registered arm's configuration, and a second default
+ * would be a second arm." True — and a composition root that declines to name the first arm does not decline
+ * to have one: it inherits `CortexMemory`'s global 48,000 on all six routes, which is **not** any cell the
+ * campaign priced and is dearer than the one that was. The default is therefore the first arm rather than a
+ * second one, and `assemble-rooms.test.ts` pins it to `tools/arm-config-baseline.json` so the two cannot
+ * drift apart in either direction.
+ *
+ * `minimal` is the exception and it is deliberate: its number (39.55%) was measured at the wide table, and
+ * it renders the transcript in arrival order rather than ranking it, so a narrower room would move the bytes
+ * of a reading nobody re-took. The profile exists for conformance and for smoke tests.
  *
  * ## Why `assembleMemory` and not the `createMemory` the design sketch names
  *
@@ -66,11 +75,12 @@ import type { EmbedFn, EmbeddingCacheStore, LLM, Storage } from '@agentix-e/cort
 import { EmbeddingMemo, MemoryEmbeddingCacheStore } from '@agentix-e/cortex-core';
 
 import { Corpus } from './corpus.js';
+import { REGISTERED_ROOMS } from './rooms.js';
 import { DisclosureSession } from './disclosure/session.js';
 import { CortexMemory } from './memory.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { SupersededRendering } from './superseded.js';
-import type { GateOptions } from './types.js';
+import type { GateOptions, TurnCapRoute } from './types.js';
 
 /** How much of the product one call wires up. See the table in the module comment. */
 export type AssemblyProfile = 'minimal' | 'reader' | 'full';
@@ -90,17 +100,37 @@ export type AssembleOptions = {
   /** Defaults to `reader`, so a call that names nothing gets the configuration that has a published reading. */
   readonly profile?: AssemblyProfile | undefined;
   /**
-   * The room, in characters, for one assembled prompt. Absent means the memory's own default (48,000).
+   * The room, in characters, for **one** assembled prompt, applied to every route that has no entry of its
+   * own in {@link AssembleOptions.maxPromptCharsByRoute}. Absent means the table the registration measured
+   * ({@link REGISTERED_ROOMS}) applies.
    *
-   * No default here, for the reason the module comment gives: the registered arm states a room per route
-   * and this function must not become a second arm by holding a number of its own. The field exists so the
-   * omission is a **choice a caller can undo** rather than a bound nothing can reach.
+   * ## Why there is a default here and the paragraph that refused one
    *
-   * One number rather than the per-route table, because a table is the registered arm's calibration and not
-   * a shape a caller assembles by hand; a caller who needs it composes `CortexMemory` from the fields, which
-   * is what `maxPromptCharsByRoute` is for.
+   * The module comment argued that a default in this file "would be a second arm: a run that changed only
+   * this constant would move every published number while claiming to have changed nothing". The argument
+   * is sound and its conclusion was inverted, which is what §32.6 of the plan records: the registered table
+   * is the **first** arm, so a composition root that declines to name it does not decline to have one — it
+   * takes `CortexMemory`'s global 48,000 instead. A bare `assembleMemory` call therefore shipped the fourth
+   * table: not 91.25% at 7,448 tokens, not any cell `S15`/`S16` priced, and dearer than the one that was
+   * measured.
+   *
+   * Stating a number here still means what it meant: one room on all six routes. The table is applied only
+   * when the caller names **no** room at all, because a caller who writes `maxPromptChars: 30_000` is
+   * choosing a shape and not filling a gap.
    */
   readonly maxPromptChars?: number | undefined;
+  /**
+   * Per-route rooms, merged **over** the registered table rather than replacing it.
+   *
+   * The merge is the whole point of the field's placement. A caller who wants one route quieter writes
+   * `{ temporal: 8_000 }` and means it; without the merge the other five routes would fall to the global
+   * 48,000, which is the unpriced configuration the default above removes, reintroduced by the option a
+   * careful caller reaches for first.
+   *
+   * A route named here wins over {@link AssembleOptions.maxPromptChars} as well, for the same reason it wins
+   * over the table: the more specific field is the caller's answer.
+   */
+  readonly maxPromptCharsByRoute?: Partial<Record<TurnCapRoute, number>> | undefined;
   /**
    * The vector channel, as a batch function over texts.
    *
@@ -230,6 +260,27 @@ export function assembleMemory(options: AssembleOptions): Installation {
 
   const disclosure = profile === 'full' ? boundary(options, corpus, embed, vectors) : undefined;
 
+  // The room the six routes are assembled under. Three cases, and each one is a shape rather than a gap:
+  //
+  //   - nothing named            -> the registered table, i.e. the arm that was measured;
+  //   - one number named         -> that number on every route (no table: the caller stated a shape);
+  //   - a map named              -> the map over the table, so one route can move without five following.
+  //
+  // The `minimal` profile takes none of it. It builds no index and renders the transcript in arrival order,
+  // so its prompt is a truncation of the same text -- but its number was measured at the wide table (39.55%
+  // at 48,000), and handing it a table that changes its bytes would restate that reading under a
+  // configuration nobody ran. `assemble.test.ts` holds the arithmetic; this comment holds the reason the
+  // branch exists rather than a default that reaches all three profiles.
+  const rooms =
+    options.maxPromptCharsByRoute !== undefined
+      ? {
+          ...(options.maxPromptChars === undefined ? REGISTERED_ROOMS : {}),
+          ...options.maxPromptCharsByRoute,
+        }
+      : options.maxPromptChars === undefined && profile !== 'minimal'
+        ? REGISTERED_ROOMS
+        : undefined;
+
   const memory = new CortexMemory({
     llm: options.llm,
     now: options.now,
@@ -238,6 +289,7 @@ export function assembleMemory(options: AssembleOptions): Installation {
     ...(index === undefined ? {} : { index }),
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(options.maxPromptChars === undefined ? {} : { maxPromptChars: options.maxPromptChars }),
+    ...(rooms === undefined ? {} : { maxPromptCharsByRoute: rooms }),
     ...(options.supersededRendering === undefined
       ? {}
       : { supersededRendering: options.supersededRendering }),
