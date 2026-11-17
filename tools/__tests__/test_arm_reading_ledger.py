@@ -107,11 +107,30 @@ def test_a_ranked_arm_is_refused(tmp_path):
 
 
 def test_an_artifact_with_no_signal_field_is_refused(tmp_path):
+    """Absence is refused with its own sentence, and it must not be the sentence for `null`.
+
+    The two facts are different: no field means the run cannot be *shown* to have held the arm, and an
+    explicit `null` means the run recorded an arm that is not one. This tool read both as `reads None`
+    until `S15` -- which is the message that let an unrecorded arm pass for a recorded one, because a
+    reader has no way to tell from "None" whether the producer omitted the field or the product wrote a
+    null. `S9` is the artifact that makes the distinction concrete: it predates no field and carries no
+    null, and one of these two sentences has to describe it correctly.
+    """
     report = artifact()
     del report["memoryArmConfig"]["relevanceSignal"]
     done = run(tmp_path, report, "--run", "1")
     assert done.returncode == 1
+    assert "records no `relevanceSignal`" in done.stderr
+    assert "reads None" not in done.stderr
+
+
+def test_an_explicit_null_signal_is_refused_by_reading_it_as_a_value(tmp_path):
+    report = artifact()
+    report["memoryArmConfig"]["relevanceSignal"] = None
+    done = run(tmp_path, report, "--run", "1")
+    assert done.returncode == 1
     assert "reads None" in done.stderr
+    assert "records no" not in done.stderr
 
 
 def test_a_smaller_population_cannot_be_written(tmp_path):
@@ -672,3 +691,166 @@ def test_zero_degradations_is_a_reading_and_not_a_refusal(tmp_path):
     }
     done = run(tmp_path, report, '--row', 'S14', '--run', '1')
     assert done.returncode == 0, done.stderr
+
+
+# ---- `S15`: the room row, which is the first row whose arm is a table -----------------------------
+#
+# Every other row can be told apart from its neighbours by naming a value. `S15` cannot: it holds
+# `relevanceSignal: self-index` and `indexEmbedding: injected`, which is exactly `S9`. What separates
+# them is the room table, so the refusal that matters here is not "another row's arm" but "the *same*
+# arm at another budget" -- a case the two-field shape could not express, and the reason the row's arm
+# became a list of paths.
+
+
+ROOM_ROUTES = ("abstention", "assistant", "flat", "knowledge-update", "multi-session", "temporal")
+
+
+def room_config(**rooms):
+    config = {
+        "relevanceSignal": "self-index",
+        "indexEmbedding": "injected",
+        "reader": {"model": "deepseek-chat"},
+        "judge": {"model": "deepseek-chat"},
+        "promptContract": "evidence-blocks-unsourced",
+        "maxPromptCharsByRoute": {route: 24000 for route in ROOM_ROUTES},
+    }
+    config["maxPromptCharsByRoute"].update(rooms)
+    return config
+
+
+def test_the_room_row_accepts_every_route_at_twenty_four_thousand(tmp_path):
+    report = artifact(config=room_config())
+    done = run(tmp_path, report, "--json", "--run", "1", row="S15")
+    assert done.returncode == 0, done.stderr
+    result = json.loads(done.stdout)
+    assert result["row"] == "S15"
+    assert result["arm"]["relevanceSignal"] == "self-index"
+
+
+def test_the_room_row_refuses_the_registered_arm_it_is_a_cut_of(tmp_path):
+    """`S9`'s artifact, offered to `S15`. This is the refusal the row exists for.
+
+    The two artifacts agree about every field a two-name row could check, and they differ by 2.0 points
+    on the same 500 questions. A producer that accepted this file would publish 91.40% as the reading
+    for the cell that read 89.40%, and the number would look entirely correct: it is the registered
+    arm's accuracy, on the registered population, under the row's own `relevanceSignal`.
+    """
+    report = artifact(config=room_config(**{"multi-session": 48460, "temporal": 48000}))
+    done = run(tmp_path, report, "--run", "1", row="S15")
+    assert done.returncode == 1
+    assert "`maxPromptCharsByRoute`" in done.stderr
+    assert "'multi-session': 48460" in done.stderr
+    assert "two different budgets" in done.stderr
+
+
+def test_the_room_row_refuses_an_artifact_that_records_no_room_table(tmp_path):
+    config = room_config()
+    del config["maxPromptCharsByRoute"]
+    done = run(tmp_path, artifact(config=config), "--run", "1", row="S15")
+    assert done.returncode == 1
+    assert "records no `maxPromptCharsByRoute`" in done.stderr
+
+
+def test_the_rendered_floor_is_the_rows_own(tmp_path):
+    """`S15`'s floor is 0.91 and the sentence that prints it used to be a literal 88.0%.
+
+    Both rows shared 0.88 for as long as there were two, so a hardcoded `88.0%` and a hardcoded `0.88`
+    verdict agreed with every row in the table and with no other possible row. This test exists because
+    the third row is the first one that can tell -- and because a printed threshold that belongs to
+    another row is a number a reader will compare the reading against.
+    """
+    done = run(tmp_path, artifact(config=room_config(), questions=4, bits=["1110"] * 4), "--run", "1", row="S15")
+    assert done.returncode == 0, done.stderr
+    assert "S15 floor 91.0%" in done.stdout
+    assert "88.0%" not in done.stdout
+    assert "verdict: miss" in done.stdout
+
+
+def test_the_room_row_names_every_route_the_product_has(tmp_path):
+    """The row pins six route names, and this file is Python while the routes are TypeScript.
+
+    A route added to the product and not to this table would leave `S15` pinning five of six, so an
+    artifact at 24,000 on five routes and 48,000 on the new one would pass a row whose subject is that
+    every route was cut. Read from the product's own declaration rather than from a second copy:
+    `TURN_CAP_ROUTES` in `cortex-memory/src/types.ts` is the list `TurnCapRoute` is derived from.
+    """
+    source = (TOOL.parent.parent / "packages/cortex-memory/src/types.ts").read_text()
+    block = source.split("export const TURN_CAP_ROUTES = [", 1)[1].split("] as const;", 1)[0]
+    declared = sorted(part.strip().strip("'\"") for part in block.split(",") if part.strip())
+    assert sorted(ROOM_ROUTES) == declared, declared
+
+
+# ---- the route split, which is how a room row is read -------------------------------------------
+
+
+def routed(bits, routes, chars):
+    report = artifact(bits=bits, questions=len(routes))
+    report["memoryArmConfig"]["relevanceSignal"] = "self-index"
+    report["memoryArmConfig"]["maxPromptCharsByRoute"] = {route: 24000 for route in ROOM_ROUTES}
+    for index, entry in enumerate(report["questions"]):
+        entry["capability"] = "MR" if routes[index] == "multi-session" else "TR"
+        entry["route"] = routes[index]
+        if chars[index] is not None:
+            entry["deliveredPromptChars"] = chars[index]
+    return report
+
+
+def test_the_pair_carries_a_route_split_with_the_room_each_route_spent(tmp_path):
+    """A total over six routes cannot say which budget paid, so the pair carries the split.
+
+    The treatment is the shape `S15` measured -- one route cut, the other left alone -- and the control
+    is the registered arm. The assertion is that the split reports *delivered characters* and not only a
+    delta: two routes can both fall by one question while only one of them lost any room, and that
+    difference is the reading.
+    """
+    routes = ["multi-session", "temporal", "flat", "flat"]
+    treatment = routed(["1111"] * 4, routes, [48460, 24000, 24000, 24000])
+    control = routed(["1111"] * 4, routes, [48460, 48000, 24000, 24000])
+    done = run(
+        tmp_path,
+        treatment,
+        "--json",
+        "--run",
+        "1",
+        "--control-artifact",
+        str(write(tmp_path, control)),
+        row="S15",
+    )
+    assert done.returncode == 0, done.stderr
+    split = json.loads(done.stdout)["paired"]["byRoute"]
+    assert set(split) == {"flat", "multi-session", "temporal"}
+    assert split["multi-session"]["deliveredCharsPerQuestion"] == {"treatment": 48460.0, "control": 48460.0}
+    assert split["temporal"]["deliveredCharsPerQuestion"] == {"treatment": 24000.0, "control": 48000.0}
+    assert split["flat"]["questions"] == 2
+
+
+def test_a_route_whose_artifact_lacks_the_character_field_reports_no_mean(tmp_path):
+    """Absent is not zero: a route with no `deliveredPromptChars` must not report a mean of nothing.
+
+    A substituted zero would print `chars 0 against 0` beside a real accuracy reading, and a reader
+    would conclude the route delivered no evidence -- which is the one thing a 91%-accuracy run cannot
+    have done.
+    """
+    routes = ["multi-session", "temporal"]
+    treatment = routed(["11"] * 4, routes, [48460, None])
+    control = routed(["11"] * 4, routes, [48460, None])
+    done = run(
+        tmp_path,
+        treatment,
+        "--json",
+        "--run",
+        "1",
+        "--control-artifact",
+        str(write(tmp_path, control)),
+        row="S15",
+    )
+    assert done.returncode == 0, done.stderr
+    split = json.loads(done.stdout)["paired"]["byRoute"]
+    assert "deliveredCharsPerQuestion" not in split["temporal"]
+    assert split["temporal"]["questions"] == 1
+
+
+def write(tmp_path, report):
+    path = pathlib.Path(tmp_path) / f"control-{abs(hash(json.dumps(report, sort_keys=True)))}.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    return path

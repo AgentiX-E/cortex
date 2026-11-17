@@ -805,7 +805,7 @@ and no worked example of which combination runs. `assembleMemory` is that exampl
 | profile | what it adds over the one before | what it is for | measured (LongMemEval-S, 500 × 4) |
 | --- | --- | --- | --- |
 | `minimal` | nothing: an identity gate and no index | the smallest conformant memory. Answers from the turns it is given, in the order it is given them | **39.55%** — the `relevanceSignal=none` arm |
-| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking a knowledge-update or count-bearing question needs | **91.40%** with a vector channel; **85.75%** lexical-only (`S14`, paired −28 questions, p = 2.5e-5). Paired against the harness's own index at −1.5 questions (p = 1.0) |
+| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking a knowledge-update or count-bearing question needs | **91.40%** with a vector channel at the registered room; **89.40%** when every route's room is cut to 24,000 characters (`S15`); **85.75%** lexical-only (`S14`, paired −28 questions, p = 2.5e-5). Paired against the harness's own index at −1.5 questions (p = 1.0) |
 | `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it | the same ranking; the boundary is not an accuracy mechanism |
 
 `reader` is the default. It was `minimal` until the ranking was priced, and the two numbers in the last column
@@ -821,6 +821,29 @@ The vector channel is the one input the default cannot supply, and it now has a 
 description: `reader` with `embed` scores **91.40%**, `reader` without it **85.75%** (`S14`). Both are real
 deployments and the manual says which is which — a caller with no provider gets lexical ranking and no model
 calls, and is told the 5.6 points before writing the integration rather than after.
+
+**The room is part of the configuration, so every accuracy here carries its bill.** `maxPromptCharsByRoute`
+is how many characters of evidence a route may spend, and it is the single largest term in what a question
+costs. Three points have been measured or registered on the same 500 questions, same reader, same judge:
+
+| room per route | accuracy | reader prompt tokens per question | taken from |
+| --- | --- | --- | --- |
+| `multi-session` 48,460, `temporal` 48,000, the other four 24,000 | **91.40%** | 9,074 | the registered arm (`S9`) |
+| 24,000 on all six | **89.40%** | 5,861 | `S15`, paired −13 questions, exact McNemar p = 0.0024 |
+| `multi-session` 48,460, the other five 24,000 | *being measured* | *≈7,500 by arithmetic on measured characters* | `S16`, registered, not yet read |
+
+Two of the six rooms were cut in the middle row and **one of them paid**: `multi-session` lost 9 of the 13
+questions (p = 0.012) while `temporal` lost 2 (p = 0.63), and the four routes nobody touched lost 2 between
+them across 252 questions. That is not noise with a story attached — it is what an aggregation question is.
+`How many festivals did I attend?` is a **count over turns**, so halving the packet truncates the count: the
+artifacts answer 3 against a gold of four. A temporal question needs its anchor and its neighbours and
+survives the cut. If you are trading accuracy for money, cut `temporal` before you cut `multi-session`, and
+read the per-route table in `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` §7 before you cut either.
+
+Do not read the third row as a recommendation yet. It is registered with two criteria — accuracy within five
+questions of the registered arm *and* a bill at or below 85% of it — and a prediction computed from two
+measured arms is still a prediction about a third. The manual prints it as *being measured* until it is read,
+which is the same rule every other number on this page follows.
 
 <!-- contract-table: AssembleOptions -->
 | option | type | default | effect |

@@ -102,27 +102,54 @@ REPETITIONS = 4
 class Row:
     """One row of the acceptance matrix, described by the arm it is about.
 
-    `signal` and `index_embedding` are the values the artifact's `memoryArmConfig` must hold. They are
-    two fields rather than a predicate because a predicate is a place for a later reader to disagree
-    with the matrix, and these are the two names the matrix uses.
+    `requires` is the arm, as dotted paths into `memoryArmConfig` paired with the value each must hold.
+    It began as two named fields -- `signal` and `index_embedding` -- with a docstring arguing that a
+    predicate would be "a place for a later reader to disagree with the matrix". The argument was right
+    and the shape was wrong: `S15` is the same `relevanceSignal` and the same `indexEmbedding` as `S9`
+    and differs only in the room table, so a row that can name two fields would have accepted `S9`'s
+    artifact and published 91.40% under a cell that read 89.40%. A mapping of paths is still data and
+    not a predicate -- there is nothing to evaluate, only equality to check -- and it is the smallest
+    shape that can say which field makes a row's arm *that* arm.
     """
 
     id: str
-    signal: str
-    index_embedding: str
     floor: float
+    requires: tuple[tuple[str, object], ...]
     comment: str
     reading: str
 
 
+# The six routes `TurnCapRoute` names. Written out rather than imported because this file reads Python
+# and the route table is a TypeScript mapping; the check that keeps the two equal is
+# `test_the_room_row_names_every_route_the_product_has`, which reads the TS source and compares the sets.
+ROUTES = ('abstention', 'assistant', 'flat', 'knowledge-update', 'multi-session', 'temporal')
+
+# One sentence per field a row can be pinned to, so that a refusal states what the two values *mean*
+# and not only that they differ. The table is per field rather than per row because the meaning of
+# `injected` does not depend on which row is reading it, and a per-row copy would be four copies of one
+# fact -- the shape that let `S14`'s message name a semantic difference the generic loop could not.
+FIELD_NOTES = {
+    'relevanceSignal': (
+        '`none` is a bare install where nothing ranks, `self-index` is the product ranking its own '
+        'index, and `retrieval-anchored` is the harness ranking before the product sees the corpus'
+    ),
+    'indexEmbedding': (
+        '`injected` is the deployment every published figure came from; `none` is a caller with no '
+        'embedding provider'
+    ),
+    'maxPromptCharsByRoute': (
+        'the room table is how many characters each route may spend, so two rows that differ only here '
+        'are two different budgets priced against the same reader'
+    ),
+}
+
 ROWS: dict[str, Row] = {
     'S11': Row(
         id='S11',
-        signal='none',
-        index_embedding='injected',
         # 0.88 is S1's threshold minus the 3.0 points `S9` registered as the most ranking this project
         # may give up. `S11` inherits that tolerance rather than inventing a second one.
         floor=0.88,
+        requires=(('relevanceSignal', 'none'), ('indexEmbedding', 'injected')),
         comment=(
             'S11. The construction a caller gets without choosing one: `relevanceSignal: none`, so the '
             'budget spends the arrival-order prefix and nothing ranks. One dispatch, four repetitions, '
@@ -133,12 +160,11 @@ ROWS: dict[str, Row] = {
     ),
     'S14': Row(
         id='S14',
-        signal='self-index',
-        index_embedding='none',
         # The same 0.88 and the same derivation as `S11`, deliberately not a second tolerance: the
         # question is identical in shape -- how much accuracy does one absent mechanism cost -- so two
         # thresholds would let the project answer it two ways.
         floor=0.88,
+        requires=(('relevanceSignal', 'self-index'), ('indexEmbedding', 'none')),
         comment=(
             'S14. The retrieval index with its vector channel withheld: `relevanceSignal: self-index` so '
             'the index exists and is used, `indexEmbedding: none` so it is lexical only. This is the '
@@ -148,7 +174,31 @@ ROWS: dict[str, Row] = {
         ),
         reading='the arm where the index has no vector channel',
     ),
+    'S15': Row(
+        id='S15',
+        # S1's own threshold, not S1's minus a tolerance: the question is whether *the room* costs
+        # anything, and the arm that answers it is the registered one at a smaller room. Allowing three
+        # points of slack here would answer "does the room matter" with "not much", which is a different
+        # question and a weaker one than the row asks.
+        floor=0.91,
+        # The room is the whole row. Every route pinned rather than a floor, because a floor would let
+        # `S9`'s artifact (two routes at 48,000) satisfy a row whose subject is that they are not.
+        requires=(
+            ('relevanceSignal', 'self-index'),
+            ('indexEmbedding', 'injected'),
+            ('maxPromptCharsByRoute', {route: 24000 for route in ROUTES}),
+        ),
+        comment=(
+            'S15. The registered arm with every route\'s room cut to 24,000 characters -- the cell the '
+            'manual\'s cheapest tier is priced at. Same reader, judge, prompt and relevance signal as '
+            '`S9`; the only fields that moved are two entries of the room table. Paired against `S9` '
+            'question by question, and read per route as well as overall, because a total over six '
+            'routes cannot say which one paid.'
+        ),
+        reading='the arm where every route has a 24,000 character room',
+    ),
 }
+
 
 
 def row_of(name: str) -> Row:
@@ -270,6 +320,7 @@ def paired(treatment: dict, control: dict, control_run: str | None = None) -> di
     total = len(mine)
     return {
         'byCapability': capability_deltas(treatment, control),
+        'byRoute': route_deltas(treatment, control),
         'control': {
             'run': control_run if control_run is not None else control.get('run'),
             'accuracy': accuracy(control)['accuracy'],
@@ -293,6 +344,26 @@ def paired(treatment: dict, control: dict, control_run: str | None = None) -> di
 
 
 def capability_deltas(treatment: dict, control: dict) -> dict[str, dict]:
+    """Where the difference lands per capability -- what the mechanism *does*."""
+    return grouped_deltas(treatment, control, 'capability')
+
+
+def route_deltas(treatment: dict, control: dict) -> dict[str, dict]:
+    """Where the difference lands per prompt route, and how much room each one spent.
+
+    The capability split says which population paid; the route split says *which budget* paid, and the
+    two are not the same question. `MR` and `TR` are both aggregations and both lost turns at 24,000,
+    but they are assembled by different routes (`multi-session` and `temporal`), and a run that halves
+    both rooms and loses on one of them is a statement about routes rather than about aggregations.
+
+    The delivered characters are the room's own witness: a route whose accuracy did not move and whose
+    delivered characters did not move is a route the run never touched, so reading its delta as noise is
+    correct rather than generous.
+    """
+    return grouped_deltas(treatment, control, 'route')
+
+
+def grouped_deltas(treatment: dict, control: dict, field: str) -> dict[str, dict]:
     """Where the difference lands, capability by capability.
 
     A single delta says a mechanism is worth N points; it does not say what the mechanism *does*. The
@@ -312,24 +383,42 @@ def capability_deltas(treatment: dict, control: dict) -> dict[str, dict]:
     """
     mine = majority(treatment)
     theirs = majority(control)
-    totals: dict[str, dict[str, int]] = {}
+    totals: dict[str, dict[str, float]] = {}
     for entry in treatment.get('questions') or []:
-        name = str(entry.get('capability'))
-        block = totals.setdefault(name, {'total': 0, 'correctTreatment': 0, 'correctControl': 0})
-        block['total'] += 1
+        name = str(entry.get(field))
+        totals.setdefault(
+            name,
+            {
+                'total': 0,
+                'correctTreatment': 0,
+                'correctControl': 0,
+                'charsTreatment': 0,
+                'charsControl': 0,
+                'charsCounted': 0,
+            },
+        )['total'] += 1
     for entry in treatment.get('questions') or []:
-        name = str(entry.get('capability'))
+        name = str(entry.get(field))
         totals[name]['correctTreatment'] += 1 if mine.get(str(entry['questionId'])) else 0
+        # Counted only when the control also carries the field, checked below: a mean over the questions
+        # that happen to have it is a mean over a different population, and a mean over substituted zeros
+        # would read as a route that delivered nothing -- `absent != zero`, in the one field the room is
+        # read from.
+        if 'deliveredPromptChars' in entry:
+            totals[name]['charsTreatment'] += entry['deliveredPromptChars']
     for entry in control.get('questions') or []:
-        name = str(entry.get('capability'))
+        name = str(entry.get(field))
         if name not in totals:
             # A capability the treatment's roster does not carry cannot be compared, and inventing a
             # denominator for it would print a delta over a population that is not the same population.
             continue
         totals[name]['correctControl'] += 1 if theirs.get(str(entry['questionId'])) else 0
+        if 'deliveredPromptChars' in entry:
+            totals[name]['charsControl'] += entry['deliveredPromptChars']
+            totals[name]['charsCounted'] += 1
     out: dict[str, dict] = {}
     for name, block in sorted(totals.items()):
-        total = block['total']
+        total = int(block['total'])
         arm = block['correctTreatment'] / total if total else 0.0
         other = block['correctControl'] / total if total else 0.0
         out[name] = {
@@ -338,6 +427,11 @@ def capability_deltas(treatment: dict, control: dict) -> dict[str, dict]:
             'control': other,
             'deltaPoints': (arm - other) * 100,
         }
+        if total and block['charsCounted'] == total:
+            out[name]['deliveredCharsPerQuestion'] = {
+                'treatment': block['charsTreatment'] / total,
+                'control': block['charsControl'] / total,
+            }
     return out
 
 
@@ -382,6 +476,10 @@ def ledger(
             'reader': (arm.get('reader') or {}).get('model'),
             'judge': (arm.get('judge') or {}).get('model'),
             'maxTurnChars': arm.get('maxTurnChars'),
+            # The room table, because `S15` is distinguished from `S9` by nothing else. A file that
+            # recorded only the signal and the embedding would describe both rows equally well, and the
+            # attestation that catches a re-pointed file has to be able to name the field that moved.
+            'maxPromptCharsByRoute': arm.get('maxPromptCharsByRoute'),
             'turnCutMarker': arm.get('turnCutMarker'),
             'promptContract': arm.get('promptContract'),
         },
@@ -406,13 +504,14 @@ def ledger(
 def render(result: dict) -> str:
     overall = result['overall']
     arm = result['arm']
+    floor = row_of(str(result['row'])).floor
     lines = [
         f"{result['row']}  run {result['run']}",
         f"  arm: relevanceSignal={arm['relevanceSignal']}  indexEmbedding={arm['indexEmbedding']}  "
         f"reader={arm['reader']}  judge={arm['judge']}",
         f"  population: {overall['questions']} questions x {overall['runs']} repetitions",
         '  per run: ' + ', '.join(f'{value * 100:.2f}%' for value in overall['accuracyPerRun']),
-        f"  overall: {overall['accuracy'] * 100:.2f}%  ({result['row']} floor 88.0%)",
+        f"  overall: {overall['accuracy'] * 100:.2f}%  ({result['row']} floor {floor * 100:.1f}%)",
     ]
     pair = result.get('paired')
     if pair is not None:
@@ -433,9 +532,42 @@ def render(result: dict) -> str:
                 f"{block['treatment'] * 100:6.2f}% against {block['control'] * 100:6.2f}%  "
                 f"{block['deltaPoints']:+6.2f} points"
             )
+        for name, block in sorted(pair.get('byRoute', {}).items()):
+            chars = block.get('deliveredCharsPerQuestion')
+            spent = (
+                f"  chars {chars['treatment']:>7.0f} against {chars['control']:>7.0f}"
+                if chars is not None
+                else ''
+            )
+            lines.append(
+                f"    {name:<17} {block['questions']:>4} questions  "
+                f"{block['treatment'] * 100:6.2f}% against {block['control'] * 100:6.2f}%  "
+                f"{block['deltaPoints']:+6.2f} points{spent}"
+            )
     lines.append('  declared: ' + (', '.join(result['declaredDepartures']) or 'none'))
-    lines.append(f"  verdict: {'pass' if overall['accuracy'] >= 0.88 else 'miss'}")
+    # The floor comes from the row, not from a literal. It was a literal -- `88.0%` -- for as long as
+    # both rows happened to share that threshold, so the printed sentence and the verdict agreed with
+    # `S11` and `S14` and with nothing else. `S15`'s floor is 0.91, and a row that prints another row's
+    # threshold beside its own number is the same defect as a baseline that names a run it did not read.
+    lines.append(f"  verdict: {'pass' if overall['accuracy'] >= floor else 'miss'}")
     return '\n'.join(lines)
+
+
+def _at(arm: dict, path: str) -> tuple[bool, object]:
+    """The value at a dotted path, and whether the path exists at all.
+
+    The flag is not pedantry. `indexEmbedding` is read as `injected` when absent, because an artifact
+    written before the field existed *is* the injected arm -- and `maxPromptCharsByRoute` must not read
+    as anything when absent, because an artifact with no room table ran whatever scalar it recorded and
+    is not a room row's arm. A single sentinel cannot express both, so absence is reported and each
+    row's requirement decides what it means.
+    """
+    node: object = arm
+    for part in path.split('.'):
+        if not isinstance(node, dict) or part not in node:
+            return False, None
+        node = node[part]
+    return True, node
 
 
 def arm_refusal(report: dict, row: Row) -> str | None:
@@ -444,24 +576,34 @@ def arm_refusal(report: dict, row: Row) -> str | None:
     The message names the row's own content rather than the field: a reader who gets
     *"`relevanceSignal` is `self-index`"* has to look up why that matters, and a reader who gets
     *"`S11` is the arm where nothing ranks"* does not.
+
+    Every path in `row.requires` is checked, and the first mismatch is refused. `indexEmbedding` is the
+    one path with an absence rule -- an artifact that predates the field was produced by the arm that
+    embeds, which is what `toMemoryArmConfig` writes -- and it is written here rather than in the table
+    because it is a fact about that field, not about any row.
     """
     arm = report.get('memoryArmConfig') or {}
-    if arm.get('relevanceSignal') != row.signal:
-        return (
-            f"refusing: the artifact's `relevanceSignal` reads {arm.get('relevanceSignal')!r} and "
-            f'{row.id} is {row.reading} (`relevanceSignal: {row.signal}`). Writing this file would '
-            'publish a real measurement of the wrong product under this row'
-        )
-    # Absence reads as `injected`, because that is what every published number was produced under and
-    # what `toMemoryArmConfig` writes when no variable is set. An artifact that predates the field is
-    # therefore the injected arm, which `S14` refuses -- correctly: it cannot be the lexical one.
-    embedding = arm.get('indexEmbedding', 'injected')
-    if embedding != row.index_embedding:
-        return (
-            f"refusing: the artifact's `indexEmbedding` reads {embedding!r} and {row.id} requires "
-            f'{row.index_embedding!r}. The two rows differ only in this field: `injected` is the '
-            'deployment every published figure came from, `none` is a caller with no embedding provider'
-        )
+    for path, expected in row.requires:
+        present, actual = _at(arm, path)
+        if path == 'indexEmbedding' and not present:
+            actual, present = 'injected', True
+        if not present:
+            # Absence and an explicit `null` are two different facts and get two different sentences: the
+            # first says the run cannot be shown to have held the arm, the second says the run recorded an
+            # arm that is not one. Collapsing them into `reads None` is how an unrecorded arm passed for
+            # a recorded one in this project once already.
+            return (
+                f'refusing: the artifact records no `{path}` and {row.id} is {row.reading}. An absent '
+                'field is not a value: the run cannot be shown to have held the row\'s arm, and writing '
+                f'this file would publish a number under an arm nothing recorded. {FIELD_NOTES.get(path, "")}'
+            ).rstrip()
+        if actual != expected:
+            return (
+                f"refusing: the artifact's `{path}` reads {actual!r} and {row.id} requires "
+                f'{expected!r}. {row.id} is {row.reading}; writing this file would publish a real '
+                'measurement of the wrong product under this row, and nothing in the number would look '
+                f'wrong. {FIELD_NOTES.get(path, "")}'
+            ).rstrip()
     # A run whose embedder failed mid-way is neither arm. `SearchIndex.onEmbedFailure: 'lexical'` scores
     # such a retrieval the way this product scores when there is no embedder at all -- which is what
     # keeps a long benchmark alive (run `43866639154` died at 86% of its third repetition with 432 graded

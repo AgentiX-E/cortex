@@ -150,3 +150,56 @@ product's registered configuration stays at 48,000 characters until the per-rout
 
 The honest one-line state: **cost is solved and accuracy is not**, and the 252/248 split says where
 the boundary is.
+
+## 7. The per-route arm read: two rooms were cut, one paid
+
+§5 predicted the next arm at 91.00% for 8,567 tokens, and §13.302 registered it. This section is that
+arm's reading, taken at a smaller room than the registration: **every** route at 24,000 (`S15`, run
+`43967433821`, 500 × 4, the same reader, judge, prompt and `self-index` as the registered arm).
+
+| route | n | 48,460 / 48,000 room | 24,000 room | Δ questions | discordant | exact McNemar p | delivered characters per question |
+| --- | --: | --: | --: | --: | --: | --: | --: |
+| `multi-session` | 121 | 100 | 91 | **−9** | 10 / 1 | **0.012** | 48,318 → 23,859 |
+| `temporal` | 127 | 120 | 118 | −2 | 3 / 1 | 0.63 | 47,852 → 23,874 |
+| `flat` | 94 | 84 | 83 | −1 | 1 / 0 | 1.0 | 22,611 → 22,613 |
+| `knowledge-update` | 72 | 67 | 66 | −1 | 1 / 0 | 1.0 | 22,680 → 22,667 |
+| `assistant` | 56 | 54 | 54 | 0 | 0 / 0 | 1.0 | 22,639 → 22,639 |
+| `abstention` | 30 | 30 | 30 | 0 | 0 / 0 | 1.0 | 23,053 → 23,053 |
+| **all** | 500 | 455 | 442 | **−13** | 15 / 2 | **0.0024** | 35,283 → 23,272 |
+
+Overall accuracy 89.40% against 91.40%, i.e. −2.00 points, and the bill 5,861 tokens per question
+against 9,074.
+
+**The total is not the finding.** Nine of the thirteen questions come from one route, and the other
+four come from three routes whose rooms never moved (the `flat` and `knowledge-update` cells are the
+two dispatches disagreeing about one question each, at 22,613 against 22,611 delivered characters —
+i.e. an untouched route, which is what a noise measurement looks like). Four routes were left alone
+and moved by −2 across 252 questions; two routes were halved, and one of them moved by −9.
+
+Two things follow, and the second is the one that changes the plan.
+
+1. **The mechanism from §3 is confirmed at a second arm.** A count over turns needs the turns.
+   `multi-session` is where the counts live: the artifacts answer 3 against a gold of four, 6 against
+   three, 5 against four — the same truncation signature §3 recorded, at a different arm, with the
+   same sign and a p under 0.05. A temporal question needs its anchor and its neighbours; it lost 2.
+
+2. **The room is a budget per route, not a wall.** Cutting `temporal` to 24,000 is inside noise
+   (p = 0.63) while cutting `multi-session` is not (p = 0.012), so the frontier is not "how much room"
+   but "which route the room goes to". The middle cell this licenses — `multi-session` at 48,460, the
+   other five at 24,000 — is registered as `S16` with two criteria at once (accuracy within five
+   questions of the registered arm, and a bill at or below 85% of it) and a prediction of 453–455 at
+   about 7,500 tokens per question. It is a prediction until it is read, and the registration says so.
+
+### 7.1 One methodological note, because the same artifact reads two ways
+
+The paired delta depends on which verdict per question is paired. Majority over four repetitions gives
+−13 questions (p = 0.0024); the first repetition alone gives −8 (p = 0.115). Both are computed from
+this artifact and both are honest; they differ because a question answered in two of four passes is a
+loss under the majority rule and a coin flip under a single-pass rule.
+
+The registered producer pairs majority verdicts, for the reason its own docstring gives — a single
+pairing of first repetitions reports repetition noise as a treatment effect — and this is the first
+time the two conventions disagree by more than a question or two in the *conservative* direction. It
+is recorded rather than resolved: the row's conclusion does not depend on it (the loss is in
+`multi-session` under both conventions, at p = 0.039 and p = 0.012), but a reader comparing this
+document against `room-24k.json` will find −13 there and −8 here if this paragraph does not exist.

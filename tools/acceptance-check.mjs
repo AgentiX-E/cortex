@@ -153,6 +153,7 @@ const resolve = {
     const parsed = artifactAt(relative);
     return parsed === undefined ? undefined : pluckRaw(parsed, key);
   },
+  artifactExists: (relative) => artifactAt(relative) !== undefined,
   arm: (name) => scoreArm(controlledSet().cases, name).accuracy,
   gap: () => {
     const { cases } = controlledSet();
@@ -180,11 +181,15 @@ function registryDefects(skipped) {
   try {
     baseline = JSON.parse(readFileSync(path.join(REPO, 'tools/arm-config-baseline.json'), 'utf8'));
   } catch (error) {
-    return [`tools/arm-config-baseline.json cannot be read, so no configuration can be attested: ${error.message}`];
+    return [
+      `tools/arm-config-baseline.json cannot be read, so no configuration can be attested: ${error.message}`,
+    ];
   }
   const registered = baseline.memoryArmConfigFingerprint;
   if (typeof registered !== 'string' || registered === '') {
-    return ['tools/arm-config-baseline.json carries no `memoryArmConfigFingerprint`, so nothing can be compared'];
+    return [
+      'tools/arm-config-baseline.json carries no `memoryArmConfigFingerprint`, so nothing can be compared',
+    ];
   }
   const defects = [];
   for (const { path: relative, key } of CONFIGURATION_ATTESTED) {
@@ -292,7 +297,9 @@ if (asJson) {
   }
 
   if (registry.length > 0) {
-    process.stdout.write(`\n${registry.length} evidence file(s) describe a configuration that is not registered\n`);
+    process.stdout.write(
+      `\n${registry.length} evidence file(s) describe a configuration that is not registered\n`,
+    );
     for (const line of registry) process.stdout.write(`  ${line}\n`);
   }
   if (registrySkipped.length > 0) {
@@ -347,11 +354,7 @@ if (asJson) {
     );
     for (const { criterion, evaluation } of missing) {
       const tag =
-        evaluation.status === 'stale'
-          ? 'stale'
-          : evaluation.status === 'void'
-            ? 'void'
-            : 'unrun';
+        evaluation.status === 'stale' ? 'stale' : evaluation.status === 'void' ? 'void' : 'unrun';
       process.stdout.write(
         `  ${pad(criterion.id, 5)}${pad(tag, 6)}${describe(criterion.source)}: ${evaluation.note}\n`,
       );

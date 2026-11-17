@@ -1100,6 +1100,144 @@ export const CRITERIA: readonly Criterion[] = [
       'one corpus has bought nothing with a tie.',
   },
 
+  // ---- the room, which is a budget per route rather than one number (§29) ---------------------------
+  //
+  // The manual has priced its cheapest tier at "about 6,000 tokens per question" since `C1` was written,
+  // and until this row no reading had been taken at the room that sentence implies. Every published figure
+  // came from the six-route map in section 13.336, which spends 48,460 on `multi-session` and 48,000 on
+  // `temporal` -- 9,201 tokens per question, 1.53x the ceiling in the cost row.
+  //
+  // So the cell is not "is the product cheap": it is "what does the product score at the price it
+  // advertises". The answer is 89.40%, and the route split says the whole fall is one route's.
+  {
+    id: 'S15',
+    capability: 'the prompt room: the registered arm with every route cut to 24,000 characters',
+    metric:
+      'overall LongMemEval-S accuracy with `maxPromptCharsByRoute` at 24,000 on all six routes, read ' +
+      'against the registered arm question by question',
+    dataset:
+      'LongMemEval-S, 500 questions, one dispatch, four repetitions, `relevanceSignal: self-index` with ' +
+      'the room table cut on `multi-session` (48,460 -> 24,000) and `temporal` (48,000 -> 24,000) and ' +
+      'already at 24,000 on the other four; the same reader, judge and prompt as `S9`, paired against ' +
+      'run `43778036604` on majority verdicts over the four repetitions',
+    comparator: 'at-least',
+    // S1's own threshold, not S1's minus a tolerance. The row asks whether *the room* costs anything,
+    // and an arm that is allowed three points of slack answers a different question -- "does the room
+    // matter much" -- which is weaker and is not the one the manual's price claim depends on.
+    threshold: 0.91,
+    unit: 'ratio',
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/room-24k.json',
+      key: 'overall.accuracy',
+      // `row` keeps a re-pointed file from passing under this criterion; the control run pins *which*
+      // registered arm the pair was taken against, because the delta below is the reading that names
+      // the mechanism and a different control would change it without changing this file's accuracy.
+      attest: [
+        { key: 'row', equals: 'S15' },
+        { key: 'paired.control.run', equals: '43778036604' },
+      ],
+    },
+    competitors: [
+      {
+        name: 'Maximem Synap',
+        value: 0.956,
+        grade: 'C',
+        recipe:
+          'vendor page 2026-10-28: 95.6% (478 of 500) at about 7.4K memory tokens per question with a ' +
+          'Gemini 3.8 Flash reader and public per-question run data. It is the row this one is placed ' +
+          'against because it is the only published point that quotes both numbers on the same suite at ' +
+          'a cost between this cell and the registered arm: at 7.4K it scores 6.2 points above this ' +
+          'cell, which is the gap a room buys and the gap a mechanism has to close without one',
+      },
+    ],
+    onMiss:
+      'The reading is 89.40% against a floor of 91.0%, so the priced tier costs 2.0 points and the ' +
+      'sentence the manual may print is "89.4% at about 5,900 tokens per question", never "91% cheap". ' +
+      'What the miss does **not** say is that the room is uniformly expensive, and the route split is ' +
+      'the part worth carrying forward: `multi-session` lost 9 of the 13 questions (b 10 / c 1, exact ' +
+      'p = 0.012) while `temporal` lost 2 (b 3 / c 1, p = 0.63) with the same halving applied to both, ' +
+      'and the four routes nobody touched lost 2 between them on 252 questions. Two of the six rooms ' +
+      'were cut, one of them paid, and the total cannot say which -- which is why the total is not the ' +
+      'finding. The mechanism reading is the one `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` section 3 ' +
+      'predicted and this row confirms at a different arm: a count over turns needs the turns, so ' +
+      'halving a multi-session packet truncates the count, while a temporal question needs its anchor ' +
+      'and its neighbours and survives the cut. The consequence for the next increment is specific: the ' +
+      'room is a per-route budget and the route table is where the next two points live, which is what ' +
+      '`S16` registers. Above the threshold the repair would be unnecessary and the priced tier would ' +
+      'be the shipping configuration; below it, the tier has to be documented at its measured accuracy ' +
+      'and the registered arm keeps the width it pays for.',
+  },
+
+  // ---- the middle of the room curve, which two measured endpoints made predictable (§29.3) ----------
+  //
+  // `S15` priced the cut and put all of it on one route. That makes the next cell arithmetic rather
+  // than a hypothesis: put `multi-session` back to 48,460, leave `temporal` at 24,000, leave the four
+  // single-turn routes where they already were. The prediction is 453-455 questions at about 7,500
+  // tokens per question, against 9,074 for the registered arm at the same accuracy -- i.e. the same
+  // score for 17% fewer tokens, which would be the first point on this campaign's cost/accuracy curve
+  // that dominates the registered configuration instead of trading against it.
+  //
+  // Two conditions, and the row is a conjunction because the experiment is one: a cut that is free and
+  // a cut that is cheaper are different claims, and either alone is a trade rather than a finding. The
+  // numeric source is the accuracy half; the bill is read from `cost.json` on adoption, because the
+  // matrix has exactly one cost row and a second threshold for one bill is how `S11` and `S14` came to
+  // share 0.88.
+  {
+    id: 'S16',
+    capability: 'the prompt room: `multi-session` at 48,460 with the other five routes at 24,000',
+    metric:
+      'question-by-question net correct answers against `S9`, **and** a bill at or below 85% of the ' +
+      'registered arm’s 9,201 prompt tokens per question',
+    dataset:
+      'LongMemEval-S, 500 questions, one dispatch, four repetitions, `relevanceSignal: self-index` with ' +
+      '`maxPromptCharsByRoute` at 48,460 on `multi-session` and 24,000 on the other five; the same ' +
+      'reader, judge and prompt as `S9`, paired against run `43778036604`',
+    comparator: 'at-least',
+    // The same five-question convention `S10` uses, which is also this arm's measured noise scaled up:
+    // two dispatches of one configuration differed by 1 question on 252 untouched questions, and 500
+    // questions is twice that population. Not a second tolerance -- the same one, on a larger
+    // population, stated as the count it is.
+    threshold: -5,
+    unit: 'count',
+    kind: 'aim',
+    source: {
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/route-room.json',
+      key: 'paired.deltaQuestions',
+      attest: [
+        { key: 'row', equals: 'S16' },
+        { key: 'paired.control.run', equals: '43778036604' },
+      ],
+    },
+    competitors: [
+      {
+        name: 'Mem0 (managed)',
+        value: 6800,
+        grade: 'C',
+        recipe:
+          'vendor memory-benchmarks repository: 94.4% at a top-200 retrieval budget, about 6.8K tokens ' +
+          'per question with an unreported reader and judge. It is the row this one has to be read ' +
+          'beside rather than against: 6.8K is the nearest published bill to this cell’s predicted ' +
+          '7.5K, and that vendor’s accuracy is six points above this arm’s -- which locates ' +
+          'the remaining gap in *what* the room is spent on, not in how much of it there is',
+      },
+    ],
+    onMiss:
+      'Two ways to miss, and they mean opposite things. A net delta below -5 questions says the cut is ' +
+      'not free and the registered room table was already the frontier: the product keeps 9,074 tokens ' +
+      'and the manual keeps 91.40%, and the finding is that `temporal` needs its width for a reason this ' +
+      'campaign has not found yet -- which `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` must then say, because ' +
+      'its section 5 predicted the opposite. A bill above 7,821 with the delta inside tolerance says ' +
+      'the room map did not move the money, i.e. the characters were not what the tokens were made of, ' +
+      'and the cost work has to move to the budget *unit* rather than the budget *size*. Both at once ' +
+      'would mean the arithmetic in section 29.3 of the plan was wrong about the arms rather than about ' +
+      'the noise, and the two endpoints would have to be re-read before a third cell is dispatched. ' +
+      'Above both, the registered configuration moves to this room map and `cost.json` is regenerated ' +
+      'from this artifact -- adoption is what makes the row a product fact rather than a benchmark one.',
+  },
+
   // §14.143's window. Non-inferiority rather than a win, because the mechanism spends the **same**
   // characters: it can move accuracy only by printing a better sentence, and a row that promised a gain
   // would be a hypothesis with a threshold attached. The negative form is the number that matters --
@@ -1702,6 +1840,15 @@ export type Resolvers = {
    * an unverifiable attestation is not a satisfied one.
    */
   readonly artifactRaw?: (path: string, key: string) => unknown;
+  /**
+   * Whether the artifact exists at all, for the one case `artifactRaw` cannot express.
+   *
+   * An absent file and a file that says it describes another system both read as `undefined` through
+   * `artifactRaw`, and the two need different words: the first is a row nobody has dispatched, the second
+   * is a number about something else. Without this probe a row registered before its run reads `stale` --
+   * the alarm for a re-pointed evidence file -- which is how `S16` read for the length of one round.
+   */
+  readonly artifactExists?: (path: string) => boolean;
   readonly arm: (arm: 'no-memory' | 'flat' | 'annotated' | 'gated') => number;
   readonly gap: () => number;
   readonly floor: () => number;
@@ -1726,6 +1873,10 @@ export function attestationOf(criterion: Criterion, resolve: Resolvers): string 
   if (read === undefined) {
     return `no raw reader is configured, so ${describe(source)} cannot be checked against its attestation`;
   }
+  // A file that is not there yet has nothing to attest. Reporting `stale` for it would say "this number is
+  // about a different system", which is a claim about a artifact that does not exist; the row is `unrun`,
+  // and `unrun` is what `--strict-unrun` exists to make loud before a release rather than after.
+  if (resolve.artifactExists !== undefined && !resolve.artifactExists(source.path)) return null;
   for (const clause of clauses) {
     const actual = read(source.path, clause.key);
     if (actual !== clause.equals) {

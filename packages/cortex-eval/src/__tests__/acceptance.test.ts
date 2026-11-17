@@ -611,11 +611,126 @@ describe('attestationOf: a reading has to say it is about this system', () => {
     expect(stale.note).toBe('a reason');
   });
 
+  it('reads an artifact that does not exist yet as unrun rather than as stale', () => {
+    // A row is registered before its dispatch, so its evidence file is absent for a round. Without this
+    // probe the attestation compared `undefined` against the expected `row` and returned a stale note,
+    // and `S16` printed `STALE` -- the alarm that means "this file describes a different system" -- for
+    // a file that did not exist. The two need different words: stale is a repair to the evidence, unrun
+    // is a dispatch, and only one of them was true.
+    const criterion = artifactCriterion([{ key: 'row', equals: 'S16' }]);
+    const resolve = {
+      artifactRaw: () => undefined,
+      artifactExists: () => false,
+    } as unknown as Resolvers;
+    expect(attestationOf(criterion, resolve)).toBeNull();
+    // And the value being absent still makes the row `unrun` on its own.
+    expect(verdictOf(criterion, null, null).status).toBe('unrun');
+  });
+
+  it('still calls a file that exists and names another system stale', () => {
+    // The probe must not become a way to launder a re-pointed file: the same absent `row` value, on a
+    // file that is there, is stale.
+    const criterion = artifactCriterion([{ key: 'row', equals: 'S16' }]);
+    const resolve = {
+      artifactRaw: () => 'S15',
+      artifactExists: () => true,
+    } as unknown as Resolvers;
+    expect(attestationOf(criterion, resolve)).toContain('S15');
+  });
+
   it('reports stale even when the value is absent, because the two are different repairs', () => {
     const stale = verdictOf(criterionOf(), null, 'a reason');
     expect(stale.status).toBe('stale');
     const missing = verdictOf(criterionOf(), null);
     expect(missing.status).toBe('unrun');
+  });
+});
+
+/**
+ * `S15` and `S16`: the prompt room, which is a budget per route rather than one number.
+ *
+ * Two rows for one subject, and the reason is that they answer two different questions on the same
+ * axis. `S15` prices the room the manual's cheapest tier implies and reads 89.40% against a floor of
+ * 91.0%, so the tier costs two points. `S16` is the middle of the curve the two endpoints made
+ * predictable: `multi-session` back at 48,460, the other five routes at 24,000.
+ *
+ * What has to be right before `S16`'s dispatch is what has to be right before every dispatch: that the
+ * row names the arm it measures, that its threshold is a figure this repository already uses rather
+ * than a new one, and that a miss has a stated consequence in the direction it would actually fall.
+ */
+describe('S15 and S16: the room is priced at the tier that advertises it, and the middle is arithmetic', () => {
+  function row(id: string): Criterion {
+    const found = CRITERIA.filter((criterion) => criterion.id === id);
+    expect(found).toHaveLength(1);
+    return found[0]!;
+  }
+
+  it("registers the room cell at S1's own threshold, not at S1 minus a tolerance", () => {
+    // The question is whether *the room* costs anything. Three points of slack would answer "does the
+    // room matter much", which is a weaker question and not the one the manual's price claim rests on,
+    // so the threshold is the same 0.91 the end-to-end row uses -- copied deliberately and asserted
+    // here so the two cannot drift apart.
+    const s1 = row('S1');
+    const s15 = row('S15');
+    expect(s15.threshold).toBe(s1.threshold);
+    expect(s15.threshold).toBe(0.91);
+    expect(s15.comparator).toBe('at-least');
+    expect(s15.unit).toBe('ratio');
+    expect(s15.kind).toBe('aim');
+    expect(s15.source).toMatchObject({
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/room-24k.json',
+      key: 'overall.accuracy',
+    });
+  });
+
+  it('attests the room cell to its own row and to the arm it was paired against', () => {
+    // A room row is the one place where a *correct* artifact of the same signal and the same embedder
+    // describes a different system, so the attestation has to carry the row's identity and the control
+    // it was paired with; an accuracy alone cannot tell 48,460 from 24,000.
+    const s15 = row('S15');
+    const clauses = s15.source.kind === 'artifact' ? (s15.source.attest ?? []) : [];
+    expect(clauses).toContainEqual({ key: 'row', equals: 'S15' });
+    expect(clauses).toContainEqual({ key: 'paired.control.run', equals: '43778036604' });
+  });
+
+  it('gives the middle cell the five-question tolerance the window row already uses', () => {
+    // `S16`'s margin is `S10`'s, not a new number: five questions is one point on 500, and it is 2.5x
+    // this arm's measured noise (two dispatches of one configuration differed by 1 question on 252
+    // untouched questions). A tighter margin would read noise as an effect; a wider one would let a
+    // costly cut through.
+    const s10 = row('S10');
+    const s16 = row('S16');
+    expect(s16.threshold).toBe(s10.threshold);
+    expect(s16.threshold).toBe(-5);
+    expect(s16.unit).toBe('count');
+    expect(s16.source).toMatchObject({
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/route-room.json',
+      key: 'paired.deltaQuestions',
+    });
+  });
+
+  it('states both limbs of the conjunction, because either one alone is a trade', () => {
+    // The row is a conjunction and the metric says so: accuracy inside tolerance *and* a bill at or
+    // below 85% of the registered arm. Its numeric source is the accuracy half; the bill is the cost
+    // row's on adoption, because a second threshold for one bill is how `S11` and `S14` came to share
+    // one figure.
+    const s16 = row('S16');
+    expect(s16.metric).toContain('net correct answers');
+    expect(s16.metric).toContain('85%');
+    expect(s16.onMiss).toContain('A net delta below -5 questions');
+    expect(s16.onMiss).toContain('A bill above 7,821');
+  });
+
+  it('wires the two room rows to different arms, so neither can answer the other', () => {
+    // Two rows on one axis have to be distinguishable by their own text, or a reader comparing the
+    // numbers cannot say which budget produced which.
+    const s15 = row('S15');
+    const s16 = row('S16');
+    expect(s15.capability).toContain('every route cut to 24,000');
+    expect(s16.capability).toContain('48,460');
+    expect(s15.capability).not.toBe(s16.capability);
   });
 });
 
