@@ -335,3 +335,319 @@ describe('SearchIndex on a corpus that repeats itself', () => {
     expect(index.census().turns).toBe(2);
   });
 });
+
+describe('SearchIndex query plan', () => {
+  it('ranks a question as the several queries the plan names, and recalls what one phrasing cannot', async () => {
+    // The mechanism these four tests exist for: an abstract question and the wording its evidence uses are
+    // different queries. "what did the automobile cost" shares no content term with "railway repairs were
+    // expensive" and the vector channel scores the pair at zero -- the car axis against the train axis -- so
+    // the turn is unreachable by the question and reachable by a phrase. That is the shape `cortex-eval`'s
+    // `retrieveTopKByQueries` was written for (§33.4), and until this option existed the product could not
+    // express it at all.
+    const turns = ['railway repairs were expensive', 'the automobile cost twelve thousand'];
+    const alone = new SearchIndex({ embed });
+    alone.add(turns);
+    await alone.prime();
+    // Async on purpose: an expansion is a model call, and a synchronous-only signature would have made the
+    // one caller this option exists for precompute a table keyed by question before the index was built.
+    const planned = new SearchIndex({
+      embed,
+      queryPlan: async () => ['what did the automobile cost', 'railway repairs'],
+    });
+    planned.add(turns);
+    await planned.prime();
+
+    expect((await alone.search('what did the automobile cost', 2)).map((hit) => hit.turn)).toEqual([
+      1,
+    ]);
+    expect(
+      (await planned.search('what did the automobile cost', 2)).map((hit) => hit.turn),
+    ).toEqual([1, 0]);
+    expect(planned.census().queries).toBe(2);
+    expect(alone.census().queries).toBe(1);
+  });
+
+  it('fuses by agreement, so a turn two phrasings both rank highly outranks either one’s best', async () => {
+    // Reciprocal rank fusion over the per-query lists, with k = 60: the turn both phrasings reach scores
+    // 1/62 + 1/62 = 0.03226, while each phrasing's own first choice scores 1/61 = 0.01639. The corpus is
+    // one word per axis so the arithmetic is the whole expectation rather than an approximation of it.
+    const index = new SearchIndex({
+      embed,
+      channels: ['vector'],
+      queryPlan: () => ['car', 'train'],
+    });
+    index.add(['car', 'train', 'car train']);
+    await index.prime();
+    expect((await index.search('anything', 3)).map((hit) => hit.turn)).toEqual([2, 0, 1]);
+
+    // The halves, so the assertion above is about agreement and not about the corpus having one order.
+    const car = new SearchIndex({ embed, channels: ['vector'] });
+    car.add(['car', 'train', 'car train']);
+    await car.prime();
+    const train = new SearchIndex({ embed, channels: ['vector'] });
+    train.add(['car', 'train', 'car train']);
+    await train.prime();
+    expect((await car.search('car', 3)).map((hit) => hit.turn)).toEqual([0, 2]);
+    expect((await train.search('train', 3)).map((hit) => hit.turn)).toEqual([1, 2]);
+  });
+
+  it('embeds the whole query set in one request, because the bill is per text and the cap is per text', async () => {
+    // Four phrases are four texts in one batch. A loop of one-text requests would price the same work at four
+    // calls, and `embedCalls` is the number a report prints beside the texts precisely so this cannot pass
+    // unnoticed: the pair (2 calls, 6 texts) says "one batch for two turns, one for four queries".
+    const index = new SearchIndex({
+      embed,
+      queryPlan: () => ['car cost', 'train fare', 'railway repairs', 'automobile price'],
+    });
+    index.add(['the car cost twelve thousand', 'the train fare was nine thousand']);
+    await index.prime();
+    await index.search('what did the car cost', 2);
+    const census = index.census();
+    expect(census.embedCalls).toBe(2);
+    expect(census.embedTexts).toBe(6);
+    expect(census.queries).toBe(4);
+  });
+
+  it('drops blanks and duplicates before spending a request, and says how many survived', async () => {
+    // A duplicate query would vote twice for one ranking: the fusion would weight the phrasings the plan
+    // repeated, and the census would report a query set the run never issued. Trimming is part of the same
+    // statement -- a phrase with a trailing space embeds to the same text and would count twice.
+    const index = new SearchIndex({
+      embed,
+      queryPlan: () => ['car cost', 'car cost ', '', '   ', 'automobile'],
+    });
+    index.add(['the car cost twelve thousand']);
+    await index.prime();
+    await index.search('what did the car cost', 1);
+    const census = index.census();
+    expect(census.queries).toBe(2);
+    expect(census.embedTexts).toBe(3);
+  });
+
+  it('answers from the question when the plan names nothing, rather than from no query at all', async () => {
+    // `[]` is a plan that spoke and said nothing -- an expansion that refused, a table with no entry. Ranking
+    // on it would return no evidence for every such question, and the prompt would look assembled while the
+    // retrieval had silently stopped. The fallback is the question, and the census says the run issued one
+    // query so a reader cannot mistake it for a plan that acted.
+    const turns = ['the car cost twelve thousand', 'the train fare was nine thousand'];
+    const index = new SearchIndex({ embed, queryPlan: () => [] });
+    index.add(turns);
+    await index.prime();
+    const plain = new SearchIndex({ embed });
+    plain.add(turns);
+    await plain.prime();
+    const question = 'what did the car cost';
+    expect(await index.search(question, 2)).toEqual(await plain.search(question, 2));
+    expect(index.census().queries).toBe(1);
+
+    const blank = new SearchIndex({ embed, queryPlan: () => ['  ', '\t'] });
+    blank.add(turns);
+    await blank.prime();
+    expect(await blank.search(question, 2)).toEqual(await plain.search(question, 2));
+  });
+
+  it('treats a plan naming one query as the single-query run it is', async () => {
+    // The registered path returns the lexical channel's own scores; a one-element fusion would re-base them
+    // on rank -- the same order, different numbers, and a prompt that differs wherever two turns tie. An
+    // expansion arm whose model returned nothing must cost what its control costs, or the arm has measured
+    // two changes and reported one.
+    const turns = [
+      'the car cost twelve thousand',
+      'the car cost nine thousand',
+      'we talked about weather',
+    ];
+    const planned = new SearchIndex({ embed, queryPlan: (question) => [question] });
+    planned.add(turns);
+    await planned.prime();
+    const plain = new SearchIndex({ embed });
+    plain.add(turns);
+    await plain.prime();
+    const question = 'what did the car cost';
+    expect(await planned.search(question, 3)).toEqual(await plain.search(question, 3));
+    expect(planned.census().queries).toBe(1);
+  });
+
+  it('refuses a partial reply to the query batch, and treats an empty one as no vector channel', async () => {
+    // Two answers to one request, and the two absences mean different things. An **empty** reply is a client
+    // that produced nothing: the lexical channel is still a ranking, and the census counts the degradation the
+    // way it counts one on the single-query path. A **partial** reply is worse than either -- the queries that
+    // answered would carry the fusion alone, so the order would describe a query set the run never issued, and
+    // nothing downstream could tell that from a plan with fewer phrases.
+    const corpus = ['the car cost twelve thousand', 'the train fare was nine thousand'];
+    const partial = new SearchIndex({
+      embed: (texts) => (texts.includes('train fare') ? embed(texts.slice(0, 1)) : embed(texts)),
+      queryPlan: () => ['car cost', 'train fare', 'railway repairs'],
+    });
+    partial.add(corpus);
+    await partial.prime();
+    await expect(partial.search('what did the car cost', 2)).rejects.toThrow(
+      /3 queries.*1 vector/s,
+    );
+
+    const empty = new SearchIndex({
+      embed: (texts) => (texts.includes('train fare') ? Promise.resolve([]) : embed(texts)),
+      queryPlan: () => ['car cost', 'train fare'],
+    });
+    empty.add(corpus);
+    await empty.prime();
+    const hits = await empty.search('what did the car cost', 2);
+    // The lexical ranking, unchanged: an empty reply is a channel that did not run this retrieval, not a
+    // failure, so `embedDegraded` stays 0 and the census still reports the vector table the corpus built.
+    // Both turns share a term with one of the two phrases, so the plan widened the lexical channel even though
+    // the vector one produced nothing -- which is exactly the claim: the retrieval degraded, the queries did not.
+    expect(hits.map((hit) => hit.turn)).toEqual([0, 1]);
+    expect(empty.census()).toMatchObject({
+      embedDegraded: 0,
+      vectors: 2,
+      embedTexts: 4,
+      queries: 2,
+    });
+  });
+
+  it('lets a plan’s failure escape instead of answering from the bare question', async () => {
+    // A plan that throws is configuration, not weather: an endpoint answering 401 or a table that is not
+    // there. Catching it would rank the question alone and publish the control's accuracy under the
+    // treatment's name -- the one reading this repository cannot recover from, because the artifact has no
+    // field that would disagree.
+    const index = new SearchIndex({
+      embed,
+      queryPlan: () => Promise.reject(new Error('expansion endpoint answered 401')),
+    });
+    index.add(['the car cost twelve thousand']);
+    await index.prime();
+    await expect(index.search('what did the car cost', 1)).rejects.toThrow(/401/);
+  });
+
+  it('widens the lexical channel alone when no embedder is configured', async () => {
+    // The manual says a plan works without an embedding provider, and this is the sentence behind it: the
+    // phrases are ranked by postings, fused by the same RRF, and nothing is embedded because there is nothing
+    // to embed with. A household with no quota gets the recall the phrases buy and pays nothing for it.
+    const turns = ['the automobile cost twelve thousand', 'railway repairs were expensive'];
+    const index = new SearchIndex({
+      queryPlan: () => ['what did the car cost', 'railway repairs'],
+    });
+    index.add(turns);
+    await index.prime();
+    const hits = await index.search('what did the car cost', 2);
+    expect(hits.map((hit) => hit.turn).sort()).toEqual([0, 1]);
+    expect(index.census()).toMatchObject({ queries: 2, embedCalls: 0, embedTexts: 0 });
+    expect(index.census().channels).toEqual(['lexical']);
+
+    // The same ranking when the channel is withheld by name rather than by omission, so the two ways of saying
+    // "no vectors here" cannot be two behaviours.
+    const withheld = new SearchIndex({
+      channels: ['lexical'],
+      queryPlan: () => ['what did the car cost', 'railway repairs'],
+    });
+    withheld.add(turns);
+    await withheld.prime();
+    expect(await withheld.search('what did the car cost', 2)).toEqual(hits);
+  });
+
+  it('answers nothing for a plan over an empty corpus, without calling the embedder', async () => {
+    // `answerSessions` calls `add` with whatever the admission gate kept, and a gate that kept nothing still
+    // reaches the retrieval -- now with a plan in hand. A batch of zero corpus vectors is not a reason to embed
+    // the phrases, and a fused list of nothing is not an error: it is the abstention question's ordinary case.
+    let calls = 0;
+    const index = new SearchIndex({
+      embed: (texts) => {
+        calls += 1;
+        return embed(texts);
+      },
+      queryPlan: () => ['car cost', 'train fare'],
+    });
+    await index.prime();
+    expect(await index.search('what did the car cost', 3)).toEqual([]);
+    expect(calls).toBe(0);
+    expect(index.census().queries).toBe(2);
+  });
+
+  it('reports the most recent search’s query count, not a run total', async () => {
+    // The index lives for one question, so the count is the question's query set. Summing it would describe
+    // a corpus, and the number a reader needs is "did the plan act on this question".
+    let named: string[] = ['car', 'train'];
+    const index = new SearchIndex({ embed, channels: ['vector'], queryPlan: () => named });
+    index.add(['car', 'train']);
+    await index.prime();
+    await index.search('car', 1);
+    named = ['car', 'train', 'car train'];
+    await index.search('car', 1);
+    expect(index.census().queries).toBe(3);
+  });
+});
+
+describe('SearchIndex channel selection', () => {
+  it('never embeds a corpus or a query when the vector channel is withheld', async () => {
+    // `channels: ['lexical']` is a cost decision as well as a ranking one: a deployment that has decided
+    // against vectors should not pay for a corpus it will not score, and the counter is the proof.
+    let calls = 0;
+    const counted = (texts: readonly string[]) => {
+      calls += 1;
+      return embed(texts);
+    };
+    const index = new SearchIndex({ embed: counted, channels: ['lexical'] });
+    index.add(['the car cost twelve thousand', 'the train fare was nine thousand']);
+    await index.prime();
+    const hits = await index.search('what did the car cost', 2);
+    const plain = new SearchIndex();
+    plain.add(['the car cost twelve thousand', 'the train fare was nine thousand']);
+    expect(hits).toEqual(await plain.search('what did the car cost', 2));
+    expect(calls).toBe(0);
+    expect(index.census()).toMatchObject({ embedCalls: 0, embedTexts: 0, vectors: 0 });
+    expect(index.census().channels).toEqual(['lexical']);
+  });
+
+  it('ranks by vectors alone, and builds no postings to do it', async () => {
+    // The other half of the same option: dense-only is the configuration `cortex-eval` dispatches as
+    // `retrieval` beside `retrieval-hybrid`, so a deployment that wants it must be able to ask. With the
+    // lexical channel withheld, a question sharing no term with the evidence still reaches it -- and a
+    // lexically unrelated turn is still excluded, because zero cosine is not evidence.
+    const index = new SearchIndex({ embed, channels: ['vector'] });
+    index.add(['the automobile was expensive', 'railway repairs were expensive']);
+    await index.prime();
+    const hits = await index.search('what did the car cost', 2);
+    expect(hits.map((hit) => hit.turn)).toEqual([0]);
+    const lexical = new SearchIndex({ channels: ['lexical'] });
+    lexical.add(['the automobile was expensive', 'railway repairs were expensive']);
+    // The control: the same corpus and question through the lexical channel alone shares no term, so the
+    // dense hit above is the vector channel's and not a lexical coincidence.
+    expect(await lexical.search('what did the car cost', 2)).toEqual([]);
+    expect(index.census()).toMatchObject({ terms: 0, vectors: 2 });
+    expect(index.census().channels).toEqual(['vector']);
+  });
+
+  it('reads the same channel set in any order', async () => {
+    // The list is a set. Two spellings of one configuration that ranked differently would be a second free
+    // parameter, and the one a report printed would depend on how the caller typed it.
+    const turns = ['the car cost twelve thousand', 'the train fare was nine thousand'];
+    const forward = new SearchIndex({ embed, channels: ['lexical', 'vector'] });
+    forward.add(turns);
+    await forward.prime();
+    const reversed = new SearchIndex({ embed, channels: ['vector', 'lexical'] });
+    reversed.add(turns);
+    await reversed.prime();
+    const question = 'what did the car cost';
+    expect(await reversed.search(question, 2)).toEqual(await forward.search(question, 2));
+    expect(reversed.census().channels).toEqual(['lexical', 'vector']);
+  });
+
+  it('refuses a channel set that ranks on nothing', async () => {
+    // An index with no channel answers every question with no evidence while its census reads healthy:
+    // turns counted, no failures, no degradation. That is the one failure nothing downstream can detect.
+    expect(() => new SearchIndex({ channels: [] })).toThrow(/at least one channel/);
+  });
+
+  it('refuses a vector-only index with no embedder', async () => {
+    // Nothing to rank with, so every search would return no evidence -- and the refusal is on the explicit
+    // claim only. `['lexical', 'vector']` without an embedder stays legal: that is the ordinary lexical
+    // index, and the census says the vector channel did not run.
+    expect(() => new SearchIndex({ channels: ['vector'] })).toThrow(/no embedder|embed/);
+    expect(() => new SearchIndex({ channels: ['lexical', 'vector'] })).not.toThrow();
+  });
+
+  it('refuses a channel name it does not administer', async () => {
+    // Names arrive from configuration. A name that ranked nothing would read as a treatment in whatever
+    // block recorded it, which is the same defect class as a dispatch naming a signal the product ignores.
+    expect(() => new SearchIndex({ channels: ['graph' as 'lexical'] })).toThrow(/may only name/);
+  });
+});

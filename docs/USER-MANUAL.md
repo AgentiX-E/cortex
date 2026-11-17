@@ -1086,6 +1086,93 @@ asserted:
   card, and the suite sweeps every table on both stores for the sentence afterwards rather than checking
   the one field the product already fixed. That is the eighth surface of §6.5, on wasm, across a restart.
 
+### 6.9 Ranking on more than the question, and choosing the channels
+
+Retrieval answers one question with the turns it can reach, and a question is not always the wording its
+evidence uses: "how many projects did I lead" is answered by a turn that says "led a consumer-research
+project", and neither phrase reaches the other. `index.queryPlan` lets you hand the index **a set of
+queries** for each question, and it fuses their rankings the same way it fuses its channels — by
+reciprocal rank, so a turn two phrasings both rank highly outranks either one's best.
+
+```ts
+import type { EmbedFn, JsonSchema, LLM } from '@agentix-e/cortex-core';
+import { assembleMemory, type QueryPlan } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+declare const llm: LLM;
+declare const embed: EmbedFn;
+
+const PHRASES: JsonSchema = {
+  type: 'object',
+  properties: {
+    phrases: { type: 'array', items: { type: 'string' }, description: 'activity phrases, at most four' },
+  },
+  required: ['phrases'],
+};
+
+// The plan is a plain function, so the model that writes the phrases is yours: any `LLM` will do, and a
+// table of hand-written phrasings is a plan too.
+const queryPlan: QueryPlan = async (question) => {
+  const { phrases } = await llm.completeStructured<{ phrases: string[] }>(
+    `Name up to four short phrases an entry in a personal log would use for this activity: ${question}`,
+    PHRASES,
+    { temperature: 0 },
+  );
+  return [question, ...phrases];
+};
+
+const { memory } = assembleMemory({
+  llm,
+  now: Date.now(),
+  storage: new SqliteStorage(),
+  embed,
+  index: { k: 32, queryPlan },
+});
+```
+
+Four properties are worth knowing before you turn it on, and each is a decision rather than a default:
+
+- **The question is not added for you.** A plan that forgets it ranks without it, which is why the example
+  returns `[question, ...phrases]`. A plan that returns nothing — an empty list, or only blanks — falls back
+  to the question, so an expansion that refused costs what the unexpanded run costs.
+- **Duplicates and blanks are removed, keeping first appearance.** A repeated phrase would vote twice, and
+  `lastIndexCensus().queries` reports what survived so you can see whether the plan acted at all.
+- **The whole set is embedded in one request.** Four phrases are four texts in one call, not four calls;
+  `embedTexts` grows by four and `embedCalls` by one. With no `embed` the plan still widens the lexical
+  channel, at no cost.
+- **A plan that throws is an error, not a fallback.** An expansion endpoint answering 401 would otherwise
+  produce the unexpanded ranking under the expanded arm's name, and no artifact field would disagree. If you
+  want a long batch job to survive a provider outage, catch it in the plan and return `[question]`.
+
+Ranking costs money in two places, and `index.channels` is how you say which ones this deployment pays for:
+
+```ts
+import type { EmbedFn, LLM } from '@agentix-e/cortex-core';
+import { assembleMemory } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+declare const llm: LLM;
+declare const embed: EmbedFn;
+
+// Dense only: no postings are built, so the memory a corpus costs is its vector table, and `census().terms`
+// reads 0.
+assembleMemory({
+  llm, now: Date.now(), storage: new SqliteStorage(), embed,
+  index: { channels: ['vector'] },
+});
+
+// Lexical only: the embedder is never called -- not for the corpus, and not for a query.
+assembleMemory({
+  llm, now: Date.now(), storage: new SqliteStorage(), embed,
+  index: { channels: ['lexical'] },
+});
+```
+
+`['lexical', 'vector']` is the default and the configuration every published reading was taken in. The two
+refusals are `[]`, which ranks on nothing, and `['vector']` without an `embed`, which names a channel that
+cannot run — naming `['lexical', 'vector']` without an embedder stays legal, because that is the ordinary
+lexical index and the census says the vector channel did not run.
+
 ## 7. Reading a decision back
 
 A memory layer that cannot explain itself is a black box with extra steps. Every route records what

@@ -93,11 +93,12 @@
   },
   {
    "id": 11,
-   "capability": "retrieval: postings, vectors, RRF",
+   "capability": "retrieval: postings, vectors, RRF over one or more queries, and the channels a call names",
    "expect": "product",
    "symbol": "SearchIndex",
    "site": "packages/cortex-memory/src/retrieval/search-index.ts",
-   "d3": "declared: indexes the turns the memory was given and queries its own index"
+   "d3": "declared: indexes the turns the memory was given, ranks them on the channels the caller named, and fuses the per-query rankings of whatever query set the caller’s plan produced",
+   "reason": "The row covers three mechanisms that were instrument-only or absent and are now the product’s: the fusion (moved from `cortex-eval`’s `retrieveTopKByQueries` in plan §34, with `tools/multi-query-parity.mjs` asserting the two sequences agree item for item), the query set itself (`SearchIndexOptions.queryPlan`, so an expansion is a product capability rather than a harness privilege), and the channel choice (`channels`, which is what lets a deployment ask for the dense-only configuration `cortex-eval` dispatches as `retrieval` beside `retrieval-hybrid`). D1 holds by path, D2 by the import closure -- `cortex-memory` depends on `cortex-core` alone -- and D4 by `CortexMemory.#relevanceFor`, which builds this index per question whenever no `relevanceFor` override is supplied."
   },
   {
    "id": 12,

@@ -46,7 +46,9 @@ export {
 export {
   SearchIndex,
   type IndexCost,
+  type QueryPlan,
   type SearchCensus,
+  type SearchChannel,
   type SearchIndexOptions,
 } from './retrieval/search-index.js';
 

@@ -172,6 +172,7 @@ function census(overrides: Partial<SearchCensus> = {}): SearchCensus {
     rerankDegraded: 0,
     embedDegraded: 0,
     embedFailure: null,
+    queries: 1,
     channels: ['lexical', 'vector'],
     ...overrides,
   };

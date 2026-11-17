@@ -32,6 +32,12 @@
  *    is right for the prompt and wrong to read as agreement: an endpoint answering 401 five hundred times
  *    and a cross-encoder that agreed every time produce the same accuracy. `census()` reports `calls`
  *    beside `degraded` so those two runs cannot be confused.
+ * 4. **A question may be several queries.** `queryPlan` hands this class a query set per question, and the
+ *    per-query rankings are fused by the same RRF as the channels. The algorithm was the instrument's
+ *    (`cortex-eval`'s `retrieveTopKByQueries`) and only the *phrases* remain its; §34 of the plan records
+ *    why the fusion had to move before "the reader issues its own queries" could be a product capability
+ *    rather than an instrument privilege. `channels` is the same argument for the other axis: dense-only
+ *    and hybrid are two configurations `cortex-eval` measured, so a deployment has to be able to pick one.
  *
  * ## Why the score after fusion or rerank is a position
  *
@@ -66,6 +72,30 @@ const DEFAULT_K = 64;
 
 /** The RRF constant. `60` is the value from the original literature and the one `fuse.ts` uses. */
 const DEFAULT_RRF_K = 60;
+
+/**
+ * A channel that ranks turns.
+ *
+ * Two names, because two is what this product ships: postings over content terms, and cosine over embedded
+ * vectors. A reranker is not one -- it permutes a pool the channels produced, so it appears in
+ * {@link SearchCensus.channels} as a stage and never in this list.
+ */
+export type SearchChannel = 'lexical' | 'vector';
+
+/**
+ * The query set for one question.
+ *
+ * A function rather than a list because the queries are a property of the *question*, and the question is
+ * not known until it is asked. It may be asynchronous: producing phrases is a model call in the
+ * configuration `cortex-eval` measured (`buildQueryExpansionPrompt`), and a synchronous signature would
+ * have forced every such caller to precompute a table keyed by question before the index existed.
+ *
+ * What this type does **not** do is answer with a *plan* the product then interprets. There is no schema,
+ * no width, and no ranking hint: the return value is a list of strings that become queries, and every
+ * property that matters -- deduplication, blank removal, the batch that carries them to the embedder -- is
+ * the index's job, stated in {@link SearchIndexOptions.queryPlan}.
+ */
+export type QueryPlan = (question: string) => readonly string[] | Promise<readonly string[]>;
 
 /**
  * How many texts one embedding request may carry unless the caller says otherwise.
@@ -162,7 +192,102 @@ export type SearchIndexOptions = {
    * scored the way the product scores when there is no embedder, and record how often that happened. The
    * cost of that choice is already measured, so a reader can price it rather than guess.
    */
+  /**
+   * What to do when the embedder cannot produce a query vector.
+   *
+   * `'fail'` (default) rethrows. `'lexical'` degrades **this retrieval** to the lexical channel, counts it
+   * in {@link SearchCensus.embedDegraded}, and keeps the provider's message in
+   * {@link SearchCensus.embedFailure}.
+   *
+   * ## Why the default is the loud one
+   *
+   * `indexEmbedding: injected` in an artifact means the vector channel ranked. A deployment that silently
+   * scored lexically instead would publish numbers under a configuration it did not run — and the numbers
+   * would look entirely reasonable, because the lexical index is a working index (`S14`: 85.75%). The
+   * failure mode of a quiet default is therefore a plausible wrong reading rather than a crash, which is
+   * the one shape this repository refuses to leave in place.
+   *
+   * ## Why the opt-in exists at all
+   *
+   * Because the alternative is worse than degrading. Run `43866639154` configured the embedder, passed the
+   * one-vector preflight, ran for two hours, and then met an exhausted provider balance at repetition 3 of
+   * 8 — taking `432` graded answers with it. A long benchmark cannot buy insurance against a balance that
+   * empties mid-run; what it can do is state in advance that a retrieval it cannot vectorise will be
+   * scored the way the product scores when there is no embedder, and record how often that happened. The
+   * cost of that choice is already measured, so a reader can price it rather than guess.
+   */
   readonly onEmbedFailure?: 'fail' | 'lexical';
+  /**
+   * The queries to rank for one question. Absent means the question alone.
+   *
+   * ## Why this is a product capability and not an instrument one
+   *
+   * `cortex-eval` has fused several rankings per question since `retrieveTopKByQueries` was written: a
+   * question about "how many projects" is answered by turns that say "led a consumer-research project", and
+   * no single query reaches both. The mechanism was measured on the instrument side and the product had no
+   * way to express it, which is the exact gap the sixteenth constraint names -- a capability the ruler
+   * proved and the customer cannot reach. The fusion moved here; the *phrases* stayed there, because
+   * producing them is an LLM call and this package owns no provider.
+   *
+   * ## What the index does with the list
+   *
+   * Entries are trimmed, blanks are dropped, and duplicates are removed **keeping first appearance**, before
+   * anything is embedded. A duplicate query would otherwise vote twice for one ranking and the census would
+   * report a query set the run did not issue. A plan that ends up naming nothing -- `[]`, or a list of blank
+   * strings -- falls back to the question: a plan that could not speak is not a treatment, and answering
+   * from an empty query set would return no evidence at all while the prompt still looked assembled.
+   *
+   * One surviving query is the single-query path, byte for byte. That is not an optimisation: the
+   * single-query path returns the lexical channel's own scores, and a one-element fusion would re-base them
+   * on rank -- the same order, different numbers, and a prompt that differs on ties. A run whose expansion
+   * produced nothing therefore costs what the unexpanded run costs, which is what makes an `llm` expansion
+   * arm comparable with its control.
+   *
+   * ## What it costs
+   *
+   * The whole query set is embedded in **one** request, not one per query: the batch is the unit providers
+   * bill and cap (`EmbeddingModel.embed` takes a list for that reason), so four phrases cost one call and
+   * `census().embedTexts` grows by four. A provider that refuses the batch refuses the retrieval, and
+   * `onEmbedFailure` decides what happens next.
+   *
+   * ## What it refuses to do
+   *
+   * It does not catch a plan's failure. A plan that throws -- an LLM endpoint answering 401, a table that
+   * is not there -- propagates, because a retrieval that quietly answered from the bare question would
+   * produce the control's ranking under the treatment's name, and the accuracy it reports would be a
+   * measurement of the wrong arm. The alternative (`onEmbedFailure`'s `'lexical'`) exists for a *provider*
+   * that runs out of balance mid-run; a plan is configuration, and a broken configuration is a message, not
+   * a degradation.
+   */
+  readonly queryPlan?: QueryPlan | undefined;
+  /**
+   * Which channels rank. Defaults to `['lexical', 'vector']` -- the hybrid configuration, which is the one
+   * every reading in this repository was taken with.
+   *
+   * ## Why the choice is on the product
+   *
+   * Because it is a measured variable on the instrument side and was not expressible here. `cortex-eval`
+   * dispatches `retrieval` (dense) beside `retrieval-hybrid` (dense fused with keyword recall), so the
+   * difference between the two is a number with a name; a deployment that wants dense-only had no way to ask
+   * this class for it, and a deployment paying for an embedding quota had no way to stop paying for
+   * postings. Both are real deployment decisions, and a product that answers only the hybrid question is a
+   * product whose retrieval is not configurable.
+   *
+   * ## The two things it changes besides the ranking
+   *
+   * `['vector']` builds no postings, so `census().terms` is `0` and the memory a corpus costs is the vector
+   * table alone. `['lexical']` never embeds: `prime()` returns without a request and a search makes none, so
+   * a deployment that has decided against vectors is not billed for its corpus. Neither is a silent
+   * degradation -- the census's `channels` names what ranked, which is why the field exists.
+   *
+   * ## The two configurations it refuses
+   *
+   * `[]` ranks on nothing and would answer every question with no evidence while reporting a healthy
+   * census. `['vector']` without {@link SearchIndexOptions.embed} claims a channel that cannot run; the
+   * refusal is on the *explicit* claim only, because the default naming `vector` with no embedder is not a
+   * claim but the ordinary lexical index this product documents.
+   */
+  readonly channels?: readonly SearchChannel[] | undefined;
 };
 
 /** One retrieved turn: its position in the corpus, and the score the prompt will sort on. */
@@ -210,6 +335,16 @@ export type SearchCensus = {
   readonly embedDegraded: number;
   /** The provider's own message from the most recent failure, or `null` when none failed. */
   readonly embedFailure: string | null;
+  /**
+   * How many queries the **most recent** search issued; `0` before the first one.
+   *
+   * A per-call count and not a run total, for the reason {@link SearchCensus.embedTexts} is a total and this
+   * is not: an index is built per question, so the per-search count *is* the question's query set, and
+   * summing it across searches would describe a corpus. It is reported because the difference between "the
+   * plan returned four phrases" and "the plan returned one and fell back" is invisible in the prompt when
+   * both rank the same turns, and a reader deciding whether an expansion arm acted needs that difference.
+   */
+  readonly queries: number;
   readonly channels: readonly ('lexical' | 'vector' | 'rerank')[];
 };
 
@@ -288,6 +423,53 @@ function cosine(a: EmbeddingVector, b: EmbeddingVector): number {
   return dot / Math.sqrt(left * right);
 }
 
+/**
+ * Which channels a call asked for, resolved once so a corpus cannot be indexed two ways.
+ *
+ * The refusals are the two configurations that would answer every question with no evidence:
+ *
+ * - an empty list, which names no channel at all;
+ * - `['vector']` with no embedder, which names one that cannot run here.
+ *
+ * Note what is **not** refused: `['lexical', 'vector']` with no embedder. The vector channel is then inert
+ * rather than absent, which is the state every lexical reading in this repository was taken in, and the
+ * census's `channels` says which ones actually ranked. Refusing it would make spelling out the default an
+ * error while omitting it is fine -- a rule a caller cannot predict from the option's documentation.
+ */
+function normalizeChannels(
+  raw: readonly SearchChannel[] | undefined,
+  hasEmbed: boolean,
+): { lexical: boolean; vector: boolean } {
+  if (raw === undefined) return { lexical: true, vector: true };
+  const known: readonly string[] = ['lexical', 'vector'];
+  for (const name of raw) {
+    if (!known.includes(name)) {
+      throw new Error(
+        `SearchIndexOptions.channels may only name ${known.map((k) => JSON.stringify(k)).join(' or ')}, ` +
+          `got ${JSON.stringify(String(name))}. A channel name the index does not administer would be a ` +
+          'configuration line that reads as a treatment and ranks nothing.',
+      );
+    }
+  }
+  const lexical = raw.includes('lexical');
+  const vector = raw.includes('vector');
+  if (!lexical && !vector) {
+    throw new Error(
+      'SearchIndexOptions.channels must name at least one channel: an index that ranks on nothing ' +
+        'answers every question with no evidence while reporting a healthy census, which is the one ' +
+        'failure this product has no way to detect downstream.',
+    );
+  }
+  if (vector && !lexical && !hasEmbed) {
+    throw new Error(
+      "SearchIndexOptions.channels names only 'vector' but no embedder was supplied, so there is " +
+        'nothing to rank with and every search would return no evidence. Supply `embed`, or name ' +
+        "'lexical' as well (the vector channel is then inert, as it is when `channels` is omitted).",
+    );
+  }
+  return { lexical, vector };
+}
+
 export class SearchIndex implements VectorEraser {
   readonly #options: SearchIndexOptions;
   readonly #turns: string[] = [];
@@ -314,6 +496,12 @@ export class SearchIndex implements VectorEraser {
   #embedFailure: string | null = null;
   /** How many texts one request may carry. Resolved once, so a corpus cannot be chunked two ways. */
   readonly #batch: number;
+  /** Whether the lexical channel ranks. See `SearchIndexOptions.channels`. */
+  readonly #lexical: boolean;
+  /** Whether the vector channel ranks. See `SearchIndexOptions.channels`. */
+  readonly #vector: boolean;
+  /** How many queries the most recent search issued. See {@link SearchCensus.queries}. */
+  #lastQueries = 0;
 
   constructor(options: SearchIndexOptions = {}) {
     this.#options = options;
@@ -328,6 +516,9 @@ export class SearchIndex implements VectorEraser {
       );
     }
     this.#batch = batch;
+    const channels = normalizeChannels(options.channels, options.embed !== undefined);
+    this.#lexical = channels.lexical;
+    this.#vector = channels.vector;
     const embed = options.embed;
     if (embed === undefined) return;
 
@@ -368,6 +559,10 @@ export class SearchIndex implements VectorEraser {
     for (const turn of turns) {
       const position = this.#turns.length;
       this.#turns.push(turn);
+      // The postings are what the lexical channel ranks on, and a call that withheld that channel pays for
+      // them otherwise: one entry per (term, turn) over the whole corpus is the dominant memory term on a
+      // large haystack. `census().terms` reads `0` for such a run and `channels` says why.
+      if (!this.#lexical) continue;
       for (const term of new Set(contentTerms(turn))) {
         const posting = this.#postings.get(term);
         if (posting === undefined) this.#postings.set(term, [position]);
@@ -404,7 +599,10 @@ export class SearchIndex implements VectorEraser {
   async prime(): Promise<void> {
     this.#primed = true;
     const model = this.#model;
-    if (model === undefined || this.#turns.length === 0) return;
+    // A call that withheld the vector channel does not pay for it. `#model` is still built -- the counters
+    // and the memo are properties of the instance -- but nothing crosses the wire, which is what makes
+    // `channels: ['lexical']` a cost decision and not only a ranking one.
+    if (!this.#vector || model === undefined || this.#turns.length === 0) return;
 
     const vectors: EmbeddingVector[] = [];
     try {
@@ -441,30 +639,36 @@ export class SearchIndex implements VectorEraser {
   /**
    * The best `k` turns for `question`, best first.
    *
+   * One question is one retrieval, and a retrieval may rank several queries. The resolution is here rather
+   * than inside either branch because both branches have to agree on what `census().queries` reports, and a
+   * count taken inside one of them would read `0` on the other.
+   *
    * Lexical scores are the channel's own when it is the only channel; once fusion or rerank decides the
    * order, the score is the position, because two channels and one cross-encoder do not share a scale with
    * the lexical signal and the prompt sorts on the number it is given.
    */
   async search(question: string, k = this.#options.k ?? DEFAULT_K): Promise<readonly SearchHit[]> {
-    const lexical = this.#lexicalOrder(question).slice(0, k);
-    const model = this.#model;
+    const queries = await this.#queriesFor(question);
+    this.#lastQueries = queries.length;
+    // One query is the single-query path, byte for byte -- see `SearchIndexOptions.queryPlan` for why a
+    // one-element fusion would be a different run and not a cheaper one.
+    if (queries.length === 1) return this.#searchOne(queries[0]!, k);
+    return this.#searchMany(question, queries, k);
+  }
+
+  /**
+   * The registered path: one query, its own lexical scores, fusion only when a second channel exists.
+   *
+   * Kept as a separate method rather than folded into `#searchMany` so that the claim "a plan naming one
+   * query is the same run" is a statement about *this* code being the same code, not about two branches
+   * happening to agree.
+   */
+  async #searchOne(query: string, k: number): Promise<readonly SearchHit[]> {
+    const lexical = this.#lexical ? this.#lexicalOrder(query).slice(0, k) : [];
     let vectors: number[] = [];
-    if (model !== undefined && this.#vectors.length > 0) {
-      let query: EmbeddingVector | undefined;
-      try {
-        [query] = await model([question]);
-      } catch (error) {
-        // The `try` wraps the embedder call and **only** the embedder call. `#orderByVector` also refuses
-        // a ragged width, and that refusal has to escape: two embedders wired together is a client defect
-        // whose symptom is a plausible, wrong ranking, which no policy should be allowed to hide behind a
-        // lexical fallback. Splitting the method is what makes the boundary enforceable rather than a
-        // comment -- an earlier version wrapped the whole call and swallowed the width check, and the test
-        // that was written to pin the distinction is the one that caught it.
-        if (this.#options.onEmbedFailure !== 'lexical') throw error;
-        this.#embedDegraded += 1;
-        this.#embedFailure = error instanceof Error ? error.message : String(error);
-      }
-      if (query !== undefined) vectors = this.#orderByVector(query, k);
+    if (this.#vector) {
+      const embedded = await this.#embedQueries([query]);
+      if (embedded !== undefined) vectors = this.#orderByVector(embedded[0]!, k);
     }
 
     // One channel and no reranker is not a fusion. The lexical order *is* the answer then, and its scores
@@ -473,13 +677,119 @@ export class SearchIndex implements VectorEraser {
     if (vectors.length === 0 && this.#options.rerank === undefined) {
       return lexical.map((turn) => ({
         turn,
-        score: lexicalRelevance(question, this.#turns[turn]!),
+        score: lexicalRelevance(query, this.#turns[turn]!),
       }));
     }
 
     const fused = this.#fuse([lexical, vectors], k);
+    const graded = await this.#rerank(fused, query);
+    return this.#byRank(graded ?? fused);
+  }
+
+  /**
+   * Several queries for one question: each channel ranks every query, the channel's rankings are fused by
+   * reciprocal rank, and the channels are fused with each other exactly as they are on the single-query
+   * path.
+   *
+   * ## Why the per-query lists are fused twice, and why that is not the same as fusing once
+   *
+   * A turn that three phrasings all rank fourth is better evidence than a turn one phrasing ranks first and
+   * the others do not reach; a flat pool over every (query, channel) pair would also let the lexical channel
+   * outvote the dense one simply by producing more lists. Fusing within a channel first, then across
+   * channels, is what keeps the two votes equal -- which is the property the single-query path already has,
+   * and an expansion arm that changed it would move two things at once.
+   *
+   * ## Why the reranker sees the question and not the phrases
+   *
+   * Because the cross-encoder scores (question, turn) pairs, and a phrase is a retrieval key rather than an
+   * ask. Handing it `queries[0]` would work for the common case where the question comes first and would
+   * silently rerank a plan that listed its phrases in another order against a different question.
+   */
+  async #searchMany(
+    question: string,
+    queries: readonly string[],
+    k: number,
+  ): Promise<readonly SearchHit[]> {
+    const lists: number[][] = [];
+    if (this.#lexical)
+      lists.push(
+        this.#fuse(
+          queries.map((query) => this.#lexicalOrder(query)),
+          k,
+        ),
+      );
+    if (this.#vector) {
+      // One request for the whole set: four phrases are four texts in one batch, not four calls. The
+      // provider's cap is on texts, and its bill is on texts, so the split that matters is the batch.
+      const embedded = await this.#embedQueries(queries);
+      if (embedded !== undefined) {
+        lists.push(
+          this.#fuse(
+            embedded.map((vector) => this.#orderByVector(vector, k)),
+            k,
+          ),
+        );
+      }
+    }
+    const fused = this.#fuse(lists, k);
     const graded = await this.#rerank(fused, question);
     return this.#byRank(graded ?? fused);
+  }
+
+  /**
+   * The queries this question is ranked on.
+   *
+   * Trimmed, blank entries dropped, duplicates removed keeping the first appearance. A plan that survives as
+   * nothing falls back to the question: `[]` is a plan that spoke and said nothing, and returning no evidence
+   * for it would make an expansion outage look like an abstention question.
+   *
+   * A plan's failure is **not** caught here. See `SearchIndexOptions.queryPlan`.
+   */
+  async #queriesFor(question: string): Promise<readonly string[]> {
+    const plan = this.#options.queryPlan;
+    if (plan === undefined) return [question];
+    const queries: string[] = [];
+    const seen = new Set<string>();
+    for (const named of await plan(question)) {
+      const query = named.trim();
+      if (query === '' || seen.has(query)) continue;
+      seen.add(query);
+      queries.push(query);
+    }
+    return queries.length === 0 ? [question] : queries;
+  }
+
+  /**
+   * Embed a batch of queries, or say that the vector channel does not run this retrieval.
+   *
+   * `undefined` covers the three states that are one state downstream -- no embedder, no corpus vectors, and
+   * a provider that failed under `onEmbedFailure: 'lexical'` -- because all three mean "this retrieval ranks
+   * lexically" and the counters already separate them (`embedCalls`, `vectors`, `embedDegraded`).
+   *
+   * An **empty** reply to a non-empty batch is that state too: a client answering `[]` has not returned a
+   * short batch of queries, and the prompt's ranking is still a ranking. A *partial* reply is refused,
+   * because a missing query vector would silently weight the fusion toward the queries that answered and the
+   * order would describe a query set the run never issued.
+   */
+  async #embedQueries(queries: readonly string[]): Promise<readonly EmbeddingVector[] | undefined> {
+    const model = this.#model;
+    if (model === undefined || this.#vectors.length === 0) return undefined;
+    let embedded: readonly EmbeddingVector[];
+    try {
+      embedded = await model([...queries]);
+    } catch (error) {
+      if (this.#options.onEmbedFailure !== 'lexical') throw error;
+      this.#embedDegraded += 1;
+      this.#embedFailure = error instanceof Error ? error.message : String(error);
+      return undefined;
+    }
+    if (embedded.length === queries.length) return embedded;
+    if (embedded.length === 0) return undefined;
+    throw new Error(
+      `the embedder was given ${queries.length} queries and returned ${embedded.length} vectors; a ` +
+        'partial reply would rank some of the queries and weight the fusion toward those, so the order ' +
+        'would describe a query set this run never issued',
+    );
   }
 
   /**
@@ -533,7 +843,8 @@ export class SearchIndex implements VectorEraser {
 
   /** What the corpus, the channels and the stages did. */
   census(): SearchCensus {
-    const channels: ('lexical' | 'vector' | 'rerank')[] = ['lexical'];
+    const channels: ('lexical' | 'vector' | 'rerank')[] = [];
+    if (this.#lexical) channels.push('lexical');
     if (this.#vectors.length > 0) channels.push('vector');
     if (this.#options.rerank !== undefined) channels.push('rerank');
     return {
@@ -548,6 +859,7 @@ export class SearchIndex implements VectorEraser {
       rerankDegraded: this.#rerankDegraded,
       embedDegraded: this.#embedDegraded,
       embedFailure: this.#embedFailure,
+      queries: this.#lastQueries,
       channels,
     };
   }
