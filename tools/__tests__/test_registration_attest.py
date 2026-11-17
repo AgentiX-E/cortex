@@ -26,6 +26,7 @@ formality:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -136,6 +137,47 @@ class TestTheComparison:
         # The dispatch input, not the artifact field: a refusal is read by whoever has to re-dispatch.
         assert reading["differences"][0].startswith("cortex_memory_max_prompt_chars:")
         assert "multi-session:48460" in reading["differences"][0]
+
+    def test_a_configuration_that_is_not_an_object_is_still_hashable(self):
+        """The census filter must not turn `None` into a traceback.
+
+        Two tools compute a fingerprint *before* they refuse an artifact for carrying no configuration --
+        `capability-ledger.py` and `cost-ledger.py` -- so the refusal is the message a caller should meet. A
+        `TypeError` from the filter reads as "the tool is broken", which is a different and worse sentence
+        than "this artifact cannot be attested". Caught by four tests in `test_capability_ledger.py` the
+        first time the filter shipped.
+        """
+        assert attest.fingerprint(None) == "sha256:" + hashlib.sha256(b"null").hexdigest()
+
+    def test_a_census_block_does_not_make_two_runs_two_configurations(self):
+        """The fingerprint identifies the **configuration**; a tally taken after the run is not one.
+
+        `selfIndex` and `admission` are classified `census` in `arm-config-record.py` -- "counted after the
+        questions were answered, so two runs of one configuration disagree here by design and a difference is
+        a measurement rather than a departure" -- and they arrived *inside* `memoryArmConfig` in the build
+        that shipped `S16`. Hashing them made the docstring on `fingerprint` false: two dispatches of one
+        configuration would have produced two fingerprints, and the strict path would have demanded a
+        declared departure for a run that departed from nothing.
+        """
+        first = dict(CONFIG, selfIndex={"embedCalls": 10_325, "embedTexts": 529_456, "turns": 742_080})
+        second = dict(CONFIG, selfIndex={"embedCalls": 10_422, "embedTexts": 536_099, "turns": 742_080})
+        assert attest.fingerprint(first) == attest.fingerprint(second)
+        assert attest.fingerprint(CONFIG) == attest.fingerprint(first)
+
+        admitted = dict(CONFIG, admission={"admitted": 987_000, "candidates": 987_000, "rejected": 0})
+        assert attest.fingerprint(admitted) == attest.fingerprint(CONFIG)
+
+    def test_a_census_block_is_dropped_without_dropping_its_neighbours(self):
+        """The filter is the classified names, not "anything that looks like a count"."""
+        with_census = dict(CONFIG, voteCounts={"agree": 3}, queryExpansionCounts={"expanded": 19})
+        assert attest.fingerprint(with_census) == attest.fingerprint(CONFIG)
+        # A field that is not census still moves the identity, including one added inside the same block
+        # a census field lives in -- `indexEmbedding` sits beside `selfIndex` and is an identity.
+        assert attest.fingerprint(dict(CONFIG, indexEmbedding="none")) != attest.fingerprint(CONFIG)
+        assert (
+            attest.fingerprint(dict(CONFIG, selfIndex={"embedCalls": 1}, indexEmbedding="none"))
+            != attest.fingerprint(CONFIG)
+        )
 
     def test_the_fingerprint_decides_and_the_difference_list_only_diagnoses(self):
         # A baseline recorded before the projection gained an input still describes the same configuration.
@@ -252,6 +294,60 @@ class TestTheTwoLanguagesAgree:
         )
         assert completed.returncode == 0, completed.stderr
         written = json.loads(completed.stdout)["shipping"]["configurationFingerprint"]
+        assert written == attest.fingerprint(CONFIG)
+
+
+    def test_the_two_languages_also_agree_on_a_configuration_carrying_census(self, tmp_path: pathlib.Path):
+        """The shared fixture had no census block, so the pin did not cover the field that broke it.
+
+        `S16`'s artifact arrived with `selfIndex` and `admission` inside `memoryArmConfig`. Python dropped
+        them and Node hashed them, and the two would have disagreed on every real artifact while agreeing
+        on the fixture -- the shape of gate that passes forever and fails the first time it matters.
+        """
+        config = dict(CONFIG, selfIndex={"embedCalls": 7, "embedTexts": 70}, admission={"admitted": 9})
+        body = {
+            "dataset": "longmemeval",
+            "datasetFingerprint": "sha256:" + "0" * 64,
+            "questionCount": 1,
+            "runs": 1,
+            "generatedAt": "2026-11-10T00:00:00.000Z",
+            "memoryArmConfig": config,
+            "questions": [{"questionId": "q", "capability": "IE"}],
+            "feature": {
+                "metrics": {
+                    "correct": 1,
+                    "total": 1,
+                    "perCapability": {"IE": {"correct": 1, "total": 1}},
+                }
+            },
+            "usageBySide": {"feature": {"promptTokens": 1, "completionTokens": 1, "calls": 1}},
+            "ablation": {
+                "featureCorrectByRun": ["1"],
+                "featureByCapability": {"IE": {"avg": 1, "min": 1, "max": 1}},
+            },
+        }
+        path = tmp_path / "report.json"
+        path.write_text(json.dumps(body))
+        completed = subprocess.run(
+            [
+                "node",
+                str(REPO / "tools" / "efficiency-frontier.mjs"),
+                str(path),
+                str(path),
+                "--label",
+                "reference",
+                "--label",
+                "route-room",
+                "--ship",
+                "route-room",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+        written = json.loads(completed.stdout)["shipping"]["configurationFingerprint"]
+        assert written == attest.fingerprint(config)
         assert written == attest.fingerprint(CONFIG)
 
 

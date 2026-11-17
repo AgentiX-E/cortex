@@ -145,8 +145,8 @@
     "threshold": 0,
     "turnCutMarker": "none"
   },
-  "memoryArmConfigFingerprint": "sha256:69378c9f30a498b59684ec5c85a1373d1898fa858fce140d479219269617a45c",
-  "note": "\u00a713.347 reverted \u00a713.345 temporal-only reach after the 500-question confirmation run read 90.15% against this configuration 91.20%, and that history is why \u00a732 checks the room change against a paired control rather than a level: S16 gave multi-session its width back, left temporal cut, and read 91.25% against 91.40% paired at -1 question. The baseline used to describe 42533236864 (retrieval-anchored, 91.20%, 9,201 tokens); it now describes 44017278305, which is the artifact C1 prices and the arm S9/S14/S15/S16 quoted.",
+  "memoryArmConfigFingerprint": "sha256:a49e6f8d47f72d972e644661c10093bfe3ff88e4059a2ff8f0fd6bb424addd55",
+  "note": "\u00a713.347 reverted \u00a713.345 temporal-only reach after the 500-question confirmation run read 90.15% against this configuration 91.20%, and that history is why \u00a732 checks the room change against a paired control rather than a level: S16 gave multi-session its width back, left temporal cut, and read 91.25% against 91.40% paired at -1 question. This baseline also changed what the fingerprint hashes. selfIndex and admission arrived inside memoryArmConfig with the build that shipped S16, they are classified census, and hashing them made two dispatches of one configuration produce two identities -- so canonical() now drops the classified census blocks in both languages and the pin test carries a fixture that has them.",
   "passShape": {
     "minIntervalMs": null,
     "retryBudgetMs": null,

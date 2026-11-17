@@ -425,6 +425,17 @@ function pairedOf(pathA, pathB, artifactA, artifactB) {
  * values is a string, an integer, a boolean or an array of them -- a float would be the one divergence, and
  * `arm-config-record.py` refuses to record a configuration it has no class for.
  */
+/**
+ * The census blocks `arm-config-record.py` classifies as `census`, and therefore does not hash.
+ *
+ * Written out rather than imported because that table is Python and this is the one Node process that
+ * writes a fingerprint. `test_the_two_languages_also_agree_on_a_configuration_carrying_census` pins the two
+ * implementations on a fixture that carries these blocks, which is the check this list cannot do for
+ * itself: the fixture the pin used before had no census in it, so Python dropped them, Node hashed them, and
+ * the two agreed on every green run and disagreed on every real artifact.
+ */
+const CENSUS_FIELDS = new Set(['admission', 'queryExpansionCounts', 'selfIndex', 'voteCounts']);
+
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value !== null && typeof value === 'object') {
@@ -441,9 +452,14 @@ function configurationFingerprint(config, path) {
     // Refused rather than hashed as `null`. A `null` fingerprint would compare unequal for the right
     // reason and the wrong message -- the repair a reader would make is to regenerate, when the artifact
     // is the thing that cannot answer.
-    fail(`${path} carries no memoryArmConfig, so the shipping arm's configuration cannot be attested`);
+    fail(
+      `${path} carries no memoryArmConfig, so the shipping arm's configuration cannot be attested`,
+    );
   }
-  return `sha256:${createHash('sha256').update(canonical(config), 'utf8').digest('hex')}`;
+  const declarative = Object.fromEntries(
+    Object.entries(config).filter(([key]) => !CENSUS_FIELDS.has(key)),
+  );
+  return `sha256:${createHash('sha256').update(canonical(declarative), 'utf8').digest('hex')}`;
 }
 
 const VALUED_FLAGS = new Set(['--margin', '--tolerance', '--alpha', '--label', '--ship']);

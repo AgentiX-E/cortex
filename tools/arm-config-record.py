@@ -395,17 +395,40 @@ def project(report: dict) -> dict[str, str]:
 
 
 def canonical(config: object) -> str:
-    """The artifact's configuration as one string, with no formatting left to disagree about.
+    """The artifact's configuration as one string, with no formatting left to disagree about, and no census.
 
     Sorted keys because the artifact's objects have no order and a key-order difference is not a
     configuration difference; no whitespace because indentation is not one either; `ensure_ascii` off
     because a product name is UTF-8 and escaping it would be a difference a reader cannot see.
 
+    **Census blocks are dropped**, and the reason is the class definition above: a `census` field is
+    "counted after the questions were answered", so two runs of one configuration disagree there by
+    design. Hashing them made `fingerprint`'s own docstring false -- two dispatches of one configuration
+    produced two identities, and the strict path would have demanded a declared departure from a run that
+    departed from nothing. The block arrived inside `memoryArmConfig` with the build that shipped `S16`,
+    which is how a rule written when the configuration was purely declarative stopped holding.
+
+    The filter is `UNPROJECTED`'s classified names rather than a shape test, so a new census field has to
+    be added to that table (where `arm-config-classification.test.ts` already requires it) before it is
+    excluded here. Dropping happens at the top level only, because every classified name is a top-level
+    key: a nested block is a value of a field, and the field it belongs to decides its class.
+
     `efficiency-frontier.mjs` reimplements this in nine lines, because the shipping arm's fingerprint
     is written by the JavaScript tool from the artifact it loaded. `tools/__tests__/test_registration_attest.py`
-    pins the two to the same output on a shared fixture: a fingerprint two languages compute
-    differently would be a gate that fires on every green run, which is how a gate gets deleted.
+    pins the two to the same output on a shared fixture *and* on a fixture carrying census blocks: a
+    fingerprint two languages compute differently would be a gate that fires on every green run, which is
+    how a gate gets deleted.
     """
+    if isinstance(config, dict):
+        config = {
+            key: value
+            for key, value in config.items()
+            if UNPROJECTED.get(key, ("", ""))[0] != "census"
+        }
+    # Anything that is not an object is hashed as it stands. A `null` configuration has to keep producing
+    # a fingerprint -- `capability-ledger.py` and `cost-ledger.py` both compute one before they refuse the
+    # artifact for other reasons, and a `TypeError` here reads as "the tool is broken" rather than "this
+    # artifact cannot be attested".
     return json.dumps(config, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
