@@ -207,7 +207,10 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
     ),
     "queryExpansionCounts": (
         "census",
-        "how far §13.97's expansion reached, which only the process that made the calls can say",
+        "what §13.97's model produced -- questions asked, phrases kept, responses refused -- which only "
+        "the process that made the calls can say. It is NOT the reach: §13.377.3 reads `selfIndex.queries` "
+        "against `selfIndex.indexes` for that, because a run can produce phrases the ranking never "
+        "receives and every field of this block would still be truthful",
     ),
     "threshold": (
         "constant",

@@ -69,6 +69,7 @@ function cost(overrides: Partial<Cost> = {}): Cost {
     rerankCalls: 0,
     rerankDegraded: 0,
     embedDegraded: 0,
+    queries: 50,
     ...overrides,
   };
 }
@@ -186,7 +187,13 @@ describe('the product index cost reaches the artifact', () => {
       first: { baseline: bareSystem('reference-pipeline'), feature: new CostSystem('f0', cost()) },
       baselineFor: () => bareSystem('reference-pipeline'),
       featureFor: (worker) =>
-        new CostSystem(`f${worker}`, cost({ indexes: 10, turns: 20, embedTexts: 30, memoHits: 5 })),
+        new CostSystem(
+          `f${worker}`,
+          // `queries` travels with `indexes` in the fixture rather than keeping its default, because the
+          // two are the pair the artifact is read against: a record claiming ten retrievals and fifty
+          // queries would be a plan that acted on questions this worker never ranked.
+          cost({ indexes: 10, turns: 20, embedTexts: 30, memoHits: 5, queries: 10 }),
+        ),
     });
 
     const result = await armRun(9, 2, pool.featureInstances()[0]!, pool);
@@ -203,6 +210,9 @@ describe('the product index cost reaches the artifact', () => {
       rerankCalls: 0,
       rerankDegraded: 0,
       embedDegraded: 0,
+      // One query per retrieval on both workers: this is the control's receipt, and it is what a run
+      // with `queryExpansion=llm` has to differ from.
+      queries: 60,
     });
   });
 

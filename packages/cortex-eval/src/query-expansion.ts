@@ -319,3 +319,43 @@ export async function expandMultiSessionQueries(
   }
   return { byQuestion, questions, phrases, empty };
 }
+
+/**
+ * The expansion as the product's own query plan.
+ *
+ * ## Why this exists at all
+ *
+ * `SearchIndexOptions.queryPlan` is the product's seam for "this question is retrieved with more than its
+ * own wording" (plan §34). The instrument had the same capability in `retrieveTopKByQueries`, which every
+ * `retrieval*` signal uses through `RelevanceCase.queries` -- so before this function, dispatching
+ * `queryExpansion=llm` beside `relevanceSignal=self-index` produced phrases, put them on cases the
+ * product path never reads, and published the control's accuracy under the treatment's name. Nothing in
+ * the artifact disagreed, because `queryExpansionCounts` describes the model and the model had done its
+ * job. That is the defect this function closes, and `assertExpansionReachesRanking` is the guard that
+ * keeps a future signal from re-opening it.
+ *
+ * ## Why the question is returned first, and always
+ *
+ * The plan is `[question, ...phrases]` even when the phrases are empty, because the product fuses by
+ * reciprocal rank and a plan returning only the phrases would rank without the question -- a different
+ * experiment from the one §13.97 registered. The empty case is `[question]`, which the product routes to
+ * its single-query path: byte-identical prompts, and the lexical channel's own scores rather than the
+ * same order re-based on rank.
+ *
+ * ## Why there is no counter here
+ *
+ * An earlier draft returned a mutable `{ searched, expanded }` record for the caller to read after the
+ * ablation. It was removed rather than kept beside the artifact's receipt, because two counters for one
+ * fact are two definitions of it: the number that matters is `selfIndex.queries`, which the product
+ * writes from the census of the index that issued the queries, and a harness-side tally would be free to
+ * disagree with it while both looked plausible. `assertQueryExpansionReached` reads the product's pair.
+ */
+export function expansionQueryPlan(
+  expansion: QuestionExpansion,
+): (question: string) => Promise<readonly string[]> {
+  // A promise rather than an array, because the product calls this inside a retrieval that already
+  // awaits, and a synchronous signature would force the caller to precompute a table keyed by question
+  // before the index existed -- which is the shape the option was given an `async` type to avoid.
+  return (question: string) =>
+    Promise.resolve([question, ...(expansion.byQuestion.get(question) ?? [])]);
+}

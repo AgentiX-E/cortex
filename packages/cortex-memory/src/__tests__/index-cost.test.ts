@@ -118,6 +118,10 @@ describe('the product reports what its own retrieval cost a run', () => {
       rerankCalls: 0,
       rerankDegraded: 0,
       embedDegraded: 0,
+      // One query per retrieval, which is what a run that configures no plan should read: the
+      // product's own wording, not the harness's expectation. A run that grew this number without
+      // growing `indexes` is a run whose `queryPlan` acted, and the pair is the receipt.
+      queries: 3,
     });
     // The counter and the model agree: four turns once, then one question per question.
     expect(system.indexCost()?.embedTexts).toBe(embedder.texts());
@@ -190,6 +194,7 @@ describe('foldIndexCost', () => {
       rerankCalls: 0,
       rerankDegraded: 0,
       embedDegraded: 0,
+      queries: 1,
     });
   });
 
@@ -218,6 +223,7 @@ describe('foldIndexCost', () => {
       rerankCalls: 3,
       rerankDegraded: 1,
       embedDegraded: 1,
+      queries: 2,
     });
   });
 

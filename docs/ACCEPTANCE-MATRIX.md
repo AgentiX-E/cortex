@@ -70,6 +70,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | S15 | <!-- reading:S15 -->89.4% | ≥ 91.0%  | aim    | the prompt room, every route cut       | LongMemEval-S, 500 questions, `maxPromptCharsByRoute` at 24,000 on all six routes, paired against `S9` |
 | S16 | <!-- reading:S16 -->-1   | ≥ -5      | pass   | the prompt room, one route kept wide   | LongMemEval-S, 500 questions, `multi-session` 48,460 and the other five 24,000, paired against `S9`, **and** a bill ≤ 85% of 9,201 |
+| S17 | <!-- reading:S17 -->—      | ≥ +5      | unrun  | query expansion on the product’s ranking | LongMemEval-S, 500 questions, `queryExpansion: llm` as the one departure from the registered table, paired against `S16`, **and** a bill ≤ 8,600 prompt tokens per question, **and** `selfIndex.queries > selfIndex.indexes` |
 | S10 | <!-- reading:S10 -->3      | ≥ -5      | pass   | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | S11 | <!-- reading:S11 -->39.6%   | ≥ 88.0%   | fail   | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
 | S12 | <!-- reading:S12 -->-2    | ≥ -5      | pass   | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |

@@ -2080,6 +2080,46 @@ def audit_section(
             ),
         )
 
+    # §13.97's receipt, read the same way and for the same reason as the degradation count: the
+    # configuration says the reader wrote phrases, and the product's own bill says whether any retrieval
+    # issued more than the question.
+    #
+    # This is the reading the artifact assertion refuses to write, printed anyway, because a reading tool
+    # that only ever sees artifacts the writer approved cannot say what an unapproved one would have
+    # looked like -- and because the number is the first thing to check when a delta is zero: an arm whose
+    # `queries` equals its `indexes` did not run the treatment, whatever the accuracy says.
+    #
+    # The check is confined to `self-index` because that is the only signal whose index this field can
+    # see: `retrieval*` reads the same phrases through `RelevanceCase.queries`, which the artifact does
+    # not carry per question, so a line here would be claiming a receipt it cannot take. Within
+    # `self-index`, a missing block is a contradiction rather than a silence -- the run claims the
+    # product built the ranking, and `indexCostAcross` publishes nothing when it built none.
+    expansion = config.get('queryExpansionCounts')
+    if isinstance(expansion, dict) and config.get('relevanceSignal') == 'self-index':
+        phrases = expansion.get('phrases')
+        queries = self_index.get('queries') if isinstance(self_index, dict) else None
+        indexes = self_index.get('indexes') if isinstance(self_index, dict) else None
+        countable = (
+            isinstance(phrases, int)
+            and not isinstance(phrases, bool)
+            and isinstance(queries, int)
+            and not isinstance(queries, bool)
+            and isinstance(indexes, int)
+            and not isinstance(indexes, bool)
+        )
+        check(
+            'plan-reach',
+            countable and (phrases == 0 or indexes == 0 or queries > indexes),
+            f'{phrases!r} phrase(s), {queries!r} queries for {indexes!r} index(es): '
+            + (
+                'the phrases reached the ranking, so this delta is the expansion\'s'
+                if countable and (phrases == 0 or indexes == 0 or queries > indexes)
+                else 'one query per retrieval is the control. The phrases reached no ranking -- '
+                '`self-index` reads `index.queryPlan` and not `RelevanceCase.queries` -- so the '
+                'accuracy below belongs to the bare question whatever the configuration names'
+            ),
+        )
+
     header = [
         '',
         'artifact audit (each field checked against another field of the same run)',

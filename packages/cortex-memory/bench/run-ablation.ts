@@ -38,7 +38,9 @@
  * admission and not a difference in what the model was asked.
  */
 import {
+  assertExpansionReachesRanking,
   assertRerankReachesRanking,
+  expansionQueryPlan,
   // §13.197.4's pair rather than the single reader: a route-scoped `thinking` value names the routes
   // that carry a second reader, and `createLlmFromEnv` refuses such a value instead of building the
   // base reader and letting the artifact claim a treatment the run never administered.
@@ -669,6 +671,22 @@ async function main(): Promise<void> {
         `${expansion.phrases} phrases, ${expansion.empty} refused`,
     );
   }
+  // §13.97 reaching the product's own ranking -- plan §34's seam.
+  //
+  // The phrases have two ways to reach a ranking and the signal decides which: `RelevanceCase.queries`
+  // for the instrument's indexes (filled above) and `SearchIndexOptions.queryPlan` for the one the
+  // product builds. Before this, `self-index` -- the registered arm since `S9` -- had only the first,
+  // so a dispatch of `queryExpansion=llm` beside it wrote phrases, counted them, and answered from the
+  // bare question. The plan is built from the same `QuestionExpansion`, so the two routes cannot
+  // disagree about what the model said; the receipt that it *arrived* is the product's own
+  // `queries`/`indexes` pair, and `assertQueryExpansionReached` refuses to write an artifact where
+  // they contradict the configuration.
+  //
+  // Nothing is assigned when the run did not expand, rather than a plan that returns the bare
+  // question: an absent key is the product's single-query path, which is byte-identical to the
+  // control, and a plan that returns one query would be the same ranking reached through the fusion
+  // code -- the difference `SearchIndex` documents and refuses to hide.
+  const expansionPlan = expansion === null ? undefined : expansionQueryPlan(expansion);
 
   // The cases the index is built over: each question with its own context, and nothing
   // else. The type carries no ground-truth field, which is what makes the signal
@@ -702,6 +720,9 @@ async function main(): Promise<void> {
   // Refused before any retrieval: an arm whose ranking cannot carry the stage must not produce a
   // number at all, because its delta would be read as the reranker's verdict.
   assertRerankReachesRanking(armOptions.relevanceSignal, rerankIdentity);
+  // The same refusal for §13.97's phrases: `none` compares no query against a turn, so the expansion
+  // would be produced, counted, and never read.
+  assertExpansionReachesRanking(armOptions.relevanceSignal, armOptions.queryExpansion);
   if (rerank !== undefined) {
     console.log(
       `Rerank stage: ${rerankIdentity.provider}` +
@@ -798,6 +819,10 @@ async function main(): Promise<void> {
         ...(productIndexEmbedded ? { onEmbedFailure: 'lexical' as const } : {}),
         k: armOptions.relevanceTopK,
         ...(rerank === undefined ? {} : { rerank }),
+        // The plan travels only here: a `retrieval*` signal reads the same phrases through
+        // `RelevanceCase.queries` above, and handing it a plan as well would issue the queries twice
+        // and price one treatment as two.
+        ...(expansionPlan === undefined ? {} : { queryPlan: expansionPlan }),
       }
     : undefined;
   if (selfIndexOptions !== undefined) {

@@ -376,6 +376,16 @@ export type IndexCost = {
   readonly rerankDegraded: number;
   /** Retrievals across the run that fell back to lexical scoring. See `SearchCensus.embedDegraded`. */
   readonly embedDegraded: number;
+  /**
+   * Queries the run issued, summed over every retrieval.
+   *
+   * `queries > indexes` is the whole receipt of "this run retrieved with more than the question", and it is
+   * a product count rather than a harness one: the number is written by the index that issued the queries.
+   * That is what makes a dispatched query plan falsifiable from the artifact -- a run whose configuration
+   * says the reader wrote phrases and whose bill shows one query per index is a control run wearing the
+   * treatment's name, and `assertQueryExpansionReached` is the check that refuses to write it.
+   */
+  readonly queries: number;
 };
 
 /**
@@ -397,6 +407,7 @@ export function foldIndexCost(previous: IndexCost | undefined, census: SearchCen
     rerankCalls: (previous?.rerankCalls ?? 0) + census.rerankCalls,
     rerankDegraded: (previous?.rerankDegraded ?? 0) + census.rerankDegraded,
     embedDegraded: (previous?.embedDegraded ?? 0) + census.embedDegraded,
+    queries: (previous?.queries ?? 0) + census.queries,
   };
 }
 

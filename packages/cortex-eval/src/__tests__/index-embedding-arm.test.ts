@@ -72,6 +72,7 @@ function cost(overrides: Partial<Cost> = {}): Cost {
     rerankCalls: 0,
     rerankDegraded: 0,
     embedDegraded: 0,
+    queries: 50,
     ...overrides,
   };
 }

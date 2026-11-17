@@ -40414,3 +40414,111 @@ decoration that changes an answer for the worse.
   be a cross-question leak rather than a gain.
 - **Five reach-table rows is not five mechanisms.** Rows 3, 6, 8, 10 and 11 are reached through one file, over
   two facts per unit, with values this module fixes.
+
+## 13.377 The expansion reaches the product's ranking, and until this round it could not
+
+### 13.377.1 The finding: a registered treatment that was the control
+
+§13.97 registered `CORTEX_MEMORY_QUERY_EXPANSION=llm` as one model call per multi-session question
+**before** the relevance index is built, with the phrases carried by `RelevanceCase.queries` into
+`buildRetrievalRelevanceIndex`. That sentence was true of the signal the arm ran when it was written.
+It stopped being true of the **registered** arm: since `S9` every published 500-question reading is
+`relevanceSignal=self-index`, and that signal builds its index inside the product (`SearchIndex`),
+which reads the question and nothing else. `RelevanceCase.queries` is filled either way, and the
+product never looks at it.
+
+So a dispatch of `queryExpansion=llm` beside the registered arm would have made 121 extra model
+calls, recorded `questions=121, phrases≈480` in `queryExpansionCounts`, answered every question from
+its bare wording, and published the control's accuracy under the treatment's name. Every field of
+that artifact would have agreed with every other field; the contradiction lived in a TypeScript file
+the artifact does not read. That is §10.10's shape — a configuration that never reaches the decision
+it names — and it is the third time this campaign has found one.
+
+**No published number changes.** Every archived artifact carries `queryExpansion=none` (the
+registration's own value), so nothing in `S9`…`S16` was produced under the broken combination.
+
+### 13.377.2 The treatment, as it now runs
+
+The seam is the product's, not the harness's: `SearchIndexOptions.queryPlan` (plan §34) hands the
+index a query set per question and fuses the per-query rankings by reciprocal rank. `cortex-eval`
+converts the expansion it already produced into that plan with `expansionQueryPlan`, and
+`bench/run-ablation.ts` passes it into the product's index options **only** when the signal builds
+that index. The other route is untouched: a `retrieval*` signal keeps receiving the same phrases
+through `RelevanceCase.queries`, and handing it a plan as well would issue every query twice and
+price one treatment as two.
+
+Three properties are structural rather than promised:
+
+| property | where it is enforced |
+| --- | --- |
+| the question is always the plan's first query | `expansionQueryPlan` builds `[question, ...phrases]`, and an empty expansion returns `[question]`, which the product routes to its single-query path — byte-identical prompts, no re-based scores |
+| the plan reaches only the product-built index | the spread in `run-ablation.ts` lives inside the `buildsProductIndex` branch |
+| the phrases reach no ranking at all when the signal scores nothing | `assertExpansionReachesRanking` refuses `queryExpansion=llm` with `relevanceSignal=none` before any question is answered |
+
+### 13.377.3 The receipt: `selfIndex.queries`, and the three places it is read
+
+A configuration is not evidence. The evidence is a number the **product** wrote: `IndexCost.queries`
+is folded from each retrieval's own census, summed across workers, and published beside
+`indexes` in the artifact's `selfIndex` block. One query per retrieval is a run whose ranking was the
+question's own wording; more is the plan having acted on at least one question.
+
+The same fact is checked three times, at three distances, because each catches what the others cannot:
+
+| where | what it does | what it cannot see |
+| --- | --- | --- |
+| `assertQueryExpansionReached` (writer) | refuses to write an artifact whose `phrases > 0` and `queries == indexes` on a product-built index | a run whose phrases all came back refused, which is a legitimate reading |
+| `readout-arm-run.py --audit` (`plan-reach`) | prints the pair and names the route when they contradict, on artifacts nobody approved | artifacts of an instrument-built index, where the phrases travel invisibly |
+| this section | records the prediction | anything about whether the expansion *helps* |
+
+### 13.377.4 The pre-registered dispatch
+
+One dispatch, at the registered configuration with **one** departure: `cortex_memory_query_expansion:
+none → llm`. Everything else is `tools/arm-config-baseline.json` verbatim — `relevance=self-index`,
+`relevance_top_k=256`, `ask=verbatim-acts`, `review_pass=bare`, `prompt_contract=
+evidence-blocks-unsourced`, `evidence_roles=user` on `multi-session,temporal`, the six per-route rooms,
+`max_turn_chars=400` on two routes, `thinking=multi-session+temporal`, `model=deepseek-chat`,
+`temperature=0`, `source_trust=0.5`, both thresholds `0`, `rerank=none`, `self_consistency=none`.
+`limit=0` (the full 500) and `ablation_runs=4`, because a capability-scoped or single-repetition run
+cannot answer the bill and floor criteria below.
+
+Criteria, fixed before the run and not moved after it:
+
+- **E1 — the mechanism.** MR majority-vote accuracy **≥ 107 of 121** (88.43%, against the control's
+  102 of 121 = 84.30%): a net conversion of **≥ +5** questions. A paired McNemar p is reported beside
+  it, and the criterion is the count rather than the p, because +5 on 121 is the smallest effect this
+  population can resolve and a p-value would let a 3-question gain with a favourable draw pass.
+- **E2 — the bill.** Prompt tokens per question **≤ 8,600**, against the registered 7,448 measured on
+  `S16`. The headroom is 15.5%, which is roughly what four extra query embeddings and their fused pool
+  can cost; a number above it means the phrases are buying pool rather than precision.
+- **E3 — the floor.** No capability more than **2 questions** below the control. The other four
+  capabilities are this dispatch's internal control: the treatment is confined to MR by
+  `expandMultiSessionQueries`'s own routing rule, so their prompts must be byte-identical
+  (`promptChars` compared per question) and a non-zero delta there is a leak rather than a gain.
+- **E4 — the receipt.** `selfIndex.queries > selfIndex.indexes` on the feature side, with
+  `refused ≤ 12` (10% of 121). A run that satisfies E1 while failing E4 is a run whose delta came from
+  somewhere other than the expansion.
+- **E5 — the control side is the control.** The baseline arm's `selfIndex.queries` must equal its
+  `indexes` exactly, at every repetition. A control that issued more queries than it has retrievals is
+  an arm that received a plan it was not dispatched with.
+
+### 13.377.5 What the four outcomes mean
+
+| E1 | E2/E4 | reading |
+| --- | --- | --- |
+| pass | pass | the ranking axis is live: adopt, and the next increment is the phrase prompt's width rather than a new stage |
+| pass | fail | the gain is real and unattributable; the run is archived as `unread` and no adoption follows |
+| fail | pass | the mechanism ran and did not help. §13.96's diagnosis returns intact: the deficit is which mentions count, and retrieval reach is not the axis — close the family, including the `window` reorder's premise |
+| fail | fail | a dispatch failure, not evidence. Nothing is concluded about the mechanism |
+
+`E3` is a gate on all four: a leak into another capability makes the delta unreadable whatever E1 says.
+
+### 13.377.6 What is not licensed
+
+- **No product change.** `queryPlan` is the caller's seam and the caller still writes the plan; the
+  capability ledger's expansion row stays `instrument`, because producing the phrases is a model call
+  and `cortex-memory` owns no provider. What the product gained is the ability to *receive* a query
+  set, which §34 records.
+- **No adoption from this section.** Adoption requires the dispatch's reading, and the criteria above
+  are the only thing here that is decided in advance.
+- **`window` is not widened.** It reorders a delivered set inside the renderer and reaches the
+  temporal route; nothing in this round touches it, and a run may not administer both.

@@ -1095,6 +1095,15 @@ export type MemoryArmConfig = {
          * arm; a reader comparing it with either is comparing two products.
          */
         readonly embedDegraded: number;
+        /**
+         * Queries the product's index issued, summed over the run.
+         *
+         * Read against `indexes` and not on its own: one query per retrieval is a run whose ranking was the
+         * question's own wording, and a run that configured a query plan and still reads that is a control
+         * whose configuration claims a treatment. `assertQueryExpansionReached` refuses to write such an
+         * artifact rather than letting a reader find the contradiction.
+         */
+        readonly queries: number;
       }
     | undefined;
   /**

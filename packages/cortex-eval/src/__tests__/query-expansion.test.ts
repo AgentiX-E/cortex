@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   expandMultiSessionQueries,
+  expansionQueryPlan,
   type ExpansionTarget,
   type QuestionExpansion,
 } from '../query-expansion.js';
@@ -243,5 +244,53 @@ describe('who is asked, and what the counts say', () => {
     ]);
     expect(complete).not.toHaveBeenCalled();
     expect(expansion).toEqual({ byQuestion: new Map(), questions: 0, phrases: 0, empty: 0 });
+  });
+});
+
+describe('expansionQueryPlan', () => {
+  it('puts the question first and the phrases after it, for every question in the map', async () => {
+    // The order is the contract, not a convenience. The product fuses by reciprocal rank, so a plan that
+    // returned only the phrases would rank without the question -- a different experiment from the one
+    // the pre-registration names, and one whose difference would be invisible in the artifact because
+    // the counts describe what the model said rather than what the index was asked.
+    const plan = expansionQueryPlan({
+      byQuestion: new Map([['q1', ['led a project', 'ran a review']]]),
+      questions: 1,
+      phrases: 2,
+      empty: 0,
+    });
+    await expect(plan('q1')).resolves.toEqual(['q1', 'led a project', 'ran a review']);
+    // A question the expansion refused or never reached still gets a plan -- the bare question, which
+    // the product documents as the single-query path and the byte-identical prompt.
+    await expect(plan('q2')).resolves.toEqual(['q2']);
+  });
+
+  it('answers the same list twice, so two calls cannot disagree about one question', async () => {
+    // The plan is called by the product once per retrieval, and a corpus asked twice over one store
+    // (the shape `S12` used) hits it twice for the same question. A plan that consumed its map -- or
+    // that returned a fresh list each time from a different source -- would make one treatment produce
+    // two rankings, and `selfIndex.queries` would be the only field that noticed.
+    const plan = expansionQueryPlan({
+      byQuestion: new Map([['q1', ['led a project']]]),
+      questions: 1,
+      phrases: 1,
+      empty: 0,
+    });
+    const first = await plan('q1');
+    const second = await plan('q1');
+    expect(first).toEqual(second);
+    expect(first).toEqual(['q1', 'led a project']);
+  });
+
+  it('is an asynchronous plan, because the index calls it inside a retrieval that already awaits', () => {
+    // The product's option is `(question) => Promise<readonly string[]>` on purpose (§34.1): an
+    // expansion is a model call, and a synchronous-only signature would have forced the caller to
+    // precompute a table keyed by question before the index existed. This asserts the returned value is
+    // a promise rather than a bare array, which is the one way a caller could silently satisfy the type
+    // by returning the array from an `async`-free arrow.
+    const plan = expansionQueryPlan({ byQuestion: new Map(), questions: 0, phrases: 0, empty: 0 });
+    const answered = plan('anything');
+    expect(answered).toBeInstanceOf(Promise);
+    return answered;
   });
 });

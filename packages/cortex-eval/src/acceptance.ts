@@ -1256,6 +1256,61 @@ export const CRITERIA: readonly Criterion[] = [
       'from this artifact -- adoption is what makes the row a product fact rather than a benchmark one.',
   },
 
+  // §13.377: the expansion reaching the product's own ranking.
+  //
+  // The row exists before the dispatch, and it is `unrun` rather than `aim` with a missing reading, because
+  // the two states mean different things to a reader of the matrix: `aim` with no artifact is a row whose
+  // number could not be computed from the artifact it names, while `unrun` is a row no artifact exists for.
+  // The first state is a defect to repair, the second is a dispatch to make, and collapsing them is the
+  // confusion `S9`'s row had for four rounds.
+  {
+    id: 'S17',
+    capability: 'query expansion on the product’s own ranking',
+    metric:
+      'question-by-question net correct answers on `MR` against the registered arm, **and** a bill at or ' +
+      'below 8,600 prompt tokens per question, **and** the product’s own receipt ' +
+      '`selfIndex.queries > selfIndex.indexes`',
+    dataset:
+      'LongMemEval-S, 500 questions, one dispatch, four repetitions, `relevanceSignal: self-index` with ' +
+      '`queryExpansion: llm` as the single departure from the table `tools/arm-config-baseline.json` ' +
+      'registers, paired against `S16`; the same reader, judge and prompt everywhere else',
+    comparator: 'at-least',
+    threshold: 5,
+    unit: 'count',
+    // `aim`, with an `unrun` **source**: the kind says what the criterion would do with a number, and the
+    // source says there is no number. The matrix renders the second as `unrun`, which is the state a
+    // reader needs -- a dispatch not yet made is not a criterion that failed to compute.
+    kind: 'aim',
+    source: {
+      kind: 'unrun',
+      reason:
+        'registered by `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §13.377.4 and not yet dispatched. The ' +
+        'mechanism was reachable on the instrument’s indexes since §13.97 and unreachable on this arm ’s, ' +
+        'because `self-index` builds its index inside the product and read no query set at all — so the ' +
+        'row could not be filled by a run, only by the seam plan §34 added',
+    },
+    competitors: [
+      {
+        name: 'MemCog',
+        value: 0.9248,
+        grade: 'C',
+        recipe:
+          'vendor multi-session reading on LongMemEval-S, 92.48%, the row `MR` is measured against. What ' +
+          'this dispatch tests is the one published mechanism that speaks to the gap rather than to the ' +
+          'engine: the reference pipeline’s own `expansionQueries`, whose trace carries three phrases whose ' +
+          'words the question does not contain',
+      },
+    ],
+    onMiss:
+      'A net MR delta below +5 says the ranking axis is exhausted as a way to raise `MR`: the phrases reach ' +
+      'the pool and the reader still answers from what it already had, which leaves §13.96’s diagnosis — ' +
+      'which mentions count as instances — as the only live one. A bill above 8,600 with the delta in ' +
+      'tolerance says the extra queries bought pool rather than precision, and the next increment is the ' +
+      'phrase count rather than a new stage. A run whose `selfIndex.queries` equals its `indexes` is ' +
+      'neither: the treatment never reached the ranking, and `assertQueryExpansionReached` refuses to ' +
+      'write that artifact rather than letting this row read it as a verdict on the mechanism.',
+  },
+
   // §14.143's window. Non-inferiority rather than a win, because the mechanism spends the **same**
   // characters: it can move accuracy only by printing a better sentence, and a row that promised a gain
   // would be a hypothesis with a threshold attached. The negative form is the number that matters --

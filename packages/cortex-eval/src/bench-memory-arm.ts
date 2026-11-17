@@ -2921,6 +2921,38 @@ export function assertRerankReachesRanking(
   );
 }
 
+/**
+ * Refuse a query expansion that no ranking can receive.
+ *
+ * `queryExpansion=llm` produces phrases **before** the index is built, and they reach the ranking by
+ * one of two routes: `RelevanceCase.queries`, which every `retrieval*` signal reads, or the product's
+ * `SearchIndexOptions.queryPlan`, which only the product-built index exists to receive. With
+ * `relevanceSignal=none` neither route is open -- the budget buys arrival order and no query is ever
+ * compared against a turn -- so the phrases would be written, counted, and ignored.
+ *
+ * That is §10.10's shape one level down: an artifact whose configuration names a treatment and whose
+ * numbers belong to the control. The refusal is here rather than in `bench/run-ablation.ts` for the
+ * reason {@link assertRerankReachesRanking} is: `bench/**` is outside the coverage boundary, and a
+ * guard written in the file no test can import has already cost this repository once (§14).
+ *
+ * It is a guard rather than a restriction on what a run may do. Both receiving routes stay legal, and
+ * the artifact says which one carried the phrases -- `selfIndex` builds the index inside the product,
+ * so it takes the plan; the instrument's own indexes take the cases.
+ */
+export function assertExpansionReachesRanking(
+  relevanceSignal: string,
+  queryExpansion: string | undefined,
+): void {
+  if (queryExpansion !== 'llm') return;
+  if (relevanceSignal !== 'none') return;
+  throw new Error(
+    `CORTEX_MEMORY_QUERY_EXPANSION=llm but relevanceSignal="none" compares no query against a turn: ` +
+      'the budget buys the turns that arrived, so the phrases would be written, counted in the ' +
+      'artifact, and never used. Set CORTEX_MEMORY_RELEVANCE=retrieval, retrieval-hybrid, ' +
+      'retrieval-anchored, retrieval-session or self-index, or leave the expansion off.',
+  );
+}
+
 export function toMemoryArmConfig(
   options: CortexMemoryArmOptions,
   /**
@@ -4212,6 +4244,9 @@ export async function runCortexMemoryArm(
   // two hundred and fifty texts is the registered arm wearing the control's name, and every other
   // field in the artifact would agree with the label.
   assertIndexEmbeddingReached(report.memoryArmConfig, indexCost.selfIndex);
+  // §13.97's receipt, read from the same place and for the same reason: the artifact may not claim a
+  // treatment whose queries the index never issued.
+  assertQueryExpansionReached(report.memoryArmConfig, indexCost.selfIndex);
   // The write gate's own census, read here for the same reason: it counts what the gate did
   // rather than what it was configured with, so it can only be taken after the questions were
   // answered. §14.146 records why the counts are over candidates -- a census of admitted turns
@@ -5034,6 +5069,7 @@ const INDEX_COST_COUNTERS = [
   'rerankCalls',
   'rerankDegraded',
   'embedDegraded',
+  'queries',
 ] as const;
 
 /** A record with every counter at zero, which is what one instance that built no index contributes. */
@@ -5074,6 +5110,50 @@ function assertIndexEmbeddingReached(
   );
 }
 
+/**
+ * Refuse an artifact whose expansion never reached the ranking it was written for.
+ *
+ * ## The defect, stated as the two numbers that catch it
+ *
+ * §13.97's phrases are produced by a model **before** the index is built and reach the ranking by one of two
+ * routes: `RelevanceCase.queries`, which the instrument's own indexes read, or the product's
+ * `SearchIndexOptions.queryPlan`, which only a product-built index can receive. The first route existed when the
+ * input was registered; the second did not, so a dispatch of `queryExpansion=llm` beside
+ * `relevanceSignal=self-index` -- the registered arm since `S9` -- produced phrases, counted them in
+ * `queryExpansionCounts`, and answered from the bare question. Every field of that artifact would agree with
+ * itself, and its delta would be published as the expansion's verdict.
+ *
+ * The receipt is the product's own bill: `selfIndex.queries` is written by the index that issued the queries,
+ * and `selfIndex.indexes` counts the retrievals it served. One query per index is the control. More than one is
+ * the plan having acted on at least one question, which is exactly the claim the configuration makes.
+ *
+ * ## What it deliberately does not check
+ *
+ * It is not a check that the expansion *helped*, and it does not require every question to be widened: a plan
+ * whose phrases all came back refused is a legitimate run whose `queries` may equal `indexes`, and
+ * `empty`/`refused` is the field that says so. So the test is on `phrases > 0` -- a run whose model produced
+ * nothing has nothing to reach and is judged by its accuracy, not by this assertion. The other exemption is a
+ * bill with no index at all: a corpus that admitted no turns builds no index and issues no query, and refusing
+ * that run would be blaming the wiring for the admission gate's outcome.
+ */
+function assertQueryExpansionReached(
+  config: MemoryArmConfig | undefined,
+  bill: IndexCostRecord | undefined,
+): void {
+  const counts = config?.queryExpansionCounts;
+  if (counts === undefined || counts.phrases === 0 || bill === undefined) return;
+  if (bill.queries > bill.indexes) return;
+  throw new Error(
+    `queryExpansion=llm produced ${String(counts.phrases)} phrase(s) over ` +
+      `${String(counts.questions)} question(s), and the product's index issued ` +
+      `${String(bill.queries)} quer${bill.queries === 1 ? 'y' : 'ies'} for ${String(bill.indexes)} ` +
+      'retrieval(s) -- one query each, which is the control. The phrases reached no ranking: ' +
+      '`relevanceSignal=self-index` builds its index inside the product, so it needs ' +
+      '`index.queryPlan`, not `RelevanceCase.queries`. Dispatch `retrieval`, `retrieval-hybrid`, ' +
+      '`retrieval-anchored` or `retrieval-session`, or pass the plan.',
+  );
+}
+
 /** The same record, writable: the accumulator this file sums into. */
 type IndexCostSums = { -readonly [K in keyof IndexCostRecord]: IndexCostRecord[K] };
 
@@ -5088,6 +5168,7 @@ function emptyIndexCost(): IndexCostRecord {
     rerankCalls: 0,
     rerankDegraded: 0,
     embedDegraded: 0,
+    queries: 0,
   };
 }
 
@@ -5140,6 +5221,7 @@ function indexCostOf(system: MemorySystem): IndexCostRecord | null {
     rerankCalls: record.rerankCalls as number,
     rerankDegraded: record.rerankDegraded as number,
     embedDegraded: record.embedDegraded as number,
+    queries: record.queries as number,
   };
 }
 
