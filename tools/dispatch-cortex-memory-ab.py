@@ -405,7 +405,21 @@ INPUTS = {
     # disagreed only with the section that decided the question. §13.69 records the run that
     # exposed it: dispatched on `retrieval` against an adopted `retrieval-hybrid`, which
     # would have moved the ranking and the cap at once.
-    "cortex_memory_relevance": "retrieval-anchored",
+    "cortex_memory_relevance": "self-index",
+    # §32's adoption, and the one amendment in this file that changed no behaviour. Every 500-question
+    # reading this project publishes -- `S9` 91.40%, `S14` 85.75%, `S15` 89.40%, `S16` 91.25% -- was
+    # produced by the product building its own index, and `evidence/longmemeval/self-index-registered.json`
+    # has said so in its own words since `S9`: "the PRODUCT building the relevance index for each
+    # question ... which is the only declared departure from the registration". So the registration
+    # above described the reference pipeline's arm while every number beside it described the product's,
+    # and `C1` priced the former: its 9,201 tokens per question came from `42533236864`, an arm reading
+    # 91.20% that no published cell quotes. `assemble.ts` ships `reader`, whose ranking is this one --
+    # a user cannot run `retrieval-anchored`, because a user has no harness to rank before the product
+    # sees the corpus. A registration that no caller can execute is not a registration of the product.
+    #
+    # §13.260.7's adoption is not revoked by this line; it is what the *reference* arm ranks with, and
+    # the `retrieval-anchored` value is still reachable with `--set cortex_memory_relevance=retrieval-anchored`
+    # for the comparison that chose it. What changed is which of the two the word "registered" describes.
     # §13.260.7's adoption, as of `42013256884`. The line above carried `retrieval-hybrid` and a
     # §13.64 docblock; the mechanism that replaced it restores the neighbourhood of every retrieved
     # anchor into the pool, and its two readings are a delivery count that reproduced exactly
@@ -492,11 +506,20 @@ INPUTS = {
     # rooms because they are the two whose windows the cap reaches; the four narrow ones return to
     # the product default of 24,000, which is what the bill was spent buying.
     #
+    # §32's adoption, and the first time this line has been amended for a reason that is not a
+    # re-registration. `multi-session` keeps 48,460 because `S15` measured what cutting it costs (9 of
+    # 13 lost questions, b 10 / c 1, exact p = 0.012); `temporal` returns to the product default of
+    # 24,000 because `S16` measured that cutting it costs one question on 500 (b 6 / c 7, exact p =
+    # 1.0) while returning 24,000 of the 48,000 characters it was holding. The pair that made it an
+    # adoption rather than a trade: 91.25% against 91.40% on the same instrument, and 7,448 prompt
+    # tokens per question against 9,074 -- so the cheaper table is the one the instrument cannot tell
+    # apart from the dearer one.
+    #
     # The pairs are sorted, because `arm-config-record.py`'s `route_rooms` renderer sorts them and
     # the comparison is string equality: an unsorted map here would report a configuration
     # difference on every run while sending the same rooms.
     "cortex_memory_max_prompt_chars": (
-        "abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000"
+        "abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:24000"
     ),
     # §13.84's adopted filter. `all` was the state every run before it was in; `39298662801` took
     # MR from 83 to 90 and TR from 93 to 98 with no capability regressed, so these two lines move

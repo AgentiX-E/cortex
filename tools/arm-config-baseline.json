@@ -1,6 +1,6 @@
 {
-  "adoptedBy": "13.336",
-  "commit": "a2813874",
+  "adoptedBy": "32",
+  "commit": "4d51abcb",
   "dataset": "longmemeval",
   "datasetFingerprint": "sha256:d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
   "dispatch": {
@@ -8,12 +8,12 @@
     "cortex_memory_ask": "verbatim-acts",
     "cortex_memory_evidence_roles": "user",
     "cortex_memory_evidence_roles_routes": "multi-session,temporal",
-    "cortex_memory_max_prompt_chars": "abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000",
+    "cortex_memory_max_prompt_chars": "abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:24000",
     "cortex_memory_max_turn_chars": "400",
     "cortex_memory_max_turn_chars_routes": "multi-session,temporal",
     "cortex_memory_prompt_contract": "evidence-blocks-unsourced",
     "cortex_memory_query_expansion": "none",
-    "cortex_memory_relevance": "retrieval-anchored",
+    "cortex_memory_relevance": "self-index",
     "cortex_memory_relevance_top_k": "256",
     "cortex_memory_relevance_units": "turn",
     "cortex_memory_rerank": "none",
@@ -25,12 +25,18 @@
     "temperature": "0",
     "thinking": "multi-session+temporal"
   },
-  "generatedAt": "2026-11-09T00:33:00.762Z",
+  "generatedAt": "2026-11-17T06:23:25.818Z",
   "memoryArmConfig": {
-    "anchors": {
-      "count": 4,
-      "decay": 0.5,
-      "radius": 3
+    "admission": {
+      "admitted": 987000,
+      "candidates": 987000,
+      "distinct": 1,
+      "distinctSaturated": false,
+      "max": 0.5,
+      "mean": 0.5,
+      "min": 0.5,
+      "rejected": 0,
+      "threshold": 0
     },
     "ask": "verbatim-acts",
     "askRoutes": [
@@ -43,13 +49,14 @@
       "multi-session"
     ],
     "confidenceSignal": "none",
+    "conflicts": false,
     "effectivePromptChars": {
       "abstention": 24000,
       "assistant": 24000,
       "flat": 24000,
       "knowledge-update": 24000,
       "multi-session": 48460,
-      "temporal": 48000
+      "temporal": 24000
     },
     "embedding": {
       "dimensions": 1024,
@@ -65,6 +72,7 @@
       "temporal"
     ],
     "evidenceSource": "corpus",
+    "indexEmbedding": "injected",
     "judge": {
       "model": "deepseek-chat",
       "providerId": "deepseek",
@@ -77,7 +85,7 @@
       "flat": 24000,
       "knowledge-update": 24000,
       "multi-session": 48460,
-      "temporal": 48000
+      "temporal": 24000
     },
     "maxTurnChars": 400,
     "maxTurnCharsRoutes": [
@@ -100,7 +108,7 @@
         "temporal"
       ]
     },
-    "relevanceSignal": "retrieval-anchored",
+    "relevanceSignal": "self-index",
     "relevanceTopK": 256,
     "relevanceUnits": "turn",
     "renderingRoutes": [
@@ -111,6 +119,7 @@
       "assistant",
       "flat"
     ],
+    "replyRepair": "off",
     "rerank": {
       "provider": "none"
     },
@@ -118,20 +127,33 @@
     "reviewBareDecline": true,
     "reviewPass": "bare",
     "selfConsistency": "none",
+    "selfIndex": {
+      "embedCalls": 10325,
+      "embedDegraded": 0,
+      "embedTexts": 529456,
+      "indexes": 2000,
+      "memoHits": 212020,
+      "rerankCalls": 0,
+      "rerankDegraded": 0,
+      "reuse": true,
+      "turns": 742080
+    },
+    "semanticCarry": false,
     "sessionBudget": null,
     "sourceTrust": 0.5,
+    "supersededRendering": "off",
     "threshold": 0,
     "turnCutMarker": "none"
   },
-  "memoryArmConfigFingerprint": "sha256:0c6c25e7dfe5602c74e394ed41ff1c4913b38513478122340a2efeb74b480075",
-  "note": "The registered configuration and the artifact below agree again: \u00a713.347 reverted \u00a713.345's `temporal`-only reach after the 500-question confirmation run read 90.15% against this configuration's 91.20%. `memoryArmConfig` describes `42533236864`, which is the artifact the reverted table now matches.",
+  "memoryArmConfigFingerprint": "sha256:69378c9f30a498b59684ec5c85a1373d1898fa858fce140d479219269617a45c",
+  "note": "\u00a713.347 reverted \u00a713.345 temporal-only reach after the 500-question confirmation run read 90.15% against this configuration 91.20%, and that history is why \u00a732 checks the room change against a paired control rather than a level: S16 gave multi-session its width back, left temporal cut, and read 91.25% against 91.40% paired at -1 question. The baseline used to describe 42533236864 (retrieval-anchored, 91.20%, 9,201 tokens); it now describes 44017278305, which is the artifact C1 prices and the arm S9/S14/S15/S16 quoted.",
   "passShape": {
     "minIntervalMs": null,
     "retryBudgetMs": null,
     "workers": 4
   },
   "questionCount": 500,
-  "run": "42533236864",
+  "run": "44017278305",
   "runs": 4,
-  "why": "the dispatch that carried the six-route allocation, which \u00a713.336 adopts; it is the first artifact whose room map is the shipping one"
+  "why": "\u00a732 records the shipping configuration, and it is the first baseline that is also the arm every published reading was taken on. Two values moved and they moved for different reasons: temporal's room returns to 24,000 because S16 measured the cut at -1 question (exact p=1.0) for 19.1% of the bill, and relevanceSignal becomes self-index because that is the ranking assemble.ts ships and the ranking every 500-question artifact since S9 carried, which the registration had been describing as a departure for nine rounds."
 }

@@ -211,9 +211,14 @@ const CATEGORY_LEDGER = 'cortex-docs/evidence/longmemeval/categories.json';
  * statement of what the project claims, and a second copy in a script is a second statement.
  */
 export const CONFIGURATION_ATTESTED: readonly { readonly path: string; readonly key: string }[] = [
+  // `frontier.json` was on this list until §32, when `S1` stopped reading it. The list's rule is that a
+  // file whose number a row reads must also carry the configuration that number was measured on, and a
+  // six-arm study carries six of them: pinning its reference block to the live registration was only ever
+  // true on the day the study was taken. The file is still evidence -- of the efficiency frontier, which
+  // `C3` reads and which is `unrun` -- but it is no longer the file a row reads for a level.
   {
-    path: 'cortex-docs/evidence/longmemeval/frontier.json',
-    key: 'shipping.configurationFingerprint',
+    path: 'cortex-docs/evidence/longmemeval/route-room.json',
+    key: 'configurationFingerprint',
   },
   { path: 'cortex-docs/evidence/longmemeval/categories.json', key: 'configurationFingerprint' },
 ];
@@ -610,22 +615,28 @@ export const CRITERIA: readonly Criterion[] = [
     kind: 'gate',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/frontier.json',
-      key: 'shipping.accuracy',
+      path: 'cortex-docs/evidence/longmemeval/route-room.json',
+      key: 'overall.accuracy',
       // Three clauses, and each one closes a way the number could be about something else. The source is
-      // `repetition-mean` because `feature.metrics` is one repetition and read 90.20% where the mean read
-      // 90.85%; `runs: 4` because a two-repetition arm's mean carries twice the standard error; and the arm
-      // name because "the shipping arm" is a label the tool resolves to an artifact, so a label that stops
-      // existing becomes `stale` instead of silently reading an older file.
+      // `recomputed from ablation.featureCorrectByRun` because `feature.metrics` is one repetition and read
+      // 90.20% where the mean read 90.85%; `runs: 4` because a two-repetition arm's mean carries twice the
+      // standard error; and the `row` because "this file" is a name a re-pointed copy can outlive, which is
+      // the defect `S15` was registered to catch.
       //
-      // The third clause was not enough, and §13.336 is the measurement: the label kept existing and kept
-      // resolving, to the room map the adoption replaced. A fourth check covers it — the configuration
-      // fingerprint, compared against `tools/arm-config-baseline.json` by `tools/acceptance-check.mjs` and
-      // listed in `CONFIGURATION_ATTESTED` below — because a name can outlive its meaning and a hash cannot.
+      // This row read `frontier.json#shipping.accuracy` until §32. That file is a six-rung efficiency
+      // study whose *reference* arm happened to be the registered arm on the day it was taken, so the
+      // fingerprint clause pinned a historical study to a moving registration: after any adoption the
+      // clause could only be satisfied by re-downloading six 60 MB artifacts, and a clause that cannot be
+      // satisfied is a clause that gets deleted. The row now reads the registered configuration's own
+      // file, which is one artifact of one arm, and the fingerprint in `CONFIGURATION_ATTESTED` therefore
+      // pins the same run the accuracy comes from rather than a different one.
       attest: [
-        { key: 'shipping.accuracySource', equals: 'repetition-mean' },
-        { key: 'shipping.runs', equals: 4 },
-        { key: 'shipping.arm', equals: 'route-room' },
+        { key: 'row', equals: 'S16' },
+        {
+          key: 'overall.accuracySource',
+          equals: 'recomputed from ablation.featureCorrectByRun; not questions[].correct',
+        },
+        { key: 'overall.runs', equals: 4 },
       ],
     },
     competitors: [
@@ -1165,9 +1176,9 @@ export const CRITERIA: readonly Criterion[] = [
       'halving a multi-session packet truncates the count, while a temporal question needs its anchor ' +
       'and its neighbours and survives the cut. The consequence for the next increment is specific: the ' +
       'room is a per-route budget and the route table is where the next two points live, which is what ' +
-      '`S16` registers. Above the threshold the repair would be unnecessary and the priced tier would ' +
-      'be the shipping configuration; below it, the tier has to be documented at its measured accuracy ' +
-      'and the registered arm keeps the width it pays for.',
+      '`S16` registers and has since measured: giving `multi-session` its width back and leaving ' +
+      '`temporal` cut reads 91.25% at 7,448 tokens, so the two points this row gave up were bought back ' +
+      'for -1 question and -19.1% of the bill.',
   },
 
   // ---- the middle of the room curve, which two measured endpoints made predictable (§29.3) ----------
@@ -1184,6 +1195,13 @@ export const CRITERIA: readonly Criterion[] = [
   // numeric source is the accuracy half; the bill is read from `cost.json` on adoption, because the
   // matrix has exactly one cost row and a second threshold for one bill is how `S11` and `S14` came to
   // share 0.88.
+  //
+  // Read (run `44017278305`, 500 x 4, 2,078 reader calls of which 78 were retries): **91.25%**, paired
+  // **-1 question** against `S9` (448 both, 6 only this arm, 7 only `S9`, 39 neither, exact p = 1.0) at
+  // **7,448** prompt tokens per question against 9,074 -- **-19.1%**. Both criteria met on the numbers
+  // they were registered with (-1 against a floor of -5, and 7,448 against 7,821). §32 adopts the table,
+  // and the sentence the manual may now print is "91.25% at about 7,400 tokens per question": the
+  // registered arm is no longer the dearest table this product has measured.
   {
     id: 'S16',
     capability: 'the prompt room: `multi-session` at 48,460 with the other five routes at 24,000',

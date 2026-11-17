@@ -459,11 +459,18 @@ describe('the configuration an evidence file names, checked against the registra
    * comparison spans two repository roots, which is why it is a list here and a check in the CLI.
    */
   it('names the two files that carry a configuration and a key for each', () => {
-    expect(CONFIGURATION_ATTESTED.length).toBe(2);
-    const keys = CONFIGURATION_ATTESTED.map((entry) => entry.key).sort();
-    expect(keys).toEqual(['configurationFingerprint', 'shipping.configurationFingerprint']);
+    // Asserted by identity rather than by shape: the two entries had different key spellings while one of
+    // them was `frontier.json`'s nested `shipping` block, and a test written against that spelling would
+    // have gone on passing over any file whose key happened not to match either name. What the check needs
+    // is that these two files -- the level `S1` reads and the per-capability table `S2`-`S5` read -- carry
+    // the configuration their numbers were measured on.
+    expect(CONFIGURATION_ATTESTED.map((entry) => entry.path).sort()).toEqual([
+      'cortex-docs/evidence/longmemeval/categories.json',
+      'cortex-docs/evidence/longmemeval/route-room.json',
+    ]);
     for (const entry of CONFIGURATION_ATTESTED) {
       expect(entry.path.startsWith('cortex-docs/evidence/')).toBe(true);
+      expect(entry.key).toBe('configurationFingerprint');
     }
   });
 
@@ -480,11 +487,28 @@ describe('the configuration an evidence file names, checked against the registra
       expect(typeof criterion.source.path).toBe('string');
     }
     for (const path of [
-      'cortex-docs/evidence/longmemeval/frontier.json',
+      'cortex-docs/evidence/longmemeval/route-room.json',
       'cortex-docs/evidence/longmemeval/categories.json',
     ]) {
       expect(covered.has(path)).toBe(true);
     }
+  });
+});
+
+describe('S1 reads the registration, not a six-arm study', () => {
+  const s1 = CRITERIA.find((criterion) => criterion.id === 'S1');
+
+  it('points at the file the registered configuration wrote about itself', () => {
+    // `frontier.json` is a six-rung efficiency study whose *reference* arm was the registered arm on the
+    // day it was taken. Pinning that block to whatever the registration is now makes the clause
+    // unsatisfiable by anything except re-downloading six 60 MB artifacts -- and unsatisfiable checks are
+    // deleted, which is the outcome `CONFIGURATION_ATTESTED` exists to prevent. `route-room.json` is one
+    // artifact of the registered arm, so the fingerprint clause and the number describe one run.
+    expect(s1?.source.kind).toBe('artifact');
+    if (s1?.source.kind !== 'artifact') throw new Error('unreachable');
+    expect(s1.source.path).toBe('cortex-docs/evidence/longmemeval/route-room.json');
+    expect(s1.source.attest?.map((clause) => clause.key)).toContain('row');
+    expect(s1.source.attest).toContainEqual({ key: 'row', equals: 'S16' });
   });
 });
 

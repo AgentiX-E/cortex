@@ -59,21 +59,23 @@ unrun    no value could be computed — reported, never counted as a pass
 | T4  | <!-- reading:T4 -->100.0% | = 100.0%  | pass   | settled fact versus plan               | controlled set, `−lapse`                                    |
 | D1  | —                         | ≤ 45.0%   | unrun  | extraction fidelity                    | A3 round 2, verbatim share                                  |
 | R1  | <!-- reading:R1 -->-1     | ≥ 1       | accept | abstention recovery                    | LongMemEval-S, 500 questions                                |
-| S1  | <!-- reading:S1 -->91.1%  | ≥ 91.0%   | pass   | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
-| S2  | <!-- reading:S2 -->87.2%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 of the 78 published                     |
-| S3  | <!-- reading:S3 -->83.1%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 of the 133 published                   |
-| S4  | <!-- reading:S4 -->95.1%  | ≥ 94.0%   | pass   | temporal reasoning                     | LongMemEval-S, 127 of the 133 published                   |
+| S1  | <!-- reading:S1 -->91.3%  | ≥ 91.0%   | pass   | end-to-end memory, `cortex-memory` arm | LongMemEval-S, 500 questions, `benchmark-cortex-memory.yml` |
+| S2  | <!-- reading:S2 -->92.4%  | ≥ 85.0%   | pass   | knowledge update                       | LongMemEval-S, 72 of the 78 published                     |
+| S3  | <!-- reading:S3 -->83.7%  | ≥ 85.0%   | aim    | multi-session reasoning                | LongMemEval-S, 121 of the 133 published                   |
+| S4  | <!-- reading:S4 -->94.7%  | ≥ 94.0%   | pass   | temporal reasoning                     | LongMemEval-S, 127 of the 133 published                   |
 | S5  | <!-- reading:S5 -->100.0% | ≥ 80.0%   | pass   | abstention                             | LongMemEval-S, 30 questions                               |
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
 | S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
+| S15 | <!-- reading:S15 -->89.4% | ≥ 91.0%  | aim    | the prompt room, every route cut       | LongMemEval-S, 500 questions, `maxPromptCharsByRoute` at 24,000 on all six routes, paired against `S9` |
+| S16 | <!-- reading:S16 -->-1   | ≥ -5      | pass   | the prompt room, one route kept wide   | LongMemEval-S, 500 questions, `multi-session` 48,460 and the other five 24,000, paired against `S9`, **and** a bill ≤ 85% of 9,201 |
 | S10 | <!-- reading:S10 -->3      | ≥ -5      | pass   | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | S11 | <!-- reading:S11 -->39.6%   | ≥ 88.0%   | fail   | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
 | S12 | <!-- reading:S12 -->-2    | ≥ -5      | pass   | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |
 | S13 | <!-- reading:S13 -->27    | ≥ 1       | pass   | semantic layer, reach                  | the `semanticCarry: true` arm of S12, prompts whose window still carried the authorised record, summed over every worker instance |
 | S14 | <!-- reading:S14 -->85.8% | ≥ 88.0%   | aim    | index channel, no vector channel       | LongMemEval-S, 500 questions, `CORTEX_MEMORY_INDEX_EMBEDDING=none`, paired against the `injected` arm of S9 question by question |
-| C1  | <!-- reading:C1 -->9201   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
+| C1  | <!-- reading:C1 -->7448   | ≤ 6,000   | aim    | cost                                   | LongMemEval-S, 500 questions, prompt tokens per question    |
 | B1  | <!-- reading:B1 -->0      | = 0       | pass   | browser persistence                    | committed Chromium reading, 24 checks over 2,000 rows        |
 | B2  | <!-- reading:B2 -->0      | = 0       | pass   | browser persistence                    | committed Firefox reading, the same suite                    |
 | B3  | <!-- reading:B3 -->0      | = 0       | pass   | browser composition                    | committed corpus reading, 11 checks: the `full` profile over OPFS, across a restart, prompt digest against `node:sqlite` |
@@ -248,20 +250,26 @@ measured **90.85%** on the same 500 questions. The file was not wrong: it is fou
 footnote, as stale — and a footnote is not a status. Three rounds of documents quoted 83.45% and the matrix
 printed it in the `current` column with nothing beside it.
 
-The repair is not an edit to the figure. `S1` now reads `frontier.json#shipping.accuracy`, a file that
-`tools/efficiency-frontier.mjs --ship route-room` writes from the artifacts, and it carries three
-**attestations** that the reading describes the system this build ships:
+The repair is not an edit to the figure. `S1` reads `route-room.json#overall.accuracy` — the file the
+registered configuration wrote about itself, produced by `tools/arm-reading-ledger.py --row S16` — and it
+carries three **attestations** that the reading describes the system this build ships:
 
 | clause | why it is needed |
 | --- | --- |
-| `shipping.accuracySource == repetition-mean` | `feature.metrics` is one repetition and read 90.20% where the four-repetition mean read 90.85% |
-| `shipping.runs == 4` | a two-repetition mean carries twice the standard error of the mean, so it is not the same reading |
-| `shipping.arm == route-room` | the shipping arm is a **label** the tool resolves to an artifact on every run, so a label that stops existing cannot silently resolve to an older file |
+| `row == S16` | the file is named after a cell, and a re-pointed copy under another cell's name reads as a plausible number for a configuration that was never run |
+| `overall.accuracySource == recomputed from ablation.featureCorrectByRun` | `feature.metrics` is one repetition and read 90.20% where the four-repetition mean read 90.85% |
+| `overall.runs == 4` | a two-repetition mean carries twice the standard error of the mean, so it is not the same reading |
+
+The row read `frontier.json#shipping.accuracy` until §32. That file is a six-rung efficiency study whose
+**reference** arm happened to be the registered arm on the day it was taken, so the fingerprint clause pinned
+a historical study to a moving registration: after any adoption it could only be satisfied by re-downloading
+six 60 MB artifacts. `S1` moved to the registration's own file and `CONFIGURATION_ATTESTED` moved with it,
+which is why the clause that survives is a `row` rather than a `shipping.arm` label.
 
 A clause that fails produces a fourth status, **`stale`**, which is neither `pass` nor `fail`: nothing was
 compared, because the number describes something else. It is listed with the missing rows, it counts toward
-`--strict-unrun`, and it is never counted as a pass. `eval` on a clean checkout with no `frontier.json` gives
-`S1 = unrun`; a `frontier.json` from a different configuration gives `S1 = stale`; only the current
+`--strict-unrun`, and it is never counted as a pass. `eval` on a clean checkout with no `route-room.json` gives
+`S1 = unrun`; a `route-room.json` from a different configuration gives `S1 = stale`; only the current
 configuration gives a number.
 
 The old reading stays in `summary.json` with its configuration named, because deleting a real measurement to
@@ -282,8 +290,10 @@ round moved `C1` from 12,105 to **12,137** and produced `C2`'s denominator for t
 touched by hand.
 
 `S1` moved to that shape this round: `tools/efficiency-frontier.mjs --ship route-room` writes
-`evidence/longmemeval/frontier.json`, and the row reads `shipping.accuracy` out of it with the three
-attestations above. `S2`/`S4`/`S5` still come from `evidence/longmemeval/summary.json`, which is written by a
+`evidence/longmemeval/frontier.json`, and the row read `shipping.accuracy` out of it with the three
+attestations above. (It reads `route-room.json#overall.accuracy` since §32, for the reason given two
+sections above: a six-arm study's reference arm is a historical arm, and pinning it to a live registration
+makes the clause satisfiable only by re-downloading every artifact in it.) `S2`/`S4`/`S5` still come from `evidence/longmemeval/summary.json`, which is written by a
 different path with no `--run` discipline and no attestation — the distance between the two is one script, and
 it is the script `13.298.4` specified.
 
@@ -652,7 +662,7 @@ from independent runs by **18–24 points**. So every competitor figure carries 
 | oracle context, GPT-4o           | 82.4%                    | B     | one oracle configuration — **not a ceiling**, see consequence 3                                                                    |
 | **Raw-RAG (naive, GPT-4o-mini)** | **87.5%**                | B     | timestamps, chunking, dense retrieval, reranking over raw turns — no extraction, no rewriting                                      |
 | StateMem (DeepSeek reader)       | 65.6%                    | B     | state-tracking memory; the only published DeepSeek-reader figure on this benchmark                                                 |
-| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->91.1% | —     | DeepSeek reader, official judge prompts, four runs, six-route room map / `relevanceTopK=256`                                        |
+| **Cortex** (`cortex-memory` arm) | <!-- reading:S1 -->91.3% | —     | DeepSeek reader, official judge prompts, four runs, six-route room map / `relevanceTopK=256`                                        |
 | Mastra OM, GPT-4o                | 84.2%                    | B     | vendor research page, observational memory, GPT-4o reader and judge                                                                |
 | Mem0 OSS, reproduced             | 32.4%                    | B     | benchd.ai, six systems on 500 questions — a reproduction of a vendor 94.4% that configures LLM extraction this run does not        |
 | no-memory baseline               | 57.6%                    | B     | benchd.ai: the whole history in the window, no memory system                                                                       |
@@ -691,8 +701,8 @@ Four consequences, and the last two are uncomfortable:
    the benchmark's own either way.
 
 The category split is where the deficit is, and it is not uniform. Knowledge update is at
-<!-- reading:S2 -->87.2%, above the threshold and above the frontier's implied position; multi-session is at
-<!-- reading:S3 -->83.1% and temporal reasoning at <!-- reading:S4 -->95.1%, so **the two categories that used
+<!-- reading:S2 -->92.4%, above the threshold and above the frontier's implied position; multi-session is at
+<!-- reading:S3 -->83.7% and temporal reasoning at <!-- reading:S4 -->95.1%, so **the two categories that used
 to hold essentially all of the gap are one pass and one 1.1-point miss**, not two deep deficits. That reading
 replaced three that were four to eighteen points wrong; §2.2 is the record, and the reason it changed is not
 that the system improved but that four rows were reading a configuration that no longer ships.

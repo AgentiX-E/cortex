@@ -235,7 +235,8 @@ the feature side is **0.944 CNY against 2.021** on the same 200 questions (−53
 against 181/200** on the warm draw and 179 on the cold one — a mean of 180.5 against 181.
 
 **The token count barely moves.** Per question-run the shipped configuration sends 9,201 prompt and 1,071
-completion tokens; the treatment sends 9,201 and 138. That is **−9% on tokens and −53% on money**, because a
+completion tokens (7,448 since §32 returned `temporal`'s unused room; the comparison below is unaffected,
+because both sides of it moved together); the treatment sends 9,201 and 138. That is **−9% on tokens and −53% on money**, because a
 completion token costs fifteen times a cached input token (3.00 against 0.20 per million). This is §22.68's
 first rule measured on the one arm where it decides: a cost review that reads tokens would rank this change
 ninth, and a cost review that reads money ranks it first.

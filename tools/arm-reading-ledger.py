@@ -117,6 +117,12 @@ class Row:
     requires: tuple[tuple[str, object], ...]
     comment: str
     reading: str
+    # What the row's number *is*. `ratio` rows read `overall.accuracy` and their floor is a share of the
+    # population; `count` rows read `paired.deltaQuestions` and their floor is a count of questions.
+    # Added when `S16` arrived, because a row whose number is a pair cannot be rendered against a
+    # threshold on a level: `0.904 >= -5` is a comparison between two different units that happens to
+    # return a bool. The default is the older shape, so three rows kept their behaviour without a line.
+    unit: str = 'ratio'
 
 
 # The six routes `TurnCapRoute` names. Written out rather than imported because this file reads Python
@@ -196,6 +202,34 @@ ROWS: dict[str, Row] = {
             'routes cannot say which one paid.'
         ),
         reading='the arm where every route has a 24,000 character room',
+    ),
+    'S16': Row(
+        id='S16',
+        # A count, and the least acceptable one. `-5` is not a new tolerance: it is `S10`'s convention
+        # ("a question is a point") applied to an arm whose noise floor was measured rather than
+        # assumed -- two dispatches of one configuration differed by 1 question on 252 untouched
+        # questions, and this population is twice that.
+        floor=-5,
+        unit='count',
+        # One route given its width back, five left at the cut. Written out per route for the reason
+        # `S15`'s table is: `S15`'s artifact and the registered arm differ from this one by exactly one
+        # entry each, so a row that named only `multi-session` would accept both of them.
+        requires=(
+            ('relevanceSignal', 'self-index'),
+            ('indexEmbedding', 'injected'),
+            (
+                'maxPromptCharsByRoute',
+                {route: (48460 if route == 'multi-session' else 24000) for route in ROUTES},
+            ),
+        ),
+        comment=(
+            'S16. The middle of the room curve: `multi-session` back at 48,460, the other five routes at '
+            '24,000. `S15` priced the cut and put the whole of it on one route, so this arm is the '
+            'cheapest table that is expected to keep the registered accuracy -- and its number is the '
+            '*pair*, because "same score for 17% fewer tokens" is a claim about two arms and a level '
+            'cannot state it. Paired against `S9` question by question.'
+        ),
+        reading='the arm where only the multi-session route keeps its width',
     ),
 }
 
@@ -504,14 +538,23 @@ def ledger(
 def render(result: dict) -> str:
     overall = result['overall']
     arm = result['arm']
-    floor = row_of(str(result['row'])).floor
+    row = row_of(str(result['row']))
+    floor = row.floor
     lines = [
         f"{result['row']}  run {result['run']}",
         f"  arm: relevanceSignal={arm['relevanceSignal']}  indexEmbedding={arm['indexEmbedding']}  "
         f"reader={arm['reader']}  judge={arm['judge']}",
         f"  population: {overall['questions']} questions x {overall['runs']} repetitions",
         '  per run: ' + ', '.join(f'{value * 100:.2f}%' for value in overall['accuracyPerRun']),
-        f"  overall: {overall['accuracy'] * 100:.2f}%  ({result['row']} floor {floor * 100:.1f}%)",
+        # A count row's floor is a count, so printing it beside a share would be a threshold formatted
+        # in a unit the row does not read. The level is still printed -- it is the number a reader wants
+        # first -- but the parenthetical says which figure the row actually decides on.
+        f"  overall: {overall['accuracy'] * 100:.2f}%  "
+        + (
+            f'({result["row"]} reads the pair, not this figure)'
+            if row.unit == 'count'
+            else f"({result['row']} floor {floor * 100:.1f}%)"
+        ),
     ]
     pair = result.get('paired')
     if pair is not None:
@@ -549,7 +592,24 @@ def render(result: dict) -> str:
     # both rows happened to share that threshold, so the printed sentence and the verdict agreed with
     # `S11` and `S14` and with nothing else. `S15`'s floor is 0.91, and a row that prints another row's
     # threshold beside its own number is the same defect as a baseline that names a run it did not read.
-    lines.append(f"  verdict: {'pass' if overall['accuracy'] >= floor else 'miss'}")
+    #
+    # The branch on `unit` is the same defect one level down: a count row's verdict is read off the pair,
+    # and a renderer that compared `0.904 >= -5` would print `pass` for every possible count row -- a
+    # verdict that cannot be wrong is not a verdict.
+    if row.unit == 'count':
+        if pair is None:
+            lines.append(
+                f"  verdict: unread  (no pair, and {row.id}'s number is the pair it reads against the "
+                'registered arm)'
+            )
+        else:
+            delta = pair['deltaQuestions']
+            lines.append(
+                f"  verdict: {'pass' if delta >= floor else 'miss'}  ({delta:+d} questions against "
+                f'{row.id} allows {floor:+.0f})'
+            )
+    else:
+        lines.append(f"  verdict: {'pass' if overall['accuracy'] >= floor else 'miss'}")
     return '\n'.join(lines)
 
 
@@ -680,11 +740,21 @@ def main(argv: list[str]) -> int:
 
     overall = accuracy(report)
     if args.write is not None:
+        if row.unit == 'count' and args.control_artifact is None:
+            raise SystemExit(
+                f"refusing: {row.id}'s number is `paired.deltaQuestions`, and this invocation passes no "
+                '`--control-artifact`. The file would carry the one thing that can be computed without '
+                'one -- the level -- under a row that reads the pair, and the criterion would find no '
+                'key: the row would read `unrun` with a paid artifact sitting on disk beside it. A count '
+                'row cannot be written from one artifact, because its subject is the difference between '
+                'two.'
+            )
         if overall['questions'] != QUESTIONS or overall['runs'] != REPETITIONS:
+            reads = 'paired.deltaQuestions' if row.unit == 'count' else 'overall.accuracy'
             raise SystemExit(
                 f"refusing: the run graded {overall['questions']} questions over {overall['runs']} "
                 f'repetitions and {row.id} is registered on {QUESTIONS} x {REPETITIONS}. There is no '
-                'screening tier in this file -- the criterion reads `overall.accuracy` with no switch '
+                f'screening tier in this file -- the criterion reads `{reads}` with no switch '
                 '-- so a smaller run would pass the row on an instrument the threshold was not written '
                 'for.'
             )

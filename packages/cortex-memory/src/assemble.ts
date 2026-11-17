@@ -14,8 +14,8 @@
  *
  * | profile | what it adds over the one before | what it is for | measured on the registered instrument |
  * | --- | --- | --- | --- |
- * | `minimal` | nothing — an identity gate and no index | the smallest conformant memory; answers from the turns it is given, in the order it is given them | **39.55%** — the `relevanceSignal=none` arm, 500 questions × 4 passes |
- * | `reader` | the retrieval index (lexical, plus a vector channel when an embedder is supplied) | the ranking a count-bearing or superseded-value question needs | **91.40%** — the `self-index` arm, same instrument, paired against the harness's own index at −1.5 questions (p = 1.0) |
+ * | `minimal` | nothing — an identity gate and no index | the smallest conformant memory; answers from the turns it is given, in the order it is given them | **39.55%** — the `relevanceSignal=none` arm, 500 questions × 4 passes, measured at the room table `S16` replaced (unranked delivery is a truncation of the same rooms, so this number is the one row here that has not been re-read since) |
+ * | `reader` | the retrieval index (lexical, plus a vector channel when an embedder is supplied) | the ranking a count-bearing or superseded-value question needs | **91.25%** at the registered room, **7,448** prompt tokens per question — the `self-index` arm, same instrument, paired against the harness's own index at −1.5 questions (p = 1.0) and against the wider room table at −1 question (p = 1.0, `S16`) |
  * | `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it | same ranking; the boundary is not an accuracy mechanism |
  *
  * ## Why the default is `reader` and not the cheapest profile
@@ -27,6 +27,12 @@
  * the head of the transcript and loses the newest turn — which is the turn a knowledge-update question
  * asks about and the turn a count-bearing question's last item sits in. `answerSessions` delivered
  * 48,460 characters of conversation and the answer was cut off the end of it.
+ *
+ * Two numbers in that table have moved since it was written and the profile has not: the room table is
+ * narrower than the one every early reading was taken at (§32 gave `temporal` back its 24,000 characters),
+ * and the row now states the bill beside the accuracy because the pair is the claim. `minimal` is quoted
+ * at the room table it was measured at and says so -- an unranked prompt is truncated by the same room, so
+ * that row's number is not a property of the profile alone.
  *
  * A library whose selling point is a measured number cannot default to the configuration the instrument
  * priced at less than half of it. `minimal` remains, because a smoke test and a conformance check want a

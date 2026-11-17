@@ -805,7 +805,7 @@ and no worked example of which combination runs. `assembleMemory` is that exampl
 | profile | what it adds over the one before | what it is for | measured (LongMemEval-S, 500 × 4) |
 | --- | --- | --- | --- |
 | `minimal` | nothing: an identity gate and no index | the smallest conformant memory. Answers from the turns it is given, in the order it is given them | **39.55%** — the `relevanceSignal=none` arm |
-| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking a knowledge-update or count-bearing question needs | **91.40%** with a vector channel at the registered room; **89.40%** when every route's room is cut to 24,000 characters (`S15`); **85.75%** lexical-only (`S14`, paired −28 questions, p = 2.5e-5). Paired against the harness's own index at −1.5 questions (p = 1.0) |
+| `reader` | the retrieval index — lexical, plus a vector channel when you supply an embedder | the ranking a knowledge-update or count-bearing question needs | **91.25%** with a vector channel at the registered room (7,448 prompt tokens per question); **89.40%** when every route's room is cut to 24,000 characters (`S15`); **85.75%** lexical-only (`S14`, paired −28 questions, p = 2.5e-5). Paired against the harness's own index at −1.5 questions (p = 1.0) |
 | `full` | the disclosure boundary: cards, releases, and erasure over all eight surfaces | a deployment where a person says something and can later withdraw it | the same ranking; the boundary is not an accuracy mechanism |
 
 `reader` is the default. It was `minimal` until the ranking was priced, and the two numbers in the last column
@@ -828,22 +828,30 @@ costs. Three points have been measured or registered on the same 500 questions, 
 
 | room per route | accuracy | reader prompt tokens per question | taken from |
 | --- | --- | --- | --- |
-| `multi-session` 48,460, `temporal` 48,000, the other four 24,000 | **91.40%** | 9,074 | the registered arm (`S9`) |
-| 24,000 on all six | **89.40%** | 5,861 | `S15`, paired −13 questions, exact McNemar p = 0.0024 |
-| `multi-session` 48,460, the other five 24,000 | *being measured* | *≈7,500 by arithmetic on measured characters* | `S16`, registered, not yet read |
+| `multi-session` 48,460, the other five 24,000 | **91.25%** | **7,448** | **the registered arm** (`S16`, paired −1 question against `S9`, exact McNemar p = 1.0) |
+| `multi-session` 48,460, `temporal` 48,000, the other four 24,000 | 91.40% | 9,074 | `S9`, the table `S16` replaced |
+| 24,000 on all six | 89.40% | 5,861 | `S15`, paired −13 questions, exact McNemar p = 0.0024 |
 
-Two of the six rooms were cut in the middle row and **one of them paid**: `multi-session` lost 9 of the 13
+The first row and the second are the same instrument reading the same 500 questions, and the difference
+between them is **one entry of the room table**: `temporal` was holding 48,000 characters and delivered
+47,852 of them to answer questions that 23,877 characters answer just as well. Two dispatches measured that
+cut — `S15` lost 2 questions on it (p = 0.63) and `S16` lost 1 (p = 1.0) — and the second one also gave
+`multi-session` its room back, which *gained* a question. So the cheaper table is the one the measurement
+cannot tell apart from the dearer one, which is what the shipping default now is: **91.25% at 7,448 prompt
+tokens per question, 19.1% less bill than the table it replaces.**
+
+Two of the six rooms are cut in the bottom row and **one of them pays**: `multi-session` lost 9 of the 13
 questions (p = 0.012) while `temporal` lost 2 (p = 0.63), and the four routes nobody touched lost 2 between
 them across 252 questions. That is not noise with a story attached — it is what an aggregation question is.
 `How many festivals did I attend?` is a **count over turns**, so halving the packet truncates the count: the
 artifacts answer 3 against a gold of four. A temporal question needs its anchor and its neighbours and
-survives the cut. If you are trading accuracy for money, cut `temporal` before you cut `multi-session`, and
-read the per-route table in `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` §7 before you cut either.
+survives the cut, twice measured. If you are trading accuracy for money, cut `temporal` before you cut
+`multi-session`, and read the per-route table in `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` §7 before you cut
+either.
 
-Do not read the third row as a recommendation yet. It is registered with two criteria — accuracy within five
-questions of the registered arm *and* a bill at or below 85% of it — and a prediction computed from two
-measured arms is still a prediction about a third. The manual prints it as *being measured* until it is read,
-which is the same rule every other number on this page follows.
+The middle row is kept on this page because it is the table every number published before this release was
+taken under, and because it is 1,626 tokens per question of context that bought no question. It is not
+reachable as a default any more; state it per route if you want to reproduce an older reading.
 
 <!-- contract-table: AssembleOptions -->
 | option | type | default | effect |

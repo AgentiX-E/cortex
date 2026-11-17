@@ -188,7 +188,8 @@ Two things follow, and the second is the one that changes the plan.
    but "which route the room goes to". The middle cell this licenses — `multi-session` at 48,460, the
    other five at 24,000 — is registered as `S16` with two criteria at once (accuracy within five
    questions of the registered arm, and a bill at or below 85% of it) and a prediction of 453–455 at
-   about 7,500 tokens per question. It is a prediction until it is read, and the registration says so.
+   about 7,500 tokens per question. It was a prediction when this paragraph was written; §8 is its
+   reading, and it met both criteria.
 
 ### 7.1 One methodological note, because the same artifact reads two ways
 
@@ -203,3 +204,64 @@ time the two conventions disagree by more than a question or two in the *conserv
 is recorded rather than resolved: the row's conclusion does not depend on it (the loss is in
 `multi-session` under both conventions, at p = 0.039 and p = 0.012), but a reader comparing this
 document against `room-24k.json` will find −13 there and −8 here if this paragraph does not exist.
+
+## 8. The middle of the curve, read: 91.25% at 7,448 tokens per question
+
+`S16`, run `44017278305`, 500 questions × 4 repetitions, `multi-session` at 48,460 and the other five
+routes at 24,000 — the cell §7 licensed and §5's arithmetic predicted.
+
+| repetition | correct | accuracy |
+| --- | --: | --: |
+| 1 | 456 | 91.20% |
+| 2 | 454 | 90.80% |
+| 3 | 458 | 91.60% |
+| 4 | 457 | 91.40% |
+| **mean** | **456.25** | **91.25%** |
+
+Paired against the registered arm it replaces (`S9`, run `43778036604`) on majority verdicts: **448
+both, 6 only `S16`, 7 only `S9`, 39 neither** — **−1 question**, −0.20 points, exact McNemar
+**p = 1.0**. The bill is **7,448** prompt tokens per question (14,895,566 over 2,000 question-runs,
+2,078 calls, 78 retries) against **9,074**, i.e. **−19.1%**; per correct answer it is **8,162**
+against 10,105, **−19.2%**.
+
+Both pre-registered criteria are met, and neither was moved to meet them: the delta threshold was
+−5 questions and the bill threshold was 7,821 (85% of 9,201) — the reading came in at −1 and 7,448.
+
+| route | n | accuracy (`S9` → `S16`) | Δ questions | delivered characters per question |
+| --- | --: | --: | --: | --: |
+| `multi-session` | 121 | 82.64% → **83.47%** | **+1** | 48,318 → 48,322 |
+| `temporal` | 127 | 94.49% → 93.70% | −1 | **47,852 → 23,877** |
+| `flat` | 94 | 89.36% → 88.30% | −1 | 22,611 → 22,613 |
+| `knowledge-update` | 72 | 93.06% → 93.06% | 0 | 22,680 → 22,667 |
+| `assistant` | 56 | 96.43% → 96.43% | 0 | 22,639 → 22,639 |
+| `abstention` | 30 | 100.00% → 100.00% | 0 | 23,053 → 23,053 |
+
+**The route that kept its room gained a question and the route that lost half of its room lost one.**
+`temporal` delivered 23,877 characters against 47,852 and paid one question for it — the second
+independent measurement of that cut (§7 read 2 questions at p = 0.63; this reads 1 at p = 1.0), which
+is what §5 got wrong when it wrote that the temporal route needs its neighbours *and* its width. It
+needs its neighbours. The width it was holding was 24,000 characters of context that 127 questions
+did not read.
+
+**What the arithmetic got right and what it got wrong.** §7 predicted 453–455 correct at about 7,508
+tokens; the majority count is 454 and the bill is 7,448 — both inside the interval, which is the first
+time in this campaign a prediction computed from two measured arms landed on its own centre. §5's
+prediction of a different middle (91.00% at 8,567, with `temporal` kept wide) was never run, because
+the cheaper middle was available: §5's middle was the *conservative* one, and the cut it protected is
+the one that turned out to be free twice.
+
+**One correction to §7's witness, because this artifact can see it.** §7 read the four untouched
+routes' delivered characters as identical, and used that as evidence the run never touched them. Here
+they are not identical: `flat` +2, `knowledge-update` −13, `multi-session` +4, against rooms that did
+not move. The cause is not the room — it is that a build arrived between the two dispatches carrying
+`supersededRendering: 'off'` and `replyRepair: 'off'` as recorded fields, and the assembler renders a
+few characters differently under them. So the witness for "this route was not cut" is the **cap**, not
+the delivered mean, and the bound on build drift is 13 characters in 22,680 (0.06%). A mean-difference
+test tight enough to call that a treatment effect would be too tight for this instrument.
+
+**What this did not buy.** `C1` is 7,448 against a 6,000 aim — still a miss, now at **1.24×** instead
+of 2.09× (against the old 9,201). Against the published board it is **1.69× Zep's 4,400**, **1.10×
+Mem0's 6,800** and **1.006× Maximem's 7,400** — i.e. the bill is now the same as the accuracy leader's
+and the accuracy is 4.35 points below it. The gap that remains is not a room: it is `MR` at 83.47%
+against MemCog's published 92.48%, and §31.8 of the plan shows that on 48,000 characters the gold
+turns are already delivered for 17 of the 21 `MR` questions this arm answers wrong.

@@ -674,17 +674,26 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   mechanism, not on the `+29.45pp` run that followed: the forbidden state fell 12 → 7,
   MR's declines fell 23 → 20, and the predicted cost appeared as `numeric_mismatch`
   27 → 32. §13.61.5 states what that decision does not claim.
-- **`relevanceSignal: retrieval-anchored` — adopted by §13.260.7 as of `42013256884`.** The
-  §13.64 hybrid (dense cosine fused with a rare-keyword channel by reciprocal rank,
-  `retrieveTopKByQueriesHybrid`) was the configuration from `41358866921` to `41970746908`, adopted on
-  TR's +17 with no capability regressed and its three mechanism predictions falsified (§13.64.4). What
-  replaced it is the same ranking plus anchor restoration: the turns around a retrieved anchor are
-  restored into the pool at anchor count 4, radius 3 and decay 0.5, which bought **+21 delivered gold
-  turns and +53 turns into the pool** at a cost of 54 prompt characters, and the delivery count `6,520`
-  then reproduced **exactly** on a second dispatch (§13.260.1). Its accuracy effect over 256 paired
+- **`relevanceSignal: self-index` — the product's own ranking, registered by §32; the value it replaces,
+  `retrieval-anchored`, was adopted by §13.260.7 as of `42013256884` and remains the *reference* arm's
+  ranking.** The registration said `retrieval-anchored` while every 500-question reading this project
+  publishes was produced by `self-index`: `S9` (`43778036604`, 91.40%), `S14` (85.75%), `S15` (89.40%) and
+  `S16` (91.25%) all carry `cortex_memory_relevance=self-index` in the artifact's own configuration line, and
+  `evidence/longmemeval/self-index-registered.json` has said so since `S9` — "the PRODUCT building the
+  relevance index for each question ... which is the only declared departure from the registration". So the
+  word "registered" was describing an arm no caller can run: `retrieval-anchored` means the *harness* ranks
+  before the product sees the corpus, and `assemble.ts` ships `reader`, whose ranking is this one. §32 records
+  the correction and couples it to a measured change (the room line below) precisely because a bookkeeping
+  amendment that travels alone is one nobody re-derives; the cost row is what it fixes, since `C1` was pricing
+  `42533236864` — an arm reading 91.20% that no published cell quotes. Nothing about the ranking changed here.
+  §13.260.7's evidence is untouched and still describes what the reference arm ranks with: the turns around a
+  retrieved anchor are restored into the pool at anchor count 4, radius 3 and decay 0.5, which bought **+21
+  delivered gold turns and +53 turns into the pool** at a cost of 54 prompt characters, and the delivery count
+  `6,520` reproduced **exactly** on a second dispatch (§13.260.1). Its accuracy effect over 256 paired
   observations is −1.00 point against a reader whose self-disagreement on identical bytes is −1.20
-  (§13.261.3, §13.261.5), so the adoption claims **delivery without a measured accuracy cost** and not
-  an accuracy gain. A run with `relevanceSignal=retrieval-hybrid` is the pre-§13.260 configuration.
+  (§13.261.3, §13.261.5), so the adoption claims **delivery without a measured accuracy cost** and not an
+  accuracy gain. `--set cortex_memory_relevance=retrieval-anchored` still reproduces that arm, and
+  `relevanceSignal=retrieval-hybrid` is still the pre-§13.260 configuration.
 - `maxTurnChars: 400` — **adopted by §13.76.** The global form was rejected by §13.72 (roster 357 against 371,
   union 80.20% against 87.40%, IE −30 while MR +13); the route-scoped form was registered by §13.73 and met all
   five of its predictions in run `39205060432`: IE 135, MR 72, KU 59, TR 94, roster **389**. It is
@@ -707,7 +716,7 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   expressible at all, and it dropped MR's never-surfaced gold from 28.1% to **5.0%** while `beyond the pool`
   fell to zero. §13.54's refutation of this width was measured under a 26-turn room and is narrowed, not
   overturned: a wide pool is useless when the room is narrow, and necessary when it is not.
-- `maxPromptCharsByRoute: abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000`
+- `maxPromptCharsByRoute: abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:24000`
   — **the evidence budget, adopted by §13.82 as one flat room and re-registered as a route map by §13.295 and
   §13.318.3, then redistributed by §13.336.** §13.81 registered 24,000 and §13.82 raised it to
   48,000, because §13.80 showed the room cannot be bought by truncating: at a 200-character cap the room reached
@@ -726,6 +735,16 @@ because the evidence does not contain the answer, reply exactly INSUFFICIENT_EVI
   `≤ 9,300`). The 0.90 points against 91.95 is **not a measured loss**: three readings of the wider map already
   span 91.95 / 91.65 / 91.05 (`42355323615`, `42452904894`, `42467392736`), so 91.05 sits inside the
   configuration's own draw spread and the allocation's cost is below this harness's resolution.
+  **§32 returns `temporal` to 24,000 and leaves `multi-session` at 48,460**, because `S15` and `S16` priced the
+  two halves of §13.336's allocation separately and they are not the same price. `S15` cut both and lost 13
+  questions, 9 of them on `multi-session` (b 10 / c 1, exact p = 0.012) and 2 on `temporal` (b 3 / c 1, p = 0.63);
+  `S16` (`44017278305`) gave `multi-session` its room back and left `temporal` cut, and read **91.25% at 7,448
+  prompt tokens per question** against the table above at **91.40% at 9,074** — a paired **−1 question** (b 6 /
+  c 7, exact p = 1.0) for **19.1% less bill**, including the token spent on this line's own 460 extra characters
+  of instruction. The room was never one budget: it is a per-route one, and one route was holding 24,000
+  characters it did not spend. `S16`'s route split is the evidence rather than the aggregate — `temporal`
+  delivered 23,877 characters against 47,852 and lost one question, while `multi-session` delivered 48,322
+  against 48,318 and gained one.
   **A scalar is still expressible and still means one room for every route** — `maxPromptChars` survives in the
   artifact for that shape, and the parser decides between them on whether the input contains a colon rather than
   on a heuristic. The registration names the map because a scalar here would describe a run this arm is not

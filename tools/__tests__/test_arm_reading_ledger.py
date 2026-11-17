@@ -854,3 +854,129 @@ def write(tmp_path, report):
     path = pathlib.Path(tmp_path) / f"control-{abs(hash(json.dumps(report, sort_keys=True)))}.json"
     path.write_text(json.dumps(report), encoding="utf-8")
     return path
+
+
+# ---- the route row, whose number is a pair rather than a level -----------------------------------
+
+
+S16_ROOMS = {"multi-session": 48460}
+
+
+def test_the_route_row_accepts_the_one_route_kept_wide(tmp_path):
+    """`S16`'s arm is `S15`'s with one route's room given back, and it needs a pair to have a number."""
+    treatment = artifact(config=room_config(**S16_ROOMS))
+    control = artifact(config=room_config(**{"multi-session": 48460, "temporal": 48000}))
+    done = run(
+        tmp_path,
+        treatment,
+        "--json",
+        "--run",
+        "1",
+        "--control-artifact",
+        str(write(tmp_path, control)),
+        row="S16",
+    )
+    assert done.returncode == 0, done.stderr
+    result = json.loads(done.stdout)
+    assert result["row"] == "S16"
+    assert result["arm"]["maxPromptCharsByRoute"]["temporal"] == 24000
+
+
+def test_the_route_row_refuses_the_arm_where_every_route_was_cut(tmp_path):
+    """`S15`'s artifact offered to `S16`: the arm the route row is the repair of.
+
+    The two agree on `relevanceSignal`, on `indexEmbedding` and on five of the six rooms, and the
+    difference is one entry. A producer that accepted this file would publish the 24,000 arm's number
+    under a row whose whole content is that `multi-session` was not cut -- and the delta in it would be
+    a comparison of an arm with itself.
+    """
+    report = artifact(config=room_config())
+    done = run(tmp_path, report, "--run", "1", row="S16")
+    assert done.returncode == 1
+    assert "`maxPromptCharsByRoute`" in done.stderr
+    assert "'multi-session': 48460" in done.stderr
+    assert "two different budgets" in done.stderr
+
+
+def test_the_route_row_refuses_the_registered_table(tmp_path):
+    """`S9`'s table, which is the control. `S16` is the middle of the curve, not its left end."""
+    report = artifact(config=room_config(**{"multi-session": 48460, "temporal": 48000}))
+    done = run(tmp_path, report, "--run", "1", row="S16")
+    assert done.returncode == 1
+    assert "'temporal': 24000" in done.stderr
+
+
+def test_a_count_row_refuses_to_be_written_without_a_pair(tmp_path):
+    """A file with no `paired` block cannot carry this row's number, so it must not be written.
+
+    `S16`'s criterion reads `paired.deltaQuestions`. A producer that wrote the file anyway would emit
+    the one thing it can compute -- the level -- under a row that reads the pair, and the criterion
+    would find no key: the row would read `unrun` while a paid artifact sat on disk. The refusal names
+    the field the criterion reads rather than the flag that is missing.
+    """
+    report = artifact(config=room_config(**S16_ROOMS))
+    done = run(
+        tmp_path,
+        report,
+        "--run",
+        "1",
+        "--write",
+        str(pathlib.Path(tmp_path) / "route-room.json"),
+        row="S16",
+    )
+    assert done.returncode == 1
+    assert "paired.deltaQuestions" in done.stderr
+    assert not (pathlib.Path(tmp_path) / "route-room.json").exists()
+
+
+def test_the_count_row_decides_on_the_pair_and_not_on_the_level(tmp_path):
+    """Two arms, and the verdict is the opposite of what their accuracies would say.
+
+    The first keeps 89.00% -- below every ratio floor in this table -- and passes, because it answers
+    three questions the control answers and loses none. The second keeps 96.00% and fails, because the
+    twenty questions it lost are the row's subject. A row whose verdict is read off `overall.accuracy`
+    would get both of them backwards, which is why `unit` is a field and not an assumption.
+    """
+    kept = artifact(bits=["1" * 445 + "0" * 55] * 4, config=room_config(**S16_ROOMS))
+    control = artifact(bits=["1" * 448 + "0" * 52] * 4, config=room_config(**{"multi-session": 48460, "temporal": 48000}))
+    passed = run(
+        tmp_path,
+        kept,
+        "--run",
+        "1",
+        "--control-artifact",
+        str(write(tmp_path, control)),
+        row="S16",
+    )
+    assert passed.returncode == 0, passed.stderr
+    assert "verdict: pass" in passed.stdout, passed.stdout
+    assert "-3 questions" in passed.stdout
+    assert "S16 allows -5" in passed.stdout
+
+    wide = artifact(bits=["1" * 480 + "0" * 20] * 4, config=room_config(**S16_ROOMS))
+    full = artifact(bits=["1" * 500] * 4, config=room_config(**{"multi-session": 48460, "temporal": 48000}))
+    failed = run(
+        tmp_path,
+        wide,
+        "--run",
+        "1",
+        "--control-artifact",
+        str(write(tmp_path, full)),
+        row="S16",
+    )
+    assert failed.returncode == 0, failed.stderr
+    assert "verdict: miss" in failed.stdout, failed.stdout
+    assert "-20 questions" in failed.stdout
+
+
+def test_rendering_a_count_row_without_a_pair_reports_it_unread(tmp_path):
+    """No pair, no number. The honest render is `unread`, not a comparison against nothing.
+
+    Rendering is allowed without `--write`, so this path is reachable: an operator pointing the tool at
+    a fresh artifact before deciding whether to pay for a control. A verdict computed from `None` would
+    be a `TypeError` at best and, if written defensively, a pass or a miss that no reading supports.
+    """
+    done = run(tmp_path, artifact(config=room_config(**S16_ROOMS)), "--run", "1", row="S16")
+    assert done.returncode == 0, done.stderr
+    assert "verdict: unread" in done.stdout
+    assert "no pair" in done.stdout
