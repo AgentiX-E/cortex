@@ -138,7 +138,12 @@ jobs:
       # never calls because `indexEmbedding` is `none`.
       - name: Run the arm as an instrument
         env:
-          LONGMEMEVAL_PATH: data/longmemeval_s_cleaned.json
+          # Absolute, not `data/...`: `pnpm --filter` runs the bench with the PACKAGE as its working
+          # directory, so a relative path resolved against `packages/cortex-memory` and the first
+          # dispatch of this workflow died on `ENOENT: no such file or directory, open
+          # 'data/longmemeval_s_cleaned.json'` after the corpus had already been downloaded and
+          # checked. The digest check above had passed; only the path disagreed with the cwd.
+          LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           LIMIT: ${{ github.event.inputs.limit || '0' }}
           ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
           CORTEX_ARM_OFFLINE: '1'
