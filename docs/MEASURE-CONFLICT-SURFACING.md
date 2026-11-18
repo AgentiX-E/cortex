@@ -298,6 +298,13 @@ control-perfect regressions 4
 bar: conversions met=true no-regression met=false falsified=true -> REJECTED
 ```
 
+That listing is the transcript of the run that decided `V4`, and two later additions are not in it:
+a `dataset  … / …` line under the header (it reads `unrecorded / unrecorded` for these two archives,
+which predate the fingerprint) and the two counts inside the sign-test line, which now reads
+`questions up/down <n> / <n>, exact sign test p = …`. The bar line is unchanged — a bar without a net
+clause prints exactly what it printed here, which is the property that let a net clause be added
+without rewriting the record of this verdict.
+
 `--require-identical-evidence` is the precondition §4.4 states, and the tool refuses the pair with
 exit 3 rather than reading it when that precondition fails. `6a1eabeb 4 -> 2` and `89941a93 4 -> 2`
 are the falsifier; `f9e8c073 3 -> 0` is the largest single loss and does **not** fire it, because the

@@ -26,6 +26,11 @@
  * - **Evidence that moved,** when the caller says the mechanism cannot move it. This is the check
  *   that made the two `conflicts` readings admissible at all: the block is inserted after the budget
  *   decided the carried set, so `evidenceChars` must be equal question for question.
+ * - **A different corpus,** whenever both artifacts name one. The dataset is served from a moving
+ *   branch, so two dispatches can agree on all five hundred question ids and disagree on what the
+ *   sessions say; the ids cannot show that, and a paired reading over a moved corpus is two datasets
+ *   under one label. `--require-same-dataset` adds the other half -- an artifact that predates the
+ *   field cannot show that its corpus was the same one.
  *
  * Exit codes: `0` a reading was taken; `2` usage; `3` the pair is inadmissible (the refusals are
  * printed and nothing is decided).
@@ -45,7 +50,7 @@ const has = (name) => argv.includes(name);
 
 const usage = `usage: node tools/arm-verdict.mjs --control <report.json> --arm <report.json>
          [--capability KU] [--side feature|baseline] [--require-identical-evidence]
-         [--bar conversions=<n>,falsifier=<n>[,net=<n>]] [--json]`;
+         [--require-same-dataset] [--bar conversions=<n>,falsifier=<n>[,net=<n>]] [--json]`;
 
 const controlPath = flag('--control');
 const armPath = flag('--arm');
@@ -129,18 +134,23 @@ function project(path, label) {
       evidenceChars: question.evidenceChars,
     }))
     .filter((row) => (capability === undefined ? true : row.capability === capability));
-  return { label, path, repetitions: masks.length, rows };
+  // Carried out of the file rather than compared here: the refusal lives with the statistics, and the
+  // field is optional because the first artifacts predate it.
+  const datasetFingerprint =
+    typeof report?.datasetFingerprint === 'string' ? report.datasetFingerprint : undefined;
+  return { label, path, repetitions: masks.length, rows, datasetFingerprint };
 }
 
 const control = project(controlPath, 'control');
 const arm = project(armPath, 'arm');
 
 const verdict = armVerdict(
-  { questions: control.rows },
-  { questions: arm.rows },
+  { questions: control.rows, datasetFingerprint: control.datasetFingerprint },
+  { questions: arm.rows, datasetFingerprint: arm.datasetFingerprint },
   {
     ...(bar === undefined ? {} : { bar }),
     ...(has('--require-identical-evidence') ? { requireIdenticalEvidence: true } : {}),
+    ...(has('--require-same-dataset') ? { requireSameDataset: true } : {}),
   },
 );
 
@@ -188,6 +198,7 @@ if (has('--json')) {
       `control  ${control.path}`,
       `arm      ${arm.path}`,
       `${capability ?? 'all capabilities'}, ${side} side, ${control.repetitions} repetition(s)`,
+      `dataset  ${control.datasetFingerprint ?? 'unrecorded'} / ${arm.datasetFingerprint ?? 'unrecorded'}`,
       '',
       verdict.comparable
         ? [

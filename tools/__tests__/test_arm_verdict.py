@@ -198,6 +198,38 @@ def test_a_net_clause_that_is_not_an_integer_is_refused_rather_than_dropped(tmp_
     assert "net=<integer>" in result.stderr
 
 
+def test_two_corpora_are_not_a_pair(tmp_path: Path) -> None:
+    """A fingerprint that disagrees refuses the pair; an absent one refuses only when asked.
+
+    The corpus is served from a moving branch, so two dispatches a week apart can agree on all five
+    hundred question ids and disagree on what the sessions say -- and the ids cannot show it. The
+    disagreement is therefore mandatory and the absence is opt-in, which is the same split
+    `--require-identical-evidence` uses: a field the older artifacts predate cannot be evidence.
+    """
+    rows = [(question_id, before) for question_id, before, _ in MOVED]
+    control = report(tmp_path / "control.json", ["0000"], rows)
+    arm = report(tmp_path / "arm.json", ["0000"], rows)
+    payload = json.loads(control.read_text())
+    payload["datasetFingerprint"] = "sha256:d6f21ea9"
+    control.write_text(json.dumps(payload))
+    payload = json.loads(arm.read_text())
+    payload["datasetFingerprint"] = "sha256:0000dead"
+    arm.write_text(json.dumps(payload))
+
+    refused = run("--control", str(control), "--arm", str(arm))
+    assert refused.returncode == 3
+    assert "dataset-differs" in refused.stdout
+    assert "dataset  sha256:d6f21ea9 / sha256:0000dead" in refused.stdout
+
+    payload = json.loads(arm.read_text())
+    del payload["datasetFingerprint"]
+    arm.write_text(json.dumps(payload))
+    assert run("--control", str(control), "--arm", str(arm)).returncode == 0
+    asked = run("--control", str(control), "--arm", str(arm), "--require-same-dataset")
+    assert asked.returncode == 3
+    assert "dataset-differs" in asked.stdout
+
+
 def test_a_capability_filter_that_yields_different_populations_is_refused(tmp_path: Path) -> None:
     control = report(tmp_path / "control.json", ["0000"], [(question_id, before) for question_id, before, _ in MOVED])
     arm = report(

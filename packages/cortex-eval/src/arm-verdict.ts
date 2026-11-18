@@ -51,9 +51,15 @@
  * `efficiency-frontier.mjs` exits 2 on unequal repetitions because a bill read across unequal
  * repetition counts is `runs` wearing a cost's name (`§13.313`). The same discipline applies here:
  * an inadmissible pair returns `comparable: false` with an empty result set, not a number with a
- * footnote. The one refusal that is opt-in is `evidence-not-identical`, because a mechanism that
- * changes retrieval is *supposed* to change the evidence; it is a precondition only for mechanisms
- * like this one, whose entire claim is that they add characters after the budget decided the set.
+ * footnote. One refusal is opt-in: `evidence-not-identical`, because a mechanism that changes
+ * retrieval is *supposed* to change the evidence, and it is a precondition only for mechanisms whose
+ * entire claim is that they add characters after the budget decided the set.
+ *
+ * `dataset-differs` is split, and the split is the interesting part. Two artifacts that name different
+ * corpora are refused whatever the caller asked for -- a moved corpus is a different population, not a
+ * weaker reading of the same one -- while an artifact that names none is refused only when
+ * `requireSameDataset` asks, because the fingerprint is younger than the archive and an unrecorded
+ * corpus is not evidence of a different one.
  */
 import { mcnemarPValue } from './metrics.js';
 
@@ -75,6 +81,15 @@ type ArmQuestionReading = {
 /** One artifact's question population. */
 type ArmReading = {
   readonly questions: readonly ArmQuestionReading[];
+  /**
+   * The `sha256:…` the artifact says it was measured over, when it records one.
+   *
+   * Present because a pair is a claim about **one population**, and the corpus is upstream of the
+   * question set: the file is served from a moving branch, so two dispatches a week apart can agree on
+   * all five hundred question ids and disagree on what the sessions say. The ids cannot show that, and
+   * a paired reading over a moved corpus is two datasets under one label.
+   */
+  readonly datasetFingerprint?: string;
 };
 
 /** A registered bar: how many conversions it asks for, and what size of loss falsifies it. */
@@ -105,6 +120,7 @@ type ArmRefusal =
   | 'mask-length-mismatch'
   | 'question-sets-differ'
   | 'repetitions-differ'
+  | 'dataset-differs'
   | 'evidence-not-identical';
 
 /** One question that moved, with both masks so a reader can check the direction by eye. */
@@ -164,6 +180,15 @@ type ArmVerdictOptions = {
   readonly bar?: ArmBar;
   /** Refuse unless every paired question records the same `evidenceChars`. */
   readonly requireIdenticalEvidence?: boolean;
+  /**
+   * Refuse unless both artifacts name the same dataset fingerprint.
+   *
+   * Opt-in for the absence, mandatory for the disagreement: when both sides carry a fingerprint and the
+   * two differ, the pair is refused whatever the caller asked for, because a moved corpus is a
+   * different population rather than a weaker reading of the same one. What the flag adds is the other
+   * half -- an artifact from before the field existed cannot show that its corpus was the same one.
+   */
+  readonly requireSameDataset?: boolean;
 };
 
 const REFUSAL_ORDER: readonly ArmRefusal[] = [
@@ -172,6 +197,7 @@ const REFUSAL_ORDER: readonly ArmRefusal[] = [
   'mask-length-mismatch',
   'question-sets-differ',
   'repetitions-differ',
+  'dataset-differs',
   'evidence-not-identical',
 ];
 
@@ -241,6 +267,16 @@ export function armVerdict(
   const controlRuns = control.questions[0]?.correctByRun.length ?? 0;
   const armRuns = arm.questions[0]?.correctByRun.length ?? 0;
   if (controlRuns !== armRuns) refusals.add('repetitions-differ');
+
+  const fingerprints = [control.datasetFingerprint, arm.datasetFingerprint];
+  const bothFingerprinted = fingerprints.every((value) => value !== undefined);
+  if (
+    bothFingerprinted
+      ? control.datasetFingerprint !== arm.datasetFingerprint
+      : options.requireSameDataset === true
+  ) {
+    refusals.add('dataset-differs');
+  }
 
   if (options.requireIdenticalEvidence === true) {
     const identical =

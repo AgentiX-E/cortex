@@ -269,8 +269,8 @@ Three decisions are inside that clause and each has a reason:
 
 The counts the clause is computed from are printed with it (`net up 5 - down 5 = 0 met=true`),
 because a reader checking a subtraction the tool already did is a reader who will eventually do it
-wrong; and `questions up/down` is now printed on its own line for the same reason a p-value alone is
-not enough — five against five and one against one share a p-value of 1.
+wrong; and the two counts are printed beside the p-value for the same reason a p-value alone is not
+enough — five against five and one against one share a p-value of 1.
 
 ## What the product must do for this to hold
 

@@ -276,6 +276,29 @@ describe('armVerdict — the six refusals', () => {
     expect(verdict.conversions).toEqual([]);
   });
 
+  it('refuses two artifacts measured over different corpora, whether or not it was asked', () => {
+    const sameQuestions = (fingerprint: string | undefined): ArmReading => ({
+      ...reading(CONTROL),
+      ...(fingerprint === undefined ? {} : { datasetFingerprint: fingerprint }),
+    });
+    const controlPrint = sameQuestions('sha256:d6f21ea9');
+    const movedCorpus = sameQuestions('sha256:0000dead');
+    const refused = armVerdict(controlPrint, movedCorpus);
+    expect(refused.comparable).toBe(false);
+    expect(refused.refusals).toEqual(['dataset-differs']);
+    // The flag is about the other half: an artifact from before the field existed cannot show that its
+    // corpus was the same one, and an unrecorded pair is admissible only when nobody asked.
+    expect(armVerdict(controlPrint, sameQuestions(undefined)).comparable).toBe(true);
+    expect(
+      armVerdict(controlPrint, sameQuestions(undefined), { requireSameDataset: true }).refusals,
+    ).toEqual(['dataset-differs']);
+    expect(
+      armVerdict(controlPrint, sameQuestions('sha256:d6f21ea9'), {
+        requireSameDataset: true,
+      }).comparable,
+    ).toBe(true);
+  });
+
   it('refuses unequal repetition counts', () => {
     const shorter = reading(ARM.map(([id, mask]) => [id, mask.slice(0, 2)] as const));
     const verdict = armVerdict(control, shorter);
