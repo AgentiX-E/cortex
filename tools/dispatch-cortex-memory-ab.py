@@ -114,6 +114,15 @@ INDEX_EMBEDDINGS = ("injected", "none")
 LEXICAL_WEIGHTING_VARIABLE = "CORTEX_MEMORY_LEXICAL_WEIGHTING"
 LEXICAL_WEIGHTINGS = ("flat", "idf")
 
+# §13.386. Whether each rendered session boundary carries the date its block states. Carried as a
+# repository variable for the reason the weighting is: the input ceiling, not a preference. `off` is the
+# registered value and the state every archived artifact was produced in, so an unset variable must
+# reproduce the registration rather than describe a choice. Named `off`/`on` rather than `0`/`1` because
+# the comparison this run will be read against is a rendered prompt: a mistyped boolean must be a refusal,
+# and `true` is the mistake the guard below names.
+SESSION_CLOCK_VARIABLE = "CORTEX_MEMORY_SESSION_CLOCK"
+SESSION_CLOCKS = ("off", "on")
+
 # The admission gate's two axes (`§13.101`'s unreachable pair): the threshold the value function is
 # cut at, and the signal that makes the value vary in the first place.
 #
@@ -951,6 +960,31 @@ def lexical_weighting_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def session_clock_switch(environ: dict[str, str] | None = None) -> str:
+    """Whether this dispatch labels the session boundaries: `off` or `on`.
+
+    Read from the dispatcher's environment for the reason `lexical_weighting_switch` is: `--set` is
+    checked against the registered table, and this is deliberately not a workflow input. Strict on the
+    value, because the mechanism's whole claim is a rendering: a typo that fell back to `off` would
+    produce the registered arm's prompt under a dispatch that asked for the label, and the artifact
+    would say `sessionClock=off`, which is true and answers a different question.
+
+    `off` rather than blank on an absent variable, because it is the value every archived artifact was
+    measured under.
+    """
+    raw = ((environ if environ is not None else os.environ).get(SESSION_CLOCK_VARIABLE) or "").strip()
+    if raw == "":
+        return "off"
+    if raw in SESSION_CLOCKS:
+        return raw
+    raise SystemExit(
+        f"{SESSION_CLOCK_VARIABLE} must be one of {SESSION_CLOCKS} (or unset): got {raw!r}. An "
+        "unrecognised switch is refused rather than defaulted, because the two states differ in the "
+        "prompt a run sends: a run that silently rendered the control would publish the registered "
+        "arm's number under the candidate's name."
+    )
+
+
 def index_embedding_switch(environ: dict[str, str] | None = None) -> str:
     """The index channel this dispatch asks for: `injected` or `none`.
 
@@ -1320,6 +1354,10 @@ def main(argv: list[str] | None = None) -> int:
     # only when the run moves it. `flat` is the registered value, so declaring it on a control run would
     # be the "names a field this run did not move" case the gate reports as an intention.
     lexical_weighting = lexical_weighting_switch()
+    # §13.386, on the same rule as the six above: the artifact's own field name joins the declaration only
+    # when the run moves it. `off` is the registered value, so declaring it on a control run would be the
+    # "names a field this run did not move" case the gate reports as an intention.
+    session_clock = session_clock_switch()
     declared = sorted(
         {
             *declared,
@@ -1339,6 +1377,7 @@ def main(argv: list[str] | None = None) -> int:
             # nothing would be filed as a measurement of the configuration the project ships.
             *(("indexEmbedding",) if index_embedding != "injected" else ()),
             *(("lexicalWeighting",) if lexical_weighting != "flat" else ()),
+            *(("sessionClock",) if session_clock != "off" else ()),
         }
     )
     declare_departures(declared)
@@ -1367,6 +1406,11 @@ def main(argv: list[str] | None = None) -> int:
     # had no reason to look at.
     write_variable(INDEX_EMBEDDING_VARIABLE, index_embedding)
     write_variable(LEXICAL_WEIGHTING_VARIABLE, lexical_weighting)
+    # Written unconditionally for the reason the line above is: a stale `on` from the previous experiment
+    # would label the boundaries of a run that asked for the control, and the artifact would accurately
+    # record a treatment nobody dispatched.
+    write_variable(SESSION_CLOCK_VARIABLE, session_clock)
+    print(f"{SESSION_CLOCK_VARIABLE} = {session_clock}{' *' if session_clock != 'off' else ''}")
     print(
         f"{INDEX_EMBEDDING_VARIABLE} = {index_embedding}"
         f"{' *' if index_embedding != 'injected' else ''}"

@@ -990,6 +990,13 @@ async function main(): Promise<void> {
       // does not name it reproduces the previous prompt byte for byte -- which `conflict-reach.test.ts`
       // asserts on all six routes rather than assuming.
       ...(armOptions.conflicts === true ? { conflicts: true } : {}),
+      // §13.386. The boundary clock. Spread conditionally for the reason `conflicts` is: `off` IS the
+      // shipped behaviour and is expressed by NOT passing the key, so a run that names nothing reproduces
+      // every archived prompt byte for byte -- which `turn-clock.test.ts` asserts on the rendering side and
+      // this line is what makes the arm able to administer the treatment at all. Without it the mechanism
+      // exists, is documented and is measured by nobody, which is the failure `semanticCarry` cost six
+      // rounds to.
+      ...(armOptions.sessionClock === 'on' ? { sessionClock: true } : {}),
       // §18. The inline superseded rendering, spread conditionally for the reason `conflicts` is: `off`
       // IS the shipped behaviour and is expressed by NOT passing the key, so a run that does not name a
       // rendering reproduces every archived prompt byte for byte. The cast is at this boundary for the

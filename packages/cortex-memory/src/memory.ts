@@ -34,6 +34,7 @@ import { conflictBlock, insertRelatedStatements } from './conflict.js';
 import { supersededTurns, type SupersededMarks } from './superseded.js';
 import type { AppendReport, Corpus, CorpusTurn } from './corpus.js';
 import { admitSessions, selectSessionBudget, type AdmittedSession } from './sessionize.js';
+import { annotateSessionBoundaries } from './turn-clock.js';
 import {
   AdmissionCensusBuilder,
   admissionOptionsFrom,
@@ -2530,6 +2531,17 @@ export class CortexMemory implements SessionAwareMemorySystem {
       superseded === undefined ? options : { ...options, superseded },
     );
 
+    // The boundary clock is written onto the assembled prompt rather than into the renderer, and the
+    // placement is the mechanism's correctness: the clip path ends inside a turn, so "the turns the budget
+    // selected" and "the turns the reader receives" are different sets on exactly the route this is for. A
+    // label computed from the selected set printed a date whose text was never delivered -- caught by a
+    // property test, not by inspection. `annotateSessionBoundaries` reads what was rendered, so it cannot
+    // make that mistake, and it cannot move the delivered multiset either: it edits boundary lines only.
+    const withClock =
+      this.#options.sessionClock === true
+        ? { ...assembled, prompt: annotateSessionBoundaries(assembled.prompt) }
+        : assembled;
+
     this.#lastReview = null;
     this.#lastVote = null;
     // §13.101's sample count. One consultation is the shipped behaviour, and the loop reduces to
@@ -2538,7 +2550,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const answers: Answer[] = [];
     const raws: string[] = [];
     for (let index = 0; index < samples; index++) {
-      answers.push(await this.#consult(assembled.prompt, 'multi-session'));
+      answers.push(await this.#consult(withClock.prompt, 'multi-session'));
       raws.push(this.#lastRawOutput as string);
     }
     const vote = samples === 1 ? null : voteAnswers(answers);

@@ -177,6 +177,16 @@ export { buildSpecPrompt } from './aggregation/plan-prompt.js';
  * treatment from here.
  */
 export { classifyQuestionShape, type QuestionShape } from './question-shape.js';
+
+// turn clock
+/**
+ * Writes each session boundary's own date into an already-assembled prompt.
+ *
+ * Exported because a caller that renders its own prompt needs the same labelling the shipped renderer
+ * applies: two implementations of "which date is this block's" would disagree on exactly the blocks that
+ * matter, and the disagreement would be invisible in both.
+ */
+export { annotateSessionBoundaries } from './turn-clock.js';
 export {
   asksForCount,
   buildRecoveryPrompt,

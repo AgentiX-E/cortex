@@ -189,6 +189,14 @@ export type AssembleOptions = {
    * product rather than about the class.
    */
   readonly supersededRendering?: SupersededRendering | undefined;
+  /**
+   * Label every rendered session boundary with the date its turns state.
+   *
+   * Off unless named. The mechanism, its reading and its cost are documented on `Types.sessionClock`; the
+   * only thing this field adds is reachability from the public entry, which is the half of requirement ⑯
+   * that a component test cannot cover.
+   */
+  readonly sessionClock?: boolean | undefined;
 };
 
 /** What a profile wires up, as the objects themselves rather than as a bag of booleans. */
@@ -293,6 +301,10 @@ export function assembleMemory(options: AssembleOptions): Installation {
     ...(options.supersededRendering === undefined
       ? {}
       : { supersededRendering: options.supersededRendering }),
+    // Forwarded rather than defaulted: `CortexMemory` reads `undefined` as off, and this file must not be
+    // the place a mechanism turns itself on. The forwarding is what `turn-clock.test.ts` walks end to
+    // end -- a flag that stops at this object is a documented feature a customer cannot reach.
+    ...(options.sessionClock === undefined ? {} : { sessionClock: options.sessionClock }),
   });
 
   return { profile, memory, corpus, disclosure };

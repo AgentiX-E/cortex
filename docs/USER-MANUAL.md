@@ -564,6 +564,7 @@ Three fields are required and each is required for a reason:
 | `windowOrdering` | `{ dateOf, windowOf }` | absent | The reference pipeline's time-window reorder, as two injections. |
 | `conflicts` | `boolean` | absent (off) | Prints the statements that state one detail twice, in evidence order, between the evidence and the question. Reaches flat, temporal, knowledge-update and assistant; abstention and multi-session are excluded. §6.4. |
 | `supersededRendering` | `'off' \| 'mark' \| 'collapse'` | absent (off) | Marks the turn whose own words state a value the evidence later replaces, **inside** that turn's rendering. `'mark'` appends one bracketed clause; `'collapse'` keeps only the sentence at issue. Reaches multi-session and the four flat routes; abstention is excluded. §6.7. |
+| `sessionClock` | `boolean` | absent (off) | Writes each session boundary's own date into the boundary line — `Session 3 (2023-05-21)`, or a range when the block spans days. Reaches multi-session, the only route that draws boundaries. Off by default: absent reproduces every archived prompt byte for byte. §6.11. |
 | `corpus` | `Corpus` | absent | The transcript this instance holds. Present, `remember()` and `askStored()` work and the memory stops being a function of its arguments; absent, every route is byte-identical to before this option existed. §5.3. |
 | `semanticCarry` | `boolean` | absent (off) | Whether a prompt may carry a value change the store has already authorised. When a `knowledge-update` answer is replaced by a later dated span, the pair becomes a typed fact with a `supersedes` edge, and a later question whose window still carries the record the change was read from is told which value is current. Off by default: absent reproduces every archived prompt byte for byte. §6.5. |
 <!-- /contract-table -->
@@ -870,6 +871,7 @@ reachable as a default any more; state it per route if you want to reproduce an 
 | `index` | `Omit<SearchIndexOptions, 'embed' \| 'store'>` | absent | Retrieval knobs other than the embedder and the store, which this function owns: `k`, `reuse`, the reranker. |
 | `corpus` | `Corpus` | a new one over `storage` | An existing transcript, when you already have one — a second assembly over a live corpus. |
 | `supersededRendering` | `'off' \| 'mark' \| 'collapse'` | absent (off) | What the rendering does to a turn whose value the evidence later replaces. On the assembly rather than per call, because it is a product decision about how a transcript is shown. §6.7. |
+| `sessionClock` | `boolean` | absent (off) | Whether each session boundary carries the date its block states. On the assembly rather than per call, for the same reason `supersededRendering` is: it is a decision about how a transcript is shown, not about one question. §6.11. |
 <!-- /contract-table -->
 
 ```ts
@@ -1229,6 +1231,52 @@ Three properties, and the first two are why this is a weighting rather than a mo
 
 The order after fusion is still a rank, not a score: with a reranker or a second channel the fused number
 is a position, and `lexicalWeighting` therefore changes *which* turns arrive, not how they are sorted.
+
+### 6.11 Telling the reader when each conversation happened
+
+A long multi-session window is hard to read for a reason that has nothing to do with how much evidence it
+carries: every turn states its own date, and by the time a reader has skimmed two hundred of them to the
+candidate it wants, the date is attached to nothing. The observable consequence, measured on the arm's own
+artifact (`44017278305`, 121 multi-session questions × 4 repetitions): a reply that prints three or more
+dated items, of which three or more carry the same date, appears in **17 of the 57** questions that are ever
+wrong (29.8%) and in **39 of the 443** that never are (8.8%) — 3.39 times the rate. The dates are not
+missing — none of that artifact's 41,822 delivered turns lacks a `[YYYY/MM/DD …]` stamp — so the repair is to
+say the date **once per conversation**, where the reader is already deciding which conversation a candidate
+came from.
+
+```ts
+import type { LLM } from '@agentix-e/cortex-core';
+import { assembleMemory } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+declare const llm: LLM;
+declare const sessions: string[][];
+
+const install = assembleMemory({
+  llm, now: Date.now(), storage: new SqliteStorage(),
+  // Every boundary now reads `Session 3 (2023-05-21)` instead of `Session 3`.
+  sessionClock: true,
+});
+```
+
+The prompt then draws its boundaries as `Session 3 (2023-05-21)`, or as a range
+(`Session 3 (2023-05-21..2023-05-27)`) when the block's turns disagree. Three properties are worth knowing
+before you turn it on:
+
+- **It reads the block, not the transcript.** The label is computed from the text the reader is actually
+  given, so a turn the budget dropped cannot put its date on the boundary. That is not a detail: the first
+  implementation computed the label from the selected turns and printed `2023-05-21..2023-12-31` on a block
+  whose December turn had been clipped away.
+- **It never invents a date.** A block whose turns state none keeps the plain `Session 3`, and a stamp that
+  names no day (`[2023/02/30]`) is ignored rather than printed.
+- **It costs about 22 characters per session** — roughly 450 on a twenty-session window, 1% of a 45,000
+  character prompt — and it changes nothing else. With the option off, the prompt is byte-identical to the
+  one every published number was produced under.
+
+**Off by default, and turning it on is a measurement rather than a preference.** The mechanism has a reach
+figure and a cost figure and no accuracy reading yet: changing the default would move the scored path without
+one, which is the rule §13 states for every option in this manual. `RETRACTIONS.md` and the measurement
+records behind it show what happens to mechanisms shipped on the strength of a plausible story.
 
 ## 7. Reading a decision back
 

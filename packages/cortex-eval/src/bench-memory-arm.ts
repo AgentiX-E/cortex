@@ -360,6 +360,15 @@ export type CortexMemoryArmOptions = {
    */
   lexicalWeighting?: string | undefined;
   /**
+   * Whether each rendered session boundary carries the date its block states (§13.386).
+   *
+   * `off` or `on`, parsed by a guard that refuses anything else, for the reason `lexicalWeighting` is a
+   * string: the value crosses a process boundary as text and a union here would only restate the guard.
+   * `off` is the registered value and the one every archived artifact used, so absent cannot mean a
+   * treatment nobody administered.
+   */
+  sessionClock?: string | undefined;
+  /**
    * Whether the product carries an authorised semantic update into a later window (§E6).
    *
    * ## Why this option had to exist before E6 could be called `unrun`
@@ -902,6 +911,16 @@ const RELEVANCE_TOP_K_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_TOP_K';
  * twenty-one zero-recall questions carried a gold turn that a distractor repeating the question's generic
  * words outranked, which is a statement about term value rather than about who computes the order.
  */
+const SESSION_CLOCK_VARIABLE = 'CORTEX_MEMORY_SESSION_CLOCK';
+/** The switch the boundary clock accepts. Named rather than `true`/`false`, for the reason the weighting is. */
+const SESSION_CLOCKS: readonly string[] = ['off', 'on'];
+/**
+ * What a run that names nothing gets.
+ *
+ * `off` because the mechanism is unmeasured: an artifact that spelled nothing must be the arm every
+ * published number was produced under, and `on` has a reading of its own to earn first.
+ */
+const DEFAULT_SESSION_CLOCK = 'off';
 const LEXICAL_WEIGHTING_VARIABLE = 'CORTEX_MEMORY_LEXICAL_WEIGHTING';
 
 /** The two weightings the product documents, in the order the message lists them. */
@@ -1294,6 +1313,9 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // Projected as the registered value for the reason `indexEmbedding` is: a disabled arm builds no index,
       // so the variable reached nothing and no treatment was administered.
       lexicalWeighting: DEFAULT_LEXICAL_WEIGHTING,
+      // Projected as the registered value for the reason `lexicalWeighting` is: a disabled arm renders no
+      // prompt, so the variable reached nothing and no treatment was administered.
+      sessionClock: DEFAULT_SESSION_CLOCK,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
@@ -1382,6 +1404,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     // quiet failure here is the registered arm publishing under the control's name.
     indexEmbedding: readIndexEmbedding(env[INDEX_EMBEDDING_VARIABLE]),
     lexicalWeighting: readLexicalWeighting(env[LEXICAL_WEIGHTING_VARIABLE]),
+    sessionClock: readSessionClock(env[SESSION_CLOCK_VARIABLE]),
   };
 }
 
@@ -2283,6 +2306,28 @@ function readLexicalWeighting(raw: string | undefined): string {
 }
 
 /**
+ * Read the boundary clock's switch.
+ *
+ * Rejected rather than defaulted on an unrecognised value, for the reason `readLexicalWeighting` gives: a
+ * dispatch sent to label every boundary that silently rendered the control would publish an unchanged
+ * result reading as evidence that the label does not help, and the artifact would name a mechanism it
+ * never administered. `off` and `on` rather than a boolean because a mistyped `treu` must be a refusal
+ * and not a false.
+ */
+function readSessionClock(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_SESSION_CLOCK;
+  const value = raw.trim();
+  if (!SESSION_CLOCKS.includes(value)) {
+    throw new Error(
+      `${SESSION_CLOCK_VARIABLE} must be one of ` +
+        `${SESSION_CLOCKS.map((k) => JSON.stringify(k)).join(', ')} or unset, got ${JSON.stringify(raw)}. ` +
+        '"on" writes each session boundary the date its rendered block states; "off" is the registered arm.',
+    );
+  }
+  return value;
+}
+
+/**
  * Read the unit the relevance budget is spent in.
  *
  * Rejected rather than defaulted on an unrecognised value, for the reason every guard in
@@ -3118,6 +3163,9 @@ export function toMemoryArmConfig(
     // that builds this object by hand leaves the field `undefined`, and the registered weighting is what that
     // absence has always meant.
     lexicalWeighting: options.lexicalWeighting ?? DEFAULT_LEXICAL_WEIGHTING,
+    // §13.386. Always present for the reason `lexicalWeighting` is: `off` is a state a run can be dispatched
+    // to, so an artifact that spelled nothing must not read like one that predates the field.
+    sessionClock: options.sessionClock ?? DEFAULT_SESSION_CLOCK,
     // §13.101. Always present for the reason `queryExpansion` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.

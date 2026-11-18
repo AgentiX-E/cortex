@@ -569,6 +569,38 @@ export type CortexMemoryOptions = {
    */
   conflicts?: boolean;
   /**
+   * Put each session's own date on its boundary line, read from the turns that boundary will render.
+   *
+   * ## What the reading says
+   *
+   * `44017278305` (`S16`) answers 101.25 of 121 multi-session questions per run and 16 of them are
+   * wrong in all four repetitions. Reading those sixteen, one signature recurs: the reader names the
+   * right candidates and stamps them all with **one** date — `gpt4_2f8be40d` counts five weddings, each
+   * printed `2023/10/15`; `d851d5ba` sums eight donations, each `2023/03/20`; `gpt4_372c3eed` dates two
+   * events from two sessions `2021/08/20`. Those are the *question's* date. The signature is enriched
+   * where it matters: a reply that prints three or more dates, of which three or more are identical, appears
+   * in 17 of the 57 questions that are ever wrong (29.8%) and in 39 of the 443 that never are (8.8%) -- 3.39
+   * times the rate.
+   *
+   * The dates are not missing from the prompt — 0 of that artifact's 41,822 delivered turns lack a
+   * `[YYYY/MM/DD …]` stamp — and that is exactly why the fix is a boundary label rather than more
+   * evidence. Two hundred stamps inside 45,000 characters do not survive the trip from the paragraph
+   * the reader skimmed to the candidate list it wrote; twenty labels on the lines that already separate
+   * the conversations do, because a candidate's session is what the reader is actually tracking.
+   *
+   * ## Cost and reach
+   *
+   * `Session 3 (` + the date + `)` on each rendered boundary — 12 characters plus a ten-character date,
+   * about 22 per session, so roughly 450 characters on a twenty-session window (≈110 tokens, +1% of a
+   * 45k prompt). The evidence is untouched: `turn-clock.test.ts` asserts that the only difference
+   * between the two prompts is the label and that the option off is byte-identical to the prompt before
+   * it existed. The reach is the multi-session route, which is the only route that draws boundaries.
+   *
+   * Absent means **off**, and that is the rule this package applies to every unmeasured mechanism: it
+   * may not move the scored path before it has a reading. Flipping it is one dispatch, not one release.
+   */
+  sessionClock?: boolean;
+  /**
    * What the rendering does to a turn whose own words state a value the evidence later replaces.
    *
    * ## Why this is not `conflicts`

@@ -630,6 +630,13 @@ jobs:
           # was measured under, and `readLexicalWeighting` distinguishes an unset variable from a value
           # a dispatch chose to name.
           CORTEX_MEMORY_LEXICAL_WEIGHTING: ${{ vars.CORTEX_MEMORY_LEXICAL_WEIGHTING || 'flat' }}
+          # Section 13.386's boundary clock, carried the same way and for the same reason: the workflow
+          # sits one below GitHub's input ceiling, so a seventh condition travels as a repository variable.
+          # The literal `off` is the fallback rather than a blank, because it is the value every archived
+          # artifact was measured under, and `readSessionClock` distinguishes unset from a named value --
+          # which is what makes a control run reproducible from this commit rather than from whatever the
+          # last experiment left behind.
+          CORTEX_MEMORY_SESSION_CLOCK: ${{ vars.CORTEX_MEMORY_SESSION_CLOCK || 'off' }}
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}

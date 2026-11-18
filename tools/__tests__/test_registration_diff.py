@@ -420,16 +420,17 @@ class TestWhatIsCounted:
         # or a term-weighted run visible to a reader who did not ask for one. Twenty-four rather than
         # twenty-three since §14.143: `cortex_memory_max_turn_chars` now resolves to three fields, and
         # the third is `ABSENT` on every artifact that predates the window; twenty-six since §27.1
-        # added the last two; twenty-seven since §13.383 gave the term weighting a seat.
+        # added the last two; twenty-seven since §13.383 gave the term weighting a seat; twenty-eight
+        # since §13.386 gave the boundary clock one.
         #
         # The second assertion is what keeps this number from being a number: the count is twenty-one
         # inputs plus the table's size, so a seventh condition fails here with the decomposition in hand
         # rather than leaving a reader to work out why a header moved.
-        assert len(module.REGISTERED_CONDITIONS) == 6, (
+        assert len(module.REGISTERED_CONDITIONS) == 7, (
             'the header count below is twenty-one recorded inputs plus this table: if the table grew, '
             'the count grew with it and both lines change together'
         )
-        assert "registration: 27 field(s) compared" in text
+        assert "registration: 28 field(s) compared" in text
         # Two since §13.327: `maxPromptCharsByRoute` is derived on an artifact that carries the
         # scalar, exactly as `maxPromptChars` is derived on one that carries the map. Counted rather
         # than dropped, which is what the header exists to do.

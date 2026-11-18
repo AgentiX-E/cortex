@@ -4682,6 +4682,12 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, object]] = {
     # would be refused after its money was spent -- the `S14` failure in the other direction -- and
     # without the `flat` default every registered run would depart from the registration.
     'lexicalWeighting': ('lexicalWeighting', 'flat'),
+    # §13.386. The boundary clock is the same shape a seventh time, and this seat is deliberate rather
+    # than symmetric: without it the first `on` run would be refused after its money was spent (the
+    # `S14` failure), and with the wrong default every registered run would depart from the
+    # registration. `off` is what `session_clock_switch` reads from an absent variable and what
+    # `toMemoryArmConfig` projects, so the two agree with the shipped arm by construction.
+    'sessionClock': ('sessionClock', 'off'),
 }
 
 ABSENT = '<-absent->'

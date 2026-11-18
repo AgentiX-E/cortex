@@ -1024,6 +1024,7 @@ describe('source trust reaches the artifact', () => {
       supersededRendering: 'off',
       indexEmbedding: 'injected',
       lexicalWeighting: 'flat',
+      sessionClock: 'off',
       threshold: 0.2,
       retrievalThreshold: 0.25,
       sessionBudget: null,
@@ -1554,6 +1555,7 @@ describe('runCortexMemoryArm', () => {
         supersededRendering: 'off',
         indexEmbedding: 'injected',
         lexicalWeighting: 'flat',
+        sessionClock: 'off',
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
@@ -2002,6 +2004,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       supersededRendering: 'off',
       indexEmbedding: 'injected',
       lexicalWeighting: 'flat',
+      sessionClock: 'off',
     });
   });
 
@@ -2030,6 +2033,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       supersededRendering: 'off',
       indexEmbedding: 'injected',
       lexicalWeighting: 'flat',
+      sessionClock: 'off',
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,
@@ -5263,6 +5267,46 @@ describe('the artifact records the path the product took and the roles it delive
     expect(record!.capability).toBe('IE');
     expect(record!.route).toBe('multi-session');
     expect(record!.roleCensus).toEqual({ counts: { user: 2 }, unclassified: 1, total: 3 });
+  });
+});
+
+describe('the boundary clock reaches the artifact', () => {
+  it('states off on a run that named nothing, because that is the arm every published number used', () => {
+    // Always present for the reason the weighting is: `off` is a state a run can be dispatched to, so an
+    // artifact that omitted the field would make "ran the control" and "predates the mechanism" the same row.
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.sessionClock).toBe('off');
+    expect(toMemoryArmConfig(options).sessionClock).toBe('off');
+  });
+
+  it('reads on, which is the only treatment this switch administers', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_SESSION_CLOCK: 'on',
+    });
+    expect(options.sessionClock).toBe('on');
+    expect(toMemoryArmConfig(options).sessionClock).toBe('on');
+  });
+
+  it('refuses a boolean, rather than reading anything-but-on as off', () => {
+    // `true` is the obvious mistake and the one that would cost a dispatch: it must be a refusal, not a
+    // silently-rendered control published under the treatment's name.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SESSION_CLOCK: 'true' }),
+    ).toThrow(/CORTEX_MEMORY_SESSION_CLOCK must be one of "off", "on" or unset, got "true"/);
+  });
+
+  it('reads whitespace as unset, so an empty dispatch input is the registered arm', () => {
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_SESSION_CLOCK: '  ' })
+        .sessionClock,
+    ).toBe('off');
+  });
+
+  it('projects the registered value on a disabled arm, which rendered no prompt to label', () => {
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY_SESSION_CLOCK: 'on' });
+    expect(options.enabled).toBe(false);
+    expect(toMemoryArmConfig(options).sessionClock).toBe('off');
   });
 });
 

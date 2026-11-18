@@ -22,7 +22,7 @@ as a literal against the product source: a gate removed from the code and a gate
 never there are the same defect. `D3` is **declared, not derived** — see the note below the
 table.
 
-## The ledger (26 rows)
+## The ledger (27 rows)
 
 | # | capability | claim | state | D1 | D2 | D3 (declared) | D4 | product callers | site |
 | ---: | --- | --- | --- | :---: | :---: | --- | :---: | --- | --- |
@@ -52,19 +52,20 @@ table.
 | 24 | judge | instrument | **instrument** | ✗ | ✗ | declared: takes the question, the prediction and the gold string as arguments | ✗ | — | `packages/cortex-eval/src/judge.ts` |
 | 25 | paired statistics, noise floor, resolution | instrument | **instrument** | ✗ | ✗ | declared: a pure function of the observations it is handed | ✗ | — | `packages/cortex-eval/src/stats.ts` |
 | 26 | competitor adapters | instrument | **instrument** | — | — | declared: wraps the product behind a MemorySystem and drives the competitor's harness against it | — | — | `tools/competitor-sut.mjs` |
+| 27 | session boundary clock | product | **product (gated)** | ✓ | ✓ | declared: dates every rendered session boundary with the range its own block states, read from the block rather than from the selection | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/turn-clock.ts` |
 
 ## Summary
 
 | | rows |
 | --- | ---: |
-| product | 16 |
+| product | 17 |
 | blocked | 0 |
 | instrument | 10 |
 | gap | 0 |
-| of the product rows, behind a configuration switch | 5 |
-| **total** | **26** |
+| of the product rows, behind a configuration switch | 6 |
+| **total** | **27** |
 
-Product completeness by this measure: **16/26** capabilities are reachable by a customer. The rest are 0 blocked, 10 owned by the instrument and 0 absent.
+Product completeness by this measure: **17/27** capabilities are reachable by a customer. The rest are 0 blocked, 10 owned by the instrument and 0 absent.
 
 ## Why `D3` is declared and not derived
 

@@ -4,7 +4,7 @@
   "derives it from the caller census and the import graph, and fails when this file and the code disagree in",
   "either direction. `expect` is a claim about which state the row should be in; `reason` is required for",
   "anything that is not `product`; `gate` is a configuration switch verified as a literal in the product source.",
-  "Rows are the audit's 26, with the three the audit counted as one split where the code splits them."
+  "Rows are the audit's 26, plus the boundary clock (§13.386), with the three the audit counted as one split where the code splits them."
  ],
  "capabilities": [
   {
@@ -193,7 +193,7 @@
    "symbol": "readTurnClocks",
    "site": "packages/cortex-eval/src/turn-clock.ts",
    "d3": "declared: reads timestamps off the turns it was given; the product receives windows and never reads its own clock",
-   "reason": "Declared with no caller at all until the turn-window work: an orphan module with its own tests. The audit's §3.3 route is a 60-line `ordinalAt` field in the product."
+   "reason": "Declared with no caller at all until the turn-window work: an orphan module with its own tests. Half of that is now closed on the other side of the boundary: the product reads a clock from the block it is about to deliver (`annotateSessionBoundaries`, row 27, §13.386), which is the 60-line `ordinalAt` route §3.3 named. This row stays `instrument` for the half that remains: reading a clock off turns the harness parsed, before any budget decided which of them the reader would see."
   },
   {
    "id": 23,
@@ -230,6 +230,15 @@
    "site": "tools/competitor-sut.mjs",
    "d3": "declared: wraps the product behind a MemorySystem and drives the competitor's harness against it",
    "reason": "Correctly in tools/ rather than in src/: this is the only place where a competitor's code runs against ours, and it must not be installable as part of the product."
+  },
+  {
+   "id": 27,
+   "capability": "session boundary clock",
+   "expect": "product",
+   "symbol": "annotateSessionBoundaries",
+   "site": "packages/cortex-memory/src/turn-clock.ts",
+   "gate": "this.#options.sessionClock === true",
+   "d3": "declared: dates every rendered session boundary with the range its own block states, read from the block rather than from the selection"
   }
  ],
  "boundary": [

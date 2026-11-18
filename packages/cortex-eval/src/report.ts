@@ -812,6 +812,15 @@ export type MemoryArmConfig = {
    */
   readonly lexicalWeighting?: string | undefined;
   /**
+   * Whether each rendered session boundary carried the date its block stated (§13.386).
+   *
+   * Always present, `off` included, for the reason {@link MemoryArmConfig.lexicalWeighting} is: the label
+   * changes what the reader is told about when each conversation happened, so "labelled" and "the field was
+   * not recorded" must not be the same row -- and a run whose artifact omits it would be indistinguishable
+   * from one that predates the mechanism.
+   */
+  readonly sessionClock?: string | undefined;
+  /**
    * The multi-session consultation count the run used (§13.101).
    *
    * Always present, `none` included, for the reason {@link MemoryArmConfig.reviewPass} is: an artifact
@@ -1990,6 +1999,9 @@ export function formatAblationReport(report: AblationReport): string {
         // what a term was worth without opening the JSON, and the two weightings produce different orders over
         // one corpus.
         `, \`lexicalWeighting=${memoryArm.lexicalWeighting ?? 'flat'}\`` +
+        // §13.386, on the same line: a reader comparing two runs where one labelled the boundaries and one
+        // did not has to be able to see that without opening the JSON.
+        `, \`sessionClock=${memoryArm.sessionClock ?? 'off'}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
         // refused whole. One field rather than three so the line stays a configuration
