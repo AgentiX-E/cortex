@@ -272,6 +272,38 @@ because a reader checking a subtraction the tool already did is a reader who wil
 wrong; and the two counts are printed beside the p-value for the same reason a p-value alone is not
 enough — five against five and one against one share a p-value of 1.
 
+## What the instrument cannot price, measured
+
+The instrument exists to avoid paying for retrieval experiments, and the first experiment it priced
+ended in an accuracy reading that refuses its own account. Run `44259394957` changed one field against
+the registered arm (`lexicalWeighting: flat -> idf`) and measured:
+
+| quantity | `flat` | `idf` | difference |
+| --- | ---: | ---: | ---: |
+| accuracy, 500 questions x 4 | 91.25% | **91.10%** | **-0.15 points** (`p = 0.8341`) |
+| delivered gold turns | 5,257 | **5,345** | **+88** |
+| questions whose delivery was re-priced | -- | **280 / 500** | the instrument predicted 235 |
+| delivered characters | 14,096,160 | 14,114,787 | +0.13% |
+| prompt tokens per question | 7,447.8 | 7,446.8 | -1.0 |
+
+So the instrument priced the **delivery** correctly and the delivery did not buy accuracy. Three
+consequences, in the order they matter:
+
+1. **A delivery account is not an accuracy prediction.** The instrument says which turns a reader is
+   shown; it cannot say what the reader does with them, and this arm is the measurement that says the
+   two came apart by 88 gold turns for -0.15 points. Every candidate this instrument prices from here
+   on inherits that caveat, and a plan that reads "+190 gold turns" as "pending accuracy gain" is
+   reading a delivery fact as a capability fact.
+2. **The predicted count was 235 and the measured count was 280.** The gap is the vector channel: the
+   instrument runs with `indexEmbedding: none`, the registered arm with `injected`, so the same
+   re-pricing touches a different set of contexts. Agreement to within 45 of 500 is good enough to
+   rank candidates and not good enough to predict a count.
+3. **The comparison it was used for could not have resolved the effect anyway.** The reference side of
+   that dispatch carried no treatment and still moved **+14 cells (882 -> 896, +0.70 points)** between
+   two days. A cross-dispatch pair has a floor around 0.7 points; the effect under test was 0.15. The
+   instrument's economy is real, but it is economy in *candidate screening*, not in *effect
+   measurement* -- for that, both cells have to run in one job.
+
 ## What the product must do for this to hold
 
 Two properties of `CortexMemory`, both pinned in
