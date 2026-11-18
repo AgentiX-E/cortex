@@ -108,7 +108,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 18,
-   "deliveredDigest": "db56c1e1a6716dee"
+   "deliveredDigest": "db56c1e1a6716dee",
+   "deliveredChars": 23118
   },
   {
    "id": "118b2229",
@@ -116,7 +117,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "41a4327e92993674"
+   "deliveredDigest": "41a4327e92993674",
+   "deliveredChars": 21400
   },
   {
    "id": "51a45a95",
@@ -124,7 +126,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "fa702af35b6fd9ee"
+   "deliveredDigest": "fa702af35b6fd9ee",
+   "deliveredChars": 22551
   },
   {
    "id": "58bf7951",
@@ -132,7 +135,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "3e698593c2eab714"
+   "deliveredDigest": "3e698593c2eab714",
+   "deliveredChars": 20662
   },
   {
    "id": "1e043500",
@@ -140,7 +144,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 19,
-   "deliveredDigest": "7648d27bc3a7caf6"
+   "deliveredDigest": "7648d27bc3a7caf6",
+   "deliveredChars": 23032
   },
   {
    "id": "c5e8278d",
@@ -148,7 +153,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 11,
-   "deliveredDigest": "d2f5a9fb68b14ed8"
+   "deliveredDigest": "d2f5a9fb68b14ed8",
+   "deliveredChars": 22681
   },
   {
    "id": "6ade9755",
@@ -156,7 +162,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "97c22da663e07e45"
+   "deliveredDigest": "97c22da663e07e45",
+   "deliveredChars": 21710
   },
   {
    "id": "6f9b354f",
@@ -164,7 +171,8 @@
    "carried": 6,
    "total": 10,
    "delivered": 12,
-   "deliveredDigest": "93b2af114daa69ba"
+   "deliveredDigest": "93b2af114daa69ba",
+   "deliveredChars": 22225
   },
   {
    "id": "58ef2f1c",
@@ -172,7 +180,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "0bc893c2104f9b08"
+   "deliveredDigest": "0bc893c2104f9b08",
+   "deliveredChars": 22990
   },
   {
    "id": "f8c5f88b",
@@ -180,7 +189,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "5400f7a4c0064f1c"
+   "deliveredDigest": "5400f7a4c0064f1c",
+   "deliveredChars": 20917
   },
   {
    "id": "5d3d2817",
@@ -188,7 +198,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 23,
-   "deliveredDigest": "27bff57370fc8d1c"
+   "deliveredDigest": "27bff57370fc8d1c",
+   "deliveredChars": 22378
   },
   {
    "id": "7527f7e2",
@@ -196,7 +207,8 @@
    "carried": 4,
    "total": 12,
    "delivered": 10,
-   "deliveredDigest": "eea22f5beb64cad6"
+   "deliveredDigest": "eea22f5beb64cad6",
+   "deliveredChars": 23185
   },
   {
    "id": "c960da58",
@@ -204,7 +216,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "d6224008151dc3aa"
+   "deliveredDigest": "d6224008151dc3aa",
+   "deliveredChars": 21695
   },
   {
    "id": "3b6f954b",
@@ -212,7 +225,8 @@
    "carried": 3,
    "total": 10,
    "delivered": 11,
-   "deliveredDigest": "d19c7ae1163d8012"
+   "deliveredDigest": "d19c7ae1163d8012",
+   "deliveredChars": 20949
   },
   {
    "id": "726462e0",
@@ -220,7 +234,8 @@
    "carried": 1,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "7edebe0a26e058da"
+   "deliveredDigest": "7edebe0a26e058da",
+   "deliveredChars": 22664
   },
   {
    "id": "94f70d80",
@@ -228,7 +243,8 @@
    "carried": 4,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "f5b419a47039c5bc"
+   "deliveredDigest": "f5b419a47039c5bc",
+   "deliveredChars": 21468
   },
   {
    "id": "66f24dbb",
@@ -236,7 +252,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 22,
-   "deliveredDigest": "ca4992b09f754b60"
+   "deliveredDigest": "ca4992b09f754b60",
+   "deliveredChars": 22027
   },
   {
    "id": "ad7109d1",
@@ -244,7 +261,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "05a9a3c1b9e79e90"
+   "deliveredDigest": "05a9a3c1b9e79e90",
+   "deliveredChars": 23542
   },
   {
    "id": "af8d2e46",
@@ -252,7 +270,8 @@
    "carried": 6,
    "total": 10,
    "delivered": 13,
-   "deliveredDigest": "be8061e1e4f0d7e4"
+   "deliveredDigest": "be8061e1e4f0d7e4",
+   "deliveredChars": 22989
   },
   {
    "id": "dccbc061",
@@ -260,7 +279,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "90dc47fa56fbe68c"
+   "deliveredDigest": "90dc47fa56fbe68c",
+   "deliveredChars": 22319
   },
   {
    "id": "c8c3f81d",
@@ -268,7 +288,8 @@
    "carried": 7,
    "total": 10,
    "delivered": 15,
-   "deliveredDigest": "0bb77b7be89138fe"
+   "deliveredDigest": "0bb77b7be89138fe",
+   "deliveredChars": 22170
   },
   {
    "id": "8ebdbe50",
@@ -276,7 +297,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 17,
-   "deliveredDigest": "41b2d4f2c4d717e9"
+   "deliveredDigest": "41b2d4f2c4d717e9",
+   "deliveredChars": 23493
   },
   {
    "id": "6b168ec8",
@@ -284,7 +306,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "876a8bf4495a6614"
+   "deliveredDigest": "876a8bf4495a6614",
+   "deliveredChars": 21850
   },
   {
    "id": "75499fd8",
@@ -292,7 +315,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "3f9ad3753268df8d"
+   "deliveredDigest": "3f9ad3753268df8d",
+   "deliveredChars": 21545
   },
   {
    "id": "21436231",
@@ -300,7 +324,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 18,
-   "deliveredDigest": "d49be6f8a41ab7f4"
+   "deliveredDigest": "d49be6f8a41ab7f4",
+   "deliveredChars": 23091
   },
   {
    "id": "95bcc1c8",
@@ -308,7 +333,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "ee619461c1f679ca"
+   "deliveredDigest": "ee619461c1f679ca",
+   "deliveredChars": 21971
   },
   {
    "id": "0862e8bf",
@@ -316,7 +342,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 18,
-   "deliveredDigest": "7cbe6cb947e73f06"
+   "deliveredDigest": "7cbe6cb947e73f06",
+   "deliveredChars": 22392
   },
   {
    "id": "853b0a1d",
@@ -324,7 +351,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 17,
-   "deliveredDigest": "aa33c4f75bb6d3c3"
+   "deliveredDigest": "aa33c4f75bb6d3c3",
+   "deliveredChars": 22645
   },
   {
    "id": "a06e4cfe",
@@ -332,7 +360,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "3cd76ada2eaf6947"
+   "deliveredDigest": "3cd76ada2eaf6947",
+   "deliveredChars": 22165
   },
   {
    "id": "37d43f65",
@@ -340,7 +369,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 21,
-   "deliveredDigest": "093aad847ce133b9"
+   "deliveredDigest": "093aad847ce133b9",
+   "deliveredChars": 23492
   },
   {
    "id": "b86304ba",
@@ -348,7 +378,8 @@
    "carried": 0,
    "total": 10,
    "delivered": 0,
-   "deliveredDigest": "e3b0c44298fc1c14"
+   "deliveredDigest": "e3b0c44298fc1c14",
+   "deliveredChars": 0
   },
   {
    "id": "d52b4f67",
@@ -356,7 +387,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "39d07fff07c08d1a"
+   "deliveredDigest": "39d07fff07c08d1a",
+   "deliveredChars": 23026
   },
   {
    "id": "25e5aa4f",
@@ -364,7 +396,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 8,
-   "deliveredDigest": "789146f8f6389983"
+   "deliveredDigest": "789146f8f6389983",
+   "deliveredChars": 20324
   },
   {
    "id": "caf9ead2",
@@ -372,7 +405,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "551c9976f93751cd"
+   "deliveredDigest": "551c9976f93751cd",
+   "deliveredChars": 21465
   },
   {
    "id": "8550ddae",
@@ -380,7 +414,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 10,
-   "deliveredDigest": "05730f8850638bc1"
+   "deliveredDigest": "05730f8850638bc1",
+   "deliveredChars": 15725
   },
   {
    "id": "60d45044",
@@ -388,7 +423,8 @@
    "carried": 1,
    "total": 12,
    "delivered": 10,
-   "deliveredDigest": "a72d13d134e9d54a"
+   "deliveredDigest": "a72d13d134e9d54a",
+   "deliveredChars": 21204
   },
   {
    "id": "3f1e9474",
@@ -396,7 +432,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "dd7f303275dba0fc"
+   "deliveredDigest": "dd7f303275dba0fc",
+   "deliveredChars": 22384
   },
   {
    "id": "86b68151",
@@ -404,7 +441,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 14,
-   "deliveredDigest": "05bf03aa27892a5d"
+   "deliveredDigest": "05bf03aa27892a5d",
+   "deliveredChars": 23018
   },
   {
    "id": "577d4d32",
@@ -412,7 +450,8 @@
    "carried": 1,
    "total": 10,
    "delivered": 10,
-   "deliveredDigest": "1c296c585e2bc36d"
+   "deliveredDigest": "1c296c585e2bc36d",
+   "deliveredChars": 21623
   },
   {
    "id": "ec81a493",
@@ -420,7 +459,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 17,
-   "deliveredDigest": "ea3812190d7a82a3"
+   "deliveredDigest": "ea3812190d7a82a3",
+   "deliveredChars": 22780
   },
   {
    "id": "15745da0",
@@ -428,7 +468,8 @@
    "carried": 5,
    "total": 12,
    "delivered": 8,
-   "deliveredDigest": "d8d19c050ce9c154"
+   "deliveredDigest": "d8d19c050ce9c154",
+   "deliveredChars": 15662
   },
   {
    "id": "e01b8e2f",
@@ -436,7 +477,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 11,
-   "deliveredDigest": "5463aad789a09e4f"
+   "deliveredDigest": "5463aad789a09e4f",
+   "deliveredChars": 22729
   },
   {
    "id": "bc8a6e93",
@@ -444,7 +486,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "7fd2824f00cb9bea"
+   "deliveredDigest": "7fd2824f00cb9bea",
+   "deliveredChars": 22291
   },
   {
    "id": "ccb36322",
@@ -452,7 +495,8 @@
    "carried": 0,
    "total": 10,
    "delivered": 11,
-   "deliveredDigest": "710f3cc59b1b4bda"
+   "deliveredDigest": "710f3cc59b1b4bda",
+   "deliveredChars": 21439
   },
   {
    "id": "001be529",
@@ -460,7 +504,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "5a1ed2ec4076b272"
+   "deliveredDigest": "5a1ed2ec4076b272",
+   "deliveredChars": 23444
   },
   {
    "id": "b320f3f8",
@@ -468,7 +513,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "38b3ead79b86098c"
+   "deliveredDigest": "38b3ead79b86098c",
+   "deliveredChars": 21753
   },
   {
    "id": "19b5f2b3",
@@ -476,7 +522,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "29f680b2e7b873ad"
+   "deliveredDigest": "29f680b2e7b873ad",
+   "deliveredChars": 23396
   },
   {
    "id": "4fd1909e",
@@ -484,7 +531,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 17,
-   "deliveredDigest": "08c4b8b603a51ca3"
+   "deliveredDigest": "08c4b8b603a51ca3",
+   "deliveredChars": 23288
   },
   {
    "id": "545bd2b5",
@@ -492,7 +540,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "18d8b7fc4c069ebb"
+   "deliveredDigest": "18d8b7fc4c069ebb",
+   "deliveredChars": 22488
   },
   {
    "id": "8a137a7f",
@@ -500,7 +549,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "e8b4dcaca2045cdf"
+   "deliveredDigest": "e8b4dcaca2045cdf",
+   "deliveredChars": 22570
   },
   {
    "id": "76d63226",
@@ -508,7 +558,8 @@
    "carried": 4,
    "total": 10,
    "delivered": 15,
-   "deliveredDigest": "91b234910e9b8363"
+   "deliveredDigest": "91b234910e9b8363",
+   "deliveredChars": 22867
   },
   {
    "id": "86f00804",
@@ -516,7 +567,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "720b43c52e826798"
+   "deliveredDigest": "720b43c52e826798",
+   "deliveredChars": 21564
   },
   {
    "id": "8e9d538c",
@@ -524,7 +576,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "4ba99248b0404437"
+   "deliveredDigest": "4ba99248b0404437",
+   "deliveredChars": 18752
   },
   {
    "id": "311778f1",
@@ -532,7 +585,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 2,
-   "deliveredDigest": "ee339057db476845"
+   "deliveredDigest": "ee339057db476845",
+   "deliveredChars": 1094
   },
   {
    "id": "c19f7a0b",
@@ -540,7 +594,8 @@
    "carried": 4,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "675cbfe4a58d6c82"
+   "deliveredDigest": "675cbfe4a58d6c82",
+   "deliveredChars": 22104
   },
   {
    "id": "4100d0a0",
@@ -548,7 +603,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "6e6cb827d8076050"
+   "deliveredDigest": "6e6cb827d8076050",
+   "deliveredChars": 21050
   },
   {
    "id": "29f2956b",
@@ -556,7 +612,8 @@
    "carried": 1,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "4617eaabfee0d024"
+   "deliveredDigest": "4617eaabfee0d024",
+   "deliveredChars": 23279
   },
   {
    "id": "1faac195",
@@ -564,7 +621,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "521de2c9db5b7fef"
+   "deliveredDigest": "521de2c9db5b7fef",
+   "deliveredChars": 21656
   },
   {
    "id": "faba32e5",
@@ -572,7 +630,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "fc73e975db8d53f4"
+   "deliveredDigest": "fc73e975db8d53f4",
+   "deliveredChars": 23418
   },
   {
    "id": "f4f1d8a4",
@@ -580,7 +639,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "1ecdc8e4b6ed155d"
+   "deliveredDigest": "1ecdc8e4b6ed155d",
+   "deliveredChars": 22602
   },
   {
    "id": "c14c00dd",
@@ -588,7 +648,8 @@
    "carried": 1,
    "total": 12,
    "delivered": 11,
-   "deliveredDigest": "395b6a3b5d5de36c"
+   "deliveredDigest": "395b6a3b5d5de36c",
+   "deliveredChars": 23489
   },
   {
    "id": "36580ce8",
@@ -596,7 +657,8 @@
    "carried": 1,
    "total": 12,
    "delivered": 22,
-   "deliveredDigest": "75de89b673f24b73"
+   "deliveredDigest": "75de89b673f24b73",
+   "deliveredChars": 22949
   },
   {
    "id": "3d86fd0a",
@@ -604,7 +666,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 20,
-   "deliveredDigest": "dd478958406749e2"
+   "deliveredDigest": "dd478958406749e2",
+   "deliveredChars": 22419
   },
   {
    "id": "a82c026e",
@@ -612,7 +675,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "bfd2962f0d825ccf"
+   "deliveredDigest": "bfd2962f0d825ccf",
+   "deliveredChars": 21901
   },
   {
    "id": "0862e8bf_abs",
@@ -620,7 +684,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 23,
-   "deliveredDigest": "ae17f8d1fbffe6d3"
+   "deliveredDigest": "ae17f8d1fbffe6d3",
+   "deliveredChars": 22694
   },
   {
    "id": "15745da0_abs",
@@ -628,7 +693,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "a717d6a452c299b3"
+   "deliveredDigest": "a717d6a452c299b3",
+   "deliveredChars": 23113
   },
   {
    "id": "bc8a6e93_abs",
@@ -636,7 +702,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "d8b4b6b33e495bc2"
+   "deliveredDigest": "d8b4b6b33e495bc2",
+   "deliveredChars": 21758
   },
   {
    "id": "19b5f2b3_abs",
@@ -644,7 +711,8 @@
    "carried": 1,
    "total": 12,
    "delivered": 15,
-   "deliveredDigest": "ddf9fe49d0c7593d"
+   "deliveredDigest": "ddf9fe49d0c7593d",
+   "deliveredChars": 22226
   },
   {
    "id": "29f2956b_abs",
@@ -652,7 +720,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 17,
-   "deliveredDigest": "8f43b416aa7210be"
+   "deliveredDigest": "8f43b416aa7210be",
+   "deliveredChars": 22984
   },
   {
    "id": "f4f1d8a4_abs",
@@ -660,7 +729,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 23,
-   "deliveredDigest": "e871f9b600794f07"
+   "deliveredDigest": "e871f9b600794f07",
+   "deliveredChars": 22762
   },
   {
    "id": "0a995998",
@@ -668,7 +738,8 @@
    "carried": 15,
    "total": 17,
    "delivered": 173,
-   "deliveredDigest": "0a8181248f3645d2"
+   "deliveredDigest": "0a8181248f3645d2",
+   "deliveredChars": 45749
   },
   {
    "id": "6d550036",
@@ -676,7 +747,8 @@
    "carried": 21,
    "total": 22,
    "delivered": 195,
-   "deliveredDigest": "7e5a0fbbc51d7c51"
+   "deliveredDigest": "7e5a0fbbc51d7c51",
+   "deliveredChars": 45756
   },
   {
    "id": "gpt4_59c863d7",
@@ -684,7 +756,8 @@
    "carried": 15,
    "total": 23,
    "delivered": 189,
-   "deliveredDigest": "f6b841cd30f342ee"
+   "deliveredDigest": "f6b841cd30f342ee",
+   "deliveredChars": 45743
   },
   {
    "id": "b5ef892d",
@@ -692,7 +765,8 @@
    "carried": 13,
    "total": 18,
    "delivered": 197,
-   "deliveredDigest": "bfcac26e59b8b920"
+   "deliveredDigest": "bfcac26e59b8b920",
+   "deliveredChars": 45793
   },
   {
    "id": "e831120c",
@@ -700,7 +774,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 209,
-   "deliveredDigest": "5f0ce8cd68c80273"
+   "deliveredDigest": "5f0ce8cd68c80273",
+   "deliveredChars": 45753
   },
   {
    "id": "3a704032",
@@ -708,7 +783,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 196,
-   "deliveredDigest": "d7d75a632aee792f"
+   "deliveredDigest": "d7d75a632aee792f",
+   "deliveredChars": 45661
   },
   {
    "id": "gpt4_d84a3211",
@@ -716,7 +792,8 @@
    "carried": 23,
    "total": 23,
    "delivered": 174,
-   "deliveredDigest": "02bdc3e9cec35df8"
+   "deliveredDigest": "02bdc3e9cec35df8",
+   "deliveredChars": 45839
   },
   {
    "id": "aae3761f",
@@ -724,7 +801,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 185,
-   "deliveredDigest": "cf544865a20b3c99"
+   "deliveredDigest": "cf544865a20b3c99",
+   "deliveredChars": 45905
   },
   {
    "id": "gpt4_f2262a51",
@@ -732,7 +810,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 182,
-   "deliveredDigest": "9ca7e09396df6cbc"
+   "deliveredDigest": "9ca7e09396df6cbc",
+   "deliveredChars": 45915
   },
   {
    "id": "dd2973ad",
@@ -740,7 +819,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 205,
-   "deliveredDigest": "35f7f75d325fdc2f"
+   "deliveredDigest": "35f7f75d325fdc2f",
+   "deliveredChars": 45768
   },
   {
    "id": "c4a1ceb8",
@@ -748,7 +828,8 @@
    "carried": 21,
    "total": 23,
    "delivered": 191,
-   "deliveredDigest": "26950db04a68cd31"
+   "deliveredDigest": "26950db04a68cd31",
+   "deliveredChars": 45670
   },
   {
    "id": "gpt4_a56e767c",
@@ -756,7 +837,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 195,
-   "deliveredDigest": "9ba62d4b16d6b31c"
+   "deliveredDigest": "9ba62d4b16d6b31c",
+   "deliveredChars": 45914
   },
   {
    "id": "6cb6f249",
@@ -764,7 +846,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 200,
-   "deliveredDigest": "7cb27b5211efc880"
+   "deliveredDigest": "7cb27b5211efc880",
+   "deliveredChars": 45817
   },
   {
    "id": "46a3abf7",
@@ -772,7 +855,8 @@
    "carried": 16,
    "total": 18,
    "delivered": 189,
-   "deliveredDigest": "d72a2f7d01464750"
+   "deliveredDigest": "d72a2f7d01464750",
+   "deliveredChars": 45754
   },
   {
    "id": "36b9f61e",
@@ -780,7 +864,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 203,
-   "deliveredDigest": "7dc06574ea363155"
+   "deliveredDigest": "7dc06574ea363155",
+   "deliveredChars": 45832
   },
   {
    "id": "28dc39ac",
@@ -788,7 +873,8 @@
    "carried": 30,
    "total": 30,
    "delivered": 178,
-   "deliveredDigest": "e1a3c6b1785151c5"
+   "deliveredDigest": "e1a3c6b1785151c5",
+   "deliveredChars": 45929
   },
   {
    "id": "gpt4_2f8be40d",
@@ -796,7 +882,8 @@
    "carried": 16,
    "total": 18,
    "delivered": 171,
-   "deliveredDigest": "90196199d53b153c"
+   "deliveredDigest": "90196199d53b153c",
+   "deliveredChars": 45877
   },
   {
    "id": "2e6d26dc",
@@ -804,7 +891,8 @@
    "carried": 24,
    "total": 24,
    "delivered": 196,
-   "deliveredDigest": "f27eb72c560e3025"
+   "deliveredDigest": "f27eb72c560e3025",
+   "deliveredChars": 45851
   },
   {
    "id": "gpt4_15e38248",
@@ -812,7 +900,8 @@
    "carried": 17,
    "total": 21,
    "delivered": 192,
-   "deliveredDigest": "21d3d48aa4f7e0c2"
+   "deliveredDigest": "21d3d48aa4f7e0c2",
+   "deliveredChars": 45789
   },
   {
    "id": "88432d0a",
@@ -820,7 +909,8 @@
    "carried": 18,
    "total": 24,
    "delivered": 179,
-   "deliveredDigest": "06edd6c247befec9"
+   "deliveredDigest": "06edd6c247befec9",
+   "deliveredChars": 45924
   },
   {
    "id": "80ec1f4f",
@@ -828,7 +918,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 200,
-   "deliveredDigest": "f86e2e68d24e5158"
+   "deliveredDigest": "f86e2e68d24e5158",
+   "deliveredChars": 45876
   },
   {
    "id": "d23cf73b",
@@ -836,7 +927,8 @@
    "carried": 18,
    "total": 24,
    "delivered": 192,
-   "deliveredDigest": "95ee45fd93d633ac"
+   "deliveredDigest": "95ee45fd93d633ac",
+   "deliveredChars": 45643
   },
   {
    "id": "gpt4_7fce9456",
@@ -844,7 +936,8 @@
    "carried": 23,
    "total": 30,
    "delivered": 191,
-   "deliveredDigest": "4c92e0966e2f2ad9"
+   "deliveredDigest": "4c92e0966e2f2ad9",
+   "deliveredChars": 45749
   },
   {
    "id": "d682f1a2",
@@ -852,7 +945,8 @@
    "carried": 14,
    "total": 18,
    "delivered": 196,
-   "deliveredDigest": "979adeb0ebd48ed2"
+   "deliveredDigest": "979adeb0ebd48ed2",
+   "deliveredChars": 45751
   },
   {
    "id": "7024f17c",
@@ -860,7 +954,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 200,
-   "deliveredDigest": "b407216738d5c390"
+   "deliveredDigest": "b407216738d5c390",
+   "deliveredChars": 45885
   },
   {
    "id": "gpt4_5501fe77",
@@ -868,7 +963,8 @@
    "carried": 11,
    "total": 17,
    "delivered": 185,
-   "deliveredDigest": "330eb2b7c4b2fb5b"
+   "deliveredDigest": "330eb2b7c4b2fb5b",
+   "deliveredChars": 45777
   },
   {
    "id": "gpt4_2ba83207",
@@ -876,7 +972,8 @@
    "carried": 20,
    "total": 24,
    "delivered": 183,
-   "deliveredDigest": "47aacc1ee7095998"
+   "deliveredDigest": "47aacc1ee7095998",
+   "deliveredChars": 45853
   },
   {
    "id": "2318644b",
@@ -884,7 +981,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 186,
-   "deliveredDigest": "9cab9ca0a4f54994"
+   "deliveredDigest": "9cab9ca0a4f54994",
+   "deliveredChars": 47199
   },
   {
    "id": "2ce6a0f2",
@@ -892,7 +990,8 @@
    "carried": 19,
    "total": 23,
    "delivered": 182,
-   "deliveredDigest": "415c70a5e2c93a60"
+   "deliveredDigest": "415c70a5e2c93a60",
+   "deliveredChars": 45830
   },
   {
    "id": "gpt4_d12ceb0e",
@@ -900,7 +999,8 @@
    "carried": 16,
    "total": 16,
    "delivered": 192,
-   "deliveredDigest": "5f37e30e56f90f04"
+   "deliveredDigest": "5f37e30e56f90f04",
+   "deliveredChars": 47315
   },
   {
    "id": "00ca467f",
@@ -908,7 +1008,8 @@
    "carried": 14,
    "total": 18,
    "delivered": 192,
-   "deliveredDigest": "a9f14ea35cdf7aeb"
+   "deliveredDigest": "a9f14ea35cdf7aeb",
+   "deliveredChars": 45944
   },
   {
    "id": "b3c15d39",
@@ -916,7 +1017,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 195,
-   "deliveredDigest": "04e120300a6a7830"
+   "deliveredDigest": "04e120300a6a7830",
+   "deliveredChars": 45736
   },
   {
    "id": "gpt4_31ff4165",
@@ -924,7 +1026,8 @@
    "carried": 29,
    "total": 30,
    "delivered": 200,
-   "deliveredDigest": "5c4c4420f7c4059a"
+   "deliveredDigest": "5c4c4420f7c4059a",
+   "deliveredChars": 45823
   },
   {
    "id": "eeda8a6d",
@@ -932,7 +1035,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 202,
-   "deliveredDigest": "b1f240bf92844606"
+   "deliveredDigest": "b1f240bf92844606",
+   "deliveredChars": 45752
   },
   {
    "id": "2788b940",
@@ -940,7 +1044,8 @@
    "carried": 17,
    "total": 21,
    "delivered": 198,
-   "deliveredDigest": "9e6fe7dae305c026"
+   "deliveredDigest": "9e6fe7dae305c026",
+   "deliveredChars": 45921
   },
   {
    "id": "60bf93ed",
@@ -948,7 +1053,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 193,
-   "deliveredDigest": "76b473d154d3e0f8"
+   "deliveredDigest": "76b473d154d3e0f8",
+   "deliveredChars": 45780
   },
   {
    "id": "9d25d4e0",
@@ -956,7 +1062,8 @@
    "carried": 15,
    "total": 18,
    "delivered": 176,
-   "deliveredDigest": "dbb167c469bc0eea"
+   "deliveredDigest": "dbb167c469bc0eea",
+   "deliveredChars": 45729
   },
   {
    "id": "129d1232",
@@ -964,7 +1071,8 @@
    "carried": 15,
    "total": 17,
    "delivered": 183,
-   "deliveredDigest": "ff32b2e1ee02f12d"
+   "deliveredDigest": "ff32b2e1ee02f12d",
+   "deliveredChars": 45809
   },
   {
    "id": "60472f9c",
@@ -972,7 +1080,8 @@
    "carried": 12,
    "total": 18,
    "delivered": 182,
-   "deliveredDigest": "e67cfe719bc68e23"
+   "deliveredDigest": "e67cfe719bc68e23",
+   "deliveredChars": 45855
   },
   {
    "id": "gpt4_194be4b3",
@@ -980,7 +1089,8 @@
    "carried": 23,
    "total": 27,
    "delivered": 177,
-   "deliveredDigest": "0faedeeb25f140f4"
+   "deliveredDigest": "0faedeeb25f140f4",
+   "deliveredChars": 45657
   },
   {
    "id": "a9f6b44c",
@@ -988,7 +1098,8 @@
    "carried": 14,
    "total": 18,
    "delivered": 183,
-   "deliveredDigest": "86b2ec778946ac77"
+   "deliveredDigest": "86b2ec778946ac77",
+   "deliveredChars": 45733
   },
   {
    "id": "d851d5ba",
@@ -996,7 +1107,8 @@
    "carried": 21,
    "total": 22,
    "delivered": 200,
-   "deliveredDigest": "84342faaebb5eacd"
+   "deliveredDigest": "84342faaebb5eacd",
+   "deliveredChars": 45851
   },
   {
    "id": "5a7937c8",
@@ -1004,7 +1116,8 @@
    "carried": 16,
    "total": 16,
    "delivered": 187,
-   "deliveredDigest": "c79e9af20eb24c6d"
+   "deliveredDigest": "c79e9af20eb24c6d",
+   "deliveredChars": 45687
   },
   {
    "id": "gpt4_ab202e7f",
@@ -1012,7 +1125,8 @@
    "carried": 21,
    "total": 30,
    "delivered": 174,
-   "deliveredDigest": "18c7035839a862f1"
+   "deliveredDigest": "18c7035839a862f1",
+   "deliveredChars": 45778
   },
   {
    "id": "gpt4_e05b82a6",
@@ -1020,7 +1134,8 @@
    "carried": 15,
    "total": 23,
    "delivered": 185,
-   "deliveredDigest": "fda8ef6f97e7af8e"
+   "deliveredDigest": "fda8ef6f97e7af8e",
+   "deliveredChars": 45743
   },
   {
    "id": "gpt4_731e37d7",
@@ -1028,7 +1143,8 @@
    "carried": 23,
    "total": 23,
    "delivered": 190,
-   "deliveredDigest": "bdfc796907eccef1"
+   "deliveredDigest": "bdfc796907eccef1",
+   "deliveredChars": 45879
   },
   {
    "id": "edced276",
@@ -1036,7 +1152,8 @@
    "carried": 9,
    "total": 9,
    "delivered": 174,
-   "deliveredDigest": "5ccfec2eb2b1f15d"
+   "deliveredDigest": "5ccfec2eb2b1f15d",
+   "deliveredChars": 45771
   },
   {
    "id": "10d9b85a",
@@ -1044,7 +1161,8 @@
    "carried": 7,
    "total": 11,
    "delivered": 187,
-   "deliveredDigest": "d8436b18019f9207"
+   "deliveredDigest": "d8436b18019f9207",
+   "deliveredChars": 45651
   },
   {
    "id": "e3038f8c",
@@ -1052,7 +1170,8 @@
    "carried": 24,
    "total": 24,
    "delivered": 187,
-   "deliveredDigest": "ceec2f22126f4f93"
+   "deliveredDigest": "ceec2f22126f4f93",
+   "deliveredChars": 45787
   },
   {
    "id": "2b8f3739",
@@ -1060,7 +1179,8 @@
    "carried": 13,
    "total": 18,
    "delivered": 171,
-   "deliveredDigest": "01730ce39c04baee"
+   "deliveredDigest": "01730ce39c04baee",
+   "deliveredChars": 45582
   },
   {
    "id": "1a8a66a6",
@@ -1068,7 +1188,8 @@
    "carried": 18,
    "total": 22,
    "delivered": 201,
-   "deliveredDigest": "e679149a7f4016f1"
+   "deliveredDigest": "e679149a7f4016f1",
+   "deliveredChars": 45890
   },
   {
    "id": "c2ac3c61",
@@ -1076,7 +1197,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 198,
-   "deliveredDigest": "28f3b1077ad1c93d"
+   "deliveredDigest": "28f3b1077ad1c93d",
+   "deliveredChars": 45765
   },
   {
    "id": "bf659f65",
@@ -1084,7 +1206,8 @@
    "carried": 17,
    "total": 17,
    "delivered": 195,
-   "deliveredDigest": "f993d820eec21981"
+   "deliveredDigest": "f993d820eec21981",
+   "deliveredChars": 45780
   },
   {
    "id": "gpt4_372c3eed",
@@ -1092,7 +1215,8 @@
    "carried": 13,
    "total": 17,
    "delivered": 178,
-   "deliveredDigest": "7fb31f34724deec3"
+   "deliveredDigest": "7fb31f34724deec3",
+   "deliveredChars": 45675
   },
   {
    "id": "gpt4_2f91af09",
@@ -1100,7 +1224,8 @@
    "carried": 17,
    "total": 17,
    "delivered": 198,
-   "deliveredDigest": "146badaa2c56e578"
+   "deliveredDigest": "146badaa2c56e578",
+   "deliveredChars": 45616
   },
   {
    "id": "81507db6",
@@ -1108,7 +1233,8 @@
    "carried": 27,
    "total": 29,
    "delivered": 178,
-   "deliveredDigest": "d64017926551bf04"
+   "deliveredDigest": "d64017926551bf04",
+   "deliveredChars": 45729
   },
   {
    "id": "88432d0a_abs",
@@ -1116,7 +1242,8 @@
    "carried": 0,
    "total": 48,
    "delivered": 8,
-   "deliveredDigest": "f4ea1adfeed1e3b2"
+   "deliveredDigest": "f4ea1adfeed1e3b2",
+   "deliveredChars": 23048
   },
   {
    "id": "80ec1f4f_abs",
@@ -1124,7 +1251,8 @@
    "carried": 7,
    "total": 36,
    "delivered": 16,
-   "deliveredDigest": "598c0ba5516e0423"
+   "deliveredDigest": "598c0ba5516e0423",
+   "deliveredChars": 23048
   },
   {
    "id": "eeda8a6d_abs",
@@ -1132,7 +1260,8 @@
    "carried": 12,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "5e88bb3f7eda4368"
+   "deliveredDigest": "5e88bb3f7eda4368",
+   "deliveredChars": 22009
   },
   {
    "id": "60bf93ed_abs",
@@ -1140,7 +1269,8 @@
    "carried": 0,
    "total": 24,
    "delivered": 11,
-   "deliveredDigest": "32b96be3cb526d5f"
+   "deliveredDigest": "32b96be3cb526d5f",
+   "deliveredChars": 21073
   },
   {
    "id": "edced276_abs",
@@ -1148,7 +1278,8 @@
    "carried": 3,
    "total": 18,
    "delivered": 11,
-   "deliveredDigest": "b5d376dbe116b9e7"
+   "deliveredDigest": "b5d376dbe116b9e7",
+   "deliveredChars": 23022
   },
   {
    "id": "gpt4_372c3eed_abs",
@@ -1156,7 +1287,8 @@
    "carried": 5,
    "total": 34,
    "delivered": 12,
-   "deliveredDigest": "cc25c9d48cf3e18d"
+   "deliveredDigest": "cc25c9d48cf3e18d",
+   "deliveredChars": 21210
   },
   {
    "id": "8a2466db",
@@ -1164,7 +1296,8 @@
    "carried": 2,
    "total": 18,
    "delivered": 13,
-   "deliveredDigest": "8208ebe83991512d"
+   "deliveredDigest": "8208ebe83991512d",
+   "deliveredChars": 20822
   },
   {
    "id": "06878be2",
@@ -1172,7 +1305,8 @@
    "carried": 0,
    "total": 16,
    "delivered": 15,
-   "deliveredDigest": "437dd31813cb32f3"
+   "deliveredDigest": "437dd31813cb32f3",
+   "deliveredChars": 23231
   },
   {
    "id": "75832dbd",
@@ -1180,7 +1314,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 7,
-   "deliveredDigest": "f02916a8ee289b83"
+   "deliveredDigest": "f02916a8ee289b83",
+   "deliveredChars": 22350
   },
   {
    "id": "0edc2aef",
@@ -1188,7 +1323,8 @@
    "carried": 0,
    "total": 20,
    "delivered": 12,
-   "deliveredDigest": "fc207fb7c231a0bc"
+   "deliveredDigest": "fc207fb7c231a0bc",
+   "deliveredChars": 21716
   },
   {
    "id": "35a27287",
@@ -1196,7 +1332,8 @@
    "carried": 6,
    "total": 14,
    "delivered": 9,
-   "deliveredDigest": "cd040322c365386c"
+   "deliveredDigest": "cd040322c365386c",
+   "deliveredChars": 22542
   },
   {
    "id": "32260d93",
@@ -1204,7 +1341,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 26,
-   "deliveredDigest": "1e7fe52683136e9f"
+   "deliveredDigest": "1e7fe52683136e9f",
+   "deliveredChars": 21105
   },
   {
    "id": "195a1a1b",
@@ -1212,7 +1350,8 @@
    "carried": 1,
    "total": 16,
    "delivered": 14,
-   "deliveredDigest": "598d3800616c8936"
+   "deliveredDigest": "598d3800616c8936",
+   "deliveredChars": 22404
   },
   {
    "id": "afdc33df",
@@ -1220,7 +1359,8 @@
    "carried": 3,
    "total": 14,
    "delivered": 9,
-   "deliveredDigest": "73bb3b3189631c44"
+   "deliveredDigest": "73bb3b3189631c44",
+   "deliveredChars": 22356
   },
   {
    "id": "caf03d32",
@@ -1228,7 +1368,8 @@
    "carried": 9,
    "total": 18,
    "delivered": 16,
-   "deliveredDigest": "609c7e602cb8cfe4"
+   "deliveredDigest": "609c7e602cb8cfe4",
+   "deliveredChars": 21948
   },
   {
    "id": "54026fce",
@@ -1236,7 +1377,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 21,
-   "deliveredDigest": "709685326ebc112b"
+   "deliveredDigest": "709685326ebc112b",
+   "deliveredChars": 22891
   },
   {
    "id": "06f04340",
@@ -1244,7 +1386,8 @@
    "carried": 0,
    "total": 14,
    "delivered": 17,
-   "deliveredDigest": "c3070adf69b98314"
+   "deliveredDigest": "c3070adf69b98314",
+   "deliveredChars": 23439
   },
   {
    "id": "6b7dfb22",
@@ -1252,7 +1395,8 @@
    "carried": 2,
    "total": 16,
    "delivered": 10,
-   "deliveredDigest": "5ae6f5c0c88a9fa7"
+   "deliveredDigest": "5ae6f5c0c88a9fa7",
+   "deliveredChars": 22146
   },
   {
    "id": "1a1907b4",
@@ -1260,7 +1404,8 @@
    "carried": 0,
    "total": 16,
    "delivered": 17,
-   "deliveredDigest": "130ceec293aa5e5a"
+   "deliveredDigest": "130ceec293aa5e5a",
+   "deliveredChars": 20994
   },
   {
    "id": "09d032c9",
@@ -1268,7 +1413,8 @@
    "carried": 0,
    "total": 20,
    "delivered": 18,
-   "deliveredDigest": "c5c80944059a34c9"
+   "deliveredDigest": "c5c80944059a34c9",
+   "deliveredChars": 23391
   },
   {
    "id": "38146c39",
@@ -1276,7 +1422,8 @@
    "carried": 0,
    "total": 16,
    "delivered": 15,
-   "deliveredDigest": "9e364049eaa638b7"
+   "deliveredDigest": "9e364049eaa638b7",
+   "deliveredChars": 22833
   },
   {
    "id": "d24813b1",
@@ -1284,7 +1431,8 @@
    "carried": 4,
    "total": 14,
    "delivered": 14,
-   "deliveredDigest": "a827f60ace75dc6e"
+   "deliveredDigest": "a827f60ace75dc6e",
+   "deliveredChars": 23188
   },
   {
    "id": "57f827a0",
@@ -1292,7 +1440,8 @@
    "carried": 0,
    "total": 14,
    "delivered": 17,
-   "deliveredDigest": "a43d671b4b2e246d"
+   "deliveredDigest": "a43d671b4b2e246d",
+   "deliveredChars": 20614
   },
   {
    "id": "95228167",
@@ -1300,7 +1449,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 8,
-   "deliveredDigest": "6f8490b4f2162a21"
+   "deliveredDigest": "6f8490b4f2162a21",
+   "deliveredChars": 21446
   },
   {
    "id": "505af2f5",
@@ -1308,7 +1458,8 @@
    "carried": 1,
    "total": 12,
    "delivered": 30,
-   "deliveredDigest": "6b9fb1de06dce589"
+   "deliveredDigest": "6b9fb1de06dce589",
+   "deliveredChars": 23049
   },
   {
    "id": "75f70248",
@@ -1316,7 +1467,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 23,
-   "deliveredDigest": "6b57eaa49dad0ee6"
+   "deliveredDigest": "6b57eaa49dad0ee6",
+   "deliveredChars": 23481
   },
   {
    "id": "d6233ab6",
@@ -1324,7 +1476,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 19,
-   "deliveredDigest": "82dc481d22572c04"
+   "deliveredDigest": "82dc481d22572c04",
+   "deliveredChars": 23470
   },
   {
    "id": "1da05512",
@@ -1332,7 +1485,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "c34c4a1cde5693b2"
+   "deliveredDigest": "c34c4a1cde5693b2",
+   "deliveredChars": 23071
   },
   {
    "id": "fca70973",
@@ -1340,7 +1494,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "e102c9ba1c43ea1a"
+   "deliveredDigest": "e102c9ba1c43ea1a",
+   "deliveredChars": 22810
   },
   {
    "id": "b6025781",
@@ -1348,7 +1503,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 23,
-   "deliveredDigest": "58a19626d80359d7"
+   "deliveredDigest": "58a19626d80359d7",
+   "deliveredChars": 22104
   },
   {
    "id": "a89d7624",
@@ -1356,7 +1512,8 @@
    "carried": 1,
    "total": 14,
    "delivered": 24,
-   "deliveredDigest": "79d35d781141372e"
+   "deliveredDigest": "79d35d781141372e",
+   "deliveredChars": 21602
   },
   {
    "id": "b0479f84",
@@ -1364,7 +1521,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "2f9837bc3bdd82f4"
+   "deliveredDigest": "2f9837bc3bdd82f4",
+   "deliveredChars": 23084
   },
   {
    "id": "1d4e3b97",
@@ -1372,7 +1530,8 @@
    "carried": 3,
    "total": 12,
    "delivered": 10,
-   "deliveredDigest": "2d82bf816a270b4e"
+   "deliveredDigest": "2d82bf816a270b4e",
+   "deliveredChars": 22514
   },
   {
    "id": "07b6f563",
@@ -1380,7 +1539,8 @@
    "carried": 0,
    "total": 14,
    "delivered": 16,
-   "deliveredDigest": "39b90536f5ab089a"
+   "deliveredDigest": "39b90536f5ab089a",
+   "deliveredChars": 21944
   },
   {
    "id": "1c0ddc50",
@@ -1388,7 +1548,8 @@
    "carried": 0,
    "total": 12,
    "delivered": 12,
-   "deliveredDigest": "47463ccd11642cfd"
+   "deliveredDigest": "47463ccd11642cfd",
+   "deliveredChars": 22963
   },
   {
    "id": "0a34ad58",
@@ -1396,7 +1557,8 @@
    "carried": 1,
    "total": 20,
    "delivered": 14,
-   "deliveredDigest": "261e486500c9f2b8"
+   "deliveredDigest": "261e486500c9f2b8",
+   "deliveredChars": 23239
   },
   {
    "id": "d3ab962e",
@@ -1404,7 +1566,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 205,
-   "deliveredDigest": "89fba3181ff2c369"
+   "deliveredDigest": "89fba3181ff2c369",
+   "deliveredChars": 45798
   },
   {
    "id": "2311e44b",
@@ -1412,7 +1575,8 @@
    "carried": 6,
    "total": 9,
    "delivered": 177,
-   "deliveredDigest": "1678513f815ebe5b"
+   "deliveredDigest": "1678513f815ebe5b",
+   "deliveredChars": 45927
   },
   {
    "id": "cc06de0d",
@@ -1420,7 +1584,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 188,
-   "deliveredDigest": "ca50306430ac5bec"
+   "deliveredDigest": "ca50306430ac5bec",
+   "deliveredChars": 47106
   },
   {
    "id": "a11281a2",
@@ -1428,7 +1593,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 203,
-   "deliveredDigest": "0a0eda03d8cbe194"
+   "deliveredDigest": "0a0eda03d8cbe194",
+   "deliveredChars": 47314
   },
   {
    "id": "4f54b7c9",
@@ -1436,7 +1602,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 206,
-   "deliveredDigest": "1edc85024e64fb46"
+   "deliveredDigest": "1edc85024e64fb46",
+   "deliveredChars": 45688
   },
   {
    "id": "85fa3a3f",
@@ -1444,7 +1611,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 192,
-   "deliveredDigest": "b1d6803e8fb3ff3b"
+   "deliveredDigest": "b1d6803e8fb3ff3b",
+   "deliveredChars": 45765
   },
   {
    "id": "9aaed6a3",
@@ -1452,7 +1620,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 197,
-   "deliveredDigest": "bba26ce67aca6f4e"
+   "deliveredDigest": "bba26ce67aca6f4e",
+   "deliveredChars": 47323
   },
   {
    "id": "1f2b8d4f",
@@ -1460,7 +1629,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 208,
-   "deliveredDigest": "628d7a4f9451f97b"
+   "deliveredDigest": "628d7a4f9451f97b",
+   "deliveredChars": 47154
   },
   {
    "id": "e6041065",
@@ -1468,7 +1638,8 @@
    "carried": 8,
    "total": 11,
    "delivered": 181,
-   "deliveredDigest": "22c260506eadfa20"
+   "deliveredDigest": "22c260506eadfa20",
+   "deliveredChars": 47289
   },
   {
    "id": "51c32626",
@@ -1476,7 +1647,8 @@
    "carried": 8,
    "total": 10,
    "delivered": 200,
-   "deliveredDigest": "ba54b99de8f7f92c"
+   "deliveredDigest": "ba54b99de8f7f92c",
+   "deliveredChars": 45821
   },
   {
    "id": "d905b33f",
@@ -1484,7 +1656,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 194,
-   "deliveredDigest": "5e2fb546356adf3e"
+   "deliveredDigest": "5e2fb546356adf3e",
+   "deliveredChars": 47294
   },
   {
    "id": "7405e8b1",
@@ -1492,7 +1665,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 197,
-   "deliveredDigest": "a59db105eeef3a5f"
+   "deliveredDigest": "a59db105eeef3a5f",
+   "deliveredChars": 47015
   },
   {
    "id": "f35224e0",
@@ -1500,7 +1674,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 192,
-   "deliveredDigest": "8b67ce0ce2000262"
+   "deliveredDigest": "8b67ce0ce2000262",
+   "deliveredChars": 45629
   },
   {
    "id": "6456829e",
@@ -1508,7 +1683,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 200,
-   "deliveredDigest": "270e4aedc560c03d"
+   "deliveredDigest": "270e4aedc560c03d",
+   "deliveredChars": 45930
   },
   {
    "id": "a4996e51",
@@ -1516,7 +1692,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 182,
-   "deliveredDigest": "5dbcc8588d4ad73b"
+   "deliveredDigest": "5dbcc8588d4ad73b",
+   "deliveredChars": 45859
   },
   {
    "id": "3c1045c8",
@@ -1524,7 +1701,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 217,
-   "deliveredDigest": "160e953b74c67124"
+   "deliveredDigest": "160e953b74c67124",
+   "deliveredChars": 47010
   },
   {
    "id": "60036106",
@@ -1532,7 +1710,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 193,
-   "deliveredDigest": "4b8d215e696adf58"
+   "deliveredDigest": "4b8d215e696adf58",
+   "deliveredChars": 45766
   },
   {
    "id": "681a1674",
@@ -1540,7 +1719,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 205,
-   "deliveredDigest": "21a84fdc8f1ccf53"
+   "deliveredDigest": "21a84fdc8f1ccf53",
+   "deliveredChars": 45934
   },
   {
    "id": "e25c3b8d",
@@ -1548,7 +1728,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 205,
-   "deliveredDigest": "ce5939e8e4878fc0"
+   "deliveredDigest": "ce5939e8e4878fc0",
+   "deliveredChars": 45892
   },
   {
    "id": "4adc0475",
@@ -1556,7 +1737,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 203,
-   "deliveredDigest": "2c063efa4ae666ef"
+   "deliveredDigest": "2c063efa4ae666ef",
+   "deliveredChars": 45727
   },
   {
    "id": "4bc144e2",
@@ -1564,7 +1746,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 193,
-   "deliveredDigest": "3dd10eedfe6ab508"
+   "deliveredDigest": "3dd10eedfe6ab508",
+   "deliveredChars": 45843
   },
   {
    "id": "ef66a6e5",
@@ -1572,7 +1755,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 177,
-   "deliveredDigest": "b5d6e2a4878eed6c"
+   "deliveredDigest": "b5d6e2a4878eed6c",
+   "deliveredChars": 45761
   },
   {
    "id": "5025383b",
@@ -1580,7 +1764,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 179,
-   "deliveredDigest": "41be7f177c6cda3b"
+   "deliveredDigest": "41be7f177c6cda3b",
+   "deliveredChars": 45842
   },
   {
    "id": "a1cc6108",
@@ -1588,7 +1773,8 @@
    "carried": 10,
    "total": 10,
    "delivered": 188,
-   "deliveredDigest": "ff9e45f856042d4c"
+   "deliveredDigest": "ff9e45f856042d4c",
+   "deliveredChars": 47237
   },
   {
    "id": "9ee3ecd6",
@@ -1596,7 +1782,8 @@
    "carried": 9,
    "total": 11,
    "delivered": 191,
-   "deliveredDigest": "cacdd830a7f496f7"
+   "deliveredDigest": "cacdd830a7f496f7",
+   "deliveredChars": 45902
   },
   {
    "id": "3fdac837",
@@ -1604,7 +1791,8 @@
    "carried": 7,
    "total": 10,
    "delivered": 166,
-   "deliveredDigest": "11d41c12a10268e2"
+   "deliveredDigest": "11d41c12a10268e2",
+   "deliveredChars": 45781
   },
   {
    "id": "91b15a6e",
@@ -1612,7 +1800,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 219,
-   "deliveredDigest": "6533616b9793f9bc"
+   "deliveredDigest": "6533616b9793f9bc",
+   "deliveredChars": 47174
   },
   {
    "id": "27016adc",
@@ -1620,7 +1809,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 204,
-   "deliveredDigest": "157dcd768e81b011"
+   "deliveredDigest": "157dcd768e81b011",
+   "deliveredChars": 46931
   },
   {
    "id": "720133ac",
@@ -1628,7 +1818,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 202,
-   "deliveredDigest": "46d2b0a578370102"
+   "deliveredDigest": "46d2b0a578370102",
+   "deliveredChars": 45861
   },
   {
    "id": "77eafa52",
@@ -1636,7 +1827,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 203,
-   "deliveredDigest": "1c5209313f274c8e"
+   "deliveredDigest": "1c5209313f274c8e",
+   "deliveredChars": 47168
   },
   {
    "id": "8979f9ec",
@@ -1644,7 +1836,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 184,
-   "deliveredDigest": "185ae1d3a8880b29"
+   "deliveredDigest": "185ae1d3a8880b29",
+   "deliveredChars": 45701
   },
   {
    "id": "0100672e",
@@ -1652,7 +1845,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 182,
-   "deliveredDigest": "6641f28c38cd14c5"
+   "deliveredDigest": "6641f28c38cd14c5",
+   "deliveredChars": 45815
   },
   {
    "id": "a96c20ee",
@@ -1660,7 +1854,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 186,
-   "deliveredDigest": "e661a447d87758e7"
+   "deliveredDigest": "e661a447d87758e7",
+   "deliveredChars": 45858
   },
   {
    "id": "92a0aa75",
@@ -1668,7 +1863,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 195,
-   "deliveredDigest": "cca85bfdb5945b50"
+   "deliveredDigest": "cca85bfdb5945b50",
+   "deliveredChars": 47094
   },
   {
    "id": "3fe836c9",
@@ -1676,7 +1872,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 191,
-   "deliveredDigest": "e06653a0b227aeda"
+   "deliveredDigest": "e06653a0b227aeda",
+   "deliveredChars": 47151
   },
   {
    "id": "1c549ce4",
@@ -1684,7 +1881,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 190,
-   "deliveredDigest": "5b446beefe3dcf21"
+   "deliveredDigest": "5b446beefe3dcf21",
+   "deliveredChars": 45909
   },
   {
    "id": "6c49646a",
@@ -1692,7 +1890,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 180,
-   "deliveredDigest": "aaab709465506a12"
+   "deliveredDigest": "aaab709465506a12",
+   "deliveredChars": 45705
   },
   {
    "id": "1192316e",
@@ -1700,7 +1899,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 177,
-   "deliveredDigest": "1c02bc6bea93f1cb"
+   "deliveredDigest": "1c02bc6bea93f1cb",
+   "deliveredChars": 45893
   },
   {
    "id": "0ea62687",
@@ -1708,7 +1908,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 195,
-   "deliveredDigest": "f3b320b05a18a08d"
+   "deliveredDigest": "f3b320b05a18a08d",
+   "deliveredChars": 47150
   },
   {
    "id": "67e0d0f2",
@@ -1716,7 +1917,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 185,
-   "deliveredDigest": "6227ff09bcd31662"
+   "deliveredDigest": "6227ff09bcd31662",
+   "deliveredChars": 45869
   },
   {
    "id": "bb7c3b45",
@@ -1724,7 +1926,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 194,
-   "deliveredDigest": "1e7b32da33d849ea"
+   "deliveredDigest": "1e7b32da33d849ea",
+   "deliveredChars": 45812
   },
   {
    "id": "ba358f49",
@@ -1732,7 +1935,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 177,
-   "deliveredDigest": "f64672b34e332615"
+   "deliveredDigest": "f64672b34e332615",
+   "deliveredChars": 47160
   },
   {
    "id": "61f8c8f8",
@@ -1740,7 +1944,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 191,
-   "deliveredDigest": "56a52915cacc3419"
+   "deliveredDigest": "56a52915cacc3419",
+   "deliveredChars": 47254
   },
   {
    "id": "60159905",
@@ -1748,7 +1953,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 170,
-   "deliveredDigest": "a2ed84184a6e2ef1"
+   "deliveredDigest": "a2ed84184a6e2ef1",
+   "deliveredChars": 45877
   },
   {
    "id": "ef9cf60a",
@@ -1756,7 +1962,8 @@
    "carried": 10,
    "total": 11,
    "delivered": 204,
-   "deliveredDigest": "d5dc78a77d787779"
+   "deliveredDigest": "d5dc78a77d787779",
+   "deliveredChars": 45840
   },
   {
    "id": "73d42213",
@@ -1764,7 +1971,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 199,
-   "deliveredDigest": "010bb84b0b2fb931"
+   "deliveredDigest": "010bb84b0b2fb931",
+   "deliveredChars": 45855
   },
   {
    "id": "bc149d6b",
@@ -1772,7 +1980,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 186,
-   "deliveredDigest": "ba3a8c003d62dc55"
+   "deliveredDigest": "ba3a8c003d62dc55",
+   "deliveredChars": 45682
   },
   {
    "id": "099778bb",
@@ -1780,7 +1989,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 177,
-   "deliveredDigest": "545a9097f8f9526f"
+   "deliveredDigest": "545a9097f8f9526f",
+   "deliveredChars": 47175
   },
   {
    "id": "09ba9854",
@@ -1788,7 +1998,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 195,
-   "deliveredDigest": "702f260d1a05cf90"
+   "deliveredDigest": "702f260d1a05cf90",
+   "deliveredChars": 45900
   },
   {
    "id": "d6062bb9",
@@ -1796,7 +2007,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 191,
-   "deliveredDigest": "48e0260afccd841e"
+   "deliveredDigest": "48e0260afccd841e",
+   "deliveredChars": 45729
   },
   {
    "id": "157a136e",
@@ -1804,7 +2016,8 @@
    "carried": 3,
    "total": 11,
    "delivered": 189,
-   "deliveredDigest": "2fa726b423cfc6bf"
+   "deliveredDigest": "2fa726b423cfc6bf",
+   "deliveredChars": 47080
   },
   {
    "id": "c18a7dc8",
@@ -1812,7 +2025,8 @@
    "carried": 6,
    "total": 11,
    "delivered": 182,
-   "deliveredDigest": "6ec97b95eb14e426"
+   "deliveredDigest": "6ec97b95eb14e426",
+   "deliveredChars": 47076
   },
   {
    "id": "a3332713",
@@ -1820,7 +2034,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 177,
-   "deliveredDigest": "2c5237c3f8c53f14"
+   "deliveredDigest": "2c5237c3f8c53f14",
+   "deliveredChars": 45852
   },
   {
    "id": "55241a1f",
@@ -1828,7 +2043,8 @@
    "carried": 10,
    "total": 10,
    "delivered": 196,
-   "deliveredDigest": "15a657d2ebd53f38"
+   "deliveredDigest": "15a657d2ebd53f38",
+   "deliveredChars": 45695
   },
   {
    "id": "a08a253f",
@@ -1836,7 +2052,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 199,
-   "deliveredDigest": "bb2478f8e9b0ef73"
+   "deliveredDigest": "bb2478f8e9b0ef73",
+   "deliveredChars": 45799
   },
   {
    "id": "f0e564bc",
@@ -1844,7 +2061,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 197,
-   "deliveredDigest": "d16c5b7c127fd091"
+   "deliveredDigest": "d16c5b7c127fd091",
+   "deliveredChars": 45904
   },
   {
    "id": "078150f1",
@@ -1852,7 +2070,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 212,
-   "deliveredDigest": "802b66220c367b09"
+   "deliveredDigest": "802b66220c367b09",
+   "deliveredChars": 47211
   },
   {
    "id": "8cf4d046",
@@ -1860,7 +2079,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 201,
-   "deliveredDigest": "093dd2516da297b5"
+   "deliveredDigest": "093dd2516da297b5",
+   "deliveredChars": 47327
   },
   {
    "id": "a346bb18",
@@ -1868,7 +2088,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 179,
-   "deliveredDigest": "db0170d48e6b6480"
+   "deliveredDigest": "db0170d48e6b6480",
+   "deliveredChars": 47135
   },
   {
    "id": "37f165cf",
@@ -1876,7 +2097,8 @@
    "carried": 10,
    "total": 10,
    "delivered": 226,
-   "deliveredDigest": "e21ead6a53824a51"
+   "deliveredDigest": "e21ead6a53824a51",
+   "deliveredChars": 45710
   },
   {
    "id": "8e91e7d9",
@@ -1884,7 +2106,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 202,
-   "deliveredDigest": "5e7b2926b5f3c3ba"
+   "deliveredDigest": "5e7b2926b5f3c3ba",
+   "deliveredChars": 45760
   },
   {
    "id": "87f22b4a",
@@ -1892,7 +2115,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 183,
-   "deliveredDigest": "05c270269d84ded0"
+   "deliveredDigest": "05c270269d84ded0",
+   "deliveredChars": 45936
   },
   {
    "id": "e56a43b9",
@@ -1900,7 +2124,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 188,
-   "deliveredDigest": "665f287559ffeb2d"
+   "deliveredDigest": "665f287559ffeb2d",
+   "deliveredChars": 47195
   },
   {
    "id": "efc3f7c2",
@@ -1908,7 +2133,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 199,
-   "deliveredDigest": "f29838a39d3bc746"
+   "deliveredDigest": "f29838a39d3bc746",
+   "deliveredChars": 47180
   },
   {
    "id": "21d02d0d",
@@ -1916,7 +2142,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 189,
-   "deliveredDigest": "a539c35af1f961fc"
+   "deliveredDigest": "a539c35af1f961fc",
+   "deliveredChars": 45914
   },
   {
    "id": "2311e44b_abs",
@@ -1924,7 +2151,8 @@
    "carried": 8,
    "total": 18,
    "delivered": 12,
-   "deliveredDigest": "f98e21ee625ad067"
+   "deliveredDigest": "f98e21ee625ad067",
+   "deliveredChars": 22721
   },
   {
    "id": "6456829e_abs",
@@ -1932,7 +2160,8 @@
    "carried": 3,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "35a13c58c4908416"
+   "deliveredDigest": "35a13c58c4908416",
+   "deliveredChars": 22630
   },
   {
    "id": "e5ba910e_abs",
@@ -1940,7 +2169,8 @@
    "carried": 1,
    "total": 22,
    "delivered": 17,
-   "deliveredDigest": "78a3fb1502d33a5e"
+   "deliveredDigest": "78a3fb1502d33a5e",
+   "deliveredChars": 21296
   },
   {
    "id": "a96c20ee_abs",
@@ -1948,7 +2178,8 @@
    "carried": 4,
    "total": 22,
    "delivered": 12,
-   "deliveredDigest": "f56b1856f131c653"
+   "deliveredDigest": "f56b1856f131c653",
+   "deliveredChars": 23011
   },
   {
    "id": "ba358f49_abs",
@@ -1956,7 +2187,8 @@
    "carried": 1,
    "total": 24,
    "delivered": 11,
-   "deliveredDigest": "6c661faee76163d0"
+   "deliveredDigest": "6c661faee76163d0",
+   "deliveredChars": 22021
   },
   {
    "id": "09ba9854_abs",
@@ -1964,7 +2196,8 @@
    "carried": 11,
    "total": 22,
    "delivered": 14,
-   "deliveredDigest": "86cb4a3d0b198f0f"
+   "deliveredDigest": "86cb4a3d0b198f0f",
+   "deliveredChars": 21780
   },
   {
    "id": "gpt4_59149c77",
@@ -1972,7 +2205,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 197,
-   "deliveredDigest": "d32702b55b8d6ee1"
+   "deliveredDigest": "d32702b55b8d6ee1",
+   "deliveredChars": 47001
   },
   {
    "id": "gpt4_f49edff3",
@@ -1980,7 +2214,8 @@
    "carried": 9,
    "total": 15,
    "delivered": 195,
-   "deliveredDigest": "9f4d4b2a89cd0fe5"
+   "deliveredDigest": "9f4d4b2a89cd0fe5",
+   "deliveredChars": 47028
   },
   {
    "id": "71017276",
@@ -1988,7 +2223,8 @@
    "carried": 3,
    "total": 6,
    "delivered": 255,
-   "deliveredDigest": "3444b8281c98c4f4"
+   "deliveredDigest": "3444b8281c98c4f4",
+   "deliveredChars": 47175
   },
   {
    "id": "b46e15ed",
@@ -1996,7 +2232,8 @@
    "carried": 18,
    "total": 24,
    "delivered": 199,
-   "deliveredDigest": "130283a57053fb9e"
+   "deliveredDigest": "130283a57053fb9e",
+   "deliveredChars": 47158
   },
   {
    "id": "gpt4_fa19884c",
@@ -2004,7 +2241,8 @@
    "carried": 10,
    "total": 11,
    "delivered": 207,
-   "deliveredDigest": "fdd234be11cc3e23"
+   "deliveredDigest": "fdd234be11cc3e23",
+   "deliveredChars": 46993
   },
   {
    "id": "0bc8ad92",
@@ -2012,7 +2250,8 @@
    "carried": 16,
    "total": 16,
    "delivered": 195,
-   "deliveredDigest": "f48613e58f26d496"
+   "deliveredDigest": "f48613e58f26d496",
+   "deliveredChars": 47244
   },
   {
    "id": "af082822",
@@ -2020,7 +2259,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 194,
-   "deliveredDigest": "f6ca7956fae30c90"
+   "deliveredDigest": "f6ca7956fae30c90",
+   "deliveredChars": 47311
   },
   {
    "id": "gpt4_4929293a",
@@ -2028,7 +2268,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 204,
-   "deliveredDigest": "f1ecc6d5683bcd45"
+   "deliveredDigest": "f1ecc6d5683bcd45",
+   "deliveredChars": 47236
   },
   {
    "id": "gpt4_b5700ca9",
@@ -2036,7 +2277,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 210,
-   "deliveredDigest": "126cc298076220c1"
+   "deliveredDigest": "126cc298076220c1",
+   "deliveredChars": 47258
   },
   {
    "id": "9a707b81",
@@ -2044,7 +2286,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 206,
-   "deliveredDigest": "8212154c9f042fc6"
+   "deliveredDigest": "8212154c9f042fc6",
+   "deliveredChars": 47197
   },
   {
    "id": "gpt4_1d4ab0c9",
@@ -2052,7 +2295,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 219,
-   "deliveredDigest": "3b651e12ddc7eed3"
+   "deliveredDigest": "3b651e12ddc7eed3",
+   "deliveredChars": 47223
   },
   {
    "id": "gpt4_e072b769",
@@ -2060,7 +2304,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 187,
-   "deliveredDigest": "bf9b59cb0e34e98b"
+   "deliveredDigest": "bf9b59cb0e34e98b",
+   "deliveredChars": 47175
   },
   {
    "id": "0db4c65d",
@@ -2068,7 +2313,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 185,
-   "deliveredDigest": "cc5c296ba8348684"
+   "deliveredDigest": "cc5c296ba8348684",
+   "deliveredChars": 47079
   },
   {
    "id": "gpt4_1d80365e",
@@ -2076,7 +2322,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 203,
-   "deliveredDigest": "96c7e84d62b42d7a"
+   "deliveredDigest": "96c7e84d62b42d7a",
+   "deliveredChars": 47238
   },
   {
    "id": "gpt4_7f6b06db",
@@ -2084,7 +2331,8 @@
    "carried": 11,
    "total": 18,
    "delivered": 212,
-   "deliveredDigest": "f2da743f100affb7"
+   "deliveredDigest": "f2da743f100affb7",
+   "deliveredChars": 46995
   },
   {
    "id": "gpt4_6dc9b45b",
@@ -2092,7 +2340,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 219,
-   "deliveredDigest": "2a3ed0d51f27d24d"
+   "deliveredDigest": "2a3ed0d51f27d24d",
+   "deliveredChars": 47262
   },
   {
    "id": "gpt4_8279ba02",
@@ -2100,7 +2349,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 207,
-   "deliveredDigest": "ab7300817198278b"
+   "deliveredDigest": "ab7300817198278b",
+   "deliveredChars": 47334
   },
   {
    "id": "gpt4_18c2b244",
@@ -2108,7 +2358,8 @@
    "carried": 17,
    "total": 17,
    "delivered": 194,
-   "deliveredDigest": "f9a0cc73887ad1d5"
+   "deliveredDigest": "f9a0cc73887ad1d5",
+   "deliveredChars": 46978
   },
   {
    "id": "gpt4_a1b77f9c",
@@ -2116,7 +2367,8 @@
    "carried": 34,
    "total": 36,
    "delivered": 206,
-   "deliveredDigest": "caf9651f867b88f2"
+   "deliveredDigest": "caf9651f867b88f2",
+   "deliveredChars": 47193
   },
   {
    "id": "gpt4_1916e0ea",
@@ -2124,7 +2376,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 190,
-   "deliveredDigest": "7325ec31262f3fa6"
+   "deliveredDigest": "7325ec31262f3fa6",
+   "deliveredChars": 47197
   },
   {
    "id": "gpt4_7a0daae1",
@@ -2132,7 +2385,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 218,
-   "deliveredDigest": "331881bb474c2bc1"
+   "deliveredDigest": "331881bb474c2bc1",
+   "deliveredChars": 47241
   },
   {
    "id": "gpt4_468eb063",
@@ -2140,7 +2394,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 204,
-   "deliveredDigest": "32ad25c7c326d250"
+   "deliveredDigest": "32ad25c7c326d250",
+   "deliveredChars": 47283
   },
   {
    "id": "gpt4_7abb270c",
@@ -2148,7 +2403,8 @@
    "carried": 27,
    "total": 30,
    "delivered": 183,
-   "deliveredDigest": "008fb31e961e52c6"
+   "deliveredDigest": "008fb31e961e52c6",
+   "deliveredChars": 46930
   },
   {
    "id": "gpt4_1e4a8aeb",
@@ -2156,7 +2412,8 @@
    "carried": 9,
    "total": 11,
    "delivered": 210,
-   "deliveredDigest": "b5a0ca63720e89ed"
+   "deliveredDigest": "b5a0ca63720e89ed",
+   "deliveredChars": 47269
   },
   {
    "id": "gpt4_4fc4f797",
@@ -2164,7 +2421,8 @@
    "carried": 9,
    "total": 11,
    "delivered": 190,
-   "deliveredDigest": "dc61e832afb343fa"
+   "deliveredDigest": "dc61e832afb343fa",
+   "deliveredChars": 47138
   },
   {
    "id": "4dfccbf7",
@@ -2172,7 +2430,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 192,
-   "deliveredDigest": "31e042e663df6e8b"
+   "deliveredDigest": "31e042e663df6e8b",
+   "deliveredChars": 47160
   },
   {
    "id": "gpt4_61e13b3c",
@@ -2180,7 +2439,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 198,
-   "deliveredDigest": "9a24c0ae189d16ec"
+   "deliveredDigest": "9a24c0ae189d16ec",
+   "deliveredChars": 47145
   },
   {
    "id": "gpt4_45189cb4",
@@ -2188,7 +2448,8 @@
    "carried": 16,
    "total": 16,
    "delivered": 198,
-   "deliveredDigest": "e7cabff0a9cd2a26"
+   "deliveredDigest": "e7cabff0a9cd2a26",
+   "deliveredChars": 47287
   },
   {
    "id": "2ebe6c90",
@@ -2196,7 +2457,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 193,
-   "deliveredDigest": "551070d1235d3693"
+   "deliveredDigest": "551070d1235d3693",
+   "deliveredChars": 47314
   },
   {
    "id": "gpt4_e061b84f",
@@ -2204,7 +2466,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 191,
-   "deliveredDigest": "7a40950c16c6c482"
+   "deliveredDigest": "7a40950c16c6c482",
+   "deliveredChars": 47220
   },
   {
    "id": "370a8ff4",
@@ -2212,7 +2475,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 215,
-   "deliveredDigest": "42c6a6e56937cdef"
+   "deliveredDigest": "42c6a6e56937cdef",
+   "deliveredChars": 47199
   },
   {
    "id": "gpt4_d6585ce8",
@@ -2220,7 +2484,8 @@
    "carried": 26,
    "total": 28,
    "delivered": 188,
-   "deliveredDigest": "a650b8560bff137b"
+   "deliveredDigest": "a650b8560bff137b",
+   "deliveredChars": 47191
   },
   {
    "id": "gpt4_4ef30696",
@@ -2228,7 +2493,8 @@
    "carried": 9,
    "total": 11,
    "delivered": 205,
-   "deliveredDigest": "26b611083a0da968"
+   "deliveredDigest": "26b611083a0da968",
+   "deliveredChars": 47050
   },
   {
    "id": "gpt4_ec93e27f",
@@ -2236,7 +2502,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 194,
-   "deliveredDigest": "676178424632844b"
+   "deliveredDigest": "676178424632844b",
+   "deliveredChars": 47291
   },
   {
    "id": "6e984301",
@@ -2244,7 +2511,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 195,
-   "deliveredDigest": "717621697e391e0c"
+   "deliveredDigest": "717621697e391e0c",
+   "deliveredChars": 47140
   },
   {
    "id": "8077ef71",
@@ -2252,7 +2520,8 @@
    "carried": 5,
    "total": 5,
    "delivered": 214,
-   "deliveredDigest": "0b0f1480e4d19fcd"
+   "deliveredDigest": "0b0f1480e4d19fcd",
+   "deliveredChars": 47184
   },
   {
    "id": "gpt4_f420262c",
@@ -2260,7 +2529,8 @@
    "carried": 20,
    "total": 27,
    "delivered": 205,
-   "deliveredDigest": "aba6bb6319d0c25f"
+   "deliveredDigest": "aba6bb6319d0c25f",
+   "deliveredChars": 47146
   },
   {
    "id": "gpt4_8e165409",
@@ -2268,7 +2538,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 197,
-   "deliveredDigest": "b10474e390c88442"
+   "deliveredDigest": "b10474e390c88442",
+   "deliveredChars": 47137
   },
   {
    "id": "gpt4_74aed68e",
@@ -2276,7 +2547,8 @@
    "carried": 10,
    "total": 11,
    "delivered": 185,
-   "deliveredDigest": "9b89cb842aa893ba"
+   "deliveredDigest": "9b89cb842aa893ba",
+   "deliveredChars": 46954
   },
   {
    "id": "bcbe585f",
@@ -2284,7 +2556,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 197,
-   "deliveredDigest": "5cf369f2ef26718a"
+   "deliveredDigest": "5cf369f2ef26718a",
+   "deliveredChars": 47185
   },
   {
    "id": "gpt4_21adecb5",
@@ -2292,7 +2565,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 200,
-   "deliveredDigest": "4cd2fd0a4a08a77e"
+   "deliveredDigest": "4cd2fd0a4a08a77e",
+   "deliveredChars": 47089
   },
   {
    "id": "5e1b23de",
@@ -2300,7 +2574,8 @@
    "carried": 5,
    "total": 5,
    "delivered": 191,
-   "deliveredDigest": "b60f10f7bb322f98"
+   "deliveredDigest": "b60f10f7bb322f98",
+   "deliveredChars": 47236
   },
   {
    "id": "gpt4_98f46fc6",
@@ -2308,7 +2583,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 198,
-   "deliveredDigest": "acfea65a41092331"
+   "deliveredDigest": "acfea65a41092331",
+   "deliveredChars": 47223
   },
   {
    "id": "gpt4_af6db32f",
@@ -2316,7 +2592,8 @@
    "carried": 2,
    "total": 6,
    "delivered": 209,
-   "deliveredDigest": "94cf8ad8cce8f044"
+   "deliveredDigest": "94cf8ad8cce8f044",
+   "deliveredChars": 47297
   },
   {
    "id": "eac54adc",
@@ -2324,7 +2601,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 179,
-   "deliveredDigest": "894038c58f8cca8c"
+   "deliveredDigest": "894038c58f8cca8c",
+   "deliveredChars": 47038
   },
   {
    "id": "gpt4_7ddcf75f",
@@ -2332,7 +2610,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 197,
-   "deliveredDigest": "a4043aad731e75b5"
+   "deliveredDigest": "a4043aad731e75b5",
+   "deliveredChars": 47093
   },
   {
    "id": "gpt4_a2d1d1f6",
@@ -2340,7 +2619,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 199,
-   "deliveredDigest": "eebb283f00a45df1"
+   "deliveredDigest": "eebb283f00a45df1",
+   "deliveredChars": 47280
   },
   {
    "id": "gpt4_85da3956",
@@ -2348,7 +2628,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 211,
-   "deliveredDigest": "5f2fcb306db8b57e"
+   "deliveredDigest": "5f2fcb306db8b57e",
+   "deliveredChars": 47256
   },
   {
    "id": "gpt4_b0863698",
@@ -2356,7 +2637,8 @@
    "carried": 3,
    "total": 6,
    "delivered": 187,
-   "deliveredDigest": "17960894bb64ae6a"
+   "deliveredDigest": "17960894bb64ae6a",
+   "deliveredChars": 47319
   },
   {
    "id": "gpt4_68e94287",
@@ -2364,7 +2646,8 @@
    "carried": 10,
    "total": 10,
    "delivered": 185,
-   "deliveredDigest": "4a8021a6e566238c"
+   "deliveredDigest": "4a8021a6e566238c",
+   "deliveredChars": 47255
   },
   {
    "id": "gpt4_e414231e",
@@ -2372,7 +2655,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 209,
-   "deliveredDigest": "814c184a8bf4e4d4"
+   "deliveredDigest": "814c184a8bf4e4d4",
+   "deliveredChars": 47191
   },
   {
    "id": "gpt4_7ca326fa",
@@ -2380,7 +2664,8 @@
    "carried": 15,
    "total": 17,
    "delivered": 211,
-   "deliveredDigest": "8bd2a7b718501f37"
+   "deliveredDigest": "8bd2a7b718501f37",
+   "deliveredChars": 47104
   },
   {
    "id": "gpt4_7bc6cf22",
@@ -2388,7 +2673,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 209,
-   "deliveredDigest": "c3a00b19b063dcd1"
+   "deliveredDigest": "c3a00b19b063dcd1",
+   "deliveredChars": 47065
   },
   {
    "id": "2ebe6c92",
@@ -2396,7 +2682,8 @@
    "carried": 9,
    "total": 11,
    "delivered": 204,
-   "deliveredDigest": "6cea9436562d86d1"
+   "deliveredDigest": "6cea9436562d86d1",
+   "deliveredChars": 47311
   },
   {
    "id": "gpt4_e061b84g",
@@ -2404,7 +2691,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 220,
-   "deliveredDigest": "de4ec5cd8891692c"
+   "deliveredDigest": "de4ec5cd8891692c",
+   "deliveredChars": 47019
   },
   {
    "id": "71017277",
@@ -2412,7 +2700,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 191,
-   "deliveredDigest": "32faaba83a007964"
+   "deliveredDigest": "32faaba83a007964",
+   "deliveredChars": 47293
   },
   {
    "id": "b46e15ee",
@@ -2420,7 +2709,8 @@
    "carried": 24,
    "total": 24,
    "delivered": 212,
-   "deliveredDigest": "0e3bc6f783a0d45e"
+   "deliveredDigest": "0e3bc6f783a0d45e",
+   "deliveredChars": 47250
   },
   {
    "id": "gpt4_d6585ce9",
@@ -2428,7 +2718,8 @@
    "carried": 29,
    "total": 29,
    "delivered": 182,
-   "deliveredDigest": "a105e45c40eb9b08"
+   "deliveredDigest": "a105e45c40eb9b08",
+   "deliveredChars": 47132
   },
   {
    "id": "gpt4_1e4a8aec",
@@ -2436,7 +2727,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 188,
-   "deliveredDigest": "52b7b1334d3d9abb"
+   "deliveredDigest": "52b7b1334d3d9abb",
+   "deliveredChars": 47171
   },
   {
    "id": "gpt4_f420262d",
@@ -2444,7 +2736,8 @@
    "carried": 23,
    "total": 29,
    "delivered": 191,
-   "deliveredDigest": "ea141f9a3c91adf0"
+   "deliveredDigest": "ea141f9a3c91adf0",
+   "deliveredChars": 47011
   },
   {
    "id": "gpt4_59149c78",
@@ -2452,7 +2745,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 203,
-   "deliveredDigest": "e95eccfb7ce1f1eb"
+   "deliveredDigest": "e95eccfb7ce1f1eb",
+   "deliveredChars": 47130
   },
   {
    "id": "gpt4_e414231f",
@@ -2460,7 +2754,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 204,
-   "deliveredDigest": "c46ffeb74a696074"
+   "deliveredDigest": "c46ffeb74a696074",
+   "deliveredChars": 47032
   },
   {
    "id": "gpt4_4929293b",
@@ -2468,7 +2763,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 194,
-   "deliveredDigest": "ab21c7c363880b6c"
+   "deliveredDigest": "ab21c7c363880b6c",
+   "deliveredChars": 47180
   },
   {
    "id": "gpt4_468eb064",
@@ -2476,7 +2772,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 192,
-   "deliveredDigest": "8ec2868ee3eae443"
+   "deliveredDigest": "8ec2868ee3eae443",
+   "deliveredChars": 47283
   },
   {
    "id": "gpt4_fa19884d",
@@ -2484,7 +2781,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 214,
-   "deliveredDigest": "25cbfea98273cd60"
+   "deliveredDigest": "25cbfea98273cd60",
+   "deliveredChars": 47326
   },
   {
    "id": "9a707b82",
@@ -2492,7 +2790,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 201,
-   "deliveredDigest": "f48ed5e9d0d4d0a1"
+   "deliveredDigest": "f48ed5e9d0d4d0a1",
+   "deliveredChars": 47116
   },
   {
    "id": "eac54add",
@@ -2500,7 +2799,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 192,
-   "deliveredDigest": "54d0b25a6ba9662d"
+   "deliveredDigest": "54d0b25a6ba9662d",
+   "deliveredChars": 47188
   },
   {
    "id": "4dfccbf8",
@@ -2508,7 +2808,8 @@
    "carried": 2,
    "total": 12,
    "delivered": 183,
-   "deliveredDigest": "83216d413d98a55f"
+   "deliveredDigest": "83216d413d98a55f",
+   "deliveredChars": 47132
   },
   {
    "id": "0bc8ad93",
@@ -2516,7 +2817,8 @@
    "carried": 17,
    "total": 17,
    "delivered": 200,
-   "deliveredDigest": "c5f0afb10ef9e8a5"
+   "deliveredDigest": "c5f0afb10ef9e8a5",
+   "deliveredChars": 47208
   },
   {
    "id": "6e984302",
@@ -2524,7 +2826,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 194,
-   "deliveredDigest": "da1e5d5aa33c0f2a"
+   "deliveredDigest": "da1e5d5aa33c0f2a",
+   "deliveredChars": 47140
   },
   {
    "id": "gpt4_8279ba03",
@@ -2532,7 +2835,8 @@
    "carried": 0,
    "total": 6,
    "delivered": 179,
-   "deliveredDigest": "16756e1deedfe9a3"
+   "deliveredDigest": "16756e1deedfe9a3",
+   "deliveredChars": 46945
   },
   {
    "id": "gpt4_b5700ca0",
@@ -2540,7 +2844,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 208,
-   "deliveredDigest": "b4e47971550c56a8"
+   "deliveredDigest": "b4e47971550c56a8",
+   "deliveredChars": 47152
   },
   {
    "id": "gpt4_68e94288",
@@ -2548,7 +2853,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 199,
-   "deliveredDigest": "31f33973ba4ca14d"
+   "deliveredDigest": "31f33973ba4ca14d",
+   "deliveredChars": 47163
   },
   {
    "id": "gpt4_2655b836",
@@ -2556,7 +2862,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 194,
-   "deliveredDigest": "932f74f3fd49c3ee"
+   "deliveredDigest": "932f74f3fd49c3ee",
+   "deliveredChars": 47209
   },
   {
    "id": "gpt4_2487a7cb",
@@ -2564,7 +2871,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 201,
-   "deliveredDigest": "b7467b831f81816b"
+   "deliveredDigest": "b7467b831f81816b",
+   "deliveredChars": 47079
   },
   {
    "id": "gpt4_76048e76",
@@ -2572,7 +2880,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 200,
-   "deliveredDigest": "0c353640d96b856e"
+   "deliveredDigest": "0c353640d96b856e",
+   "deliveredChars": 47177
   },
   {
    "id": "gpt4_2312f94c",
@@ -2580,7 +2889,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 196,
-   "deliveredDigest": "88c71c6883c126be"
+   "deliveredDigest": "88c71c6883c126be",
+   "deliveredChars": 47207
   },
   {
    "id": "0bb5a684",
@@ -2588,7 +2898,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 189,
-   "deliveredDigest": "4cc71370ab7826be"
+   "deliveredDigest": "4cc71370ab7826be",
+   "deliveredChars": 47237
   },
   {
    "id": "08f4fc43",
@@ -2596,7 +2907,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 188,
-   "deliveredDigest": "cc9a764da48193d0"
+   "deliveredDigest": "cc9a764da48193d0",
+   "deliveredChars": 47259
   },
   {
    "id": "2c63a862",
@@ -2604,7 +2916,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 203,
-   "deliveredDigest": "fa518651ac92cd1f"
+   "deliveredDigest": "fa518651ac92cd1f",
+   "deliveredChars": 47101
   },
   {
    "id": "gpt4_385a5000",
@@ -2612,7 +2925,8 @@
    "carried": 7,
    "total": 10,
    "delivered": 199,
-   "deliveredDigest": "4cc9eac58fa17f44"
+   "deliveredDigest": "4cc9eac58fa17f44",
+   "deliveredChars": 47254
   },
   {
    "id": "2a1811e2",
@@ -2620,7 +2934,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 189,
-   "deliveredDigest": "0c6176bd5e11bbd8"
+   "deliveredDigest": "0c6176bd5e11bbd8",
+   "deliveredChars": 47234
   },
   {
    "id": "bbf86515",
@@ -2628,7 +2943,8 @@
    "carried": 10,
    "total": 11,
    "delivered": 200,
-   "deliveredDigest": "36ad0f652c8c2a7a"
+   "deliveredDigest": "36ad0f652c8c2a7a",
+   "deliveredChars": 47233
   },
   {
    "id": "gpt4_5dcc0aab",
@@ -2636,7 +2952,8 @@
    "carried": 26,
    "total": 29,
    "delivered": 202,
-   "deliveredDigest": "bb4283f94fd0277e"
+   "deliveredDigest": "bb4283f94fd0277e",
+   "deliveredChars": 47290
   },
   {
    "id": "gpt4_0b2f1d21",
@@ -2644,7 +2961,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 233,
-   "deliveredDigest": "591c25608dc9fa53"
+   "deliveredDigest": "591c25608dc9fa53",
+   "deliveredChars": 47179
   },
   {
    "id": "f0853d11",
@@ -2652,7 +2970,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 207,
-   "deliveredDigest": "49abbd0da602b471"
+   "deliveredDigest": "49abbd0da602b471",
+   "deliveredChars": 47089
   },
   {
    "id": "gpt4_6ed717ea",
@@ -2660,7 +2979,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 186,
-   "deliveredDigest": "61633e34118e0a1e"
+   "deliveredDigest": "61633e34118e0a1e",
+   "deliveredChars": 47279
   },
   {
    "id": "gpt4_70e84552",
@@ -2668,7 +2988,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 193,
-   "deliveredDigest": "147c65900a2d77e9"
+   "deliveredDigest": "147c65900a2d77e9",
+   "deliveredChars": 47248
   },
   {
    "id": "a3838d2b",
@@ -2676,7 +2997,8 @@
    "carried": 27,
    "total": 34,
    "delivered": 197,
-   "deliveredDigest": "186f250db1244620"
+   "deliveredDigest": "186f250db1244620",
+   "deliveredChars": 47309
   },
   {
    "id": "gpt4_93159ced",
@@ -2684,7 +3006,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 189,
-   "deliveredDigest": "d001de2877e98922"
+   "deliveredDigest": "d001de2877e98922",
+   "deliveredChars": 47064
   },
   {
    "id": "gpt4_2d58bcd6",
@@ -2692,7 +3015,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 204,
-   "deliveredDigest": "cbfc21f335b5a5af"
+   "deliveredDigest": "cbfc21f335b5a5af",
+   "deliveredChars": 47234
   },
   {
    "id": "gpt4_65aabe59",
@@ -2700,7 +3024,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 181,
-   "deliveredDigest": "86605455619a6757"
+   "deliveredDigest": "86605455619a6757",
+   "deliveredChars": 47220
   },
   {
    "id": "982b5123",
@@ -2708,7 +3033,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 191,
-   "deliveredDigest": "a876f1f9e7782676"
+   "deliveredDigest": "a876f1f9e7782676",
+   "deliveredChars": 47262
   },
   {
    "id": "b9cfe692",
@@ -2716,7 +3042,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 206,
-   "deliveredDigest": "d648060c6e99d4ea"
+   "deliveredDigest": "d648060c6e99d4ea",
+   "deliveredChars": 47152
   },
   {
    "id": "gpt4_4edbafa2",
@@ -2724,7 +3051,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 186,
-   "deliveredDigest": "02c9f29c8fb5eb66"
+   "deliveredDigest": "02c9f29c8fb5eb66",
+   "deliveredChars": 47220
   },
   {
    "id": "c8090214",
@@ -2732,7 +3060,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 193,
-   "deliveredDigest": "87a1cbc4f204322d"
+   "deliveredDigest": "87a1cbc4f204322d",
+   "deliveredChars": 47234
   },
   {
    "id": "gpt4_483dd43c",
@@ -2740,7 +3069,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 197,
-   "deliveredDigest": "6c579bae27219102"
+   "deliveredDigest": "6c579bae27219102",
+   "deliveredChars": 47149
   },
   {
    "id": "e4e14d04",
@@ -2748,7 +3078,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 182,
-   "deliveredDigest": "03d35a91b6274622"
+   "deliveredDigest": "03d35a91b6274622",
+   "deliveredChars": 46972
   },
   {
    "id": "c9f37c46",
@@ -2756,7 +3087,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 188,
-   "deliveredDigest": "0d6f5f21f7e0ce64"
+   "deliveredDigest": "0d6f5f21f7e0ce64",
+   "deliveredChars": 47173
   },
   {
    "id": "gpt4_2c50253f",
@@ -2764,7 +3096,8 @@
    "carried": 9,
    "total": 12,
    "delivered": 197,
-   "deliveredDigest": "eaf2e20002fe8c96"
+   "deliveredDigest": "eaf2e20002fe8c96",
+   "deliveredChars": 46984
   },
   {
    "id": "dcfa8644",
@@ -2772,7 +3105,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 202,
-   "deliveredDigest": "c45d48f85143afd7"
+   "deliveredDigest": "c45d48f85143afd7",
+   "deliveredChars": 47070
   },
   {
    "id": "gpt4_b4a80587",
@@ -2780,7 +3114,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 212,
-   "deliveredDigest": "3a8e2e1c55e5f45d"
+   "deliveredDigest": "3a8e2e1c55e5f45d",
+   "deliveredChars": 47291
   },
   {
    "id": "gpt4_9a159967",
@@ -2788,7 +3123,8 @@
    "carried": 16,
    "total": 16,
    "delivered": 194,
-   "deliveredDigest": "927065eb78d6a75b"
+   "deliveredDigest": "927065eb78d6a75b",
+   "deliveredChars": 47259
   },
   {
    "id": "cc6d1ec1",
@@ -2796,7 +3132,8 @@
    "carried": 7,
    "total": 12,
    "delivered": 192,
-   "deliveredDigest": "96ae8504949d5d22"
+   "deliveredDigest": "96ae8504949d5d22",
+   "deliveredChars": 47303
   },
   {
    "id": "gpt4_8c8961ae",
@@ -2804,7 +3141,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 187,
-   "deliveredDigest": "2ae31c235f760ab7"
+   "deliveredDigest": "2ae31c235f760ab7",
+   "deliveredChars": 47209
   },
   {
    "id": "gpt4_d9af6064",
@@ -2812,7 +3150,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 204,
-   "deliveredDigest": "d8b9783a117dbdb9"
+   "deliveredDigest": "d8b9783a117dbdb9",
+   "deliveredChars": 47320
   },
   {
    "id": "gpt4_7de946e7",
@@ -2820,7 +3159,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 190,
-   "deliveredDigest": "3e5b4b266347d44a"
+   "deliveredDigest": "3e5b4b266347d44a",
+   "deliveredChars": 47271
   },
   {
    "id": "d01c6aa8",
@@ -2828,7 +3168,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 180,
-   "deliveredDigest": "4a72111fabcb6e1d"
+   "deliveredDigest": "4a72111fabcb6e1d",
+   "deliveredChars": 47277
   },
   {
    "id": "993da5e2",
@@ -2836,7 +3177,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 185,
-   "deliveredDigest": "60ca2614cac97826"
+   "deliveredDigest": "60ca2614cac97826",
+   "deliveredChars": 47159
   },
   {
    "id": "a3045048",
@@ -2844,7 +3186,8 @@
    "carried": 9,
    "total": 11,
    "delivered": 211,
-   "deliveredDigest": "7c5df2401d2a3d1c"
+   "deliveredDigest": "7c5df2401d2a3d1c",
+   "deliveredChars": 47224
   },
   {
    "id": "gpt4_d31cdae3",
@@ -2852,7 +3195,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 194,
-   "deliveredDigest": "a0f19f9002faa133"
+   "deliveredDigest": "a0f19f9002faa133",
+   "deliveredChars": 47177
   },
   {
    "id": "gpt4_cd90e484",
@@ -2860,7 +3204,8 @@
    "carried": 7,
    "total": 11,
    "delivered": 199,
-   "deliveredDigest": "1f1c7f3d9fe53fc9"
+   "deliveredDigest": "1f1c7f3d9fe53fc9",
+   "deliveredChars": 47007
   },
   {
    "id": "gpt4_88806d6e",
@@ -2868,7 +3213,8 @@
    "carried": 10,
    "total": 12,
    "delivered": 203,
-   "deliveredDigest": "908baf4ec22d24eb"
+   "deliveredDigest": "908baf4ec22d24eb",
+   "deliveredChars": 47249
   },
   {
    "id": "gpt4_4cd9eba1",
@@ -2876,7 +3222,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 198,
-   "deliveredDigest": "2fb9fe33c79dcdda"
+   "deliveredDigest": "2fb9fe33c79dcdda",
+   "deliveredChars": 47013
   },
   {
    "id": "gpt4_93f6379c",
@@ -2884,7 +3231,8 @@
    "carried": 14,
    "total": 18,
    "delivered": 178,
-   "deliveredDigest": "57aad36dc8144644"
+   "deliveredDigest": "57aad36dc8144644",
+   "deliveredChars": 47079
   },
   {
    "id": "b29f3365",
@@ -2892,7 +3240,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 205,
-   "deliveredDigest": "06c7e6b2ec718216"
+   "deliveredDigest": "06c7e6b2ec718216",
+   "deliveredChars": 47173
   },
   {
    "id": "gpt4_2f56ae70",
@@ -2900,7 +3249,8 @@
    "carried": 16,
    "total": 18,
    "delivered": 186,
-   "deliveredDigest": "5e6153c988510499"
+   "deliveredDigest": "5e6153c988510499",
+   "deliveredChars": 47286
   },
   {
    "id": "6613b389",
@@ -2908,7 +3258,8 @@
    "carried": 18,
    "total": 18,
    "delivered": 193,
-   "deliveredDigest": "f702fe94421d94b8"
+   "deliveredDigest": "f702fe94421d94b8",
+   "deliveredChars": 47218
   },
   {
    "id": "gpt4_78cf46a3",
@@ -2916,7 +3267,8 @@
    "carried": 9,
    "total": 10,
    "delivered": 223,
-   "deliveredDigest": "570df6069837fa5e"
+   "deliveredDigest": "570df6069837fa5e",
+   "deliveredChars": 47230
   },
   {
    "id": "gpt4_0a05b494",
@@ -2924,7 +3276,8 @@
    "carried": 11,
    "total": 12,
    "delivered": 198,
-   "deliveredDigest": "4c0dfc760dc97783"
+   "deliveredDigest": "4c0dfc760dc97783",
+   "deliveredChars": 47232
   },
   {
    "id": "gpt4_1a1dc16d",
@@ -2932,7 +3285,8 @@
    "carried": 7,
    "total": 10,
    "delivered": 184,
-   "deliveredDigest": "c40211a01e65ad7c"
+   "deliveredDigest": "c40211a01e65ad7c",
+   "deliveredChars": 47170
   },
   {
    "id": "gpt4_2f584639",
@@ -2940,7 +3294,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 195,
-   "deliveredDigest": "1cf3ad3b7738e720"
+   "deliveredDigest": "1cf3ad3b7738e720",
+   "deliveredChars": 47237
   },
   {
    "id": "gpt4_213fd887",
@@ -2948,7 +3303,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 190,
-   "deliveredDigest": "d3d706ccd6f2a875"
+   "deliveredDigest": "d3d706ccd6f2a875",
+   "deliveredChars": 46997
   },
   {
    "id": "gpt4_5438fa52",
@@ -2956,7 +3312,8 @@
    "carried": 12,
    "total": 12,
    "delivered": 209,
-   "deliveredDigest": "adcece179f062b83"
+   "deliveredDigest": "adcece179f062b83",
+   "deliveredChars": 47174
   },
   {
    "id": "gpt4_c27434e8",
@@ -2964,7 +3321,8 @@
    "carried": 11,
    "total": 11,
    "delivered": 193,
-   "deliveredDigest": "cc4b730f0adca69b"
+   "deliveredDigest": "cc4b730f0adca69b",
+   "deliveredChars": 47107
   },
   {
    "id": "gpt4_fe651585",
@@ -2972,7 +3330,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 211,
-   "deliveredDigest": "e9394ccd0c87f467"
+   "deliveredDigest": "e9394ccd0c87f467",
+   "deliveredChars": 47100
   },
   {
    "id": "8c18457d",
@@ -2980,7 +3339,8 @@
    "carried": 10,
    "total": 10,
    "delivered": 196,
-   "deliveredDigest": "e48170c531b46b56"
+   "deliveredDigest": "e48170c531b46b56",
+   "deliveredChars": 47200
   },
   {
    "id": "gpt4_70e84552_abs",
@@ -2988,7 +3348,8 @@
    "carried": 1,
    "total": 24,
    "delivered": 9,
-   "deliveredDigest": "b9c53b7ebb30167a"
+   "deliveredDigest": "b9c53b7ebb30167a",
+   "deliveredChars": 20004
   },
   {
    "id": "gpt4_93159ced_abs",
@@ -2996,7 +3357,8 @@
    "carried": 2,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "a2fc80d81f8b2d0a"
+   "deliveredDigest": "a2fc80d81f8b2d0a",
+   "deliveredChars": 22367
   },
   {
    "id": "982b5123_abs",
@@ -3004,7 +3366,8 @@
    "carried": 3,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "3b9fd9fd418c8cf2"
+   "deliveredDigest": "3b9fd9fd418c8cf2",
+   "deliveredChars": 22476
   },
   {
    "id": "c8090214_abs",
@@ -3012,7 +3375,8 @@
    "carried": 6,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "0b23361cb0ee46c6"
+   "deliveredDigest": "0b23361cb0ee46c6",
+   "deliveredChars": 20894
   },
   {
    "id": "gpt4_c27434e8_abs",
@@ -3020,7 +3384,8 @@
    "carried": 13,
    "total": 22,
    "delivered": 13,
-   "deliveredDigest": "3b027302a4213995"
+   "deliveredDigest": "3b027302a4213995",
+   "deliveredChars": 21621
   },
   {
    "id": "gpt4_fe651585_abs",
@@ -3028,7 +3393,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "83c425ff36311d46"
+   "deliveredDigest": "83c425ff36311d46",
+   "deliveredChars": 22636
   },
   {
    "id": "6a1eabeb",
@@ -3036,7 +3402,8 @@
    "carried": 6,
    "total": 24,
    "delivered": 10,
-   "deliveredDigest": "4fcf4e86350b924c"
+   "deliveredDigest": "4fcf4e86350b924c",
+   "deliveredChars": 20564
   },
   {
    "id": "6aeb4375",
@@ -3044,7 +3411,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "840e54c8ce7bf6ca"
+   "deliveredDigest": "840e54c8ce7bf6ca",
+   "deliveredChars": 22991
   },
   {
    "id": "830ce83f",
@@ -3052,7 +3420,8 @@
    "carried": 1,
    "total": 24,
    "delivered": 18,
-   "deliveredDigest": "5dd9cd3eafc29dea"
+   "deliveredDigest": "5dd9cd3eafc29dea",
+   "deliveredChars": 22092
   },
   {
    "id": "852ce960",
@@ -3060,7 +3429,8 @@
    "carried": 6,
    "total": 24,
    "delivered": 7,
-   "deliveredDigest": "6989712c7f97ab39"
+   "deliveredDigest": "6989712c7f97ab39",
+   "deliveredChars": 10366
   },
   {
    "id": "945e3d21",
@@ -3068,7 +3438,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 9,
-   "deliveredDigest": "394841be49043d81"
+   "deliveredDigest": "394841be49043d81",
+   "deliveredChars": 20899
   },
   {
    "id": "d7c942c3",
@@ -3076,7 +3447,8 @@
    "carried": 8,
    "total": 24,
    "delivered": 10,
-   "deliveredDigest": "0ccc3c9b3984aa57"
+   "deliveredDigest": "0ccc3c9b3984aa57",
+   "deliveredChars": 8952
   },
   {
    "id": "71315a70",
@@ -3084,7 +3456,8 @@
    "carried": 10,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "33f55ceeb3fa6448"
+   "deliveredDigest": "33f55ceeb3fa6448",
+   "deliveredChars": 22756
   },
   {
    "id": "89941a93",
@@ -3092,7 +3465,8 @@
    "carried": 4,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "3de5476c0fcc9c56"
+   "deliveredDigest": "3de5476c0fcc9c56",
+   "deliveredChars": 22528
   },
   {
    "id": "ce6d2d27",
@@ -3100,7 +3474,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "192681c6f21c189b"
+   "deliveredDigest": "192681c6f21c189b",
+   "deliveredChars": 23061
   },
   {
    "id": "9ea5eabc",
@@ -3108,7 +3483,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 11,
-   "deliveredDigest": "2ef650162af01c6b"
+   "deliveredDigest": "2ef650162af01c6b",
+   "deliveredChars": 21896
   },
   {
    "id": "07741c44",
@@ -3116,7 +3492,8 @@
    "carried": 10,
    "total": 24,
    "delivered": 11,
-   "deliveredDigest": "ed4f051117c58365"
+   "deliveredDigest": "ed4f051117c58365",
+   "deliveredChars": 22709
   },
   {
    "id": "a1eacc2a",
@@ -3124,7 +3501,8 @@
    "carried": 8,
    "total": 24,
    "delivered": 11,
-   "deliveredDigest": "d4de2ec36c3536f5"
+   "deliveredDigest": "d4de2ec36c3536f5",
+   "deliveredChars": 21053
   },
   {
    "id": "184da446",
@@ -3132,7 +3510,8 @@
    "carried": 8,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "a7994ab110ac7cdd"
+   "deliveredDigest": "a7994ab110ac7cdd",
+   "deliveredChars": 22226
   },
   {
    "id": "031748ae",
@@ -3140,7 +3519,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "b471a39bca050c9e"
+   "deliveredDigest": "b471a39bca050c9e",
+   "deliveredChars": 21520
   },
   {
    "id": "4d6b87c8",
@@ -3148,7 +3528,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "f618c46dbd684c00"
+   "deliveredDigest": "f618c46dbd684c00",
+   "deliveredChars": 21184
   },
   {
    "id": "0f05491a",
@@ -3156,7 +3537,8 @@
    "carried": 15,
    "total": 24,
    "delivered": 22,
-   "deliveredDigest": "3a52bfbef90c7ce9"
+   "deliveredDigest": "3a52bfbef90c7ce9",
+   "deliveredChars": 22625
   },
   {
    "id": "08e075c7",
@@ -3164,7 +3546,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 8,
-   "deliveredDigest": "688ec44350b82d03"
+   "deliveredDigest": "688ec44350b82d03",
+   "deliveredChars": 14502
   },
   {
    "id": "f9e8c073",
@@ -3172,7 +3555,8 @@
    "carried": 9,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "3c4ee3a4fca9d46e"
+   "deliveredDigest": "3c4ee3a4fca9d46e",
+   "deliveredChars": 21438
   },
   {
    "id": "41698283",
@@ -3180,7 +3564,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 11,
-   "deliveredDigest": "6f4ff8d40fdb113d"
+   "deliveredDigest": "6f4ff8d40fdb113d",
+   "deliveredChars": 22698
   },
   {
    "id": "2698e78f",
@@ -3188,7 +3573,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "96ed0e484895d7d2"
+   "deliveredDigest": "96ed0e484895d7d2",
+   "deliveredChars": 21943
   },
   {
    "id": "b6019101",
@@ -3196,7 +3582,8 @@
    "carried": 5,
    "total": 22,
    "delivered": 8,
-   "deliveredDigest": "caa29097c065b360"
+   "deliveredDigest": "caa29097c065b360",
+   "deliveredChars": 23212
   },
   {
    "id": "45dc21b6",
@@ -3204,7 +3591,8 @@
    "carried": 3,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "ccdcfdd173868e56"
+   "deliveredDigest": "ccdcfdd173868e56",
+   "deliveredChars": 21585
   },
   {
    "id": "5a4f22c0",
@@ -3212,7 +3600,8 @@
    "carried": 8,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "43844f9be16c1942"
+   "deliveredDigest": "43844f9be16c1942",
+   "deliveredChars": 21395
   },
   {
    "id": "6071bd76",
@@ -3220,7 +3609,8 @@
    "carried": 10,
    "total": 24,
    "delivered": 15,
-   "deliveredDigest": "8be2df1207055bb7"
+   "deliveredDigest": "8be2df1207055bb7",
+   "deliveredChars": 22051
   },
   {
    "id": "e493bb7c",
@@ -3228,7 +3618,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "dde7490c3278dc6f"
+   "deliveredDigest": "dde7490c3278dc6f",
+   "deliveredChars": 21833
   },
   {
    "id": "618f13b2",
@@ -3236,7 +3627,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "70e41c494d76f344"
+   "deliveredDigest": "70e41c494d76f344",
+   "deliveredChars": 23197
   },
   {
    "id": "72e3ee87",
@@ -3244,7 +3636,8 @@
    "carried": 9,
    "total": 24,
    "delivered": 18,
-   "deliveredDigest": "b6a8a452fa65c2de"
+   "deliveredDigest": "b6a8a452fa65c2de",
+   "deliveredChars": 22090
   },
   {
    "id": "c4ea545c",
@@ -3252,7 +3645,8 @@
    "carried": 1,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "513ca764103fb83c"
+   "deliveredDigest": "513ca764103fb83c",
+   "deliveredChars": 21407
   },
   {
    "id": "01493427",
@@ -3260,7 +3654,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "d65117e95c622164"
+   "deliveredDigest": "d65117e95c622164",
+   "deliveredChars": 23208
   },
   {
    "id": "6a27ffc2",
@@ -3268,7 +3663,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "85bcd6dd0ac32204"
+   "deliveredDigest": "85bcd6dd0ac32204",
+   "deliveredChars": 19803
   },
   {
    "id": "2133c1b5",
@@ -3276,7 +3672,8 @@
    "carried": 3,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "aa623cf07ff02ccd"
+   "deliveredDigest": "aa623cf07ff02ccd",
+   "deliveredChars": 23366
   },
   {
    "id": "18bc8abd",
@@ -3284,7 +3681,8 @@
    "carried": 9,
    "total": 24,
    "delivered": 15,
-   "deliveredDigest": "4a0d3d492f2f9259"
+   "deliveredDigest": "4a0d3d492f2f9259",
+   "deliveredChars": 22362
   },
   {
    "id": "db467c8c",
@@ -3292,7 +3690,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "ad0d4a78c30b3868"
+   "deliveredDigest": "ad0d4a78c30b3868",
+   "deliveredChars": 19890
   },
   {
    "id": "7a87bd0c",
@@ -3300,7 +3699,8 @@
    "carried": 9,
    "total": 22,
    "delivered": 12,
-   "deliveredDigest": "9fb950cc5391e62b"
+   "deliveredDigest": "9fb950cc5391e62b",
+   "deliveredChars": 20385
   },
   {
    "id": "e61a7584",
@@ -3308,7 +3708,8 @@
    "carried": 9,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "e7aab21782a56ed0"
+   "deliveredDigest": "e7aab21782a56ed0",
+   "deliveredChars": 23129
   },
   {
    "id": "1cea1afa",
@@ -3316,7 +3717,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "1addf405e6a15cc6"
+   "deliveredDigest": "1addf405e6a15cc6",
+   "deliveredChars": 20988
   },
   {
    "id": "ed4ddc30",
@@ -3324,7 +3726,8 @@
    "carried": 8,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "f30fd0866f7667d4"
+   "deliveredDigest": "f30fd0866f7667d4",
+   "deliveredChars": 22350
   },
   {
    "id": "8fb83627",
@@ -3332,7 +3735,8 @@
    "carried": 15,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "f7d27b24a0c3d4a7"
+   "deliveredDigest": "f7d27b24a0c3d4a7",
+   "deliveredChars": 21975
   },
   {
    "id": "b01defab",
@@ -3340,7 +3744,8 @@
    "carried": 15,
    "total": 24,
    "delivered": 21,
-   "deliveredDigest": "713de3567e675ac2"
+   "deliveredDigest": "713de3567e675ac2",
+   "deliveredChars": 23223
   },
   {
    "id": "22d2cb42",
@@ -3348,7 +3753,8 @@
    "carried": 11,
    "total": 24,
    "delivered": 19,
-   "deliveredDigest": "89841a06238280a0"
+   "deliveredDigest": "89841a06238280a0",
+   "deliveredChars": 23223
   },
   {
    "id": "0e4e4c46",
@@ -3356,7 +3762,8 @@
    "carried": 8,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "b488c04edfcb8e6e"
+   "deliveredDigest": "b488c04edfcb8e6e",
+   "deliveredChars": 21218
   },
   {
    "id": "4b24c848",
@@ -3364,7 +3771,8 @@
    "carried": 1,
    "total": 24,
    "delivered": 9,
-   "deliveredDigest": "5a31b3b57614889c"
+   "deliveredDigest": "5a31b3b57614889c",
+   "deliveredChars": 21473
   },
   {
    "id": "7e974930",
@@ -3372,7 +3780,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "7b424453717bae31"
+   "deliveredDigest": "7b424453717bae31",
+   "deliveredChars": 22864
   },
   {
    "id": "603deb26",
@@ -3380,7 +3789,8 @@
    "carried": 4,
    "total": 22,
    "delivered": 14,
-   "deliveredDigest": "6cc82b61dac4faa2"
+   "deliveredDigest": "6cc82b61dac4faa2",
+   "deliveredChars": 22430
   },
   {
    "id": "59524333",
@@ -3388,7 +3798,8 @@
    "carried": 4,
    "total": 22,
    "delivered": 9,
-   "deliveredDigest": "251b785003752137"
+   "deliveredDigest": "251b785003752137",
+   "deliveredChars": 20931
   },
   {
    "id": "5831f84d",
@@ -3396,7 +3807,8 @@
    "carried": 6,
    "total": 22,
    "delivered": 12,
-   "deliveredDigest": "b572eb10cc976dd3"
+   "deliveredDigest": "b572eb10cc976dd3",
+   "deliveredChars": 21903
   },
   {
    "id": "eace081b",
@@ -3404,7 +3816,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "e0196d1dc0bb5fea"
+   "deliveredDigest": "e0196d1dc0bb5fea",
+   "deliveredChars": 21195
   },
   {
    "id": "affe2881",
@@ -3412,7 +3825,8 @@
    "carried": 6,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "ee378032fa28568d"
+   "deliveredDigest": "ee378032fa28568d",
+   "deliveredChars": 21101
   },
   {
    "id": "50635ada",
@@ -3420,7 +3834,8 @@
    "carried": 11,
    "total": 24,
    "delivered": 17,
-   "deliveredDigest": "3c73549b3f7753a7"
+   "deliveredDigest": "3c73549b3f7753a7",
+   "deliveredChars": 21848
   },
   {
    "id": "e66b632c",
@@ -3428,7 +3843,8 @@
    "carried": 9,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "47a0ab3845bc7722"
+   "deliveredDigest": "47a0ab3845bc7722",
+   "deliveredChars": 22559
   },
   {
    "id": "0ddfec37",
@@ -3436,7 +3852,8 @@
    "carried": 5,
    "total": 22,
    "delivered": 12,
-   "deliveredDigest": "bc059dffafda90e8"
+   "deliveredDigest": "bc059dffafda90e8",
+   "deliveredChars": 21472
   },
   {
    "id": "f685340e",
@@ -3444,7 +3861,8 @@
    "carried": 11,
    "total": 24,
    "delivered": 18,
-   "deliveredDigest": "04f24936773f382b"
+   "deliveredDigest": "04f24936773f382b",
+   "deliveredChars": 21908
   },
   {
    "id": "cc5ded98",
@@ -3452,7 +3870,8 @@
    "carried": 10,
    "total": 22,
    "delivered": 13,
-   "deliveredDigest": "52942dcf61a8a855"
+   "deliveredDigest": "52942dcf61a8a855",
+   "deliveredChars": 21310
   },
   {
    "id": "dfde3500",
@@ -3460,7 +3879,8 @@
    "carried": 12,
    "total": 22,
    "delivered": 18,
-   "deliveredDigest": "3f3096f4acf26ead"
+   "deliveredDigest": "3f3096f4acf26ead",
+   "deliveredChars": 22924
   },
   {
    "id": "69fee5aa",
@@ -3468,7 +3888,8 @@
    "carried": 4,
    "total": 22,
    "delivered": 11,
-   "deliveredDigest": "4ea15a732dcc8961"
+   "deliveredDigest": "4ea15a732dcc8961",
+   "deliveredChars": 21792
   },
   {
    "id": "7401057b",
@@ -3476,7 +3897,8 @@
    "carried": 11,
    "total": 24,
    "delivered": 13,
-   "deliveredDigest": "2415a07a7af5510f"
+   "deliveredDigest": "2415a07a7af5510f",
+   "deliveredChars": 21065
   },
   {
    "id": "cf22b7bf",
@@ -3484,7 +3906,8 @@
    "carried": 3,
    "total": 22,
    "delivered": 12,
-   "deliveredDigest": "9f12ac614afbe00d"
+   "deliveredDigest": "9f12ac614afbe00d",
+   "deliveredChars": 20855
   },
   {
    "id": "a2f3aa27",
@@ -3492,7 +3915,8 @@
    "carried": 5,
    "total": 20,
    "delivered": 15,
-   "deliveredDigest": "3d08dd4dce384f60"
+   "deliveredDigest": "3d08dd4dce384f60",
+   "deliveredChars": 23381
   },
   {
    "id": "c7dc5443",
@@ -3500,7 +3924,8 @@
    "carried": 15,
    "total": 24,
    "delivered": 18,
-   "deliveredDigest": "310a7e09a0e0707c"
+   "deliveredDigest": "310a7e09a0e0707c",
+   "deliveredChars": 21120
   },
   {
    "id": "06db6396",
@@ -3508,7 +3933,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 6,
-   "deliveredDigest": "67a56a08c012b22d"
+   "deliveredDigest": "67a56a08c012b22d",
+   "deliveredChars": 21563
   },
   {
    "id": "3ba21379",
@@ -3516,7 +3942,8 @@
    "carried": 1,
    "total": 24,
    "delivered": 4,
-   "deliveredDigest": "ac42dc7466b2d7a3"
+   "deliveredDigest": "ac42dc7466b2d7a3",
+   "deliveredChars": 10143
   },
   {
    "id": "9bbe84a2",
@@ -3524,7 +3951,8 @@
    "carried": 13,
    "total": 22,
    "delivered": 14,
-   "deliveredDigest": "6aaff56f08381a37"
+   "deliveredDigest": "6aaff56f08381a37",
+   "deliveredChars": 21927
   },
   {
    "id": "10e09553",
@@ -3532,7 +3960,8 @@
    "carried": 10,
    "total": 20,
    "delivered": 17,
-   "deliveredDigest": "e7caa2a30c8dbe64"
+   "deliveredDigest": "e7caa2a30c8dbe64",
+   "deliveredChars": 21566
   },
   {
    "id": "dad224aa",
@@ -3540,7 +3969,8 @@
    "carried": 7,
    "total": 24,
    "delivered": 19,
-   "deliveredDigest": "b107ceb67f06306b"
+   "deliveredDigest": "b107ceb67f06306b",
+   "deliveredChars": 22647
   },
   {
    "id": "ba61f0b9",
@@ -3548,7 +3978,8 @@
    "carried": 8,
    "total": 22,
    "delivered": 10,
-   "deliveredDigest": "bf725d27f7825516"
+   "deliveredDigest": "bf725d27f7825516",
+   "deliveredChars": 22258
   },
   {
    "id": "42ec0761",
@@ -3556,7 +3987,8 @@
    "carried": 11,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "3f8d5ef885c95768"
+   "deliveredDigest": "3f8d5ef885c95768",
+   "deliveredChars": 23334
   },
   {
    "id": "5c40ec5b",
@@ -3564,7 +3996,8 @@
    "carried": 6,
    "total": 20,
    "delivered": 14,
-   "deliveredDigest": "69cc678150870be0"
+   "deliveredDigest": "69cc678150870be0",
+   "deliveredChars": 22534
   },
   {
    "id": "c6853660",
@@ -3572,7 +4005,8 @@
    "carried": 7,
    "total": 20,
    "delivered": 12,
-   "deliveredDigest": "a155be3250a2a192"
+   "deliveredDigest": "a155be3250a2a192",
+   "deliveredChars": 22060
   },
   {
    "id": "26bdc477",
@@ -3580,7 +4014,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "27df780243becf45"
+   "deliveredDigest": "27df780243becf45",
+   "deliveredChars": 23090
   },
   {
    "id": "0977f2af",
@@ -3588,7 +4023,8 @@
    "carried": 3,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "06b02a2e090f6065"
+   "deliveredDigest": "06b02a2e090f6065",
+   "deliveredChars": 22750
   },
   {
    "id": "6aeb4375_abs",
@@ -3596,7 +4032,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 16,
-   "deliveredDigest": "a88722940f8f7022"
+   "deliveredDigest": "a88722940f8f7022",
+   "deliveredChars": 22424
   },
   {
    "id": "031748ae_abs",
@@ -3604,7 +4041,8 @@
    "carried": 6,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "63c69b063903ca87"
+   "deliveredDigest": "63c69b063903ca87",
+   "deliveredChars": 21700
   },
   {
    "id": "2698e78f_abs",
@@ -3612,7 +4050,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 15,
-   "deliveredDigest": "41f4a92383258c04"
+   "deliveredDigest": "41f4a92383258c04",
+   "deliveredChars": 22889
   },
   {
    "id": "2133c1b5_abs",
@@ -3620,7 +4059,8 @@
    "carried": 1,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "54d102f25be1111a"
+   "deliveredDigest": "54d102f25be1111a",
+   "deliveredChars": 22508
   },
   {
    "id": "0ddfec37_abs",
@@ -3628,7 +4068,8 @@
    "carried": 3,
    "total": 22,
    "delivered": 16,
-   "deliveredDigest": "0e87448ce0e562dd"
+   "deliveredDigest": "0e87448ce0e562dd",
+   "deliveredChars": 21097
   },
   {
    "id": "f685340e_abs",
@@ -3636,7 +4077,8 @@
    "carried": 10,
    "total": 24,
    "delivered": 17,
-   "deliveredDigest": "5bbb9e1f1f814d17"
+   "deliveredDigest": "5bbb9e1f1f814d17",
+   "deliveredChars": 22247
   },
   {
    "id": "89941a94",
@@ -3644,7 +4086,8 @@
    "carried": 10,
    "total": 24,
    "delivered": 12,
-   "deliveredDigest": "f1105e30c8ddcb75"
+   "deliveredDigest": "f1105e30c8ddcb75",
+   "deliveredChars": 22281
   },
   {
    "id": "07741c45",
@@ -3652,7 +4095,8 @@
    "carried": 10,
    "total": 24,
    "delivered": 14,
-   "deliveredDigest": "1414f3ebdbb020d0"
+   "deliveredDigest": "1414f3ebdbb020d0",
+   "deliveredChars": 22006
   },
   {
    "id": "7161e7e2",
@@ -3660,7 +4104,8 @@
    "carried": 8,
    "total": 14,
    "delivered": 15,
-   "deliveredDigest": "05a9ea3d13e347cc"
+   "deliveredDigest": "05a9ea3d13e347cc",
+   "deliveredChars": 22280
   },
   {
    "id": "c4f10528",
@@ -3668,7 +4113,8 @@
    "carried": 8,
    "total": 14,
    "delivered": 22,
-   "deliveredDigest": "083c5d2d15e064fc"
+   "deliveredDigest": "083c5d2d15e064fc",
+   "deliveredChars": 22685
   },
   {
    "id": "89527b6b",
@@ -3676,7 +4122,8 @@
    "carried": 2,
    "total": 2,
    "delivered": 12,
-   "deliveredDigest": "31a6288b5d52e2f0"
+   "deliveredDigest": "31a6288b5d52e2f0",
+   "deliveredChars": 23107
   },
   {
    "id": "e9327a54",
@@ -3684,7 +4131,8 @@
    "carried": 3,
    "total": 14,
    "delivered": 14,
-   "deliveredDigest": "9254cd009002b3e4"
+   "deliveredDigest": "9254cd009002b3e4",
+   "deliveredChars": 22122
   },
   {
    "id": "4c36ccef",
@@ -3692,7 +4140,8 @@
    "carried": 3,
    "total": 8,
    "delivered": 14,
-   "deliveredDigest": "9dc3222976e35272"
+   "deliveredDigest": "9dc3222976e35272",
+   "deliveredChars": 23488
   },
   {
    "id": "6ae235be",
@@ -3700,7 +4149,8 @@
    "carried": 4,
    "total": 8,
    "delivered": 10,
-   "deliveredDigest": "0f278e4e4ac11a94"
+   "deliveredDigest": "0f278e4e4ac11a94",
+   "deliveredChars": 20485
   },
   {
    "id": "7e00a6cb",
@@ -3708,7 +4158,8 @@
    "carried": 2,
    "total": 6,
    "delivered": 13,
-   "deliveredDigest": "34085acc0640bd02"
+   "deliveredDigest": "34085acc0640bd02",
+   "deliveredChars": 21770
   },
   {
    "id": "1903aded",
@@ -3716,7 +4167,8 @@
    "carried": 1,
    "total": 2,
    "delivered": 13,
-   "deliveredDigest": "36b7acd883cfad5a"
+   "deliveredDigest": "36b7acd883cfad5a",
+   "deliveredChars": 23134
   },
   {
    "id": "ceb54acb",
@@ -3724,7 +4176,8 @@
    "carried": 1,
    "total": 4,
    "delivered": 10,
-   "deliveredDigest": "e0c55ef5adeaf49b"
+   "deliveredDigest": "e0c55ef5adeaf49b",
+   "deliveredChars": 23233
   },
   {
    "id": "f523d9fe",
@@ -3732,7 +4185,8 @@
    "carried": 2,
    "total": 22,
    "delivered": 7,
-   "deliveredDigest": "4e1a9f6da60fc74c"
+   "deliveredDigest": "4e1a9f6da60fc74c",
+   "deliveredChars": 21684
   },
   {
    "id": "0e5e2d1a",
@@ -3740,7 +4194,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 13,
-   "deliveredDigest": "2f445b5c6ce303e9"
+   "deliveredDigest": "2f445b5c6ce303e9",
+   "deliveredChars": 22147
   },
   {
    "id": "fea54f57",
@@ -3748,7 +4203,8 @@
    "carried": 3,
    "total": 14,
    "delivered": 13,
-   "deliveredDigest": "56349e9e62d696e1"
+   "deliveredDigest": "56349e9e62d696e1",
+   "deliveredChars": 22862
   },
   {
    "id": "cc539528",
@@ -3756,7 +4212,8 @@
    "carried": 7,
    "total": 10,
    "delivered": 15,
-   "deliveredDigest": "2cc691b683afe0b5"
+   "deliveredDigest": "2cc691b683afe0b5",
+   "deliveredChars": 23173
   },
   {
    "id": "dc439ea3",
@@ -3764,7 +4221,8 @@
    "carried": 4,
    "total": 8,
    "delivered": 12,
-   "deliveredDigest": "5fffae5d832ed141"
+   "deliveredDigest": "5fffae5d832ed141",
+   "deliveredChars": 22042
   },
   {
    "id": "18dcd5a5",
@@ -3772,7 +4230,8 @@
    "carried": 1,
    "total": 2,
    "delivered": 8,
-   "deliveredDigest": "36e2909330bdb25a"
+   "deliveredDigest": "36e2909330bdb25a",
+   "deliveredChars": 20495
   },
   {
    "id": "488d3006",
@@ -3780,7 +4239,8 @@
    "carried": 8,
    "total": 14,
    "delivered": 16,
-   "deliveredDigest": "885d7df8afec4dcd"
+   "deliveredDigest": "885d7df8afec4dcd",
+   "deliveredChars": 21992
   },
   {
    "id": "58470ed2",
@@ -3788,7 +4248,8 @@
    "carried": 2,
    "total": 3,
    "delivered": 10,
-   "deliveredDigest": "a8f265c2dda41ece"
+   "deliveredDigest": "a8f265c2dda41ece",
+   "deliveredChars": 21879
   },
   {
    "id": "8cf51dda",
@@ -3796,7 +4257,8 @@
    "carried": 2,
    "total": 2,
    "delivered": 11,
-   "deliveredDigest": "02d2cb175dde5992"
+   "deliveredDigest": "02d2cb175dde5992",
+   "deliveredChars": 23232
   },
   {
    "id": "1d4da289",
@@ -3804,7 +4266,8 @@
    "carried": 4,
    "total": 6,
    "delivered": 13,
-   "deliveredDigest": "f025f8df38f09265"
+   "deliveredDigest": "f025f8df38f09265",
+   "deliveredChars": 22595
   },
   {
    "id": "8464fc84",
@@ -3812,7 +4275,8 @@
    "carried": 4,
    "total": 12,
    "delivered": 20,
-   "deliveredDigest": "f2ad3ebc23f5e033"
+   "deliveredDigest": "f2ad3ebc23f5e033",
+   "deliveredChars": 22446
   },
   {
    "id": "8aef76bc",
@@ -3820,7 +4284,8 @@
    "carried": 4,
    "total": 8,
    "delivered": 12,
-   "deliveredDigest": "61e96463b848cca5"
+   "deliveredDigest": "61e96463b848cca5",
+   "deliveredChars": 22932
   },
   {
    "id": "71a3fd6b",
@@ -3828,7 +4293,8 @@
    "carried": 4,
    "total": 6,
    "delivered": 16,
-   "deliveredDigest": "ddc4d1456981d296"
+   "deliveredDigest": "ddc4d1456981d296",
+   "deliveredChars": 23437
   },
   {
    "id": "2bf43736",
@@ -3836,7 +4302,8 @@
    "carried": 7,
    "total": 11,
    "delivered": 12,
-   "deliveredDigest": "d1934d735ea0c5c1"
+   "deliveredDigest": "d1934d735ea0c5c1",
+   "deliveredChars": 23003
   },
   {
    "id": "70b3e69b",
@@ -3844,7 +4311,8 @@
    "carried": 12,
    "total": 14,
    "delivered": 18,
-   "deliveredDigest": "a405e95eb5a37737"
+   "deliveredDigest": "a405e95eb5a37737",
+   "deliveredChars": 22830
   },
   {
    "id": "8752c811",
@@ -3852,7 +4320,8 @@
    "carried": 3,
    "total": 6,
    "delivered": 12,
-   "deliveredDigest": "7d4857e33e45df20"
+   "deliveredDigest": "7d4857e33e45df20",
+   "deliveredChars": 22283
   },
   {
    "id": "3249768e",
@@ -3860,7 +4329,8 @@
    "carried": 4,
    "total": 4,
    "delivered": 13,
-   "deliveredDigest": "32fe3cdb4147e143"
+   "deliveredDigest": "32fe3cdb4147e143",
+   "deliveredChars": 21832
   },
   {
    "id": "1b9b7252",
@@ -3868,7 +4338,8 @@
    "carried": 2,
    "total": 8,
    "delivered": 10,
-   "deliveredDigest": "965be44640c335db"
+   "deliveredDigest": "965be44640c335db",
+   "deliveredChars": 20675
   },
   {
    "id": "1568498a",
@@ -3876,7 +4347,8 @@
    "carried": 5,
    "total": 24,
    "delivered": 15,
-   "deliveredDigest": "a85acd6dfd33b09b"
+   "deliveredDigest": "a85acd6dfd33b09b",
+   "deliveredChars": 21144
   },
   {
    "id": "6222b6eb",
@@ -3884,7 +4356,8 @@
    "carried": 4,
    "total": 16,
    "delivered": 8,
-   "deliveredDigest": "5a82a11dcd158232"
+   "deliveredDigest": "5a82a11dcd158232",
+   "deliveredChars": 21732
   },
   {
    "id": "e8a79c70",
@@ -3892,7 +4365,8 @@
    "carried": 1,
    "total": 8,
    "delivered": 10,
-   "deliveredDigest": "30e926f4d7248655"
+   "deliveredDigest": "30e926f4d7248655",
+   "deliveredChars": 23037
   },
   {
    "id": "d596882b",
@@ -3900,7 +4374,8 @@
    "carried": 3,
    "total": 8,
    "delivered": 10,
-   "deliveredDigest": "7c465d3d0d1aae4d"
+   "deliveredDigest": "7c465d3d0d1aae4d",
+   "deliveredChars": 20748
   },
   {
    "id": "e3fc4d6e",
@@ -3908,7 +4383,8 @@
    "carried": 2,
    "total": 2,
    "delivered": 11,
-   "deliveredDigest": "b973753b1f4fbe0c"
+   "deliveredDigest": "b973753b1f4fbe0c",
+   "deliveredChars": 20558
   },
   {
    "id": "51b23612",
@@ -3916,7 +4392,8 @@
    "carried": 6,
    "total": 12,
    "delivered": 16,
-   "deliveredDigest": "a527ad0aea84e1f9"
+   "deliveredDigest": "a527ad0aea84e1f9",
+   "deliveredChars": 23351
   },
   {
    "id": "3e321797",
@@ -3924,7 +4401,8 @@
    "carried": 3,
    "total": 8,
    "delivered": 12,
-   "deliveredDigest": "81a415ef36335dd1"
+   "deliveredDigest": "81a415ef36335dd1",
+   "deliveredChars": 22905
   },
   {
    "id": "e982271f",
@@ -3932,7 +4410,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 20,
-   "deliveredDigest": "9d1245dc3c98d302"
+   "deliveredDigest": "9d1245dc3c98d302",
+   "deliveredChars": 23452
   },
   {
    "id": "352ab8bd",
@@ -3940,7 +4419,8 @@
    "carried": 7,
    "total": 15,
    "delivered": 12,
-   "deliveredDigest": "b705a867dc92420d"
+   "deliveredDigest": "b705a867dc92420d",
+   "deliveredChars": 20938
   },
   {
    "id": "fca762bc",
@@ -3948,7 +4428,8 @@
    "carried": 1,
    "total": 6,
    "delivered": 9,
-   "deliveredDigest": "2b664506f2fb34c8"
+   "deliveredDigest": "2b664506f2fb34c8",
+   "deliveredChars": 21725
   },
   {
    "id": "7a8d0b71",
@@ -3956,7 +4437,8 @@
    "carried": 3,
    "total": 5,
    "delivered": 9,
-   "deliveredDigest": "e78df26fc2d4b8a1"
+   "deliveredDigest": "e78df26fc2d4b8a1",
+   "deliveredChars": 21640
   },
   {
    "id": "a40e080f",
@@ -3964,7 +4446,8 @@
    "carried": 8,
    "total": 8,
    "delivered": 17,
-   "deliveredDigest": "f5488271e699bf2e"
+   "deliveredDigest": "f5488271e699bf2e",
+   "deliveredChars": 22814
   },
   {
    "id": "8b9d4367",
@@ -3972,7 +4455,8 @@
    "carried": 5,
    "total": 6,
    "delivered": 12,
-   "deliveredDigest": "7445269485fef18b"
+   "deliveredDigest": "7445269485fef18b",
+   "deliveredChars": 21379
   },
   {
    "id": "5809eb10",
@@ -3980,7 +4464,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 9,
-   "deliveredDigest": "d3a29d98771b81f4"
+   "deliveredDigest": "d3a29d98771b81f4",
+   "deliveredChars": 11522
   },
   {
    "id": "41275add",
@@ -3988,7 +4473,8 @@
    "carried": 1,
    "total": 2,
    "delivered": 9,
-   "deliveredDigest": "ef59622ef3ee463e"
+   "deliveredDigest": "ef59622ef3ee463e",
+   "deliveredChars": 21995
   },
   {
    "id": "4388e9dd",
@@ -3996,7 +4482,8 @@
    "carried": 4,
    "total": 6,
    "delivered": 12,
-   "deliveredDigest": "22391811c11ba8f6"
+   "deliveredDigest": "22391811c11ba8f6",
+   "deliveredChars": 21910
   },
   {
    "id": "4baee567",
@@ -4004,7 +4491,8 @@
    "carried": 4,
    "total": 20,
    "delivered": 8,
-   "deliveredDigest": "d922f3bfc5ebad86"
+   "deliveredDigest": "d922f3bfc5ebad86",
+   "deliveredChars": 21802
   },
   {
    "id": "561fabcd",
@@ -4012,7 +4500,8 @@
    "carried": 3,
    "total": 17,
    "delivered": 21,
-   "deliveredDigest": "90499a27a15935a5"
+   "deliveredDigest": "90499a27a15935a5",
+   "deliveredChars": 23167
   },
   {
    "id": "b759caee",
@@ -4020,7 +4509,8 @@
    "carried": 2,
    "total": 2,
    "delivered": 8,
-   "deliveredDigest": "15f7bd203c88a68e"
+   "deliveredDigest": "15f7bd203c88a68e",
+   "deliveredChars": 23084
   },
   {
    "id": "ac031881",
@@ -4028,7 +4518,8 @@
    "carried": 17,
    "total": 32,
    "delivered": 22,
-   "deliveredDigest": "f9f400f579a4a24a"
+   "deliveredDigest": "f9f400f579a4a24a",
+   "deliveredChars": 12934
   },
   {
    "id": "28bcfaac",
@@ -4036,7 +4527,8 @@
    "carried": 3,
    "total": 6,
    "delivered": 10,
-   "deliveredDigest": "79388bd642908f2d"
+   "deliveredDigest": "79388bd642908f2d",
+   "deliveredChars": 22524
   },
   {
    "id": "16c90bf4",
@@ -4044,7 +4536,8 @@
    "carried": 5,
    "total": 10,
    "delivered": 13,
-   "deliveredDigest": "653522e54cda2da6"
+   "deliveredDigest": "653522e54cda2da6",
+   "deliveredChars": 22166
   },
   {
    "id": "c8f1aeed",
@@ -4052,7 +4545,8 @@
    "carried": 3,
    "total": 6,
    "delivered": 8,
-   "deliveredDigest": "f935609306a71eaa"
+   "deliveredDigest": "f935609306a71eaa",
+   "deliveredChars": 21590
   },
   {
    "id": "eaca4986",
@@ -4060,7 +4554,8 @@
    "carried": 2,
    "total": 4,
    "delivered": 11,
-   "deliveredDigest": "2fbfe1def0776df0"
+   "deliveredDigest": "2fbfe1def0776df0",
+   "deliveredChars": 21801
   },
   {
    "id": "c7cf7dfd",
@@ -4068,7 +4563,8 @@
    "carried": 13,
    "total": 14,
    "delivered": 17,
-   "deliveredDigest": "8e6d067adf1fbac1"
+   "deliveredDigest": "8e6d067adf1fbac1",
+   "deliveredChars": 21565
   },
   {
    "id": "e48988bc",
@@ -4076,7 +4572,8 @@
    "carried": 6,
    "total": 6,
    "delivered": 15,
-   "deliveredDigest": "cee24b9ae52bedcc"
+   "deliveredDigest": "cee24b9ae52bedcc",
+   "deliveredChars": 20210
   },
   {
    "id": "1de5cff2",
@@ -4084,7 +4581,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 14,
-   "deliveredDigest": "de1f7ee4e3665ff3"
+   "deliveredDigest": "de1f7ee4e3665ff3",
+   "deliveredChars": 16034
   },
   {
    "id": "65240037",
@@ -4092,7 +4590,8 @@
    "carried": 14,
    "total": 14,
    "delivered": 20,
-   "deliveredDigest": "bb6c4d5df3f10690"
+   "deliveredDigest": "bb6c4d5df3f10690",
+   "deliveredChars": 23401
   },
   {
    "id": "778164c6",
@@ -4100,7 +4599,8 @@
    "carried": 8,
    "total": 12,
    "delivered": 13,
-   "deliveredDigest": "26509dfebfc68970"
+   "deliveredDigest": "26509dfebfc68970",
+   "deliveredChars": 23398
   }
  ]
 }

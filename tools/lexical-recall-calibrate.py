@@ -108,7 +108,7 @@ def gold_of(question: dict) -> dict:
             'that measured no gold.'
         )
     turns = question.get('turns') or []
-    return {
+    row = {
         'id': question['questionId'],
         'capability': question['capability'],
         'carried': overlap['carried'],
@@ -116,6 +116,16 @@ def gold_of(question: dict) -> dict:
         'delivered': len(turns),
         'deliveredDigest': digest_of([turn['text'] for turn in turns]),
     }
+    # The one quantity `carried` and the digest cannot see. Both are whole-turn shaped -- a count of gold
+    # turns and a hash over the delivered texts -- so a delivery that is **a clip of one turn** reads as
+    # no delivery at all: `carried: 0` and the digest of the empty list. That is not a hypothetical shape;
+    # it is the shape the room's floor produces (`§13.380`), and the candidate that carried it printed
+    # `0 question(s) delivered different turn texts` while delivering one. `promptChars` is the delivered
+    # evidence length, it was in the artifact the whole time, and it is what makes "a clip" and "nothing"
+    # two different rows.
+    if isinstance(question.get('promptChars'), int):
+        row['deliveredChars'] = question['promptChars']
+    return row
 
 
 def rows_of(report: dict) -> list[dict]:
@@ -260,15 +270,32 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
         and fresh[qid]['deliveredDigest'] != expected[qid]['deliveredDigest']
         and qid not in declared
     ]
-    # A declaration covers `carried` and the delivered texts, never `total`: the gold annotation is the
-    # dataset's, so "this question's gold count changed on purpose" is not a claim any product change can
-    # make. It stays fatal above.
+    # Only where both records carry the field: a reference written before it existed is not evidence that
+    # its run delivered zero characters, and a gate that failed on that would be switched off.
+    mismatched_chars = [
+        qid
+        for qid in expected
+        if qid in fresh
+        and 'deliveredChars' in expected[qid]
+        and 'deliveredChars' in fresh[qid]
+        and fresh[qid]['deliveredChars'] != expected[qid]['deliveredChars']
+        and qid not in declared
+    ]
+    # A declaration covers `carried`, the delivered texts and the delivered length, never `total`: the gold
+    # annotation is the dataset's, so "this question's gold count changed on purpose" is not a claim any
+    # product change can make. It stays fatal above. `deliveredChars` is in the list because a clip moves
+    # it and nothing else -- leaving it out would fail a correctly declared repair.
     still_moved = [
         qid
         for qid in declared
         if qid in fresh
         and fresh[qid]['carried'] == expected[qid]['carried']
         and fresh[qid]['deliveredDigest'] == expected[qid]['deliveredDigest']
+        and (
+            'deliveredChars' not in expected[qid]
+            or 'deliveredChars' not in fresh[qid]
+            or fresh[qid]['deliveredChars'] == expected[qid]['deliveredChars']
+        )
     ]
 
     if mismatched_total:
@@ -297,6 +324,17 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
             + '. The counts agree and the evidence does not: a different corpus slice, a different '
             'room, or a rendering that changed while the gold account stayed put.'
         )
+    if mismatched_chars:
+        failures.append(
+            f'{len(mismatched_chars)} question(s) delivered a different number of characters, e.g. '
+            + ', '.join(
+                f'{qid} {expected[qid]["deliveredChars"]}->{fresh[qid]["deliveredChars"]}'
+                for qid in mismatched_chars[:5]
+            )
+            + '. The turn account cannot see this: a clip of one turn and no delivery at all are both '
+            '`carried: 0` with the digest of an empty list, so the two agree on the two fields that '
+            'look like the delivery. The character count is the third.'
+        )
 
     if still_moved:
         failures.append(
@@ -320,9 +358,20 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
     for qid, reason in declared.items():
         if qid not in fresh:
             continue
+        # The character count is printed only when it moved, because that is the case the turn account
+        # reports as `same` -- a clip is exactly a delivery whose turns and digest agree with a run that
+        # delivered nothing.
+        chars = ''
+        if (
+            'deliveredChars' in expected[qid]
+            and 'deliveredChars' in fresh[qid]
+            and fresh[qid]['deliveredChars'] != expected[qid]['deliveredChars']
+        ):
+            chars = f', promptChars {expected[qid]["deliveredChars"]}->{fresh[qid]["deliveredChars"]}'
         print(
             f'MOVED (declared) : {qid} carried {expected[qid]["carried"]}->{fresh[qid]["carried"]}, '
             f'digest {"same" if fresh[qid]["deliveredDigest"] == expected[qid]["deliveredDigest"] else "changed"}'
+            f'{chars}'
             f' -- {reason}'
         )
 
@@ -389,6 +438,19 @@ def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -
         for qid in expected
         if qid in fresh and fresh[qid]['deliveredDigest'] != expected[qid]['deliveredDigest']
     ]
+    # The clip detector. `carried` and the digest are whole-turn shaped, so a delivery that is a clip of
+    # one turn prints `0 delivered different turn texts` -- which is how a change and a non-change came to
+    # read alike in this round's own candidate. A question whose delivery moved in characters while its
+    # turn account stood still is a clip, and it is named `CLIP` rather than folded into the count.
+    char_moved = [
+        qid
+        for qid in expected
+        if qid in fresh
+        and 'deliveredChars' in expected[qid]
+        and 'deliveredChars' in fresh[qid]
+        and fresh[qid]['deliveredChars'] != expected[qid]['deliveredChars']
+    ]
+    clips = [qid for qid in char_moved if qid not in redelivered]
 
     zero_expected = {qid for qid, row in expected.items() if row['carried'] == 0}
     zero_fresh = {qid for qid, row in fresh.items() if row['carried'] == 0}
@@ -399,6 +461,8 @@ def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -
           f'{sum(row["carried"] for row in fresh.values())}')
     print(f'questions changed : {len(improved)} gained, {len(regressed)} lost, {len(same)} unchanged')
     print(f'evidence changed  : {len(redelivered)} question(s) delivered different turn texts')
+    print(f'characters moved  : {len(char_moved)} question(s) delivered a different number of characters'
+          + (f' ({len(clips)} of them clipped: turns and digest agree, length does not)' if clips else ''))
     print(f'zero-recall       : {len(zero_expected)} -> {len(zero_fresh)} '
           f'({len(left_zero)} left, {len(entered_zero)} entered)')
     print(f'buckets (ref)     : {dict(Counter(bucket_of(row) for row in expected.values()))}')
@@ -407,6 +471,11 @@ def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -
         print(f'  GAIN {qid} {expected[qid]["carried"]}->{fresh[qid]["carried"]} of {expected[qid]["total"]}')
     for qid in regressed[:12]:
         print(f'  LOSS {qid} {expected[qid]["carried"]}->{fresh[qid]["carried"]} of {expected[qid]["total"]}')
+    for qid in char_moved[:12]:
+        print(
+            f'  {"CLIP" if qid in clips else "CHARS"} {qid} '
+            f'{expected[qid]["deliveredChars"]}->{fresh[qid]["deliveredChars"]}'
+        )
     if left_zero:
         print(f'  LEFT ZERO {", ".join(left_zero[:12])}')
     if entered_zero:
@@ -418,7 +487,7 @@ def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -
             print(f'  FAIL {failure}')
         return 1
 
-    if redelivered and not (improved or regressed):
+    if (redelivered or clips) and not (improved or regressed):
         # The counts agree everywhere and the texts do not. That is not a scoring change, it is another
         # delivery, and reporting it as "no effect" would be the most expensive kind of wrong.
         print(

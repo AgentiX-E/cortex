@@ -40586,32 +40586,39 @@ Three properties make this a weighting rather than a fit:
 The default stays `flat` on purpose: `flat` is what every number in this repository was measured under, and
 the honest order is measure-then-adopt. `memoryArmConfig.lexicalWeighting` states the value on every artifact.
 
-### 13.379.3 The second repair: the invariant stands, its explanation does not
+### 13.379.3 The second repair: an invariant, and a candidate the gate could not read
 
 The first draft of this section read: *`b86304ba` offered 456 turns and ranked a turn longer than the whole
-24,000-character room first, so the largest fitting prefix was the empty one — one turn's length erased 455
-others.* **That attribution is withdrawn.** The candidate run that carried the repair (`44231317722`) moved
-**0 of 500** deliveries and left `b86304ba` at `0 gained, 0 lost` — the branch it added never fires on the
-corpus that contains its own motivating question. A story that cannot move the case it was written for is
-not the explanation of that case.
+24,000-character room first, so the largest fitting prefix was the empty one -- one turn's length erased 455
+others.* A second draft withdrew that on the strength of the candidate run (`44231317722`), which printed
+`0 gained, 0 lost, 500 unchanged` and `0 question(s) delivered different turn texts`. **The second draft was
+also wrong**, and in the more embarrassing direction: the candidate's silence was not evidence that the
+branch never fires. It was the instrument failing to see the branch's output.
 
-Two further problems with the retracted sentence, both audit findings rather than hindsight:
+| draft | claim | status |
+| --- | --- | --- |
+| first | one over-room turn erased 455 others; the clip repairs it | mechanism unproven, invited a prior question it never asked |
+| second | the candidate changed 0 of 500, so the branch never fires and `b86304ba`'s cause is unidentified | **wrong**: the gate cannot see a clip, so the run could not have reported this |
 
-1. **The number had no archived provenance.** The reference (`tools/lexical-recall-reference.json`) records
-   `b86304ba` as `carried 0, total 10, delivered 0` — ten *gold* turns and an empty delivery. No artifact in
-   this repository records the plan's turn count for that question, so "456" was a figure from an
-   uncommitted probe being quoted as a measurement.
-2. **The mechanism was never checked against the gates in front of it.** `buildPrompt` answers
-   `NOTHING_CARRIED` when `evidenceRoom <= 0` (line 3333), *before* any selector runs, and returns the
-   no-evidence prompt when the selected text is empty (line 3335). Either gate produces exactly the
-   `delivered 0` the archive records, and neither is the branch this section added.
+What the archive actually holds for `b86304ba` (`S14`, per-question record): `evidenceTurns 456`,
+`evidenceChars 477,543` -- the **offer** -- against `turns: []` and `promptChars: 0` -- the **delivery**.
+So the "456" was in the artifact all along (`evidenceTurns`, which `question-record.ts` defines as the turns
+passed to `buildPrompt`), and the second draft's first complaint is retracted with the rest of it. The offer
+is twenty times the room on that route.
 
-What **stays** is the invariant, and it is now justified by its own local property instead of by that story:
-a room that cannot hold one whole turn can still buy part of the best one, and "too long to read" is not
-"no evidence". `selectByRelevance` buys the best-ranked turn **clipped** when no whole turn fits — the rule
-the character-clip path already used. `carried` stays empty (it counts whole turns) and `evidenceChars`
-reports what was delivered, so a reader can still tell "a clip" from "nothing". §13.380 records what the
-empty window's cause remains.
+What the clip does to the gate is the finding that matters. `tools/lexical-recall-calibrate.py` compared a
+delivery as `carried` (a count of **gold** turns delivered) plus `deliveredDigest` (a hash over the delivered
+turn **texts**). Both are whole-turn shaped, so a clip of one turn is `carried: 0` and the digest of an empty
+list -- byte-identical to a run that delivered nothing. The instrument could not distinguish "the repair
+worked" from "the repair never ran" on the only question it was registered for, and printing `0 question(s)
+delivered different turn texts` made that indistinguishable pair look like a result. `promptChars` -- the
+delivered evidence length, `AssembledPrompt.evidenceChars` -- was in the artifact the whole time;
+`gold_of` now carries it as `deliveredChars`, both verdicts compare it, and a candidate names a clip
+(`CLIP <id> 0->1200`) instead of folding it into a zero.
+
+The branch itself stays, as an **invariant**: a room that cannot hold one whole turn can still buy part of
+the best one, and "too long to read" is not "no evidence". It no longer claims to explain `b86304ba` in
+either direction -- §13.380.5 registers the re-dispatch that can now answer.
 
 ### 13.379.4 The registered reading
 
@@ -40637,24 +40644,36 @@ Neither is an arm change. The one arm field that differs is `idf`'s.
 | `44231317722` | `room-floor` | **none** | 4,299 → 4,299 | `0 gained, 0 lost, 500 unchanged` | `0` deliveries moved | 21 → 21 |
 | `44231332168` | `idf` | `lexicalWeighting: "flat" → "idf"` | **4,299 → 4,489** | `119 gained, 17 lost, 364 unchanged` | **234** deliveries moved | **21 → 11** (10 left, 0 entered) |
 
-### 13.380.1 The first reading refutes this round's own explanation
+### 13.380.1 The first reading is unreadable, and that is the finding
 
-`room-floor` changed **no delivery at all**: no `GAIN` line, no `LOSS` line, no `LEFT ZERO` line, and
-`b86304ba` still `0%`. That is a result, not a null one — the branch §13.379.3 added never fires on the
-corpus that contains its motivating question, so the over-long-first-turn story is not how `b86304ba` lost its
-evidence.
+`room-floor` printed `0 gained, 0 lost, 500 unchanged` and `0 question(s) delivered different turn texts`.
+Read at face value that is a refutation of the room's floor, and it was written down as one before being
+checked. It is not a refutation; it is a blind spot, and the blind spot is the instrument's:
 
-Two gates in front of the selector can each produce `carried 0 / delivered 0`, and the archive cannot tell
-them apart:
-
-| # | candidate cause | where | what would distinguish it |
+| what the delivery was | `carried` | `deliveredDigest` | `promptChars` |
 | --- | --- | --- | --- |
-| 1 | `evidenceRoom <= 0` | `prompt.ts` line 3333 — `NOTHING_CARRIED` **before** any selector runs | log `evidenceRoom` per question |
-| 2 | `plan.turns` empty | upstream of the prompt: nothing was admitted, so `render([])` is `''` | log `plan.turns.length` per question |
+| nothing (the reference) | 0 | `e3b0c442…` (the empty list) | 0 |
+| a 1,200-character clip of the best turn | 0 | `e3b0c442…` (**the same**) | **1,200** |
 
-The room-floor branch only governs the third cause — one over-room turn inside `selectByRelevance` — and it is
-unreachable whenever (1) holds, which is the trap the retracted sentence walked into. Distinguishing (1) from
-(2) is **one logged number** and is registered as the next measurement, not asserted here.
+The gate read the first two columns and reported the two rows as equal. Every field it compared is
+whole-turn shaped: `carried` counts **gold** turns and the digest hashes the delivered turn **texts**, and a
+clip is by definition neither. So the run answers "did whole-turn delivery move" -- no -- and cannot answer
+"did this question's delivery move", which is what the candidate was dispatched to ask. The same reasoning
+applies to `idf`: its 234 redelivered questions are whole-turn changes, which is why that reading is sound,
+and its 119 gains are counts of gold turns, which is why that reading is unaffected. **The `idf` row stands;
+the `room-floor` row does not.**
+
+Two candidate causes for the empty window remain, and the archive narrows them without settling them:
+
+| # | candidate cause | where | what would settle it |
+| --- | --- | --- | --- |
+| 1 | `evidenceRoom <= 0` | `prompt.ts:3333` -- `NOTHING_CARRIED` **before** any selector runs, so the clip branch is unreachable by construction | the re-dispatch below: a clip means the selector ran with room to spend |
+| 2 | the largest fitting prefix is empty **and** the clip is empty | `selectByRelevance` | a delivered length of 0 after the fix, with the selector's own room logged |
+
+What the archive rules **out** is the reading the second draft published: `plan.turns` was not empty
+(`evidenceTurns: 456`) and admission offered 477,543 characters, so the prompt builder was given evidence.
+The offer existed; the delivery did not; and which of the two gates above emptied it is now a question the
+gate can answer.
 
 ### 13.380.2 The second reading against the three registered criteria
 
@@ -40673,9 +40692,10 @@ candidate, not a decision.
 
 ### 13.380.3 What this licenses, and what it does not
 
-Licensed: `idf` is a **candidate worth a confirmation dispatch**. The reference is unchanged (no
-`expectedMoved` entry — this run is a candidate, and a declaration is for code that moves the reference's
-own deliveries, none of which moved here).
+Licensed: `idf` is a **candidate worth a confirmation dispatch**. The reference carries no `expectedMoved`
+entry, and that is now a statement rather than an omission: no *whole-turn* delivery moved, and the
+reference's `deliveredChars` column -- regenerated from the same `S14` artifact, buckets unchanged at
+21/129/114/236 -- is what the next candidate will be read against.
 
 Not licensed:
 
@@ -40694,6 +40714,28 @@ Not licensed:
 `--candidate <label>` prints the configuration diff before the delta, so the `room-floor` row above reads
 `unchanged -- this candidate's difference is in code, not in a setting` and the `idf` row names its one field.
 Without that line, a 119-question delta and a 0-question delta would have arrived with the same shape. The
-declaration mechanism (`expectedMoved`, checked in both directions) is described in `INSTRUMENT-RETRIEVAL.md`;
-it is unused in this round on purpose, and that is recorded here rather than left as an absent field a reader
-would have to interpret.
+declaration mechanism (`expectedMoved`, checked in both directions) is described in `INSTRUMENT-RETRIEVAL.md`.
+
+Two additions followed from reading these artifacts, both of them repairs to the instrument rather than to
+the product:
+
+| change | why it was needed | how it is checked |
+| --- | --- | --- |
+| `deliveredChars` in the reference row and in both verdicts | a clip is `carried: 0` with the digest of an empty list, so the gate could not tell it from no delivery (§13.380.1) | four Python tests: a clip-only delivery fails calibration, absent counts are not a difference, a declared clip counts as moved, a candidate names `CLIP <id> 0->1200` |
+| `CLIP` / `CHARS` lines in candidate mode | the aggregate `0 question(s) delivered different turn texts` was the line that made a clip read as no change | the same four, one of which asserts the printed shape |
+
+`expectedMoved` now covers `deliveredChars` as well: a clip moves that field and nothing else, so a
+declaration checked only against the turn account would fail a correctly declared repair -- and the next
+person would delete the declaration to get a green gate.
+
+### 13.380.5 The re-dispatch this registers
+
+One gate run (0 CNY, no candidate flag, `lexical_weighting: flat`), and it answers §13.380.1's table:
+
+| gate reading for `b86304ba` | conclusion | next |
+| --- | --- | --- |
+| `deliveredChars 0 -> >0` (a clip) | the selector ran with room to spend, so cause 1 is out and the clip is real | declare it in `expectedMoved`, because the reference is a record of a dispatched run |
+| `deliveredChars 0 -> 0`, gate green | the clip branch still delivered nothing on that question, so either cause 1 holds or the clip is empty too | log the selector's own `room` for that question -- the next instrument change, and the only remaining way to separate them |
+
+Both branches are registered before the run, because the difference between them is the difference between
+"the instrument was blind" and "the diagnosis was wrong", and those two want different next moves.

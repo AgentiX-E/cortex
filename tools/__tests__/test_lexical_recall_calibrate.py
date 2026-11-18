@@ -41,13 +41,19 @@ def question(
     total: int,
     capability: str = 'IE',
     texts: tuple[str, ...] = ('a turn',),
+    delivered_chars: int | None = None,
 ) -> dict:
-    return {
+    payload = {
         'questionId': qid,
         'capability': capability,
         'goldOverlap': {'carried': carried, 'total': total},
         'turns': [{'index': i, 'text': text} for i, text in enumerate(texts)],
     }
+    # Optional because it is: a record from before `promptChars` existed and a record whose delivery
+    # carried no whole turn both have `turns: []`, and only one of them had zero characters delivered.
+    if delivered_chars is not None:
+        payload['promptChars'] = delivered_chars
+    return payload
 
 
 def report(*questions: dict, fingerprint: str = FINGERPRINT, config: dict | None = None) -> dict:
@@ -472,3 +478,87 @@ def test_regenerating_the_reference_keeps_its_declarations(tmp_path: Path) -> No
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(reference_path.read_text())['expectedMoved'] == {'q1': 'the room floor'}
+
+
+# ## The blind spot these four tests exist for
+#
+# `carried` counts whole delivered turns and `deliveredDigest` hashes their texts, so a delivery that is
+# **a clip of one turn** is indistinguishable from no delivery at all: both are `carried: 0` and the digest
+# of the empty list. A gate built on those two fields therefore cannot see the one change the room's floor
+# makes, and a run that changes nothing and a run that changed a clip print the same line. `promptChars` is
+# the delivered evidence length and was in the artifact the whole time.
+
+
+def test_a_clip_only_delivery_fails_the_calibration(tmp_path: Path) -> None:
+    # Same gold account, same delivered turn texts, and a different delivery: 0 characters against 1,200.
+    # This is the shape the room's floor produces, and the two fields the gate used to read agree on it.
+    reference = reference_for(
+        tmp_path,
+        report(
+            question('q1', carried=0, total=2, texts=(), delivered_chars=0),
+            question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+        ),
+    )
+    clipped = report(
+        question('q1', carried=0, total=2, texts=(), delivered_chars=1200),
+        question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+    )
+    result = run(tmp_path, report_payload=clipped, reference_payload=reference)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'delivered a different number of characters' in result.stdout
+    assert 'q1' in result.stdout
+
+
+def test_absent_character_counts_are_not_a_difference(tmp_path: Path) -> None:
+    # Both records predate the field, or neither system reported it. Reporting that as a change would
+    # make the gate fail on every old artifact, which is a gate that gets switched off.
+    payload = baseline()
+    reference = reference_for(tmp_path, payload)
+    assert 'deliveredChars' not in reference['questions'][0]
+    result = run(tmp_path, report_payload=payload, reference_payload=reference)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_declared_question_that_only_clipped_counts_as_moved(tmp_path: Path) -> None:
+    # The declaration's second direction: a question declared as moved must be *seen* to move. A clip
+    # moves `promptChars` and nothing else, so a check that read only the turn account would fail a
+    # correctly declared repair -- and the next person would delete the declaration to get a green gate.
+    reference = reference_for(
+        tmp_path,
+        report(
+            question('q1', carried=0, total=2, texts=(), delivered_chars=0),
+            question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+        ),
+    )
+    reference['expectedMoved'] = {'q1': 'the room floor -- the clip'}
+    clipped = report(
+        question('q1', carried=0, total=2, texts=(), delivered_chars=1200),
+        question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+    )
+    result = run(tmp_path, report_payload=clipped, reference_payload=reference)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'MOVED (declared)' in result.stdout
+    assert 'promptChars 0->1200' in result.stdout
+
+
+def test_a_candidate_reports_a_clip_as_a_character_change(tmp_path: Path) -> None:
+    # A candidate's verdict is about comparability, so a clip is a reading rather than a failure -- but it
+    # has to be printed, because "0 questions delivered different turn texts" was the line that made a
+    # clip read as no change at all.
+    reference = reference_for(
+        tmp_path,
+        report(
+            question('q1', carried=0, total=2, texts=(), delivered_chars=0),
+            question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+        ),
+    )
+    clipped = report(
+        question('q1', carried=0, total=2, texts=(), delivered_chars=1200),
+        question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+    )
+    result = run(
+        tmp_path, report_payload=clipped, reference_payload=reference, extra=('--candidate', 'room-floor')
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '1 question(s) delivered a different number of characters' in result.stdout
+    assert 'CLIP q1 0->1200' in result.stdout

@@ -3551,12 +3551,17 @@ function selectByRelevance(
   // the clip path established -- text without a whole-unit roster -- rather than a second kind of partial
   // delivery.
   //
-  // This is an invariant rather than a measured repair, and the difference was measured too. `S14`'s
-  // question `b86304ba` offered 456 turns and delivered **zero** characters; the first explanation offered
-  // here -- one assistant turn longer than the whole 24,000-character room -- was refuted by its own
-  // candidate run, which changed 0 of 500 deliveries on the corpus that contains the case. So this branch
-  // never fires on that corpus, `b86304ba`'s empty window still has an unidentified cause, and §13.380
-  // records it as open. What justifies the branch is the local property, not that story: a room that cannot
+  // This is an invariant rather than a measured repair, and the first measurement of it was unreadable on
+  // purpose-built grounds. `S14`'s question `b86304ba` was offered 456 turns and 477,543 characters and
+  // delivered **zero** characters; the candidate run that carried this branch printed `0 question(s)
+  // delivered different turn texts`, which reads as "the branch never fires" and does not mean that. The
+  // instrument's delivery account is `carried` plus a digest over the delivered turn texts, and both are
+  // **whole-turn shaped**: a clip of one turn is `carried: 0` with the digest of the empty list, i.e.
+  // exactly the record of a run that delivered nothing. A clip was invisible to the gate that was
+  // measuring the clip. `tools/lexical-recall-calibrate.py` now reads the delivered character count as
+  // well (§13.380), so the next dispatch of this candidate answers a question this one could not.
+  //
+  // What justifies the branch in the meantime is its local property, not the story: a room that cannot
   // hold one whole turn can still buy part of the best one, and "too long to read" is not "no evidence".
   // `!` rather than a guard: `ranked` is one entry per turn of `plan.turns`, and the empty plan is answered
   // before this function is called (`NOTHING_CARRIED` in `buildPrompt`). A guard here would be a branch no

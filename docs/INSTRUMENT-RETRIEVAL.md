@@ -137,16 +137,41 @@ configuration    : 2 field(s) changed
 A candidate that moved two settings is not a candidate for either mechanism, and the run's own log is the
 only place that can be visible before someone attributes the delta to the wrong one. When nothing moved, the
 tool says so -- `unchanged -- this candidate's difference is in code, not in a setting` -- which is the
-correct reading of a change like the room's floor (`§13.379`), where the configuration is identical. That
-candidate then read `0 gained, 0 lost, 500 unchanged`, which is a result rather than a null one: the branch
-it added never fires on this corpus, and the empty window it was written for has a different cause
-(`§13.380`).
+correct reading of a change like the room's floor (`§13.379`), where the configuration is identical.
 
 Two verdicts exist besides the delta, and they are the ones that keep "no change" from being read as "no
-effect": a report whose gold account is identical **and** whose delivered texts moved is reported as a
-different delivery rather than as a null result, and an incomparable report fails. Neither says anything
-about accuracy: the reader is a constant, so a candidate's table is a statement about which turns reached a
+effect": a report whose gold account is identical **and** whose delivery moved is reported as a different
+delivery rather than as a null result, and an incomparable report fails. Neither says anything about
+accuracy: the reader is a constant, so a candidate's table is a statement about which turns reached a
 prompt, not about which answers were right.
+
+### What a delivery is, and the clip that hid inside it
+
+A row compares three things, and the third was added because the first two could not see the change that was
+being measured:
+
+| field | reads | blind to |
+| --- | --- | --- |
+| `carried` | how many of the question's **gold** turns were delivered | a delivered turn that is not gold |
+| `deliveredDigest` | a hash over the delivered turn **texts** | text that is not a whole turn |
+| `deliveredChars` | `promptChars`, the delivered evidence length | nothing about which turns |
+
+The first two are whole-turn shaped, so a delivery that is a **clip of one turn** is `carried: 0` and the
+digest of an empty list -- byte-identical to a run that delivered nothing at all. A candidate for the room's
+floor was dispatched, printed `0 question(s) delivered different turn texts`, and that line was published as
+a refutation of the repair before anyone checked what the gate compared (`§13.380`). It had compared the one
+part of the delivery a clip cannot change. The character count is now in the reference (regenerated from the
+same `S14` artifact, whose buckets are unchanged) and in both verdicts, and a candidate names the shape:
+
+```
+characters moved  : 1 question(s) delivered a different number of characters (1 of them clipped: turns and digest agree, length does not)
+  CLIP b86304ba 0->1200
+```
+
+`CLIP` means the turn account stood still and the delivered length moved; `CHARS` means the delivery moved in
+both. A calibration treats an undeclared move in either as a failure, and a declaration covers
+`deliveredChars` too -- a declared clip has no other field to move, so a check that ignored it would fail a
+correctly declared repair and teach the next person to delete the declaration.
 
 ## What the product must do for this to hold
 
