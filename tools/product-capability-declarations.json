@@ -175,7 +175,7 @@
    "symbol": "computeTemporalAnswer",
    "site": "packages/cortex-eval/src/temporal-engine.ts",
    "d3": "declared: computes from the question and the timestamps the harness parsed",
-   "reason": "693 lines of date arithmetic, enabled by default in the registered arm (`enableDeterministicTemporal !== false`). The product's temporal accuracy is 'ask the reader to compute it'. This is the cheapest product-side temporal gain available and it is currently on the wrong side of the boundary."
+   "reason": "693 lines of date arithmetic, enabled by default in the registered arm (`enableDeterministicTemporal !== false`). The product's temporal accuracy was 'ask the reader to compute it'. THIS ROW'S OWN CLAIM WAS MEASURED AND DOES NOT HOLD AS WRITTEN (§13.386): it said this is 'the cheapest product-side temporal gain available', which is a claim about cost, and the audit found the failures are not where the subtraction happens. `370a8ff4` (gold 15 weeks) shows the reader's two dates 81 days apart -- exactly right -- for the wrong two events; a mirror of `resolveTimeRange` resolves a window on 25 of 500 questions; and the three `TR` ordering failures are name-selection rather than order. What the product did get is the half that turned out to be worth having: `annotateSessionBoundaries` (row 27) states when each block happened, which is the attribution half of the same boundary. The engine stays `instrument` because its inputs are events an LLM extracted, and the product has no second call to extract with."
   },
   {
    "id": 21,
