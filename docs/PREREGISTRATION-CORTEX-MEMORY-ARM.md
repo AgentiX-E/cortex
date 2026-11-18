@@ -40586,15 +40586,32 @@ Three properties make this a weighting rather than a fit:
 The default stays `flat` on purpose: `flat` is what every number in this repository was measured under, and
 the honest order is measure-then-adopt. `memoryArmConfig.lexicalWeighting` states the value on every artifact.
 
-### 13.379.3 The second repair: a room that holds no whole turn
+### 13.379.3 The second repair: the invariant stands, its explanation does not
 
-`selectByRelevance` spends the room on the largest fitting **prefix**. `b86304ba` offered 456 turns and
-ranked a turn longer than the whole 24,000-character room first, so the largest fitting prefix was the empty
-one: the prompt carried no evidence and the reader answered "Unknown". One turn's length erased 455 others.
+The first draft of this section read: *`b86304ba` offered 456 turns and ranked a turn longer than the whole
+24,000-character room first, so the largest fitting prefix was the empty one — one turn's length erased 455
+others.* **That attribution is withdrawn.** The candidate run that carried the repair (`44231317722`) moved
+**0 of 500** deliveries and left `b86304ba` at `0 gained, 0 lost` — the branch it added never fires on the
+corpus that contains its own motivating question. A story that cannot move the case it was written for is
+not the explanation of that case.
 
-The room now buys the best-ranked turn **clipped** when no whole turn fits, which is the rule the
-character-clip path already used. `carried` stays empty (it counts whole turns) and `evidenceChars` reports
-what was delivered — the two fields were already separate, so a reader can tell "a clip" from "nothing".
+Two further problems with the retracted sentence, both audit findings rather than hindsight:
+
+1. **The number had no archived provenance.** The reference (`tools/lexical-recall-reference.json`) records
+   `b86304ba` as `carried 0, total 10, delivered 0` — ten *gold* turns and an empty delivery. No artifact in
+   this repository records the plan's turn count for that question, so "456" was a figure from an
+   uncommitted probe being quoted as a measurement.
+2. **The mechanism was never checked against the gates in front of it.** `buildPrompt` answers
+   `NOTHING_CARRIED` when `evidenceRoom <= 0` (line 3333), *before* any selector runs, and returns the
+   no-evidence prompt when the selected text is empty (line 3335). Either gate produces exactly the
+   `delivered 0` the archive records, and neither is the branch this section added.
+
+What **stays** is the invariant, and it is now justified by its own local property instead of by that story:
+a room that cannot hold one whole turn can still buy part of the best one, and "too long to read" is not
+"no evidence". `selectByRelevance` buys the best-ranked turn **clipped** when no whole turn fits — the rule
+the character-clip path already used. `carried` stays empty (it counts whole turns) and `evidenceChars`
+reports what was delivered, so a reader can still tell "a clip" from "nothing". §13.380 records what the
+empty window's cause remains.
 
 ### 13.379.4 The registered reading
 
@@ -40607,3 +40624,76 @@ blocked on the provider balance.
 What is **not** licensed: changing the default to `idf` on the strength of the argument above; touching the
 `k1`/`b`, stemming or stopword candidates in the same dispatch (one variable); and reading the instrument's
 accuracy columns, which are a constant's.
+
+## 13.380 Two candidate readings: `idf` moves 119 and leaves 10; the room's floor moves nothing
+
+Both dispatches ran the same corpus (`datasetFingerprint` `sha256:d6f21ea9…`), the same 500-question
+roster, and cost **0 CNY** — the instrument substitutes a hash embedding and an `offline-instrument` judge
+and reader, which is why the artifact's configuration diff lists exactly those three lines in both runs.
+Neither is an arm change. The one arm field that differs is `idf`'s.
+
+| run | candidate | arm fields changed | gold turns | questions | evidence | zero-recall |
+| --- | --- | --- | --- | --- | --- | --- |
+| `44231317722` | `room-floor` | **none** | 4,299 → 4,299 | `0 gained, 0 lost, 500 unchanged` | `0` deliveries moved | 21 → 21 |
+| `44231332168` | `idf` | `lexicalWeighting: "flat" → "idf"` | **4,299 → 4,489** | `119 gained, 17 lost, 364 unchanged` | **234** deliveries moved | **21 → 11** (10 left, 0 entered) |
+
+### 13.380.1 The first reading refutes this round's own explanation
+
+`room-floor` changed **no delivery at all**: no `GAIN` line, no `LOSS` line, no `LEFT ZERO` line, and
+`b86304ba` still `0%`. That is a result, not a null one — the branch §13.379.3 added never fires on the
+corpus that contains its motivating question, so the over-long-first-turn story is not how `b86304ba` lost its
+evidence.
+
+Two gates in front of the selector can each produce `carried 0 / delivered 0`, and the archive cannot tell
+them apart:
+
+| # | candidate cause | where | what would distinguish it |
+| --- | --- | --- | --- |
+| 1 | `evidenceRoom <= 0` | `prompt.ts` line 3333 — `NOTHING_CARRIED` **before** any selector runs | log `evidenceRoom` per question |
+| 2 | `plan.turns` empty | upstream of the prompt: nothing was admitted, so `render([])` is `''` | log `plan.turns.length` per question |
+
+The room-floor branch only governs the third cause — one over-room turn inside `selectByRelevance` — and it is
+unreachable whenever (1) holds, which is the trap the retracted sentence walked into. Distinguishing (1) from
+(2) is **one logged number** and is registered as the next measurement, not asserted here.
+
+### 13.380.2 The second reading against the three registered criteria
+
+| # | criterion (`PREREGISTRATION-LEXICAL-RECALL.md` §10.3) | reading | verdict |
+| --- | --- | --- | --- |
+| 1 | zero-recall **21 → smaller** | `21 → 11`, 10 left, **0 entered** | **pass** |
+| 2 | the `1–33%` bucket does not explode | `129 → 119`; `34–66%` 114 → 123, `67–100%` 236 → 247 | **pass** — the bucket shrank and every other bucket grew |
+| 3 | `ABS` stays 30/30 | not measurable: the instrument measures retrieval, not accuracy | **not measured** |
+
+Criterion 3 is the one the instrument cannot answer and the one that matters most, because
+`PREREGISTRATION-LEXICAL-RECALL.md` §10.4 registered the noise risk exactly there: IDF makes a rare term
+expensive, and a rare term can be a misspelling. The 17 losses are the same risk seen from the other side —
+`0862e8bf` fell `12 → 5`, `gpt4_c27434e8_abs` `13 → 10`, and two of the losses are `_abs`, which is where
+criterion 3 lives. A retrieval reading that gains 190 gold turns and loses some on abstention questions is a
+candidate, not a decision.
+
+### 13.380.3 What this licenses, and what it does not
+
+Licensed: `idf` is a **candidate worth a confirmation dispatch**. The reference is unchanged (no
+`expectedMoved` entry — this run is a candidate, and a declaration is for code that moves the reference's
+own deliveries, none of which moved here).
+
+Not licensed:
+
+1. **Changing the default to `idf`.** The default is `flat` because every number this project publishes was
+   measured under it; a retrieval-side improvement that has not been confirmed on accuracy cannot move it.
+2. **Any accuracy claim.** `S14` reads **85.75%** and this run does not re-read it. The instrument's own
+   verdict line says so: *"accuracy, the judge and the pairing are not measured by this instrument."*
+3. **Reading the 17 losses as acceptable.** They are concentrated where the abstention aims are, and
+   criterion 3 exists to refuse exactly that trade-off until it is measured.
+4. **Treating the `1–33%` movement as a win by itself.** 10 questions left `0%`; how many of them now answer
+   correctly is unknown at 0 CNY and requires the 500×4 confirmation (about **14.26 CNY**) that stays blocked
+   on the provider balance.
+
+### 13.380.4 The instrument change that made the reading attributable
+
+`--candidate <label>` prints the configuration diff before the delta, so the `room-floor` row above reads
+`unchanged -- this candidate's difference is in code, not in a setting` and the `idf` row names its one field.
+Without that line, a 119-question delta and a 0-question delta would have arrived with the same shape. The
+declaration mechanism (`expectedMoved`, checked in both directions) is described in `INSTRUMENT-RETRIEVAL.md`;
+it is unused in this round on purpose, and that is recorded here rather than left as an absent field a reader
+would have to interpret.

@@ -100,7 +100,7 @@ A repair to the product can move a delivery the reference recorded, and the refe
 rewritten to agree with new code — it is a record of a dispatched run. The middle term is a declaration:
 
 ```json
-"expectedMoved": { "b86304ba": "the room's floor (§13.379.3): the room now buys the best turn clipped" }
+"expectedMoved": { "<question id>": "the section that moved it, and why" }
 ```
 
 The gate checks it in both directions. An undeclared movement fails, and so does a declared one that
@@ -137,8 +137,10 @@ configuration    : 2 field(s) changed
 A candidate that moved two settings is not a candidate for either mechanism, and the run's own log is the
 only place that can be visible before someone attributes the delta to the wrong one. When nothing moved, the
 tool says so -- `unchanged -- this candidate's difference is in code, not in a setting` -- which is the
-correct reading of a change like the room's floor (`§13.379`), where the configuration is identical and the
-delivery is not.
+correct reading of a change like the room's floor (`§13.379`), where the configuration is identical. That
+candidate then read `0 gained, 0 lost, 500 unchanged`, which is a result rather than a null one: the branch
+it added never fires on this corpus, and the empty window it was written for has a different cause
+(`§13.380`).
 
 Two verdicts exist besides the delta, and they are the ones that keep "no change" from being read as "no
 effect": a report whose gold account is identical **and** whose delivered texts moved is reported as a

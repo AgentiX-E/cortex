@@ -3551,10 +3551,13 @@ function selectByRelevance(
   // the clip path established -- text without a whole-unit roster -- rather than a second kind of partial
   // delivery.
   //
-  // The case is real and was measured rather than hypothesised: `S14`'s question `b86304ba` offered 456
-  // turns, ranked an assistant turn longer than the whole 24,000-character room first, delivered **zero**
-  // characters, and the reader answered "Unknown" from a prompt that said no evidence was admitted. One
-  // turn's length must not be able to erase the other 455.
+  // This is an invariant rather than a measured repair, and the difference was measured too. `S14`'s
+  // question `b86304ba` offered 456 turns and delivered **zero** characters; the first explanation offered
+  // here -- one assistant turn longer than the whole 24,000-character room -- was refuted by its own
+  // candidate run, which changed 0 of 500 deliveries on the corpus that contains the case. So this branch
+  // never fires on that corpus, `b86304ba`'s empty window still has an unidentified cause, and §13.380
+  // records it as open. What justifies the branch is the local property, not that story: a room that cannot
+  // hold one whole turn can still buy part of the best one, and "too long to read" is not "no evidence".
   // `!` rather than a guard: `ranked` is one entry per turn of `plan.turns`, and the empty plan is answered
   // before this function is called (`NOTHING_CARRIED` in `buildPrompt`). A guard here would be a branch no
   // test could reach, and this repository deletes those rather than collecting them.
