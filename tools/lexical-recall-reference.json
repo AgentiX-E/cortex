@@ -1,0 +1,4008 @@
+{
+ "$comment": "S14. The per-question gold account of run 43829744532, as the reference the offline instrument is calibrated against. Regenerate with --write-reference from the artifact the row names, and diff: this file is a digest, not a reading, and it carries no accuracy because accuracy is not what the calibration compares.",
+ "row": "S14",
+ "run": "43829744532",
+ "datasetFingerprint": "sha256:d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+ "questions": [
+  {
+   "id": "e47becba",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 18,
+   "deliveredDigest": "db56c1e1a6716dee"
+  },
+  {
+   "id": "118b2229",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "41a4327e92993674"
+  },
+  {
+   "id": "51a45a95",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "fa702af35b6fd9ee"
+  },
+  {
+   "id": "58bf7951",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "3e698593c2eab714"
+  },
+  {
+   "id": "1e043500",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 19,
+   "deliveredDigest": "7648d27bc3a7caf6"
+  },
+  {
+   "id": "c5e8278d",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 11,
+   "deliveredDigest": "d2f5a9fb68b14ed8"
+  },
+  {
+   "id": "6ade9755",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "97c22da663e07e45"
+  },
+  {
+   "id": "6f9b354f",
+   "capability": "IE",
+   "carried": 6,
+   "total": 10,
+   "delivered": 12,
+   "deliveredDigest": "93b2af114daa69ba"
+  },
+  {
+   "id": "58ef2f1c",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "0bc893c2104f9b08"
+  },
+  {
+   "id": "f8c5f88b",
+   "capability": "IE",
+   "carried": 6,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "5400f7a4c0064f1c"
+  },
+  {
+   "id": "5d3d2817",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 23,
+   "deliveredDigest": "27bff57370fc8d1c"
+  },
+  {
+   "id": "7527f7e2",
+   "capability": "IE",
+   "carried": 4,
+   "total": 12,
+   "delivered": 10,
+   "deliveredDigest": "eea22f5beb64cad6"
+  },
+  {
+   "id": "c960da58",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "d6224008151dc3aa"
+  },
+  {
+   "id": "3b6f954b",
+   "capability": "IE",
+   "carried": 3,
+   "total": 10,
+   "delivered": 11,
+   "deliveredDigest": "d19c7ae1163d8012"
+  },
+  {
+   "id": "726462e0",
+   "capability": "IE",
+   "carried": 1,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "7edebe0a26e058da"
+  },
+  {
+   "id": "94f70d80",
+   "capability": "IE",
+   "carried": 4,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "f5b419a47039c5bc"
+  },
+  {
+   "id": "66f24dbb",
+   "capability": "IE",
+   "carried": 8,
+   "total": 12,
+   "delivered": 22,
+   "deliveredDigest": "ca4992b09f754b60"
+  },
+  {
+   "id": "ad7109d1",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "05a9a3c1b9e79e90"
+  },
+  {
+   "id": "af8d2e46",
+   "capability": "IE",
+   "carried": 6,
+   "total": 10,
+   "delivered": 13,
+   "deliveredDigest": "be8061e1e4f0d7e4"
+  },
+  {
+   "id": "dccbc061",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "90dc47fa56fbe68c"
+  },
+  {
+   "id": "c8c3f81d",
+   "capability": "IE",
+   "carried": 7,
+   "total": 10,
+   "delivered": 15,
+   "deliveredDigest": "0bb77b7be89138fe"
+  },
+  {
+   "id": "8ebdbe50",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 17,
+   "deliveredDigest": "41b2d4f2c4d717e9"
+  },
+  {
+   "id": "6b168ec8",
+   "capability": "IE",
+   "carried": 0,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "876a8bf4495a6614"
+  },
+  {
+   "id": "75499fd8",
+   "capability": "IE",
+   "carried": 10,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "3f9ad3753268df8d"
+  },
+  {
+   "id": "21436231",
+   "capability": "IE",
+   "carried": 8,
+   "total": 12,
+   "delivered": 18,
+   "deliveredDigest": "d49be6f8a41ab7f4"
+  },
+  {
+   "id": "95bcc1c8",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "ee619461c1f679ca"
+  },
+  {
+   "id": "0862e8bf",
+   "capability": "IE",
+   "carried": 12,
+   "total": 12,
+   "delivered": 18,
+   "deliveredDigest": "7cbe6cb947e73f06"
+  },
+  {
+   "id": "853b0a1d",
+   "capability": "IE",
+   "carried": 10,
+   "total": 12,
+   "delivered": 17,
+   "deliveredDigest": "aa33c4f75bb6d3c3"
+  },
+  {
+   "id": "a06e4cfe",
+   "capability": "IE",
+   "carried": 6,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "3cd76ada2eaf6947"
+  },
+  {
+   "id": "37d43f65",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 21,
+   "deliveredDigest": "093aad847ce133b9"
+  },
+  {
+   "id": "b86304ba",
+   "capability": "IE",
+   "carried": 0,
+   "total": 10,
+   "delivered": 0,
+   "deliveredDigest": "e3b0c44298fc1c14"
+  },
+  {
+   "id": "d52b4f67",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "39d07fff07c08d1a"
+  },
+  {
+   "id": "25e5aa4f",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 8,
+   "deliveredDigest": "789146f8f6389983"
+  },
+  {
+   "id": "caf9ead2",
+   "capability": "IE",
+   "carried": 6,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "551c9976f93751cd"
+  },
+  {
+   "id": "8550ddae",
+   "capability": "IE",
+   "carried": 6,
+   "total": 12,
+   "delivered": 10,
+   "deliveredDigest": "05730f8850638bc1"
+  },
+  {
+   "id": "60d45044",
+   "capability": "IE",
+   "carried": 1,
+   "total": 12,
+   "delivered": 10,
+   "deliveredDigest": "a72d13d134e9d54a"
+  },
+  {
+   "id": "3f1e9474",
+   "capability": "IE",
+   "carried": 6,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "dd7f303275dba0fc"
+  },
+  {
+   "id": "86b68151",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 14,
+   "deliveredDigest": "05bf03aa27892a5d"
+  },
+  {
+   "id": "577d4d32",
+   "capability": "IE",
+   "carried": 1,
+   "total": 10,
+   "delivered": 10,
+   "deliveredDigest": "1c296c585e2bc36d"
+  },
+  {
+   "id": "ec81a493",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 17,
+   "deliveredDigest": "ea3812190d7a82a3"
+  },
+  {
+   "id": "15745da0",
+   "capability": "IE",
+   "carried": 5,
+   "total": 12,
+   "delivered": 8,
+   "deliveredDigest": "d8d19c050ce9c154"
+  },
+  {
+   "id": "e01b8e2f",
+   "capability": "IE",
+   "carried": 0,
+   "total": 12,
+   "delivered": 11,
+   "deliveredDigest": "5463aad789a09e4f"
+  },
+  {
+   "id": "bc8a6e93",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "7fd2824f00cb9bea"
+  },
+  {
+   "id": "ccb36322",
+   "capability": "IE",
+   "carried": 0,
+   "total": 10,
+   "delivered": 11,
+   "deliveredDigest": "710f3cc59b1b4bda"
+  },
+  {
+   "id": "001be529",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "5a1ed2ec4076b272"
+  },
+  {
+   "id": "b320f3f8",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "38b3ead79b86098c"
+  },
+  {
+   "id": "19b5f2b3",
+   "capability": "IE",
+   "carried": 0,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "29f680b2e7b873ad"
+  },
+  {
+   "id": "4fd1909e",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 17,
+   "deliveredDigest": "08c4b8b603a51ca3"
+  },
+  {
+   "id": "545bd2b5",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "18d8b7fc4c069ebb"
+  },
+  {
+   "id": "8a137a7f",
+   "capability": "IE",
+   "carried": 11,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "e8b4dcaca2045cdf"
+  },
+  {
+   "id": "76d63226",
+   "capability": "IE",
+   "carried": 4,
+   "total": 10,
+   "delivered": 15,
+   "deliveredDigest": "91b234910e9b8363"
+  },
+  {
+   "id": "86f00804",
+   "capability": "IE",
+   "carried": 9,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "720b43c52e826798"
+  },
+  {
+   "id": "8e9d538c",
+   "capability": "IE",
+   "carried": 7,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "4ba99248b0404437"
+  },
+  {
+   "id": "311778f1",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 2,
+   "deliveredDigest": "ee339057db476845"
+  },
+  {
+   "id": "c19f7a0b",
+   "capability": "IE",
+   "carried": 4,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "675cbfe4a58d6c82"
+  },
+  {
+   "id": "4100d0a0",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "6e6cb827d8076050"
+  },
+  {
+   "id": "29f2956b",
+   "capability": "IE",
+   "carried": 1,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "4617eaabfee0d024"
+  },
+  {
+   "id": "1faac195",
+   "capability": "IE",
+   "carried": 7,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "521de2c9db5b7fef"
+  },
+  {
+   "id": "faba32e5",
+   "capability": "IE",
+   "carried": 7,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "fc73e975db8d53f4"
+  },
+  {
+   "id": "f4f1d8a4",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "1ecdc8e4b6ed155d"
+  },
+  {
+   "id": "c14c00dd",
+   "capability": "IE",
+   "carried": 1,
+   "total": 12,
+   "delivered": 11,
+   "deliveredDigest": "395b6a3b5d5de36c"
+  },
+  {
+   "id": "36580ce8",
+   "capability": "IE",
+   "carried": 1,
+   "total": 12,
+   "delivered": 22,
+   "deliveredDigest": "75de89b673f24b73"
+  },
+  {
+   "id": "3d86fd0a",
+   "capability": "IE",
+   "carried": 7,
+   "total": 12,
+   "delivered": 20,
+   "deliveredDigest": "dd478958406749e2"
+  },
+  {
+   "id": "a82c026e",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "bfd2962f0d825ccf"
+  },
+  {
+   "id": "0862e8bf_abs",
+   "capability": "ABS",
+   "carried": 2,
+   "total": 12,
+   "delivered": 23,
+   "deliveredDigest": "ae17f8d1fbffe6d3"
+  },
+  {
+   "id": "15745da0_abs",
+   "capability": "ABS",
+   "carried": 3,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "a717d6a452c299b3"
+  },
+  {
+   "id": "bc8a6e93_abs",
+   "capability": "ABS",
+   "carried": 3,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "d8b4b6b33e495bc2"
+  },
+  {
+   "id": "19b5f2b3_abs",
+   "capability": "ABS",
+   "carried": 1,
+   "total": 12,
+   "delivered": 15,
+   "deliveredDigest": "ddf9fe49d0c7593d"
+  },
+  {
+   "id": "29f2956b_abs",
+   "capability": "ABS",
+   "carried": 0,
+   "total": 12,
+   "delivered": 17,
+   "deliveredDigest": "8f43b416aa7210be"
+  },
+  {
+   "id": "f4f1d8a4_abs",
+   "capability": "ABS",
+   "carried": 2,
+   "total": 12,
+   "delivered": 23,
+   "deliveredDigest": "e871f9b600794f07"
+  },
+  {
+   "id": "0a995998",
+   "capability": "MR",
+   "carried": 15,
+   "total": 17,
+   "delivered": 173,
+   "deliveredDigest": "0a8181248f3645d2"
+  },
+  {
+   "id": "6d550036",
+   "capability": "MR",
+   "carried": 21,
+   "total": 22,
+   "delivered": 195,
+   "deliveredDigest": "7e5a0fbbc51d7c51"
+  },
+  {
+   "id": "gpt4_59c863d7",
+   "capability": "MR",
+   "carried": 15,
+   "total": 23,
+   "delivered": 189,
+   "deliveredDigest": "f6b841cd30f342ee"
+  },
+  {
+   "id": "b5ef892d",
+   "capability": "MR",
+   "carried": 13,
+   "total": 18,
+   "delivered": 197,
+   "deliveredDigest": "bfcac26e59b8b920"
+  },
+  {
+   "id": "e831120c",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 209,
+   "deliveredDigest": "5f0ce8cd68c80273"
+  },
+  {
+   "id": "3a704032",
+   "capability": "MR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 196,
+   "deliveredDigest": "d7d75a632aee792f"
+  },
+  {
+   "id": "gpt4_d84a3211",
+   "capability": "MR",
+   "carried": 23,
+   "total": 23,
+   "delivered": 174,
+   "deliveredDigest": "02bdc3e9cec35df8"
+  },
+  {
+   "id": "aae3761f",
+   "capability": "MR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 185,
+   "deliveredDigest": "cf544865a20b3c99"
+  },
+  {
+   "id": "gpt4_f2262a51",
+   "capability": "MR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 182,
+   "deliveredDigest": "9ca7e09396df6cbc"
+  },
+  {
+   "id": "dd2973ad",
+   "capability": "MR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 205,
+   "deliveredDigest": "35f7f75d325fdc2f"
+  },
+  {
+   "id": "c4a1ceb8",
+   "capability": "MR",
+   "carried": 21,
+   "total": 23,
+   "delivered": 191,
+   "deliveredDigest": "26950db04a68cd31"
+  },
+  {
+   "id": "gpt4_a56e767c",
+   "capability": "MR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 195,
+   "deliveredDigest": "9ba62d4b16d6b31c"
+  },
+  {
+   "id": "6cb6f249",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 200,
+   "deliveredDigest": "7cb27b5211efc880"
+  },
+  {
+   "id": "46a3abf7",
+   "capability": "MR",
+   "carried": 16,
+   "total": 18,
+   "delivered": 189,
+   "deliveredDigest": "d72a2f7d01464750"
+  },
+  {
+   "id": "36b9f61e",
+   "capability": "MR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 203,
+   "deliveredDigest": "7dc06574ea363155"
+  },
+  {
+   "id": "28dc39ac",
+   "capability": "MR",
+   "carried": 30,
+   "total": 30,
+   "delivered": 178,
+   "deliveredDigest": "e1a3c6b1785151c5"
+  },
+  {
+   "id": "gpt4_2f8be40d",
+   "capability": "MR",
+   "carried": 16,
+   "total": 18,
+   "delivered": 171,
+   "deliveredDigest": "90196199d53b153c"
+  },
+  {
+   "id": "2e6d26dc",
+   "capability": "MR",
+   "carried": 24,
+   "total": 24,
+   "delivered": 196,
+   "deliveredDigest": "f27eb72c560e3025"
+  },
+  {
+   "id": "gpt4_15e38248",
+   "capability": "MR",
+   "carried": 17,
+   "total": 21,
+   "delivered": 192,
+   "deliveredDigest": "21d3d48aa4f7e0c2"
+  },
+  {
+   "id": "88432d0a",
+   "capability": "MR",
+   "carried": 18,
+   "total": 24,
+   "delivered": 179,
+   "deliveredDigest": "06edd6c247befec9"
+  },
+  {
+   "id": "80ec1f4f",
+   "capability": "MR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 200,
+   "deliveredDigest": "f86e2e68d24e5158"
+  },
+  {
+   "id": "d23cf73b",
+   "capability": "MR",
+   "carried": 18,
+   "total": 24,
+   "delivered": 192,
+   "deliveredDigest": "95ee45fd93d633ac"
+  },
+  {
+   "id": "gpt4_7fce9456",
+   "capability": "MR",
+   "carried": 23,
+   "total": 30,
+   "delivered": 191,
+   "deliveredDigest": "4c92e0966e2f2ad9"
+  },
+  {
+   "id": "d682f1a2",
+   "capability": "MR",
+   "carried": 14,
+   "total": 18,
+   "delivered": 196,
+   "deliveredDigest": "979adeb0ebd48ed2"
+  },
+  {
+   "id": "7024f17c",
+   "capability": "MR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 200,
+   "deliveredDigest": "b407216738d5c390"
+  },
+  {
+   "id": "gpt4_5501fe77",
+   "capability": "MR",
+   "carried": 11,
+   "total": 17,
+   "delivered": 185,
+   "deliveredDigest": "330eb2b7c4b2fb5b"
+  },
+  {
+   "id": "gpt4_2ba83207",
+   "capability": "MR",
+   "carried": 20,
+   "total": 24,
+   "delivered": 183,
+   "deliveredDigest": "47aacc1ee7095998"
+  },
+  {
+   "id": "2318644b",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 186,
+   "deliveredDigest": "9cab9ca0a4f54994"
+  },
+  {
+   "id": "2ce6a0f2",
+   "capability": "MR",
+   "carried": 19,
+   "total": 23,
+   "delivered": 182,
+   "deliveredDigest": "415c70a5e2c93a60"
+  },
+  {
+   "id": "gpt4_d12ceb0e",
+   "capability": "MR",
+   "carried": 16,
+   "total": 16,
+   "delivered": 192,
+   "deliveredDigest": "5f37e30e56f90f04"
+  },
+  {
+   "id": "00ca467f",
+   "capability": "MR",
+   "carried": 14,
+   "total": 18,
+   "delivered": 192,
+   "deliveredDigest": "a9f14ea35cdf7aeb"
+  },
+  {
+   "id": "b3c15d39",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 195,
+   "deliveredDigest": "04e120300a6a7830"
+  },
+  {
+   "id": "gpt4_31ff4165",
+   "capability": "MR",
+   "carried": 29,
+   "total": 30,
+   "delivered": 200,
+   "deliveredDigest": "5c4c4420f7c4059a"
+  },
+  {
+   "id": "eeda8a6d",
+   "capability": "MR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 202,
+   "deliveredDigest": "b1f240bf92844606"
+  },
+  {
+   "id": "2788b940",
+   "capability": "MR",
+   "carried": 17,
+   "total": 21,
+   "delivered": 198,
+   "deliveredDigest": "9e6fe7dae305c026"
+  },
+  {
+   "id": "60bf93ed",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 193,
+   "deliveredDigest": "76b473d154d3e0f8"
+  },
+  {
+   "id": "9d25d4e0",
+   "capability": "MR",
+   "carried": 15,
+   "total": 18,
+   "delivered": 176,
+   "deliveredDigest": "dbb167c469bc0eea"
+  },
+  {
+   "id": "129d1232",
+   "capability": "MR",
+   "carried": 15,
+   "total": 17,
+   "delivered": 183,
+   "deliveredDigest": "ff32b2e1ee02f12d"
+  },
+  {
+   "id": "60472f9c",
+   "capability": "MR",
+   "carried": 12,
+   "total": 18,
+   "delivered": 182,
+   "deliveredDigest": "e67cfe719bc68e23"
+  },
+  {
+   "id": "gpt4_194be4b3",
+   "capability": "MR",
+   "carried": 23,
+   "total": 27,
+   "delivered": 177,
+   "deliveredDigest": "0faedeeb25f140f4"
+  },
+  {
+   "id": "a9f6b44c",
+   "capability": "MR",
+   "carried": 14,
+   "total": 18,
+   "delivered": 183,
+   "deliveredDigest": "86b2ec778946ac77"
+  },
+  {
+   "id": "d851d5ba",
+   "capability": "MR",
+   "carried": 21,
+   "total": 22,
+   "delivered": 200,
+   "deliveredDigest": "84342faaebb5eacd"
+  },
+  {
+   "id": "5a7937c8",
+   "capability": "MR",
+   "carried": 16,
+   "total": 16,
+   "delivered": 187,
+   "deliveredDigest": "c79e9af20eb24c6d"
+  },
+  {
+   "id": "gpt4_ab202e7f",
+   "capability": "MR",
+   "carried": 21,
+   "total": 30,
+   "delivered": 174,
+   "deliveredDigest": "18c7035839a862f1"
+  },
+  {
+   "id": "gpt4_e05b82a6",
+   "capability": "MR",
+   "carried": 15,
+   "total": 23,
+   "delivered": 185,
+   "deliveredDigest": "fda8ef6f97e7af8e"
+  },
+  {
+   "id": "gpt4_731e37d7",
+   "capability": "MR",
+   "carried": 23,
+   "total": 23,
+   "delivered": 190,
+   "deliveredDigest": "bdfc796907eccef1"
+  },
+  {
+   "id": "edced276",
+   "capability": "MR",
+   "carried": 9,
+   "total": 9,
+   "delivered": 174,
+   "deliveredDigest": "5ccfec2eb2b1f15d"
+  },
+  {
+   "id": "10d9b85a",
+   "capability": "MR",
+   "carried": 7,
+   "total": 11,
+   "delivered": 187,
+   "deliveredDigest": "d8436b18019f9207"
+  },
+  {
+   "id": "e3038f8c",
+   "capability": "MR",
+   "carried": 24,
+   "total": 24,
+   "delivered": 187,
+   "deliveredDigest": "ceec2f22126f4f93"
+  },
+  {
+   "id": "2b8f3739",
+   "capability": "MR",
+   "carried": 13,
+   "total": 18,
+   "delivered": 171,
+   "deliveredDigest": "01730ce39c04baee"
+  },
+  {
+   "id": "1a8a66a6",
+   "capability": "MR",
+   "carried": 18,
+   "total": 22,
+   "delivered": 201,
+   "deliveredDigest": "e679149a7f4016f1"
+  },
+  {
+   "id": "c2ac3c61",
+   "capability": "MR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 198,
+   "deliveredDigest": "28f3b1077ad1c93d"
+  },
+  {
+   "id": "bf659f65",
+   "capability": "MR",
+   "carried": 17,
+   "total": 17,
+   "delivered": 195,
+   "deliveredDigest": "f993d820eec21981"
+  },
+  {
+   "id": "gpt4_372c3eed",
+   "capability": "MR",
+   "carried": 13,
+   "total": 17,
+   "delivered": 178,
+   "deliveredDigest": "7fb31f34724deec3"
+  },
+  {
+   "id": "gpt4_2f91af09",
+   "capability": "MR",
+   "carried": 17,
+   "total": 17,
+   "delivered": 198,
+   "deliveredDigest": "146badaa2c56e578"
+  },
+  {
+   "id": "81507db6",
+   "capability": "MR",
+   "carried": 27,
+   "total": 29,
+   "delivered": 178,
+   "deliveredDigest": "d64017926551bf04"
+  },
+  {
+   "id": "88432d0a_abs",
+   "capability": "ABS",
+   "carried": 0,
+   "total": 48,
+   "delivered": 8,
+   "deliveredDigest": "f4ea1adfeed1e3b2"
+  },
+  {
+   "id": "80ec1f4f_abs",
+   "capability": "ABS",
+   "carried": 7,
+   "total": 36,
+   "delivered": 16,
+   "deliveredDigest": "598c0ba5516e0423"
+  },
+  {
+   "id": "eeda8a6d_abs",
+   "capability": "ABS",
+   "carried": 12,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "5e88bb3f7eda4368"
+  },
+  {
+   "id": "60bf93ed_abs",
+   "capability": "ABS",
+   "carried": 0,
+   "total": 24,
+   "delivered": 11,
+   "deliveredDigest": "32b96be3cb526d5f"
+  },
+  {
+   "id": "edced276_abs",
+   "capability": "ABS",
+   "carried": 3,
+   "total": 18,
+   "delivered": 11,
+   "deliveredDigest": "b5d376dbe116b9e7"
+  },
+  {
+   "id": "gpt4_372c3eed_abs",
+   "capability": "ABS",
+   "carried": 5,
+   "total": 34,
+   "delivered": 12,
+   "deliveredDigest": "cc25c9d48cf3e18d"
+  },
+  {
+   "id": "8a2466db",
+   "capability": "IE",
+   "carried": 2,
+   "total": 18,
+   "delivered": 13,
+   "deliveredDigest": "8208ebe83991512d"
+  },
+  {
+   "id": "06878be2",
+   "capability": "IE",
+   "carried": 0,
+   "total": 16,
+   "delivered": 15,
+   "deliveredDigest": "437dd31813cb32f3"
+  },
+  {
+   "id": "75832dbd",
+   "capability": "IE",
+   "carried": 0,
+   "total": 12,
+   "delivered": 7,
+   "deliveredDigest": "f02916a8ee289b83"
+  },
+  {
+   "id": "0edc2aef",
+   "capability": "IE",
+   "carried": 0,
+   "total": 20,
+   "delivered": 12,
+   "deliveredDigest": "fc207fb7c231a0bc"
+  },
+  {
+   "id": "35a27287",
+   "capability": "IE",
+   "carried": 6,
+   "total": 14,
+   "delivered": 9,
+   "deliveredDigest": "cd040322c365386c"
+  },
+  {
+   "id": "32260d93",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 26,
+   "deliveredDigest": "1e7fe52683136e9f"
+  },
+  {
+   "id": "195a1a1b",
+   "capability": "IE",
+   "carried": 1,
+   "total": 16,
+   "delivered": 14,
+   "deliveredDigest": "598d3800616c8936"
+  },
+  {
+   "id": "afdc33df",
+   "capability": "IE",
+   "carried": 3,
+   "total": 14,
+   "delivered": 9,
+   "deliveredDigest": "73bb3b3189631c44"
+  },
+  {
+   "id": "caf03d32",
+   "capability": "IE",
+   "carried": 9,
+   "total": 18,
+   "delivered": 16,
+   "deliveredDigest": "609c7e602cb8cfe4"
+  },
+  {
+   "id": "54026fce",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 21,
+   "deliveredDigest": "709685326ebc112b"
+  },
+  {
+   "id": "06f04340",
+   "capability": "IE",
+   "carried": 0,
+   "total": 14,
+   "delivered": 17,
+   "deliveredDigest": "c3070adf69b98314"
+  },
+  {
+   "id": "6b7dfb22",
+   "capability": "IE",
+   "carried": 2,
+   "total": 16,
+   "delivered": 10,
+   "deliveredDigest": "5ae6f5c0c88a9fa7"
+  },
+  {
+   "id": "1a1907b4",
+   "capability": "IE",
+   "carried": 0,
+   "total": 16,
+   "delivered": 17,
+   "deliveredDigest": "130ceec293aa5e5a"
+  },
+  {
+   "id": "09d032c9",
+   "capability": "IE",
+   "carried": 0,
+   "total": 20,
+   "delivered": 18,
+   "deliveredDigest": "c5c80944059a34c9"
+  },
+  {
+   "id": "38146c39",
+   "capability": "IE",
+   "carried": 0,
+   "total": 16,
+   "delivered": 15,
+   "deliveredDigest": "9e364049eaa638b7"
+  },
+  {
+   "id": "d24813b1",
+   "capability": "IE",
+   "carried": 4,
+   "total": 14,
+   "delivered": 14,
+   "deliveredDigest": "a827f60ace75dc6e"
+  },
+  {
+   "id": "57f827a0",
+   "capability": "IE",
+   "carried": 0,
+   "total": 14,
+   "delivered": 17,
+   "deliveredDigest": "a43d671b4b2e246d"
+  },
+  {
+   "id": "95228167",
+   "capability": "IE",
+   "carried": 0,
+   "total": 12,
+   "delivered": 8,
+   "deliveredDigest": "6f8490b4f2162a21"
+  },
+  {
+   "id": "505af2f5",
+   "capability": "IE",
+   "carried": 1,
+   "total": 12,
+   "delivered": 30,
+   "deliveredDigest": "6b9fb1de06dce589"
+  },
+  {
+   "id": "75f70248",
+   "capability": "IE",
+   "carried": 2,
+   "total": 12,
+   "delivered": 23,
+   "deliveredDigest": "6b57eaa49dad0ee6"
+  },
+  {
+   "id": "d6233ab6",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 19,
+   "deliveredDigest": "82dc481d22572c04"
+  },
+  {
+   "id": "1da05512",
+   "capability": "IE",
+   "carried": 8,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "c34c4a1cde5693b2"
+  },
+  {
+   "id": "fca70973",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "e102c9ba1c43ea1a"
+  },
+  {
+   "id": "b6025781",
+   "capability": "IE",
+   "carried": 6,
+   "total": 12,
+   "delivered": 23,
+   "deliveredDigest": "58a19626d80359d7"
+  },
+  {
+   "id": "a89d7624",
+   "capability": "IE",
+   "carried": 1,
+   "total": 14,
+   "delivered": 24,
+   "deliveredDigest": "79d35d781141372e"
+  },
+  {
+   "id": "b0479f84",
+   "capability": "IE",
+   "carried": 0,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "2f9837bc3bdd82f4"
+  },
+  {
+   "id": "1d4e3b97",
+   "capability": "IE",
+   "carried": 3,
+   "total": 12,
+   "delivered": 10,
+   "deliveredDigest": "2d82bf816a270b4e"
+  },
+  {
+   "id": "07b6f563",
+   "capability": "IE",
+   "carried": 0,
+   "total": 14,
+   "delivered": 16,
+   "deliveredDigest": "39b90536f5ab089a"
+  },
+  {
+   "id": "1c0ddc50",
+   "capability": "IE",
+   "carried": 0,
+   "total": 12,
+   "delivered": 12,
+   "deliveredDigest": "47463ccd11642cfd"
+  },
+  {
+   "id": "0a34ad58",
+   "capability": "IE",
+   "carried": 1,
+   "total": 20,
+   "delivered": 14,
+   "deliveredDigest": "261e486500c9f2b8"
+  },
+  {
+   "id": "d3ab962e",
+   "capability": "MR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 205,
+   "deliveredDigest": "89fba3181ff2c369"
+  },
+  {
+   "id": "2311e44b",
+   "capability": "MR",
+   "carried": 6,
+   "total": 9,
+   "delivered": 177,
+   "deliveredDigest": "1678513f815ebe5b"
+  },
+  {
+   "id": "cc06de0d",
+   "capability": "MR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 188,
+   "deliveredDigest": "ca50306430ac5bec"
+  },
+  {
+   "id": "a11281a2",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 203,
+   "deliveredDigest": "0a0eda03d8cbe194"
+  },
+  {
+   "id": "4f54b7c9",
+   "capability": "MR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 206,
+   "deliveredDigest": "1edc85024e64fb46"
+  },
+  {
+   "id": "85fa3a3f",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 192,
+   "deliveredDigest": "b1d6803e8fb3ff3b"
+  },
+  {
+   "id": "9aaed6a3",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 197,
+   "deliveredDigest": "bba26ce67aca6f4e"
+  },
+  {
+   "id": "1f2b8d4f",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 208,
+   "deliveredDigest": "628d7a4f9451f97b"
+  },
+  {
+   "id": "e6041065",
+   "capability": "MR",
+   "carried": 8,
+   "total": 11,
+   "delivered": 181,
+   "deliveredDigest": "22c260506eadfa20"
+  },
+  {
+   "id": "51c32626",
+   "capability": "MR",
+   "carried": 8,
+   "total": 10,
+   "delivered": 200,
+   "deliveredDigest": "ba54b99de8f7f92c"
+  },
+  {
+   "id": "d905b33f",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 194,
+   "deliveredDigest": "5e2fb546356adf3e"
+  },
+  {
+   "id": "7405e8b1",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 197,
+   "deliveredDigest": "a59db105eeef3a5f"
+  },
+  {
+   "id": "f35224e0",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 192,
+   "deliveredDigest": "8b67ce0ce2000262"
+  },
+  {
+   "id": "6456829e",
+   "capability": "MR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 200,
+   "deliveredDigest": "270e4aedc560c03d"
+  },
+  {
+   "id": "a4996e51",
+   "capability": "MR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 182,
+   "deliveredDigest": "5dbcc8588d4ad73b"
+  },
+  {
+   "id": "3c1045c8",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 217,
+   "deliveredDigest": "160e953b74c67124"
+  },
+  {
+   "id": "60036106",
+   "capability": "MR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 193,
+   "deliveredDigest": "4b8d215e696adf58"
+  },
+  {
+   "id": "681a1674",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 205,
+   "deliveredDigest": "21a84fdc8f1ccf53"
+  },
+  {
+   "id": "e25c3b8d",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 205,
+   "deliveredDigest": "ce5939e8e4878fc0"
+  },
+  {
+   "id": "4adc0475",
+   "capability": "MR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 203,
+   "deliveredDigest": "2c063efa4ae666ef"
+  },
+  {
+   "id": "4bc144e2",
+   "capability": "MR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 193,
+   "deliveredDigest": "3dd10eedfe6ab508"
+  },
+  {
+   "id": "ef66a6e5",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 177,
+   "deliveredDigest": "b5d6e2a4878eed6c"
+  },
+  {
+   "id": "5025383b",
+   "capability": "MR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 179,
+   "deliveredDigest": "41be7f177c6cda3b"
+  },
+  {
+   "id": "a1cc6108",
+   "capability": "MR",
+   "carried": 10,
+   "total": 10,
+   "delivered": 188,
+   "deliveredDigest": "ff9e45f856042d4c"
+  },
+  {
+   "id": "9ee3ecd6",
+   "capability": "MR",
+   "carried": 9,
+   "total": 11,
+   "delivered": 191,
+   "deliveredDigest": "cacdd830a7f496f7"
+  },
+  {
+   "id": "3fdac837",
+   "capability": "MR",
+   "carried": 7,
+   "total": 10,
+   "delivered": 166,
+   "deliveredDigest": "11d41c12a10268e2"
+  },
+  {
+   "id": "91b15a6e",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 219,
+   "deliveredDigest": "6533616b9793f9bc"
+  },
+  {
+   "id": "27016adc",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 204,
+   "deliveredDigest": "157dcd768e81b011"
+  },
+  {
+   "id": "720133ac",
+   "capability": "MR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 202,
+   "deliveredDigest": "46d2b0a578370102"
+  },
+  {
+   "id": "77eafa52",
+   "capability": "MR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 203,
+   "deliveredDigest": "1c5209313f274c8e"
+  },
+  {
+   "id": "8979f9ec",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 184,
+   "deliveredDigest": "185ae1d3a8880b29"
+  },
+  {
+   "id": "0100672e",
+   "capability": "MR",
+   "carried": 8,
+   "total": 12,
+   "delivered": 182,
+   "deliveredDigest": "6641f28c38cd14c5"
+  },
+  {
+   "id": "a96c20ee",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 186,
+   "deliveredDigest": "e661a447d87758e7"
+  },
+  {
+   "id": "92a0aa75",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 195,
+   "deliveredDigest": "cca85bfdb5945b50"
+  },
+  {
+   "id": "3fe836c9",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 191,
+   "deliveredDigest": "e06653a0b227aeda"
+  },
+  {
+   "id": "1c549ce4",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 190,
+   "deliveredDigest": "5b446beefe3dcf21"
+  },
+  {
+   "id": "6c49646a",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 180,
+   "deliveredDigest": "aaab709465506a12"
+  },
+  {
+   "id": "1192316e",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 177,
+   "deliveredDigest": "1c02bc6bea93f1cb"
+  },
+  {
+   "id": "0ea62687",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 195,
+   "deliveredDigest": "f3b320b05a18a08d"
+  },
+  {
+   "id": "67e0d0f2",
+   "capability": "MR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 185,
+   "deliveredDigest": "6227ff09bcd31662"
+  },
+  {
+   "id": "bb7c3b45",
+   "capability": "MR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 194,
+   "deliveredDigest": "1e7b32da33d849ea"
+  },
+  {
+   "id": "ba358f49",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 177,
+   "deliveredDigest": "f64672b34e332615"
+  },
+  {
+   "id": "61f8c8f8",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 191,
+   "deliveredDigest": "56a52915cacc3419"
+  },
+  {
+   "id": "60159905",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 170,
+   "deliveredDigest": "a2ed84184a6e2ef1"
+  },
+  {
+   "id": "ef9cf60a",
+   "capability": "MR",
+   "carried": 10,
+   "total": 11,
+   "delivered": 204,
+   "deliveredDigest": "d5dc78a77d787779"
+  },
+  {
+   "id": "73d42213",
+   "capability": "MR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 199,
+   "deliveredDigest": "010bb84b0b2fb931"
+  },
+  {
+   "id": "bc149d6b",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 186,
+   "deliveredDigest": "ba3a8c003d62dc55"
+  },
+  {
+   "id": "099778bb",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 177,
+   "deliveredDigest": "545a9097f8f9526f"
+  },
+  {
+   "id": "09ba9854",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 195,
+   "deliveredDigest": "702f260d1a05cf90"
+  },
+  {
+   "id": "d6062bb9",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 191,
+   "deliveredDigest": "48e0260afccd841e"
+  },
+  {
+   "id": "157a136e",
+   "capability": "MR",
+   "carried": 3,
+   "total": 11,
+   "delivered": 189,
+   "deliveredDigest": "2fa726b423cfc6bf"
+  },
+  {
+   "id": "c18a7dc8",
+   "capability": "MR",
+   "carried": 6,
+   "total": 11,
+   "delivered": 182,
+   "deliveredDigest": "6ec97b95eb14e426"
+  },
+  {
+   "id": "a3332713",
+   "capability": "MR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 177,
+   "deliveredDigest": "2c5237c3f8c53f14"
+  },
+  {
+   "id": "55241a1f",
+   "capability": "MR",
+   "carried": 10,
+   "total": 10,
+   "delivered": 196,
+   "deliveredDigest": "15a657d2ebd53f38"
+  },
+  {
+   "id": "a08a253f",
+   "capability": "MR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 199,
+   "deliveredDigest": "bb2478f8e9b0ef73"
+  },
+  {
+   "id": "f0e564bc",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 197,
+   "deliveredDigest": "d16c5b7c127fd091"
+  },
+  {
+   "id": "078150f1",
+   "capability": "MR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 212,
+   "deliveredDigest": "802b66220c367b09"
+  },
+  {
+   "id": "8cf4d046",
+   "capability": "MR",
+   "carried": 8,
+   "total": 12,
+   "delivered": 201,
+   "deliveredDigest": "093dd2516da297b5"
+  },
+  {
+   "id": "a346bb18",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 179,
+   "deliveredDigest": "db0170d48e6b6480"
+  },
+  {
+   "id": "37f165cf",
+   "capability": "MR",
+   "carried": 10,
+   "total": 10,
+   "delivered": 226,
+   "deliveredDigest": "e21ead6a53824a51"
+  },
+  {
+   "id": "8e91e7d9",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 202,
+   "deliveredDigest": "5e7b2926b5f3c3ba"
+  },
+  {
+   "id": "87f22b4a",
+   "capability": "MR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 183,
+   "deliveredDigest": "05c270269d84ded0"
+  },
+  {
+   "id": "e56a43b9",
+   "capability": "MR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 188,
+   "deliveredDigest": "665f287559ffeb2d"
+  },
+  {
+   "id": "efc3f7c2",
+   "capability": "MR",
+   "carried": 8,
+   "total": 12,
+   "delivered": 199,
+   "deliveredDigest": "f29838a39d3bc746"
+  },
+  {
+   "id": "21d02d0d",
+   "capability": "MR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 189,
+   "deliveredDigest": "a539c35af1f961fc"
+  },
+  {
+   "id": "2311e44b_abs",
+   "capability": "ABS",
+   "carried": 8,
+   "total": 18,
+   "delivered": 12,
+   "deliveredDigest": "f98e21ee625ad067"
+  },
+  {
+   "id": "6456829e_abs",
+   "capability": "ABS",
+   "carried": 3,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "35a13c58c4908416"
+  },
+  {
+   "id": "e5ba910e_abs",
+   "capability": "ABS",
+   "carried": 1,
+   "total": 22,
+   "delivered": 17,
+   "deliveredDigest": "78a3fb1502d33a5e"
+  },
+  {
+   "id": "a96c20ee_abs",
+   "capability": "ABS",
+   "carried": 4,
+   "total": 22,
+   "delivered": 12,
+   "deliveredDigest": "f56b1856f131c653"
+  },
+  {
+   "id": "ba358f49_abs",
+   "capability": "ABS",
+   "carried": 1,
+   "total": 24,
+   "delivered": 11,
+   "deliveredDigest": "6c661faee76163d0"
+  },
+  {
+   "id": "09ba9854_abs",
+   "capability": "ABS",
+   "carried": 11,
+   "total": 22,
+   "delivered": 14,
+   "deliveredDigest": "86cb4a3d0b198f0f"
+  },
+  {
+   "id": "gpt4_59149c77",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 197,
+   "deliveredDigest": "d32702b55b8d6ee1"
+  },
+  {
+   "id": "gpt4_f49edff3",
+   "capability": "TR",
+   "carried": 9,
+   "total": 15,
+   "delivered": 195,
+   "deliveredDigest": "9f4d4b2a89cd0fe5"
+  },
+  {
+   "id": "71017276",
+   "capability": "TR",
+   "carried": 3,
+   "total": 6,
+   "delivered": 255,
+   "deliveredDigest": "3444b8281c98c4f4"
+  },
+  {
+   "id": "b46e15ed",
+   "capability": "TR",
+   "carried": 18,
+   "total": 24,
+   "delivered": 199,
+   "deliveredDigest": "130283a57053fb9e"
+  },
+  {
+   "id": "gpt4_fa19884c",
+   "capability": "TR",
+   "carried": 10,
+   "total": 11,
+   "delivered": 207,
+   "deliveredDigest": "fdd234be11cc3e23"
+  },
+  {
+   "id": "0bc8ad92",
+   "capability": "TR",
+   "carried": 16,
+   "total": 16,
+   "delivered": 195,
+   "deliveredDigest": "f48613e58f26d496"
+  },
+  {
+   "id": "af082822",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 194,
+   "deliveredDigest": "f6ca7956fae30c90"
+  },
+  {
+   "id": "gpt4_4929293a",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 204,
+   "deliveredDigest": "f1ecc6d5683bcd45"
+  },
+  {
+   "id": "gpt4_b5700ca9",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 210,
+   "deliveredDigest": "126cc298076220c1"
+  },
+  {
+   "id": "9a707b81",
+   "capability": "TR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 206,
+   "deliveredDigest": "8212154c9f042fc6"
+  },
+  {
+   "id": "gpt4_1d4ab0c9",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 219,
+   "deliveredDigest": "3b651e12ddc7eed3"
+  },
+  {
+   "id": "gpt4_e072b769",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 187,
+   "deliveredDigest": "bf9b59cb0e34e98b"
+  },
+  {
+   "id": "0db4c65d",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 185,
+   "deliveredDigest": "cc5c296ba8348684"
+  },
+  {
+   "id": "gpt4_1d80365e",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 203,
+   "deliveredDigest": "96c7e84d62b42d7a"
+  },
+  {
+   "id": "gpt4_7f6b06db",
+   "capability": "TR",
+   "carried": 11,
+   "total": 18,
+   "delivered": 212,
+   "deliveredDigest": "f2da743f100affb7"
+  },
+  {
+   "id": "gpt4_6dc9b45b",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 219,
+   "deliveredDigest": "2a3ed0d51f27d24d"
+  },
+  {
+   "id": "gpt4_8279ba02",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 207,
+   "deliveredDigest": "ab7300817198278b"
+  },
+  {
+   "id": "gpt4_18c2b244",
+   "capability": "TR",
+   "carried": 17,
+   "total": 17,
+   "delivered": 194,
+   "deliveredDigest": "f9a0cc73887ad1d5"
+  },
+  {
+   "id": "gpt4_a1b77f9c",
+   "capability": "TR",
+   "carried": 34,
+   "total": 36,
+   "delivered": 206,
+   "deliveredDigest": "caf9651f867b88f2"
+  },
+  {
+   "id": "gpt4_1916e0ea",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 190,
+   "deliveredDigest": "7325ec31262f3fa6"
+  },
+  {
+   "id": "gpt4_7a0daae1",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 218,
+   "deliveredDigest": "331881bb474c2bc1"
+  },
+  {
+   "id": "gpt4_468eb063",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 204,
+   "deliveredDigest": "32ad25c7c326d250"
+  },
+  {
+   "id": "gpt4_7abb270c",
+   "capability": "TR",
+   "carried": 27,
+   "total": 30,
+   "delivered": 183,
+   "deliveredDigest": "008fb31e961e52c6"
+  },
+  {
+   "id": "gpt4_1e4a8aeb",
+   "capability": "TR",
+   "carried": 9,
+   "total": 11,
+   "delivered": 210,
+   "deliveredDigest": "b5a0ca63720e89ed"
+  },
+  {
+   "id": "gpt4_4fc4f797",
+   "capability": "TR",
+   "carried": 9,
+   "total": 11,
+   "delivered": 190,
+   "deliveredDigest": "dc61e832afb343fa"
+  },
+  {
+   "id": "4dfccbf7",
+   "capability": "TR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 192,
+   "deliveredDigest": "31e042e663df6e8b"
+  },
+  {
+   "id": "gpt4_61e13b3c",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 198,
+   "deliveredDigest": "9a24c0ae189d16ec"
+  },
+  {
+   "id": "gpt4_45189cb4",
+   "capability": "TR",
+   "carried": 16,
+   "total": 16,
+   "delivered": 198,
+   "deliveredDigest": "e7cabff0a9cd2a26"
+  },
+  {
+   "id": "2ebe6c90",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 193,
+   "deliveredDigest": "551070d1235d3693"
+  },
+  {
+   "id": "gpt4_e061b84f",
+   "capability": "TR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 191,
+   "deliveredDigest": "7a40950c16c6c482"
+  },
+  {
+   "id": "370a8ff4",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 215,
+   "deliveredDigest": "42c6a6e56937cdef"
+  },
+  {
+   "id": "gpt4_d6585ce8",
+   "capability": "TR",
+   "carried": 26,
+   "total": 28,
+   "delivered": 188,
+   "deliveredDigest": "a650b8560bff137b"
+  },
+  {
+   "id": "gpt4_4ef30696",
+   "capability": "TR",
+   "carried": 9,
+   "total": 11,
+   "delivered": 205,
+   "deliveredDigest": "26b611083a0da968"
+  },
+  {
+   "id": "gpt4_ec93e27f",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 194,
+   "deliveredDigest": "676178424632844b"
+  },
+  {
+   "id": "6e984301",
+   "capability": "TR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 195,
+   "deliveredDigest": "717621697e391e0c"
+  },
+  {
+   "id": "8077ef71",
+   "capability": "TR",
+   "carried": 5,
+   "total": 5,
+   "delivered": 214,
+   "deliveredDigest": "0b0f1480e4d19fcd"
+  },
+  {
+   "id": "gpt4_f420262c",
+   "capability": "TR",
+   "carried": 20,
+   "total": 27,
+   "delivered": 205,
+   "deliveredDigest": "aba6bb6319d0c25f"
+  },
+  {
+   "id": "gpt4_8e165409",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 197,
+   "deliveredDigest": "b10474e390c88442"
+  },
+  {
+   "id": "gpt4_74aed68e",
+   "capability": "TR",
+   "carried": 10,
+   "total": 11,
+   "delivered": 185,
+   "deliveredDigest": "9b89cb842aa893ba"
+  },
+  {
+   "id": "bcbe585f",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 197,
+   "deliveredDigest": "5cf369f2ef26718a"
+  },
+  {
+   "id": "gpt4_21adecb5",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 200,
+   "deliveredDigest": "4cd2fd0a4a08a77e"
+  },
+  {
+   "id": "5e1b23de",
+   "capability": "TR",
+   "carried": 5,
+   "total": 5,
+   "delivered": 191,
+   "deliveredDigest": "b60f10f7bb322f98"
+  },
+  {
+   "id": "gpt4_98f46fc6",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 198,
+   "deliveredDigest": "acfea65a41092331"
+  },
+  {
+   "id": "gpt4_af6db32f",
+   "capability": "TR",
+   "carried": 2,
+   "total": 6,
+   "delivered": 209,
+   "deliveredDigest": "94cf8ad8cce8f044"
+  },
+  {
+   "id": "eac54adc",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 179,
+   "deliveredDigest": "894038c58f8cca8c"
+  },
+  {
+   "id": "gpt4_7ddcf75f",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 197,
+   "deliveredDigest": "a4043aad731e75b5"
+  },
+  {
+   "id": "gpt4_a2d1d1f6",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 199,
+   "deliveredDigest": "eebb283f00a45df1"
+  },
+  {
+   "id": "gpt4_85da3956",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 211,
+   "deliveredDigest": "5f2fcb306db8b57e"
+  },
+  {
+   "id": "gpt4_b0863698",
+   "capability": "TR",
+   "carried": 3,
+   "total": 6,
+   "delivered": 187,
+   "deliveredDigest": "17960894bb64ae6a"
+  },
+  {
+   "id": "gpt4_68e94287",
+   "capability": "TR",
+   "carried": 10,
+   "total": 10,
+   "delivered": 185,
+   "deliveredDigest": "4a8021a6e566238c"
+  },
+  {
+   "id": "gpt4_e414231e",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 209,
+   "deliveredDigest": "814c184a8bf4e4d4"
+  },
+  {
+   "id": "gpt4_7ca326fa",
+   "capability": "TR",
+   "carried": 15,
+   "total": 17,
+   "delivered": 211,
+   "deliveredDigest": "8bd2a7b718501f37"
+  },
+  {
+   "id": "gpt4_7bc6cf22",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 209,
+   "deliveredDigest": "c3a00b19b063dcd1"
+  },
+  {
+   "id": "2ebe6c92",
+   "capability": "TR",
+   "carried": 9,
+   "total": 11,
+   "delivered": 204,
+   "deliveredDigest": "6cea9436562d86d1"
+  },
+  {
+   "id": "gpt4_e061b84g",
+   "capability": "TR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 220,
+   "deliveredDigest": "de4ec5cd8891692c"
+  },
+  {
+   "id": "71017277",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 191,
+   "deliveredDigest": "32faaba83a007964"
+  },
+  {
+   "id": "b46e15ee",
+   "capability": "TR",
+   "carried": 24,
+   "total": 24,
+   "delivered": 212,
+   "deliveredDigest": "0e3bc6f783a0d45e"
+  },
+  {
+   "id": "gpt4_d6585ce9",
+   "capability": "TR",
+   "carried": 29,
+   "total": 29,
+   "delivered": 182,
+   "deliveredDigest": "a105e45c40eb9b08"
+  },
+  {
+   "id": "gpt4_1e4a8aec",
+   "capability": "TR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 188,
+   "deliveredDigest": "52b7b1334d3d9abb"
+  },
+  {
+   "id": "gpt4_f420262d",
+   "capability": "TR",
+   "carried": 23,
+   "total": 29,
+   "delivered": 191,
+   "deliveredDigest": "ea141f9a3c91adf0"
+  },
+  {
+   "id": "gpt4_59149c78",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 203,
+   "deliveredDigest": "e95eccfb7ce1f1eb"
+  },
+  {
+   "id": "gpt4_e414231f",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 204,
+   "deliveredDigest": "c46ffeb74a696074"
+  },
+  {
+   "id": "gpt4_4929293b",
+   "capability": "TR",
+   "carried": 6,
+   "total": 12,
+   "delivered": 194,
+   "deliveredDigest": "ab21c7c363880b6c"
+  },
+  {
+   "id": "gpt4_468eb064",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 192,
+   "deliveredDigest": "8ec2868ee3eae443"
+  },
+  {
+   "id": "gpt4_fa19884d",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 214,
+   "deliveredDigest": "25cbfea98273cd60"
+  },
+  {
+   "id": "9a707b82",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 201,
+   "deliveredDigest": "f48ed5e9d0d4d0a1"
+  },
+  {
+   "id": "eac54add",
+   "capability": "TR",
+   "carried": 6,
+   "total": 12,
+   "delivered": 192,
+   "deliveredDigest": "54d0b25a6ba9662d"
+  },
+  {
+   "id": "4dfccbf8",
+   "capability": "TR",
+   "carried": 2,
+   "total": 12,
+   "delivered": 183,
+   "deliveredDigest": "83216d413d98a55f"
+  },
+  {
+   "id": "0bc8ad93",
+   "capability": "TR",
+   "carried": 17,
+   "total": 17,
+   "delivered": 200,
+   "deliveredDigest": "c5f0afb10ef9e8a5"
+  },
+  {
+   "id": "6e984302",
+   "capability": "TR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 194,
+   "deliveredDigest": "da1e5d5aa33c0f2a"
+  },
+  {
+   "id": "gpt4_8279ba03",
+   "capability": "TR",
+   "carried": 0,
+   "total": 6,
+   "delivered": 179,
+   "deliveredDigest": "16756e1deedfe9a3"
+  },
+  {
+   "id": "gpt4_b5700ca0",
+   "capability": "TR",
+   "carried": 6,
+   "total": 6,
+   "delivered": 208,
+   "deliveredDigest": "b4e47971550c56a8"
+  },
+  {
+   "id": "gpt4_68e94288",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 199,
+   "deliveredDigest": "31f33973ba4ca14d"
+  },
+  {
+   "id": "gpt4_2655b836",
+   "capability": "TR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 194,
+   "deliveredDigest": "932f74f3fd49c3ee"
+  },
+  {
+   "id": "gpt4_2487a7cb",
+   "capability": "TR",
+   "carried": 8,
+   "total": 12,
+   "delivered": 201,
+   "deliveredDigest": "b7467b831f81816b"
+  },
+  {
+   "id": "gpt4_76048e76",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 200,
+   "deliveredDigest": "0c353640d96b856e"
+  },
+  {
+   "id": "gpt4_2312f94c",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 196,
+   "deliveredDigest": "88c71c6883c126be"
+  },
+  {
+   "id": "0bb5a684",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 189,
+   "deliveredDigest": "4cc71370ab7826be"
+  },
+  {
+   "id": "08f4fc43",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 188,
+   "deliveredDigest": "cc9a764da48193d0"
+  },
+  {
+   "id": "2c63a862",
+   "capability": "TR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 203,
+   "deliveredDigest": "fa518651ac92cd1f"
+  },
+  {
+   "id": "gpt4_385a5000",
+   "capability": "TR",
+   "carried": 7,
+   "total": 10,
+   "delivered": 199,
+   "deliveredDigest": "4cc9eac58fa17f44"
+  },
+  {
+   "id": "2a1811e2",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 189,
+   "deliveredDigest": "0c6176bd5e11bbd8"
+  },
+  {
+   "id": "bbf86515",
+   "capability": "TR",
+   "carried": 10,
+   "total": 11,
+   "delivered": 200,
+   "deliveredDigest": "36ad0f652c8c2a7a"
+  },
+  {
+   "id": "gpt4_5dcc0aab",
+   "capability": "TR",
+   "carried": 26,
+   "total": 29,
+   "delivered": 202,
+   "deliveredDigest": "bb4283f94fd0277e"
+  },
+  {
+   "id": "gpt4_0b2f1d21",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 233,
+   "deliveredDigest": "591c25608dc9fa53"
+  },
+  {
+   "id": "f0853d11",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 207,
+   "deliveredDigest": "49abbd0da602b471"
+  },
+  {
+   "id": "gpt4_6ed717ea",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 186,
+   "deliveredDigest": "61633e34118e0a1e"
+  },
+  {
+   "id": "gpt4_70e84552",
+   "capability": "TR",
+   "carried": 8,
+   "total": 12,
+   "delivered": 193,
+   "deliveredDigest": "147c65900a2d77e9"
+  },
+  {
+   "id": "a3838d2b",
+   "capability": "TR",
+   "carried": 27,
+   "total": 34,
+   "delivered": 197,
+   "deliveredDigest": "186f250db1244620"
+  },
+  {
+   "id": "gpt4_93159ced",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 189,
+   "deliveredDigest": "d001de2877e98922"
+  },
+  {
+   "id": "gpt4_2d58bcd6",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 204,
+   "deliveredDigest": "cbfc21f335b5a5af"
+  },
+  {
+   "id": "gpt4_65aabe59",
+   "capability": "TR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 181,
+   "deliveredDigest": "86605455619a6757"
+  },
+  {
+   "id": "982b5123",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 191,
+   "deliveredDigest": "a876f1f9e7782676"
+  },
+  {
+   "id": "b9cfe692",
+   "capability": "TR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 206,
+   "deliveredDigest": "d648060c6e99d4ea"
+  },
+  {
+   "id": "gpt4_4edbafa2",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 186,
+   "deliveredDigest": "02c9f29c8fb5eb66"
+  },
+  {
+   "id": "c8090214",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 193,
+   "deliveredDigest": "87a1cbc4f204322d"
+  },
+  {
+   "id": "gpt4_483dd43c",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 197,
+   "deliveredDigest": "6c579bae27219102"
+  },
+  {
+   "id": "e4e14d04",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 182,
+   "deliveredDigest": "03d35a91b6274622"
+  },
+  {
+   "id": "c9f37c46",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 188,
+   "deliveredDigest": "0d6f5f21f7e0ce64"
+  },
+  {
+   "id": "gpt4_2c50253f",
+   "capability": "TR",
+   "carried": 9,
+   "total": 12,
+   "delivered": 197,
+   "deliveredDigest": "eaf2e20002fe8c96"
+  },
+  {
+   "id": "dcfa8644",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 202,
+   "deliveredDigest": "c45d48f85143afd7"
+  },
+  {
+   "id": "gpt4_b4a80587",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 212,
+   "deliveredDigest": "3a8e2e1c55e5f45d"
+  },
+  {
+   "id": "gpt4_9a159967",
+   "capability": "TR",
+   "carried": 16,
+   "total": 16,
+   "delivered": 194,
+   "deliveredDigest": "927065eb78d6a75b"
+  },
+  {
+   "id": "cc6d1ec1",
+   "capability": "TR",
+   "carried": 7,
+   "total": 12,
+   "delivered": 192,
+   "deliveredDigest": "96ae8504949d5d22"
+  },
+  {
+   "id": "gpt4_8c8961ae",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 187,
+   "deliveredDigest": "2ae31c235f760ab7"
+  },
+  {
+   "id": "gpt4_d9af6064",
+   "capability": "TR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 204,
+   "deliveredDigest": "d8b9783a117dbdb9"
+  },
+  {
+   "id": "gpt4_7de946e7",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 190,
+   "deliveredDigest": "3e5b4b266347d44a"
+  },
+  {
+   "id": "d01c6aa8",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 180,
+   "deliveredDigest": "4a72111fabcb6e1d"
+  },
+  {
+   "id": "993da5e2",
+   "capability": "TR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 185,
+   "deliveredDigest": "60ca2614cac97826"
+  },
+  {
+   "id": "a3045048",
+   "capability": "TR",
+   "carried": 9,
+   "total": 11,
+   "delivered": 211,
+   "deliveredDigest": "7c5df2401d2a3d1c"
+  },
+  {
+   "id": "gpt4_d31cdae3",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 194,
+   "deliveredDigest": "a0f19f9002faa133"
+  },
+  {
+   "id": "gpt4_cd90e484",
+   "capability": "TR",
+   "carried": 7,
+   "total": 11,
+   "delivered": 199,
+   "deliveredDigest": "1f1c7f3d9fe53fc9"
+  },
+  {
+   "id": "gpt4_88806d6e",
+   "capability": "TR",
+   "carried": 10,
+   "total": 12,
+   "delivered": 203,
+   "deliveredDigest": "908baf4ec22d24eb"
+  },
+  {
+   "id": "gpt4_4cd9eba1",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 198,
+   "deliveredDigest": "2fb9fe33c79dcdda"
+  },
+  {
+   "id": "gpt4_93f6379c",
+   "capability": "TR",
+   "carried": 14,
+   "total": 18,
+   "delivered": 178,
+   "deliveredDigest": "57aad36dc8144644"
+  },
+  {
+   "id": "b29f3365",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 205,
+   "deliveredDigest": "06c7e6b2ec718216"
+  },
+  {
+   "id": "gpt4_2f56ae70",
+   "capability": "TR",
+   "carried": 16,
+   "total": 18,
+   "delivered": 186,
+   "deliveredDigest": "5e6153c988510499"
+  },
+  {
+   "id": "6613b389",
+   "capability": "TR",
+   "carried": 18,
+   "total": 18,
+   "delivered": 193,
+   "deliveredDigest": "f702fe94421d94b8"
+  },
+  {
+   "id": "gpt4_78cf46a3",
+   "capability": "TR",
+   "carried": 9,
+   "total": 10,
+   "delivered": 223,
+   "deliveredDigest": "570df6069837fa5e"
+  },
+  {
+   "id": "gpt4_0a05b494",
+   "capability": "TR",
+   "carried": 11,
+   "total": 12,
+   "delivered": 198,
+   "deliveredDigest": "4c0dfc760dc97783"
+  },
+  {
+   "id": "gpt4_1a1dc16d",
+   "capability": "TR",
+   "carried": 7,
+   "total": 10,
+   "delivered": 184,
+   "deliveredDigest": "c40211a01e65ad7c"
+  },
+  {
+   "id": "gpt4_2f584639",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 195,
+   "deliveredDigest": "1cf3ad3b7738e720"
+  },
+  {
+   "id": "gpt4_213fd887",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 190,
+   "deliveredDigest": "d3d706ccd6f2a875"
+  },
+  {
+   "id": "gpt4_5438fa52",
+   "capability": "TR",
+   "carried": 12,
+   "total": 12,
+   "delivered": 209,
+   "deliveredDigest": "adcece179f062b83"
+  },
+  {
+   "id": "gpt4_c27434e8",
+   "capability": "TR",
+   "carried": 11,
+   "total": 11,
+   "delivered": 193,
+   "deliveredDigest": "cc4b730f0adca69b"
+  },
+  {
+   "id": "gpt4_fe651585",
+   "capability": "TR",
+   "carried": 8,
+   "total": 12,
+   "delivered": 211,
+   "deliveredDigest": "e9394ccd0c87f467"
+  },
+  {
+   "id": "8c18457d",
+   "capability": "TR",
+   "carried": 10,
+   "total": 10,
+   "delivered": 196,
+   "deliveredDigest": "e48170c531b46b56"
+  },
+  {
+   "id": "gpt4_70e84552_abs",
+   "capability": "ABS",
+   "carried": 1,
+   "total": 24,
+   "delivered": 9,
+   "deliveredDigest": "b9c53b7ebb30167a"
+  },
+  {
+   "id": "gpt4_93159ced_abs",
+   "capability": "ABS",
+   "carried": 2,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "a2fc80d81f8b2d0a"
+  },
+  {
+   "id": "982b5123_abs",
+   "capability": "ABS",
+   "carried": 3,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "3b9fd9fd418c8cf2"
+  },
+  {
+   "id": "c8090214_abs",
+   "capability": "ABS",
+   "carried": 6,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "0b23361cb0ee46c6"
+  },
+  {
+   "id": "gpt4_c27434e8_abs",
+   "capability": "ABS",
+   "carried": 13,
+   "total": 22,
+   "delivered": 13,
+   "deliveredDigest": "3b027302a4213995"
+  },
+  {
+   "id": "gpt4_fe651585_abs",
+   "capability": "ABS",
+   "carried": 7,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "83c425ff36311d46"
+  },
+  {
+   "id": "6a1eabeb",
+   "capability": "KU",
+   "carried": 6,
+   "total": 24,
+   "delivered": 10,
+   "deliveredDigest": "4fcf4e86350b924c"
+  },
+  {
+   "id": "6aeb4375",
+   "capability": "KU",
+   "carried": 5,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "840e54c8ce7bf6ca"
+  },
+  {
+   "id": "830ce83f",
+   "capability": "KU",
+   "carried": 1,
+   "total": 24,
+   "delivered": 18,
+   "deliveredDigest": "5dd9cd3eafc29dea"
+  },
+  {
+   "id": "852ce960",
+   "capability": "KU",
+   "carried": 6,
+   "total": 24,
+   "delivered": 7,
+   "deliveredDigest": "6989712c7f97ab39"
+  },
+  {
+   "id": "945e3d21",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 9,
+   "deliveredDigest": "394841be49043d81"
+  },
+  {
+   "id": "d7c942c3",
+   "capability": "KU",
+   "carried": 8,
+   "total": 24,
+   "delivered": 10,
+   "deliveredDigest": "0ccc3c9b3984aa57"
+  },
+  {
+   "id": "71315a70",
+   "capability": "KU",
+   "carried": 10,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "33f55ceeb3fa6448"
+  },
+  {
+   "id": "89941a93",
+   "capability": "KU",
+   "carried": 4,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "3de5476c0fcc9c56"
+  },
+  {
+   "id": "ce6d2d27",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "192681c6f21c189b"
+  },
+  {
+   "id": "9ea5eabc",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 11,
+   "deliveredDigest": "2ef650162af01c6b"
+  },
+  {
+   "id": "07741c44",
+   "capability": "KU",
+   "carried": 10,
+   "total": 24,
+   "delivered": 11,
+   "deliveredDigest": "ed4f051117c58365"
+  },
+  {
+   "id": "a1eacc2a",
+   "capability": "KU",
+   "carried": 8,
+   "total": 24,
+   "delivered": 11,
+   "deliveredDigest": "d4de2ec36c3536f5"
+  },
+  {
+   "id": "184da446",
+   "capability": "KU",
+   "carried": 8,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "a7994ab110ac7cdd"
+  },
+  {
+   "id": "031748ae",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "b471a39bca050c9e"
+  },
+  {
+   "id": "4d6b87c8",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "f618c46dbd684c00"
+  },
+  {
+   "id": "0f05491a",
+   "capability": "KU",
+   "carried": 15,
+   "total": 24,
+   "delivered": 22,
+   "deliveredDigest": "3a52bfbef90c7ce9"
+  },
+  {
+   "id": "08e075c7",
+   "capability": "KU",
+   "carried": 5,
+   "total": 24,
+   "delivered": 8,
+   "deliveredDigest": "688ec44350b82d03"
+  },
+  {
+   "id": "f9e8c073",
+   "capability": "KU",
+   "carried": 9,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "3c4ee3a4fca9d46e"
+  },
+  {
+   "id": "41698283",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 11,
+   "deliveredDigest": "6f4ff8d40fdb113d"
+  },
+  {
+   "id": "2698e78f",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "96ed0e484895d7d2"
+  },
+  {
+   "id": "b6019101",
+   "capability": "KU",
+   "carried": 5,
+   "total": 22,
+   "delivered": 8,
+   "deliveredDigest": "caa29097c065b360"
+  },
+  {
+   "id": "45dc21b6",
+   "capability": "KU",
+   "carried": 3,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "ccdcfdd173868e56"
+  },
+  {
+   "id": "5a4f22c0",
+   "capability": "KU",
+   "carried": 8,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "43844f9be16c1942"
+  },
+  {
+   "id": "6071bd76",
+   "capability": "KU",
+   "carried": 10,
+   "total": 24,
+   "delivered": 15,
+   "deliveredDigest": "8be2df1207055bb7"
+  },
+  {
+   "id": "e493bb7c",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "dde7490c3278dc6f"
+  },
+  {
+   "id": "618f13b2",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "70e41c494d76f344"
+  },
+  {
+   "id": "72e3ee87",
+   "capability": "KU",
+   "carried": 9,
+   "total": 24,
+   "delivered": 18,
+   "deliveredDigest": "b6a8a452fa65c2de"
+  },
+  {
+   "id": "c4ea545c",
+   "capability": "KU",
+   "carried": 1,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "513ca764103fb83c"
+  },
+  {
+   "id": "01493427",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "d65117e95c622164"
+  },
+  {
+   "id": "6a27ffc2",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "85bcd6dd0ac32204"
+  },
+  {
+   "id": "2133c1b5",
+   "capability": "KU",
+   "carried": 3,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "aa623cf07ff02ccd"
+  },
+  {
+   "id": "18bc8abd",
+   "capability": "KU",
+   "carried": 9,
+   "total": 24,
+   "delivered": 15,
+   "deliveredDigest": "4a0d3d492f2f9259"
+  },
+  {
+   "id": "db467c8c",
+   "capability": "KU",
+   "carried": 5,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "ad0d4a78c30b3868"
+  },
+  {
+   "id": "7a87bd0c",
+   "capability": "KU",
+   "carried": 9,
+   "total": 22,
+   "delivered": 12,
+   "deliveredDigest": "9fb950cc5391e62b"
+  },
+  {
+   "id": "e61a7584",
+   "capability": "KU",
+   "carried": 9,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "e7aab21782a56ed0"
+  },
+  {
+   "id": "1cea1afa",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "1addf405e6a15cc6"
+  },
+  {
+   "id": "ed4ddc30",
+   "capability": "KU",
+   "carried": 8,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "f30fd0866f7667d4"
+  },
+  {
+   "id": "8fb83627",
+   "capability": "KU",
+   "carried": 15,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "f7d27b24a0c3d4a7"
+  },
+  {
+   "id": "b01defab",
+   "capability": "KU",
+   "carried": 15,
+   "total": 24,
+   "delivered": 21,
+   "deliveredDigest": "713de3567e675ac2"
+  },
+  {
+   "id": "22d2cb42",
+   "capability": "KU",
+   "carried": 11,
+   "total": 24,
+   "delivered": 19,
+   "deliveredDigest": "89841a06238280a0"
+  },
+  {
+   "id": "0e4e4c46",
+   "capability": "KU",
+   "carried": 8,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "b488c04edfcb8e6e"
+  },
+  {
+   "id": "4b24c848",
+   "capability": "KU",
+   "carried": 1,
+   "total": 24,
+   "delivered": 9,
+   "deliveredDigest": "5a31b3b57614889c"
+  },
+  {
+   "id": "7e974930",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "7b424453717bae31"
+  },
+  {
+   "id": "603deb26",
+   "capability": "KU",
+   "carried": 4,
+   "total": 22,
+   "delivered": 14,
+   "deliveredDigest": "6cc82b61dac4faa2"
+  },
+  {
+   "id": "59524333",
+   "capability": "KU",
+   "carried": 4,
+   "total": 22,
+   "delivered": 9,
+   "deliveredDigest": "251b785003752137"
+  },
+  {
+   "id": "5831f84d",
+   "capability": "KU",
+   "carried": 6,
+   "total": 22,
+   "delivered": 12,
+   "deliveredDigest": "b572eb10cc976dd3"
+  },
+  {
+   "id": "eace081b",
+   "capability": "KU",
+   "carried": 5,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "e0196d1dc0bb5fea"
+  },
+  {
+   "id": "affe2881",
+   "capability": "KU",
+   "carried": 6,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "ee378032fa28568d"
+  },
+  {
+   "id": "50635ada",
+   "capability": "KU",
+   "carried": 11,
+   "total": 24,
+   "delivered": 17,
+   "deliveredDigest": "3c73549b3f7753a7"
+  },
+  {
+   "id": "e66b632c",
+   "capability": "KU",
+   "carried": 9,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "47a0ab3845bc7722"
+  },
+  {
+   "id": "0ddfec37",
+   "capability": "KU",
+   "carried": 5,
+   "total": 22,
+   "delivered": 12,
+   "deliveredDigest": "bc059dffafda90e8"
+  },
+  {
+   "id": "f685340e",
+   "capability": "KU",
+   "carried": 11,
+   "total": 24,
+   "delivered": 18,
+   "deliveredDigest": "04f24936773f382b"
+  },
+  {
+   "id": "cc5ded98",
+   "capability": "KU",
+   "carried": 10,
+   "total": 22,
+   "delivered": 13,
+   "deliveredDigest": "52942dcf61a8a855"
+  },
+  {
+   "id": "dfde3500",
+   "capability": "KU",
+   "carried": 12,
+   "total": 22,
+   "delivered": 18,
+   "deliveredDigest": "3f3096f4acf26ead"
+  },
+  {
+   "id": "69fee5aa",
+   "capability": "KU",
+   "carried": 4,
+   "total": 22,
+   "delivered": 11,
+   "deliveredDigest": "4ea15a732dcc8961"
+  },
+  {
+   "id": "7401057b",
+   "capability": "KU",
+   "carried": 11,
+   "total": 24,
+   "delivered": 13,
+   "deliveredDigest": "2415a07a7af5510f"
+  },
+  {
+   "id": "cf22b7bf",
+   "capability": "KU",
+   "carried": 3,
+   "total": 22,
+   "delivered": 12,
+   "deliveredDigest": "9f12ac614afbe00d"
+  },
+  {
+   "id": "a2f3aa27",
+   "capability": "KU",
+   "carried": 5,
+   "total": 20,
+   "delivered": 15,
+   "deliveredDigest": "3d08dd4dce384f60"
+  },
+  {
+   "id": "c7dc5443",
+   "capability": "KU",
+   "carried": 15,
+   "total": 24,
+   "delivered": 18,
+   "deliveredDigest": "310a7e09a0e0707c"
+  },
+  {
+   "id": "06db6396",
+   "capability": "KU",
+   "carried": 5,
+   "total": 24,
+   "delivered": 6,
+   "deliveredDigest": "67a56a08c012b22d"
+  },
+  {
+   "id": "3ba21379",
+   "capability": "KU",
+   "carried": 1,
+   "total": 24,
+   "delivered": 4,
+   "deliveredDigest": "ac42dc7466b2d7a3"
+  },
+  {
+   "id": "9bbe84a2",
+   "capability": "KU",
+   "carried": 13,
+   "total": 22,
+   "delivered": 14,
+   "deliveredDigest": "6aaff56f08381a37"
+  },
+  {
+   "id": "10e09553",
+   "capability": "KU",
+   "carried": 10,
+   "total": 20,
+   "delivered": 17,
+   "deliveredDigest": "e7caa2a30c8dbe64"
+  },
+  {
+   "id": "dad224aa",
+   "capability": "KU",
+   "carried": 7,
+   "total": 24,
+   "delivered": 19,
+   "deliveredDigest": "b107ceb67f06306b"
+  },
+  {
+   "id": "ba61f0b9",
+   "capability": "KU",
+   "carried": 8,
+   "total": 22,
+   "delivered": 10,
+   "deliveredDigest": "bf725d27f7825516"
+  },
+  {
+   "id": "42ec0761",
+   "capability": "KU",
+   "carried": 11,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "3f8d5ef885c95768"
+  },
+  {
+   "id": "5c40ec5b",
+   "capability": "KU",
+   "carried": 6,
+   "total": 20,
+   "delivered": 14,
+   "deliveredDigest": "69cc678150870be0"
+  },
+  {
+   "id": "c6853660",
+   "capability": "KU",
+   "carried": 7,
+   "total": 20,
+   "delivered": 12,
+   "deliveredDigest": "a155be3250a2a192"
+  },
+  {
+   "id": "26bdc477",
+   "capability": "KU",
+   "carried": 5,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "27df780243becf45"
+  },
+  {
+   "id": "0977f2af",
+   "capability": "KU",
+   "carried": 3,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "06b02a2e090f6065"
+  },
+  {
+   "id": "6aeb4375_abs",
+   "capability": "ABS",
+   "carried": 5,
+   "total": 24,
+   "delivered": 16,
+   "deliveredDigest": "a88722940f8f7022"
+  },
+  {
+   "id": "031748ae_abs",
+   "capability": "ABS",
+   "carried": 6,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "63c69b063903ca87"
+  },
+  {
+   "id": "2698e78f_abs",
+   "capability": "ABS",
+   "carried": 5,
+   "total": 24,
+   "delivered": 15,
+   "deliveredDigest": "41f4a92383258c04"
+  },
+  {
+   "id": "2133c1b5_abs",
+   "capability": "ABS",
+   "carried": 1,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "54d102f25be1111a"
+  },
+  {
+   "id": "0ddfec37_abs",
+   "capability": "ABS",
+   "carried": 3,
+   "total": 22,
+   "delivered": 16,
+   "deliveredDigest": "0e87448ce0e562dd"
+  },
+  {
+   "id": "f685340e_abs",
+   "capability": "ABS",
+   "carried": 10,
+   "total": 24,
+   "delivered": 17,
+   "deliveredDigest": "5bbb9e1f1f814d17"
+  },
+  {
+   "id": "89941a94",
+   "capability": "KU",
+   "carried": 10,
+   "total": 24,
+   "delivered": 12,
+   "deliveredDigest": "f1105e30c8ddcb75"
+  },
+  {
+   "id": "07741c45",
+   "capability": "KU",
+   "carried": 10,
+   "total": 24,
+   "delivered": 14,
+   "deliveredDigest": "1414f3ebdbb020d0"
+  },
+  {
+   "id": "7161e7e2",
+   "capability": "IE",
+   "carried": 8,
+   "total": 14,
+   "delivered": 15,
+   "deliveredDigest": "05a9ea3d13e347cc"
+  },
+  {
+   "id": "c4f10528",
+   "capability": "IE",
+   "carried": 8,
+   "total": 14,
+   "delivered": 22,
+   "deliveredDigest": "083c5d2d15e064fc"
+  },
+  {
+   "id": "89527b6b",
+   "capability": "IE",
+   "carried": 2,
+   "total": 2,
+   "delivered": 12,
+   "deliveredDigest": "31a6288b5d52e2f0"
+  },
+  {
+   "id": "e9327a54",
+   "capability": "IE",
+   "carried": 3,
+   "total": 14,
+   "delivered": 14,
+   "deliveredDigest": "9254cd009002b3e4"
+  },
+  {
+   "id": "4c36ccef",
+   "capability": "IE",
+   "carried": 3,
+   "total": 8,
+   "delivered": 14,
+   "deliveredDigest": "9dc3222976e35272"
+  },
+  {
+   "id": "6ae235be",
+   "capability": "IE",
+   "carried": 4,
+   "total": 8,
+   "delivered": 10,
+   "deliveredDigest": "0f278e4e4ac11a94"
+  },
+  {
+   "id": "7e00a6cb",
+   "capability": "IE",
+   "carried": 2,
+   "total": 6,
+   "delivered": 13,
+   "deliveredDigest": "34085acc0640bd02"
+  },
+  {
+   "id": "1903aded",
+   "capability": "IE",
+   "carried": 1,
+   "total": 2,
+   "delivered": 13,
+   "deliveredDigest": "36b7acd883cfad5a"
+  },
+  {
+   "id": "ceb54acb",
+   "capability": "IE",
+   "carried": 1,
+   "total": 4,
+   "delivered": 10,
+   "deliveredDigest": "e0c55ef5adeaf49b"
+  },
+  {
+   "id": "f523d9fe",
+   "capability": "IE",
+   "carried": 2,
+   "total": 22,
+   "delivered": 7,
+   "deliveredDigest": "4e1a9f6da60fc74c"
+  },
+  {
+   "id": "0e5e2d1a",
+   "capability": "IE",
+   "carried": 6,
+   "total": 6,
+   "delivered": 13,
+   "deliveredDigest": "2f445b5c6ce303e9"
+  },
+  {
+   "id": "fea54f57",
+   "capability": "IE",
+   "carried": 3,
+   "total": 14,
+   "delivered": 13,
+   "deliveredDigest": "56349e9e62d696e1"
+  },
+  {
+   "id": "cc539528",
+   "capability": "IE",
+   "carried": 7,
+   "total": 10,
+   "delivered": 15,
+   "deliveredDigest": "2cc691b683afe0b5"
+  },
+  {
+   "id": "dc439ea3",
+   "capability": "IE",
+   "carried": 4,
+   "total": 8,
+   "delivered": 12,
+   "deliveredDigest": "5fffae5d832ed141"
+  },
+  {
+   "id": "18dcd5a5",
+   "capability": "IE",
+   "carried": 1,
+   "total": 2,
+   "delivered": 8,
+   "deliveredDigest": "36e2909330bdb25a"
+  },
+  {
+   "id": "488d3006",
+   "capability": "IE",
+   "carried": 8,
+   "total": 14,
+   "delivered": 16,
+   "deliveredDigest": "885d7df8afec4dcd"
+  },
+  {
+   "id": "58470ed2",
+   "capability": "IE",
+   "carried": 2,
+   "total": 3,
+   "delivered": 10,
+   "deliveredDigest": "a8f265c2dda41ece"
+  },
+  {
+   "id": "8cf51dda",
+   "capability": "IE",
+   "carried": 2,
+   "total": 2,
+   "delivered": 11,
+   "deliveredDigest": "02d2cb175dde5992"
+  },
+  {
+   "id": "1d4da289",
+   "capability": "IE",
+   "carried": 4,
+   "total": 6,
+   "delivered": 13,
+   "deliveredDigest": "f025f8df38f09265"
+  },
+  {
+   "id": "8464fc84",
+   "capability": "IE",
+   "carried": 4,
+   "total": 12,
+   "delivered": 20,
+   "deliveredDigest": "f2ad3ebc23f5e033"
+  },
+  {
+   "id": "8aef76bc",
+   "capability": "IE",
+   "carried": 4,
+   "total": 8,
+   "delivered": 12,
+   "deliveredDigest": "61e96463b848cca5"
+  },
+  {
+   "id": "71a3fd6b",
+   "capability": "IE",
+   "carried": 4,
+   "total": 6,
+   "delivered": 16,
+   "deliveredDigest": "ddc4d1456981d296"
+  },
+  {
+   "id": "2bf43736",
+   "capability": "IE",
+   "carried": 7,
+   "total": 11,
+   "delivered": 12,
+   "deliveredDigest": "d1934d735ea0c5c1"
+  },
+  {
+   "id": "70b3e69b",
+   "capability": "IE",
+   "carried": 12,
+   "total": 14,
+   "delivered": 18,
+   "deliveredDigest": "a405e95eb5a37737"
+  },
+  {
+   "id": "8752c811",
+   "capability": "IE",
+   "carried": 3,
+   "total": 6,
+   "delivered": 12,
+   "deliveredDigest": "7d4857e33e45df20"
+  },
+  {
+   "id": "3249768e",
+   "capability": "IE",
+   "carried": 4,
+   "total": 4,
+   "delivered": 13,
+   "deliveredDigest": "32fe3cdb4147e143"
+  },
+  {
+   "id": "1b9b7252",
+   "capability": "IE",
+   "carried": 2,
+   "total": 8,
+   "delivered": 10,
+   "deliveredDigest": "965be44640c335db"
+  },
+  {
+   "id": "1568498a",
+   "capability": "IE",
+   "carried": 5,
+   "total": 24,
+   "delivered": 15,
+   "deliveredDigest": "a85acd6dfd33b09b"
+  },
+  {
+   "id": "6222b6eb",
+   "capability": "IE",
+   "carried": 4,
+   "total": 16,
+   "delivered": 8,
+   "deliveredDigest": "5a82a11dcd158232"
+  },
+  {
+   "id": "e8a79c70",
+   "capability": "IE",
+   "carried": 1,
+   "total": 8,
+   "delivered": 10,
+   "deliveredDigest": "30e926f4d7248655"
+  },
+  {
+   "id": "d596882b",
+   "capability": "IE",
+   "carried": 3,
+   "total": 8,
+   "delivered": 10,
+   "deliveredDigest": "7c465d3d0d1aae4d"
+  },
+  {
+   "id": "e3fc4d6e",
+   "capability": "IE",
+   "carried": 2,
+   "total": 2,
+   "delivered": 11,
+   "deliveredDigest": "b973753b1f4fbe0c"
+  },
+  {
+   "id": "51b23612",
+   "capability": "IE",
+   "carried": 6,
+   "total": 12,
+   "delivered": 16,
+   "deliveredDigest": "a527ad0aea84e1f9"
+  },
+  {
+   "id": "3e321797",
+   "capability": "IE",
+   "carried": 3,
+   "total": 8,
+   "delivered": 12,
+   "deliveredDigest": "81a415ef36335dd1"
+  },
+  {
+   "id": "e982271f",
+   "capability": "IE",
+   "carried": 6,
+   "total": 6,
+   "delivered": 20,
+   "deliveredDigest": "9d1245dc3c98d302"
+  },
+  {
+   "id": "352ab8bd",
+   "capability": "IE",
+   "carried": 7,
+   "total": 15,
+   "delivered": 12,
+   "deliveredDigest": "b705a867dc92420d"
+  },
+  {
+   "id": "fca762bc",
+   "capability": "IE",
+   "carried": 1,
+   "total": 6,
+   "delivered": 9,
+   "deliveredDigest": "2b664506f2fb34c8"
+  },
+  {
+   "id": "7a8d0b71",
+   "capability": "IE",
+   "carried": 3,
+   "total": 5,
+   "delivered": 9,
+   "deliveredDigest": "e78df26fc2d4b8a1"
+  },
+  {
+   "id": "a40e080f",
+   "capability": "IE",
+   "carried": 8,
+   "total": 8,
+   "delivered": 17,
+   "deliveredDigest": "f5488271e699bf2e"
+  },
+  {
+   "id": "8b9d4367",
+   "capability": "IE",
+   "carried": 5,
+   "total": 6,
+   "delivered": 12,
+   "deliveredDigest": "7445269485fef18b"
+  },
+  {
+   "id": "5809eb10",
+   "capability": "IE",
+   "carried": 8,
+   "total": 12,
+   "delivered": 9,
+   "deliveredDigest": "d3a29d98771b81f4"
+  },
+  {
+   "id": "41275add",
+   "capability": "IE",
+   "carried": 1,
+   "total": 2,
+   "delivered": 9,
+   "deliveredDigest": "ef59622ef3ee463e"
+  },
+  {
+   "id": "4388e9dd",
+   "capability": "IE",
+   "carried": 4,
+   "total": 6,
+   "delivered": 12,
+   "deliveredDigest": "22391811c11ba8f6"
+  },
+  {
+   "id": "4baee567",
+   "capability": "IE",
+   "carried": 4,
+   "total": 20,
+   "delivered": 8,
+   "deliveredDigest": "d922f3bfc5ebad86"
+  },
+  {
+   "id": "561fabcd",
+   "capability": "IE",
+   "carried": 3,
+   "total": 17,
+   "delivered": 21,
+   "deliveredDigest": "90499a27a15935a5"
+  },
+  {
+   "id": "b759caee",
+   "capability": "IE",
+   "carried": 2,
+   "total": 2,
+   "delivered": 8,
+   "deliveredDigest": "15f7bd203c88a68e"
+  },
+  {
+   "id": "ac031881",
+   "capability": "IE",
+   "carried": 17,
+   "total": 32,
+   "delivered": 22,
+   "deliveredDigest": "f9f400f579a4a24a"
+  },
+  {
+   "id": "28bcfaac",
+   "capability": "IE",
+   "carried": 3,
+   "total": 6,
+   "delivered": 10,
+   "deliveredDigest": "79388bd642908f2d"
+  },
+  {
+   "id": "16c90bf4",
+   "capability": "IE",
+   "carried": 5,
+   "total": 10,
+   "delivered": 13,
+   "deliveredDigest": "653522e54cda2da6"
+  },
+  {
+   "id": "c8f1aeed",
+   "capability": "IE",
+   "carried": 3,
+   "total": 6,
+   "delivered": 8,
+   "deliveredDigest": "f935609306a71eaa"
+  },
+  {
+   "id": "eaca4986",
+   "capability": "IE",
+   "carried": 2,
+   "total": 4,
+   "delivered": 11,
+   "deliveredDigest": "2fbfe1def0776df0"
+  },
+  {
+   "id": "c7cf7dfd",
+   "capability": "IE",
+   "carried": 13,
+   "total": 14,
+   "delivered": 17,
+   "deliveredDigest": "8e6d067adf1fbac1"
+  },
+  {
+   "id": "e48988bc",
+   "capability": "IE",
+   "carried": 6,
+   "total": 6,
+   "delivered": 15,
+   "deliveredDigest": "cee24b9ae52bedcc"
+  },
+  {
+   "id": "1de5cff2",
+   "capability": "IE",
+   "carried": 8,
+   "total": 12,
+   "delivered": 14,
+   "deliveredDigest": "de1f7ee4e3665ff3"
+  },
+  {
+   "id": "65240037",
+   "capability": "IE",
+   "carried": 14,
+   "total": 14,
+   "delivered": 20,
+   "deliveredDigest": "bb6c4d5df3f10690"
+  },
+  {
+   "id": "778164c6",
+   "capability": "IE",
+   "carried": 8,
+   "total": 12,
+   "delivered": 13,
+   "deliveredDigest": "26509dfebfc68970"
+  }
+ ]
+}

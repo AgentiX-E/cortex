@@ -1,0 +1,192 @@
+# The retrieval instrument: one dispatch, no model, no embedding, no bill.
+#
+# ## What this job measures, and what it refuses to measure
+#
+# `S14` priced the vector channel at 5.60 points and `docs/ANALYSIS-LEXICAL-ZERO-RECALL.md` turned
+# that price into a target that can be moved without buying a model: **21 questions deliver no gold
+# turn at all**, the vector arm delivers gold on all 500, and the zero-recall bucket answers 19.0%
+# where the 1-33% bucket answers 82.9%. The repair that follows is a change to lexical scoring, and
+# lexical scoring is deterministic code over a deterministic corpus.
+#
+# So the reader and the judge are replaced by constants (`CORTEX_ARM_OFFLINE=1`) and everything else
+# runs for real: the product's index, its fusion, its room arithmetic, its truncation, its rendering.
+# What a run of this workflow produces is **delivered evidence per question**, and the only numbers
+# worth reading off it are `questions[].goldOverlap`, `questions[].turns` and the two character
+# counts beside them. Accuracy in this artifact is the accuracy of a constant.
+#
+# `offline-instrument.json` beside the report says exactly that, and
+# `tools/lexical-recall-calibrate.py` refuses to be pointed at a report without it.
+#
+# ## Why it is a workflow of its own
+#
+# The same reason `benchmark-cortex-memory.yml` is: `workflow_dispatch` accepts 25 inputs per
+# workflow and that file is at the ceiling. It is also the only job in this repository that can run
+# with **no credential at all** -- the reader is a constant and `indexEmbedding: none` means nothing
+# is embedded -- so it is the one benchmark that can be dispatched while the provider account is
+# empty, which is the state that voided run `44159514514` mid-pass.
+#
+# ## The registration this serves
+#
+# `cortex-docs/docs/PREREGISTRATION-LEXICAL-RECALL.md`. The calibration gate below is §3.1 of it: an
+# instrument that cannot reproduce the archived `S14` account question by question is not the path,
+# and every candidate it priced afterwards would have been priced against a different baseline.
+# `tools/lexical-recall-reference.json` is that archived account.
+#
+# ## Cost
+#
+# 0 CNY. No reader call, no judge call, no embedding call -- `offline-instrument.json` records the
+# index count so the claim is checkable on the artifact rather than asserted here. The only spend is
+# runner minutes, and the job is bounded at 90 because the arm's own 500x4 took 118 minutes *with* a
+# reader on every question.
+name: Lexical recall (offline instrument)
+
+on:
+  # Dispatch only, deliberately and permanently. This is not a per-commit gate: it costs runner time
+  # and it exists to answer one question per round, which is the rule `constraint 15` of the campaign
+  # states for competitor measurements and this workflow follows for the same reason.
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Sample size (0 = the full 500-question roster). Anything but 0 is a smoke test: the calibration compares the roster question by question, so a sample fails that step by construction and only the log is worth reading'
+        required: false
+        default: '0'
+        type: string
+      ablation_runs:
+        description: 'Repetitions. 1 is enough here and is the default: retrieval is deterministic, so a second repetition rebuilds the same index over the same corpus for a byte-identical account -- unlike a reader pass, where four repetitions are what separates a treatment from sampling'
+        required: false
+        default: '1'
+        type: string
+
+# `contents: read` and nothing else. This job reads the tree, downloads the corpus and writes an
+# artifact; it has no reason to hold a token that could write, and the arm's own workflow declares the
+# same minimum for the same reason.
+permissions:
+  contents: read
+
+jobs:
+  lexical-recall:
+    name: lexical recall (offline)
+    runs-on: ubuntu-latest
+    # The arm's full 500x4 took 118 minutes with a reader on every question (41222844945). Retrieval
+    # alone is a fraction of that, and this ceiling is set above the whole measured arm so that a
+    # timeout here always means "something is looping", never "the corpus was bigger than expected".
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install --requirement tools/requirements-dev.txt
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      # The same file, from the same URL, asserted against the same digest the reference carries.
+      #
+      # The assertion is here rather than after the run because the corpus is served from a moving
+      # branch: if `main` has moved, every number this job would produce describes a different file,
+      # and `lexical-recall-calibrate.py` would report that as 500 roster mismatches -- a message
+      # about the instrument for a fact about the corpus. Refusing before the arm starts spends five
+      # seconds instead of twenty minutes.
+      - name: Download LongMemEval-S and check it is the corpus the reference was taken on
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          mkdir -p data
+          curl -fL --retry 3 --retry-delay 5 \
+            -H "Authorization: Bearer ${HF_TOKEN}" \
+            -o data/longmemeval_s_cleaned.json \
+            "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+          ACTUAL_SHA="$(sha256sum data/longmemeval_s_cleaned.json | cut -d' ' -f1)"
+          WANTED_SHA="$(python3 -c "import json;print(json.load(open('tools/lexical-recall-reference.json'))['datasetFingerprint'].split(':',1)[1])")"
+          echo "corpus sha256: $ACTUAL_SHA"
+          echo "reference    : $WANTED_SHA"
+          if [ "$ACTUAL_SHA" != "$WANTED_SHA" ]; then
+            echo "::error::the corpus on the branch is not the corpus S14 was measured on. The reference" \
+              "describes the file the row names; regenerating it against a moved corpus would make the" \
+              "calibration a comparison of two different datasets under one label."
+            exit 1
+          fi
+
+      # The configuration below is `S14`'s, transcribed from
+      # `cortex-docs/evidence/longmemeval/lexical-index.json` and from the artifact's
+      # `memoryArmConfig`. Every value is written out rather than defaulted, because the calibration
+      # compares delivered evidence: a field that differed by a default nobody read would change the
+      # delivery and be reported as "the instrument is not the path".
+      #
+      # `DEEPSEEK_MODEL=offline-instrument` is what the artifact's `memoryArmConfig.reader.model`
+      # records, so a reader of the report is told what answered instead of being told nothing. No
+      # credential is set at all -- the reader factory returns the instrument before it asks for one,
+      # and the embedding factory falls back to its local hash embedder, which this configuration
+      # never calls because `indexEmbedding` is `none`.
+      - name: Run the arm as an instrument
+        env:
+          LONGMEMEVAL_PATH: data/longmemeval_s_cleaned.json
+          LIMIT: ${{ github.event.inputs.limit || '0' }}
+          ABLATION_RUNS: ${{ github.event.inputs.ablation_runs || '1' }}
+          CORTEX_ARM_OFFLINE: '1'
+          DEEPSEEK_MODEL: 'offline-instrument'
+          DEEPSEEK_THINKING: 'multi-session+temporal'
+          TEMPERATURE: '0'
+          CORTEX_MEMORY: '1'
+          CORTEX_MEMORY_RELEVANCE: 'self-index'
+          CORTEX_MEMORY_INDEX_EMBEDDING: 'none'
+          CORTEX_MEMORY_RELEVANCE_TOP_K: '256'
+          CORTEX_MEMORY_RELEVANCE_UNITS: 'turn'
+          CORTEX_MEMORY_MAX_TURN_CHARS: '400'
+          CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: 'multi-session,temporal'
+          CORTEX_MEMORY_EVIDENCE_ROLES: 'user'
+          CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: 'multi-session,temporal'
+          CORTEX_MEMORY_ASK: 'verbatim-acts'
+          CORTEX_MEMORY_PROMPT_CONTRACT: 'evidence-blocks-unsourced'
+          CORTEX_MEMORY_REVIEW_PASS: 'bare'
+          CORTEX_MEMORY_REPLY_REPAIR: 'off'
+          CORTEX_MEMORY_QUERY_EXPANSION: 'none'
+          CORTEX_MEMORY_SELF_CONSISTENCY: 'none'
+          CORTEX_MEMORY_CONFLICTS: '0'
+          CORTEX_MEMORY_SEMANTIC_CARRY: '0'
+          CORTEX_MEMORY_SUPERSEDED: 'off'
+          CORTEX_MEMORY_THRESHOLD: '0'
+          CORTEX_MEMORY_RETRIEVAL_THRESHOLD: '0'
+          CORTEX_MEMORY_SOURCE_TRUST: '0.5'
+          CORTEX_MEMORY_CONFIDENCE: 'none'
+          CORTEX_MEMORY_EVIDENCE_TURNS: '256'
+        run: pnpm --filter @agentix-e/cortex-memory bench
+
+      # The gate, and the reason this workflow exists rather than a table in a report: an instrument
+      # that disagrees with `S14` on one question is not the path, and the job says so with the
+      # question ids and both numbers. `--report` is read from the file the arm wrote, so the check is
+      # on the artifact rather than on the log.
+      - name: Calibrate the instrument against the archived account
+        run: python3 tools/lexical-recall-calibrate.py --report benchmark-cortex-memory-ablation-report.json
+
+      # Uploaded after the gate so a failed calibration still leaves the evidence that failed it.
+      # `if: always()` is the same rule the arm's own workflow follows for its partial artifact: the
+      # run that proves the instrument wrong is the one worth keeping.
+      - name: Upload the instrument's reading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexical-recall
+          path: |
+            benchmark-cortex-memory-ablation-report.json
+            offline-instrument.json
+            benchmark-error.log
+          if-no-files-found: warn

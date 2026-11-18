@@ -433,6 +433,19 @@ export {
   type ThinkingReach,
 } from './llm-factory.js';
 export {
+  // The retrieval instrument: `CORTEX_ARM_OFFLINE=1` replaces the reader and the judge with
+  // constants so the delimiter between a scoring change and its effect on delivered evidence can be
+  // read without paying for five hundred answers. Exported because the entry point is what has to
+  // refuse the artifact four ways -- print the mode, guard the configuration it is valid under,
+  // assert one index per question, and write the file that tells a later reader what this run was.
+  OFFLINE_INSTRUMENT_REPLY,
+  OFFLINE_INSTRUMENT_VARIABLE,
+  OFFLINE_INSTRUMENT_VERDICT,
+  assertOfflineInstrumentConfiguration,
+  assertOfflineInstrumentReached,
+  offlineInstrumentRequested,
+} from './offline-instrument.js';
+export {
   // §13.227's transport variables. Exported because the gate line a run prints is the only place
   // the pace is stated, and `bench/run-ablation.ts` has to read it through the same function the
   // reader factory uses -- a second parser is a second answer to "what pace did this run run at".

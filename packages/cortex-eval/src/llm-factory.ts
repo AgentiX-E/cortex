@@ -25,6 +25,11 @@ import {
 } from './reader-provider.js';
 import { readTemperature, withTemperature } from './reader-temperature.js';
 import {
+  OFFLINE_INSTRUMENT_VERDICT,
+  offlineInstrument,
+  offlineInstrumentRequested,
+} from './offline-instrument.js';
+import {
   readReaderPacing,
   resolveJudgeTransport,
   resolveReaderTransport,
@@ -367,6 +372,14 @@ export function createReadersFromEnv(env: LlmEnv): {
   readonly llm: LLM;
   readonly readerByRoute: Readonly<Record<string, LLM>> | undefined;
 } {
+  // Before the provider is resolved, because an instrument has no provider: the credential is
+  // exactly what it does not need, and a run that reached `requireKey` after deciding to answer
+  // from a constant would fail on a key it never uses. The identity is still read by the caller
+  // (`resolveReaderIdentity`), so the artifact names the model string the dispatch set -- which
+  // for an instrument is the word the workflow puts there, not a model that answered.
+  if (offlineInstrumentRequested(env)) {
+    return { llm: offlineInstrument(), readerByRoute: undefined };
+  }
   const provider = resolveReaderProvider(env);
   const apiKey = requireKey(env, provider);
   const identity = describeReader(env, provider);
@@ -447,6 +460,17 @@ export function resolveJudgeIdentity(env: LlmEnv): ReturnType<typeof describeRea
  * and both the choice and its source are recorded in the artifact.
  */
 export function createJudgeFromEnv(env: LlmEnv): LLM {
+  // The same branch as the reader, and for the same reason: a scoring pass that needs a key to
+  // answer "incorrect" regardless of what it was shown is a pass that cannot run where the
+  // instrument runs. `parseJudgeResponse` reads the reply, so a verdict spelled the way a judge
+  // spells one is what keeps the scoring path on its ordinary route instead of its error arm.
+  if (offlineInstrumentRequested(env)) {
+    const instrument = offlineInstrument();
+    return {
+      complete: () => Promise.resolve(OFFLINE_INSTRUMENT_VERDICT),
+      completeStructured: instrument.completeStructured,
+    };
+  }
   const identity = resolveJudgeIdentity(env);
   // The credential follows the **judge's** provider, not the reader's: a run that pinned `zhipu:`
   // and kept reading `DEEPSEEK_API_KEY` would send one vendor's key to another and collect a 401 on

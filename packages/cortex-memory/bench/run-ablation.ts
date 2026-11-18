@@ -138,6 +138,17 @@ import {
   // §E6's pair. `carry` puts one system on both sides with one flag between them; `reference` is the
   // registered pair and what an unset variable means.
   readArmPairing,
+  // §13.378's instrument. `createReadersFromEnv` and `createJudgeFromEnv` answer from constants when
+  // the variable is set, so these four calls are the whole of this entry point's part: refuse the
+  // configuration the reading cannot be taken under, say on the run's own line what answered, check
+  // that one retrieval happened per question, and write the file that keeps a later reader from
+  // quoting a constant's accuracy as a result.
+  OFFLINE_INSTRUMENT_REPLY,
+  OFFLINE_INSTRUMENT_VARIABLE,
+  OFFLINE_INSTRUMENT_VERDICT,
+  assertOfflineInstrumentConfiguration,
+  assertOfflineInstrumentReached,
+  offlineInstrumentRequested,
   type MemorySystem,
   type BenchmarkProgress,
   type EmbeddingPreflight,
@@ -350,6 +361,23 @@ async function main(): Promise<void> {
   if (!armOptions.enabled) {
     console.log('=== cortex-memory arm skipped: CORTEX_MEMORY is not enabled ===');
     return;
+  }
+
+  // §13.378. The retrieval instrument, checked before the dataset is parsed so that a
+  // configuration which cannot produce a comparable reading costs nothing to find out about.
+  const offline = offlineInstrumentRequested(process.env);
+  if (offline) {
+    assertOfflineInstrumentConfiguration(armOptions);
+    // Printed rather than only recorded, because this is the one mode whose artifact looks like
+    // every other artifact and means something narrower. A reader who scrolls past it is a reader
+    // who quotes the accuracy of a constant.
+    console.log(
+      `=== OFFLINE INSTRUMENT (${OFFLINE_INSTRUMENT_VARIABLE}=1): the reader answers ` +
+        `${JSON.stringify(OFFLINE_INSTRUMENT_REPLY)} and the judge ` +
+        `${JSON.stringify(OFFLINE_INSTRUMENT_VERDICT)} on every question. ` +
+        'Retrieval, fusion, room arithmetic and rendering run for real; accuracy in this artifact ' +
+        'is the accuracy of a constant and is not a measurement of the product. ===',
+    );
   }
 
   // One read, two uses: the parsed instances and the bytes they came from. The
@@ -1446,6 +1474,44 @@ async function main(): Promise<void> {
     },
   );
   writeFileSync('benchmark-cortex-memory-ablation-report.json', `${written.json}\n`);
+
+  // §13.378, the other half of the instrument: what it measured has to be checkable on the
+  // artifact, and what it did not measure has to be written down where a reader of the artifact
+  // will find it. Modelled on `restore-calls.json` below rather than on a new report field, for the
+  // reason that file's comment gives -- a diagnostic's bookkeeping does not belong in a schema every
+  // gate reads.
+  if (offline) {
+    assertOfflineInstrumentReached(result.report, runs);
+    writeFileSync(
+      'offline-instrument.json',
+      `${JSON.stringify(
+        {
+          $comment:
+            'This run measured retrieval. The reader and the judge answered from constants, so the ' +
+            'accuracy columns are properties of those constants and of nothing else. Read ' +
+            '`questions[].goldOverlap` and `questions[].turns`; do not read `ablation`, `paired` or ' +
+            'any per-capability accuracy, and do not quote this file as a result.',
+          instrument: 'deterministic-reader',
+          variable: 'CORTEX_ARM_OFFLINE',
+          readerReply: OFFLINE_INSTRUMENT_REPLY,
+          judgeVerdict: OFFLINE_INSTRUMENT_VERDICT,
+          measurable: [
+            'questions[].goldOverlap',
+            'questions[].turns',
+            'questions[].evidenceChars',
+            'questions[].deliveredPromptChars',
+            'memoryArmConfig.selfIndex',
+          ],
+          notMeasurable: ['accuracy', 'perCapabilityAccuracy', 'delta', 'paired'],
+          indexes: result.report.memoryArmConfig?.selfIndex?.indexes ?? null,
+          questions: result.report.questionCount,
+          runs,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
 
   // §13.274's ledger, written beside the report and never inside it.
   //
