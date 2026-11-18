@@ -3551,18 +3551,22 @@ function selectByRelevance(
   // the clip path established -- text without a whole-unit roster -- rather than a second kind of partial
   // delivery.
   //
-  // This is an invariant rather than a measured repair, and the first measurement of it was unreadable on
-  // purpose-built grounds. `S14`'s question `b86304ba` was offered 456 turns and 477,543 characters and
-  // delivered **zero** characters; the candidate run that carried this branch printed `0 question(s)
-  // delivered different turn texts`, which reads as "the branch never fires" and does not mean that. The
-  // instrument's delivery account is `carried` plus a digest over the delivered turn texts, and both are
-  // **whole-turn shaped**: a clip of one turn is `carried: 0` with the digest of the empty list, i.e.
-  // exactly the record of a run that delivered nothing. A clip was invisible to the gate that was
-  // measuring the clip. `tools/lexical-recall-calibrate.py` now reads the delivered character count as
-  // well (§13.380), so the next dispatch of this candidate answers a question this one could not.
+  // Measured, and measured only on the third attempt. `S14`'s question `b86304ba` was offered 456 turns and
+  // 477,543 characters -- twenty times the room on that route -- and delivered **zero** characters, because
+  // the turn that ranked first is longer than the whole 24,000-character room and a prefix of one turn that
+  // does not fit is the empty prefix. This branch buys it clipped: run `44239553110` reads that question at
+  // `0 -> 23,503` delivered characters, the whole room after the instruction and question.
   //
-  // What justifies the branch in the meantime is its local property, not the story: a room that cannot
-  // hold one whole turn can still buy part of the best one, and "too long to read" is not "no evidence".
+  // The first candidate run to carry it printed `0 question(s) delivered different turn texts`, and that
+  // was published as a refutation before anyone checked the comparison: the delivery account was `carried`
+  // (a count of **gold** turns) plus a digest over delivered turn **texts**, and both are whole-turn
+  // shaped, so a clip is `carried: 0` with the digest of an empty list -- byte-identical to no delivery.
+  // The instrument could not see the only output this branch produces. `deliveredChars`
+  // (`AssembledPrompt.evidenceChars`) is now in the reference and in both verdicts, which is what turned
+  // the second reading of that zero into a measurement (§13.380).
+  //
+  // The local property is what makes the branch right independently of the story: a room that cannot hold
+  // one whole turn can still buy part of the best one, and "too long to read" is not "no evidence".
   // `!` rather than a guard: `ranked` is one entry per turn of `plan.turns`, and the empty plan is answered
   // before this function is called (`NOTHING_CARRIED` in `buildPrompt`). A guard here would be a branch no
   // test could reach, and this repository deletes those rather than collecting them.

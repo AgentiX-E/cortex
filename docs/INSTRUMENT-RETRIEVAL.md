@@ -160,8 +160,16 @@ The first two are whole-turn shaped, so a delivery that is a **clip of one turn*
 digest of an empty list -- byte-identical to a run that delivered nothing at all. A candidate for the room's
 floor was dispatched, printed `0 question(s) delivered different turn texts`, and that line was published as
 a refutation of the repair before anyone checked what the gate compared (`§13.380`). It had compared the one
-part of the delivery a clip cannot change. The character count is now in the reference (regenerated from the
-same `S14` artifact, whose buckets are unchanged) and in both verdicts, and a candidate names the shape:
+part of the delivery a clip cannot change. The same code, read by the third column, reports the repair on the
+question it was written for:
+
+```
+b86304ba   deliveredChars 0 -> 23,503   carried 0 -> 0   (run 44239553110)
+```
+
+so the gate fails until the movement is declared, and the declaration is what makes the next run check it in
+both directions. The character count is now in the reference (regenerated from the same `S14` artifact,
+whose buckets are unchanged) and in both verdicts, and a candidate names the shape:
 
 ```
 characters moved  : 1 question(s) delivered a different number of characters (1 of them clipped: turns and digest agree, length does not)

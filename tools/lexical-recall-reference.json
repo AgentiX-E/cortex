@@ -4602,5 +4602,8 @@
    "deliveredDigest": "26509dfebfc68970",
    "deliveredChars": 23398
   }
- ]
+ ],
+ "expectedMoved": {
+  "b86304ba": "the room's floor (section 13.379.3): the top-ranked turn alone exceeds the 24,000-character room, so the largest fitting prefix was empty and the reader was told no evidence was admitted. The room now buys that turn clipped. Measured in run 44239553110: 0 -> 23,503 delivered characters, carried still 0 because a clip is not a whole turn."
+ }
 }
