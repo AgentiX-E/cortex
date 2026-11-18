@@ -40783,3 +40783,218 @@ What this episode cost and taught, in one line each:
 | two candidate dispatches | 0 CNY | a candidate's reading is only a reading if the instrument can see the shape the candidate produces |
 | one premature retraction, published then corrected | 0 CNY, two commits | a `0` is the one result that most needs its comparison audited before it is believed |
 | the missing column | one field, four tests | `promptChars` was in the artifact, in the reference's own source, unread |
+
+## 13.381 A candidate declares its axis before it runs, and the account is read per capability
+
+§13.380 repaired the comparison: `deliveredChars` joined `carried` and the digest, so a clip stopped
+looking like no delivery. This round repairs the **statement** that goes with it, and then reads the
+`idf` candidate through both.
+
+### 13.381.1 The prediction, and the failure that is now a refusal
+
+`--expects-change` is required with `--candidate`, and it is compared with the observed movement in both
+directions:
+
+| declared | means | fails when |
+| --- | --- | --- |
+| `turns` | the whole-turn account moves (`carried`, the delivered texts, or both) | `chars` also moves, or nothing moves |
+| `chars` | the delivered length moves | `turns` also moves, or nothing moves |
+| `turns,chars` | both are intended | either stands still |
+| `none` | the delivery stands still | anything moves |
+| `any` | no prediction was made -- printed as such | never; the log records that attribution is manual |
+
+The first real reading under the rule is the `idf` candidate, declared as the mechanism it is:
+
+```
+$ --candidate idf --expects-change turns
+predicts         : turns
+observed         : turns,chars
+VERDICT: the movement is not the one the candidate declared.
+  FAIL the delivery moved chars and the candidate declared turns ...
+```
+
+That is a fact about the mechanism rather than a defect: re-pricing terms reorders turns, so the
+delivered length moves on **235** of 500 questions -- one of them a clip, where the turn account stands
+still and the length does not. The declaration that fits is `turns,chars`, and the value of requiring one
+is that the log now carries the candidate's own expectation next to its numbers.
+
+Both directions matter, and the second is the one that would have caught §13.380's sentence before it was
+published: a candidate that declares `none` and moves a character fails, so "the branch never fires" is a
+claim that has to survive its own gate instead of surviving a reader's memory.
+
+### 13.381.2 `by capability`, and the sign that is inverted under a total
+
+`capability` was in every reference row and unread. One line sums it, alphabetically so two runs diff:
+
+```
+by capability    : ABS 128->157 (up 29) | IE 589->686 (up 97) | KU 532->596 (up 64) | MR 1616->1616 | TR 1434->1434
+```
+
+**+190 gold turns overall, +29 of them on the thirty abstention questions.** For `IE`/`KU`/`MR`/`TR` a
+delivered gold turn is the goal. For `ABS` it is not: the correct answer is to refuse, and the reference
+already answers **29.25/30** of them. More gold evidence in the prompt is, on that subset, evidence for
+the failure mode -- so the whole-corpus summary that reads as an improvement has, underneath it, a subset
+where the arrow points the other way. Two individual `ABS` questions lost gold turns
+(`gpt4_372c3eed_abs` 5→3, `gpt4_c27434e8_abs` 13→10) while the subset total rose; a per-question account
+and a per-subset account disagreeing is exactly why both are printed.
+
+The criterion this implies is registered in `cortex-docs/docs/PREREGISTRATION-LEXICAL-RECALL.md` §11
+**before** the confirmatory dispatch: on the paid run, `idf`'s abstention questions are compared with the
+reference's **question by question over four repetitions**, and the run fails if more abstention questions
+get worse than get better. Gold-turn counts are explicitly not the criterion there, for the reason above.
+
+### 13.381.3 What this licenses
+
+Licensed: the instrument now refuses an unattributed candidate, and the `ABS` risk is visible at 0 CNY in
+the log of any future run rather than only in a post-mortem.
+
+Not licensed:
+
+1. **Adopting `idf`.** Unchanged from §13.380.3: the default stays `flat`, because no accuracy has been
+   measured and the subset whose sign is inverted has just grown by 29 gold turns.
+2. **Reading `by capability` as a scorecard.** It counts gold turns, and on `ABS` that count is not a
+   quality signal at all. It exists to make a *subset criterion* readable, not to rank capabilities.
+3. **Treating a `none` candidate that moved nothing as a result.** It is a prediction that held. What it
+   means depends on what the candidate was supposed to change, which the label names and the tool does not.
+
+### 13.381.4 Tests
+
+`tools/__tests__/test_lexical_recall_calibrate.py` **27 → 37**: eight for the prediction (required flag,
+clip under a `turns` prediction, unfulfilled prediction, both axes, `any`, `none` in both directions,
+unknown axis refused by name, and the flag refused in calibration mode) and two for the per-capability
+line (the subset entry and its `down` marker; a still entry carrying no marker). The six candidate tests
+that existed now declare an axis, which is the same evidence from the other side: the flag is not
+optional, so no test could keep calling `--candidate` alone.
+
+## 13.382 The shipped path, and the refusal that arrived one call too late
+
+Requirement ⑯ asks for more than an eval-side reading: a capability priced in `cortex-eval` has to be
+reachable in `cortex-memory` after distribution. `lexicalWeighting` is documented in
+`docs/USER-MANUAL.md` §6.10 as an `assembleMemory` option, and between that call and `SearchIndex`'s
+constructor there are four hops -- the public option type, the factory, `CortexMemory`'s own field, and the
+per-question construction in `#relevanceFor`. **No test crossed them.** Every unit test constructed a
+`SearchIndex` directly, so any of the four could have dropped the field with the suite green and the
+documented option inert.
+
+`packages/cortex-memory/src/__tests__/lexical-weighting-shipped.test.ts` crosses them with the public call
+and a real `SqliteStorage`, on the corpus `lexical-weighting.test.ts` already uses, and asserts **which turn
+reaches the reader** rather than how a list is sorted:
+
+| weighting | 700-character room, ten admitted turns | `carbon fiber wheels` (the gold turn) |
+| --- | --- | --- |
+| `idf` | the gold turn, then four echo turns | **delivered** |
+| `flat` | five echo turns | **absent** |
+
+The room is what makes the ranking observable, and finding that out cost one wrong test. The first version
+asserted the **order** of two turns inside the prompt and it failed while the product was correct: the
+assembled evidence is rendered in **session/ordinal order**, not rank order, because the reader is told
+each session is a separate conversation -- the ranking has already done its work by choosing *which* turns
+are in the block. A prompt-order assertion reads the corpus's arrival order and would pass on an
+implementation that never sorted. At the default 48,000 characters every turn fits and the two runs are
+byte-identical, which is the shape that would have made a green suite mean nothing.
+
+### 13.382.1 The defect the test found
+
+The third assertion -- that `lexicalWeighting: 'tf-idf'` is refused -- **failed**, and it was right to:
+
+```
+expected [Function] to throw an error
+```
+
+`SearchIndex` refuses an unknown weighting, and `CortexMemory` builds a `SearchIndex` **per question**. So a
+value that is a string union to TypeScript and nothing at all to JavaScript surfaced on the first
+`askStored`, after `remember()` had already written to a store that may be the user's own database -- while
+the typo sat in the `assembleMemory` call two lines above it. The repair is one function, called twice:
+
+| change | why |
+| --- | --- |
+| `assertLexicalWeighting` extracted in `search-index.ts` | two moments can get this wrong and they must give the same message |
+| called in `SearchIndex`'s constructor, as before | the index is also constructed directly, by the benchmark and by tests |
+| called in `CortexMemory`'s constructor **before** the early return | that branch returns when no embedder is configured, which is exactly the deployment that sets this option |
+
+What found it was writing the call the manual prints rather than the call a unit test finds convenient: a
+test that constructs the component under test cannot see a hop the component's constructor is not part of.
+Any capability priced on the eval side and documented as a product option needs one test shaped like this
+one -- the public call, a real store, and an assertion about what a reader is handed.
+
+## 13.383 The candidate was unreachable from the arm, and nothing said so
+
+`§13.380` priced `idf` at **+190 gold turns, ten questions out of zero-recall**, and `§13.381` registered
+what has to be measured before any of it may be adopted: the thirty abstention questions, paired, on a real
+reader. This round went to dispatch that measurement and found it could not be dispatched.
+
+| link | state before this round |
+| --- | --- |
+| `SearchIndex` prices a term by the corpus (`§13.379`) | present |
+| `CortexMemory` refuses a weighting it does not administer | present, and eager since `§13.382` |
+| `bench-memory-arm.ts` reads `CORTEX_MEMORY_LEXICAL_WEIGHTING` (`flat`/`idf`) | present since `§13.379` |
+| the workflow forwards the variable | **absent** |
+| the dispatcher writes it and declares the departure | **absent** |
+
+So the treatment travelled three links of five. The product could be configured to rank by term
+specificity, the offline instrument had priced it, and the one harness that produces an **accuracy** number
+could not be asked for it: an operator who set the repository variable would have got the registered arm and
+an artifact that truthfully said `lexicalWeighting: "flat"`.
+
+This is requirement ⑯ one level above where it usually bites. The earlier instances were "the product cannot
+do what the eval measured"; this one is "the arm cannot be dispatched in the configuration the eval
+measured", and it is invisible from both ends -- the arm's tests pass because it parses the variable, the
+product's tests pass because the option works, and the gap lives in the two files that sit between them and
+are written in different languages.
+
+### 13.383.1 The three links added, and the constraint that shaped them
+
+`workflow_dispatch` accepts **25 inputs**, this workflow already declares 24, and `test_dispatch_inputs.py`
+forbids sitting at the ceiling -- which is why `supersededRendering` and `indexEmbedding` travel as
+repository variables. The weighting takes the same route, and each link has a test that fails if it is
+removed:
+
+| link | change | the failure it prevents |
+| --- | --- | --- |
+| workflow | `CORTEX_MEMORY_LEXICAL_WEIGHTING: ${{ vars.… \|\| 'flat' }}` | a variable the arm reads and the workflow never sets is a knob that reaches nothing |
+| dispatcher | `lexical_weighting_switch`, strict on `flat`/`idf`, absent → `flat` | a typo falling back to `flat` publishes the registered arm under the candidate's name |
+| dispatcher | `write_variable(…)` before the POST, on every dispatch | an inherited `idf` turns the next control run into a treatment |
+| dispatcher | `("lexicalWeighting",)` declared only when `!= "flat"` | an undeclared `idf` is refused after the money is spent; an unconditional declaration reports a departure no run made |
+| `readout-arm-run.py` | `REGISTERED_CONDITIONS['lexicalWeighting'] = ('lexicalWeighting', 'flat')` | a declaration the gate cannot resolve is refused at the end of a two-hour run -- the `S14` failure in the other direction |
+
+`tools/__tests__/test_lexical_weighting_wiring.py` holds all five, plus the two vocabularies to each other
+(the arm's `LEXICAL_WEIGHTINGS` and the dispatcher's `LEXICAL_WEIGHTINGS`, and their two defaults), because
+two copies of one grammar that drift produce a dispatch the preflight accepts and the reader kills.
+`test_every_declarable_name_is_one_the_registration_gate_can_resolve` in `test_index_embedding_wiring.py`
+covers the new name automatically: it reads the declaration block, not a list.
+
+### 13.383.2 The probe that failed in nine seconds and cost nothing
+
+Before the wiring, the shortest path to "is the provider account alive?" looked like a one-question dispatch.
+It is not available, and the reason is the project's own rule: run `44251051571` (`limit=1`, `ablation_runs=1`)
+was refused by `registration-preflight.py` after nine seconds and **0 CNY**:
+
+```
+registration preflight: dispatch-cortex-memory-ab.py INPUTS
+  asked 8 field(s), 22 registered, 17 departed, 16 not declared
+  verdict: a dispatch that names a budget map and nothing else is not the registered arm. Fill every
+           input in through `tools/dispatch-cortex-memory-ab.py`, or declare each departure in
+           CORTEX_DECLARED_DEPARTURES
+```
+
+Two readings, and the second is the one worth keeping:
+
+1. **There is no cheap provider probe.** A run is the registered arm or it is not a reading, so the balance
+   question can only be answered by the run that spends the 14.26 CNY anyway. That is a cost, and it is the
+   cost of the property that every archived number describes a configuration someone can name.
+2. **The guard fired before the money, which is what it is for.** The same refusal printed in nine seconds
+   would otherwise have arrived as an artifact that departed on sixteen fields and could not be attributed.
+
+### 13.383.3 The dispatch this registers
+
+| item | value |
+| --- | --- |
+| configuration | the registered arm with `CORTEX_MEMORY_LEXICAL_WEIGHTING=idf`, declared as `lexicalWeighting` |
+| cost | **≈14.26 CNY** (`--budget 20`), 500 questions × 4 repetitions |
+| criteria | `cortex-docs/docs/PREREGISTRATION-LEXICAL-RECALL.md` §11.5: two of its five rows are already read (`44231332168`), and the two that need this dispatch are the abstention pair |
+| blocking | the provider account -- `{"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}`, recorded in `cortex-docs` §123 |
+
+What it must not be read as until it runs: `idf` is not adopted, the default is not changed, and the
+`+190` is a retrieval reading. The one thing that *has* changed is that the run is now expressible -- a
+prerequisite that had been assumed rather than checked, and that would have been discovered by the
+dispatcher refusing a configuration it had no seat for.

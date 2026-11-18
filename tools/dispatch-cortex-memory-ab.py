@@ -104,6 +104,16 @@ SUPERSEDED_RENDERINGS = ("off", "mark", "collapse")
 INDEX_EMBEDDING_VARIABLE = "CORTEX_MEMORY_INDEX_EMBEDDING"
 INDEX_EMBEDDINGS = ("injected", "none")
 
+# §13.383. What a query term is worth, carried the same way as the two switches above and for the same
+# reason: the workflow sits one below GitHub's ceiling of 25 dispatch inputs, so a sixth condition has to
+# travel as a repository variable. `flat` is the registered value -- it is what every archived artifact
+# was measured under -- and `idf` is the candidate the offline instrument priced at +190 gold turns
+# (§13.380). Naming it here is what makes the confirmation dispatch expressible: before this, the arm's
+# reader honoured the variable and nothing could set it, so the treatment was unreachable from the only
+# harness that produces an accuracy number.
+LEXICAL_WEIGHTING_VARIABLE = "CORTEX_MEMORY_LEXICAL_WEIGHTING"
+LEXICAL_WEIGHTINGS = ("flat", "idf")
+
 # The admission gate's two axes (`§13.101`'s unreachable pair): the threshold the value function is
 # cut at, and the signal that makes the value vary in the first place.
 #
@@ -916,6 +926,31 @@ def superseded_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def lexical_weighting_switch(environ: dict[str, str] | None = None) -> str:
+    """The term weighting this dispatch asks for: `flat` or `idf`.
+
+    Read from the dispatcher's environment for the reason `index_embedding_switch` is: `--set` is checked
+    against the registered table, and this is deliberately not a workflow input. Strict on the value,
+    because a typo that fell back to `flat` would produce the registered arm's accuracy under a dispatch
+    that asked for term specificity -- and the artifact would say `lexicalWeighting=flat`, which is true
+    and answers a different question.
+
+    `flat` rather than blank on an absent variable, because it is the value every archived artifact was
+    measured under: an unset variable must reproduce the registration, not describe a choice.
+    """
+    raw = ((environ if environ is not None else os.environ).get(LEXICAL_WEIGHTING_VARIABLE) or "").strip()
+    if raw == "":
+        return "flat"
+    if raw in LEXICAL_WEIGHTINGS:
+        return raw
+    raise SystemExit(
+        f"{LEXICAL_WEIGHTING_VARIABLE} must be one of {LEXICAL_WEIGHTINGS} (or unset): got {raw!r}. An "
+        "unrecognised weighting is refused rather than defaulted, because the two order one corpus "
+        "differently: a run that silently ranked flat would publish the registered arm's number under "
+        "the candidate's name."
+    )
+
+
 def index_embedding_switch(environ: dict[str, str] | None = None) -> str:
     """The index channel this dispatch asks for: `injected` or `none`.
 
@@ -1281,6 +1316,10 @@ def main(argv: list[str] | None = None) -> int:
     # §19. Read before the declaration for the same reason: the artifact's own field name joins the list
     # only when the run moves it, and `injected` is the registered value.
     index_embedding = index_embedding_switch()
+    # §13.383, on the same rule as the five above: the artifact's own field name joins the declaration
+    # only when the run moves it. `flat` is the registered value, so declaring it on a control run would
+    # be the "names a field this run did not move" case the gate reports as an intention.
+    lexical_weighting = lexical_weighting_switch()
     declared = sorted(
         {
             *declared,
@@ -1299,6 +1338,7 @@ def main(argv: list[str] | None = None) -> int:
             # so the gate compares it against the registered arm -- and a `none` run that declared
             # nothing would be filed as a measurement of the configuration the project ships.
             *(("indexEmbedding",) if index_embedding != "injected" else ()),
+            *(("lexicalWeighting",) if lexical_weighting != "flat" else ()),
         }
     )
     declare_departures(declared)
@@ -1326,6 +1366,7 @@ def main(argv: list[str] | None = None) -> int:
     # reproduce the registered configuration, and the only trace would be a config line the operator
     # had no reason to look at.
     write_variable(INDEX_EMBEDDING_VARIABLE, index_embedding)
+    write_variable(LEXICAL_WEIGHTING_VARIABLE, lexical_weighting)
     print(
         f"{INDEX_EMBEDDING_VARIABLE} = {index_embedding}"
         f"{' *' if index_embedding != 'injected' else ''}"

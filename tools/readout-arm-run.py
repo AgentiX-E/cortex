@@ -4677,6 +4677,11 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, object]] = {
     # vocabulary are two files, and one of them being one name longer is what S14 cost.
     'indexEmbedding': ('indexEmbedding', 'injected'),
     'supersededRendering': ('supersededRendering', 'off'),
+    # §13.383. What a query term is worth is the same shape once more: carried by a repository variable,
+    # recorded on every artifact, and described by no dispatch input. Without this seat the `idf` arm
+    # would be refused after its money was spent -- the `S14` failure in the other direction -- and
+    # without the `flat` default every registered run would depart from the registration.
+    'lexicalWeighting': ('lexicalWeighting', 'flat'),
 }
 
 ABSENT = '<-absent->'

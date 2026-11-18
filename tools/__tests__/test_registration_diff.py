@@ -414,21 +414,22 @@ class TestWhatIsCounted:
         module = _module()
         text, _ = module.registration_section(report(REAL_41222844945), [])
         # Twenty-one inputs the arm records, plus every condition: `evidenceSource`, `replyRepair`,
-        # `conflicts`, `indexEmbedding` and `supersededRendering` are compared on every artifact
-        # although no dispatch input carries any of them, which is what makes a gold-sessions run, a
-        # repair run, a related-statements run, a lexical run or a re-rendered run visible to a reader
-        # who did not ask for one. Twenty-four rather than twenty-three since §14.143:
-        # `cortex_memory_max_turn_chars` now resolves to three fields, and the third is `ABSENT` on
-        # every artifact that predates the window; twenty-six since §27.1 added the last two.
+        # `conflicts`, `indexEmbedding`, `supersededRendering` and `lexicalWeighting` are compared on
+        # every artifact although no dispatch input carries any of them, which is what makes a
+        # gold-sessions run, a repair run, a related-statements run, a lexical run, a re-rendered run
+        # or a term-weighted run visible to a reader who did not ask for one. Twenty-four rather than
+        # twenty-three since §14.143: `cortex_memory_max_turn_chars` now resolves to three fields, and
+        # the third is `ABSENT` on every artifact that predates the window; twenty-six since §27.1
+        # added the last two; twenty-seven since §13.383 gave the term weighting a seat.
         #
         # The second assertion is what keeps this number from being a number: the count is twenty-one
-        # inputs plus the table's size, so a sixth condition fails here with the decomposition in hand
+        # inputs plus the table's size, so a seventh condition fails here with the decomposition in hand
         # rather than leaving a reader to work out why a header moved.
-        assert len(module.REGISTERED_CONDITIONS) == 5, (
+        assert len(module.REGISTERED_CONDITIONS) == 6, (
             'the header count below is twenty-one recorded inputs plus this table: if the table grew, '
             'the count grew with it and both lines change together'
         )
-        assert "registration: 26 field(s) compared" in text
+        assert "registration: 27 field(s) compared" in text
         # Two since §13.327: `maxPromptCharsByRoute` is derived on an artifact that carries the
         # scalar, exactly as `maxPromptChars` is derived on one that carries the map. Counted rather
         # than dropped, which is what the header exists to do.

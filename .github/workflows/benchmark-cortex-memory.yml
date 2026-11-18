@@ -622,6 +622,14 @@ jobs:
           # because `readIndexEmbedding` distinguishes an unset variable (the registered configuration)
           # from a value a dispatch chose to name.
           CORTEX_MEMORY_INDEX_EMBEDDING: ${{ vars.CORTEX_MEMORY_INDEX_EMBEDDING || 'injected' }}
+          # Section 13.383's term weighting, carried exactly like the three switches above. This line is
+          # the one that was missing: `bench-memory-arm.ts` has read the variable since §13.379, and the
+          # workflow never forwarded it, so the arm could not select the candidate at all -- the
+          # offline instrument priced `idf` on a path no accuracy dispatch could reach. The literal
+          # `flat` is the fallback rather than a blank, because it is the value every archived artifact
+          # was measured under, and `readLexicalWeighting` distinguishes an unset variable from a value
+          # a dispatch chose to name.
+          CORTEX_MEMORY_LEXICAL_WEIGHTING: ${{ vars.CORTEX_MEMORY_LEXICAL_WEIGHTING || 'flat' }}
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}
