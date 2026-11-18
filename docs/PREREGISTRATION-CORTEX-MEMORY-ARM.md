@@ -40822,6 +40822,23 @@ Both directions matter, and the second is the one that would have caught §13.38
 published: a candidate that declares `none` and moves a character fails, so "the branch never fires" is a
 claim that has to survive its own gate instead of surviving a reader's memory.
 
+Run `44255701077` dispatched the same candidate **through the workflow**, with the new input
+(`candidate=idf`, `expects_change=turns,chars`), and it reproduces the reading field for field:
+
+```
+predicts         : turns,chars
+observed         : turns,chars
+gold turns        : 4299 -> 4489
+questions changed : 119 gained, 17 lost, 364 unchanged
+characters moved  : 235 question(s) delivered a different number of characters (1 of them clipped)
+by capability    : ABS 128->157 (up 29) | IE 589->686 (up 97) | KU 532->596 (up 64) | ...
+```
+
+Two things that are worth more than the repetition. The required flag is now enforced at the dispatch
+boundary -- an operator who names a candidate and no axis is refused before the run -- and the reading is
+**reproducible across dispatches at 0 CNY**, which is what lets the `+190` be quoted as a measurement rather
+than as one run's draw.
+
 ### 13.381.2 `by capability`, and the sign that is inverted under a total
 
 `capability` was in every reference row and unread. One line sums it, alphabetically so two runs diff:
