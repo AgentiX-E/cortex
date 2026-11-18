@@ -40765,6 +40765,17 @@ checking it). What the declaration does **not** do is license an accuracy claim:
 characters reaching a prompt, and whether the reader used them is the 500x4 confirmation that stays blocked
 on the provider balance.
 
+Re-run with the declaration in place (`44242613675`, 0 CNY): green, and the line says exactly what changed.
+
+```
+MOVED (declared) : b86304ba carried 0->0, digest same, promptChars 0->23503 -- the room's floor (section 13.379.3): ...
+VERDICT: the instrument IS the path -- carried, total and delivered texts agree on every question, apart
+         from the delivery the reference declares as moved.
+```
+
+`carried 0->0, digest same` is the whole blind spot printed in one line: the two fields that used to be the
+entire delivery account now say "nothing moved" while the third says 23,503 characters did.
+
 What this episode cost and taught, in one line each:
 
 | item | cost | lesson |
