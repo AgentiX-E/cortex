@@ -45,7 +45,7 @@ const has = (name) => argv.includes(name);
 
 const usage = `usage: node tools/arm-verdict.mjs --control <report.json> --arm <report.json>
          [--capability KU] [--side feature|baseline] [--require-identical-evidence]
-         [--bar conversions=<n>,falsifier=<n>] [--json]`;
+         [--bar conversions=<n>,falsifier=<n>[,net=<n>]] [--json]`;
 
 const controlPath = flag('--control');
 const armPath = flag('--arm');
@@ -78,7 +78,17 @@ if (barArgument !== undefined) {
     );
     process.exit(2);
   }
-  bar = { conversions, falsifierLoss };
+  // The third clause is optional and is refused when present but not an integer, for the reason the
+  // first two are: a `net=x` that fell back to "no net clause" would print REJECTED-as-ACCEPTED
+  // against a criterion that never reached the tool.
+  const net = parts.has('net') ? parts.get('net') : undefined;
+  if (net !== undefined && !Number.isInteger(net)) {
+    process.stderr.write(
+      `--bar net=<integer> is optional, but when given it must be an integer, got ${barArgument}\n${usage}\n`,
+    );
+    process.exit(2);
+  }
+  bar = { conversions, falsifierLoss, ...(net === undefined ? {} : { net }) };
 }
 
 /**
@@ -135,6 +145,26 @@ const verdict = armVerdict(
 );
 
 const percent = (value) => `${(value * 100).toFixed(2)}%`;
+
+/**
+ * The bar, on one line, with the net clause shown only when the criterion asked for it.
+ *
+ * Conditional rather than always-printed so a two-clause bar keeps the line it has always had: the
+ * strings in the tests and in `docs/MEASURE-CONFLICT-SURFACING.md` §5 are the record of a verdict
+ * that was decided, and a cosmetic change to them would make two readings of one bar look like two
+ * different bars. The counts are printed beside `met` because the clause is a subtraction, and a
+ * reader should not have to do it to check the verdict.
+ */
+const barLine = (verdict) => {
+  const { bar } = verdict;
+  const net =
+    bar.netMet === null
+      ? ''
+      : ` net up ${verdict.questionsUp} - down ${verdict.questionsDown} = ${
+          verdict.questionsUp - verdict.questionsDown
+        } met=${bar.netMet}`;
+  return `bar: conversions met=${bar.conversionsMet} no-regression met=${bar.noRegressionMet}${net} falsified=${bar.falsified} -> ${bar.accepted ? 'ACCEPTED' : 'REJECTED'}`;
+};
 const moveLine = (move) =>
   `  ${move.id.padEnd(10)} ${move.control} -> ${move.arm}   ${move.controlPasses} -> ${move.armPasses}`;
 
@@ -164,7 +194,7 @@ if (has('--json')) {
             `questions ${verdict.questions}, cells ${verdict.cells}`,
             `passes ${verdict.controlPasses} -> ${verdict.armPasses}  (${percent(verdict.controlRate)} -> ${percent(verdict.armRate)}, ${verdict.deltaPoints >= 0 ? '+' : ''}${verdict.deltaPoints.toFixed(2)} points)`,
             `cells ${verdict.improvedCells} improved / ${verdict.worsenedCells} worsened, exact McNemar p = ${verdict.repetitionP.toFixed(4)}`,
-            `questions up/down sign test p = ${verdict.questionP.toFixed(4)}`,
+            `questions up/down ${verdict.questionsUp} / ${verdict.questionsDown}, exact sign test p = ${verdict.questionP.toFixed(4)}`,
             `control-perfect ${verdict.controlPerfect}`,
             `conversions ${verdict.conversions.length}`,
             ...verdict.conversions.map(moveLine),
@@ -174,9 +204,7 @@ if (has('--json')) {
             ...verdict.controlPerfectRegressions.map(moveLine),
             ...(verdict.bar === null
               ? ['bar: none given, so nothing is decided']
-              : [
-                  `bar: conversions met=${verdict.bar.conversionsMet} no-regression met=${verdict.bar.noRegressionMet} falsified=${verdict.bar.falsified} -> ${verdict.bar.accepted ? 'ACCEPTED' : 'REJECTED'}`,
-                ]),
+              : [barLine(verdict)]),
           ].join('\n')
         : `INADMISSIBLE: ${verdict.refusals.join(', ')}`,
       '',

@@ -37,7 +37,14 @@
  *   is the falsifier's population, ordered by repetitions lost and then by id.
  * - the **question-level sign test** is on questions up against questions down, and it is reported
  *   beside the repetition-level one because they answer different questions: the first refuses a
- *   direction, the second can be significant on magnitude alone.
+ *   direction, the second can be significant on magnitude alone. Both counts are reported with it:
+ *   five against five and one against one share a p-value of 1, and only the counts say which pair a
+ *   reader is looking at.
+ * - the **net clause** is `questions up - questions down >= bar.net`, and it is a clause of its own
+ *   rather than a reuse of the two above because it is the shape a subset criterion takes: "no more
+ *   questions got worse than got better" is neither a floor on conversions nor a statement about the
+ *   control-perfect population. It holds at equality by construction, and a bar without it reports
+ *   `netMet: null` — a clause nobody wrote must not read like one the arm satisfied.
  *
  * ## Why a refusal rather than a warning
  *
@@ -76,6 +83,20 @@ type ArmBar = {
   readonly conversions: number;
   /** Repetitions a control-perfect question may lose before the run is falsified. */
   readonly falsifierLoss: number;
+  /**
+   * The least `questions up - questions down` the arm may show, when the criterion is about the
+   * direction of whole questions rather than about a count of them.
+   *
+   * A third clause rather than a third bar because the two older clauses answer other questions:
+   * `conversions` floors how many questions the control never got, and `falsifierLoss` is about the
+   * questions the control answered every time. A criterion of the form "no more questions got worse
+   * than got better" is neither — it is a *net* over the whole subset, which is why it needs its own
+   * arithmetic and why it can hold at `0` while both other clauses hold vacuously.
+   *
+   * Omitted means the criterion was not asked, which is reported as `netMet: null` rather than as
+   * `true`: a clause nobody wrote must not read like a clause the arm satisfied.
+   */
+  readonly net?: number;
 };
 
 type ArmRefusal =
@@ -101,6 +122,8 @@ type ArmQuestionMove = {
 type ArmBarResult = {
   readonly conversionsMet: boolean;
   readonly noRegressionMet: boolean;
+  /** Whether `questionsUp - questionsDown` reached `bar.net`; `null` when no net clause was given. */
+  readonly netMet: boolean | null;
   readonly falsified: boolean;
   readonly accepted: boolean;
 };
@@ -123,6 +146,10 @@ type ArmVerdict = {
   readonly repetitionP: number;
   readonly conversions: readonly ArmQuestionMove[];
   readonly regressions: readonly ArmQuestionMove[];
+  /** Questions the arm passes more repetitions on than the control did. */
+  readonly questionsUp: number;
+  /** Questions the arm passes fewer repetitions on than the control did. */
+  readonly questionsDown: number;
   /** Exact sign test, two-sided, on questions up against questions down. */
   readonly questionP: number;
   /** Questions the control answered correctly in every repetition. */
@@ -172,6 +199,8 @@ const refused = (refusals: readonly ArmRefusal[]): ArmVerdict => ({
   repetitionP: 1,
   conversions: [],
   regressions: [],
+  questionsUp: 0,
+  questionsDown: 0,
   questionP: 1,
   controlPerfect: 0,
   controlPerfectRegressions: [],
@@ -275,6 +304,9 @@ export function armVerdict(
     .filter((move) => move.controlPasses === repetitions)
     .sort((left, right) => right.lost - left.lost);
 
+  const questionsUp = moves.filter((entry) => entry.up).length;
+  const questionsDown = moves.filter((entry) => entry.down).length;
+
   const bar = options.bar;
   const barResult: ArmBarResult | null =
     bar === undefined
@@ -282,14 +314,16 @@ export function armVerdict(
       : (() => {
           const conversionsMet = conversions.length >= bar.conversions;
           const noRegressionMet = controlPerfectRegressions.length === 0;
+          const netMet = bar.net === undefined ? null : questionsUp - questionsDown >= bar.net;
           const falsified = controlPerfectRegressions.some(
             (move) => move.lost >= bar.falsifierLoss,
           );
           return {
             conversionsMet,
             noRegressionMet,
+            netMet,
             falsified,
-            accepted: conversionsMet && noRegressionMet && !falsified,
+            accepted: conversionsMet && noRegressionMet && netMet !== false && !falsified,
           };
         })();
 
@@ -309,10 +343,9 @@ export function armVerdict(
     repetitionP: mcnemarPValue(improvedCells, worsenedCells),
     conversions,
     regressions,
-    questionP: mcnemarPValue(
-      moves.filter((entry) => entry.up).length,
-      moves.filter((entry) => entry.down).length,
-    ),
+    questionsUp,
+    questionsDown,
+    questionP: mcnemarPValue(questionsUp, questionsDown),
     controlPerfect,
     controlPerfectRegressions,
     bar: barResult,

@@ -149,6 +149,16 @@ describe('armVerdict — the published reading', () => {
     expect(verdict.repetitionP).toBeCloseTo(0.4421, 4);
     expect(verdict.questionP).toBeCloseTo(1, 10);
   });
+
+  it('reports the two counts the sign test is computed on, because a p alone hides a 1-against-1', () => {
+    const verdict = armVerdict(control, arm);
+    // Five questions up (`ce6d2d27`, `9ea5eabc`, `ed4ddc30`, `59524333` from zero, and `c4ea545c`
+    // from two to three) against five down. The p-value of that pair is 1, and so is the p-value of a
+    // pair with one question on each side — the counts are what tell a reader whether five questions
+    // disagreed or ten, which is the difference `§13.381`'s capability account needed.
+    expect(verdict.questionsUp).toBe(5);
+    expect(verdict.questionsDown).toBe(5);
+  });
 });
 
 describe('armVerdict — the bar', () => {
@@ -161,6 +171,7 @@ describe('armVerdict — the bar', () => {
     expect(verdict.bar).toEqual({
       conversionsMet: true,
       noRegressionMet: false,
+      netMet: null,
       falsified: true,
       accepted: false,
     });
@@ -182,6 +193,7 @@ describe('armVerdict — the bar', () => {
     expect(verdict.bar).toEqual({
       conversionsMet: true,
       noRegressionMet: true,
+      netMet: null,
       falsified: false,
       accepted: true,
     });
@@ -193,6 +205,65 @@ describe('armVerdict — the bar', () => {
     });
     expect(verdict.bar).toBeNull();
     expect(verdict.comparable).toBe(false);
+  });
+});
+
+describe('armVerdict — the net clause', () => {
+  it('holds at equality, which is the shape of a `d_worse <= d_better` criterion', () => {
+    // Five up against five down. A criterion of the form "no more questions may get worse than get
+    // better" is exactly `up - down >= 0`, so equality has to pass: a clause that rejected a tie
+    // would be a stricter rule than the one registered, and a stricter rule is the same defect as a
+    // looser one when it is written after the number.
+    const verdict = armVerdict(control, arm, {
+      bar: { conversions: 3, falsifierLoss: 2, net: 0 },
+    });
+    expect(verdict.bar?.netMet).toBe(true);
+    expect(verdict.bar?.accepted).toBe(false);
+  });
+
+  it('fails an arm that does not reach the net it asked for, and no other clause can rescue it', () => {
+    const perfect = CONTROL.slice(0, 4).map(([id]) => [id, '1111'] as const);
+    const unchanged = reading(perfect);
+    // An arm identical to the control, on four questions the control answers every time: no
+    // conversion is owed, nothing regressed and the falsifier cannot fire, so the two older clauses
+    // accept an arm that changed nothing at all. That is what a net clause is for.
+    const lenient = armVerdict(reading(perfect), unchanged, {
+      bar: { conversions: 0, falsifierLoss: 1 },
+    });
+    expect(lenient.bar?.accepted).toBe(true);
+    const demanding = armVerdict(reading(perfect), unchanged, {
+      bar: { conversions: 0, falsifierLoss: 1, net: 1 },
+    });
+    expect(demanding.bar?.netMet).toBe(false);
+    expect(demanding.bar?.accepted).toBe(false);
+  });
+
+  it('counts questions rather than cells, and the two can point in opposite directions', () => {
+    // One question gains four repetitions; two questions lose one each. Cells move +2 in the arm's
+    // favour while three questions move against it. A criterion written on the cell grid would read
+    // this as an improvement; the one registered for `ABS` is on questions.
+    const before = [
+      ['a', '0000'],
+      ['b', '1100'],
+      ['c', '1100'],
+    ] as const;
+    const after = [
+      ['a', '1111'],
+      ['b', '1000'],
+      ['c', '1000'],
+    ] as const;
+    const verdict = armVerdict(reading(before), reading(after), {
+      bar: { conversions: 0, falsifierLoss: 4, net: 0 },
+    });
+    expect(verdict.deltaPoints).toBeCloseTo((2 / 12) * 100, 10);
+    expect(verdict.questionsUp).toBe(1);
+    expect(verdict.questionsDown).toBe(2);
+    expect(verdict.bar?.netMet).toBe(false);
+  });
+
+  it('says the clause was not asked rather than met, so a two-clause bar reads as before', () => {
+    const verdict = armVerdict(control, arm, { bar: { conversions: 3, falsifierLoss: 2 } });
+    expect(verdict.bar?.netMet).toBeNull();
   });
 });
 

@@ -243,6 +243,35 @@ capabilities a delivered gold turn is the goal; for `ABS` the goal is to refuse,
 makes a reader answer is the evidence that costs accuracy there. A summary that says "more gold turns"
 about the whole roster reads as an improvement on a subset where the sign is inverted underneath it.
 
+### A subset criterion is a subtraction, so the tool performs it
+
+A criterion of the form "no more questions got worse than got better" is not a bar on conversions and
+not a statement about the questions the control answers every time — it is a **net over one subset**.
+`arm-verdict.mjs --bar` therefore takes a third clause, `net=<integer>`, evaluated as
+`questions up - questions down >= net`:
+
+```
+node tools/arm-verdict.mjs --control s16-flat.json --arm idf.json --capability ABS \
+  --bar conversions=0,falsifier=4,net=0
+```
+
+Three decisions are inside that clause and each has a reason:
+
+- **Questions, not cells.** The criterion is about what a reader does with a question, and the two
+  aggregates can point in opposite directions: one question gaining four repetitions and two losing
+  one each is `+2` cells and `-1` questions. A test holds that pair to both readings
+  (`counts questions rather than cells, and the two can point in opposite directions`).
+- **Equality holds.** `net=0` passes a tie, because the registered criterion is `d_worse ≤ d_better`
+  and not `<`. A clause stricter than the registration is the same defect as a looser one.
+- **Not asked is not met.** Without the clause the result is `null`, not `true`, so a two-clause bar
+  prints exactly the line it printed before this existed — the record of an older verdict is not
+  rewritten by an instrument that grew a field.
+
+The counts the clause is computed from are printed with it (`net up 5 - down 5 = 0 met=true`),
+because a reader checking a subtraction the tool already did is a reader who will eventually do it
+wrong; and `questions up/down` is now printed on its own line for the same reason a p-value alone is
+not enough — five against five and one against one share a p-value of 1.
+
 ## What the product must do for this to hold
 
 Two properties of `CortexMemory`, both pinned in

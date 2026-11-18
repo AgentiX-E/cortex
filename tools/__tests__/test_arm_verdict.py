@@ -118,7 +118,7 @@ def test_the_published_reading_is_reproduced(tmp_path: Path) -> None:
     out = result.stdout
     assert "passes 27 -> 32  (56.25% -> 66.67%, +10.42 points)" in out
     assert "cells 16 improved / 11 worsened, exact McNemar p = 0.4421" in out
-    assert "questions up/down sign test p = 1.0000" in out
+    assert "questions up/down 5 / 5, exact sign test p = 1.0000" in out
     assert "control-perfect 5" in out
     assert "bar: conversions met=true no-regression met=false falsified=true -> REJECTED" in out
 
@@ -138,7 +138,64 @@ def test_json_carries_the_whole_verdict(tmp_path: Path) -> None:
     ]
     assert [move["lost"] for move in verdict["controlPerfectRegressions"]] == [2, 2, 1, 1]
     assert verdict["controlPerfect"] == 5
+    assert verdict["questionsUp"] == 5
+    assert verdict["questionsDown"] == 5
     assert verdict["bar"] is None, "no --bar means nothing is decided"
+
+
+def test_the_net_clause_is_printed_only_when_it_was_asked_for(tmp_path: Path) -> None:
+    """A two-clause bar keeps the line it has always had, and a three-clause bar shows the subtraction.
+
+    The registered `ABS` criterion (`PREREGISTRATION-LEXICAL-RECALL.md` §11.2) is `d_worse <= d_better`
+    over thirty questions, which is `questions up - questions down >= 0`. Two things follow and both
+    are asserted here: the verdict of that criterion is printed by the tool rather than compared by
+    hand, and adding the clause did not move the line that records the older verdict.
+    """
+    control, arm = pair(tmp_path)
+    two = run("--control", str(control), "--arm", str(arm), "--bar", "conversions=3,falsifier=2")
+    assert two.returncode == 0
+    assert (
+        "bar: conversions met=true no-regression met=false falsified=true -> REJECTED"
+        in two.stdout
+    )
+    assert "net" not in two.stdout.split("bar:", 1)[1]
+
+    held = run(
+        "--control", str(control), "--arm", str(arm), "--bar", "conversions=3,falsifier=2,net=0"
+    )
+    assert held.returncode == 0
+    # Five up against five down: equality passes, because the criterion is `<=` and not `<`.
+    assert "net up 5 - down 5 = 0 met=true" in held.stdout
+
+    missed = run(
+        "--control", str(control), "--arm", str(arm), "--bar", "conversions=3,falsifier=2,net=1"
+    )
+    assert missed.returncode == 0
+    assert "net up 5 - down 5 = 0 met=false" in missed.stdout
+
+    payload = json.loads(
+        run(
+            "--control",
+            str(control),
+            "--arm",
+            str(arm),
+            "--bar",
+            "conversions=3,falsifier=2,net=1",
+            "--json",
+        ).stdout
+    )
+    assert payload["verdict"]["bar"]["netMet"] is False
+
+
+def test_a_net_clause_that_is_not_an_integer_is_refused_rather_than_dropped(tmp_path: Path) -> None:
+    """`net=x` must not fall back to "no net clause", which would print a verdict for a criterion
+    that never reached the tool — the same reason `conversions=x` is a usage error."""
+    control, arm = pair(tmp_path)
+    result = run(
+        "--control", str(control), "--arm", str(arm), "--bar", "conversions=3,falsifier=2,net=x"
+    )
+    assert result.returncode == 2
+    assert "net=<integer>" in result.stderr
 
 
 def test_a_capability_filter_that_yields_different_populations_is_refused(tmp_path: Path) -> None:
