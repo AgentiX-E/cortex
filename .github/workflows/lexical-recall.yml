@@ -180,7 +180,11 @@ jobs:
       # question ids and both numbers. `--report` is read from the file the arm wrote, so the check is
       # on the artifact rather than on the log.
       - name: Calibrate the instrument against the archived account
-        run: python3 tools/lexical-recall-calibrate.py --report benchmark-cortex-memory-ablation-report.json
+        # The report's path is the PACKAGE's, because `pnpm --filter` wrote it there: the second
+        # dispatch of this workflow ran all 500 questions, wrote a complete artifact, and then failed
+        # this step on `FileNotFoundError` -- the same working-directory mistake as the corpus path,
+        # one step later. The marker is found beside the report, so only this argument is needed.
+        run: python3 tools/lexical-recall-calibrate.py --report packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
 
       # Uploaded after the gate so a failed calibration still leaves the evidence that failed it.
       # `if: always()` is the same rule the arm's own workflow follows for its partial artifact: the
@@ -191,7 +195,7 @@ jobs:
         with:
           name: lexical-recall
           path: |
-            benchmark-cortex-memory-ablation-report.json
-            offline-instrument.json
-            benchmark-error.log
+            packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+            packages/cortex-memory/offline-instrument.json
+            packages/cortex-memory/benchmark-error.log
           if-no-files-found: warn
