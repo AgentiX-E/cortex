@@ -76,6 +76,16 @@ report against `tools/lexical-recall-reference.json` -- the per-question gold ac
 | `carried` | the delivered set differs, so every candidate priced afterwards is priced against another baseline |
 | `deliveredDigest` | the counts agree and the turns do not: another corpus slice, another room, or a rendering that moved |
 
+The gate has already earned its keep. A dispatch that omitted `CORTEX_MEMORY_MAX_PROMPT_CHARS`
+assembled prompts under the product's default room -- 48,000 characters on every route -- where the
+archived run used a table (24,000 on `flat`, 48,460 on `multi-session`, 48,000 on `temporal`). The
+instrument then delivered 44,838 characters on a question the archived run delivered 21,850 for,
+carried more gold turns on 134 questions, and read a **lower** zero-recall count (11 against 21).
+Without the gate that looks like a 10-question improvement in lexical recall; with it, the reading
+is what it was -- a different configuration. Note that `maxPromptChars=default` in the run's log is
+not evidence of agreement: it names the absence of the *scalar*, and the archived table arrived
+through the same variable in its per-route shape.
+
 The reference is regenerable rather than hand-maintained:
 
 ```bash
