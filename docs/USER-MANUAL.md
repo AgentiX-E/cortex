@@ -1173,6 +1173,61 @@ refusals are `[]`, which ranks on nothing, and `['vector']` without an `embed`, 
 cannot run — naming `['lexical', 'vector']` without an embedder stays legal, because that is the ordinary
 lexical index and the census says the vector channel did not run.
 
+### 6.10 What a query term is worth
+
+`channels` decides which rankings pay; `lexicalWeighting` decides what the lexical one charges for a word.
+The default, `flat`, counts every content term as one, so coverage is the share of the question's words a
+turn contains. That is a defensible reading of "this turn mentions what was asked", and it has a measured
+failure: three matched *generic* words outrank one matched *noun*. On a five-hundred-question corpus, of the
+twenty-one questions whose evidence contained no gold turn at all, twenty had a gold turn that scored above
+zero and lost to a turn repeating the question's common words:
+
+```
+Q: "How many bikes do I own?"             gold 0.425  matched bikes, how
+                                          winner 0.637  matched how, many, own
+Q: "Suggest some activities ... commute"  gold 0.386  matched commute, during, some
+                                          winner 0.693  matched activities, can, suggest, some, during
+```
+
+Rarity is a property of a corpus, not of a pair of strings, so this option only exists on an index:
+
+```ts
+import type { EmbedFn, LLM } from '@agentix-e/cortex-core';
+import { assembleMemory } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+declare const llm: LLM;
+declare const embed: EmbedFn;
+
+// Terms are priced by ln(1 + (N - df + 0.5) / (df + 0.5)) over the turns this index holds: a word in every
+// turn is worth almost nothing, a word in one turn of five hundred about 5.8, and no word is worth zero.
+assembleMemory({
+  llm, now: Date.now(), storage: new SqliteStorage(), embed,
+  index: { lexicalWeighting: 'idf' },
+});
+
+// The default, stated: what every reading in this repository was measured under.
+assembleMemory({
+  llm, now: Date.now(), storage: new SqliteStorage(), embed,
+  index: { lexicalWeighting: 'flat' },
+});
+```
+
+Three properties, and the first two are why this is a weighting rather than a model:
+
+- **It costs nothing.** The document frequencies come from the postings the index already builds, so
+  `embedCalls` and `terms` do not move, and a lexical-only deployment still calls no provider.
+- **It is corpus-derived, not corpus-fitted.** The formula is Robertson/Sparck-Jones — the one Lucene uses
+  — and there is no constant here chosen from an answer key. A weight fitted to a benchmark's term
+  distribution would be the benchmark, encoded.
+- **It is refused when it is not a name this index administers.** `lexicalWeighting: 'bm25'` throws instead
+  of falling back to `flat`, because a run that meant to price term specificity, ranked flat, and reported
+  "no difference" is a result about the wrong experiment — and every other field of its artifact would be
+  truthful.
+
+The order after fusion is still a rank, not a score: with a reranker or a second channel the fused number
+is a position, and `lexicalWeighting` therefore changes *which* turns arrive, not how they are sorted.
+
 ## 7. Reading a decision back
 
 A memory layer that cannot explain itself is a black box with extra steps. Every route records what

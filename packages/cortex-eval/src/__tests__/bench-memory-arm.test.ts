@@ -1023,6 +1023,7 @@ describe('source trust reaches the artifact', () => {
       // indistinguishable from one written before the field existed.
       supersededRendering: 'off',
       indexEmbedding: 'injected',
+      lexicalWeighting: 'flat',
       threshold: 0.2,
       retrievalThreshold: 0.25,
       sessionBudget: null,
@@ -1552,6 +1553,7 @@ describe('runCortexMemoryArm', () => {
         // §18. Stated on every artifact, for the same reason.
         supersededRendering: 'off',
         indexEmbedding: 'injected',
+        lexicalWeighting: 'flat',
         threshold: 0.5,
         retrievalThreshold: 0,
         sessionBudget: 12,
@@ -1999,6 +2001,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       // assembled nothing.
       supersededRendering: 'off',
       indexEmbedding: 'injected',
+      lexicalWeighting: 'flat',
     });
   });
 
@@ -2026,6 +2029,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       // indistinguishable from one written before the field existed.
       supersededRendering: 'off',
       indexEmbedding: 'injected',
+      lexicalWeighting: 'flat',
       threshold: 0,
       retrievalThreshold: 0,
       sessionBudget: null,
@@ -5259,5 +5263,47 @@ describe('the artifact records the path the product took and the roles it delive
     expect(record!.capability).toBe('IE');
     expect(record!.route).toBe('multi-session');
     expect(record!.roleCensus).toEqual({ counts: { user: 2 }, unclassified: 1, total: 3 });
+  });
+});
+
+describe('the lexical weighting reaches the artifact', () => {
+  it('states flat on a run that named nothing, because that is what every archived run used', () => {
+    // Always present, for the reason `indexEmbedding` is: the two weightings produce different orders over one
+    // corpus, so an artifact that omitted the field would leave "ranked flat" and "predates the field" as the
+    // same bytes -- and the measurement is a difference between two orders, not a preference between two words.
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY: '1' });
+    expect(options.lexicalWeighting).toBe('flat');
+    expect(toMemoryArmConfig(options).lexicalWeighting).toBe('flat');
+  });
+
+  it('reads idf, which is the candidate the instrument prices', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_LEXICAL_WEIGHTING: 'idf',
+    });
+    expect(options.lexicalWeighting).toBe('idf');
+    expect(toMemoryArmConfig(options).lexicalWeighting).toBe('idf');
+  });
+
+  it('refuses a weighting the product does not administer, rather than ranking flat', () => {
+    // The failure this prevents is silent and expensive: a dispatch that meant to test term specificity, ran
+    // flat, and published "no difference" as its result.
+    expect(() =>
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_LEXICAL_WEIGHTING: 'bm25' }),
+    ).toThrow(/CORTEX_MEMORY_LEXICAL_WEIGHTING must be one of "flat", "idf" or unset, got "bm25"/);
+  });
+
+  it('reads whitespace as unset, so an empty dispatch input is the registered weighting', () => {
+    const options = cortextMemoryArmOptions({
+      CORTEX_MEMORY: '1',
+      CORTEX_MEMORY_LEXICAL_WEIGHTING: '   ',
+    });
+    expect(options.lexicalWeighting).toBe('flat');
+  });
+
+  it('projects the registered weighting on a disabled arm, which built no index to weight', () => {
+    const options = cortextMemoryArmOptions({ CORTEX_MEMORY_LEXICAL_WEIGHTING: 'idf' });
+    expect(options.enabled).toBe(false);
+    expect(toMemoryArmConfig(options).lexicalWeighting).toBe('flat');
   });
 });

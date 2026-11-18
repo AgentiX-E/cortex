@@ -202,6 +202,32 @@ export type ContentToken = {
 };
 
 /**
+ * What one query term is worth, for a scorer that knows more about it than its spelling.
+ *
+ * ## Why this is a parameter and not a second scorer
+ *
+ * Because coverage counting every term as one is a **defect with a size**, and the size is measured. On the
+ * twenty-one questions of `S14` that delivered no gold turn, twenty carried a gold turn the scorer had ranked
+ * above zero and then lost to a distractor repeating the question's generic words:
+ *
+ * ```
+ * Q: "How many bikes do I own?"             gold 0.425  matched bikes, how
+ *                                          deliv 0.637  matched how, many, own  (the noun is absent)
+ * Q: "Suggest some activities ... commute"  gold 0.386  matched commute, during, some
+ *                                          deliv 0.693  matched activities, can, suggest, some, during
+ * ```
+ *
+ * Three matched function-ish words beat one matched noun because coverage divides by term **count**. The
+ * discriminating term is exactly the rare one, and rarity is a property of a corpus rather than of the pair —
+ * which is why the weight is a parameter here and the constant below is `1` for every term.
+ *
+ * `lexicalRelevance(q, t)` is therefore still the corpus-free definition: a caller with no corpus, including
+ * `PromptOptions.relevanceFor`, gets the behaviour every archived artifact was produced under. An index has a
+ * corpus and passes a weight derived from it (`SearchIndexOptions.lexicalWeighting`).
+ */
+export type TermWeight = (term: string) => number;
+
+/**
  * How relevant `turn` is to `question`, in `[0, 1]`.
  *
  * `0` when the question carries no content terms, because there is nothing to match and a non-zero value
@@ -210,8 +236,11 @@ export type ContentToken = {
  *
  * A question that repeats a term is counted once for coverage — `set` semantics, because a question asking
  * "when when" is one question — and every occurrence for order, because adjacency is positional.
+ *
+ * `weight` values the terms; absent means every term is worth `1`, which is the flat coverage this function
+ * has always computed — and, because the sum of `n` ones is exactly `n`, the same floating-point result.
  */
-export function lexicalRelevance(question: string, turn: string): number {
+export function lexicalRelevance(question: string, turn: string, weight?: TermWeight): number {
   const asked = contentTerms(question);
   if (asked.length === 0) return 0;
 
@@ -219,10 +248,17 @@ export function lexicalRelevance(question: string, turn: string): number {
   const seen = new Set(contentTerms(turn));
 
   let covered = 0;
+  let available = 0;
   for (const term of wanted) {
-    if (seen.has(term)) covered += 1;
+    const worth = weight === undefined ? 1 : weight(term);
+    available += worth;
+    if (seen.has(term)) covered += worth;
   }
-  const coverage = covered / wanted.length;
+  // A weight function that values every term at zero says the question names nothing discriminating, which
+  // is the same statement as "no content terms" and is answered the same way. It cannot arise from the
+  // index's own weighting -- the smoothed inverse document frequency is strictly positive -- but a caller
+  // may pass any function, and `0 / 0` here would be `NaN` reaching a sort.
+  const coverage = available === 0 ? 0 : covered / available;
 
   // Adjacency over the distinct sequence: a question that repeats a term should not have its order score
   // diluted by the repetition, and the pairs that matter are the pairs it asks in.

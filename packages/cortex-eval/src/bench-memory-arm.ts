@@ -352,6 +352,14 @@ export type CortexMemoryArmOptions = {
    */
   indexEmbedding?: string | undefined;
   /**
+   * How the product's lexical channel values a query term (§13.379).
+   *
+   * A string rather than a union for the reason `indexEmbedding` is one: the value is parsed from an
+   * environment variable by a guard that refuses anything but the two documented names, and a union here would
+   * only restate that guard. `flat` is the registered weighting and the one every archived artifact used.
+   */
+  lexicalWeighting?: string | undefined;
+  /**
    * Whether the product carries an authorised semantic update into a later window (§E6).
    *
    * ## Why this option had to exist before E6 could be called `unrun`
@@ -885,6 +893,24 @@ const RELEVANCE_UNITS_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_UNITS';
 const RELEVANCE_TOP_K_VARIABLE = 'CORTEX_MEMORY_RELEVANCE_TOP_K';
 
 /**
+ * How the product's lexical channel values a query term: `flat` (registered) or `idf`.
+ *
+ * Its own variable rather than a value of `CORTEX_MEMORY_RELEVANCE`, because `self-index` names **who**
+ * ranks and this names **what a term is worth**: a run that changed only the weighting would otherwise
+ * publish the same key with the same value as one that changed only the ranking's owner, and the two are
+ * different experiments. §13.379 records the measurement that made it an axis -- twenty of `S14`'s
+ * twenty-one zero-recall questions carried a gold turn that a distractor repeating the question's generic
+ * words outranked, which is a statement about term value rather than about who computes the order.
+ */
+const LEXICAL_WEIGHTING_VARIABLE = 'CORTEX_MEMORY_LEXICAL_WEIGHTING';
+
+/** The two weightings the product documents, in the order the message lists them. */
+const LEXICAL_WEIGHTINGS: readonly string[] = ['flat', 'idf'];
+
+/** The registered weighting: every content term worth one, which is what every archived artifact used. */
+const DEFAULT_LEXICAL_WEIGHTING = 'flat';
+
+/**
  * The per-turn character cap: how much of one turn the prompt may show.
  *
  * §13.67 registered it from a measurement rather than from a hypothesis. §13.34.3 argued the
@@ -1265,6 +1291,9 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // reached nothing. Writing `none` here would put a treatment on the record of a run that answered
       // no question.
       indexEmbedding: DEFAULT_INDEX_EMBEDDING,
+      // Projected as the registered value for the reason `indexEmbedding` is: a disabled arm builds no index,
+      // so the variable reached nothing and no treatment was administered.
+      lexicalWeighting: DEFAULT_LEXICAL_WEIGHTING,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
@@ -1352,6 +1381,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     // the artifact was written. Read through the parser that refuses an unknown name, because the
     // quiet failure here is the registered arm publishing under the control's name.
     indexEmbedding: readIndexEmbedding(env[INDEX_EMBEDDING_VARIABLE]),
+    lexicalWeighting: readLexicalWeighting(env[LEXICAL_WEIGHTING_VARIABLE]),
   };
 }
 
@@ -2231,6 +2261,28 @@ function readRelevanceSignal(raw: string | undefined): string {
 }
 
 /**
+ * Read how the product's lexical channel values a query term.
+ *
+ * Rejected rather than defaulted, for the reason every guard in this file gives: a run dispatched with
+ * `idf` that silently ranked `flat` would publish an unchanged result reading as evidence that term
+ * specificity does not matter, and the artifact would name a weighting it did not run.
+ */
+function readLexicalWeighting(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_LEXICAL_WEIGHTING;
+
+  const value = raw.trim();
+  if (!LEXICAL_WEIGHTINGS.includes(value)) {
+    throw new Error(
+      `${LEXICAL_WEIGHTING_VARIABLE} must be one of ` +
+        `${LEXICAL_WEIGHTINGS.map((k) => JSON.stringify(k)).join(', ')} or unset, got ` +
+        `${JSON.stringify(raw)}. "flat" counts every content term as one; "idf" weights it by how rare it ` +
+        'is in the corpus the index holds.',
+    );
+  }
+  return value;
+}
+
+/**
  * Read the unit the relevance budget is spent in.
  *
  * Rejected rather than defaulted on an unrecognised value, for the reason every guard in
@@ -3062,6 +3114,10 @@ export function toMemoryArmConfig(
     // as `options.indexEmbedding` would then put no value on the record while a reader took the
     // absence for the registered arm.
     indexEmbedding: options.indexEmbedding ?? DEFAULT_INDEX_EMBEDDING,
+    // §13.379. Always present for the reason `indexEmbedding` is, and defaulted for the same reason: a caller
+    // that builds this object by hand leaves the field `undefined`, and the registered weighting is what that
+    // absence has always meant.
+    lexicalWeighting: options.lexicalWeighting ?? DEFAULT_LEXICAL_WEIGHTING,
     // §13.101. Always present for the reason `queryExpansion` is: `none` is a state a run can be
     // dispatched to, so an artifact that spelled nothing would leave "ran the control" and
     // "predates the field" as the same bytes.

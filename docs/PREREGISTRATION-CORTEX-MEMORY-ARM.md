@@ -40522,3 +40522,88 @@ Criteria, fixed before the run and not moved after it:
   are the only thing here that is decided in advance.
 - **`window` is not widened.** It reorders a delivered set inside the renderer and reaches the
   temporal route; nothing in this round touches it, and a run may not administer both.
+
+## 13.378 The retrieval instrument: a reading that costs no provider call
+
+The 127th round's problem was that the only axis with a published deficit (`S14`, 85.75% against an
+88.0% aim) could not be measured, because every `indexEmbedding: injected` dispatch died on an exhausted
+embedding balance (code `1113`, not the `1305` concurrency window `AUDIT-ZHIPU-429-ROOT-CAUSE.md`
+diagnosed). The lexical line needs no provider at all, and the repair it needs is deterministic code.
+
+So the reader and the judge became constants (`CORTEX_ARM_OFFLINE=1`) and everything else runs for real:
+the product's index, fusion, room arithmetic, truncation and rendering. The contract is written down in
+`docs/INSTRUMENT-RETRIEVAL.md` and the registration of the axis it serves is
+`cortex-docs/docs/PREREGISTRATION-LEXICAL-RECALL.md`; this section exists because two sections of the
+code cite it and a citation to a section that does not exist is a claim nobody can check.
+
+Four refusals, at four layers, because a cheap measurement is only worth its equivalence:
+
+| refusal | where | what it refuses |
+| --- | --- | --- |
+| `assertOfflineInstrumentConfiguration` | before the corpus is read | a signal that ranks in the harness, or a vector channel that would be paid for and never moved |
+| `assertOfflineInstrumentReached` | after the artifact is written | a constant reply that reached a mechanism which re-retrieved (`indexes != questions x runs`) |
+| `offline-instrument.json` | beside the report | a later reader quoting a constant's accuracy as a result |
+| `tools/lexical-recall-calibrate.py` | on the artifact | the instrument not being the path: `carried`, `total` and a digest of the delivered texts, per question |
+
+The calibration passed on its fourth dispatch (`44215664944`): 500 of 500 questions, identical bucket table
+(21 / 129 / 114 / 236), and `carried` / `total` / delivered-text digest equal question by question. The
+third dispatch had been refused by the gate for a missing per-route room table, which is the gate earning
+its keep: without it, a run that delivered 44,838 characters where the archived one delivered 21,850 would
+have read as a ten-question improvement in lexical recall.
+
+## 13.379 What a query term is worth: the weighting becomes a product option, measured offline
+
+### 13.379.1 The finding: 21 zero-recall questions are three populations
+
+`ANALYSIS-LEXICAL-ZERO-RECALL.md` treated them as one and pointed the repair at lexical scoring in general.
+Recomputing the same function the product uses (`STOPWORDS` + `lexicalRelevance`, 0 CNY) splits them:
+
+| population | count | evidence | repair |
+| --- | --- | --- | --- |
+| no shared content term with any gold turn | **1** (`gpt4_8279ba03`, `TR`) | `max lex(q, gold) = 0` | semantics; the vector channel's job |
+| gold scored, beaten by a higher-scoring turn | **19** | `max lex(q, delivered) > gold` | **term specificity** |
+| gold scored, **nothing delivered** | **1** (`b86304ba`, `IE`) | `turns == []` | the room's floor |
+
+The 19-question gap is median **0.212**, mean 0.211, range 0.060-0.307 — and 0.212 is `0.85 x 1/4`, one
+word's share of a four-word question. The lost question is missing exactly its rarest word.
+
+### 13.379.2 The treatment: a weight the corpus supplies
+
+`lexicalRelevance(question, turn)` is unchanged and is still the corpus-free definition; it grew an optional
+third parameter. `SearchIndexOptions.lexicalWeighting` selects `flat` (default, every archived artifact) or
+`idf`, which prices each query term by `ln(1 + (N - df + 0.5) / (df + 0.5))` over the turns the index holds.
+
+Three properties make this a weighting rather than a fit:
+
+1. **Zero cost.** `df` comes from the postings the index already builds; `embedCalls`, `texts` and `terms` do
+   not move, and a lexical-only deployment still calls no provider.
+2. **Corpus-derived, not corpus-fitted.** No constant here was chosen from an answer key. The smoother
+   `ln(1 + N / (1 + df))` was tried first and rejected *on this repository's numbers*: 2.4x separation at a
+   ten-turn corpus, where the Lucene form separates by 13x.
+3. **Refused when it is not a name the index administers.** `'bm25'` throws; a silent fallback to `flat`
+   would publish "no difference" from a run that never administered the treatment.
+
+The default stays `flat` on purpose: `flat` is what every number in this repository was measured under, and
+the honest order is measure-then-adopt. `memoryArmConfig.lexicalWeighting` states the value on every artifact.
+
+### 13.379.3 The second repair: a room that holds no whole turn
+
+`selectByRelevance` spends the room on the largest fitting **prefix**. `b86304ba` offered 456 turns and
+ranked a turn longer than the whole 24,000-character room first, so the largest fitting prefix was the empty
+one: the prompt carried no evidence and the reader answered "Unknown". One turn's length erased 455 others.
+
+The room now buys the best-ranked turn **clipped** when no whole turn fits, which is the rule the
+character-clip path already used. `carried` stays empty (it counts whole turns) and `evidenceChars` reports
+what was delivered — the two fields were already separate, so a reader can tell "a clip" from "nothing".
+
+### 13.379.4 The registered reading
+
+One dispatch of `lexical-recall`, 0 CNY, `--candidate idf`, and the criteria are
+`PREREGISTRATION-LEXICAL-RECALL.md` §10.3: zero-recall **21 → smaller**, the `1-33%` bucket does not
+explode, and `ABS` stays 30/30. Accuracy is not measured by the instrument and no accuracy claim follows
+from it; a confirmation dispatch (500x4, about 14.26 CNY) is required before any adoption, and it stays
+blocked on the provider balance.
+
+What is **not** licensed: changing the default to `idf` on the strength of the argument above; touching the
+`k1`/`b`, stemming or stopword candidates in the same dispatch (one variable); and reading the instrument's
+accuracy columns, which are a constant's.

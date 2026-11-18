@@ -803,6 +803,15 @@ export type MemoryArmConfig = {
    */
   readonly indexEmbedding?: string | undefined;
   /**
+   * How the product's lexical channel valued a query term (§13.379).
+   *
+   * Always present, `flat` included, for the reason {@link MemoryArmConfig.indexEmbedding} is: the two
+   * weightings produce different orders over the same corpus, so an artifact that omitted the field would
+   * make "ranked flat" and "the field was not recorded" the same row -- and the whole point of the
+   * measurement is that the difference is a number rather than a preference.
+   */
+  readonly lexicalWeighting?: string | undefined;
+  /**
    * The multi-session consultation count the run used (§13.101).
    *
    * Always present, `none` included, for the reason {@link MemoryArmConfig.reviewPass} is: an artifact
@@ -1977,6 +1986,10 @@ export function formatAblationReport(report: AblationReport): string {
         // the question this field answers -- it answers whether the ranking had a vector channel, which
         // is what a reader deciding on an embedding provider needs on the line rather than in the JSON.
         `, \`indexEmbedding=${memoryArm.indexEmbedding ?? 'injected'}\`` +
+        // §13.379, on the same line for the same reason: a reader deciding which ranking to trust has to see
+        // what a term was worth without opening the JSON, and the two weightings produce different orders over
+        // one corpus.
+        `, \`lexicalWeighting=${memoryArm.lexicalWeighting ?? 'flat'}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
         // refused whole. One field rather than three so the line stays a configuration

@@ -24,7 +24,10 @@
  *
  * 1. **The lexical channel is `lexicalRelevance`.** Not a second scorer with the same name: one definition
  *    of relevance, so a run with the index and a run with `relevanceFor = lexicalRelevance` differ only in
- *    the channels added. The postings list is used to *narrow* the candidates and never to score them.
+ *    the channels added. The postings list is used to *narrow* the candidates and never to score them —
+ *    with the one exception `lexicalWeighting: 'idf'` states, where the postings' document frequencies price
+ *    a query term. That is still the same definition of relevance; what a corpus adds is what each of its
+ *    terms is worth, which no pair of strings can know.
  * 2. **Fusion is by rank (RRF), not by score.** Cosine lives in `[0, 1]`, the lexical score in `[0, 1]`,
  *    and a future BM25 channel in neither -- summing them needs a normaliser tuned per corpus, which is a
  *    free parameter the benchmark would then be measuring. Ranks are the one thing channels agree on.
@@ -65,13 +68,28 @@ import {
   type VectorEraser,
 } from '@agentix-e/cortex-core';
 
-import { lexicalRelevance, contentTerms } from '../relevance.js';
+import { lexicalRelevance, contentTerms, type TermWeight } from '../relevance.js';
 
 /** How many hits a search returns unless the caller says otherwise. */
 const DEFAULT_K = 64;
 
 /** The RRF constant. `60` is the value from the original literature and the one `fuse.ts` uses. */
 const DEFAULT_RRF_K = 60;
+
+/**
+ * How the lexical channel values a query term.
+ *
+ * Two names, and they are the two configurations this repository has measured: `flat` counts every content
+ * term as one, and `idf` weights it by how rare it is in the corpus being searched. `flat` is the default
+ * because it is the definition every archived artifact was produced under -- `S14`, the vector arm, and the
+ * `relevanceFor = lexicalRelevance` path -- and a default that changed a published number would make two
+ * artifacts incomparable without saying so.
+ *
+ * Not exported: it is `SearchIndexOptions.lexicalWeighting`'s type and nothing names it on its own -- a caller
+ * writing `lexicalWeighting: 'idf'` needs the option, not the name. `tools/export-census.mjs` reported it as an
+ * orphan when it was exported, which is the gate doing its job (the same ruling `WidthPlanReason` is under).
+ */
+type LexicalWeighting = 'flat' | 'idf';
 
 /**
  * A channel that ranks turns.
@@ -168,6 +186,36 @@ export type SearchIndexOptions = {
   readonly batch?: number;
   /** The RRF constant. Exposed because a second index in the same run must not silently use another one. */
   readonly rrfK?: number;
+  /**
+   * How the lexical channel values one query term. Defaults to `flat`.
+   *
+   * ## Why a corpus is allowed to say what a term is worth
+   *
+   * Because `flat` has a measured failure. Coverage divides by the number of distinct content terms, so three
+   * matched generic words beat one matched noun: `"How many bikes do I own?"` ranked a turn containing
+   * `how, many, own` at **0.637** above the gold turn containing `bikes` at **0.425**, and on the twenty-one
+   * `S14` questions that delivered no gold turn, twenty were lost this way rather than to a missing term.
+   * The term that decides the answer is the rare one, and rarity is only visible against a corpus.
+   *
+   * `idf` weights each query term by `ln(1 + (N - df + 0.5) / (df + 0.5))` over the turns this index holds:
+   * a term in every turn is worth about `0.001`, a term in one turn of five hundred about `5.8`, and no term
+   * is worth zero. This is the Robertson/Sparck-Jones form Lucene uses, and it is **corpus-derived rather
+   * than corpus-fitted** -- there is no constant here chosen from an answer key, which is why it is a
+   * weighting rather than a fit. The smoother `ln(1 + N / (1 + df))` was tried first and rejected on this
+   * repository's own numbers: at a corpus of ten turns it separates a rare term from a common one by 2.4x,
+   * which is not enough to overcome three matched common terms, while the form below separates them by 13x.
+   *
+   * ## Why the default is `flat`
+   *
+   * Because `flat` is what every number in this repository was measured under, and because the honest order
+   * is measure-then-adopt: the instrument prices either weighting at zero, so a default can be changed on
+   * evidence rather than on the argument above. A run that selects `idf` states it in
+   * `memoryArmConfig.lexicalWeighting`, which is what keeps two artifacts from being compared as if they
+   * ranked the same way.
+   *
+   * Ignored by the vector channel, which ranks by cosine and never consults a term.
+   */
+  readonly lexicalWeighting?: LexicalWeighting;
   /**
    * What to do when the embedder cannot produce a query vector.
    *
@@ -511,6 +559,14 @@ export class SearchIndex implements VectorEraser {
   readonly #lexical: boolean;
   /** Whether the vector channel ranks. See `SearchIndexOptions.channels`. */
   readonly #vector: boolean;
+  /**
+   * What the lexical channel charges for a query term.
+   *
+   * A function rather than the name, because the two places that score a turn -- `#lexicalOrder`, which
+   * ranks every candidate, and `#searchOne`, which reports the score beside the order it produced -- must
+   * agree, and agreeing on a name would not prevent them from disagreeing on the arithmetic.
+   */
+  readonly #termWeight: TermWeight;
   /** How many queries the most recent search issued. See {@link SearchCensus.queries}. */
   #lastQueries = 0;
 
@@ -530,6 +586,28 @@ export class SearchIndex implements VectorEraser {
     const channels = normalizeChannels(options.channels, options.embed !== undefined);
     this.#lexical = channels.lexical;
     this.#vector = channels.vector;
+    const weighting = options.lexicalWeighting ?? 'flat';
+    // Refused rather than defaulted, for the reason `channels` refuses an unknown name: a misspelt weighting
+    // is a line that reads as a treatment and ranks flat, so the run would publish a candidate comparison
+    // that compared a configuration with itself.
+    if (weighting !== 'flat' && weighting !== 'idf') {
+      throw new Error(
+        `SearchIndexOptions.lexicalWeighting may only be "flat" or "idf", got ` +
+          `${JSON.stringify(String(weighting))}. "flat" counts every content term as one; "idf" weights it ` +
+          'by ln(1 + (N - df + 0.5) / (df + 0.5)) over the turns this index holds.',
+      );
+    }
+    // Bound to the corpus this index holds, and read at search time rather than frozen at construction:
+    // `add()` fills the postings and the turn count before `prime()`, so a weight captured in the
+    // constructor would price every term against an empty corpus.
+    this.#termWeight =
+      weighting === 'flat'
+        ? () => 1
+        : (term: string): number => {
+            const df = this.#postings.get(term)?.length ?? 0;
+            const total = this.#turns.length;
+            return Math.log(1 + (total - df + 0.5) / (df + 0.5));
+          };
     const embed = options.embed;
     if (embed === undefined) return;
 
@@ -688,7 +766,7 @@ export class SearchIndex implements VectorEraser {
     if (vectors.length === 0 && this.#options.rerank === undefined) {
       return lexical.map((turn) => ({
         turn,
-        score: lexicalRelevance(query, this.#turns[turn]!),
+        score: lexicalRelevance(query, this.#turns[turn]!, this.#termWeight),
       }));
     }
 
@@ -886,7 +964,10 @@ export class SearchIndex implements VectorEraser {
     }
 
     return [...candidates]
-      .map((position) => ({ position, score: lexicalRelevance(question, this.#turns[position]!) }))
+      .map((position) => ({
+        position,
+        score: lexicalRelevance(question, this.#turns[position]!, this.#termWeight),
+      }))
       .sort((a, b) => b.score - a.score || a.position - b.position)
       .map((entry) => entry.position);
   }

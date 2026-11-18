@@ -56,6 +56,16 @@ on:
         required: false
         default: '1'
         type: string
+      lexical_weighting:
+        description: 'How the product values a query term. "flat" is the registered weighting and the only one the calibration accepts; "idf" prices term specificity against the corpus the index holds, and must be dispatched with a candidate label'
+        required: false
+        default: 'flat'
+        type: string
+      candidate:
+        description: 'Empty for a calibration run (the gate). A label -- e.g. "idf" -- for a candidate run: the report is then expected to differ, the gate reports the delta instead of refusing it, and the configuration change is printed field by field'
+        required: false
+        default: ''
+        type: string
 
 # `contents: read` and nothing else. This job reads the tree, downloads the corpus and writes an
 # artifact; it has no reason to hold a token that could write, and the arm's own workflow declares the
@@ -153,6 +163,11 @@ jobs:
           CORTEX_MEMORY: '1'
           CORTEX_MEMORY_RELEVANCE: 'self-index'
           CORTEX_MEMORY_INDEX_EMBEDDING: 'none'
+          # §13.379. `flat` on a calibration run, which is what the reference was produced under: the two
+          # weightings order one corpus differently, so a calibration dispatched with `idf` would report
+          # "the instrument is not the path" for a change that is the candidate. The guard in
+          # `lexical-recall-calibrate.py` refuses that configuration mismatch by name.
+          CORTEX_MEMORY_LEXICAL_WEIGHTING: ${{ github.event.inputs.lexical_weighting || 'flat' }}
           CORTEX_MEMORY_RELEVANCE_TOP_K: '256'
           CORTEX_MEMORY_RELEVANCE_UNITS: 'turn'
           # The room TABLE, not the scalar, and this line is the one the calibration gate caught. The
@@ -192,7 +207,21 @@ jobs:
         # dispatch of this workflow ran all 500 questions, wrote a complete artifact, and then failed
         # this step on `FileNotFoundError` -- the same working-directory mistake as the corpus path,
         # one step later. The marker is found beside the report, so only this argument is needed.
-        run: python3 tools/lexical-recall-calibrate.py --report packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+        # Two modes and one report. `candidate` empty is the gate: it exits nonzero when the account
+        # disagrees on one question, which is what makes a calibration a gate. A label switches to the
+        # delta reading, where a difference is the expected outcome and an unattributable one is still a
+        # failure -- the same dataset and the same roster are checked in both modes.
+        env:
+          CANDIDATE: ${{ github.event.inputs.candidate }}
+        run: |
+          if [ -n "${CANDIDATE}" ]; then
+            python3 tools/lexical-recall-calibrate.py \
+              --report packages/cortex-memory/benchmark-cortex-memory-ablation-report.json \
+              --candidate "${CANDIDATE}"
+          else
+            python3 tools/lexical-recall-calibrate.py \
+              --report packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          fi
 
       # Uploaded after the gate so a failed calibration still leaves the evidence that failed it.
       # `if: always()` is the same rule the arm's own workflow follows for its partial artifact: the

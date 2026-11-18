@@ -50,8 +50,11 @@ def question(
     }
 
 
-def report(*questions: dict, fingerprint: str = FINGERPRINT) -> dict:
-    return {'datasetFingerprint': fingerprint, 'questions': list(questions)}
+def report(*questions: dict, fingerprint: str = FINGERPRINT, config: dict | None = None) -> dict:
+    payload: dict = {'datasetFingerprint': fingerprint, 'questions': list(questions)}
+    if config is not None:
+        payload['memoryArmConfig'] = config
+    return payload
 
 
 def marker(**overrides) -> dict:
@@ -67,7 +70,14 @@ def marker(**overrides) -> dict:
     return payload
 
 
-def run(tmp_path: Path, *, report_payload: dict, reference_payload: dict, write_marker: bool = True):
+def run(
+    tmp_path: Path,
+    *,
+    report_payload: dict,
+    reference_payload: dict,
+    write_marker: bool = True,
+    extra: tuple[str, ...] = (),
+):
     report_path = tmp_path / 'report.json'
     report_path.write_text(json.dumps(report_payload))
     reference_path = tmp_path / 'reference.json'
@@ -82,6 +92,7 @@ def run(tmp_path: Path, *, report_payload: dict, reference_payload: dict, write_
             str(report_path),
             '--reference',
             str(reference_path),
+            *extra,
         ],
         capture_output=True,
         text=True,
@@ -237,3 +248,227 @@ def test_zero_gold_question_is_bucketed_rather_than_divided_by_zero(tmp_path: Pa
     result = run(tmp_path, report_payload=payload, reference_payload=reference)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "'no-gold': 1" in result.stdout
+
+
+# --------------------------------------------------------------------------------------------------
+# `--candidate`: a report that is supposed to differ
+# --------------------------------------------------------------------------------------------------
+#
+# The risk this mode carries is the opposite of the calibration's. A calibration gate that is too
+# permissive publishes a candidate as if it were the path; a candidate mode that is too permissive
+# publishes an *unattributed* difference -- another corpus, another roster, three settings at once --
+# as a measurement of one mechanism. So these tests check the two things it must never do: accept a
+# comparison it cannot attribute, and print the calibration's verdict.
+
+
+def test_candidate_reports_the_delta_instead_of_refusing_it(tmp_path: Path) -> None:
+    reference = reference_for(tmp_path, baseline())
+    candidate = report(
+        question('q1', carried=1, total=2, texts=('alpha',)),
+        question('q2', carried=1, total=3, texts=('gamma',)),
+    )
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'synthetic'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '=== candidate: synthetic ===' in result.stdout
+    assert 'questions changed : 1 gained, 1 lost, 0 unchanged' in result.stdout
+    assert 'gold turns        : 2 -> 2' in result.stdout
+    assert 'GAIN q1 0->1 of 2' in result.stdout
+    assert 'LOSS q2 2->1 of 3' in result.stdout
+    # The calibration's verdict is an equality claim and must never appear on a candidate.
+    assert 'IS the path' not in result.stdout
+
+
+def test_candidate_names_the_configuration_it_moved(tmp_path: Path) -> None:
+    # A candidate that moved two settings is not a candidate for either mechanism, and the only place
+    # that can be visible is the log of the run itself.
+    reference = reference_for(
+        tmp_path, report(question('q1', carried=0, total=1), config={'lexicalWeighting': 'flat'})
+    )
+    candidate = report(
+        question('q1', carried=1, total=1),
+        config={'lexicalWeighting': 'idf', 'maxTurnChars': 400},
+    )
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'idf'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'configuration    : 2 field(s) changed' in result.stdout
+    assert 'lexicalWeighting: "flat" -> "idf"' in result.stdout
+    assert 'maxTurnChars: "<absent>" -> 400' in result.stdout
+
+
+def test_candidate_states_when_the_difference_is_in_code_rather_than_a_setting(tmp_path: Path) -> None:
+    # The room's floor (`§13.379`) is a code change: the configuration is identical and the delivery is
+    # not. Saying "unchanged" is what stops the reader from looking for a setting that does not exist.
+    reference = reference_for(tmp_path, baseline())
+    candidate = report(
+        question('q1', carried=0, total=2, texts=('alpha',)),
+        question('q2', carried=1, total=3, texts=('gamma',)),
+    )
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'room-floor'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'unchanged -- this candidate' in result.stdout
+
+
+def test_candidate_refuses_another_corpus(tmp_path: Path) -> None:
+    reference = reference_for(tmp_path, baseline())
+    candidate = report(*baseline()['questions'], fingerprint='sha256:another-corpus')
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'wrong-corpus'),
+    )
+    assert result.returncode == 1
+    assert 'this comparison is not valid' in result.stdout
+    assert 'dataset fingerprint differs' in result.stdout
+
+
+def test_candidate_marks_a_different_delivery_as_such(tmp_path: Path) -> None:
+    # Identical gold counts and different texts is not "no effect": it is a different set of turns, and
+    # the verdict has to say so rather than let the zero in `questions changed` be read as equality.
+    reference = reference_for(tmp_path, baseline())
+    candidate = report(
+        question('q1', carried=0, total=2, texts=('alpha', 'gamma')),
+        question('q2', carried=2, total=3, texts=('gamma',)),
+    )
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'redelivered'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'evidence changed  : 1 question(s) delivered different turn texts' in result.stdout
+    assert 'This is a different delivery' in result.stdout
+
+
+def test_candidate_requires_a_label(tmp_path: Path) -> None:
+    # An unnamed candidate is a diff nobody can attribute, and the argument is the only place the name
+    # can live.
+    reference = reference_for(tmp_path, baseline())
+    result = run(
+        tmp_path,
+        report_payload=baseline(),
+        reference_payload=reference,
+        extra=('--candidate', '   '),
+    )
+    assert result.returncode != 0
+    assert '--candidate needs a label' in result.stderr
+
+
+def test_reference_records_the_configuration_a_candidate_is_diffed_against(tmp_path: Path) -> None:
+    reference = reference_for(
+        tmp_path,
+        report(question('q1', carried=1, total=1), config={'lexicalWeighting': 'idf', 'selfIndex': {'indexes': 1}}),
+    )
+    assert reference['configuration']['lexicalWeighting'] == 'idf'
+    # Censuses are counts taken after the questions were answered: a diff that included them would report
+    # every candidate as having changed something.
+    assert 'selfIndex' not in reference['configuration']
+
+
+# --------------------------------------------------------------------------------------------------
+# `expectedMoved`: a declared movement, checked in both directions
+# --------------------------------------------------------------------------------------------------
+#
+# A repair to the product legitimately moves a delivery the reference recorded, and the reference may not
+# be rewritten to agree with new code -- it is a record of a dispatched run. The declaration is the middle
+# term, and it is only a gate if it fails **both** when something undeclared moves and when a declared
+# thing stops moving.
+
+
+def declared_reference(tmp_path: Path, moved: dict[str, str]) -> dict:
+    reference = reference_for(tmp_path, baseline())
+    reference['expectedMoved'] = moved
+    return reference
+
+
+def test_a_declared_movement_passes_and_is_printed(tmp_path: Path) -> None:
+    reference = declared_reference(tmp_path, {'q1': 'the room floor, section 13.379.3'})
+    candidate = report(
+        question('q1', carried=0, total=2, texts=('alpha', 'moved')),
+        question('q2', carried=2, total=3, texts=('gamma',)),
+    )
+    result = run(tmp_path, report_payload=candidate, reference_payload=reference)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'MOVED (declared) : q1 carried 0->0, digest changed' in result.stdout
+    assert 'apart from the delivery the reference declares as moved' in result.stdout
+
+
+def test_an_undeclared_movement_still_fails(tmp_path: Path) -> None:
+    # The declaration is per question, not a switch: a second question moving is exactly the event the
+    # gate exists to catch.
+    reference = declared_reference(tmp_path, {'q1': 'the room floor'})
+    candidate = report(
+        question('q1', carried=0, total=2, texts=('alpha', 'moved')),
+        question('q2', carried=1, total=3, texts=('gamma',)),
+    )
+    result = run(tmp_path, report_payload=candidate, reference_payload=reference)
+    assert result.returncode == 1
+    assert '1 question(s) carry a different number of gold turns' in result.stdout
+
+
+def test_a_declaration_that_stopped_moving_fails(tmp_path: Path) -> None:
+    # A declaration outliving its cause is a gate vouching for something it no longer checks, and it is
+    # indistinguishable from a correct run unless it is asserted -- so it is.
+    reference = declared_reference(tmp_path, {'q1': 'a change that was reverted'})
+    result = run(tmp_path, report_payload=baseline(), reference_payload=reference)
+    assert result.returncode == 1
+    assert 'declared question(s) did not move' in result.stdout
+
+
+def test_a_declaration_cannot_cover_a_gold_count_change(tmp_path: Path) -> None:
+    # `total` is the dataset's annotation. "This question's gold count changed on purpose" is not a claim
+    # any product change can make, so the declaration deliberately does not reach it.
+    reference = declared_reference(tmp_path, {'q1': 'anything'})
+    candidate = report(
+        question('q1', carried=0, total=5, texts=('alpha', 'beta')),
+        question('q2', carried=2, total=3, texts=('gamma',)),
+    )
+    result = run(tmp_path, report_payload=candidate, reference_payload=reference)
+    assert result.returncode == 1
+    assert 'different gold count' in result.stdout
+
+
+def test_regenerating_the_reference_keeps_its_declarations(tmp_path: Path) -> None:
+    # `--write-reference` is the operation that must not silently drop the declaration: it rewrites the
+    # file from an artifact, and the artifact knows nothing about why the code now differs.
+    reference = declared_reference(tmp_path, {'q1': 'the room floor'})
+    reference_path = tmp_path / 'reference.json'
+    reference_path.write_text(json.dumps(reference))
+    report_path = tmp_path / 'fresh-artifact.json'
+    report_path.write_text(json.dumps(baseline()))
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(TOOL),
+            '--report',
+            str(report_path),
+            '--reference',
+            str(reference_path),
+            '--write-reference',
+            '--row',
+            'S14',
+            '--run',
+            '43829744532',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(reference_path.read_text())['expectedMoved'] == {'q1': 'the room floor'}

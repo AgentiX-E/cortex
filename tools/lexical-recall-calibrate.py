@@ -23,7 +23,7 @@ A gate on `carried` alone would pass for an instrument that delivered entirely d
 happened to carry the same count of gold ones. A gate on the digest alone would pass for one that
 delivered the same turns in a different order. Both are checked because they fail differently.
 
-## The two modes
+## The three modes
 
 `--write-reference` reads an archived artifact and writes the digest. It exists so the reference is
 reproducible rather than hand-maintained: a reader who distrusts `lexical-recall-reference.json` can
@@ -31,6 +31,14 @@ regenerate it from the artifact the row names and diff the two files.
 
 The default mode compares a report against that digest and **exits nonzero when the instrument is
 not the path**, which is what makes the calibration a gate in CI rather than a table in a log.
+
+`--candidate LABEL` reads a report that is *supposed* to differ -- a scoring change priced offline --
+and reports the difference instead of refusing it. The distinction is the whole point: equality is the
+claim for a calibration run and the wrong claim for a candidate, and a tool with one mode would either
+refuse every candidate or accept every calibration drift. A candidate run still has to be comparable,
+so the dataset, the roster and the configuration are checked exactly as they are in the other mode, and
+the configuration **difference** is printed field by field -- a candidate that moved three things at
+once is visible in its own log rather than in a later post-mortem.
 
 ## What it refuses
 
@@ -41,9 +49,16 @@ not the path**, which is what makes the calibration a gate in CI rather than a t
    is the difference between "the instrument disagreed" and "the instrument measured another file".
 3. **A roster that is not the reference's.** A shard, a filter or a `LIMIT` probe produces a report
    that is internally consistent and answers a different question.
+4. **A movement the reference did not declare.** A repair to the product can legitimately move a
+   delivery the reference recorded, and the reference may not be rewritten to agree with new code -- it
+   is a record of a dispatched run. `expectedMoved` names the question and the section that moved it, and
+   the declaration is checked in both directions: an undeclared movement fails, and a declaration whose
+   movement stopped happening fails too, because a gate that outlives its cause is no longer checking it.
+   It deliberately cannot cover `total`: the gold annotation is the dataset's.
 
 Usage:
   python3 tools/lexical-recall-calibrate.py --report report.json [--marker offline-instrument.json]
+  python3 tools/lexical-recall-calibrate.py --report report.json --candidate idf
   python3 tools/lexical-recall-calibrate.py --report artifact.json --write-reference \\
       --row S14 --run 43829744532
 """
@@ -113,8 +128,35 @@ def rows_of(report: dict) -> list[dict]:
     return [gold_of(question) for question in questions]
 
 
+# The configuration fields that are **census** rather than configuration: they are counts taken after
+# the questions were answered, so two runs of one configuration disagree in them and a diff would report
+# them as changes. `tools/arm-config-record.py` keeps the same partition for the same reason; the two
+# lists are not imported from each other because that module's partition is a claim about the artifact
+# schema and this one is a claim about what a *diff* means.
+CENSUS_FIELDS = frozenset(
+    {'selfIndex', 'admission', 'voteCounts', 'queryExpansionCounts', 'configurationFingerprint'}
+)
+
+# Fields whose absence in an archived artifact has exactly one meaning, restated rather than inferred:
+# `lexicalWeighting` did not exist before §13.379, and its only other value (`idf`) did not either, so a
+# report without the field ranked flat. Normalising it here keeps a candidate's diff to the field it
+# moved instead of reporting "absent -> idf" as if the reference had used something else.
+DEFAULTS_WHEN_ABSENT = {'lexicalWeighting': 'flat'}
+
+
+def configuration_of(report: dict) -> dict:
+    """The run's configuration, without its censuses, with archived absences normalised."""
+    config = dict(report.get('memoryArmConfig') or {})
+    for key, default in DEFAULTS_WHEN_ABSENT.items():
+        config.setdefault(key, default)
+    return {key: value for key, value in config.items() if key not in CENSUS_FIELDS}
+
+
 def write_reference(report: dict, row: str, run: str, path: Path) -> None:
     rows = rows_of(report)
+    existing_moved = {}
+    if path.exists():
+        existing_moved = json.loads(path.read_text()).get('expectedMoved') or {}
     fingerprint = report.get('configurationFingerprint') or (
         report.get('memoryArmConfig') or {}
     ).get('configurationFingerprint')
@@ -132,6 +174,13 @@ def write_reference(report: dict, row: str, run: str, path: Path) -> None:
         # for a human comparing two references, and `null` would read as "the run had no
         # configuration fingerprint" -- a claim about the run rather than about this digest.
         **({} if fingerprint is None else {'configurationFingerprint': fingerprint}),
+        # The whole configuration, so a candidate can be diffed against what produced the reference
+        # rather than against a reader's memory of it. `--candidate` is the consumer.
+        'configuration': configuration_of(report),
+        # Carried over rather than regenerated: a declaration is a fact about why the *current* code
+        # differs from this record, and re-deriving the record is exactly the operation that must not
+        # silently drop it. Regenerating from another row would be a different file at a different path.
+        **({} if not existing_moved else {'expectedMoved': existing_moved}),
         'questions': rows,
     }
     path.write_text(json.dumps(payload, indent=1) + '\n')
@@ -155,10 +204,16 @@ def bucket_of(row: dict) -> str:
     return '67-100%'
 
 
-def compare(report: dict, reference: dict, marker: dict) -> int:
-    """Return an exit code: 0 when the instrument is the path, 1 when it is not."""
-    failures: list[str] = []
+def comparability_failures(
+    report: dict, reference: dict, fresh: dict, expected: dict
+) -> list[str]:
+    """The checks both modes share: same corpus, same roster.
 
+    Separate from the verdict because the two modes disagree about what a *difference* means and agree
+    about what makes a comparison meaningless: a report of another dataset or of a shard is not a
+    reading of this mechanism, whichever question the caller asked.
+    """
+    failures: list[str] = []
     if report.get('datasetFingerprint') != reference.get('datasetFingerprint'):
         failures.append(
             'dataset fingerprint differs: the instrument graded '
@@ -166,9 +221,6 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
             f'{reference.get("datasetFingerprint")!r}. The corpus is served from a moving branch, so '
             'this is "another file was measured", not "the instrument disagreed".'
         )
-
-    fresh = {row['id']: row for row in rows_of(report)}
-    expected = {row['id']: row for row in reference['questions']}
     if set(fresh) != set(expected):
         missing = sorted(set(expected) - set(fresh))
         extra = sorted(set(fresh) - set(expected))
@@ -177,15 +229,46 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
             f'{len(extra)} not in the reference (e.g. {extra[:5]}). A shard or a filter answers a '
             'different question and its account cannot be compared with the whole.'
         )
+    return failures
 
-    mismatched_total = [qid for qid in expected if qid in fresh and fresh[qid]['total'] != expected[qid]['total']]
+
+def compare(report: dict, reference: dict, marker: dict) -> int:
+    """Return an exit code: 0 when the instrument is the path, 1 when it is not."""
+    fresh = {row['id']: row for row in rows_of(report)}
+    expected = {row['id']: row for row in reference['questions']}
+    failures = comparability_failures(report, reference, fresh, expected)
+
+    # §13.379.3. A repair to the product legitimately moves a delivery the reference recorded, and the
+    # reference is a record of a dispatched run -- it may not be rewritten to agree with new code. So a
+    # question whose delivery moved **on purpose** is declared in the reference with the section that
+    # moved it, and the gate checks the declaration in both directions: an undeclared movement fails, and
+    # so does a declaration whose movement did not happen. A declaration that outlives its cause is a
+    # gate that has stopped checking the thing it named.
+    declared = reference.get('expectedMoved') or {}
+    mismatched_total = [
+        qid for qid in expected if qid in fresh and fresh[qid]['total'] != expected[qid]['total']
+    ]
     mismatched_carried = [
-        qid for qid in expected if qid in fresh and fresh[qid]['carried'] != expected[qid]['carried']
+        qid
+        for qid in expected
+        if qid in fresh and fresh[qid]['carried'] != expected[qid]['carried'] and qid not in declared
     ]
     mismatched_digest = [
         qid
         for qid in expected
-        if qid in fresh and fresh[qid]['deliveredDigest'] != expected[qid]['deliveredDigest']
+        if qid in fresh
+        and fresh[qid]['deliveredDigest'] != expected[qid]['deliveredDigest']
+        and qid not in declared
+    ]
+    # A declaration covers `carried` and the delivered texts, never `total`: the gold annotation is the
+    # dataset's, so "this question's gold count changed on purpose" is not a claim any product change can
+    # make. It stays fatal above.
+    still_moved = [
+        qid
+        for qid in declared
+        if qid in fresh
+        and fresh[qid]['carried'] == expected[qid]['carried']
+        and fresh[qid]['deliveredDigest'] == expected[qid]['deliveredDigest']
     ]
 
     if mismatched_total:
@@ -215,6 +298,14 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
             'room, or a rendering that changed while the gold account stayed put.'
         )
 
+    if still_moved:
+        failures.append(
+            f'{len(still_moved)} declared question(s) did not move: {still_moved[:5]}. The reference says '
+            'a section changed this delivery and the delivery is the reference\'s -- so either the '
+            'section was reverted, or the declaration was written before the change reached the code. '
+            'Either way the gate is now vouching for something it is not checking.'
+        )
+
     zero_expected = sorted(qid for qid, row in expected.items() if row['carried'] == 0)
     zero_fresh = sorted(qid for qid, row in fresh.items() if row['carried'] == 0)
 
@@ -226,15 +317,121 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
     print(f'zero-recall      : reference {len(zero_expected)}, instrument {len(zero_fresh)}')
     print(f'buckets (ref)    : {dict(Counter(bucket_of(row) for row in expected.values()))}')
     print(f'buckets (inst)   : {dict(Counter(bucket_of(row) for row in fresh.values()))}')
+    for qid, reason in declared.items():
+        if qid not in fresh:
+            continue
+        print(
+            f'MOVED (declared) : {qid} carried {expected[qid]["carried"]}->{fresh[qid]["carried"]}, '
+            f'digest {"same" if fresh[qid]["deliveredDigest"] == expected[qid]["deliveredDigest"] else "changed"}'
+            f' -- {reason}'
+        )
 
     if not failures:
-        print('VERDICT: the instrument IS the path -- carried, total and delivered texts agree on every question.')
+        print(
+            'VERDICT: the instrument IS the path -- carried, total and delivered texts agree on every '
+            'question' + (', apart from the delivery the reference declares as moved.' if declared else '.')
+        )
         return 0
 
     print('VERDICT: the instrument is NOT the path. Each line below is a different way to be wrong.')
     for failure in failures:
         print(f'  FAIL {failure}')
     return 1
+
+
+def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -> int:
+    """Read a deliberately different report: exit 0 when the comparison is valid, 1 when it is not.
+
+    The verdict is about **comparability**, not about the candidate: a treatment that lost gold turns is
+    a result, and a tool that failed on it would teach its users to stop running candidates. What it does
+    refuse is a difference it cannot attribute -- another corpus, another roster -- and what it always
+    prints is the configuration change, because a candidate that moved two things at once is not a
+    candidate for the mechanism it names.
+    """
+    fresh = {row['id']: row for row in rows_of(report)}
+    expected = {row['id']: row for row in reference['questions']}
+    failures = comparability_failures(report, reference, fresh, expected)
+
+    print(f'=== candidate: {label} ===')
+    print(f'reference        : {reference["row"]} / run {reference["run"]}')
+    print(f'questions        : {len(fresh)} of {len(expected)}')
+    print(f'indexes built    : {marker.get("indexes")} over {marker.get("questions")} x {marker.get("runs")}')
+
+    before = reference.get('configuration')
+    after = configuration_of(report)
+    if before is None:
+        # A reference written before the configuration was recorded. Said out loud rather than skipped:
+        # a candidate whose difference is unattributed is exactly what this line exists to prevent.
+        print('configuration    : the reference records none, so the change cannot be attributed here')
+    else:
+        moved = [
+            (key, before.get(key, '<absent>'), after.get(key, '<absent>'))
+            for key in sorted(set(before) | set(after))
+            if before.get(key, '<absent>') != after.get(key, '<absent>')
+        ]
+        if not moved:
+            print(
+                'configuration    : unchanged -- this candidate\'s difference is in code, not in a '
+                'setting, which is why the artifact cannot state it for you'
+            )
+        else:
+            print(f'configuration    : {len(moved)} field(s) changed')
+            for key, old, new in moved:
+                print(f'  {key}: {json.dumps(old)} -> {json.dumps(new)}')
+
+    improved = [qid for qid in expected if qid in fresh and fresh[qid]['carried'] > expected[qid]['carried']]
+    regressed = [
+        qid for qid in expected if qid in fresh and fresh[qid]['carried'] < expected[qid]['carried']
+    ]
+    same = [qid for qid in expected if qid in fresh and fresh[qid]['carried'] == expected[qid]['carried']]
+    redelivered = [
+        qid
+        for qid in expected
+        if qid in fresh and fresh[qid]['deliveredDigest'] != expected[qid]['deliveredDigest']
+    ]
+
+    zero_expected = {qid for qid, row in expected.items() if row['carried'] == 0}
+    zero_fresh = {qid for qid, row in fresh.items() if row['carried'] == 0}
+    left_zero = sorted(zero_expected - zero_fresh)
+    entered_zero = sorted(zero_fresh - zero_expected)
+
+    print(f'gold turns        : {sum(row["carried"] for row in expected.values())} -> '
+          f'{sum(row["carried"] for row in fresh.values())}')
+    print(f'questions changed : {len(improved)} gained, {len(regressed)} lost, {len(same)} unchanged')
+    print(f'evidence changed  : {len(redelivered)} question(s) delivered different turn texts')
+    print(f'zero-recall       : {len(zero_expected)} -> {len(zero_fresh)} '
+          f'({len(left_zero)} left, {len(entered_zero)} entered)')
+    print(f'buckets (ref)     : {dict(Counter(bucket_of(row) for row in expected.values()))}')
+    print(f'buckets (cand)    : {dict(Counter(bucket_of(row) for row in fresh.values()))}')
+    for qid in improved[:12]:
+        print(f'  GAIN {qid} {expected[qid]["carried"]}->{fresh[qid]["carried"]} of {expected[qid]["total"]}')
+    for qid in regressed[:12]:
+        print(f'  LOSS {qid} {expected[qid]["carried"]}->{fresh[qid]["carried"]} of {expected[qid]["total"]}')
+    if left_zero:
+        print(f'  LEFT ZERO {", ".join(left_zero[:12])}')
+    if entered_zero:
+        print(f'  ENTERED ZERO {", ".join(entered_zero[:12])}')
+
+    if failures:
+        print('VERDICT: this comparison is not valid. Each line below is a different way to be wrong.')
+        for failure in failures:
+            print(f'  FAIL {failure}')
+        return 1
+
+    if redelivered and not (improved or regressed):
+        # The counts agree everywhere and the texts do not. That is not a scoring change, it is another
+        # delivery, and reporting it as "no effect" would be the most expensive kind of wrong.
+        print(
+            'VERDICT: the gold account is unchanged while the evidence moved. This is a different '
+            'delivery, not a scoring change -- read `evidence changed` above before reading anything else.'
+        )
+        return 0
+
+    print(
+        f'VERDICT: valid comparison of {label}. Retrieval only -- accuracy, the judge and the pairing '
+        'are not measured by this instrument, so no accuracy claim may be drawn from this table.'
+    )
+    return 0
 
 
 def main() -> int:
@@ -248,6 +445,16 @@ def main() -> int:
     )
     parser.add_argument('--reference', type=Path, default=REFERENCE)
     parser.add_argument('--write-reference', action='store_true')
+    parser.add_argument(
+        '--candidate',
+        default=None,
+        metavar='LABEL',
+        help=(
+            'compare as a candidate rather than as a calibration: report the delta instead of refusing '
+            'it, and print which configuration fields moved. LABEL names the treatment in the log, so two '
+            'candidates cannot be confused for one another'
+        ),
+    )
     parser.add_argument('--row', default='S14')
     parser.add_argument('--run', default='')
     args = parser.parse_args()
@@ -265,7 +472,12 @@ def main() -> int:
             'run whose scoring is the shipped one.'
         )
     reference = json.loads(args.reference.read_text())
-    return compare(report, reference, json.loads(marker.read_text()))
+    marker_payload = json.loads(marker.read_text())
+    if args.candidate is not None:
+        if not args.candidate.strip():
+            raise SystemExit('--candidate needs a label: an unnamed candidate is a diff nobody can attribute.')
+        return compare_candidate(report, reference, marker_payload, args.candidate.strip())
+    return compare(report, reference, marker_payload)
 
 
 if __name__ == '__main__':

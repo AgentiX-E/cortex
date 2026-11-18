@@ -448,3 +448,85 @@ describe('the relevance signal reaches the prompt and nothing else', () => {
     expect(with_.abstentionReasons()).toEqual(without.abstentionReasons());
   });
 });
+
+/**
+ * The room's floor: one turn's length must not erase the others.
+ *
+ * `S14`'s question `b86304ba` offered 456 turns, ranked an assistant turn longer than the whole
+ * 24,000-character room first, delivered **zero** characters, and the reader answered "Unknown" from a prompt
+ * that said no evidence was admitted. The prefix rule was working exactly as documented -- the largest fitting
+ * prefix was the empty one -- and the documented cost ("a turn larger than the whole room ends the selection")
+ * turned out to price a prompt with no evidence as a budget outcome rather than as the defect it is.
+ *
+ * The rule these tests pin is the character-clip path's, reached from the relevance path: when no **whole** turn
+ * fits, the room buys the best-ranked turn clipped. `carried` still counts whole turns, so it is empty -- the
+ * roster and the text are different questions and the artifact already reports them separately
+ * (`evidenceChars` beside `turns`).
+ */
+describe('the room when no whole turn fits', () => {
+  /** A turn far larger than any room these tests use, plus five ordinary ones. */
+  const oversized = (): AdmittedTurn[] => [
+    turn('B'.repeat(50_000), 0),
+    ...Array.from({ length: 5 }, (_, i) => turn(`turn ${i}`.padEnd(40, '.'), i + 1)),
+  ];
+
+  /**
+   * A budget that leaves exactly `room` characters for evidence, derived from the prompt's own overhead.
+   *
+   * Not `budgetForRoom`, which assumes the signal-free prompt renders **all** the evidence: with a 50,000
+   * character turn and a default room, the full prompt is the clip and the subtraction goes negative, so the
+   * selector would be handed a room below zero and the test would pass for the wrong reason.
+   */
+  const budgetFor = (room: number): number => {
+    const probe = turn('probe', 0);
+    const withoutEvidence = buildPrompt(QUESTION, [], 'extractive').prompt.length;
+    const withEvidence = buildPrompt(QUESTION, [probe], 'extractive');
+    const headerAndEvidence = withEvidence.prompt.length - withoutEvidence;
+    return withoutEvidence + (headerAndEvidence - formatEvidence([probe]).length) + room;
+  };
+
+  it('delivers the best turn clipped instead of delivering nothing', () => {
+    const turns = oversized();
+    // A room that holds several ordinary turns and not one character of the oversized one.
+    const room = 1_200;
+    const assembled = buildPrompt(QUESTION, turns, 'extractive', {
+      maxChars: budgetFor(room),
+      // Ranked by length, which is what makes the oversized turn the one the room cannot hold.
+      relevanceFor: (_question, candidate) => candidate.length,
+    });
+
+    // Before the repair this was `0` and the prompt carried the "no evidence was admitted" sentence.
+    expect(assembled.evidenceChars).toBeGreaterThan(0);
+    // Exactly the room, because the clip spends all of it on the one turn: the alternative -- skipping to a
+    // shorter turn -- is the greedy fill this selector documents why it refuses.
+    expect(assembled.evidenceChars).toBe(room);
+    expect(assembled.prompt).toContain('B'.repeat(200));
+  });
+
+  it('keeps the roster empty, because a clipped turn is not a whole one', () => {
+    const turns = oversized();
+    const assembled = buildPrompt(QUESTION, turns, 'extractive', {
+      maxChars: budgetFor(formatEvidence(turns.slice(1, 5)).length),
+      relevanceFor: (_question, candidate) => candidate.length,
+    });
+
+    // The roster is what `roleCensus` and `goldOverlap` are computed from, and neither may claim a unit the
+    // reader did not receive whole. A `carried` that listed the oversized turn would make `turns` in the
+    // artifact a text the prompt does not contain.
+    expect(assembled.carried).toEqual([]);
+  });
+
+  it('still carries whole turns whenever one fits', () => {
+    // The repair must not turn every selection into a clip: with a room that holds the best turn, the landed
+    // set is whole turns and the text is the renderer's output for exactly that set.
+    const turns = turnsOf(6, 40);
+    const room = formatEvidence([turns[2]!]).length;
+    const assembled = buildPrompt(QUESTION, turns, 'extractive', {
+      maxChars: budgetForRoom(turns, room),
+      relevanceFor: (_question, candidate) => (candidate === turns[2]!.content ? 1 : 0),
+    });
+
+    expect(assembled.carried).toHaveLength(1);
+    expect(assembled.evidenceChars).toBe(formatEvidence([turns[2]!]).length);
+  });
+});

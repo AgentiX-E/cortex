@@ -3487,10 +3487,16 @@ function chooseEvidence(
  * alternative -- skipping a turn that does not fit and continuing -- is a greedy
  * fill whose cost model is a second budget accounting. The cost is bounded and
  * stated here rather than hidden: a turn larger than the whole room ends the
- * selection instead of being skipped past, so the prompt carries no evidence. That
- * needs a single turn more than 165 times this arm's mean turn length, and when it
- * happens the artifact says so -- `evidenceChars` reports zero and the roster is
- * empty -- rather than the defect being silent.
+ * selection instead of being skipped past.
+ *
+ * That used to mean the prompt carried no evidence at all, and the artifact's
+ * zero `evidenceChars` was read as "the room bought nothing". It was not nothing:
+ * it was one turn's length erasing every other candidate, and it happened on `S14`
+ * (`b86304ba`: 456 turns offered, a room-filling assistant turn ranked first, empty
+ * evidence, "Unknown"). The room now buys the best-ranked turn clipped, which is
+ * the rule the character-clip path already used. `carried` still counts whole
+ * turns -- so it stays empty there -- and `evidenceChars` reports what was actually
+ * delivered, which is how a reader can tell the two outcomes apart.
  *
  * ## Why the search is exact
  *
@@ -3533,7 +3539,27 @@ function selectByRelevance(
   }
 
   const carried = chronological(low);
-  return { evidence: carried.length === 0 ? '' : plan.render(carried), carried };
+  if (carried.length > 0) return { evidence: plan.render(carried), carried };
+
+  // No whole turn fits. The room buys the best-ranked turn **clipped** rather than nothing, because "the
+  // evidence was too long to read" and "there is no evidence" are different answers and only the second one
+  // is what an empty window says.
+  //
+  // This is the rule the character-clip path already follows (`truncateCodePointSafe`), reached from the
+  // relevance path instead of from the unsignalled one: `carried` counts **whole** turns, so it stays empty,
+  // and the prompt's own `evidenceChars` reports the characters that were delivered. That is the accounting
+  // the clip path established -- text without a whole-unit roster -- rather than a second kind of partial
+  // delivery.
+  //
+  // The case is real and was measured rather than hypothesised: `S14`'s question `b86304ba` offered 456
+  // turns, ranked an assistant turn longer than the whole 24,000-character room first, delivered **zero**
+  // characters, and the reader answered "Unknown" from a prompt that said no evidence was admitted. One
+  // turn's length must not be able to erase the other 455.
+  // `!` rather than a guard: `ranked` is one entry per turn of `plan.turns`, and the empty plan is answered
+  // before this function is called (`NOTHING_CARRIED` in `buildPrompt`). A guard here would be a branch no
+  // test could reach, and this repository deletes those rather than collecting them.
+  const best = ranked[0]!;
+  return { evidence: truncateCodePointSafe(plan.render([best.turn]), room), carried };
 }
 
 /**

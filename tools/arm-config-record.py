@@ -168,6 +168,13 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
         "artifact records whether the product index was handed the embedder, and `selfIndex.embedTexts` "
         "is the independent reading that can contradict it",
     ),
+    "lexicalWeighting": (
+        "identity",
+        "dispatch-time repository variable (`CORTEX_MEMORY_LEXICAL_WEIGHTING`) on the same rule; the "
+        "artifact records what a query term was worth, and `questions[].goldOverlap` is the independent "
+        "reading that can contradict it -- two weightings rank one corpus differently or the field is a "
+        "label rather than a configuration",
+    ),
     # The rest of the type, which no class covered when this list was written. The completeness is now
     # asserted against `MemoryArmConfig` itself -- `arm-config-classification.test.ts` parses the
     # interface and requires every field to name a class -- because the previous mechanism only checked

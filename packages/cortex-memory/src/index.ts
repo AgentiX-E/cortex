@@ -73,7 +73,9 @@ export { confidenceFromLength } from './confidence.js';
 // The signal session selection ranks by. Exported because `CortexSessionProvider`
 // below and the measurement arm both supply it; `confidence.ts` records why the
 // alternative -- widening `confidenceFor` -- was refused.
-export { lexicalRelevance } from './relevance.js';
+// `TermWeight` is on the barrel because `lexicalRelevance`'s third parameter is one: a caller that injects a
+// weighting must be able to name its type without importing a module path.
+export { lexicalRelevance, type TermWeight } from './relevance.js';
 
 // width
 // §14.126's per-question evidence budget, exported as a value and a type for the reason `relevance`

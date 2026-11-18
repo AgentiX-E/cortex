@@ -3,6 +3,104 @@
  "row": "S14",
  "run": "43829744532",
  "datasetFingerprint": "sha256:d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+ "configuration": {
+  "threshold": 0,
+  "retrievalThreshold": 0,
+  "sessionBudget": null,
+  "sourceTrust": 0.5,
+  "confidenceSignal": "none",
+  "promptContract": "evidence-blocks-unsourced",
+  "renderingRoutes": [
+   "abstention",
+   "multi-session",
+   "temporal",
+   "knowledge-update",
+   "assistant",
+   "flat"
+  ],
+  "promptAssembly": "instruction-first",
+  "assemblyRoutes": [
+   "multi-session"
+  ],
+  "ask": "verbatim-acts",
+  "reviewPass": "bare",
+  "reviewBareDecline": true,
+  "replyRepair": "off",
+  "evidenceSource": "corpus",
+  "queryExpansion": "none",
+  "conflicts": false,
+  "semanticCarry": false,
+  "supersededRendering": "off",
+  "indexEmbedding": "none",
+  "selfConsistency": "none",
+  "askRoutes": [
+   "multi-session",
+   "flat",
+   "temporal",
+   "abstention"
+  ],
+  "relevanceSignal": "self-index",
+  "relevanceTopK": 256,
+  "relevanceUnits": "turn",
+  "maxTurnChars": 400,
+  "maxPromptCharsByRoute": {
+   "multi-session": 48460,
+   "temporal": 48000,
+   "flat": 24000,
+   "knowledge-update": 24000,
+   "abstention": 24000,
+   "assistant": 24000
+  },
+  "effectivePromptChars": {
+   "multi-session": 48460,
+   "temporal": 48000,
+   "flat": 24000,
+   "knowledge-update": 24000,
+   "abstention": 24000,
+   "assistant": 24000
+  },
+  "maxTurnCharsRoutes": [
+   "multi-session",
+   "temporal"
+  ],
+  "turnCutMarker": "none",
+  "evidenceRoles": [
+   "user"
+  ],
+  "evidenceRolesRoutes": [
+   "multi-session",
+   "temporal"
+  ],
+  "embedding": {
+   "provider": "openai-compatible",
+   "model": "embedding-3",
+   "dimensions": 1024,
+   "preflight": "ok"
+  },
+  "reader": {
+   "providerId": "deepseek",
+   "model": "deepseek-chat",
+   "baseUrl": "https://api.deepseek.com/v1",
+   "endpoint": "matches",
+   "thinking": "enabled",
+   "thinkingRoutes": [
+    "multi-session",
+    "temporal"
+   ],
+   "temperature": 0,
+   "deadlineMs": 600000
+  },
+  "rerank": {
+   "provider": "none"
+  },
+  "judge": {
+   "providerId": "deepseek",
+   "model": "deepseek-chat",
+   "temperature": 0,
+   "source": "reader"
+  },
+  "lexicalWeighting": "flat"
+ },
  "questions": [
   {
    "id": "e47becba",

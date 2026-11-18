@@ -96,6 +96,56 @@ python3 tools/lexical-recall-calibrate.py \
 Diffing the regenerated file against the committed one is the check that the reference still describes
 the run it names.
 
+A repair to the product can move a delivery the reference recorded, and the reference may **not** be
+rewritten to agree with new code — it is a record of a dispatched run. The middle term is a declaration:
+
+```json
+"expectedMoved": { "b86304ba": "the room's floor (§13.379.3): the room now buys the best turn clipped" }
+```
+
+The gate checks it in both directions. An undeclared movement fails, and so does a declared one that
+stopped happening — a gate that outlives its cause is no longer checking it. The declaration cannot cover
+`total`, because the gold annotation is the dataset's rather than any product change's. Regenerating the
+reference keeps the block, since the artifact being read knows nothing about why the code now differs.
+
+## Reading a candidate rather than a calibration
+
+The gate above asks one question -- *is this the same path?* -- and a candidate asks the opposite one: *what
+did changing this move?* Both are asked of the same artifact, and answering them with one mode would either
+refuse every candidate or accept every drift, so `--candidate <label>` switches the verdict:
+
+```bash
+# The gate: exits nonzero when the account disagrees on one question.
+python3 tools/lexical-recall-calibrate.py --report report.json
+
+# A candidate: reports the delta, names the configuration fields that moved, and never prints the
+# gate's equality verdict.
+python3 tools/lexical-recall-calibrate.py --report report.json --candidate idf
+```
+
+A candidate still has to be **comparable**, and the two ways of being incomparable are checked exactly as
+they are in the gate: another corpus fingerprint, or another roster. What it adds is attribution. The
+reference records the run's whole configuration (its censuses excluded, because those are counts taken after
+the questions were answered), so a candidate prints every field it changed:
+
+```
+configuration    : 2 field(s) changed
+  lexicalWeighting: "flat" -> "idf"
+  maxTurnChars: "<absent>" -> 400
+```
+
+A candidate that moved two settings is not a candidate for either mechanism, and the run's own log is the
+only place that can be visible before someone attributes the delta to the wrong one. When nothing moved, the
+tool says so -- `unchanged -- this candidate's difference is in code, not in a setting` -- which is the
+correct reading of a change like the room's floor (`§13.379`), where the configuration is identical and the
+delivery is not.
+
+Two verdicts exist besides the delta, and they are the ones that keep "no change" from being read as "no
+effect": a report whose gold account is identical **and** whose delivered texts moved is reported as a
+different delivery rather than as a null result, and an incomparable report fails. Neither says anything
+about accuracy: the reader is a constant, so a candidate's table is a statement about which turns reached a
+prompt, not about which answers were right.
+
 ## What the product must do for this to hold
 
 Two properties of `CortexMemory`, both pinned in

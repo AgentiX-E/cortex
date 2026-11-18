@@ -846,6 +846,11 @@ async function main(): Promise<void> {
         // call and there is nothing for the policy to govern.
         ...(productIndexEmbedded ? { onEmbedFailure: 'lexical' as const } : {}),
         k: armOptions.relevanceTopK,
+        // §13.379. The arm names the weighting and the index is the only place the corpus exists, so this is
+        // the only line where term specificity can enter a measurement at all. `flat` is passed explicitly
+        // rather than omitted: the option's default is the same value, and an artifact whose configuration
+        // line says `lexicalWeighting=flat` cannot be mistaken for one that predates the field.
+        lexicalWeighting: armOptions.lexicalWeighting === 'idf' ? 'idf' : 'flat',
         ...(rerank === undefined ? {} : { rerank }),
         // The plan travels only here: a `retrieval*` signal reads the same phrases through
         // `RelevanceCase.queries` above, and handing it a plan as well would issue the queries twice
@@ -857,6 +862,7 @@ async function main(): Promise<void> {
     console.log(
       `Self index: the product ranks its own turns at k=${selfIndexOptions.k ?? 'default'}` +
         `${productIndexEmbedded ? ' over its lexical and vector channels' : ' over its lexical channel alone'}` +
+        `, valuing a query term ${selfIndexOptions.lexicalWeighting === 'idf' ? 'by its inverse document frequency' : 'flat'}` +
         `${rerank === undefined ? '' : ', with the cross-encoder inside the product'}`,
     );
   }
@@ -1493,6 +1499,10 @@ async function main(): Promise<void> {
             'any per-capability accuracy, and do not quote this file as a result.',
           instrument: 'deterministic-reader',
           variable: 'CORTEX_ARM_OFFLINE',
+          // Which ranking this run read. Beside the constant replies rather than in the report, because the
+          // report's schema is read by gates that must not learn a diagnostic's vocabulary -- and because a
+          // candidate comparison is exactly the kind of artifact that gets quoted without its configuration.
+          lexicalWeighting: result.report.memoryArmConfig?.lexicalWeighting ?? 'flat',
           readerReply: OFFLINE_INSTRUMENT_REPLY,
           judgeVerdict: OFFLINE_INSTRUMENT_VERDICT,
           measurable: [
