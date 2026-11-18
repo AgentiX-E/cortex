@@ -55,10 +55,16 @@ once is visible in its own log rather than in a later post-mortem.
    the declaration is checked in both directions: an undeclared movement fails, and a declaration whose
    movement stopped happening fails too, because a gate that outlives its cause is no longer checking it.
    It deliberately cannot cover `total`: the gold annotation is the dataset's.
+5. **A candidate that did not say which axis it intends to move.** `--expects-change` is required with
+   `--candidate`: `turns` (the whole-turn account: `carried` and the delivered texts), `chars` (the
+   delivered length), both, `none` (the delivery stands still -- a testable hypothesis) or `any` (no
+   prediction, stated as such). The prediction is compared with the observed movement in both
+   directions, because a run that moved an axis nobody named has a cause nobody named: §13.380's clip
+   moved 23,503 characters under a candidate that would have declared `turns`.
 
 Usage:
   python3 tools/lexical-recall-calibrate.py --report report.json [--marker offline-instrument.json]
-  python3 tools/lexical-recall-calibrate.py --report report.json --candidate idf
+  python3 tools/lexical-recall-calibrate.py --report report.json --candidate idf --expects-change turns,chars
   python3 tools/lexical-recall-calibrate.py --report artifact.json --write-reference \\
       --row S14 --run 43829744532
 """
@@ -84,6 +90,37 @@ BUCKETS: tuple[tuple[str, float, float], ...] = (
     ('34-66%', 1 / 3, 2 / 3),
     ('67-100%', 2 / 3, 1.0),
 )
+
+# The two axes a delivery can move on. They are separate because a clip moves one and not the other, and
+# ordered because a log line that reads `chars,turns` in one run and `turns,chars` in the next is two
+# spellings of one reading -- the kind of gratuitous difference a diff-based review learns to ignore.
+DELIVERY_AXES: tuple[str, ...] = ('turns', 'chars')
+
+
+def read_expected_axes(value: str) -> frozenset[str] | None:
+    """Parse `--expects-change`, refusing anything it does not recognise **by name**.
+
+    `none` is the empty set and `any` is `None`, and they are not the same value: the first is a
+    prediction that the delivery stands still, the second is the refusal to make one. A candidate that
+    predicted silence and a candidate that predicted nothing are read differently, and a typo must not
+    be able to turn the first into the second.
+    """
+    wanted = value.strip().lower()
+    if wanted == 'any':
+        return None
+    if wanted == 'none':
+        return frozenset()
+    named = [part.strip() for part in wanted.split(',') if part.strip()]
+    unknown = [part for part in named if part not in DELIVERY_AXES]
+    if unknown or not named:
+        raise SystemExit(
+            f'--expects-change {json.dumps(value)} is not a prediction: '
+            f'{", ".join(json.dumps(part) for part in unknown) or "an empty list"} is not one of '
+            f'{", ".join(json.dumps(axis) for axis in DELIVERY_AXES)}. The two statements that are not '
+            'lists of axes are "none" (the delivery stands still) and "any" (no prediction). A '
+            'misspelled axis must not be read as "any".'
+        )
+    return frozenset(named)
 
 
 def digest_of(turns: list[str]) -> str:
@@ -388,14 +425,46 @@ def compare(report: dict, reference: dict, marker: dict) -> int:
     return 1
 
 
-def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -> int:
+def capability_account(expected: dict, fresh: dict) -> str:
+    """One line, one entry per capability, because a registered criterion can be about a subset.
+
+    `PREREGISTRATION-LEXICAL-RECALL.md` registers a criterion on the thirty abstention questions
+    (`ABS`) and the whole-corpus line cannot answer it: +190 gold turns overall and -12 on `ABS` are
+    the same summary. `capability` was carried in every row and never read; summing it is the whole
+    change, and it makes the subset criterion checkable from the gate's own log rather than re-derived
+    from the artifact by whoever remembers it exists.
+
+    Alphabetical rather than by size: an order derived from the numbers moves when they do, and a line
+    whose field order changes between two runs cannot be diffed.
+    """
+    entries: list[str] = []
+    for capability in sorted({row['capability'] for row in expected.values()}):
+        before = sum(row['carried'] for row in expected.values() if row['capability'] == capability)
+        after = sum(row['carried'] for row in fresh.values() if row['capability'] == capability)
+        if before == after:
+            # No marker on a still entry. A reader who subtracts two numbers on all five entries stops
+            # reading the line, and the one entry that moved is the one that matters.
+            entries.append(f'{capability} {before}->{after}')
+        else:
+            word = 'up' if after > before else 'down'
+            entries.append(f'{capability} {before}->{after} ({word} {abs(after - before)})')
+    return ' | '.join(entries)
+
+
+def compare_candidate(
+    report: dict,
+    reference: dict,
+    marker: dict,
+    label: str,
+    expects: frozenset[str] | None,
+) -> int:
     """Read a deliberately different report: exit 0 when the comparison is valid, 1 when it is not.
 
     The verdict is about **comparability**, not about the candidate: a treatment that lost gold turns is
     a result, and a tool that failed on it would teach its users to stop running candidates. What it does
-    refuse is a difference it cannot attribute -- another corpus, another roster -- and what it always
-    prints is the configuration change, because a candidate that moved two things at once is not a
-    candidate for the mechanism it names.
+    refuse is a difference it cannot attribute -- another corpus, another roster, an axis nobody
+    predicted -- and what it always prints is the configuration change, because a candidate that moved
+    two things at once is not a candidate for the mechanism it names.
     """
     fresh = {row['id']: row for row in rows_of(report)}
     expected = {row['id']: row for row in reference['questions']}
@@ -457,6 +526,31 @@ def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -
     left_zero = sorted(zero_expected - zero_fresh)
     entered_zero = sorted(zero_fresh - zero_expected)
 
+    # The prediction, printed before the numbers it is a prediction about. `None` is `any`: a
+    # declaration that no axis was named, which is a legitimate statement for an exploratory run and a
+    # different one from `none` -- so the two must not share a line.
+    observed = [
+        axis
+        for axis, moved in (
+            ('turns', bool(improved or regressed or redelivered)),
+            ('chars', bool(char_moved)),
+        )
+        if moved
+    ]
+    print(
+        'predicts         : '
+        + (
+            'none (any axis may move, so this delta is attributed by hand)'
+            if expects is None
+            else ','.join(axis for axis in DELIVERY_AXES if axis in expects) or 'none'
+        )
+    )
+    print(
+        'observed         : '
+        + (','.join(observed) or 'none')
+        + ('' if observed else ' -- the delivery is byte-identical to the reference')
+    )
+
     print(f'gold turns        : {sum(row["carried"] for row in expected.values())} -> '
           f'{sum(row["carried"] for row in fresh.values())}')
     print(f'questions changed : {len(improved)} gained, {len(regressed)} lost, {len(same)} unchanged')
@@ -467,6 +561,7 @@ def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -
           f'({len(left_zero)} left, {len(entered_zero)} entered)')
     print(f'buckets (ref)     : {dict(Counter(bucket_of(row) for row in expected.values()))}')
     print(f'buckets (cand)    : {dict(Counter(bucket_of(row) for row in fresh.values()))}')
+    print(f'by capability    : {capability_account(expected, fresh)}')
     for qid in improved[:12]:
         print(f'  GAIN {qid} {expected[qid]["carried"]}->{fresh[qid]["carried"]} of {expected[qid]["total"]}')
     for qid in regressed[:12]:
@@ -485,6 +580,35 @@ def compare_candidate(report: dict, reference: dict, marker: dict, label: str) -
         print('VERDICT: this comparison is not valid. Each line below is a different way to be wrong.')
         for failure in failures:
             print(f'  FAIL {failure}')
+        return 1
+
+    # §13.381. The prediction is a contract in both directions. A movement the candidate did not name has
+    # a cause the candidate did not name, and a prediction that did not happen means the mechanism either
+    # did not run or changed nothing -- which is the `room-floor` shape, and it fails here rather than
+    # being read as a null result. `any` is exempt by construction and says so on the line above.
+    attribution: list[str] = []
+    if expects is not None:
+        unclaimed = [axis for axis in observed if axis not in expects]
+        unfulfilled = [axis for axis in DELIVERY_AXES if axis in expects and axis not in observed]
+        if unclaimed:
+            attribution.append(
+                f'the delivery moved {", ".join(unclaimed)} and the candidate declared '
+                f'{", ".join(axis for axis in DELIVERY_AXES if axis in expects) or "none"}: '
+                f'{", ".join(unclaimed)} is not in the prediction, so this delta has a cause the '
+                'candidate did not name. Declare that axis, or declare "any" and record in the log that '
+                'no axis was predicted.'
+            )
+        if unfulfilled:
+            attribution.append(
+                f'the candidate declared {", ".join(unfulfilled)} and that axis did not move on any '
+                'question: the mechanism either did not run or changed nothing. A prediction that did '
+                'not happen is the shape §13.380 published as "the branch never fires", so it fails here '
+                'instead of passing as a null result.'
+            )
+    if attribution:
+        print('VERDICT: the movement is not the one the candidate declared.')
+        for line in attribution:
+            print(f'  FAIL {line}')
         return 1
 
     if (redelivered or clips) and not (improved or regressed):
@@ -524,9 +648,29 @@ def main() -> int:
             'candidates cannot be confused for one another'
         ),
     )
+    parser.add_argument(
+        '--expects-change',
+        default=None,
+        metavar='AXES',
+        help=(
+            'required with --candidate: which axis of the delivery this run intends to move. "turns" '
+            '(the whole-turn account), "chars" (the delivered length), both, "none" (the delivery '
+            'stands still) or "any" (no prediction). The tool compares the prediction with what '
+            'happened in both directions'
+        ),
+    )
     parser.add_argument('--row', default='S14')
     parser.add_argument('--run', default='')
     args = parser.parse_args()
+
+    # Before the report is read: a flag that silently does nothing is worse than one that refuses, and a
+    # calibration's claim is equality on every question -- there is no axis for it to predict.
+    if args.expects_change is not None and args.candidate is None:
+        raise SystemExit(
+            '--expects-change belongs to a candidate run: a calibration claims equality on every '
+            'question, so there is no axis for it to predict. Pass --candidate <label> as well, or '
+            'drop the flag.'
+        )
 
     report = json.loads(args.report.read_text())
     if args.write_reference:
@@ -545,7 +689,21 @@ def main() -> int:
     if args.candidate is not None:
         if not args.candidate.strip():
             raise SystemExit('--candidate needs a label: an unnamed candidate is a diff nobody can attribute.')
-        return compare_candidate(report, reference, marker_payload, args.candidate.strip())
+        if args.expects_change is None:
+            raise SystemExit(
+                '--candidate needs --expects-change: a candidate declares which axis of the delivery it '
+                'intends to move ("turns", "chars", "turns,chars", "none" or "any"), and the tool '
+                'compares the prediction with what happened in both directions. A candidate that moves '
+                'an axis nobody named is how §13.380\'s clip reported "0 question(s) delivered different '
+                'turn texts" while delivering 23,503 characters.'
+            )
+        return compare_candidate(
+            report,
+            reference,
+            marker_payload,
+            args.candidate.strip(),
+            read_expected_axes(args.expects_change),
+        )
     return compare(report, reference, marker_payload)
 
 

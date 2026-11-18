@@ -277,7 +277,7 @@ def test_candidate_reports_the_delta_instead_of_refusing_it(tmp_path: Path) -> N
         tmp_path,
         report_payload=candidate,
         reference_payload=reference,
-        extra=('--candidate', 'synthetic'),
+        extra=('--candidate', 'synthetic', '--expects-change', 'turns'),
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert '=== candidate: synthetic ===' in result.stdout
@@ -303,7 +303,7 @@ def test_candidate_names_the_configuration_it_moved(tmp_path: Path) -> None:
         tmp_path,
         report_payload=candidate,
         reference_payload=reference,
-        extra=('--candidate', 'idf'),
+        extra=('--candidate', 'idf', '--expects-change', 'turns'),
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'configuration    : 2 field(s) changed' in result.stdout
@@ -323,7 +323,7 @@ def test_candidate_states_when_the_difference_is_in_code_rather_than_a_setting(t
         tmp_path,
         report_payload=candidate,
         reference_payload=reference,
-        extra=('--candidate', 'room-floor'),
+        extra=('--candidate', 'room-floor', '--expects-change', 'turns'),
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'unchanged -- this candidate' in result.stdout
@@ -336,7 +336,7 @@ def test_candidate_refuses_another_corpus(tmp_path: Path) -> None:
         tmp_path,
         report_payload=candidate,
         reference_payload=reference,
-        extra=('--candidate', 'wrong-corpus'),
+        extra=('--candidate', 'wrong-corpus', '--expects-change', 'any'),
     )
     assert result.returncode == 1
     assert 'this comparison is not valid' in result.stdout
@@ -355,7 +355,7 @@ def test_candidate_marks_a_different_delivery_as_such(tmp_path: Path) -> None:
         tmp_path,
         report_payload=candidate,
         reference_payload=reference,
-        extra=('--candidate', 'redelivered'),
+        extra=('--candidate', 'redelivered', '--expects-change', 'turns'),
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'evidence changed  : 1 question(s) delivered different turn texts' in result.stdout
@@ -370,7 +370,7 @@ def test_candidate_requires_a_label(tmp_path: Path) -> None:
         tmp_path,
         report_payload=baseline(),
         reference_payload=reference,
-        extra=('--candidate', '   '),
+        extra=('--candidate', '   ', '--expects-change', 'turns'),
     )
     assert result.returncode != 0
     assert '--candidate needs a label' in result.stderr
@@ -557,8 +557,228 @@ def test_a_candidate_reports_a_clip_as_a_character_change(tmp_path: Path) -> Non
         question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
     )
     result = run(
-        tmp_path, report_payload=clipped, reference_payload=reference, extra=('--candidate', 'room-floor')
+        tmp_path,
+        report_payload=clipped,
+        reference_payload=reference,
+        extra=('--candidate', 'room-floor', '--expects-change', 'chars'),
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert '1 question(s) delivered a different number of characters' in result.stdout
     assert 'CLIP q1 0->1200' in result.stdout
+
+
+# --------------------------------------------------------------------------------------------------
+# `--expects-change`: the prediction a candidate owes before it runs
+# --------------------------------------------------------------------------------------------------
+#
+# `§13.380`'s failure was not arithmetic. A candidate run delivered a 23,503-character clip of one turn
+# and the log said `0 question(s) delivered different turn texts`, because the two fields the gate
+# compared are whole-turn shaped. The third field repaired the *comparison*. These tests repair the
+# *statement*: a candidate declares which axis of the delivery it intends to move, and the tool compares
+# the prediction with what happened in both directions. Without it, a candidate that moves an axis it
+# never named is reported as a valid comparison and the reader supplies the attribution from memory --
+# which is exactly how "the branch never fires" got published about a branch that fired.
+
+BASELINE_TURNS = dict(carried=1, total=2, texts=('alpha',))
+
+
+def test_a_candidate_must_predict_the_axis_it_moves(tmp_path: Path) -> None:
+    # A label without a prediction is a diff nobody has agreed to read as a measurement of one thing.
+    reference = reference_for(tmp_path, baseline())
+    result = run(
+        tmp_path,
+        report_payload=baseline(),
+        reference_payload=reference,
+        extra=('--candidate', 'unpredicted'),
+    )
+    assert result.returncode == 1
+    assert '--expects-change' in result.stderr
+
+
+def test_a_clip_under_a_turns_prediction_is_refused(tmp_path: Path) -> None:
+    # The exact shape of this round's bug: the candidate says "whole turns will move", delivers a clip,
+    # and the turn account stands still. Declaring `turns` and moving `chars` has to fail, because the
+    # delta now has a cause the candidate never named.
+    reference = reference_for(
+        tmp_path,
+        report(
+            question('q1', carried=0, total=2, texts=(), delivered_chars=0),
+            question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+        ),
+    )
+    clipped = report(
+        question('q1', carried=0, total=2, texts=(), delivered_chars=1200),
+        question('q2', carried=2, total=3, texts=('gamma',), delivered_chars=7),
+    )
+    result = run(
+        tmp_path,
+        report_payload=clipped,
+        reference_payload=reference,
+        extra=('--candidate', 'room-floor', '--expects-change', 'turns'),
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'observed         : chars' in result.stdout
+    assert 'did not name' in result.stdout
+    # The reading is still printed before the refusal: a failed attribution is not a reason to hide the
+    # numbers that caused it.
+    assert 'CLIP q1 0->1200' in result.stdout
+
+
+def test_a_prediction_that_did_not_happen_is_refused(tmp_path: Path) -> None:
+    # The other direction, and the one that makes the declaration a contract rather than a comment: a
+    # candidate that predicted a whole-turn movement and produced none has either been disabled or run
+    # against a corpus where it is a no-op. Either way it does not get to pass as a null result.
+    reference = reference_for(tmp_path, baseline())
+    result = run(
+        tmp_path,
+        report_payload=baseline(),
+        reference_payload=reference,
+        extra=('--candidate', 'inert', '--expects-change', 'turns'),
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'observed         : none' in result.stdout
+    assert 'did not move on any question' in result.stdout
+
+
+def test_both_axes_can_be_predicted_at_once(tmp_path: Path) -> None:
+    # A candidate that changes the room and the ranking together is a legitimate run, as long as it says
+    # so. The prediction is about what the *delivery* does, not about how many mechanisms were touched.
+    reference = reference_for(
+        tmp_path,
+        report(
+            question('q1', carried=0, total=2, texts=(), delivered_chars=0),
+            question('q2', carried=0, total=3, texts=('gamma',), delivered_chars=7),
+        ),
+    )
+    moved = report(
+        question('q1', carried=2, total=2, texts=('alpha', 'beta'), delivered_chars=12),
+        question('q2', carried=1, total=3, texts=('gamma',), delivered_chars=7),
+    )
+    result = run(
+        tmp_path,
+        report_payload=moved,
+        reference_payload=reference,
+        extra=('--candidate', 'both', '--expects-change', 'turns,chars'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'predicts         : turns,chars' in result.stdout
+    assert 'observed         : turns,chars' in result.stdout
+
+
+def test_any_is_a_declaration_that_no_axis_was_predicted(tmp_path: Path) -> None:
+    # The escape hatch has to exist -- an exploratory run legitimately does not know which axis moves --
+    # and it has to say out loud that the delta is attributed by hand, so the log cannot be read later as
+    # if a prediction had been made.
+    reference = reference_for(tmp_path, baseline())
+    candidate = report(
+        question('q1', carried=0, total=2, texts=('alpha',)),
+        question('q2', carried=2, total=3, texts=('gamma',)),
+    )
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'exploratory', '--expects-change', 'any'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'none (any axis may move' in result.stdout
+
+
+def test_none_demands_that_the_delivery_stand_still(tmp_path: Path) -> None:
+    # `none` is the hypothesis the room's floor was wrongly credited with: "this candidate changes
+    # nothing". Stated in advance it is testable, and a clip refutes it.
+    reference = reference_for(
+        tmp_path,
+        report(question('q1', carried=0, total=2, texts=(), delivered_chars=0)),
+    )
+    still = report(question('q1', carried=0, total=2, texts=(), delivered_chars=0))
+    quiet = run(
+        tmp_path,
+        report_payload=still,
+        reference_payload=reference,
+        extra=('--candidate', 'inert', '--expects-change', 'none'),
+    )
+    assert quiet.returncode == 0, quiet.stdout + quiet.stderr
+    assert 'observed         : none' in quiet.stdout
+
+    clipped = report(question('q1', carried=0, total=2, texts=(), delivered_chars=1200))
+    loud = run(
+        tmp_path,
+        report_payload=clipped,
+        reference_payload=reference,
+        extra=('--candidate', 'inert', '--expects-change', 'none'),
+    )
+    assert loud.returncode == 1, loud.stdout + loud.stderr
+    assert 'observed         : chars' in loud.stdout
+
+
+def test_an_unknown_axis_is_refused_by_name(tmp_path: Path) -> None:
+    # A typo must not be read as `any`. Naming the accepted values is what keeps a misspelled prediction
+    # from becoming a permissive one.
+    reference = reference_for(tmp_path, baseline())
+    result = run(
+        tmp_path,
+        report_payload=baseline(),
+        reference_payload=reference,
+        extra=('--candidate', 'typo', '--expects-change', 'colour'),
+    )
+    assert result.returncode == 1
+    assert '"colour"' in result.stderr
+    assert 'turns' in result.stderr and 'chars' in result.stderr and 'none' in result.stderr
+
+
+def test_a_calibration_run_cannot_predict_an_axis(tmp_path: Path) -> None:
+    # The calibration's claim is equality, so a prediction has nothing to compare against. Accepting the
+    # flag silently would leave a caller believing a gate was checking something.
+    reference = reference_for(tmp_path, baseline())
+    result = run(
+        tmp_path,
+        report_payload=baseline(),
+        reference_payload=reference,
+        extra=('--expects-change', 'turns'),
+    )
+    assert result.returncode == 1
+    assert '--expects-change' in result.stderr
+    assert 'candidate' in result.stderr
+
+
+def test_the_log_accounts_for_every_capability_separately(tmp_path: Path) -> None:
+    # The registered criteria in `PREREGISTRATION-LEXICAL-RECALL.md` are not all whole-corpus: one of them
+    # is about the thirty abstention questions, and a whole-corpus line cannot answer it. `capability` was
+    # in every row and unread by this tool; printing the per-capability account is what makes a
+    # subset criterion readable from the artifact the gate produces instead of re-derived from it.
+    reference = reference_for(
+        tmp_path,
+        report(
+            question('q1', carried=1, total=2, capability='IE'),
+            question('q1_abs', carried=2, total=2, capability='ABS'),
+        ),
+    )
+    candidate = report(
+        question('q1', carried=2, total=2, capability='IE'),
+        question('q1_abs', carried=1, total=2, capability='ABS'),
+    )
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'mixed', '--expects-change', 'turns'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'by capability    : ABS 2->1 (down 1) | IE 1->2' in result.stdout
+
+
+def test_a_capability_that_stands_still_carries_no_verdict(tmp_path: Path) -> None:
+    # `->` with equal numbers is not a finding, and a reader who has to subtract two numbers on every line
+    # stops reading them. Only a movement gets a marker.
+    reference = reference_for(tmp_path, report(question('q1', carried=1, total=2, capability='KU')))
+    candidate = report(question('q1', carried=1, total=2, capability='KU'))
+    result = run(
+        tmp_path,
+        report_payload=candidate,
+        reference_payload=reference,
+        extra=('--candidate', 'still', '--expects-change', 'none'),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'by capability    : KU 1->1\n' in result.stdout
+    assert '(down' not in result.stdout

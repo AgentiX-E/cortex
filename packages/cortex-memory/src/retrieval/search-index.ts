@@ -529,6 +529,27 @@ function normalizeChannels(
   return { lexical, vector };
 }
 
+/**
+ * Refuse a weighting the product does not administer, naming the two it does.
+ *
+ * Refused rather than defaulted, for the reason `channels` refuses an unknown name: a misspelt weighting is a
+ * line that reads as a treatment and ranks flat, so the run would publish a candidate comparison that compared
+ * a configuration with itself.
+ *
+ * Exported because there are **two** moments a caller can get this wrong, and the index only sees the second.
+ * `CortexMemory` builds an index per question, so a check that lived in this file alone would fire after the
+ * first `remember()` -- on a store that may already hold the user's data -- while the typo is in the
+ * `assembleMemory` call the caller can read. The message lives here so both moments give the same one.
+ */
+export function assertLexicalWeighting(weighting: string | undefined): void {
+  if (weighting === undefined || weighting === 'flat' || weighting === 'idf') return;
+  throw new Error(
+    `SearchIndexOptions.lexicalWeighting may only be "flat" or "idf", got ` +
+      `${JSON.stringify(String(weighting))}. "flat" counts every content term as one; "idf" weights it ` +
+      'by ln(1 + (N - df + 0.5) / (df + 0.5)) over the turns this index holds.',
+  );
+}
+
 export class SearchIndex implements VectorEraser {
   readonly #options: SearchIndexOptions;
   readonly #turns: string[] = [];
@@ -586,17 +607,8 @@ export class SearchIndex implements VectorEraser {
     const channels = normalizeChannels(options.channels, options.embed !== undefined);
     this.#lexical = channels.lexical;
     this.#vector = channels.vector;
+    assertLexicalWeighting(options.lexicalWeighting);
     const weighting = options.lexicalWeighting ?? 'flat';
-    // Refused rather than defaulted, for the reason `channels` refuses an unknown name: a misspelt weighting
-    // is a line that reads as a treatment and ranks flat, so the run would publish a candidate comparison
-    // that compared a configuration with itself.
-    if (weighting !== 'flat' && weighting !== 'idf') {
-      throw new Error(
-        `SearchIndexOptions.lexicalWeighting may only be "flat" or "idf", got ` +
-          `${JSON.stringify(String(weighting))}. "flat" counts every content term as one; "idf" weights it ` +
-          'by ln(1 + (N - df + 0.5) / (df + 0.5)) over the turns this index holds.',
-      );
-    }
     // Bound to the corpus this index holds, and read at search time rather than frozen at construction:
     // `add()` fills the postings and the turn count before `prime()`, so a weight captured in the
     // constructor would price every term against an empty corpus.

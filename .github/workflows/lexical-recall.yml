@@ -66,6 +66,11 @@ on:
         required: false
         default: ''
         type: string
+      expects_change:
+        description: 'Required when candidate is set: which axis of the delivery this run intends to move. "turns" (whole-turn account), "chars" (delivered length), "turns,chars", "none" (the delivery stands still) or "any" (no prediction, recorded as such). A movement on an axis the candidate did not name fails the run'
+        required: false
+        default: ''
+        type: string
 
 # `contents: read` and nothing else. This job reads the tree, downloads the corpus and writes an
 # artifact; it has no reason to hold a token that could write, and the arm's own workflow declares the
@@ -211,13 +216,27 @@ jobs:
         # disagrees on one question, which is what makes a calibration a gate. A label switches to the
         # delta reading, where a difference is the expected outcome and an unattributable one is still a
         # failure -- the same dataset and the same roster are checked in both modes.
+        #
+        # §13.381. A candidate also states **which axis of the delivery it intends to move**, and the
+        # tool refuses both an unclaimed movement and a prediction that did not happen. The flag is
+        # required rather than optional because the failure it prevents is silent: the run that
+        # delivered a 23,503-character clip reported `0 question(s) delivered different turn texts`,
+        # and a tool that accepts an undeclared candidate cannot tell that line from a null result.
         env:
           CANDIDATE: ${{ github.event.inputs.candidate }}
+          EXPECTS: ${{ github.event.inputs.expects_change }}
         run: |
+          if [ -n "${CANDIDATE}" ] && [ -z "${EXPECTS}" ]; then
+            echo "::error::a candidate declares --expects-change (turns, chars, turns,chars, none or any)." \
+              "Without it the delta cannot be attributed to the mechanism the label names, which is" \
+              "how a clip came to be published as 'no change' (§13.380)."
+            exit 1
+          fi
           if [ -n "${CANDIDATE}" ]; then
             python3 tools/lexical-recall-calibrate.py \
               --report packages/cortex-memory/benchmark-cortex-memory-ablation-report.json \
-              --candidate "${CANDIDATE}"
+              --candidate "${CANDIDATE}" \
+              --expects-change "${EXPECTS}"
           else
             python3 tools/lexical-recall-calibrate.py \
               --report packages/cortex-memory/benchmark-cortex-memory-ablation-report.json

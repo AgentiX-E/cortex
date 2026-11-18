@@ -1220,10 +1220,12 @@ Three properties, and the first two are why this is a weighting rather than a mo
 - **It is corpus-derived, not corpus-fitted.** The formula is Robertson/Sparck-Jones — the one Lucene uses
   — and there is no constant here chosen from an answer key. A weight fitted to a benchmark's term
   distribution would be the benchmark, encoded.
-- **It is refused when it is not a name this index administers.** `lexicalWeighting: 'bm25'` throws instead
-  of falling back to `flat`, because a run that meant to price term specificity, ranked flat, and reported
-  "no difference" is a result about the wrong experiment — and every other field of its artifact would be
-  truthful.
+- **It is refused when it is not a name this index administers, at the call you can read.**
+  `lexicalWeighting: 'bm25'` throws instead of falling back to `flat`, because a run that meant to price
+  term specificity, ranked flat, and reported "no difference" is a result about the wrong experiment — and
+  every other field of its artifact would be truthful. The refusal belongs to `assembleMemory` as well as to
+  the index: the index is built per question, so a check that lived only there would fire after the first
+  `remember()`, on a store that may already hold your data, while the typo is in the call in front of you.
 
 The order after fusion is still a rank, not a score: with a reranker or a second channel the fused number
 is a position, and `lexicalWeighting` therefore changes *which* turns arrive, not how they are sorted.

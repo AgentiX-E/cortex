@@ -181,6 +181,68 @@ both. A calibration treats an undeclared move in either as a failure, and a decl
 `deliveredChars` too -- a declared clip has no other field to move, so a check that ignored it would fail a
 correctly declared repair and teach the next person to delete the declaration.
 
+### The prediction a candidate owes before it runs
+
+A candidate now has to state **which axis of the delivery it intends to move**, and the flag is required
+rather than optional:
+
+```bash
+python3 tools/lexical-recall-calibrate.py --report report.json \
+  --candidate idf --expects-change turns,chars
+```
+
+| value | the statement |
+| --- | --- |
+| `turns` | the whole-turn account moves: `carried`, the delivered texts, or both |
+| `chars` | the delivered length moves (`deliveredChars`) |
+| `turns,chars` | both, and the delta is attributed to whichever the change names |
+| `none` | the delivery stands still -- a testable hypothesis, not an absent flag |
+| `any` | no prediction was made, and the log says so |
+
+The prediction is a contract in both directions, exactly as `expectedMoved` is for the reference:
+
+1. **A movement the candidate did not name fails the run.** It has a cause the candidate did not name,
+   and a delta with an unnamed cause is not a measurement of the mechanism on the label.
+2. **A predicted movement that did not happen fails the run.** The mechanism either did not run or
+   changed nothing; §13.380 published the first case as "the branch never fires" and this is the check
+   that would have refused that sentence on the spot.
+
+`none` and `any` are different values on purpose. `none` is a prediction that can be refuted -- the
+room's floor is refuted by it in one run -- and `any` is the honest statement that an exploratory run
+has not named an axis, printed as `none (any axis may move, so this delta is attributed by hand)` so a
+later reader cannot mistake it for a prediction that held.
+
+The first real reading under this rule is the `idf` candidate itself. Declared as `--expects-change
+turns` it **fails**:
+
+```
+predicts         : turns
+observed         : turns,chars
+  FAIL the delivery moved chars and the candidate declared turns: chars is not in the prediction, so this
+       delta has a cause the candidate did not name.
+```
+
+Which is the correct verdict and a fact about the mechanism: re-pricing terms reorders turns, so the
+delivered length moves on 235 questions without anyone intending it. The declaration that fits is
+`turns,chars`, and the value of the flag is that the log now says which of the two axes a candidate
+meant before its numbers are read.
+
+### The account is per capability too, because a criterion can be about a subset
+
+`capability` was carried in every reference row and never read. It is now summed into one line, because
+`PREREGISTRATION-LEXICAL-RECALL.md` registers a criterion on the thirty abstention questions and a
+whole-corpus total cannot answer it:
+
+```
+by capability    : ABS 128->157 (up 29) | IE 589->686 (up 97) | KU 532->596 (up 64) | MR 1616->1616 | TR 1434->1434
+```
+
+That line is the most consequential thing the `idf` candidate printed, and it is the shape a whole-corpus
+total hides: **+190 gold turns overall, +29 of them on the abstention questions**. For the other four
+capabilities a delivered gold turn is the goal; for `ABS` the goal is to refuse, and the evidence that
+makes a reader answer is the evidence that costs accuracy there. A summary that says "more gold turns"
+about the whole roster reads as an improvement on a subset where the sign is inverted underneath it.
+
 ## What the product must do for this to hold
 
 Two properties of `CortexMemory`, both pinned in

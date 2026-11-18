@@ -69,6 +69,7 @@ import {
 import { planReplyRepair } from './reply-repair.js';
 import {
   SearchIndex,
+  assertLexicalWeighting,
   foldIndexCost,
   type IndexCost,
   type SearchCensus,
@@ -905,6 +906,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // The second reason is the same one `#roleFilter` has: a configuration that only takes effect on some
     // questions is a configuration the artifact cannot describe.
     const index = options.index;
+    // Validated here as well as inside `SearchIndex`, and **before** the branch below because that branch
+    // returns: the index is built per question, so the constructor's refusal would surface after the first
+    // `remember()` -- on a store that may already hold the user's data -- while the typo is in the call the
+    // caller can read. Same function, so the two moments cannot give different messages.
+    if (index !== undefined) assertLexicalWeighting(index.lexicalWeighting);
     if (index?.embed === undefined || index.reuse === false) {
       // A lexical index needs no store, and `reuse: false` is a claim about the embedder rather than an
       // omission -- the run says its model is not deterministic and the census has to agree with it.
