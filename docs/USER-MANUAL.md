@@ -547,6 +547,7 @@ Three fields are required and each is required for a reason:
 | `maxTurnChars` | `number` | absent (no cap) | Upper bound on what one turn may contribute. |
 | `turnCutMarker` | `'none' \| 'ellipsis'` | absent | Whether a turn the cap cut says so. Only forwarded on routes the cap reaches. |
 | `turnWindow` | `'head' \| 'match'` | absent (`'head'`) | Which slice of a long turn the cap keeps. `'match'` spends the same characters on the window around the question's densest lexical match and marks every elision; needs `maxTurnChars` and is refused without it. |
+| `resolution` | `'raw' \| 'layered'` | absent (`'raw'`) | Whether a capped turn prints whole or by one of three forms: a long turn sharing a term with the question keeps a window around its densest match (1.5× the cap), a long turn sharing none becomes one line of its opening plus its sentence-carrying sentences (0.6×), and everything short prints whole. The selector is unchanged, so a denser rendering reaches further down the same ranking. Needs `maxTurnChars`; refused with `turnWindow: 'match'`. §6.12. |
 | `maxTurnCharsRoutes` | `readonly TurnCapRoute[]` | absent (all routes) | Which routes the per-turn cap reaches. `[]` reaches none. |
 | `relevanceFor` | `(question, turn) => number` | absent | Ranks which turns the budget is spent on. Wins over `index` when both are given. |
 | `index` | `SearchIndexOptions` | absent | The product's **own** retrieval: postings over the turns of this question, an optional vector channel through `embed`, rank fusion, and an optional `rerank`. Absent keeps the previous behaviour byte for byte. |
@@ -872,6 +873,10 @@ reachable as a default any more; state it per route if you want to reproduce an 
 | `corpus` | `Corpus` | a new one over `storage` | An existing transcript, when you already have one — a second assembly over a live corpus. |
 | `supersededRendering` | `'off' \| 'mark' \| 'collapse'` | absent (off) | What the rendering does to a turn whose value the evidence later replaces. On the assembly rather than per call, because it is a product decision about how a transcript is shown. §6.7. |
 | `sessionClock` | `boolean` | absent (off) | Whether each session boundary carries the date its block states. On the assembly rather than per call, for the same reason `supersededRendering` is: it is a decision about how a transcript is shown, not about one question. §6.11. |
+| `maxTurnChars` | `number` | absent (no cap) | Upper bound on what one turn may contribute, in UTF-16 code units. The cap is what makes a long narrative's tail stop competing with the turns that answer the question. Absent reproduces every archived prompt byte for byte. |
+| `turnCutMarker` | `'none' \| 'ellipsis'` | absent | Whether a turn the width cut says so, with one character at the cut. Refused without `maxTurnChars`: a mark on a turn nothing cut is a claim about a prompt that never happened. |
+| `turnWindow` | `'head' \| 'match'` | absent (`'head'`) | Which slice of a long turn the width keeps. `'match'` spends the same characters on the window around the question's densest lexical match and marks every elision. Needs `maxTurnChars`. Cannot be combined with `resolution: 'layered'`, which decides the same thing. |
+| `resolution` | `'raw' \| 'layered'` | absent (`'raw'`) | Whether a capped turn prints whole or by form. The only path measured to a smaller bill that does not remove evidence, because the instruction block is 0.76% of a prompt and every other saving came out of the turns. §6.12. |
 <!-- /contract-table -->
 
 ```ts
@@ -1657,6 +1662,47 @@ console.log(parseAnswer('Answer: Lisbon'));                           // 'Lisbon
 the token case-insensitively. It never searches the body: a model that reasons "the evidence is
 insufficient for the second city, but the first is Lisbon" is answering *Lisbon*, and a substring
 match would turn that into a decline.
+
+### 6.12 When one turn is too long to print whole
+
+A per-turn width is the cheapest way to keep one long narrative from spending a whole window, and it has a
+cost that is easy to miss: the characters it keeps are **the first ones**, which are the ones that happen to
+be first. `turnWindow: 'match'` fixes the *position* of that cut and keeps the width. `resolution: 'layered'`
+fixes the *width* instead, and it is what to reach for when the bill is the constraint:
+
+```ts
+import type { LLM } from '@agentix-e/cortex-core';
+import { CortexMemory } from '@agentix-e/cortex-memory';
+
+declare const llm: LLM;
+
+const memory = new CortexMemory({
+  llm, now: Date.now(),
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
+  // The width stops bounding a turn and becomes the base the three form ceilings are ratios of:
+  // 400 for a short turn, 600 for the excerpt of a turn that shares a term with the question,
+  // 240 for the one-line record of a turn that shares none.
+  maxTurnChars: 400,
+  resolution: 'layered',
+});
+```
+
+Three things to know before turning it on:
+
+- **The selector does not change.** The budget takes the largest prefix of the ranking that fits the room
+  *after rendering*, so cheaper turns mean a longer prefix — density, not a different selection. A build
+  that also re-ordered or skipped turns would make the two indistinguishable.
+- **It replaces the width rather than stacking on it.** The cap still sets the scale, but no turn is bounded
+  by it: the excerpt ceiling is half again as large, which is what makes a matching turn *gain* by being
+  matched. With the option absent every turn prints whole and the prompt is byte-identical to the one every
+  published number was produced under.
+- **Every shortened turn says so.** Both forms mark their elisions, so a reader is never looking at a turn
+  that was silently cut. That is also why layering and `turnWindow: 'match'` are refused together: they
+  decide the same characters, and a prompt carrying both could not be attributed to either.
+
+The same four fields — `maxTurnChars`, `turnCutMarker`, `turnWindow`, `resolution` — are accepted by
+`assembleMemory`, which forwards them unchanged, so a deployment can reproduce the rendering a measurement
+was taken under without constructing the class.
 
 ## 11. Choosing routes deliberately
 

@@ -142,6 +142,15 @@ export {
   // rather than a silently-omitted forward. See `RELEVANCE_UNIT_FORWARDING`.
   type RelevanceUnits,
 } from './prompt.js';
+// The resolution has the same requirement and one more: it is the first option whose *values* are a closed
+// list the arm has to validate against its own copy, and the forwarding table in `run-ablation.ts` is keyed
+// by this union, so a form added here is a compile error there rather than a value that reaches a prompt as
+// a `string` no renderer branched on.
+// Only the union is exported. `ResolutionPlan` and `EvidenceForm` are named by no caller outside this
+// package, and `tools/export-census.mjs` counts an export with no production caller as an orphan -- so
+// publishing them would be a wider surface with the same number of users, which is the shape the census
+// exists to refuse.
+export type { ResolutionMode } from './resolution.js';
 
 // parse
 export { parseAnswer, isAbstention, ABSTAIN_TOKEN } from './parse.js';

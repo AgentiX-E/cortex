@@ -603,3 +603,82 @@ describe('the vector channel is reachable from the composition root', () => {
     expect(vector[0]).toContain('station');
   });
 });
+
+/**
+ * The four rendering fields on the published entry point.
+ *
+ * ## The gap this closes
+ *
+ * `maxTurnChars`, `turnCutMarker`, `turnWindow` and `resolution` existed on `CortexMemory` and on the
+ * benchmark arm, and **none of them was on `assembleMemory`** -- so every rendering this repository has ever
+ * published a number for was reachable from `bench/**` and from nowhere a customer could call. A requirement
+ * that an evaluated capability be shippable does not survive a composition root that cannot set it, and the
+ * four are the same failure `sessionClock` had before `turn-clock.test.ts` walked it end to end.
+ *
+ * ## Why the assertion is the prompt
+ *
+ * Because forwarding is invisible in the fields: `CortexMemory` reads `undefined` as off, so a root that
+ * dropped the option would build an instance whose bytes are the historical ones and whose behaviour is a
+ * head cut. What a deployment receives is the prompt, and the reader is the only observer that sees it.
+ */
+describe('the rendering fields reach the published entry point', () => {
+  const QUESTION = 'how many shoes were packed?';
+  const LONG = `shoes packed: ${'the hall was full of boxes and coats. '.repeat(11)}`;
+
+  it('renders by form when the resolution is named', async () => {
+    const control: string[] = [];
+    const layered: string[] = [];
+    const bare = assembleMemory({
+      llm: recordingLlm(control),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxTurnChars: 200,
+    });
+    const rendered = assembleMemory({
+      llm: recordingLlm(layered),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxTurnChars: 200,
+      turnCutMarker: 'ellipsis',
+      resolution: 'layered',
+    });
+    for (const install of [bare, rendered]) {
+      await install.memory.remember([{ sessionId: 's1', ordinal: 0, text: LONG }]);
+      await install.memory.askStored(QUESTION);
+    }
+    // The witness is how much of the turn arrived. A head cut at 200 prints five repetitions of the filler;
+    // the excerpt keeps a window of 1.5 x the cap around the match, so it prints more than the cap could --
+    // which is the one thing a cap alone can never do, whatever its width.
+    const repeats = (prompt: string): number => prompt.split('boxes and coats').length - 1;
+    expect(layered[0]).toContain('…');
+    expect(repeats(layered[0]!)).toBeGreaterThan(repeats(control[0]!));
+    expect(layered[0]!.length).toBeGreaterThan(control[0]!.length);
+  });
+
+  it('forwards the window, so a caller can ask for the match rather than the head', async () => {
+    const control: string[] = [];
+    const windowed: string[] = [];
+    const tail = 'the sunflower height was written on the last page of the shed notebook.';
+    const text = `${'we talked about the weather and the walk for a while. '.repeat(8)}${tail}`;
+    const ask = 'where was the sunflower height written?';
+    const bare = assembleMemory({
+      llm: recordingLlm(control),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxTurnChars: 200,
+    });
+    const withWindow = assembleMemory({
+      llm: recordingLlm(windowed),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxTurnChars: 200,
+      turnWindow: 'match',
+    });
+    for (const install of [bare, withWindow]) {
+      await install.memory.remember([{ sessionId: 's1', ordinal: 0, text }]);
+      await install.memory.askStored(ask);
+    }
+    expect(control[0]).not.toContain('shed notebook');
+    expect(windowed[0]).toContain('shed notebook');
+  });
+});

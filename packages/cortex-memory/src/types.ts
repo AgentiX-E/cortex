@@ -14,6 +14,7 @@ import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { SupersededRendering } from './superseded.js';
 import type { WidthPlanOptions } from './width.js';
 import type { TurnWindow } from './excerpt.js';
+import type { ResolutionMode } from './resolution.js';
 
 /** The knobs the admission gates expose. */
 export type GateOptions = {
@@ -361,6 +362,35 @@ export type CortexMemoryOptions = {
    * which window it used, and the configuration line records it.
    */
   turnWindow?: TurnWindow | undefined;
+  /**
+   * Whether a capped turn is printed whole or by one of three forms. Absent is `'raw'`.
+   *
+   * ## What it is for
+   *
+   * `C1` asks for 6,000 prompt tokens against the registered 7,448, and both measured cost routes pay in
+   * accuracy -- the room table -18.8% of the bill for -1.15 points, the width plan -27.1% for **-4.00**
+   * (`43259830582`). A prompt assembled through `assembleMemory` is 27,268 characters of which the
+   * instruction block is 207, so there is nothing to compress. The bill is the evidence.
+   *
+   * `'layered'` spends the same room on turns that are cheaper to print and no less complete: a long turn
+   * sharing a term with the question keeps a window around the match, one sharing none becomes a single
+   * line of its opening plus its numeric sentences, and everything short prints whole. The selector is not
+   * touched -- it takes the largest prefix that fits the room after rendering, so a shorter rendering
+   * reaches further down the same ranking by construction. `resolution.ts` holds the ceilings and why they
+   * are ratios of `maxTurnChars` rather than new constants.
+   *
+   * ## Why it is refused without a cap, and refused beside `turnWindow: 'match'`
+   *
+   * The cap is the base both ceilings are ratios of, so layering alone has no scale. The window and the
+   * excerpt form both decide *which characters* of a long turn survive, so a run carrying both would be two
+   * mechanisms in one slot and its reading could not be attributed to either.
+   *
+   * ## Why absent is `'raw'`
+   *
+   * Every archived prompt was rendered whole; a default that moved would make each of them unreproducible
+   * from the code, which is the argument `turnCutMarker` and `turnWindow` make one field up.
+   */
+  resolution?: ResolutionMode | undefined;
   /**
    * Which routes the per-turn cap reaches. Absent means all of them.
    *

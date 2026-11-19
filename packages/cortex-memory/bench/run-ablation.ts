@@ -165,6 +165,9 @@ import {
   type EvidenceAsk,
   type PromptContract,
   type RelevanceUnits,
+  // Named for `RelevanceUnits`'s reason: `RESOLUTION_FORWARDING` is keyed by this union, so a form added to
+  // it has to be a compile error here rather than a value that reaches a prompt as a string.
+  type ResolutionMode,
   type ReplyRepair,
   type ReviewPass,
   type TurnCapRoute,
@@ -335,6 +338,39 @@ function relevanceUnitToForward(units: string): RelevanceUnits | undefined {
     );
   }
   return RELEVANCE_UNIT_FORWARDING[units as RelevanceUnits];
+}
+
+/**
+ * The resolution as the product's union, keyed so a new form is a compile error rather than a silent drop.
+ *
+ * Same shape and same reason as `RELEVANCE_UNIT_FORWARDING`: the arm carries the name as a `string`
+ * because `cortex-eval` cannot import this package's union, and the union has to be the thing that fails
+ * to build when a member is added without a rule. `raw` forwards `undefined` because that IS the shipped
+ * rendering -- expressed by not passing the key, so a run that names it reproduces every archived prompt
+ * byte for byte.
+ */
+const RESOLUTION_FORWARDING: Record<ResolutionMode, ResolutionMode | undefined> = {
+  raw: undefined,
+  layered: 'layered',
+};
+
+/**
+ * The value to forward, refusing a name this table does not know.
+ *
+ * `undefined` and "not in the table" are different states, and the index alone cannot separate them -- the
+ * same defect the unit table's comment records one mechanism up: an unlisted name would index to
+ * `undefined`, forward nothing, and run the historical rendering under a configuration line that named
+ * another one.
+ */
+function resolutionToForward(resolution: string): ResolutionMode | undefined {
+  if (!(resolution in RESOLUTION_FORWARDING)) {
+    throw new Error(
+      `resolution ${JSON.stringify(resolution)} has no forwarding rule. Add it to ` +
+        'RESOLUTION_FORWARDING; forwarding nothing would render the historical form under a configuration ' +
+        'line that names another one.',
+    );
+  }
+  return RESOLUTION_FORWARDING[resolution as ResolutionMode];
 }
 
 function onProgress(progress: BenchmarkProgress): void {
@@ -906,6 +942,7 @@ async function main(): Promise<void> {
   // the value the artifact reports come from the same read -- the defect was not that they disagreed
   // but that one of them was never consulted.
   const forwardedUnit = relevanceUnitToForward(armOptions.relevanceUnits);
+  const forwardedResolution = resolutionToForward(armOptions.resolution ?? 'raw');
 
   // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
   // configuration hands the product nothing it could reorder by.
@@ -1110,6 +1147,12 @@ async function main(): Promise<void> {
       // at parse time, and the product refuses `match` without a cap -- which is why the two spreads are
       // adjacent rather than one field: the window without the width is a render option that cannot act.
       ...(armOptions.turnWindow === 'match' ? { turnWindow: 'match' as const } : {}),
+      // §14.133.2's form list. Spread only when it acts, for the reason every conditional spread here is, and
+      // through a table rather than a cast for `RELEVANCE_UNIT_FORWARDING`'s reason: a form added to the union
+      // has to fail to build here rather than reach a prompt as a value no renderer branched on. The product
+      // refuses `layered` without a width, which is why the two spreads are adjacent: the form list without the
+      // width is a render option that cannot act.
+      ...(forwardedResolution === undefined ? {} : { resolution: forwardedResolution }),
       // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
       // number raises the room without touching a single turn, which is the only lever §13.80 left.
       ...(armOptions.maxPromptChars === undefined
@@ -1278,6 +1321,7 @@ async function main(): Promise<void> {
       // `head` is the archived state, and a run whose window was dropped somewhere between the dispatch and
       // the renderer is visible here and nowhere else in the log.
       `, turnWindow=${armOptions.turnWindow ?? 'head'}` +
+      `, resolution=${armOptions.resolution ?? 'raw'}` +
       `, maxPromptChars=${armOptions.maxPromptChars ?? 'default'}` +
       // §14.126's plan, on the same line as the room it replaces, because a reader comparing a wall clock
       // and a bill needs both: the room says what the route was allowed and the plan says what the

@@ -4688,6 +4688,12 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, object]] = {
     # registration. `off` is what `session_clock_switch` reads from an absent variable and what
     # `toMemoryArmConfig` projects, so the two agree with the shipped arm by construction.
     'sessionClock': ('sessionClock', 'off'),
+    # §14.133.2. The rendering's form list is the same shape an eighth time, and this seat has the sharper
+    # edge of the eight: `resolution` is the only field here that changes how long a turn prints without
+    # changing how many turns were wanted, so an artifact rendered by form would agree with every dispatch
+    # input while every number below the line was taken from a different prompt. `raw` is what
+    # `resolution_switch` reads from an absent variable and what `toMemoryArmConfig` projects.
+    'resolution': ('resolution', 'raw'),
 }
 
 ABSENT = '<-absent->'

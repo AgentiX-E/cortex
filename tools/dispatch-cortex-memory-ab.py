@@ -123,6 +123,12 @@ LEXICAL_WEIGHTINGS = ("flat", "idf")
 SESSION_CLOCK_VARIABLE = "CORTEX_MEMORY_SESSION_CLOCK"
 SESSION_CLOCKS = ("off", "on")
 
+# §14.133.2. The rendering's form list, on the same rule as the switch above: its own variable rather than
+# a third name in the width's grammar, because the width says how many characters a turn may spend and this
+# says what the turn becomes. `raw` is the registered rendering every archived artifact was produced under.
+RESOLUTION_VARIABLE = "CORTEX_MEMORY_RESOLUTION"
+RESOLUTIONS = ("raw", "layered")
+
 # The admission gate's two axes (`§13.101`'s unreachable pair): the threshold the value function is
 # cut at, and the signal that makes the value vary in the first place.
 #
@@ -985,6 +991,32 @@ def session_clock_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def resolution_switch(environ: dict[str, str] | None = None) -> str:
+    """Which rendering this dispatch asks for: `raw` or `layered`.
+
+    Read from the dispatcher's environment for the reason `session_clock_switch` is: `--set` is checked
+    against the registered table, and this is deliberately not a workflow input (the workflow sits one
+    input below GitHub's ceiling). Strict on the value, because the mechanism is a rendering and a typo
+    that fell back to `raw` would produce the registered arm's prompt under a dispatch that asked for the
+    form list -- with an artifact that says `resolution=raw`, which is true and answers a different
+    question.
+
+    `raw` rather than blank on an absent variable, because it is the rendering every archived artifact was
+    measured under.
+    """
+    raw = ((environ if environ is not None else os.environ).get(RESOLUTION_VARIABLE) or "").strip()
+    if raw == "":
+        return "raw"
+    if raw in RESOLUTIONS:
+        return raw
+    raise SystemExit(
+        f"{RESOLUTION_VARIABLE} must be one of {RESOLUTIONS} (or unset): got {raw!r}. An unrecognised "
+        "rendering is refused rather than defaulted, because the two differ in what the reader is shown: "
+        "a run that silently rendered the control would publish the registered arm's number under the "
+        "candidate's name."
+    )
+
+
 def index_embedding_switch(environ: dict[str, str] | None = None) -> str:
     """The index channel this dispatch asks for: `injected` or `none`.
 
@@ -1358,6 +1390,9 @@ def main(argv: list[str] | None = None) -> int:
     # when the run moves it. `off` is the registered value, so declaring it on a control run would be the
     # "names a field this run did not move" case the gate reports as an intention.
     session_clock = session_clock_switch()
+    # §14.133.2, on the same rule as the seven above: the artifact always carries `resolution`, so the
+    # declaration is what tells the gate that a departure from `raw` is intended rather than left behind.
+    resolution = resolution_switch()
     declared = sorted(
         {
             *declared,
@@ -1378,6 +1413,7 @@ def main(argv: list[str] | None = None) -> int:
             *(("indexEmbedding",) if index_embedding != "injected" else ()),
             *(("lexicalWeighting",) if lexical_weighting != "flat" else ()),
             *(("sessionClock",) if session_clock != "off" else ()),
+            *(("resolution",) if resolution != "raw" else ()),
         }
     )
     declare_departures(declared)
@@ -1411,6 +1447,11 @@ def main(argv: list[str] | None = None) -> int:
     # record a treatment nobody dispatched.
     write_variable(SESSION_CLOCK_VARIABLE, session_clock)
     print(f"{SESSION_CLOCK_VARIABLE} = {session_clock}{' *' if session_clock != 'off' else ''}")
+    # Written unconditionally for the reason the line above is: a stale `layered` from the previous
+    # experiment would render a run that asked for the control by form, and the artifact would accurately
+    # record a mechanism nobody dispatched.
+    write_variable(RESOLUTION_VARIABLE, resolution)
+    print(f"{RESOLUTION_VARIABLE} = {resolution}{' *' if resolution != 'raw' else ''}")
     print(
         f"{INDEX_EMBEDDING_VARIABLE} = {index_embedding}"
         f"{' *' if index_embedding != 'injected' else ''}"

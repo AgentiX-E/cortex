@@ -81,6 +81,9 @@ import { CortexMemory } from './memory.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { SupersededRendering } from './superseded.js';
 import type { GateOptions, TurnCapRoute } from './types.js';
+import type { TurnCutMarker } from './prompt.js';
+import type { TurnWindow } from './excerpt.js';
+import type { ResolutionMode } from './resolution.js';
 
 /** How much of the product one call wires up. See the table in the module comment. */
 export type AssemblyProfile = 'minimal' | 'reader' | 'full';
@@ -131,6 +134,54 @@ export type AssembleOptions = {
    * over the table: the more specific field is the caller's answer.
    */
   readonly maxPromptCharsByRoute?: Partial<Record<TurnCapRoute, number>> | undefined;
+  /**
+   * How one turn is printed: its width, whether a cut says so, which slice a cut keeps, and its form.
+   *
+   * ## Why these four reach the composition root at all
+   *
+   * Because every published accuracy number was produced with them and none of them was expressible here.
+   * The registered arm is `maxTurnChars: 400` on two routes, and a caller of this function could not name
+   * that width, the marker that makes a cut visible, the window that spends the width on the part of a turn
+   * that answers the question, or the layering that is the only remaining path to the cost target. A
+   * capability that exists in `CortexMemory` and not in the one function an installer calls is a capability
+   * the published package does not have -- which is the asymmetry requirement ⑯ names, arriving through a
+   * composition root instead of through a component.
+   *
+   * ## Why they are forwarded and not defaulted
+   *
+   * The same rule `sessionClock` states below: `undefined` is the historical rendering, and this file must
+   * not be the place a mechanism turns itself on. Absent here means the key is not passed at all, so a bare
+   * call reproduces the bytes it produced before these fields existed.
+   *
+   * ## Why the width is per-turn and not per-prompt
+   *
+   * `maxPromptChars` above is the room; this is one turn's share of it. They compose the way a page and a
+   * column do, and the two are separately measurable -- which is why the campaign priced the room table
+   * (-18.8% of the bill, -1.15 points) separately from the width plan (-27.1%, -4.00 points).
+   */
+  readonly maxTurnChars?: number | undefined;
+  /**
+   * Whether a turn the width cut says so. `'ellipsis'` marks; absent is the historical silence.
+   *
+   * Inert without {@link AssembleOptions.maxTurnChars}, and `CortexMemory` refuses the pairing that would
+   * make it a claim about a cut that never happened.
+   */
+  readonly turnCutMarker?: TurnCutMarker | undefined;
+  /**
+   * Which slice of a turn the width keeps. Absent is `'head'`, i.e. every archived prompt's bytes.
+   *
+   * `'match'` needs the question, which this composition root passes at the two builders that have one; it
+   * needs the width too, and is refused without it.
+   */
+  readonly turnWindow?: TurnWindow | undefined;
+  /**
+   * Whether a cut turn prints whole or by form. Absent is `'raw'`. See `resolution.ts`.
+   *
+   * The only remaining path to `C1` (6,000 prompt tokens against the registered 7,448): both measured cost
+   * routes pay in accuracy, and the instruction block is 0.76% of a prompt, so the saving has to come from
+   * printing the same events in fewer characters.
+   */
+  readonly resolution?: ResolutionMode | undefined;
   /**
    * The vector channel, as a batch function over texts.
    *
@@ -305,6 +356,13 @@ export function assembleMemory(options: AssembleOptions): Installation {
     // the place a mechanism turns itself on. The forwarding is what `turn-clock.test.ts` walks end to
     // end -- a flag that stops at this object is a documented feature a customer cannot reach.
     ...(options.sessionClock === undefined ? {} : { sessionClock: options.sessionClock }),
+    // The four rendering fields, forwarded for `sessionClock`'s reason and no other: `undefined` is the
+    // historical rendering, so forwarding (rather than defaulting) is what keeps a bare call's bytes fixed
+    // while making every measured rendering reachable from the published entry.
+    ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
+    ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
+    ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
+    ...(options.resolution === undefined ? {} : { resolution: options.resolution }),
   });
 
   return { profile, memory, corpus, disclosure };

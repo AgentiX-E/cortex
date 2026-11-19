@@ -637,6 +637,11 @@ jobs:
           # which is what makes a control run reproducible from this commit rather than from whatever the
           # last experiment left behind.
           CORTEX_MEMORY_SESSION_CLOCK: ${{ vars.CORTEX_MEMORY_SESSION_CLOCK || 'off' }}
+          # §14.133.2. A variable rather than a dispatch input: the workflow sits one input below GitHub's
+          # ceiling (24 of 25), and this axis rides the width it is a ratio of -- `layered` without
+          # `CORTEX_MEMORY_MAX_TURN_CHARS` is refused by the product rather than defaulted, because the
+          # form ceilings are ratios of that width. `raw` is the rendering every archived artifact used.
+          CORTEX_MEMORY_RESOLUTION: ${{ vars.CORTEX_MEMORY_RESOLUTION || 'raw' }}
           # Section 13.83's reach, passed the same way. Blank means every route; the untouched
           # routes are this experiment's control.
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: ${{ github.event.inputs.cortex_memory_evidence_roles_routes }}

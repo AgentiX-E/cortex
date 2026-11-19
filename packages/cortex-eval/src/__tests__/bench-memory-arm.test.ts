@@ -1041,6 +1041,7 @@ describe('source trust reaches the artifact', () => {
       ask: 'route',
       askRoutes: [],
       turnCutMarker: 'none',
+      resolution: 'raw',
       reviewPass: 'none',
       // §13.334: the repair is a state on every artifact, `off` included, so an exact-object
       // assertion carries it for the reason the evidence source above is carried.
@@ -1216,6 +1217,7 @@ describe('runCortexMemoryArm', () => {
           ask: 'route',
           askRoutes: [],
           turnCutMarker: 'none',
+          resolution: 'raw',
           reviewPass: 'none',
           reviewBareDecline: false,
         },
@@ -1237,6 +1239,7 @@ describe('runCortexMemoryArm', () => {
       ask: 'route',
       askRoutes: [],
       turnCutMarker: 'none',
+      resolution: 'raw',
       reviewPass: 'none',
       reviewBareDecline: false,
     });
@@ -1570,6 +1573,7 @@ describe('runCortexMemoryArm', () => {
         ask: 'route',
         askRoutes: [],
         turnCutMarker: 'none',
+        resolution: 'raw',
         reviewPass: 'none',
         // §13.334: the repair is a state on every artifact, `off` included, so an exact-object
         // assertion carries it for the reason the evidence source above is carried.
@@ -1994,6 +1998,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       // Projected on a disabled arm for the reason the two reaches are: it cut nothing, so the
       // only truthful value is the one that says so.
       turnCutMarker: 'none',
+      resolution: 'raw',
       // §E6. Projected on a disabled arm for the reason `turnCutMarker` is: it answered no question, so no
       // window carried anything, and `true` here would put a treatment on the record of a run that never
       // consulted a model.
@@ -2050,6 +2055,7 @@ describe('blank values from unfilled dispatch inputs', () => {
       ask: 'route',
       askRoutes: [],
       turnCutMarker: 'none',
+      resolution: 'raw',
       reviewPass: 'none',
       // §13.334: the repair is a state on every artifact, `off` included, so an exact-object
       // assertion carries it for the reason the evidence source above is carried.
@@ -5349,5 +5355,63 @@ describe('the lexical weighting reaches the artifact', () => {
     const options = cortextMemoryArmOptions({ CORTEX_MEMORY_LEXICAL_WEIGHTING: 'idf' });
     expect(options.enabled).toBe(false);
     expect(toMemoryArmConfig(options).lexicalWeighting).toBe('flat');
+  });
+});
+
+/**
+ * The rendering's form list, as a dispatch carries it.
+ *
+ * Three states and each is a decision: absent is the registered arm (`raw`, every archived prompt), `layered`
+ * is the treatment, and a misspelt name is a **refusal**. The refusal is the one that matters -- a dispatch
+ * sent to render by form that silently rendered the control would publish an unchanged result reading as
+ * evidence that the form does not help, and its artifact would name a mechanism it never administered.
+ */
+describe('the rendering resolution', () => {
+  it('is `raw` when the variable is unset or blank, which is every archived run', () => {
+    expect(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }).resolution).toBe('raw');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RESOLUTION: '' }).resolution,
+    ).toBe('raw');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RESOLUTION: '   ' }).resolution,
+    ).toBe('raw');
+  });
+
+  it('reads `layered`, and trims it rather than refusing a padded value', () => {
+    // The dispatcher writes the workflow's `vars` value verbatim, and a trailing space in a repository
+    // variable is invisible in every artifact. Refusing it would end a dispatch on a typographic accident.
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RESOLUTION: 'layered' })
+        .resolution,
+    ).toBe('layered');
+    expect(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RESOLUTION: ' layered ' })
+        .resolution,
+    ).toBe('layered');
+  });
+
+  it('refuses anything else, rather than defaulting to the control', () => {
+    for (const bad of ['layerd', 'Layered', 'true', 'head', 'raw,layered']) {
+      expect(() =>
+        cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RESOLUTION: bad }),
+      ).toThrow(/CORTEX_MEMORY_RESOLUTION/);
+    }
+  });
+
+  it('is projected into the config on both the enabled and the disabled arm', () => {
+    // Always present rather than absent-when-raw, for the marker's reason: `raw` is a state a run is
+    // dispatched *to*, so an artifact has to be able to say it. On a disabled arm it is the registered
+    // value, because a disabled arm renders no prompt and administered no treatment.
+    const enabled = toMemoryArmConfig(
+      cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RESOLUTION: 'layered' }),
+    );
+    expect(enabled.resolution).toBe('layered');
+
+    const registered = toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1' }));
+    expect(registered.resolution).toBe('raw');
+
+    const disabled = cortextMemoryArmOptions({ CORTEX_MEMORY: '0' });
+    expect(disabled.enabled).toBe(false);
+    expect(toMemoryArmConfig(disabled).resolution).toBe('raw');
   });
 });

@@ -590,6 +590,20 @@ export type CortexMemoryArmOptions = {
    */
   turnWindow?: string | undefined;
   /**
+   * Whether a capped turn prints whole or by one of three forms: `'raw'` (the registered arm) or `'layered'`.
+   *
+   * The width says **how many** characters a turn may spend; this says **what the turn becomes**. They are
+   * two axes because both measured cost routes -- the room table and the width plan -- paid for a smaller
+   * bill with accuracy, so the remaining lever is not a smaller room but a denser rendering inside the same
+   * one. `DESIGN-C7-RESOLUTION-LAYERING.md` holds the design and `§14.133.2` the six criteria.
+   *
+   * A `string` rather than the product's union for the reason `turnWindow` is, validated against
+   * `RESOLUTIONS` at parse time. Its own variable rather than a third value in the width's grammar: a run
+   * that changed only the form would otherwise publish the same width and marker as one that changed only
+   * the width, and the two are different experiments.
+   */
+  resolution?: string | undefined;
+  /**
    * The evidence budget in UTF-16 code units, or absent for the product default.
    *
    * What the default *is* has moved (24,000 before §13.82, 48,000 after), which is why an absent
@@ -928,6 +942,30 @@ const LEXICAL_WEIGHTINGS: readonly string[] = ['flat', 'idf'];
 
 /** The registered weighting: every content term worth one, which is what every archived artifact used. */
 const DEFAULT_LEXICAL_WEIGHTING = 'flat';
+
+/**
+ * Whether a capped turn prints whole or by one of three forms (`C7`).
+ *
+ * Its own variable rather than a third name in the width's grammar, because the width says **how many**
+ * characters a turn may spend and this says **what the turn becomes**: a run that changed only the form
+ * would otherwise publish the same width and the same marker as one that changed only the width, and the
+ * two are different experiments. The design is `DESIGN-C7-RESOLUTION-LAYERING.md`; the criteria are
+ * `§14.133.2`; the ceilings are ratios of the width, which is why `layered` without a width is refused by
+ * the product rather than defaulted here.
+ */
+const RESOLUTION_VARIABLE = 'CORTEX_MEMORY_RESOLUTION';
+/** The two renderings the product documents, in the order the refusal message lists them. */
+const RESOLUTIONS: readonly string[] = ['raw', 'layered'];
+/**
+ * What a run that names nothing gets.
+ *
+ * `raw` because every archived artifact was rendered whole: an artifact that spelled nothing has to be the
+ * arm every published number was produced under, and `layered` has a reading of its own to earn first. It is
+ * also why the value is always projected rather than spread conditionally -- `raw` is a state this campaign
+ * dispatches as its control, so a run that spelled it and a run that predates the field must not be the same
+ * bytes.
+ */
+const DEFAULT_RESOLUTION = 'raw';
 
 /**
  * The per-turn character cap: how much of one turn the prompt may show.
@@ -1316,6 +1354,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // Projected as the registered value for the reason `lexicalWeighting` is: a disabled arm renders no
       // prompt, so the variable reached nothing and no treatment was administered.
       sessionClock: DEFAULT_SESSION_CLOCK,
+      // Projected as the registered value for the reason `sessionClock` is: a disabled arm renders no prompt,
+      // so the variable reached nothing and no treatment was administered. `raw` is the state, not the
+      // treatment, which is why it is a value rather than an absence.
+      resolution: DEFAULT_RESOLUTION,
       // Absent, not zero and not `Infinity`: no cap is the state every archived run was
       // produced under, and a present key would let an artifact claim a treatment on a run
       // that administered none. `exactOptionalPropertyTypes` keeps the two distinguishable.
@@ -1405,6 +1447,10 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     indexEmbedding: readIndexEmbedding(env[INDEX_EMBEDDING_VARIABLE]),
     lexicalWeighting: readLexicalWeighting(env[LEXICAL_WEIGHTING_VARIABLE]),
     sessionClock: readSessionClock(env[SESSION_CLOCK_VARIABLE]),
+    // §14.133.2. Always present for the reason `turnCutMarker` is: `raw` is a state this campaign dispatches
+    // as its control, so an artifact that spelled nothing would leave "ran the control" and "predates the
+    // field" as the same bytes.
+    resolution: readResolution(env[RESOLUTION_VARIABLE]),
   };
 }
 
@@ -2322,6 +2368,29 @@ function readSessionClock(raw: string | undefined): string {
       `${SESSION_CLOCK_VARIABLE} must be one of ` +
         `${SESSION_CLOCKS.map((k) => JSON.stringify(k)).join(', ')} or unset, got ${JSON.stringify(raw)}. ` +
         '"on" writes each session boundary the date its rendered block states; "off" is the registered arm.',
+    );
+  }
+  return value;
+}
+
+/**
+ * Read the rendering's form list.
+ *
+ * Rejected rather than defaulted on an unrecognised value, for the reason every guard in this file gives: a
+ * dispatch sent to render by form that silently rendered the control would publish an unchanged result
+ * reading as evidence that the form does not help, and its artifact would name a mechanism it never
+ * administered. `raw` and `layered` rather than a boolean because a mistyped `layerd` must be a refusal and
+ * not a false.
+ */
+function readResolution(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_RESOLUTION;
+  const value = raw.trim();
+  if (!RESOLUTIONS.includes(value)) {
+    throw new Error(
+      `${RESOLUTION_VARIABLE} must be one of ` +
+        `${RESOLUTIONS.map((k) => JSON.stringify(k)).join(', ')} or unset, got ${JSON.stringify(raw)}. ` +
+        '"layered" prints a long turn as a window around its match with the question, or as one line of its ' +
+        'opening plus its numeric sentences when it shares no term; "raw" is the registered arm.',
     );
   }
   return value;
@@ -3250,6 +3319,10 @@ export function toMemoryArmConfig(
     // every artifact written before the field already did. Writing `head` on every new run would make "ran the
     // head window" and "predates the window" the same bytes -- which is the distinction the archive exists for.
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
+    // §14.133.2. Always present, unlike the window and for the marker's reason: `raw` is a state a run is
+    // dispatched to, so the artifact has to be able to say it. Projected from the option rather than parsed
+    // again, so the configuration line and the prompt cannot disagree about which forms were rendered.
+    resolution: options.resolution ?? DEFAULT_RESOLUTION,
     // §13.83. Absent means every role, which is what every archived run read; the routes are
     // always present for the reason the cap's are.
     ...(options.evidenceRoles === undefined ? {} : { evidenceRoles: options.evidenceRoles }),

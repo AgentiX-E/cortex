@@ -702,6 +702,17 @@ export type MemoryArmConfig = {
    */
   readonly turnWindow?: string | undefined;
   /**
+   * Whether a capped turn printed whole or by form: `'raw'` or `'layered'`.
+   *
+   * Recorded for the reason the window is, and it is the field this mechanism cannot be read without: the
+   * layered rendering is the first change in this campaign that alters **how long** a turn is without
+   * altering **how many** turns were wanted, so a paired reading between two arms that differ only here is
+   * a statement about density -- and only this field says whether the run administered it. `raw` is present
+   * on every artifact written after the field existed, including the control arm's, because a run that
+   * spelled the control and a run that predates the mechanism must not be the same bytes.
+   */
+  readonly resolution?: string | undefined;
+  /**
    * The turn roles the evidence was built from, or absent for every role.
    *
    * §13.83's field, and it is recorded for the reason the cap's width is: the treatment is a
@@ -1961,6 +1972,10 @@ export function formatAblationReport(report: AblationReport): string {
         // archived state rather than a state a control arm has to be able to name, so printing `head` on
         // every line would add a field to every historical comparison without adding a fact.
         (memoryArm.turnWindow === undefined ? '' : `, \`turnWindow=${memoryArm.turnWindow}\``) +
+        // §14.133.2, rendered on every run for the marker's reason rather than the window's: `raw` is a
+        // state this campaign dispatches as its control, and a reader comparing a by-form run against an
+        // archived control must be able to see which of the two produced the line.
+        `, \`resolution=${memoryArm.resolution ?? 'raw'}\`` +
         // §13.83, rendered on every run for the reason the cap is: `all` is a fact about the
         // prompt (every turn was eligible) rather than the absence of one, and a reader comparing
         // two artifacts must be able to see which of them filtered.

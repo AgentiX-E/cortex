@@ -11,6 +11,7 @@ import type { AdmittedSession } from './sessionize.js';
 import { ABSTAIN_TOKEN } from './parse.js';
 import { classifyQuestionShape, type QuestionShape } from './question-shape.js';
 import { ELISION, excerptAround, truncateCodePointSafe, type TurnWindow } from './excerpt.js';
+import { DATELINE, resolveCappedTurn, type ResolutionMode } from './resolution.js';
 import { renderSupersededInline, type SupersededMarks } from './superseded.js';
 
 // Re-exported rather than defined here: the per-turn window rule needs the same surrogate-safe slice, and
@@ -726,6 +727,36 @@ export type PromptOptions = {
    * for itself, which is a different trade from the one registered.
    */
   turnCutMarker?: TurnCutMarker;
+  /**
+   * Whether a capped turn is printed whole, or by one of three forms. Absent is `'raw'`.
+   *
+   * ## What it is for
+   *
+   * `C1` asks for 6,000 prompt tokens against the registered arm's 7,448, and both measured cost routes
+   * pay in accuracy: the room table bought -18.8% for -1.15 points, the width plan -27.1% for **-4.00**
+   * (`43259830582`). The instruction block is 0.76% of a prompt, so there is nothing to compress. The
+   * bill is the evidence, and the evidence is turns.
+   *
+   * `'layered'` spends the same room on turns that are cheaper to print and no less complete: a long turn
+   * that shares a term with the question keeps a window around the match (1.5x the cap), a long turn that
+   * shares none becomes one line of its opening plus its numeric sentences (0.6x the cap), and everything
+   * short prints whole. The selector is not touched -- `chooseEvidence` takes the largest prefix that
+   * fits the room *after* rendering, so shorter renderings reach further down the same ranking by
+   * construction. See `resolution.ts` for the ceilings and why they are ratios.
+   *
+   * ## Why it needs `maxTurnChars`, and why it refuses `turnWindow: 'match'`
+   *
+   * The cap is the base both ceilings are ratios of, so layering without one has no scale; and the window
+   * and the excerpt form both decide *which characters* of a long turn the room keeps, so a run carrying
+   * both would be two mechanisms in one slot and its reading could not be attributed. `CortexMemory`
+   * refuses the pair rather than ranking them.
+   *
+   * ## Why absent is `'raw'`
+   *
+   * Every archived prompt was rendered whole, and a default that moved would make each of them
+   * unreproducible from the code -- the argument `turnCutMarker` and `turnWindow` make one field up.
+   */
+  resolution?: ResolutionMode;
   /**
    * Which slice of a turn a cap keeps. Absent is `'head'`, i.e. every archived prompt's bytes.
    *
@@ -2267,7 +2298,16 @@ type TurnCap = {
   readonly maxTurnChars?: number | undefined;
   readonly turnCutMarker?: TurnCutMarker;
   readonly turnWindow?: TurnWindow;
-  /** The question, on the runs that chose the anchored window. */
+  /**
+   * Whether the cap decides one turn's length, or three forms do.
+   *
+   * On the cap record rather than beside it because it *replaces* the cap's decision rather than
+   * refining it: `layered` makes `maxTurnChars` the base the form ceilings are ratios of, and stops it
+   * bounding a turn. An option that could be set without a cap would be a run claiming a resolution it
+   * never applied.
+   */
+  readonly resolution?: ResolutionMode;
+  /** The question, on the runs whose rendering anchors on it. */
   readonly focusQuery?: string | undefined;
   /**
    * The turns whose statements a later turn replaces, and how to render them.
@@ -2377,6 +2417,18 @@ function contentFor(turn: AdmittedTurn, cap: TurnCap, tally?: TurnWindowTally): 
 function cappedContent(turn: AdmittedTurn, cap: TurnCap, tally?: TurnWindowTally): string {
   const max = cap.maxTurnChars;
   if (max === undefined) return chargeTurn(tally, turn, turn.content, false);
+  // Layering first, and it replaces the cap rather than composing with it: `max` becomes the base the
+  // form ceilings are ratios of. Composing would leave the excerpt -- whose ceiling is half again the cap
+  // -- no room at all, so the mechanism would degenerate into a narrower head cut wearing a resolution
+  // label, which is the confound the criterion forbids.
+  //
+  // `resolveCappedTurn` and not `resolveTurn`: the dateline is not the ceiling's to spend, and the budget
+  // in `memory.ts` calls the same function on the same content, so a plan and the prompt it budgets
+  // cannot disagree about how many characters a turn costs.
+  if (cap.resolution === 'layered' && cap.focusQuery !== undefined) {
+    const plan = resolveCappedTurn(cap.focusQuery, turn.content, max);
+    return chargeTurn(tally, turn, plan.text, plan.elided);
+  }
   if (cap.turnWindow === 'match' && cap.focusQuery !== undefined) {
     // The dateline is not the window's to spend. On the two capped routes a turn's content arrives with
     // its own `[date] {role}:` head attached, so an anchor set by content terms lands after it and the
@@ -2397,16 +2449,6 @@ function cappedContent(turn: AdmittedTurn, cap: TurnCap, tally?: TurnWindowTally
   }
   return chargeTurn(tally, turn, cutWithMarker(turn.content, max), true);
 }
-
-/**
- * The dateline and role a capped route's turn carries inside its own content.
- *
- * Anchored and strict rather than permissive: `[2023/05/20 (Sat) 03:51] user: ` is the shape the
- * multi-session and temporal builders emit, and a turn that only resembles it keeps its bytes -- the
- * cost of a false negative here is one dateline inside a window, and the cost of a false positive is a
- * window that starts mid-sentence because eight characters it should have kept were dropped.
- */
-const DATELINE = /^\[\d{4}\/\d{2}\/\d{2} \([A-Za-z]{3}\) \d{2}:\d{2}\] [a-z]+: /;
 
 /** The character `'ellipsis'` emits, and the reason it is a single UTF-16 unit. */
 const CUT_MARKER = ELISION;
@@ -2513,6 +2555,19 @@ function cutWithMarker(text: string, maxChars: number): string {
 const WHITESPACE = /\s/;
 
 /**
+ * Whether this rendering has to be handed the question.
+ *
+ * Two mechanisms need it, for different reasons -- the window anchors on it, and the layered form decides
+ * `excerpt` versus `record` by whether the turn shares a term with it -- and both builders ask this one
+ * predicate. A third mechanism that needed the question would otherwise be a third site remembering to
+ * spread it, and the failure that produces is silent: the treatment renders as the head on the one route
+ * that forgot, with the configuration line still claiming it.
+ */
+function needsQuestion(options: PromptOptions): boolean {
+  return options.turnWindow === 'match' || options.resolution === 'layered';
+}
+
+/**
  * The cap as a render option, or an empty object to mean "no cap".
  *
  * Spread rather than assigned, because this workspace's `exactOptionalPropertyTypes` treats
@@ -2535,6 +2590,7 @@ function capOption(options: TurnCap): TurnCap {
     maxTurnChars: options.maxTurnChars,
     ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
+    ...(options.resolution === undefined ? {} : { resolution: options.resolution }),
     ...(options.focusQuery === undefined ? {} : { focusQuery: options.focusQuery }),
     ...marks,
   };
@@ -3028,7 +3084,7 @@ export function buildPrompt(
   // be a decision a route could miss.
   const cap = capOption({
     ...options,
-    ...(options.turnWindow === 'match' ? { focusQuery: question } : {}),
+    ...(needsQuestion(options) ? { focusQuery: question } : {}),
   });
   // The census of the **last** rendering, which is the one the reader reads. `fitToBudget` re-renders the
   // final set after the ordering permutation (§13.153), so a tally that accumulated across calls would
@@ -4311,7 +4367,7 @@ function renderSessionBlocks(
         // file has been audited for.
         ...capOption({
           ...options,
-          ...(options.turnWindow === 'match' ? { focusQuery: question } : {}),
+          ...(needsQuestion(options) ? { focusQuery: question } : {}),
         }),
       }),
     );

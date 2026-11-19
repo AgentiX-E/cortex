@@ -77,6 +77,7 @@ import {
   type SearchIndexOptions,
 } from './retrieval/search-index.js';
 import { planEvidenceRoom, type WidthDecision } from './width.js';
+import { resolveCappedTurn } from './resolution.js';
 import {
   adjudicateSupersession,
   emptySupersessionCensus,
@@ -884,6 +885,27 @@ export class CortexMemory implements SessionAwareMemorySystem {
         "turnWindow: 'match' needs maxTurnChars: the window decides which characters of a turn a cap " +
           'keeps, and without a cap every turn renders whole. Dispatch the width with the window ' +
           '(CORTEX_MEMORY_MAX_TURN_CHARS=<width>[:<marker>[:match]]), or drop the window.',
+      );
+    }
+    // Layering needs the cap for the reason the window does, plus one of its own: the two form ceilings are
+    // ratios of `maxTurnChars`, so without a cap there is no scale to take a ratio of. The refusal is here
+    // rather than in `prompt.ts` for the reason every guard in this constructor is: a field that cannot act
+    // is a configuration line naming a treatment the run never administered.
+    if (options.resolution === 'layered' && options.maxTurnChars === undefined) {
+      throw new Error(
+        "resolution: 'layered' needs maxTurnChars: the three form ceilings are ratios of the per-turn " +
+          'width, so layering without a width has no scale. Dispatch the width with the resolution ' +
+          '(CORTEX_MEMORY_MAX_TURN_CHARS=<width> and CORTEX_MEMORY_RESOLUTION=layered).',
+      );
+    }
+    // The window and the excerpt form both decide *which characters* of a long turn the room keeps, so a run
+    // carrying both would be two mechanisms competing for one slot and a movement could not be attributed to
+    // either. Refused rather than ranked, the same shape as the `replyRepair` / `reviewPass` guard below.
+    if (options.resolution === 'layered' && options.turnWindow === 'match') {
+      throw new Error(
+        "resolution: 'layered' and turnWindow: 'match' cannot both be on: the window chooses which " +
+          'characters of a turn a cap keeps and the layered form chooses how long it is, so a prompt would ' +
+          'carry two renderers and the reading could not say which one moved a question. Choose one.',
       );
     }
     if (options.replyRepair !== undefined && options.replyRepair !== 'off') {
@@ -3063,7 +3085,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
       // `temporal` (§13.68), so a budget measured on raw lengths would be twelve times the prompt it
       // budgets on a 5,000-character turn: `fitToBudget` would read the plan as non-binding and the
       // mechanism would do nothing on exactly the two routes it exists for.
-      this.#renderedChars(turns, route),
+      this.#renderedChars(question, turns, route),
     );
     this.#lastWidth = decision;
     return decision;
@@ -3077,11 +3099,20 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * would under-fund the four routes it does not reach. Absent means the whole turn.
    */
   #renderedChars(
+    question: string,
     turns: readonly AdmittedTurn[],
     route: TurnCapRoute,
   ): readonly number[] | undefined {
     const cap = this.#options.maxTurnChars;
     if (cap === undefined || !this.#capReaches(route)) return undefined;
+    // Under `layered` the cap does not bound a turn -- the form does -- so the estimate cannot be
+    // `min(length, cap)` any more. It is `resolveCappedTurn`, the same function the renderer calls on the
+    // same content, which is what makes "the plan and the prompt agree" a property of the code rather than
+    // of a test: `43259468403` was cancelled because a plan budgeted raw lengths against a 400-character
+    // rendering, and a second estimate here would be that defect with a new cause.
+    if (this.#options.resolution === 'layered') {
+      return turns.map((turn) => resolveCappedTurn(question, turn.content, cap).chars);
+    }
     return turns.map((turn) => Math.min(turn.content.length, cap));
   }
 
@@ -3191,6 +3222,13 @@ export class CortexMemory implements SessionAwareMemorySystem {
             ...(this.#options.turnWindow === undefined
               ? {}
               : { turnWindow: this.#options.turnWindow }),
+            // The resolution rides the same spread and the same reach, for the reason one line up: it is
+            // another way of spending the cap, so a route whose cap was withdrawn must not keep a resolution
+            // -- a form list on an uncapped route would print every turn whole while the configuration line
+            // named a treatment nothing received.
+            ...(this.#options.resolution === undefined
+              ? {}
+              : { resolution: this.#options.resolution }),
           }),
       ...(rendering === undefined ? {} : { rendering }),
       ...(ask === undefined ? {} : { ask }),
