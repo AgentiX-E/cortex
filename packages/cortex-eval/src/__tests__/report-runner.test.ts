@@ -20,11 +20,10 @@ import type { AnswerJudge } from '../judge.js';
 import { buildAblationSkipRecord } from '../ablation-skip.js';
 import { NaturalLanguageMemorySystem } from '../natural-language-memory.js';
 import type { DecisionTrace } from '../natural-language-memory.js';
-import { createEmbeddingFromEnv } from '../embedding-factory.js';
+import { DEFAULT_HASH_DIMENSION, createEmbeddingFromEnv } from '../embedding-factory.js';
 import { DEFAULT_RETRY_BUDGET_MS } from '@agentix-e/cortex-ai';
 import { createLlmFromEnv } from '../llm-factory.js';
 import { resolveRetryBudgetMs, resolveTimeoutMs } from '../reader-transport.js';
-import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
 import { HashEmbedding } from '../embedding.js';
 import { FactMemorySystem } from '../fact-memory.js';
 import { createLongMemEvalMini } from '../datasets/longmemeval-mini.js';
@@ -205,27 +204,52 @@ describe('runEmbeddingBenchmark', () => {
   });
 });
 
+/**
+ * Which client the factory builds, read through its identity.
+ *
+ * These four assertions used to be `toBeInstanceOf(OpenAIEmbedding)` / `(HashEmbedding)` and could not
+ * stay that way: the factory now wraps every client in the quota latch, so the object it returns is a
+ * decorator and its class is the decorator's. `identity()` is the stronger assertion of the same fact --
+ * it is what `EmbeddingSpace` reads before it will query an index, and it is what a mismatched cache is
+ * refused on, so a client whose identity names the wrong backend is broken in a way `instanceof` would
+ * not have caught either.
+ */
 describe('createEmbeddingFromEnv', () => {
-  it('returns OpenAIEmbedding when API credentials are present', () => {
+  it('returns the remote client when API credentials are present', () => {
     const embedding = createEmbeddingFromEnv({
       EMBEDDING_API_KEY: 'k',
       EMBEDDING_BASE_URL: 'https://api.example.com/v1',
       EMBEDDING_MODEL: 'text-embedding-3-small',
       EMBEDDING_DIMENSIONS: '1536',
     });
-    expect(embedding).toBeInstanceOf(OpenAIEmbedding);
+    expect(embedding.identity?.()).toEqual({
+      provider: 'openai-compatible',
+      model: 'text-embedding-3-small',
+      endpoint: 'https://api.example.com/v1',
+      dimensions: 1536,
+    });
     expect(embedding.dimension()).toBe(1536);
   });
 
   it('uses Zhipu embedding-3 defaults with ZHIPU_API_KEY', () => {
     const embedding = createEmbeddingFromEnv({ ZHIPU_API_KEY: 'zhipu-key' });
-    expect(embedding).toBeInstanceOf(OpenAIEmbedding);
+    expect(embedding.identity?.()).toEqual({
+      provider: 'openai-compatible',
+      model: 'embedding-3',
+      endpoint: 'https://open.bigmodel.cn/api/paas/v4',
+      dimensions: 1024,
+    });
     expect(embedding.dimension()).toBe(1024);
   });
 
-  it('falls back to HashEmbedding when credentials are missing', () => {
+  it('falls back to the hash embedding when credentials are missing', () => {
     const embedding = createEmbeddingFromEnv({});
-    expect(embedding).toBeInstanceOf(HashEmbedding);
+    expect(embedding.identity?.()).toEqual({
+      provider: 'hash',
+      model: null,
+      endpoint: null,
+      dimensions: DEFAULT_HASH_DIMENSION,
+    });
   });
 
   it('falls back when the dimension is invalid', () => {
@@ -233,7 +257,7 @@ describe('createEmbeddingFromEnv', () => {
       ZHIPU_API_KEY: 'k',
       EMBEDDING_DIMENSIONS: 'not-a-number',
     });
-    expect(embedding).toBeInstanceOf(HashEmbedding);
+    expect(embedding.identity?.().provider).toBe('hash');
   });
 });
 

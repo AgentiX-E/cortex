@@ -66,6 +66,10 @@ import {
   createEmbeddingWithProvenanceFromEnv,
   resolveEmbeddingProvenance,
   describeFailure,
+  // The latch's counters, read on the failure path. `bench-failure.ts` prints them; the reading is
+  // published by the factory rather than closed over here because this handler runs when `main`
+  // threw, outside the scope where the embedding was built.
+  quotaLatchReading,
   // §14.22's width. Read here rather than inside the arm: it is a property of the invocation, not
   // of the registered configuration, and the registration check compares the latter field for field.
   readWorkers,
@@ -1697,6 +1701,10 @@ main().catch((error: unknown) => {
   const summary = describeFailure({
     progress: lastProgress ?? undefined,
     error,
+    // Printed beside the progress line because the two numbers bound the damage together: the
+    // question in flight says how far the pass got, and the latch says how many of the requests
+    // after the first refusal were spent discovering the same fact.
+    latch: quotaLatchReading(),
   });
   writeFileSync('benchmark-error.log', `${summary}\n${message}\n`);
   // Write what the run MEASURED, not only what it embedded.

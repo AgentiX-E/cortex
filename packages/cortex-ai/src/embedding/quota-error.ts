@@ -15,9 +15,12 @@
  * to decide whether the account is empty or the key is wrong, and paraphrasing it would delete the one
  * piece of evidence that distinguishes the two.
  *
- * The class is exported from the package root because the decision it enables is the caller's: the
- * retriever that degrades to lexical scoring and the benchmark that has to record how many retrievals
- * were degraded both need to recognise it, and neither can do that from a message.
+ * The class is exported from the package root because the decision it enables is the caller's, and an
+ * earlier version of this paragraph named a reader that did not exist: it claimed a benchmark recorded
+ * how many retrievals fell back to lexical scoring, and no such counter was ever written. The readers
+ * are `SearchIndex`'s `onEmbedFailure` policy, which can degrade a deployment's retrieval to lexical
+ * scoring and reports `embedDegraded`, and `cortex-eval`'s `latchQuota`, which closes on this type and
+ * refuses later calls without a request so a run that cannot pay stops paying.
  */
 export class EmbeddingQuotaExhaustedError extends Error {
   /** The HTTP status the provider returned, which is `429` for every vendor seen so far. */

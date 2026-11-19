@@ -285,3 +285,77 @@ describe('describeFailure', () => {
     expect(text).toContain('deep.test');
   });
 });
+
+/**
+ * The embedding latch, in the record a failed pass leaves behind.
+ *
+ * ## The run this is written against
+ *
+ * `44354315890` died on an exhausted embedding account and its artifact recorded
+ * `refusedCalls 431 / retriedCalls 0`, with nothing in the durable record saying that the first of
+ * those 431 had already established the fact. The latch closes on that first refusal; this block is
+ * what makes the closure readable after the process is gone.
+ *
+ * ## Why all three states are asserted
+ *
+ * Because they are three different facts and only one of them is about an account. `null` is a run
+ * that died before it built an embedding (a dataset that would not parse); an unlatched reading is a
+ * run that made thousands of requests and was never told to stop paying; a latched one is the
+ * incident. A block that printed only in the third case would leave a reader unable to tell the other
+ * two apart from a record that predates the counter.
+ */
+describe('the embedding latch in the failure record', () => {
+  const LATCHED = {
+    calls: 1,
+    refusedByProvider: 1,
+    refusedAfterLatch: 430,
+    closure: { atCall: 1, status: 429, detail: '{"error":{"code":"1113","message":"余额不足"}}' },
+  } as const;
+
+  it('prints the latch, the call that closed it and what it saved', () => {
+    const text = describeFailure({
+      progress: { ...AT_QUESTION_ONE, index: 56 },
+      error: new Error('no quota left'),
+      latch: LATCHED,
+    });
+
+    expect(text).toContain('LATCHED at call 1 (status 429)');
+    expect(text).toContain('1 provider refusal(s)');
+    // The number the latch bought: requests that never left the process.
+    expect(text).toContain('430 refused without a request');
+    // Beside the progress line, which is the other half of the bound: where the pass was.
+    expect(text.indexOf('progress:')).toBeLessThan(text.indexOf('embedding: LATCHED'));
+  });
+
+  it('says a healthy account made no quota refusal, and how many calls it made', () => {
+    // Printed rather than omitted, so "the account was fine" and "this record predates the counter"
+    // are different reads. The count is what makes the absence informative.
+    const text = describeFailure({
+      progress: AT_QUESTION_ONE,
+      error: new Error('boom'),
+      latch: { calls: 3129, refusedByProvider: 0, refusedAfterLatch: 0, closure: null },
+    });
+
+    expect(text).toContain('embedding: no quota refusal in 3129 call(s)');
+    expect(text).not.toContain('LATCHED');
+  });
+
+  it('distinguishes a run that never built a client from one that built a healthy one', () => {
+    const text = describeFailure({
+      progress: undefined,
+      error: new Error('bad dataset'),
+      latch: null,
+    });
+
+    expect(text).toContain('embedding: no client was built before the failure');
+    expect(text).not.toContain('no quota refusal');
+  });
+
+  it('says nothing at all when the caller has no latch to report', () => {
+    // The absent case, which is every existing test in this file. A block that appeared for callers
+    // that never mentioned a provider would be a line about a mechanism they did not ask for.
+    const text = describeFailure({ progress: AT_QUESTION_ONE, error: new Error('boom') });
+
+    expect(text).not.toContain('embedding:');
+  });
+});

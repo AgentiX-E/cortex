@@ -16,6 +16,7 @@
 import type { EmbeddingModel } from '@agentix-e/cortex-core';
 import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
 import { HashEmbedding } from './embedding.js';
+import { latchQuota } from './embedding-latch.js';
 
 export type EmbeddingEnv = Record<string, string | undefined>;
 
@@ -61,6 +62,15 @@ export type EmbeddingWithProvenance = {
  * an unset CI secret (which arrives as `""`) would otherwise select the remote
  * path and fail the run with a 401 against a URL nobody configured — losing the
  * whole benchmark to what is defined here as a missing credential.
+ *
+ * ## Why every client is latched here rather than at the entry points
+ *
+ * `latchQuota` is applied to both branches, including the offline hash fallback
+ * where it can never fire. A latch installed at the two entry points would be a
+ * latch a third entry point can forget, and the failure it prevents is a run that
+ * spends four hundred round trips discovering, one at a time, a fact it learned on
+ * the first. Wrapping the fallback too keeps this function free of a branch that
+ * exists only to decide whether safety is required.
  */
 export function createEmbeddingWithProvenanceFromEnv(env: EmbeddingEnv): EmbeddingWithProvenance {
   const apiKey = firstNonEmpty(env['ZHIPU_API_KEY'], env['EMBEDDING_API_KEY']);
@@ -76,16 +86,18 @@ export function createEmbeddingWithProvenanceFromEnv(env: EmbeddingEnv): Embeddi
       // the client's own `dimension()` returns that same field, so the two cannot
       // disagree. Reported explicitly rather than read back so this stays a plain
       // object a caller can log before the client exists.
-      embedding: new OpenAIEmbedding({
-        baseUrl: provenance.baseUrl,
-        apiKey,
-        model: provenance.model,
-        dimensions: provenance.dimensions,
-      }),
+      embedding: latchQuota(
+        new OpenAIEmbedding({
+          baseUrl: provenance.baseUrl,
+          apiKey,
+          model: provenance.model,
+          dimensions: provenance.dimensions,
+        }),
+      ),
       provenance,
     };
   }
-  return { embedding: new HashEmbedding(DEFAULT_HASH_DIMENSION), provenance };
+  return { embedding: latchQuota(new HashEmbedding(DEFAULT_HASH_DIMENSION)), provenance };
 }
 
 /**

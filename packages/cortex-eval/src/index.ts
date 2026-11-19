@@ -63,6 +63,7 @@ export { describeProviderRefusals, providerRefusals } from './benchmark.js';
 export { deadlineLossCeiling, describeTransportLosses, lostToTransport } from './benchmark.js';
 export { readWorkers } from './worker-pool.js';
 export { describeFailure } from './bench-failure.js';
+export { quotaLatchReading, type EmbeddingLatchReading } from './embedding-latch.js';
 export { drawUnjudged, type Draw, type DrawableRow } from './a3-draw.js';
 export {
   createLlmJudge,

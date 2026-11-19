@@ -39,6 +39,7 @@
  */
 
 import type { BenchmarkProgress } from './benchmark.js';
+import type { EmbeddingLatchReading } from './embedding-latch.js';
 
 /**
  * The four fields `RetryExhaustion` carries that a reader needs, and no more.
@@ -139,6 +140,15 @@ function messageOf(error: unknown): string {
 export function describeFailure(input: {
   readonly progress: BenchmarkProgress | undefined;
   readonly error: unknown;
+  /**
+   * The embedding quota latch, if the process built a latching client.
+   *
+   * Optional because this function is also called by tests with nothing to say about a provider, and
+   * `null` because a run can fail before it builds an embedding at all (a dataset that will not
+   * parse). The three states print three different lines: absent is silence, `null` is "no client was
+   * built", and a reading is the counter block.
+   */
+  readonly latch?: EmbeddingLatchReading | null;
 }): string {
   const lines: string[] = [];
 
@@ -151,6 +161,22 @@ export function describeFailure(input: {
         // Both units, because the reader wants "nearly two hours" and the log wants the
         // number that was actually measured. Seconds are derived here rather than stored.
         `at +${(elapsedMs / 1000).toFixed(1)}s (${elapsedMs}ms)`,
+    );
+  }
+
+  // Printed on every failure rather than only on a quota one, for the reason the refusal line in
+  // `benchmark.ts` is: a line that appears only when the account is empty leaves a reader unable to
+  // tell "the account was fine" from "this record predates the counter".
+  if (input.latch === null) {
+    lines.push('embedding: no client was built before the failure');
+  } else if (input.latch !== undefined) {
+    const { closure } = input.latch;
+    lines.push(
+      closure === null
+        ? `embedding: no quota refusal in ${input.latch.calls} call(s)`
+        : `embedding: LATCHED at call ${closure.atCall} (status ${closure.status}) — ` +
+            `${input.latch.refusedByProvider} provider refusal(s), ` +
+            `${input.latch.refusedAfterLatch} refused without a request`,
     );
   }
 

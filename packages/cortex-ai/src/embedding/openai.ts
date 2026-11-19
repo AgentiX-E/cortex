@@ -84,8 +84,10 @@ export class OpenAIEmbedding implements EmbeddingModel {
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
       // An exhausted balance is a different event from a rejected request, and the ladder above has
       // already decided not to retry it. Naming it here is what lets a caller choose between stopping
-      // and running without the provider — the retriever's `onEmbedFailure` policy reads this type,
-      // and so does the benchmark that records how many retrievals fell back to lexical scoring.
+      // and running without the provider. The readers are named rather than described, because an
+      // earlier version of this comment claimed a reader that did not exist: `SearchIndex`'s
+      // `onEmbedFailure` policy is the product's, and `cortex-eval`'s `latchQuota` is the harness's --
+      // it closes on this type so that the second refusal of a dead account costs no request.
       if (isQuotaExhausted(res.status, bodyText)) {
         throw new EmbeddingQuotaExhaustedError(
           `Embedding provider has no quota left: ${res.status} ${res.statusText}${detail}`,

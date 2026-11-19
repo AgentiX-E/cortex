@@ -14,8 +14,7 @@
  * absence of an error means the intended backend was reached.
  */
 import { describe, expect, it } from 'vitest';
-import { OpenAIEmbedding } from '@agentix-e/cortex-ai';
-import { HashEmbedding } from '../embedding.js';
+import { quotaLatchReading } from '../embedding-latch.js';
 import {
   createEmbeddingFromEnv,
   createEmbeddingWithProvenanceFromEnv,
@@ -34,7 +33,14 @@ describe('createEmbeddingWithProvenanceFromEnv', () => {
       EMBEDDING_MODEL: 'text-embedding-3-small',
       EMBEDDING_DIMENSIONS: '1536',
     });
-    expect(embedding).toBeInstanceOf(OpenAIEmbedding);
+    // The client is now wrapped by the quota latch, so its class is no longer the observable --
+    // the identity is, and it is what `EmbeddingSpace` actually reads before it will query an index.
+    expect(embedding.identity?.()).toEqual({
+      provider: 'openai-compatible',
+      model: 'text-embedding-3-small',
+      endpoint: 'https://api.example.com/v1',
+      dimensions: 1536,
+    });
     expect(provenance).toEqual({
       provider: 'openai-compatible',
       model: 'text-embedding-3-small',
@@ -55,7 +61,7 @@ describe('createEmbeddingWithProvenanceFromEnv', () => {
 
   it('reports the hash fallback as a fallback, not as a provider', () => {
     const { embedding, provenance } = createEmbeddingWithProvenanceFromEnv({});
-    expect(embedding).toBeInstanceOf(HashEmbedding);
+    expect(embedding.identity?.().provider).toBe('hash');
     // `null` for model and baseUrl, not the Zhipu defaults: a fallback run must
     // not name a provider it never contacted. Falling back is silent by design
     // (it is what keeps the benchmark runnable without secrets), so the
@@ -73,7 +79,7 @@ describe('createEmbeddingWithProvenanceFromEnv', () => {
       ZHIPU_API_KEY: 'k',
       EMBEDDING_DIMENSIONS: 'not-a-number',
     });
-    expect(embedding).toBeInstanceOf(HashEmbedding);
+    expect(embedding.identity?.().provider).toBe('hash');
     expect(provenance.provider).toBe('hash');
   });
 
@@ -87,7 +93,7 @@ describe('createEmbeddingWithProvenanceFromEnv', () => {
         ZHIPU_API_KEY: 'k',
         EMBEDDING_DIMENSIONS: dimensions,
       });
-      expect(embedding, `EMBEDDING_DIMENSIONS=${dimensions}`).toBeInstanceOf(HashEmbedding);
+      expect(embedding.identity?.().provider, `EMBEDDING_DIMENSIONS=${dimensions}`).toBe('hash');
       expect(provenance.provider).toBe('hash');
     }
   });
@@ -127,7 +133,7 @@ describe('createEmbeddingWithProvenanceFromEnv', () => {
       ZHIPU_API_KEY: '',
       EMBEDDING_DIMENSIONS: '1536',
     });
-    expect(embedding).toBeInstanceOf(HashEmbedding);
+    expect(embedding.identity?.().provider).toBe('hash');
     expect(provenance.provider).toBe('hash');
   });
 });
@@ -138,7 +144,11 @@ describe('createEmbeddingFromEnv', () => {
     const direct = createEmbeddingFromEnv(env);
     const { embedding } = createEmbeddingWithProvenanceFromEnv(env);
     expect(direct.dimension()).toBe(embedding.dimension());
-    expect(direct.constructor).toBe(embedding.constructor);
+    expect(direct.identity?.()).toEqual(embedding.identity?.());
+    // Both paths install the latch. Asserted here rather than in the latch's own suite because this is
+    // the seam a third entry point would arrive at, and "the safety is on the factory" is a claim about
+    // the factory: a caller that reaches for the shorter function gets the same protection.
+    expect(quotaLatchReading()).not.toBeNull();
   });
 });
 
