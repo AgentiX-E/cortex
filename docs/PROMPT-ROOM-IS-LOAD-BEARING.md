@@ -310,7 +310,10 @@ Paired on the 500 questions (majority of four repetitions each): 438 both, **16 
 registered arm only, 5 by this one only**, 41 neither — **−11 questions, −2.2 points, exact McNemar
 p = 0.027**. On the mean-of-four basis the movement is −1.85 points. Both readings are above the 1.5-point
 tolerance the registration wrote before the dispatch, and the paired one is significant, so this is not
-noise being read as a small effect.
+noise being read as a small effect. The capability that moved most, `MR`, is **not** significant on its own
+(6 sold, 1 bought, p = 0.125) — the significance is the aggregate, and it is carried by `MR` and `TR`
+together (5 sold, 1 bought, p = 0.219 on `TR` alone). Reported separately because a capability table read as
+five independent tests would call `MR` a finding.
 
 **The rate, and it is not one rate.** The registered arm bills 7,448. The cut before this one
 (9,168 → 7,448) sold 1,720 tokens for **1.15 points** — 0.67 per thousand. This one sold 1,889 tokens for
