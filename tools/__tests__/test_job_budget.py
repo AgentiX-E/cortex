@@ -430,3 +430,87 @@ class TestTheWorkflowReadsTheGradedCount:
         # would have been refused for the same reason the smoke was.
         assert budget.can_complete(questions=500, passes=4, min_interval_ms=6_000, budget_minutes=340) is True
         assert budget.can_complete(questions=500, passes=8, min_interval_ms=6_000, budget_minutes=340) is False
+
+
+class TestTheCapabilityIsThePopulation:
+    """`limit` says how much of the file; `capability` says the file is not the population.
+
+    Run `44572976099` is the measurement. A `capability=MR` dispatch on `zhipu:glm-4.6` grades 121
+    questions and needs 97 minutes at the 6-second pace, but the guard read the file's 500 and
+    computed a 400-minute floor, so it refused in five seconds a dispatch the *other* pre-flight had
+    already priced at 3.45 CNY. Two instruments, one run, opposite verdicts -- and only one of them
+    was reading a number the repository already had.
+
+    The repair is not a second census. `spend-projection.mjs` has priced a scoped dispatch against
+    `ablation.questionsByCapability` since §13.339, so the guard reads the same block out of the same
+    baseline; the tests below hold the reading, the refusals, and the coupling that makes the two
+    pre-flights agree by construction rather than by coincidence.
+    """
+
+    def test_the_census_counts_the_capability_rather_than_the_file(self):
+        graded, population = budget.graded_questions(500, "MR", budget.DEFAULT_CENSUS)
+        assert graded == 121, graded
+        # The provenance travels with the number: a floor is only readable if the population it bounds
+        # is named in the same line.
+        assert "121 of 500" in population, population
+        assert "MR" in population, population
+
+    def test_all_and_absent_are_the_identity(self):
+        for spelling in (None, "", "all", "ALL", " all "):
+            graded, population = budget.graded_questions(500, spelling, budget.DEFAULT_CENSUS)
+            assert graded == 500, (spelling, graded)
+            assert population == "the file (500)", population
+
+    def test_a_comma_list_sums_the_populations_it_names(self):
+        graded, _ = budget.graded_questions(500, "MR,TR", budget.DEFAULT_CENSUS)
+        assert graded == 248, graded
+
+    def test_the_match_is_case_insensitive_because_the_workflow_spelling_is_upper(self):
+        # `MR` is the workflow's spelling and `mr` is what a hand-typed dispatch produces; resolving
+        # them differently would make one of the two pre-flights grade a different run.
+        assert budget.graded_questions(500, "mr", budget.DEFAULT_CENSUS)[0] == 121
+
+    def test_an_unknown_capability_is_refused_rather_than_counted_as_zero(self):
+        with pytest.raises(ValueError, match="carries no XX"):
+            budget.graded_questions(500, "XX", budget.DEFAULT_CENSUS)
+
+    def test_a_census_without_the_block_is_refused_rather_than_defaulted(self, tmp_path):
+        # The failure this rules out: a baseline that predates the block would grade 500 silently, and
+        # a scoped dispatch would meet the 400-minute floor it was trying to avoid.
+        path = tmp_path / "baseline.json"
+        path.write_text('{"questionCount": 500}', encoding="utf-8")
+        with pytest.raises(ValueError, match="questionsByCapability"):
+            budget.graded_questions(500, "MR", path)
+
+    def test_an_unreadable_census_is_refused(self, tmp_path):
+        with pytest.raises(ValueError, match="unreadable"):
+            budget.graded_questions(500, "MR", tmp_path / "absent.json")
+
+    def test_the_scoped_floor_fits_where_the_file_floor_does_not(self):
+        graded, _ = budget.graded_questions(500, "MR", budget.DEFAULT_CENSUS)
+        assert budget.can_complete(graded, 8, 6_000, 340) is True
+        assert budget.can_complete(500, 8, 6_000, 340) is False
+
+    def test_the_two_preflights_read_the_same_census(self):
+        # The coupling, checked as a fact about the two files rather than as a wish: if the projection
+        # ever prices a scoped run off a different source, the two gates can disagree again and the
+        # dispatch that discovers it is the one that spends.
+        assert budget.DEFAULT_CENSUS.name == "spend-baseline.json"
+        projection = (REPO / "tools" / "spend-projection.mjs").read_text()
+        assert "questionsByCapability" in projection, (
+            "the projection no longer reads the capability census, so this guard is the only reader "
+            "of a number two instruments are supposed to share"
+        )
+
+
+class TestTheWorkflowHandsThePopulationToTheGuard:
+    """The guard is only as right as its arguments, and it was reading the file's size."""
+
+    def test_the_capability_input_reaches_the_guard(self):
+        text = (REPO / '.github' / 'workflows' / 'benchmark-cortex-memory.yml').read_text()
+        assert 'CAPABILITY: ${{ inputs.capability }}' in text, (
+            'the guard cannot resolve a scoped population without the dispatch\'s capability input'
+        )
+        assert '--capability "$CAPABILITY"' in text, (
+            'the input is read into the environment and then never passed to the tool that needs it'
+        )

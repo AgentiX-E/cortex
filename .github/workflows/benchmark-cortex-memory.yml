@@ -345,17 +345,30 @@ jobs:
           # `42366809734`, the first attempt to price a second provider, and the reason this campaign
           # has never been able to smoke-test a provider before buying a three-hour run.
           GRADED_QUESTIONS: ${{ inputs.limit == '0' && '500' || inputs.limit }}
+          # And the population, which is the same defect one level up. `limit` says how much of the
+          # file to sample; `capability` says the file is not the population at all. Run
+          # `44572976099` is the measurement: `capability=MR` on `zhipu:glm-4.6` grades 121 questions
+          # and needs 97 minutes, but this step read the file's 500 and computed a 400-minute floor,
+          # so it refused a dispatch the projection had already priced at 3.45 CNY. Both numbers were
+          # in the repository; only one of them was being read.
+          #
+          # `job-budget.py` resolves it against `tools/spend-baseline.json`, the same census
+          # `spend-projection.mjs` prices a scoped run against, so the two pre-flights cannot disagree
+          # about how many questions a capability has.
+          CAPABILITY: ${{ inputs.capability }}
         run: |
           set -euo pipefail
           passes=$(( 2 * ${RUNS:-4} ))
           if [ -n "${PACE_MS:-}" ]; then
             python3 tools/job-budget.py \
               --workflow .github/workflows/benchmark-cortex-memory.yml \
-              --questions "$GRADED_QUESTIONS" --passes "$passes" --min-interval-ms "$PACE_MS"
+              --questions "$GRADED_QUESTIONS" --passes "$passes" --min-interval-ms "$PACE_MS" \
+              --capability "$CAPABILITY"
           else
             python3 tools/job-budget.py \
               --workflow .github/workflows/benchmark-cortex-memory.yml \
-              --questions "$GRADED_QUESTIONS" --passes "$passes"
+              --questions "$GRADED_QUESTIONS" --passes "$passes" \
+              --capability "$CAPABILITY"
           fi
 
       - name: Setup pnpm

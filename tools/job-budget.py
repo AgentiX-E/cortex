@@ -86,6 +86,7 @@ be read.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 import sys
@@ -106,6 +107,86 @@ DEFAULT_SCOPE: Scope = "run"
 # result a lower bound on the run, which is the only form a refusal can be built on.
 DEFAULT_QUESTIONS = 500
 DEFAULT_CALLS_PER_QUESTION = 1.0
+
+# Where the per-capability census lives, and why the floor has to read it.
+#
+# `--questions` used to be the whole answer, and the workflow passed the file's size (500) whenever
+# `limit=0`. That is right for an unfiltered run and wrong for a capability-scoped one: `MR` is 121 of
+# the 500, so the pacing floor of an `MR` dispatch is 97 minutes, not 400. Run `44572976099` is the
+# measurement -- `capability=MR`, `model=zhipu:glm-4.6`, 4 repetitions, dispatched through the script
+# that priced it at 3.45 CNY, refused by this guard in five seconds because it graded the file rather
+# than the population.
+#
+# The census is not a new number: `spend-projection.mjs` already reads `ablation.questionsByCapability`
+# off the same baseline to price a scoped dispatch, and `tools/spend-baseline.json` is that baseline.
+# Reading it here makes the two pre-flights agree by construction instead of by coincidence -- which is
+# the property the `44572976099` pair lacked, one gate having passed what the other refused.
+DEFAULT_CENSUS = pathlib.Path(__file__).resolve().parent / "spend-baseline.json"
+
+
+# --------------------------------------------------------------------------- the population
+
+def capability_census(path: pathlib.Path) -> dict[str, int]:
+    """The per-capability question counts of the observed run, or a refusal.
+
+    The shape is the one the artifact writes (`ablation.questionsByCapability`), not one invented here:
+    a second shape would be a second answer to "how many `MR` questions are there", and the two would
+    diverge the first time the corpus moved.
+    """
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError(
+            f"{path}: the capability census is unreadable ({error}). A scoped dispatch needs it: "
+            "grading the file instead is the defect this reads around, and grading nothing would "
+            "report a floor of zero for a run that has one."
+        ) from error
+    census = report.get("ablation", {}).get("questionsByCapability")
+    if not isinstance(census, dict) or not census:
+        raise ValueError(
+            f"{path}: no `ablation.questionsByCapability` block, so a scoped dispatch cannot be "
+            "counted. The block is what `spend-projection.mjs` prices a scoped run against; a "
+            "baseline without it cannot answer this question for either tool."
+        )
+    counted: dict[str, int] = {}
+    for name, total in census.items():
+        if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+            raise ValueError(f"{path}: `{name}` is {total!r}, which is not a question count")
+        counted[str(name)] = total
+    return counted
+
+
+def graded_questions(questions: int, capability: str | None, census_path: pathlib.Path) -> tuple[int, str]:
+    """How many questions this dispatch grades, and where the number came from.
+
+    `capability` empty or `all` is the identity: the caller's `--questions` is the file's size and
+    nothing is filtered. Anything else is a comma list read against the census, and the second return
+    value says so, because a floor is only readable if a reader can see which population it bounds.
+
+    An unknown capability is refused rather than ignored, and the match is case-insensitive because
+    the workflow's spelling is `MR` while a hand-typed dispatch may say `mr`: the two must resolve to
+    the same population, but `MS` -- a name that is not in the census at all -- must not contribute
+    zero and print a floor of zero minutes. A green light for a run that cannot finish is worse than
+    the refusal it would replace.
+    """
+    raw = (capability or "").strip()
+    if raw == "" or raw.upper() == "ALL":
+        return questions, f"the file ({questions})"
+    names = [name.strip() for name in raw.split(",") if name.strip()]
+    if not names:
+        return questions, f"the file ({questions})"
+    census = capability_census(census_path)
+    missing = [name for name in names if name.upper() not in census]
+    if missing:
+        raise ValueError(
+            f"the census carries no {', '.join(missing)}; it has {', '.join(sorted(census))}. An "
+            "unrecognised capability is refused rather than counted as zero, because a floor of zero "
+            "reads as a run that fits."
+        )
+    total = sum(census[name.upper()] for name in names)
+    if total <= 0:
+        raise ValueError(f"the census counts {total} question(s) for {raw}: there is no run to bound")
+    return total, f"the {raw} census ({total} of {questions})"
 
 
 # --------------------------------------------------------------------------- the pace
@@ -403,6 +484,21 @@ def main(argv: Iterable[str] | None = None) -> int:
         help="graded questions per pass, for the pacing floor",
     )
     parser.add_argument(
+        "--capability",
+        default=None,
+        help=(
+            "the population this dispatch grades, as the workflow's `capability` input spells it "
+            "(`all`, `MR`, or a comma list). Read against `--census`, because a scoped run grades a "
+            "capability rather than the file and its floor is that much shorter"
+        ),
+    )
+    parser.add_argument(
+        "--census",
+        type=pathlib.Path,
+        default=DEFAULT_CENSUS,
+        help="the report whose `ablation.questionsByCapability` counts a scoped population",
+    )
+    parser.add_argument(
         "--min-interval-ms",
         type=float,
         default=None,
@@ -470,18 +566,23 @@ def main(argv: Iterable[str] | None = None) -> int:
     completes = True
     if args.min_interval_ms is not None:
         try:
+            # The population first: `--questions` is the file's size, and a scoped dispatch grades a
+            # capability rather than a file. Resolved here, after the CLI, because the census is a
+            # claim about the corpus and not an argument about this workflow's shape.
+            graded, population = graded_questions(args.questions, args.capability, args.census)
             floor_minutes = pacing_floor_minutes(
-                args.questions, args.passes, args.min_interval_ms, args.calls_per_question
+                graded, args.passes, args.min_interval_ms, args.calls_per_question
             )
             completes = can_complete(
-                args.questions, args.passes, args.min_interval_ms, budget, args.calls_per_question
+                graded, args.passes, args.min_interval_ms, budget, args.calls_per_question
             )
         except ValueError as error:
             print(str(error), file=sys.stderr)
             return 2
+        print(f"  graded set {graded} question(s), from {population}")
         print(
             f"  pacing floor {floor_minutes:.0f} min "
-            f"({args.questions} questions x {args.calls_per_question:g} call(s) x {args.passes} "
+            f"({graded} questions x {args.calls_per_question:g} call(s) x {args.passes} "
             f"passes x {args.min_interval_ms:g} ms), budget {budget:.0f} -> "
             + (
                 "the run can finish"
