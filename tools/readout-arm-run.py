@@ -1547,18 +1547,68 @@ def audit_section(
         'question must not inflate this',
     )
 
-    # 3. No prompt exceeded the budget it declares.
-    over_budget = [
-        question.get('promptChars', 0)
-        for question in questions
-        if isinstance(question.get('promptChars'), int)
-        and question['promptChars'] > (config.get('maxPromptChars') or 10**9)
-    ]
+    # 3. No delivered prompt exceeded the room its own route names.
+    #
+    # §13.239 gave the budget a second shape -- a `<route>:<chars>` map -- and this check kept
+    # reading the scalar. Two consequences, both silent: `maxPromptChars` is `None` on every run
+    # that uses a map, so the ceiling became `10**9` and the check could not fail; and the number
+    # compared was `promptChars` (evidence plus question) rather than `deliveredPromptChars`,
+    # which is the quantity the room actually caps. A run dispatched to halve a route's room that
+    # silently kept the global one would have printed `budget PASS against maxPromptChars None`.
+    #
+    # The ceiling is therefore resolved per question from its own route: the map first, then the
+    # scalar, then the product default §13.213 shipped. A route that names neither is not an error
+    # -- the default is a real ceiling -- which is why the resolution is three deep rather than a
+    # refusal.
+    #
+    # The detail also carries the **fill**: every route's largest delivery against its room. It is
+    # not a criterion, it is the witness for the sentence the room table is chosen by -- on
+    # `44482224999` the six routes delivered 17,998 / 17,999 / 17,990 / 17,941 / 35,998 of
+    # 18,000 / 18,000 / 18,000 / 18,000 / 36,000 characters, i.e. the room *is* the bill.
+    DEFAULT_PROMPT_CHARS = 48_000
+    room_map = config.get('maxPromptCharsByRoute')
+    room_map = room_map if isinstance(room_map, dict) else {}
+    scalar_room = config.get('maxPromptChars')
+    scalar_room = scalar_room if isinstance(scalar_room, int) and scalar_room > 0 else None
+
+    def room_for(route: object) -> tuple[int, str]:
+        named = room_map.get(route) if isinstance(route, str) else None
+        if isinstance(named, int) and named > 0:
+            return named, 'route map'
+        if scalar_room is not None:
+            return scalar_room, 'scalar'
+        return DEFAULT_PROMPT_CHARS, 'product default'
+
+    over_budget: list[str] = []
+    fill: dict[str, tuple[int, int]] = {}
+    for question in questions:
+        delivered = question.get('deliveredPromptChars', question.get('promptChars'))
+        if not isinstance(delivered, int):
+            continue
+        room, _source = room_for(question.get('route'))
+        route = str(question.get('route'))
+        largest, _room = fill.get(route, (0, room))
+        fill[route] = (max(largest, delivered), room)
+        if delivered > room:
+            over_budget.append(f'{question.get("questionId")} ({delivered} > {room})')
+
+    widest = max(fill.items(), key=lambda item: item[1][0]) if fill else None
+    fill_text = (
+        '; '.join(
+            f'{route} {largest}/{room} = {100 * largest / room:.1f}%'
+            for route, (largest, room) in sorted(fill.items())
+        )
+        or 'no delivered length on any record'
+    )
     check(
         'budget',
         not over_budget,
-        f'largest prompt {max((q.get("promptChars", 0) for q in questions), default=0)} '
-        f'against maxPromptChars {config.get("maxPromptChars")}',
+        (
+            f'every delivery fits the room its route names ({fill_text})'
+            if not over_budget
+            else f'{len(over_budget)} over budget, e.g. {over_budget[0]}; rooms {fill_text}'
+        )
+        + (f'; widest {widest[0]}' if widest and over_budget else ''),
     )
 
     # 4. The reach names only routes the run rendered, and names none when no ask was dispatched.

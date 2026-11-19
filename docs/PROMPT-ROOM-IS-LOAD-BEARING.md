@@ -292,3 +292,74 @@ One consequence is worth stating plainly, because it is the kind of thing a defa
 product is now the arm every published reading was taken on.** "What ships is what was measured" was true of
 the code paths and false of the configuration for nine rounds, and the fix was not a new mechanism — it was
 naming the first arm as the default instead of inheriting a fourth one.
+
+## 10. The third point, and the rate the curve charges in both directions
+
+`§8` read the middle of the curve — `multi-session` 48,460, the other five 24,000 — at **91.25%** for
+**7,448** prompt tokens per question. The registration that adopted it wrote one sentence about the next
+step: *cut the table again, uniformly by 20.9%, and if the second point holds within 1.5 points then `C1`
+stands.* Run `44482224999` is that point: `multi-session` 36,000, the other five 18,000, 500 questions,
+four repetitions, the same reader, the same judge, the same instructions.
+
+| point | rooms | prompt tokens / question | accuracy (all runs) | `MR` (majority of 4) |
+| --- | --- | ---: | ---: | ---: |
+| registered (`44017278305`) | 48,460 / 24,000 | 7,448 | **91.25%** | 101/121 = 83.47% |
+| this run (`44482224999`) | 36,000 / 18,000 | **5,559** | **89.40%** | 96/121 = 79.34% |
+
+Paired on the 500 questions (majority of four repetitions each): 438 both, **16 answered by the
+registered arm only, 5 by this one only**, 41 neither — **−11 questions, −2.2 points, exact McNemar
+p = 0.027**. On the mean-of-four basis the movement is −1.85 points. Both readings are above the 1.5-point
+tolerance the registration wrote before the dispatch, and the paired one is significant, so this is not
+noise being read as a small effect.
+
+**The rate, and it is not one rate.** The registered arm bills 7,448. The cut before this one
+(9,168 → 7,448) sold 1,720 tokens for **1.15 points** — 0.67 per thousand. This one sold 1,889 tokens for
+**1.85 points** — 0.98 per thousand. The second cut is **1.5× dearer per token than the first**, which is
+the one thing a two-point curve could not have said: each further thousand tokens costs more accuracy than
+the last, so the exchange rate worsens exactly where `C1` needs it to improve. Interpolating the *first*
+rate to 6,000 predicts 0.97 points and would have called this cut nearly free; the measured second rate puts
+6,000 at **≈1.9 points** against a 1.5-point tolerance, and the marginal rate at 6,000 is above 1.0. The
+target is not unreachable by a small margin; it is unreachable by this lever at any shape.
+
+**The shape is not a second lever.** `I7` ran the same questions with every route at 24,000: 5,861 tokens
+and 447 correct on its first repetition. This run delivers the same 500 questions for **302 fewer tokens
+(−5.2%)** and 444 correct on the same basis — a 3-question difference, 0.6 points, inside the 1.0-point
+spread of one run's four repetitions. Moving 12,000 characters from `flat`/`temporal`/`knowledge-update`/
+`abstention`/`assistant` to `multi-session` is worth nothing a reader can see, and it costs nothing either.
+`multi-session` alone moved **−4.13 points**, which is the only route whose accuracy tracks its room;
+`ABS` moved 0.00 on a room cut by 25%.
+
+**Why the shape cannot be a lever, and the witness that says so.** A room is not a ceiling a delivery
+approaches — it is what the delivery fills. Checked on both points, per route:
+
+| route | registered | this run |
+| --- | --- | --- |
+| `multi-session` | 48,457 / 48,460 | 35,998 / 36,000 |
+| `temporal` | 24,000 / 24,000 | 18,000 / 18,000 |
+| `flat` | 23,972 / 24,000 | 17,999 / 18,000 |
+| `knowledge-update` | 23,983 / 24,000 | 17,990 / 18,000 |
+| `abstention` | 23,954 / 24,000 | 17,998 / 18,000 |
+| `assistant` | 23,990 / 24,000 | 17,941 / 18,000 |
+
+Every route fills its room to within 0.3%, on both configurations. That table is now printed by
+`tools/readout-arm-run.py --audit` on every artifact, and it had to be repaired to print it: the audit's
+`budget` check read `maxPromptChars` — which is **absent** on any run that uses a `<route>:<chars>` map —
+so its ceiling fell back to `10**9` and the check could not fail. A run dispatched to halve a route's room
+that silently kept the global one would have printed `budget PASS against maxPromptChars None`. The check
+now resolves each question's ceiling from its own route (map, then scalar, then the 48,000 product
+default), compares `deliveredPromptChars` rather than the evidence length, and states the fill. Four tests
+hold it, including the one that would have caught this: a 40,000-character delivery under a 36,000 room
+with no scalar.
+
+**What this licenses, and what it forbids.** The width axis stays closed for cost: `C7`, the density
+family and this table are three attempts to make 6,000 tokens pay, and all three are now measured against
+their own criteria (`RETRACTIONS.md` §1 and §2). It forbids the sentence "a per-route table saves money
+without costing accuracy" from appearing in `USER-MANUAL.md` — the shape buys nothing and the total costs
+about a point per thousand tokens, and more than that below 7,448.
+
+What it does **not** close is the room as an **accuracy** input where accuracy is known to track it. `MR`
+moved −4.13 with its room and `ABS` moved 0.00, so the two capabilities are not the same instrument. `MR`'s
+curve is 24,000 → 76.9%, 36,000 → 79.3%, 48,460 → 83.5%, and a 55,000 redistribution bought **nothing**
+(§14.34): the curve is steep below the registered room and flat above it. The registered value therefore
+sits near a knee, and the next `MR` experiment is not a room — it is the reader or the evidence set, which
+is what `MEASURE-MR-CEILING.md` already said from a different artifact.

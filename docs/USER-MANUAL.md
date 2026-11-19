@@ -833,6 +833,7 @@ costs. Three points have been measured or registered on the same 500 questions, 
 | `multi-session` 48,460, the other five 24,000 | **91.25%** | **7,448** | **the registered arm** (`S16`, paired −1 question against `S9`, exact McNemar p = 1.0) |
 | `multi-session` 48,460, `temporal` 48,000, the other four 24,000 | 91.40% | 9,074 | `S9`, the table `S16` replaced |
 | 24,000 on all six | 89.40% | 5,861 | `S15`, paired −13 questions, exact McNemar p = 0.0024 |
+| `multi-session` 36,000, the other five 18,000 | 89.40% | **5,559** | `44482224999`, paired **−11 questions (p = 0.027)** against the registered arm |
 
 The first row and the second are the same instrument reading the same 500 questions, and the difference
 between them is **one entry of the room table**: `temporal` was holding 48,000 characters and delivered
@@ -847,9 +848,19 @@ questions (p = 0.012) while `temporal` lost 2 (p = 0.63), and the four routes no
 them across 252 questions. That is not noise with a story attached — it is what an aggregation question is.
 `How many festivals did I attend?` is a **count over turns**, so halving the packet truncates the count: the
 artifacts answer 3 against a gold of four. A temporal question needs its anchor and its neighbours and
-survives the cut, twice measured. If you are trading accuracy for money, cut `temporal` before you cut
+Survives the cut, twice measured. If you are trading accuracy for money, cut `temporal` before you cut
 `multi-session`, and read the per-route table in `docs/PROMPT-ROOM-IS-LOAD-BEARING.md` §7 before you cut
 either.
+
+**The last two rows are the same question asked twice, and they agree: the total is the lever, the shape is
+not.** Moving 12,000 characters off four routes and onto `multi-session` changes the bill by 5.2% and the
+score by 3 questions — inside the spread of a single run's four repetitions — so a per-route table is a way
+to *spend* your budget where it pays, not a way to spend less. What the total charges is now measured on two
+segments: the cut from 9,074 to 7,448 cost **1.15 points**, and the cut from 7,448 to 5,559 cost **1.85**.
+The second segment is 1.5× dearer per token, so the cost of another thousand tokens saved rises as the room
+shrinks — budget for roughly **one point per thousand tokens**, and more than that below 7,448. Every route
+delivers its room to within 0.3% (`tools/readout-arm-run.py --audit` prints the fill on every run), which is
+why there is no slack to recover from a room once it is set.
 
 The middle row is kept on this page because it is the table every number published before this release was
 taken under, and because it is 1,626 tokens per question of context that bought no question. It is not

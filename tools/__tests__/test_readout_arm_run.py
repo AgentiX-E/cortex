@@ -2638,6 +2638,54 @@ class TestTheArtefactAudit:
         assert r.returncode == 1
         assert 'budget' in r.stdout
 
+    def test_a_delivery_over_its_route_room_fails_without_a_scalar(self, tmp_path: Path) -> None:
+        # The defect this check was rebuilt for. A `<route>:<chars>` map leaves `maxPromptChars`
+        # absent, and the old ceiling was `config.get('maxPromptChars') or 10**9` -- so every run
+        # that used a map could not fail this check, whatever it delivered. `36,000` is the room
+        # the dispatch asked for; `40,000` characters is what this run actually handed the reader.
+        artifact = self._artifact()
+        artifact['memoryArmConfig'].pop('maxPromptChars')
+        artifact['memoryArmConfig']['maxPromptCharsByRoute'] = {'multi-session': 36_000}
+        for question in artifact['questions']:
+            question['route'] = 'multi-session'
+            question['promptChars'] = 39_600
+            question['deliveredPromptChars'] = 40_000
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert 'budget' in r.stdout
+        assert '36,000' in r.stdout or '36000' in r.stdout
+
+    def test_a_delivery_inside_its_route_room_passes_and_prints_the_fill(self, tmp_path: Path) -> None:
+        # The witness, not the criterion: a route that delivers 35,998 of 36,000 is telling a
+        # reader that the room *is* the bill, and that sentence is only available if the audit
+        # resolves the room per route rather than once for the run.
+        artifact = self._artifact()
+        artifact['memoryArmConfig'].pop('maxPromptChars')
+        artifact['memoryArmConfig']['maxPromptCharsByRoute'] = {'multi-session': 36_000}
+        for question in artifact['questions']:
+            question['route'] = 'multi-session'
+            question['promptChars'] = 35_600
+            question['deliveredPromptChars'] = 35_998
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'multi-session 35998/36000 = 100.0%' in r.stdout
+
+    def test_the_room_of_a_route_the_map_does_not_name_falls_back_to_the_product_default(
+        self, tmp_path: Path,
+    ) -> None:
+        # Three deep, because a route outside the map is not an error: §13.213 shipped 48,000 as
+        # the default, and a check that refused would refuse the arm's own shipped configuration.
+        artifact = self._artifact()
+        artifact['memoryArmConfig'].pop('maxPromptChars')
+        artifact['memoryArmConfig']['maxPromptCharsByRoute'] = {'multi-session': 36_000}
+        for question in artifact['questions']:
+            question['route'] = 'flat'
+            question['promptChars'] = 47_600
+            question['deliveredPromptChars'] = 47_999
+        r = self._audit(tmp_path, artifact)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert 'flat 47999/48000' in r.stdout
+
     def test_a_reach_that_names_a_route_the_run_did_not_render_fails(self, tmp_path: Path) -> None:
         artifact = self._artifact()
         artifact['memoryArmConfig']['askRoutes'] = ['multi-session', 'flat']
