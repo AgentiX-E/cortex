@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -128,6 +129,30 @@ SESSION_CLOCKS = ("off", "on")
 # says what the turn becomes. `raw` is the registered rendering every archived artifact was produced under.
 RESOLUTION_VARIABLE = "CORTEX_MEMORY_RESOLUTION"
 RESOLUTIONS = ("raw", "layered")
+
+# §13.312's judge pin, reachable from the only workflow that dispatches a **pair** of arms.
+#
+# `llm-factory.ts` has read `CORTEX_JUDGE_MODEL` since §13.312 and `judge-audit.yml` exposes it as an
+# input, but `benchmark-cortex-memory.yml` -- the arm that compares two readers -- could not set it.
+# `R1` is what that cost: the treatment swapped `reader.model` and the judge followed, so 80.99% is
+# `v4-pro` grading `v4-pro` against `deepseek-chat` grading `deepseek-chat`, and no regrade recovers
+# the majority-of-four basis the reading uses. The workflow now forwards the variable (§139.1); this
+# is the other end of the same wire.
+#
+# Written on **every** dispatch, empty included, for the reason the ten switches around it are: the
+# variable is global and outlives the run, so a pin left behind by the previous experiment would
+# grade the next one with a judge nobody chose -- and the artifact would say `source: "pinned"`,
+# which is true and answers a different question. An empty value deletes the variable (`write_variable`),
+# and `resolveJudgeIdentity` trims before it decides, so absence and the empty string are one state:
+# the reader grades, as every archived artifact records.
+JUDGE_VARIABLE = "CORTEX_JUDGE_MODEL"
+
+# The grammar of a pinned judge: `model` or `provider:model`, the same two spellings
+# `reader-provider.ts` accepts for a reader. Checked here rather than trusted, because this value
+# reaches a repository variable that the next dispatch inherits if this one crashes after writing it:
+# a trailing newline from a shell substitution is a model id no provider recognises, and the run it
+# grades would fail one call at a time rather than at the dispatch.
+JUDGE_PIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)?$")
 
 # The admission gate's two axes (`§13.101`'s unreachable pair): the threshold the value function is
 # cut at, and the signal that makes the value vary in the first place.
@@ -1017,6 +1042,42 @@ def resolution_switch(environ: dict[str, str] | None = None) -> str:
     )
 
 
+def judge_pin(environ: dict[str, str] | None = None) -> str:
+    """The judge this dispatch pins, or `''` when it should follow the reader.
+
+    Read from the dispatcher's environment for the reason the ten switches above are: this is not a
+    workflow input (the workflow sits one below GitHub's ceiling), so the process that chooses the
+    inputs is the only one that can say what the run graded.
+
+    `''` rather than a model name on absence, and the difference is the whole point: `''` deletes the
+    variable, which restores the state every archived artifact was produced in -- `judge.source:
+    "reader"`. A default here would pin every dispatch in the repository without anyone choosing it
+    and, worse, would record `source: "pinned"` for a run whose judge was never a decision
+    (`test_workflow_judge_pin.py::test_an_unset_variable_is_not_defaulted_to_a_model` holds the
+    workflow side of the same rule).
+
+    Unlike the other switches this value is not a closed vocabulary -- a judge is a model id, and a
+    provider's catalogue changes without this file changing. So the check is the *grammar* rather
+    than the membership: `model` or `provider:model`, no interior whitespace. The value is trimmed
+    before it is checked because the commonest way it arrives is a shell substitution (`$(...)`), and
+    a trailing newline from one is not a model id; interior whitespace is refused rather than
+    removed, because a pin is written to a repository variable that the **next** dispatch inherits,
+    and a judge no provider recognises fails one call at a time, hours in, rather than at the
+    dispatch.
+    """
+    raw = ((environ if environ is not None else os.environ).get(JUDGE_VARIABLE) or "").strip()
+    if raw == "":
+        return ""
+    if JUDGE_PIN.match(raw):
+        return raw
+    raise SystemExit(
+        f"{JUDGE_VARIABLE} must be a model id (`model` or `provider:model`) or unset: got {raw!r}. "
+        "A pin outside that grammar is refused rather than trimmed, because it is written to a "
+        "repository variable the next dispatch inherits and would grade that run with a judge no "
+        "provider recognises."
+    )
+
+
 def index_embedding_switch(environ: dict[str, str] | None = None) -> str:
     """The index channel this dispatch asks for: `injected` or `none`.
 
@@ -1393,6 +1454,12 @@ def main(argv: list[str] | None = None) -> int:
     # §14.133.2, on the same rule as the seven above: the artifact always carries `resolution`, so the
     # declaration is what tells the gate that a departure from `raw` is intended rather than left behind.
     resolution = resolution_switch()
+    # §139.1. Read before the declaration because the declaration is derived from it, and declared
+    # only when it says something: `judge.source: "reader"` is the registered value every archived
+    # artifact holds, so declaring `judge` on an unpinned dispatch would be the "names a field this
+    # run did not move" case the gate reports as an intention. Declared, it is the one sentence that
+    # makes a two-reader comparison readable: the arm whose reader moved says which judge held still.
+    judge = judge_pin()
     declared = sorted(
         {
             *declared,
@@ -1414,6 +1481,11 @@ def main(argv: list[str] | None = None) -> int:
             *(("lexicalWeighting",) if lexical_weighting != "flat" else ()),
             *(("sessionClock",) if session_clock != "off" else ()),
             *(("resolution",) if resolution != "raw" else ()),
+            # §139.1. The same rule a ninth time, and this one is the gate's only way to tell a
+            # reader swap from a judge swap: `memoryArmConfig.judge.source` is on every artifact
+            # (`'reader'` or `'pinned'`), so a run that pinned a judge and declared nothing would be
+            # filed as the arm that follows its reader -- which is exactly the confound `R1` died of.
+            *(("judge",) if judge else ()),
         }
     )
     declare_departures(declared)
@@ -1472,6 +1544,17 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"{CONFIDENCE_SIGNAL_VARIABLE} = {confidence}"
         f"{' *' if confidence != 'none' else ''}"
+    )
+    # Written last of the variables because it is the one a **previous** dispatch is most likely to
+    # have left behind: a pin outlives the run, and the arm reads it when the job starts. The reset is
+    # the default path (`''` deletes the variable), so a dispatch that says nothing about the judge
+    # restores the reader-follows rule rather than inheriting yesterday's treatment -- and the artifact
+    # says so, because `resolveJudgeIdentity` records the source it took rather than the variable it read.
+    write_variable(JUDGE_VARIABLE, judge)
+    print(
+        f"{JUDGE_VARIABLE} = "
+        f"{judge if judge else '<unset: the reader grades, as every archived artifact records>'}"
+        f"{' *' if judge else ''}"
     )
 
     req(

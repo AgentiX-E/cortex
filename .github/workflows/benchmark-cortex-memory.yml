@@ -260,6 +260,13 @@ env:
   # interpolates to `''`, and `resolveJudgeIdentity` trims before it decides (`pinned === ''` reads as
   # "nobody pinned one"), so a repository that never sets this renders exactly the bytes it always
   # rendered -- `source: "reader"` -- and pinning it afterwards is one variable rather than a dispatch.
+  #
+  # §139.1: the variable has one writer, and it is the dispatcher. A repository variable is global and
+  # outlives the run, so forwarding it without an owner leaves two ways for a pair of arms to be
+  # graded by a judge nobody chose -- a pin inherited by the next dispatch, and a `pinned` artifact
+  # whose departure from the registration went undeclared. `tools/dispatch-cortex-memory-ab.py` writes
+  # it on every dispatch (`''` deletes it) and declares `judge` when it names one; the two tests in
+  # `tools/__tests__/test_workflow_judge_pin.py` hold the ends of that wire to each other.
   CORTEX_JUDGE_MODEL: ${{ vars.CORTEX_JUDGE_MODEL }}
 
 jobs:

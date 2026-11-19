@@ -4744,6 +4744,17 @@ REGISTERED_CONDITIONS: dict[str, tuple[str, object]] = {
     # input while every number below the line was taken from a different prompt. `raw` is what
     # `resolution_switch` reads from an absent variable and what `toMemoryArmConfig` projects.
     'resolution': ('resolution', 'raw'),
+    # §139.1. Which judge graded the run is the ninth condition, and the only one whose registered
+    # value is a *rule* rather than a setting: `reader` means the judge followed the arm, which is what
+    # every archived artifact was graded under and what `resolveJudgeIdentity` records when nothing
+    # pinned one. `pinned` is therefore always a departure, which is the property that makes a reader
+    # comparison readable -- `R1` swapped `reader.model` and the judge moved with it, so its −3 net was
+    # two changes in one comparison and no regrade could recover the majority-of-four basis.
+    #
+    # Absence reads as the registered value for the same dated reason as the eight above:
+    # `run-ablation.ts` has written `memoryArmConfig.judge` since §13.312, so an artifact without the
+    # block predates the field and was graded by its reader.
+    'judge': ('judge.source', 'reader'),
 }
 
 ABSENT = '<-absent->'
