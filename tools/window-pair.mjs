@@ -70,12 +70,16 @@ const READER_FLOOR = 0.05;
 const USAGE = `window-pair — the delivered diff between a control artifact and a treatment artifact
 
 usage:
-  node tools/window-pair.mjs --control <report.json> --treated <report.json> [--wired <json>] [--json]
+  node tools/window-pair.mjs --control <report.json> --treated <report.json> [--wired <json>] [--subset]
+                             [--json]
 
   --control  the registered control artifact for this arm
   --treated  the run whose delivery is being read
   --wired    optional: the JSON summary from window-wired --json, to cross-check the moved set and to read
              criteria 4 and 5, whose populations are the questions that tool identifies
+  --subset   read the two artifacts over the questions they share, and print what that cost. Without it a
+             roster mismatch is refused; with it the reading is over the intersection and every count below
+             is scoped to it -- a shard against a full pass, a screening against the registered population
 
 prints, per capability and in total: questions, multiset changes, order changes, untouched flips, the
 prompt identity (digest-equal / digest-differs / unmeasured, with the count of pairs whose prompts changed
@@ -97,11 +101,15 @@ function readJson(path, label) {
 }
 
 function parseArgs(argv) {
-  const options = { json: false };
+  const options = { json: false, subset: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--json') {
       options.json = true;
+      continue;
+    }
+    if (arg === '--subset') {
+      options.subset = true;
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -134,20 +142,35 @@ function delivered(record) {
  * An inner join is refused by name rather than performed: the difference between "this question did not
  * move" and "this question is not in that artifact" is the difference between a denominator of 500 and one
  * of 495, and the second number is printed nowhere.
+ *
+ * `subset` is that refusal made explicit rather than a silent default. Two dispatches can grade different
+ * denominators on purpose -- a shard against a full pass, a 200-question screening against the registered
+ * 500 -- and the pair is the only way to read either. What must not happen is the intersection being
+ * computed by accident, so the caller asks for it and the counts it cost come back with it.
  */
-function join(control, treated) {
+function join(control, treated, subset) {
   const left = new Map(control.map((record) => [record.questionId, record]));
   const right = new Map(treated.map((record) => [record.questionId, record]));
   const missingRight = [...left.keys()].filter((id) => !right.has(id)).sort();
   const missingLeft = [...right.keys()].filter((id) => !left.has(id)).sort();
-  if (missingRight.length > 0 || missingLeft.length > 0) {
+  const roster = {
+    control: left.size,
+    treated: right.size,
+    droppedFromControl: missingRight,
+    droppedFromTreated: missingLeft,
+  };
+  if (!subset && (missingRight.length > 0 || missingLeft.length > 0)) {
     fail(
       `the artifacts do not hold the same questions.\n  in the control only: ${missingRight.slice(0, 10).join(', ') || '-'}\n  in the treated only: ${missingLeft.slice(0, 10).join(', ') || '-'}`,
     );
   }
-  return [...left.keys()]
-    .sort()
-    .map((id) => ({ id, control: left.get(id), treated: right.get(id) }));
+  if (subset && missingRight.length === left.size && missingLeft.length === right.size) {
+    // Named rather than returned as an empty page: zero shared questions is two artifacts that never
+    // measured the same population, and a table of zeroes reads like a pair whose deliveries did not move.
+    fail('no question appears in both artifacts, so there is no shared population to read');
+  }
+  const shared = [...left.keys()].filter((id) => right.has(id)).sort();
+  return { roster, rows: shared.map((id) => ({ id, control: left.get(id), treated: right.get(id) })) };
 }
 
 /**
@@ -237,6 +260,94 @@ function tally(rows) {
   );
 }
 
+/**
+ * The median of a list of numbers, and the mean of the two middle values when the count is even.
+ *
+ * Written out rather than imported because this file has no dependencies by design (`--control` is read
+ * from a captured artifact on a machine that may hold nothing else), and because the definition has to be
+ * one line a reader can check against the criterion that quotes it.
+ */
+function median(values) {
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/** A signed percentage, or `n/a` when the denominator is zero -- never a silent `0.0%`. */
+function delta(control, treated) {
+  if (control === undefined || treated === undefined) return 'n/a';
+  if (control === 0) return treated === 0 ? '0.0%' : 'n/a';
+  const share = (100 * (treated - control)) / control;
+  return `${share >= 0 ? '+' : ''}${share.toFixed(1)}%`;
+}
+
+/**
+ * The density reading: how many turns the same characters carried, per capability and in total.
+ *
+ * ## Why this is here rather than in the arm that registered it
+ *
+ * `PREREGISTRATION-RESOLUTION-LAYERING.md`'s `F3` is a claim about two medians -- the delivered turn count
+ * and the prompt's characters -- and both are in every artifact this tool already opens. The criterion was
+ * read by hand on a scratch script for a round, which is the failure mode this file exists to end: a gate
+ * nobody else can re-run is a gate whose number is taken on trust.
+ *
+ * ## Why the medians are printed rather than the ratio of medians
+ *
+ * `F3` says "the median rises by 20% while the median character count moves within 2%", so the two medians
+ * and their own deltas are the reading. A single "turns per 1k characters" figure is a different statistic:
+ * it averages over question lengths, and the questions are not the same length.
+ *
+ * The per-question up/down/flat count is printed beside it because a median can rise while a third of the
+ * roster falls -- and for a mechanism that rewrites a turn, that is a reading about which questions moved,
+ * not about the middle of a distribution.
+ */
+function density(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    // Resolved the way `compare` resolves it -- the treated side first, because a route that did not exist in
+    // the control is still a route the treatment took -- so the density table and the prompt table above it
+    // cannot partition the same roster two ways.
+    const capability = row.treated.capability ?? row.control.capability ?? 'unknown';
+    const entry = groups.get(capability) ?? { capability, turns: [], chars: [], up: 0, down: 0, flat: 0 };
+    entry.turns.push([(row.control.turns ?? []).length, (row.treated.turns ?? []).length]);
+    entry.chars.push([row.control.promptChars, row.treated.promptChars]);
+    const change = (row.treated.turns ?? []).length - (row.control.turns ?? []).length;
+    if (change > 0) entry.up += 1;
+    else if (change < 0) entry.down += 1;
+    else entry.flat += 1;
+    groups.set(capability, entry);
+  }
+  // A total row over the whole roster, because the per-capability rows answer "did the route the mechanism
+  // was scoped to move" and the registered criterion is read on one route at a time -- but a reader who wants
+  // the population's answer should not have to take a median of medians, which is what the previous line did
+  // and which is not the roster's median.
+  groups.set('total', rows.reduce((entry, row) => {
+    const capability = 'total';
+    const target = entry ?? { capability, turns: [], chars: [], up: 0, down: 0, flat: 0 };
+    target.turns.push([(row.control.turns ?? []).length, (row.treated.turns ?? []).length]);
+    target.chars.push([row.control.promptChars, row.treated.promptChars]);
+    const change = (row.treated.turns ?? []).length - (row.control.turns ?? []).length;
+    if (change > 0) target.up += 1;
+    else if (change < 0) target.down += 1;
+    else target.flat += 1;
+    return target;
+  }, undefined));
+  return [...groups.values()]
+    .sort((left, right) => (left.capability < right.capability ? -1 : left.capability > right.capability ? 1 : 0))
+    .map((entry) => ({
+      capability: entry.capability,
+      questions: entry.turns.length,
+      turnsControl: median(entry.turns.map((pair) => pair[0])),
+      turnsTreated: median(entry.turns.map((pair) => pair[1])),
+      charsControl: median(entry.chars.map((pair) => pair[0])),
+      charsTreated: median(entry.chars.map((pair) => pair[1])),
+      up: entry.up,
+      down: entry.down,
+      flat: entry.flat,
+    }));
+}
+
 function pct(part, whole) {
   return whole === 0 ? '0.0%' : `${((100 * part) / whole).toFixed(1)}%`;
 }
@@ -247,7 +358,18 @@ function main() {
   const treated = readJson(options.treated, 'treated');
   const wires = options.wired === undefined ? undefined : readJson(options.wired, 'wired');
 
-  const rows = join(control.questions ?? [], treated.questions ?? []).map(compare);
+  const { roster, rows: joined } = join(
+    control.questions ?? [],
+    treated.questions ?? [],
+    options.subset === true,
+  );
+  const rows = joined.map(compare);
+  // What the intersection cost, in the words a reader has to quote. Said before every number below it,
+  // because each of those numbers has this roster as its denominator and one of them will be quoted alone.
+  const subsetLine =
+    options.subset === true
+      ? `questions: ${joined.length} (${roster.droppedFromControl.length} of the control's ${roster.control} dropped, ${roster.droppedFromTreated.length} of the treated's ${roster.treated})`
+      : undefined;
   const totals = tally(rows);
   const multisetChanged = rows.filter((row) => row.multisetChanged);
   const orderChanged = rows.filter((row) => row.orderChanged);
@@ -332,6 +454,8 @@ function main() {
     wiredCross = { wiredOnly, pairOnly };
   }
 
+  const densities = density(joined);
+
   const verdicts = Object.entries(comparisons).sort(
     (left, right) => Number(left[0]) - Number(right[0]),
   );
@@ -344,6 +468,9 @@ function main() {
           control: options.control,
           treated: options.treated,
           questions: rows.length,
+          // Present only for a subset read: the roster and what it dropped are part of the reading, and a
+          // JSON consumer that only sees `questions: 200` would have no way to know the control held 500.
+          ...(subsetLine === undefined ? {} : { roster }),
           multisetChanged: multisetChanged.map((row) => row.id),
           orderChanged: orderChanged.map((row) => row.id),
           untouchedFlips: untouchedFlips.map((row) => row.id),
@@ -354,6 +481,7 @@ function main() {
             lengthIsNotIdentity: lengthBlind.map((row) => row.id),
           },
           byCapability: totals,
+          density: densities,
           comparisons,
           wiredCross,
           comparable,
@@ -369,6 +497,7 @@ function main() {
     'the delivered pair, read question by question',
     `control: ${options.control}`,
     `treated: ${options.treated}`,
+    ...(subsetLine === undefined ? [] : [subsetLine]),
     '',
     `${'capability'.padEnd(11)}${'questions'.padStart(10)}${'multiset'.padStart(10)}${'order'.padStart(8)}${'flips'.padStart(8)}`,
   ];
@@ -388,6 +517,21 @@ function main() {
   for (const entry of totals) {
     lines.push(
       `  ${entry.capability.padEnd(9)}${String(entry.promptEqual).padStart(6)}/${String(entry.questions).padEnd(6)} digest-equal`,
+    );
+  }
+  lines.push('', 'density (turns and prompt characters, median per capability)');
+  lines.push(
+    `${'capability'.padEnd(11)}${'turns (median)'.padStart(28)}${'chars (median)'.padStart(34)}${'up/down/flat'.padStart(14)}`,
+  );
+  for (const entry of densities) {
+    // The two percentages sit inside each cell: the criterion is "the median rises by 20% while the median
+    // character count moves within 2%", so a reader should be able to hold the threshold against the number
+    // without doing the division.
+    lines.push(
+      `${entry.capability.padEnd(11)}` +
+        `${`${entry.turnsControl} -> ${entry.turnsTreated} (${delta(entry.turnsControl, entry.turnsTreated)})`.padStart(28)}` +
+        `${`${entry.charsControl} -> ${entry.charsTreated} (${delta(entry.charsControl, entry.charsTreated)})`.padStart(34)}` +
+        `${`${entry.up}/${entry.down}/${entry.flat}`.padStart(14)}`,
     );
   }
   if (lengthBlind.length > 0) {

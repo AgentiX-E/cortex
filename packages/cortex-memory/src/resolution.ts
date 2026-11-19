@@ -54,6 +54,28 @@
  * with the question **gain** half a cap. It is a reallocation, not a compression, and the average is what
  * moves (`eventsFitted` is the evidence: turns delivered for the same room).
  *
+ * ## Measured, and closed at the width this was written for
+ *
+ * The reallocation only pays where widening is rarer than compression, and at `maxTurnChars = 400` on
+ * LongMemEval it pays on one route out of two. Read over the pair `44317789307` (control) and `44468090152`
+ * (treated), 200 shared questions, `tools/window-pair.mjs --subset`:
+ *
+ * ```
+ * MR   193 -> 206 (+6.7%)   45855 -> 45812 (-0.1%)   29/0/0
+ * TR   96.5 -> 92 (-4.7%)   23152.5 -> 23205 (+0.2%)  5/23/0
+ * ```
+ *
+ * `multi-session` gains 6.7% more turns at the same characters and every one of its 29 questions moves the
+ * same way -- the mechanism works. `temporal` **loses** 4.7%: on that route the turns that share a question
+ * term outnumber the ones that do not, so widening at 1.5x cap spends budget that compression never
+ * returns. `F3` of `PREREGISTRATION-RESOLUTION-LAYERING.md` asked for +20% on `MR` and closed the family at
+ * +6.7%, which is why `raw` remains the default and why this paragraph exists: the next reader should not
+ * re-dispatch a form whose measured law is written down here.
+ *
+ * The consequence for the design, not just for the number: a 1.5x ceiling on a route whose question terms
+ * appear in most of its turns is a width *increase* wearing a layering label, which is the same confound
+ * this section rejected one paragraph above, arriving from the other side.
+ *
  * ## Every cut is marked, including `record`'s
  *
  * `excerptAround` already marks its elisions, which is why the window and the mark are one decision in

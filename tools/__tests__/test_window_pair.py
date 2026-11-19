@@ -272,3 +272,125 @@ def test_an_absent_digest_is_unmeasured_and_never_counts_as_equal(tmp_path: Path
     assert completed.returncode == 0, completed.stderr
     assert "prompt identity: 0 digest-equal, 0 digest-differs, 1 unmeasured" in completed.stdout
     assert "length is not identity" not in completed.stdout
+
+
+def run_subset(
+    tmp_path: Path,
+    control: dict,
+    treated: dict,
+) -> subprocess.CompletedProcess:
+    """The same invocation with `--subset`, which is the only difference the tests below make."""
+    (tmp_path / "control.json").write_text(json.dumps(control), encoding="utf-8")
+    (tmp_path / "treated.json").write_text(json.dumps(treated), encoding="utf-8")
+    return subprocess.run(
+        [
+            "node",
+            str(TOOL),
+            "--control",
+            str(tmp_path / "control.json"),
+            "--treated",
+            str(tmp_path / "treated.json"),
+            "--subset",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+
+
+def test_a_subset_read_names_what_it_dropped_and_scopes_every_count_to_the_intersection(
+    tmp_path: Path,
+) -> None:
+    """A 500-question control read against a 200-question treatment is a real pair with a real caveat.
+
+    The refusal without `--subset` is not pedantry: a silent inner join turns "this question did not move"
+    and "this question is not in that artifact" into the same row. But the pair is also the only way to read
+    two dispatches that graded different denominators -- a shard against a full pass, a screening against the
+    registered population -- so the tool has to be able to say *over which questions*, out loud, and print the
+    dropped counts rather than absorb them.
+    """
+    control = report([record(f"q{index}") for index in range(5)])
+    treated = report([record(f"q{index}") for index in range(3)])
+    completed = run_subset(tmp_path, control, treated)
+    assert completed.returncode == 0, completed.stderr
+    assert "questions: 3 (2 of the control's 5 dropped, 0 of the treated's 3)" in completed.stdout, (
+        completed.stdout
+    )
+    # Every denominator on the page is the intersection, which is the sentence a reader has to be able to
+    # quote instead of the 500 or the 200. Asserted on a criterion's denominator rather than on the table's
+    # column alignment: the number that matters is the one a criterion is read over.
+    assert "untouched flips: 0 of 3" in completed.stdout, completed.stdout
+    assert "criterion 2: met" in completed.stdout, completed.stdout
+
+
+def test_the_same_pair_without_the_flag_is_still_refused(tmp_path: Path) -> None:
+    """`--subset` is a decision a caller makes, not a fallback the tool takes."""
+    control = report([record("q1"), record("q2")])
+    treated = report([record("q1")])
+    completed = run(tmp_path, control, treated)
+    assert completed.returncode == 2
+    assert "the artifacts do not hold the same questions" in completed.stderr
+
+
+def test_an_empty_intersection_is_refused_rather_than_read_as_an_empty_result(tmp_path: Path) -> None:
+    """Zero shared questions is not a pair with no changes; it is two artifacts that measured nothing together."""
+    control = report([record("q1")])
+    treated = report([record("q2")])
+    completed = run_subset(tmp_path, control, treated)
+    assert completed.returncode == 2
+    assert "no question appears in both artifacts" in completed.stderr
+
+
+def test_an_identical_pair_read_as_a_subset_is_the_same_reading(tmp_path: Path) -> None:
+    """The flag must not change any number when nothing is dropped, or a subset read is not comparable."""
+    body = report([record("q1"), record("q2", capability="MR")])
+    full = run(tmp_path, body, body)
+    subset = run_subset(tmp_path, body, body)
+    assert full.returncode == subset.returncode == 0
+    assert "order changes: 0" in subset.stdout
+    assert "0 of the control's 2 dropped" in subset.stdout
+
+
+def test_density_reads_the_two_medians_the_density_criterion_is_written_about(tmp_path: Path) -> None:
+    """`F3` is "the median turn count rises while the median character count does not", and both are here.
+
+    Reported as two medians with their own deltas rather than as one turns-per-character figure, because a
+    ratio of medians is not the median of ratios and the criterion was registered on the medians.
+    """
+    control = report(
+        [
+            record("m1", capability="MR", prompt_chars=1000, turns=["a", "b"]),
+            record("m2", capability="MR", prompt_chars=1000, turns=["a", "b"]),
+            record("m3", capability="MR", prompt_chars=1000, turns=["a", "b"]),
+        ]
+    )
+    treated = report(
+        [
+            record("m1", capability="MR", prompt_chars=1000, turns=["a", "b", "c"]),
+            record("m2", capability="MR", prompt_chars=1000, turns=["a", "b", "c"]),
+            record("m3", capability="MR", prompt_chars=1000, turns=["a", "b", "c"]),
+        ]
+    )
+    completed = run(tmp_path, control, treated)
+    assert completed.returncode in (0, 1), completed.stderr
+    assert "density (turns and prompt characters, median per capability)" in completed.stdout
+    assert "2 -> 3" in completed.stdout
+    assert "3/0/0" in completed.stdout
+    assert "1000 -> 1000" in completed.stdout
+
+
+def test_a_mechanism_that_shortens_a_route_is_reported_as_a_loss_not_a_null(tmp_path: Path) -> None:
+    """Fewer turns in the same characters is a density regression, and the tool has to be able to say it.
+
+    This is the reading that closed the resolution-layering family: the temporal route lost turns, and a tool
+    that only compared prompts would have reported the pair as a change with no direction.
+    """
+    control = report(
+        [record("t1", capability="TR", prompt_chars=500, turns=["a", "b", "c", "d"])]
+    )
+    treated = report([record("t1", capability="TR", prompt_chars=500, turns=["a", "b", "c"])])
+    completed = run(tmp_path, control, treated)
+    assert "4 -> 3" in completed.stdout, completed.stdout
+    assert "0/1/0" in completed.stdout, completed.stdout
