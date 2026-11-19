@@ -11,7 +11,12 @@ import type { AdmittedSession } from './sessionize.js';
 import { ABSTAIN_TOKEN } from './parse.js';
 import { classifyQuestionShape, type QuestionShape } from './question-shape.js';
 import { ELISION, excerptAround, truncateCodePointSafe, type TurnWindow } from './excerpt.js';
-import { DATELINE, resolveCappedTurn, type ResolutionMode } from './resolution.js';
+import {
+  DATELINE,
+  resolveCappedTurn,
+  type EvidenceForm,
+  type ResolutionMode,
+} from './resolution.js';
 import { renderSupersededInline, type SupersededMarks } from './superseded.js';
 
 // Re-exported rather than defined here: the per-turn window rule needs the same surrogate-safe slice, and
@@ -2341,10 +2346,53 @@ export type TurnWindowCensus = {
   readonly cut: number;
   readonly marked: number;
   readonly whole: number;
+  /**
+   * Which form each delivered turn took, and what each form cost the room.
+   *
+   * Absent when no form decided anything -- an uncapped prompt, and a prompt under the head cut, where the
+   * cap decides a length rather than choosing between renderings. `{ raw: 0, excerpt: 0, record: 0 }` beside
+   * either of those would read as "the forms chose nothing", which is a different and false statement, so
+   * the absence is the reading. Under `layered` the three counts sum to `cut + whole` -- one form per
+   * delivered turn -- except where a collapsed turn is charged as a cut without a form having chosen it.
+   *
+   * Published because `DESIGN-C7-RESOLUTION-LAYERING.md` §6 makes it a precondition of reading `F3`:
+   * density is a claim about how many events the same room carried, and the per-form split is the only
+   * record of what the mechanism did to reach it. `eventsFitted` is the other half and already existed
+   * (`roleCensus.total`).
+   */
+  readonly forms?: EvidenceForms | undefined;
+};
+
+/** One form's contribution to the delivered window. */
+type EvidenceFormCensus = {
+  /** Turns rendered by this form. */
+  readonly turns: number;
+  /** What those turn renderings cost the room, in UTF-16 units -- the same unit `evidenceChars` counts. */
+  readonly chars: number;
+};
+
+/** The three forms' contributions, keyed by form. */
+type EvidenceForms = {
+  readonly raw: EvidenceFormCensus;
+  readonly excerpt: EvidenceFormCensus;
+  readonly record: EvidenceFormCensus;
 };
 
 /** The mutable accumulator `contentFor` writes into, and the reason it is not the published type. */
-type TurnWindowTally = { cut: number; marked: number; whole: number };
+type TurnWindowTally = {
+  cut: number;
+  marked: number;
+  whole: number;
+  /**
+   * `undefined` until a form charges a turn.
+   *
+   * Not a zeroed record, because the field's presence *is* the statement "a form chose something", and a
+   * zeroed record would have to be stripped again at publication to keep that statement true.
+   */
+  forms?: { raw: MutableForm; excerpt: MutableForm; record: MutableForm } | undefined;
+};
+
+type MutableForm = { turns: number; chars: number };
 
 /**
  * Charge one rendered turn to the tally, and hand the text back unchanged.
@@ -2353,14 +2401,37 @@ type TurnWindowTally = { cut: number; marked: number; whole: number };
  * cap whether it *would* cut: the window can land on a span that happens to be the whole turn, and the head
  * cut of a turn exactly at the cap emits every character. A tally derived from the configured width would
  * report those as cuts, which is the same class of error as the parse this replaces.
+ *
+ * ## Why the form is an argument rather than a second function
+ *
+ * Because a caller that charged a form and returned text without charging the turn -- or the reverse --
+ * would publish a split that does not sum to the delivered count, and the two statements are about the same
+ * event. One call makes "this turn was delivered, by this form, for these characters" atomic. The form is
+ * `undefined` where no form chose the rendering: the head cut, the window, and the superseded collapse.
  */
 function chargeTurn(
   tally: TurnWindowTally | undefined,
   turn: AdmittedTurn,
   text: string,
   marked: boolean,
+  form?: EvidenceForm,
 ): string {
   if (tally === undefined) return text;
+  if (form !== undefined) {
+    // Created on the first charge rather than up front, so the field's presence means "a form chose
+    // something" without a second decision at publication time.
+    const forms = (tally.forms ??= {
+      raw: { turns: 0, chars: 0 },
+      excerpt: { turns: 0, chars: 0 },
+      record: { turns: 0, chars: 0 },
+    });
+    const slot = forms[form];
+    slot.turns += 1;
+    // The delivered length, not the plan's ceiling: the two differ for a record that fit under its ceiling
+    // and for an excerpt whose window ended at the text's own end, and the census reports what the reader
+    // pays rather than what the form was allowed to spend.
+    slot.chars += text.length;
+  }
   if (text === turn.content) {
     tally.whole += 1;
     return text;
@@ -2368,6 +2439,54 @@ function chargeTurn(
   tally.cut += 1;
   if (marked) tally.marked += 1;
   return text;
+}
+
+/**
+ * A rendered set's census, and the two ways the builders update it.
+ *
+ * ## Why this is a value rather than three lines in each builder
+ *
+ * The reset has to happen in exactly one place per rendering, and there are three builders that publish a
+ * census (`buildPrompt` and the two session ones). Written out, that is three copies of "zero the counters,
+ * discard the forms" -- and the fourth builder added later would inherit whichever copy its author read.
+ * The budget path makes the same point from the other side: `fitToBudget` re-renders its final set through
+ * `recount` because the length probes above it render *candidate* sets, so a census that meant "what the
+ * last render touched" would publish a rendering that was never delivered.
+ *
+ * `render` charges; `recount` charges and throws the text away. The second exists because the delivered
+ * evidence on the clipped path is the clip's own string rather than a render of the final set, and a census
+ * derived from the clip would have to re-derive form boundaries from text -- the parse `TurnWindowCensus`
+ * was introduced to delete.
+ */
+function turnCensus(
+  renderInto: (picked: readonly AdmittedTurn[], tally: TurnWindowTally | undefined) => string,
+): {
+  readonly tally: TurnWindowTally;
+  readonly render: (picked: readonly AdmittedTurn[]) => string;
+  readonly recount: (picked: readonly AdmittedTurn[]) => void;
+} {
+  const tally: TurnWindowTally = { cut: 0, marked: 0, whole: 0 };
+  const reset = (): void => {
+    tally.cut = 0;
+    tally.marked = 0;
+    tally.whole = 0;
+    // Discarded rather than zeroed, for the reason it is created lazily: the field's presence is a
+    // statement, and a re-render that kept an empty record would attach that statement to a prompt no form
+    // chose -- or, worse, add this rendering's turns to the previous one's.
+    tally.forms = undefined;
+  };
+  return {
+    tally,
+    render: (picked) => {
+      reset();
+      return renderInto(picked, tally);
+    },
+    // The text is discarded, so the call is a statement about the census rather than about a prompt.
+    recount: (picked) => {
+      reset();
+      void renderInto(picked, tally);
+    },
+  };
 }
 
 /**
@@ -2427,7 +2546,10 @@ function cappedContent(turn: AdmittedTurn, cap: TurnCap, tally?: TurnWindowTally
   // cannot disagree about how many characters a turn costs.
   if (cap.resolution === 'layered' && cap.focusQuery !== undefined) {
     const plan = resolveCappedTurn(cap.focusQuery, turn.content, max);
-    return chargeTurn(tally, turn, plan.text, plan.elided);
+    // The plan's own `form`, not one inferred from `elided`: a long turn can render as an `excerpt` whose
+    // window happens to reach both ends of the text, and a split derived from "did the bytes change" would
+    // file that turn as `raw` -- the form whose ceiling does not apply to it.
+    return chargeTurn(tally, turn, plan.text, plan.elided, plan.form);
   }
   if (cap.turnWindow === 'match' && cap.focusQuery !== undefined) {
     // The dateline is not the window's to spend. On the two capped routes a turn's content arrives with
@@ -3090,15 +3212,12 @@ export function buildPrompt(
   // final set after the ordering permutation (§13.153), so a tally that accumulated across calls would
   // count the same turns twice and report a `cut` larger than the number of turns delivered. Resetting
   // here rather than at the call sites keeps the two renderers and the budget path on one rule.
-  const tally: TurnWindowTally = { cut: 0, marked: 0, whole: 0 };
-  const render = (picked: readonly AdmittedTurn[]): string => {
-    tally.cut = 0;
-    tally.marked = 0;
-    tally.whole = 0;
-    return options.rendering === 'sourced'
-      ? formatEvidenceWithSources(picked, cap, tally)
-      : formatEvidence(picked, cap, tally);
-  };
+  const census = turnCensus((picked, into) =>
+    options.rendering === 'sourced'
+      ? formatEvidenceWithSources(picked, cap, into)
+      : formatEvidence(picked, cap, into),
+  );
+  const render = census.render;
 
   // The ordering is applied to the **carried** set, and this is the only place it can be applied without
   // becoming a second variable. Before the budget, a promotion changes which turns survive the cut --
@@ -3146,7 +3265,7 @@ export function buildPrompt(
       prompt,
       evidenceChars: evidence.length,
       carried: ordered,
-      ...(ordered.length === 0 ? {} : { turnWindow: { ...tally } }),
+      ...(ordered.length === 0 ? {} : { turnWindow: { ...census.tally } }),
     };
   }
 
@@ -3161,7 +3280,8 @@ export function buildPrompt(
       // function of the mechanism, which is the one thing this increment may not be.
       turns,
       render,
-      tally,
+      tally: census.tally,
+      recount: census.recount,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
       ...(ordering === undefined ? {} : { ordering }),
     },
@@ -3193,6 +3313,24 @@ type EvidencePlan = {
    * make the budget path report the count of a rendering it did not deliver.
    */
   readonly tally?: TurnWindowTally;
+  /**
+   * Charge `picked` to {@link tally} without using the text, for the set the budget actually delivers.
+   *
+   * ## Why the budget path cannot simply trust `tally` as it stands
+   *
+   * Because everything above `fitToBudget` renders **candidate** sets: `wholeTurnsIn` binary-searches for
+   * the longest rendered prefix that fits, and `selectSessionBudget` renders the set again after each
+   * admitted session. Both go through `render`, which resets the counters, so the census left behind
+   * describes whichever candidate happened to be measured last. Run `resolution-forms.test.ts` caught it on
+   * a flat prompt as `cut 11` beside `carried 10`: a delivered window of ten turns, reported as eleven --
+   * and the delivered evidence there is the clip's own string, so there is no render of the final set to
+   * inherit a correct count from.
+   *
+   * Re-rendering is the only honest repair. Deriving the census from the clip's characters would re-derive
+   * form boundaries from text, which is the parse `TurnWindowCensus` exists to delete; and leaving the count
+   * as the probe left it publishes a rendering no model read, which is worse than not publishing at all.
+   */
+  readonly recount?: (picked: readonly AdmittedTurn[]) => void;
   /**
    * Rides with the question, and is therefore allocated after it.
    *
@@ -3417,6 +3555,10 @@ function fitToBudget(
       ...(noteText.length === 0 ? [] : [noteText]),
       ...(updatesBlock.length === 0 ? [] : [updatesBlock]),
     ];
+
+    // Last, and after the evidence text is final: the re-render below must not change a byte of the
+    // prompt, only the census that describes it. `undefined` when the builder publishes no census.
+    plan.recount?.(ordered);
 
     return {
       prompt: assembleSections([...sections, questionLine], instruction, assembly),
@@ -4045,8 +4187,16 @@ export function buildSessionPrompt(
 
   // A closure over these sessions rather than a pre-rendered string, so the
   // selection cannot end up sizing one list while the text holds another.
-  const render = (picked: readonly AdmittedTurn[]): string =>
-    sessions.length === 0 ? NO_EVIDENCE : renderSessionBlocks(sessions, picked, options, question);
+  //
+  // The census rides in with the rendering: before this, the two session routes published no `turnWindow`
+  // at all, so the routes the layered rendering exists for reported no `cut`, no `marked` and no `P1`
+  // -- and `F3` is read on exactly these routes.
+  const census = turnCensus((picked, into) =>
+    sessions.length === 0
+      ? NO_EVIDENCE
+      : renderSessionBlocks(sessions, picked, options, question, into),
+  );
+  const render = census.render;
 
   const body = render(flat);
 
@@ -4099,7 +4249,14 @@ export function buildSessionPrompt(
     // session list reports zero carried characters. That path cannot reach the
     // model anyway -- an empty admission declines before any prompt is built, per
     // `retrieved-context.test.ts` -- but the number should not depend on that.
-    return { prompt: full, evidenceChars: sessions.length === 0 ? 0 : body.length, carried: flat };
+    return {
+      prompt: full,
+      evidenceChars: sessions.length === 0 ? 0 : body.length,
+      carried: flat,
+      // Published on this path too: a multi-session prompt is usually under its room, so a census that
+      // only appeared on the over-budget branch would be absent from most of the route it measures.
+      ...(flat.length === 0 ? {} : { turnWindow: { ...census.tally } }),
+    };
   }
 
   const fitted = fitToBudget(
@@ -4109,6 +4266,8 @@ export function buildSessionPrompt(
       turns: flat,
       render,
       note: SESSION_NOTE,
+      tally: census.tally,
+      recount: census.recount,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
       ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
       // Forwarded at both construction sites, deliberately: the two differ in which session plan
@@ -4282,15 +4441,22 @@ function buildSecondPassPrompt(
   // this builder is reached, so a guard here would be a branch no caller can enter -- and an
   // unreachable guard reads as safety while measuring nothing (§57.6). The renderer is total over an
   // empty list anyway; what would be wrong is *claiming* to handle a state the product refuses.
-  const render = (picked: readonly AdmittedTurn[]): string =>
-    renderSessionBlocks(sessions, picked, options, question);
+  const census = turnCensus((picked, into) =>
+    renderSessionBlocks(sessions, picked, options, question, into),
+  );
+  const render = census.render;
 
   const body = render(flat);
   const full = [`EVIDENCE:\n${body}`, SESSION_NOTE, `QUESTION: ${question}`, instruction].join(
     '\n\n',
   );
   if (full.length <= maxChars) {
-    return { prompt: full, evidenceChars: body.length, carried: flat };
+    return {
+      prompt: full,
+      evidenceChars: body.length,
+      carried: flat,
+      ...(flat.length === 0 ? {} : { turnWindow: { ...census.tally } }),
+    };
   }
 
   const fitted = fitToBudget(
@@ -4300,6 +4466,8 @@ function buildSecondPassPrompt(
       turns: flat,
       render,
       note: SESSION_NOTE,
+      tally: census.tally,
+      recount: census.recount,
       ...(options.relevanceFor === undefined ? {} : { relevanceFor: options.relevanceFor }),
       ...(options.relevanceUnits === undefined ? {} : { relevanceUnits: options.relevanceUnits }),
       // Forwarded at both construction sites, deliberately: the two differ in which session plan
@@ -4343,6 +4511,7 @@ function renderSessionBlocks(
   picked: readonly AdmittedTurn[],
   options: PromptOptions,
   question: string,
+  tally?: TurnWindowTally,
 ): string {
   const kept = new Set(picked);
   // A loop rather than the two-`map` chain this used to be, because `item-ids` needs a counter
@@ -4355,21 +4524,30 @@ function renderSessionBlocks(
     const turns = session.turns.filter((turn) => kept.has(turn));
     if (turns.length === 0) continue;
     blocks.push(
-      formatEvidence(turns, {
-        sessionIndex: session.index,
-        ...(options.rendering === undefined ? {} : { rendering: options.rendering }),
-        itemNumberStart: nextItem,
-        // The cap reaches the blocks through the same renderer the flat route uses, which is
-        // why it is threaded here rather than applied to the joined string: a per-turn cap
-        // applied to the joined text would be a per-prompt cap. The window follows the cap for
-        // the same reason, and it takes the question with it: an anchored window without the
-        // question would silently render as the head, which is the inert-option shape this
-        // file has been audited for.
-        ...capOption({
-          ...options,
-          ...(needsQuestion(options) ? { focusQuery: question } : {}),
-        }),
-      }),
+      formatEvidence(
+        turns,
+        {
+          sessionIndex: session.index,
+          ...(options.rendering === undefined ? {} : { rendering: options.rendering }),
+          itemNumberStart: nextItem,
+          // The cap reaches the blocks through the same renderer the flat route uses, which is
+          // why it is threaded here rather than applied to the joined string: a per-turn cap
+          // applied to the joined text would be a per-prompt cap. The window follows the cap for
+          // the same reason, and it takes the question with it: an anchored window without the
+          // question would silently render as the head, which is the inert-option shape this
+          // file has been audited for.
+          ...capOption({
+            ...options,
+            ...(needsQuestion(options) ? { focusQuery: question } : {}),
+          }),
+        },
+        // The census crosses the block boundary: each block is rendered by the same `formatEvidence`, and
+        // the tally accumulates across blocks, so `cut + whole` counts the turns this prompt delivered
+        // rather than the turns of whichever block happened to render last. Without this argument the
+        // multi-session and temporal routes -- the two the layered rendering exists for -- published no
+        // census at all, and `P1` was unreadable exactly where `F3` is read.
+        tally,
+      ),
     );
     nextItem += turns.length;
   }

@@ -75,10 +75,11 @@ export type ResolutionMode = 'raw' | 'layered';
 /**
  * Which of the three renderings a turn received.
  *
- * Not exported, because no caller outside this module names it: the census counts an export with no
- * production caller as an orphan, and a name published for the sake of a docstring is surface with no user.
+ * Exported because the census that publishes the split (`prompt.ts`'s `EvidenceForms`) names the same three
+ * forms in the same order, and two unions spelling one vocabulary is how a fourth form gets added to the
+ * renderer and not to the artifact.
  */
-type EvidenceForm = 'raw' | 'excerpt' | 'record';
+export type EvidenceForm = 'raw' | 'excerpt' | 'record';
 
 /** One turn's rendering: the text, the form that chose it, and what it costs the room. */
 interface ResolutionPlan {

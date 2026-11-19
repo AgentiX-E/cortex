@@ -20,6 +20,8 @@ import {
   readTemperature,
   type RerankFactoryOptions,
   describeEmbeddingCachePersist,
+  describeFailure,
+  quotaLatchReading,
   deserializeEmbeddingCache,
   embeddingBatchIntervalMs,
   embeddingSourceStats,
@@ -1082,14 +1084,25 @@ async function main(): Promise<void> {
 main().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
   const full = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : message;
+  // The same summary `bench/run-ablation.ts` writes, built by the same function, so the two entry points
+  // cannot disagree about what a failed pass leaves behind. Until this line, only the ablation entry point
+  // carried the census and the latch: a dispatch of THIS one that died on an exhausted embedding account
+  // would have left a stack trace and no way to tell a 402 from a 429 from a wire fault -- which is exactly
+  // what run `44354315890` cost, one entry point over.
+  //
+  // `progress: null` rather than `undefined`, because this entry point drives ten ablations in sequence
+  // without a progress callback: "no question was started" is not a statement it can make, and the summary
+  // has a line for the honest one.
+  const summary = describeFailure({ progress: null, error: err, latch: quotaLatchReading() });
   // Emit a GitHub Actions error annotation (single line) so the failure reason
   // is visible through the check-runs API even when the raw log stream is
   // unavailable. Workflow-command special characters are percent-escaped.
   const annotation = message.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
   console.error(`::error::${annotation}`);
+  console.error(summary);
   console.error(full);
   try {
-    writeFileSync('benchmark-error.log', full);
+    writeFileSync('benchmark-error.log', `${summary}\n${full}\n`);
   } catch {
     // Ignore write errors; the console output is the primary diagnostic.
   }

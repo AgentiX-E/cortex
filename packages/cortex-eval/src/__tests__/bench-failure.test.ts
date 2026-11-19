@@ -58,6 +58,16 @@ describe('describeFailure', () => {
     expect(text).toContain('boom');
   });
 
+  it('says the entry point does not track progress, rather than claiming nothing was started', () => {
+    // `bench/run.ts` drives ten ablations in sequence and tracks no progress event, so the honest line is
+    // that the question in flight is unknown. Printing "no question was started" there would be a claim the
+    // entry point is not in a position to make -- the same defect as a fabricated counter, one field over.
+    const text = describeFailure({ progress: null, error: new Error('boom') });
+
+    expect(text).toContain('this entry point does not track it');
+    expect(text).not.toContain('no question was started');
+  });
+
   it('names the system, the run, the question and the total', () => {
     const text = describeFailure({ progress: AT_QUESTION_ONE, error: new Error('boom') });
 

@@ -366,6 +366,34 @@ export type DeliveredTurnWindowCensus = {
   readonly cut: number;
   readonly marked: number;
   readonly whole: number;
+  /**
+   * Which rendering form delivered each turn of this window, and what each form cost.
+   *
+   * Absent when no form decided anything: a prompt with no cap, and a prompt under the head cut. Under
+   * `resolution: 'layered'` the three counts sum to `cut + whole`, which is the arithmetic
+   * `resolution-forms.test.ts` pins on the product side.
+   *
+   * Carried into the per-question record because `PREREGISTRATION-RESOLUTION-LAYERING.md` §6 makes it a
+   * precondition of reading `F3`: the density claim is "the same room carried more events", and the split
+   * is the only per-form record of how that room was spent. `eventsFitted` is `roleCensus.total`, which was
+   * already recorded.
+   */
+  readonly forms?: DeliveredEvidenceForms | undefined;
+};
+
+/** One form's contribution to one delivered window. */
+type DeliveredFormCensus = {
+  /** Turns this form rendered. */
+  readonly turns: number;
+  /** What those renderings cost, in UTF-16 units -- the unit `promptEvidenceChars` counts. */
+  readonly chars: number;
+};
+
+/** The three forms' contributions to one delivered window. */
+type DeliveredEvidenceForms = {
+  readonly raw: DeliveredFormCensus;
+  readonly excerpt: DeliveredFormCensus;
+  readonly record: DeliveredFormCensus;
 };
 
 export type DeliveredRoleCensus = {

@@ -138,7 +138,16 @@ function messageOf(error: unknown): string {
  * appear between the two.
  */
 export function describeFailure(input: {
-  readonly progress: BenchmarkProgress | undefined;
+  /**
+   * The question in flight, `null` when this entry point does not track progress, `undefined` when it tracks
+   * it and none was started.
+   *
+   * Three states because the two absences are different facts and only one of them is knowable per entry
+   * point: `bench/run.ts` drives ten ablations in sequence without a progress callback, so "no question was
+   * started" is a statement it cannot make. Reporting it there would be a fabricated reading -- the same
+   * class of error as a counter that no code increments.
+   */
+  readonly progress: BenchmarkProgress | null | undefined;
   readonly error: unknown;
   /**
    * The embedding quota latch, if the process built a latching client.
@@ -154,6 +163,10 @@ export function describeFailure(input: {
 
   if (input.progress === undefined) {
     lines.push('progress: no question was started before the failure');
+  } else if (input.progress === null) {
+    lines.push(
+      'progress: this entry point does not track it, so the question in flight is unknown',
+    );
   } else {
     const { system, run, index, total, questionId, elapsedMs } = input.progress;
     lines.push(
