@@ -244,6 +244,23 @@ env:
   # GitHub's ceiling, and an unset variable renders as `''`, which this parser reads as "unset"
   # rather than as zero (§13.227's `41431790794`).
   CORTEX_READER_TIMEOUT_MS: ${{ vars.CORTEX_READER_TIMEOUT_MS }}
+  # §13.312's pin, reachable at last. `llm-factory.ts` has read `CORTEX_JUDGE_MODEL` since §13.312 and
+  # `judge-audit.yml` has an input for it, but this workflow had no way to set it -- so every arm
+  # dispatched from here was graded by whatever the reader was, and the artifact said so
+  # (`judge.source: "reader"`).
+  #
+  # `R1` is what that cost. Its whole question was whether a reader swap moves `MR`, and the swap
+  # carried the judge with it: 80.99% is `v4-pro` grading `v4-pro` against `deepseek-chat` grading
+  # `deepseek-chat`, which is two changes and one comparison. The registration named the confound
+  # before the dispatch and required a regrade, but a regrade reads one recorded pass where the
+  # reading is a majority of four, so the honest repair is the pin itself.
+  #
+  # Through `vars` and not a 26th input, for the reason the pace and the timeout are: GitHub's ceiling
+  # is 25 inputs per workflow and this file records that it sits one below it. An unset variable
+  # interpolates to `''`, and `resolveJudgeIdentity` trims before it decides (`pinned === ''` reads as
+  # "nobody pinned one"), so a repository that never sets this renders exactly the bytes it always
+  # rendered -- `source: "reader"` -- and pinning it afterwards is one variable rather than a dispatch.
+  CORTEX_JUDGE_MODEL: ${{ vars.CORTEX_JUDGE_MODEL }}
 
 jobs:
   cortex-memory-ablation:

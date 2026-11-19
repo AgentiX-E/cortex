@@ -11,6 +11,7 @@
  * Pure. `now` is passed through to admission.
  */
 import { admitTurns, type AdmissionOptions, type AdmittedTurn } from './admission.js';
+import { orderableRelevance } from './relevance-order.js';
 
 /** One session's admitted turns, with the identity needed to sort and cite it. */
 export type AdmittedSession = {
@@ -305,7 +306,12 @@ export function selectTurnsWithinBudget(
     return { session, turns, best };
   });
 
-  scored.sort((a, b) => b.best - a.best || a.session.index - b.session.index);
+  // At the precision the signal carries, for the reason `relevance-order.ts` states: the session
+  // boundary decides which turns exist at all, so a noise-level reorder here is a whole session moving.
+  scored.sort(
+    (a, b) =>
+      orderableRelevance(b.best) - orderableRelevance(a.best) || a.session.index - b.session.index,
+  );
 
   const chosen: AdmittedSession[] = [];
   let spent = 0;

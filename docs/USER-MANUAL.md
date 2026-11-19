@@ -1715,6 +1715,30 @@ The same four fields — `maxTurnChars`, `turnCutMarker`, `turnWindow`, `resolut
 `assembleMemory`, which forwards them unchanged, so a deployment can reproduce the rendering a measurement
 was taken under without constructing the class.
 
+### 6.13 The same corpus and the same question produce the same prompt
+
+A prompt is a function of the corpus, the question and the options. That sounds like a property you get for
+free, and it is not: it is a property of the *ordering*, because the last turn the room can afford is chosen
+by comparing scores, and the scores arrive from an embedding provider as floating-point numbers.
+
+Two candidates whose similarity differs by less than the provider can resolve are, to the room, the same
+candidate — but a comparison that looks at the last bit will pick a different one on a different day, and
+then two runs of one configuration carry prompts that differ by a turn. The evidence is not wrong in either
+run; it is *not reproducible*, which is enough to make an A/B measurement say something the experiment did
+not.
+
+So the ordering compares scores rounded to `1e-4` and breaks ties by arrival — the order the context had
+them in. The grid is four orders of magnitude above the arithmetic error of a 1,024-dimension dot product and
+two orders below the difference at which a cosine similarity separates two turns about which the signal has
+anything to say. If you inject your own `relevanceFor`, this is what it means for you:
+
+- a score whose *difference* from a neighbour is smaller than `1e-4` will not reorder them; arrival decides;
+- the ranking never gets worse — rounding is monotone, so a score that beats another by more than `1e-4`
+  still wins;
+- a provider whose own noise is larger than `1e-4` can still move a boundary, and no client-side rule can
+  prevent that: the information is gone before it arrives. If you are chasing reproducibility across
+  providers, quantise the signal at the source and the ordering will follow it.
+
 ## 11. Choosing routes deliberately
 
 Six routes exist because six question shapes need different prompts, and the names are exported as a

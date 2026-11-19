@@ -362,7 +362,8 @@ about a point per thousand tokens, and more than that below 7,448.
 
 What it does **not** close is the room as an **accuracy** input where accuracy is known to track it. `MR`
 moved −4.13 with its room and `ABS` moved 0.00, so the two capabilities are not the same instrument. `MR`'s
-curve is 24,000 → 76.9%, 36,000 → 79.3%, 48,460 → 83.5%, and a 55,000 redistribution bought **nothing**
+curve is 24,000 → 76.9% (first repetition, the only basis the `I7` cell published), 36,000 → 79.3% and
+48,460 → 83.5% (majority of four), and a 55,000 redistribution bought **nothing**
 (§14.34): the curve is steep below the registered room and flat above it. The registered value therefore
 sits near a knee, and the next `MR` experiment is not a room — it is the reader or the evidence set, which
 is what `MEASURE-MR-CEILING.md` already said from a different artifact.

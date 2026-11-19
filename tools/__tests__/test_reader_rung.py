@@ -128,7 +128,7 @@ def test_a_capability_filter_narrows_the_denominator(tmp_path: Path) -> None:
     treatment = artifact(correct_by_run=["1111"], capability="MR")
     r = run(tmp_path, treatment, control, "--capability", "TR")
     assert r.returncode != 0
-    assert "no question in the roster carries capability" in (r.stdout + r.stderr)
+    assert "no question in the treatment roster carries capability" in (r.stdout + r.stderr)
 
 
 def test_the_decline_counts_come_from_the_artifact(tmp_path: Path) -> None:
@@ -139,3 +139,80 @@ def test_the_decline_counts_come_from_the_artifact(tmp_path: Path) -> None:
     r = run(tmp_path, treatment, control)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "control 1, treatment 7" in r.stdout
+
+
+def test_a_capability_filter_puts_the_two_rosters_on_one_page(tmp_path: Path) -> None:
+    # The shape `R1` was dispatched in: 121 `MR` questions against a 500-question control. Filtering
+    # both sides by the same capability leaves 121 against 121, which is a pair with no drop at all --
+    # so the filter, not `--subset`, is what makes a capability-limited dispatch readable.
+    control = artifact(correct_by_run=["1" * 121 + "0" * 379])
+    control["questions"] = [
+        {**record, "capability": "MR" if index < 121 else "TR"}
+        for index, record in enumerate(control["questions"])
+    ]
+    treatment = artifact(correct_by_run=["1" * 121])
+
+    r = run(tmp_path, treatment, control, "--capability", "MR", "--json")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert json.loads(r.stdout)["overall"]["questions"] == 121
+
+
+def test_a_wider_capability_on_the_control_is_refused_without_subset(tmp_path: Path) -> None:
+    # The control carries four more `MR` questions than the treatment asked. The drop is the one thing
+    # a paired mean must not hide, so it is a refusal until `--subset` asks for it by name.
+    control = artifact(correct_by_run=["1" * 125])
+    treatment = artifact(correct_by_run=["1" * 121])
+    treatment["questions"] = control["questions"][:121]
+
+    refused = run(tmp_path, treatment, control, "--capability", "MR")
+    assert refused.returncode != 0
+    assert "--subset" in (refused.stdout + refused.stderr)
+
+    r = run(tmp_path, treatment, control, "--capability", "MR", "--subset", "--json")
+    assert r.returncode == 0, r.stdout + r.stderr
+    body = json.loads(r.stdout)
+    assert body["overall"]["questions"] == 121
+    assert body["subset"] == {"droppedFromControl": 4, "treatment": 121}
+
+
+def test_a_control_question_the_treatment_never_asked_is_not_a_cell(tmp_path: Path) -> None:
+    # A question asked of the treatment alone has no paired cell, and `--subset` does not license
+    # inventing the other half: it licenses a smaller denominator, not a one-sided cell.
+    control = artifact(correct_by_run=["11000"])
+    treatment = artifact(correct_by_run=["1100"])
+    treatment["questions"] = [control["questions"][0], control["questions"][1], control["questions"][2],
+                              {**control["questions"][3], "questionId": "q9"}]
+    r = run(tmp_path, treatment, control, "--subset")
+    assert r.returncode != 0
+    assert "no paired cell" in (r.stdout + r.stderr)
+
+
+def test_subset_names_how_many_control_questions_left_the_page(tmp_path: Path) -> None:
+    control = artifact(correct_by_run=["110000"])
+    treatment = artifact(correct_by_run=["1100"])
+    treatment["questions"] = control["questions"][:4]
+    r = run(tmp_path, treatment, control, "--subset")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "paired on 4 question(s)" in r.stdout
+    assert "2 control question(s) not asked of the treatment" in r.stdout
+
+
+def test_require_identity_makes_a_moved_prompt_a_void_result(tmp_path: Path) -> None:
+    # The registration's third criterion. A swap that moved a prompt is not the experiment it names,
+    # so the tool has to be able to say so with a status a shell can branch on rather than a sentence.
+    digests = {f"q{index}": f"a{index}" for index in range(4)}
+    control = artifact(correct_by_run=["1100"], digests=digests)
+    same = artifact(correct_by_run=["1100"], digests=digests)
+    moved = artifact(correct_by_run=["1100"], digests={**digests, "q3": "b3"})
+
+    clean = run(tmp_path, same, control, "--require-identity")
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+
+    void = run(tmp_path, moved, control, "--require-identity")
+    assert void.returncode == 3
+    assert "**void**" in void.stdout
+
+    # Without the flag the same artifact reads as a direction, which is what a second-best reading is.
+    noted = run(tmp_path, moved, control)
+    assert noted.returncode == 0
+    assert "1 differing" in noted.stdout

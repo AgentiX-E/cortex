@@ -29,11 +29,16 @@ describe a matrix rather than a question.
    statistic, and a majority of two is a tie-breaker rather than a vote.
 3. **An empty intersection.** A pairing over zero questions prints `0.0%` against `0.0%` and reads as
    agreement; the tool says so instead.
-4. **A roster in one artifact the other does not carry, in full.** Named, not dropped: a silent inner
-   join shrinks every denominator on the page (`window-pair.mjs`'s refusal, applied to accuracy).
+4. **A roster in one artifact the other does not carry, in full.** Required in the direction that
+   matters: every question asked of the treatment must be asked of the control, or it has no paired
+   cell. A control that carries *more* is a capability-limited dispatch rather than a broken pair, so
+   `--subset` pairs on the treatment roster and prints how many control questions left the page. A
+   silent inner join is refused because it shrinks every denominator on the page (`window-pair.mjs`'s
+   refusal, applied to accuracy).
 
 Usage:
-  python3 tools/reader-rung.py --treatment T.json --control C.json [--capability MR] [--json]
+  python3 tools/reader-rung.py --treatment T.json --control C.json [--capability MR] [--subset]
+                               [--require-identity] [--json]
 """
 
 from __future__ import annotations
@@ -106,6 +111,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--treatment', required=True)
     parser.add_argument('--control', required=True)
     parser.add_argument('--capability', default=None)
+    parser.add_argument(
+        '--subset',
+        action='store_true',
+        help='pair on the treatment roster when the control is a superset (a capability-limited '
+        'dispatch); the dropped control questions are named rather than silently joined away',
+    )
+    parser.add_argument(
+        '--require-identity',
+        action='store_true',
+        help='treat an incomplete prompt identity as a void result rather than a note, and exit 3',
+    )
     parser.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
 
@@ -129,24 +145,42 @@ def main(argv: list[str]) -> int:
     treatment, treatment_records = read(treatment_report, 'treatment')
     control, control_records = read(control_report, 'control')
 
+    # The capability filter runs on **each artifact's own** roster, and before the set comparison.
+    # It used to run after it and on the treatment's records alone, which made it useless for the
+    # dispatch shape it exists for: a run restricted to one capability has 121 questions against the
+    # control's 500, so the set comparison refused before the filter was reached. Filtering both is
+    # also the only reading that is right -- a question's capability is a property of the question,
+    # and taking it from the treatment would let a treatment that mislabels a record decide which
+    # control records it is compared against.
+    if args.capability:
+        wanted = {name.strip() for name in args.capability.split(',') if name.strip()}
+        treatment = {qid: ok for qid, ok in treatment.items() if treatment_records[qid].get('capability') in wanted}
+        control = {qid: ok for qid, ok in control.items() if control_records[qid].get('capability') in wanted}
+        treatment_records = {qid: r for qid, r in treatment_records.items() if qid in treatment}
+        control_records = {qid: r for qid, r in control_records.items() if qid in control}
+        if not treatment:
+            raise SystemExit(f'no question in the treatment roster carries capability {sorted(wanted)}')
+
     shared = [qid for qid in treatment_records if qid in control_records]
     if not shared:
         raise SystemExit(
             'the roster intersection is empty, so every denominator this tool prints would be zero'
         )
-    only_in = sorted(set(treatment_records) - set(control_records))
-    if len(shared) != len(treatment_records) or len(shared) != len(control_records):
+    missing = sorted(set(treatment_records) - set(control_records))
+    if missing:
+        # A cell with no control half is not a cell. Dropping it would shrink the denominator, which
+        # is the failure `--subset` exists to bound rather than to license.
         raise SystemExit(
-            f'the rosters are not the same set: {len(shared)} shared, {len(treatment_records)} in the '
-            f'treatment, {len(control_records)} in the control'
-            + (f' (e.g. {only_in[:3]} appear only in the treatment)' if only_in else '')
+            f'{len(missing)} question(s) are asked of the treatment and not of the control '
+            f'(e.g. {missing[:3]}), so those questions have no paired cell'
         )
-
-    if args.capability:
-        wanted = {name.strip() for name in args.capability.split(',') if name.strip()}
-        shared = [qid for qid in shared if treatment_records[qid].get('capability') in wanted]
-        if not shared:
-            raise SystemExit(f'no question in the roster carries capability {sorted(wanted)}')
+    dropped = len(control_records) - len(shared)
+    if dropped and not args.subset:
+        raise SystemExit(
+            f'the control carries {dropped} question(s) the treatment did not ask: {len(shared)} shared, '
+            f'{len(treatment_records)} in the treatment, {len(control_records)} in the control. '
+            'Pass --subset to pair on the treatment roster and name the drop'
+        )
 
     overall = cells(control, treatment, shared)
     by_capability: dict[str, dict[str, int]] = {}
@@ -174,12 +208,14 @@ def main(argv: list[str]) -> int:
             'promptIdentity': {'identical': identical, 'shared': len(shared), 'differ': len(shared) - identical},
             'declines': declines,
             'repetitions': runs,
+            'subset': {'droppedFromControl': dropped, 'treatment': len(treatment_records)},
         }, indent=2))
-        return 0
+        return 3 if args.require_identity and identical != len(shared) else 0
 
     print(f'paired on {len(shared)} question(s)'
           + (f' of capability {args.capability}' if args.capability else '')
-          + f', majority of {runs["treatment"]} repetitions')
+          + f', majority of {runs["treatment"]} repetitions'
+          + (f'; {dropped} control question(s) not asked of the treatment and not in any cell' if dropped else ''))
     print('')
     print('| capability | n | control | treatment | delta | b/c | b/t | neither | McNemar p |')
     print('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |')
@@ -205,6 +241,12 @@ def main(argv: list[str]) -> int:
           + (' — a reader swap that moved a prompt is not a reader swap' if identical != len(shared) else ''))
     print(f'declines (`abstentionReasons.llm`, all runs): control {declines["control"]}, '
           f'treatment {declines["treatment"]}')
+    if args.require_identity and identical != len(shared):
+        print('')
+        print(f'**void**: {len(shared) - identical} of {len(shared)} prompts moved, so this artifact is '
+              'not the single-variable experiment its registration names -- read the cells as a '
+              'direction and not as the criterion')
+        return 3
     return 0
 
 

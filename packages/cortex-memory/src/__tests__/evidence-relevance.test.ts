@@ -530,3 +530,59 @@ describe('the room when no whole turn fits', () => {
     expect(assembled.evidenceChars).toBe(formatEvidence([turns[2]!]).length);
   });
 });
+
+describe('the ordering resolves only what the signal resolves', () => {
+  /**
+   * The window for a room that holds exactly two of three turns, under a given score map.
+   *
+   * `x` outranks both others by a distance nobody would argue about, so the first slot is fixed and the
+   * question is only which of `a` and `b` takes the second. That is the boundary `R1` found flipping.
+   */
+  function windowFor(scores: ReadonlyMap<string, number>, turns: readonly AdmittedTurn[]): string {
+    const room = formatEvidence([turns[0]!, turns[1]!]).length;
+    return carried(
+      buildPrompt(QUESTION, turns, 'extractive', {
+        maxChars: budgetForRoom(turns, room),
+        relevanceFor: (_question, candidate) => scores.get(candidate) ?? 0,
+      }).prompt,
+    );
+  }
+
+  it('selects the same window when two scores differ by less than the provider can resolve', () => {
+    // The defect `R1` measured: 2 of 121 prompts differed between dispatches, each by exactly one
+    // boundary turn, because two candidates a millionth apart were ordered by arithmetic noise. The two
+    // maps below are the same question scored twice with that noise: `a` wins by 1e-7 in one and loses by
+    // 1e-7 in the other. Rounding to the ordering's grid makes both a tie, and a tie has an answer here
+    // -- arrival -- that does not depend on the provider.
+    const turns = turnsOf(3, 40);
+    const [x, a, b] = turns as [AdmittedTurn, AdmittedTurn, AdmittedTurn];
+    const high = new Map([
+      [x.content, 9],
+      [a.content, 0.500_000_1],
+      [b.content, 0.5],
+    ]);
+    const low = new Map([
+      [x.content, 9],
+      [a.content, 0.499_999_9],
+      [b.content, 0.5],
+    ]);
+
+    expect(windowFor(low, turns)).toBe(windowFor(high, turns));
+    expect(windowFor(high, turns)).toBe(formatEvidence([x, a]));
+  });
+
+  it('still follows the score when the difference is one the signal carries', () => {
+    // The other half, and the reason the quantum cannot be lowered to taste: a real preference has to
+    // survive it. `b` arrives before `a` and loses by 0.02, so the second slot is `a` -- arrival is the
+    // tie-break, not the rule.
+    const turns = turnsOf(3, 40);
+    const [x, b, a] = turns as [AdmittedTurn, AdmittedTurn, AdmittedTurn];
+    const scores = new Map([
+      [x.content, 9],
+      [a.content, 0.52],
+      [b.content, 0.5],
+    ]);
+
+    expect(windowFor(scores, turns)).toBe(formatEvidence([x, a]));
+  });
+});

@@ -18,6 +18,7 @@ import {
   type ResolutionMode,
 } from './resolution.js';
 import { renderSupersededInline, type SupersededMarks } from './superseded.js';
+import { orderableRelevance } from './relevance-order.js';
 
 // Re-exported rather than defined here: the per-turn window rule needs the same surrogate-safe slice, and
 // two copies of a UTF-16 guard are two chances to fix one of them. Every importer that had this path keeps it.
@@ -3720,7 +3721,13 @@ function selectByRelevance(
     // sort being stable. Two turns the signal cannot separate are then ordered the
     // way the context ordered them, which is reproducible and is what an
     // unsignalled budget would have done with them.
-    .sort((a, b) => b.relevance - a.relevance || a.arrival - b.arrival);
+    //
+    // The score is compared at the precision `orderableRelevance` allows, and that is a correction
+    // rather than a refinement: `R1` found two of 121 prompts differing between dispatches by exactly
+    // one boundary turn, because two candidates whose scores differ by less than the provider's noise
+    // were ordered by the noise. See `relevance-order.ts` for the reading and the arithmetic.
+    .sort((a, b) => orderableRelevance(b.relevance) - orderableRelevance(a.relevance) || a.arrival - b.arrival);
+
 
   const chronological = (count: number): AdmittedTurn[] =>
     ranked
@@ -3952,7 +3959,12 @@ function rankSessionTurns(
   }
 
   const order = [...best.entries()]
-    .sort((a, b) => b[1].score - a[1].score || a[1].first - b[1].first)
+    // Same precision rule as the turn-level ordering: a session's best turn and its neighbour's can
+    // differ by less than the provider's noise, and the chosen session decides which turns exist at all.
+    .sort(
+      (a, b) =>
+        orderableRelevance(b[1].score) - orderableRelevance(a[1].score) || a[1].first - b[1].first,
+    )
     .map(([session]) => session);
 
   return { order, bySession };
@@ -4029,7 +4041,7 @@ function anchorWalk(
       arrival,
       relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
     }))
-    .sort((a, b) => b.relevance - a.relevance || a.arrival - b.arrival);
+    .sort((a, b) => orderableRelevance(b.relevance) - orderableRelevance(a.relevance) || a.arrival - b.arrival);
 
   return { ranked, positions, bySession };
 }
