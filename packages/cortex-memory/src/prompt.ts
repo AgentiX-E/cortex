@@ -3726,8 +3726,10 @@ function selectByRelevance(
     // rather than a refinement: `R1` found two of 121 prompts differing between dispatches by exactly
     // one boundary turn, because two candidates whose scores differ by less than the provider's noise
     // were ordered by the noise. See `relevance-order.ts` for the reading and the arithmetic.
-    .sort((a, b) => orderableRelevance(b.relevance) - orderableRelevance(a.relevance) || a.arrival - b.arrival);
-
+    .sort(
+      (a, b) =>
+        orderableRelevance(b.relevance) - orderableRelevance(a.relevance) || a.arrival - b.arrival,
+    );
 
   const chronological = (count: number): AdmittedTurn[] =>
     ranked
@@ -4041,7 +4043,10 @@ function anchorWalk(
       arrival,
       relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
     }))
-    .sort((a, b) => orderableRelevance(b.relevance) - orderableRelevance(a.relevance) || a.arrival - b.arrival);
+    .sort(
+      (a, b) =>
+        orderableRelevance(b.relevance) - orderableRelevance(a.relevance) || a.arrival - b.arrival,
+    );
 
   return { ranked, positions, bySession };
 }

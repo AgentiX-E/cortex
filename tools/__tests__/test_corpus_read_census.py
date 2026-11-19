@@ -148,10 +148,21 @@ class TestFaultInjection:
         assert result.returncode != 0, 'the clause did not fire on a read that dominated assembly'
         assert 'FAILED' in result.stderr
         census = readings['faulted']['census']
-        # The fault is a real cost -- the scan ran twenty-five times -- so the census is a measurement of a
-        # slower read and not a number the tool wrote down.
+        # The fault is a real cost -- the scan ran as many times as the clean reading said it had to -- so the
+        # census is a measurement of a slower read and not a number the tool wrote down.
         assert census['fault'] == 'slow-read'
         assert census['ratio'] > 2.0
+
+    def test_the_fault_calibrates_itself_and_says_so(self, readings) -> None:
+        # The defect this field exists for: the count used to be the constant 25, which dominated twice the
+        # assembly on the machine that wrote it and came to 1.67x on the machine that ran the suite in
+        # 2026-11-19. It is now measured from the warm-up, so the fault dominates wherever it runs -- and the
+        # census carries the count, because a number that decided how long a run took belongs in the reading.
+        census = readings['faulted']['census']
+        assert census['readRepeats'] >= 25
+        assert census['readRepeats'] == int(census['readRepeats'])
+        # One scan when nothing was faulted: the count is the scan count, not the fault's intent.
+        assert readings['clean']['census']['readRepeats'] == 1
 
     def test_the_two_runs_are_different_files(self, readings) -> None:
         # The ordering rule the old fixture needed -- faulted first, clean last -- existed because both runs

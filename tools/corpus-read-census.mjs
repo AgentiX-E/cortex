@@ -142,8 +142,14 @@ const question = 'When will the invoice for the bicycle repair be settled?';
 // Warm the two code paths so the first arm does not pay for JIT and the second arm's numbers do not inherit
 // a colder machine. One throwaway question at a tenth of the size would not be comparable, so the warm-up is
 // the same size as the measurement -- it costs one extra read and one extra assembly.
+const timed = async (fn) => {
+  const started = process.hrtime.bigint();
+  const value = await fn();
+  return { ms: Number(process.hrtime.bigint() - started) / 1e6, value };
+};
+const warmRead = await timed(() => corpus.sessions());
 await memory.askStored(question);
-await memory.answerSessions(question, await corpus.sessions());
+const warm = { readMs: warmRead.ms, assembleMs: (await timed(() => memory.answerSessions(question, warmRead.value))).ms };
 
 /**
  * A read that is genuinely slower, so the gate can be shown to fire.
@@ -153,7 +159,27 @@ await memory.answerSessions(question, await corpus.sessions());
  * would leave the artifact carrying a figure no code produced.
  */
 const FAULT = process.env['CORTEX_CORPUS_READ_CENSUS_FAULT'];
-const SLOW_READS = FAULT === 'slow-read' ? 25 : 1;
+
+/**
+ * How many scans the faulted arm runs, calibrated so the fault dominates **on this machine**.
+ *
+ * It used to be the constant 25, which is a guess at dominance rather than a construction: 25 scans outran
+ * twice the assembly on the machine that produced the archived reading, and came to **1.67x** on the machine
+ * that ran the suite on 2026-11-19 -- so the clause did not fire and the test asserting that it fires filed a
+ * failure against the very thing the fault exists to demonstrate. A premise expressed as a multiplier against
+ * a machine-dependent ratio is not a premise.
+ *
+ * The warm-up above has already timed one assembly and one scan, so the count can be measured instead of
+ * guessed: enough scans to reach three times the warm-up assembly at the warm-up scan's cost. Three and not
+ * two because the two halves of the published ratio are measured in the faulted process too, where the
+ * assembly may be slower. The floor of 25 keeps the archived reading's shape on a machine slow enough that 25
+ * already dominates, and `readRepeats` records the count so two censuses can be compared.
+ */
+const DOMINANCE_TARGET = 3;
+const SLOW_READS =
+  FAULT === 'slow-read'
+    ? Math.max(25, Math.ceil((DOMINANCE_TARGET * warm.assembleMs) / Math.max(warm.readMs, 0.001)))
+    : 1;
 
 /**
  * The fastest of {@link REPS} runs, and the last value the run produced.
@@ -203,6 +229,7 @@ const census = {
   dataset: `${String(turns)} turns, ${String(SESSIONS)} sessions x ${String(TURNS_PER_SESSION)}, one SQLite file`,
   room: ROOM,
   fault: FAULT ?? null,
+  readRepeats: SLOW_READS,
   readMs: round(readMs),
   assembleMs: round(assembleMs),
   storedMs: round(storedMs),
