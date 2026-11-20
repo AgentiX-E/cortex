@@ -129,6 +129,11 @@ const resolve = {
 function render(criterion, value) {
   if (criterion.unit === 'ratio') return `${(100 * value).toFixed(1)}%`;
   if (criterion.unit === 'points') return `${(100 * value).toFixed(1)}pp`;
+  // A mean over repetitions keeps its decimals; the paragraph above is about a mean whose decimals are an
+  // artefact of a division, and `S17`'s 1.75 questions is the measurement itself.
+  if (criterion.unit === 'count-mean') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
   return value.toFixed(0);
 }
 

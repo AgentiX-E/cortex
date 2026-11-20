@@ -51,8 +51,15 @@ export type Grade = 'A' | 'B' | 'C';
 /** Which direction passes. `equals` is for counts that must be exact, such as "no leakage". */
 export type Comparator = 'at-least' | 'at-most' | 'equals';
 
-/** How the number is written, so a gap in points is not printed as a percentage of nothing. */
-export type Unit = 'ratio' | 'points' | 'count';
+/**
+ * How the number is written, so a gap in points is not printed as a percentage of nothing.
+ *
+ * `count-mean` is a count averaged over repetitions, and it is a distinct unit because the two are printed
+ * differently for a reason: there is no fractional prompt token (`C1`'s 12,105 is a mean whose decimals are
+ * an artefact of the division), while `S17`'s 1.75 questions is the measurement -- rounding it to 2 prints a
+ * number the artifact does not contain, and 2 would meet a bar that 1.75 does not.
+ */
+export type Unit = 'ratio' | 'points' | 'count' | 'count-mean';
 
 /**
  * Whether a criterion is a **gate** or an **aim**.
@@ -1279,18 +1286,26 @@ export const CRITERIA: readonly Criterion[] = [
   // pair at one tree.
   //
   // Round 145 dispatched `S18` (`44717750493` control, `44723845151` treatment, both `a7eafcced3f3`) and the
-  // row now reads the attributable number: **+4 of 121, 103 against the control's 99**. `E0` passes on both
-  // artifacts naming the same sha, which is the field this row's own round added to `AblationReport` for
-  // exactly this purpose. `E1'` -- the relative bar, because the absolute 107 was written for `S16`'s 102 and
-  // this pair's control is 99 -- misses by one question; `E2'` passes at 0.992x, so the four questions were
-  // not bought with tokens. Six fixed against two broken, exact McNemar `p = 0.2891`.
+  // row now reads the attributable number: **+1.75 of 121 on the four-repetition mean, 101.0 against the
+  // control's 99.25**. `E0` passes on both artifacts naming the same sha, which is the field this row's own
+  // round added to `AblationReport` for exactly this purpose. `E1'` -- the relative bar, because the absolute
+  // 107 was written for `S16`'s 102 and this pair's control is 99.25 -- misses by more than three questions,
+  // and `E2'` passes at 0.992x, so what little it bought was not bought with tokens.
   //
-  // Both arms' deterministic baselines are 105 of 121, reproducing question for question. That is the noise
-  // control this pair did not have to construct: a non-LLM side that lands on the same number twice says the
-  // harness, the dataset and the ranking path are the same, so the delta belongs to the feature arm. It also
-  // says the uncomfortable thing this row now carries: the expansion arm is 1.66 points BELOW a retrieval
-  // path that expands nothing, and the control without the flag is 4.96 below it. The gap to `MemCog` is in
-  // that deficit, not in the phrases.
+  // The first reading of this pair said +4, and it was wrong: `questions[].correct` is repetition 0, not the
+  // majority of four, and both artifacts prove it -- the field reproduces repetition 0 on 121 of 121
+  // questions and the majority on 117. That is the collapse `efficiency-frontier.ts` documents, where the same
+  // 121 questions read 2 won to 9 lost on repetition 0 and 16 won to 5 lost on the means. Corrected, the pair
+  // is 8 won to 5 lost, exact sign-flip `p = 0.3901`, and the tool that produced the original number reads the
+  // means now and prints which statistic the field reproduces.
+  //
+  // The noise floor this row has is the one its own artifacts carry: the reference pipeline moved -0.75
+  // questions between the two dispatches, 6 won to 7 lost. A +1.75 treatment delta is the same order, which
+  // is why `p = 0.39` is the honest headline and `+1.75` is the point estimate rather than a gain.
+  //
+  // What the pair does say, and it is the uncomfortable part: both arms' memory side is BELOW the reference
+  // pipeline on the same 121 questions with the same reader -- -4.55pp on the control and -2.48pp on the
+  // treatment. That deficit is several times what the expansion bought, and it is the next thing to read.
   //
   // The family closes on §13.377.9's row 3 -- `E1'` fail with `E0`/`E2'`/`E4` pass, attribution intact --
   // which this pair is the first to be able to invoke, because it is the first with `E0`.
@@ -1298,17 +1313,19 @@ export const CRITERIA: readonly Criterion[] = [
     id: 'S17',
     capability: 'query expansion on the product’s own ranking',
     metric:
-      'question-by-question net correct answers on `MR` against **the control dispatched at the same ' +
-      'commit**, **and** a bill at or below 1.15x that control’s own bill, **and** the product’s own ' +
-      'receipt `selfIndex.queries > selfIndex.indexes`',
+      'question-by-question net correct answers on `MR`, **averaged over four repetitions**, against the ' +
+      'control dispatched at the same commit, **and** a bill at or below 1.15x that control’s own bill, ' +
+      '**and** the product’s own receipt `selfIndex.queries > selfIndex.indexes`',
     dataset:
       'LongMemEval-S, the `MR` cell, 121 questions, four repetitions, `relevanceSignal: self-index` with ' +
       '`queryExpansion: llm` as the single departure from the table `tools/arm-config-baseline.json` ' +
       'registers, paired against a control dispatched at the same sha within the same round; the same ' +
-      'reader, judge and prompt everywhere else',
+      'reader, judge and prompt everywhere else. The estimator is the four-repetition mean with an exact ' +
+      'sign-flip over per-question count differences, which is the campaign’s registered ' +
+      '`accuracySource`; `questions[].correct` is repetition 0 and is not the reading',
     comparator: 'at-least',
     threshold: 5,
-    unit: 'count',
+    unit: 'count-mean',
     // `aim`, with an `artifact` source: the kind says what the criterion would do with a number -- print the
     // miss and keep the build green, because the row is a target -- and the source says where the number is.
     // The two `attest` entries are what stop the row reading a different experiment's file: a file whose
@@ -1340,12 +1357,15 @@ export const CRITERIA: readonly Criterion[] = [
     onMiss:
       'A net MR delta below +5 says the ranking axis is exhausted as a way to raise `MR`: the phrases reach ' +
       'the pool and the reader still answers from what it already had, which leaves §13.96’s diagnosis — ' +
-      'which mentions count as instances — as the only live one. A bill above 1.15x the control with the ' +
-      'delta in tolerance says the extra queries bought pool rather than precision, and the next increment ' +
-      'is the phrase count rather than a new stage. A run whose `selfIndex.queries` equals its `indexes` is ' +
-      'neither: the treatment never reached the ranking, and `assertQueryExpansionReached` refuses to ' +
-      'write that artifact rather than letting this row read it as a verdict on the mechanism. A run whose ' +
-      'artifacts name two different commits is not a reading at all — `E0` is checked before any of these.',
+      'which mentions count as instances — as the only live one. A delta inside the noise the reference ' +
+      'pipeline itself shows between two dispatches (0.75 questions on this pair) is not a gain at all, and ' +
+      'the point estimate is what to quote rather than the smaller of two p-values. A bill above 1.15x the ' +
+      'control with the delta in tolerance says the extra queries bought pool rather than precision, and the ' +
+      'next increment is the phrase count rather than a new stage. A run whose `selfIndex.queries` equals ' +
+      'its `indexes` is neither: the treatment never reached the ranking, and ' +
+      '`assertQueryExpansionReached` refuses to write that artifact rather than letting this row read it as ' +
+      'a verdict on the mechanism. A run whose artifacts name two different commits is not a reading at all ' +
+      '— `E0` is checked before any of these.',
   },
 
   // §14.143's window. Non-inferiority rather than a win, because the mechanism spends the **same**

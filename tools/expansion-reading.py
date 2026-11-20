@@ -17,16 +17,26 @@ attempt at this experiment (`44159514514`) produced only the second kind. A pros
 those apart, and the campaign has already published one number attached to the wrong row because a
 reading was taken from an artifact whose population had moved.
 
-## The one estimator this file insists on, and why
+## The one estimator this file insists on, and a retraction
 
-`questions[].correct` is the campaign's majority verdict (>= 3 of 4 repetitions, `readout-arm-run.py`
-§"the read asks one question of ... three is a majority"), and it is the field the published 84.30%
-was counted from. This tool therefore reads that field and **not** `ablation.featureCorrectByRun`:
-the bitstrings are in a different order from `questions[]`, and a recomputation over them on `S16`
-returns 101 of 121 where the artifact's own verdicts return 102. One question is the whole difference
-between "the mechanism bought five" and "the mechanism bought four", so the tool refuses to have a
-second estimator at all -- `--selftest` recomputes the control's published MR count from its own
-field and prints what it got.
+The estimator is the **four-repetition mean with an exact sign-flip over per-question count differences**.
+That is the campaign's registered accuracy source (`accuracySource: 'repetition-mean'`, asserted in
+`acceptance.ts`'s `CATEGORY_ATTEST`) and the instrument `efficiency-frontier.ts` documents at length: a
+`series` collapsed to `discordant` "throws away the repetitions -- that is how `MR` read 2 won to 9 lost,
+p = 0.0654 on repetition 0 and 16 won to 5 lost, p = 0.0039 on the four-repetition means, the same 121
+questions and opposite verdicts."
+
+Until round 145 this file read `questions[].correct` instead, and its docstring justified that in writing:
+the field was "the campaign's majority verdict (>= 3 of 4 repetitions)", and the masks were refused because
+"a recomputation over them on `S16` returns 101 of 121 where the artifact's own verdicts return 102". Both
+statements are false as stated, and the `S18` artifacts are the proof: the field agrees with **repetition
+0** on 121 of 121 questions in both arms and with the majority on 117 of 121. The 101-versus-102 gap was
+majority-vote against first-repetition all along, and the reading this campaign published as "`MR` +4,
+p = 0.2891" was one repetition's delta reported as the campaign's. On the registered estimator it is
+**+1.75 questions, 8 won to 5 lost, p = 0.3901**.
+
+The field is still read, because the retraction has to be shown rather than asserted, and `field_identity`
+now proves on every artifact which statistic it reproduces instead of a docstring claiming one.
 
 ## What it refuses
 
@@ -121,6 +131,133 @@ def exact_mcnemar(b: int, c: int) -> float:
         return 1.0
     tail = sum(math.comb(total, k) for k in range(0, min(b, c) + 1))
     return min(1.0, 2 * tail / (2**total))
+
+
+SIGN_FLIP_EXACT_LIMIT = 40
+
+
+def sign_flip_exact(differences: list[int]) -> float:
+    """Two-sided exact sign-flip `p` over per-question integer differences.
+
+    Ported from `packages/cortex-eval/src/paired-test.ts` rather than re-derived, because two instruments
+    that disagree are worse than one that is slightly conservative: the same limit of forty pairs and the
+    same normal tail above it, so this tool and `signFlipExact` return the same number on the same vector.
+
+    The input is the **difference in repetition counts** (`correctA - correctB`, an integer in
+    `[-runs, runs]`), not a mean. A common scale factor cancels out of the sign-flip distribution, and the
+    integer form keeps the folded weights exact.
+    """
+    for difference in differences:
+        if not isinstance(difference, int):
+            raise Unreadable(
+                f'sign-flip needs integer per-question differences, got {difference!r}; pass the repetition '
+                'count difference, not the mean'
+            )
+    non_zero = [difference for difference in differences if difference != 0]
+    if not non_zero:
+        return 1.0
+    observed = sum(non_zero)
+    if len(non_zero) > SIGN_FLIP_EXACT_LIMIT:
+        variance = sum(difference * difference for difference in non_zero)
+        if variance == 0:
+            return 1.0
+        z = abs(observed) / math.sqrt(variance)
+        return min(1.0, math.erfc(z / math.sqrt(2)))
+    distribution: dict[int, int] = {0: 1}
+    for difference in non_zero:
+        nxt: dict[int, int] = {}
+        for total, weight in distribution.items():
+            nxt[total + difference] = nxt.get(total + difference, 0) + weight
+            nxt[total - difference] = nxt.get(total - difference, 0) + weight
+        distribution = nxt
+    limit = abs(observed)
+    tail = sum(weight for total, weight in distribution.items() if abs(total) >= limit)
+    return min(1.0, tail / (2 ** len(non_zero)))
+
+
+def correctness_masks(document: dict, side: str) -> list[str] | None:
+    """The per-repetition correctness bitstrings for one side, or `None` when the artifact has none.
+
+    `None` is a legitimate shape and not a defect: `report.ts` omits the masks at one repetition, because
+    at one repetition they would be a second copy of the per-question verdicts. What is a defect is a mask
+    whose length disagrees with the roster — that is a mask from a different run.
+    """
+    ablation = document.get('ablation') or {}
+    masks = ablation.get(f'{side}CorrectByRun')
+    if masks is None:
+        return None
+    if not isinstance(masks, list) or any(not isinstance(mask, str) for mask in masks):
+        raise Unreadable(f'`ablation.{side}CorrectByRun` is not a list of bitstrings')
+    roster = len(document.get('questions') or [])
+    for index, mask in enumerate(masks):
+        if len(mask) != roster:
+            raise Unreadable(
+                f'`ablation.{side}CorrectByRun[{index}]` is {len(mask)} characters against a roster of '
+                f'{roster}: a mask that does not cover the roster is a mask from a different run'
+            )
+    return masks
+
+
+def field_identity(document: dict, masks: list[str]) -> dict:
+    """What `questions[].correct` actually is, proved against the masks rather than assumed.
+
+    This function exists because the tool's own docstring said something false for a whole campaign: it
+    described `questions[].correct` as "the campaign's majority verdict (>= 3 of 4 repetitions)" and
+    refused the masks as a second estimator. On `S18`'s artifacts the field agrees with **repetition 0**
+    on 121 of 121 questions in both arms and with the majority on 117 of 121 -- so it is the first
+    repetition, and the reading published as "`MR` +4" was one repetition's delta presented as the
+    campaign's.
+
+    The field's meaning is therefore printed next to every reading instead of being trusted: `agreesWith`
+    says which statistic reproduces it, and a pair of artifacts where no candidate does is a pair whose
+    estimator nobody knows.
+    """
+    records = document.get('questions') or []
+    runs = len(masks)
+    roster = len(records)
+    total = [sum(1 for mask in masks if mask[index] == '1') for index in range(roster)]
+    first = sum(1 for index, record in enumerate(records) if (record.get('correct') is True) == (masks[0][index] == '1'))
+    majority = sum(
+        1
+        for index, record in enumerate(records)
+        if (record.get('correct') is True) == (total[index] * 2 > runs)
+    )
+    any_run = sum(
+        1
+        for index, record in enumerate(records)
+        if (record.get('correct') is True) == (total[index] > 0)
+    )
+    if runs == 1 or first == roster:
+        agrees_with = 'repetition-0'
+    elif majority == roster:
+        agrees_with = 'majority'
+    elif any_run == roster:
+        agrees_with = 'any-repetition'
+    else:
+        agrees_with = 'none'
+    return {
+        'agreesWith': agrees_with,
+        'repetition0': f'{first}/{roster}',
+        'majority': f'{majority}/{roster}',
+        'anyRepetition': f'{any_run}/{roster}',
+        'runs': runs,
+    }
+
+
+def capability_means(document: dict, masks: list[str]) -> dict[str, float]:
+    """Correct answers per capability, averaged over repetitions, from the masks.
+
+    The floor criterion is read on the same estimator as the delta. Reading `E1` on four-repetition means
+    and `E3` on repetition 0 would let one criterion see a movement the other cannot, and the two are
+    reported side by side.
+    """
+    records = document.get('questions') or []
+    runs = len(masks)
+    totals: dict[str, int] = {}
+    for position, record in enumerate(records):
+        capability = record.get('capability')
+        totals[capability] = totals.get(capability, 0) + sum(1 for mask in masks if mask[position] == '1')
+    return {capability: total / runs for capability, total in totals.items()}
 
 
 def capability_counts(records: dict[str, dict], ids: list[str]) -> dict[str, int]:
@@ -290,6 +427,123 @@ def bill(document: dict) -> float:
     return float(value)
 
 
+def repetition_counts(document: dict, masks: list[str], run: int | None = None) -> dict[str, int]:
+    """Correct repetitions per question, keyed by id, from the masks joined to the roster by position.
+
+    The join is positional and that is the one assumption here, so it is checked rather than trusted:
+    `field_identity` proves that position `i` of mask 0 is the same question as `questions[i]`, by
+    reproducing the `correct` field on every question. `run` restricts the count to one repetition, which
+    is how the retracted statistic is rebuilt from the same bytes instead of from a remembered number.
+    """
+    records = document.get('questions') or []
+    chosen = masks if run is None else [masks[run]]
+    return {
+        record['questionId']: sum(1 for mask in chosen if mask[position] == '1')
+        for position, record in enumerate(records)
+    }
+
+
+def repetition_reading(control: dict, treatment: dict, mr_ids: list[str]) -> dict:
+    """The `MR` delta on the four-repetition mean, with the first repetition kept beside it.
+
+    Three shapes, and the third is why this returns rather than raises:
+
+    - both artifacts carry masks: the mean delta, the paired exact sign-flip `p` over per-question count
+      differences, and the same pair recomputed on repetition 0 for the retraction;
+    - neither carries masks (one repetition): the per-question verdicts are the reading, and the estimator
+      says so;
+    - one carries masks and the other does not: `unread`. Two artifacts measured a different number of
+      times are a different experiment, and averaging one of them is arithmetic over incomparable things.
+    """
+    masks_control = correctness_masks(control, 'feature')
+    masks_treatment = correctness_masks(treatment, 'feature')
+    if (masks_control is None) != (masks_treatment is None):
+        side = 'control' if masks_control is None else 'treatment'
+        raise Unreadable(
+            f'the {side} artifact carries no `ablation.featureCorrectByRun`, so the pair was measured a '
+            'different number of times on each side'
+        )
+    if masks_control is None:
+        left = by_question(control)
+        right = by_question(treatment)
+        won = sum(
+            1 for key in mr_ids if right[key].get('correct') is True and left[key].get('correct') is not True
+        )
+        lost = sum(
+            1 for key in mr_ids if left[key].get('correct') is True and right[key].get('correct') is not True
+        )
+        control_count = sum(1 for key in mr_ids if left[key].get('correct') is True)
+        treatment_count = sum(1 for key in mr_ids if right[key].get('correct') is True)
+        return {
+            'estimator': 'per-question verdict (the artifacts carry no repetition masks)',
+            'runs': 1,
+            'control': float(control_count),
+            'treatment': float(treatment_count),
+            'delta': float(treatment_count - control_count),
+            'won': won,
+            'lost': lost,
+            'ties': len(mr_ids) - won - lost,
+            'pValue': round(exact_mcnemar(lost, won), 6),
+            # Equal to the reading above by construction, and filled rather than `None` so a caller reads
+            # one shape: `estimator` is what says the two numbers are the same measurement.
+            'firstRepetition': {
+                'control': control_count,
+                'treatment': treatment_count,
+                'delta': treatment_count - control_count,
+                'won': won,
+                'lost': lost,
+                'mcnemarP': round(exact_mcnemar(lost, won), 6),
+            },
+            'fieldIdentity': {'control': None, 'treatment': None},
+        }
+    if len(masks_control) != len(masks_treatment):
+        raise Unreadable(
+            f'the artifacts ran {len(masks_control)} and {len(masks_treatment)} repetitions; a mean over a '
+            'different number of repetitions on each side is not the same measurement'
+        )
+    runs = len(masks_control)
+    total_control = repetition_counts(control, masks_control)
+    total_treatment = repetition_counts(treatment, masks_treatment)
+    first_control = repetition_counts(control, masks_control, run=0)
+    first_treatment = repetition_counts(treatment, masks_treatment, run=0)
+
+    differences = [total_treatment[key] - total_control[key] for key in mr_ids]
+    first_differences = [first_treatment[key] - first_control[key] for key in mr_ids]
+    control_mean = sum(total_control[key] for key in mr_ids) / runs
+    treatment_mean = sum(total_treatment[key] for key in mr_ids) / runs
+    first_control_count = sum(first_control[key] for key in mr_ids)
+    first_treatment_count = sum(first_treatment[key] for key in mr_ids)
+    return {
+        'estimator': f'{runs}-repetition mean, exact sign-flip over per-question count differences',
+        'runs': runs,
+        'control': control_mean,
+        'treatment': treatment_mean,
+        'delta': treatment_mean - control_mean,
+        'won': sum(1 for difference in differences if difference > 0),
+        'lost': sum(1 for difference in differences if difference < 0),
+        'ties': sum(1 for difference in differences if difference == 0),
+        'pValue': round(sign_flip_exact(differences), 6),
+        'firstRepetition': {
+            'control': first_control_count,
+            'treatment': first_treatment_count,
+            'delta': first_treatment_count - first_control_count,
+            'won': sum(1 for difference in first_differences if difference > 0),
+            'lost': sum(1 for difference in first_differences if difference < 0),
+            'mcnemarP': round(
+                exact_mcnemar(
+                    sum(1 for difference in first_differences if difference < 0),
+                    sum(1 for difference in first_differences if difference > 0),
+                ),
+                6,
+            ),
+        },
+        'fieldIdentity': {
+            'control': field_identity(control, masks_control),
+            'treatment': field_identity(treatment, masks_treatment),
+        },
+    }
+
+
 def read(control: dict, treatment: dict) -> dict:
     ids, control_ids = paired(control, treatment)
     left = by_question(control)
@@ -309,39 +563,54 @@ def read(control: dict, treatment: dict) -> dict:
     if sizes != population(left, control_ids):
         raise Unreadable('the two artifacts have different per-capability populations')
 
-    # Paired on the majority verdict, which is the field the criteria were written against.
+    # Paired on the **four-repetition mean**, which is the campaign's registered accuracy source
+    # (`accuracySource: 'repetition-mean'`, asserted in `acceptance.ts`'s `CATEGORY_ATTEST`) and the
+    # estimator `efficiency-frontier.ts` documents at length: collapsing a `series` to `discordant`
+    # "throws away the repetitions -- that is how `MR` read 2 won to 9 lost, p = 0.0654 on repetition 0 and
+    # 16 won to 5 lost, p = 0.0039 on the four-repetition means, the same 121 questions and opposite
+    # verdicts."
     #
-    # Counted on `MR` **and** on the whole roster, because the two answer different questions and the first
-    # version of this file answered the wrong one under the right label: §13.377.4 says "a paired McNemar p is
-    # reported beside it", beside the `MR` count, so the Discordant pair has to be the `MR` pair. It printed
-    # `fixed 6, broken 5` -- the whole-roster count -- under the label "Discordant on `MR`", where `MR` itself
-    # was 3 / 3. The five flips outside `MR` are not noise: they are what `E3` reports, and reading them as
-    # part of the target cell's evidence is the same class of error as reading a control's accuracy under a
-    # treatment's name.
-    b = c = 0
-    b_mr = c_mr = 0
+    # The first-repetition pair is still computed, because it is what the campaign published before this
+    # round and a retraction has to show the number it retracts. It is reported as
+    # `firstRepetition` and never as the delta.
+    first_b = first_c = 0
+    first_b_mr = first_c_mr = 0
     for key in ids:
         was = left[key].get('correct') is True
         now = right[key].get('correct') is True
         in_target = right[key].get('capability') == 'MR'
         if was and not now:
-            b += 1
-            b_mr += 1 if in_target else 0
+            first_b += 1
+            first_b_mr += 1 if in_target else 0
         elif now and not was:
-            c += 1
-            c_mr += 1 if in_target else 0
+            first_c += 1
+            first_c_mr += 1 if in_target else 0
 
     mr_size = sizes.get('MR')
-    mr_control = control_counts.get('MR')
-    mr_treatment = treatment_counts.get('MR')
-    if mr_size is None or mr_control is None or mr_treatment is None:
+    if mr_size is None or control_counts.get('MR') is None or treatment_counts.get('MR') is None:
         raise Unreadable('the pair has no `MR` cell, which is the population the mechanism targets')
+
+    mr_ids = [key for key in ids if right[key].get('capability') == 'MR']
+    repetition = repetition_reading(control, treatment, mr_ids)
+    mr_control = repetition['control']
+    mr_treatment = repetition['treatment']
 
     floor = []
     e3_ok = True
+    # The floor on the same estimator as the delta, for the reason `capability_means` gives.
+    masks_control = correctness_masks(control, 'feature')
+    masks_treatment = correctness_masks(treatment, 'feature')
+    if masks_control is not None and masks_treatment is not None and len(masks_control) == len(masks_treatment):
+        means_control = capability_means(control, masks_control)
+        means_treatment = capability_means(treatment, masks_treatment)
+        floor_estimator = f'{len(masks_control)}-repetition mean'
+    else:
+        means_control = {capability: float(count) for capability, count in control_counts.items()}
+        means_treatment = {capability: float(count) for capability, count in treatment_counts.items()}
+        floor_estimator = 'per-question verdict'
     for capability in sorted(sizes):
-        now = treatment_counts[capability]
-        was = control_counts[capability]
+        now = means_treatment.get(capability, 0.0)
+        was = means_control.get(capability, 0.0)
         delta = now - was
         below = delta < -E3_MAX_DROP
         e3_ok = e3_ok and not below
@@ -365,8 +634,7 @@ def read(control: dict, treatment: dict) -> dict:
 
     e1 = mr_treatment - mr_control
     e1_pass = mr_treatment >= E1_MIN_MR
-    mcnemar = exact_mcnemar(b_mr, c_mr)
-    mcnemar_all = exact_mcnemar(b, c)
+    mcnemar_all = exact_mcnemar(first_b, first_c)
     e2_pass = treatment_bill <= E2_MAX_TOKENS
     leak = len(identity['moved'])
     e3_pass = e3_ok and leak == 0
@@ -419,18 +687,15 @@ def read(control: dict, treatment: dict) -> dict:
         'population': sizes,
         'mr': {
             'population': mr_size,
-            'control': mr_control,
-            'treatment': mr_treatment,
-            'delta': e1,
+            **repetition,
             'threshold': E1_MIN_MR,
             'controlRate': round(mr_control / mr_size, 4),
             'treatmentRate': round(mr_treatment / mr_size, 4),
-            'discordant': {'fixed': c_mr, 'broken': b_mr},
-            'discordantAll': {'fixed': c, 'broken': b},
-            'mcnemarP': round(mcnemar, 6),
+            'discordantAll': {'fixed': first_c, 'broken': first_b},
             'mcnemarAllP': round(mcnemar_all, 6),
         },
         'floor': floor,
+        'floorEstimator': floor_estimator,
         'promptIdentity': identity,
         'configuration': surfaces,
         'bill': {
@@ -451,11 +716,11 @@ def read(control: dict, treatment: dict) -> dict:
                 'measured': e0_detail,
                 'threshold': 'both artifacts name the same commit',
             },
-            'E1': {'verdict': 'pass' if e1_pass else 'fail', 'measured': f'{mr_treatment} of {mr_size}',
+            'E1': {'verdict': 'pass' if e1_pass else 'fail', 'measured': f'{mr_treatment:.2f} of {mr_size}',
                    'threshold': f'>= {E1_MIN_MR}'},
             'E1\'': {
                 'verdict': 'pass' if mr_treatment >= mr_control + E1_RELATIVE_GAIN else 'fail',
-                'measured': f'{mr_treatment} against this pair\'s own control {mr_control}',
+                'measured': f'{mr_treatment:.2f} against this pair\'s own control {mr_control:.2f}',
                 'threshold': f'>= control + {E1_RELATIVE_GAIN}',
             },
             'E2': {'verdict': 'pass' if e2_pass else 'fail',
@@ -489,32 +754,60 @@ def read(control: dict, treatment: dict) -> dict:
 
 def render(reading: dict) -> str:
     mr = reading['mr']
+    first = mr['firstRepetition'] or {}
     bill_row = reading['bill']
     lines = [
         '## Query expansion on the product ranking (S17)',
         '',
         '| | control | treatment | delta |',
         '| --- | ---: | ---: | ---: |',
-        f"| `MR` majority verdicts | {mr['control']} of {mr['population']} "
-        f"({mr['controlRate'] * 100:.2f}%) | {mr['treatment']} of {mr['population']} "
-        f"({mr['treatmentRate'] * 100:.2f}%) | **{mr['delta']:+d}** |",
+        f"| `MR`, mean of {mr['runs']} repetition(s) | {mr['control']:.2f} of {mr['population']} "
+        f"({mr['controlRate'] * 100:.2f}%) | {mr['treatment']:.2f} of {mr['population']} "
+        f"({mr['treatmentRate'] * 100:.2f}%) | **{mr['delta']:+.2f}** |",
+        f"| `MR`, repetition 0 only | {first.get('control', '--')} of {mr['population']} | "
+        f"{first.get('treatment', '--')} of {mr['population']} | "
+        f"{('%+d' % first['delta']) if 'delta' in first else '--'} |",
         f"| prompt tokens per question | {bill_row['control']:.1f} | {bill_row['treatment']:.1f} | "
         f"{bill_row['ratio']:.3f}x |",
         '',
-        f"Discordant on `MR`: fixed {mr['discordant']['fixed']}, broken {mr['discordant']['broken']}, "
-        f"exact McNemar p = {mr['mcnemarP']:.4f}.",
-        f"The same pair over all capabilities: fixed "
+        f"Estimator: {mr['estimator']}.",
+    ]
+    identity_fields = mr.get('fieldIdentity') or {}
+    if identity_fields.get('control') and identity_fields.get('treatment'):
+        left = identity_fields['control']
+        right = identity_fields['treatment']
+        lines.append(
+            f"`questions[].correct` reproduces the **{left['agreesWith']}** statistic on the control "
+            f"({left['repetition0']} against repetition 0, {left['majority']} against the majority) and the "
+            f"**{right['agreesWith']}** on the treatment ({right['repetition0']}, {right['majority']}). "
+            'The field is proved against the masks on every artifact rather than assumed: this file called '
+            'it the majority for a whole campaign and it was the first repetition.'
+        )
+    if mr['pValue'] is not None:
+        lines.append(
+            f"Paired on `MR`: {mr['won']} won, {mr['lost']} lost, {mr['ties']} ties, exact sign-flip "
+            f"p = {mr['pValue']:.4f}."
+        )
+    if first and mr['runs'] > 1:
+        lines.append(
+            f"The same pair on repetition 0 alone: {first['won']} won, {first['lost']} lost, delta "
+            f"{first['delta']:+d}, exact McNemar p = {first['mcnemarP']:.4f}. That was the campaign's "
+            'published reading until round 145; it is one repetition, and `efficiency-frontier.ts` records '
+            'the same collapse reversing an `MR` verdict.'
+        )
+    lines.extend([
+        f"The same pair over all capabilities, repetition 0: fixed "
         f"{mr['discordantAll']['fixed']}, broken {mr['discordantAll']['broken']}, p = "
         f"{mr['mcnemarAllP']:.4f} -- those flips outside `MR` are `E3`'s observation, not `E1`'s evidence.",
         '',
-        '| capability | population | control | treatment | delta |',
+        f"| capability | population | control | treatment | delta ({reading['floorEstimator']}) |",
         '| --- | ---: | ---: | ---: | ---: |',
-    ]
+    ])
     for row in reading['floor']:
         marker = ' **below floor**' if row['belowFloor'] else ''
         lines.append(
-            f"| {row['capability']} | {row['population']} | {row['control']} | "
-            f"{row['treatment']} | {row['delta']:+d}{marker} |"
+            f"| {row['capability']} | {row['population']} | {row['control']:.2f} | "
+            f"{row['treatment']:.2f} | {row['delta']:+.2f}{marker} |"
         )
     identity = reading['promptIdentity']
     lines.append('')
@@ -574,7 +867,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         '--selftest',
         action='store_true',
-        help="recompute the control's own MR count from `questions[].correct` and print it",
+        help="print the control's MR count from `questions[].correct` beside its repetition mean, so the "
+             'two statistics are visible at once',
     )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
@@ -582,14 +876,22 @@ def main(argv: list[str] | None = None) -> int:
         control = load(args.control)
         treatment = load(args.treatment)
         if args.selftest:
-            # The estimator's own check, against the number the campaign published. If this ever
-            # disagrees, the field it reads is not the field `84.30%` was counted from, and every `E1`
-            # reading this tool produces inherits the difference.
+            # Two numbers rather than one, because one is what this file used to report and the other is
+            # what the campaign's registered accuracy source says. A selftest that printed only the field
+            # would certify the statistics that is wrong.
             control_ids = list(by_question(control))
             counts = capability_counts(by_question(control), control_ids)
             measured = counts.get('MR')
+            masks = correctness_masks(control, 'feature')
             print(f"control `questions[].correct` on MR: {measured} "
                   f"(published {CONTROL['mr']} of {CONTROL['mrPopulation']})")
+            if masks is not None:
+                means = capability_means(control, masks)
+                print(f"control MR repetition mean ({len(masks)} runs): {means.get('MR', 0.0):.2f} of "
+                      f"{CONTROL['mrPopulation']}")
+                identity = field_identity(control, masks)
+                print(f"`questions[].correct` is the {identity['agreesWith']} statistic "
+                      f"(repetition 0 {identity['repetition0']}, majority {identity['majority']})")
             if measured != CONTROL['mr']:
                 print('selftest FAILED: this artifact is not the control the criteria were written against',
                       file=sys.stderr)

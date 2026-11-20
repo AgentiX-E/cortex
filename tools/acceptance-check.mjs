@@ -231,11 +231,20 @@ const evaluations = applyRequirements(
 );
 
 const pct = (value) => `${(100 * value).toFixed(1)}%`;
-/** A unit decides how a number is written; a ratio printed as points is how a 28pp gap reads as 0.28. */
+/**
+ * A unit decides how a number is written; a ratio printed as points is how a 28pp gap reads as 0.28.
+ *
+ * A `count` keeps its decimals when it has any. Rows whose count is a mean over repetitions are
+ * fractional -- `S17` reads 1.75 on four-repetition means -- and rounding that to `2` would print a
+ * number the artifact does not contain, in the one column a reader quotes.
+ */
 const show = (criterion, value) => {
   if (value === null || value === undefined) return '—';
   if (criterion.unit === 'ratio') return pct(value);
   if (criterion.unit === 'points') return `${(100 * value).toFixed(1)}pp`;
+  if (criterion.unit === 'count-mean') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
   return value.toFixed(0);
 };
 const want = (criterion) => {

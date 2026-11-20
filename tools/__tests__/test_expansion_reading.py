@@ -7,10 +7,14 @@ dispatch which did not run is not evidence about a mechanism. A tool whose only 
 "prints a number anyway" would erase exactly that distinction, so every test here builds the state
 that must be refused and asserts the refusal names it.
 
-The estimator is pinned from the other side as well: `questions[].correct` is the campaign's majority
-verdict (>= 3 of 4), and recomputing over `ablation.featureCorrectByRun` instead returns 101 on `S16`
-where the artifact's own field returns 102. One question is the difference between "+5" and "+4" on a
-121-question population, which is why the tool keeps one estimator and this suite pins it.
+The estimator is pinned from both sides, and the second side is a retraction. This suite's first version
+said `questions[].correct` is "the campaign's majority verdict (>= 3 of 4)" and that recomputing over
+`ablation.featureCorrectByRun` "returns 101 on `S16` where the artifact's own field returns 102". Both
+artifacts of the `S18` pair say otherwise: the field agrees with **repetition 0** on 121 of 121 questions
+and with the majority on 117, so the 101-vs-102 discrepancy was majority-vote against first-repetition
+and the reading published as "`MR` +4" was one repetition's delta presented as the campaign's. The
+estimator is now the four-repetition mean, the masks are the evidence, and `field_identity` prints which
+statistic the field reproduces on every artifact instead of a docstring asserting it.
 """
 
 from __future__ import annotations
@@ -90,12 +94,165 @@ def read(control: dict, treated: dict) -> dict:
     return expansion_reading.read(control, treated)
 
 
-def test_mr_delta_is_read_from_the_majority_verdict_field():
+def attach_masks(document: dict, bits: dict[str, tuple[bool, ...]]) -> dict:
+    """Give one fixture `ablation.featureCorrectByRun`, from explicit per-question repetition bits.
+
+    Explicit and not derived, because the two statistics this suite separates differ exactly in these
+    bits: a question's `correct` field is one bit, and which of the four it is decides whether a delta is
+    the campaign's or one repetition's.
+    """
+    records = document['questions']
+    runs = len(next(iter(bits.values())))
+    masks = [''] * runs
+    for position, record in enumerate(records):
+        pattern = bits.get(record['questionId'], (record['correct'],) * runs)
+        for run, bit in enumerate(pattern):
+            masks[run] += '1' if bit else '0'
+    document['ablation'] = {'featureCorrectByRun': masks}
+    return document
+
+
+def mini(bits: dict[str, tuple[bool, ...]], **config: object) -> dict:
+    """A four-question `MR`-only artifact, so a fixture's arithmetic is readable at a glance."""
+    records = [
+        {
+            'questionId': key,
+            'capability': 'MR',
+            'correct': pattern[0],
+            'promptDigest': f'a{key}',
+            'promptChars': 20_000,
+        }
+        for key, pattern in bits.items()
+    ]
+    arm = {
+        'queryExpansion': 'none',
+        'selfIndex': {'queries': 2000, 'indexes': 2000},
+        'queryExpansionCounts': None,
+    }
+    arm.update(config)
+    document = {'questions': records, 'memoryArmConfig': arm, 'costEfficiency': {'promptTokensPerQuestion': 7448.0}}
+    return attach_masks(document, bits)
+
+
+def test_mr_delta_is_read_from_the_per_question_verdict_when_there_are_no_masks():
+    # One repetition is a legitimate artifact shape (`report.ts` omits the masks there), so the reading
+    # falls back to the verdict field and says so through `estimator` rather than refusing.
     reading = read(artifact(CONTROL_COUNTS, 'a'), treatment())
     assert reading['mr']['control'] == 102
     assert reading['mr']['treatment'] == 107
     assert reading['mr']['delta'] == 5
+    assert reading['mr']['runs'] == 1
+    assert 'no repetition masks' in reading['mr']['estimator']
     assert reading['criteria']['E1']['verdict'] == 'pass'
+
+
+def test_the_delta_is_the_repetition_mean_and_not_the_first_repetition():
+    # The S18 shape: a delta that is real on the mean and larger on repetition 0. Four questions, control
+    # 2.0 and treatment 2.0 on the mean, while repetition 0 reads 1 against 2. A tool that reads
+    # `questions[].correct` reports the second number as the first.
+    control = mini({'MR-0': (True, True, True, True), 'MR-1': (False, False, False, False)})
+    treated = mini(
+        {'MR-0': (True, True, True, False), 'MR-1': (True, False, False, False)},
+        queryExpansion='llm',
+        selfIndex={'queries': 8, 'indexes': 4},
+        queryExpansionCounts={'questions': 2, 'phrases': 6, 'refused': 0},
+    )
+    reading = read(control, treated)
+    assert reading['mr']['delta'] == 0
+    assert reading['mr']['firstRepetition']['delta'] == 1
+    assert (reading['mr']['won'], reading['mr']['lost'], reading['mr']['ties']) == (1, 1, 0)
+    assert reading['mr']['pValue'] == 1.0
+    # And the criterion that the campaign published a verdict from reads the mean, so its threshold has to
+    # be met by the mean: `E1'` needs control + 5 and this pair moved by nothing.
+    assert reading['criteria']["E1'"]['verdict'] == 'fail'
+
+
+def test_the_field_identity_proves_which_statistic_questions_correct_reproduces():
+    # The check that would have caught the campaign defect: on a fixture where the field is the majority
+    # and not repetition 0, the identity says `majority`; on one where it is repetition 0, it says so.
+    as_majority = mini({'MR-0': (False, True, True, True), 'MR-1': (True, False, False, False)})
+    for record in as_majority['questions']:
+        record['correct'] = record['questionId'] == 'MR-0'
+    treated = mini(
+        {'MR-0': (False, True, True, True), 'MR-1': (True, False, False, False)},
+        queryExpansion='llm',
+        selfIndex={'queries': 8, 'indexes': 4},
+        queryExpansionCounts={'questions': 2, 'phrases': 6, 'refused': 0},
+    )
+    for record in treated['questions']:
+        record['correct'] = record['questionId'] == 'MR-0'
+    identity = read(as_majority, treated)['mr']['fieldIdentity']
+    assert identity['control']['agreesWith'] == 'majority'
+    assert identity['control']['repetition0'] == '0/2'
+
+    as_first = mini({'MR-0': (False, True, True, True), 'MR-1': (True, False, False, False)})
+    treated_first = mini(
+        {'MR-0': (False, True, True, True), 'MR-1': (True, False, False, False)},
+        queryExpansion='llm',
+        selfIndex={'queries': 8, 'indexes': 4},
+        queryExpansionCounts={'questions': 2, 'phrases': 6, 'refused': 0},
+    )
+    identity = read(as_first, treated_first)['mr']['fieldIdentity']
+    assert identity['control']['agreesWith'] == 'repetition-0'
+    # Neither question's majority matches repetition 0 on this fixture, which is what makes the two
+    # statistics separable at all; a fixture where they agreed could not tell them apart.
+    assert identity['control']['majority'] == '0/2'
+
+
+def test_a_pair_measured_a_different_number_of_times_is_unreadable():
+    # One artifact with masks and one without is not a pair: a mean over repetitions on one side and a
+    # single verdict on the other are two different measurements, and averaging them is arithmetic over
+    # incomparable things.
+    control = mini({'MR-0': (True, True, True, True), 'MR-1': (False, False, False, False)})
+    treated = mini(
+        {'MR-0': (True, True, True, True), 'MR-1': (False, False, False, False)},
+        queryExpansion='llm',
+        selfIndex={'queries': 8, 'indexes': 4},
+        queryExpansionCounts={'questions': 2, 'phrases': 6, 'refused': 0},
+    )
+    del treated['ablation']
+    try:
+        read(control, treated)
+    except expansion_reading.Unreadable as error:
+        assert 'different number of times' in str(error)
+    else:  # pragma: no cover - the assertion is the point
+        raise AssertionError('a pair with masks on one side only was read')
+
+
+def test_a_mask_that_does_not_cover_the_roster_is_refused():
+    # A mask shorter than the roster is a mask from a different run, and a zip over it would silently drop
+    # the questions it does not reach.
+    control = mini({'MR-0': (True, True, True, True), 'MR-1': (False, False, False, False)})
+    treated = mini(
+        {'MR-0': (True, True, True, True), 'MR-1': (False, False, False, False)},
+        queryExpansion='llm',
+        selfIndex={'queries': 8, 'indexes': 4},
+        queryExpansionCounts={'questions': 2, 'phrases': 6, 'refused': 0},
+    )
+    treated['ablation']['featureCorrectByRun'][2] = '1'
+    try:
+        read(control, treated)
+    except expansion_reading.Unreadable as error:
+        assert 'does not cover the roster' in str(error)
+    else:  # pragma: no cover
+        raise AssertionError('a mask shorter than the roster was read')
+
+
+def test_sign_flip_agrees_with_the_typescript_thresholds():
+    # The two instruments must agree or the campaign has two p-values for one pair. Five questions all won
+    # is the smallest case with a hand-checkable answer: `P(|Σ| >= 5) = 2/32`.
+    assert expansion_reading.sign_flip_exact([0, 0, 0]) == 1.0
+    assert expansion_reading.sign_flip_exact([1, 1, 1, 1, 1]) == 0.0625
+    # Symmetric evidence is a resolved tie, not a small p.
+    assert expansion_reading.sign_flip_exact([2, -2]) == 1.0
+    # And a mean is refused rather than rounded, because a `1/3` would put a rounding error into a
+    # distribution the test claims to compute exactly.
+    try:
+        expansion_reading.sign_flip_exact([0.5])
+    except expansion_reading.Unreadable as error:
+        assert 'integer' in str(error)
+    else:  # pragma: no cover
+        raise AssertionError('a fractional difference was accepted')
 
 
 def test_a_gain_below_the_threshold_is_a_failed_criterion_and_not_a_dispatch_failure():
@@ -215,9 +372,12 @@ def test_the_discordant_pair_is_counted_on_the_population_the_criterion_names():
         by_id[key]['correct'] = False
     reading = read(control, treated)
     assert reading['mr']['treatment'] == 102
-    assert reading['mr']['discordant'] == {'fixed': 3, 'broken': 3}
+    # `won`/`lost` are the paired distinction on the estimator; `firstRepetition` carries the same pair
+    # recomputed on repetition 0, which on this fixture (no masks) is the same measurement.
+    assert (reading['mr']['won'], reading['mr']['lost']) == (3, 3)
+    assert (reading['mr']['firstRepetition']['won'], reading['mr']['firstRepetition']['lost']) == (3, 3)
     assert reading['mr']['discordantAll'] == {'fixed': 3, 'broken': 5}
-    assert reading['mr']['mcnemarP'] == 1.0
+    assert reading['mr']['pValue'] == 1.0
     assert reading['mr']['mcnemarAllP'] < 1.0
 
 
