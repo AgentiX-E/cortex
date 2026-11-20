@@ -636,3 +636,67 @@ def test_a_bill_increase_over_the_registered_ratio_is_a_failed_criterion():
     treated['costEfficiency']['promptTokensPerQuestion'] = 9_000.0
     reading = read(control, treated)
     assert reading['criteria']["E2'"]['verdict'] == 'fail'
+
+
+def test_a_blind_gold_account_is_stated_and_never_read_as_retrieval():
+    # `S18`'s pair, and every artifact of the registered arm: the ranking is built inside the product,
+    # so `goldOverlap` holds a delivery count and cannot separate "never surfaced" from "surfaced and
+    # cut". The reading says so where the capability table is, because that table is where a reader
+    # would otherwise write the word "retrieval".
+    control = artifact(CONTROL_COUNTS, 'a', goldAccount='product-unreported')
+    treated = treatment(goldAccount='product-unreported')
+    reading = read(control, treated)
+    assert reading['goldAccount'] == {
+        'control': 'product-unreported',
+        'treatment': 'product-unreported',
+        'source': {'control': 'recorded', 'treatment': 'recorded'},
+        'readable': False,
+    }
+    rendered = expansion_reading.render(reading)
+    assert 'Gold account: **product-unreported**' in rendered
+    assert 'not a retrieval verdict' in rendered
+
+
+def test_a_ranked_gold_account_is_stated_as_readable():
+    # The other side of the same field: a harness-owned pool is on the record, so `carried < total` is
+    # a statement about the ranking and the reading must not print the blind warning over it.
+    control = artifact(CONTROL_COUNTS, 'a', goldAccount='ranked')
+    treated = treatment(goldAccount='ranked')
+    reading = read(control, treated)
+    assert reading['goldAccount']['readable'] is True
+    rendered = expansion_reading.render(reading)
+    assert 'the pool is on the record' in rendered
+    assert 'not a retrieval verdict' not in rendered
+
+
+def test_an_artifact_that_predates_the_field_is_not_read_as_either():
+    # `unrecorded` is a third state and not a synonym for `ranked`: an artifact written before the
+    # field existed cannot say what its account supported, and treating silence as the strong claim is
+    # the defect the field was added for.
+    reading = read(artifact(CONTROL_COUNTS, 'a'), treatment())
+    assert reading['goldAccount']['control'] == 'unrecorded'
+    assert reading['goldAccount']['readable'] is False
+
+
+def test_an_artifact_written_before_the_field_is_classified_from_its_signal():
+    # The path every artifact of the campaign takes, including `S18`'s pair: no `goldAccount`, and a
+    # `relevanceSignal` that already says where the pool lived. Without this the reading would call the
+    # registered arm's whole history unrecorded and stop there.
+    control = artifact(CONTROL_COUNTS, 'a', relevanceSignal='self-index')
+    treated = treatment(relevanceSignal='self-index')
+    reading = read(control, treated)
+    assert reading['goldAccount']['treatment'] == 'product-unreported'
+    assert reading['goldAccount']['source']['treatment'] == 'derived'
+    assert reading['goldAccount']['readable'] is False
+    assert 'derived from `relevanceSignal`' in expansion_reading.render(reading)
+
+
+def test_a_recorded_field_wins_over_the_derivation_and_says_so():
+    # The other direction: once the arm writes the field, the reading reports what the artifact stated
+    # rather than re-deriving it, because a reader comparing two files should be able to tell a recorded
+    # claim from this file's inference.
+    control = artifact(CONTROL_COUNTS, 'a', relevanceSignal='self-index', goldAccount='ranked')
+    treated = treatment(relevanceSignal='self-index', goldAccount='ranked')
+    reading = read(control, treated)
+    assert reading['goldAccount']['source']['control'] == 'recorded'
+    assert reading['goldAccount']['readable'] is True

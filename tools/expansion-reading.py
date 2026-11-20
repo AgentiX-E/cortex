@@ -356,6 +356,50 @@ def configuration_surfaces(control: dict, treatment: dict) -> dict:
     }
 
 
+def gold_account(control: dict, treatment: dict) -> dict:
+    """What each arm's artifact can say about the ranking that produced its evidence.
+
+    `goldOverlap.carried < total` supports two different claims: a gold turn the ranking **never
+    surfaced**, and one it surfaced and the room **cut**. Only the first is a fact about ranking, and
+    the two license opposite next increments -- a ranking change versus a wider room.
+
+    Three sources, in order of authority:
+
+    1. `memoryArmConfig.goldAccount` -- written by the arm since round 146, and derived there from
+       `buildsProductIndex`, so it cannot disagree with the wiring.
+    2. The same derivation applied here, for every artifact written **before** that field existed.
+       `self-index` is the signal that builds the ranking inside the product, and it has been the
+       registered arm since `S9`, so most of this campaign's artifacts are in that class -- including
+       `S18`'s pair, which is why the reading has to reach back rather than forward.
+    3. `unrecorded` when the artifact carries neither field, which cannot be read as either claim.
+
+    `source` says which of the three answered, because "the artifact stated this" and "this file
+    derived it from the signal" are different warrants for the same word.
+    """
+    sources = {}
+    for label, artifact in (('control', control), ('treatment', treatment)):
+        block = artifact.get('memoryArmConfig') or {}
+        recorded = block.get('goldAccount')
+        if recorded:
+            sources[label] = {'value': recorded, 'source': 'recorded'}
+            continue
+        signal = block.get('relevanceSignal')
+        if signal is None:
+            sources[label] = {'value': 'unrecorded', 'source': 'absent'}
+        elif signal == 'self-index':
+            sources[label] = {'value': 'product-unreported', 'source': 'derived'}
+        elif signal == 'none':
+            sources[label] = {'value': 'none', 'source': 'derived'}
+        else:
+            sources[label] = {'value': 'ranked', 'source': 'derived'}
+    return {
+        'control': sources['control']['value'],
+        'treatment': sources['treatment']['value'],
+        'source': {label: entry['source'] for label, entry in sources.items()},
+        'readable': all(entry['value'] == 'ranked' for entry in sources.values()),
+    }
+
+
 def revision_verdict(control: dict, treatment: dict) -> tuple[str, str]:
     """`E0`: whether the two artifacts name the same commit, which every other criterion rests on.
 
@@ -696,6 +740,7 @@ def read(control: dict, treatment: dict) -> dict:
         },
         'floor': floor,
         'floorEstimator': floor_estimator,
+        'goldAccount': gold_account(control, treatment),
         'promptIdentity': identity,
         'configuration': surfaces,
         'bill': {
@@ -810,6 +855,26 @@ def render(reading: dict) -> str:
             f"{row['treatment']:.2f} | {row['delta']:+.2f}{marker} |"
         )
     identity = reading['promptIdentity']
+    lines.append('')
+    account = reading['goldAccount']
+    derived = 'derived' in account['source'].values()
+    if not account['readable']:
+        # Printed unconditionally beside the capability table, because that table is where a reader
+        # would otherwise turn `carried < total` into the word "retrieval".
+        lines.append(
+            f"Gold account: **{account['treatment']}** (control {account['control']}) -- the ranking was "
+            'built inside the product, so a gold turn the ranking never surfaced and one the room cut '
+            'are the same row. `goldOverlap.carried / total` in these artifacts is a delivery count and '
+            'not a retrieval verdict'
+            + (
+                ', and the classification is derived from `relevanceSignal` because these artifacts '
+                'predate the field that states it.'
+                if derived
+                else '.'
+            )
+        )
+    else:
+        lines.append(f"Gold account: `{account['treatment']}` -- the pool is on the record.")
     lines.append('')
     lines.append(
         f"Prompt identity outside `MR`: {len(identity['moved'])} of {identity['checked']} digests moved"

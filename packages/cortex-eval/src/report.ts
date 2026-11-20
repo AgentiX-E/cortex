@@ -75,6 +75,29 @@ export type AblationReport = {
    */
   revision?: RunRevision | undefined;
   /**
+   * Which repetition `feature.metrics.accuracy` and `baseline.metrics.accuracy` count.
+   *
+   * `'first-repetition'`, always, because `computeMetrics` is handed one pass. The mean over every
+   * pass is `ablation.featureAggregate.avg` and it is a different number whenever the run repeated:
+   * on `S18`'s control the two read **81.82%** and **82.02%**, and on the treatment **83.47%** and
+   * **83.47%** -- difference in the fourth digit, which is exactly the kind of gap a reader resolves
+   * by picking whichever number they looked at first.
+   *
+   * ## The misreading this exists to stop
+   *
+   * Round 145 read `questions[].correct` (repetition 0, by construction -- `ablation.featureCorrect`
+   * is that vector) together with `metrics.accuracy` (also repetition 0), published `+4`, and only
+   * found the mistake by re-deriving the four masks: the registered estimator is the mean over
+   * repetitions and it read **+1.75**. Nothing in the artifact said which population either number
+   * came from; `costEfficiency.accuracySource` names its own (`all-runs`), and the metrics block --
+   * the one a reader opens first -- named nothing.
+   *
+   * So the block states it, once, at the top level, and the renderer prints it beside the number.
+   * The value is a constant rather than a parameter: `buildAblationReport` has exactly one way to
+   * compute `metrics`, and a caller-supplied label could disagree with the computation.
+   */
+  accuracyEstimator?: 'first-repetition' | undefined;
+  /**
    * The shape of the population this run graded, when it was not one window per corpus.
    *
    * ## Why the artifact has to carry it
@@ -1053,6 +1076,29 @@ export type MemoryArmConfig = {
    */
   readonly relevanceSignal: string;
   /**
+   * What this run's artifact could read about the ranking that produced its evidence.
+   *
+   * Three values, and each is a different fact: `ranked` is a run whose pool the harness built and
+   * can therefore count (`goldOverlap.pool` and `goldRanks` are present); `product-unreported` is a
+   * run whose pool was built **inside the product** (`buildsProductIndex`, i.e. `self-index`), so a
+   * gold turn the reader did not receive cannot be told apart from one the budget cut; `none` is a
+   * run that consulted no ranking at all.
+   *
+   * ## Why this is a field and not an inference
+   *
+   * `S18`'s pair was read with `goldOverlap.carried < total` on sixteen questions and the reading
+   * could not say whether the ranking never surfaced those turns or the 48,460-character room cut
+   * them. A reader holding only `carried` and `total` will supply an answer -- and the two answers
+   * imply opposite next increments (`relevanceTopK` / a ranking change, versus a wider room). The
+   * artifact therefore states which of the two it can support instead of leaving the question to
+   * the reader's optimism.
+   *
+   * A `string` rather than an enum for the reason {@link MemoryArmConfig.relevanceSignal} gives: the
+   * arm validates the value at parse time, and restating the union here would be a second definition
+   * to keep in step.
+   */
+  readonly goldAccount?: string | undefined;
+  /**
    * How many turns per question the relevance index scored.
    *
    * Recorded beside the signal because it is the same claim's second half: a
@@ -1801,6 +1847,10 @@ export async function runAblationReport(
     baseline: { name: baseline.name, metrics: ablation.baselineMetrics },
     feature: { name: feature.name, metrics: ablation.featureMetrics },
     ablation,
+    // Written unconditionally, and as a constant: `feature.metrics` is computed from one pass by
+    // construction (`runAblation` hands `computeMetrics` a single repetition), so a field that could
+    // be absent would let a reader treat "not labelled" as "the mean over runs".
+    accuracyEstimator: 'first-repetition',
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     ...(options.datasetFingerprint === undefined
       ? {}
@@ -2055,6 +2105,11 @@ export function formatAblationReport(report: AblationReport): string {
         // §13.386, on the same line: a reader comparing two runs where one labelled the boundaries and one
         // did not has to be able to see that without opening the JSON.
         `, \`sessionClock=${memoryArm.sessionClock ?? 'off'}\`` +
+        // On the same line, and for the same reason: a reader comparing two runs whose gold accounts
+        // can answer different questions has to be able to see that without opening the JSON. It is
+        // the one field here that describes the *instrument* rather than the arm, which is why the
+        // line is followed by a sentence whenever the answer is `product-unreported`.
+        `, \`goldAccount=${memoryArm.goldAccount ?? 'unrecorded'}\`` +
         // The reach, in the run's own units: how many multi-session questions were asked,
         // how many distinct phrases the index received, and how many responses the parser
         // refused whole. One field rather than three so the line stays a configuration
@@ -2339,6 +2394,25 @@ export function formatAblationReport(report: AblationReport): string {
     lines.push(
       `- Overall accuracy over all runs (\`${report.feature.name}\`): ${pct(spread.avg)} ` +
         `(min ${pct(spread.min)}, max ${pct(spread.max)})`,
+    );
+  }
+  // The artifact's own label for which repetition `metrics` counts, and the reason it is printed
+  // rather than left in the JSON: these are the lines a reader quotes, and round 145 quoted the
+  // first one against a criterion written for the second.
+  if (report.accuracyEstimator !== undefined) {
+    lines.push(
+      `- \`accuracyEstimator: ${report.accuracyEstimator}\` — the accuracy lines above and every ` +
+        '`questions[].correct` are one pass; the mean over every pass is the line beginning ' +
+        '“Overall accuracy over all runs”.',
+    );
+  }
+  // The instrument's own limit, said where the numbers are, because the opposite reading is the one
+  // a reader reaches for: `carried < total` looks like a retrieval finding and is not one here.
+  if (report.memoryArmConfig?.goldAccount === 'product-unreported') {
+    lines.push(
+      '- **The gold account is blind on this run** (`goldAccount: product-unreported`): the ranking ' +
+        'was built inside the product, so `goldOverlap.carried < total` cannot be read as a retrieval ' +
+        'verdict — a gold turn the ranking never surfaced and one the budget cut are the same row.',
     );
   }
   // §13.176. One question's prompt per repetition. The per-record `promptVariants` count is what a reader

@@ -3121,6 +3121,38 @@ export function buildsProductIndex(relevanceSignal: string): boolean {
   return relevanceSignal === 'self-index';
 }
 
+/**
+ * What a run's artifact can say about the ranking that produced its evidence.
+ *
+ * | value | the pool lives in | what `goldOverlap` can answer |
+ * | --- | --- | --- |
+ * | `ranked` | the harness (`relevance-index.ts`) | where each gold turn sat in the ranking, and how many of them it surfaced |
+ * | `product-unreported` | the product (`SearchIndex`) | where each gold turn sat **in the delivery**, and nothing about the turns it did not deliver |
+ * | `none` | nowhere | nothing, and the budget spent arrival order |
+ *
+ * ## Why `carried < total` needs this beside it
+ *
+ * `S18`'s pair read `goldOverlap.carried / total` on 121 multi-session questions, sixteen of them
+ * short of parity, and the artifact could not say whether those gold turns were **never ranked** or
+ * **ranked and cut by the 48,460-character room**. The two readings license opposite next steps --
+ * a ranking change versus a wider room -- and the registered arm has been `self-index` since `S9`,
+ * so every artifact of the arm this campaign reports on is blind in exactly that way.
+ *
+ * ## Why it is derived rather than declared
+ *
+ * One decision already exists (`buildsProductIndex`) and it is what the run wires. A second table
+ * here could say `ranked` for a run that passed an index to the product, which is the "recorded
+ * configuration that never reached the decision it names" defect this repository has paid for.
+ * Deriving it means the artifact cannot disagree with the wiring.
+ */
+type GoldAccount = 'ranked' | 'product-unreported' | 'none';
+
+/** The three-value derivation, in one place, for the reason {@link buildsProductIndex} is a function. */
+function goldAccountOf(relevanceSignal: string): GoldAccount {
+  if (buildsProductIndex(relevanceSignal)) return 'product-unreported';
+  return relevanceSignal === 'none' ? 'none' : 'ranked';
+}
+
 export function assertRerankReachesRanking(
   relevanceSignal: string,
   rerank: MemoryArmConfig['rerank'] | undefined,
@@ -3315,6 +3347,11 @@ export function toMemoryArmConfig(
     // run, and a reader recomputing it from the name would have to know this module's
     // constants to do it.
     relevanceSignal: options.relevanceSignal,
+    // Derived from the signal rather than declared a second time, and written on every arm including
+    // the ones whose signal is `none`: it states what this artifact's gold account can support, which
+    // is a fact about the run rather than about the file a reader happens to hold. `GoldAccount`
+    // documents the three values and the reading that made the field necessary.
+    goldAccount: goldAccountOf(options.relevanceSignal),
     relevanceTopK: options.relevanceTopK,
     // Projected rather than inferred, for the reason the width is: the unit is a separate
     // claim about the same budget, and a reader recomputing it from the signal's name

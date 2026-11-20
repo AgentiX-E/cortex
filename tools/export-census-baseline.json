@@ -351,7 +351,7 @@
     "cortex-eval: A3Result (packages/cortex-eval/src/a3.ts:75)",
     "cortex-eval: A3Trial (packages/cortex-eval/src/a3.ts:41)",
     "cortex-eval: A3Verdict (packages/cortex-eval/src/a3.ts:72)",
-    "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1693)",
+    "cortex-eval: AblationReportOptions (packages/cortex-eval/src/report.ts:1739)",
     "cortex-eval: AbstainReason (packages/cortex-eval/src/natural-language-memory.ts:66)",
     "cortex-eval: BenchmarkRunnerOptions (packages/cortex-eval/src/runner.ts:89)",
     "cortex-eval: BuildCost (packages/cortex-eval/src/competitor.ts:80)",
@@ -363,14 +363,14 @@
     "cortex-eval: Classification (packages/cortex-eval/src/model-portability.ts:440)",
     "cortex-eval: Comparability (packages/cortex-eval/src/competitor.ts:148)",
     "cortex-eval: Comparator (packages/cortex-eval/src/acceptance.ts:52)",
-    "cortex-eval: Competitor (packages/cortex-eval/src/acceptance.ts:121)",
+    "cortex-eval: Competitor (packages/cortex-eval/src/acceptance.ts:128)",
     "cortex-eval: CompletedPass (packages/cortex-eval/src/replay-system.ts:55)",
     "cortex-eval: ConfigCell (packages/cortex-eval/src/model-portability.ts:255)",
     "cortex-eval: CortexMemoryArmEnv (packages/cortex-eval/src/bench-memory-arm.ts:114)",
     "cortex-eval: CortexMemoryArmOptions (packages/cortex-eval/src/bench-memory-arm.ts:143)",
-    "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:3760)",
-    "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:3587)",
-    "cortex-eval: Criterion (packages/cortex-eval/src/acceptance.ts:129)",
+    "cortex-eval: CortexMemoryArmResult (packages/cortex-eval/src/bench-memory-arm.ts:3797)",
+    "cortex-eval: CortexMemoryArmRunOptions (packages/cortex-eval/src/bench-memory-arm.ts:3624)",
+    "cortex-eval: Criterion (packages/cortex-eval/src/acceptance.ts:136)",
     "cortex-eval: DEFAULT_DEEPSEEK_BASE_URL (packages/cortex-eval/src/reader-provider.ts:84)",
     "cortex-eval: DEFAULT_DEEPSEEK_MODEL (packages/cortex-eval/src/reader-provider.ts:85)",
     "cortex-eval: DEFAULT_HASH_DIMENSION (packages/cortex-eval/src/embedding-factory.ts:23)",
@@ -390,14 +390,14 @@
     "cortex-eval: EmbeddingMemorySystemOptions (packages/cortex-eval/src/embedding-memory.ts:14)",
     "cortex-eval: EmbeddingSourceStats (packages/cortex-eval/src/retrieval.ts:151)",
     "cortex-eval: EmbeddingWithProvenance (packages/cortex-eval/src/embedding-factory.ts:52)",
-    "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:1883)",
+    "cortex-eval: Evaluation (packages/cortex-eval/src/acceptance.ts:1923)",
     "cortex-eval: EvidenceScope (packages/cortex-eval/src/model-portability.ts:252)",
     "cortex-eval: FactMemorySystem (packages/cortex-eval/src/fact-memory.ts:16)",
     "cortex-eval: FactMemorySystemOptions (packages/cortex-eval/src/fact-memory.ts:9)",
     "cortex-eval: Grade (packages/cortex-eval/src/acceptance.ts:49)",
     "cortex-eval: HarnessOptions (packages/cortex-eval/src/harness.ts:58)",
     "cortex-eval: IngestReport (packages/cortex-eval/src/competitor.ts:48)",
-    "cortex-eval: Kind (packages/cortex-eval/src/acceptance.ts:65)",
+    "cortex-eval: Kind (packages/cortex-eval/src/acceptance.ts:72)",
     "cortex-eval: MemoryTurn (packages/cortex-eval/src/competitor.ts:35)",
     "cortex-eval: NaturalLanguageMemorySystemOptions (packages/cortex-eval/src/natural-language-memory.ts:109)",
     "cortex-eval: PORTABILITY_MATRIX (packages/cortex-eval/src/model-portability.ts:299)",
@@ -414,23 +414,23 @@
     "cortex-eval: RerankArmOptionsInput (packages/cortex-eval/src/bench-arm-options.ts:17)",
     "cortex-eval: RerankEnv (packages/cortex-eval/src/rerank-factory.ts:48)",
     "cortex-eval: RerankFallbackReport (packages/cortex-eval/src/runner.ts:51)",
-    "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:1921)",
+    "cortex-eval: Resolvers (packages/cortex-eval/src/acceptance.ts:1961)",
     "cortex-eval: RetrievalMode (packages/cortex-eval/src/harness.ts:52)",
     "cortex-eval: RetryAblationReport (packages/cortex-eval/src/runner.ts:862)",
-    "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1515)",
+    "cortex-eval: RetryFireCounts (packages/cortex-eval/src/report.ts:1561)",
     "cortex-eval: ReviewCard (packages/cortex-eval/src/review-page.ts:32)",
     "cortex-eval: ReviewCardsFile (packages/cortex-eval/src/review-page.ts:122)",
-    "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:3837)",
+    "cortex-eval: ReviewMechanismTrace (packages/cortex-eval/src/bench-memory-arm.ts:3874)",
     "cortex-eval: ReviewPageArgs (packages/cortex-eval/src/review-page.ts:83)",
     "cortex-eval: ReviewPageInput (packages/cortex-eval/src/review-page.ts:40)",
     "cortex-eval: ReviewPair (packages/cortex-eval/src/review-page.ts:55)",
     "cortex-eval: ReviewPlan (packages/cortex-eval/src/review-page.ts:62)",
     "cortex-eval: RunConfig (packages/cortex-eval/src/competitor.ts:94)",
     "cortex-eval: SearchOptions (packages/cortex-eval/src/competitor.ts:67)",
-    "cortex-eval: Source (packages/cortex-eval/src/acceptance.ts:72)",
+    "cortex-eval: Source (packages/cortex-eval/src/acceptance.ts:79)",
     "cortex-eval: SyntheticBenchmarkOptions (packages/cortex-eval/src/datasets/synthetic-benchmark.ts:10)",
     "cortex-eval: ThinkingReach (packages/cortex-eval/src/llm-factory.ts:94)",
-    "cortex-eval: Unit (packages/cortex-eval/src/acceptance.ts:55)",
+    "cortex-eval: Unit (packages/cortex-eval/src/acceptance.ts:62)",
     "cortex-eval: WidthPlan (packages/cortex-eval/src/bench-memory-arm.ts:125)",
     "cortex-eval: buildConservativeQaPrompt (packages/cortex-eval/src/natural-language-memory.ts:1983)",
     "cortex-eval: buildDerivationQaPrompt (packages/cortex-eval/src/natural-language-memory.ts:2618)",
@@ -492,7 +492,7 @@
     "cortex-eval: timelineFor (packages/cortex-eval/src/fact-store.ts:25)",
     "cortex-eval: toSessions (packages/cortex-eval/src/competitor.ts:182)",
     "cortex-eval: tokenize (packages/cortex-eval/src/fact-memory.ts:72)",
-    "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:3963)",
+    "cortex-eval: traceReviewMechanisms (packages/cortex-eval/src/bench-memory-arm.ts:4000)",
     "cortex-eval: truncateSession (packages/cortex-eval/src/natural-language-memory.ts:2820)",
     "cortex-eval: truncateText (packages/cortex-eval/src/natural-language-memory.ts:2716)"
    ]
@@ -2117,7 +2117,7 @@
    "packages/cortex-eval/src/assumption-ablation.ts:69"
   ],
   "cortex-eval: AblationReportOptions": [
-   "packages/cortex-eval/src/report.ts:1693"
+   "packages/cortex-eval/src/report.ts:1739"
   ],
   "cortex-eval: AblationRow": [
    "packages/cortex-eval/src/assumption-ablation.ts:780"
@@ -2222,7 +2222,7 @@
    "packages/cortex-eval/src/acceptance.ts:52"
   ],
   "cortex-eval: Competitor": [
-   "packages/cortex-eval/src/acceptance.ts:121"
+   "packages/cortex-eval/src/acceptance.ts:128"
   ],
   "cortex-eval: CompletedPass": [
    "packages/cortex-eval/src/replay-system.ts:55"
@@ -2237,10 +2237,10 @@
    "packages/cortex-eval/src/bench-memory-arm.ts:143"
   ],
   "cortex-eval: CortexMemoryArmResult": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:3760"
+   "packages/cortex-eval/src/bench-memory-arm.ts:3797"
   ],
   "cortex-eval: CortexMemoryArmRunOptions": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:3587"
+   "packages/cortex-eval/src/bench-memory-arm.ts:3624"
   ],
   "cortex-eval: CostArtifactShape": [
    "packages/cortex-eval/src/cost-per-capability.ts:178"
@@ -2249,7 +2249,7 @@
    "packages/cortex-eval/src/cost-per-capability.ts:123"
   ],
   "cortex-eval: Criterion": [
-   "packages/cortex-eval/src/acceptance.ts:129"
+   "packages/cortex-eval/src/acceptance.ts:136"
   ],
   "cortex-eval: CriterionVerdict": [
    "packages/cortex-eval/src/b7-cohort.ts:291"
@@ -2351,7 +2351,7 @@
    "packages/cortex-eval/src/embedding-factory.ts:52"
   ],
   "cortex-eval: Evaluation": [
-   "packages/cortex-eval/src/acceptance.ts:1883"
+   "packages/cortex-eval/src/acceptance.ts:1923"
   ],
   "cortex-eval: EvidenceScope": [
    "packages/cortex-eval/src/model-portability.ts:252"
@@ -2375,7 +2375,7 @@
    "packages/cortex-eval/src/competitor.ts:48"
   ],
   "cortex-eval: Kind": [
-   "packages/cortex-eval/src/acceptance.ts:65"
+   "packages/cortex-eval/src/acceptance.ts:72"
   ],
   "cortex-eval: MemoryTurn": [
    "packages/cortex-eval/src/competitor.ts:35"
@@ -2477,7 +2477,7 @@
    "packages/cortex-eval/src/assumption-ablation.ts:614"
   ],
   "cortex-eval: Resolvers": [
-   "packages/cortex-eval/src/acceptance.ts:1921"
+   "packages/cortex-eval/src/acceptance.ts:1961"
   ],
   "cortex-eval: RetrievalDiagnostic": [
    "packages/cortex-eval/src/retrieval-diagnostics.ts:41"
@@ -2492,7 +2492,7 @@
    "packages/cortex-eval/src/runner.ts:862"
   ],
   "cortex-eval: RetryFireCounts": [
-   "packages/cortex-eval/src/report.ts:1515"
+   "packages/cortex-eval/src/report.ts:1561"
   ],
   "cortex-eval: ReviewCard": [
    "packages/cortex-eval/src/review-page.ts:32"
@@ -2501,7 +2501,7 @@
    "packages/cortex-eval/src/review-page.ts:122"
   ],
   "cortex-eval: ReviewMechanismTrace": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:3837"
+   "packages/cortex-eval/src/bench-memory-arm.ts:3874"
   ],
   "cortex-eval: ReviewPageArgs": [
    "packages/cortex-eval/src/review-page.ts:83"
@@ -2534,7 +2534,7 @@
    "packages/cortex-eval/src/retrieval-diagnostics.ts:361"
   ],
   "cortex-eval: Source": [
-   "packages/cortex-eval/src/acceptance.ts:72"
+   "packages/cortex-eval/src/acceptance.ts:79"
   ],
   "cortex-eval: StabilityArtifactShape": [
    "packages/cortex-eval/src/failure-stability.ts:135"
@@ -2579,7 +2579,7 @@
    "packages/cortex-eval/src/retrieval-diagnostics.ts:488"
   ],
   "cortex-eval: Unit": [
-   "packages/cortex-eval/src/acceptance.ts:55"
+   "packages/cortex-eval/src/acceptance.ts:62"
   ],
   "cortex-eval: VarianceStats": [
    "packages/cortex-eval/src/variance.ts:55"
@@ -2858,7 +2858,7 @@
    "packages/cortex-eval/src/fact-memory.ts:72"
   ],
   "cortex-eval: traceReviewMechanisms": [
-   "packages/cortex-eval/src/bench-memory-arm.ts:3963"
+   "packages/cortex-eval/src/bench-memory-arm.ts:4000"
   ],
   "cortex-eval: truncateSession": [
    "packages/cortex-eval/src/natural-language-memory.ts:2820"

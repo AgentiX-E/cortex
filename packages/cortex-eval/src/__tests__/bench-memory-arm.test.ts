@@ -1012,6 +1012,10 @@ describe('source trust reaches the artifact', () => {
       // The evidence source is stated on every artifact, so an exact-object assertion carries it.
       // Its absence would mean "the artifact predates the field", which no run from now on does.
       evidenceSource: 'corpus',
+      // Derived from the signal, which is `none` in this run: an arm that consulted no ranking
+      // cannot say where a gold turn sat, and the field exists so the artifact states which of the
+      // three accounts it supports instead of leaving the reader to assume the strongest one.
+      goldAccount: 'none',
       // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
       // is a fact about the run, not a missing field.
       conflicts: false,
@@ -1549,6 +1553,9 @@ describe('runCortexMemoryArm', () => {
       });
       expect(config).toEqual({
         evidenceSource: 'corpus',
+        // Derived from the signal, which is `none` in this run, for the reason the assertion above
+        // carries the field: the artifact states what its gold account can support.
+        goldAccount: 'none',
         // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
         // is a fact about the run, not a missing field.
         conflicts: false,
@@ -2029,6 +2036,10 @@ describe('blank values from unfilled dispatch inputs', () => {
       // The evidence source is stated on every artifact, so an exact-object assertion carries it.
       // Its absence would mean "the artifact predates the field", which no run from now on does.
       evidenceSource: 'corpus',
+      // Derived from the signal, which is `none` in this run: an arm that consulted no ranking
+      // cannot say where a gold turn sat, and the field exists so the artifact states which of the
+      // three accounts it supports instead of leaving the reader to assume the strongest one.
+      goldAccount: 'none',
       // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
       // is a fact about the run, not a missing field.
       conflicts: false,

@@ -245,6 +245,16 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
     "assemblyRoutes": ("derived", "`ASSEMBLY_ROUTES_BY_CONTRACT[promptContract]`"),
     "reviewBareDecline": ("derived", "`carriesBareLadder(reviewPass)`"),
     "askRoutes": ("derived", "`ASK_ROUTES[ask]`"),
+    # Derived from the signal, and that is the whole design: `goldAccountOf` calls `buildsProductIndex`,
+    # which is the same decision the run uses to wire the index, so an artifact cannot claim a readable
+    # pool on a run whose ranking lived in the product. Comparing it against an input would be comparing
+    # one decision with itself -- and there is no input to compare it against.
+    "goldAccount": (
+        "derived",
+        "`goldAccountOf(relevanceSignal)` -- the three-value statement of what the artifact's gold account "
+        "can answer (`ranked` / `product-unreported` / `none`), which is a function of the signal and not a "
+        "dispatch input (§143.3 of the tracking report)",
+    ),
     "anchors": (
         "constant",
         "the anchor restoration's count/radius/decay belong to the `retrieval-anchored` signal "
