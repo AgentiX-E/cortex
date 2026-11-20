@@ -41183,3 +41183,33 @@ reading says so in words when it does not pass.
 control finishes, because the channel cannot host both. The two were rehearsed through
 `registration-preflight.py --inputs` first -- twenty-two inputs each, both `match`, zero spend -- so
 the gate's acceptance is a fact and not a hope. Projection 3.45 CNY per arm.
+
+### 13.377.11 The bar that the control itself cannot meet, registered before the treatment is read
+
+The control arm of `S18` finished (`44717750493`, `a7eafcce`, 42 minutes) and its artifact says two things
+that change how `E2'` must be read. Both are recorded here **before** the treatment artifact exists, so
+neither is a rescue written after seeing the number it rescues.
+
+| field | value | what it means |
+| --- | --- | --- |
+| `questions` | 121, all `MR` | the population is the one `E1'` names |
+| `costEfficiency.promptTokensPerQuestion` | **13,019.4** | `E2'`'s ceiling of 8,600 is **below the control's own bill** |
+| `feature.metrics.accuracy` (majority verdict) | 99 of 121 = 81.82% | `E1'`'s bar is therefore **≥ 104** |
+| `memoryArmConfig.selfIndex.queries` / `indexes` | 484 / 484 | `E5'` is readable and passes; the control builds no extra queries |
+| `revision.sha` | `a7eafcce…` | the field this round added, written by the run |
+
+**`E2'` is mis-scaled and its failure will not be a finding about the expansion.** 8,600 came from the
+500-question file, where `multi-session` is 121 of 500 questions and gets the 48,460-character room; an
+`MR`-only run gives *every* question that room, so its per-question bill is the multi-session bill — 13,019
+tokens — and no mechanism could bring it back under 8,600 without changing the room, which is not what this
+arm moves. The bar was carried across a population boundary, which is the same defect as reading a control's
+accuracy under a treatment's name and it is being recorded rather than repaired.
+
+**So `E2''` is registered now, at the correct scale:** the treatment's bill divided by the control's bill
+(on the same 121 questions, same rooms) **≤ 1.15**. An expansion adds one phrase-selection call per question
+and a wider query for retrieval; 15% is the ceiling this pair would accept, and it is a statement about the
+mechanism rather than about which population was sampled.
+
+`E2'` will still be reported and it will still read `fail`, because a criterion that was written down before
+the run does not get to change after it. The reading carries both numbers and the sentence that explains
+which one answers the question the arm was dispatched to ask.
