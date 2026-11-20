@@ -3244,6 +3244,7 @@ function llmUsageLines(
     `| completion tokens | ${usage.completionTokens.toLocaleString('en-US')} |`,
     `| prompt tokens served from the prefix cache | ${usage.cacheHitPromptTokens.toLocaleString('en-US')} |`,
     `| characters of answer delivered | ${usage.answerChars.toLocaleString('en-US')} |`,
+    `| calls the provider cut off at its output limit | ${usage.truncatedCalls} |`,
     '',
     `- Prefix-cache share of the prompt: **${(hitShare * 100).toFixed(2)}%** ` +
       `(${usage.cacheHitPromptTokens.toLocaleString('en-US')} of ${usage.promptTokens.toLocaleString('en-US')})`,
@@ -3255,6 +3256,22 @@ function llmUsageLines(
     // Absent rather than infinite when nothing was delivered: a run that shipped no answer bought no
     // reading, and `--` is the shape the rest of this renderer uses for that state.
     `- Answer delivered per completion token: **${deliveryRatio(usage)}**`,
+    // The companion reading, and the reason it is a table row rather than a footnote: a truncated call is
+    // priced, arrives with partial text, and is therefore indistinguishable from a complete one in every
+    // other field. Only the provider's own `finish_reason` says the answer was never written, and an answer
+    // that was never written is a question graded wrong for a reason no prompt change can repair.
+    //
+    // Rendered only when it fired. Zero is the state every healthy run is in, and a line that always reads
+    // `0` is a line a reader learns to skip -- which is the failure mode of a counter nobody notices. The
+    // label is the one place the absence is bounded: no line means no call said `length`.
+    ...(usage.truncatedCalls === 0
+      ? []
+      : [
+          `- **${usage.truncatedCalls} call(s) were stopped by the output limit** ` +
+            `(${((usage.truncatedCalls / Math.max(usage.calls, 1)) * 100).toFixed(2)}% of calls): ` +
+            'their answers were cut off mid-generation, so a wrong verdict on one of those questions is ' +
+            'a defect in the contract rather than a failure of reading.',
+        ]),
   ];
   if (bySide !== undefined) {
     // Rendered only when it closes. A negative residual means the two snapshots did not come from

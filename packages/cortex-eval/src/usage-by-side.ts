@@ -56,6 +56,7 @@ function plusUsage(a: UsageSnapshot, b: UsageSnapshot): UsageSnapshot {
     completionTokens: a.completionTokens + b.completionTokens,
     cacheHitPromptTokens: a.cacheHitPromptTokens + b.cacheHitPromptTokens,
     answerChars: a.answerChars + b.answerChars,
+    truncatedCalls: a.truncatedCalls + b.truncatedCalls,
   };
 }
 
@@ -77,6 +78,10 @@ function minusUsage(whole: UsageSnapshot, part: UsageSnapshot): UsageSnapshot {
     // a member that a subtraction silently dropped would make the residual's own closure false, and the
     // closure is the property that lets a reader trust the split instead of adding it up.
     'answerChars',
+    // The truncation count rides the same list for the same reason: a side whose truncated calls were
+    // dropped by the subtraction would report a clean run while the process total reported a defect, and
+    // the two readings would disagree about the one number that says whether a contract is broken.
+    'truncatedCalls',
   ] as const;
   for (const field of fields) {
     if (part[field] > whole[field]) {
@@ -95,6 +100,7 @@ function minusUsage(whole: UsageSnapshot, part: UsageSnapshot): UsageSnapshot {
     completionTokens: whole.completionTokens - part.completionTokens,
     cacheHitPromptTokens: whole.cacheHitPromptTokens - part.cacheHitPromptTokens,
     answerChars: whole.answerChars - part.answerChars,
+    truncatedCalls: whole.truncatedCalls - part.truncatedCalls,
   };
 }
 
@@ -153,8 +159,12 @@ let scoped = false;
 
 function scopeAttribution(): void {
   if (scoped) return;
-  observeUsage((usage) => {
-    for (const tally of attribution.getStore() ?? []) tally.record(usage);
+  // The truncation is forwarded, not dropped. A side's snapshot is what an arm reports, and an observer
+  // that credited calls without their truncation would make every per-side reading claim a clean run on a
+  // dispatch whose process total said the contract was cutting answers off -- two readings of one fact, and
+  // the arm-level one would be the wrong one.
+  observeUsage((usage, truncated) => {
+    for (const tally of attribution.getStore() ?? []) tally.record(usage, truncated);
   });
   scoped = true;
 }

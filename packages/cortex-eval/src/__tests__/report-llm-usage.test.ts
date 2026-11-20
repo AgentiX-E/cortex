@@ -101,6 +101,8 @@ const PRICED: UsageSnapshot = {
   // 250 characters against 500 completion tokens: the ratio the delivery line renders, chosen so the expected
   // string is `0.50` rather than a coincidence of rounding.
   answerChars: 250,
+  // No call was cut off. A truncation is a different reading of the same table and has its own test.
+  truncatedCalls: 0,
 };
 
 describe('attachLlmUsage', () => {
@@ -123,6 +125,7 @@ describe('attachLlmUsage', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
       answerChars: 0,
+      truncatedCalls: 0,
     });
     // Identity, not merely equality: an attached zeroed object would serialize into the
     // artifact and every reader would take it for a measurement of zero spend.
@@ -140,6 +143,7 @@ describe('attachLlmUsage', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
       answerChars: 0,
+      truncatedCalls: 0,
     };
     expect(attachLlmUsage(report(), unpriced).llmUsage).toEqual(unpriced);
   });
@@ -189,9 +193,29 @@ describe('the provider-spend section', () => {
         completionTokens: 0,
         cacheHitPromptTokens: 0,
         answerChars: 0,
+        truncatedCalls: 0,
       }),
     );
     expect(md).toContain('Answer delivered per completion token: **--**');
+  });
+
+  it('renders zero truncations as a zero, because "no call was cut off" is a reading too', () => {
+    // The row is unconditional while the alert line below it is not. A table that omitted the row on a
+    // healthy run would make "nothing was truncated" and "this build does not measure truncation" the same
+    // document, which is the ambiguity `answerChars` and `unpricedCalls` were added to remove.
+    const md = formatAblationReport(attachLlmUsage(report(), PRICED));
+    expect(md).toContain('| calls the provider cut off at its output limit | 0 |');
+    expect(md).not.toContain('were stopped by the output limit');
+  });
+
+  it('names a truncated run as a defect rather than as a slow reader', () => {
+    // The reading this exists for: two calls, one of them cut off. A wrong verdict on that question is not
+    // the reader failing to find the answer -- the answer was never written -- and the difference decides
+    // whether the next iteration spends its budget on retrieval or on the contract.
+    const md = formatAblationReport(attachLlmUsage(report(), { ...PRICED, truncatedCalls: 1 }));
+    expect(md).toContain('| calls the provider cut off at its output limit | 1 |');
+    expect(md).toContain('**1 call(s) were stopped by the output limit**');
+    expect(md).toContain('50.00% of calls');
   });
 
   it('issues no warning when every call was priced', () => {
@@ -209,6 +233,7 @@ describe('the provider-spend section', () => {
         completionTokens: 0,
         cacheHitPromptTokens: 0,
         answerChars: 0,
+        truncatedCalls: 0,
       }),
     );
     expect(md).toContain('**NO PROVIDER COST WAS REPORTED**');

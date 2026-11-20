@@ -139,6 +139,7 @@ describe('the process ledger', () => {
       completionTokens: 30,
       cacheHitPromptTokens: 40,
       answerChars: 75,
+      truncatedCalls: 0,
     });
   });
 
@@ -152,6 +153,7 @@ describe('the process ledger', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
       answerChars: 0,
+      truncatedCalls: 0,
     });
   });
 
@@ -178,6 +180,7 @@ describe('usageDelta', () => {
       completionTokens: 10,
       cacheHitPromptTokens: 5,
       answerChars: 100,
+      truncatedCalls: 2,
     };
     const after = {
       calls: 9,
@@ -186,6 +189,7 @@ describe('usageDelta', () => {
       completionTokens: 70,
       cacheHitPromptTokens: 65,
       answerChars: 900,
+      truncatedCalls: 5,
     };
     expect(usageDelta(before, after)).toEqual({
       calls: 6,
@@ -194,6 +198,9 @@ describe('usageDelta', () => {
       completionTokens: 60,
       cacheHitPromptTokens: 60,
       answerChars: 800,
+      // Non-zero on both sides and different, so this asserts subtraction rather than a zero that would
+      // pass whether the field were subtracted or dropped.
+      truncatedCalls: 3,
     });
   });
 
@@ -205,6 +212,7 @@ describe('usageDelta', () => {
       completionTokens: 2,
       cacheHitPromptTokens: 1,
       answerChars: 12,
+      truncatedCalls: 1,
     };
     expect(usageDelta(snapshot, snapshot)).toEqual({
       calls: 0,
@@ -213,6 +221,7 @@ describe('usageDelta', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
       answerChars: 0,
+      truncatedCalls: 0,
     });
   });
 });
@@ -275,6 +284,7 @@ describe('a ledger of its own', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
       answerChars: 0,
+      truncatedCalls: 0,
     });
   });
 
@@ -296,6 +306,7 @@ describe('a ledger of its own', () => {
       completionTokens: 30,
       cacheHitPromptTokens: 120,
       answerChars: 44,
+      truncatedCalls: 0,
     });
     // The whole point of a separate ledger: a side's spend and the run's spend are two readings, so
     // the run's must not move when a side is credited.
@@ -306,6 +317,7 @@ describe('a ledger of its own', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
       answerChars: 0,
+      truncatedCalls: 0,
     });
   });
 

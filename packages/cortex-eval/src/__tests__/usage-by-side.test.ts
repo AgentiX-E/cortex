@@ -48,6 +48,9 @@ function usage(promptTokens: number, calls = 1) {
     // One character of answer per completion token, so every closure assertion below can read the field as
     // arithmetic rather than as a constant that any implementation would satisfy.
     answerChars: calls,
+    // No truncation by default: a call the provider says it cut off is a defect this arithmetic has to be
+    // able to close over, and the test that does that names its own counts rather than inheriting them.
+    truncatedCalls: 0,
   };
 }
 
@@ -71,6 +74,7 @@ describe('usage arithmetic', () => {
       completionTokens: 10,
       cacheHitPromptTokens: 50,
       answerChars: 3,
+      truncatedCalls: 0,
     });
   });
 
@@ -88,6 +92,24 @@ describe('usage arithmetic', () => {
     // rather than in a residual nobody re-adds.
     expect(bothSides(bySide).answerChars + residual.answerChars).toBe(total.answerChars);
     expect(residual.promptTokens).toBe(100);
+  });
+
+  it('closes the truncation count on the same rule as delivery', () => {
+    // The fourth member of the closure, and the one with a defect behind it: a side that dropped its
+    // truncated calls would report a clean arm while the process total reported the contract breaking, and
+    // the two readings would disagree about the only number that says whether an answer was ever written.
+    const total = { ...usage(1_000, 10), truncatedCalls: 4 };
+    const bySide = {
+      baseline: { ...usage(200, 3), truncatedCalls: 1 },
+      feature: { ...usage(700, 6), truncatedCalls: 2 },
+    };
+
+    const residual = residualUsage(total, bySide);
+
+    expect(bothSides(bySide).truncatedCalls + residual.truncatedCalls).toBe(total.truncatedCalls);
+    // One left over is the judge and the phrasing stage -- the calls that belong to neither arm -- rather
+    // than a rounding artifact, which is what makes this an assertion about attribution.
+    expect(residual.truncatedCalls).toBe(1);
   });
 
   it('refuses a part larger than the whole instead of clamping to zero', () => {
@@ -119,6 +141,7 @@ describe('usage arithmetic', () => {
       completionTokens: 0,
       cacheHitPromptTokens: 0,
       answerChars: 0,
+      truncatedCalls: 0,
     });
     expect(
       bothSides({ baseline: createUsageTally().snapshot(), feature: usage(5, 1) }).promptTokens,

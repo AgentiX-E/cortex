@@ -88,7 +88,7 @@ export class OpenAICompatibleLLM implements LLM {
     // visible in the artifact and cannot be read as a free run, while a single such answer costs
     // one question instead of one dispatch.
     const json = (await res.json().catch(() => null)) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string }; finish_reason?: string }[];
       usage?: unknown;
     } | null;
     // Recorded HERE rather than at the call sites, and that placement is the repair
@@ -110,7 +110,19 @@ export class OpenAICompatibleLLM implements LLM {
     // `answer.length` after the type check, not `content.length`: a body whose `content` is a number must
     // contribute nothing rather than a stringified length, or a proxy's rewrite would appear as delivery.
     const usage = parseUsage(json?.usage);
-    recordUsage(usage === undefined ? undefined : { ...usage, answerChars: answer.length });
+    // Whether the provider says it stopped before finishing, recorded at the same hop and for the reason the
+    // two lines above are here: this is the one place holding the whole response body, and `finish_reason`
+    // names a fact no other field can carry. A truncated call is priced, arrives with partial text, and
+    // therefore reads in every other counter as a normal call -- only this makes it visible.
+    //
+    // `=== 'length'` rather than a negation: the field is optional on the wire and providers differ on what
+    // they emit, so "not `stop`" would classify a provider that said nothing as a truncation. The absence of
+    // the field is recorded as "did not say", which is a different fact from "said cut off".
+    const truncated = json?.choices?.[0]?.finish_reason === 'length';
+    recordUsage(
+      usage === undefined ? undefined : { ...usage, answerChars: answer.length },
+      truncated,
+    );
     return answer;
   }
 

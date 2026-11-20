@@ -211,6 +211,9 @@ describe('OpenAICompatibleLLM (real local server)', () => {
       // both facts belong on one record: the ratio between them is the only reading that can say whether a
       // contract pays for text it does not ship.
       answerChars: 'priced'.length,
+      // The local server answers with a `finish_reason` of its own, and a run whose calls all finished is
+      // the state this counter exists to distinguish from one where any of them were cut off.
+      truncatedCalls: 0,
     });
   });
 
@@ -231,6 +234,9 @@ describe('OpenAICompatibleLLM (real local server)', () => {
       // arrived. `answerChars: 0` is therefore "not measured", which `unpricedCalls: 1` is what qualifies --
       // the same rule `usage-answer-chars.test.ts` states from the other direction.
       answerChars: 0,
+      // The response carried no `finish_reason` either, which is "the provider did not say" rather than
+      // "the provider said cut off".
+      truncatedCalls: 0,
     });
   });
 

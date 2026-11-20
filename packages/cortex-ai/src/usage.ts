@@ -114,6 +114,34 @@ export type UsageSnapshot = {
    * `completionTokens` -- which is the reading, not a gap in it.
    */
   readonly answerChars: number;
+  /**
+   * Responses the provider said it cut off at its output limit (`finish_reason: 'length'`).
+   *
+   * ## Why this is the companion `answerChars` needed
+   *
+   * `answerChars` measures how much of the bill did not reach the caller; it cannot say why. Two mechanisms
+   * produce the same ratio and they are not the same defect:
+   *
+   * | mechanism | repair |
+   * | --- | --- |
+   * | a reply contract that makes the model write a work product nobody reads | a prompt change, which needs a pre-registered A/B |
+   * | a generation stopped before the answer was written | a defect -- the answer never existed, and no prompt change can recover a question that was graded on a cut-off reply |
+   *
+   * The second one is invisible in every other field. A truncated call is `calls: 1`, priced, and -- because
+   * the partial text still arrives -- `answerChars` non-zero. Only the provider's own statement separates it
+   * from a call that simply wrote too much.
+   *
+   * ## Why it is counted here and not read off `LlmUsage`
+   *
+   * `LlmUsage` is the `usage` block and nothing else; `finish_reason` is a sibling block of the same body.
+   * A response can be cut off **and** unpriced (a proxy stripping `usage` from a reply it also truncated), and
+   * a counter that could only be incremented when the usage block parsed would report the cheapest possible
+   * reading of the worst possible response. The recording therefore takes the truncation as its own argument.
+   *
+   * Unconditional for the reason `answerChars` is: "no call was cut off" and "nobody recorded truncation"
+   * must not be the same bytes.
+   */
+  readonly truncatedCalls: number;
 };
 
 /**
@@ -177,17 +205,25 @@ class UsageAggregate implements UsageTally {
   #completionTokens = 0;
   #cacheHitPromptTokens = 0;
   #answerChars = 0;
+  #truncatedCalls = 0;
 
   /**
-   * Record one call's spend, or one call's silence.
+   * Record one call's spend, or one call's silence, and whether the provider cut it off.
    *
    * `undefined` is a legal argument and is the case that matters: it is what
    * `parseUsage` returns for a response carrying no block, and recording it as a call
    * rather than skipping it is what keeps a proxy that strips `usage` from producing an
    * artifact that reads like a free run.
+   *
+   * `truncated` is a second argument rather than a field on `LlmUsage` because it belongs to a different
+   * block of the same response: it must survive the case where the usage block did not, and folding it into
+   * `LlmUsage` would tie one fact's survival to another's.
    */
-  record(usage: LlmUsage | undefined): void {
+  record(usage: LlmUsage | undefined, truncated = false): void {
     this.#calls += 1;
+    if (truncated) {
+      this.#truncatedCalls += 1;
+    }
     if (usage === undefined) {
       this.#unpricedCalls += 1;
       return;
@@ -207,6 +243,7 @@ class UsageAggregate implements UsageTally {
       completionTokens: this.#completionTokens,
       cacheHitPromptTokens: this.#cacheHitPromptTokens,
       answerChars: this.#answerChars,
+      truncatedCalls: this.#truncatedCalls,
     };
   }
 }
@@ -228,7 +265,7 @@ class UsageAggregate implements UsageTally {
  * the totals then sum to the calls that happened, because a call is counted once, where it happened.
  */
 type UsageSink = {
-  record(usage: LlmUsage | undefined): void;
+  record(usage: LlmUsage | undefined, truncated?: boolean): void;
 };
 
 /** A sink that keeps a running total, which is what a per-side or per-arm split needs. */
@@ -261,7 +298,7 @@ export function createUsageTally(): UsageTally {
  * workers credit four tallies), and a browser build installs none, which leaves `recordUsage` exactly
  * as it was: one process ledger and no per-side split, because nothing in a browser is splitting one.
  */
-type UsageObserver = (usage: LlmUsage | undefined) => void;
+type UsageObserver = (usage: LlmUsage | undefined, truncated: boolean) => void;
 
 let observer: UsageObserver | undefined;
 
@@ -302,11 +339,15 @@ export function llmUsage(): UsageSnapshot {
  * Called by the adapter, not by callers. The ambient walk is one array read on the hot path and is
  * empty for every call made outside an attribution, which is all of them in production reads.
  */
-export function recordUsage(usage: LlmUsage | undefined): void {
-  processUsage.record(usage);
+export function recordUsage(usage: LlmUsage | undefined, truncated = false): void {
+  processUsage.record(usage, truncated);
   // Absent in every production path and in every browser build; the one installer is the measurement
   // arm, which is the only caller that has a side to attribute a call to.
-  observer?.(usage);
+  //
+  // The truncation is forwarded rather than dropped here: a side's snapshot is what an arm reports, and a
+  // counter that only the process total knew about would make every per-side reading claim zero truncations
+  // on a run that was full of them.
+  observer?.(usage, truncated);
 }
 
 /**
@@ -335,5 +376,6 @@ export function usageDelta(before: UsageSnapshot, after: UsageSnapshot): UsageSn
     completionTokens: after.completionTokens - before.completionTokens,
     cacheHitPromptTokens: after.cacheHitPromptTokens - before.cacheHitPromptTokens,
     answerChars: after.answerChars - before.answerChars,
+    truncatedCalls: after.truncatedCalls - before.truncatedCalls,
   };
 }
