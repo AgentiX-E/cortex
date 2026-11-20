@@ -40628,6 +40628,22 @@ nobody specified.
   the phrase prompt's width. `E1'` fail with `E0`/`E2'`/`E4'` pass: row 3 becomes licensed, and the family
   closes, including the `window` reorder's premise.
 
+**Dispatched, and refused before it ran.** Two runs at one sha (`69967dcc`, `44711009470` and `44711018477`)
+both died in `tools/registration-preflight.py` inside a minute, with no artifact and no spend:
+
+| refusal | what the gate says | what the documentation beside it says |
+| --- | --- | --- |
+| `capability: "all" (registered) -> "MR" (asked)` counted as a departure | `capability` is a registered field | the input's own description: "a run-level selector rather than arm configuration, so the registration gate ignores it the way it ignores `limit`" |
+| 14 registered inputs `ABSENT`, read as "nothing asked" | every registered input must appear in the payload, so the pair has to be dispatched through `tools/dispatch-cortex-memory-ab.py`, which fills all 22 | that is what the gate is for, and it is right |
+| `declared but unchanged: cortex_memory_query_expansion` on the control arm | `CORTEX_DECLARED_DEPARTURES` is one repository variable | it is written per dispatch by the script, so one repository cannot host both arms of one pair |
+
+The first and third are halves of one defect: a run-level selector is being accounted as arm configuration,
+and the ledger that records it is repository-scoped. So `S18` is **`unread` — a refused dispatch, not a failed
+criterion** — and the repair is the gate rather than the experiment: `capability` and `limit` become run-level
+in both gates, the departure list travels with the dispatch instead of the repository, and the script (§13.377.9's
+own path) fills the inputs. A gate that refuses a legitimate pair is the thing to fix first, and it costs a
+round and nothing else to fix.
+
 ## 13.378 The retrieval instrument: a reading that costs no provider call
 
 The 127th round's problem was that the only axis with a published deficit (`S14`, 85.75% against an
