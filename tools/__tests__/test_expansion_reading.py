@@ -429,3 +429,50 @@ def test_the_rendered_reading_refuses_to_call_an_unattributable_delta_attributab
         )
     )
     assert 'not attributable' not in attributed
+
+
+# --------------------------------------------- the same question at the pair's own scale (`E1'`, `E2'`)
+
+def test_the_relative_gain_is_read_against_this_pair_s_control():
+    # `§13.377.9` asks `E1'` of the pair, not of a remembered number. `S18`'s control came back at 99 rather
+    # than the 102 the absolute bar was written against, so a 104 is `pass` on the relative criterion and
+    # `fail` on the absolute one -- and both have to be printed, because they answer different questions.
+    reading = read(artifact(CONTROL_COUNTS, 'a'), treatment())
+    assert reading['criteria']["E1'"]['verdict'] == 'pass'
+    assert reading['criteria']['E1']['verdict'] == 'pass'
+    lower = dict(CONTROL_COUNTS)
+    lower['MR'] = 99
+    treated = treatment()
+    for record in treated['questions']:
+        if record['capability'] == 'MR':
+            record['correct'] = int(record['questionId'].split('-')[1]) < 104
+    reading = read(artifact(lower, 'a'), treated)
+    assert reading['mr']['treatment'] == 104
+    assert reading['criteria']["E1'"]['verdict'] == 'pass'
+    # The absolute bar is unmet at 104, and saying so is the point of keeping both.
+    assert reading['criteria']['E1']['verdict'] == 'fail'
+
+
+def test_the_bill_is_read_as_a_ratio_when_the_population_is_one_capability():
+    # `§13.377.11`: 8,600 was a file-level number, and an `MR`-only run costs the multi-session bill --
+    # 13,019 on the control. A criterion the control itself cannot meet is not a criterion about the
+    # mechanism, so `E2'` asks the question at the scale the run was dispatched at.
+    reading = read(artifact(CONTROL_COUNTS, 'a'), treatment())
+    assert reading['criteria']["E2'"]['verdict'] == 'pass'
+    assert reading['criteria']['E2']['verdict'] == 'pass'
+    control = artifact(CONTROL_COUNTS, 'a')
+    control['costEfficiency']['promptTokensPerQuestion'] = 13_019.4
+    treated = treatment()
+    treated['costEfficiency']['promptTokensPerQuestion'] = 13_500.0
+    reading = read(control, treated)
+    assert reading['criteria']['E2']['verdict'] == 'fail'
+    assert reading['criteria']["E2'"]['verdict'] == 'pass'
+    assert '1.037x the control' in reading['criteria']["E2'"]['measured']
+
+
+def test_a_bill_increase_over_the_registered_ratio_is_a_failed_criterion():
+    control = artifact(CONTROL_COUNTS, 'a')
+    treated = treatment()
+    treated['costEfficiency']['promptTokensPerQuestion'] = 9_000.0
+    reading = read(control, treated)
+    assert reading['criteria']["E2'"]['verdict'] == 'fail'

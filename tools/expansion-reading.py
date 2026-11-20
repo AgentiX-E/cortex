@@ -55,6 +55,13 @@ CONTROL = {
 
 # §13.377.4, fixed before the run and not moved after it.
 E1_MIN_MR = 107
+# `§13.377.9`'s `E1'`: the same question asked of the pair rather than of a remembered number. The absolute
+# bar was written against `S16`'s control (102); a pair that measures its own control cannot use that number,
+# because the control moves with the code -- `S18`'s control is 99, three lower, on the same 121 questions.
+E1_RELATIVE_GAIN = 5
+# `§13.377.11`'s `E2'`. The absolute ceiling is a file-level number and a capability-scoped run costs what that
+# capability costs; the ratio is the same question at the right scale.
+E2_MAX_RATIO = 1.15
 E2_MAX_TOKENS = 8600.0
 E3_MAX_DROP = 2
 E4_MAX_REFUSED = 12
@@ -354,6 +361,7 @@ def read(control: dict, treatment: dict) -> dict:
     landed = receipt(treatment)
     treatment_bill = bill(treatment)
     control_bill = bill(control)
+    bill_ratio = treatment_bill / control_bill if control_bill else None
 
     e1 = mr_treatment - mr_control
     e1_pass = mr_treatment >= E1_MIN_MR
@@ -445,9 +453,21 @@ def read(control: dict, treatment: dict) -> dict:
             },
             'E1': {'verdict': 'pass' if e1_pass else 'fail', 'measured': f'{mr_treatment} of {mr_size}',
                    'threshold': f'>= {E1_MIN_MR}'},
+            'E1\'': {
+                'verdict': 'pass' if mr_treatment >= mr_control + E1_RELATIVE_GAIN else 'fail',
+                'measured': f'{mr_treatment} against this pair\'s own control {mr_control}',
+                'threshold': f'>= control + {E1_RELATIVE_GAIN}',
+            },
             'E2': {'verdict': 'pass' if e2_pass else 'fail',
                    'measured': f'{treatment_bill:.1f} tokens per question',
                    'threshold': f'<= {E2_MAX_TOKENS:.0f}'},
+            'E2\'': {
+                'verdict': 'pass' if (bill_ratio is not None and bill_ratio <= E2_MAX_RATIO) else (
+                    'unread' if bill_ratio is None else 'fail'),
+                'measured': (f'{bill_ratio:.3f}x the control\'s {control_bill:.1f}'
+                             if bill_ratio is not None else 'the control carries no bill to divide by'),
+                'threshold': f'<= {E2_MAX_RATIO:.2f}x the control',
+            },
             'E3': {
                 'verdict': 'unread' if drifted else ('pass' if e3_pass else 'fail'),
                 'measured': (
@@ -527,7 +547,7 @@ def render(reading: dict) -> str:
     lines.append('')
     lines.append('| criterion | verdict | measured | threshold |')
     lines.append('| --- | --- | --- | --- |')
-    for name in ('E0', 'E1', 'E2', 'E3', 'E4', 'E5'):
+    for name in ('E0', 'E1', "E1'", 'E2', "E2'", 'E3', 'E4', 'E5'):
         row = reading['criteria'][name]
         lines.append(f"| `{name}` | **{row['verdict']}** | {row['measured']} | {row['threshold']} |")
     if reading['criteria']['E0']['verdict'] != 'pass':
