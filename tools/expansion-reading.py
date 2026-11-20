@@ -155,15 +155,61 @@ def prompt_identity(control: dict, treatment: dict, ids: list[str], skip: str) -
         if left.get('capability') == skip:
             continue
         if left.get('promptDigest') != right.get('promptDigest'):
+            # Whether the *evidence* moved with the prompt is the question a reader asks next: the same
+            # delivered bytes under a different digest is a renderer change, and different bytes is a
+            # retrieval change. Recorded per question rather than inferred afterwards, because the two
+            # point at different mechanisms and `S17` turned out to be the first case on every one of its
+            # fifty moved prompts.
             moved.append(
                 {
                     'questionId': key,
                     'capability': left.get('capability'),
+                    'route': left.get('route'),
                     'controlChars': left.get('promptChars'),
                     'treatmentChars': right.get('promptChars'),
+                    'evidenceSame': (
+                        left.get('evidenceChars') == right.get('evidenceChars')
+                        and left.get('evidenceTurns') == right.get('evidenceTurns')
+                    ),
                 }
             )
-    return {'moved': moved, 'checked': len(ids) - population(control, ids).get(skip, 0)}
+    routes = {}
+    for row in moved:
+        routes[str(row.get('route'))] = routes.get(str(row.get('route')), 0) + 1
+    return {
+        'moved': moved,
+        'checked': len(ids) - population(control, ids).get(skip, 0),
+        'byRoute': routes,
+        'evidenceSame': sum(1 for row in moved if row['evidenceSame']),
+    }
+
+
+def configuration_surfaces(control: dict, treatment: dict) -> dict:
+    """Which configuration surfaces one artifact has and the other does not.
+
+    A paired reading assumes two dispatches ran the same code with one flag between them. §13.377.4 fixed the
+    *flag table* and never said the two arms had to share a tree, so nothing checked the stronger claim --
+    and it is checkable, because `memoryArmConfig` is projected from the code that produced the artifact. A
+    key one side renders and the other does not is a feature that landed between the two dispatches.
+
+    This is a diagnostic and not a criterion: `E3`'s verdict is decided by the prompts, which are the
+    observation. What this adds is the mechanism, so the next dispatch can be shaped before it is paid for.
+    """
+    left = control.get('memoryArmConfig') or {}
+    right = treatment.get('memoryArmConfig') or {}
+    # `queryExpansion` is the declared departure and `queryExpansionCounts` is its own counter; both are
+    # expected to be absent on a control that did not expand. Everything else is undeclared by definition.
+    expected = {'queryExpansion', 'queryExpansionCounts'}
+    surfaces = sorted(key for key in right if key not in left and key not in expected)
+    dropped = sorted(key for key in left if key not in right)
+    left_index = left.get('selfIndex') or {}
+    right_index = right.get('selfIndex') or {}
+    census = sorted(key for key in set(left_index) | set(right_index) if (key in left_index) != (key in right_index))
+    return {
+        'undeclaredOnControl': surfaces,
+        'absentOnTreatment': dropped,
+        'censusFieldsOneSide': census,
+    }
 
 
 def receipt(treatment: dict) -> dict:
@@ -179,7 +225,11 @@ def receipt(treatment: dict) -> dict:
         'indexes': indexes,
         'phrases': None if counts is None else counts.get('phrases'),
         'expandedQuestions': None if counts is None else counts.get('questions'),
-        'refused': None if counts is None else counts.get('empty'),
+        # `refused`, not `empty`. The first version of this line read a field name the artifact does not
+        # have, so the number came back `None`, `(None or 0) <= 12` held, and `E4`'s refusal clause was never
+        # read at all -- a criterion that could not fail. `MemoryArmConfig.queryExpansionCounts` declares
+        # `{questions, phrases, refused}` and `report.ts` writes exactly that.
+        'refused': None if counts is None else counts.get('refused'),
     }
     return out
 
@@ -212,14 +262,26 @@ def read(control: dict, treatment: dict) -> dict:
         raise Unreadable('the two artifacts have different per-capability populations')
 
     # Paired on the majority verdict, which is the field the criteria were written against.
+    #
+    # Counted on `MR` **and** on the whole roster, because the two answer different questions and the first
+    # version of this file answered the wrong one under the right label: §13.377.4 says "a paired McNemar p is
+    # reported beside it", beside the `MR` count, so the Discordant pair has to be the `MR` pair. It printed
+    # `fixed 6, broken 5` -- the whole-roster count -- under the label "Discordant on `MR`", where `MR` itself
+    # was 3 / 3. The five flips outside `MR` are not noise: they are what `E3` reports, and reading them as
+    # part of the target cell's evidence is the same class of error as reading a control's accuracy under a
+    # treatment's name.
     b = c = 0
+    b_mr = c_mr = 0
     for key in ids:
         was = left[key].get('correct') is True
         now = right[key].get('correct') is True
+        in_target = right[key].get('capability') == 'MR'
         if was and not now:
             b += 1
+            b_mr += 1 if in_target else 0
         elif now and not was:
             c += 1
+            c_mr += 1 if in_target else 0
 
     mr_size = sizes.get('MR')
     mr_control = control_counts.get('MR')
@@ -254,10 +316,12 @@ def read(control: dict, treatment: dict) -> dict:
 
     e1 = mr_treatment - mr_control
     e1_pass = mr_treatment >= E1_MIN_MR
-    mcnemar = exact_mcnemar(b, c)
+    mcnemar = exact_mcnemar(b_mr, c_mr)
+    mcnemar_all = exact_mcnemar(b, c)
     e2_pass = treatment_bill <= E2_MAX_TOKENS
     leak = len(identity['moved'])
     e3_pass = e3_ok and leak == 0
+    surfaces = configuration_surfaces(control, treatment)
 
     if landed['queries'] is None or landed['indexes'] is None:
         e4 = 'unread'
@@ -269,10 +333,19 @@ def read(control: dict, treatment: dict) -> dict:
         e4_detail = 'the artifact carries no `selfIndex.queries`/`indexes` pair'
         e5_detail = 'the artifact carries no `selfIndex.queries`/`indexes` pair, on either side'
     else:
-        e4 = 'pass' if (landed['queries'] > landed['indexes']
-                        and (landed['refused'] or 0) <= E4_MAX_REFUSED) else 'fail'
-        e4_detail = (f"queries {landed['queries']} vs indexes {landed['indexes']}, "
-                     f"refused {landed['refused']}")
+        if landed['refused'] is None:
+            # The refusal limit is one of `E4`'s two clauses, so a run that never recorded it cannot pass
+            # the criterion -- `(None or 0) <= 12` is how a missing field became a satisfied threshold.
+            e4 = 'unread'
+            e4_detail = (
+                f"queries {landed['queries']} vs indexes {landed['indexes']}, but the artifact carries no "
+                '`queryExpansionCounts.refused`, so the refusal limit cannot be read'
+            )
+        else:
+            e4 = 'pass' if (landed['queries'] > landed['indexes']
+                            and landed['refused'] <= E4_MAX_REFUSED) else 'fail'
+            e4_detail = (f"queries {landed['queries']} vs indexes {landed['indexes']}, "
+                         f"refused {landed['refused']}")
         # E5 reads the control side. The registered control is a system that builds no product index --
         # `relevanceSignal` is `self-index` on the arm and the paired baseline does not rank with it -- so
         # a control artifact with no census is the registered shape rather than a missing reading, and the
@@ -280,7 +353,14 @@ def read(control: dict, treatment: dict) -> dict:
         control_index = (control.get('memoryArmConfig') or {}).get('selfIndex') or {}
         if control_index.get('queries') is None:
             e5 = 'unread'
-            e5_detail = 'the control side reports no self-index census, so `queries == indexes` cannot be read'
+            e5_detail = (
+                'the control carries a census but no `queries` field' if control_index
+                else 'the control side reports no self-index census'
+            ) + ', so `queries == indexes` cannot be read. A census field on one side only is also what '
+            e5_detail += (
+                'a pair of two different code versions looks like: the counter was merged between the two '
+                'dispatches, and `S17` read exactly that'
+            )
         else:
             e5 = 'pass' if control_index.get('queries') == control_index.get('indexes') else 'fail'
             e5_detail = f"control queries {control_index.get('queries')} vs indexes {control_index.get('indexes')}"
@@ -295,11 +375,14 @@ def read(control: dict, treatment: dict) -> dict:
             'threshold': E1_MIN_MR,
             'controlRate': round(mr_control / mr_size, 4),
             'treatmentRate': round(mr_treatment / mr_size, 4),
-            'discordant': {'fixed': c, 'broken': b},
+            'discordant': {'fixed': c_mr, 'broken': b_mr},
+            'discordantAll': {'fixed': c, 'broken': b},
             'mcnemarP': round(mcnemar, 6),
+            'mcnemarAllP': round(mcnemar_all, 6),
         },
         'floor': floor,
         'promptIdentity': identity,
+        'configuration': surfaces,
         'bill': {
             'control': round(control_bill, 3),
             'treatment': round(treatment_bill, 3),
@@ -316,7 +399,9 @@ def read(control: dict, treatment: dict) -> dict:
             'E3': {
                 'verdict': 'unread' if drifted else ('pass' if e3_pass else 'fail'),
                 'measured': (
-                    f'{leak} of {identity["checked"]} non-MR prompts moved, '
+                    f'{leak} of {identity["checked"]} non-MR prompts moved '
+                    f'({", ".join(f"{name} {count}" for name, count in sorted(identity["byRoute"].items()))}'
+                    f'; evidence identical on {identity["evidenceSame"]} of {leak}), '
                     f'{sum(1 for row in floor if row["belowFloor"])} capability(ies) below floor'
                     + (' -- the two dispatches do not share a prompt baseline, so a floor delta is not '
                        'attributable to the expansion' if drifted else '')
@@ -346,6 +431,9 @@ def render(reading: dict) -> str:
         '',
         f"Discordant on `MR`: fixed {mr['discordant']['fixed']}, broken {mr['discordant']['broken']}, "
         f"exact McNemar p = {mr['mcnemarP']:.4f}.",
+        f"The same pair over all capabilities: fixed "
+        f"{mr['discordantAll']['fixed']}, broken {mr['discordantAll']['broken']}, p = "
+        f"{mr['mcnemarAllP']:.4f} -- those flips outside `MR` are `E3`'s observation, not `E1`'s evidence.",
         '',
         '| capability | population | control | treatment | delta |',
         '| --- | ---: | ---: | ---: | ---: |',
@@ -359,13 +447,31 @@ def render(reading: dict) -> str:
     identity = reading['promptIdentity']
     lines.append('')
     lines.append(
-        f"Prompt identity outside `MR`: {len(identity['moved'])} of {identity['checked']} digests moved."
+        f"Prompt identity outside `MR`: {len(identity['moved'])} of {identity['checked']} digests moved"
+        + (
+            ' ('
+            + ', '.join(f'{name} {count}' for name, count in sorted(identity['byRoute'].items()))
+            + f'; evidence bytes identical on {identity["evidenceSame"]} of {len(identity["moved"])}'
+            + ')'
+            if identity['moved']
+            else ''
+        )
+        + '.'
     )
     for moved in identity['moved'][:5]:
         lines.append(
             f"  - `{moved['questionId']}` ({moved['capability']}): "
             f"{moved['controlChars']} -> {moved['treatmentChars']} chars"
         )
+    configuration = reading['configuration']
+    lines.append('')
+    lines.append(
+        'Configuration surfaces the control does not carry: '
+        + (', '.join(f'`{name}`' for name in configuration['undeclaredOnControl']) or 'none')
+        + '; census fields on one side only: '
+        + (', '.join(f'`{name}`' for name in configuration['censusFieldsOneSide']) or 'none')
+        + '.'
+    )
     lines.append('')
     lines.append('| criterion | verdict | measured | threshold |')
     lines.append('| --- | --- | --- | --- |')

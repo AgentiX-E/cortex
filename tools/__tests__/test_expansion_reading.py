@@ -77,7 +77,7 @@ def treatment(**overrides: object) -> dict:
     base = {
         'queryExpansion': 'llm',
         'selfIndex': {'queries': 2405, 'indexes': 2000},
-        'queryExpansionCounts': {'questions': 121, 'phrases': 468, 'empty': 0},
+        'queryExpansionCounts': {'questions': 121, 'phrases': 468, 'refused': 0},
     }
     base.update(overrides)
     # The same digest prefix as the control, because the two sides are supposed to differ in ONE thing:
@@ -105,7 +105,7 @@ def test_a_gain_below_the_threshold_is_a_failed_criterion_and_not_a_dispatch_fai
     correct['MR'] += 3
     reading = read(artifact(CONTROL_COUNTS, 'a'), artifact(correct, 'a', queryExpansion='llm',
                                                             selfIndex={'queries': 2405, 'indexes': 2000},
-                                                            queryExpansionCounts={'questions': 121, 'phrases': 400, 'empty': 0}))
+                                                            queryExpansionCounts={'questions': 121, 'phrases': 400, 'refused': 0}))
     assert reading['criteria']['E1']['verdict'] == 'fail'
     assert reading['mr']['delta'] == 3
 
@@ -168,9 +168,113 @@ def test_a_plan_that_never_reached_a_ranking_fails_the_receipt():
 
 
 def test_a_refusal_share_above_the_registered_bound_fails_the_receipt():
-    treated = treatment(queryExpansionCounts={'questions': 121, 'phrases': 400, 'empty': 13})
+    treated = treatment(queryExpansionCounts={'questions': 121, 'phrases': 400, 'refused': 13})
     reading = read(artifact(CONTROL_COUNTS, 'a'), treated)
     assert reading['criteria']['E4']['verdict'] == 'fail'
+
+
+def test_the_refusal_limit_cannot_pass_on_a_field_the_artifact_does_not_write():
+    # Found on the real `S17` artifact: this file read `queryExpansionCounts.empty`, which
+    # `MemoryArmConfig.queryExpansionCounts` does not declare, so the count came back `None`,
+    # `(None or 0) <= 12` held, and half of `E4` was never read. The fixture carried the same wrong
+    # name, which is why sixteen tests agreed with a criterion that could not fail. The artifact
+    # writes `{questions, phrases, refused}`; anything else is an unreadable receipt.
+    treated = treatment(queryExpansionCounts={'questions': 121, 'phrases': 400, 'empty': 0})
+    reading = read(artifact(CONTROL_COUNTS, 'a'), treated)
+    assert reading['criteria']['E4']['verdict'] == 'unread'
+    assert 'refused' in reading['criteria']['E4']['measured']
+
+
+def test_a_zero_refusal_rate_is_read_and_not_treated_as_a_missing_field():
+    # `0` is falsy and `None` is not, which is why the clause reads the field rather than its truthiness.
+    treated = treatment(queryExpansionCounts={'questions': 121, 'phrases': 356, 'refused': 0})
+    reading = read(artifact(CONTROL_COUNTS, 'a'), treated)
+    assert reading['criteria']['E4']['verdict'] == 'pass'
+    assert 'refused 0' in reading['criteria']['E4']['measured']
+
+
+def test_the_discordant_pair_is_counted_on_the_population_the_criterion_names():
+    # `S17` printed `fixed 6, broken 5` under the label "Discordant on `MR`" where `MR` itself was 3 / 3:
+    # the five other flips were the drift `E3` reports. On a 121-question cell the difference between 6
+    # and 3 is the difference between a p of 0.30 and a p of 1.00, so the population is not a detail.
+    treated_counts = dict(CONTROL_COUNTS)
+    control = artifact(CONTROL_COUNTS, 'a')
+    # The treatment starts from the control's counts, because the shape being tested is a zero delta with
+    # six flips in it -- `S17`'s own shape.
+    treated = artifact(treated_counts, 'a', queryExpansion='llm',
+                       selfIndex={'queries': 2405, 'indexes': 2000},
+                       queryExpansionCounts={'questions': 121, 'phrases': 468, 'refused': 0})
+    by_id = {record['questionId']: record for record in treated['questions']}
+    # MR-0..2 answered right by the control and wrong by the treatment; MR-102..104 the other way, which
+    # leaves the cell at 102 -- exactly the zero-delta shape `S17` published.
+    for key in ('MR-0', 'MR-1', 'MR-2'):
+        by_id[key]['correct'] = False
+    for key in ('MR-102', 'MR-103', 'MR-104'):
+        by_id[key]['correct'] = True
+    for key in ('IE-0', 'IE-1'):
+        by_id[key]['correct'] = False
+    reading = read(control, treated)
+    assert reading['mr']['treatment'] == 102
+    assert reading['mr']['discordant'] == {'fixed': 3, 'broken': 3}
+    assert reading['mr']['discordantAll'] == {'fixed': 3, 'broken': 5}
+    assert reading['mr']['mcnemarP'] == 1.0
+    assert reading['mr']['mcnemarAllP'] < 1.0
+
+
+def test_a_configuration_surface_the_control_does_not_carry_is_named_beside_the_reading():
+    # `S17`'s control was written four features earlier than its treatment, and nothing in the
+    # registration asked the two arms to share a tree. The artifact can say so: `memoryArmConfig` is
+    # projected from the code that produced it, so a key on one side only is a merged feature.
+    control = artifact(CONTROL_COUNTS, 'a')
+    treated = treatment(sessionClock=False, lexicalWeighting='flat')
+    reading = read(control, treated)
+    assert reading['configuration']['undeclaredOnControl'] == ['lexicalWeighting', 'sessionClock']
+    # A diagnostic, not a verdict: the prompts decide `E3`, and naming a surface must not move it.
+    assert reading['criteria']['E3']['verdict'] == 'pass'
+
+
+def test_a_surface_the_treatment_dropped_is_named_too():
+    control = artifact(CONTROL_COUNTS, 'a', supersededRendering='off')
+    reading = read(control, treatment())
+    assert reading['configuration']['absentOnTreatment'] == ['supersededRendering']
+
+
+def test_a_census_field_on_one_side_only_is_named_and_makes_E5_unread():
+    # The control of `S17` carries `selfIndex` without `queries`: the counter was merged between the two
+    # dispatches. `E5` cannot be read there, and the reason is not "the control refuses to report" but
+    # "the control's code did not have the field" -- two different repairs.
+    control = artifact(CONTROL_COUNTS, 'a')
+    control['memoryArmConfig']['selfIndex'] = {'indexes': 2000, 'turns': 742080}
+    treated = treatment(selfIndex={'queries': 2405, 'indexes': 2000, 'turns': 742080})
+    reading = read(control, treated)
+    assert reading['configuration']['censusFieldsOneSide'] == ['queries']
+    assert reading['criteria']['E5']['verdict'] == 'unread'
+    assert 'no `queries` field' in reading['criteria']['E5']['measured']
+
+
+def test_a_moved_prompt_records_whether_the_evidence_moved_with_it():
+    # Same delivered bytes under a different digest is a renderer change; different bytes is a retrieval
+    # change. `S17` was the first case on all fifty of its moved prompts, which is why the pair is not a
+    # reading about the expansion at all.
+    control = artifact(CONTROL_COUNTS, 'a')
+    treated = treatment()
+    for record in control['questions']:
+        record['evidenceChars'] = 60_000
+        record['evidenceTurns'] = 300
+    for record in treated['questions']:
+        record['evidenceChars'] = 60_000
+        record['evidenceTurns'] = 300
+    for record in treated['questions']:
+        if record['questionId'] == 'TR-3':
+            record['promptDigest'] = 'moved'
+            record['evidenceChars'] = 61_000
+        if record['questionId'] == 'TR-4':
+            record['promptDigest'] = 'moved-too'
+    reading = read(control, treated)
+    moved = {row['questionId']: row for row in reading['promptIdentity']['moved']}
+    assert moved['TR-3']['evidenceSame'] is False
+    assert moved['TR-4']['evidenceSame'] is True
+    assert reading['promptIdentity']['evidenceSame'] == 1
 
 
 def test_a_prompt_that_moved_outside_mr_is_a_leak():
@@ -206,7 +310,7 @@ def test_a_capability_three_below_the_control_breaks_the_floor():
         artifact(CONTROL_COUNTS, 'a'),
         artifact(treated_counts, 'a', queryExpansion='llm',
                  selfIndex={'queries': 2405, 'indexes': 2000},
-                 queryExpansionCounts={'questions': 121, 'phrases': 468, 'empty': 0}),
+                 queryExpansionCounts={'questions': 121, 'phrases': 468, 'refused': 0}),
     )
     assert reading['criteria']['E3']['verdict'] == 'fail'
     assert any(row['capability'] == 'TR' and row['belowFloor'] for row in reading['floor'])
