@@ -107,6 +107,7 @@ import {
   type OracleEvidenceDataset,
   expandMultiSessionQueries,
   fingerprintBytes,
+  readRevision,
   persistEmbeddingCache,
   restoreArmEmbeddingCache,
   roleOfTurn,
@@ -430,6 +431,15 @@ async function main(): Promise<void> {
   // a property of (pipeline, file) and only half of that pair was ever written down.
   const rawDataset = readFileSync(dataPath);
   const datasetFingerprint = fingerprintBytes(rawDataset);
+  // `§13.377.9`'s `E0`: the pair is one flag apart only if both arms ran the same commit, and
+  // nothing had ever written that down. Read here rather than in the arm for the reason the
+  // fingerprint is: this is the process with an environment.
+  const revision = readRevision(process.env);
+  console.log(
+    revision === undefined
+      ? 'Revision: <none: no GITHUB_SHA in this environment, so the artifact cannot be paired by tree>'
+      : `Revision: ${revision.sha}${revision.runId === undefined ? '' : ` (run ${revision.runId})`}`,
+  );
   const parsed = JSON.parse(rawDataset.toString('utf8')) as unknown;
   if (!Array.isArray(parsed)) {
     throw new Error(`LONGMEMEVAL_PATH must contain a JSON array, got ${typeof parsed}`);
@@ -1378,6 +1388,7 @@ async function main(): Promise<void> {
 
   const result = await runCortexMemoryArm(dataset, baseline0, feature0, {
     runs,
+    ...(revision === undefined ? {} : { revision }),
     // The same resolution the gate line above printed, handed to the report rather than re-read:
     // the artifact and the log then cannot disagree about the pace, which is the whole reason the
     // pace is in the artifact (§13.228).

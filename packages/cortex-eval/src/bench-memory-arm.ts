@@ -107,6 +107,7 @@ import { DEFAULT_RELEVANCE_TOP_K } from './relevance-index.js';
 import { resolveAnchorParameters } from './anchor-recall.js';
 import { classifyTrFailure } from './tr-failure-class.js';
 import type { EmbeddingProvenance } from './embedding-factory.js';
+import type { RunRevision } from './revision.js';
 import type { AblationResult, BenchmarkDataset, GoldOverlap, MemorySystem } from './types.js';
 
 /** The environment variables this arm reads. A subset of `process.env`. */
@@ -3618,6 +3619,15 @@ export type CortexMemoryArmRunOptions = {
    */
   datasetFingerprint?: string;
   /**
+   * The commit this job checked out, when it is running in one. See `AblationReport.revision`.
+   *
+   * Forwarded rather than read here for the reason `readerPacing` is: this module has no
+   * environment, and the entry point that read `GITHUB_SHA` is the only thing that can say what the
+   * job was. A pair of arms at one tree is `§13.377.9`'s precondition, and it is only a precondition
+   * if both artifacts can be checked against it.
+   */
+  revision?: RunRevision;
+  /**
    * The shape of the population this run graded, when it multiplied it.
    *
    * Set by the entry point for the reason the fingerprint above is: this function is handed a
@@ -4402,6 +4412,7 @@ export async function runCortexMemoryArm(
       ...(options.datasetFingerprint === undefined
         ? {}
         : { datasetFingerprint: options.datasetFingerprint }),
+      ...(options.revision === undefined ? {} : { revision: options.revision }),
       ...(options.population === undefined ? {} : { population: options.population }),
       ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
       memoryArmConfig: options.memoryArmConfig,

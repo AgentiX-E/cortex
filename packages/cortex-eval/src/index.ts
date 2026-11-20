@@ -181,6 +181,13 @@ export {
   type RetryFireCounts,
 } from './report.js';
 export {
+  // `S17`'s pair was read as one flag apart and was four merged features apart, because no artifact
+  // had ever carried the revision that made it. Recording it is the half that can only happen here;
+  // the comparison is `expansion-reading.py`'s `E0`, which owns the criteria.
+  readRevision,
+  type RunRevision,
+} from './revision.js';
+export {
   // §13.228: the pass shape. The type is exported because `AblationReport.passShape` is a public
   // field, and the two functions because a second renderer of the same block would otherwise
   // restate the "None of the three is part of the arm" sentence -- the claim a reader needs in

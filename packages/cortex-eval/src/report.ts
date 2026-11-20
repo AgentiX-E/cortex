@@ -18,6 +18,7 @@ import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
 import type { RerankCensus } from './rerank-census.js';
 import type { RerankBounds } from './rerank-factory.js';
+import type { RunRevision } from './revision.js';
 import type { TransportRetryReport } from './retrieval-diagnostics.js';
 import { passShapeLines, passShapeReport, type PassShape } from './pass-shape.js';
 import type { ReaderPacing } from './reader-transport.js';
@@ -58,6 +59,21 @@ export type AblationReport = {
    * `cortex/docs/AUDIT-BENCHMARK-WALLCLOCK.md` §7.2 keeps that half open.
    */
   datasetFingerprint?: string | undefined;
+  /**
+   * The commit that produced this artifact, when the run happened in a CI job.
+   *
+   * `datasetFingerprint` says which **file** was graded and `memoryArmConfig` says which
+   * **configuration** ran; neither says which **code** ran. That gap is what made `S17`'s pair
+   * unreadable: its control was three days and four merged features older than its treatment, and
+   * nothing in either artifact could show it -- the finding came from fifty moved prompts whose
+   * evidence bytes were identical, which is a renderer drift read backwards (`§13.377.7`).
+   *
+   * `PREREGISTRATION §13.377.9` therefore makes tree equality the precondition of the re-run, and a
+   * precondition that can only be checked by remembering which dispatch was which is not a
+   * precondition. Absent on every artifact produced before this field and on every local run, which
+   * is `unread` to `compareRevisions` rather than "different".
+   */
+  revision?: RunRevision | undefined;
   /**
    * The shape of the population this run graded, when it was not one window per corpus.
    *
@@ -1690,6 +1706,13 @@ export type AblationReportOptions = {
    */
   datasetFingerprint?: string;
   /**
+   * The revision the caller is running at, when it can see one. See `AblationReport.revision`.
+   *
+   * Passed in for the reason the fingerprint is: this module has no environment, and the entry
+   * point that read `GITHUB_SHA` is the only thing that can say which commit the job checked out.
+   */
+  revision?: RunRevision;
+  /**
    * The shape of the population, when the caller multiplied it. See `AblationReport.population`.
    *
    * Passed in for the reason the fingerprint above is: this module is handed a dataset, and a
@@ -1782,6 +1805,7 @@ export async function runAblationReport(
     ...(options.datasetFingerprint === undefined
       ? {}
       : { datasetFingerprint: options.datasetFingerprint }),
+    ...(options.revision === undefined ? {} : { revision: options.revision }),
     ...(options.population === undefined ? {} : { population: options.population }),
     ...(options.featureConfig === undefined ? {} : { featureConfig: options.featureConfig }),
     ...(options.questions === undefined ? {} : { questions: options.questions }),
