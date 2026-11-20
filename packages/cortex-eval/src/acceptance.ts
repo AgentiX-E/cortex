@@ -1258,11 +1258,25 @@ export const CRITERIA: readonly Criterion[] = [
 
   // §13.377: the expansion reaching the product's own ranking.
   //
-  // The row exists before the dispatch, and it is `unrun` rather than `aim` with a missing reading, because
-  // the two states mean different things to a reader of the matrix: `aim` with no artifact is a row whose
-  // number could not be computed from the artifact it names, while `unrun` is a row no artifact exists for.
-  // The first state is a defect to repair, the second is a dispatch to make, and collapsing them is the
-  // confusion `S9`'s row had for four rounds.
+  // The row was created before the dispatch and read `unrun` for eighteen rounds, because the two states mean
+  // different things to a reader of the matrix: `aim` with no artifact is a row whose number could not be
+  // computed from the artifact it names, while `unrun` is a row no artifact exists for. The first state is a
+  // defect to repair, the second a dispatch to make, and collapsing them is the confusion `S9`'s row had for
+  // four rounds.
+  //
+  // Round 144 dispatched it (`44689033513`) and the row reads: **102 of 121, the control's own count.** The
+  // receipt is what makes that a reading rather than a repeat of the wiring defect §13.377.1 found --
+  // `selfIndex.queries` 3,424 against 2,000 indexes -- and the bill came in under the ceiling, so `E1` is
+  // the only criterion that missed.
+  //
+  // It is not a row that licenses a conclusion about the mechanism, and the reason is the third criterion
+  // rather than the first: `E3` found 50 of 379 non-`MR` prompts moved with their evidence bytes identical,
+  // 48 of them on the temporal route, and the treatment's own configuration carries four surfaces the
+  // control's does not (`lexicalWeighting`, `sessionClock`, `factTimeline`, `resolution`) plus a
+  // `selfIndex.queries` field the control's code never wrote. The control is `S16`, three days and several
+  // merges older, so the difference between the two arms is not the one flag the registration named.
+  // §13.377.5's gate says an unreadable delta is not evidence, so the family stays open and `S18` re-runs the
+  // pair at one tree. The row keeps reading the number it has.
   {
     id: 'S17',
     capability: 'query expansion on the product’s own ranking',
@@ -1277,17 +1291,20 @@ export const CRITERIA: readonly Criterion[] = [
     comparator: 'at-least',
     threshold: 5,
     unit: 'count',
-    // `aim`, with an `unrun` **source**: the kind says what the criterion would do with a number, and the
-    // source says there is no number. The matrix renders the second as `unrun`, which is the state a
-    // reader needs -- a dispatch not yet made is not a criterion that failed to compute.
+    // `aim`, with an `artifact` source since round 144: the kind says what the criterion would do with a
+    // number -- print the miss and keep the build green, because the row is a target -- and the source says
+    // where the number is. The two `attest` entries are what stop the row reading a different experiment's
+    // file: a file whose `row` is not this one, or whose control is not the dispatch it was paired against,
+    // is a reading of something else and renders `STALE` rather than a number.
     kind: 'aim',
     source: {
-      kind: 'unrun',
-      reason:
-        'registered by `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §13.377.4 and not yet dispatched. The ' +
-        'mechanism was reachable on the instrument’s indexes since §13.97 and unreachable on this arm ’s, ' +
-        'because `self-index` builds its index inside the product and read no query set at all — so the ' +
-        'row could not be filled by a run, only by the seam plan §34 added',
+      kind: 'artifact',
+      path: 'cortex-docs/evidence/longmemeval/query-expansion.json',
+      key: 'paired.deltaQuestions',
+      attest: [
+        { key: 'row', equals: 'S17' },
+        { key: 'paired.control.run', equals: '44017278305' },
+      ],
     },
     competitors: [
       {

@@ -211,7 +211,7 @@
         "configPath": "queryExpansion",
         "value": "llm"
       },
-      "reason": "Registered arm says `query_expansion: \"none\"`, so this is not part of any published number. It is a candidate mechanism awaiting a dispatch, and recording it keeps it out of the product's column until one exists."
+      "reason": "Registered arm says `query_expansion: \"none\"`, so this is not part of any published number. It was a candidate mechanism awaiting a dispatch until round 144 made one (`44689033513`) and read it: the receipt says the phrases reached the product\u2019s ranking (3,424 queries against 2,000 indexes) and the target cell did not move (102 of 121, exact McNemar p = 1.0). That reading is not attributable, because the control is four merged features older than the treatment and 50 of 379 non-target prompts moved with their evidence bytes unchanged \u2014 so the row stays `instrument` as a dispatched but unattributed candidate rather than a settled one. `PREREGISTRATION` \u00a713.377.7-\u00a713.377.9 has the reading and the same-tree re-run it licenses."
     },
     {
       "id": 24,

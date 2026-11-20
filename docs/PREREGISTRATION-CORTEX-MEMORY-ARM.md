@@ -40523,6 +40523,111 @@ Criteria, fixed before the run and not moved after it:
 - **`window` is not widened.** It reorders a delivered set inside the renderer and reaches the
   temporal route; nothing in this round touches it, and a run may not administer both.
 
+### 13.377.7 The reading: 102 of 121, and the gate that fired instead of the one that was watched
+
+Run `44689033513`, 500 questions × 4 repetitions, tree `d1cca2d6`, 2 h 04 m, `success`, 14.68 CNY against a
+14.26 projection. Read by `tools/expansion-reading.py` against `S16` (`44017278305`):
+
+| criterion | threshold | measured | verdict |
+| --- | --- | --- | --- |
+| `E1` mechanism | MR majority ≥ 107 of 121 | **102** of 121 | **fail** |
+| `E2` bill | ≤ 8,600 prompt tokens per question | 7,422.9 | pass |
+| `E3` floor + identity | no capability below −2, **0 non-MR prompts moved** | floor pass; **50 of 379 moved** | **fail** |
+| `E4` receipt | `queries > indexes`, `refused ≤ 12` | 3,424 vs 2,000, refused 0 | pass |
+| `E5` control is the control | control `queries == indexes` | control has no `queries` field | unread |
+
+`E1` is a miss by five questions, and its discordant pair is symmetric: three `MR` questions fixed, three
+broken, exact McNemar `p = 1.0000`. `E2` and `E4` are the two criteria that say the mechanism *ran*: 121
+expanded questions, 356 phrases, none refused, and the product's own index issued 3,424 queries against
+2,000 indexes. So the phrases reached the ranking -- that is what §13.377.3 asked the artifact to prove, and
+it proved it.
+
+**`E3` is why none of that becomes a conclusion.** Fifty of the 379 non-`MR` prompts moved, and every one of
+them moved with its delivered evidence bytes **unchanged** -- `evidenceChars` and `evidenceTurns` equal on
+50 of 50, so the evidence the reader saw is byte-for-byte the same and only the prompt around it differs.
+Forty-eight of the fifty are the `temporal` route. The expansion cannot be the cause: it is confined to `MR`
+by `expandMultiSessionQueries`'s routing rule, and `queryExpansionCounts.questions` is 121, the `MR`
+population exactly.
+
+The cause is in the artifact, one field away. `memoryArmConfig` is projected from the code that produced the
+artifact, and the treatment carries four surfaces the control does not:
+
+| surface | merged | on the control |
+| --- | --- | --- |
+| `lexicalWeighting` | 2026-11-18 | absent |
+| `sessionClock` | 2026-11-18 | absent |
+| `factTimeline` | 2026-11-20 | absent |
+| `resolution` | before the control, rendered since | absent |
+| `selfIndex.queries` | between the two dispatches | absent, which is why `E5` is `unread` |
+
+The control is `S16`, written on **2026-11-17**; the treatment is **2026-11-20**. The registration fixed a
+*flag table* and never said the two arms had to share a *tree*, so the pair differs by at least four merged
+features and the delta is a reading of two code versions. §13.377.5's gate is explicit -- a leak into
+another capability makes the delta unreadable whatever `E1` says -- and `E3` is the leak test. It fired.
+
+What that licenses, and what it does not:
+
+- **Not row 3.** "The mechanism ran and did not help" needs an attributable delta. This one is not.
+- **No adoption**, which follows from `E1` regardless.
+- **The family stays open.** Closing it on an unreadable pair is the mistake `§10.10` describes, one level
+  up: a conclusion attached to a measurement that never reached the decision it names.
+
+The dispatch is still worth its 14.68 CNY, for a reason the criteria did not anticipate: it proved the seam
+works end to end (a plan from outside the product reaches the product's ranking and is counted there) and it
+turned "the control must be the same code" from an assumption into a checkable field.
+
+### 13.377.8 What the registration did not say, and the three defects the reading exposed
+
+**A paired criterion needs a tree clause.** `E1`-`E5` constrain the flags; nothing constrains the code. The
+repair is a precondition rather than a sixth criterion, because it is not about the mechanism:
+
+> A pair is readable only if the two artifacts were produced by the same tree, and the weaker checkable form
+> is that their `memoryArmConfig` key sets are equal outside the declared departure and its counters.
+
+`tools/expansion-reading.py` now prints that comparison -- `configuration` in the JSON, one line in the
+rendered reading -- and does not let it move a verdict, because a diagnostic that can fail a run is a
+criterion and this one was written after the result was known. It is named here so the next registration can
+make it `E0` *before* its dispatch.
+
+The same defect makes every older pair in this campaign a question rather than a fact: `S15` and `S16` are
+paired against `S9`, which is older still. Their headlines are absolute readings of the registered arm and are
+untouched, but their **deltas** have never been checked for identity, and the tool that would check them now
+exists. That audit is scheduled, not performed.
+
+**The reading tool had two defects of its own, both found by taking this reading.**
+
+| defect | how it hid | repair |
+| --- | --- | --- |
+| `receipt()` read `queryExpansionCounts.empty`, which `MemoryArmConfig.queryExpansionCounts` does not declare (`{questions, phrases, refused}`) | the count came back `None`, `(None or 0) <= 12` held, and `E4`'s refusal clause could never fail; the *test fixture* carried the same wrong name, so sixteen tests agreed with it | read `refused`, and make an absent count `unread` rather than a satisfied limit |
+| the McNemar pair was counted over all 500 questions and printed under the label "Discordant on `MR`" | `6 fixed / 5 broken` where `MR` itself was `3 / 3`; on a 121-question cell that is the difference between `p = 0.30` and `p = 1.00` | count on the population the criterion names, print the all-roster figure separately and say which is which |
+
+Both are the same class as the defects this campaign keeps finding: a number that is printed, plausible, and
+about something other than what its label says.
+
+### 13.377.9 The dispatch this should have been: `S18`, one tree, `MR`-scoped
+
+Registered here, before it runs, because the pair is the whole experiment and last time the pair was the part
+nobody specified.
+
+- **Two dispatches from one ref.** Control: the registered table unchanged (`queryExpansion: none`).
+  Treatment: the same table with `cortex_memory_query_expansion: llm`. Both at the same commit, both
+  `--capability MR`, both four repetitions. The tree hash equality is the receipt for `E0`, and it is a
+  stronger one than prompt identity: two different codes can emit the same prompts, and no two dispatches
+  from one commit can.
+- **Why `MR`-only.** `E1`'s population is `MR` and this run asks one question. 121 × 4 × 2 ≈ 6 CNY, one
+  hour, against 14.68 for the pair just read.
+- **`E0`** (precondition, not a criterion): the two artifacts carry equal `memoryArmConfig` key sets outside
+  `queryExpansion`/`queryExpansionCounts`, and both carry `selfIndex.queries`. Failing it makes the run
+  `unread` and nothing else is reported.
+- **`E1'`** MR majority ≥ the control's own count **+ 5**, where the control is the same-tree run and not a
+  remembered number. `E2'` ≤ 8,600. `E4'` `queries > indexes`, `refused ≤ 12`. `E5'` control
+  `queries == indexes`, now readable because both sides have the field.
+- **`E3'` is not carried**, and the omission is stated rather than hidden: a single-capability run has no
+  other cell to leak into, and `E0` replaces the leak test for the reason above.
+- **What each outcome buys.** `E1'` pass: the mechanism is worth an adoption round, and the next increment is
+  the phrase prompt's width. `E1'` fail with `E0`/`E2'`/`E4'` pass: row 3 becomes licensed, and the family
+  closes, including the `window` reorder's premise.
+
 ## 13.378 The retrieval instrument: a reading that costs no provider call
 
 The 127th round's problem was that the only axis with a published deficit (`S14`, 85.75% against an
