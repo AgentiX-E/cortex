@@ -3127,7 +3127,7 @@ export function buildsProductIndex(relevanceSignal: string): boolean {
  * | value | the pool lives in | what `goldOverlap` can answer |
  * | --- | --- | --- |
  * | `ranked` | the harness (`relevance-index.ts`) | where each gold turn sat in the ranking, and how many of them it surfaced |
- * | `product-reported` | the product (`SearchIndex`), reported per question | the same two readings as `ranked`, from the order the product itself used |
+ * | `product-reported` | the product, reported per question | where each gold turn sat in the order the room was **cut from**, and how many of them it carried |
  * | `product-unreported` | the product, but it reported no order | where each gold turn sat **in the delivery**, and nothing about the turns it did not deliver |
  * | `none` | nowhere | nothing, and the budget spent arrival order |
  *
@@ -3155,6 +3155,17 @@ export function buildsProductIndex(relevanceSignal: string): boolean {
  * was ranked by the harness, and a reader comparing two runs needs to know which ranking a rank
  * refers to before comparing ranks. One value would make the two indistinguishable at exactly the
  * field that exists to keep them apart.
+ *
+ * ## What `-1` means, which changed with the order it is measured in
+ *
+ * On the harness values the pool is `relevance-index.ts`'s candidate list, so `-1` is "the ranker did
+ * not offer this turn" -- a `k` bound or a miss. On `product-reported` since round 148 the order is the
+ * **selection's**, which lists every candidate the window considered (turns the index never scored sit
+ * at zero, last), so `-1` there means the turn was not a candidate at all: a role filter
+ * (`evidenceRoles`) or a route filter removed it before the window saw it. That is a reading about a
+ * filter rather than about a ranking, and it is the row the round-147 pool shape could not express
+ * without also claiming, wrongly, that a rank inside the delivery implied a delivered turn
+ * (`a1cc6108`: rank 199, 204 turns delivered, not delivered).
  */
 type GoldAccount = 'ranked' | 'product-reported' | 'product-unreported' | 'none';
 

@@ -506,7 +506,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastIndex: SearchCensus | undefined = undefined;
   /**
-   * The ranking the product built for the most recent question, and the question it was built for.
+   * The order the most recent prompt was cut from, and the question it was cut for.
    *
    * ## Why the question travels beside the ranking
    *
@@ -516,16 +516,33 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * accessor names the question it wants and a mismatch reads as absence, which turns "you asked about a
    * ranking this instance no longer holds" from an inference into a value.
    *
-   * ## Why the pool is the ranked turns and not the delivered ones
+   * ## Why this is the selection's order and not the index's
    *
    * The delivery is already readable (`lastRetrievedContext`). What was missing is the part of the ranking the
-   * room did not buy: a gold turn with no rank was never surfaced, and one whose rank is beyond the delivery
-   * was surfaced and cut. Those two license opposite increments, and telling them apart is the whole purpose
-   * of this slot (`goldOverlap`'s `carried < total` cannot, on a signal whose pool lives in the product).
+   * room did not buy: a gold turn beyond the order was never placed, and one whose rank is beyond the delivery
+   * was placed and cut. Those two license opposite increments, and telling them apart is the whole purpose
+   * of this slot.
+   *
+   * It is written from `AssembledPrompt.ranking` -- the array `selectByRelevance` sorted -- and not from
+   * `SearchIndex`'s pool, which is a **different order on purpose**: the selector quantises scores to a
+   * `1e-4` grid and breaks the ties by arrival (`R1` needed that, because near-ties were swapping a budget
+   * boundary on provider noise) and it scores turns the index deduplicated. Round 147 shipped the pool here
+   * and `44768451597` contains the contradiction: `a1cc6108`'s gold turn sits at pool rank **199** on a
+   * question whose window delivered **204** turns, which is impossible if the two are one order.
    */
   #lastRanking: readonly string[] = [];
   /** The question {@link #lastRanking} was built for, or `null` before any. */
   #lastRankingQuestion: string | null = null;
+  /**
+   * Whether the signal behind the current question's prompt was this instance's own index.
+   *
+   * The slot above is a statement about the **product**'s ranking, and a caller-supplied `relevanceFor` is the
+   * caller's: the window is cut from it either way, but an accessor named `rankingCensusOf` on `CortexMemory`
+   * claiming a ranking the caller built is the same overstatement `goldAccount` exists to prevent an artifact
+   * from making. The builder reports the order in both cases -- it cannot tell them apart, and should not --
+   * so the provenance is resolved here, where it is decided.
+   */
+  #rankingIsProductOwn = false;
   /**
    * What every index this instance built has cost, summed.
    *
@@ -1104,15 +1121,23 @@ export class CortexMemory implements SessionAwareMemorySystem {
   }
 
   /**
-   * What the product ranked for `question`, best first, or `undefined` when it ranked nothing.
+   * The order the room was spent from for `question`, best first, or `undefined` when there was none.
+   *
+   * ## What this is the order *of*
+   *
+   * The candidates the selection sorted, in the selection's order -- not the delivery (`lastRetrievedContext`)
+   * and not the index's pool. The three differ: the delivery is a permutation of the order's prefix, and the
+   * pool is the index's own exact order before the `1e-4` quantisation and arrival tie-break the selector
+   * applies. A rank is only readable as "where the room stopped" if it is a position in the order the room
+   * was spent from, which is why the field this reads is the selector's array.
    *
    * ## The two absences this keeps apart
    *
-   * `undefined` means the product did not build a ranking: no `index` was configured, the signal came from the
-   * caller's `relevanceFor`, or this instance never answered this question. `[]` would mean the ranking fired
-   * and offered nothing, which is a finding about the corpus. Only the first is an absence of instrument, and
-   * an artifact that published the second where the first is true would report a retrieval failure on a run
-   * that never retrieved.
+   * `undefined` means there is no order to report: the signal came from the caller's `relevanceFor`, this
+   * instance never answered this question, or the answer was a clip with no ranking at all. `[]` would mean an
+   * order that held nothing, which is a finding about the corpus. Only the absent instrument is silent; a
+   * window that fitted its whole corpus reports its order in full, so `length === delivered` states that the
+   * room did not bind instead of leaving the reader to infer it from a silence.
    *
    * ## Why the question is a parameter rather than a field
    *
@@ -1469,6 +1494,29 @@ export class CortexMemory implements SessionAwareMemorySystem {
   ): void {
     this.#recordDelivery(assembled);
     this.#recordCoverage(admitted, assembled);
+  }
+
+  /**
+   * What the order behind this prompt was, or that there was none.
+   *
+   * Written from the builder rather than from the index, and written at the same place the prompt is: the two
+   * states a caller must be able to tell apart are "this question was cut from an order" and "it was not", and
+   * a slot left holding the previous question's order answers neither.
+   *
+   * `undefined` is the second state, and here it has one cause: no signal was consulted, i.e. a clip. A
+   * question whose evidence fitted the room still has an order -- the builder reports it in full, so a caller
+   * can tell "the room did not bind" (`ranking.length === carried.length`) from "nothing ranked".
+   * `#relevanceFor` clears the slot first, so a question that reaches no builder cannot leave the previous
+   * one's order behind.
+   */
+  #recordRanking(question: string, ranking: readonly string[] | undefined): void {
+    if (ranking === undefined) {
+      this.#lastRanking = [];
+      this.#lastRankingQuestion = null;
+      return;
+    }
+    this.#lastRanking = ranking;
+    this.#lastRankingQuestion = question;
   }
 
   /**
@@ -2232,6 +2280,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
       ),
     );
     this.#recordEvidence(kept, assembled);
+    // The order this prompt was cut from, recorded where the prompt is: the builder is the only thing that
+    // knows it, and a second resolution here would be a second ranking of the same question. Gated on the
+    // provenance resolved above, so a caller's own signal is not published as the product's ranking.
+    this.#recordRanking(question, this.#rankingIsProductOwn ? assembled.ranking : undefined);
     // §13.107: the outcome is recorded once per question, here rather than inside `#consult`, so a route that
     // consults twice does not enter the census twice.
     const first = await this.#consult(assembled.prompt, route);
@@ -2625,6 +2677,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
         ? { ...assembled, prompt: annotateSessionBoundaries(assembled.prompt) }
         : assembled;
 
+    // The order this prompt was cut from. `buildSessionPrompt` shares the selection with `buildPrompt`, so
+    // this is the same array the room spent on this route -- which is the route `MR` reads and the one the
+    // gold-coverage campaign is about.
+    this.#recordRanking(question, this.#rankingIsProductOwn ? assembled.ranking : undefined);
     this.#lastReview = null;
     this.#lastVote = null;
     // §13.101's sample count. One consultation is the shipped behaviour, and the loop reduces to
@@ -3205,6 +3261,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // build an index -- which is the price of a slot whose staleness would otherwise be unobservable.
     this.#lastRanking = [];
     this.#lastRankingQuestion = null;
+    this.#rankingIsProductOwn = false;
     const override = this.#options.relevanceFor;
     if (override !== undefined) return override;
 
@@ -3217,11 +3274,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // `k` is spent per channel by the index and again on the fused list, so a caller naming `k` bounds the
     // pool the budget may draw from rather than only the vector channel's contribution to it.
     const scorer = await built.lookup(question, index.k);
-    // Read from the index that produced the scores, immediately after the search that produced them: the
-    // prompt builder ranks by this scorer and spends the room on its order, so the pool recorded here is the
-    // one the delivery was drawn from rather than a second retrieval of the same question.
-    this.#lastRanking = built.lastPool();
-    this.#lastRankingQuestion = question;
+    // The slot stays clear here. The index's own order is **not** the delivered order -- the selector
+    // quantises scores and breaks the resulting ties by arrival, and scores turns the index deduplicated --
+    // so the ranking is written by the prompt builder, from the array it actually spent
+    // (`AssembledPrompt.ranking`). Recording the pool here was the round-147 proxy that `a1cc6108`
+    // contradicted: a gold turn at pool rank 199 on a window that delivered 204 turns.
     // After the lookup, not before: the query embedding and the reranker both fire inside it, so a census
     // taken earlier would report a run that made one model call and never the second -- and `rerankCalls`
     // would be zero on every run, which is the exact count a reader would use to decide the stage ran.
@@ -3231,6 +3288,7 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // the two counters would then be free to disagree if that call ever became non-idempotent, and an
     // artifact whose per-question and cumulative numbers disagree is unreadable in the one place it matters.
     this.#indexCost = foldIndexCost(this.#indexCost, census);
+    this.#rankingIsProductOwn = true;
     return scorer;
   }
 

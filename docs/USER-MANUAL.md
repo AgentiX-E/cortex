@@ -1448,16 +1448,22 @@ not a vote.
 
 ### 8.1 Where the room was spent, when the claim is about retrieval
 
-`rankingCensusOf(question)` answers a question the delivery cannot: **the order the product ranked, not
-just the part of it the room bought.** `lastRetrievedContext()` is the delivery — what the reader read.
-The pool is what the room was shopping from, and the difference between the two is the difference
+`rankingCensusOf(question)` answers a question the delivery cannot: **the order the room was cut from,
+not just the part of it the room bought.** `lastRetrievedContext()` is the delivery — what the reader
+read. The order is what the room was shopping from, and the difference between the two is the difference
 between two repairs that look identical in an accuracy number:
 
 | observation | what it means | what to change |
 | --- | --- | --- |
-| a gold turn's rank is `-1` | the product's ranking never surfaced it | the index: channels, `k`, `lexicalWeighting` |
-| its rank is at or beyond the number of delivered turns | surfaced, and the room cut it | `maxPromptChars` on that route |
+| a gold turn's rank is `-1` | it was not among the candidates this window considered at all — a role filter (`evidenceRoles`) or a route filter removed it | the filter, not the ranking |
+| its rank is at or beyond the number of delivered turns | the order placed it, and the room stopped before reaching it | `maxPromptChars` on that route |
 | its rank is inside the delivery | the room bought it and the answer is about the reading | neither |
+
+The order is the **selection's**, so a rank is a position in exactly the list the budget walked. That
+matters more than it sounds: the index's own order is a different one — scores are rounded to a `1e-4`
+grid and ties go to the earlier turn, which is what keeps two near-tied candidates from swapping a
+budget boundary between runs — so a rank read off the index would be a position in an order the room
+never spent.
 
 ```ts
 import { CortexMemory } from '@agentix-e/cortex-memory';
@@ -1474,11 +1480,12 @@ const memory = new CortexMemory({
 
 const question = 'How many cities did I live in?';
 await memory.answerSessions(question, sessions);
-const pool = memory.rankingCensusOf(question); // readonly string[] | undefined
+const order = memory.rankingCensusOf(question); // readonly string[] | undefined
 const delivered = memory.lastRetrievedContext()?.length ?? 0;
-// `pool === undefined` means the product built no ranking -- no `index` configured, or the ranking came
-// from your own `relevanceFor`. It is not an empty ranking, which is `[]` and is a finding about the corpus.
-console.log(pool?.length, delivered);
+// `order === undefined` means nothing was cut from an order: no `index` configured, the signal came from
+// your own `relevanceFor`, or the whole evidence fitted the room. It is not an empty order, which is `[]`
+// and is a finding about the corpus.
+console.log(order?.length, delivered);
 ```
 
 Two properties are worth knowing before you wire it:
@@ -1486,9 +1493,12 @@ Two properties are worth knowing before you wire it:
 - **It is bound to a question.** The accessor holds one slot, so it takes the question as an argument and
   returns `undefined` when the slot describes a different one. Reading "the last ranking" after a
   500-question pass is how an artifact comes to explain every question with one question's evidence.
-- **It is only as wide as `k`.** A turn the index did not return has no rank, and no rank is the correct
-  answer for it: the prompt never held a score for that turn, so the room could not have spent anything on
-  it.
+- **It is as wide as the candidate list, not as `k`.** Turns the index did not return are still in the
+  order — scored at zero, at the end — because the room can still reach them when the scored candidates do
+  not fill it. Clipping the order to `k` would deny a turn the window could have delivered.
+- **It is present only when something was cut.** A prompt that fits its room reports no order: nothing was
+  cut, so there is no "where did the room stop" to answer, and the builder does not pay for a ranking it
+  will not spend.
 
 ## 9. Recipes
 

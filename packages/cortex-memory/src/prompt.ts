@@ -3058,6 +3058,38 @@ export type AssembledPrompt = {
   readonly carried: readonly AdmittedTurn[];
 
   /**
+   * The order the room was spent from, best first -- every candidate the selection considered.
+   *
+   * ## What this is for, and why a pool was the wrong shape for it
+   *
+   * `carried` says which turns were delivered; nothing said **where the others sat**, and the campaign's
+   * central reading (`goldOverlap.carried < total`) needs that: a gold turn the order put beyond the room
+   * is repaired by a wider room, and one the order never placed is not. Round 147 published
+   * `SearchIndex.lastPool()` as that order, and it is a *different* order on purpose:
+   *
+   * - the comparator quantises scores to a `1e-4` grid and breaks ties by arrival (`orderableRelevance`,
+   *   which `R1` needed because near-ties were swapping a budget boundary on provider noise), so the
+   *   selection's order is not the index's exact order;
+   * - the index deduplicates by text while the selection scores every turn it was given, so a repeated
+   *   turn is one pool entry and two candidates.
+   *
+   * `a1cc6108` in `44768451597` is the contradiction that exposed it: a gold turn at pool rank 199 on a
+   * question whose window delivered 204 turns. Neither number was wrong; they were positions in two
+   * different orders, and the rank was a proxy for the delivery rather than a measurement of it.
+   *
+   * Not a second scoring pass: this is the sorted candidate list the binary search already ran over, so it
+   * cannot disagree with the window cut from it. The invariant that makes a rank readable -- the first
+   * `carried.length` entries are the carried set -- follows from that and is pinned in `prompt-ranking`.
+   *
+   * Absent when no ranking ran, which is the state `evidenceChars: 0` and `carried: []` report for their
+   * own quantities: a clip has no order, and `[]` would read as "ranked and offered nothing". Present in
+   * full when a signal ranked the candidates and the room did not bind -- `ranking.length ===
+   * carried.length` is then the statement that nothing was cut, which is a fact a reader needs and cannot
+   * get from an absence.
+   */
+  readonly ranking?: readonly string[];
+
+  /**
    * What the cap did to the turns this prompt carries.
    *
    * Absent when the prompt carries no evidence at all, which is the same state `carried: []` reports and
@@ -3374,6 +3406,11 @@ export function buildPrompt(
       evidenceChars: evidence.length,
       carried: ordered,
       ...(ordered.length === 0 ? {} : { turnWindow: { ...census.tally } }),
+      // No order on this path, and the reason is a cost boundary rather than a definition: the signal is a
+      // retrieval over the question's whole haystack on the arm this builder serves, and a prompt that fits
+      // its room should not pay for a ranking it will not spend. Nothing was cut here, so `carried` is the
+      // whole corpus and there is no "where did the room stop" to answer; `rankingCensusOf` reports that as
+      // an absence, and `evidence-relevance.test.ts` pins the zero score calls this leaves behind.
     };
   }
 
@@ -3675,6 +3712,9 @@ function fitToBudget(
       ...(ordered.length === 0 || plan.tally === undefined
         ? {}
         : { turnWindow: { ...plan.tally } }),
+      // Spread rather than set, so the clip path (which reports no order) keeps the two-field object it
+      // had before this field existed -- byte-identical in JSON, the rule `goldOverlap` follows too.
+      ...(selected.ranking === undefined ? {} : { ranking: selected.ranking }),
     };
   };
 
@@ -3688,7 +3728,11 @@ function fitToBudget(
 }
 
 /** Nothing carried, and the two fields that say so. */
-const NOTHING_CARRIED: { evidence: string; carried: readonly AdmittedTurn[] | null } = {
+const NOTHING_CARRIED: {
+  evidence: string;
+  carried: readonly AdmittedTurn[] | null;
+  ranking?: readonly string[];
+} = {
   evidence: '',
   carried: null,
 };
@@ -3747,7 +3791,7 @@ function chooseEvidence(
   question: string,
   plan: EvidencePlan,
   room: number,
-): { evidence: string; carried: readonly AdmittedTurn[] | null } {
+): { evidence: string; carried: readonly AdmittedTurn[] | null; ranking?: readonly string[] } {
   if (plan.relevanceFor === undefined) {
     return { evidence: truncateCodePointSafe(plan.render(plan.turns), room), carried: null };
   }
@@ -3771,6 +3815,43 @@ function chooseEvidence(
     }
   }
   return selectByRelevance(question, plan, plan.relevanceFor, room);
+}
+
+/**
+ * The candidates in the order a ranking signal puts them, ties broken by arrival.
+ *
+ * One function rather than two call sites, because the fits path and `selectByRelevance` have to report the
+ * **same** order: the first publishes it on a window the room did not bind, the second spends the room on
+ * its prefix, and a second definition of the comparator would let a reader compare two ranks that were
+ * produced by different rules.
+ *
+ * The comparator is `orderableRelevance` and that is load-bearing rather than tidy -- see
+ * `relevance-order.ts`: two candidates whose scores differ by less than the `1e-4` grid are a tie, and a tie
+ * is decided by arrival so the order does not depend on provider noise. It is also why a rank is not a
+ * position in `SearchIndex`'s own exact order, which `EvidenceOrder` documents at the field.
+ */
+function rankedCandidates(
+  question: string,
+  turns: readonly AdmittedTurn[],
+  relevanceFor: RelevanceFor,
+): readonly { turn: AdmittedTurn; arrival: number; relevance: number }[] {
+  return (
+    turns
+      .map((turn, arrival) => ({
+        turn,
+        arrival,
+        relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
+      }))
+      // Highest first, and ties by arrival so the outcome does not depend on the
+      // sort being stable. Two turns the signal cannot separate are then ordered the
+      // way the context ordered them, which is reproducible and is what an
+      // unsignalled budget would have done with them.
+      .sort(
+        (a, b) =>
+          orderableRelevance(b.relevance) - orderableRelevance(a.relevance) ||
+          a.arrival - b.arrival,
+      )
+  );
 }
 
 /**
@@ -3817,26 +3898,13 @@ function selectByRelevance(
   plan: EvidencePlan,
   relevanceFor: RelevanceFor,
   room: number,
-): { evidence: string; carried: readonly AdmittedTurn[] } {
-  const ranked = plan.turns
-    .map((turn, arrival) => ({
-      turn,
-      arrival,
-      relevance: validateRelevance(turn.content, relevanceFor(question, turn.content)),
-    }))
-    // Highest first, and ties by arrival so the outcome does not depend on the
-    // sort being stable. Two turns the signal cannot separate are then ordered the
-    // way the context ordered them, which is reproducible and is what an
-    // unsignalled budget would have done with them.
-    //
-    // The score is compared at the precision `orderableRelevance` allows, and that is a correction
-    // rather than a refinement: `R1` found two of 121 prompts differing between dispatches by exactly
-    // one boundary turn, because two candidates whose scores differ by less than the provider's noise
-    // were ordered by the noise. See `relevance-order.ts` for the reading and the arithmetic.
-    .sort(
-      (a, b) =>
-        orderableRelevance(b.relevance) - orderableRelevance(a.relevance) || a.arrival - b.arrival,
-    );
+): { evidence: string; carried: readonly AdmittedTurn[]; ranking: readonly string[] } {
+  // The score is compared at the precision `orderableRelevance` allows, and that is a correction
+  // rather than a refinement: `R1` found two of 121 prompts differing between dispatches by exactly
+  // one boundary turn, because two candidates whose scores differ by less than the provider's noise
+  // were ordered by the noise. See `relevance-order.ts` for the reading and the arithmetic, and
+  // `rankedCandidates` for why the comparator has one definition rather than two.
+  const ranked = rankedCandidates(question, plan.turns, relevanceFor);
 
   const chronological = (count: number): AdmittedTurn[] =>
     ranked
@@ -3852,8 +3920,13 @@ function selectByRelevance(
     else high = middle - 1;
   }
 
+  // The order this function spent, published rather than recomputed: `ranked` is the sorted candidate list
+  // the binary search above ran over, so a caller reading `ranking` and a caller reading the payload are
+  // reading one array. `EvidenceOrder` documents why a pool-shaped field was not enough.
+  const ranking = ranked.map(({ turn: candidate }) => candidate.content);
+
   const carried = chronological(low);
-  if (carried.length > 0) return { evidence: plan.render(carried), carried };
+  if (carried.length > 0) return { evidence: plan.render(carried), carried, ranking };
 
   // No whole turn fits. The room buys the best-ranked turn **clipped** rather than nothing, because "the
   // evidence was too long to read" and "there is no evidence" are different answers and only the second one
@@ -3885,7 +3958,7 @@ function selectByRelevance(
   // before this function is called (`NOTHING_CARRIED` in `buildPrompt`). A guard here would be a branch no
   // test could reach, and this repository deletes those rather than collecting them.
   const best = ranked[0]!;
-  return { evidence: truncateCodePointSafe(plan.render([best.turn]), room), carried };
+  return { evidence: truncateCodePointSafe(plan.render([best.turn]), room), carried, ranking };
 }
 
 /**
