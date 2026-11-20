@@ -1,342 +1,354 @@
 {
- "note": [
-  "What each capability is, and which symbol implements it. The verdict is NOT here: tools/capability-ledger.mjs",
-  "derives it from the caller census and the import graph, and fails when this file and the code disagree in",
-  "either direction. `expect` is a claim about which state the row should be in; `reason` is required for",
-  "anything that is not `product`; `gate` is a configuration switch verified as a literal in the product source.",
-  "Rows are the audit's 26, plus the boundary clock (§13.386), with the three the audit counted as one split where the code splits them."
- ],
- "capabilities": [
-  {
-   "id": 1,
-   "capability": "write value gate",
-   "expect": "product",
-   "symbol": "decideWrite",
-   "site": "packages/cortex-core/src/value/value.ts",
-   "d3": "declared: reads the memory's own admitted facts, not the caller's array"
-  },
-  {
-   "id": 2,
-   "capability": "question-shape routing",
-   "expect": "product",
-   "symbol": "classifyQuestionShape",
-   "site": "packages/cortex-memory/src/question-shape.ts",
-   "d3": "declared: reads the question only, from no external table"
-  },
-  {
-   "id": 3,
-   "capability": "per-route evidence room",
-   "expect": "product",
-   "symbol": "planEvidenceRoom",
-   "site": "packages/cortex-memory/src/width.ts",
-   "d3": "declared: the route comes from the product's own classifier"
-  },
-  {
-   "id": 4,
-   "capability": "turn window, truncation made visible",
-   "expect": "product",
-   "symbol": "excerptAround",
-   "site": "packages/cortex-memory/src/excerpt.ts",
-   "d3": "declared: reads the turn it was handed; the cap comes from the arm's options"
-  },
-  {
-   "id": 5,
-   "capability": "inline superseded rendering",
-   "expect": "product",
-   "symbol": "renderSupersededInline",
-   "site": "packages/cortex-memory/src/superseded.ts",
-   "d3": "declared: appends its clause to the turn the product's own statement selection named, and reads no value it did not compute",
-   "gate": "rendering === 'off'"
-  },
-  {
-   "id": 6,
-   "capability": "count arithmetic (tally)",
-   "expect": "product",
-   "symbol": "parseTallyLedger",
-   "site": "packages/cortex-memory/src/tally.ts",
-   "gate": "this.#options.reviewPass === 'tally'",
-   "d3": "declared: sums the ledger parsed out of the reply the product itself requested"
-  },
-  {
-   "id": 7,
-   "capability": "plan-based aggregation (spec)",
-   "expect": "product",
-   "symbol": "buildLedger",
-   "site": "packages/cortex-memory/src/aggregation/ledger.ts",
-   "gate": "this.#options.reviewPass === 'spec'",
-   "d3": "declared: builds its ledger from the sessions the route admitted"
-  },
-  {
-   "id": 8,
-   "capability": "parse and abstain, null is not empty",
-   "expect": "product",
-   "symbol": "parseAnswer",
-   "site": "packages/cortex-memory/src/parse.ts",
-   "d3": "declared: reads the reader's reply; the abstention token is the product's own"
-  },
-  {
-   "id": 9,
-   "capability": "reply contract repair",
-   "expect": "product",
-   "symbol": "planReplyRepair",
-   "site": "packages/cortex-memory/src/reply-repair.ts",
-   "gate": "options.replyRepair !== undefined && options.replyRepair !== 'off'",
-   "d3": "declared: classifies the reply the product received and plans a repair from its own policy"
-  },
-  {
-   "id": 10,
-   "capability": "erasure across eight surfaces and their bytes",
-   "expect": "product",
-   "symbol": "DisclosureSession",
-   "site": "packages/cortex-memory/src/disclosure/session.ts",
-   "d3": "declared: reads the private and shared stores it was constructed over, and the transcript it is handed"
-  },
-  {
-   "id": 11,
-   "capability": "retrieval: postings, vectors, RRF over one or more queries, and the channels a call names",
-   "expect": "product",
-   "symbol": "SearchIndex",
-   "site": "packages/cortex-memory/src/retrieval/search-index.ts",
-   "d3": "declared: indexes the turns the memory was given, ranks them on the channels the caller named, and fuses the per-query rankings of whatever query set the caller’s plan produced",
-   "reason": "The row covers three mechanisms that were instrument-only or absent and are now the product’s: the fusion (moved from `cortex-eval`’s `retrieveTopKByQueries` in plan §34, with `tools/multi-query-parity.mjs` asserting the two sequences agree item for item), the query set itself (`SearchIndexOptions.queryPlan`, so an expansion is a product capability rather than a harness privilege), and the channel choice (`channels`, which is what lets a deployment ask for the dense-only configuration `cortex-eval` dispatches as `retrieval` beside `retrieval-hybrid`). D1 holds by path, D2 by the import closure -- `cortex-memory` depends on `cortex-core` alone -- and D4 by `CortexMemory.#relevanceFor`, which builds this index per question whenever no `relevanceFor` override is supplied."
-  },
-  {
-   "id": 12,
-   "capability": "embedding memoisation",
-   "expect": "product",
-   "symbol": "EmbeddingMemo",
-   "site": "packages/cortex-core/src/cache/embedding-cache.ts",
-   "d3": "declared: keys its own cache on the text hash; the provider is injected"
-  },
-  {
-   "id": 13,
-   "capability": "an injected store: any Storage backend",
-   "expect": "product",
-   "symbol": "Corpus",
-   "site": "packages/cortex-memory/src/corpus.ts",
-   "d3": "declared: the transcript is the state, and the port is an interface the caller implements"
-  },
-  {
-   "id": 14,
-   "capability": "per-type retention and eviction",
-   "expect": "product",
-   "symbol": "leastRetained",
-   "site": "packages/cortex-core/src/domain/retention.ts",
-   "d3": "declared: a pure function of the entries the product holds"
-  },
-  {
-   "id": 15,
-   "capability": "disclosure boundary: rules, cards, publication",
-   "expect": "product",
-   "symbol": "CardQueue",
-   "site": "packages/cortex-core/src/triage/card.ts",
-   "d3": "declared: reads the claims the product extracted and its own policy table"
-  },
-  {
-   "id": 16,
-   "capability": "semantic update carrying",
-   "expect": "product",
-   "symbol": "semanticUpdateFrom",
-   "site": "packages/cortex-memory/src/semantic-facts.ts",
-   "gate": "this.#semanticUpdates.push(",
-   "d3": "declared: records the update in the memory's own update list and renders it on later turns"
-  },
-  {
-   "id": 17,
-   "capability": "relevance ranking signal",
-   "expect": "instrument",
-   "symbol": "buildRetrievalRelevanceIndex",
-   "site": "packages/cortex-eval/src/relevance-index.ts",
-   "d3": "declared: ranks the caller's context array from a per-question relevance table the harness builds",
-   "reason": "This is the 91.05%. Ranking is the largest single thing the product cannot do: `SearchIndex` ranks its own index, and every relevance-driven reranking of a caller's context happens here, reached through `relevanceFor` from bench/run-ablation.ts."
-  },
-  {
-   "id": 18,
-   "capability": "anchor neighbourhood recovery",
-   "expect": "instrument",
-   "symbol": "restoreAnchorNeighbourhoods",
-   "site": "packages/cortex-eval/src/anchor-recall.ts",
-   "d3": "declared: expands around anchors the harness located in the caller's context",
-   "reason": "The registered arm configuration carries `anchors: {count: 4, decay: 0.5, radius: 3}`, so every published number includes a mechanism no customer installs. Whether the product should have it is question A of the ranking decision, not something to assume."
-  },
-  {
-   "id": 19,
-   "capability": "bitemporal timeline",
-   "expect": "product",
-   "symbol": "timelineOf",
-   "site": "packages/cortex-memory/src/timeline.ts",
-   "gate": "this.#options.factTimeline === true",
-   "d3": "declared: dates each value with the two record instants its own supersession authorised, and renders only the facts the exit served"
-  },
-  {
-   "id": 20,
-   "capability": "deterministic date arithmetic",
-   "expect": "instrument",
-   "symbol": "computeTemporalAnswer",
-   "site": "packages/cortex-eval/src/temporal-engine.ts",
-   "d3": "declared: computes from the question and the timestamps the harness parsed",
-   "reason": "693 lines of date arithmetic, enabled by default in the registered arm (`enableDeterministicTemporal !== false`). The product's temporal accuracy was 'ask the reader to compute it'. THIS ROW'S OWN CLAIM WAS MEASURED AND DOES NOT HOLD AS WRITTEN (§13.386): it said this is 'the cheapest product-side temporal gain available', which is a claim about cost, and the audit found the failures are not where the subtraction happens. `370a8ff4` (gold 15 weeks) shows the reader's two dates 81 days apart -- exactly right -- for the wrong two events; a mirror of `resolveTimeRange` resolves a window on 25 of 500 questions; and the three `TR` ordering failures are name-selection rather than order. What the product did get is the half that turned out to be worth having: `annotateSessionBoundaries` (row 27) states when each block happened, which is the attribution half of the same boundary. The engine stays `instrument` because its inputs are events an LLM extracted, and the product has no second call to extract with."
-  },
-  {
-   "id": 21,
-   "capability": "candidate cluster annotation",
-   "expect": "instrument",
-   "symbol": "clusterCandidates",
-   "site": "packages/cortex-eval/src/candidate-context.ts",
-   "d3": "declared: clusters the candidates the harness assembled for one question",
-   "reason": "`conflict.ts` is sentence-level relatedness; this is same-subject competing candidates. The audit's §7.1 adjudicates this as an instrument-only diagnostic, so the B7 improvement is not deliverable and should not be quoted as if it were."
-  },
-  {
-   "id": 22,
-   "capability": "turn clock annotation",
-   "expect": "instrument",
-   "symbol": "readTurnClocks",
-   "site": "packages/cortex-eval/src/turn-clock.ts",
-   "d3": "declared: reads timestamps off the turns it was given; the product receives windows and never reads its own clock",
-   "reason": "Declared with no caller at all until the turn-window work: an orphan module with its own tests. Half of that is now closed on the other side of the boundary: the product reads a clock from the block it is about to deliver (`annotateSessionBoundaries`, row 27, §13.386), which is the 60-line `ordinalAt` route §3.3 named. This row stays `instrument` for the half that remains: reading a clock off turns the harness parsed, before any budget decided which of them the reader would see."
-  },
-  {
-   "id": 23,
-   "capability": "LLM query expansion",
-   "expect": "instrument",
-   "symbol": "expandMultiSessionQueries",
-   "site": "packages/cortex-eval/src/query-expansion.ts",
-   "d3": "declared: expands the question with the harness's own model call",
-   "reason": "Registered arm says `query_expansion: \"none\"`, so this is not part of any published number. It is a candidate mechanism awaiting a dispatch, and recording it keeps it out of the product's column until one exists."
-  },
-  {
-   "id": 24,
-   "capability": "judge",
-   "expect": "instrument",
-   "symbol": "buildJudgePrompt",
-   "site": "packages/cortex-eval/src/judge.ts",
-   "d3": "declared: takes the question, the prediction and the gold string as arguments",
-   "reason": "An instrument by definition: a system that grades itself is not being measured. The two-vendor reading in docs/07 §14 is what makes this an instrument whose error is known rather than assumed."
-  },
-  {
-   "id": 25,
-   "capability": "paired statistics, noise floor, resolution",
-   "expect": "instrument",
-   "symbol": "welchTTest",
-   "site": "packages/cortex-eval/src/stats.ts",
-   "d3": "declared: a pure function of the observations it is handed",
-   "reason": "PAID. This row said `instrument-misplaced` while `math/stats.ts` sat in `cortex-core` and its only callers were `cortex-eval`'s metrics, ablation and failure-stability modules. The file has moved to `packages/cortex-eval/src/stats.ts`, beside `variance.ts`, and the row says `instrument` because that is now what the code is: the paired statistics live in the package that reads them. The move was not a copy -- `kahanSum` stayed in `cortex-core/src/math/kahan.ts` because `vector.ts` reduces a vector with it, and the moved file imports it rather than carrying a second implementation of one numerical routine. What the product's barrel no longer exports is the eleven names it never called, and `index.test.ts` now asserts their ABSENCE rather than dropping the lines, because a deleted assertion and an assertion that was never written leave the same trace in a diff."
-  },
-  {
-   "id": 26,
-   "capability": "competitor adapters",
-   "expect": "instrument",
-   "symbol": null,
-   "site": "tools/competitor-sut.mjs",
-   "d3": "declared: wraps the product behind a MemorySystem and drives the competitor's harness against it",
-   "reason": "Correctly in tools/ rather than in src/: this is the only place where a competitor's code runs against ours, and it must not be installable as part of the product."
-  },
-  {
-   "id": 27,
-   "capability": "session boundary clock",
-   "expect": "product",
-   "symbol": "annotateSessionBoundaries",
-   "site": "packages/cortex-memory/src/turn-clock.ts",
-   "gate": "this.#options.sessionClock === true",
-   "d3": "declared: dates every rendered session boundary with the range its own block states, read from the block rather than from the selection"
-  }
- ],
- "boundary": [
-  {
-   "category": "retrieval-prototypes-in-a-product-package",
-   "rationale": "The natural-language-memory and embedding-memory hypotheses: a brute-force vector index, an embedding-space abstraction and rank fusion, all declared in cortex-core and reached only by cortex-eval's own prototype memory systems. They are research arms, not the shipping retrieval path (`SearchIndex` is), and a customer installs them.",
-   "symbols": [
-    "BruteForceVectorIndex",
-    "EmbeddingSpace",
-    "fuseRerank",
-    "norm",
-    "reciprocalRankFusion"
-   ]
-  },
-  {
-   "category": "ablation-machinery-in-a-product-package",
-   "rationale": "Assumption-ablation plumbing -- policy types, modality inference, plan reconciliation -- declared in cortex-core and called only by cortex-eval/src/assumption-ablation.ts. It exists so a mechanism can be turned off and measured, which is the instrument's job.",
-   "symbols": [
-    "AssembleCensus",
-    "AssemblePolicy",
-    "inferTemporality",
-    "modalityOf",
-    "reconcilePlans",
-    "Resolution"
-   ]
-  },
-  {
-   "category": "storage-adapter-reached-only-by-a-tool",
-   "rationale": "The concrete SQLite adapter, whose only callers are the review tool and the erasure census. The capability it serves is no longer instrument-only: `Corpus` takes any `Storage` and `assembleMemory({ storage })` is the product caller, so what remains here is this adapter and the ones beside it. They are recorded rather than moved because a backend has to live somewhere, and the package that owns it exists for exactly one reason: to be the file a deployment imports to get a file `Storage`. The distinction this group preserves is the one that matters -- the port is product, a particular engine is a leaf.",
-   "symbols": [
-    "SqliteStorage"
-   ]
-  },
-  {
-   "category": "provider-wiring-and-usage-accounting",
-   "rationale": "Provider construction (OpenAI embedding, rerankers, retry budgets, thinking modes), the profile seam that turns a deployment's environment into a provider, and token accounting. All of it lives in `cortex-ai` and none of it is reached from `memory.ts`, because `CortexMemory` takes an injected `llm` rather than building one -- so the caller is the **deployment**, and this repository ships no deployment. THE SEVEN NAMES ADDED HERE ARE A CORRECTION RATHER THAN NEW DEBT. `readApiKey`, `resolveLlmProfile`, `describeProfile`, `createLocalLLM`, `OpenAICompatibleLLM`, `ProfileError` and `PROPOSER_PROMPT_VERSION` were recorded as 'called by the product' until `isTestFile` learned the third test spelling (`packages/<pkg>/test/**`); their only in-repository callers were scripts under `packages/cortex-ai/test/profile/`, and the census had been counting those as product callers. What changed is the classification, not the code -- and the classification was wrong in the permissive direction, which is the one that lets a capability look reached when nothing in the product reaches it. THE RECIPE IS INSTEAD VERIFIED WHERE IT IS WRITTEN: `docs/USER-MANUAL.md` documents this exact construction (`new OpenAICompatibleLLM({ ...resolveLlmProfile({ backend: 'remote' }, process.env) })`) in a fenced example, and `tools/manual-examples.mjs` compiles all 35 examples against the packages' built declarations on every push -- so a renamed export or a changed profile shape fails the build at the manual's own line number. The unit surface behind it is four test files (`profile.test.ts`, `local-llm.test.ts`, `llm.test.ts`, `profile-transport.test.ts`), and the two files these exports are declared in -- `profile.ts` and `local/llm.ts` -- read 100% on all four coverage measures, which is a per-file gate rather than a summary. The audit's §3.4 row 10 still stands as the open question: env-to-option mapping sits in `bench/`, so a customer configuring a provider writes code where the harness writes a variable -- and the resolution is the documented recipe, not a second implementation.",
-   "symbols": [
-    "createUsageTally",
-    "DEFAULT_RETRY_BUDGET_MS",
-    "DEFAULT_RETRY_TIMEOUT_MS",
-    "LLMReranker",
-    "llmUsage",
-    "makeRerankPipelineFactory",
-    "observeUsage",
-    "OpenAICompatibleReranker",
-    "OpenAIEmbedding",
-    "ProviderContentRefusal",
-    "resetRetryStats",
-    "ThinkingMode",
-    "UsageSnapshot",
-    "UsageTally",
-    "usageDelta",
-    "createLocalLLM",
-    "describeProfile",
-    "OpenAICompatibleLLM",
-    "PROPOSER_PROMPT_VERSION",
-    "ProfileError",
-    "readApiKey",
-    "resolveLlmProfile"
-   ]
-  },
-  {
-   "category": "census-and-probe-tooling",
-   "rationale": "The caller census's own public surface and the knowledge probe's helpers: measurement instruments written in a product package because that is where their types were easiest to reach. They are the reason this gate exists, so they are recorded as the first debt rather than the last. This group grows whenever a tool imports another helper from `cortex-core` -- the capability ledger's own three imports (`isBarrelFile`, `stripComments`, `stripStringContent`) landed here on their first run, which is the gate correctly reporting on itself.",
-   "symbols": [
-    "buildCensusReport",
-    "censusPackage",
-    "edgeId",
-    "expandTyped",
-    "extractedSpan",
-    "fillBudget",
-    "isBarrelFile",
-    "kindsIn",
-    "listOrphans",
-    "listReferencedLocally",
-    "listUnreferenced",
-    "renderBlock",
-    "stripComments",
-    "stripStringContent"
-   ]
-  },
-  {
-   "category": "reply-and-decline-census-helpers",
-   "rationale": "Helpers of the failure censuses: how a reply is classified, what a declined item is, what a question asks for. Each is the product's own vocabulary read back by a tool, which is the cheapest possible kind of breach and the one that is easiest to leave: the product's behaviour is not affected, but the tool is the only consumer of the classifier.",
-   "symbols": [
-    "asksForCount",
-    "classifyReply",
-    "DECLINE_TOKEN",
-    "declinedItems"
-   ]
-  },
-  {
-   "category": "competitor-bridge",
-   "rationale": "The adapter that presents the product as a `MemorySystem` for a competitor's harness, and the distillation hook the review page reads. Instrument by design; recorded so that 'instrument-only' is a decision on the record rather than an accident of where the file was created.",
-   "symbols": [
-    "CortexSessionProvider",
-    "distillationOf"
-   ]
-  }
- ]
+  "note": [
+    "What each capability is, and which symbol implements it. The verdict is NOT here: tools/capability-ledger.mjs",
+    "derives it from the caller census and the import graph, and fails when this file and the code disagree in",
+    "either direction. `expect` is a claim about which state the row should be in; `reason` is required for",
+    "anything that is not `product`; `gate` is a configuration switch verified as a literal in the product source.",
+    "Rows are the audit's 26, plus the boundary clock (§13.386), with the three the audit counted as one split where the code splits them."
+  ],
+  "capabilities": [
+    {
+      "id": 1,
+      "capability": "write value gate",
+      "expect": "product",
+      "symbol": "decideWrite",
+      "site": "packages/cortex-core/src/value/value.ts",
+      "d3": "declared: reads the memory's own admitted facts, not the caller's array"
+    },
+    {
+      "id": 2,
+      "capability": "question-shape routing",
+      "expect": "product",
+      "symbol": "classifyQuestionShape",
+      "site": "packages/cortex-memory/src/question-shape.ts",
+      "d3": "declared: reads the question only, from no external table"
+    },
+    {
+      "id": 3,
+      "capability": "per-route evidence room",
+      "expect": "product",
+      "symbol": "planEvidenceRoom",
+      "site": "packages/cortex-memory/src/width.ts",
+      "d3": "declared: the route comes from the product's own classifier"
+    },
+    {
+      "id": 4,
+      "capability": "turn window, truncation made visible",
+      "expect": "product",
+      "symbol": "excerptAround",
+      "site": "packages/cortex-memory/src/excerpt.ts",
+      "d3": "declared: reads the turn it was handed; the cap comes from the arm's options"
+    },
+    {
+      "id": 5,
+      "capability": "inline superseded rendering",
+      "expect": "product",
+      "symbol": "renderSupersededInline",
+      "site": "packages/cortex-memory/src/superseded.ts",
+      "d3": "declared: appends its clause to the turn the product's own statement selection named, and reads no value it did not compute",
+      "gate": "rendering === 'off'"
+    },
+    {
+      "id": 6,
+      "capability": "count arithmetic (tally)",
+      "expect": "product",
+      "symbol": "parseTallyLedger",
+      "site": "packages/cortex-memory/src/tally.ts",
+      "gate": "this.#options.reviewPass === 'tally'",
+      "d3": "declared: sums the ledger parsed out of the reply the product itself requested"
+    },
+    {
+      "id": 7,
+      "capability": "plan-based aggregation (spec)",
+      "expect": "product",
+      "symbol": "buildLedger",
+      "site": "packages/cortex-memory/src/aggregation/ledger.ts",
+      "gate": "this.#options.reviewPass === 'spec'",
+      "d3": "declared: builds its ledger from the sessions the route admitted"
+    },
+    {
+      "id": 8,
+      "capability": "parse and abstain, null is not empty",
+      "expect": "product",
+      "symbol": "parseAnswer",
+      "site": "packages/cortex-memory/src/parse.ts",
+      "d3": "declared: reads the reader's reply; the abstention token is the product's own"
+    },
+    {
+      "id": 9,
+      "capability": "reply contract repair",
+      "expect": "product",
+      "symbol": "planReplyRepair",
+      "site": "packages/cortex-memory/src/reply-repair.ts",
+      "gate": "options.replyRepair !== undefined && options.replyRepair !== 'off'",
+      "d3": "declared: classifies the reply the product received and plans a repair from its own policy"
+    },
+    {
+      "id": 10,
+      "capability": "erasure across eight surfaces and their bytes",
+      "expect": "product",
+      "symbol": "DisclosureSession",
+      "site": "packages/cortex-memory/src/disclosure/session.ts",
+      "d3": "declared: reads the private and shared stores it was constructed over, and the transcript it is handed"
+    },
+    {
+      "id": 11,
+      "capability": "retrieval: postings, vectors, RRF over one or more queries, and the channels a call names",
+      "expect": "product",
+      "symbol": "SearchIndex",
+      "site": "packages/cortex-memory/src/retrieval/search-index.ts",
+      "d3": "declared: indexes the turns the memory was given, ranks them on the channels the caller named, and fuses the per-query rankings of whatever query set the caller’s plan produced",
+      "reason": "The row covers three mechanisms that were instrument-only or absent and are now the product’s: the fusion (moved from `cortex-eval`’s `retrieveTopKByQueries` in plan §34, with `tools/multi-query-parity.mjs` asserting the two sequences agree item for item), the query set itself (`SearchIndexOptions.queryPlan`, so an expansion is a product capability rather than a harness privilege), and the channel choice (`channels`, which is what lets a deployment ask for the dense-only configuration `cortex-eval` dispatches as `retrieval` beside `retrieval-hybrid`). D1 holds by path, D2 by the import closure -- `cortex-memory` depends on `cortex-core` alone -- and D4 by `CortexMemory.#relevanceFor`, which builds this index per question whenever no `relevanceFor` override is supplied."
+    },
+    {
+      "id": 12,
+      "capability": "embedding memoisation",
+      "expect": "product",
+      "symbol": "EmbeddingMemo",
+      "site": "packages/cortex-core/src/cache/embedding-cache.ts",
+      "d3": "declared: keys its own cache on the text hash; the provider is injected"
+    },
+    {
+      "id": 13,
+      "capability": "an injected store: any Storage backend",
+      "expect": "product",
+      "symbol": "Corpus",
+      "site": "packages/cortex-memory/src/corpus.ts",
+      "d3": "declared: the transcript is the state, and the port is an interface the caller implements"
+    },
+    {
+      "id": 14,
+      "capability": "per-type retention and eviction",
+      "expect": "product",
+      "symbol": "leastRetained",
+      "site": "packages/cortex-core/src/domain/retention.ts",
+      "d3": "declared: a pure function of the entries the product holds"
+    },
+    {
+      "id": 15,
+      "capability": "disclosure boundary: rules, cards, publication",
+      "expect": "product",
+      "symbol": "CardQueue",
+      "site": "packages/cortex-core/src/triage/card.ts",
+      "d3": "declared: reads the claims the product extracted and its own policy table"
+    },
+    {
+      "id": 16,
+      "capability": "semantic update carrying",
+      "expect": "product",
+      "symbol": "semanticUpdateFrom",
+      "site": "packages/cortex-memory/src/semantic-facts.ts",
+      "gate": "this.#semanticUpdates.push(",
+      "d3": "declared: records the update in the memory's own update list and renders it on later turns"
+    },
+    {
+      "id": 17,
+      "capability": "relevance ranking signal",
+      "expect": "instrument",
+      "symbol": "buildRetrievalRelevanceIndex",
+      "site": "packages/cortex-eval/src/relevance-index.ts",
+      "d3": "declared: ranks the caller's context array from a per-question relevance table the harness builds",
+      "registeredArmReach": "never",
+      "reason": "STALE CLAIM CORRECTED IN ROUND 144. This row used to say 'this is the 91.05%', which was true of the `retrieval*` signals and stopped being true at `S9`: the registered arm is `relevanceSignal: self-index` (`tools/arm-config-baseline.json`), so the ranking behind every published number since `S9` is `SearchIndex` -- row 11, a product module -- and this file is reached by no published question. What it still is: the instrument that lets the campaign put a signal beside the product's own on the same cases, and the only reachable caller of the anchor mechanism below."
+    },
+    {
+      "id": 18,
+      "capability": "anchor neighbourhood recovery",
+      "expect": "instrument",
+      "symbol": "restoreAnchorNeighbourhoods",
+      "site": "packages/cortex-eval/src/anchor-recall.ts",
+      "d3": "declared: expands around anchors the harness located in the caller's context",
+      "registeredArmReach": "never",
+      "reason": "STALE CLAIM CORRECTED IN ROUND 144. This row used to say 'the registered arm configuration carries `anchors: {count: 4, decay: 0.5, radius: 3}`, so every published number includes a mechanism no customer installs'. The configuration it names is `relevanceSignal: retrieval-anchored`, which the registered arm has not carried since `S9` (`arm-config-baseline.json` reads `self-index`). No published number exercises this module: the two dispatches that did (`41990597116` and the steepened-decay re-run after it) are `retrieval-anchored` artifacts, and the first one's reading was MR -8 questions (`p = 0.0106`, §13.257). It is therefore an orphan with a negative first reading rather than a hidden dependency, and the product does not need it to explain any number it publishes."
+    },
+    {
+      "id": 19,
+      "capability": "bitemporal timeline",
+      "expect": "product",
+      "symbol": "timelineOf",
+      "site": "packages/cortex-memory/src/timeline.ts",
+      "gate": "this.#options.factTimeline === true",
+      "d3": "declared: dates each value with the two record instants its own supersession authorised, and renders only the facts the exit served"
+    },
+    {
+      "id": 20,
+      "capability": "deterministic date arithmetic",
+      "expect": "instrument",
+      "symbol": "computeTemporalAnswer",
+      "site": "packages/cortex-eval/src/temporal-engine.ts",
+      "d3": "declared: computes from the question and the timestamps the harness parsed",
+      "registeredArmReach": "never",
+      "reason": "693 lines of date arithmetic, enabled by default in the registered arm (`enableDeterministicTemporal !== false`). The product's temporal accuracy was 'ask the reader to compute it'. THIS ROW'S OWN CLAIM WAS MEASURED AND DOES NOT HOLD AS WRITTEN (§13.386): it said this is 'the cheapest product-side temporal gain available', which is a claim about cost, and the audit found the failures are not where the subtraction happens. `370a8ff4` (gold 15 weeks) shows the reader's two dates 81 days apart -- exactly right -- for the wrong two events; a mirror of `resolveTimeRange` resolves a window on 25 of 500 questions; and the three `TR` ordering failures are name-selection rather than order. What the product did get is the half that turned out to be worth having: `annotateSessionBoundaries` (row 27) states when each block happened, which is the attribution half of the same boundary. The engine stays `instrument` because its inputs are events an LLM extracted, and the product has no second call to extract with."
+    },
+    {
+      "id": 21,
+      "capability": "candidate cluster annotation",
+      "expect": "instrument",
+      "symbol": "clusterCandidates",
+      "site": "packages/cortex-eval/src/candidate-context.ts",
+      "d3": "declared: clusters the candidates the harness assembled for one question",
+      "registeredArmReach": "never",
+      "reason": "`conflict.ts` is sentence-level relatedness; this is same-subject competing candidates. The audit's §7.1 adjudicates this as an instrument-only diagnostic, so the B7 improvement is not deliverable and should not be quoted as if it were."
+    },
+    {
+      "id": 22,
+      "capability": "turn clock annotation",
+      "expect": "instrument",
+      "symbol": "readTurnClocks",
+      "site": "packages/cortex-eval/src/turn-clock.ts",
+      "d3": "declared: reads timestamps off the turns it was given; the product receives windows and never reads its own clock",
+      "registeredArmReach": "never",
+      "reason": "Declared with no caller at all until the turn-window work: an orphan module with its own tests. Half of that is now closed on the other side of the boundary: the product reads a clock from the block it is about to deliver (`annotateSessionBoundaries`, row 27, §13.386), which is the 60-line `ordinalAt` route §3.3 named. This row stays `instrument` for the half that remains: reading a clock off turns the harness parsed, before any budget decided which of them the reader would see."
+    },
+    {
+      "id": 23,
+      "capability": "LLM query expansion",
+      "expect": "instrument",
+      "symbol": "expandMultiSessionQueries",
+      "site": "packages/cortex-eval/src/query-expansion.ts",
+      "d3": "declared: expands the question with the harness's own model call",
+      "registeredArmReach": {
+        "configPath": "queryExpansion",
+        "value": "llm"
+      },
+      "reason": "Registered arm says `query_expansion: \"none\"`, so this is not part of any published number. It is a candidate mechanism awaiting a dispatch, and recording it keeps it out of the product's column until one exists."
+    },
+    {
+      "id": 24,
+      "capability": "judge",
+      "expect": "instrument",
+      "symbol": "buildJudgePrompt",
+      "site": "packages/cortex-eval/src/judge.ts",
+      "d3": "declared: takes the question, the prediction and the gold string as arguments",
+      "registeredArmReach": "every-question",
+      "reason": "An instrument by definition: a system that grades itself is not being measured. The two-vendor reading in docs/07 §14 is what makes this an instrument whose error is known rather than assumed."
+    },
+    {
+      "id": 25,
+      "capability": "paired statistics, noise floor, resolution",
+      "expect": "instrument",
+      "symbol": "welchTTest",
+      "site": "packages/cortex-eval/src/stats.ts",
+      "d3": "declared: a pure function of the observations it is handed",
+      "registeredArmReach": "every-question",
+      "reason": "PAID. This row said `instrument-misplaced` while `math/stats.ts` sat in `cortex-core` and its only callers were `cortex-eval`'s metrics, ablation and failure-stability modules. The file has moved to `packages/cortex-eval/src/stats.ts`, beside `variance.ts`, and the row says `instrument` because that is now what the code is: the paired statistics live in the package that reads them. The move was not a copy -- `kahanSum` stayed in `cortex-core/src/math/kahan.ts` because `vector.ts` reduces a vector with it, and the moved file imports it rather than carrying a second implementation of one numerical routine. What the product's barrel no longer exports is the eleven names it never called, and `index.test.ts` now asserts their ABSENCE rather than dropping the lines, because a deleted assertion and an assertion that was never written leave the same trace in a diff."
+    },
+    {
+      "id": 26,
+      "capability": "competitor adapters",
+      "expect": "instrument",
+      "symbol": null,
+      "site": "tools/competitor-sut.mjs",
+      "d3": "declared: wraps the product behind a MemorySystem and drives the competitor's harness against it",
+      "registeredArmReach": "never",
+      "reason": "Correctly in tools/ rather than in src/: this is the only place where a competitor's code runs against ours, and it must not be installable as part of the product."
+    },
+    {
+      "id": 27,
+      "capability": "session boundary clock",
+      "expect": "product",
+      "symbol": "annotateSessionBoundaries",
+      "site": "packages/cortex-memory/src/turn-clock.ts",
+      "gate": "this.#options.sessionClock === true",
+      "d3": "declared: dates every rendered session boundary with the range its own block states, read from the block rather than from the selection"
+    }
+  ],
+  "boundary": [
+    {
+      "category": "retrieval-prototypes-in-a-product-package",
+      "rationale": "The natural-language-memory and embedding-memory hypotheses: a brute-force vector index, an embedding-space abstraction and rank fusion, all declared in cortex-core and reached only by cortex-eval's own prototype memory systems. They are research arms, not the shipping retrieval path (`SearchIndex` is), and a customer installs them.",
+      "symbols": [
+        "BruteForceVectorIndex",
+        "EmbeddingSpace",
+        "fuseRerank",
+        "norm",
+        "reciprocalRankFusion"
+      ]
+    },
+    {
+      "category": "ablation-machinery-in-a-product-package",
+      "rationale": "Assumption-ablation plumbing -- policy types, modality inference, plan reconciliation -- declared in cortex-core and called only by cortex-eval/src/assumption-ablation.ts. It exists so a mechanism can be turned off and measured, which is the instrument's job.",
+      "symbols": [
+        "AssembleCensus",
+        "AssemblePolicy",
+        "inferTemporality",
+        "modalityOf",
+        "reconcilePlans",
+        "Resolution"
+      ]
+    },
+    {
+      "category": "storage-adapter-reached-only-by-a-tool",
+      "rationale": "The concrete SQLite adapter, whose only callers are the review tool and the erasure census. The capability it serves is no longer instrument-only: `Corpus` takes any `Storage` and `assembleMemory({ storage })` is the product caller, so what remains here is this adapter and the ones beside it. They are recorded rather than moved because a backend has to live somewhere, and the package that owns it exists for exactly one reason: to be the file a deployment imports to get a file `Storage`. The distinction this group preserves is the one that matters -- the port is product, a particular engine is a leaf.",
+      "symbols": [
+        "SqliteStorage"
+      ]
+    },
+    {
+      "category": "provider-wiring-and-usage-accounting",
+      "rationale": "Provider construction (OpenAI embedding, rerankers, retry budgets, thinking modes), the profile seam that turns a deployment's environment into a provider, and token accounting. All of it lives in `cortex-ai` and none of it is reached from `memory.ts`, because `CortexMemory` takes an injected `llm` rather than building one -- so the caller is the **deployment**, and this repository ships no deployment. THE SEVEN NAMES ADDED HERE ARE A CORRECTION RATHER THAN NEW DEBT. `readApiKey`, `resolveLlmProfile`, `describeProfile`, `createLocalLLM`, `OpenAICompatibleLLM`, `ProfileError` and `PROPOSER_PROMPT_VERSION` were recorded as 'called by the product' until `isTestFile` learned the third test spelling (`packages/<pkg>/test/**`); their only in-repository callers were scripts under `packages/cortex-ai/test/profile/`, and the census had been counting those as product callers. What changed is the classification, not the code -- and the classification was wrong in the permissive direction, which is the one that lets a capability look reached when nothing in the product reaches it. THE RECIPE IS INSTEAD VERIFIED WHERE IT IS WRITTEN: `docs/USER-MANUAL.md` documents this exact construction (`new OpenAICompatibleLLM({ ...resolveLlmProfile({ backend: 'remote' }, process.env) })`) in a fenced example, and `tools/manual-examples.mjs` compiles all 35 examples against the packages' built declarations on every push -- so a renamed export or a changed profile shape fails the build at the manual's own line number. The unit surface behind it is four test files (`profile.test.ts`, `local-llm.test.ts`, `llm.test.ts`, `profile-transport.test.ts`), and the two files these exports are declared in -- `profile.ts` and `local/llm.ts` -- read 100% on all four coverage measures, which is a per-file gate rather than a summary. The audit's §3.4 row 10 still stands as the open question: env-to-option mapping sits in `bench/`, so a customer configuring a provider writes code where the harness writes a variable -- and the resolution is the documented recipe, not a second implementation.",
+      "symbols": [
+        "createUsageTally",
+        "DEFAULT_RETRY_BUDGET_MS",
+        "DEFAULT_RETRY_TIMEOUT_MS",
+        "LLMReranker",
+        "llmUsage",
+        "makeRerankPipelineFactory",
+        "observeUsage",
+        "OpenAICompatibleReranker",
+        "OpenAIEmbedding",
+        "ProviderContentRefusal",
+        "resetRetryStats",
+        "ThinkingMode",
+        "UsageSnapshot",
+        "UsageTally",
+        "usageDelta",
+        "createLocalLLM",
+        "describeProfile",
+        "OpenAICompatibleLLM",
+        "PROPOSER_PROMPT_VERSION",
+        "ProfileError",
+        "readApiKey",
+        "resolveLlmProfile"
+      ]
+    },
+    {
+      "category": "census-and-probe-tooling",
+      "rationale": "The caller census's own public surface and the knowledge probe's helpers: measurement instruments written in a product package because that is where their types were easiest to reach. They are the reason this gate exists, so they are recorded as the first debt rather than the last. This group grows whenever a tool imports another helper from `cortex-core` -- the capability ledger's own three imports (`isBarrelFile`, `stripComments`, `stripStringContent`) landed here on their first run, which is the gate correctly reporting on itself.",
+      "symbols": [
+        "buildCensusReport",
+        "censusPackage",
+        "edgeId",
+        "expandTyped",
+        "extractedSpan",
+        "fillBudget",
+        "isBarrelFile",
+        "kindsIn",
+        "listOrphans",
+        "listReferencedLocally",
+        "listUnreferenced",
+        "renderBlock",
+        "stripComments",
+        "stripStringContent"
+      ]
+    },
+    {
+      "category": "reply-and-decline-census-helpers",
+      "rationale": "Helpers of the failure censuses: how a reply is classified, what a declined item is, what a question asks for. Each is the product's own vocabulary read back by a tool, which is the cheapest possible kind of breach and the one that is easiest to leave: the product's behaviour is not affected, but the tool is the only consumer of the classifier.",
+      "symbols": [
+        "asksForCount",
+        "classifyReply",
+        "DECLINE_TOKEN",
+        "declinedItems"
+      ]
+    },
+    {
+      "category": "competitor-bridge",
+      "rationale": "The adapter that presents the product as a `MemorySystem` for a competitor's harness, and the distillation hook the review page reads. Instrument by design; recorded so that 'instrument-only' is a decision on the record rather than an accident of where the file was created.",
+      "symbols": [
+        "CortexSessionProvider",
+        "distillationOf"
+      ]
+    }
+  ]
 }

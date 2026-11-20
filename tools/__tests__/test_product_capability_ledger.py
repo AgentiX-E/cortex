@@ -328,3 +328,89 @@ def test_the_json_payload_carries_the_state_and_the_problems(tmp_path: Path) -> 
     assert payload['rows'][0]['state'] == 'blocked'
     assert payload['rows'][0]['problems']
     assert payload['counts']['blocked'] == 1
+
+
+class TestRegisteredArmReach:
+    """Does the arm that produced the published number actually reach this?
+
+    The ledger's instrument column is where that question is answered, and two of its nine answers were
+    wrong in opposite directions until round 144: row 17 called itself "the 91.05%" when the registered
+    arm's ranking is the product's own module, and row 18 claimed every published number included it when
+    the configuration it named had not been the registered one since `S9`. `--check` could not see either,
+    because `reason` is prose.
+
+    The field these tests exercise is the fix's whole value: a per-row answer that has to be **given**, and
+    that fails the build when it names a configuration path the registered arm does not have.
+    """
+
+    def instrument(self, **overrides: object) -> dict:
+        base = {
+            'id': 7,
+            'capability': 'an instrument',
+            'expect': 'instrument',
+            'symbol': 'scored',
+            'site': 'packages/cortex-eval/src/bench.ts',
+            'd3': 'declared: reads the harness',
+            'reason': 'It exists for the measurement, and this sentence is long enough to pass the length rule.',
+        }
+        base.update(overrides)
+        return base
+
+    def arm(self, root: Path, **config: object) -> None:
+        """The registered dispatch's record, as the reach claims are resolved against."""
+        target = root / 'tools/arm-config-baseline.json'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({'memoryArmConfig': config}, indent=2), encoding='utf-8')
+
+    def test_a_row_that_does_not_answer_the_question_is_refused(self, tmp_path):
+        # The field is required rather than optional. An optional one would be filled on the row a reader
+        # happens to be editing and left off the eight they are not, which is exactly the state the prose
+        # was in.
+        root = build(tmp_path, BASE_FILES, declarations(self.instrument()))
+        self.arm(root, queryExpansion='none')
+        result = run(root)
+        assert result.returncode == 1, result.stdout
+        assert 'does not say whether the registered arm reaches it' in result.stderr
+        assert 'registeredArmReach' in result.stderr
+
+    def test_a_claim_that_names_a_configuration_path_the_arm_lacks_is_refused(self, tmp_path):
+        # A path that resolves to nothing is a claim about a field the dispatch does not have: the shape of
+        # a typo, and of a configuration that was renamed under a row that was not re-read.
+        root = build(tmp_path, BASE_FILES, declarations(self.instrument(
+            registeredArmReach={'configPath': 'noSuchKnob', 'value': 'on'},
+        )))
+        self.arm(root, queryExpansion='none')
+        result = run(root)
+        assert result.returncode == 1, result.stdout
+        assert 'noSuchKnob' in result.stderr
+        assert 'does not carry' in result.stderr
+
+    def test_a_conditional_row_the_baseline_does_not_satisfy_reports_inactive(self, tmp_path):
+        # `inactive` rather than a failure, because a mechanism registered off is legitimate -- it is the
+        # state `query_expansion` is in. What would not be legitimate is leaving a reader to assume the arm
+        # is running it, which is why the count is printed.
+        root = build(tmp_path, BASE_FILES, declarations(self.instrument(
+            registeredArmReach={'configPath': 'queryExpansion', 'value': 'llm'},
+        )))
+        self.arm(root, queryExpansion='none')
+        result = run(root)
+        assert result.returncode == 0, result.stderr
+        assert '1 conditional (0 active in the registered arm, 1 waiting for a knob)' in result.stdout
+
+    def test_a_conditional_row_the_baseline_satisfies_reports_active(self, tmp_path):
+        # The other half of the same reading, and it has to be able to differ: a count that printed the same
+        # string for both states would be a row of decoration.
+        root = build(tmp_path, BASE_FILES, declarations(self.instrument(
+            registeredArmReach={'configPath': 'queryExpansion', 'value': 'llm'},
+        )))
+        self.arm(root, queryExpansion='llm')
+        result = run(root)
+        assert result.returncode == 0, result.stderr
+        assert '1 conditional (1 active in the registered arm, 0 waiting for a knob)' in result.stdout
+
+    def test_an_unknown_reach_value_is_refused_rather_than_read_as_absent(self, tmp_path):
+        root = build(tmp_path, BASE_FILES, declarations(self.instrument(registeredArmReach='sometimes')))
+        self.arm(root, queryExpansion='none')
+        result = run(root)
+        assert result.returncode == 1, result.stdout
+        assert 'unknown' in result.stderr

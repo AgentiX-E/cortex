@@ -91,6 +91,46 @@ const DECLARATIONS =
   process.env.CAPABILITY_LEDGER_DECLARATIONS ??
   path.join(REPO, 'tools/product-capability-declarations.json');
 const DOCUMENT = path.join(REPO, 'docs/PRODUCT-CAPABILITY-LEDGER.md');
+// The registered dispatch's own record. Every `registeredArmReach` claim that names a configuration
+// path is resolved here, so "the arm reaches this when configured as X" stops being a sentence and
+// becomes a lookup. `tests/__tests__/test_product_capability_ledger.py` builds a fixture tree with a
+// different baseline to prove the lookup can disagree.
+const BASELINE = path.join(REPO, 'tools/arm-config-baseline.json');
+
+/**
+ * Which rows the registered arm can reach, and how that is decided.
+ *
+ * ## The defect this replaces
+ *
+ * Two instrument rows carried a reason asserting provenance the configuration contradicted: row 17
+ * called itself "the 91.05%", and row 18 said every published number included a mechanism no customer
+ * installs, because the registered arm "carries `anchors`". Both were true of `retrieval*` signals and
+ * both stopped being true at `S9`, when the arm became `relevanceSignal: self-index`. `--check` could
+ * not see it: `reason` is free text, length-checked and never rendered.
+ *
+ * The cost of that class is not that a reader is misinformed for a round -- it is that the ledger's
+ * instrument column is where the question "is this measured thing installable?" is answered, and two
+ * of nine answers were wrong in opposite directions (one hid a product mechanism behind an instrument,
+ * one invented a hidden dependency).
+ *
+ * ## What each value claims
+ *
+ * | value | claim |
+ * | --- | --- |
+ * | `every-question` | the registered dispatch reaches it on every question |
+ * | `never` | no configuration of the registered dispatch reaches it |
+ * | `{configPath, value}` | reached only when the registered dispatch reads `value` at `configPath` |
+ *
+ * The object form is verified against `tools/arm-config-baseline.json` and reports `active` or
+ * `inactive` rather than passing silently -- a mechanism waiting for a knob and a mechanism the arm
+ * already runs are different rows in the same column, and this is the sentence that separates them.
+ *
+ * A `never` is a judgement, not a derivation: the walk from the arm's entry point to a symbol is not
+ * something this tool does. What it buys is that the judgement has to be **made per row**, in a field
+ * a reader can diff, instead of living in prose that no gate reads.
+ */
+const REACH_VALUES = new Set(['every-question', 'never']);
+
 
 const argv = process.argv.slice(2);
 const check = argv.includes('--check');
@@ -464,7 +504,67 @@ function judge(row, resolved, facts, texts) {
       );
     }
   }
+  problems.push(...judgeReach(row));
   return problems;
+}
+
+/** Resolve a dotted path in the registered arm's record, or `undefined`. */
+function readBaselinePath(configPath) {
+  let node;
+  try {
+    node = JSON.parse(readFileSync(BASELINE, 'utf8')).memoryArmConfig;
+  } catch {
+    return undefined;
+  }
+  for (const step of configPath.split('.')) {
+    if (node === null || typeof node !== 'object') return undefined;
+    node = node[step];
+  }
+  return node;
+}
+
+/**
+ * Check one row's answer to "does the registered dispatch reach this?".
+ *
+ * Required on `instrument` rows only. A product row is reached by definition (that is what `product`
+ * means here) and a gap row has no symbol to reach.
+ */
+function judgeReach(row) {
+  if (row.expect !== 'instrument') return [];
+  const reach = row.registeredArmReach;
+  if (reach === undefined) {
+    return [
+      `instrument row ${row.id} does not say whether the registered arm reaches it: ` +
+        "`registeredArmReach` must be `every-question`, `never`, or `{configPath, value}`",
+    ];
+  }
+  if (typeof reach === 'string') {
+    return REACH_VALUES.has(reach)
+      ? []
+      : [`instrument row ${row.id} has an unknown \`registeredArmReach\`: ${JSON.stringify(reach)}`];
+  }
+  if (reach === null || typeof reach !== 'object' || typeof reach.configPath !== 'string') {
+    return [
+      `instrument row ${row.id} has a \`registeredArmReach\` that is neither a known string nor ` +
+        '`{configPath, value}`',
+    ];
+  }
+  // Resolved, not trusted: a path that does not exist is a claim about a field the dispatch does not
+  // have, which is the shape of a typo and of a configuration that was renamed under a row.
+  const found = readBaselinePath(reach.configPath);
+  if (found === undefined) {
+    return [
+      `instrument row ${row.id} names \`${reach.configPath}\`, which the registered arm's record does ` +
+        'not carry: a reach claim has to resolve against `tools/arm-config-baseline.json`',
+    ];
+  }
+  if (String(found) !== String(reach.value)) {
+    // Not a failure: a mechanism registered off is exactly what a `gated` product row is, one axis
+    // over. It is reported so the table can say `inactive` rather than leave a reader to assume the
+    // arm is running it.
+    return [];
+  }
+  return [];
 }
 
 /** The product exports that only the instrument calls, as names, from the census. */
@@ -706,6 +806,30 @@ function main() {
       `(${ledger.counts.gated} gated), ${ledger.counts.blocked} blocked, ` +
       `${ledger.counts.instrument} instrument, ${ledger.counts.absent} gap; ` +
       `boundary ${ledger.boundary.size} exports\n`,
+  );
+
+  // The instrument column's own census, printed rather than buried: "the registered arm reaches this
+  // on every question" and "this waits for a knob" are the two states a reader of `docs/07` conflates
+  // when they are only prose. A conditional row that the baseline already satisfies is counted
+  // separately, because that is a mechanism the arm is running today under a name nobody looked up.
+  const reach = ledger.rows
+    .filter(({ row }) => row.expect === 'instrument')
+    .map(({ row }) => {
+      const value = row.registeredArmReach;
+      // Three states the check has already refused, and the census still has to survive them: this line
+      // runs after `judge` has collected failures, so a malformed row reaches it. Crashing here would turn
+      // "the row is wrong" into "the tool is broken", which is the one thing a gate may never do.
+      if (value === undefined) return 'undeclared';
+      if (typeof value === 'string') return REACH_VALUES.has(value) ? value : 'undeclared';
+      if (value === null || typeof value !== 'object') return 'undeclared';
+      const found = readBaselinePath(value.configPath);
+      return String(found) === String(value.value) ? 'active' : 'inactive';
+    });
+  const tally = (name) => reach.filter((value) => value === name).length;
+  process.stdout.write(
+    `instrument reach: ${tally('every-question')} every-question, ${tally('never')} never, ` +
+      `${tally('active') + tally('inactive')} conditional (${tally('active')} active in the ` +
+      `registered arm, ${tally('inactive')} waiting for a knob)\n`,
   );
 
   if (check) {
