@@ -41136,3 +41136,50 @@ What it must not be read as until it runs: `idf` is not adopted, the default is 
 `+190` is a retrieval reading. The one thing that *has* changed is that the run is now expressible -- a
 prerequisite that had been assumed rather than checked, and that would have been discovered by the
 dispatcher refusing a configuration it had no seat for.
+
+### 13.377.10 What the refusal turned out to be about, and the field the pair was missing
+
+The three refusals above were read on 2026-11-20 as a gate defect. Two of them were, and the third was
+the gate being right in a vocabulary nobody had written down. Repairing them took a round and no
+money, and the exercise found a fourth defect that is not about the gate at all.
+
+**`--allow-stale-tree` was a dead flag.** `main` read it out of `argv`, skipped the staleness refusal,
+and then handed the same `argv` to `parse_argv`, which answers *"unrecognised argument"*. The escape
+hatch named in the refusal was the one argument the parser would not take, and the test that guarded
+it asserted only that the message **mentioned** the flag. `split_finance` consumes it now.
+
+**The dispatch channel is single-occupancy and nothing enforced it.** `main` writes twelve repository
+variables before the POST; the workflow reads them when the job *starts*. A second dispatch landing in
+that gap makes the first run execute a configuration nobody asked for, with an artifact that
+accurately records what it applied and therefore cannot be read as wrong. It had never mattered
+because a pair of arms meant two rounds. `in_flight_refusal` refuses while a run of this workflow is
+queued or in progress, and `--allow-concurrent` is the deliberate override.
+
+**`capability` is a departure, and the documents said it was not.** A 121-question `MR` population is
+a different measurement from 500 questions of everything, at an identical configuration, and a number
+from one is not comparable to a number from the other. The refusal stays; `RUN_LEVEL` in the
+dispatcher is now the single table both gates read, and the preflight annotates the line with
+`-- run-level:` so the refusal cannot read as a bug in the gate.
+
+**And the pair had no way to prove it was a pair.** `AblationReport` carried the dataset's fingerprint
+and the arm's configuration and nothing about the code. `S17` against `S16` was read as one flag apart
+and was four merged features apart, and the only reason anyone knows that is that fifty of 379
+non-target prompts moved while their delivered evidence bytes stayed identical -- a renderer change
+read backwards. So `revision` (`GITHUB_SHA`, `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_WORKFLOW`)
+is now part of the artifact, and `E0` is the criterion that reads it:
+
+| `E0` | when | what it means |
+| --- | --- | --- |
+| `pass` | both sides name one commit | the other criteria are attributable to the declared flag |
+| `fail` | both sides name commits and they differ | the delta is a difference of code versions |
+| `unread` | either side has no revision | every artifact produced before this field |
+
+`unread` rather than `fail` for the third row because `fail` would rewrite four generations of
+published deltas and `pass` would certify a pair on the strength of two empty strings. The rendered
+reading says so in words when it does not pass.
+
+**Re-dispatched.** Control `44717750493` at `a7eafcce` (tree `0d1ba55f`), `capability=MR`,
+`limit=0`, `ablation_runs=4`, `query_expansion=none`; the treatment follows at the same sha once the
+control finishes, because the channel cannot host both. The two were rehearsed through
+`registration-preflight.py --inputs` first -- twenty-two inputs each, both `match`, zero spend -- so
+the gate's acceptance is a fact and not a hope. Projection 3.45 CNY per arm.
