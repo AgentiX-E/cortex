@@ -590,6 +590,13 @@ export class SearchIndex implements VectorEraser {
   readonly #termWeight: TermWeight;
   /** How many queries the most recent search issued. See {@link SearchCensus.queries}. */
   #lastQueries = 0;
+  /**
+   * The texts the most recent search offered, best first, one entry per text.
+   *
+   * Empty until a search runs, which is `lastPool`'s absence rather than a ranking that found nothing. See
+   * {@link SearchIndex.lastPool} for why the pool is texts and why the order is the searches'.
+   */
+  #lastPool: readonly string[] = [];
 
   constructor(options: SearchIndexOptions = {}) {
     this.#options = options;
@@ -753,8 +760,35 @@ export class SearchIndex implements VectorEraser {
     this.#lastQueries = queries.length;
     // One query is the single-query path, byte for byte -- see `SearchIndexOptions.queryPlan` for why a
     // one-element fusion would be a different run and not a cheaper one.
-    if (queries.length === 1) return this.#searchOne(queries[0]!, k);
-    return this.#searchMany(question, queries, k);
+    const hits =
+      queries.length === 1
+        ? await this.#searchOne(queries[0]!, k)
+        : await this.#searchMany(question, queries, k);
+    // Recorded here rather than in `lookup`, because `search` is the ranking: a caller that decides from the
+    // hits alone has still run the retrieval this field describes, and a pool written only on the path that
+    // also builds a scorer would be absent on exactly the runs that inspect the order directly.
+    this.#lastPool = this.#textsOf(hits);
+    return hits;
+  }
+
+  /**
+   * The texts of a best-first hit list, one entry per text, at the position of its best score.
+   *
+   * The identity a rank is asked about is text, and a corpus may carry one text more than once; `search` is
+   * best-first, so the first occurrence of a text is its best score and later ones can only be equal or worse.
+   * The same rule `lookup` applies to build its scorer, from the same list, so the pool and the scores cannot
+   * disagree about which turns were ranked or in what order.
+   */
+  #textsOf(hits: readonly SearchHit[]): readonly string[] {
+    const texts: string[] = [];
+    const seen = new Set<string>();
+    for (const hit of hits) {
+      const text = this.#turns[hit.turn]!;
+      if (seen.has(text)) continue;
+      seen.add(text);
+      texts.push(text);
+    }
+    return texts;
   }
 
   /**
@@ -919,6 +953,37 @@ export class SearchIndex implements VectorEraser {
       if (!byText.has(text)) byText.set(text, hit.score);
     }
     return (_question: string, turn: string) => byText.get(turn) ?? 0;
+  }
+
+  /**
+   * The ranking the most recent query offered: texts, best first, one entry per text.
+   *
+   * ## Why this is a reading of the index and not a second search
+   *
+   * A caller asking "where did this turn rank" holds text rather than a position, and re-running the query to
+   * learn the order would pay for the query twice and could answer about a different retrieval. So the order
+   * is kept from the search that produced the scores the prompt was built with, and this returns it.
+   *
+   * ## Why it is texts and why it is deduplicated
+   *
+   * Positions are corpus indices, and a corpus may carry one text twice; a rank is only comparable against a
+   * delivery, and the delivery is texts (`lastRetrievedContext`). One entry per text at the position of its
+   * best score is the same rule `lookup` applies when it builds its scorer, so the pool and the scores cannot
+   * disagree about which turns were ranked or in what order.
+   *
+   * ## Why it can be empty, and what that is not
+   *
+   * `[]` before any query and `[]` after a query that matched nothing are the same value here and different
+   * facts: the first is "this index has not searched", the second is "this search offered nothing". The caller
+   * that needs the distinction is the one that asks both questions -- the benchmark asks only after a search,
+   * so the empty array it can see there is always the second -- and a sentinel would make the common case pay
+   * for an ambiguity that `census().queries` already resolves.
+   *
+   * Read-only in the sense that matters: the array is copied per call, so a consumer that sorts what it read
+   * cannot reorder the next reader's pool.
+   */
+  lastPool(): readonly string[] {
+    return [...this.#lastPool];
   }
 
   /**

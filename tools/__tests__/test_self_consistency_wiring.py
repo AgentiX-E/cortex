@@ -79,16 +79,23 @@ class TestTheSampleCountReachesTheVote(unittest.TestCase):
     def test_the_artifact_records_the_mode_and_the_census(self) -> None:
         arm = ARM.read_text(encoding="utf-8")
         self.assertIn("selfConsistency: options.selfConsistency ?? 'none',", arm)
-        # The guard moved when `self-index`'s cost record landed beside this one. Both censuses start
-        # from `report.memoryArmConfig`, so two separate conditional spreads would have let the second
-        # silently drop the first one's field -- a run publishing a configuration with one fewer reading
-        # than it took, and nothing failing. So the assertion is now on the merged shape: the guard names
-        # the report config, and the field is spread only when the fold produced it.
-        self.assertRegex(
+        # The guard became unconditional when `goldAccount` joined this merge: that field is written on
+        # every arm -- including `none` -- because it is counted from the records rather than derived from
+        # the signal, so the spread can no longer be conditioned on the censuses producing something. What
+        # the assertion still has to protect is the invariant the old guard existed for: ONE spread, so a
+        # second conditional one cannot silently drop the fields the first one measured.
+        self.assertEqual(
+            arm.count("memoryArmConfig: {"),
+            1,
+            "the arm merges the arm config in more than one place, so a second conditional spread can "
+            "drop a field the first one measured -- a run publishing a configuration with one fewer "
+            "reading than it took, and nothing failing",
+        )
+        self.assertIn(
+            "goldAccount: goldAccountOf(report.memoryArmConfig!.relevanceSignal, reportedPools),",
             arm,
-            r"report\.memoryArmConfig === undefined \|\|[\s\S]{0,160}?vote\.voteCounts === undefined",
-            "the census is never read from the feature system, so a run could not say whether its "
-            "votes ever disagreed",
+            "the gold account is not written from the records, so a `self-index` run whose product "
+            "reported its order would still publish the blindness caution",
         )
         self.assertIn(
             "...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),",

@@ -1361,6 +1361,7 @@ void memory.recoveryCensus();       // { attempted, answered }
 void memory.auditCensus();          // { attempted, changed }, or null when no audit ran
 void memory.lastIndexCensus();      // the last question's index: turns, embedTexts, memoHits, rerank*
 void memory.indexCost();            // the run so far, summed: indexes, turns, embedTexts, memoHits, reuse
+void memory.rankingCensusOf('How many cities did I live in?'); // the pool it ranked, best first
 ```
 
 `abstentionReasons` is the one to read first when a run looks wrong. Four outcomes that used to be one
@@ -1444,6 +1445,50 @@ the setting to measure, and `sessionBudget` expressed in `chars` (via `CortexSes
 `selfConsistency: n` multiplies the model calls by `n` on the routes it reaches and buys stability,
 not accuracy: read `voteCounts()` before and after, because a vote that is unanimous every time is
 not a vote.
+
+### 8.1 Where the room was spent, when the claim is about retrieval
+
+`rankingCensusOf(question)` answers a question the delivery cannot: **the order the product ranked, not
+just the part of it the room bought.** `lastRetrievedContext()` is the delivery — what the reader read.
+The pool is what the room was shopping from, and the difference between the two is the difference
+between two repairs that look identical in an accuracy number:
+
+| observation | what it means | what to change |
+| --- | --- | --- |
+| a gold turn's rank is `-1` | the product's ranking never surfaced it | the index: channels, `k`, `lexicalWeighting` |
+| its rank is at or beyond the number of delivered turns | surfaced, and the room cut it | `maxPromptChars` on that route |
+| its rank is inside the delivery | the room bought it and the answer is about the reading | neither |
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+declare const sessions: string[][];
+const memory = new CortexMemory({
+  llm,
+  now: 0,
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 8 },
+  index: { embed: async (texts: string[]) => texts.map(() => [1, 0, 0]), k: 64 },
+});
+
+const question = 'How many cities did I live in?';
+await memory.answerSessions(question, sessions);
+const pool = memory.rankingCensusOf(question); // readonly string[] | undefined
+const delivered = memory.lastRetrievedContext()?.length ?? 0;
+// `pool === undefined` means the product built no ranking -- no `index` configured, or the ranking came
+// from your own `relevanceFor`. It is not an empty ranking, which is `[]` and is a finding about the corpus.
+console.log(pool?.length, delivered);
+```
+
+Two properties are worth knowing before you wire it:
+
+- **It is bound to a question.** The accessor holds one slot, so it takes the question as an argument and
+  returns `undefined` when the slot describes a different one. Reading "the last ranking" after a
+  500-question pass is how an artifact comes to explain every question with one question's evidence.
+- **It is only as wide as `k`.** A turn the index did not return has no rank, and no rank is the correct
+  answer for it: the prompt never held a score for that turn, so the room could not have spent anything on
+  it.
 
 ## 9. Recipes
 

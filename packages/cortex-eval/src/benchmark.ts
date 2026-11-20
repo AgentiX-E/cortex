@@ -596,6 +596,26 @@ type RetrievalCapture = {
    * no cap reports `cut: 0` on every question, while a system that cannot say reports `null`.
    */
   readonly turnWindow: DeliveredTurnWindowCensus | null;
+  /**
+   * The ranking the product says it built for this question, best first, or `null`.
+   *
+   * ## Why the product's own ranking has to reach the artifact
+   *
+   * `goldOverlap.goldRanks` is written from a pool the **harness** holds, and the registered signal
+   * (`self-index`) builds its pool inside the product -- so on every run since `S9` the field was absent and
+   * `carried < total` collapsed two readings that license opposite increments: a gold turn the ranking never
+   * surfaced (repair: a different ranking) and one surfaced and cut by the room (repair: a wider room).
+   *
+   * ## Why it is texts, and why the product is asked rather than re-run
+   *
+   * A re-run would pay for the query twice and could answer about a different retrieval; the product reports
+   * the order it used, from the search that produced the scores the prompt was built with. Texts rather than
+   * positions, because the delivery is texts (`context`) and a rank is only comparable against a delivery.
+   *
+   * `null` means the product reported no ranking, which is a different statement from a ranking that offered
+   * nothing -- the same distinction every `null` in this object carries.
+   */
+  readonly ranking: readonly string[] | null;
 };
 
 /**
@@ -615,6 +635,14 @@ export type RetrievalCaptureVectors = {
   readonly roleCensuses?: readonly (DeliveredRoleCensus | null)[];
   /** Per question: what the cap did to the delivered window, or `null`. */
   readonly turnWindowCensuses?: readonly (DeliveredTurnWindowCensus | null)[];
+  /**
+   * Per question: the ranking the product says it built, or `null`.
+   *
+   * Intersected like the three above rather than threaded through `scoreEvaluation`, because it is produced
+   * by the loop that ran the questions and not by the scorer: the scorer grades answers and knows nothing
+   * about a ranking.
+   */
+  readonly rankings?: readonly (readonly string[] | null)[];
 };
 
 /**
@@ -810,6 +838,18 @@ export async function runBenchmark(
           ? (worker as { lastRoleCensus: () => DeliveredRoleCensus | null }).lastRoleCensus.bind(
               worker,
             )
+          : undefined,
+    // The ranking the product built, resolved under the same probe and for a stronger reason than the two
+    // above: this one is the only accessor that takes an argument, because a ranking is a statement about
+    // **a question**. Reading "the last ranking" after a pass would hand every record the last question's
+    // order -- the single-slot defect, made unrepresentable by asking for the question by name.
+    ranking:
+      onRetrieved === undefined
+        ? undefined
+        : 'rankingCensusOf' in worker
+          ? (
+              worker as { rankingCensusOf: (question: string) => readonly string[] | undefined }
+            ).rankingCensusOf.bind(worker)
           : undefined,
     // The same optional-capability probe, for the same reason: a system that cannot report one costs nothing
     // and reaches the record as **absent**, so `null` means "cannot say" rather than "cut nothing".
@@ -1168,6 +1208,8 @@ export async function runBenchmark(
             route: accessors.route === undefined ? null : accessors.route(),
             roleCensus: accessors.roleCensus === undefined ? null : accessors.roleCensus(),
             turnWindow: accessors.turnWindow === undefined ? null : accessors.turnWindow(),
+            ranking:
+              accessors.ranking === undefined ? null : (accessors.ranking(q.question) ?? null),
           },
           index,
         );
@@ -1251,6 +1293,7 @@ export async function evaluateWithScorerDetailed(
   const routes: (string | null)[] = [];
   const roleCensuses: (DeliveredRoleCensus | null)[] = [];
   const turnWindowCensuses: (DeliveredTurnWindowCensus | null)[] = [];
+  const rankings: (readonly string[] | null)[] = [];
   // Placed by index, not appended. Four vectors are captured from the same call and all four
   // are paired with `featureAnswers`/`correct[]` by question index downstream, so under a pool
   // a push would silently rotate every explanation one question out of phase -- a defect that
@@ -1274,6 +1317,7 @@ export async function evaluateWithScorerDetailed(
           routes[index] = capture.route;
           roleCensuses[index] = capture.roleCensus;
           turnWindowCensuses[index] = capture.turnWindow;
+          rankings[index] = capture.ranking;
         }
       : undefined,
     onAnswer,
@@ -1294,5 +1338,7 @@ export async function evaluateWithScorerDetailed(
   // a run that did not ask for the capture gets an evaluation with **no** such field rather than with an
   // all-`null` vector, so "not requested" stays distinguishable from "every system declined to report" --
   // the rule `captureRawOutput` states for its own vector.
-  return captureRetrievedContext ? { ...scored, routes, roleCensuses, turnWindowCensuses } : scored;
+  return captureRetrievedContext
+    ? { ...scored, routes, roleCensuses, turnWindowCensuses, rankings }
+    : scored;
 }

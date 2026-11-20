@@ -825,6 +825,27 @@ export type AblationResult = {
    */
   featureRetrievedContexts?: readonly (RetrievedTurns | null)[];
   /**
+   * The ranking the product says it built for each question, best first.
+   *
+   * ## Why the artifact needs the product's own order
+   *
+   * `goldOverlap.goldRanks` is a pair of gold positions against **a pool**, and until this vector existed the
+   * only pool an artifact could hold was one the harness built (`retrievalPoolFor`). The registered signal
+   * since `S9` is `self-index`, whose pool lives inside the product -- so every artifact of the campaign
+   * carried `carried < total` with no ranks, and the sixteen `MR` questions that read it that way
+   * (`S18`) were read as a retrieval finding when the field could not distinguish "never surfaced" from
+   * "surfaced and cut by the room". Those two license opposite increments.
+   *
+   * ## Why per question and not one order for the run
+   *
+   * A ranking is a function of the question. One order for the run would rank this question's gold against
+   * the last question's candidates, and every rank would still be a plausible integer.
+   *
+   * Optional for the reason the other captures are, and `null` per entry means the product reported no
+   * ranking for that question -- which is not the same as a ranking that offered nothing.
+   */
+  featureRankings?: readonly (readonly string[] | null)[];
+  /**
    * The evidence characters the feature side's prompts actually carried, per
    * question.
    *

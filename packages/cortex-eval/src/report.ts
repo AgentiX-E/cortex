@@ -2415,6 +2415,19 @@ export function formatAblationReport(report: AblationReport): string {
         'verdict — a gold turn the ranking never surfaced and one the budget cut are the same row.',
     );
   }
+  // The readable case, said because it changed what `-1` means: on a `self-index` arm the pool is the
+  // product's own order now, and a rank is a position in the room's own shopping list rather than in a
+  // ranking the harness built beside it. Without this line a reader would apply the `product-unreported`
+  // caution to an artifact that no longer needs it, which is the opposite error and just as wrong.
+  if (report.memoryArmConfig?.goldAccount === 'product-reported') {
+    lines.push(
+      '- **The gold account is readable on this run** (`goldAccount: product-reported`): ' +
+        '`goldOverlap.goldRanks` holds each gold turn’s position in the product’s own pool, so `-1` is ' +
+        '“the product’s ranking never surfaced it” and a rank at or beyond the number of delivered turns ' +
+        'is “surfaced and cut by the room”. The two are different repairs, and `carried < total` alone ' +
+        'cannot tell them apart.',
+    );
+  }
   // §13.176. One question's prompt per repetition. The per-record `promptVariants` count is what a reader
   // checks first, and it is exactly the field that cannot say **what** moved: run `41090564131` read `4` on
   // all 500 questions while two dispatches delivered identical evidence. Rendering the witness here is what

@@ -1012,10 +1012,9 @@ describe('source trust reaches the artifact', () => {
       // The evidence source is stated on every artifact, so an exact-object assertion carries it.
       // Its absence would mean "the artifact predates the field", which no run from now on does.
       evidenceSource: 'corpus',
-      // Derived from the signal, which is `none` in this run: an arm that consulted no ranking
-      // cannot say where a gold turn sat, and the field exists so the artifact states which of the
-      // three accounts it supports instead of leaving the reader to assume the strongest one.
-      goldAccount: 'none',
+      // `goldAccount` is absent here by design: it is a count of what the run's records held, so the
+      // arm writes it after the pass and the configuration cannot state it. `gold-account.test.ts`
+      // asserts both of its product values through `runCortexMemoryArm`.
       // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
       // is a fact about the run, not a missing field.
       conflicts: false,
@@ -1247,6 +1246,11 @@ describe('runCortexMemoryArm', () => {
       resolution: 'raw',
       reviewPass: 'none',
       reviewBareDecline: false,
+      // Written by the arm rather than by the config projection, and therefore present on the report:
+      // `none` because this fixture's signal consulted no ranking at all. Its absence from
+      // `toMemoryArmConfig` is asserted in the same breath above -- the field is a count of what the
+      // records held, so a configuration built before the pass cannot state it.
+      goldAccount: 'none',
     });
   });
 
@@ -1553,9 +1557,8 @@ describe('runCortexMemoryArm', () => {
       });
       expect(config).toEqual({
         evidenceSource: 'corpus',
-        // Derived from the signal, which is `none` in this run, for the reason the assertion above
-        // carries the field: the artifact states what its gold account can support.
-        goldAccount: 'none',
+        // `goldAccount` is absent here by design, for the reason the assertion above gives: it is
+        // counted from the run's records rather than derived from the signal.
         // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
         // is a fact about the run, not a missing field.
         conflicts: false,
@@ -1900,6 +1903,8 @@ describe('the retrieval threshold', () => {
       askRoutes: [],
       reviewPass: 'none',
       reviewBareDecline: false,
+      // Written after the pass, from the records, for the reason `gold-account.test.ts` states.
+      goldAccount: 'none',
     });
   });
 });
@@ -2036,10 +2041,9 @@ describe('blank values from unfilled dispatch inputs', () => {
       // The evidence source is stated on every artifact, so an exact-object assertion carries it.
       // Its absence would mean "the artifact predates the field", which no run from now on does.
       evidenceSource: 'corpus',
-      // Derived from the signal, which is `none` in this run: an arm that consulted no ranking
-      // cannot say where a gold turn sat, and the field exists so the artifact states which of the
-      // three accounts it supports instead of leaving the reader to assume the strongest one.
-      goldAccount: 'none',
+      // `goldAccount` is absent here by design: it is a count of what the run's records held, so the
+      // arm writes it after the pass and the configuration cannot state it. `gold-account.test.ts`
+      // asserts both of its product values through `runCortexMemoryArm`.
       // §13.352. Stated on every artifact for the same reason the evidence source is: `false`
       // is a fact about the run, not a missing field.
       conflicts: false,

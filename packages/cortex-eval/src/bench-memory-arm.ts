@@ -3127,7 +3127,8 @@ export function buildsProductIndex(relevanceSignal: string): boolean {
  * | value | the pool lives in | what `goldOverlap` can answer |
  * | --- | --- | --- |
  * | `ranked` | the harness (`relevance-index.ts`) | where each gold turn sat in the ranking, and how many of them it surfaced |
- * | `product-unreported` | the product (`SearchIndex`) | where each gold turn sat **in the delivery**, and nothing about the turns it did not deliver |
+ * | `product-reported` | the product (`SearchIndex`), reported per question | the same two readings as `ranked`, from the order the product itself used |
+ * | `product-unreported` | the product, but it reported no order | where each gold turn sat **in the delivery**, and nothing about the turns it did not deliver |
  * | `none` | nowhere | nothing, and the budget spent arrival order |
  *
  * ## Why `carried < total` needs this beside it
@@ -3136,21 +3137,38 @@ export function buildsProductIndex(relevanceSignal: string): boolean {
  * short of parity, and the artifact could not say whether those gold turns were **never ranked** or
  * **ranked and cut by the 48,460-character room**. The two readings license opposite next steps --
  * a ranking change versus a wider room -- and the registered arm has been `self-index` since `S9`,
- * so every artifact of the arm this campaign reports on is blind in exactly that way.
+ * so `product-unreported` was true of every artifact this campaign reported on, not of one bad run.
  *
- * ## Why it is derived rather than declared
+ * ## Why `product-reported` is a reading of the records and not of the configuration
  *
- * One decision already exists (`buildsProductIndex`) and it is what the run wires. A second table
- * here could say `ranked` for a run that passed an index to the product, which is the "recorded
- * configuration that never reached the decision it names" defect this repository has paid for.
- * Deriving it means the artifact cannot disagree with the wiring.
+ * `product-unreported` used to be derived from the signal alone, which was right only while the
+ * product had no way to report: the same signal now yields a pool on the questions where the index
+ * was built and none on the questions where it was not, so a field derived before the run would
+ * state a capability the artifact may not hold. The count is therefore taken from the records --
+ * `goldOverlap.pool` present on at least one question -- and the two product values are that
+ * count's two outcomes. A run whose product built no index says so, which is a different artifact
+ * from one whose product was never asked.
+ *
+ * ## Why `ranked` and `product-reported` stay apart
+ *
+ * They support the same reading and they are not the same provenance: an artifact claiming `ranked`
+ * was ranked by the harness, and a reader comparing two runs needs to know which ranking a rank
+ * refers to before comparing ranks. One value would make the two indistinguishable at exactly the
+ * field that exists to keep them apart.
  */
-type GoldAccount = 'ranked' | 'product-unreported' | 'none';
+type GoldAccount = 'ranked' | 'product-reported' | 'product-unreported' | 'none';
 
-/** The three-value derivation, in one place, for the reason {@link buildsProductIndex} is a function. */
-function goldAccountOf(relevanceSignal: string): GoldAccount {
-  if (buildsProductIndex(relevanceSignal)) return 'product-unreported';
-  return relevanceSignal === 'none' ? 'none' : 'ranked';
+/**
+ * The four-value derivation, in one place, for the reason {@link buildsProductIndex} is a function.
+ *
+ * `reportedPools` is the number of questions whose record carried a pool, which is why this cannot be
+ * evaluated before the run: it is a count of what happened rather than a statement about what was
+ * configured.
+ */
+function goldAccountOf(relevanceSignal: string, reportedPools: number): GoldAccount {
+  if (relevanceSignal === 'none') return 'none';
+  if (!buildsProductIndex(relevanceSignal)) return 'ranked';
+  return reportedPools > 0 ? 'product-reported' : 'product-unreported';
 }
 
 export function assertRerankReachesRanking(
@@ -3347,11 +3365,10 @@ export function toMemoryArmConfig(
     // run, and a reader recomputing it from the name would have to know this module's
     // constants to do it.
     relevanceSignal: options.relevanceSignal,
-    // Derived from the signal rather than declared a second time, and written on every arm including
-    // the ones whose signal is `none`: it states what this artifact's gold account can support, which
-    // is a fact about the run rather than about the file a reader happens to hold. `GoldAccount`
-    // documents the three values and the reading that made the field necessary.
-    goldAccount: goldAccountOf(options.relevanceSignal),
+    // `goldAccount` is NOT written here. It states what this artifact's gold account can support, and on
+    // a `self-index` arm that is a fact about the questions that ran rather than about the configuration
+    // they ran under -- so it is attached after the pass, from the records, in the same merge that carries
+    // the other post-run censuses. `GoldAccount` documents the four values and the reading behind them.
     relevanceTopK: options.relevanceTopK,
     // Projected rather than inferred, for the reason the width is: the unit is a separate
     // claim about the same budget, and a reader recomputing it from the signal's name
@@ -4510,6 +4527,10 @@ export async function runCortexMemoryArm(
       ...(options.evidenceRolesRoutes === undefined ? {} : { reach: options.evidenceRolesRoutes }),
     },
     options.relevancePoolFor,
+    // Read from the ablation rather than from the options, because this one is a capture: it exists only
+    // after the questions ran, and reading the product's accessor here would report the last question's
+    // order for all five hundred.
+    report.ablation.featureRankings,
     recoveryTrace,
     auditTrace,
     supersessionTrace,
@@ -4524,6 +4545,11 @@ export async function runCortexMemoryArm(
   // happened rather than what was configured. Merged into the arm's config rather than carried at the
   // top level because the configuration line renders it beside the count that produced it.
   const vote = voteCountsAcross(censusSystems);
+  // What the gold account can support, counted from the records the run produced rather than declared from
+  // the signal it ran under. `self-index` now yields a pool on the questions whose index was built and none
+  // on the questions where it was not, so a value derived before the pass would state a capability this
+  // artifact may not hold -- and the field exists precisely to stop an artifact from overstating that.
+  const reportedPools = questions.filter((record) => record.goldOverlap?.pool !== undefined).length;
   // `self-index`'s bill, read the same way and for the same reason: it counts what the product's own
   // retrieval did rather than what was configured, so it can only be taken after the questions were
   // answered. §13.17's index and this one are different instruments -- the harness's census describes a
@@ -4603,19 +4629,18 @@ export async function runCortexMemoryArm(
     // `report.memoryArmConfig`: a second conditional spread would silently drop the first one's field,
     // and the artifact would lose a count that had been measured. Nothing would fail -- the run would
     // simply publish a configuration with one fewer reading than it took.
-    ...(report.memoryArmConfig === undefined ||
-    (vote.voteCounts === undefined &&
-      indexCost.selfIndex === undefined &&
-      admission.admission === undefined)
-      ? {}
-      : {
-          memoryArmConfig: {
-            ...report.memoryArmConfig,
-            ...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),
-            ...(indexCost.selfIndex === undefined ? {} : { selfIndex: indexCost.selfIndex }),
-            ...(admission.admission === undefined ? {} : { admission: admission.admission }),
-          },
-        }),
+    // Unconditional, and the `!` is the statement that it can be: `memoryArmConfig` is a required option of
+    // this arm, so a report reaching this line holds one, and a guard here would be the unreachable-code-
+    // reads-as-a-safety-net shape this repository deletes. The field is now written on every arm rather than
+    // only when a census produced something, because `goldAccount` is defined for every arm -- on `none` it
+    // says the budget spent arrival order and no ranking existed to be missed.
+    memoryArmConfig: {
+      ...report.memoryArmConfig!,
+      goldAccount: goldAccountOf(report.memoryArmConfig!.relevanceSignal, reportedPools),
+      ...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),
+      ...(indexCost.selfIndex === undefined ? {} : { selfIndex: indexCost.selfIndex }),
+      ...(admission.admission === undefined ? {} : { admission: admission.admission }),
+    },
     questions,
     ...(evidenceReduction === null ? {} : { evidenceReduction }),
   };
@@ -4912,6 +4937,18 @@ function buildArmRoster(
    */
   poolFor?: (question: string) => readonly string[] | undefined,
   /**
+   * The ranking the product built, per question, in dataset order.
+   *
+   * The second source of the same thing and the one that matters on the registered arm: `self-index`
+   * builds its pool inside the product, so `poolFor` is absent there and this is the only order a record
+   * can be ranked against. It is read per index rather than per question text because a dataset may repeat
+   * a question and two askings of one text can rank differently -- the index is where the capture placed it.
+   *
+   * Absent for a run that asked the product and got nothing, which is why it is optional rather than
+   * required: `null` per entry means exactly that, and a `[]` would rank every gold turn at `-1`.
+   */
+  rankings?: readonly (readonly string[] | null)[],
+  /**
    * Whether the review mechanisms fired on each question, keyed by the question text.
    *
    * Passed in for the reason `poolFor` above is: this function holds the records and the caller holds the
@@ -4962,6 +4999,23 @@ function buildArmRoster(
   // The type still declares it optional, because `AblationResult` is also a report
   // shape tests build by hand; that is a statement about the type, not licence for a
   // branch here. A hand-built `AblationResult` never reaches this function.
+  /**
+   * Where question `index`'s pool comes from: the product's order when it reported one, the harness's
+   * otherwise.
+   *
+   * A run cannot have both -- `self-index` builds no harness index and the other signals build no product
+   * one -- so this is a precedence that states which of the two a record was ranked against rather than a
+   * policy. Written as a function of the index rather than as an expression at the call site because the
+   * `null` case has to be decided before the closure is built: a closure that fell back per call would
+   * carry an arm that can never execute, which is the shape a coverage ratchet finds and a reader cannot.
+   */
+  const poolForAt = (
+    index: number,
+  ): ((question: string) => readonly string[] | undefined) | undefined => {
+    const reported = rankings?.[index];
+    if (reported === null || reported === undefined) return poolFor;
+    return () => reported;
+  };
   const retrievedContexts = ablation.featureRetrievedContexts!;
   // The other half of the same capture. Read with `!` for the same reason as the
   // context vector: this arm is handed an `AblationResult` by the chain it called
@@ -5101,7 +5155,7 @@ function buildArmRoster(
       // cap the window can be wider than the pool, so `carried` can exceed `pool` and the
       // three counts become marginals rather than a partition (§13.214). §13.61.7 is what
       // six runs could not say without them.
-      ...accountOf(question, retrievedContexts[i] ?? [], poolFor, rolePolicy),
+      ...accountOf(question, retrievedContexts[i] ?? [], poolForAt(i), rolePolicy),
     })),
     featureConfig,
     ablation.featureCorrect,

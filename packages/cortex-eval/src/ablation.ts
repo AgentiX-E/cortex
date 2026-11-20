@@ -876,6 +876,12 @@ export async function runAblation(
     // the capture is requested unconditionally on this call, so an absent vector is a capture that failed
     // rather than a system that reports nothing.
     featureTurnWindowCensuses: featFirst.turnWindowCensuses!,
+    // The ranking the product built, per question. Beside the delivery for the reason `goldOverlap`'s two
+    // halves are one measurement: the delivery says what the room bought and this says what it was buying
+    // from, so `carried < total` becomes two readings -- never surfaced, or surfaced and cut -- instead of one
+    // number that supports neither. Asserted present for the same reason as the vectors above: the capture is
+    // requested unconditionally on this call, so an absent vector is a capture that failed.
+    featureRankings: featFirst.rankings!,
     // `§13.174`. How many different prompts each question cost across the repetitions, which is the number
     // the cache prediction is a claim about: `1` everywhere means the repeats were repeats, and a larger
     // number means this arm sent that many requests and called them repetitions. Absent at one repetition;

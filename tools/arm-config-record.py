@@ -245,15 +245,17 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
     "assemblyRoutes": ("derived", "`ASSEMBLY_ROUTES_BY_CONTRACT[promptContract]`"),
     "reviewBareDecline": ("derived", "`carriesBareLadder(reviewPass)`"),
     "askRoutes": ("derived", "`ASK_ROUTES[ask]`"),
-    # Derived from the signal, and that is the whole design: `goldAccountOf` calls `buildsProductIndex`,
-    # which is the same decision the run uses to wire the index, so an artifact cannot claim a readable
-    # pool on a run whose ranking lived in the product. Comparing it against an input would be comparing
-    # one decision with itself -- and there is no input to compare it against.
+    # Counted from the run's records rather than derived from the signal, since round 147: `self-index`
+    # now yields a pool on the questions the product built an index for and none on the questions it did
+    # not, so the same signal produces two different artifacts. Comparing it against a dispatch input
+    # would be comparing a statement about outcomes with a statement about intent -- and there is no
+    # input to compare it against.
     "goldAccount": (
         "derived",
-        "`goldAccountOf(relevanceSignal)` -- the three-value statement of what the artifact's gold account "
-        "can answer (`ranked` / `product-unreported` / `none`), which is a function of the signal and not a "
-        "dispatch input (§143.3 of the tracking report)",
+        "`goldAccountOf(relevanceSignal, reportedPools)` -- the four-value statement of what the "
+        "artifact's gold account can answer (`ranked` / `product-reported` / `product-unreported` / "
+        "`none`), counted after the pass from the records that carried a pool (§143.3, §144.2 of the "
+        "tracking report)",
     ),
     "anchors": (
         "constant",

@@ -365,8 +365,11 @@ def gold_account(control: dict, treatment: dict) -> dict:
 
     Three sources, in order of authority:
 
-    1. `memoryArmConfig.goldAccount` -- written by the arm since round 146, and derived there from
-       `buildsProductIndex`, so it cannot disagree with the wiring.
+    1. `memoryArmConfig.goldAccount` -- written by the arm since round 146, and since round 147 counted
+       from the run's own records rather than derived from the signal: `self-index` now yields a pool on
+       the questions the product built an index for, so the same signal produces both product values.
+       `product-reported` is the readable one; `product-unreported` still means the artifact cannot
+       distinguish "never surfaced" from "surfaced and cut".
     2. The same derivation applied here, for every artifact written **before** that field existed.
        `self-index` is the signal that builds the ranking inside the product, and it has been the
        registered arm since `S9`, so most of this campaign's artifacts are in that class -- including
@@ -396,7 +399,12 @@ def gold_account(control: dict, treatment: dict) -> dict:
         'control': sources['control']['value'],
         'treatment': sources['treatment']['value'],
         'source': {label: entry['source'] for label, entry in sources.items()},
-        'readable': all(entry['value'] == 'ranked' for entry in sources.values()),
+        # `ranked` and `product-reported` support the same reading from two provenances: the harness's
+        # pool and the product's own order. `product-unreported` is the one that cannot answer, and
+        # `none` is a run where nothing ranked at all.
+        'readable': all(
+            entry['value'] in ('ranked', 'product-reported') for entry in sources.values()
+        ),
     }
 
 
@@ -874,7 +882,15 @@ def render(reading: dict) -> str:
             )
         )
     else:
-        lines.append(f"Gold account: `{account['treatment']}` -- the pool is on the record.")
+        # Two readable values, and the difference is provenance rather than strength: `ranked` is a pool
+        # the harness built, `product-reported` is the order the product itself used. Said separately
+        # because a reader comparing ranks across two artifacts has to know which ranking a rank is in.
+        pool = (
+            "the product's own order is on the record"
+            if account['treatment'] == 'product-reported'
+            else 'the pool is on the record'
+        )
+        lines.append(f"Gold account: `{account['treatment']}` -- {pool}.")
     lines.append('')
     lines.append(
         f"Prompt identity outside `MR`: {len(identity['moved'])} of {identity['checked']} digests moved"

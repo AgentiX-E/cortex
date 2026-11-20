@@ -506,6 +506,27 @@ export class CortexMemory implements SessionAwareMemorySystem {
    */
   #lastIndex: SearchCensus | undefined = undefined;
   /**
+   * The ranking the product built for the most recent question, and the question it was built for.
+   *
+   * ## Why the question travels beside the ranking
+   *
+   * This is a single slot written once per question, and the two readers of it are a benchmark that asks
+   * afterwards. A slot read one question late is the defect that made `BenchmarkWorkerPool` give every worker
+   * its own instance (`§13.216`, `§13.220`): the numbers stay well-formed and describe another question. So the
+   * accessor names the question it wants and a mismatch reads as absence, which turns "you asked about a
+   * ranking this instance no longer holds" from an inference into a value.
+   *
+   * ## Why the pool is the ranked turns and not the delivered ones
+   *
+   * The delivery is already readable (`lastRetrievedContext`). What was missing is the part of the ranking the
+   * room did not buy: a gold turn with no rank was never surfaced, and one whose rank is beyond the delivery
+   * was surfaced and cut. Those two license opposite increments, and telling them apart is the whole purpose
+   * of this slot (`goldOverlap`'s `carried < total` cannot, on a signal whose pool lives in the product).
+   */
+  #lastRanking: readonly string[] = [];
+  /** The question {@link #lastRanking} was built for, or `null` before any. */
+  #lastRankingQuestion: string | null = null;
+  /**
    * What every index this instance built has cost, summed.
    *
    * The per-question census above answers what the current index did; this answers what the run has paid.
@@ -1080,6 +1101,38 @@ export class CortexMemory implements SessionAwareMemorySystem {
   lastIndexCensus(): SearchCensus | undefined {
     const census = this.#lastIndex;
     return census === undefined ? undefined : { ...census, channels: [...census.channels] };
+  }
+
+  /**
+   * What the product ranked for `question`, best first, or `undefined` when it ranked nothing.
+   *
+   * ## The two absences this keeps apart
+   *
+   * `undefined` means the product did not build a ranking: no `index` was configured, the signal came from the
+   * caller's `relevanceFor`, or this instance never answered this question. `[]` would mean the ranking fired
+   * and offered nothing, which is a finding about the corpus. Only the first is an absence of instrument, and
+   * an artifact that published the second where the first is true would report a retrieval failure on a run
+   * that never retrieved.
+   *
+   * ## Why the question is a parameter rather than a field
+   *
+   * A caller reading "the last ranking" after a pass gets the last question's, silently, which is how a
+   * 500-question artifact comes to explain every question with one question's evidence. Naming the question
+   * makes that mistake unrepresentable: the answer is about the ranking this instance holds **for that
+   * question** or it is `undefined`.
+   *
+   * ## What it is for
+   *
+   * `goldRanks` in a benchmark artifact: `-1` is "the ranking never surfaced this gold turn" and a positive
+   * rank beyond the delivery is "surfaced and cut by the room". The first is repaired by a different ranking,
+   * the second by a wider room, and `goldOverlap.carried < total` cannot tell a reader which one happened --
+   * which is the reading `S18`'s pair was misread as, at sixteen of 121 multi-session questions.
+   *
+   * Returned by value, for the reason every census on this class is: the arm serialises it into its artifact.
+   */
+  rankingCensusOf(question: string): readonly string[] | undefined {
+    if (this.#lastRankingQuestion !== question) return undefined;
+    return [...this.#lastRanking];
   }
 
   /**
@@ -3146,6 +3199,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     question: string,
     turns: readonly AdmittedTurn[],
   ): Promise<((question: string, turn: string) => number) | undefined> {
+    // Cleared here rather than at each exit, so the slot can never describe a question this call is not
+    // answering: the three states below are "the caller ranked", "the product ranked" and "nothing ranked",
+    // and only the second writes. Two assignments on every question, including the two paths that do not
+    // build an index -- which is the price of a slot whose staleness would otherwise be unobservable.
+    this.#lastRanking = [];
+    this.#lastRankingQuestion = null;
     const override = this.#options.relevanceFor;
     if (override !== undefined) return override;
 
@@ -3158,6 +3217,11 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // `k` is spent per channel by the index and again on the fused list, so a caller naming `k` bounds the
     // pool the budget may draw from rather than only the vector channel's contribution to it.
     const scorer = await built.lookup(question, index.k);
+    // Read from the index that produced the scores, immediately after the search that produced them: the
+    // prompt builder ranks by this scorer and spends the room on its order, so the pool recorded here is the
+    // one the delivery was drawn from rather than a second retrieval of the same question.
+    this.#lastRanking = built.lastPool();
+    this.#lastRankingQuestion = question;
     // After the lookup, not before: the query embedding and the reranker both fire inside it, so a census
     // taken earlier would report a run that made one model call and never the second -- and `rerankCalls`
     // would be zero on every run, which is the exact count a reader would use to decide the stage ran.

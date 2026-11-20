@@ -691,6 +691,20 @@ def test_an_artifact_written_before_the_field_is_classified_from_its_signal():
     assert 'derived from `relevanceSignal`' in expansion_reading.render(reading)
 
 
+def test_a_product_reported_account_is_readable_and_says_whose_order_it_is():
+    # The value round 147 introduces: the pool lives in the product, but the product reported it, so the
+    # account answers the question the blind warning exists to refuse -- and the reading has to say which
+    # ranking the ranks are in, because a rank against a harness pool is not the same claim.
+    control = artifact(CONTROL_COUNTS, 'a', relevanceSignal='self-index', goldAccount='product-reported')
+    treated = treatment(relevanceSignal='self-index', goldAccount='product-reported')
+    reading = read(control, treated)
+    assert reading['goldAccount']['readable'] is True
+    assert reading['goldAccount']['source']['control'] == 'recorded'
+    rendered = expansion_reading.render(reading)
+    assert "the product's own order is on the record" in rendered
+    assert 'not a retrieval verdict' not in rendered
+
+
 def test_a_recorded_field_wins_over_the_derivation_and_says_so():
     # The other direction: once the arm writes the field, the reading reports what the artifact stated
     # rather than re-deriving it, because a reader comparing two files should be able to tell a recorded
