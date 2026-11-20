@@ -212,6 +212,47 @@ def configuration_surfaces(control: dict, treatment: dict) -> dict:
     }
 
 
+def revision_verdict(control: dict, treatment: dict) -> tuple[str, str]:
+    """`E0`: whether the two artifacts name the same commit, which every other criterion rests on.
+
+    `S17` was read against `S16` and the pair turned out to be four merged features apart, which is
+    the reason its `E3` failed: fifty of 379 non-target prompts moved with identical evidence bytes,
+    a renderer change with no retrieval change behind it. No artifact carried the revision that made
+    it, so the finding came from the prompts rather than from the pair -- which is reading the
+    symptom to infer the cause, and it worked because the symptom was loud.
+
+    `§13.377.9` therefore makes tree equality the precondition and `AblationReport.revision` the
+    field that carries it. Three states, and the third is why this returns `unread` rather than
+    `fail`: every artifact produced before the field existed has no revision, and calling those
+    "different" would rewrite four generations of published deltas while calling them "the same"
+    would be the defect this campaign is written against.
+    """
+    left = control.get('revision') or None
+    right = treatment.get('revision') or None
+    if not left and not right:
+        return 'unread', (
+            'neither artifact carries `revision`, so the pair is one flag apart only if the two '
+            'dispatches happened to be -- which is what `S17` assumed and what cost it its `E3`'
+        )
+    if not left or not right:
+        missing = 'control' if not left else 'treatment'
+        return 'unread', (
+            f'the {missing} artifact carries no `revision`; the side that has one says '
+            f'`{(left or right).get("sha", "?")[:12]}`'
+        )
+    if left.get('sha') != right.get('sha'):
+        return 'fail', (
+            f'control ran `{left.get("sha", "?")[:12]}` and treatment ran '
+            f'`{right.get("sha", "?")[:12]}` -- two revisions, so any delta is a difference of '
+            'code versions and not of the declared flag'
+        )
+    run = right.get('runId')
+    return 'pass', (
+        f'both artifacts name `{left.get("sha", "")[:12]}`'
+        + (f' (treatment run {run})' if run else '')
+    )
+
+
 def receipt(treatment: dict) -> dict:
     """The product's own census: how many queries its index issued against how many it built."""
     config = treatment.get('memoryArmConfig') or {}
@@ -322,6 +363,7 @@ def read(control: dict, treatment: dict) -> dict:
     leak = len(identity['moved'])
     e3_pass = e3_ok and leak == 0
     surfaces = configuration_surfaces(control, treatment)
+    e0, e0_detail = revision_verdict(control, treatment)
 
     if landed['queries'] is None or landed['indexes'] is None:
         e4 = 'unread'
@@ -390,7 +432,17 @@ def read(control: dict, treatment: dict) -> dict:
             'ratio': round(treatment_bill / control_bill, 4) if control_bill else None,
         },
         'receipt': landed,
+        'revision': {
+            'control': (control.get('revision') or None),
+            'treatment': (treatment.get('revision') or None),
+            'comparable': e0 == 'pass',
+        },
         'criteria': {
+            'E0': {
+                'verdict': e0,
+                'measured': e0_detail,
+                'threshold': 'both artifacts name the same commit',
+            },
             'E1': {'verdict': 'pass' if e1_pass else 'fail', 'measured': f'{mr_treatment} of {mr_size}',
                    'threshold': f'>= {E1_MIN_MR}'},
             'E2': {'verdict': 'pass' if e2_pass else 'fail',
@@ -475,9 +527,17 @@ def render(reading: dict) -> str:
     lines.append('')
     lines.append('| criterion | verdict | measured | threshold |')
     lines.append('| --- | --- | --- | --- |')
-    for name in ('E1', 'E2', 'E3', 'E4', 'E5'):
+    for name in ('E0', 'E1', 'E2', 'E3', 'E4', 'E5'):
         row = reading['criteria'][name]
         lines.append(f"| `{name}` | **{row['verdict']}** | {row['measured']} | {row['threshold']} |")
+    if reading['criteria']['E0']['verdict'] != 'pass':
+        lines.append('')
+        lines.append(
+            '**The delta above is not attributable to the declared flag.** `E0` is the precondition '
+            'every other criterion rests on and it did not pass: two artifacts from two revisions '
+            'differ by everything that changed between them, and a delta over that pair is a '
+            'difference of code versions.'
+        )
     return '\n'.join(lines) + '\n'
 
 

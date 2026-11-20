@@ -363,3 +363,69 @@ def test_the_selftest_pins_the_estimator_to_the_published_count(tmp_path):
     treated.write_text(json.dumps(treatment()), encoding='utf-8')
     assert expansion_reading.main(['--control', str(control), '--treatment', str(treated),
                                    '--selftest', '--json']) == 0
+
+
+# ---------------------------------------------------------------- `E0`: one flag apart, or one tree?
+
+SHA_A = 'a' * 40
+SHA_B = 'b' * 40
+
+
+def with_revision(document: dict, **revision: object) -> dict:
+    document['revision'] = revision
+    return document
+
+
+def test_a_pair_at_one_commit_is_attributable():
+    # The shape `§13.377.9` was registered for: two dispatches at one sha, and the artifact saying so.
+    reading = read(
+        with_revision(artifact(CONTROL_COUNTS, 'a'), sha=SHA_A),
+        with_revision(treatment(), sha=SHA_A, runId='44711018477'),
+    )
+    assert reading['criteria']['E0']['verdict'] == 'pass'
+    assert reading['revision']['comparable'] is True
+    assert '44444444444' not in reading['criteria']['E0']['measured']
+
+
+def test_two_commits_are_a_failed_precondition_and_both_are_named():
+    # `S17` against `S16` was this, and nothing could see it: the pair differed by four merged
+    # features and the only symptom was fifty moved prompts. A reader now gets the two shas.
+    reading = read(
+        with_revision(artifact(CONTROL_COUNTS, 'a'), sha=SHA_A),
+        with_revision(treatment(), sha=SHA_B),
+    )
+    assert reading['criteria']['E0']['verdict'] == 'fail'
+    assert SHA_A[:12] in reading['criteria']['E0']['measured']
+    assert SHA_B[:12] in reading['criteria']['E0']['measured']
+
+
+def test_an_artifact_that_predates_the_field_is_unread_rather_than_different():
+    # Every archived artifact is this case. `fail` would rewrite four generations of published deltas;
+    # `pass` would certify a pair nobody checked -- and two empty strings comparing equal is exactly
+    # the defect class this campaign is written against.
+    reading = read(artifact(CONTROL_COUNTS, 'a'), with_revision(treatment(), sha=SHA_A))
+    assert reading['criteria']['E0']['verdict'] == 'unread'
+    assert 'control artifact carries no `revision`' in reading['criteria']['E0']['measured']
+    reading = read(artifact(CONTROL_COUNTS, 'a'), treatment())
+    assert reading['criteria']['E0']['verdict'] == 'unread'
+    assert 'neither artifact carries' in reading['criteria']['E0']['measured']
+
+
+def test_the_rendered_reading_refuses_to_call_an_unattributable_delta_attributable():
+    # The sentence is the deliverable: a table of five verdicts over two code versions reads as a
+    # measurement of the flag unless the document says it is not one.
+    rendered = expansion_reading.render(
+        read(
+            with_revision(artifact(CONTROL_COUNTS, 'a'), sha=SHA_A),
+            with_revision(treatment(), sha=SHA_B),
+        )
+    )
+    assert '| `E0` | **fail**' in rendered
+    assert '**The delta above is not attributable to the declared flag.**' in rendered
+    attributed = expansion_reading.render(
+        read(
+            with_revision(artifact(CONTROL_COUNTS, 'a'), sha=SHA_A),
+            with_revision(treatment(), sha=SHA_A),
+        )
+    )
+    assert 'not attributable' not in attributed

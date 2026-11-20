@@ -139,6 +139,22 @@ def registration(path: Path = DISPATCH) -> dict[str, str]:
     return {str(key): str(value) for key, value in module.INPUTS.items()}
 
 
+def run_level(path: Path = DISPATCH) -> dict[str, str]:
+    """The registered inputs that select **what runs** rather than **how the arm behaves**.
+
+    Read from the dispatcher's table rather than restated, because the sentence this gate used to be
+    described by -- *"the registration gate ignores it the way it ignores `limit`"* -- was false in
+    all three places it was written, and `S18` paid for it: `capability: "all" -> "MR"` was reported
+    as an undeclared departure on a field two documents said this file skipped.
+
+    It does not skip them, and the paragraph above says why that is right: a 121-question `MR` run
+    and a 500-question run of one configuration produce numbers about different populations. What was
+    wrong was not the refusal, it was the vocabulary -- a reader who had been told the gate ignores
+    this field had no way to read its refusal as anything but a bug in the gate.
+    """
+    return {str(key): str(value) for key, value in _load(path, "dispatch_cortex_memory_ab").RUN_LEVEL.items()}
+
+
 def asked_inputs(event_path: Path) -> dict[str, str]:
     """What the dispatch asked for, as GitHub recorded it.
 
@@ -203,6 +219,7 @@ def render(
     moved: dict[str, str | None],
     declared: list[str],
     carried: frozenset[str] = frozenset(),
+    selectors: dict[str, str] | None = None,
 ) -> tuple[list[str], bool]:
     """The block a reader opens, and whether the dispatch may proceed.
 
@@ -210,7 +227,12 @@ def render(
     read. They are neither confirmed nor denied here: the artifact gate compares them against the
     registration, and claiming in this file that one ``did not move`` would be a statement about a
     payload that never held it.
+
+    `selectors` are the run-level inputs, annotated on their own departure line rather than skipped:
+    a sample size or a population changes what the number describes, so it belongs in the
+    declaration, and the annotation is the part that stops the refusal reading as a bug in this file.
     """
+    selectors = selectors or {}
     undeclared = sorted(key for key in moved if key not in declared)
     idle = sorted(key for key in declared if key not in moved and key not in carried and key in registered)
     delegations = sorted(key for key in declared if key not in moved and key in carried)
@@ -229,12 +251,15 @@ def render(
     ]
     for key in sorted(moved):
         value = moved[key]
+        note = f" -- run-level: {selectors[key]}" if key in selectors else ""
         if value is None:
             lines.append(
-                f'    ABSENT    {key}: registered "{registered[key]}", nothing asked'
+                f'    ABSENT    {key}: registered "{registered[key]}", nothing asked{note}'
             )
         else:
-            lines.append(f'    DEPARTED  {key}: "{registered[key]}" (registered) -> "{value}" (asked)')
+            lines.append(
+                f'    DEPARTED  {key}: "{registered[key]}" (registered) -> "{value}" (asked){note}'
+            )
     for key in delegations:
         lines.append(
             f"  carried to the artifact: {key} -- a repository variable carries it and this gate "
@@ -316,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
 
     moved = departures(asked, registered)
     declared = parse_declared(args.declared)
-    lines, ok = render(asked, registered, moved, declared, conditions())
+    lines, ok = render(asked, registered, moved, declared, conditions(), run_level())
     print("\n".join(lines))
     return 0 if ok else 1
 

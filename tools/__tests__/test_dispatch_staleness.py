@@ -91,3 +91,66 @@ class TestStalenessRefusal:
         assert tree is None or re.fullmatch(r'[0-9a-f]{40}', tree), tree
         # This suite runs inside the repository, so the local side must be readable here.
         assert tree is not None
+
+
+class TestTheOverrideTheRefusalNames:
+    """`--allow-stale-tree` was named by the refusal and refused by the parser.
+
+    `test_the_refusal_carries_an_exit` above asserts that the message mentions the flag, and it
+    passed for as long as the flag was dead: `main` read it out of `sys.argv`, decided not to raise,
+    and then handed the same argv to `parse_argv`, which answers *"unrecognised argument
+    '--allow-stale-tree'; this script takes --set KEY=VALUE"*. The escape hatch was the one argument
+    the parser would not take, so the documented override produced a refusal about a typo.
+
+    The defect is the same class as `S18`'s three: a sentence in one place promising behaviour that
+    the code beside it does not have. The repair is in `split_finance`, which is the function that
+    separates flags from `--set` values, and the assertion is that the flag survives to `main`.
+    """
+
+    def test_the_switch_is_consumed_rather_than_handed_to_the_set_parser(self) -> None:
+        module = _module()
+        rest, finance = module.split_finance(['--no-budget', '--allow-stale-tree', '--set', 'a=b'])
+        assert rest == ['--set', 'a=b'], rest
+        assert finance['flags']['--allow-stale-tree'] is True
+
+    def test_a_stale_tree_proceeds_when_the_flag_is_given(self, monkeypatch, capsys) -> None:
+        module = _module()
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'c' * 40)
+        monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
+        monkeypatch.setattr(
+            module,
+            'req',
+            lambda method, path, payload=None, allow_empty=False: (
+                {'workflow_runs': []} if '/runs' in path else {'tree': {'sha': 'c' * 40}}
+            ),
+        )
+        # The real refusal would fire on the tree mismatch, so this call proves the flag reached it.
+        assert module.main(['--no-budget', '--allow-stale-tree', '--set', 'capability=MR']) == 0
+        assert 'dispatched' in capsys.readouterr().out
+
+    def test_the_flag_is_still_refused_when_it_is_not_given(self, monkeypatch) -> None:
+        module = _module()
+        import pytest
+
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'c' * 40)
+        monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
+        monkeypatch.setattr(
+            module,
+            'req',
+            lambda method, path, payload=None, allow_empty=False: (
+                {'workflow_runs': []} if '/runs' in path else {'tree': {'sha': 'c' * 40}}
+            ),
+        )
+        # The commits read answers a tree that is not this checkout's, which is what the gate looks at.
+        monkeypatch.setattr(
+            module,
+            'req',
+            lambda method, path, payload=None, allow_empty=False: (
+                {'workflow_runs': []} if '/runs' in path else {'tree': {'sha': 'a' * 40}}
+            ),
+        )
+        with pytest.raises(SystemExit) as raised:
+            module.main(['--no-budget', '--set', 'capability=MR'])
+        assert 'refusing to dispatch' in str(raised.value)

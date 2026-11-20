@@ -367,12 +367,14 @@ def classification(field: str) -> str | None:
 TABLE_ONLY: dict[str, str] = {
     "cortex_memory": "the arm's switch, not a configuration value",
     "limit": "`0` is the whole set; the artifact records the resolved count",
-    # `registration-preflight.py` exempts this one for the same reason and says so: it selects which
-    # questions *run* rather than how the arm behaves on them, so a 121-question `MR` dispatch and a
-    # 500-question one are two samples of one configuration. Comparing it would report the sample as a
-    # configuration difference, and §13.336's adoption is the case that made that expensive: the
-    # projection has no entry for it, so every artifact recorded after the adoption would have been
-    # reported as a departure on an input nobody had moved.
+    # `capability` is run-level in the sense `limit` is -- it selects which questions *run* rather than
+    # how the arm behaves on them -- and the projection has no entry for it for that reason. The
+    # comment here used to claim `registration-preflight.py` exempted it "for the same reason", and
+    # that was false: the gate compares every registered input, so a `capability=MR` dispatch was
+    # refused as an undeclared departure. `S18`'s first pair died on exactly that sentence. The gate
+    # still refuses it undeclared, deliberately -- a 121-question population is a different measurement
+    # -- and the shared table is `dispatch-cortex-memory-ab.py`'s `RUN_LEVEL`, which both gates read so
+    # that "run-level" means one thing in three files.
     "capability": "a run-level population selector, not a configuration value",
 }
 

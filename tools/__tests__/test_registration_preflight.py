@@ -223,6 +223,53 @@ class PreflightTest(unittest.TestCase):
         ):
             self.assertIn(name, out)
 
+    def test_a_capability_scoped_dispatch_departs_and_says_it_is_run_level(self) -> None:
+        """`S18`'s first pair, which is the incident this case is taken from.
+
+        `44711009470` asked `capability=MR` against a registered `all` and was refused as an
+        undeclared departure. The refusal was right -- 121 questions of `MR` is a different
+        measurement, not a different spelling of 500 questions -- and it read as a bug in the gate
+        because two documents said this file skipped the field. The annotation is the repair: the
+        line still refuses, and it now says which kind of departure a reader is looking at.
+        """
+        inputs = dict(self.registered)
+        inputs["capability"] = "MR"
+        code, out = self.run_preflight(inputs)
+        self.assertEqual(code, 1, out)
+        self.assertIn(
+            'DEPARTED  capability: "all" (registered) -> "MR" (asked) -- run-level: the population',
+            out,
+        )
+
+    def test_a_declared_run_level_departure_is_the_pair_the_registration_licenses(self) -> None:
+        """`§13.377.9`'s both arms: one `capability=MR`, the declaration naming it.
+
+        This is the exact payload shape the pair is dispatched with, and the case exists because
+        nothing had ever checked that a capability-scoped dispatch can pass this gate at all.
+        """
+        inputs = dict(self.registered)
+        inputs["capability"] = "MR"
+        inputs["cortex_memory_query_expansion"] = "llm"
+        code, out = self.run_preflight(
+            inputs, declared="capability,cortex_memory_query_expansion"
+        )
+        self.assertEqual(code, 0, out)
+        self.assertIn("2 declared departure(s), nothing undeclared", out)
+
+    def test_every_run_level_selector_is_registered_and_exempt_from_the_projection(self) -> None:
+        """The three files that had three opinions, checked against one table.
+
+        `RUN_LEVEL` is the dispatcher's. The artifact projection (`arm-config-record.py`) must exempt
+        every name in it, or a selector would be reported as a configuration difference on every run;
+        and every name must be a registered input, or the table would describe a field no dispatch
+        can send. `capability` failed both halves of this in prose before `S18`.
+        """
+        selectors = self.module.run_level(DISPATCH)
+        self.assertTrue(selectors, "an empty table would make this test vacuous")
+        self.assertLessEqual(set(selectors), set(self.registered))
+        record = load(TOOLS / "arm-config-record.py", "arm_config_record_for_preflight")
+        self.assertLessEqual(set(selectors), set(record.TABLE_ONLY))
+
 
 if __name__ == "__main__":
     unittest.main()

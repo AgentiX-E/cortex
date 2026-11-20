@@ -661,8 +661,12 @@ INPUTS = {
     # `limit=200` gives `MR` 29 questions and a 4-point `MR` effect is 1.2 questions, which is why
     # two capability-scoped arms had to move their bars to `limit=400`. `capability=MR` grades the
     # 121 `MR` questions in the file for a fifth of a full pass and reads the same 4 points at 4.8
-    # questions. It is a run-level selector, like `limit`, and `readout-arm-run.py`'s
-    # `HARNESS_INPUTS` says so on the gate's side.
+    # questions. It is a run-level selector, like `limit`, and `RUN_LEVEL` below is where that is
+    # written down once for both gates -- `readout-arm-run.py` exempts it from the artifact
+    # projection for that reason, and `registration-preflight.py` **does not** exempt it from the
+    # declaration, because a narrower population is a different measurement even when it is the same
+    # configuration. The paragraph that used to sit here said the input's own description claimed
+    # the gate ignores it; nothing did, and the disagreement cost `S18`'s first pair.
     #
     # The `thinking` reading on the line above bought **6.25 points** when it was adopted (§13.197).
     # `T1` re-read the same axis on the shipped configuration and found **1.0** (§13.344), and the
@@ -671,6 +675,30 @@ INPUTS = {
     "capability": "all",
     "limit": "0",
     "ablation_runs": "4",
+}
+
+# Inputs that choose **what runs** rather than **how the arm behaves**. Written down once, here,
+# because three files had three opinions about it and one of them was false.
+#
+# `readout-arm-run.py`'s `HARNESS_INPUTS` and `arm-config-record.py`'s `TABLE_ONLY` both exempt these
+# from the artifact projection, and that is right: the projection answers "what would I have to send
+# to reproduce this artifact", and a sample size or a population is not a property of the arm. The
+# name `TABLE_ONLY` is a little too strong -- these are not table-only, they are **run-level** -- and
+# the reason this table exists is the sentence that used to live in three comments and was wrong in
+# all three: *"the registration gate ignores it the way it ignores `limit`"*.
+#
+# It does not ignore either one, and it should not. `S18`'s first pair died in
+# `registration-preflight.py` on `capability: "all" (registered) -> "MR" (asked)`, which was the gate
+# being right about a dispatch that had not declared what it was doing: 121 questions of `MR` is a
+# different measurement from 500 questions of everything, even at an identical configuration, and a
+# number produced at one population is not comparable to a number produced at the other. A selector
+# that changes the measurement must be declared for the same reason a switch that changes the arm
+# must be. So the gate keeps refusing it undeclared, and the difference is that it now says which
+# kind of departure it is reading instead of leaving a reader to guess why a "run-level" field failed
+# a configuration gate.
+RUN_LEVEL: dict[str, str] = {
+    "capability": "the population the number describes, not a property of the arm",
+    "limit": "the sample size the number describes, not a property of the arm",
 }
 
 
@@ -855,6 +883,53 @@ def local_tree() -> str | None:
     if completed.returncode != 0:
         return None
     return completed.stdout.strip() or None
+
+
+def in_flight_refusal(runs: list[dict]) -> str | None:
+    """Why this dispatch must wait for the one already out, or `None` when the channel is free.
+
+    ## The channel is single-occupancy, and `S18` is the case that needs two dispatches
+
+    `main` writes **nine** repository variables before the POST -- the declaration, the oracle, the
+    conflicts switch, the reply repair, the superseded rendering, the index embedding, the lexical
+    weighting, the session clock, the resolution, the admission threshold, the confidence signal and
+    the judge pin. The workflow reads them when the job *starts*, which is not when it was
+    dispatched. So a second dispatch landing before the first job starts overwrites every one of
+    them, and the first run then executes a configuration nobody asked for -- with an artifact that
+    accurately records what it applied.
+
+    Nothing enforced this, and it had never mattered: every archived experiment is one dispatch at a
+    time, because a pair of arms meant two rounds. `§13.377.9` asks for two arms **at one sha**, which
+    is the first experiment in this repository that cannot be run one dispatch at a time -- and the
+    first one where "dispatch both, they are independent" is false. The refusal is the mechanism
+    rather than the note in the plan: `--allow-concurrent` exists for a dispatch that is deliberately
+    sharing the channel, and it says what it is risking when it does.
+
+    Reads the runs list rather than a lock file, because the state that matters is GitHub's: a run
+    that is queued has not started, and a run that is in progress has already read the variables.
+    Both must be clear.
+    """
+    busy = [
+        run
+        for run in runs
+        if str(run.get("status", "")).lower() in ("queued", "in_progress", "waiting", "pending")
+    ]
+    if not busy:
+        return None
+    described = "; ".join(
+        f"{run.get('id')} {str(run.get('status', '')).lower()} "
+        f"({str(run.get('display_title') or run.get('name') or '')[:48]})"
+        for run in busy[:4]
+    )
+    return (
+        f"refusing to dispatch while {len(busy)} run(s) of this workflow are queued or in progress: "
+        f"{described}. The dispatch channel is twelve repository variables that the workflow reads "
+        f"when the job starts, so a second dispatch overwrites the first one's switches and the "
+        f"earlier run executes a configuration nobody asked for -- accurately recorded, and therefore "
+        f"unreadable. Wait for the run to finish, then dispatch the second arm at the same sha: that "
+        f"is what makes §13.377.9's pair of arms a pair. Pass --allow-concurrent to share the channel "
+        f"deliberately."
+    )
 
 
 def staleness_refusal(remote_tree: str, head_tree: str | None) -> str | None:
@@ -1262,6 +1337,13 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
     """
     rest: list[str] = []
     budget: float | None = DEFAULT_BUDGET_CNY
+    # The two switches that override a refusal. They have to be consumed *here* rather than read from
+    # `argv` in `main`, and that is a defect this round found rather than a detail:
+    # `--allow-stale-tree` was named in `staleness_refusal`'s own message and in `test_dispatch_staleness`
+    # asserted to appear there, and passing it made `parse_argv` exit with *"unrecognised argument"* --
+    # the escape hatch the message advertised was the one thing the parser refused. A refusal that names
+    # a way out has to accept it, or the message is a lie with a stack trace attached.
+    flags: dict[str, bool] = {}
     # Whether the operator named a ceiling or is riding the default. §13.348 needs the distinction:
     # the default is right for a dispatch the projection can price, and a capability-scoped dispatch
     # is one it can only floor, so a floor under a default ceiling is not a decision anybody made.
@@ -1269,6 +1351,10 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
     index = 0
     while index < len(argv):
         argument = argv[index]
+        if argument in ("--allow-stale-tree", "--allow-concurrent"):
+            flags[argument] = True
+            index += 1
+            continue
         if argument == "--budget":
             if index + 1 >= len(argv):
                 raise SystemExit("--budget needs a CNY amount")
@@ -1295,7 +1381,7 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
             continue
         rest.append(argument)
         index += 1
-    return rest, {"budget": budget, "named": named}
+    return rest, {"budget": budget, "named": named, "flags": flags}
 
 
 def projected_spend(inputs: dict[str, str], budget: float | None, named: bool = True) -> float | None:
@@ -1402,8 +1488,18 @@ def main(argv: list[str] | None = None) -> int:
     sha = remote_head()
     tree = req("GET", f"/repos/{REPO}/git/commits/{sha}")["tree"]["sha"]
     refusal = staleness_refusal(tree, local_tree())
-    if refusal is not None and "--allow-stale-tree" not in (sys.argv[1:] if argv is None else argv):
+    if refusal is not None and not finance["flags"].get("--allow-stale-tree"):
         raise SystemExit(refusal)
+    # After the staleness check and before the first variable is written, because the harm the
+    # channel can do starts at that write: refusing late would mean refusing after overwriting a
+    # run that has not started yet.
+    in_flight = in_flight_refusal(
+        req("GET", f"/repos/{REPO}/actions/workflows/{WORKFLOW}/runs?per_page=20").get(
+            "workflow_runs", []
+        )
+    )
+    if in_flight is not None and not finance["flags"].get("--allow-concurrent"):
+        raise SystemExit(in_flight)
     print(f"dispatching cortex-memory A/B at master ({sha[:8]}, tree {tree[:8]})")
     # Overridden keys are marked, so the log says which values this dispatch chose rather
     # than leaving a reader to diff the output against the source.

@@ -49,7 +49,7 @@ on:
         default: '4'
         type: string
       capability:
-        description: 'Population selector: run one capability instead of the file. `all` (the default) is the identity, `MR` grades the 121 multi-session questions, and a comma list unions them. It is a run-level selector rather than arm configuration, so the registration gate ignores it the way it ignores `limit` -- and it exists because every capability-scoped arm is unreadable at a 200-question sample: the sampler gives MR 29 questions there, where a 4-point effect is 1.2 questions'
+        description: 'Population selector: run one capability instead of the file. `all` (the default) is the identity, `MR` grades the 121 multi-session questions, and a comma list unions them. It is a run-level selector rather than arm configuration, so the artifact projection has no entry for it -- but the registration gate still compares it, and a capability-scoped dispatch has to declare it, because 121 questions of `MR` is a different measurement from 500 questions of everything and a number from one population is not comparable to a number from the other. This sentence used to claim the gate ignored it the way it ignores `limit`; neither gate ignored either, and S18''s first pair died on the difference. It exists because every capability-scoped arm is unreadable at a 200-question sample: the sampler gives MR 29 questions there, where a 4-point effect is 1.2 questions'
         required: false
         default: 'all'
         type: string

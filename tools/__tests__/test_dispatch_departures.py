@@ -467,3 +467,102 @@ class TestTheAdmissionGateSwitches:
         out = capsys.readouterr().out
         assert f'{module.ADMISSION_THRESHOLD_VARIABLE} = 0.25 *' in out
         assert f'{module.CONFIDENCE_SIGNAL_VARIABLE} = length *' in out
+
+
+class TestTheInFlightLock:
+    """One dispatch at a time, because the channel is twelve repository variables.
+
+    `main` writes the declaration, the oracle, the conflicts switch, the reply repair, the superseded
+    rendering, the index embedding, the lexical weighting, the session clock, the resolution, the
+    admission threshold, the confidence signal and the judge pin -- before the POST. The workflow
+    reads them when the job **starts**, which is not when it was dispatched, so a second dispatch
+    landing in the gap makes the first run execute a configuration nobody asked for, with an artifact
+    that accurately records what it applied and therefore cannot be read as wrong.
+
+    It had never mattered: every archived experiment is one dispatch at a time, because a pair of arms
+    meant two rounds. `§13.377.9` asks for two arms **at one sha**, which is the first experiment here
+    that cannot be run one dispatch at a time -- and the first one where "dispatch both, they are
+    independent" is false. The lock is the mechanism; the plan's paragraph was the discipline.
+    """
+
+    def test_an_idle_workflow_is_free(self) -> None:
+        module = _module()
+        assert module.in_flight_refusal([]) is None
+
+    def test_completed_runs_do_not_hold_the_channel(self) -> None:
+        # The overwhelmingly common case, and the one a naive "any run in the list" check would fail
+        # on: the last twenty runs of this workflow are completed and none of them is in flight.
+        module = _module()
+        done = [
+            {'id': 44711009470, 'status': 'completed', 'conclusion': 'failure'},
+            {'id': 44689033513, 'status': 'completed', 'conclusion': 'success'},
+        ]
+        assert module.in_flight_refusal(done) is None
+
+    def test_a_queued_run_holds_it_before_anything_is_written(self) -> None:
+        # Queued is the state that matters most: the job has not started, so it has not read the
+        # variables, and an overwrite now would be read by it later.
+        module = _module()
+        refusal = module.in_flight_refusal(
+            [{'id': 1, 'status': 'queued', 'display_title': 'cortex-memory A/B'}]
+        )
+        assert refusal is not None
+        assert '44711009470' not in refusal
+        assert '1 queued' in refusal
+
+    def test_a_running_run_is_named_so_the_reader_knows_what_to_wait_for(self) -> None:
+        module = _module()
+        refusal = module.in_flight_refusal(
+            [{'id': 44711018477, 'status': 'in_progress', 'display_title': 'MR / llm'}]
+        )
+        assert refusal is not None
+        assert '44711018477' in refusal
+        assert 'MR / llm' in refusal
+        # The refusal has to say why, because "wait" with no reason reads as an arbitrary gate.
+        assert 'twelve repository variables' in refusal
+        assert '--allow-concurrent' in refusal
+
+    def test_main_refuses_before_writing_a_single_variable(self, monkeypatch) -> None:
+        # Order is the assertion: a refusal after the first write has already clobbered the run it
+        # was trying to protect.
+        module = _module()
+        written: list[str] = []
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(
+            module,
+            'req',
+            lambda method, path, payload=None, allow_empty=False: (
+                {'workflow_runs': [{'id': 9, 'status': 'in_progress'}]}
+                if '/runs' in path
+                else {'tree': {'sha': 'b' * 40}}
+            ),
+        )
+        monkeypatch.setattr(
+            module, 'write_variable', lambda name, value: written.append(name) or value
+        )
+        with pytest.raises(SystemExit) as raised:
+            module.main(['--no-budget', '--set', 'capability=MR'])
+        assert 'refusing to dispatch' in str(raised.value)
+        assert written == []
+
+    def test_the_override_says_what_it_is_risking_and_proceeds(self, monkeypatch, capsys) -> None:
+        # `--allow-concurrent` exists for a dispatch that means to share the channel. It must not be
+        # the default and it must not be silent about what it does.
+        module = _module()
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(
+            module,
+            'req',
+            lambda method, path, payload=None, allow_empty=False: (
+                {'workflow_runs': [{'id': 9, 'status': 'in_progress'}]}
+                if '/runs' in path
+                else {'tree': {'sha': 'b' * 40}}
+            ),
+        )
+        monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
+        assert module.main(['--no-budget', '--allow-concurrent', '--set', 'capability=MR']) == 0
+        assert 'dispatched' in capsys.readouterr().out
