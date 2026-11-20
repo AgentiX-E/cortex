@@ -196,6 +196,13 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
         "dispatch-time repository variable (`CORTEX_MEMORY_SEMANTIC_CARRY`); the artifact records whether "
         "the layer ran, and the census beside it records what it reached",
     ),
+    "factTimeline": (
+        "identity",
+        "dispatch input of `semantic-carry.yml` (`fact_timeline`) rather than of the arm's own workflow; the "
+        "artifact records what the arm resolved, and `semanticCarry.matched` is the reading that can contradict "
+        "it -- a timeline on a run whose carry reached nothing is a rendering of an empty list, and no field "
+        "other than the reach says so",
+    ),
     "voteCounts": (
         "census",
         "counted after the questions were answered, so two runs of one configuration disagree here; a "

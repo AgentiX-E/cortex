@@ -393,6 +393,34 @@ export type CortexMemoryArmOptions = {
    */
   semanticCarry?: boolean | undefined;
   /**
+   * Whether a served fact also carries the interval it held (§7.2's third rendering channel).
+   *
+   * ## Why the product could ship this and measure nothing
+   *
+   * `factTimeline` landed in `cortex-memory` with an option, a renderer, a manual section and twelve
+   * tests, and it was reachable by every user of the library -- but no arm could request it, so no
+   * artifact this project can produce says whether it helps. That is the exact shape `semanticCarry`
+   * cost six rounds to, and the reason this field exists in the arm's options rather than only in the
+   * product's: **an option nobody measures is an option nobody knows.**
+   *
+   * ## Why it is not a second switch in the product
+   *
+   * The renderer already refuses to print anything unless `semanticCarry` is on, because an interval
+   * describes a fact the prompt does not carry. So the two travel as a **pair**, and `bench/run-ablation.ts`
+   * refuses a dispatch that asks for the timeline without asking for the carry -- the same preflight
+   * shape as `pairing === 'carry'` without `semanticCarry`, and for the same reason: a run that
+   * administered nothing, recorded a switch that says it administered something, is worse than a
+   * failed dispatch.
+   *
+   * ## What it does not cost
+   *
+   * No model call. The intervals come from the two record instants `adjudicateSupersession` already
+   * returned, so the treatment spends prompt characters and nothing else -- which makes it a direct
+   * test of whether a reader uses a date range when it is given one, with no confound from a second
+   * inference.
+   */
+  factTimeline?: boolean | undefined;
+  /**
    * How many times the multi-session route consults the model on one prompt (§13.101).
    *
    * `none` is one consultation, which is the shipped behaviour and the state every archived run is
@@ -1335,6 +1363,11 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
       // answers no question, so no window carried anything, and `false` is the only truthful statement about it.
       // Projecting `true` here would put a treatment on the record of a run that never consulted a model.
       semanticCarry: false,
+      // Projected as `false` for the reason above: a disabled arm renders no prompt, so no interval was
+      // written and `false` is the only truthful statement about it. Reading the variable here would put a
+      // treatment on the record of a run that answered nothing -- and this one is easy to get wrong, because
+      // the option is independent of `semanticCarry` in the product's type even though the renderer gates on it.
+      factTimeline: false,
       // Projected too, because it is a state rather than a treatment: a disabled arm cuts
       // nothing, so the only truthful value is the one that says so.
       turnCutMarker: DEFAULT_TURN_CUT_MARKER,
@@ -1396,6 +1429,7 @@ export function cortextMemoryArmOptions(env: CortexMemoryArmEnv): CortexMemoryAr
     queryExpansion: readQueryExpansion(env[QUERY_EXPANSION_VARIABLE]),
     conflicts: readToggle(env, CONFLICTS_VARIABLE),
     semanticCarry: readToggle(env, SEMANTIC_CARRY_VARIABLE),
+    factTimeline: readToggle(env, FACT_TIMELINE_VARIABLE),
     selfConsistency: readSelfConsistency(env[SELF_CONSISTENCY_VARIABLE]),
     evidenceTurnsPerRecord: readEvidenceBound(env[EVIDENCE_BOUND_VARIABLE]),
     relevanceSignal: readRelevanceSignal(env[RELEVANCE_VARIABLE]),
@@ -2059,6 +2093,16 @@ const CONFLICTS_VARIABLE = 'CORTEX_MEMORY_CONFLICTS';
  * parser that threw would only move the failure from Thursday's artifact to Tuesday's log.
  */
 const SEMANTIC_CARRY_VARIABLE = 'CORTEX_MEMORY_SEMANTIC_CARRY';
+/**
+ * The variable this arm reads for §7.2's timeline rendering.
+ *
+ * Read beside `SEMANTIC_CARRY_VARIABLE` rather than folded into it, because the two answer different
+ * questions and a dispatch has to be able to hold one fixed while it varies the other: the carry decides
+ * whether a fact is rendered at all, the timeline whether it is rendered **with the interval it held**.
+ * Folding them would make "the carry does nothing" and "the carry's rendering does nothing" the same
+ * experiment.
+ */
+const FACT_TIMELINE_VARIABLE = 'CORTEX_MEMORY_FACT_TIMELINE';
 const QUERY_EXPANSION_VARIABLE = 'CORTEX_MEMORY_QUERY_EXPANSION';
 
 /** The variable this arm reads for §18's inline superseded rendering. */
@@ -3235,6 +3279,10 @@ export function toMemoryArmConfig(
     // §E6. Always present for the reason `conflicts` is: `false` is a state a run can be dispatched to, so an
     // artifact that spelled nothing would leave "ran the control" and "predates the field" as the same bytes.
     semanticCarry: options.semanticCarry === true,
+    // §7.2. Always present for the reason `semanticCarry` is, and with the same default: a caller that
+    // builds this object by hand leaves the field `undefined`, and a projection written as
+    // `options.factTimeline` would then put no value on the record while a reader took the absence for `off`.
+    factTimeline: options.factTimeline === true,
     // §18. Always present for the reason `semanticCarry` is, and defaulted rather than required because
     // a caller that builds this object by hand -- several tests do -- leaves the field `undefined`, and
     // a projection written as `options.supersededRendering` would then put no value on the record while

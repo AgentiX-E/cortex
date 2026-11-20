@@ -1065,6 +1065,12 @@ async function main(): Promise<void> {
       // treatment on both sides, and the delta would be zero with a census of zero -- a null result
       // reported for a comparison that never happened.
       ...(carry ? { semanticCarry: true } : {}),
+      // §7.2's third rendering channel. Spread conditionally for the reason every treatment above is, and
+      // **inside** the pair rather than beside it: the product's renderer refuses to print an interval unless
+      // the carry is on, so a `factTimeline: true` on the control side would be an option the product silently
+      // ignores -- and an artifact recording it would describe a treatment that could not have been administered.
+      // The preflight below makes that combination a refused dispatch rather than a silent one.
+      ...(carry && armOptions.factTimeline === true ? { factTimeline: true } : {}),
       // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
       // the key, for the reason every other conditional spread here is: every archived artifact was
       // produced without a pass, and a present-but-inert key would make the option indistinguishable
@@ -1217,6 +1223,19 @@ async function main(): Promise<void> {
   // construction, and the carry state is its argument. A second literal for the control would be a second
   // definition of the arm's 26 options, and the two would agree until one of them was edited.
   const pairing = readArmPairing(process.env['CORTEX_MEMORY_AB']);
+  if (armOptions.factTimeline === true && armOptions.semanticCarry !== true) {
+    // §7.2's preflight, checked BEFORE the pairing rule below so one dispatch names every variable it is
+    // missing. The product's renderer opens with `if (this.#options.semanticCarry !== true) return []`, so this
+    // combination is not a weaker treatment -- it is no treatment, recorded as one. The alternative reading is
+    // worse: a delta of zero with `factTimeline: true` on the artifact, which is a published claim that the
+    // interval was administered and reached nothing.
+    throw new Error(
+      'CORTEX_MEMORY_FACT_TIMELINE=1 renders the interval a served fact held, and the product only renders it ' +
+        'when the carry is on: set both CORTEX_MEMORY_FACT_TIMELINE=1 and CORTEX_MEMORY_SEMANTIC_CARRY=1 ' +
+        '(with CORTEX_MEMORY_AB=carry). Without the carry there is no fact to date, so the run would publish ' +
+        'a treatment that never executed.',
+    );
+  }
   if (pairing === 'carry' && armOptions.semanticCarry !== true) {
     // Refused before the first call, because the run this would produce is the one the whole round exists
     // to make impossible: two sides of one system with the treatment off on both, a delta of zero, and a
@@ -1314,6 +1333,10 @@ async function main(): Promise<void> {
       // it is on. The artifact carries the reach beside this value; the log carries the value alone, which is
       // enough to answer the question an operator asks a scrollback: did my dispatch turn it on?
       `, semanticCarry=${armOptions.semanticCarry === true}` +
+      // §7.2. On the same line as the carry, and as the requested value for the reason the config entry above
+      // gives: the question an operator asks a scrollback is "did my dispatch turn it on", and the answer is the
+      // same number the artifact records.
+      `, factTimeline=${armOptions.factTimeline === true}` +
       // §E6's other two facts, on the same line because they decide what the number above MEANS. `ab`
       // names the pair: under `carry` the baseline is the same cognitive system with this flag off, so
       // `semanticCarry=true` describes the treatment side and the control is implied rather than
@@ -1414,6 +1437,16 @@ async function main(): Promise<void> {
       // artifacts a carry dispatch compares differ by exactly this entry, and a reader of the JSON has no other
       // place to see that the treatment was administered rather than merely dispatched.
       semanticCarry: armOptions.semanticCarry === true,
+      // §7.2. Beside `semanticCarry` because the two are one experiment split in half: the pair a carry
+      // dispatch produces differs by this entry when the timeline is what is being measured, and a JSON reader
+      // has no other place to see that the interval was rendered rather than merely requested.
+      //
+      // The REQUESTED value, not the conjunction with the carry, and the difference matters: `semanticCarry`
+      // is recorded the same way one line up, and the two mechanisms share one reading rule -- the config says
+      // what was asked for, the census says what it reached. Deriving this entry through `&& semanticCarry`
+      // would hide a request the preflight had just refused, so the artifact would explain the failure as
+      // "nobody asked" rather than as "the ask was rejected".
+      factTimeline: armOptions.factTimeline === true,
       // §E6's pair, beside the switch it pairs with. `carry` is the run whose baseline is the same
       // cognitive system with the carry off, so an artifact carrying this flag and `semanticCarry:
       // true` says both halves of what its delta compares -- and an artifact without it is the

@@ -789,6 +789,20 @@ export type MemoryArmConfig = {
    */
   readonly semanticCarry?: boolean | undefined;
   /**
+   * Whether a served fact carried the interval it held (§7.2's third rendering channel).
+   *
+   * Always present, `false` included, for the reason `semanticCarry` is: `false` is a state a dispatch can
+   * choose, so a field that appeared only under treatment would make "ran the control" and "predates the
+   * field" the same row -- and this mechanism's whole history is that ambiguity (an option that shipped,
+   * was documented and was measured by nobody).
+   *
+   * Recorded separately from `semanticCarry` even though the renderer gates on it, because the pair is the
+   * experiment: a carry run with the timeline off and one with it on differ by **exactly this entry**, and
+   * the delta between them is the only reading that can attribute anything to the interval rather than to
+   * the fact the interval describes.
+   */
+  readonly factTimeline?: boolean | undefined;
+  /**
    * What the run did to a turn a later turn replaces: `'off'`, `'mark'` or `'collapse'` (§18).
    *
    * Always present, `off` included, for the reason {@link MemoryArmConfig.conflicts} is: an artifact

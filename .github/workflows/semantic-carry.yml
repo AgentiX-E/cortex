@@ -92,6 +92,11 @@ on:
         required: false
         default: supersede
         type: string
+      fact_timeline:
+        description: 'Whether a served fact also carries the interval it held -- `timeline: 30 dozen [2023/03/12 -> now]`, built from the two record instants the authorisation already returned (docs/USER-MANUAL.md 6.1.2). `1` requires `pairing=carry`: the product refuses to date a fact the prompt does not carry, and the arm refuses the combination before the first call rather than publishing a treatment that never executed. It costs no model call, so the delta it produces is attributable to the interval alone -- which is the one reading no prompt-axis experiment in this campaign has been able to make, because every previous candidate changed how much evidence the reader saw as well as what it said'
+        required: false
+        default: '0'
+        type: string
       capability:
         description: 'Population selector, as in the arm: `KU` (the default) grades the 78 knowledge-update questions where a supersession can be the failure mode at all; `all` is the registered 500 and the instrument S12 is registered on'
         required: false
@@ -384,6 +389,13 @@ jobs:
           CORTEX_MEMORY_PROMPT_CONTRACT: evidence-blocks-unsourced
           CORTEX_MEMORY_ASK: verbatim-acts
           CORTEX_MEMORY_REVIEW_PASS: ${{ inputs.review_pass }}
+          # Section 7.2's third rendering channel. An input of its own rather than a value of `pairing`,
+          # because the pair `carry` produces is the carry's instrument and this is a different experiment:
+          # the two sides of a timeline dispatch are both carrying, and differ by whether the served fact is
+          # dated. Folding it into `pairing` would have made "the carry does nothing" and "the carry's
+          # rendering does nothing" the same dispatch, which is the collapse this campaign spent six rounds
+          # undoing for `semanticCarry` itself.
+          CORTEX_MEMORY_FACT_TIMELINE: ${{ inputs.fact_timeline }}
           CORTEX_MEMORY_SELF_CONSISTENCY: none
           CORTEX_MEMORY_QUERY_EXPANSION: none
           CORTEX_MEMORY_RELEVANCE: retrieval-anchored

@@ -80,6 +80,11 @@ INPUTS: dict[str, str] = {
     # `supersede` is required by `pairing=carry` (absorption happens only in that pass). `bare` is the
     # registered preset and the pass `S10` measures under.
     "review_pass": "supersede",
+    # §7.2's timeline rendering. `0` is every archived artifact's state, and the two sides of a dispatch that
+    # set it would be the same carrying system with a dated fact against an undated one. It is a value of its own
+    # rather than an inference from `pairing` for the reason the arm's option is: the carry's own instrument and
+    # the carry's rendering are two experiments, and the preflight refuses `1` without `pairing=carry`.
+    "fact_timeline": "0",
     "capability": "KU",
     "limit": "0",
     # Two repetitions is the screening scale (78 corpora x 2 windows x 2 repetitions = 312 answers
