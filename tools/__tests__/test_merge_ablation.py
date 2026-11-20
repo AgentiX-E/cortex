@@ -363,3 +363,95 @@ class TestTheRefusals:
         result = cli("--dir", str(tmp_path), "--shards", "0", "--out", str(tmp_path / "m.json"))
         assert result.returncode == 1
         assert "not a positive whole number" in result.stderr
+
+
+class TestOneRepetition:
+    """The screening pass, which is the cheapest dispatch and the one this merge refused.
+
+    `ablation.ts` writes `baselineCorrectByRun` only when `runs > 1`, and the reason is sound: at one
+    repetition the vector is a second copy of `baselineCorrect`, and two arrays that must agree are two
+    arrays that can disagree. The merge then required the vector unconditionally, so every screening
+    dispatch -- `--ablation-runs 1`, half the cost of the pair, the pass an experiment starts with --
+    reached the last step of the workflow and was refused there, **after** every answer had been paid
+    for. Run `44676731032` is that failure: nine steps green, the pair answered, and a merge that refused
+    the artifact whose only fault was being cheap.
+
+    The repair cannot be "require the field anyway" (it would keep refusing the pass) and cannot be "also
+    write the field at one repetition" (it would create the second expression `ablation.ts` refuses). It
+    is a rebuild: at one repetition there is exactly one possible bitstring, and the artifact already
+    carries it as booleans. The rebuild is therefore not a guess -- and it is recorded per shard, so a
+    reader of the merged document can tell a vector that was read from one that was reconstructed.
+    """
+
+    def one_run(self, index, shards, prefixes):
+        document = artifact(index, shards, prefixes, runs=1)
+        # The real shape: no per-run arrays at all, and the deprecated mirrors present because every
+        # reader of a single artifact reads them.
+        document["ablation"] = {
+            "baselineCorrect": [True, False],
+            "featureCorrect": [True, True],
+        }
+        return document
+
+    def test_a_single_repetition_shard_rebuilds_its_one_bitstring(self, tmp_path):
+        result, out = merged(
+            tmp_path,
+            2,
+            [self.one_run(0, 2, ["a"]), self.one_run(1, 2, ["b"])],
+        )
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert document["runs"] == 1
+        # One corpus per shard, two windows each: two questions per shard, four merged.
+        assert document["ablation"]["baselineCorrectByRun"] == ["1010"]
+        assert document["ablation"]["featureCorrectByRun"] == ["1111"]
+        assert document["questionCount"] == 4
+        # The reading the screening pass exists to produce.
+        assert document["merged"]["readings"]["baselineAccuracyPerRun"] == [0.5]
+        assert document["merged"]["readings"]["featureAccuracyPerRun"] == [1.0]
+
+    def test_the_rebuild_is_recorded_so_it_is_not_silent(self, tmp_path):
+        # A merged document whose vectors were reconstructed must say so: the two paths read different
+        # fields, and a reader comparing two merges should not have to infer which one it holds.
+        result, out = merged(tmp_path, 1, [self.one_run(0, 1, ["a"])])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        parts = document["merged"]["parts"]
+        assert parts[0]["bitstringsFrom"] == "ablation.baselineCorrect+ablation.featureCorrect"
+
+    def test_a_multi_repetition_shard_that_names_no_rebuild_stays_silent(self, tmp_path):
+        # The field is absent rather than `null` on the path that needs no repair, for the reason every
+        # optional field in this artifact is: a key holding `undefined` is the state a reader cannot tell
+        # from absent, and the difference here is the difference between "read" and "rebuilt".
+        result, out = merged(tmp_path, 2, [artifact(0, 2, ["a"]), artifact(1, 2, ["b"])])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert all("bitstringsFrom" not in part for part in document["merged"]["parts"])
+
+    def test_one_repetition_with_no_mirror_either_is_still_refused(self, tmp_path):
+        # Both paths absent is a build that wrote neither: the questions were answered and the verdicts
+        # are not in the artifact. Rebuilding from nothing would produce a bitstring of zeroes, which is
+        # the reading "every answer was wrong".
+        document = artifact(0, 2, ["a"], runs=1)
+        document["ablation"] = {}
+        result, out = merged(tmp_path, 2, [document, artifact(1, 2, ["b"], runs=1)])
+        assert result.returncode == 1
+        assert "carries neither `baselineCorrectByRun`" in result.stderr
+        assert "1 repetition" in result.stderr
+
+    def test_a_mirror_that_is_not_boolean_is_refused_rather_than_read_as_false(self, tmp_path):
+        # `baselineCorrect` is written as booleans. A string `"1"` is an older or hand-edited artifact,
+        # and coercing it with `=== true` would turn every correct answer into a wrong one -- a merge
+        # that reports 0% accuracy for a perfect run, with nothing in the document saying why.
+        document = self.one_run(0, 2, ["a"])
+        document["ablation"]["baselineCorrect"] = ["1", "0"]
+        result, out = merged(tmp_path, 2, [document, self.one_run(1, 2, ["b"])])
+        assert result.returncode == 1
+        assert "not boolean" in result.stderr
+
+    def test_a_rebuilt_bitstring_must_still_match_its_own_roster(self, tmp_path):
+        document = self.one_run(0, 2, ["a"])
+        document["ablation"]["baselineCorrect"] = [True, False, True]
+        result, out = merged(tmp_path, 2, [document, self.one_run(1, 2, ["b"])])
+        assert result.returncode == 1
+        assert "carries 3 verdicts for 2 questions" in result.stderr

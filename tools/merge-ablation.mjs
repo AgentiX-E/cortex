@@ -304,9 +304,58 @@ function merge(dir, shards) {
 
   const runs = reference.document.runs;
   const vectors = { baseline: [], feature: [] };
+  // Which shards needed their bitstrings rebuilt, and from which field. Recorded so a reader can tell a
+  // vector that was read from one that was reconstructed: the two come from different fields, and a
+  // comparison across two merges should not have to infer which of the two it is holding.
+  const rebuiltFrom = new Map();
   for (const side of ['baseline', 'feature']) {
     const key = `${side}CorrectByRun`;
-    const perShard = ordered.map((part) => part.document.ablation[key]);
+    const mirror = `${side}Correct`;
+    // ## Why a single-repetition shard may arrive without the per-run array
+    //
+    // `ablation.ts` writes `*.CorrectByRun` only when `runs > 1`, and the reason is sound: at one
+    // repetition the vector would be a second copy of the mirror, and two arrays that must agree are two
+    // arrays that can disagree. This merge then required the field unconditionally, so a screening
+    // dispatch -- the cheapest pass there is, and the one an experiment starts with -- answered its whole
+    // population and was refused here, after paying for it (run `44676731032`).
+    //
+    // The rebuild is not a guess: at one repetition there is exactly one possible bitstring, and the
+    // artifact already carries it as booleans. It is refused when the mirror is absent (nothing was
+    // recorded, and a zero-filled vector would read as "every answer was wrong") and when the mirror is
+    // not boolean (a string `"1"` coerced with `=== true` would invert every correct answer, and the
+    // merged document would report a perfect run as 0% with nothing saying why).
+    const perShard = ordered.map((part) => {
+      const list = part.document.ablation[key];
+      if (Array.isArray(list)) return list;
+      if (runs !== 1) {
+        throw new Error(
+          `a shard does not carry ${runs} \`${key}\` bitstrings, so its verdicts are not aligned ` +
+            'with the repetitions the report declares.',
+        );
+      }
+      const bits = part.document.ablation[mirror];
+      if (!Array.isArray(bits)) {
+        throw new Error(
+          `a shard carries neither \`${key}\` nor \`${mirror}\`, so its verdicts are not in the ` +
+            'artifact at all. At 1 repetition the merge rebuilds the one bitstring from the mirror; ' +
+            'with both absent there is nothing to rebuild from, and a vector of zeroes would publish ' +
+            'every answer as wrong.',
+        );
+      }
+      if (bits.some((bit) => typeof bit !== 'boolean')) {
+        throw new Error(
+          `shard ${part.shard.index} carries a \`${mirror}\` that is not boolean, so the one ` +
+            'bitstring this merge would rebuild from it cannot be read without inverting answers. ' +
+            'Refusing rather than coercing.',
+        );
+      }
+      const prior = rebuiltFrom.get(part.shard.index);
+      rebuiltFrom.set(
+        part.shard.index,
+        prior === undefined ? `ablation.${mirror}` : `${prior}+ablation.${mirror}`,
+      );
+      return [bits.map((bit) => (bit ? '1' : '0')).join('')];
+    });
     if (perShard.some((list) => !Array.isArray(list) || list.length !== runs)) {
       throw new Error(
         `a shard does not carry ${runs} \`${key}\` bitstrings, so its verdicts are not aligned ` +
@@ -315,8 +364,12 @@ function merge(dir, shards) {
     }
     // Checked per shard and before concatenation, so the message names the artifact that is wrong
     // rather than the sum it produced.
-    for (const part of ordered) {
-      for (const [run, bits] of part.document.ablation[key].entries()) {
+    //
+    // The rebuilt list is the one checked, not `part.document.ablation[key]`: on the single-repetition
+    // path that field does not exist, and this loop is where a rebuilt vector has to face the same
+    // roster check as a read one.
+    for (const [position, part] of ordered.entries()) {
+      for (const [run, bits] of perShard[position].entries()) {
         if (bits.length !== part.document.questions.length) {
           throw new Error(
             `shard ${part.shard.index} run ${run} carries ${bits.length} verdicts for ` +
@@ -380,6 +433,10 @@ function merge(dir, shards) {
         questions: part.document.questions.length,
         corpora: part.document.population.corpora,
         path: part.path,
+        // Absent on the path that read the per-run arrays, and named on the path that rebuilt them.
+        ...(rebuiltFrom.has(part.shard.index)
+          ? { bitstringsFrom: rebuiltFrom.get(part.shard.index) }
+          : {}),
       })),
       // The one number a human looks for first, labelled so it cannot be read as `ablation.delta`:
       // a difference of two ratios over the merged population, not the arm's paired statistic.
