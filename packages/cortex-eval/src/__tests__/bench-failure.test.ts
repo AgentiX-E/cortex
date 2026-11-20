@@ -369,3 +369,43 @@ describe('the embedding latch in the failure record', () => {
     expect(text).not.toContain('embedding:');
   });
 });
+
+/**
+ * The chat latch, in the same record and on its own line.
+ *
+ * ## Why a second line rather than a second field on the first
+ *
+ * The two accounts are separate. `R2` is the case: retrieval was paying normally while the judge's provider
+ * refused, so a record that named one latch would have to choose which of two true statements to print. The
+ * pair is the diagnosis -- embeddings open, chat closed means the answers existed and the verdicts could not.
+ */
+describe('the chat latch in the failure record', () => {
+  it('prints the closure and what it saved, under its own label', () => {
+    const text = describeFailure({
+      progress: AT_QUESTION_ONE,
+      error: new Error('no quota left'),
+      llmLatch: {
+        calls: 12,
+        refusedByProvider: 1,
+        refusedAfterLatch: 32,
+        closure: { atCall: 12, status: 429, detail: '{"error":{"code":"1113"}}' },
+      },
+    });
+
+    expect(text).toContain('llm: LATCHED at call 12 (status 429)');
+    expect(text).toContain('32 refused without a request');
+    // The embedding line is absent, and that absence is a fact: this record says the chat account stopped it.
+    expect(text).not.toContain('embedding:');
+  });
+
+  it('says a healthy chat account made no quota refusal', () => {
+    const text = describeFailure({
+      progress: AT_QUESTION_ONE,
+      error: new Error('boom'),
+      llmLatch: { calls: 495, refusedByProvider: 0, refusedAfterLatch: 0, closure: null },
+    });
+
+    expect(text).toContain('llm: no quota refusal in 495 call(s)');
+    expect(text).not.toContain('LATCHED');
+  });
+});

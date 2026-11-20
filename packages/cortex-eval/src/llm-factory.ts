@@ -36,6 +36,7 @@ import {
   type ReaderPacing,
 } from './reader-transport.js';
 import { ALL_TURN_CAP_ROUTES, TURN_CAP_ROUTES } from './turn-cap-routes.js';
+import { latchLlmQuota } from './llm-latch.js';
 
 /**
  * The environment the reader reads.
@@ -312,16 +313,22 @@ function buildReader(
   pacing: ReaderPacing,
 ): LLM {
   const thinking: ThinkingMode = { type: mode };
-  const llm = new OpenAICompatibleLLM({
-    baseUrl: identity.baseUrl,
-    apiKey,
-    model: identity.model,
-    thinking,
-    // Composed rather than assembled here: the deadline, the budget and the interval have a
-    // relationship (`resolveReaderTransport` states and tests it), and three spreads at the call
-    // site would put that relationship one refactor away from being nobody's job.
-    ...resolveReaderTransport(thinking, pacing),
-  });
+  // Latched at construction, under the temperature wrapper rather than over it: the latch counts requests,
+  // and a wrapper that re-asked through it would make the count a property of the wrapper's policy. The
+  // closure is process-wide (`llm-latch.ts` states why a reader and a judge must share one), so a judge that
+  // cannot pay stops the reader too.
+  const llm = latchLlmQuota(
+    new OpenAICompatibleLLM({
+      baseUrl: identity.baseUrl,
+      apiKey,
+      model: identity.model,
+      thinking,
+      // Composed rather than assembled here: the deadline, the budget and the interval have a
+      // relationship (`resolveReaderTransport` states and tests it), and three spreads at the call
+      // site would put that relationship one refactor away from being nobody's job.
+      ...resolveReaderTransport(thinking, pacing),
+    }),
+  );
   // Wrapped only when the environment asks for a temperature. The absent path stays absent on
   // purpose: §13.114 records that every reading before §13.119 was taken with no temperature in
   // the request, and a factory that injected `0` here would retro-fit determinism onto those
@@ -477,14 +484,16 @@ export function createJudgeFromEnv(env: LlmEnv): LLM {
   // every question of a 500-question pass. The original environment is read for it, because a
   // credential does not depend on which model the selection names.
   const apiKey = requireKey(env, identity.provider);
-  const llm = new OpenAICompatibleLLM({
-    baseUrl: identity.baseUrl,
-    apiKey,
-    model: identity.model,
-    // Never a thinking judge: the verdict is one token, and the ten-fold completion cost
-    // `41546569106` measured for thinking on a reader would be paid 342 times a run for a bit.
-    thinking: { type: 'disabled' },
-    ...resolveJudgeTransport(readReaderPacing(env)),
-  });
+  const llm = latchLlmQuota(
+    new OpenAICompatibleLLM({
+      baseUrl: identity.baseUrl,
+      apiKey,
+      model: identity.model,
+      // Never a thinking judge: the verdict is one token, and the ten-fold completion cost
+      // `41546569106` measured for thinking on a reader would be paid 342 times a run for a bit.
+      thinking: { type: 'disabled' },
+      ...resolveJudgeTransport(readReaderPacing(env)),
+    }),
+  );
   return identity.temperature === null ? llm : withTemperature(llm, identity.temperature);
 }

@@ -40,6 +40,7 @@
 
 import type { BenchmarkProgress } from './benchmark.js';
 import type { EmbeddingLatchReading } from './embedding-latch.js';
+import type { LlmQuotaLatchReading } from './llm-latch.js';
 
 /**
  * The four fields `RetryExhaustion` carries that a reader needs, and no more.
@@ -158,6 +159,14 @@ export function describeFailure(input: {
    * built", and a reading is the counter block.
    */
   readonly latch?: EmbeddingLatchReading | null;
+  /**
+   * The **chat** quota latch, in the same three states and for the same reason.
+   *
+   * A separate line rather than a field on `latch`, because the two accounts are separate: a run can die with
+   * the embedding latch open and the chat latch closed, and that pair is the whole diagnosis -- retrieval was
+   * fine, the answers could not be graded, and the run stopped on the second fact.
+   */
+  readonly llmLatch?: LlmQuotaLatchReading;
 }): string {
   const lines: string[] = [];
 
@@ -190,6 +199,17 @@ export function describeFailure(input: {
         : `embedding: LATCHED at call ${closure.atCall} (status ${closure.status}) — ` +
             `${input.latch.refusedByProvider} provider refusal(s), ` +
             `${input.latch.refusedAfterLatch} refused without a request`,
+    );
+  }
+
+  if (input.llmLatch !== undefined) {
+    const { closure } = input.llmLatch;
+    lines.push(
+      closure === null
+        ? `llm: no quota refusal in ${input.llmLatch.calls} call(s)`
+        : `llm: LATCHED at call ${closure.atCall} (status ${closure.status}) — ` +
+            `${input.llmLatch.refusedByProvider} provider refusal(s), ` +
+            `${input.llmLatch.refusedAfterLatch} refused without a request`,
     );
   }
 

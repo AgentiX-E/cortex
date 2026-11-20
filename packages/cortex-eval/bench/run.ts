@@ -22,6 +22,7 @@ import {
   describeEmbeddingCachePersist,
   describeFailure,
   quotaLatchReading,
+  llmQuotaLatchReading,
   deserializeEmbeddingCache,
   embeddingBatchIntervalMs,
   embeddingSourceStats,
@@ -1093,7 +1094,12 @@ main().catch((err) => {
   // `progress: null` rather than `undefined`, because this entry point drives ten ablations in sequence
   // without a progress callback: "no question was started" is not a statement it can make, and the summary
   // has a line for the honest one.
-  const summary = describeFailure({ progress: null, error: err, latch: quotaLatchReading() });
+  const summary = describeFailure({
+    progress: null,
+    error: err,
+    latch: quotaLatchReading(),
+    llmLatch: llmQuotaLatchReading(),
+  });
   // Emit a GitHub Actions error annotation (single line) so the failure reason
   // is visible through the check-runs API even when the raw log stream is
   // unavailable. Workflow-command special characters are percent-escaped.

@@ -64,6 +64,7 @@ export { deadlineLossCeiling, describeTransportLosses, lostToTransport } from '.
 export { readWorkers } from './worker-pool.js';
 export { describeFailure } from './bench-failure.js';
 export { quotaLatchReading, type EmbeddingLatchReading } from './embedding-latch.js';
+export { llmQuotaLatchReading, type LlmQuotaLatchReading } from './llm-latch.js';
 export { drawUnjudged, type Draw, type DrawableRow } from './a3-draw.js';
 export {
   createLlmJudge,

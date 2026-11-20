@@ -5,8 +5,14 @@
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
 import { parseJson } from '../json.js';
 import { sharedRequestGate, type RequestPacer } from '../pacing.js';
-import { retryableFetchWithStats, withExhaustion, type RetryRefusal } from '../retry.js';
+import {
+  isQuotaExhausted,
+  retryableFetchWithStats,
+  withExhaustion,
+  type RetryRefusal,
+} from '../retry.js';
 import { parseUsage, recordUsage } from '../usage.js';
+import { LlmQuotaExhaustedError } from './quota-error.js';
 
 /** DeepSeek thinking-mode toggle (also honoured by compatible providers). */
 export type ThinkingMode = { type: 'enabled' | 'disabled' };
@@ -144,6 +150,12 @@ export class OpenAICompatibleLLM implements LLM {
       const bodyText = await res.text().catch(() => '');
       const detail = bodyText ? ` — ${bodyText.slice(0, 400)}` : '';
       const message = `LLM request failed: ${res.status} ${res.statusText}${detail}${describeRefusal(outcome.refusal)}`;
+      // A balance refusal is typed before the generic branch, and before the content refusal, because the two
+      // statuses cannot overlap (`400`/`422` there, `429` here) and only this one is a fact that will not
+      // change: `retry.ts` has already declined to retry it, and the caller above may stop the run.
+      if (isQuotaExhausted(res.status, bodyText)) {
+        throw new LlmQuotaExhaustedError(message, res.status, bodyText.slice(0, 400));
+      }
       if (isContentRefusal(res.status, bodyText)) {
         // Thrown before the generic branch so that the type, and not the wording, is what the
         // caller keys on. See `ProviderContentRefusal` for the pass this cost.

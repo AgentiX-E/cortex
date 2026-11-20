@@ -71,6 +71,13 @@ export {
 export { OpenAIEmbedding, type OpenAIEmbeddingOptions } from './embedding/openai.js';
 export { EmbeddingQuotaExhaustedError } from './embedding/quota-error.js';
 /**
+ * The chat provider's "this account cannot pay", typed so a run can stop rather than re-learn it.
+ *
+ * The consumer is `cortex-eval`'s `latchLlmQuota`: it closes on this class and refuses later calls without a
+ * request, which is the chat-side half of the repair `latchQuota` makes for embeddings.
+ */
+export { LlmQuotaExhaustedError } from './llm/quota-error.js';
+/**
  * The embedder cache is re-exported because it is a **wrapping** decision, and a wrapper a caller cannot name is
  * a wrapper a caller cannot put in a report. The implementation lives in `cortex-core` because the product's
  * index needs the identical algorithm without an `EmbeddingModel` to hand; this line keeps the published surface

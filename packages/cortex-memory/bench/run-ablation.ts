@@ -70,6 +70,7 @@ import {
   // published by the factory rather than closed over here because this handler runs when `main`
   // threw, outside the scope where the embedding was built.
   quotaLatchReading,
+  llmQuotaLatchReading,
   // §14.22's width. Read here rather than inside the arm: it is a property of the invocation, not
   // of the registered configuration, and the registration check compares the latter field for field.
   readWorkers,
@@ -1705,6 +1706,7 @@ main().catch((error: unknown) => {
     // question in flight says how far the pass got, and the latch says how many of the requests
     // after the first refusal were spent discovering the same fact.
     latch: quotaLatchReading(),
+    llmLatch: llmQuotaLatchReading(),
   });
   writeFileSync('benchmark-error.log', `${summary}\n${message}\n`);
   // Write what the run MEASURED, not only what it embedded.
