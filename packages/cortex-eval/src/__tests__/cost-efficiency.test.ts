@@ -94,6 +94,7 @@ function snapshot(promptTokens: number): UsageSnapshot {
     promptTokens,
     completionTokens: 2_141_529,
     cacheHitPromptTokens: 23_847_819,
+    answerChars: 0,
   };
 }
 

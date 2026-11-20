@@ -126,8 +126,8 @@ describe('the process ledger', () => {
   it('sums what was priced and counts what was not', () => {
     expect(
       spend([
-        { promptTokens: 100, completionTokens: 10, cacheHitPromptTokens: 40 },
-        { promptTokens: 200, completionTokens: 20, cacheHitPromptTokens: 0 },
+        { promptTokens: 100, completionTokens: 10, cacheHitPromptTokens: 40, answerChars: 70 },
+        { promptTokens: 200, completionTokens: 20, cacheHitPromptTokens: 0, answerChars: 5 },
         // A response that carried no usage block. It still cost money; the ledger has to
         // say "one call, unpriced" rather than drop the call or count it as free.
         undefined,
@@ -138,6 +138,7 @@ describe('the process ledger', () => {
       promptTokens: 300,
       completionTokens: 30,
       cacheHitPromptTokens: 40,
+      answerChars: 75,
     });
   });
 
@@ -150,6 +151,7 @@ describe('the process ledger', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      answerChars: 0,
     });
   });
 
@@ -175,6 +177,7 @@ describe('usageDelta', () => {
       promptTokens: 100,
       completionTokens: 10,
       cacheHitPromptTokens: 5,
+      answerChars: 100,
     };
     const after = {
       calls: 9,
@@ -182,6 +185,7 @@ describe('usageDelta', () => {
       promptTokens: 700,
       completionTokens: 70,
       cacheHitPromptTokens: 65,
+      answerChars: 900,
     };
     expect(usageDelta(before, after)).toEqual({
       calls: 6,
@@ -189,6 +193,7 @@ describe('usageDelta', () => {
       promptTokens: 600,
       completionTokens: 60,
       cacheHitPromptTokens: 60,
+      answerChars: 800,
     });
   });
 
@@ -199,6 +204,7 @@ describe('usageDelta', () => {
       promptTokens: 8,
       completionTokens: 2,
       cacheHitPromptTokens: 1,
+      answerChars: 12,
     };
     expect(usageDelta(snapshot, snapshot)).toEqual({
       calls: 0,
@@ -206,6 +212,7 @@ describe('usageDelta', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      answerChars: 0,
     });
   });
 });
@@ -267,13 +274,19 @@ describe('a ledger of its own', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      answerChars: 0,
     });
   });
 
   it('accumulates into itself and leaves the process ledger alone', () => {
     const tally = createUsageTally();
     const before = llmUsage();
-    tally.record({ promptTokens: 300, completionTokens: 30, cacheHitPromptTokens: 120 });
+    tally.record({
+      promptTokens: 300,
+      completionTokens: 30,
+      cacheHitPromptTokens: 120,
+      answerChars: 44,
+    });
     tally.record(undefined);
 
     expect(tally.snapshot()).toEqual({
@@ -282,6 +295,7 @@ describe('a ledger of its own', () => {
       promptTokens: 300,
       completionTokens: 30,
       cacheHitPromptTokens: 120,
+      answerChars: 44,
     });
     // The whole point of a separate ledger: a side's spend and the run's spend are two readings, so
     // the run's must not move when a side is credited.
@@ -291,6 +305,7 @@ describe('a ledger of its own', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      answerChars: 0,
     });
   });
 

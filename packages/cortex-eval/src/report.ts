@@ -3211,6 +3211,20 @@ function costEfficiencyLines(efficiency: CostEfficiency, runs?: number): string[
  * its prefix cache. That share is the quantity that prices a prompt-ordering change, and
  * a run that reports it makes the next dispatch's cost predictable before it is paid.
  */
+/**
+ * Characters of answer per billed completion token, or `--` when there is nothing to divide.
+ *
+ * Two absences, both real: a run whose calls all went unpriced has no `completionTokens` to divide by, and a
+ * run that paid for answers and shipped none has `0` characters -- an infinite ratio, which is a correct
+ * reading and not a number worth printing. The docblock above `llmUsageLines` states why this ratio and not a
+ * currency figure: a price is a fact about a contract, and a ratio is a fact about the run.
+ */
+function deliveryRatio(usage: UsageSnapshot): string {
+  if (usage.completionTokens === 0) return '--';
+  if (usage.answerChars === 0) return '0 (answers billed, none delivered)';
+  return (usage.answerChars / usage.completionTokens).toFixed(2);
+}
+
 function llmUsageLines(
   usage: UsageSnapshot,
   bySide?: UsageBySide,
@@ -3229,9 +3243,18 @@ function llmUsageLines(
     `| prompt tokens | ${usage.promptTokens.toLocaleString('en-US')} |`,
     `| completion tokens | ${usage.completionTokens.toLocaleString('en-US')} |`,
     `| prompt tokens served from the prefix cache | ${usage.cacheHitPromptTokens.toLocaleString('en-US')} |`,
+    `| characters of answer delivered | ${usage.answerChars.toLocaleString('en-US')} |`,
     '',
     `- Prefix-cache share of the prompt: **${(hitShare * 100).toFixed(2)}%** ` +
       `(${usage.cacheHitPromptTokens.toLocaleString('en-US')} of ${usage.promptTokens.toLocaleString('en-US')})`,
+    // The delivery ratio, and the reason it is rendered at all: it is the one number that separates a
+    // contract that makes the model write a work product nobody reads from a provider billing generation
+    // the caller never receives. `S17` billed 2,938 completion tokens per call against 513 characters of
+    // answer, and no field in this table could say so.
+    //
+    // Absent rather than infinite when nothing was delivered: a run that shipped no answer bought no
+    // reading, and `--` is the shape the rest of this renderer uses for that state.
+    `- Answer delivered per completion token: **${deliveryRatio(usage)}**`,
   ];
   if (bySide !== undefined) {
     // Rendered only when it closes. A negative residual means the two snapshots did not come from

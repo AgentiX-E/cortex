@@ -45,12 +45,21 @@ function usage(promptTokens: number, calls = 1) {
     promptTokens,
     completionTokens: calls,
     cacheHitPromptTokens: Math.floor(promptTokens / 2),
+    // One character of answer per completion token, so every closure assertion below can read the field as
+    // arithmetic rather than as a constant that any implementation would satisfy.
+    answerChars: calls,
   };
 }
 
 describe('usage arithmetic', () => {
   it('sums field by field, not by total', () => {
-    const a = { ...usage(100), calls: 2, completionTokens: 3, cacheHitPromptTokens: 50 };
+    const a = {
+      ...usage(100),
+      calls: 2,
+      completionTokens: 3,
+      cacheHitPromptTokens: 50,
+      answerChars: 2,
+    };
     const b = { ...usage(1), calls: 1, completionTokens: 7, cacheHitPromptTokens: 0 };
 
     // `bothSides` is the module's own sum of the two sides, so the closure test below and this
@@ -61,6 +70,7 @@ describe('usage arithmetic', () => {
       promptTokens: 101,
       completionTokens: 10,
       cacheHitPromptTokens: 50,
+      answerChars: 3,
     });
   });
 
@@ -73,6 +83,10 @@ describe('usage arithmetic', () => {
     // The closure itself: nothing is left over and nothing is counted twice.
     expect(bothSides(bySide).promptTokens + residual.promptTokens).toBe(total.promptTokens);
     expect(bothSides(bySide).calls + residual.calls).toBe(total.calls);
+    // Delivery closes on the same rule as spend. The field was added to `plusUsage` and to `minusUsage`'s field
+    // list together, and this assertion is what makes a future member that one of them forgets fail here
+    // rather than in a residual nobody re-adds.
+    expect(bothSides(bySide).answerChars + residual.answerChars).toBe(total.answerChars);
     expect(residual.promptTokens).toBe(100);
   });
 
@@ -104,6 +118,7 @@ describe('usage arithmetic', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      answerChars: 0,
     });
     expect(
       bothSides({ baseline: createUsageTally().snapshot(), feature: usage(5, 1) }).promptTokens,

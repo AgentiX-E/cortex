@@ -98,6 +98,9 @@ const PRICED: UsageSnapshot = {
   promptTokens: 100_000,
   completionTokens: 500,
   cacheHitPromptTokens: 33_333,
+  // 250 characters against 500 completion tokens: the ratio the delivery line renders, chosen so the expected
+  // string is `0.50` rather than a coincidence of rounding.
+  answerChars: 250,
 };
 
 describe('attachLlmUsage', () => {
@@ -119,6 +122,7 @@ describe('attachLlmUsage', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      answerChars: 0,
     });
     // Identity, not merely equality: an attached zeroed object would serialize into the
     // artifact and every reader would take it for a measurement of zero spend.
@@ -135,6 +139,7 @@ describe('attachLlmUsage', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      answerChars: 0,
     };
     expect(attachLlmUsage(report(), unpriced).llmUsage).toEqual(unpriced);
   });
@@ -150,6 +155,43 @@ describe('the provider-spend section', () => {
     // The share is computed from the two numbers the provider published, so a reader can
     // re-derive it: 33,333 of 100,000.
     expect(md).toContain('33.33%');
+    expect(md).toContain('| characters of answer delivered | 250 |');
+  });
+
+  it('renders characters per completion token, because the ratio is what prices a verbose contract', () => {
+    // `S17`'s feature arm billed 2,938 completion tokens per call and delivered 513 characters of answer
+    // while its baseline billed 82 on the same client -- a 36-fold gap that no field in this table could
+    // express. This line is that field: 250 characters over 500 completion tokens.
+    expect(formatAblationReport(attachLlmUsage(report(), PRICED))).toContain(
+      'Answer delivered per completion token: **0.50**',
+    );
+  });
+
+  it('says "none delivered" rather than an infinite ratio when answers were billed and none arrived', () => {
+    // A refusal, a truncation at `max_tokens: 1`, a proxy rewriting the body: all arrive as no content
+    // beside a real completion count. The ratio is then genuinely unbounded, and printing a number would
+    // invent a denominator.
+    const md = formatAblationReport(
+      attachLlmUsage(report(), { ...PRICED, completionTokens: 400, answerChars: 0 }),
+    );
+    expect(md).toContain('0 (answers billed, none delivered)');
+  });
+
+  it('prints `--` when nothing was billed, because there is nothing to divide by', () => {
+    // The unpriced run: 40 calls, no `usage` block, so `completionTokens` is zero. A zero denominator is
+    // "unmeasured", which this file's neighbours already distinguish from "zero", and the renderer must
+    // not be the layer that forgets it.
+    const md = formatAblationReport(
+      attachLlmUsage(report(), {
+        calls: 40,
+        unpricedCalls: 40,
+        promptTokens: 0,
+        completionTokens: 0,
+        cacheHitPromptTokens: 0,
+        answerChars: 0,
+      }),
+    );
+    expect(md).toContain('Answer delivered per completion token: **--**');
   });
 
   it('issues no warning when every call was priced', () => {
@@ -166,6 +208,7 @@ describe('the provider-spend section', () => {
         promptTokens: 0,
         completionTokens: 0,
         cacheHitPromptTokens: 0,
+        answerChars: 0,
       }),
     );
     expect(md).toContain('**NO PROVIDER COST WAS REPORTED**');

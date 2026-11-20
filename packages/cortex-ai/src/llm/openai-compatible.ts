@@ -97,11 +97,21 @@ export class OpenAICompatibleLLM implements LLM {
     // counter could be forgotten. The block is passed on unparsed so `parseUsage`
     // owns every decision about what counts as a usable one -- including the decision
     // that a response without a block is an UNPRICED call rather than a free one.
-    recordUsage(parseUsage(json?.usage));
     const content = json?.choices?.[0]?.message?.content;
     // `typeof` rather than `??`: a body whose `content` is a number is a proxy rewriting the
     // response, and returning it would hand `parseAnswer` a value it never expects.
-    return typeof content === 'string' ? content : '';
+    const answer = typeof content === 'string' ? content : '';
+    // The content length rides ON the usage record rather than beside it, because the two are one fact
+    // about one response and a second counter would be a second place for "what arrived" to be defined.
+    // Measured here for the reason the block above is recorded here: this is the one hop that holds both
+    // halves -- what the provider charged and what it handed back -- and `parseUsage` cannot fill this in
+    // because no provider puts it in the response body.
+    //
+    // `answer.length` after the type check, not `content.length`: a body whose `content` is a number must
+    // contribute nothing rather than a stringified length, or a proxy's rewrite would appear as delivery.
+    const usage = parseUsage(json?.usage);
+    recordUsage(usage === undefined ? undefined : { ...usage, answerChars: answer.length });
+    return answer;
   }
 
   async completeStructured<T>(

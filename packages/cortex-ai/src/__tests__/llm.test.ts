@@ -207,6 +207,10 @@ describe('OpenAICompatibleLLM (real local server)', () => {
       promptTokens: 12_000,
       completionTokens: 40,
       cacheHitPromptTokens: 9_000,
+      // The delivered half of the same response. `priced` is six characters and forty tokens were billed, and
+      // both facts belong on one record: the ratio between them is the only reading that can say whether a
+      // contract pays for text it does not ship.
+      answerChars: 'priced'.length,
     });
   });
 
@@ -223,6 +227,10 @@ describe('OpenAICompatibleLLM (real local server)', () => {
       promptTokens: 0,
       completionTokens: 0,
       cacheHitPromptTokens: 0,
+      // No provider `usage` block means no bill, and a bill that does not exist cannot say whether the text
+      // arrived. `answerChars: 0` is therefore "not measured", which `unpricedCalls: 1` is what qualifies --
+      // the same rule `usage-answer-chars.test.ts` states from the other direction.
+      answerChars: 0,
     });
   });
 

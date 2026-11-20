@@ -55,6 +55,7 @@ function plusUsage(a: UsageSnapshot, b: UsageSnapshot): UsageSnapshot {
     promptTokens: a.promptTokens + b.promptTokens,
     completionTokens: a.completionTokens + b.completionTokens,
     cacheHitPromptTokens: a.cacheHitPromptTokens + b.cacheHitPromptTokens,
+    answerChars: a.answerChars + b.answerChars,
   };
 }
 
@@ -72,6 +73,10 @@ function minusUsage(whole: UsageSnapshot, part: UsageSnapshot): UsageSnapshot {
     'promptTokens',
     'completionTokens',
     'cacheHitPromptTokens',
+    // Added with the field itself, and that is the point of listing the fields rather than spreading them:
+    // a member that a subtraction silently dropped would make the residual's own closure false, and the
+    // closure is the property that lets a reader trust the split instead of adding it up.
+    'answerChars',
   ] as const;
   for (const field of fields) {
     if (part[field] > whole[field]) {
@@ -89,6 +94,7 @@ function minusUsage(whole: UsageSnapshot, part: UsageSnapshot): UsageSnapshot {
     promptTokens: whole.promptTokens - part.promptTokens,
     completionTokens: whole.completionTokens - part.completionTokens,
     cacheHitPromptTokens: whole.cacheHitPromptTokens - part.cacheHitPromptTokens,
+    answerChars: whole.answerChars - part.answerChars,
   };
 }
 

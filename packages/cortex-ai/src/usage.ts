@@ -63,6 +63,29 @@ export type LlmUsage = {
    * front of a 47,000-character prompt is worth a run.
    */
   readonly cacheHitPromptTokens: number;
+  /**
+   * Characters of response content this call delivered.
+   *
+   * ## Why this is not in the response body, and therefore not read by `parseUsage`
+   *
+   * Every other number here comes out of the provider's `usage` block. This one does not exist there: it is
+   * the `choices[0].message.content` string the caller receives, measured at the one place where both it and
+   * the billed count are in hand. `parseUsage` therefore returns a value without it, and the adapter adds it
+   * before recording.
+   *
+   * ## What it is for
+   *
+   * The ratio `completionTokens / answerChars` is the only number that can say whether a prompt contract is
+   * paying for text it does not ship. `S17`'s feature arm billed 2,938 completion tokens per call and delivered
+   * 513 characters per answer; the baseline, on the same client and the same thinking setting, billed 82. A
+   * 36-fold gap between two sides of one harness is either a contract that makes the model write a work
+   * product nobody reads, or a provider billing generation the caller never sees -- and the artifact as it
+   * stood could not distinguish those, because it recorded what was charged and never what arrived.
+   *
+   * Optional because `parseUsage` cannot produce it; `UsageSnapshot.answerChars` is unconditional, so an
+   * accumulation never has to ask whether any caller supplied one.
+   */
+  readonly answerChars?: number;
 };
 
 /** Spend accumulated over a set of calls. */
@@ -83,6 +106,14 @@ export type UsageSnapshot = {
   readonly completionTokens: number;
   /** Sum over the priced calls; a subset of `promptTokens`, for the reason above. */
   readonly cacheHitPromptTokens: number;
+  /**
+   * Sum of the characters those calls delivered.
+   *
+   * Unconditional, unlike the field it sums: a call whose content was empty contributes `0` rather than
+   * nothing, and a run that recorded only silent calls reads as `answerChars: 0` beside a non-zero
+   * `completionTokens` -- which is the reading, not a gap in it.
+   */
+  readonly answerChars: number;
 };
 
 /**
@@ -145,6 +176,7 @@ class UsageAggregate implements UsageTally {
   #promptTokens = 0;
   #completionTokens = 0;
   #cacheHitPromptTokens = 0;
+  #answerChars = 0;
 
   /**
    * Record one call's spend, or one call's silence.
@@ -163,6 +195,7 @@ class UsageAggregate implements UsageTally {
     this.#promptTokens += usage.promptTokens;
     this.#completionTokens += usage.completionTokens;
     this.#cacheHitPromptTokens += usage.cacheHitPromptTokens;
+    this.#answerChars += usage.answerChars ?? 0;
   }
 
   /** A copy, so a caller holding it cannot mutate numbers already read. */
@@ -173,6 +206,7 @@ class UsageAggregate implements UsageTally {
       promptTokens: this.#promptTokens,
       completionTokens: this.#completionTokens,
       cacheHitPromptTokens: this.#cacheHitPromptTokens,
+      answerChars: this.#answerChars,
     };
   }
 }
@@ -300,5 +334,6 @@ export function usageDelta(before: UsageSnapshot, after: UsageSnapshot): UsageSn
     promptTokens: after.promptTokens - before.promptTokens,
     completionTokens: after.completionTokens - before.completionTokens,
     cacheHitPromptTokens: after.cacheHitPromptTokens - before.cacheHitPromptTokens,
+    answerChars: after.answerChars - before.answerChars,
   };
 }
