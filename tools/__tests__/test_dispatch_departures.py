@@ -566,3 +566,68 @@ class TestTheInFlightLock:
         monkeypatch.setattr(module, 'write_variable', lambda name, value: value)
         assert module.main(['--no-budget', '--allow-concurrent', '--set', 'capability=MR']) == 0
         assert 'dispatched' in capsys.readouterr().out
+
+
+class TestThePairCheck:
+    """Two arms of one pair have to run one commit, and a push is the other way the ground moves.
+
+    `S18`'s control went out at `a7eafcce` and a documentation commit was pushed to `master` while it
+    ran. The treatment would then have been dispatched at the new sha, so two artifacts would have
+    carried two `revision.sha` values and `E0` would have refused the pair -- for a difference that
+    touched one Markdown file and not one line of the code that renders a prompt
+    (`git diff a7eafcce 4de966c7 -- packages tools .github` is empty).
+
+    `in_flight_refusal` guards the run channel and says nothing about pushes. This is the check for the
+    other one, and it is deliberately not something the operator has to remember.
+    """
+
+    def test_the_sibling_on_the_same_commit_is_the_pair(self) -> None:
+        module = _module()
+        assert module.pair_refusal('a' * 40, {'id': 1, 'head_sha': 'a' * 40}) is None
+
+    def test_a_push_between_the_arms_is_refused_and_both_shas_are_named(self) -> None:
+        module = _module()
+        refusal = module.pair_refusal('a' * 40, {'id': 44717750493, 'head_sha': 'b' * 40})
+        assert refusal is not None
+        assert 'refusing to pair' in refusal
+        assert '44717750493' in refusal
+        assert 'bbbbbbbbbbbb' in refusal and 'aaaaaaaaaaaa' in refusal
+        # Nothing has been written when this fires, and the message has to say so, or an operator who
+        # has just been refused will assume a run was spent.
+        assert 'Nothing has been written and nothing has been spent' in refusal
+
+    def test_an_unreadable_sibling_is_not_a_refusal(self) -> None:
+        # A check whose input it cannot read must not fail the dispatch; `main` prints what it could not
+        # compare instead. The alternative is a gate that stops working when an API shape changes.
+        module = _module()
+        assert module.pair_refusal('a' * 40, {}) is None
+        assert module.pair_refusal('a' * 40, None) is None
+
+    def test_the_flag_parses_with_its_value_and_does_not_reach_the_set_parser(self) -> None:
+        module = _module()
+        rest, finance = module.split_finance(['--pair-with', '44717750493', '--set', 'a=b'])
+        assert rest == ['--set', 'a=b'], rest
+        assert finance['flags']['--pair-with'] == '44717750493'
+
+    def test_main_refuses_before_writing_anything_when_the_pair_moved(self, monkeypatch) -> None:
+        module = _module()
+        written: list[str] = []
+        monkeypatch.setattr(module, 'remote_head', lambda: 'a' * 40)
+        monkeypatch.setattr(module, 'local_tree', lambda: 'b' * 40)
+        monkeypatch.setattr(module, 'staleness_refusal', lambda *_: None)
+        monkeypatch.setattr(
+            module,
+            'req',
+            lambda method, path, payload=None, allow_empty=False: (
+                {'id': 44717750493, 'head_sha': 'c' * 40}
+                if '/runs/' in path
+                else {'workflow_runs': []} if '/runs?' in path else {'tree': {'sha': 'b' * 40}}
+            ),
+        )
+        monkeypatch.setattr(
+            module, 'write_variable', lambda name, value: written.append(name) or value
+        )
+        with pytest.raises(SystemExit) as raised:
+            module.main(['--no-budget', '--pair-with', '44717750493', '--set', 'capability=MR'])
+        assert 'refusing to pair' in str(raised.value)
+        assert written == []

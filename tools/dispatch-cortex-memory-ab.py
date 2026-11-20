@@ -885,6 +885,45 @@ def local_tree() -> str | None:
     return completed.stdout.strip() or None
 
 
+def pair_refusal(sha: str, sibling: dict | None) -> str | None:
+    """Why this dispatch cannot be the other arm of `sibling`, or `None` when it can.
+
+    ## The mistake this exists to stop, made while writing it
+
+    `S18`'s control went out at `a7eafcce` and, while it was running, a **documentation commit** was
+    pushed to `master`. The treatment would then have been dispatched at the new sha, so the two
+    artifacts would have carried two different `revision.sha` values and `E0` would have refused the
+    pair -- for a difference that touched one Markdown file and not one line of the code that renders
+    a prompt (`git diff a7eafcce 4de966c7 -- packages tools .github` is empty).
+
+    Two lessons, and only the second is a mechanism. The first is that `in_flight_refusal` guards the
+    *run* channel and says nothing about pushes, which is the other way the ground moves under a pair.
+    The second is this check: the second arm names the first run, and the dispatch refuses unless
+    `master` still points at the commit that run used. It costs one GET, it says both shas when it
+    refuses, and it makes "dispatch both arms at one sha" a thing the tool enforces rather than a
+    thing the operator remembers not to break.
+
+    `None` when the sibling has no `head_sha` (an API shape this repository has not seen) rather than a
+    refusal, because a check that cannot read its input must not fail the dispatch -- but it must not
+    pass silently either, so `main` prints what it could not compare.
+    """
+    if sibling is None:
+        return None
+    head = str(sibling.get("head_sha") or "")
+    if not head:
+        return None
+    if head == sha:
+        return None
+    return (
+        f"refusing to pair: run {sibling.get('id')} is the other arm and it ran `{head[:12]}`, while "
+        f"master is now `{sha[:12]}`. Two arms of one pair have to run one commit, or the delta they "
+        f"produce is a difference of code versions -- `§13.377.8` is the round that paid for that "
+        f"assumption. Nothing has been written and nothing has been spent: either wait until master is "
+        f"back at `{head[:12]}`, or dispatch the pair again from the new head. `--allow-stale-tree` "
+        f"does not cover this and deliberately: it is about this checkout, not about the sibling."
+    )
+
+
 def in_flight_refusal(runs: list[dict]) -> str | None:
     """Why this dispatch must wait for the one already out, or `None` when the channel is free.
 
@@ -1355,6 +1394,12 @@ def split_finance(argv: list[str]) -> tuple[list[str], dict]:
             flags[argument] = True
             index += 1
             continue
+        if argument == "--pair-with":
+            if index + 1 >= len(argv):
+                raise SystemExit("--pair-with needs the run id of the other arm")
+            flags["--pair-with"] = argv[index + 1]
+            index += 2
+            continue
         if argument == "--budget":
             if index + 1 >= len(argv):
                 raise SystemExit("--budget needs a CNY amount")
@@ -1490,6 +1535,13 @@ def main(argv: list[str] | None = None) -> int:
     refusal = staleness_refusal(tree, local_tree())
     if refusal is not None and not finance["flags"].get("--allow-stale-tree"):
         raise SystemExit(refusal)
+    sibling_id = finance["flags"].get("--pair-with")
+    if sibling_id:
+        sibling = req("GET", f"/repos/{REPO}/actions/runs/{sibling_id}")
+        refusal = pair_refusal(sha, sibling)
+        if refusal is not None:
+            raise SystemExit(refusal)
+        print(f"pairing with {sibling_id} at {str(sibling.get('head_sha') or '?')[:8]}")
     # After the staleness check and before the first variable is written, because the harm the
     # channel can do starts at that write: refusing late would mean refusing after overwriting a
     # run that has not started yet.
