@@ -58,6 +58,39 @@ decomposition and the token bill (prompt flat at 28.1 M, completion 0.24 M → 2
 | Supermemory | **85.2 accuracy** | its advertised 97% is **Recall@20**, a retrieval metric — `docs/SOTA-LANDSCAPE.md` §1 |
 | RAW-RAG (naive) | 87.5 | arXiv:2610.30755, no extraction, no rewriting |
 
+### 0.2 Three rows added on 2026-11-20, and the one that changes an argument
+
+| system | score | cost | why it is here |
+| --- | ---: | ---: | --- |
+| Perpetuity | 94.0 (470/500) | **3,600** tokens, median frame in the reader's tokenizer | a vendor self-measurement with the official GPT-4o judge. It is the cheapest published path to 94 and therefore the row that decides what the remaining gap is made of |
+| Graphon Labs | 92.8 at 15.1K (96.2 best case, no cost) | 15,100 | vendor page, November 2026; two figures for one system, and only the one that names a cost is entered |
+| Honcho | 90.4 | 11,600 | Claude Haiku 4.5 reader, run data public |
+
+**Perpetuity is the row this iteration is worth remembering**, because it prices an argument this repository
+has been making from its own room curve for three rounds. `S15` shows 24,000 characters costs accuracy;
+`C1` shows the registered arm delivering 48,460 characters for 7,448 tokens. Perpetuity reaches 94.0 with a
+median 3,600-token frame — half this arm's bill and 2.9 points above it — which says the lever is **which**
+text the frame holds rather than **how much**. That is the same conclusion the 36-fold completion gap led to
+from the cost side (`ANALYSIS-COMPLETION-GAP.md`): nothing is saved by generating less, and everything is
+decided by what is selected.
+
+Two caveats travel with it and are stated rather than resolved: the figure is the vendor's own run with the
+vendor's own prompt, and 46x leaner than the full history is a comparison against 165K in the same tokenizer
+rather than against this arm's 115K-character corpus.
+
+### 0.3 The benchmarks this project does not run, named
+
+`LongMemEval-V2` (May 2026, 451 questions over environments up to 500 trajectories and 115M tokens) reports
+72.5% for its best method against 48.5% for the strongest RAG baseline. `BEAM` (ten-million-token histories,
+contradictions and event order), `DolphinBench` (task success with cost and latency beside it), `LoCoMo` and
+`MemoryAgentBench-FactConsolidation` are the other axes a memory system is now measured on in public.
+
+None of them is in this repository's acceptance matrix, and that is a gap rather than a claim: every number
+above is on LongMemEval-S, and a system tuned on one benchmark with one judge has not been shown to hold
+anywhere else. `MemoryAgentBench-FactConsolidation` is the first one scheduled, because it is the second
+instrument for knowledge-update — the capability where the supersession ledger is the failure mode rather
+than the remedy.
+
 **cortex is above the reproducible frontier this repository tracks (85.8–86.5%) and is not SOTA overall.**
 The 94.4–96.2 band is vendor-reported, and every row in it runs a stronger reader than `deepseek-chat`
 except Mem0's judge choice. The reader axis is measured four times and its sign is not given by size:
