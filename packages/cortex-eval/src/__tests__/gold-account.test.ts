@@ -19,7 +19,11 @@
  * names) this repository has paid for more than once.
  */
 import { describe, it, expect } from 'vitest';
-import { buildsProductIndex, cortextMemoryArmOptions, toMemoryArmConfig } from '../bench-memory-arm.js';
+import {
+  buildsProductIndex,
+  cortextMemoryArmOptions,
+  toMemoryArmConfig,
+} from '../bench-memory-arm.js';
 import { formatAblationReport, runAblationReport } from '../report.js';
 import { FactMemorySystem } from '../fact-memory.js';
 import { createLongMemEvalMini } from '../datasets/longmemeval-mini.js';
@@ -35,8 +39,9 @@ const SIGNALS = [
 ] as const;
 
 const goldAccountOf = (signal: string): string | undefined =>
-  toMemoryArmConfig(cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: signal }))
-    .goldAccount;
+  toMemoryArmConfig(
+    cortextMemoryArmOptions({ CORTEX_MEMORY: '1', CORTEX_MEMORY_RELEVANCE: signal }),
+  ).goldAccount;
 
 describe('goldAccount, as the artifact records it', () => {
   it('names the product as the owner of the pool when the product builds it', () => {
@@ -47,7 +52,12 @@ describe('goldAccount, as the artifact records it', () => {
   });
 
   it('names the harness when the harness builds the pool', () => {
-    for (const signal of ['retrieval', 'retrieval-hybrid', 'retrieval-anchored', 'retrieval-session']) {
+    for (const signal of [
+      'retrieval',
+      'retrieval-hybrid',
+      'retrieval-anchored',
+      'retrieval-session',
+    ]) {
       expect(goldAccountOf(signal)).toBe('ranked');
     }
   });
