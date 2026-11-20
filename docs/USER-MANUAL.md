@@ -1749,13 +1749,36 @@ import { ASK_ROUTES, PROMPT_CONTRACTS, TURN_CAP_ROUTES } from '@agentix-e/cortex
 
 console.log(TURN_CAP_ROUTES);        // multi-session, temporal, flat, knowledge-update, abstention, assistant
 console.log(PROMPT_CONTRACTS);       // abstention, abstention-evidence-blocks, evidence-blocks-instruction-first, evidence-blocks-unsourced
-console.log(Object.keys(ASK_ROUTES)); // route, extractive, aggregate, computed, enumerated, sweep, aggregation, silent, answer-line, recommend
+console.log(Object.keys(ASK_ROUTES)); // every ask name, which is the vocabulary `ask` accepts
 ```
 
 `ASK_ROUTES` is a map from ask to **the routes it reaches**, not to text. `ask: 'aggregate'` reaches
 only `multi-session` and `flat` — the two routes whose own contract is extractive — which is what
 makes it a targeted instruction rather than a second global one. The other four routes are the
 internal control: if they move when you change `ask`, the change reached further than its name says.
+
+### 11.1 Choosing among the asks that matter
+
+`ask` is a closed vocabulary and most of its values are history: an experiment that measured one
+instruction block against another. Three of them are worth knowing as a user, because they are the
+ones this project still reads:
+
+| `ask` | what it tells the reader | when it wins |
+| --- | --- | --- |
+| `'route'` (default) | nothing beyond the route's own contract | the safe default; it is what every published number before the aggregation campaign was measured under |
+| `'verbatim-acts'` | the reader counts an act described under a different verb, and pairs one event mentioned twice | counting questions, which is most of what `multi-session` is for |
+| `'verbatim-scope'` | the same, plus the two bounds a mention has to pass: the act must fall inside the period the question names, and the evidence must attribute it to the speaker | counting questions that name a period ("this year", "last week") or a role ("how much did **I** raise") |
+
+The difference between the last two is **one line of instruction**, and that is deliberate: an
+`ask` value is a single variable, so a pair of arms built from two of these differs in exactly the
+text you can read in `prompt.ts` and nothing else. `verbatim-scope` costs 575 characters of
+instruction, which is why a run that switches to it should also raise the `multi-session` room by
+575 — the room is a budget the evidence is fitted into, so an instruction added without room added
+displaces evidence rather than sitting beside it.
+
+Every ask outside this table is kept because a published artifact was measured under it. They are
+reachable, they are tested, and switching to one reproduces that artifact's rendered prompt; none of
+them is a recommendation.
 
 ## 12. Troubleshooting
 
