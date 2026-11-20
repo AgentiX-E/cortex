@@ -568,6 +568,7 @@ Three fields are required and each is required for a reason:
 | `sessionClock` | `boolean` | absent (off) | Writes each session boundary's own date into the boundary line — `Session 3 (2023-05-21)`, or a range when the block spans days. Reaches multi-session, the only route that draws boundaries. Off by default: absent reproduces every archived prompt byte for byte. §6.11. |
 | `corpus` | `Corpus` | absent | The transcript this instance holds. Present, `remember()` and `askStored()` work and the memory stops being a function of its arguments; absent, every route is byte-identical to before this option existed. §5.3. |
 | `semanticCarry` | `boolean` | absent (off) | Whether a prompt may carry a value change the store has already authorised. When a `knowledge-update` answer is replaced by a later dated span, the pair becomes a typed fact with a `supersedes` edge, and a later question whose window still carries the record the change was read from is told which value is current. Off by default: absent reproduces every archived prompt byte for byte. §6.5. |
+| `factTimeline` | `boolean` | absent (off) | Appends the interval each served fact held — `timeline: 30 dozen [2023/03/12 -> now]` — built from the two record instants the authorisation already returned. No model call. Renders only for facts the exit served, and only when `semanticCarry` is on. Off by default: absent reproduces every archived prompt byte for byte. §6.1.2. |
 <!-- /contract-table -->
 
 ### 6.1.1 Turning on the semantic carry, and what it cannot do
@@ -585,6 +586,9 @@ const memory = new CortexMemory({
   // Off by default. `true` lets a later question over the same corpus be told which of two
   // values is current, when this instance already had one of them replaced.
   semanticCarry: true,
+  // A second switch beside the first: appends the interval each *served* fact held. It renders
+  // nothing without `semanticCarry`, because an interval describes a fact the prompt lacks.
+  factTimeline: true,
   reviewPass: 'supersede',
 });
 
@@ -615,6 +619,47 @@ The reach is bounded by the window, not by a configuration: an update reaches a 
 window still carries the record the change was read from. A workload whose every question brings a fresh corpus
 — a benchmark, for instance — therefore never sees a line, which is the property that makes this switch safe to
 run beside a measurement.
+
+### 6.1.2 Turning on the timeline, and the one thing it will not do
+
+```ts
+import { CortexMemory } from '@agentix-e/cortex-memory';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+
+const memory = new CortexMemory({
+  llm,
+  now: Date.UTC(2026, 0, 1),
+  gate: { threshold: 0, retrievalThreshold: 0, sessionBudget: 64 },
+  semanticCarry: true, // required: the timeline dates the facts this serves
+  factTimeline: true, // one extra line per served fact, no model call
+  reviewPass: 'supersede',
+});
+
+// The prompt then carries, under the fact block:
+//
+//   fact:     30 dozen  [state]
+//   timeline: 30 dozen [2023/03/12 -> now]
+//
+// The left date is the instant of the record the value was quoted from — not the day it became true in
+// the world, which no record in the corpus states. The right end is the instant of the record that
+// replaced it, or `now` while it is the newest one known.
+```
+
+The line is arithmetic over two dates the authorisation already carried, so it costs no inference and cannot
+disagree with the fact block: both are built from the same `assemble` call, in the same order.
+
+It will not date a fact the ledger withheld. On a default question the superseded value is refused, so its
+interval is refused with it — the value is still named by the relation line (`status: replaces "20 dozen"`),
+which is the sentence a reader needs, and the range it held is not published on its own. The filter reads
+`assemble`'s own served list rather than the rendered lines, so "the timeline cannot publish what the exit
+refused" is a property of the call graph and not of the wording.
+
+There is **no accuracy claim** beside this switch yet. The instrument's arm read +4.55% on 22 questions, which
+is under the resolution floor for a population that size; the capability is reachable, tested, and off until a
+registered run measures it. `docs/PRODUCT-CAPABILITY-LEDGER.md` row 19 counts reachability and says nothing
+about effect.
 
 ### 6.2 `GateOptions`
 

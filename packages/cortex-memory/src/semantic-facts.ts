@@ -286,6 +286,16 @@ type SemanticBlock = {
   readonly lines: readonly string[];
   /** Facts that reached the block. One per update while the ledger is doing its job. */
   readonly served: number;
+  /**
+   * Which facts those were, because the count cannot answer the question the timeline asks.
+   *
+   * `timeline.ts` renders a value's interval, and a value is not a fact id: printing the interval of a fact
+   * the exit refused would re-publish, in date form, precisely what the ledger withheld. Filtering on
+   * `served > 0` would be that defect whenever the *newer* fact survives and the older one does not — which
+   * is the ordinary case, not the edge one. So the ids travel with the count, taken from `assemble`'s own
+   * `served` list rather than re-derived from the rendered lines, which would be a second renderer.
+   */
+  readonly servedIds: readonly string[];
   /** Facts the exit refused, by any reason. Non-zero is what makes the wiring load-bearing. */
   readonly withheld: number;
 };
@@ -325,6 +335,7 @@ export function assembleSemanticUpdate(update: SemanticUpdate): SemanticBlock {
   return {
     lines: result.lines,
     served: result.census.served,
+    servedIds: result.served.map((entry) => entry.factId),
     withheld: result.excluded.length,
   };
 }

@@ -44,7 +44,7 @@ table.
 | 16 | semantic update carrying | product | **product (gated)** | ✓ | ✓ | declared: records the update in the memory's own update list and renders it on later turns | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/semantic-facts.ts` |
 | 17 | relevance ranking signal | instrument | **instrument** | ✗ | ✗ | declared: ranks the caller's context array from a per-question relevance table the harness builds | ✗ | `packages/cortex-memory/bench/run-ablation.ts` | `packages/cortex-eval/src/relevance-index.ts` |
 | 18 | anchor neighbourhood recovery | instrument | **instrument** | ✗ | ✗ | declared: expands around anchors the harness located in the caller's context | ✗ | — | `packages/cortex-eval/src/anchor-recall.ts` |
-| 19 | bitemporal timeline | instrument | **instrument** | ✗ | ✗ | declared: orders the extracted facts by their own event times | ✗ | — | `packages/cortex-eval/src/fact-store.ts` |
+| 19 | bitemporal timeline | product | **product (gated)** | ✓ | ✓ | declared: dates each value with the two record instants its own supersession authorised, and renders only the facts the exit served | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/timeline.ts` |
 | 20 | deterministic date arithmetic | instrument | **instrument** | ✗ | ✗ | declared: computes from the question and the timestamps the harness parsed | ✗ | — | `packages/cortex-eval/src/temporal-engine.ts` |
 | 21 | candidate cluster annotation | instrument | **instrument** | ✗ | ✗ | declared: clusters the candidates the harness assembled for one question | ✗ | — | `packages/cortex-eval/src/candidate-context.ts` |
 | 22 | turn clock annotation | instrument | **instrument** | ✗ | ✗ | declared: reads timestamps off the turns it was given; the product receives windows and never reads its own clock | ✗ | — | `packages/cortex-eval/src/turn-clock.ts` |
@@ -58,14 +58,14 @@ table.
 
 | | rows |
 | --- | ---: |
-| product | 17 |
+| product | 18 |
 | blocked | 0 |
-| instrument | 10 |
+| instrument | 9 |
 | gap | 0 |
-| of the product rows, behind a configuration switch | 6 |
+| of the product rows, behind a configuration switch | 7 |
 | **total** | **27** |
 
-Product completeness by this measure: **17/27** capabilities are reachable by a customer. The rest are 0 blocked, 10 owned by the instrument and 0 absent.
+Product completeness by this measure: **18/27** capabilities are reachable by a customer. The rest are 0 blocked, 9 owned by the instrument and 0 absent.
 
 ## Why `D3` is declared and not derived
 

@@ -196,6 +196,17 @@ export { classifyQuestionShape, type QuestionShape } from './question-shape.js';
  * matter, and the disagreement would be invisible in both.
  */
 export { annotateSessionBoundaries } from './turn-clock.js';
+
+// timeline
+/**
+ * The interval an authorised value held, and the lines a prompt may carry for it.
+ *
+ * Exported for the reason `annotateSessionBoundaries` is: a caller that renders its own prompt and holds the
+ * store's updates should get the same lines the shipped renderer produces, because two implementations of
+ * "when did this value stop being current" would disagree on exactly the units where the ledger withheld one
+ * end — and the disagreement would be invisible in both.
+ */
+export { renderTimeline, timelineOf } from './timeline.js';
 export {
   asksForCount,
   buildRecoveryPrompt,

@@ -95,6 +95,7 @@ import {
   updateAppliesTo,
   type SemanticUpdate,
 } from './semantic-facts.js';
+import { renderTimeline, timelineOf } from './timeline.js';
 import { buildLedger } from './aggregation/ledger.js';
 import { parseEventSpec } from './aggregation/spec.js';
 import { executeSpec } from './aggregation/execute.js';
@@ -2397,6 +2398,13 @@ export class CortexMemory implements SessionAwareMemorySystem {
       this.#semantic.served += stored.block.served;
       this.#semantic.withheld += stored.block.withheld;
       lines.push(...stored.block.lines);
+      // The interval comes **after** the facts it dates, and only for the facts this block served. Reading
+      // `stored.block.lines` back to decide which is a second renderer; reading `servedIds` is the same list
+      // `assemble` used to build those lines. `factTimeline` alone renders nothing here: the guard two frames
+      // up is `semanticCarry`, because an interval describes a fact the prompt does not carry.
+      if (this.#options.factTimeline === true) {
+        lines.push(...renderTimeline(timelineOf(stored.update), stored.block.servedIds));
+      }
     }
     // Counted per **prompt**, and on the *anchor* rather than on the lines. Two updates over one corpus are one
     // question that learned two things, not two questions; and a window whose block the prompt budget later

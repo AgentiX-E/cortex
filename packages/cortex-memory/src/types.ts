@@ -919,6 +919,39 @@ export type CortexMemoryOptions = {
   semanticCarry?: boolean;
 
   /**
+   * Whether a prompt may carry the **interval** an authorised value held. Absent is off.
+   *
+   * ## What it adds beside `semanticCarry`
+   *
+   * `semanticCarry` prints the two facts and which one is current. It does not say when. This option appends
+   * one line per served fact — `timeline: 30 dozen [2023/08/14 -> now]` — built from the two record instants
+   * `adjudicateSupersession` already returned in its receipt. Zero model calls, zero extraction: it is
+   * arithmetic over dates the product was handed.
+   *
+   * ## Why it is a second switch rather than part of the first
+   *
+   * Two mechanisms, two readings. `semanticCarry`'s reach is already registered as one variable
+   * (`PREREGISTRATION-*` names it); folding a second prompt change into it would make every movement of that
+   * reading attributable to neither. It also follows `sessionClock`: the session clock dates boundaries, this
+   * dates facts, and both are off so an absent option reproduces every archived prompt byte for byte.
+   *
+   * ## Why there is no accuracy claim beside it
+   *
+   * The instrument's arm (`ku-bitemporal`) read **+4.55%** on **22 questions** — far under the 9.4-point
+   * resolution floor `tools/capability-ledger.py` computes for a 121-question population, so it is a
+   * direction, not a result, and this render is not the instrument's render either. The capability is
+   * reachable and tested; its accuracy claim is deferred to a registered run. `docs/PRODUCT-CAPABILITY-LEDGER.md`
+   * row 19 counts reachability and says nothing about effect.
+   *
+   * ## Reach
+   *
+   * Exactly the windows where `semanticCarry` serves a fact, because it renders the same store entries through
+   * the same `#updatesFor` loop. A store with nothing absorbed renders nothing, and `factTimeline` without
+   * `semanticCarry` renders nothing: an interval describes a fact the prompt does not carry.
+   */
+  factTimeline?: boolean;
+
+  /**
    * The transcript this instance holds, if any.
    *
    * ## Why the product had no answer to "where is the memory" until this field

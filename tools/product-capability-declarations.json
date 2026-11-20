@@ -162,11 +162,11 @@
   {
    "id": 19,
    "capability": "bitemporal timeline",
-   "expect": "instrument",
-   "symbol": "timelineFor",
-   "site": "packages/cortex-eval/src/fact-store.ts",
-   "d3": "declared: orders the extracted facts by their own event times",
-   "reason": "A prototype: `Fact` has no constructor outside its own file, and the product's knowledge-update path is prompt-only. The audit's §7.2 route is to move it into the product as a third rendering channel, which is an iteration, not a rename."
+   "expect": "product",
+   "symbol": "timelineOf",
+   "site": "packages/cortex-memory/src/timeline.ts",
+   "gate": "this.#options.factTimeline === true",
+   "d3": "declared: dates each value with the two record instants its own supersession authorised, and renders only the facts the exit served"
   },
   {
    "id": 20,
