@@ -176,9 +176,10 @@ describe('every ask changes exactly the routes it declares', () => {
     // not read the question either, but its block is only reachable on an **enumeration** question, so
     // its change set on a derivation question is the empty set rather than the one route `ASK_CHANGES`
     // names. Absent would claim the route moves on both shapes, which is false and would be a delta
-    // about nothing.
+    // about nothing. §13.291's `verbatim-scope` inherits the fourth slot from §13.290 unchanged: it is
+    // that block with one line added, so the shape guard it delegates through is the same one.
     const shapeSpecific = Object.keys(ASK_CHANGES_WHEN_DERIVATION) as EvidenceAsk[];
-    expect(shapeSpecific).toEqual(['operands', 'verbatim', 'verbatim-acts']);
+    expect(shapeSpecific).toEqual(['operands', 'verbatim', 'verbatim-acts', 'verbatim-scope']);
     for (const ask of shapeSpecific) expect(asks).toContain(ask);
   });
 

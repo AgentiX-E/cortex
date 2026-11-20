@@ -353,6 +353,10 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // routes that read the reference's contract keep reading it, and the routes that delegate keep
   // delegating. A narrower reach would make the change set unreadable against the control.
   'verbatim-acts': ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.291. `verbatim-acts`' reach exactly, because it is that block with one line added: the routes
+  // that read the reference's contract keep reading it and the delegating routes keep delegating, so
+  // the only route whose bytes may move is the one the added line lands on.
+  'verbatim-scope': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**
@@ -434,6 +438,11 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   // Naming `operands+operand-gap` would make the control the *parent* of the arm being read and put
   // two variables between the two renders.
   'verbatim-acts': 'verbatim',
+  // §13.291. `verbatim-acts`, which is the arm's own adopted value and the block this one is a
+  // one-line addition to. Naming `verbatim` would make the control the *grandparent* of the render and
+  // put two variables between the two arms -- the substitution line and the bound -- and the whole
+  // claim is that only the second of them is new.
+  'verbatim-scope': 'verbatim-acts',
 };
 
 /**
@@ -484,6 +493,9 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // §13.290. The same single route, for the same reason and on both question shapes: the line being
   // rewritten is inside the block the multi-session route alone reads.
   'verbatim-acts': ['multi-session'],
+  // §13.291. The same single route, for the same reason: the added line is inside the block the
+  // multi-session route alone reads.
+  'verbatim-scope': ['multi-session'],
 };
 
 /**
@@ -584,7 +596,8 @@ export type EvidenceAsk =
   | 'operands+operand-gap'
   | 'candidates'
   | 'verbatim'
-  | 'verbatim-acts';
+  | 'verbatim-acts'
+  | 'verbatim-scope';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -1821,6 +1834,60 @@ const VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION = replaceLine(
 );
 
 /**
+ * The third line of the act rule: the two bounds a mention that otherwise matches still has to pass.
+ *
+ * ## What the arm's own failures say after `verbatim-acts` was adopted
+ *
+ * `verbatim-acts` was adopted on the finding that `MR`'s error was **one-sided toward omission** —
+ * eighteen of twenty-seven failures below the gold, eight of them explained in the reply's own words by
+ * a verb-identity exclusion. Rewriting that line removed the bias, and the same decomposition run on
+ * `S16` (`44017278305`, four repetitions, the shipped arm) reads **seven below and seven above** across
+ * the route's nineteen failures. The omission is gone; what is left is a screen with no period and no
+ * actor.
+ *
+ * | question | gold | the reply's own enumeration | what it admitted |
+ * | --- | --- | --- | --- |
+ * | `gpt4_2f8be40d` | `3` | five weddings "attended", including a college roommate's and a sister's | two outside the year and two that are not the speaker's |
+ * | `d851d5ba` | `$3,750` | sums five fundraisers, one of them *"event raised over $5,000"* | an amount the event raised, not the speaker |
+ * | `88432d0a` | `4` | five baking events, one of them *"also mentioned 2023/05/24; counted once"* | its own duplicate note, not the event |
+ * | `gpt4_7fce9456` | `4` | five properties viewed | one the evidence dates outside the search |
+ *
+ * The gold's own rule is visible in the first two: $1,000 + $250 + $500 + $2,000 = **$3,750**, so "helped
+ * raise $2,000" counts and "the event raised $5,000" does not — the bound is *the speaker took part*,
+ * not *the speaker was the sole agent*. And the seven above-gold failures are not license to re-tighten
+ * the act rule: six of the seven are the same two bounds, and the one that is not (`7024f17c`, `0` against
+ * `0.5 hours`) is an arithmetic miss inside a correct screen.
+ *
+ * ## Why a line and not a second ask
+ *
+ * The bound is one claim, and every other line of the block is one claim each — the shape
+ * `ACT_RULE_LINES` states for itself, two lines because the licence and its bound are different claims.
+ * This is the third claim, and it is added rather than substituted: the arm is `verbatim-acts` **plus
+ * one line**, so the render differs from its control at exactly one line and the change set is the
+ * multi-session route alone.
+ *
+ * ## Why the period is read from the question rather than from the turn dates
+ *
+ * Because the arm has no calendar to resolve "last week" against that the reader does not also have.
+ * `questionDate` is in the prompt, the turn dates are in the prompt, and the subtraction is the reader's
+ * — the same division of labour `derive` states when it moves the licence to combine instead of naming
+ * the taxonomy of operations. Naming a resolution here would be a second clock, and the product's clock
+ * is `annotateSessionBoundaries`.
+ */
+const SCOPE_BOUND_LINE =
+  '  - Two bounds apply to a mention that otherwise matches, and both are read from the question. The act must fall inside the period the question names -- "this year", "last week", "in March", "the past two weeks" -- and a mention dated outside it is not an item of that period; a question that names no period covers the whole conversation. And the evidence must attribute the act to the speaker: an amount an event raised is not an amount the speaker raised, though one the speaker helped raise is, and a wedding another person attended is a wedding the speaker heard about.';
+
+/** The act rule with its third claim, which is the whole of `verbatim-scope`'s treatment. */
+const SCOPE_RULE_LINES: readonly string[] = [...ACT_RULE_LINES, SCOPE_BOUND_LINE];
+
+/** The multi-session block under `verbatim-scope`: `verbatim-acts` plus {@link SCOPE_BOUND_LINE}. */
+const VERBATIM_SCOPE_MULTI_SESSION_INSTRUCTION = replaceLine(
+  VERBATIM_MULTI_SESSION_INSTRUCTION,
+  SUBSTITUTION_RULE_PREFIX,
+  SCOPE_RULE_LINES,
+);
+
+/**
  * The reply shape the flat route never had — §13.124.
  *
  * ## Why a shape and not a length
@@ -2053,6 +2120,9 @@ export const ASK_CHANGES_WHEN_DERIVATION: Partial<Record<EvidenceAsk, readonly s
   // §13.290. Empty for the same reason: a derivation question keeps the adopted `operands` block, so
   // the line this ask rewrites is not in its prompt and the change set is empty rather than absent.
   'verbatim-acts': [],
+  // §13.291. Empty for the same reason as `verbatim-acts`: a derivation question keeps the adopted
+  // `operands` block, so neither the substitution line nor the bound is in its prompt.
+  'verbatim-scope': [],
 };
 
 /**
@@ -2225,6 +2295,17 @@ function instructionsFor(
       return VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION;
     }
     return instructionsFor(contract, date, 'verbatim', scope, shape);
+  }
+  if (ask === 'verbatim-scope') {
+    // §13.291. `verbatim-acts`' reach, `verbatim-acts`' delegation, one line more on the route that
+    // reads the act rule. The delegation is written out rather than folded into the branch above
+    // because the control is `verbatim-acts` and **not** `own`: a fallthrough returning `own` would
+    // hand five of the six routes the shipped block instead of the control's, which is the defect
+    // §13.104, §13.124, §13.132, §13.205 and §13.246 each record from a different direction.
+    if (scope === 'multi-session' && contract === 'extractive' && shape !== 'derivation') {
+      return VERBATIM_SCOPE_MULTI_SESSION_INSTRUCTION;
+    }
+    return instructionsFor(contract, date, 'verbatim-acts', scope, shape);
   }
   if (ask === 'operands') {
     // §13.166. One branch, two questions, and the enumeration half is `enumerated`'s block **by

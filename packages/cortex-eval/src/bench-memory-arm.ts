@@ -1847,6 +1847,17 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // alone. The replacement keeps a rule (the act must be absent, or a different kind of act) so the four
   // above-gold failures are not licensed by the fix.
   'verbatim-acts': ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.291's value: `verbatim-acts` with **one line added**, on the route that reads the act rule.
+  // Same reach, because the block is the same block; the change set is the multi-session route alone.
+  //
+  // Why the line: `verbatim-acts` was adopted on a one-sided error and removed it. The same
+  // decomposition on `S16` (`44017278305`, the shipped arm, four repetitions) counts `MR`'s nineteen
+  // failures **seven below and seven above**, so the bias is gone and what remains is a screen with no
+  // period and no actor — `gpt4_2f8be40d` admits two weddings that are not the speaker's and two dated
+  // outside the year, `d851d5ba` sums *"event raised over $5,000"* into a total whose gold is
+  // $1,000 + $250 + $500 + $2,000. The added line states both bounds and leaves the twenty existing
+  // lines of the contract byte-identical, which is what makes the render a single variable.
+  'verbatim-scope': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**
