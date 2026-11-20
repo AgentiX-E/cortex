@@ -1841,9 +1841,11 @@ const VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION = replaceLine(
  * `verbatim-acts` was adopted on the finding that `MR`'s error was **one-sided toward omission** —
  * eighteen of twenty-seven failures below the gold, eight of them explained in the reply's own words by
  * a verb-identity exclusion. Rewriting that line removed the bias, and the same decomposition run on
- * `S16` (`44017278305`, four repetitions, the shipped arm) reads **seven below and seven above** across
- * the route's nineteen failures. The omission is gone; what is left is a screen with no period and no
- * actor.
+ * `S16` (`44017278305`, four repetitions, the shipped arm) reads **nine below and five above** across
+ * the route's nineteen failures. The omission is much reduced rather than gone -- 67% of the failures
+ * were below the gold on `42310779222` and 47% are on `S16` -- and what the five above have in common
+ * is that no ask in this file had ever been written for them: `candidates`, `operands`, `verbatim` and
+ * `verbatim-acts` each repaired an omission, and a screen that admits too much is the other direction.
  *
  * | question | gold | the reply's own enumeration | what it admitted |
  * | --- | --- | --- | --- |
@@ -1854,9 +1856,33 @@ const VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION = replaceLine(
  *
  * The gold's own rule is visible in the first two: $1,000 + $250 + $500 + $2,000 = **$3,750**, so "helped
  * raise $2,000" counts and "the event raised $5,000" does not — the bound is *the speaker took part*,
- * not *the speaker was the sole agent*. And the seven above-gold failures are not license to re-tighten
+ * not *the speaker was the sole agent*. And the five above-gold failures are not license to re-tighten
  * the act rule: six of the seven are the same two bounds, and the one that is not (`7024f17c`, `0` against
  * `0.5 hours`) is an arithmetic miss inside a correct screen.
+ *
+ * ## Measured, and rejected: −4 questions, six regressions against two conversions
+ *
+ * `S17` (`44642788342`, the same 121 questions, four repetitions, the same reader and judge) reads
+ * **98 of 121 against the control's 102**: two questions converted, six regressed, exact McNemar
+ * p = 0.070. Four of the five pre-registered criteria fail — including the one that says the evidence
+ * must not move, because raising the room by the line's own length does **not** hold the delivery
+ * fixed: the budget packs turns greedily, so 575 more characters move the cut boundary and only 15 of
+ * 121 questions kept their evidence byte-identical.
+ *
+ * The regression is the bound doing what it says. `gpt4_2ba83207` answers `Walmart` where the gold is
+ * `Thrive Market`, and its own Step 2 says *"Thrive Market is outside the period"*. `3a704032` drops a
+ * plant *"acquired two weeks prior in May, not last month"*. And `129d1232` — **the question §13.289
+ * cited to justify `verbatim-acts` in the first place** — loses its `$600` to *"no money raised was
+ * attributed to the speaker"*.
+ *
+ * ## Why the gold cannot be bounded by a single rule
+ *
+ * `d851d5ba`'s gold is `$3,750` and excludes *"the event raised over $5,000"*; `129d1232`'s gold is
+ * `$5,850` and includes events the speaker *"helped organize"*. Both totals are internally consistent
+ * and the two of them cannot both be produced by one actor rule. So the over-counts this line was
+ * written for are not fixable by stating a rule: the annotation does not have one. That is what this
+ * ask bought, and it is why the line stays here measured rather than removed — a reader of this file
+ * should be able to see that the cheap-looking repair was tried and cost questions.
  *
  * ## Why a line and not a second ask
  *
@@ -1864,7 +1890,7 @@ const VERBATIM_ACTS_MULTI_SESSION_INSTRUCTION = replaceLine(
  * `ACT_RULE_LINES` states for itself, two lines because the licence and its bound are different claims.
  * This is the third claim, and it is added rather than substituted: the arm is `verbatim-acts` **plus
  * one line**, so the render differs from its control at exactly one line and the change set is the
- * multi-session route alone.
+ * multi-session route alone. That property held; the reading is what did not.
  *
  * ## Why the period is read from the question rather than from the turn dates
  *

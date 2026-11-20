@@ -1760,21 +1760,27 @@ internal control: if they move when you change `ask`, the change reached further
 ### 11.1 Choosing among the asks that matter
 
 `ask` is a closed vocabulary and most of its values are history: an experiment that measured one
-instruction block against another. Three of them are worth knowing as a user, because they are the
-ones this project still reads:
+instruction block against another. Two of them are worth knowing as a user, because they are the ones
+this project still reads:
 
 | `ask` | what it tells the reader | when it wins |
 | --- | --- | --- |
 | `'route'` (default) | nothing beyond the route's own contract | the safe default; it is what every published number before the aggregation campaign was measured under |
-| `'verbatim-acts'` | the reader counts an act described under a different verb, and pairs one event mentioned twice | counting questions, which is most of what `multi-session` is for |
-| `'verbatim-scope'` | the same, plus the two bounds a mention has to pass: the act must fall inside the period the question names, and the evidence must attribute it to the speaker | counting questions that name a period ("this year", "last week") or a role ("how much did **I** raise") |
+| `'verbatim-acts'` | the reader counts an act described under a different verb, and pairs one event mentioned twice | counting questions, which is most of what `multi-session` is for; it is the value every published number since §13.290 was measured under |
 
-The difference between the last two is **one line of instruction**, and that is deliberate: an
+There is a third value you will find in the table, `'verbatim-scope'`, and it is **measured and
+rejected** rather than recommended: it adds a bound on the period and the actor, and on the same 121
+counting questions it loses **−4** — two questions gained, six lost. Do not reach for it. Its record
+is kept because the reason it fails is worth knowing: two gold totals inside the same capability
+cannot both be produced by one actor rule, so the annotation the score is computed against does not
+have a consistent one either. A prompt line cannot repair that, and this one cost questions proving it.
+
+The difference between the two live values is one line of instruction, and that is deliberate: an
 `ask` value is a single variable, so a pair of arms built from two of these differs in exactly the
-text you can read in `prompt.ts` and nothing else. `verbatim-scope` costs 575 characters of
-instruction, which is why a run that switches to it should also raise the `multi-session` room by
-575 — the room is a budget the evidence is fitted into, so an instruction added without room added
-displaces evidence rather than sitting beside it.
+text you can read in `prompt.ts` and nothing else. Their instruction blocks differ in length, so a run
+that switches between them should expect the delivered evidence to differ slightly: the room is a
+budget the evidence is fitted into, and the packing is greedy — adding 575 characters of instruction
+moved the cut boundary on 106 of 121 questions even when the room was raised by the same 575.
 
 Every ask outside this table is kept because a published artifact was measured under it. They are
 reachable, they are tested, and switching to one reproduces that artifact's rendered prompt; none of

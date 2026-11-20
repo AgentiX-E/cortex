@@ -7,7 +7,8 @@
  * against four above, eight of the eighteen explained in the reply's own words by a verb-identity
  * exclusion. `verbatim-acts` replaced that line and removed the bias. The same decomposition, run on
  * the shipped arm's own artifact (`S16`, `44017278305`, four repetitions), now counts the route's
- * nineteen failures **seven below and seven above**.
+ * nineteen failures **nine below and five above** -- the omission much reduced, and five clean
+ * over-counts that no earlier ask was written for.
  *
  * A symmetric error is a different defect from a one-sided one, and the replies say which: the seven
  * above-gold enumerations admit mentions the question's *scope* excludes. `gpt4_2f8be40d` answers `5`
@@ -16,6 +17,14 @@
  * whose gold is `$3,750`, and the extra `$5,000` is *"event raised over $5,000"* — the event raised it.
  * `88432d0a` answers `5` and writes *"also mentioned 2023/05/24; counted once"* about a mention it then
  * counted twice.
+ *
+ * ## Measured on `S17` (`44642788342`) and rejected
+ *
+ * 98 of 121 against the control's 102: two converted, six regressed, exact McNemar p = 0.070. The
+ * tests below still hold what they always held -- the render is one line -- and that is the point of
+ * keeping them: the variable was clean and the direction was wrong, which is a fact about the
+ * benchmark's annotation rather than about this file. `SCOPE_BOUND_LINE`'s docblock carries the pair
+ * of gold totals that cannot both come from one rule.
  *
  * ## What these tests hold
  *

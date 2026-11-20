@@ -1852,11 +1852,18 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   //
   // Why the line: `verbatim-acts` was adopted on a one-sided error and removed it. The same
   // decomposition on `S16` (`44017278305`, the shipped arm, four repetitions) counts `MR`'s nineteen
-  // failures **seven below and seven above**, so the bias is gone and what remains is a screen with no
-  // period and no actor — `gpt4_2f8be40d` admits two weddings that are not the speaker's and two dated
+  // failures **nine below and five above**, so the omission bias is much reduced rather than gone and
+  // what remains is a screen with no period and no actor — `gpt4_2f8be40d` admits two weddings that are
+  // not the speaker's and two dated
   // outside the year, `d851d5ba` sums *"event raised over $5,000"* into a total whose gold is
   // $1,000 + $250 + $500 + $2,000. The added line states both bounds and leaves the twenty existing
   // lines of the contract byte-identical, which is what makes the render a single variable.
+  //
+  // Measured on `S17` (`44642788342`) and **rejected**: 98 of 121 against the control's 102, two
+  // conversions against six regressions, exact McNemar p = 0.070. The regressions are the bound doing
+  // what it says, and `129d1232` -- the question §13.289 used to justify `verbatim-acts` -- is one of
+  // them. The reason is in `SCOPE_BOUND_LINE`'s docblock and it is about the benchmark rather than
+  // about the prompt: two gold totals in the same capability cannot both come from one actor rule.
   'verbatim-scope': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
