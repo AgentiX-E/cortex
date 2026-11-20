@@ -1275,35 +1275,54 @@ export const CRITERIA: readonly Criterion[] = [
   // control's does not (`lexicalWeighting`, `sessionClock`, `factTimeline`, `resolution`) plus a
   // `selfIndex.queries` field the control's code never wrote. The control is `S16`, three days and several
   // merges older, so the difference between the two arms is not the one flag the registration named.
-  // §13.377.5's gate says an unreadable delta is not evidence, so the family stays open and `S18` re-runs the
-  // pair at one tree. The row keeps reading the number it has.
+  // §13.377.5's gate says an unreadable delta is not evidence, so the family stayed open and `S18` re-ran the
+  // pair at one tree.
+  //
+  // Round 145 dispatched `S18` (`44717750493` control, `44723845151` treatment, both `a7eafcced3f3`) and the
+  // row now reads the attributable number: **+4 of 121, 103 against the control's 99**. `E0` passes on both
+  // artifacts naming the same sha, which is the field this row's own round added to `AblationReport` for
+  // exactly this purpose. `E1'` -- the relative bar, because the absolute 107 was written for `S16`'s 102 and
+  // this pair's control is 99 -- misses by one question; `E2'` passes at 0.992x, so the four questions were
+  // not bought with tokens. Six fixed against two broken, exact McNemar `p = 0.2891`.
+  //
+  // Both arms' deterministic baselines are 105 of 121, reproducing question for question. That is the noise
+  // control this pair did not have to construct: a non-LLM side that lands on the same number twice says the
+  // harness, the dataset and the ranking path are the same, so the delta belongs to the feature arm. It also
+  // says the uncomfortable thing this row now carries: the expansion arm is 1.66 points BELOW a retrieval
+  // path that expands nothing, and the control without the flag is 4.96 below it. The gap to `MemCog` is in
+  // that deficit, not in the phrases.
+  //
+  // The family closes on §13.377.9's row 3 -- `E1'` fail with `E0`/`E2'`/`E4` pass, attribution intact --
+  // which this pair is the first to be able to invoke, because it is the first with `E0`.
   {
     id: 'S17',
     capability: 'query expansion on the product’s own ranking',
     metric:
-      'question-by-question net correct answers on `MR` against the registered arm, **and** a bill at or ' +
-      'below 8,600 prompt tokens per question, **and** the product’s own receipt ' +
-      '`selfIndex.queries > selfIndex.indexes`',
+      'question-by-question net correct answers on `MR` against **the control dispatched at the same ' +
+      'commit**, **and** a bill at or below 1.15x that control’s own bill, **and** the product’s own ' +
+      'receipt `selfIndex.queries > selfIndex.indexes`',
     dataset:
-      'LongMemEval-S, 500 questions, one dispatch, four repetitions, `relevanceSignal: self-index` with ' +
+      'LongMemEval-S, the `MR` cell, 121 questions, four repetitions, `relevanceSignal: self-index` with ' +
       '`queryExpansion: llm` as the single departure from the table `tools/arm-config-baseline.json` ' +
-      'registers, paired against `S16`; the same reader, judge and prompt everywhere else',
+      'registers, paired against a control dispatched at the same sha within the same round; the same ' +
+      'reader, judge and prompt everywhere else',
     comparator: 'at-least',
     threshold: 5,
     unit: 'count',
-    // `aim`, with an `artifact` source since round 144: the kind says what the criterion would do with a
-    // number -- print the miss and keep the build green, because the row is a target -- and the source says
-    // where the number is. The two `attest` entries are what stop the row reading a different experiment's
-    // file: a file whose `row` is not this one, or whose control is not the dispatch it was paired against,
-    // is a reading of something else and renders `STALE` rather than a number.
+    // `aim`, with an `artifact` source: the kind says what the criterion would do with a number -- print the
+    // miss and keep the build green, because the row is a target -- and the source says where the number is.
+    // The two `attest` entries are what stop the row reading a different experiment's file: a file whose
+    // `row` is not this one, or whose treatment run is not the attributable dispatch, renders `STALE` rather
+    // than a number. The first version pointed at `query-expansion.json` and read the `S17` pair; this one
+    // points at the `S18` pair, because `S17`'s delta was two code versions and `S18`'s is one flag.
     kind: 'aim',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/query-expansion.json',
-      key: 'paired.deltaQuestions',
+      path: 'cortex-docs/evidence/longmemeval/query-expansion-s18.json',
+      key: 'mr.deltaQuestions',
       attest: [
         { key: 'row', equals: 'S17' },
-        { key: 'paired.control.run', equals: '44017278305' },
+        { key: 'pair.treatment.run', equals: '44723845151' },
       ],
     },
     competitors: [
@@ -1321,11 +1340,12 @@ export const CRITERIA: readonly Criterion[] = [
     onMiss:
       'A net MR delta below +5 says the ranking axis is exhausted as a way to raise `MR`: the phrases reach ' +
       'the pool and the reader still answers from what it already had, which leaves §13.96’s diagnosis — ' +
-      'which mentions count as instances — as the only live one. A bill above 8,600 with the delta in ' +
-      'tolerance says the extra queries bought pool rather than precision, and the next increment is the ' +
-      'phrase count rather than a new stage. A run whose `selfIndex.queries` equals its `indexes` is ' +
+      'which mentions count as instances — as the only live one. A bill above 1.15x the control with the ' +
+      'delta in tolerance says the extra queries bought pool rather than precision, and the next increment ' +
+      'is the phrase count rather than a new stage. A run whose `selfIndex.queries` equals its `indexes` is ' +
       'neither: the treatment never reached the ranking, and `assertQueryExpansionReached` refuses to ' +
-      'write that artifact rather than letting this row read it as a verdict on the mechanism.',
+      'write that artifact rather than letting this row read it as a verdict on the mechanism. A run whose ' +
+      'artifacts name two different commits is not a reading at all — `E0` is checked before any of these.',
   },
 
   // §14.143's window. Non-inferiority rather than a win, because the mechanism spends the **same**

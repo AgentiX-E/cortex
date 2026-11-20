@@ -395,7 +395,8 @@ describe('the table is well formed', () => {
     // S17 left it in round 144, and it is the case this list was written for: it had a design, a
     // population, four repetitions and five criteria for eighteen rounds with no run, because the
     // mechanism could not reach the product's ranking until plan §34 added the seam. It now reads an
-    // artifact — 102 of 121 against a threshold of +5, so a miss rather than a message.
+    // artifact — round 145's `S18` pair, `+4` of 121 against a threshold of +5, so a miss rather than a
+    // message, and the first S17 reading whose delta `E0` attributes to the flag.
     expect(missing.map((criterion) => criterion.id)).toEqual(['D1', 'P1']);
     for (const criterion of missing) {
       if (criterion.source.kind !== 'unrun') throw new Error('unreachable: filtered on the kind');
@@ -406,14 +407,23 @@ describe('the table is well formed', () => {
 
   it('reads S17 from the evidence file the dispatch wrote, not from a remembered number', () => {
     // The half of the move the list above cannot check: leaving `unrun` is only an improvement if the row
-    // reads an artifact whose attestation names this row and this control. Two `attest` entries are what
+    // reads an artifact whose attestation names this row and this treatment. Two `attest` entries are what
     // stop the row reporting a neighbouring experiment's delta under its own name.
+    //
+    // The path moved in round 145 from `query-expansion.json` to `query-expansion-s18.json`, and the reason
+    // is the attestation's job rather than tidiness: the `S17` file names a control three days older than its
+    // treatment, so its delta measures two code versions, and a row that read it would be printing an
+    // unattributable number under a criterion about one flag. The `S18` file is the pair dispatched at one
+    // sha, and its `pair.treatment.run` is the assertion that says so.
     const row = CRITERIA.find((criterion) => criterion.id === 'S17');
     expect(row?.source.kind).toBe('artifact');
     if (row?.source.kind !== 'artifact') throw new Error('unreachable: asserted above');
-    expect(row.source.path).toBe('cortex-docs/evidence/longmemeval/query-expansion.json');
-    expect(row.source.key).toBe('paired.deltaQuestions');
-    expect(row.source.attest?.map((entry) => entry.key)).toEqual(['row', 'paired.control.run']);
+    expect(row.source.path).toBe('cortex-docs/evidence/longmemeval/query-expansion-s18.json');
+    expect(row.source.key).toBe('mr.deltaQuestions');
+    expect(row.source.attest).toEqual([
+      { key: 'row', equals: 'S17' },
+      { key: 'pair.treatment.run', equals: '44723845151' },
+    ]);
   });
 
   it('keeps a row for every mechanism this repository shipped, including the null results', () => {
