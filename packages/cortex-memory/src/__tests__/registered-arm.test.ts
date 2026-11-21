@@ -63,6 +63,64 @@ function baseline(): Baseline {
  * artifact, be unclassified on both sides, and the projection would keep passing over a row nobody
  * had considered — which is how `ask` stayed two values for nine rounds.
  */
+
+/**
+ * The registered values the product cannot yet be given, and what each one is missing.
+ *
+ * ## Why this table exists rather than four more fields on `AssembleOptions`
+ *
+ * Because the honest state is not "the product decides this". Four fields of the measured arm reach the
+ * reader through the benchmark's arm and through nothing else:
+ *
+ * | field | registered | what the published entry has |
+ * | --- | --- | --- |
+ * | `maxTurnChars` | `400` | the option exists and is forwarded, but nothing defaults it |
+ * | `maxTurnCharsRoutes` | `multi-session,temporal` | no option at all |
+ * | `evidenceRoles` | `['user']` | no option at all |
+ * | `evidenceRolesRoutes` | `multi-session,temporal` | no option at all |
+ *
+ * A call that names none of them assembles a prompt where every turn prints whole and both speakers print,
+ * which is not the cell `S16` priced. Writing them into {@link REGISTERED_ARM} would have claimed an
+ * application that does not happen — the exact defect this file exists to remove, restated one layer down.
+ *
+ * ## The assertion that keeps this table honest
+ *
+ * `registered-arm.test.ts` checks both directions. Every value here still has to equal the artifact, so the
+ * table cannot drift; and a bare assembly has to still **not** apply it, so shipping one is a red test that
+ * says "move this row up" rather than a silent improvement nobody recorded. A row that can be quietly
+ * satisfied is a row that will be.
+ *
+ * ## Closing them is an adoption, in this order
+ *
+ * `maxTurnChars` first: the option exists, so defaulting it is one line and a byte test. The other three need
+ * an option each, a manual row each (the manual gate fails an undocumented option), and a byte test proving
+ * the field reached the prompt. None of the three can be done "while we are here": each moves the bytes of
+ * every prompt whose corpus holds a turn over 400 characters or a non-user turn, which is a re-reading of
+ * every published number rather than an edit.
+ */
+const REGISTERED_ARM_UNSHIPPED: Readonly<
+  Record<string, { readonly value: unknown; readonly missing: string }>
+> = {
+  maxTurnChars: {
+    value: 400,
+    missing:
+      '`AssembleOptions.maxTurnChars` exists and is forwarded; nothing defaults it, so a bare call prints ' +
+      'every turn whole where the registered arm cuts at 400 on two routes',
+  },
+  maxTurnCharsRoutes: {
+    value: ['multi-session', 'temporal'],
+    missing: 'no `AssembleOptions` field: the two routes the cap reaches are named only by the arm',
+  },
+  evidenceRoles: {
+    value: ['user'],
+    missing: 'no `AssembleOptions` field: a bare call prints the assistant turns the arm excludes',
+  },
+  evidenceRolesRoutes: {
+    value: ['multi-session', 'temporal'],
+    missing: "no `AssembleOptions` field, for `evidenceRoles`'s reason",
+  },
+};
+
 const REGISTERED_ARM_ELSEWHERE: Readonly<
   Record<
     string,
@@ -212,6 +270,7 @@ describe('the arm the registration measured is the arm the product ships', () =>
     const artifact = baseline().memoryArmConfig;
     const decided = new Set<string>([
       ...Object.keys(REGISTERED_ARM),
+      ...Object.keys(REGISTERED_ARM_UNSHIPPED),
       ...Object.keys(REGISTERED_ARM_ELSEWHERE),
     ]);
 
@@ -242,6 +301,38 @@ describe('the arm the registration measured is the arm the product ships', () =>
       }
     }
     expect(disagreements).toEqual([]);
+  });
+
+  it('agrees with the artifact on the fields it records but cannot ship, and says what each needs', () => {
+    const artifact = baseline().memoryArmConfig;
+    for (const [key, entry] of Object.entries(REGISTERED_ARM_UNSHIPPED)) {
+      expect({ key, value: entry.value }).toEqual({ key, value: artifact[key] });
+      // A row without a reason is a row nobody has to close. The reason is prose, so the assertion is that
+      // it exists and names something -- an empty string would satisfy a truthiness check on the record.
+      expect(entry.missing.length).toBeGreaterThan(30);
+    }
+  });
+
+  it('does not apply the unshipped fields on a bare call, so shipping one moves the row', async () => {
+    // The tripwire. `maxTurnChars: 400` on two routes is the registered rendering, and a bare call still
+    // prints this 900-character turn whole -- which is the gap `REGISTERED_ARM_UNSHIPPED` records. When
+    // somebody defaults the cap, this assertion fails and the fix is to move `maxTurnChars` into
+    // `REGISTERED_ARM`; a test that only checked the table could never say so.
+    const LONG = `${'The plumber came on the ninth and replaced the valve. '.repeat(20)}END-OF-LONG-TURN`;
+    const seen: string[] = [];
+    const install = assembleMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      storage: new SqliteStorage(),
+    });
+    await install.memory.remember([
+      { sessionId: 's1', ordinal: 0, text: LONG },
+      { sessionId: 's2', ordinal: 0, text: 'I bought a bicycle in April.' },
+    ]);
+    seen.length = 0;
+    await install.memory.askStored(QUESTION);
+    expect(LONG.length).toBeGreaterThan(REGISTERED_ARM_UNSHIPPED.maxTurnChars!.value as number);
+    expect(seen[0] ?? '').toContain('END-OF-LONG-TURN');
   });
 
   it('carries the room table `rooms.ts` already pinned, unchanged', () => {

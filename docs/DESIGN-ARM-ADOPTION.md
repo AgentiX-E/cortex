@@ -65,6 +65,17 @@ decided from a value that had quietly stopped matching.
                        (every evidence file a row reads, and its mirror)
 ```
 
+The partition has three tables, not two. `REGISTERED_ARM` holds the nineteen fields the product applies;
+`REGISTERED_ARM_UNSHIPPED` holds the four the registration carries and the published entry **cannot yet be
+given** (`maxTurnChars`, `maxTurnCharsRoutes`, `evidenceRoles`, `evidenceRolesRoutes` — the first has an option
+that nothing defaults, the other three have no option at all); `REGISTERED_ARM_ELSEWHERE` holds the fourteen
+that are not a product decision, each with its class.
+
+The middle table is the honest one. Writing those four into `REGISTERED_ARM` would have claimed an
+application that does not happen — the same defect this document is about, one layer down — and its assertion
+is bidirectional: every value still has to equal the artifact, and a bare assembly must still **not** apply it,
+so shipping one turns the gate red with "move this row up" rather than passing quietly.
+
 Four claims, each with a checker:
 
 1. **The product constant equals the record.** `registered-arm.test.ts` compares `REGISTERED_ARM`

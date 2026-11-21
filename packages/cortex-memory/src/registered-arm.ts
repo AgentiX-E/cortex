@@ -75,17 +75,8 @@ export const REGISTERED_ARM = {
   confidenceSignal: 'none',
   /** The `KU` conflict block (§11) is off in the registered arm and has no reading of its own yet. */
   conflicts: false,
-  /**
-   * Which turns the evidence block is allowed to print. `user` on the two routes the artifact names:
-   * the assistant's turns repeat the user's figures and outrank them in a term-frequency order.
-   */
-  evidenceRoles: ['user'],
-  evidenceRolesRoutes: ['multi-session', 'temporal'],
   /** `S16`'s table: `multi-session` 48,460 characters, the other five 24,000. */
   maxPromptCharsByRoute: REGISTERED_ROOMS,
-  /** §14.126's cap, and its two routes. `400::match` is a *way* of spending the cap, not the cap. */
-  maxTurnChars: 400,
-  maxTurnCharsRoutes: ['multi-session', 'temporal'],
   /** §12.5's rendering. Every reading from `S9` onwards was taken with it. */
   promptContract: 'evidence-blocks-unsourced' as PromptContract,
   /** No query expansion in the registered arm; §13.68 measured the widening and did not adopt it. */
@@ -121,3 +112,11 @@ export const REGISTERED_ARM = {
   /** No cut marker: the registered rendering cuts silently, and a marker is a measured departure. */
   turnCutMarker: 'none',
 } as const;
+
+/*
+ * The registered values the product cannot yet be given — `maxTurnChars`, `maxTurnCharsRoutes`,
+ * `evidenceRoles`, `evidenceRolesRoutes` — are recorded in `__tests__/registered-arm.test.ts`, with what each
+ * one is missing and the assertion that fails when one of them ships. They are next to the gate rather than
+ * here for the export census's reason: a constant nothing in the product calls is API surface nobody asked
+ * for, and the only thing that reads this claim is the test that enforces it.
+ */
