@@ -23,7 +23,7 @@ two repetitions, same reader, same 6 s pace. The only input that differs is `wor
 | | run `43590434060` | run `43609290786` |
 | --- | --- | --- |
 | `workers` | 4 | 32 |
-| `Run the two-window carry pair` | **7784 s** (2 h 09 m 44 s) | **7819 s** (2 h 10 m 19 s) |
+| `Run the two-window carry pair` (now `Run the paired ablation, this shard`) | **7784 s** (2 h 09 m 44 s) | **7819 s** (2 h 10 m 19 s) |
 | `transportRetry.calls` | 1293 | 1298 |
 | `transportRetry.retried` | 0 | 0 |
 | `transportRetry.rateLimited` | 0 | 0 |

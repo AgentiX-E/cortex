@@ -350,7 +350,11 @@ jobs:
             longmemeval-embedding-${{ hashFiles('data/dataset.sha256') }}-
             longmemeval-embedding-
 
-      - name: Run the two-window carry pair
+      # The name used to say "two-window carry pair", which stopped being true when `S10` started riding
+      # this file and became doubly untrue when `pairing=clock` was added. A step name is the only part of
+      # a run an operator reads from the summary page, so a name that describes a smaller experiment than
+      # the step runs is the same defect class as an artifact that omits its own configuration.
+      - name: Run the paired ablation, this shard
         env:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
