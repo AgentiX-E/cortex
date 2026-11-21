@@ -625,6 +625,7 @@ export {
   describeEmbeddingCachePersist,
   evidenceRouteOf,
   persistEmbeddingCache,
+  readOracleEvidence,
   restoreArmEmbeddingCache,
   roleOfTurn,
   runCortexMemoryArm,

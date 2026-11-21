@@ -1559,7 +1559,18 @@ function readConfidenceSignal(raw: string | undefined): string {
  * So the accepted set is `'0'`, `'1'` and the empty string (what an unfilled dispatch input
  * actually is), and anything else throws with those three named.
  */
-function readOracleEvidence(raw: string | undefined): boolean {
+export function readOracleEvidence(
+  raw: string | undefined,
+  /**
+   * Which variable the message names.
+   *
+   * The two arms reach the same condition through two channels -- `CORTEX_MEMORY_ORACLE` on the product
+   * arm, `ORACLE_EVIDENCE` on the graded runner -- and a message that named the wrong one would send its
+   * reader to edit a workflow that had nothing to do with the failure. Defaulted to the product arm's
+   * name, so every existing call site and its tests are unchanged.
+   */
+  variable: string = ORACLE_EVIDENCE_VARIABLE,
+): boolean {
   if (raw === undefined) return false;
   const value = raw.trim();
   // `''` is the unfilled input rather than a value: GitHub writes it into the environment
@@ -1569,7 +1580,7 @@ function readOracleEvidence(raw: string | undefined): boolean {
   if (value === '1') return true;
   if (value === '0') return false;
   throw new Error(
-    `${ORACLE_EVIDENCE_VARIABLE} must be '1', '0' or unset, got ${JSON.stringify(raw)}. ` +
+    `${variable} must be '1', '0' or unset, got ${JSON.stringify(raw)}. ` +
       'An unrecognised value is rejected rather than read as off: a run dispatched for the ' +
       'reader ceiling would otherwise grade the shipped corpus, and a shipped score published ' +
       'under an oracle label is a number no later re-reading can repair.',

@@ -252,6 +252,19 @@ jobs:
           # modes is the A/B that decides which is true here.
           AGGREGATION_CRITIQUE: ${{ github.event.inputs.aggregation_critique || '0' }}
           AGGREGATION_CRITIQUE_MODE: ${{ github.event.inputs.aggregation_critique_mode || 'recall' }}
+          # The reader ceiling: grade the gold-only evidence instead of the corpus, holding the reader, the judge,
+          # the temperature, the room and the repetition count fixed.
+          #
+          # A **variable** rather than an input, for the reason `benchmark-cortex-memory.yml` gives for
+          # `CORTEX_MEMORY_ORACLE`: this condition asks one question and is measured once per reader generation,
+          # and section 92 makes it settable through the channel the input ceiling does not bound. The `'0'`
+          # fallback is a literal, not "whatever the variable last held", because a reader who checks out the
+          # commit behind the registered 91.25% row and dispatches it must get that configuration back.
+          #
+          # Why it exists at all: `91.25%` sits 8.85 points above LongMemEval-S's published oracle ceiling of
+          # 82.4%, and that comparison is only interpretable once *this* reader's own ceiling is on record. The
+          # product arm's 92.90% cannot be transferred: the two arms share neither the reader nor the pool.
+          ORACLE_EVIDENCE: ${{ vars.ORACLE_EVIDENCE || '0' }}
           DEEPSEEK_MODEL: ${{ github.event.inputs.model || 'deepseek-chat' }}
           DEEPSEEK_THINKING: ${{ github.event.inputs.thinking || 'disabled' }}
           # Default to a small stratified sample so iterative debugging does not

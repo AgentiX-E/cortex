@@ -29,6 +29,7 @@ import {
   resetEmbeddingSourceStats,
   formatIdPreview,
   parseCritiqueMode,
+  readOracleEvidence,
   readToggle,
   rerankArmOptions,
   transportRetryReport,
@@ -54,6 +55,7 @@ import {
   turnText,
   attributeRecallGap,
   decomposeFailures,
+  describeOracleCensus,
   classifyTrFailure,
   adjudicateGroundedFailure,
   type Metrics,
@@ -480,6 +482,16 @@ async function main(): Promise<void> {
   // one verdict per line (`per-item`). Parsed by a function in `src/**` rather than inline, for the reason the
   // toggles above are: a comparison written here cannot be tested.
   const aggregationCritiqueMode = parseCritiqueMode(process.env['AGGREGATION_CRITIQUE_MODE']);
+  // The reader ceiling: grade the gold-only pool instead of the corpus, and change nothing else.
+  //
+  // Read through the same strict parser the product arm uses rather than through `readToggle`, because the two
+  // arms must agree on what "on" means -- and because the parser rejects an unrecognised value instead of reading
+  // it as off. A shipped score published under an oracle label is a number no later re-reading can repair, which
+  // is the one class of error this whole dispatch exists to rule out.
+  //
+  // The variable name is passed for the message alone: this arm's channel is `ORACLE_EVIDENCE`, and a message that
+  // named `CORTEX_MEMORY_ORACLE` would send its reader to the other workflow.
+  const oracleEvidence = readOracleEvidence(process.env['ORACLE_EVIDENCE'], 'ORACLE_EVIDENCE');
 
   const { report, markdown } = await runNaturalLanguageBenchmark(sampled as never, embedding, llm, {
     abstainThreshold: threshold,
@@ -508,7 +520,15 @@ async function main(): Promise<void> {
     ...(aggregationCritique && aggregationCritiqueMode !== undefined
       ? { aggregationCritiqueMode }
       : {}),
+    ...(oracleEvidence ? { oracleEvidence: true } : {}),
   });
+  // Printed before any score, and printed on every run that carries the census, because the ratio is the
+  // confound this condition cannot remove: the gold pool is ~12 turns where the corpus is ~550, so a ceiling is
+  // measured at a shorter context as well as a correct one. A reader who is not told that will attribute the
+  // whole delta to retrieval quality.
+  if (report.oracleCensus !== undefined) {
+    console.log(describeOracleCensus(report.oracleCensus));
+  }
   const reasonCounts: Record<string, number> = { empty: 0, threshold: 0, llm: 0, answered: 0 };
   for (const d of decisions) {
     reasonCounts[d.reason] = (reasonCounts[d.reason] ?? 0) + 1;

@@ -459,6 +459,95 @@ describe('runNaturalLanguageBenchmark', () => {
     expect(report.ablation.featureAggregate.avg).toBeGreaterThanOrEqual(0);
   });
 
+  it('grades the gold-only pool when asked, and says so on the artifact', async () => {
+    // THE END-TO-END WIRING for `BenchmarkRunnerOptions.oracleEvidence`. The transform, its census and its
+    // assertion were already written and tested (`oracle-evidence.test.ts`, 333 lines); what had no caller was
+    // the **graded runner**. That distinction is the whole point: a condition reachable only from the product arm
+    // produces a ceiling for a system nobody quotes.
+    //
+    // The fixture carries two sessions and names one of them as the answer, so the shipped pool and the gold pool
+    // are genuinely different. Without that difference every assertion below would pass on a transform that did
+    // nothing.
+    const oracleInstances: LongMemEvalInstance[] = [
+      {
+        question_id: 'oracle-q1',
+        question_type: 'single-session-user',
+        question: 'What is the favorite color?',
+        answer: 'blue',
+        haystack_session_ids: ['s1', 's2'],
+        haystack_sessions: [
+          [{ role: 'user', content: 'favorite color=blue' }],
+          [{ role: 'user', content: 'the weather was cold' }],
+        ],
+        answer_session_ids: ['s1'],
+      },
+    ];
+    const oracleLlm: LLM = {
+      complete: async () => 'blue',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    // `retrieved` is optional: an empty pool records `undefined` rather than `''`, and a collector typed as
+    // `string[]` would have to invent a value for that case. Keeping the absence lets the assertion below say
+    // "every prompt carried the gold turn" instead of "no prompt carried the distractor", which a run that
+    // offered no evidence at all would also satisfy.
+    const prompts: (string | undefined)[] = [];
+    const { report, markdown } = await runNaturalLanguageBenchmark(
+      oracleInstances,
+      new HashEmbedding(64),
+      oracleLlm,
+      { runs: 1, oracleEvidence: true, onDecision: (trace) => prompts.push(trace.retrieved) },
+    );
+    // The artifact has to be unable to be filed beside a shipped run: the name carries the suffix, the census
+    // describes what was rewritten, and the population is unchanged -- a ceiling over a different question set
+    // cannot be quoted beside a shipped score.
+    expect(report.dataset.endsWith('+oracle')).toBe(true);
+    expect(report.questionCount).toBe(1);
+    expect(report.oracleCensus?.sourced).toBe(1);
+    expect(report.oracleCensus?.unsourced).toBe(0);
+    expect(report.oracleCensus?.turns).toBe(1);
+    // The transform must have reached the SYSTEMS, not only the report. This is the assertion the option exists
+    // for: a prompt that still carries the distractor means the dataset hand-off lost the rewrite, and the number
+    // would be a shipped score wearing an oracle label.
+    expect(prompts.length).toBeGreaterThan(0);
+    expect(prompts.every((prompt) => prompt?.includes('favorite color=blue') === true)).toBe(true);
+    expect(prompts.some((prompt) => prompt?.includes('the weather was cold') === true)).toBe(false);
+    expect(markdown).toContain('+oracle');
+  });
+
+  it('leaves the shipped corpus alone unless the condition is asked for', async () => {
+    // The control, and it is not redundant with the test above: `false` and absent must be the same run, and a
+    // reader checking out the commit behind the registered 91.25% has to get that configuration back. The
+    // distractor is in the prompt here, which is what makes the previous test's absence-assertion meaningful.
+    const shippedLlm: LLM = {
+      complete: async () => 'blue',
+      completeStructured: async <T>() => ({}) as T,
+    };
+    const prompts: (string | undefined)[] = [];
+    const shippedInstances: LongMemEvalInstance[] = [
+      {
+        question_id: 'shipped-q1',
+        question_type: 'single-session-user',
+        question: 'What is the favorite color?',
+        answer: 'blue',
+        haystack_session_ids: ['s1', 's2'],
+        haystack_sessions: [
+          [{ role: 'user', content: 'favorite color=blue' }],
+          [{ role: 'user', content: 'the weather was cold' }],
+        ],
+        answer_session_ids: ['s1'],
+      },
+    ];
+    const { report } = await runNaturalLanguageBenchmark(
+      shippedInstances,
+      new HashEmbedding(64),
+      shippedLlm,
+      { runs: 1, oracleEvidence: false, onDecision: (trace) => prompts.push(trace.retrieved) },
+    );
+    expect(report.dataset.endsWith('+oracle')).toBe(false);
+    expect(report.oracleCensus).toBeUndefined();
+    expect(prompts.some((prompt) => prompt?.includes('the weather was cold') === true)).toBe(true);
+  });
+
   it('passes the configured temperature through to the LLM', async () => {
     const temperatures: number[] = [];
     const capturingLlm: LLM = {

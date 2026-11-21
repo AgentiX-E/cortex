@@ -20,6 +20,7 @@ import {
   NaturalLanguageMemorySystem,
 } from './natural-language-memory.js';
 import { CANDIDATE_ANNOTATION_VERSION } from './candidate-context.js';
+import { assertOracleReached, oracleEvidenceDataset } from './oracle-evidence.js';
 import { createLlmJudge, type AnswerJudge } from './judge.js';
 import { judgeScorer } from './metrics.js';
 import {
@@ -212,6 +213,40 @@ export type BenchmarkRunnerOptions = {
    * instead of a reconciliation of two views.
    */
   featureConfig?: FeatureConfig;
+  /**
+   * Grade the **gold-only** evidence on this arm, so the reading is the reader's ceiling.
+   *
+   * ## Why this arm needs it and the product arm was not enough
+   *
+   * `oracleEvidence` has existed on the `CortexMemory` arm since §1.38.5 and read `92.90%` there against a
+   * shipped `80.80%` -- a retrieval loss of `12.1` points on **that** system. The number this campaign
+   * quotes is `91.25%`, and it is produced by **this** runner, which is a different system: a different
+   * retrieval stack, a different admission rule, a different prompt builder. An oracle reading cannot be
+   * transferred between arms -- the ceiling belongs to the reader and the pool, and neither is shared --
+   * so the one decomposition every serious rival publishes (`Caura`'s 92.2/94.6 split) has never existed
+   * for the arm whose number is on the front page.
+   *
+   * That gap is also why §143.7 could not close its own question. Our `91.25%` sits `8.85` points above
+   * `LongMemEval-S`'s published oracle ceiling of `82.4%`, and the three explanations it listed -- a more
+   * lenient judge, a stronger reader, a different variant -- all require the same measurement to separate:
+   * **what does this reader score when retrieval is removed from the equation entirely?** Until that number
+   * exists, `91.25` is either a real result or an artifact, and the artifact contains nothing that says which.
+   *
+   * ## What it does
+   *
+   * The dataset is rewritten before either arm is constructed (`oracleEvidenceDataset`), so the transform is
+   * upstream of every route, every cache and every count. The report carries the census and the dataset name
+   * gains the `+oracle` suffix, and `assertOracleReached` refuses a finished run whose artifact does not say
+   * it -- because a shipped score published under an oracle label is a number no later re-reading can repair.
+   *
+   * Both arms are transformed, which is deliberate: the baseline rides inside the same artifact and is the
+   * anchor that separates "the condition changed the ceiling" from "the harness moved". Giving it the shipped
+   * corpus would make the two arms differ in two variables.
+   *
+   * Defaults to off, so every earlier artifact keeps its meaning, and `undefined` is the only absent value --
+   * a caller that passes `false` gets the same run as one that passes nothing.
+   */
+  oracleEvidence?: boolean;
   /** Number of independent ablation runs (default 3). */
   runs?: number;
   /**
@@ -338,7 +373,13 @@ export async function runNaturalLanguageBenchmark(
   llm: LLM,
   options: BenchmarkRunnerOptions = {},
 ): Promise<{ report: AblationReport; markdown: string }> {
-  const dataset = loadLongMemEval(instances);
+  // The transform runs before anything is constructed, so no route, cache or count can see the shipped corpus and
+  // then be compared against a report that says `+oracle`. Loaded once and transformed once: calling the loader a
+  // second time for the off branch would make the two configurations read the file twice as often, which is a bill
+  // and a fingerprint risk rather than a style point.
+  const loaded = loadLongMemEval(instances);
+  const oracle = options.oracleEvidence === true ? oracleEvidenceDataset(loaded) : undefined;
+  const dataset = oracle === undefined ? loaded : oracle.dataset;
   const threshold = options.abstainThreshold ?? 0.5;
   // Query expansion is deterministic at temperature 0, so the baseline and the
   // feature systems can share one cache instead of re-calling the LLM for the
@@ -499,8 +540,19 @@ export async function runNaturalLanguageBenchmark(
   // report claiming otherwise would be describing the configuration's intent
   // rather than the run.
   const candidateAnnotationVersion = annotationVersionOf(traces);
+  // The census rides the artifact rather than the log, and the assertion runs on the artifact rather than on the
+  // local: between the transform and the number there is a dataset hand-off, a restriction plan and an ablation,
+  // and a run whose transform was applied to a dataset the arm did not grade would publish a shipped score under
+  // an oracle label. `questionCount` is checked too, because a ceiling measured on a different population cannot
+  // be quoted beside a shipped number.
+  if (oracle !== undefined) assertOracleReached(report, oracle.census);
   return {
-    report: { ...report, questions, candidateAnnotationVersion },
+    report: {
+      ...report,
+      questions,
+      candidateAnnotationVersion,
+      ...(oracle === undefined ? {} : { oracleCensus: oracle.census }),
+    },
     markdown: formatAblationReport({ ...report, questions, candidateAnnotationVersion }),
   };
 }

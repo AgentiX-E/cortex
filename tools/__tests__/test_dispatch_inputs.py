@@ -76,6 +76,11 @@ SCRIPT_WORKFLOW = {
     # the probe's own reading -- a `--steps 1` dispatch of `benchmark.yml` would be the arm measured
     # with the reader's decision calls billed as if they were answers.
     "dispatch-multi-step-probe.py": "probe-multi-step.yml",
+    # The reader ceiling on the arm that produces the quoted number. It rides `benchmark.yml` because that is the
+    # only workflow whose measurement is the shipped pipeline -- the product arm's ceiling (`92.90%`) belongs to a
+    # different reader and a different pool and cannot be transferred. The condition itself is armed through
+    # `vars.ORACLE_EVIDENCE` rather than an input, so this entry pins the workflow and not a 19th input.
+    "dispatch-oracle-ceiling.py": "benchmark.yml",
 }
 
 

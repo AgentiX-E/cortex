@@ -13,6 +13,7 @@ import type {
 } from './types.js';
 import type { CohortCoverage } from './datasets/sampling.js';
 import type { EvidenceReduction, QuestionRecord } from './question-record.js';
+import type { OracleEvidenceCensus } from './oracle-evidence.js';
 import { runAblation, type AblationOptions, type AblationPool } from './ablation.js';
 import type { BenchmarkProgressCallback } from './benchmark.js';
 import { exactMatchScorer, type AnswerScorer } from './metrics.js';
@@ -36,6 +37,16 @@ import type { AnswerTransition } from './types.js';
 export type AblationReport = {
   dataset: string;
   questionCount: number;
+  /**
+   * What the oracle-evidence transform did, when the run graded the gold-only pool.
+   *
+   * Absent on every shipped run, and the absence is the record: a field present with zeroes would be
+   * indistinguishable from a condition that fired on an empty population. The dataset name carries the `+oracle`
+   * suffix at the same time, and `assertOracleReached` refuses a report that carries one without the other --
+   * the census says *what* was rewritten and the name says *which* number the artifact is, and a reader needs
+   * both to keep a ceiling from being filed beside a shipped score.
+   */
+  oracleCensus?: OracleEvidenceCensus;
   baseline: { name: string; metrics: Metrics };
   feature: { name: string; metrics: Metrics };
   ablation: AblationResult;

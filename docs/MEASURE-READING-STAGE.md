@@ -489,6 +489,45 @@ And the noise floor from §5.5 applies to both: **a 121-question column swings a
 unchanged (7.9 points)**. A difference under that is not a difference, and neither run will be reported as one
 without a paired test over the same questions.
 
+## 5.7 The oracle ceiling, on the arm that produces the number we quote
+
+§5's second item has been the honest gap in every reading this document publishes: *"Not the oracle ceiling …
+this run reads retrieved context, so it cannot separate 'the reader is weak' from 'this reader is weak on this
+context'."*
+
+That gap stopped being a footnote when a rival's published ceiling arrived and contradicted our headline.
+LongMemEval-S's oracle condition -- the evidence sessions handed straight to a reader, no retrieval -- is
+reported at **82.4%**. This project's quoted number is **91.25%** on the same 500 questions. A shipped score
+8.85 points above a ceiling is not a result; it is one of three things, and the artifact says nothing about which:
+
+1. **The judge is more lenient** than the one behind the published ceiling.
+2. **The reader is stronger** -- so the published 82.4% is a ceiling over a weaker reader, not over ours.
+3. **The ceiling was computed on a different variant** of the benchmark, and the two numbers describe two
+   populations wearing one name.
+
+All three are separated by the same measurement, and the condition already existed in this repository. What did
+**not** exist was a caller on the arm whose number is quoted. `oracleEvidence` was wired to the `CortexMemory`
+arm, where it read **92.90%** against a shipped **80.80%** -- a retrieval loss of 12.1 points *there*. That
+number cannot be transferred: the two arms share neither the reader nor the pool, and a ceiling belongs to both.
+
+`BenchmarkRunnerOptions.oracleEvidence` closes the gap. It rewrites the dataset **before either arm is
+constructed**, so no route, cache or count can see the shipped corpus and then be compared against a report that
+says `+oracle`; the census rides the artifact (`AblationReport.oracleCensus`); and `assertOracleReached` refuses
+a finished run whose artifact does not carry both halves of the claim.
+
+Three properties make it a measurement rather than a relabelling, and each is a test:
+
+| property | why it would fail silently |
+| --- | --- |
+| the prompt carries only gold turns | a transform applied after the arm was called produces a shipped score under an oracle label -- the one class of number no later re-reading repairs |
+| the question population is unchanged | a ceiling measured on a different question set cannot be quoted beside a shipped score |
+| `false` and absent are the same run | a reader who checks out the commit behind the registered number must get that configuration back |
+
+What it still cannot do, stated here rather than discovered later: the gold pool is ~12 turns where the corpus is
+~550, so the ceiling is measured at a **shorter** context as well as a **correct** one. The two cannot be
+separated by this condition -- `Caura`'s published 94.6% has the same property, and it is the definition of the
+condition rather than a weakness of this implementation. The budget curve is the measurement that separates them.
+
 ## 6. The next measurements, in order, revised by §2.1
 
 | #   | measurement                                                                                                      | why it is next                                                                                                                                                                      | criterion                                                                                                                                   |

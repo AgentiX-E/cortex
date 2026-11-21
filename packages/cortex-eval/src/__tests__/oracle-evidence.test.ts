@@ -29,7 +29,11 @@ import {
   describeOracleCensus,
   oracleEvidenceDataset,
 } from '../oracle-evidence.js';
-import { cortextMemoryArmOptions, toMemoryArmConfig } from '../bench-memory-arm.js';
+import {
+  cortextMemoryArmOptions,
+  readOracleEvidence,
+  toMemoryArmConfig,
+} from '../bench-memory-arm.js';
 import type { BenchmarkDataset, Question } from '../types.js';
 
 function question(overrides: Partial<Question> = {}): Question {
@@ -321,6 +325,24 @@ describe('the CORTEX_MEMORY_ORACLE switch', () => {
     expect(() => cortextMemoryArmOptions({ ...BASE, CORTEX_MEMORY_ORACLE: 'TRUE' })).toThrow(
       /must be '1', '0' or unset/,
     );
+  });
+
+  it('names the channel it was handed, because the two arms reach this condition two ways', () => {
+    // The product arm reads `CORTEX_MEMORY_ORACLE`; the graded runner reads `ORACLE_EVIDENCE`. A rejection
+    // message that names the other one sends its reader to a workflow that had nothing to do with the failure,
+    // which is the class of defect this project records as "an error that describes a different run".
+    const messageOf = (raw: string, variable?: string): string => {
+      try {
+        readOracleEvidence(raw, variable);
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return '';
+    };
+    expect(messageOf('oracle', 'ORACLE_EVIDENCE')).toContain('ORACLE_EVIDENCE');
+    expect(messageOf('oracle', 'ORACLE_EVIDENCE')).not.toContain('CORTEX_MEMORY_ORACLE');
+    // And the default is the product arm's name, so every existing call site keeps the message it documented.
+    expect(messageOf('oracle')).toContain('CORTEX_MEMORY_ORACLE');
   });
 
   it('records the resolved evidence source in the artifact config, never by omission', () => {
