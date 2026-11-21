@@ -152,7 +152,7 @@ describe('link 4: the options reach the product constructor', () => {
     // on the control side would be an option the product silently ignores, and the artifact recording it
     // would describe a treatment that could not have been administered.
     expect(ARM).toContain(
-      '...(carry && armOptions.factTimeline === true ? { factTimeline: true } : {})',
+      '...(treatment.carry && armOptions.factTimeline === true ? { factTimeline: true } : {})',
     );
   });
 

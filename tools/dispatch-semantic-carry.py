@@ -145,7 +145,7 @@ DEFAULT_BUDGET_CNY = 120.0
 # while these three are a union the arm throws on. The cost of not checking was measured on this
 # workflow's own family -- a dispatch that is accepted, billed, and then throws before its first
 # question is a round spent on a typo, and the arm's error arrives after the corpus download.
-PAIRINGS = ("reference", "carry", "clock")
+PAIRINGS = ("reference", "carry", "clock", "resolution")
 
 
 _TOKEN: str | None = None
@@ -363,8 +363,9 @@ def main(argv: list[str]) -> int:
         raise SystemExit(
             f"refusing to dispatch: pairing={inputs['pairing']!r} is not one of "
             f"{', '.join(PAIRINGS)}. `reference` is the registered pair, `carry` is S12's "
-            "instrument and `clock` is the boundary clock's. The arm refuses an unknown value too, "
-            "but only after the run has been accepted and billed."
+            "instrument, `clock` is the boundary clock's and `resolution` is C7's -- the one pair "
+            "whose delta is a rendering form's rather than a switch's. The arm refuses an unknown "
+            "value too, but only after the run has been accepted and billed."
         )
     head = req("GET", f"/repos/{REPO}/git/ref/heads/master")["object"]["sha"]
     remote_tree = req("GET", f"/repos/{REPO}/git/commits/{head}")["tree"]["sha"]

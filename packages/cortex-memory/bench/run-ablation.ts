@@ -361,6 +361,26 @@ const RESOLUTION_FORWARDING: Record<ResolutionMode, ResolutionMode | undefined> 
 };
 
 /**
+ * The keys of the constructor a one-flag pairing is allowed to put between its two sides.
+ *
+ * `CORTEX_MEMORY_AB` names which key; this type is what the baseline branch is built from, and it exists
+ * so that the two sides of a pair cannot drift by the shape of the code rather than by an edit: every
+ * branch of `buildPairBaseline` is `buildCortex({ ...armTreatment, key: otherValue })`, which cannot
+ * change a second key without writing it down. Positional arguments could, and the comment that used to
+ * carry this invariant ("each branch flips exactly ONE argument and passes the other through") was
+ * enforceable only by string-comparing whole lines -- a check that stops being readable at the second key.
+ *
+ * A key added to `ArmPairing` that has no entry here is a compile error at the `switch`, which is the
+ * property that keeps a fourth pairing from silently falling through to the reference baseline -- a
+ * two-system delta published under a one-flag artifact.
+ */
+type ArmTreatment = {
+  readonly carry: boolean;
+  readonly clock: boolean;
+  readonly resolution: ResolutionMode;
+};
+
+/**
  * The value to forward, refusing a name this table does not know.
  *
  * `undefined` and "not in the table" are different states, and the index alone cannot separate them -- the
@@ -959,6 +979,17 @@ async function main(): Promise<void> {
   const forwardedUnit = relevanceUnitToForward(armOptions.relevanceUnits);
   const forwardedResolution = resolutionToForward(armOptions.resolution ?? 'raw');
 
+  // The feature side's treatment, named once. `buildFeature` passes it through untouched and every
+  // `buildPairBaseline` branch spreads it with one key rewritten, so the pair's difference is visible at
+  // the branch and nowhere else. `forwardedResolution ?? 'raw'` rather than `armOptions.resolution`
+  // because a name the table does not know has already thrown above, and the fallback states what the
+  // absent value means instead of letting `undefined` travel into a union that has no such member.
+  const armTreatment: ArmTreatment = {
+    carry: armOptions.semanticCarry === true,
+    clock: armOptions.sessionClock === 'on',
+    resolution: forwardedResolution ?? 'raw',
+  };
+
   // The two readers the product asks for. Absent unless the run named it, so a dispatch of any other
   // configuration hands the product nothing it could reorder by.
   //
@@ -984,12 +1015,18 @@ async function main(): Promise<void> {
   // concurrency attributes one question's prompt to another without throwing. Every value the
   // factory closes over is either immutable or shared on purpose (the answer cache, the embedding
   // client, the relevance table).
-  // Two flags, two arguments, because `CORTEX_MEMORY_AB` puts ONE of them between the two sides and
-  // the other must be equal on both. Reading either from `armOptions` inside the literal would build
-  // the treatment on both sides of the pair that is measuring it, and the artifact would then publish
-  // a null delta for a comparison in which nothing differed -- the exact failure the carry's own
-  // argument records six rounds of.
-  const buildCortex = (carry: boolean, clock: boolean): CortexMemory =>
+  // One treatment, one argument, because `CORTEX_MEMORY_AB` puts ONE key of it between the two sides
+  // and every other key must be equal on both. Reading any of them from `armOptions` inside the literal
+  // would build the treatment on both sides of the pair that is measuring it, and the artifact would
+  // then publish a null delta for a comparison in which nothing differed -- the exact failure the
+  // carry's own argument records six rounds of.
+  //
+  // An object rather than positional booleans, and the change is not cosmetic: with `(carry, clock)` the
+  // claim "each branch flips exactly one argument" could only be asserted by string-comparing two whole
+  // lines, and a third flag made those lines unreadable at exactly the point where a two-key typo would
+  // publish a two-flag delta under a one-flag artifact. `{ ...armTreatment, carry: false }` states the
+  // claim in its syntax: the second key cannot change without being written down.
+  const buildCortex = (treatment: ArmTreatment): CortexMemory =>
     new CortexMemory({
       // Decorated only when the run restores (§13.274). `featureLlm` IS `llm` otherwise, so an
       // ordinary run constructs the identical object it always did.
@@ -1054,10 +1091,10 @@ async function main(): Promise<void> {
       // exists, is documented and is measured by nobody, which is the failure `semanticCarry` cost six
       // rounds to.
       //
-      // The `clock` argument, not `armOptions.sessionClock`, for the reason `carry` gives one spread down:
-      // under `CORTEX_MEMORY_AB=clock` this same construction is asked for twice with one flag between the
-      // two sides, and a read of the parsed option here would put the clock on both of them.
-      ...(clock ? { sessionClock: true } : {}),
+      // The `treatment.clock` key, not `armOptions.sessionClock`, for the reason `treatment.carry` gives
+      // one spread down: under `CORTEX_MEMORY_AB=clock` this same construction is asked for twice with one
+      // flag between the two sides, and a read of the parsed option here would put the clock on both.
+      ...(treatment.clock ? { sessionClock: true } : {}),
       // §18. The inline superseded rendering, spread conditionally for the reason `conflicts` is: `off`
       // IS the shipped behaviour and is expressed by NOT passing the key, so a run that does not name a
       // rendering reproduces every archived prompt byte for byte. The cast is at this boundary for the
@@ -1077,19 +1114,19 @@ async function main(): Promise<void> {
       // configuration every archived artifact was produced under -- and projected into the artifact's config
       // so a run that did not administer it cannot be read as one that administered it and saw nothing.
       //
-      // An argument rather than `armOptions.semanticCarry`, because under `CORTEX_MEMORY_AB=carry` the
-      // SAME construction is asked for twice with one flag between them: the feature side carries
+      // A key rather than `armOptions.semanticCarry`, because under `CORTEX_MEMORY_AB=carry` the SAME
+      // construction is asked for twice with one flag between them: the feature side carries
       // (`armOptions.semanticCarry`, which the workflow sets) and the baseline side is the same system
       // with this line's expression false. Reading the parsed option here instead would build the
       // treatment on both sides, and the delta would be zero with a census of zero -- a null result
       // reported for a comparison that never happened.
-      ...(carry ? { semanticCarry: true } : {}),
+      ...(treatment.carry ? { semanticCarry: true } : {}),
       // §7.2's third rendering channel. Spread conditionally for the reason every treatment above is, and
       // **inside** the pair rather than beside it: the product's renderer refuses to print an interval unless
       // the carry is on, so a `factTimeline: true` on the control side would be an option the product silently
       // ignores -- and an artifact recording it would describe a treatment that could not have been administered.
       // The preflight below makes that combination a refused dispatch rather than a silent one.
-      ...(carry && armOptions.factTimeline === true ? { factTimeline: true } : {}),
+      ...(treatment.carry && armOptions.factTimeline === true ? { factTimeline: true } : {}),
       // §13.94's second consultation. `none` IS the shipped behaviour and is expressed by NOT passing
       // the key, for the reason every other conditional spread here is: every archived artifact was
       // produced without a pass, and a present-but-inert key would make the option indistinguishable
@@ -1177,12 +1214,13 @@ async function main(): Promise<void> {
       // at parse time, and the product refuses `match` without a cap -- which is why the two spreads are
       // adjacent rather than one field: the window without the width is a render option that cannot act.
       ...(armOptions.turnWindow === 'match' ? { turnWindow: 'match' as const } : {}),
-      // §14.133.2's form list. Spread only when it acts, for the reason every conditional spread here is, and
-      // through a table rather than a cast for `RELEVANCE_UNIT_FORWARDING`'s reason: a form added to the union
-      // has to fail to build here rather than reach a prompt as a value no renderer branched on. The product
-      // refuses `layered` without a width, which is why the two spreads are adjacent: the form list without the
-      // width is a render option that cannot act.
-      ...(forwardedResolution === undefined ? {} : { resolution: forwardedResolution }),
+      // §14.133.2's form list. Spread only when it acts, for the reason every conditional spread here is.
+      // `treatment.resolution` rather than `forwardedResolution`, because `C7` is a one-flag pair: the
+      // control side renders the registered form in the same job, and reading the parsed option would render
+      // both sides layered. The table at the top of this file still validates the NAME once per process; what
+      // travels here is the side's own form, and `raw` is expressed by not passing the key so the control
+      // reproduces every archived prompt byte for byte.
+      ...(treatment.resolution === 'raw' ? {} : { resolution: treatment.resolution }),
       // §13.81's budget. Absent means the product's 24,000, which is what every archived run used; a
       // number raises the room without touching a single turn, which is the only lever §13.80 left.
       ...(armOptions.maxPromptChars === undefined
@@ -1281,20 +1319,35 @@ async function main(): Promise<void> {
         'administered the treatment.',
     );
   }
-  const buildFeature = (): CortexMemory =>
-    buildCortex(armOptions.semanticCarry === true, armOptions.sessionClock === 'on');
-  // The control side, as a function of which flag this pairing splits. Each branch flips EXACTLY one
-  // argument and passes the other through, which is the property that makes the delta attributable: under
-  // `carry` both sides carry the clock the dispatch asked for, and under `clock` both sides carry the same
-  // `semanticCarry`. Written as a switch over the pairing rather than as a chain of ternaries so that adding
-  // a fourth pairing is a compile error here rather than a silent fall-through to the reference baseline --
-  // which would publish a two-system delta under a one-flag artifact.
+  if (pairing === 'resolution' && armOptions.resolution !== 'layered') {
+    // The third refusal, and it is the one `C7` needs: `F1` asks the run to show the mechanism executing
+    // (≥90/500 digests changed) before any accuracy number is read, and a pair with `raw` on both sides
+    // reads `F1` as zero. The consequence table's first row then says "the run is void, fix the
+    // implementation" -- a diagnosis about code for what would actually be a dispatch that never named the
+    // treatment. Refused before the first call, so the wrong branch costs nothing to avoid.
+    throw new Error(
+      'CORTEX_MEMORY_AB=resolution pairs the cognitive system against itself with `resolution` at its ' +
+        'registered `raw`, so the feature side must be the side that layers: set ' +
+        'CORTEX_MEMORY_RESOLUTION=layered. Without it both sides render whole turns, F1 reads zero, and ' +
+        "C7's consequence table would blame the implementation for a dispatch error.",
+    );
+  }
+  const buildFeature = (): CortexMemory => buildCortex(armTreatment);
+  // The control side, as a function of which key this pairing splits. Each branch spreads the feature's
+  // treatment and rewrites EXACTLY one key, which is the property that makes the delta attributable: under
+  // `carry` both sides carry the clock and the form the dispatch asked for, under `clock` both carry the
+  // same `semanticCarry`, and under `resolution` both carry the same two switches. Written as a switch over
+  // the pairing rather than as a chain of ternaries so that adding a fourth pairing is a compile error here
+  // rather than a silent fall-through to the reference baseline -- which would publish a two-system delta
+  // under a one-flag artifact.
   const buildPairBaseline = (): MemorySystem => {
     switch (pairing) {
       case 'carry':
-        return buildCortex(false, armOptions.sessionClock === 'on');
+        return buildCortex({ ...armTreatment, carry: false });
       case 'clock':
-        return buildCortex(armOptions.semanticCarry === true, false);
+        return buildCortex({ ...armTreatment, clock: false });
+      case 'resolution':
+        return buildCortex({ ...armTreatment, resolution: 'raw' });
       case 'reference':
         return buildBaseline();
     }
@@ -1508,6 +1561,11 @@ async function main(): Promise<void> {
       // artifact's delta the clock's; without this entry a `clock` dispatch and a registered-population
       // dispatch that both set the clock would be the same bytes with two different meanings.
       clockPair: pairing === 'clock',
+      // The third one-flag pair. `resolution=layered` says the treatment was administered; this says the
+      // baseline rendered the registered form in the same job. `C7`'s `F3` reads density as the ratio of
+      // two `roleCensus` medians on ONE population, so an artifact that recorded the form without the pair
+      // would let a reader believe the two medians came from two runs of two systems.
+      resolutionPair: pairing === 'resolution',
     },
     datasetFingerprint,
     // §E6's population, when the run multiplied it or answered one part of a split dispatch. Absent

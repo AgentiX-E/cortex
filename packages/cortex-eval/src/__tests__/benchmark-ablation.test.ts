@@ -344,3 +344,86 @@ describe('runAblation discordant identity', () => {
     expect(result.discordantQuestions.baselineCorrectFeatureIncorrect).toEqual(['ie-a', 'ie-b']);
   });
 });
+
+/**
+ * `C7`'s `F3` divides two medians that must come from **one** population: how many turns the delivered
+ * window carried, and how many characters the prompt held, on each side.
+ *
+ * `AblationResult` has carried the feature's `roleCensuses` and `promptTexts` since §13.169 -- and only
+ * the feature's, because until `C7` the questions this artifact answered were all about the side that
+ * lost. `F3`'s claim is a ratio of two sides ("the same room, more turns"), and a ratio of a captured
+ * number to an uncaptured one is not a reading: `roleCensus` and `promptChars` are deterministic, so the
+ * pair can and must be measured in the same pass rather than inferred from a previous dispatch.
+ */
+describe('runAblation: the baseline side of the density reading', () => {
+  /**
+   * A system that reports the two facts `F3` divides, derived from the question index so an off-by-one
+   * surfaces as the wrong question rather than as a test that cannot tell two apart.
+   */
+  function reportingSystem(name: string, turns: number, chars: number): MemorySystem {
+    let current = 0;
+    return {
+      name,
+      answer: (_question: string, context: string[]) => {
+        // The index travels in the context because `MemorySystem.answer` receives the question text, not
+        // the dataset question -- the same reason `benchmark-retrieval-capture.test.ts` derives its
+        // fixture values instead of holding them fixed.
+        current = Number(context[0]?.replace(/[^0-9]/g, '') ?? 0) || 0;
+        return 'blue';
+      },
+      lastRoleCensus: () => ({ counts: { user: turns }, unclassified: 0, total: turns }),
+      lastPromptText: () => 'x'.repeat(chars + current),
+    } as MemorySystem;
+  }
+
+  function numberedDataset(count: number): BenchmarkDataset {
+    return {
+      name: 'density-fixture',
+      questions: Array.from({ length: count }, (_unused, i) => ({
+        id: `q${i}`,
+        capability: 'IE' as const,
+        question: 'What is the favorite color?',
+        expected: 'blue',
+        context: [`evidence${i}`],
+      })),
+    };
+  }
+
+  it('records the baseline window’s role census per question, aligned with the roster', async () => {
+    const ds = numberedDataset(3);
+    const baseline = reportingSystem('base', 7, 400);
+    const feature = reportingSystem('feat', 9, 400);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    // One entry per question, in dataset order, and the two sides are distinguishable: if the arm
+    // captured only the feature and copied it into both fields, the baseline would read 9.
+    expect(result.baselineRoleCensuses).toHaveLength(3);
+    expect(result.baselineRoleCensuses?.map((c) => c?.total)).toEqual([7, 7, 7]);
+    expect(result.featureRoleCensuses?.map((c) => c?.total)).toEqual([9, 9, 9]);
+  });
+
+  it('records the baseline prompt’s character count, as lengths rather than as text', async () => {
+    const ds = numberedDataset(3);
+    const baseline = reportingSystem('base', 7, 400);
+    const feature = reportingSystem('feat', 9, 500);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    // Lengths, not the prompts themselves, and the difference is the artifact's size: `F3` needs a
+    // median of a number, and carrying the text would put a second copy of the corpus in the upload so
+    // that a later reader could recompute a length it was already given. The feature side is the
+    // exception the asymmetry requires rather than a second statement: its text is already in the
+    // artifact (`featurePromptTexts`, for the digest work), so this reads the length off it instead of
+    // storing a vector two writers must keep equal.
+    expect(result.baselinePromptChars).toEqual([400, 401, 402]);
+    expect(result.featurePromptTexts?.map((text) => text?.length)).toEqual([500, 501, 502]);
+  });
+
+  it('reports null rather than zero for a baseline that exposes no capture', async () => {
+    const ds = numberedDataset(2);
+    const baseline = new FactMemorySystem('silent', { fallback: 'unknown' });
+    const feature = reportingSystem('feat', 9, 400);
+    const result = await runAblation(ds, baseline, feature, { runs: 1 });
+    // `0` turns and "no window to count" are different statements, and `F3`'s median over a mix of the
+    // two would be a number about neither. `null` is the shape `featureRetrievedContexts` already uses.
+    expect(result.baselineRoleCensuses).toEqual([null, null]);
+    expect(result.baselinePromptChars).toEqual([null, null]);
+  });
+});

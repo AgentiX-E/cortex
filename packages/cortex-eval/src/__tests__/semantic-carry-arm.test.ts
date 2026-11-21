@@ -485,24 +485,47 @@ describe('the forward from the arm options into the product constructor', () => 
     // `CORTEX_MEMORY_AB=carry` the same construction is asked for twice with one flag between them --
     // the feature side carrying, the baseline side not. Reading `armOptions` here would build the
     // treatment on both sides and publish a null result for a comparison that never happened.
-    expect(ARM).toContain('...(carry ? { semanticCarry: true } : {})');
-    expect(ARM).toContain(
-      "buildCortex(armOptions.semanticCarry === true, armOptions.sessionClock === 'on')",
-    );
+    expect(ARM).toContain('...(treatment.carry ? { semanticCarry: true } : {})');
+    expect(ARM).toContain('const buildFeature = (): CortexMemory => buildCortex(armTreatment);');
   });
 
-  it('builds the control from the same construction, differing in that flag alone', () => {
-    // The pair is one literal and one argument. A second literal for the control would be a second
+  it('builds the control from the same construction, differing in one key alone', () => {
+    // The pair is one treatment literal and one key. A second literal for the control would be a second
     // definition of the arm's twenty-six options, and the two would agree until one of them was edited.
     //
-    // Each branch flips exactly ONE argument and passes the other through, which is the property an
-    // assertion has to name: a branch that flipped both would still read as "built from the same
-    // construction" and would publish a two-flag delta under a one-flag artifact.
+    // Each branch rewrites exactly ONE key and spreads the rest through, which is now a property of the
+    // SYNTAX rather than of a comment: under the old positional form a branch had to name every argument,
+    // so "flip one, pass the other" was asserted by string-equality against two whole lines and a third
+    // flag made that assertion unreadable. `{ ...armTreatment, carry: false }` cannot flip two keys
+    // without spelling the second one, and a pairing added to `ArmPairing` is a compile error here.
+    for (const [pairing, flip] of [
+      ['carry', 'carry: false'],
+      ['clock', 'clock: false'],
+      ['resolution', "resolution: 'raw'"],
+    ] as const) {
+      expect(ARM).toContain(
+        `case '${pairing}':\n        return buildCortex({ ...armTreatment, ${flip} });`,
+      );
+    }
+  });
+
+  it('refuses a resolution pair whose treatment side renders the registered form', () => {
+    // `C7`'s `F1` requires the mechanism to be shown running (≥90/500 digests change) before any
+    // accuracy number is read. A pair with `raw` on both sides reads `F1` as zero, and the consequence
+    // table's first row is "the run is void, fix the implementation" -- which is the wrong diagnosis for
+    // what is actually a dispatch error. Refused before the first call, like the other two.
+    expect(ARM).toContain("pairing === 'resolution' && armOptions.resolution !== 'layered'");
+  });
+
+  it('spreads the resolution from the treatment rather than from the parsed option', () => {
+    // The same defect one key over: `CORTEX_MEMORY_RESOLUTION=layered` is `layered` for the whole
+    // process, so reading `armOptions` inside the literal would render both sides layered and the pair
+    // would compare the mechanism against itself.
     expect(ARM).toContain(
-      "case 'carry':\n        return buildCortex(false, armOptions.sessionClock === 'on');",
+      "...(treatment.resolution === 'raw' ? {} : { resolution: treatment.resolution })",
     );
-    expect(ARM).toContain(
-      "case 'clock':\n        return buildCortex(armOptions.semanticCarry === true, false);",
+    expect(ARM).not.toContain(
+      '...(forwardedResolution === undefined ? {} : { resolution: forwardedResolution })',
     );
   });
 
@@ -525,7 +548,7 @@ describe('the forward from the arm options into the product constructor', () => 
     // The same defect the carry's spread avoids, and the reason the two arguments exist at all: under
     // `AB=clock` the parsed option is `on` for the whole process, so a read of it here would put the
     // treatment on both sides of the pair that is measuring it.
-    expect(ARM).toContain('...(clock ? { sessionClock: true } : {})');
+    expect(ARM).toContain('...(treatment.clock ? { sessionClock: true } : {})');
     expect(ARM).not.toContain(
       "...(armOptions.sessionClock === 'on' ? { sessionClock: true } : {})",
     );
@@ -537,6 +560,10 @@ describe('the forward from the arm options into the product constructor', () => 
     // the clock would be the same bytes with two different meanings.
     expect(ARM).toContain("clockPair: pairing === 'clock'");
     expect(ARM).toContain("carryPair: pairing === 'carry'");
+    // And the third: `resolution=layered` is the treatment, `resolutionPair` says the baseline rendered
+    // `raw` in the same job. Without it a `resolution` dispatch at one window is indistinguishable in the
+    // artifact from a headline run that happened to set the form.
+    expect(ARM).toContain("resolutionPair: pairing === 'resolution'");
   });
 
   it('names the same identifier that the product option type declares', () => {

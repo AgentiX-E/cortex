@@ -20,8 +20,13 @@ import subprocess
 TOOL = pathlib.Path(__file__).resolve().parents[1] / "read-merged-population.py"
 
 
-def document(windows=2, corpora=2, runs=2, carry=None, marker="#w"):
-    """A merged evidence document, no larger than a reading needs."""
+def document(windows=2, corpora=2, runs=2, carry=None, marker="#w", pair=None):
+    """A merged evidence document, no larger than a reading needs.
+
+    `pair` names the one-flag field the arm writes (`carryPair`, `clockPair`, `resolutionPair`), or
+    nothing for a `reference` artifact -- which has no flag of its own, and whose fixtures must not carry
+    one: the readback refuses an artifact that claims a pair the dispatch did not name.
+    """
     ids = [
         f"q{corpus}{marker}{window}"
         for corpus in range(corpora)
@@ -40,6 +45,8 @@ def document(windows=2, corpora=2, runs=2, carry=None, marker="#w"):
     }
     if carry is not None:
         payload["semanticCarry"] = carry
+    if pair is not None:
+        payload["featureConfig"] = {pair: True}
     return payload
 
 
@@ -80,7 +87,7 @@ def test_a_reference_pairing_does_not_report_a_carry_reach(tmp_path):
 def test_a_carry_pairing_reports_the_reach_and_the_paired_delta(tmp_path):
     # Two corpora, two windows: only the second window of each pairs. The baseline misses one of
     # them and the feature answers it, so the delta is +1.0 over n=2 with one discordant pair.
-    payload = document(windows=2, carry={"absorbed": 1, "matched": 1, "served": 1})
+    payload = document(windows=2, carry={"absorbed": 1, "matched": 1, "served": 1}, pair="carryPair")
     payload["ablation"]["baselineCorrectByRun"] = ["1010"]
     payload["ablation"]["featureCorrectByRun"] = ["1110"]
     result = run(tmp_path, payload, "--pairing", "carry")
@@ -92,7 +99,7 @@ def test_a_carry_pairing_reports_the_reach_and_the_paired_delta(tmp_path):
 
 
 def test_a_reach_of_zero_is_a_warning_and_not_a_pass(tmp_path):
-    result = run(tmp_path, document(windows=2, carry={"matched": 0}), "--pairing", "carry")
+    result = run(tmp_path, document(windows=2, carry={"matched": 0}, pair="carryPair"), "--pairing", "carry")
     assert result.returncode == 0, result.stderr
     assert "::warning::the merge reached no window" in result.stdout
     assert "S12 readable" not in result.stdout
@@ -102,7 +109,7 @@ def test_a_delta_below_the_floor_is_an_error_annotation(tmp_path):
     # Behaviour preserved from the heredoc: the annotation is printed and the exit code stays zero,
     # because the row's verdict is read from the artifact by the analysis script rather than from
     # this job's conclusion. Changing that here would be a change of instrument, not of shape.
-    payload = document(windows=2, corpora=10, carry={"matched": 10})
+    payload = document(windows=2, corpora=10, carry={"matched": 10}, pair="carryPair")
     payload["ablation"]["featureCorrectByRun"] = ["0" * payload["questionCount"]]
     result = run(tmp_path, payload, "--pairing", "carry")
     assert result.returncode == 0, result.stderr
@@ -113,7 +120,7 @@ def test_a_delta_below_the_floor_is_an_error_annotation(tmp_path):
 def test_a_roster_without_its_own_marker_is_refused_when_a_second_window_exists(tmp_path):
     # The refusal that was right all along: at two windows an id set carrying no suffix cannot be
     # paired, and a fallback would pair the first window against itself and call it +0.
-    payload = document(windows=2)
+    payload = document(windows=2, pair="carryPair")
     payload["questions"] = [
         {"questionId": f"q{index}"} for index in range(payload["questionCount"])
     ]
@@ -123,7 +130,7 @@ def test_a_roster_without_its_own_marker_is_refused_when_a_second_window_exists(
 
 
 def test_a_bitstring_that_is_not_aligned_with_the_roster_is_refused(tmp_path):
-    payload = document(windows=2, carry={"matched": 1})
+    payload = document(windows=2, carry={"matched": 1}, pair="carryPair")
     payload["ablation"]["featureCorrectByRun"] = ["1"]
     result = run(tmp_path, payload, "--pairing", "carry")
     assert result.returncode == 1
@@ -232,3 +239,55 @@ def test_the_pairing_vocabulary_is_the_arms_vocabulary():
     assert closed is not None, "the readback has no `PAIRINGS` tuple"
     names = sorted(re.findall(r"'([^']+)'", closed.group(1)))
     assert names == arm, f"the readback reads {names} and the arm builds {arm}"
+
+
+def test_a_resolution_pair_is_read_over_the_whole_population_at_one_window(tmp_path):
+    """`C7`'s `F3` reads a ratio of two medians on one population, and its population is one window.
+
+    The layer this replaced would have printed "no second window to pair against" and exited zero --
+    a green step over an unread experiment, twice over: `resolution` is a one-flag pair, so the window
+    is not what pairs, and `F3` is registered on the registered population (`limit: 0`, one window).
+    """
+    payload = document(windows=1, corpora=4, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["1010"]
+    payload["ablation"]["featureCorrectByRun"] = ["1110"]
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "whole population: n=4  delta=+1.0000" in result.stdout
+    assert "not taken" not in result.stdout
+
+
+def test_a_resolution_pairing_does_not_claim_a_carry_reach(tmp_path):
+    # The same rule the clock's test states: a rendering experiment runs the carry off on both sides,
+    # so warning about a reach of zero there would put a `::warning::` on a dispatch behaving exactly
+    # as registered -- and a warning that fires on correct runs stops being read.
+    result = run(
+        tmp_path,
+        document(windows=1, pair="resolutionPair", carry={"absorbed": 0, "matched": 0, "served": 0}),
+        "--windows",
+        "1",
+        "--pairing",
+        "resolution",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "S13 reach" not in result.stdout
+    assert "::warning::" not in result.stdout
+    assert "not read from this dispatch" in result.stdout
+
+
+def test_a_resolution_dispatch_must_agree_with_the_flag_the_arm_wrote(tmp_path):
+    """Two statements about one run, and `C7`'s whole judgement rests on which one is true.
+
+    A dispatch that says `--pairing resolution` over an artifact whose arm built the carry pair would
+    be read as "the layered form is worth this much" when it is worth nothing of the sort. Both
+    directions are refused: the flag absent, and another flag present.
+    """
+    absent = document(windows=1)
+    result = run(tmp_path, absent, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 1
+    assert "resolutionPair" in result.stderr
+
+    crossed = document(windows=2, pair="clockPair")
+    result = run(tmp_path, crossed, "--pairing", "resolution")
+    assert result.returncode == 1
+    assert "clockPair" in result.stderr

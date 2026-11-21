@@ -55,11 +55,26 @@ from math import comb
 # The pairings `arm-pairing.ts` can build. One constant, held to that union by
 # `test_the_pairing_vocabulary_is_the_arms_vocabulary`, because a closed set copied into a reader is a
 # closed set that will fall out of step -- measured, not hypothesised: see this file's header.
-PAIRINGS = ('reference', 'carry', 'clock')
+PAIRINGS = ('reference', 'carry', 'clock', 'resolution')
 
-# The pairings whose two sides differ by ONE FLAG of the same system. Their delta is the flag's
-# whatever the window count is, which is what the `windows < 2` guard below has to know.
-ONE_FLAG_PAIRINGS = ('carry', 'clock')
+# Which `featureConfig` field says the arm built this pairing, for the pairings that put ONE FLAG of the
+# same system between their sides.
+#
+# A table rather than a chain of `if pairing == ...`, and the reason is measured rather than aesthetic:
+# the chain was one branch at one flag, two branches plus a mirrored `elif` at two, and each new pairing
+# had to remember to extend the mirrored branch as well -- a statement about one run written twice, which
+# is the shape this file's header exists to stop. `reference` is absent because it has no flag of its own:
+# any pair flag on a reference artifact says the artifact is not this dispatch.
+PAIR_FLAGS = {
+    'carry': 'carryPair',
+    'clock': 'clockPair',
+    'resolution': 'resolutionPair',
+}
+
+# Derived rather than restated: a second tuple of the same names would be a second place to forget.
+# These are the pairings whose delta is the flag's whatever the window count is, which is what the
+# `windows < 2` guard below has to know.
+ONE_FLAG_PAIRINGS = tuple(PAIR_FLAGS)
 
 
 def mcnemar_exact(b: int, c: int) -> float:
@@ -104,9 +119,9 @@ def main(argv: list[str]) -> int:
     if pairing not in PAIRINGS:
         raise SystemExit(
             f'refusing: --pairing {pairing!r} is not one of {", ".join(PAIRINGS)}. `reference` is the '
-            "registered pair, `carry` is the semantic layer's instrument and `clock` is the boundary "
-            "clock's. A pairing this reader does not know is a delta it would print under a name that "
-            'does not describe it.'
+            "registered pair, `carry` is the semantic layer's instrument, `clock` is the boundary "
+            "clock's and `resolution` is C7's rendering form. A pairing this reader does not know is a "
+            'delta it would print under a name that does not describe it.'
         )
 
     document = json.load(open(path, encoding='utf-8'))
@@ -146,17 +161,27 @@ def main(argv: list[str]) -> int:
     # The dispatch names the pair; the artifact records which pair it built. Two statements about one
     # run, and the numbers below are read as the flag's only if they agree. Refused rather than
     # printed, because the alternative is a delta attributed to a flag the arm never moved.
-    if pairing == 'clock':
-        if document.get('featureConfig', {}).get('clockPair') is not True:
-            raise SystemExit(
-                'refusing: the dispatch says clockPair and the artifact does not. Either the arm built '
-                'the reference pair (so these numbers are two systems, not one flag), or the artifact '
-                'predates the field -- and neither can be read as the boundary clock.'
-            )
-    elif document.get('featureConfig', {}).get('clockPair') is True:
+    feature_config = document.get('featureConfig', {}) or {}
+    expected_flag = PAIR_FLAGS.get(pairing)
+    # The artifact's own claim first, because that is the sentence that names the disagreement: "the
+    # artifact says clockPair while the dispatch says carry" tells a reader which of the two is wrong,
+    # where "the artifact does not say carryPair" leaves them to infer it from an absence.
+    claimed = sorted(
+        name
+        for name in PAIR_FLAGS.values()
+        if name != expected_flag and feature_config.get(name) is True
+    )
+    if claimed:
         raise SystemExit(
-            f'refusing: the artifact says clockPair while the dispatch says --pairing {pairing}. The '
-            'delta belongs to whichever one the run actually built, and the two statements disagree.'
+            f'refusing: the artifact says {", ".join(claimed)} while the dispatch says --pairing '
+            f'{pairing}. The delta belongs to whichever pair the run actually built, and the two '
+            'statements disagree.'
+        )
+    if expected_flag is not None and feature_config.get(expected_flag) is not True:
+        raise SystemExit(
+            f'refusing: the dispatch says --pairing {pairing} and the artifact does not say '
+            f'{expected_flag}. Either the arm built another pair (so these numbers are not one flag), '
+            'or the artifact predates the field -- and neither can be read as this pairing.'
         )
 
     if windows < 2 and pairing not in ONE_FLAG_PAIRINGS:

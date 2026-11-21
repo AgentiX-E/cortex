@@ -80,7 +80,7 @@ on:
         default: '2'
         type: string
       pairing:
-        description: 'Which two systems the sides are. `carry` puts the same cognitive system twice with `semanticCarry` off against on -- S12''s instrument. `clock` puts the same cognitive system twice with `sessionClock` off against on -- the boundary clock''s instrument, and the same shape one flag over. `reference` is the arm''s registered pair (the reference pipeline against the cognitive one), which is what S10 needs: its two sides are two dispatches of one configuration differing by the turn window, so neither side is a carry arm'
+        description: 'Which two systems the sides are. `carry` puts the same cognitive system twice with `semanticCarry` off against on -- S12''s instrument. `clock` puts the same cognitive system twice with `sessionClock` off against on -- the boundary clock''s instrument, and the same shape one flag over. `resolution` puts the same cognitive system twice with `resolution` at the registered `raw` against `layered` -- C7''s instrument, and the one pair whose delta is a rendering form''s rather than a switch''s. `reference` is the arm''s registered pair (the reference pipeline against the cognitive one), which is what S10 needs: its two sides are two dispatches of one configuration differing by the turn window, so neither side is a carry arm'
         required: false
         default: carry
         type: string
@@ -382,6 +382,11 @@ jobs:
           # while its treatment was off. The arm's preflight still refuses that combination, because a
           # derivation in a workflow is not a guarantee the arm can see.
           CORTEX_MEMORY_SESSION_CLOCK: ${{ inputs.pairing == 'clock' && 'on' || 'off' }}
+          # The third one-flag pair, derived for the same reason the clock above is: here the form IS the
+          # pairing, so a second channel would let a dispatch say `pairing=resolution` while its treatment
+          # rendered whole turns. `raw` is what the product does when the key is absent, which is why the
+          # control side of this pairing and a run that names nothing are the same rendering.
+          CORTEX_MEMORY_RESOLUTION: ${{ inputs.pairing == 'resolution' && 'layered' || 'raw' }}
           CORTEX_WINDOWS: ${{ inputs.windows }}
           CORTEX_CAPABILITY: ${{ inputs.capability }}
           CORTEX_MEMORY_WORKERS: ${{ inputs.workers }}

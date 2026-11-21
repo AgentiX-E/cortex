@@ -945,6 +945,42 @@ export type AblationResult = {
    */
   featureRoleCensuses?: readonly (DeliveredRoleCensus | null)[];
   /**
+   * The roles the delivered window carried on the **baseline** side, per question, in dataset order.
+   *
+   * ## Why the baseline side needed a field it had survived without
+   *
+   * Until `C7`, every question this artifact answered was about the side that lost, so the captures ran on
+   * the feature side alone. `C7`'s `F3` is not such a question: its claim is a **ratio of two sides** -- the
+   * same prompt budget, more delivered turns -- and a ratio of a captured number to an uncaptured one is not
+   * a reading. `roleCensus` is deterministic, so the pair can be measured in one pass; inferring the control
+   * from a previous dispatch would have made the ratio cross-run, which is the comparison `§11.13` measured a
+   * 0.70-point floor on.
+   *
+   * `null` per question means the baseline does not report a census -- which is what every `reference`
+   * pairing produces, because the baseline there is the reference pipeline and not a `CortexMemory`. That is
+   * the honest reading and the reason this is optional: an all-`null` vector says "no density reading is
+   * available from this artifact", which is exactly what a `reference` dispatch should say.
+   */
+  baselineRoleCensuses?: readonly (DeliveredRoleCensus | null)[];
+  /**
+   * How many characters the **baseline's** prompt held, per question, in dataset order.
+   *
+   * Beside {@link AblationResult.baselineRoleCensuses} because the two are one measurement: the census is
+   * what the room bought and this is how much room there was. `F3` requires the second to move by no more
+   * than ±2% while the first rises -- a census that rises with the characters is not density, it is a wider
+   * prompt.
+   *
+   * ## Why this is a length vector where the feature side keeps its texts
+   *
+   * `featurePromptTexts` exists because the digest work reads the prompts themselves (`§13.168.8`). The
+   * baseline side is captured for one number, so carrying the text would put a second copy of the corpus in
+   * the upload to let a later reader recompute a length it was already given. The asymmetry is the
+   * measurement's, not the writer's preference.
+   *
+   * `null` per question on the same condition as the census: a baseline that exposes no prompt reports none.
+   */
+  baselinePromptChars?: readonly (number | null)[];
+  /**
    * What the turn cap did to the delivered window, per question, in dataset order.
    *
    * `cut` counts delivered turns the cap shortened, `marked` the subset that says so, and `whole` the turns

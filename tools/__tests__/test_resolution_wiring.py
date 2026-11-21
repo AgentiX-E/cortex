@@ -136,9 +136,15 @@ def test_the_arm_forwards_the_form_through_a_compile_enforced_table() -> None:
         '`raw` forwards a value: the historical rendering is expressed by not passing the key, so a run '
         'that names it must reproduce every archived prompt byte for byte'
     )
-    assert 'forwardedResolution === undefined ? {} : { resolution: forwardedResolution }' in bench, (
-        'the table exists and its value never reaches CortexMemory, which is the same failure one line '
-        'later and the exact shape of `semanticCarry`'
+    assert "resolution: forwardedResolution ?? 'raw'" in bench, (
+        'the table exists and its value never reaches the treatment the constructor is built from, which '
+        'is the same failure one line later and the exact shape of `semanticCarry`'
+    )
+    assert "...(treatment.resolution === 'raw' ? {} : { resolution: treatment.resolution })" in bench, (
+        'the treatment exists and its form never reaches CortexMemory. The chain is three links -- table to '
+        '`armTreatment`, `armTreatment` to the constructor -- and a check on the first alone would pass a '
+        'run in which the middle link still read `armOptions`, which is the control-against-control shape '
+        'one flag over: `layered` would be `layered` per process and the pair would compare it to itself.'
     )
 
 

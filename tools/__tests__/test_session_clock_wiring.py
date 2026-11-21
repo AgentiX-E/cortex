@@ -290,3 +290,36 @@ def test_the_pair_dispatcher_and_the_arm_agree_on_the_closed_set() -> None:
         'the registered pair is missing from the dispatcher vocabulary, so the control dispatch this '
         'instrument is read against cannot be sent'
     )
+
+
+def test_the_paired_workflow_derives_the_rendering_form_from_the_pairing() -> None:
+    """`C7`'s treatment has to be reachable by a dispatch, and it was not for nine rounds.
+
+    `resolution.ts` shipped, `resolutionToForward` keyed the union, the product accepted the option, and
+    `run-ablation.ts` forwarded it -- from `armOptions`, which is one value per process. So the arm could
+    render `layered`, and no dispatch could put the registered `raw` on the other side of the same job,
+    which is the only shape `F1`-`F5` are written for ("one job, one corpus, both sides"). The criteria
+    existed and the instrument that could produce them did not.
+
+    Derived rather than read from a repository variable, for the reason the clock above is: here the form
+    *is* the pairing, and a second channel would let `pairing=resolution` ship with the treatment off.
+    """
+    workflow = read(PAIRED)
+    forward = "CORTEX_MEMORY_RESOLUTION: ${{ inputs.pairing == 'resolution' && 'layered' || 'raw' }}"
+    assert forward in workflow, (
+        f'{PAIRED.name} does not derive CORTEX_MEMORY_RESOLUTION from `pairing`. Without it the arm '
+        'renders the registered form on both sides, F3 reads a density ratio of 1.0, and the consequence '
+        'table blames the implementation for a dispatch that never named the treatment.'
+    )
+    assert 'CORTEX_MEMORY_RESOLUTION: ${{ vars.' not in workflow, (
+        'the paired workflow also reads a repository variable for the same form: two sources for one '
+        'field, and the artifact cannot say which one won'
+    )
+    # The form needs a width to act on -- the product refuses `layered` without a cap -- so the pairing
+    # is only dispatchable because every `turn_rendering` value writes a cap. Asserted rather than assumed:
+    # a fourth rendering added without a cap would make `pairing=resolution` a refusal at the first call.
+    for rendering in ('head', 'ellipsis', 'match'):
+        assert f'{rendering})' in workflow and 'CORTEX_MEMORY_MAX_TURN_CHARS=400' in workflow, (
+            'the rendering map no longer writes a cap for every value, so `resolution=layered` has no '
+            'width to redistribute and the product would refuse the run'
+        )

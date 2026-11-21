@@ -465,7 +465,7 @@ export async function runAblation(
   // and a `completed` that only ever held the loop's repetitions would report `[]`
   // for the failure the runs above actually had.
   const completed: CompletedPass[] = [];
-  let baseFirst: ScoredEvaluation;
+  let baseFirst: ScoredEvaluation & RetrievalCaptureVectors;
   try {
     baseFirst = await evaluateWithScorerDetailed(
       dataset,
@@ -473,8 +473,15 @@ export async function runAblation(
       scorer,
       options.onProgress,
       0,
+      // The baseline's raw model text is still not captured, and the argument above still holds: it is the
+      // reference pipeline whose abstention path is a different design, and a second text vector would be a
+      // second thing to explain. What IS captured is the retrieval side, for a reason that did not exist
+      // when the line above was written: `C7`'s `F3` divides two medians of ONE population (turns delivered,
+      // characters of prompt) and its control is this side. `roleCensus` and prompt length are deterministic,
+      // so the pair belongs in one pass; a control read off a previous dispatch would make the ratio
+      // cross-run, which is the 0.70-point floor `§11.13` measured. It costs no model call.
       false,
-      false,
+      true,
       (answer, index) => {
         baselineAnswers[index] = answer;
       },
@@ -871,6 +878,16 @@ export async function runAblation(
     // would file a capture that failed as a system that reports no route.
     featureRoutes: featFirst.routes!,
     featureRoleCensuses: featFirst.roleCensuses!,
+    // The same two facts on the other side, and the asymmetry with the feature's list above is the
+    // measurement's: `F3`'s ratio needs both medians, and only the length of the baseline's prompt (its text
+    // is captured for no diagnostic, so storing it would be a second copy of the corpus in the upload).
+    //
+    // Asserted present for the reason the four above are: `runAblation` requests this capture on the call
+    // that evaluates the baseline, so a `=== undefined` branch here would be unreachable code reading as a
+    // safety net. What a `reference` pairing produces is an all-`null` vector, not an absent one -- the
+    // reference pipeline exposes no classifier -- and that distinction is the one `F3`'s reader needs.
+    baselineRoleCensuses: baseFirst.roleCensuses!,
+    baselinePromptChars: baseFirst.promptTexts!.map((text) => text?.length ?? null),
     // What the cap did to the window each question was shown. Beside the role census because they are the
     // two fields that describe the delivered turn set, and both are asserted present for the same reason:
     // the capture is requested unconditionally on this call, so an absent vector is a capture that failed
