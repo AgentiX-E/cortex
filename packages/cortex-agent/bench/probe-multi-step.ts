@@ -101,7 +101,11 @@ async function main(): Promise<void> {
     [
       `cases                : ${String(report.cases)} (${capability}, maxSteps ${String(report.maxSteps)})`,
       `reader calls         : ${String(report.calls)}, searches ${String(report.queries)} on ${String(report.askedQuestions)} questions`,
-      `searches that added  : ${String(report.addedQuestions)} questions`,
+      // "actions", not "searches". Run `44867629266` printed 118 here against 106 searches, and the
+      // only way those two can differ is a `session` action: it absorbs turns the same way a search
+      // does and deliberately does not increment `queries`, because a reader opening a conversation
+      // has not written a query. The label was the wrong half of that pair.
+      `reader actions adding : ${String(report.addedQuestions)} questions`,
       `gold found by reader : ${String(report.newGold)} turns on ${String(report.gainedQuestions)} questions`,
       `gold: seed / selected / carried / total : ${String(report.goldSeed)} / ${String(report.goldSelected)} / ${String(report.goldCarried)} / ${String(report.goldTotal)}`,
       `found but not carried: ${String(report.foundNotCarried)}`,

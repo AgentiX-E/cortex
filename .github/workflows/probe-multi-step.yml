@@ -140,11 +140,16 @@ jobs:
           PROBE_LIMIT: ${{ github.event.inputs.limit }}
         run: |
           set -o pipefail
+          # The output path is absolute on purpose. `pnpm --filter` runs the script with the
+          # package directory as its working directory, so a relative `--out` lands in
+          # `packages/cortex-agent/` -- one level below the paths `upload-artifact` resolves against
+          # the workspace root. Run `44867629266` did exactly that: the probe succeeded, the log was
+          # uploaded, and the per-case JSON silently was not, because `if-no-files-found` was `warn`.
           pnpm --filter @agentix-e/cortex-agent probe:multi-step -- \
             --steps "$PROBE_STEPS" \
             --capability "$PROBE_CAPABILITY" \
             --limit "$PROBE_LIMIT" \
-            --out multi-step-probe.json 2>&1 | tee probe-output.log
+            --out "$GITHUB_WORKSPACE/multi-step-probe.json" 2>&1 | tee probe-output.log
 
           # The step summary is what a reader sees without downloading anything, and the criterion is
           # printed next to the reading so the decision does not have to be looked up in a document
@@ -170,4 +175,6 @@ jobs:
             multi-step-probe.json
             probe-output.log
             probe-corpus.sha256
-          if-no-files-found: warn
+          # `error`, not `warn`: a reading whose per-case rows are missing is a summary, and the
+          # reason `44867629266` looked complete is that a missing file only produced a warning.
+          if-no-files-found: error
