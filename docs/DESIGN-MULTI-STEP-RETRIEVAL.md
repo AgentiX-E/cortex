@@ -124,10 +124,15 @@ characters each is about **0.09 CNY**, against the 14 CNY a judged two-step disp
 Cheap in tokens is not the same as runnable locally, and the first draft of this section conflated the
 two. The probe reads a 100+ MB corpus served from a moving branch and authenticates against a model
 whose key lives on a runner, so the arm that exists is `.github/workflows/probe-multi-step.yml`: four
-inputs, `pnpm check` before the measurement, and an artifact that carries the corpus digest beside the
-reading. `tools/dispatch-multi-step-probe.py` holds the registered configuration and prints the
-projection before it spends anything. The pair exists because a pre-registration with no execution path
-is an intention, which is the defect that kept this probe unrun for a round.
+inputs, and an artifact that carries the corpus digest beside the reading.
+
+That workflow deliberately does **not** re-run the test suite, and the two dispatches it cost to learn
+that are recorded in the file. The suite needs pytest and a checkout of the sibling `cortex-docs`
+repository, both of which `verify.yml` provides and a measuring job reproduces wrongly; each omission
+killed a dispatch before the probe started. `Verify` runs on every push, so the commit being measured
+already has a verdict -- and `tools/dispatch-multi-step-probe.py` reads it and refuses to dispatch
+unless it is `success`. Provenance belongs at the point where money is spent, not inside the job that
+spends it: a refusal there is free, and a duplicated suite is a second thing that can be wrong.
 
 ## 7. What is not here
 

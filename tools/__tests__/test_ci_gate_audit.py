@@ -200,46 +200,66 @@ class TestEveryWorkflowThatRunsTheSuiteInstallsItsPrerequisites(unittest.TestCas
             + out.getvalue(),
         )
 
-    def test_the_probe_workflow_is_checked_at_all(self) -> None:
-        """The control for the rule's reach: the file that failed must be among the audited ones.
+    def test_the_rule_reaches_every_workflow_that_runs_the_suite(self) -> None:
+        """The control for the rule's reach, in both directions.
 
         A directory scan that silently skipped a file would report zero failures and look identical
-        to a clean directory, which is the failure mode of every "all files pass" assertion.
+        to a clean directory, which is the failure mode of every "all files pass" assertion. So the
+        set of workflows the scan finds running the suite is asserted against the set that is known
+        to run it -- currently the two that build the library -- and a workflow that stopped running
+        it has to be re-argued here rather than disappearing quietly.
         """
         import yaml
 
-        probe = WORKFLOW.parent / 'probe-multi-step.yml'
-        workflow = yaml.safe_load(probe.read_text(encoding='utf-8'))
-        self.assertTrue(
-            audit.jobs_running_check(workflow),
-            'the probe workflow no longer runs `pnpm check`; if that changed on purpose, this rule '
-            'and this test have to be re-argued rather than deleted',
-        )
+        running: set[str] = set()
+        for path in sorted(WORKFLOW.parent.glob('*.yml')):
+            workflow = yaml.safe_load(path.read_text(encoding='utf-8'))
+            if isinstance(workflow, dict) and audit.jobs_running_check(workflow):
+                running.add(path.name)
+        self.assertEqual(running, {'verify.yml', 'benchmark.yml'})
 
-    def test_missing_setup_python_fails(self) -> None:
+    def test_the_probe_workflow_does_not_run_the_suite(self) -> None:
+        """The measuring workflow must not re-derive the verdict the suite already gave.
+
+        `probe-multi-step.yml` ran `pnpm check` for its first two dispatches and neither reached the
+        probe: `44863794098` died for want of pytest, `44865288439` for want of the sibling
+        `cortex-docs` checkout that `verify.yml` provides. The repair was to stop duplicating the
+        suite -- `Verify` runs on every push -- and to move the provenance requirement into
+        `tools/dispatch-multi-step-probe.py`, which refuses to dispatch unless `Verify` is green for
+        the head it is about to measure.
+
+        This test exists so that re-adding the step is a decision with an argument attached, not a
+        diff that looks like a safety improvement.
+        """
         import yaml
 
-        workflow = yaml.safe_load((WORKFLOW.parent / 'probe-multi-step.yml').read_text(encoding='utf-8'))
+        probe = yaml.safe_load((WORKFLOW.parent / 'probe-multi-step.yml').read_text(encoding='utf-8'))
+        self.assertEqual(
+            audit.jobs_running_check(probe),
+            [],
+            'the probe workflow runs the whole suite again. That was removed on purpose: the suite '
+            'needs pytest and a sibling checkout, and reproducing its preconditions here cost two '
+            'dispatches. Gate the dispatch in tools/dispatch-multi-step-probe.py instead.',
+        )
+
+    def _without(self, predicate) -> dict:
+        import yaml
+
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
         for job in audit.jobs_of(workflow).values():
-            job['steps'] = [
-                step
-                for step in job.get('steps', [])
-                if 'actions/setup-python' not in (step.get('uses') or '')
-            ]
+            job['steps'] = [step for step in job.get('steps', []) if not predicate(step)]
+        return workflow
+
+    def test_missing_setup_python_fails(self) -> None:
+        # Mutated on `verify.yml` rather than on the probe: the probe no longer runs the suite, so it
+        # has no prerequisites to lose and the mutation would pass vacuously on it.
+        workflow = self._without(lambda step: 'actions/setup-python' in (step.get('uses') or ''))
         results = audit.evaluate_prerequisites(workflow)
         self.assertEqual({ok for _, ok, _ in results}, {False})
         self.assertIn('setup-python MISSING', results[0][2])
 
     def test_missing_requirements_install_fails(self) -> None:
-        import yaml
-
-        workflow = yaml.safe_load((WORKFLOW.parent / 'probe-multi-step.yml').read_text(encoding='utf-8'))
-        for job in audit.jobs_of(workflow).values():
-            job['steps'] = [
-                step
-                for step in job.get('steps', [])
-                if 'requirements-dev.txt' not in (step.get('run') or '')
-            ]
+        workflow = self._without(lambda step: 'requirements-dev.txt' in (step.get('run') or ''))
         results = audit.evaluate_prerequisites(workflow)
         self.assertEqual({ok for _, ok, _ in results}, {False})
         self.assertIn('requirements-dev.txt MISSING', results[0][2])
@@ -271,7 +291,7 @@ class TestEveryWorkflowThatRunsTheSuiteInstallsItsPrerequisites(unittest.TestCas
 
         import yaml
 
-        workflow = yaml.safe_load((WORKFLOW.parent / 'probe-multi-step.yml').read_text(encoding='utf-8'))
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
         for job in audit.jobs_of(workflow).values():
             job['steps'] = [
                 step

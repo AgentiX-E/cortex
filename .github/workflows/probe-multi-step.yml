@@ -20,7 +20,8 @@
 #
 # The standing instruction is that competitor and model measurements are dispatched on demand and
 # recorded, never fired by a commit: each run spends real money and a number nobody asked for is a
-# number nobody reads. `verify.yml` is the workflow that runs on push, and it runs `pnpm check`.
+# number nobody reads. `verify.yml` is the workflow that runs on push, and it runs `pnpm check` --
+# which is why this file does not, and why the dispatcher checks that verdict instead (`§14.98.11`).
 name: Multi-step retrieval probe
 
 on:
@@ -59,7 +60,7 @@ jobs:
   probe:
     name: Reader probe (multi-session reasoning)
     runs-on: ubuntu-latest
-    # The measured cost of the full population at one step is roughly two CNY and a few minutes. An
+    # The measured cost of the full population at one step is about 0.09 CNY and a few minutes. An
     # hour is not a budget, it is the point at which a hung socket has to become a failed run rather
     # than a run that bills until someone notices.
     timeout-minutes: 60
@@ -67,22 +68,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # The `tools/` Python scripts are part of the delivery path: one dispatches this workflow and
-      # the rest are gates `pnpm check` runs. The first dispatch of this file (`44863794098`) proved
-      # why these two steps are here rather than assumed: it copied `benchmark.yml`'s corpus download
-      # and not its prerequisites, so `pnpm check` died at its second command with
-      # `/usr/bin/python3: No module named pytest` -- after the build had already been paid for. The
-      # rule is now a gate (`tools/ci-gate-audit.py`'s `check-prerequisites`, applied to every
-      # workflow in this directory), because "copy the steps that use the corpus" is not a
-      # distinction anybody reliably remembers.
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Python test dependencies
-        run: python3 -m pip install --requirement tools/requirements-dev.txt
-
+      # No Python setup, because this job runs no Python. It did for exactly one dispatch, while it
+      # also ran `pnpm check`; see the note below the build for why that step is gone. The rule that
+      # put it here (`tools/ci-gate-audit.py`'s `check-prerequisites`) still applies to every workflow
+      # that runs the suite -- it simply has nothing to ask of one that does not.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -100,23 +89,24 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      # A number measured on a tree that does not pass its own gates has no provenance: the reader
-      # could be reading a corpus assembled by a broken loader. This is the same ordering
-      # `benchmark.yml` uses, and it is why the probe artifact can be cited without also citing a
-      # separate verify run that may have been a different commit.
-      - name: Verify library
-        run: |
-          set -o pipefail
-          pnpm check 2>&1 | tee check-output.log
-
-      - name: Upload check output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: probe-check-output
-          path: check-output.log
-          if-no-files-found: ignore
-
+      # The suite is deliberately NOT run here, and this step is where that decision is recorded
+      # rather than left as an absence.
+      #
+      # The first two dispatches tried to buy provenance by re-running `pnpm check` before measuring.
+      # Neither reached the probe. `44863794098` died at `pnpm test:tools` for want of pytest;
+      # `44865288439`, with pytest installed, died at `test_semantic_carry_analysis` because that
+      # suite reads a **sibling repository** (`cortex-docs/evidence/longmemeval/scripts/`) which
+      # `verify.yml` checks out at `path: cortex-docs`. Each omission cost a dispatch, and the list of
+      # preconditions is not the kind of thing a copy of four steps can be trusted to carry: `verify.yml`
+      # builds it over a dozen steps across two jobs.
+      #
+      # Duplicating a suite is the wrong repair when the suite already runs on push for the same
+      # commit. `verify.yml` runs on `push` and `pull_request`, so the tree this job measures has a
+      # verdict of its own, keyed by the SHA the run records. Provenance is therefore *checked at the
+      # dispatch* rather than *re-derived here*: `tools/dispatch-multi-step-probe.py` refuses to
+      # dispatch unless `verify.yml` concluded success for the head of `master`, which is the ref this
+      # workflow is dispatched against. One verdict per commit, and the refusal happens before any
+      # money is spent rather than after ten minutes of duplicated work.
       - name: Download LongMemEval-S
         env:
           CORPUS_SHA_INPUT: ${{ github.event.inputs.corpus_sha256 }}

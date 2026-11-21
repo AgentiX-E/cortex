@@ -584,7 +584,7 @@ Items 1–3 are fixed. Item 4 is documented at the test and in `pg.ts`.
 | D2 | `vitest.pg.config.ts` + `test:pg`, and `test/pg/**` excluded from the unit config | `pnpm test` reports 8 files, never a skipped ninth |
 | D3 | `verify.yml` `postgres` job: `postgres:16` service with `--health-cmd`, `CORTEX_PG_URL`, build, suite, count check | `tools/ci-gate-audit.py` (8 requirements on that file, below, plus one rule over every workflow) |
 | D4 | `tools/pg-integration-count.mjs` — refuses 0 tests, any skip, any count below the floor | `test_pg_integration_count.py` (10 assertions), including "the floor equals the number of `it(` blocks in the suite" |
-| D5 | `tools/ci-gate-audit.py` — parses the workflow and fails when a gate loses its attachment | `test_ci_gate_audit.py` (22 assertions), one per requirement, each asserted to fail on its own removal, plus seven for the `check-prerequisites` rule over the workflow directory |
+| D5 | `tools/ci-gate-audit.py` — parses the workflow and fails when a gate loses its attachment | `test_ci_gate_audit.py` (23 assertions), one per requirement, each asserted to fail on its own removal, plus eight for the `check-prerequisites` rule over the workflow directory |
 | D6 | `src/storage/errors.ts` — `StorageClosedError` and `TransactionOpenError` leave `sql-storage.ts` so both backends raise the same class; `./pg` re-exports it | the parity case that closes and then reads |
 | D7 | `tx.get` and both `put` paths purge; `close()` is idempotent and refuses use | three mutations, below |
 | D8 | `tsconfig.test.json`, and `typecheck` now covers the integration suite | it caught `minWorkers` in `vitest.pg.config.ts` on its first run — a config key vitest 5 had removed, printed as a deprecation that nothing was reading |

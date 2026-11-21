@@ -27,10 +27,24 @@ is the registered configuration (one step, `MR`, full population, ~2 CNY); `--st
 exist for a smoke run, and the projection printed before the call is what makes a typo visible
 before it is billed rather than after.
 
+## The provenance gate, and the two dispatches that argued for it
+
+The first two dispatches of this workflow died before the probe ran, both while trying to establish
+that the tree was sound by re-running `pnpm check` inside the measuring job: `44863794098` for want of
+pytest, `44865288439` for want of the sibling `cortex-docs` checkout that several of the suites read.
+Each omission cost a run, and the preconditions are a dozen steps `verify.yml` builds across two jobs
+-- not a block a measuring workflow can be trusted to reproduce.
+
+So the provenance moved here. `Verify` runs on every push, so the head of `master` already has a
+verdict, keyed by its SHA; this script reads that verdict and refuses to dispatch unless it is
+`success`. The gate is in the dispatcher rather than in the workflow because that is where the money
+is spent: a refusal here costs nothing and happens before GitHub allocates a runner.
+
 Usage:
   python3 tools/dispatch-multi-step-probe.py --dry-run
-  python3 tools/dispatch-multi-step-probe.py
-  python3 tools/dispatch-multi-step-probe.py --steps 0      # the control arm: no reader calls
+  python3 tools/dispatch-multi-step-probe.py              # refuses unless `Verify` is green
+  python3 tools/dispatch-multi-step-probe.py --wait 900   # ... and waits up to 15 min for it
+  python3 tools/dispatch-multi-step-probe.py --steps 0    # the control arm: no reader calls
 """
 
 from __future__ import annotations
@@ -80,6 +94,17 @@ CNY_PER_MTOK_PROMPT = 2.0
 
 # The amount `§14.98.8` allows the probe to spend without anyone saying so.
 PROBE_CEILING_CNY = 2.0
+
+# The branch the probe is dispatched against, and the workflow whose verdict gates the dispatch.
+BRANCH = "master"
+VERIFY_WORKFLOW = "verify.yml"
+
+# The conclusions that end the wait. A run that is `in_progress` or not yet listed is not one of
+# these: the point of waiting is that a verdict is coming, and treating "no run yet" as "failed"
+# would make the gate a race against GitHub's own queueing.
+TERMINAL_FAILURES = frozenset(
+    {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
+)
 
 
 _TOKEN: str | None = None
@@ -143,6 +168,38 @@ def req(method: str, path: str, payload=None, allow_empty: bool = False):
     sys.exit(f"{method} {path} -> exhausted retries")
 
 
+def verify_verdict(sha: str) -> tuple[str, str]:
+    """The newest verdict `verify.yml` reached on `sha`, and its URL.
+
+    Only `push` and `pull_request` runs count: a `workflow_dispatch` run of `Verify` is somebody
+    asking the same question by hand, and accepting it would let a dispatch be gated on a verdict
+    that was itself dispatched -- which is the shape of gate this repository keeps removing.
+    """
+    runs = req("GET", f"/repos/{REPO}/actions/workflows/{VERIFY_WORKFLOW}/runs?head_sha={sha}&per_page=20")
+    for run in runs.get("workflow_runs") or []:
+        if run.get("event") in ("push", "pull_request"):
+            return run.get("conclusion") or run.get("status") or "unknown", run["html_url"]
+    return "none", ""
+
+
+def await_verdict(sha: str, wait_seconds: int) -> tuple[str, str]:
+    """`verify_verdict`, re-asked until it is terminal or the wait runs out.
+
+    Default zero seconds: the dispatcher does not silently block. `--wait N` is for the case that
+    actually happens -- the commit was pushed a minute ago and `Verify` is still building -- and it
+    is a wait rather than a skip on purpose. Every argument this repository has made about
+    `continue-on-error` applies to a `--force` here, so there is not one.
+    """
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        conclusion, url = verify_verdict(sha)
+        if conclusion == "success" or conclusion in TERMINAL_FAILURES:
+            return conclusion, url
+        if time.monotonic() >= deadline:
+            return conclusion, url
+        time.sleep(15)
+
+
 def apply_overrides(inputs: dict[str, str], overrides: list[str]) -> dict[str, str]:
     """`inputs` with each `KEY=VALUE` applied, refusing anything that would be silent.
 
@@ -195,12 +252,16 @@ def projection(inputs: dict[str, str]) -> str:
 def main(argv: list[str]) -> int:
     overrides: list[str] = []
     dry_run = False
+    wait_seconds = 0
     index = 1
     while index < len(argv):
         arg = argv[index]
         if arg == "--dry-run":
             dry_run = True
             index += 1
+        elif arg == "--wait":
+            wait_seconds = int(argv[index + 1])
+            index += 2
         elif arg == "--steps":
             overrides.append(f"steps={argv[index + 1]}")
             index += 2
@@ -223,21 +284,27 @@ def main(argv: list[str]) -> int:
         print("--dry-run: nothing dispatched")
         return 0
 
-    # The ref is the commit this checkout is on, not a branch: a dispatch that names a branch
-    # measures whatever that branch happens to point at when the runner clones, which is how a
-    # comparison ends up describing two different trees. `git rev-parse HEAD` is read rather than
-    # assumed so a dirty checkout is visible in the line below.
-    head = (
-        Path(".git/HEAD").read_text(encoding="utf-8").strip()
-        if Path(".git/HEAD").is_file()
-        else "unknown"
-    )
-    print(f"ref: {head}")
+    # The ref the workflow will be dispatched against, resolved to a SHA so the verdict that is
+    # about to be required and the tree that will be measured are provably the same commit.
+    sha = req("GET", f"/repos/{REPO}/git/ref/heads/{BRANCH}")["object"]["sha"]
+    print(f"head of {BRANCH}: {sha}")
+
+    conclusion, url = await_verdict(sha, wait_seconds)
+    suffix = f"  {url}" if url else ""
+    print(f"verify.yml on {sha[:8]}: {conclusion}{suffix}")
+    if conclusion != "success":
+        raise SystemExit(
+            f"refusing to dispatch: `Verify` on {sha[:8]} is {conclusion!r}, not 'success'.\n"
+            "The probe records a reading about a tree, and the tree's own verdict is the only "
+            "evidence that it loaded the corpus with code that passes its gates. `--wait N` polls "
+            "for up to N seconds; there is no flag that dispatches anyway, because the alternative "
+            "to waiting is measuring a commit nobody has verified."
+        )
 
     req(
         "POST",
         f"/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
-        {"ref": "master", "inputs": inputs},
+        {"ref": BRANCH, "inputs": inputs},
         allow_empty=True,
     )
     runs = req("GET", f"/repos/{REPO}/actions/workflows/{WORKFLOW}/runs?per_page=1")
