@@ -60,7 +60,13 @@ hiding it. Two smaller biases ride along and are also printed:
 
 - delivery is deduplicated on text, so a rank is a position in the deduplicated pool while
   `delivered_turns` counts turns; a corpus that repeats a turn verbatim shifts one against the other
-  by the number of repeats;
+  by the number of repeats -- **this bias belongs to artifacts built before `a84f35fb`**. Those runs
+  reported the pool `SearchIndex` had built, which is deduplicated on text; runs at or after that
+  commit report the order `selectByRelevance` actually spent, which is one entry per admitted turn,
+  so a rank and `delivered_turns` count the same things and the bias is zero. The two generations
+  carry the same `goldAccount: product-reported` label, so nothing in the artifact tells them apart:
+  section 145.2 found the difference by reading a row where the rank sat inside the delivery and the
+  turn had still not been delivered. Check the run's `ref` before reading the second decimal;
 - `max_turn_chars` truncates long turns, so a tail of long turns is cheaper than the mean suggests and
   a tail of short ones dearer.
 
@@ -240,8 +246,8 @@ def project(artifact: dict[str, Any], candidate_room: float | None = None) -> di
         'candidate': candidate,
         'assumption': (
             'needed_turns / delivered_turns * room, assuming the turns the room did not reach have the '
-            "delivered prefix's mean rendered length; a rank is a deduplicated-pool position while "
-            'delivered_turns counts turns, and max_turn_chars truncates the tail'
+            "delivered prefix's mean rendered length; a rank counts admitted turns on runs at or after "
+            '`a84f35fb` and deduplicated texts before it, and max_turn_chars truncates the tail'
         ),
     }
 

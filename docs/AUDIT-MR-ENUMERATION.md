@@ -195,3 +195,68 @@ the next increment is chosen accordingly:
 3. **Quotation-grounded enumeration** (P2). §5 says it cannot be audited after the fact; it can be
    produced. The cost is output tokens on every MR question, and the acceptance is that a line without
    a verifiable quotation is dropped before Step 2 counts.
+
+## 9. The contract was transplanted and it cost three and three-quarter questions
+
+§8's first item was "a strong reader, measured", and the increment that actually ran was a different one:
+the **instruction**. The plan pre-registered it in §14.97.5 as a single variable — the reference pipeline's
+aggregation contract, migrated whole onto the multi-session route, with a net gain below `+1` question
+counted as a refutation — and it was dispatched as `44835820692` (`ref` = `a84f35fb`, `capability=MR`, four
+repetitions, `ask=aggregation`, the registered room back at `multi-session:48460`).
+
+It is refuted, and the value is not zero: the contract costs questions.
+
+| reading | what moved | value |
+| --- | --- | --- |
+| within `44835820692` | `cortex-memory` `78.72%` against the in-artifact `reference-pipeline` `84.09%` | **−5.37pp**, McNemar `p = 0.0931`, discordant `16 : 7`, Welch `p = 8.63e-4` |
+| cross-run | feature arm `101.50` → `95.25` questions (four-repetition means) | **−6.25 questions** |
+| the anchor | the same `reference-pipeline` arm in the same two runs, `104.25` → `101.75` | **−2.50 questions**, on an arm nobody changed |
+| **double difference** | the cross-run gap with the anchor's drift removed | **−3.75 questions / −3.10pp** |
+
+The middle row is why the last one exists. The treatment and the control (`44829684980`) were **not** on the
+same window: the control was dispatched at `multi-session:62000`, because it was the room-axis dispatch, and
+this one returned to `48,460`. A raw feature-to-feature difference therefore charges the ask for a room
+change in the opposite direction — `−22%` characters, which §14.97.5's own slope prices at about `−0.2`
+questions. What makes the row readable is that the `reference-pipeline` arm rides inside both artifacts,
+never reads this arm's ask, and can be differenced the same way. It moved `2.5` questions, so most of the
+raw `6.25` was the harness, and the ask's own share is `3.75`.
+
+That `2.5` is the more useful number. It is this campaign's first **noise floor for a cross-run
+comparison** on 121 questions: two dispatches of an arm nobody changed differ by two and a half questions.
+Every cross-run delta in this file smaller than that has been a reading of the harness — including §145's
+`+0.25` questions for `+28%` room, which is now confirmed as noise by a second, independent route rather
+than by its own `p = 0.804`. Two-dispatch comparisons on this suite cannot resolve an effect below roughly
+`2.5` questions, and the only instrument in this repository with more resolution is the paired McNemar
+inside one artifact.
+
+**What the treatment did to the failures.** Of 121 questions, 27 were wrong on the first repetition: 18
+numeric mismatches, 4 abstentions, 5 other. Under `verbatim-acts` the same population read 19 wrong — 14
+numeric, 2 abstentions, 3 other. The contract did not move failures out of arithmetic; it added thirteen of
+them, nine of which are arithmetic.
+
+**And the window was not the constraint.** This run's `ref` carries §145.2's ordering repair, so its
+`goldRanks` are the product's own delivery positions: all `1,832` gold turns were surfaced, **none** read
+`-1`, and the cuts fall where the room puts them (`620` in the top eight, `890` in the top sixteen, `1,117`
+in the top thirty-two). Every reading in §3 above — that coverage is not the bottleneck — holds on this
+artifact too, at a smaller room, with a different instruction.
+
+### 9.1 The finding is an interaction, not a winner
+
+The reference arm reads `84.09%` on these same 121 questions, with the same reader, inside the artifact that
+scored the migrated copy at `78.72%`. Two systems, one contract, `5.37` points apart, and the difference
+between them is not the wording: it is that the reference pipeline chooses its **own** evidence, densely,
+over a smaller window, and writes the enumerated list over what it chose. The contract and the selection that
+feeds it are one mechanism. Laying the instruction over a window filled by reciprocal-rank relevance leaves
+the model enumerating a list it did not build, and it enumerates it worse than the instruction it already had.
+
+This is the same shape as §1, one level up. §1 found the aggregate never errs and the set does: the answer
+equals the number of Step 1 lines in twenty-two of twenty-two failures. §9 finds that the Step 1 lines are
+what a contract cannot supply. Any increment that keeps treating the instruction as a free-floating sentence
+will keep producing this result, and `S8` now carries the number instead of `unrun`.
+
+**Where this leaves the axis.** The reader/contract axis is not closed — `M1` is still unmeasured on a
+reasoning reader, and that remains the largest single lever this file can name — but the part of it that
+touches the *wording* is now measured and negative. The untested axis that speaks to the interaction is
+**multi-step retrieval**: MemCog's `92.48%` on this category is reached by two to three ReAct steps that
+interleave searching with reading, which is precisely a mechanism where the selection is produced *by* the
+reader that enumerates. The next increment is pre-registered there rather than in another prompt.

@@ -1030,15 +1030,34 @@ export const CRITERIA: readonly Criterion[] = [
     metric:
       "multi-session correct answers gained by the reference pipeline's aggregation contract, migrated whole, over the registered ask it replaced",
     dataset:
-      'LongMemEval-S, 121 multi-session questions, treatment and control on byte-identical windows because flat and temporal are unchanged',
+      'LongMemEval-S, 121 multi-session questions, four repetitions per side, read as the difference between the treatment and a control dispatched at a different room and corrected by the reference pipeline’s own drift between the two runs',
     comparator: 'at-least',
     threshold: 9,
-    unit: 'count',
+    unit: 'count-mean',
     kind: 'aim',
     source: {
       kind: 'artifact',
-      path: 'cortex-docs/evidence/longmemeval/silent-ask.json',
-      key: 'delta.multiSession',
+      path: 'cortex-docs/evidence/longmemeval/aggregation-ask.json',
+      key: 'doubleDifference.questions',
+      // The row named `silent-ask.json#delta.multiSession` for three rounds and that file does not exist in
+      // the docs repository, so the row read `unrun` -- a criterion with no current value cannot fail, which
+      // is the state this matrix exists to refuse. `silent` is also the wrong ask for this metric: it removes
+      // the written list (`-26`) rather than migrating the reference's aggregation contract. The attestation
+      // pins the ask and the repetition count so a re-pointed copy cannot satisfy the row with a different
+      // experiment's file.
+      //
+      // The key is the **double difference** and not the raw feature-to-feature gap, because the treatment and
+      // the control were dispatched at different multi-session rooms (`62,000` against `48,460`) and a raw
+      // difference would charge the ask for the room. The file carries all three readings and the reason each
+      // one exists: `within` (no second variable, no counterfactual), `crossRun` (the intended variable plus
+      // the room), and the anchor drift on an arm nobody changed (`-2.50` questions, which is this harness's
+      // run-to-run noise floor on 121 questions). The unit is `count-mean` because the reading is a mean over
+      // four repetitions, and printing `-4` for `-3.75` would round a number the artifact does not contain.
+      attest: [
+        { key: 'row', equals: 'S8' },
+        { key: 'ask', equals: 'aggregation' },
+        { key: 'repetitions', equals: 4 },
+      ],
     },
     competitors: [
       {

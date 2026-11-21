@@ -66,7 +66,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S5  | <!-- reading:S5 -->100.0% | ≥ 80.0%   | pass   | abstention                             | LongMemEval-S, 30 questions                               |
 | S6  | <!-- reading:S6 -->—      | ≤ 0       | unrun  | reranking                              | LongMemEval-S, 500 questions, one rerank call each          |
 | S7  | <!-- reading:S7 -->—      | ≥ 3       | unrun  | reranking                              | LongMemEval-S, 121 multi-session questions, paired          |
-| S8  | <!-- reading:S8 -->—      | ≥ 9       | unrun  | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, paired          |
+| S8  | <!-- reading:S8 -->-3.75  | ≥ 9       | aim    | multi-session reasoning                | LongMemEval-S, 121 multi-session questions, four repetitions per side, differenced against a control dispatched at a different room and corrected by the reference arm's own drift between the two runs |
 | S9  | <!-- reading:S9 -->—      | ≥ -15     | unrun  | self-index retrieval                   | LongMemEval-S, 500 questions, two dispatches paired         |
 | S15 | <!-- reading:S15 -->89.4% | ≥ 91.0%  | aim    | the prompt room, every route cut       | LongMemEval-S, 500 questions, `maxPromptCharsByRoute` at 24,000 on all six routes, paired against `S9` |
 | S16 | <!-- reading:S16 -->-1   | ≥ -5      | pass   | the prompt room, one route kept wide   | LongMemEval-S, 500 questions, `multi-session` 48,460 and the other five 24,000, paired against `S9`, **and** a bill ≤ 85% of 9,201 |
@@ -315,10 +315,22 @@ field has published. It prices the **instruction** rather than the retrieval: §
 answer already carries its gold in the prompt, with a median best rank of **0**, so the eighteen multi-session
 questions this arm trails the `reference-pipeline` by cannot be recovered by any change to the pool, the width or
 the budget. What remains is what the reader is told to do, and the two arms are told opposite things — this one
-asks for the list to be written out, the reference asks for it to be kept private. `S8` is measured against an
-`enumerated` control whose flat and temporal blocks are byte-identical, so it is the rare row where an assembly
-failure is detectable from the control side: a movement in TR or IE means the dispatch administered more than one
-route and no number in the row is readable.
+asks for the list to be written out, the reference asks for it to be kept private. `S8` was meant to be measured
+against a control whose flat and temporal blocks are byte-identical, so that a movement in TR or IE would mean the
+dispatch administered more than one route and no number in the row would be readable.
+
+**The row has a value now, and two sentences above did not survive it.** Run `44835820692` migrated the
+reference's aggregation contract onto the multi-session route and read `-3.75` questions against a control at the
+registered room — a loss, so the row is a miss and the ask returns to `verbatim-acts`. The premise that the
+control sat on a byte-identical window is **false**: the control (`44829684980`) was dispatched at
+`multi-session:62000` and the treatment at `48,460`, so the raw feature-to-feature gap of `-6.25` questions mixes
+the ask with the room. What makes the row readable anyway is the `reference-pipeline` arm, which is present in
+both artifacts, does not read this arm's ask, and therefore measures the harness rather than the change: it moved
+`-2.50` questions between the same two runs. The difference of the two differences is `-3.75`, and it is the
+number the row reports. It also supplies this campaign's first **noise floor** for a cross-run comparison on 121
+questions: two dispatches of an arm nobody changed differ by 2.5 questions, so every cross-run delta smaller than
+that in this document is a reading of the harness and not of a mechanism. The two rows that quote one — `S17`'s
+`+1.75` and the room axis's `+0.25` — are inside it.
 
 ### 2.2 Four rows still read a dead configuration, and fixing it moved them 12 to 18 points
 
