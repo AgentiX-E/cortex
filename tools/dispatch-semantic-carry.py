@@ -29,9 +29,23 @@ guards from the other side; it does not refuse a *value*, because a screening di
 registered one are both legitimate and the difference is a judgement this script has no standing to
 make. The dispatch prints what it sent, and the artifact carries what ran.
 
+The one exception is `pairing`, and it is an exception by kind rather than by taste: its three
+values are a closed union that `arm-pairing.ts` already refuses at run time, so a typo here is a
+dispatch that is accepted, billed, and then throws before its first question. A closed vocabulary
+can be checked before the money and an open one cannot, which is the same line `readArmPairing`
+draws from the other side.
+
+## Two instruments, one workflow
+
+`pairing=carry` is `S12`'s instrument (the semantic layer's carry) and `pairing=clock` is the
+boundary clock's (§13.386): the same cognitive system twice, one rendering flag between the sides.
+Both are dispatched from here because both need the same shard matrix, merge and spend gate; the
+`pairing` input is what says which flag differed.
+
 Usage:
   python3 tools/dispatch-semantic-carry.py
   python3 tools/dispatch-semantic-carry.py --set windows=2 --set capability=all
+  python3 tools/dispatch-semantic-carry.py --set pairing=clock --set capability=MR --set windows=1
   python3 tools/dispatch-semantic-carry.py --watch
 """
 
@@ -123,6 +137,15 @@ SPEND_BASELINE = Path(__file__).resolve().parent / "spend-baseline.json"
 # first repetition is the one thing about the mix this history cannot bound. `--budget N` states a
 # different ceiling; `--no-budget` disables the gate and says so in the log.
 DEFAULT_BUDGET_CNY = 120.0
+
+# The pairings `arm-pairing.ts` can build, in the order its own reader accepts them.
+#
+# Checked here and nowhere else in this script, because it is the only *closed* value among the
+# inputs: `capability`, `limit` and `ablation_runs` are open ranges whose right value is a judgement,
+# while these three are a union the arm throws on. The cost of not checking was measured on this
+# workflow's own family -- a dispatch that is accepted, billed, and then throws before its first
+# question is a round spent on a typo, and the arm's error arrives after the corpus download.
+PAIRINGS = ("reference", "carry", "clock")
 
 
 _TOKEN: str | None = None
@@ -333,6 +356,16 @@ def main(argv: list[str]) -> int:
     sets, watch, allow_stale, budget = parse_argv(argv)
     inputs = apply_overrides(dict(INPUTS), sets)
 
+    # Before the head lookup, because a refused value must cost nothing at all -- not even the two
+    # API reads below. The message names the closed set rather than the legal one only, since the
+    # usual mistake is a word this file has never heard of.
+    if inputs["pairing"] not in PAIRINGS:
+        raise SystemExit(
+            f"refusing to dispatch: pairing={inputs['pairing']!r} is not one of "
+            f"{', '.join(PAIRINGS)}. `reference` is the registered pair, `carry` is S12's "
+            "instrument and `clock` is the boundary clock's. The arm refuses an unknown value too, "
+            "but only after the run has been accepted and billed."
+        )
     head = req("GET", f"/repos/{REPO}/git/ref/heads/master")["object"]["sha"]
     remote_tree = req("GET", f"/repos/{REPO}/git/commits/{head}")["tree"]["sha"]
     checkout_tree = local_tree()

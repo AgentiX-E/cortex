@@ -487,14 +487,23 @@ describe('the forward from the arm options into the product constructor', () => 
     // treatment on both sides and publish a null result for a comparison that never happened.
     expect(ARM).toContain('...(carry ? { semanticCarry: true } : {})');
     expect(ARM).toContain(
-      'const buildFeature = (): CortexMemory => buildCortex(armOptions.semanticCarry === true);',
+      "buildCortex(armOptions.semanticCarry === true, armOptions.sessionClock === 'on')",
     );
   });
 
   it('builds the control from the same construction, differing in that flag alone', () => {
     // The pair is one literal and one argument. A second literal for the control would be a second
     // definition of the arm's twenty-six options, and the two would agree until one of them was edited.
-    expect(ARM).toContain("pairing === 'carry' ? buildCortex(false) : buildBaseline()");
+    //
+    // Each branch flips exactly ONE argument and passes the other through, which is the property an
+    // assertion has to name: a branch that flipped both would still read as "built from the same
+    // construction" and would publish a two-flag delta under a one-flag artifact.
+    expect(ARM).toContain(
+      "case 'carry':\n        return buildCortex(false, armOptions.sessionClock === 'on');",
+    );
+    expect(ARM).toContain(
+      "case 'clock':\n        return buildCortex(armOptions.semanticCarry === true, false);",
+    );
   });
 
   it('refuses a carry pair whose treatment side was left off', () => {
@@ -502,6 +511,32 @@ describe('the forward from the arm options into the product constructor', () => 
     // impossible: `delta = 0` with a census of `0`, read as "the layer carried nothing" when the truth
     // is "the layer was never asked". Refused before the first call, so it costs nothing.
     expect(ARM).toContain("pairing === 'carry' && armOptions.semanticCarry !== true");
+  });
+
+  it('refuses a clock pair whose treatment side was left off, for the same reason one flag over', () => {
+    // The clock's criterion (`C1`) is a PAIRED movement on `MR`, and a pair with the clock off on both
+    // sides lands on `C1`'s null branch -- which the pre-registration reads as "the effect is below the
+    // floor or points the other way". A run that never administered the treatment must not be able to
+    // occupy that branch.
+    expect(ARM).toContain("pairing === 'clock' && armOptions.sessionClock !== 'on'");
+  });
+
+  it('spreads the clock from the construction’s argument rather than from the parsed option', () => {
+    // The same defect the carry's spread avoids, and the reason the two arguments exist at all: under
+    // `AB=clock` the parsed option is `on` for the whole process, so a read of it here would put the
+    // treatment on both sides of the pair that is measuring it.
+    expect(ARM).toContain('...(clock ? { sessionClock: true } : {})');
+    expect(ARM).not.toContain(
+      "...(armOptions.sessionClock === 'on' ? { sessionClock: true } : {})",
+    );
+  });
+
+  it('records which flag the pair split, because the delta’s meaning is not in the switch alone', () => {
+    // `sessionClock=on` says the treatment was administered; `clockPair` says what it was administered
+    // against. Without the second, a `clock` dispatch and a registered-population dispatch that both set
+    // the clock would be the same bytes with two different meanings.
+    expect(ARM).toContain("clockPair: pairing === 'clock'");
+    expect(ARM).toContain("carryPair: pairing === 'carry'");
   });
 
   it('names the same identifier that the product option type declares', () => {

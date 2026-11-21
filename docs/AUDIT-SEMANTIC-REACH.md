@@ -1001,15 +1001,22 @@ demand, so the load balance is unchanged; just atomic, so a corpus cannot be spl
 
 ### 16.4 The control is the same system, and the pair refuses to be two controls
 
-`arm-pairing.ts` reads `CORTEX_MEMORY_AB`: `reference` is the registered pair (the reference pipeline
+`arm-pairing.ts` reads `CORTEX_MEMORY_AB`. `reference` is the registered pair (the reference pipeline
 against the cognitive one) and the default; `carry` builds **both** sides from one constructor with
-one flag between them. `run-ablation.ts` therefore has one `buildCortex(carry)` and two callers, not
-two literals that would agree until one was edited.
+`semanticCarry` between them; `clock` does the same with `sessionClock`, which is the boundary clock's
+instrument and the reason the selector is written as one instrument with two flags rather than as one
+flag's private helper. `run-ablation.ts` therefore has one `buildCortex(carry, clock)` and one
+`switch` over the pairing, not three literals that would agree until one was edited -- and each
+branch flips exactly one argument, because a pair that differs by two flags publishes a delta neither
+flag can claim.
 
-The refusal is the part worth writing down. `ab=carry` with `semanticCarry` off on the feature side is
-two controls, a delta of `0`, and a census of `0` — a null result published for a comparison that
-never administered the treatment. It is refused **before the first call**, so it costs nothing to
-find out.
+The refusal is the part worth writing down, and it is now stated twice because it is needed twice.
+`ab=carry` with `semanticCarry` off on the feature side is two controls, a delta of `0`, and a census
+of `0` — a null result published for a comparison that never administered the treatment. `ab=clock`
+with the clock off is the same shape one flag over, and it matters more there: the clock's criterion
+reads a **paired** movement on `MR` and treats a null as "below the floor or pointing the other way",
+so a run that never administered the treatment would occupy the cell reserved for a measured negative.
+Both are refused **before the first call**, so it costs nothing to find out.
 
 ### 16.5 The dispatch
 
@@ -1040,6 +1047,8 @@ the mutation removed.
 | 11 | the carry pair is built without the flag, reading the arm instead | `semantic-carry-arm.test.ts` | killed |
 | 12 | the control side is the reference pipeline in both pairings | `semantic-carry-arm.test.ts` | killed |
 | 13 | a carry pair whose treatment side was left off is not refused | `semantic-carry-arm.test.ts` | killed |
+| 14 | the clock pair is built by flipping both arguments instead of one | `semantic-carry-arm.test.ts` | killed |
+| 15 | a clock pair whose treatment side was left off is not refused | `semantic-carry-arm.test.ts` | killed |
 
 Number 1 is the one to write down, because it survived the first time and it survived *because the
 test was wrong in a way that looks like success*. `runBenchmark` takes nine positional arguments and

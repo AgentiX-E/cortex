@@ -16,16 +16,26 @@ describe('readArmPairing', () => {
     expect(readArmPairing('carry')).toBe('carry');
   });
 
+  it('reads the clock pairing, which is the boundary clock’s instrument', () => {
+    // The one-flag pair generalised: `carry` was the first flag that needed it, not the only one. The
+    // boundary clock has a pre-registered criterion (§131 §3) and, without this value, no dispatch that
+    // could produce its reading -- the failure the semantic carry cost six rounds to.
+    expect(readArmPairing('clock')).toBe('clock');
+  });
+
   it('folds case and space, because the value is typed by hand into a dispatch', () => {
     expect(readArmPairing(' CARRY ')).toBe('carry');
     expect(readArmPairing('Reference')).toBe('reference');
+    expect(readArmPairing(' Clock ')).toBe('clock');
   });
 
-  it('refuses a pairing it cannot build, and names both it can', () => {
+  it('refuses a pairing it cannot build, and names every one it can', () => {
     // The failure this prevents is a run that publishes a delta between two systems nobody
-    // described; the message is where a dispatcher learns what the two words are.
+    // described; the message is where a dispatcher learns what the words are. Every branch is named,
+    // because a message that lists two of three teaches the reader to invent the third.
     expect(() => readArmPairing('two-window')).toThrow(/does not name a pairing/);
     expect(() => readArmPairing('two-window')).toThrow(/`reference`/);
     expect(() => readArmPairing('two-window')).toThrow(/`carry`/);
+    expect(() => readArmPairing('two-window')).toThrow(/`clock`/);
   });
 });

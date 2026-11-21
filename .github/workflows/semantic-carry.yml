@@ -1,6 +1,7 @@
-# The paired ablations of the cognitive arm: the semantic carry (`S12`), and the per-turn window (`S10`).
+# The paired ablations of the cognitive arm: the semantic carry (`S12`), the per-turn window (`S10`), and
+# the boundary clock (§13.386).
 #
-# ## Why one workflow for two questions
+# ## Why one workflow for three questions
 #
 # They need the same four things and differ in one input each: a population that can be split by corpus, a
 # 6-second gate that is per **process** (so the split is the only lever on the wall clock), a merge that folds
@@ -14,6 +15,7 @@
 # | `S12`, the semantic layer's carry | `carry` | `head` | two windows over one corpus, `KU` |
 # | `S10`, the per-turn window | `reference` | `match` (and `head` as its control) | the registered 500, `all` |
 # | `S10`, the marker alone | `reference` | `ellipsis` (against `head`) | the registered 500, `all` |
+# | the boundary clock | `clock` | `head` | `MR` -- the route the clock's signature is enriched on |
 #
 # ## The semantic carry, in one paragraph
 #
@@ -62,7 +64,7 @@
 # questions cost a reader call each and cannot produce a `matched` window. A run over all 500 is the
 # registered instrument and stays available through the input -- `windows=2, capability=all` -- and
 # the `population` block on the artifact states which one ran.
-name: Semantic carry (cortex-memory, two windows)
+name: Paired ablations (cortex-memory, one flag between the sides)
 
 on:
   workflow_dispatch:
@@ -78,7 +80,7 @@ on:
         default: '2'
         type: string
       pairing:
-        description: 'Which two systems the sides are. `carry` puts the same cognitive system twice with `semanticCarry` off against on -- S12''s instrument. `reference` is the arm''s registered pair (the reference pipeline against the cognitive one), which is what S10 needs: its two sides are two dispatches of one configuration differing by the turn window, so neither side is a carry arm'
+        description: 'Which two systems the sides are. `carry` puts the same cognitive system twice with `semanticCarry` off against on -- S12''s instrument. `clock` puts the same cognitive system twice with `sessionClock` off against on -- the boundary clock''s instrument, and the same shape one flag over. `reference` is the arm''s registered pair (the reference pipeline against the cognitive one), which is what S10 needs: its two sides are two dispatches of one configuration differing by the turn window, so neither side is a carry arm'
         required: false
         default: carry
         type: string
@@ -369,6 +371,13 @@ jobs:
           # so a `carry` dispatch that forgot this fails before the first call rather than publishing a null
           # result for a comparison that never administered the treatment.
           CORTEX_MEMORY_SEMANTIC_CARRY: ${{ inputs.pairing == 'carry' && '1' || '' }}
+          # The other one-flag pair, derived from the pairing rather than from a repository variable. That is
+          # the difference between this line and `benchmark-cortex-memory.yml`'s, and it is deliberate: there
+          # the clock is a treatment administered on top of the registered pair, so it needs a channel of its
+          # own; here the clock IS the pairing, and a second channel would let a dispatch say `pairing=clock`
+          # while its treatment was off. The arm's preflight still refuses that combination, because a
+          # derivation in a workflow is not a guarantee the arm can see.
+          CORTEX_MEMORY_SESSION_CLOCK: ${{ inputs.pairing == 'clock' && 'on' || 'off' }}
           CORTEX_WINDOWS: ${{ inputs.windows }}
           CORTEX_CAPABILITY: ${{ inputs.capability }}
           CORTEX_MEMORY_WORKERS: ${{ inputs.workers }}

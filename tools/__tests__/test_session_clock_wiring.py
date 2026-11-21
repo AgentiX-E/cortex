@@ -237,3 +237,56 @@ def test_the_artifact_records_the_switch_on_every_run() -> None:
         'the run line does not print the switch, so a reader comparing two runs has to open the JSON to '
         'learn which one labelled the boundaries'
     )
+
+
+# The pairing, which is the link the round that shipped this file could not build.
+#
+# The five links above make the treatment *reachable*. They do not make it *attributable*: with
+# `CORTEX_MEMORY_AB` unset the baseline is the reference pipeline, so a dispatch that turns the clock on
+# measures the clock plus the whole cognitive layer, and the mechanism's own criterion (`§131 §3`, `C1`)
+# reads a paired movement that such a run cannot produce. `pairing=clock` is what puts the same system on
+# both sides, and the two tests below pin the two places it could be missing.
+PAIRED = ROOT / '.github/workflows/semantic-carry.yml'
+PAIR_DISPATCH = ROOT / 'tools/dispatch-semantic-carry.py'
+
+
+def test_the_paired_workflow_derives_the_clock_from_the_pairing() -> None:
+    """Derived, not read from a second variable, and the difference is what makes the pair a pair.
+
+    `benchmark-cortex-memory.yml` forwards the clock from `vars.CORTEX_MEMORY_SESSION_CLOCK` because there
+    the clock is a treatment layered on the registered pair and needs a channel of its own. Here the clock
+    *is* the pairing, so a repository variable would let a dispatch send `pairing=clock` with the treatment
+    off -- two sources for one field, and an artifact whose `clockPair` and `sessionClock` disagree.
+    """
+    workflow = read(PAIRED)
+    forward = "CORTEX_MEMORY_SESSION_CLOCK: ${{ inputs.pairing == 'clock' && 'on' || 'off' }}"
+    assert forward in workflow, (
+        f'{PAIRED.name} does not derive {VARIABLE} from `pairing`. Without it a `clock` dispatch renders the '
+        'control on both sides and its delta is zero while its config claims a treatment.'
+    )
+    assert f'{VARIABLE}: ${{{{ vars.' not in workflow, (
+        'the paired workflow also reads a repository variable for the same switch: two sources for one '
+        'field, and the artifact cannot say which one won'
+    )
+
+
+def test_the_pair_dispatcher_and_the_arm_agree_on_the_closed_set() -> None:
+    """Two copies of one grammar, held to each other by reading both.
+
+    The dispatcher refuses a value the arm would throw on, but only after the run is accepted and billed --
+    so the check is a money gate, and a money gate whose vocabulary drifted from the arm's would pass a typo
+    straight through to the arm.
+    """
+    module = load(PAIR_DISPATCH, 'dispatch_semantic_carry')
+    source = read(ROOT / 'packages/cortex-eval/src/arm-pairing.ts')
+    union = re.search(r"type ArmPairing = ([^;]+);", source)
+    assert union is not None, 'arm-pairing.ts has no `ArmPairing` union'
+    arm_names = sorted(re.findall(r"'(\w+)'", union.group(1)))
+    assert arm_names == sorted(module.PAIRINGS), (
+        f'the arm builds {arm_names} and the paired dispatcher accepts '
+        f'{sorted(module.PAIRINGS)}: a dispatch of the missing one is billed and then refused by the arm.'
+    )
+    assert 'reference' in module.PAIRINGS, (
+        'the registered pair is missing from the dispatcher vocabulary, so the control dispatch this '
+        'instrument is read against cannot be sent'
+    )

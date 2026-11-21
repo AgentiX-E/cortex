@@ -984,7 +984,12 @@ async function main(): Promise<void> {
   // concurrency attributes one question's prompt to another without throwing. Every value the
   // factory closes over is either immutable or shared on purpose (the answer cache, the embedding
   // client, the relevance table).
-  const buildCortex = (carry: boolean): CortexMemory =>
+  // Two flags, two arguments, because `CORTEX_MEMORY_AB` puts ONE of them between the two sides and
+  // the other must be equal on both. Reading either from `armOptions` inside the literal would build
+  // the treatment on both sides of the pair that is measuring it, and the artifact would then publish
+  // a null delta for a comparison in which nothing differed -- the exact failure the carry's own
+  // argument records six rounds of.
+  const buildCortex = (carry: boolean, clock: boolean): CortexMemory =>
     new CortexMemory({
       // Decorated only when the run restores (§13.274). `featureLlm` IS `llm` otherwise, so an
       // ordinary run constructs the identical object it always did.
@@ -1048,7 +1053,11 @@ async function main(): Promise<void> {
       // this line is what makes the arm able to administer the treatment at all. Without it the mechanism
       // exists, is documented and is measured by nobody, which is the failure `semanticCarry` cost six
       // rounds to.
-      ...(armOptions.sessionClock === 'on' ? { sessionClock: true } : {}),
+      //
+      // The `clock` argument, not `armOptions.sessionClock`, for the reason `carry` gives one spread down:
+      // under `CORTEX_MEMORY_AB=clock` this same construction is asked for twice with one flag between the
+      // two sides, and a read of the parsed option here would put the clock on both of them.
+      ...(clock ? { sessionClock: true } : {}),
       // §18. The inline superseded rendering, spread conditionally for the reason `conflicts` is: `off`
       // IS the shipped behaviour and is expressed by NOT passing the key, so a run that does not name a
       // rendering reproduces every archived prompt byte for byte. The cast is at this boundary for the
@@ -1227,11 +1236,13 @@ async function main(): Promise<void> {
   // `reference` is the registered pair -- the reference pipeline against the cognitive one -- and it is
   // what an unset variable means, so every archived artifact stays the run it was. `carry` puts the same
   // cognitive system on both sides with one flag between them, which is `S12`'s instrument and the only
-  // pair whose delta is the semantic layer's carry rather than two systems' difference.
+  // pair whose delta is the semantic layer's carry rather than two systems' difference. `clock` is the
+  // same instrument one flag over: the same system twice with the boundary clock off against on.
   //
   // Built here rather than as two literals so the two sides cannot drift: `buildCortex` is one
-  // construction, and the carry state is its argument. A second literal for the control would be a second
-  // definition of the arm's 26 options, and the two would agree until one of them was edited.
+  // construction, and the two flags that a pairing can split are its arguments. A second literal for the
+  // control would be a second definition of the arm's 26 options, and the two would agree until one of
+  // them was edited.
   const pairing = readArmPairing(process.env['CORTEX_MEMORY_AB']);
   if (armOptions.factTimeline === true && armOptions.semanticCarry !== true) {
     // §7.2's preflight, checked BEFORE the pairing rule below so one dispatch names every variable it is
@@ -1257,9 +1268,37 @@ async function main(): Promise<void> {
         'administered the treatment.',
     );
   }
-  const buildFeature = (): CortexMemory => buildCortex(armOptions.semanticCarry === true);
-  const buildPairBaseline = (): MemorySystem =>
-    pairing === 'carry' ? buildCortex(false) : buildBaseline();
+  if (pairing === 'clock' && armOptions.sessionClock !== 'on') {
+    // The same refusal, one flag over, and it is not symmetry for its own sake: the boundary clock's
+    // criterion (pre-registration §3, `C1`) reads a **paired** movement on `MR`, so a dispatch whose two
+    // sides both render without the clock produces the null result that criterion was written to prevent --
+    // and a null on `C1` is the branch that says "the effect is below the floor or points the other way".
+    // A run that never administered the treatment must not be able to land there.
+    throw new Error(
+      'CORTEX_MEMORY_AB=clock pairs the cognitive system against itself with `sessionClock` off, so the ' +
+        'feature side must be the side with the clock: set CORTEX_MEMORY_SESSION_CLOCK=on. Without it both ' +
+        'sides are the control, and the paired criterion would read zero for a comparison that never ' +
+        'administered the treatment.',
+    );
+  }
+  const buildFeature = (): CortexMemory =>
+    buildCortex(armOptions.semanticCarry === true, armOptions.sessionClock === 'on');
+  // The control side, as a function of which flag this pairing splits. Each branch flips EXACTLY one
+  // argument and passes the other through, which is the property that makes the delta attributable: under
+  // `carry` both sides carry the clock the dispatch asked for, and under `clock` both sides carry the same
+  // `semanticCarry`. Written as a switch over the pairing rather than as a chain of ternaries so that adding
+  // a fourth pairing is a compile error here rather than a silent fall-through to the reference baseline --
+  // which would publish a two-system delta under a one-flag artifact.
+  const buildPairBaseline = (): MemorySystem => {
+    switch (pairing) {
+      case 'carry':
+        return buildCortex(false, armOptions.sessionClock === 'on');
+      case 'clock':
+        return buildCortex(armOptions.semanticCarry === true, false);
+      case 'reference':
+        return buildBaseline();
+    }
+  };
 
   // Workers in flight (§14.22). The first worker reuses the instances just built rather than
   // constructing a second pair, so a serial run is byte-identical to what it always was and a
@@ -1463,6 +1502,12 @@ async function main(): Promise<void> {
       // true` says both halves of what its delta compares -- and an artifact without it is the
       // registered pair, where the baseline is the reference pipeline and the delta is not the carry's.
       carryPair: pairing === 'carry',
+      // The same flag for the other one-flag pair, and it is recorded rather than derived from
+      // `sessionClock` because the two answer different questions: `sessionClock=on` says the treatment
+      // was administered, and this says what it was administered *against*. Only the pair makes the
+      // artifact's delta the clock's; without this entry a `clock` dispatch and a registered-population
+      // dispatch that both set the clock would be the same bytes with two different meanings.
+      clockPair: pairing === 'clock',
     },
     datasetFingerprint,
     // §E6's population, when the run multiplied it or answered one part of a split dispatch. Absent

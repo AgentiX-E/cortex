@@ -34,17 +34,25 @@
 const PAIRING_VARIABLE = 'CORTEX_MEMORY_AB';
 
 /**
- * The two pairings this arm knows how to build.
+ * The pairings this arm knows how to build.
  *
  * - `reference`: the reference pipeline against the cognitive one. The registered pair, and the
  *   baseline of every artifact this campaign has published.
  * - `carry`: the same cognitive system twice, `semanticCarry` off against on. `S12`'s instrument --
  *   one system, one flag, so the delta is the carry's and not the systems'.
+ * - `clock`: the same cognitive system twice, `sessionClock` off against on. `S10`'s counterpart on
+ *   the rendering side, and the instrument the boundary clock was registered against (§131 §3).
+ *
+ * The last two are one instrument with two flags, and that is why they live here rather than in two
+ * files: both ask "what is this one switch worth", both are built by calling the same constructor
+ * twice, and both must keep the OTHER flag equal on the two sides. A second selector for the second
+ * flag would be a second place that has to remember the same rule, and the rule is the whole
+ * instrument -- a pair that differs by two flags publishes a delta neither flag can claim.
  *
  * Not exported: `readArmPairing` is the only way to obtain one, and the export census reports a
  * type nothing names. The union travels in the function's signature, which is where a caller reads it.
  */
-type ArmPairing = 'reference' | 'carry';
+type ArmPairing = 'reference' | 'carry' | 'clock';
 
 /**
  * The pairing this environment asks for. Absent and blank mean `reference`.
@@ -52,18 +60,21 @@ type ArmPairing = 'reference' | 'carry';
  * Case and surrounding space are folded, because the value is typed by hand into a dispatch and
  * `CARRY` is what a person writes. An **unknown** value still throws, because that is the case
  * where a run would publish a delta between two systems nobody asked it to compare -- and the
- * message names both, since the usual mistake is a value this file has never heard of rather than a
- * misspelling of one it has.
+ * message names every pairing this file can build, since the usual mistake is a value it has never
+ * heard of rather than a misspelling of one it has. A message that listed two of three would teach
+ * its reader to invent the third.
  */
 export function readArmPairing(raw: string | undefined): ArmPairing {
   const trimmed = (raw ?? '').trim().toLowerCase();
   if (trimmed === '' || trimmed === 'reference') return 'reference';
   if (trimmed === 'carry') return 'carry';
+  if (trimmed === 'clock') return 'clock';
   throw new Error(
-    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The two are ` +
+    `${PAIRING_VARIABLE} does not name a pairing: got ${JSON.stringify(raw)}. The three are ` +
       '`reference` (the reference pipeline against the cognitive one, which is the registered ' +
-      'pair and what an unset variable means) and `carry` (the cognitive system against itself ' +
-      "with `semanticCarry` off, which is `S12`'s instrument). A value that named neither would " +
-      'publish a delta between two systems the dispatch never described.',
+      'pair and what an unset variable means), `carry` (the cognitive system against itself ' +
+      "with `semanticCarry` off, which is `S12`'s instrument) and `clock` (the cognitive system " +
+      'against itself with `sessionClock` off, which is the boundary clock’s). A value that named ' +
+      'none of them would publish a delta between two systems the dispatch never described.',
   );
 }
