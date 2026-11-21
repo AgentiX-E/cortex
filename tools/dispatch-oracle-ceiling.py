@@ -121,13 +121,25 @@ def set_variable(value: str) -> None:
     general, which reads like a permissions failure. The existence check is therefore explicit rather than
     inferred from one attempt's error.
     """
+    # `PATCH` first, then `POST`, then `PATCH` again. The obvious order -- read, then create or update --
+    # depends on the read succeeding, and it does not: the first armed dispatch created the variable and the
+    # second was answered `404` by the single-variable `GET` while `POST` answered `409 Already exists`. A
+    # create/update pair that infers existence from a read is therefore wrong here, and the retry ladder says
+    # what it means without asking the API which endpoint it feels like serving.
     try:
-        req("GET", f"/repos/{REPO}/actions/variables/{VARIABLE}")
-        req("PATCH", f"/repos/{REPO}/actions/variables/{VARIABLE}", {"name": VARIABLE, "value": value})
+        req("PATCH", f"/repos/{REPO}/actions/variables/{VARIABLE}", {"name": VARIABLE, "value": value}, allow_empty=True)
         print(f"{VARIABLE} = {value} (updated)")
+        return
     except SystemExit:
-        req("POST", f"/repos/{REPO}/actions/variables", {"name": VARIABLE, "value": value})
+        pass
+    try:
+        req("POST", f"/repos/{REPO}/actions/variables", {"name": VARIABLE, "value": value}, allow_empty=True)
         print(f"{VARIABLE} = {value} (created)")
+        return
+    except SystemExit:
+        pass
+    req("PATCH", f"/repos/{REPO}/actions/variables/{VARIABLE}", {"name": VARIABLE, "value": value}, allow_empty=True)
+    print(f"{VARIABLE} = {value} (updated after a create that reported it already existed)")
 
 
 def await_verify(sha: str, wait_seconds: int) -> tuple[str, str]:
