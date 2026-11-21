@@ -29,6 +29,7 @@ import {
   applyRequirements,
   attestationOf,
   CONFIGURATION_ATTESTED,
+  CONFIGURATION_COUNTERFACTUAL,
   currentOf,
   describe,
   verdictOf,
@@ -224,6 +225,24 @@ function registryDefects(skipped) {
         `${JSON.stringify(registered)} (run ${baseline.run}, adopted by §${baseline.adoptedBy}). ` +
         'Regenerate the file from an artifact of the registered configuration, or record the new ' +
         'baseline in the change that adopts it.',
+    );
+  }
+  // The mirror image: a file whose value is that it is *not* the registered arm must not carry the
+  // registered fingerprint. Without this half, one of them could drift into matching and its number
+  // would be quoted as a contrast against a configuration it no longer differs from.
+  for (const { path: relative, key, departs } of CONFIGURATION_COUNTERFACTUAL) {
+    const parsed = artifactAt(relative);
+    if (parsed === undefined) {
+      skipped.push(relative);
+      continue;
+    }
+    const found = pluckRaw(parsed, key);
+    if (found !== registered) continue;
+    defects.push(
+      `${relative}#${key} carries the registered configuration, but the file is listed as a ` +
+        `counterfactual that departs on ${departs}. Either the artifact was regenerated from the ` +
+        'shipping arm — in which case its published number is no longer a contrast — or the ' +
+        'departure was never applied and the number was never what its label says.',
     );
   }
   return defects;

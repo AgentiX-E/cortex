@@ -120,9 +120,9 @@ on:
         default: 'deepseek-chat'
         type: string
       thinking:
-        description: "Thinking mode: 'disabled', 'enabled', or a '+'-separated route list. The registered preset is 'multi-session+temporal'; 'disabled' is the screening default because this pair compares two sides of one pass and a cheaper reader sharpens the difference rather than blurring it"
+        description: "Thinking mode: 'disabled', 'enabled', or a '+'-separated route list. Defaults to the registered `multi-session+temporal`. It used to default to `disabled` on the argument that a cheaper reader sharpens a two-sided comparison — that argument is about the *reader*, but the value is not free: the 87.00% reading this file published was taken with thinking off, `temporal` at 48,000 and `retrieval-anchored`, three departures from the registration that no gate could see because no gate read a workflow"
         required: false
-        default: 'disabled'
+        default: 'multi-session+temporal'
         type: string
       workers:
         description: 'Questions in flight **inside one shard**. A corpus is answered by one instance at any width (Question.corpus), so this moves the wall clock and not the treatment -- but it does not move it much, because the cost is CPU rather than waiting. Sized for a shard: 8 on 16 shards, 24-32 for a single-job dispatch'
@@ -359,6 +359,9 @@ jobs:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
           EMBEDDING_CACHE_PATH: ${{ github.workspace }}/data/embedding-cache.bin
           LIMIT: ${{ inputs.limit }}
+          # arm-config: ABLATION_RUNS departs — a *pair* is two repetitions by construction; the
+          # registered four is the confirmation shape, and four here would double the dispatch to
+          # answer the same question about two sides of one pass.
           ABLATION_RUNS: ${{ inputs.ablation_runs }}
           TEMPERATURE: '0'
           DEEPSEEK_MODEL: ${{ inputs.model }}
@@ -406,6 +409,9 @@ jobs:
           CORTEX_MEMORY_CONFIDENCE: none
           CORTEX_MEMORY_PROMPT_CONTRACT: evidence-blocks-unsourced
           CORTEX_MEMORY_ASK: verbatim-acts
+          # arm-config: CORTEX_MEMORY_REVIEW_PASS departs — the carry has nothing to carry without the
+          # pass that absorbs, so this file's treatment *is* `supersede`. The claim it tests is that the
+          # carry adds nothing on top; the control is this file with `semantic_carry` off.
           CORTEX_MEMORY_REVIEW_PASS: ${{ inputs.review_pass }}
           # Section 7.2's third rendering channel. An input of its own rather than a value of `pairing`,
           # because the pair `carry` produces is the carry's instrument and this is a different experiment:
@@ -416,14 +422,14 @@ jobs:
           CORTEX_MEMORY_FACT_TIMELINE: ${{ inputs.fact_timeline }}
           CORTEX_MEMORY_SELF_CONSISTENCY: none
           CORTEX_MEMORY_QUERY_EXPANSION: none
-          CORTEX_MEMORY_RELEVANCE: retrieval-anchored
+          CORTEX_MEMORY_RELEVANCE: self-index
           CORTEX_MEMORY_RELEVANCE_TOP_K: '256'
           CORTEX_MEMORY_RELEVANCE_UNITS: turn
           # `400` is the registered rendering; `400::match` asks the prompt for the anchored window. One
           # value rather than two variables, because the window is a way of spending the cap and the product
           # refuses it without one -- `readMaxTurnChars` parses the whole decision from this string.
           CORTEX_MEMORY_MAX_TURN_CHARS_ROUTES: multi-session,temporal
-          CORTEX_MEMORY_MAX_PROMPT_CHARS: 'abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:48000'
+          CORTEX_MEMORY_MAX_PROMPT_CHARS: 'abstention:24000,assistant:24000,flat:24000,knowledge-update:24000,multi-session:48460,temporal:24000'
           CORTEX_MEMORY_EVIDENCE_ROLES: user
           CORTEX_MEMORY_EVIDENCE_ROLES_ROUTES: multi-session,temporal
           CORTEX_MEMORY_RERANK: none

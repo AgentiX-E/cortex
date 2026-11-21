@@ -457,6 +457,30 @@ describe('the default profile carries the ranking a reading was taken under', ()
     ];
   }
 
+  /**
+   * How many characters this route's instruction spends before the evidence begins.
+   *
+   * Read off a prompt assembled at a room nothing can bind, because the alternative is a constant that has
+   * to be re-tuned every time an adopted instruction changes size — which is what happened here: the room
+   * stayed at 600 while the block behind it grew from 460 to 1,620 characters, and the test kept passing
+   * its shape while measuring nothing. `EVIDENCE:` is the boundary the builder always writes.
+   */
+  async function instructionChars(): Promise<number> {
+    const seen: string[] = [];
+    const install = assembleMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxPromptChars: 1_000_000,
+    });
+    await install.memory.remember(transcript());
+    seen.length = 0;
+    await install.memory.askStored(QUESTION);
+    const at = (seen[0] ?? '').indexOf('EVIDENCE:');
+    expect(at).toBeGreaterThan(0);
+    return at;
+  }
+
   it('names the profile that builds an index, so the ranking exists without being asked for', async () => {
     const seen: string[] = [];
     const install = assembleMemory({
@@ -478,19 +502,31 @@ describe('the default profile carries the ranking a reading was taken under', ()
     const clipped: string[] = [];
     // A room that holds the head of the transcript and not its tail: with no signal the evidence is
     // `truncateCodePointSafe(render(turns), room)`, which is exactly what loses the newest turn.
-    const room = 600;
+    //
+    // Measured from the instruction rather than fixed, because the instruction is the half of this prompt
+    // the arm decides and it has moved twice: this test used 600 while the route read the 460-character
+    // `abstention` block, and 600 is now *inside* the registered multi-session contract — a room that
+    // small returns the instruction and no evidence at all, so the ranking it means to test is not
+    // consulted. The device is the room; the subject is the ranking; `220` is the evidence budget the old
+    // constant left, kept because the assertions below are calibrated to it.
+    const room = (await instructionChars()) + 520;
     const reader = assembleMemory({
       llm: recordingLlm(ranked),
       now: NOW,
       storage: new SqliteStorage(),
       maxPromptChars: room,
     });
+    // `minimal`'s room is its own, not the default profile's. Its instruction is a fraction of the
+    // registered multi-session block, so handing it the same absolute room leaves it ~2,700 characters for
+    // a 600-character corpus — every turn fits and the truncation this test exists to demonstrate cannot
+    // happen. 300 is the same evidence budget the default profile now gets once its instruction is
+    // subtracted, stated directly: arrival order spends it on the head and loses the newest turn.
     const smallest = assembleMemory({
       llm: recordingLlm(clipped),
       now: NOW,
       storage: new SqliteStorage(),
       profile: 'minimal',
-      maxPromptChars: room,
+      maxPromptChars: 300,
     });
 
     await reader.memory.remember(transcript());
@@ -502,8 +538,8 @@ describe('the default profile carries the ranking a reading was taken under', ()
     // The control, and the reason the default moved: the same corpus, the same room, the same question.
     expect(clipped[0]).not.toContain('Lisbon');
     // And the bound is a bound: both prompts are the room's, not the corpus's.
-    expect(ranked[0]!.length).toBeLessThan(1_200);
-    expect(clipped[0]!.length).toBeLessThan(1_200);
+    expect(ranked[0]!.length).toBeLessThan(room + 200);
+    expect(clipped[0]!.length).toBeLessThan(400);
   });
 
   it('takes maxPromptChars, because the docblock that refuses to default it says a caller states it', async () => {
@@ -570,11 +606,28 @@ describe('the vector channel is reachable from the composition root', () => {
     return [DECOY, ...FILLER, ANSWER].map((text, ordinal) => ({ sessionId: 's1', ordinal, text }));
   }
 
+  /** The instruction's own width on this corpus. See the copy in the block above for why it is measured. */
+  async function instructionChars(): Promise<number> {
+    const seen: string[] = [];
+    const install = assembleMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxPromptChars: 1_000_000,
+    });
+    await install.memory.remember(transcript());
+    seen.length = 0;
+    await install.memory.askStored(QUESTION);
+    return (seen[0] ?? '').indexOf('EVIDENCE:');
+  }
+
   it('reaches a paraphrase the lexical channel cannot, when a caller supplies an embedder', async () => {
     const lexical: string[] = [];
     const vector: string[] = [];
-    // Enough for the note and two turns, not for the five-turn corpus: the arms have to choose.
-    const room = 520;
+    // Enough for the note and two turns, not for the five-turn corpus: the arms have to choose. Measured
+    // from the instruction for the reason the test above records, with a narrower budget than that one
+    // because this corpus is four turns and both channels have to be able to reach the answer.
+    const room = (await instructionChars()) + 460;
 
     const withoutEmbedder = assembleMemory({
       llm: recordingLlm(lexical),

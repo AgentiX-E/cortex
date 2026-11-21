@@ -1,5 +1,10 @@
 # The restore counterfactual (§13.267), as a run of its own.
 #
+# arm-config: file departs — this workflow does not choose an arm. It reads a population and a
+# configuration from an artifact that already exists and re-runs that configuration, so every value
+# below is a historical one on purpose. The departure is the *point*, and it is why the arm-config
+# guard exempts the file rather than five of its lines.
+#
 # ## Why a second workflow rather than an input on the arm's
 #
 # `benchmark-cortex-memory.yml` declares 24 inputs against GitHub's ceiling of 25, and

@@ -78,10 +78,11 @@ import { Corpus } from './corpus.js';
 import { REGISTERED_ROOMS } from './rooms.js';
 import { DisclosureSession } from './disclosure/session.js';
 import { CortexMemory } from './memory.js';
+import { REGISTERED_ARM } from './registered-arm.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { SupersededRendering } from './superseded.js';
 import type { GateOptions, TurnCapRoute } from './types.js';
-import type { TurnCutMarker } from './prompt.js';
+import type { EvidenceAsk, PromptContract, TurnCutMarker } from './prompt.js';
 import type { TurnWindow } from './excerpt.js';
 import type { ResolutionMode } from './resolution.js';
 
@@ -102,6 +103,39 @@ export type AssembleOptions = {
   readonly storage: Storage;
   /** Defaults to `reader`, so a call that names nothing gets the configuration that has a published reading. */
   readonly profile?: AssemblyProfile | undefined;
+  /**
+   * Which rendering the evidence is printed in. Absent means the registered arm's
+   * `evidence-blocks-unsourced` ({@link REGISTERED_ARM}).
+   *
+   * ## Why this field exists at the composition root, and why its default is not `abstention`
+   *
+   * §12.5 adopted `evidence-blocks-unsourced` and every reading from `S9` onwards was taken with it, but
+   * the option that selects it lived only on `CortexMemory`. The published entry point had no field for
+   * it, so the one call `assembleMemory` documents produced `abstention` — a rendering that predates the
+   * adoption and that no 500-question dispatch since `S9` has used. The number was published for one arm
+   * and the entry point shipped another; `registered-arm.test.ts` is the assertion that the two are now
+   * the same arm.
+   *
+   * The default follows `maxPromptCharsByRoute`'s rule rather than the four rendering fields' rule, and
+   * the difference is not a mood: those four are mechanisms with no reading of their own (absent is the
+   * historical rendering), while this one *has* a reading and it is the registered one. A default that
+   * named `abstention` would be a second arm, which is exactly the argument the module comment makes
+   * about the room table — and the paragraph it makes it in was wrong in the same direction.
+   */
+  readonly promptContract?: PromptContract | undefined;
+  /**
+   * Which instruction block every route asks with. Absent means the registered arm's `verbatim-acts`.
+   *
+   * §13.291 adopted it and §13.318 made it the shipping value; the reach is `multi-session`, `flat`,
+   * `temporal` and `abstention`. Until this field existed, `CortexMemory` could ask with it and
+   * `assembleMemory` — the function an installer calls — could not, so the arm's largest single
+   * instruction change was unreachable from the published package. Requirement ⑯'s asymmetry, one level
+   * up from where it was last found.
+   *
+   * `undefined` is not a third value: a caller who wants the reference block names
+   * `promptContract: 'abstention'`, and `registered-arm.test.ts` walks that path.
+   */
+  readonly ask?: EvidenceAsk | undefined;
   /**
    * The room, in characters, for **one** assembled prompt, applied to every route that has no entry of its
    * own in {@link AssembleOptions.maxPromptCharsByRoute}. Absent means the table the registration measured
@@ -340,6 +374,26 @@ export function assembleMemory(options: AssembleOptions): Installation {
         ? REGISTERED_ROOMS
         : undefined;
 
+  // The two instruction levers, resolved here on the room table's rule and for the room table's reason.
+  //
+  // The table's paragraph says a composition root that declines to name an arm does not decline to have
+  // one — it takes the class's default. That default is `prompt.ts`'s `abstention`, which is the
+  // pre-§12.5 rendering, reachable from no 500-question dispatch since `S9`. So a bare call assembled the
+  // reference arm while the artifact it published named `evidence-blocks-unsourced` at
+  // `verbatim-acts`, and nothing held both claims at once.
+  //
+  // Three cases, the room table's three: nothing named -> the registered arm; one named -> that one (the
+  // more specific field is the caller's answer); `minimal` -> neither, because that profile renders the
+  // transcript in arrival order and its 39.55% was measured at `abstention`. Handing it §12.5's rendering
+  // would move bytes under a reading nobody re-took, which is the same reason it withholds the table.
+  const instruction =
+    profile === 'minimal'
+      ? undefined
+      : {
+          promptContract: options.promptContract ?? REGISTERED_ARM.promptContract,
+          ask: options.ask ?? REGISTERED_ARM.ask,
+        };
+
   const memory = new CortexMemory({
     llm: options.llm,
     now: options.now,
@@ -347,6 +401,7 @@ export function assembleMemory(options: AssembleOptions): Installation {
     corpus,
     ...(index === undefined ? {} : { index }),
     ...(options.name === undefined ? {} : { name: options.name }),
+    ...(instruction === undefined ? {} : instruction),
     ...(options.maxPromptChars === undefined ? {} : { maxPromptChars: options.maxPromptChars }),
     ...(rooms === undefined ? {} : { maxPromptCharsByRoute: rooms }),
     ...(options.supersededRendering === undefined

@@ -921,6 +921,8 @@ reachable as a default any more; state it per route if you want to reproduce an 
 | `embed` | `EmbedFn` | absent | The vector channel, as a batch function over texts. Absent leaves lexical retrieval: the same index, the same ranking, **5.6 points** less accuracy (`S14`, paired −28 of 500 questions, p = 2.5e-5), concentrated in the two populations whose questions are worded differently from their evidence — see §3.5 item 5. Costs no model calls either way when absent. |
 | `embeddingStore` | `EmbeddingCacheStore` | absent (a process-lifetime map) | Where the vectors live between assemblies. Supply `await StorageEmbeddingCache.open(storage)` to keep them across a restart, and flush it after the work. Refused on `minimal` and refused without `embed`, because neither would read or write it. |
 | `maxPromptChars` | `number` | the registered table, per route | One room, in characters, for every route that names none of its own. Stating a number replaces the table on all six routes — you are choosing a shape, not filling a gap. No default here for one release, on the argument that a constant in this file would be a second arm; the argument was sound and its conclusion was inverted, because a call that declined to name the registered arm inherited the class's flat 48,000 instead, which is no cell the campaign priced. |
+| `promptContract` | `'abstention' \| 'evidence-blocks-unsourced' \| …` | `'evidence-blocks-unsourced'` (the registered rendering) | The instruction block and the evidence layout, on every route. The default is the rendering §12.5 adopted and every 500-question reading since `S9` was taken with; `'abstention'` is the reference block a reading before `S9` used, and naming it is how you reproduce one. Until this field existed the option lived only on `CortexMemory`, so the one call this page documents assembled the pre-§12.5 arm while the published number described the adopted one. |
+| `ask` | `EvidenceAsk` | `'verbatim-acts'` (the registered ask) | Which instruction block each route asks with — a separate axis from `promptContract`, because one selects a rendering and the other selects text. The default is §13.291's value, adopted by §13.318; `'route'` is "each route's own block" and is what every artifact before `S9` carried. Before this field existed, the arm's largest single instruction change was unreachable from this function. |
 | `maxPromptCharsByRoute` | `Partial<Record<TurnCapRoute, number>>` | the registered table | Per-route rooms, merged **over** the table: `{ temporal: 8_000 }` moves one route and leaves the other five at their registered widths. A route named here wins over `maxPromptChars` too, because the more specific field is your answer. |
 | `shared` | `Storage` | absent | The public side of the disclosure boundary. Required by `full`, ignored by the other two. |
 | `name` | `string` | `'cortex-memory'` | Attribution label, carried through to the memory. |
@@ -958,6 +960,21 @@ const registered = assembleMemory({ llm, now, storage });
 void registered;
 const bounded = assembleMemory({ llm, now, storage, maxPromptChars: 6_000 });
 void bounded;
+
+// `promptContract` and `ask` default to the registered rendering and the registered ask, so these two
+// calls assemble the same bytes as the bare one above. Naming another value is how you step off the arm
+// that has a published number -- `'abstention'` with `'route'` is the reference arm, the one every
+// reading before `S9` was taken under.
+const sameArm = assembleMemory({
+  llm,
+  now,
+  storage,
+  promptContract: 'evidence-blocks-unsourced',
+  ask: 'verbatim-acts',
+});
+void sameArm;
+const referenceArm = assembleMemory({ llm, now, storage, promptContract: 'abstention', ask: 'route' });
+void referenceArm;
 const quietTemporal = assembleMemory({ llm, now, storage, maxPromptCharsByRoute: { temporal: 8_000 } });
 void quietTemporal;
 

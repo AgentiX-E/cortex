@@ -75,7 +75,7 @@ const GOLD_MARKER = 'carbon fiber wheels';
  * the selection has to choose. At 48,000 every turn fits and the two runs are byte-identical, which is how the
  * first draft of this file managed to assert an ordering that no ranking produced.
  */
-const ROOM = 700;
+const ROOM = 2400;
 
 function recordingLlm(seen: string[]): LLM {
   return {

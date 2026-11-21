@@ -89,7 +89,7 @@ const QUESTION = 'what did the automobile cost';
  * is actually being cut. A room wide enough for the corpus would make every assertion here hold for the wrong
  * reason -- the defect `assemble-rooms.test.ts` records for its own first draft.
  */
-const ROOM = 320;
+const ROOM = 560;
 
 /** The phrase the question cannot reach. It names an activity, which is what an expansion is for. */
 const PHRASE = 'railway repairs';

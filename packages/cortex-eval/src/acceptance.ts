@@ -230,6 +230,45 @@ export const CONFIGURATION_ATTESTED: readonly { readonly path: string; readonly 
   { path: 'cortex-docs/evidence/longmemeval/categories.json', key: 'configurationFingerprint' },
 ];
 
+/**
+ * The evidence files that name a configuration **on purpose not this one**, and the axis each departs on.
+ *
+ * ## Why the mirror image is a check
+ *
+ * `CONFIGURATION_ATTESTED` grew the check that a file a row reads must carry the registered
+ * configuration. That leaves the other half unstated: a file whose whole value is that it is *not* the
+ * registered arm — `no-ranking.json` (39.55%, `relevanceSignal=none`), `room-24k.json` (`S15`'s single
+ * 24,000-character table), `lexical-index.json` (the offline lexical instrument) — could drift into
+ * carrying the registered fingerprint and keep passing every check in the repository, because none of
+ * them asks what such a file is supposed to be. Its number would then be quoted as a contrast against
+ * a configuration it no longer differs from.
+ *
+ * `departs` is prose, and that is deliberate: the fingerprint is a hash, so it cannot say *which* field
+ * moved. Writing the axis down beside the file is what keeps the label honest — the same lesson
+ * `route-room`'s paragraph records about names outliving their meanings.
+ */
+export const CONFIGURATION_COUNTERFACTUAL: readonly {
+  readonly path: string;
+  readonly key: string;
+  readonly departs: string;
+}[] = [
+  {
+    path: 'cortex-docs/evidence/longmemeval/no-ranking.json',
+    key: 'configurationFingerprint',
+    departs: 'relevanceSignal=none: the arrival-order arm, measured at 39.55%',
+  },
+  {
+    path: 'cortex-docs/evidence/longmemeval/room-24k.json',
+    key: 'configurationFingerprint',
+    departs: 'maxPromptCharsByRoute: `S15` cut every route to 24,000 and lost 13 questions',
+  },
+  {
+    path: 'cortex-docs/evidence/longmemeval/lexical-index.json',
+    key: 'configurationFingerprint',
+    departs: 'reader: the offline lexical instrument, which has no reader to configure',
+  },
+];
+
 const CATEGORY_ATTEST = [
   { key: 'accuracySource', equals: 'repetition-mean' },
   { key: 'runs', equals: 4 },
