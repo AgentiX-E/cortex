@@ -145,3 +145,76 @@ describe('the arm records the turn window census on the artifact', () => {
     expect((result.report as WithWindow).turnWindow).toBeUndefined();
   });
 });
+
+/**
+ * `C8`'s `G1` and `G4` are questions about a **row**, not about a sum.
+ *
+ * The run-level block above answers "how often did the cap fire" and cannot answer "was the gain concentrated
+ * in the questions where the compressing form dominates", because that is a joint of two per-question
+ * readings. So the same census has to reach `report.questions[i]`, and this is the assertion that it does --
+ * which is precisely what `C7`'s two density vectors did **not** do for one round: captured, paid for, and
+ * absent from the merged artifact, where the reader could only conclude no measurement existed.
+ */
+describe('the same census reaches the per-question row', () => {
+  const split = {
+    cut: 2,
+    marked: 2,
+    whole: 3,
+    forms: {
+      raw: { turns: 3, chars: 120 },
+      excerpt: { turns: 1, chars: 600 },
+      record: { turns: 1, chars: 240 },
+    },
+  };
+
+  it('gives each question its own census rather than the last one the accessor returned', async () => {
+    // Two different censuses, in order, so an off-by-one in the projection is visible: a rotated field would
+    // hand question 0 the record form question 1 got, and every number in the artifact would stay well-formed.
+    let call = 0;
+    const result = await run(
+      reporting(() => {
+        call += 1;
+        return call === 1 ? split : { cut: 0, marked: 0, whole: 4 };
+      }),
+      2,
+    );
+
+    const rows = result.report.questions!;
+    expect(rows[0]!.turnWindowCensus).toEqual(split);
+    expect(rows[1]!.turnWindowCensus).toEqual({ cut: 0, marked: 0, whole: 4 });
+  });
+
+  it('keeps the rows and the sum in agreement, which is what makes either of them a reading', async () => {
+    // A projection that dropped a question -- or counted one twice -- would leave the sum and the rows telling
+    // two stories about one run. Equality is checkable arithmetic, not a second measurement.
+    let call = 0;
+    const result = await run(
+      reporting(() => {
+        call += 1;
+        return call === 1 ? split : { cut: 1, marked: 0, whole: 2 };
+      }),
+      2,
+    );
+
+    const rows = result.report.questions!;
+    const summed = rows.reduce(
+      (total, row) => ({
+        cut: total.cut + (row.turnWindowCensus?.cut ?? 0),
+        marked: total.marked + (row.turnWindowCensus?.marked ?? 0),
+        whole: total.whole + (row.turnWindowCensus?.whole ?? 0),
+      }),
+      { cut: 0, marked: 0, whole: 0 },
+    );
+    const block = (result.report as WithWindow).turnWindow!;
+    expect(summed).toEqual({ cut: block.cut, marked: block.marked, whole: block.whole });
+    expect(block.cut).toBe(3);
+  });
+
+  it('writes no row field when the system reports no census', async () => {
+    // The same absence rule as the block above, one level down: a zeroed row census beside a system with no
+    // accessor is indistinguishable from a prompt no form shortened.
+    const result = await run(constantSystem('one'), 2);
+
+    expect(result.report.questions!.every((row) => !('turnWindowCensus' in row))).toBe(true);
+  });
+});

@@ -266,7 +266,10 @@ def test_a_resolution_pair_is_read_over_the_whole_population_at_one_window(tmp_p
     result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
     assert result.returncode == 0, result.stderr
     assert "whole population: n=4  delta=+1.0000" in result.stdout
-    assert "not taken" not in result.stdout
+    # Named, not the bare phrase: `C8`'s `G4` legitimately says "not taken" when no question gained, and a
+    # substring assertion about the paired delta would be satisfied by that line instead -- which is how a
+    # guard stops guarding while still passing.
+    assert "paired delta: not taken" not in result.stdout
 
 
 def test_a_resolution_pairing_does_not_claim_a_carry_reach(tmp_path):
@@ -363,3 +366,147 @@ def test_a_density_reading_with_no_baseline_census_is_refused_rather_than_guesse
     result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
     assert result.returncode == 1
     assert "no density reading" in result.stderr
+
+
+def census(record=0, excerpt=0, raw=0):
+    """One question's cap census, with the per-form split the roster carries since `C8`.
+
+    `cut` is the turns a form shortened and `whole` the ones it left alone, so the object satisfies the
+    arithmetic the record documents (`record + excerpt + raw == cut + whole`) instead of being a shape no
+    producer could emit.
+    """
+    return {
+        "cut": record + excerpt,
+        "marked": record + excerpt,
+        "whole": raw,
+        "forms": {
+            "raw": {"turns": raw, "chars": raw * 100},
+            "excerpt": {"turns": excerpt, "chars": excerpt * 500},
+            "record": {"turns": record, "chars": record * 240},
+        },
+    }
+
+
+def test_a_resolution_run_reports_the_form_criteria_beside_the_density_verdict(tmp_path):
+    """`C8`'s `G1`, `G2` and `G4`, on a population whose arithmetic is small enough to check by hand.
+
+    Four questions, baseline 10 turns and feature 15, so `G2`'s direction is characters down and turns up --
+    the signature `C7`'s `F3` forbids. Three of the four gained, with record shares 1.0, 0.8 and 0.6 against
+    a population median of 0.7: the ratio is 1.1428..., below `G4`'s 1.5, so the mechanism helped and this
+    criterion says it did not help *this way*.
+    """
+    payload = document(windows=1, corpora=4, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["0010"]
+    payload["ablation"]["featureCorrectByRun"] = ["1111"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 4
+    payload["ablation"]["baselinePromptChars"] = [40000] * 4
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 15}, "unclassified": 0, "total": 15}
+        row["promptChars"] = 38000
+    splits = [(15, 0, 0), (12, 0, 3), (0, 0, 15), (9, 0, 6)]
+    for row, (record, excerpt, raw) in zip(payload["questions"], splits):
+        row["turnWindowCensus"] = census(record=record, excerpt=excerpt, raw=raw)
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "forms: 4/4 questions rendered by a form (record or excerpt on 3)  -- G1 floor 1" in result.stdout
+    assert "G1 pass  3 >= 1" in result.stdout
+    assert "G2 pass  chars -5.0% <= -3% with turns +50.0% >= +1%" in result.stdout
+    assert "record share median: gainers 0.800 (n=3) vs population 0.700 (n=4)  ratio 1.14" in result.stdout
+    assert "G4 fail" in result.stdout
+    # The density verdict is still printed, and it still fails: the two families are read on one run and the
+    # disagreement is the finding, not a contradiction to be reconciled.
+    assert "F3 fail" in result.stdout
+
+
+def test_g4_passes_when_the_gainers_are_the_questions_the_records_dominate(tmp_path):
+    # Two questions gain and both are all-record; two do not gain and carry no record at all. The population
+    # median is 0.5 and the gainers' is 1.0, so the ratio is exactly 2.0 -- over the 1.5 the pre-registration
+    # requires.
+    payload = document(windows=1, corpora=4, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["0011"]
+    payload["ablation"]["featureCorrectByRun"] = ["1111"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 4
+    payload["ablation"]["baselinePromptChars"] = [40000] * 4
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 15}, "unclassified": 0, "total": 15}
+        row["promptChars"] = 38000
+    splits = [(15, 0, 0), (15, 0, 0), (0, 0, 15), (0, 0, 15)]
+    for row, (record, excerpt, raw) in zip(payload["questions"], splits):
+        row["turnWindowCensus"] = census(record=record, excerpt=excerpt, raw=raw)
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "gainers 1.000 (n=2) vs population 0.500 (n=4)  ratio 2.00" in result.stdout
+    assert "G4 pass" in result.stdout
+
+
+def test_a_population_with_no_gainers_says_g4_was_not_taken(tmp_path):
+    # A ratio over an empty numerator is not a reading, and printing `0.0` would read as "the gainers carried
+    # no records" -- a statement about a set that does not exist.
+    payload = document(windows=1, corpora=2, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["11"]
+    payload["ablation"]["featureCorrectByRun"] = ["11"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 2
+    payload["ablation"]["baselinePromptChars"] = [40000] * 2
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 15}, "unclassified": 0, "total": 15}
+        row["promptChars"] = 38000
+        row["turnWindowCensus"] = census(record=15)
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "G4 not taken: no question improved" in result.stdout
+    assert "record share median" not in result.stdout
+
+
+def test_g1_fails_when_no_form_reached_a_single_question(tmp_path):
+    # The run that would otherwise be read as "the mechanism did nothing": every long turn rendered raw, or a
+    # `resolution` that never reached the renderer. Either way the population is not a reading of `C8`, and
+    # the wording has to say so rather than leave a delta standing on no mechanism.
+    payload = document(windows=1, corpora=2, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["10"]
+    payload["ablation"]["featureCorrectByRun"] = ["11"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 2
+    payload["ablation"]["baselinePromptChars"] = [40000] * 2
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 15}, "unclassified": 0, "total": 15}
+        row["promptChars"] = 38000
+        row["turnWindowCensus"] = census(raw=15)
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "G1 fail: 0 of 2 questions had a compressed or widened turn" in result.stdout
+
+
+def test_a_question_without_a_split_is_left_out_of_g4_rather_than_counted_as_zero(tmp_path):
+    # A head-cut question reports `{cut, marked, whole}` and no `forms`: the cap decided a length rather than
+    # choosing between renderings. Counting it as share 0.0 would drag the population median down and make
+    # every gainer look concentrated, which is the criterion grading itself.
+    payload = document(windows=1, corpora=3, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["001"]
+    payload["ablation"]["featureCorrectByRun"] = ["111"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 3
+    payload["ablation"]["baselinePromptChars"] = [40000] * 3
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 15}, "unclassified": 0, "total": 15}
+        row["promptChars"] = 38000
+    payload["questions"][0]["turnWindowCensus"] = census(record=15)
+    payload["questions"][1]["turnWindowCensus"] = census(record=15)
+    payload["questions"][2]["turnWindowCensus"] = {"cut": 4, "marked": 4, "whole": 11}
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    # `formed` counts the two rows that carry a split, and the population median is over those two only.
+    assert "forms: 2/3 questions rendered by a form" in result.stdout
+    assert "vs population 1.000 (n=2)" in result.stdout

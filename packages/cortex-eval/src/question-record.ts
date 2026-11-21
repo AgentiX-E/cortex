@@ -43,6 +43,7 @@ import type { TurnLike } from './candidate-context.js';
 import type {
   AdmittedEvidence,
   DeliveredRoleCensus,
+  DeliveredTurnWindowCensus,
   GoldOverlap,
   RetrievedTurns,
 } from './types.js';
@@ -247,6 +248,15 @@ export type QuestionRecord = {
    * unclassifiable.
    */
   readonly roleCensus?: DeliveredRoleCensus | undefined;
+  /**
+   * What the turn cap did to this question's delivered window, when the product reported it.
+   *
+   * See {@link QuestionRecordInput.turnWindowCensus} for what the per-question split buys over the arm's
+   * run-level sum. Absent when no census was reported, which is also how an uncapped prompt and a
+   * head-cut-only prompt are stated -- so a reader that needs "the forms were involved" reads the `forms`
+   * key rather than the field's presence.
+   */
+  readonly turnWindowCensus?: DeliveredTurnWindowCensus | undefined;
   /**
    * The characters of evidence the prompt actually carried, when it is known.
    *
@@ -599,6 +609,36 @@ export type QuestionRecordInput = {
    * **absent** field, so a reader never sees a placeholder where a census belongs.
    */
   readonly roleCensus: DeliveredRoleCensus | null;
+  /**
+   * What the turn cap did to the window this question's reader was shown, or `null` when nothing reported.
+   *
+   * ## Why the per-question split had to be published, after the run-level sum already existed
+   *
+   * The arm's report has summed `cut`/`marked`/`whole` over its questions since `S10`, and that sum answers
+   * "how often did the cap fire". It cannot answer the question `C8` is registered to ask -- *is the gain
+   * concentrated in the questions where the compressing form dominates* -- because that is a **joint** of two
+   * per-question readings (the form split, and whether the answer changed), and an aggregate over either one
+   * of them destroys the join. `PREREGISTRATION`'s `G4` is that joint stated as a median: the form share
+   * among the questions that gained, against the share among all of them.
+   *
+   * ## What it carries, and the arithmetic a reader can check
+   *
+   * `cut`, `marked` and `whole` as the product counted them, plus `forms` -- turns and characters per
+   * rendering form -- when a form decided the rendering. Under `resolution: 'layered'` the three form counts
+   * sum to `cut + whole`, one form per delivered turn, so a split that does not add up is a counter that
+   * missed a branch rather than a question with unusual evidence.
+   *
+   * Absent in two distinct states that render the same way on purpose: an uncapped prompt, and a prompt whose
+   * only shortening was the head cut, where the cap decides a length rather than choosing between renderings.
+   * `{ raw: 0, excerpt: 0, record: 0 }` beside either would read as "the forms chose nothing", and the
+   * absence says "no form was involved", which is what happened.
+   *
+   * Required and nullable for the reason `roleCensus` gives: `null` is the producer stating that this system
+   * reports no such census, and the compiler enumerating the producers is what stops a later rebuild from
+   * dropping it. `C7`'s two density vectors were lost that way for one round -- paid for, captured, and
+   * absent from the merged artifact -- so the field is not optional here.
+   */
+  readonly turnWindowCensus: DeliveredTurnWindowCensus | null;
   /**
    * The evidence characters the prompt carried, when the caller can report it.
    *
@@ -957,6 +997,10 @@ export function buildQuestionRecords(
       // classifier was injected", distinct from a window in which every turn was unclassifiable.
       ...(input.route === null ? {} : { route: input.route }),
       ...(input.roleCensus === null ? {} : { roleCensus: input.roleCensus }),
+      // Same omission rule, and the absence carries a second meaning the two fields above do not have: a
+      // prompt no form decided is a prompt whose only shortening was arithmetic, so `null` here says "no
+      // rendering form chose this turn" rather than "nobody looked".
+      ...(input.turnWindowCensus === null ? {} : { turnWindowCensus: input.turnWindowCensus }),
       // `null` is the caller saying "this system cannot report it", which is not a
       // prompt that carried nothing -- so it is omitted rather than written.
       ...(input.promptChars === undefined || input.promptChars === null
@@ -1557,6 +1601,10 @@ export function buildRecordsFromDataset(
         // path nothing observed, which is the failure this field exists to end.
         route: null,
         roleCensus: null,
+        // `null` because a `DecisionTrace` carries no census: the cap is the memory arm's instrument, and a
+        // trace records the rendered text after whichever builder produced it. Reporting `{cut: 0, whole: 0}`
+        // here would state a window of no turns rather than a producer that did not look.
+        turnWindowCensus: null,
       };
     }),
     featureConfig,

@@ -66,10 +66,11 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
       turns: retrieved.filter((unit) => unit.trim().length > 0).length,
       chars: joinedLength(retrieved),
     },
-    // `null` for both, because this fixture is a system that reports neither. The two are required on the
-    // input type so that a producer cannot leave them out by accident; a test that is about them states them.
+    // `null` for all three, because this fixture is a system that reports none. They are required on the
+    // input type so that a producer cannot leave one out by accident; a test that is about one states it.
     route: null,
     roleCensus: null,
+    turnWindowCensus: null,
     // `null` rather than a zero object: this fixture names no gold session, and the
     // absent state is what says "not measured" where a zero would say "measured as a
     // miss". Tests about coverage override it.
@@ -977,5 +978,43 @@ describe('the route and the role census reach the record without being invented'
     ]);
     expect(record!.roleCensus!.total).toBe(record!.turns.length);
     expect(record!.turns.length).toBeLessThanOrEqual(record!.evidenceTurns!);
+  });
+});
+
+describe("the cap's per-question census reaches the record, split and all", () => {
+  const split = {
+    cut: 2,
+    marked: 2,
+    whole: 3,
+    forms: {
+      raw: { turns: 3, chars: 120 },
+      excerpt: { turns: 1, chars: 600 },
+      record: { turns: 1, chars: 240 },
+    },
+  };
+
+  it('omits the field when the producer reports no census', () => {
+    // `'turnWindowCensus' in record`, not `=== undefined`: the second passes on a record that wrote the key
+    // and set it to nothing, and the difference matters because the absent state is also how an uncapped
+    // prompt is stated. A key present with null would make "no cap" and "not reported" the same bytes.
+    const [record] = buildQuestionRecords([input()]);
+    expect('turnWindowCensus' in record!).toBe(false);
+  });
+
+  it('carries the split unchanged, including the form that compressed', () => {
+    // The `record` form's two numbers are what `C8`'s gain-concentration reading is computed from, so a record
+    // that kept `cut`/`whole` and lost the split would look like a reading and answer nothing.
+    const [record] = buildQuestionRecords([input({ turnWindowCensus: split })]);
+    expect(record!.turnWindowCensus).toEqual(split);
+  });
+
+  it('keeps a head-cut census without a split from growing a zeroed one', () => {
+    // Two states share the absent split: a prompt no form decided (the head cut) and one that was never
+    // capped. `{ raw: 0, excerpt: 0, record: 0 }` beside either would say "the forms chose nothing", which is
+    // a different claim from "no form was involved" -- and the count arithmetic cannot tell them apart.
+    const headCut = { cut: 2, marked: 2, whole: 3 };
+    const [record] = buildQuestionRecords([input({ turnWindowCensus: headCut })]);
+    expect(record!.turnWindowCensus).toEqual(headCut);
+    expect('forms' in record!.turnWindowCensus!).toBe(false);
   });
 });

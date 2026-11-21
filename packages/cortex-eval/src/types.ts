@@ -381,7 +381,14 @@ export type DeliveredTurnWindowCensus = {
   readonly forms?: DeliveredEvidenceForms | undefined;
 };
 
-/** One form's contribution to one delivered window. */
+/**
+ * One form's contribution to one delivered window.
+ *
+ * Not exported, and the export gate is why the question is settled here rather than later: nothing in the
+ * package names this type directly. The roster carries it inside {@link DeliveredTurnWindowCensus}, which is
+ * the field a reader reads, so an exported alias would be a name with no caller -- the shape the export
+ * census reports as an orphan and the reason that gate exists.
+ */
 type DeliveredFormCensus = {
   /** Turns this form rendered. */
   readonly turns: number;

@@ -371,6 +371,12 @@ function withEvidenceBound(report: AblationReport, bound: number): AblationRepor
         // said" into a route.
         route: record.route ?? null,
         roleCensus: record.roleCensus ?? null,
+        // Forwarded on the rule every field above states, and this one is the sharpest case of it: the census
+        // is the only per-question record of *how* the room was spent, so a reduction that dropped it would
+        // leave a reduced artifact able to report that accuracy moved and unable to say which rendering form
+        // moved with it. The bound removes turns from the delivery; it does not re-render them, so the census
+        // the full artifact took is still the census of that delivery and is forwarded rather than recomputed.
+        turnWindowCensus: record.turnWindowCensus ?? null,
         // Forwarded for the reason `featureConfig` above is: a field the rebuild
         // does not carry is a field a reduction silently drops. This one is the
         // prompt's own evidence size, so losing it would leave a reduced artifact

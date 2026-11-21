@@ -69,10 +69,11 @@ function input(overrides: Partial<QuestionRecordInput> = {}): QuestionRecordInpu
       turns: retrieved.filter((unit) => unit.trim().length > 0).length,
       chars: joinedLength(retrieved),
     },
-    // `null` for both, because this fixture is a system that reports neither. The two are required on the
-    // input type so that a producer cannot leave them out by accident; a test that is about them states them.
+    // `null` for all three, because this fixture is a system that reports none. They are required on the
+    // input type so that a producer cannot leave one out by accident; a test that is about one states it.
     route: null,
     roleCensus: null,
+    turnWindowCensus: null,
     // No dataset annotation in this fixture, so coverage is unmeasurable rather
     // than measured as zero -- the absent state `goldOverlapOf` returns for `[]`.
     goldOverlap: null,

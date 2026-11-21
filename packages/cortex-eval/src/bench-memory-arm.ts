@@ -5077,6 +5077,12 @@ function buildArmRoster(
   // the flat path", which an audit would otherwise have to guess from `capability`.
   const routes = ablation.featureRoutes!;
   const roleCensuses = ablation.featureRoleCensuses!;
+  // §`C8`. The per-question half of the cap's census, for the same reason and by the same `!`: the capture is
+  // requested unconditionally on the feature side, so an absent vector would be a capture that failed rather
+  // than a system that declined. Its run-level sum has been published since `S10`; what the roster adds is the
+  // join with `correct`, which is the only form in which "did the gain concentrate where the compressing form
+  // dominates" is a question the artifact can answer.
+  const turnWindowCensuses = ablation.featureTurnWindowCensuses!;
   return buildQuestionRecords(
     dataset.questions.map((question, i) => ({
       questionId: question.id,
@@ -5159,6 +5165,7 @@ function buildArmRoster(
       // from a flat one and an uninjected classifier from a window of unreadable turns.
       route: routes[i] ?? null,
       roleCensus: roleCensuses[i] ?? null,
+      turnWindowCensus: turnWindowCensuses[i] ?? null,
       // §13.145.6. Two fields rather than one because a retry that fired and declined again is `attempted`
       // without `answered`, and that half is what says the mechanism ran rather than which way it went.
       ...traceOf(recoveryTrace, question.question, auditTrace, supersessionTrace),

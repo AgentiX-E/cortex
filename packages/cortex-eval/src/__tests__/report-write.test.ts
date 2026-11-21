@@ -92,8 +92,21 @@ function reportWithEvidence(
               unclassified: 0,
               total: turnsPerQuestion,
             },
+            // The cap's per-question census, stated on the same branch as the route because both are what the
+            // mechanism reports about this window: `forms` is the half a reduction could silently drop, since
+            // dropping it leaves an artifact that still describes a delivery.
+            turnWindowCensus: {
+              cut: 0,
+              marked: 0,
+              whole: turnsPerQuestion,
+              forms: {
+                raw: { turns: turnsPerQuestion, chars: turnsPerQuestion },
+                excerpt: { turns: 0, chars: 0 },
+                record: { turns: 0, chars: 0 },
+              },
+            },
           }
-        : { route: null, roleCensus: null }),
+        : { route: null, roleCensus: null, turnWindowCensus: null }),
     })),
     // The cohort-level configuration, passed as the builder's second parameter
     // exactly as the arm passes it. It is here so a reduction that drops it is
@@ -180,6 +193,19 @@ describe('serializeReportOrReduce', () => {
       total: 5,
     });
     expect(parsed.questions![0]!.turns.length).toBeLessThan(5);
+    // The cap's census travels with the route, and it travels with the per-form split intact: `forms` is the
+    // only statement of *how* the delivery was rendered, so a reduction that forwarded `cut`/`whole` and
+    // dropped the split would leave the artifact able to say the room was cut and unable to say by what.
+    expect(parsed.questions![0]!.turnWindowCensus).toEqual({
+      cut: 0,
+      marked: 0,
+      whole: 5,
+      forms: {
+        raw: { turns: 5, chars: 5 },
+        excerpt: { turns: 0, chars: 0 },
+        record: { turns: 0, chars: 0 },
+      },
+    });
   });
 
   it('keeps a record that stated neither route nor census stating neither', () => {
@@ -200,6 +226,7 @@ describe('serializeReportOrReduce', () => {
     const parsed = JSON.parse(result.json) as AblationReport;
     expect(parsed.questions!.every((question) => !('route' in question))).toBe(true);
     expect(parsed.questions!.every((question) => !('roleCensus' in question))).toBe(true);
+    expect(parsed.questions!.every((question) => !('turnWindowCensus' in question))).toBe(true);
   });
 
   it('names what was reduced and by how much', () => {

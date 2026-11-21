@@ -82,6 +82,19 @@ ONE_FLAG_PAIRINGS = tuple(PAIR_FLAGS)
 F3_TURN_FLOOR_PCT = 20.0
 F3_CHAR_TOLERANCE_PCT = 2.0
 
+# `C8`'s `G1`, `G2` and `G4`, restated for the same reason. `G1` is registered as "150 of 500", which is
+# 30% of the population -- written as the share so a 121-question run is judged by the same criterion
+# instead of by a floor it could never reach, and so a 500-question run is not silently held to 150 when
+# its own population says otherwise.
+#
+# `G2` is the pair `C7`'s `F3` forbids: characters DOWN and turns UP. That is the reallocation signature,
+# and it is the reason the two families need separate criteria rather than one amended one -- `F3` asked
+# for characters unchanged, and the data took the other branch.
+G1_FORMED_SHARE = 0.30
+G2_CHAR_DROP_PCT = 3.0
+G2_TURN_RISE_PCT = 1.0
+G4_RECORD_RATIO = 1.5
+
 
 def _median(values: list[float]) -> float:
     """The median of a non-empty list, as a float so an even count's midpoint is not truncated."""
@@ -98,26 +111,22 @@ def _number(value: float) -> str:
     return f'{value:.0f}' if float(value).is_integer() else f'{value:.1f}'
 
 
-def print_density(document: dict) -> None:
-    """`F3`'s two medians: turns delivered against characters of prompt, on both sides of one roster.
+def delivered_medians(document: dict) -> tuple[float, float, float, float]:
+    """The four medians `F3` and `C8`'s `G2` both divide: turns and characters, on both sides.
 
-    The mechanism under test changes **what a long turn becomes**, so the claim it makes is density --
-    the same budget holding more turns -- and the only thing that separates density from a narrower
-    prompt is that the character median does not move. Both medians therefore have to come from one
-    pass: `§11.13` measured a 0.70-point floor across dispatches, and a ratio whose two halves came
-    from two runs would be a ratio of two other differences.
+    One extraction with two claims hanging off it, because the two claims disagree about the direction and
+    must still be about the same numbers: `F3` requires characters within +-2% while turns rise, `G2`
+    requires characters DOWN while turns rise. A reading where each claim computed its own medians could
+    publish both verdicts from two slightly different populations and nobody would see why.
 
-    Nothing is printed when either side reports no census. A median over an empty side is not zero --
-    it is no measurement -- and `0` there would read as "the control delivered no turns", which is the
-    strongest possible claim from no evidence.
+    The feature side reads off the roster, the baseline side off the ablation. Not symmetric, and the
+    asymmetry is what the artifact already is: `questions` is one row per question for the FEATURE -- it
+    carries that side's `roleCensus` and `promptChars` -- while the baseline's two numbers have no row to
+    live in and travel as vectors. Reading the feature side out of `ablation` would need a second copy of
+    `promptTexts` in the merged document, which is the whole corpus an extra time.
     """
     ablation = document.get('ablation', {}) or {}
     rows = document.get('questions', []) or []
-    # The feature side reads off the roster, the baseline side off the ablation. Not symmetric, and the
-    # asymmetry is what the artifact already is: `questions` is one row per question for the FEATURE --
-    # it carries that side's `roleCensus` and `promptChars` -- while the baseline's two numbers have no
-    # row to live in and travel as vectors. Reading the feature side out of `ablation` would need a second
-    # copy of `promptTexts` in the merged document, which is the whole corpus an extra time.
     baseline_censuses = ablation.get('baselineRoleCensuses')
     baseline_chars = ablation.get('baselinePromptChars')
     missing = [
@@ -145,10 +154,28 @@ def print_density(document: dict) -> None:
             'window to count. A `reference` pairing produces exactly that for its baseline: the reference '
             'pipeline has no classifier, so F3 cannot be read off it.'
         )
-    turns_before = _median(baseline_turns)
-    turns_after = _median(feature_turns)
-    chars_before = _median(baseline_lengths)
-    chars_after = _median(feature_lengths)
+    return (
+        _median(baseline_turns),
+        _median(feature_turns),
+        _median(baseline_lengths),
+        _median(feature_lengths),
+    )
+
+
+def print_density(document: dict) -> None:
+    """`F3`'s two medians: turns delivered against characters of prompt, on both sides of one roster.
+
+    The mechanism under test changes **what a long turn becomes**, so the claim it makes is density --
+    the same budget holding more turns -- and the only thing that separates density from a narrower
+    prompt is that the character median does not move. Both medians therefore have to come from one
+    pass: `§11.13` measured a 0.70-point floor across dispatches, and a ratio whose two halves came
+    from two runs would be a ratio of two other differences.
+
+    Nothing is printed when either side reports no census. A median over an empty side is not zero --
+    it is no measurement -- and `0` there would read as "the control delivered no turns", which is the
+    strongest possible claim from no evidence.
+    """
+    turns_before, turns_after, chars_before, chars_after = delivered_medians(document)
     turn_change = (turns_after - turns_before) / turns_before * 100 if turns_before else 0.0
     char_change = (chars_after - chars_before) / chars_before * 100 if chars_before else 0.0
     print(
@@ -171,6 +198,132 @@ def print_density(document: dict) -> None:
         print(
             f'F3 pass  (turns {turn_change:+.1f}% >= +{F3_TURN_FLOOR_PCT:.0f}%, chars {char_change:+.1f}% '
             f'within +-{F3_CHAR_TOLERANCE_PCT:.0f}%)'
+        )
+
+
+def record_shares(rows: list[dict]) -> dict[int, float]:
+    """Each question's share of delivered turns rendered by the compressing form, keyed by position.
+
+    Keyed by position rather than id for the reason `per_question_means` is: the roster's ids are already
+    checked for duplicates at construction, and a dict keyed by id would let a duplicate silently overwrite
+    a question.
+
+    Absent rather than `0.0` for a question whose census carries no split. `0` would be a statement -- "no
+    turn was compressed" -- and a question that reported `{cut: 0, whole: 4}` never counted a form at all:
+    the head cut decides a length rather than choosing between renderings. Folding the two would put
+    uncapped questions in the denominator of `G4`'s median as zeros, which drags the comparison toward the
+    answer the criterion is testing for.
+    """
+    shares: dict[int, float] = {}
+    for position, row in enumerate(rows):
+        census = row.get('turnWindowCensus')
+        if not isinstance(census, dict):
+            continue
+        forms = census.get('forms')
+        if not isinstance(forms, dict):
+            continue
+        total = sum(
+            part.get('turns', 0) for part in forms.values() if isinstance(part, dict)
+        )
+        if total <= 0:
+            continue
+        record_turns = forms.get('record', {}).get('turns', 0)
+        shares[position] = record_turns / total
+    return shares
+
+
+def print_forms(document: dict, control: dict[int, float], treated: dict[int, float]) -> None:
+    """`C8`'s three form-shaped criteria: `G1`, `G2` and `G4`.
+
+    ## Why these three and not the accuracy one
+
+    `G3` is the accuracy claim and the delta line above is its reading -- printing it again here would be a
+    second number that could drift from the first. `G5` is priced in tokens, which is a conversion this
+    artifact does not carry (it carries characters); the token reader does that division. What is left is
+    the part that only the **form split per question** can answer, and that is what this function reads.
+
+    ## What each criterion is for, in one line
+
+    | # | claim | failure means |
+    | --- | --- | --- |
+    | `G1` | the mechanism ran: a form rendered at least one turn on >= 30% of questions | nothing to read, the run is void |
+    | `G2` | the reallocation signature: characters DOWN >= 3% while turns UP >= 1% | the direction `C7` predicted did not appear |
+    | `G4` | the gain is concentrated where records dominate: median record share among gainers >= 1.5x the population's | the mechanism helps, but not for this reason |
+
+    `G4` divides the gainers' median share by the whole population's, and the denominator is over the
+    questions that **reported a split** rather than over all of them: a question the cap never touched has
+    no share, and counting it as zero would make any gainer look concentrated.
+    """
+    rows = document.get('questions', []) or []
+    shares = record_shares(rows)
+    formed = sum(
+        1
+        for row in rows
+        if isinstance(row.get('turnWindowCensus'), dict)
+        and isinstance(row['turnWindowCensus'].get('forms'), dict)
+    )
+    compressed = sum(
+        1
+        for row in rows
+        if isinstance(row.get('turnWindowCensus'), dict)
+        and isinstance(row['turnWindowCensus'].get('forms'), dict)
+        and row['turnWindowCensus']['forms'].get('record', {}).get('turns', 0)
+        + row['turnWindowCensus']['forms'].get('excerpt', {}).get('turns', 0)
+        > 0
+    )
+    floor = G1_FORMED_SHARE * len(rows)
+    print(
+        f'forms: {formed}/{len(rows)} questions rendered by a form '
+        f'(record or excerpt on {compressed})  -- G1 floor {floor:.0f}'
+    )
+    if compressed >= floor and floor > 0:
+        print(f'G1 pass  {compressed} >= {floor:.0f} (the forms reached the population)')
+    else:
+        print(
+            f'G1 fail: {compressed} of {len(rows)} questions had a compressed or widened turn, below the '
+            f'{G1_FORMED_SHARE:.0%} floor. Either `resolution` never reached the renderer or it rendered '
+            'every long turn as raw -- and neither is a reading of the mechanism'
+        )
+
+    turns_before, turns_after, chars_before, chars_after = delivered_medians(document)
+    char_change = (chars_after - chars_before) / chars_before * 100 if chars_before else 0.0
+    turn_change = (turns_after - turns_before) / turns_before * 100 if turns_before else 0.0
+    if char_change <= -G2_CHAR_DROP_PCT and turn_change >= G2_TURN_RISE_PCT:
+        print(
+            f'G2 pass  chars {char_change:+.1f}% <= -{G2_CHAR_DROP_PCT:.0f}% with turns '
+            f'{turn_change:+.1f}% >= +{G2_TURN_RISE_PCT:.0f}% (the reallocation signature)'
+        )
+    else:
+        print(
+            f'G2 fail: chars {char_change:+.1f}% and turns {turn_change:+.1f}% do not show characters '
+            f'leaving while turns stay or rise (needs <= -{G2_CHAR_DROP_PCT:.0f}% and >= '
+            f'+{G2_TURN_RISE_PCT:.0f}%), so the direction C8 predicts did not appear'
+        )
+
+    gainers = [at for at in shares if treated.get(at, 0.0) > control.get(at, 0.0)]
+    if not gainers:
+        print(
+            'G4 not taken: no question improved on this population, so there is no gainer set to '
+            'compare a form share against -- and a ratio over an empty numerator is not a reading'
+        )
+        return
+    gainer_median = _median([shares[at] for at in gainers])
+    population_median = _median(list(shares.values()))
+    ratio = gainer_median / population_median if population_median else float('inf')
+    print(
+        f'record share median: gainers {gainer_median:.3f} (n={len(gainers)}) vs population '
+        f'{population_median:.3f} (n={len(shares)})  ratio {ratio:.2f}'
+    )
+    if ratio >= G4_RECORD_RATIO:
+        print(
+            f'G4 pass  gainers {gainer_median:.3f} are >= {G4_RECORD_RATIO:.1f}x the population '
+            f'{population_median:.3f} (the gain is concentrated where records dominate)'
+        )
+    else:
+        print(
+            f'G4 fail: gainers {gainer_median:.3f} are only {ratio:.2f}x the population '
+            f'{population_median:.3f}, below {G4_RECORD_RATIO:.1f}x -- the mechanism helps, but not for '
+            'the reason C8 claims'
         )
 
 
@@ -339,7 +492,13 @@ def main(argv: list[str]) -> int:
         # After the accuracy line and deliberately not instead of it: `F3` is a gate that closes a family
         # before accuracy is read, but a run that is already paid for should report both, and reading them
         # in that order is what keeps a `F3 fail` from being argued with by a delta that looks fine.
+        #
+        # `print_forms` follows `print_density` because `C8` is the hypothesis `C7`'s failure pointed at:
+        # the same rendering, a different claim. Both are printed for a `resolution` dispatch, and the two
+        # verdicts are allowed to disagree -- `F3 fail` with `G2 pass` is not a contradiction, it is the
+        # finding that the mechanism reallocates rather than densifies.
         print_density(document)
+        print_forms(document, control, treated)
     return 0
 
 
