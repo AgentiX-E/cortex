@@ -39,6 +39,7 @@ import {
   pollutionGap,
   scoreArm,
 } from '../packages/cortex-eval/dist/assumption-ablation.js';
+import { candidates, locate } from './workspace-root.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -94,8 +95,8 @@ function probeReading(name) {
 const resolve = {
   probe: probeReading,
   artifact: (relative, key) => {
-    const file = path.resolve(root, relative);
-    if (!existsSync(file)) return undefined;
+    const file = locate(relative, root);
+    if (file === undefined) return undefined;
     try {
       let cursor = JSON.parse(readFileSync(file, 'utf8'));
       for (const step of key.split('.')) {
@@ -160,11 +161,22 @@ if (listOnly) {
   process.exit(0);
 }
 
-/** Every markdown file the two repositories publish. */
+/**
+ * Every markdown file the two repositories publish.
+ *
+ * `candidates` rather than `root`: on CI the documents repository is checked out **inside** this one
+ * (`cortex/cortex-docs`), while a developer keeps it beside (`../cortex-docs`). Resolving only against
+ * `root` made thirty of forty-five markers print `skipped` on the machine that runs the whole suite, and
+ * `skipped (no value in this checkout)` was read as "CI has no documents repository" for several rounds
+ * while the workflow had been checking it out all along. A skipped marker is a number nobody checks.
+ */
 function markdownFiles() {
-  const roots = [path.join(REPO, 'docs'), path.join(root, 'cortex-docs/docs')];
+  const roots = [
+    path.join(REPO, 'docs'),
+    ...candidates('cortex-docs/docs', root),
+  ];
   const found = [];
-  for (const dir of roots) {
+  for (const dir of [...new Set(roots)]) {
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
       const file = path.join(dir, name);

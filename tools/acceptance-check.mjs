@@ -39,6 +39,7 @@ import {
   pollutionGap,
   scoreArm,
 } from '../packages/cortex-eval/dist/assumption-ablation.js';
+import { locate } from './workspace-root.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -54,7 +55,8 @@ const root = flag('--root') ?? path.resolve(REPO, '..');
 const reviewHtml =
   flag('--html') ??
   process.env.CORTEX_REVIEW_HTML ??
-  path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html');
+  (locate('cortex-docs/evidence/a3-review/review-remote.html', root) ??
+    path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html'));
 
 /** Read a dotted path out of a JSON document, or `undefined` when any step is missing. */
 function pluckRaw(value, key) {
@@ -77,14 +79,19 @@ function pluck(value, key) {
  *
  * `undefined` is cached as `undefined` deliberately: a file that is missing stays missing for the length of
  * one run, and re-reading it per row would turn a single absence into thirty syscalls and the same note.
+ *
+ * The path is resolved through `workspace-root.locate`, which knows the two arrangements this repository is
+ * read in — `../cortex-docs` beside the checkout, and `cortex-docs` **inside** it on CI. Resolving against
+ * `--root` alone made five rows and thirty markers unreadable on the only machine that runs the full suite,
+ * and the way that failure presented was `unrun`, which reads as "no reading yet" rather than "wrong root".
  */
 const artifactCache = new Map();
 function artifactAt(relative) {
   if (artifactCache.has(relative)) return artifactCache.get(relative);
-  const file = path.resolve(root, relative);
+  const file = locate(relative, root);
   let parsed;
   try {
-    parsed = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+    parsed = file === undefined ? undefined : JSON.parse(readFileSync(file, 'utf8'));
   } catch {
     parsed = undefined;
   }
@@ -194,10 +201,13 @@ function registryDefects(skipped) {
   const defects = [];
   for (const { path: relative, key } of CONFIGURATION_ATTESTED) {
     const parsed = artifactAt(relative);
-    // Absent is **skipped**, not failed. This repository's CI checks out one repository, so every
-    // `cortex-docs/...` path is missing there and the five rows that read one print `unrun` for exactly
-    // that reason. Reporting an absent file as a defect would turn a single-repository checkout red on
-    // every push and teach the next person to delete the check; the state is printed instead.
+    // Absent is **skipped**, not failed: a checkout without the documents repository cannot attest a file
+    // that lives in it, and reporting that as a defect would turn every such push red and teach the next
+    // person to delete the check. The reason this comment used to give was wrong -- it said CI checks out
+    // one repository, so every `cortex-docs/...` path was missing there. CI has checked the documents
+    // repository out all along; it lands *inside* the code checkout and every reader resolved against the
+    // parent, which is `workspace-root.mjs`'s subject. A wrong root and an absent file printed the same
+    // word, and five rows plus thirty markers were reported as "no reading yet" because of it.
     if (parsed === undefined) {
       skipped.push(relative);
       continue;
