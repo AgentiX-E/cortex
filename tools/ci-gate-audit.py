@@ -206,6 +206,96 @@ def evaluate(workflow: dict) -> list[tuple[Requirement, bool, str]]:
     return found
 
 
+# The prerequisite rule, and why it is a second table rather than a ninth row.
+#
+# The eight requirements above are properties of ONE workflow (`verify.yml`) -- they say which gates
+# are attached where the repository promises to run them. This one is a property of every workflow
+# that runs the suite, present and future, and it was written the day a new one proved it necessary.
+#
+# `probe-multi-step.yml` was added to dispatch the multi-step retrieval probe, and it ran `pnpm check`
+# before measuring -- deliberately, so the artifact could be cited without also citing a verify run
+# that might be a different commit. Its first dispatch (`44863794098`) failed at the second command of
+# the chain:
+#
+#   > pnpm test:tools
+#   > python3 -m pytest tools/__tests__ ...
+#   /usr/bin/python3: No module named pytest
+#
+# The defect is a copied step list, not a copied idea: `benchmark.yml` installs
+# `tools/requirements-dev.txt` before it verifies, `probe-multi-step.yml` copied its corpus download
+# and not its prerequisites. Nothing in the repository could see this, because the only audit of a
+# workflow's steps looked at one file -- and the gate that would have caught it would have to be the
+# one thing no gate can be, a reader of a file nobody has written yet.
+#
+# So the rule is decidable from the workflow alone: **if a job runs `pnpm check`, that job installs
+# the Python dependencies the check needs.** `pnpm test:tools` is the second command in the chain and
+# the `tools/` scripts import `yaml`; a runner without them fails after the build has been paid for.
+PREREQUISITE = Requirement(
+    'check-prerequisites',
+    'a job runs `pnpm check` without setting up Python and installing `tools/requirements-dev.txt`, '
+    'so the suite fails at `pnpm test:tools` on a runner that has neither',
+)
+
+
+def jobs_running_check(workflow: dict) -> list[tuple[str, dict]]:
+    """Every job whose steps run `pnpm check`."""
+    return [
+        (name, job)
+        for name, job in jobs_of(workflow).items()
+        if 'pnpm check' in steps_text(job)
+    ]
+
+
+def evaluate_prerequisites(workflow: dict) -> list[tuple[Requirement, bool, str]]:
+    """Whether every job that runs the suite also installs what the suite needs.
+
+    A workflow with no `pnpm check` passes vacuously and says so in its detail line: the rule is
+    about the jobs that run the check, and a measurement-only workflow is not one of them.
+    """
+    jobs = jobs_running_check(workflow)
+    if not jobs:
+        return [(PREREQUISITE, True, 'no job runs `pnpm check`')]
+    results: list[tuple[Requirement, bool, str]] = []
+    for name, job in jobs:
+        text = steps_text(job)
+        has_python = 'actions/setup-python' in text
+        has_requirements = 'requirements-dev.txt' in text
+        detail = ', '.join(
+            [
+                f'{name}: setup-python {"present" if has_python else "MISSING"}',
+                f'requirements-dev.txt {"present" if has_requirements else "MISSING"}',
+            ]
+        )
+        results.append((PREREQUISITE, has_python and has_requirements, detail))
+    return results
+
+
+def audit_directory(directory: Path) -> int:
+    """The prerequisite rule over every workflow in `directory`, not just the audited one.
+
+    Returns the number of workflows that failed. Separate from `main` because the single-file gate
+    and this one answer different questions, and a caller that mixed them would lose the ability to
+    say which file a failure belongs to.
+    """
+    failures = 0
+    for path in sorted(directory.glob('*.yml')):
+        try:
+            workflow = yaml.safe_load(path.read_text(encoding='utf-8'))
+        except yaml.YAMLError as error:
+            print(f'FAIL  {PREREQUISITE.name:<18} {path.name}: unparseable ({error})')
+            failures += 1
+            continue
+        if not isinstance(workflow, dict):
+            print(f'FAIL  {PREREQUISITE.name:<18} {path.name}: not a mapping')
+            failures += 1
+            continue
+        for requirement, ok, detail in evaluate_prerequisites(workflow):
+            print(f'{"PASS" if ok else "FAIL"}  {requirement.name:<18} {path.name}: {detail}')
+            if not ok:
+                failures += 1
+    return failures
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -231,10 +321,25 @@ def main(argv: list[str] | None = None) -> int:
     for requirement, ok, detail in results:
         print(f'{"PASS" if ok else "FAIL"}  {requirement.name:<18} {detail}')
 
+    # The prerequisite rule over the whole directory. It is printed after the eight rows of *this*
+    # file so the reader sees the audited workflow's verdict first, and it can fail independently:
+    # `verify.yml` can be perfectly attached while a sibling workflow runs the same suite on a
+    # runner with no pytest, which is the run that produced this rule.
+    prerequisite_failures = audit_directory(path.parent)
+
     if failures:
         print(f'\nci-gate-audit: {len(failures)} gate(s) un-attached in {path.name}\n', file=sys.stderr)
         for requirement, _, detail in failures:
             print(f'  - {requirement.name}: {requirement.why} ({detail})', file=sys.stderr)
+        return 1
+
+    if prerequisite_failures:
+        print(
+            f'\nci-gate-audit: {prerequisite_failures} workflow(s) run `pnpm check` without its '
+            f'prerequisites in {path.parent.name}\n',
+            file=sys.stderr,
+        )
+        print(f'  - {PREREQUISITE.name}: {PREREQUISITE.why}', file=sys.stderr)
         return 1
 
     print(f'\nci-gate-audit: {len(results)} gates attached in {path.name}')

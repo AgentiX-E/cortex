@@ -175,5 +175,120 @@ class TestEachRequirementCanFail(unittest.TestCase):
             self.assertTrue(req.why.strip(), f'{req.name} has no explanation')
 
 
+class TestEveryWorkflowThatRunsTheSuiteInstallsItsPrerequisites(unittest.TestCase):
+    """The ninth rule, and the run that produced it.
+
+    `probe-multi-step.yml`'s first dispatch (`44863794098`) copied `benchmark.yml`'s corpus download
+    and not its Python prerequisites, so `pnpm check` failed at its second command with
+    `/usr/bin/python3: No module named pytest`. Every other test in this file passed, because the
+    eight requirements above are properties of `verify.yml` -- the file that did not break.
+
+    So the rule is stated over the directory: a job that runs `pnpm check` must set up Python and
+    install `tools/requirements-dev.txt`. These cases assert it in both directions, and one of them
+    asserts it over the real directory, because the defect was in a file no fixture would have
+    contained.
+    """
+
+    def test_the_real_directory_passes(self) -> None:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            failures = audit.audit_directory(WORKFLOW.parent)
+        self.assertEqual(
+            failures,
+            0,
+            'a workflow in this repository runs `pnpm check` without the prerequisites it needs:\n'
+            + out.getvalue(),
+        )
+
+    def test_the_probe_workflow_is_checked_at_all(self) -> None:
+        """The control for the rule's reach: the file that failed must be among the audited ones.
+
+        A directory scan that silently skipped a file would report zero failures and look identical
+        to a clean directory, which is the failure mode of every "all files pass" assertion.
+        """
+        import yaml
+
+        probe = WORKFLOW.parent / 'probe-multi-step.yml'
+        workflow = yaml.safe_load(probe.read_text(encoding='utf-8'))
+        self.assertTrue(
+            audit.jobs_running_check(workflow),
+            'the probe workflow no longer runs `pnpm check`; if that changed on purpose, this rule '
+            'and this test have to be re-argued rather than deleted',
+        )
+
+    def test_missing_setup_python_fails(self) -> None:
+        import yaml
+
+        workflow = yaml.safe_load((WORKFLOW.parent / 'probe-multi-step.yml').read_text(encoding='utf-8'))
+        for job in audit.jobs_of(workflow).values():
+            job['steps'] = [
+                step
+                for step in job.get('steps', [])
+                if 'actions/setup-python' not in (step.get('uses') or '')
+            ]
+        results = audit.evaluate_prerequisites(workflow)
+        self.assertEqual({ok for _, ok, _ in results}, {False})
+        self.assertIn('setup-python MISSING', results[0][2])
+
+    def test_missing_requirements_install_fails(self) -> None:
+        import yaml
+
+        workflow = yaml.safe_load((WORKFLOW.parent / 'probe-multi-step.yml').read_text(encoding='utf-8'))
+        for job in audit.jobs_of(workflow).values():
+            job['steps'] = [
+                step
+                for step in job.get('steps', [])
+                if 'requirements-dev.txt' not in (step.get('run') or '')
+            ]
+        results = audit.evaluate_prerequisites(workflow)
+        self.assertEqual({ok for _, ok, _ in results}, {False})
+        self.assertIn('requirements-dev.txt MISSING', results[0][2])
+
+    def test_a_workflow_without_the_suite_passes_vacuously_and_says_so(self) -> None:
+        results = audit.evaluate_prerequisites({})
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0][1])
+        self.assertIn('no job runs `pnpm check`', results[0][2])
+
+    def test_an_unparseable_workflow_is_a_failure_not_a_crash(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'broken.yml').write_text('on: [push\n', encoding='utf-8')
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                failures = audit.audit_directory(Path(directory))
+        self.assertEqual(failures, 1)
+        self.assertIn('unparseable', out.getvalue())
+
+    def test_the_cli_fails_when_a_sibling_workflow_is_missing_a_prerequisite(self) -> None:
+        """The rule has to reach the exit code, not just the report.
+
+        `guard:ci` runs this file and reads its status. A rule that printed FAIL and returned zero
+        would be a comment with a colour.
+        """
+        import tempfile
+
+        import yaml
+
+        workflow = yaml.safe_load((WORKFLOW.parent / 'probe-multi-step.yml').read_text(encoding='utf-8'))
+        for job in audit.jobs_of(workflow).values():
+            job['steps'] = [
+                step
+                for step in job.get('steps', [])
+                if 'actions/setup-python' not in (step.get('uses') or '')
+            ]
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'verify.yml').write_text(
+                WORKFLOW.read_text(encoding='utf-8'), encoding='utf-8'
+            )
+            (Path(directory) / 'sibling.yml').write_text(yaml.safe_dump(workflow), encoding='utf-8')
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = audit.main(['--workflow', str(Path(directory) / 'verify.yml')])
+        self.assertEqual(code, 1)
+        self.assertIn('check-prerequisites', err.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -67,6 +67,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The `tools/` Python scripts are part of the delivery path: one dispatches this workflow and
+      # the rest are gates `pnpm check` runs. The first dispatch of this file (`44863794098`) proved
+      # why these two steps are here rather than assumed: it copied `benchmark.yml`'s corpus download
+      # and not its prerequisites, so `pnpm check` died at its second command with
+      # `/usr/bin/python3: No module named pytest` -- after the build had already been paid for. The
+      # rule is now a gate (`tools/ci-gate-audit.py`'s `check-prerequisites`, applied to every
+      # workflow in this directory), because "copy the steps that use the corpus" is not a
+      # distinction anybody reliably remembers.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install --requirement tools/requirements-dev.txt
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
