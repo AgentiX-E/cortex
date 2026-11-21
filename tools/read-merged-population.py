@@ -76,6 +76,96 @@ PAIR_FLAGS = {
 # `windows < 2` guard below has to know.
 ONE_FLAG_PAIRINGS = tuple(PAIR_FLAGS)
 
+# `C7`'s `F3`, as the two clauses it is written with. Restated here rather than read from the
+# pre-registration, because the numbers ARE the criterion and a script that looked them up could be made
+# to agree with any reading by editing the document it looked them up in.
+F3_TURN_FLOOR_PCT = 20.0
+F3_CHAR_TOLERANCE_PCT = 2.0
+
+
+def _median(values: list[float]) -> float:
+    """The median of a non-empty list, as a float so an even count's midpoint is not truncated."""
+    ordered = sorted(values)
+    count = len(ordered)
+    middle = count // 2
+    if count % 2:
+        return float(ordered[middle])
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _number(value: float) -> str:
+    """`13` and `40150` rather than `13.0` and `40150.0`, and `19.5` kept as it is."""
+    return f'{value:.0f}' if float(value).is_integer() else f'{value:.1f}'
+
+
+def print_density(document: dict) -> None:
+    """`F3`'s two medians: turns delivered against characters of prompt, on both sides of one roster.
+
+    The mechanism under test changes **what a long turn becomes**, so the claim it makes is density --
+    the same budget holding more turns -- and the only thing that separates density from a narrower
+    prompt is that the character median does not move. Both medians therefore have to come from one
+    pass: `§11.13` measured a 0.70-point floor across dispatches, and a ratio whose two halves came
+    from two runs would be a ratio of two other differences.
+
+    Nothing is printed when either side reports no census. A median over an empty side is not zero --
+    it is no measurement -- and `0` there would read as "the control delivered no turns", which is the
+    strongest possible claim from no evidence.
+    """
+    ablation = document.get('ablation', {}) or {}
+    baseline_censuses = ablation.get('baselineRoleCensuses')
+    feature_censuses = ablation.get('featureRoleCensuses')
+    baseline_chars = ablation.get('baselinePromptChars')
+    feature_texts = ablation.get('featurePromptTexts')
+    sides = {
+        'baseline role census': baseline_censuses,
+        'feature role census': feature_censuses,
+        'baseline prompt chars': baseline_chars,
+        'feature prompt texts': feature_texts,
+    }
+    missing = [name for name, vector in sides.items() if not vector]
+    if missing:
+        raise SystemExit(
+            f'refusing: no density reading -- the artifact carries no {", ".join(missing)}. C7\'s F3 '
+            'divides two medians of one population, and a median over an absent side is not zero.'
+        )
+    baseline_turns = [c['total'] for c in baseline_censuses if c is not None]
+    feature_turns = [c['total'] for c in feature_censuses if c is not None]
+    baseline_lengths = [n for n in baseline_chars if n is not None]
+    feature_lengths = [len(text) for text in feature_texts if text is not None]
+    if not baseline_turns or not feature_turns or not baseline_lengths or not feature_lengths:
+        raise SystemExit(
+            'refusing: no density reading -- one side reported a null for every question, so it exposed no '
+            'window to count. A `reference` pairing produces exactly that for its baseline: the reference '
+            'pipeline has no classifier, so F3 cannot be read off it.'
+        )
+    turns_before = _median(baseline_turns)
+    turns_after = _median(feature_turns)
+    chars_before = _median(baseline_lengths)
+    chars_after = _median(feature_lengths)
+    turn_change = (turns_after - turns_before) / turns_before * 100 if turns_before else 0.0
+    char_change = (chars_after - chars_before) / chars_before * 100 if chars_before else 0.0
+    print(
+        f'turns median {_number(turns_before)} -> {_number(turns_after)}  ({turn_change:+.1f}%)'
+    )
+    print(
+        f'chars median {_number(chars_before)} -> {_number(chars_after)}  ({char_change:+.1f}%)'
+    )
+    if turn_change < F3_TURN_FLOOR_PCT:
+        print(
+            f'F3 fail: turns {turn_change:+.1f}% is below the +{F3_TURN_FLOOR_PCT:.0f}% floor, so the room '
+            'did not buy more events and this family closes'
+        )
+    elif abs(char_change) > F3_CHAR_TOLERANCE_PCT:
+        print(
+            f'F3 fail: chars {char_change:+.1f}% is outside the +-{F3_CHAR_TOLERANCE_PCT:.0f}% band, which '
+            'is a wider or narrower prompt rather than a denser one'
+        )
+    else:
+        print(
+            f'F3 pass  (turns {turn_change:+.1f}% >= +{F3_TURN_FLOOR_PCT:.0f}%, chars {char_change:+.1f}% '
+            f'within +-{F3_CHAR_TOLERANCE_PCT:.0f}%)'
+        )
+
 
 def mcnemar_exact(b: int, c: int) -> float:
     """Two-sided exact McNemar p, the same formula the analysis scripts use."""
@@ -238,6 +328,11 @@ def main(argv: list[str]) -> int:
                 print(f'::error::delta {delta:+.1f} is below the -5 floor: S12 fails')
             else:
                 print(f'::notice::S12 readable: delta {delta:+.1f} >= -5 with reach {reach}')
+    if pairing == 'resolution':
+        # After the accuracy line and deliberately not instead of it: `F3` is a gate that closes a family
+        # before accuracy is read, but a run that is already paid for should report both, and reading them
+        # in that order is what keeps a `F3 fail` from being argued with by a delta that looks fine.
+        print_density(document)
     return 0
 
 

@@ -47,6 +47,20 @@ def document(windows=2, corpora=2, runs=2, carry=None, marker="#w", pair=None):
         payload["semanticCarry"] = carry
     if pair is not None:
         payload["featureConfig"] = {pair: True}
+    if pair == "resolutionPair":
+        # A `resolution` artifact always carries the density vectors: `runAblation` requests the baseline
+        # capture unconditionally on the call that evaluates it, so an artifact that omits them is either
+        # older than the field or not the pair it claims. Filling them here keeps every fixture a document
+        # the arm could actually have written, and the tests that need a degenerate side overwrite them.
+        count = len(ids)
+        payload["ablation"]["baselineRoleCensuses"] = [
+            {"counts": {"user": 10}, "unclassified": 0, "total": 10} for _ in range(count)
+        ]
+        payload["ablation"]["featureRoleCensuses"] = [
+            {"counts": {"user": 13}, "unclassified": 0, "total": 13} for _ in range(count)
+        ]
+        payload["ablation"]["baselinePromptChars"] = [40000] * count
+        payload["ablation"]["featurePromptTexts"] = ["x" * 40000] * count
     return payload
 
 
@@ -291,3 +305,70 @@ def test_a_resolution_dispatch_must_agree_with_the_flag_the_arm_wrote(tmp_path):
     result = run(tmp_path, crossed, "--pairing", "resolution")
     assert result.returncode == 1
     assert "clockPair" in result.stderr
+
+
+def test_a_resolution_pair_reports_the_density_ratio_f3_divides(tmp_path):
+    """`F3` is the假证 clause: same prompt budget, more delivered turns, or this family closes.
+
+    The two medians have to come from ONE roster -- `promptChars` within ±2% is what separates
+    "denser" from "wider", and a cross-run comparison could not tell them apart because both numbers
+    would move for reasons the pairing does not control.
+    """
+    payload = document(windows=1, corpora=4, pair="resolutionPair")
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10},
+        {"counts": {"user": 12}, "unclassified": 0, "total": 12},
+        {"counts": {"user": 14}, "unclassified": 0, "total": 14},
+        {"counts": {"user": 16}, "unclassified": 0, "total": 16},
+    ]
+    payload["ablation"]["featureRoleCensuses"] = [
+        {"counts": {"user": 15}, "unclassified": 0, "total": 15},
+        {"counts": {"user": 18}, "unclassified": 0, "total": 18},
+        {"counts": {"user": 21}, "unclassified": 0, "total": 21},
+        {"counts": {"user": 24}, "unclassified": 0, "total": 24},
+    ]
+    payload["ablation"]["baselinePromptChars"] = [40000, 40100, 40200, 40300]
+    payload["ablation"]["featurePromptTexts"] = ["x" * 40400, "x" * 40500, "x" * 40600, "x" * 40700]
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    # Medians of 4 even counts are the mean of the middle two: baseline (12+14)/2 = 13, feature 19.5.
+    assert "turns median 13 -> 19.5  (+50.0%)" in result.stdout
+    assert "chars median 40150 -> 40550  (+1.0%)" in result.stdout
+    assert "F3 pass" in result.stdout
+
+
+def test_a_density_reading_that_misses_the_threshold_says_which_clause_failed(tmp_path):
+    # The same population with the turns flat: the ratio is the clause that decides the family, and a
+    # reader that reported "F3 failed" without saying which of the two numbers missed would send the next
+    # round back to the drawing board with no direction.
+    payload = document(windows=2, corpora=2, pair="resolutionPair")
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 4
+    payload["ablation"]["featureRoleCensuses"] = [
+        {"counts": {"user": 11}, "unclassified": 0, "total": 11}
+    ] * 4
+    payload["ablation"]["baselinePromptChars"] = [40000] * 4
+    payload["ablation"]["featurePromptTexts"] = ["x" * 40000] * 4
+    result = run(tmp_path, payload, "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "(+10.0%)" in result.stdout
+    assert "F3 fail: turns +10.0% is below the +20% floor" in result.stdout
+
+
+def test_a_density_reading_with_no_baseline_census_is_refused_rather_than_guessed(tmp_path):
+    """`reference` pairings produce an all-`null` baseline vector, and a median over nulls is not zero.
+
+    Reporting `0` there would read as "the control delivered no turns", which is the strongest possible
+    claim from no evidence -- the reason `featureByCapability` is absent rather than degenerate at one
+    repetition.
+    """
+    payload = document(windows=1, corpora=2, pair="resolutionPair")
+    payload["ablation"]["baselineRoleCensuses"] = [None, None]
+    payload["ablation"]["featureRoleCensuses"] = [
+        {"counts": {"user": 15}, "unclassified": 0, "total": 15},
+        {"counts": {"user": 15}, "unclassified": 0, "total": 15},
+    ]
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 1
+    assert "no density reading" in result.stderr
