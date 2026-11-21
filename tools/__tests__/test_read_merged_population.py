@@ -137,12 +137,98 @@ def test_a_dispatch_window_count_that_disagrees_with_the_artifact_is_refused(tmp
 
 
 def test_an_unknown_pairing_is_refused(tmp_path):
+    # The message names every pairing the tool builds, because it is the only place a dispatcher
+    # learns the closed set -- and the set is now three wide. A refusal that named two of three
+    # teaches its reader to invent the third.
     result = run(tmp_path, document(windows=1), "--pairing", "reference-and-carry")
     assert result.returncode == 1
-    assert "neither reference nor carry" in result.stderr
+    assert "is not one of" in result.stderr
+    for name in ("reference", "carry", "clock"):
+        assert name in result.stderr
 
 
 def test_an_unknown_argument_is_refused(tmp_path):
     result = run(tmp_path, document(windows=1), "--shards", "16")
     assert result.returncode == 1
     assert "unknown argument" in result.stderr
+
+
+def test_a_one_flag_pair_at_one_window_is_read_over_the_whole_population(tmp_path):
+    """The reading this tool could not produce, on the dispatch that needed it.
+
+    `windows < 2` used to end the readback with "paired delta: not taken", which is right for
+    `reference` -- the two sides there are two systems and the window is what pairs -- and wrong for
+    a pairing that puts ONE FLAG between the sides: `pairing=clock` at one window is exactly the
+    experiment, and the tool that was supposed to read it said there was nothing to pair. Run
+    `44891901371` paid for the reading and then failed on this line.
+    """
+    payload = document(windows=1, corpora=4)
+    payload["ablation"]["baselineCorrectByRun"] = ["1010"]
+    payload["ablation"]["featureCorrectByRun"] = ["1110"]
+    payload["featureConfig"] = {"clockPair": True}
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "clock")
+    assert result.returncode == 0, result.stderr
+    assert "whole population: n=4  delta=+1.0000" in result.stdout
+    assert "b=0 c=1" in result.stdout
+    assert "not taken" not in result.stdout
+
+
+def test_a_clock_pairing_does_not_claim_a_carry_reach(tmp_path):
+    """The clock dispatch runs the carry off on both sides, like a reference one.
+
+    Warning about a reach of zero there would be a warning on a dispatch behaving exactly as
+    registered -- the shape that stops a warning being read by the time it means something.
+    """
+    result = run(
+        tmp_path,
+        {**document(windows=1), "semanticCarry": {"absorbed": 0, "matched": 0, "served": 0},
+         "featureConfig": {"clockPair": True}},
+        "--windows",
+        "1",
+        "--pairing",
+        "clock",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "S13 reach" not in result.stdout
+    assert "::warning::" not in result.stdout
+    assert "not read from this dispatch" in result.stdout
+
+
+def test_the_artifact_must_agree_with_the_pairing_it_was_read_under(tmp_path):
+    """A dispatch says `clock` and the artifact says `clockPair: false` -- two statements, one run.
+
+    Refused rather than printed, because every number below it would be read as the clock's when the
+    arm that produced it built both sides without the clock.
+    """
+    payload = document(windows=1)
+    payload["featureConfig"] = {"clockPair": False}
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "clock")
+    assert result.returncode == 1
+    assert "clockPair" in result.stderr
+
+    other = document(windows=1)
+    other["featureConfig"] = {"clockPair": True}
+    result = run(tmp_path, other, "--windows", "1", "--pairing", "carry")
+    assert result.returncode == 1
+    assert "clockPair" in result.stderr
+
+
+def test_the_pairing_vocabulary_is_the_arms_vocabulary():
+    """Two copies of one closed set, held to each other by reading both.
+
+    This is the check whose absence cost run `44891901371` its conclusion: the dispatcher's copy was
+    held to `arm-pairing.ts` and this tool's copy was not, so `clock` passed the gate that was
+    written for it and failed the one that was not.
+    """
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    source = (root / "packages/cortex-eval/src/arm-pairing.ts").read_text(encoding="utf-8")
+    union = re.search(r"type ArmPairing = ([^;]+);", source)
+    assert union is not None, "arm-pairing.ts has no `ArmPairing` union"
+    arm = sorted(re.findall(r"'(\w+)'", union.group(1)))
+    tool = (root / "tools/read-merged-population.py").read_text(encoding="utf-8")
+    closed = re.search(r"^PAIRINGS = \(([^)]+)\)", tool, re.M)
+    assert closed is not None, "the readback has no `PAIRINGS` tuple"
+    names = sorted(re.findall(r"'([^']+)'", closed.group(1)))
+    assert names == arm, f"the readback reads {names} and the arm builds {arm}"

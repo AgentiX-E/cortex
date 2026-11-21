@@ -28,6 +28,22 @@ Declined: the carry reach and the paired delta when the dispatch did not adminis
 is zeros and `matched < 1` says nothing about the layer; and a one-window population has no second
 window to pair against. Both are printed as such rather than warned about, because a `::warning::`
 on a dispatch that is behaving exactly as registered is how a real warning stops being read.
+
+## The two defects `pairing=clock` found, both of them shapes rather than typos
+
+Run `44891901371` was the boundary clock's first dispatch: four shards green, merge merged, and this
+script then exited `1` with `--pairing 'clock' is neither reference nor carry`. Two things were wrong
+and only the first was a vocabulary:
+
+1. **The closed set was here, in a second copy.** `arm-pairing.ts` builds the pairings, the dispatcher
+   refuses a value outside the same set, and this script had its own two-word list -- so `clock`
+   passed the gate written for it and failed the gate that was not. The set is now one constant, and
+   `test_the_pairing_vocabulary_is_the_arms_vocabulary` holds it to the union by reading both.
+2. **The `windows < 2` guard assumed the pair is across dispatches.** That is true for `reference`,
+   where the two sides are two *systems* and `S10` reads its delta across two arms. It is false for a
+   pairing that puts one flag between the sides: `pairing=clock` at one window is the experiment, and
+   the guard returned `0` -- success -- having printed that there was nothing to pair. A green step
+   that measured nothing is worse than the red one, because nobody re-reads it.
 """
 
 from __future__ import annotations
@@ -35,6 +51,15 @@ from __future__ import annotations
 import json
 import sys
 from math import comb
+
+# The pairings `arm-pairing.ts` can build. One constant, held to that union by
+# `test_the_pairing_vocabulary_is_the_arms_vocabulary`, because a closed set copied into a reader is a
+# closed set that will fall out of step -- measured, not hypothesised: see this file's header.
+PAIRINGS = ('reference', 'carry', 'clock')
+
+# The pairings whose two sides differ by ONE FLAG of the same system. Their delta is the flag's
+# whatever the window count is, which is what the `windows < 2` guard below has to know.
+ONE_FLAG_PAIRINGS = ('carry', 'clock')
 
 
 def mcnemar_exact(b: int, c: int) -> float:
@@ -76,8 +101,13 @@ def main(argv: list[str]) -> int:
         index += 2
     windows_input = options['--windows']
     pairing = options['--pairing']
-    if pairing not in ('reference', 'carry'):
-        raise SystemExit(f'refusing: --pairing {pairing!r} is neither reference nor carry')
+    if pairing not in PAIRINGS:
+        raise SystemExit(
+            f'refusing: --pairing {pairing!r} is not one of {", ".join(PAIRINGS)}. `reference` is the '
+            "registered pair, `carry` is the semantic layer's instrument and `clock` is the boundary "
+            "clock's. A pairing this reader does not know is a delta it would print under a name that "
+            'does not describe it.'
+        )
 
     document = json.load(open(path, encoding='utf-8'))
     windows = document['population']['windows']
@@ -113,7 +143,23 @@ def main(argv: list[str]) -> int:
         if reach is None or reach < 1:
             print('::warning::the merge reached no window, so S12 stays void rather than pass')
 
-    if windows < 2:
+    # The dispatch names the pair; the artifact records which pair it built. Two statements about one
+    # run, and the numbers below are read as the flag's only if they agree. Refused rather than
+    # printed, because the alternative is a delta attributed to a flag the arm never moved.
+    if pairing == 'clock':
+        if document.get('featureConfig', {}).get('clockPair') is not True:
+            raise SystemExit(
+                'refusing: the dispatch says clockPair and the artifact does not. Either the arm built '
+                'the reference pair (so these numbers are two systems, not one flag), or the artifact '
+                'predates the field -- and neither can be read as the boundary clock.'
+            )
+    elif document.get('featureConfig', {}).get('clockPair') is True:
+        raise SystemExit(
+            f'refusing: the artifact says clockPair while the dispatch says --pairing {pairing}. The '
+            'delta belongs to whichever one the run actually built, and the two statements disagree.'
+        )
+
+    if windows < 2 and pairing not in ONE_FLAG_PAIRINGS:
         # `S10`'s shape. Its delta is between two dispatches, not between two windows of one
         # artifact, so this step has nothing to pair -- and saying so is the whole point of the
         # guard, because the alternative is what failed run 43673528695.
@@ -123,12 +169,24 @@ def main(argv: list[str]) -> int:
         )
         return 0
 
-    second = [at for at, question_id in enumerate(ids) if question_id.endswith(f'{marker}{windows}')]
-    if not second:
-        raise SystemExit(
-            f'refusing: no id ends in {marker}{windows} while the artifact graded {windows} '
-            'windows, so the roster does not match its own population'
-        )
+    if windows < 2:
+        # A one-flag pair at one window, which is the boundary clock's registered shape: there is no
+        # second window to find, and the two sides already differ by the one flag this artifact was
+        # dispatched to move. Reading it over the whole population is the reading -- and the scope is
+        # said out loud, because "second window" and "whole population" are different denominators
+        # and a reader comparing two runs has to know which one a delta came from.
+        scope = list(range(len(ids)))
+        scope_label = 'whole population'
+    else:
+        scope = [
+            at for at, question_id in enumerate(ids) if question_id.endswith(f'{marker}{windows}')
+        ]
+        scope_label = 'second window'
+        if not scope:
+            raise SystemExit(
+                f'refusing: no id ends in {marker}{windows} while the artifact graded {windows} '
+                'windows, so the roster does not match its own population'
+            )
     baseline = document['ablation']['baselineCorrectByRun']
     feature = document['ablation']['featureCorrectByRun']
     for side, vectors in (('baseline', baseline), ('feature', feature)):
@@ -140,12 +198,12 @@ def main(argv: list[str]) -> int:
                 )
     control = per_question_means(baseline)
     treated = per_question_means(feature)
-    delta = sum(treated[at] - control[at] for at in second)
-    b = sum(1 for at in second if control[at] > treated[at])
-    c = sum(1 for at in second if treated[at] > control[at])
+    delta = sum(treated[at] - control[at] for at in scope)
+    b = sum(1 for at in scope if control[at] > treated[at])
+    c = sum(1 for at in scope if treated[at] > control[at])
     p = mcnemar_exact(b, c)
     print(
-        f'second window: n={len(second)}  delta={delta:+.4f} question(s)  '
+        f'{scope_label}: n={len(scope)}  delta={delta:+.4f} question(s)  '
         f'discordant b={b} c={c}  McNemar p={p:.4f}'
     )
     if pairing == 'carry':
