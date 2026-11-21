@@ -232,8 +232,8 @@ def evaluate(workflow: dict) -> list[tuple[Requirement, bool, str]]:
 # the `tools/` scripts import `yaml`; a runner without them fails after the build has been paid for.
 PREREQUISITE = Requirement(
     'check-prerequisites',
-    'a job runs `pnpm check` without setting up Python and installing `tools/requirements-dev.txt`, '
-    'so the suite fails at `pnpm test:tools` on a runner that has neither',
+    'a job runs `pnpm check` without setting up Python, installing `tools/requirements-dev.txt` or '
+    'checking out the sibling `cortex-docs`, so the suite fails on a runner that has none of them',
 )
 
 
@@ -244,6 +244,36 @@ def jobs_running_check(workflow: dict) -> list[tuple[str, dict]]:
         for name, job in jobs_of(workflow).items()
         if 'pnpm check' in steps_text(job)
     ]
+
+
+def checks_out_sibling(job: dict) -> bool:
+    """Whether the job checks out `cortex-docs` at the path the suites read.
+
+    Read from the step's own `with:` block rather than from `steps_text`, because `steps_text` reads
+    `run`/`uses`/`name`/`env` and a `with:` mapping would match nothing there -- extending it would make
+    every gate in this file able to be satisfied by a `with:` string, which is a looser reach than the
+    gates were written against.
+
+    Both halves are required. `repository` alone puts the tree at the workspace root, where the suites
+    do not look: `verify.yml` records the same mistake in its own comment ("the first attempt wrote
+    `path: cortex-docs` and assumed it meant `../cortex-docs`, which it does not"), and a rule that
+    accepted the repository without the path would bless exactly that shape.
+    """
+    for step in job.get('steps') or []:
+        if not isinstance(step, dict):
+            continue
+        uses = step.get('uses')
+        if not isinstance(uses, str) or not uses.startswith('actions/checkout'):
+            continue
+        options = step.get('with')
+        if not isinstance(options, dict):
+            continue
+        if (
+            options.get('repository') == 'AgentiX-E/cortex-docs'
+            and options.get('path') == 'cortex-docs'
+        ):
+            return True
+    return False
 
 
 def evaluate_prerequisites(workflow: dict) -> list[tuple[Requirement, bool, str]]:
@@ -260,13 +290,24 @@ def evaluate_prerequisites(workflow: dict) -> list[tuple[Requirement, bool, str]
         text = steps_text(job)
         has_python = 'actions/setup-python' in text
         has_requirements = 'requirements-dev.txt' in text
+        # The third prerequisite, and the one that cost a dispatch to learn: several suites in
+        # `tools/__tests__` run a script that lives in the **sibling repository**
+        # (`cortex-docs/evidence/longmemeval/scripts/`), because that script decides whether a
+        # registration gets a number at all. `verify.yml` has checked it out since the day those
+        # tests landed; `benchmark.yml` never did, and it kept passing only because nobody
+        # dispatched it between the tests landing and the first run after -- six days in which the
+        # workflow that produces every quoted number could not pass its own gate. The run that
+        # found it (`44876637554`) failed at `Verify library` with thirteen `No such file or
+        # directory`, and no benchmark step ever started.
+        has_sibling = checks_out_sibling(job)
         detail = ', '.join(
             [
                 f'{name}: setup-python {"present" if has_python else "MISSING"}',
                 f'requirements-dev.txt {"present" if has_requirements else "MISSING"}',
+                f'cortex-docs checkout {"present" if has_sibling else "MISSING"}',
             ]
         )
-        results.append((PREREQUISITE, has_python and has_requirements, detail))
+        results.append((PREREQUISITE, has_python and has_requirements and has_sibling, detail))
     return results
 
 

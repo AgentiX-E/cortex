@@ -111,6 +111,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The sibling repository, for the same reason `verify.yml` checks it out: several suites in
+      # `tools/__tests__` run a script that lives in `cortex-docs/evidence/longmemeval/scripts/`, and
+      # this job runs the whole suite before it measures anything.
+      #
+      # This step was missing for six days and nobody noticed, because nobody dispatched this workflow
+      # in that window. `44876637554` -- the first dispatch after the tests landed -- failed at `Verify
+      # library` with thirteen `No such file or directory`, and not one benchmark question was
+      # answered. The workflow that produces every number this project quotes could not pass its own
+      # gate, and the artifact that would have said so was the only thing it produced.
+      #
+      # `path` resolves against `$GITHUB_WORKSPACE`, so this lands at `cortex/cortex-docs` -- inside the
+      # checkout, which is where the tests look. `tools/ci-gate-audit.py`'s `check-prerequisites` now
+      # requires both halves of this step in every job that runs `pnpm check`.
+      - name: Checkout cortex-docs
+        uses: actions/checkout@v4
+        with:
+          repository: AgentiX-E/cortex-docs
+          path: cortex-docs
+          fetch-depth: 1
+
       # The `tools/` Python scripts are part of the delivery path, not scratch
       # work: one publishes to GitHub, one dispatches this workflow, and one makes
       # the resolver usable. `pnpm check` runs their tests, so the interpreter and

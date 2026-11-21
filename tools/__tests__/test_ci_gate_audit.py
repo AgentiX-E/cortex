@@ -258,6 +258,52 @@ class TestEveryWorkflowThatRunsTheSuiteInstallsItsPrerequisites(unittest.TestCas
         self.assertEqual({ok for _, ok, _ in results}, {False})
         self.assertIn('setup-python MISSING', results[0][2])
 
+    def test_missing_sibling_checkout_fails(self) -> None:
+        # The prerequisite that cost a dispatch to find. `benchmark.yml` ran the whole suite before
+        # measuring anything and never checked out `cortex-docs`, so `test_semantic_carry_analysis`
+        # failed thirteen times with `No such file or directory` and the run died before its first
+        # question. It had been that way for six days; nobody dispatched the workflow in the window,
+        # which is exactly why the rule has to be static rather than learned from a failed run.
+        import yaml
+
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
+        for job in audit.jobs_of(workflow).values():
+            job['steps'] = [
+                step
+                for step in job.get('steps') or []
+                if (step.get('with') or {}).get('repository') != 'AgentiX-E/cortex-docs'
+            ]
+        results = audit.evaluate_prerequisites(workflow)
+        self.assertEqual({ok for _, ok, _ in results}, {False})
+        self.assertIn('cortex-docs checkout MISSING', results[0][2])
+
+    def test_a_checkout_without_the_expected_path_fails(self) -> None:
+        # `repository` alone lands the tree at the workspace root, where the suites do not look.
+        # `verify.yml` records the same mistake in its own comment, so a rule that accepted the
+        # repository without the path would bless the shape the comment warns about.
+        import yaml
+
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
+        for job in audit.jobs_of(workflow).values():
+            for step in job.get('steps') or []:
+                options = step.get('with')
+                if isinstance(options, dict) and options.get('path') == 'cortex-docs':
+                    options.pop('path')
+        results = audit.evaluate_prerequisites(workflow)
+        self.assertEqual({ok for _, ok, _ in results}, {False})
+
+    def test_a_job_that_does_not_run_the_suite_needs_no_sibling(self) -> None:
+        # The vacuous pass, asserted rather than assumed: a measurement-only workflow must not be
+        # asked to check out a repository it never reads, or the rule becomes a reason to add `|| true`.
+        import yaml
+
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding='utf-8'))
+        for job in audit.jobs_of(workflow).values():
+            job['steps'] = [s for s in job.get('steps', []) if 'pnpm check' not in (s.get('run') or '')]
+        results = audit.evaluate_prerequisites(workflow)
+        self.assertEqual({ok for _, ok, _ in results}, {True})
+        self.assertIn('no job runs', results[0][2])
+
     def test_missing_requirements_install_fails(self) -> None:
         workflow = self._without(lambda step: 'requirements-dev.txt' in (step.get('run') or ''))
         results = audit.evaluate_prerequisites(workflow)
