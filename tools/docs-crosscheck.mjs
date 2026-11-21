@@ -54,7 +54,8 @@ const listOnly = argv.includes('--list');
 const reviewHtml =
   flag('--html') ??
   process.env.CORTEX_REVIEW_HTML ??
-  path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html');
+  (locate('cortex-docs/evidence/a3-review/review-remote.html', root) ??
+    path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html'));
 
 let setCache;
 const controlledSet = () => {

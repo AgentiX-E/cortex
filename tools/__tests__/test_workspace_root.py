@@ -109,9 +109,15 @@ def test_an_explicit_root_replaces_the_developer_default(tmp_path: Path) -> None
     assert locate(repo, 'cortex-docs/evidence/x.json', str(other)) == ''
 
 
-def test_an_explicit_root_still_reaches_the_nested_documents_repository(tmp_path: Path) -> None:
-    """The flag names the workspace, and the documents repository is a different repository: on CI it is
-    inside the code checkout, so it stays reachable however the workspace was named."""
+def test_an_explicit_root_is_the_only_place_the_documents_repository_is_looked_for(
+    tmp_path: Path,
+) -> None:
+    """The nested checkout is a fallback for the default workspace, not for a named one.
+
+    Without this, `--root` could not describe a workspace that has no documents repository, and the
+    "absent is skipped, not failed" path in the registry check would have no way to be exercised at all --
+    `test_reading_render.py` builds exactly that fixture and would start reading the real evidence.
+    """
     repo = fixture(tmp_path)
     evidence = repo / 'cortex-docs' / 'evidence' / 'x.json'
     evidence.parent.mkdir(parents=True)
@@ -119,4 +125,4 @@ def test_an_explicit_root_still_reaches_the_nested_documents_repository(tmp_path
     other = tmp_path / 'other'
     other.mkdir()
 
-    assert Path(locate(repo, 'cortex-docs/evidence/x.json', str(other))) == evidence
+    assert locate(repo, 'cortex-docs/evidence/x.json', str(other)) == ''

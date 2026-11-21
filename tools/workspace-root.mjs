@@ -56,14 +56,17 @@ export function candidates(relative, explicit) {
   const [head, ...rest] = relative.split('/');
   const out = [];
   if (explicit !== undefined) out.push(path.resolve(explicit, relative));
-  // `REPO` is not the workspace and is not replaced by the flag: it is the checkout these tools live in,
-  // so a `cortex/…` path always resolves through it and a nested `cortex-docs/…` always does too.
   if (head === 'cortex') {
+    // This checkout, whatever it is called. Not a workspace question: `REPO` is where these tools live, so
+    // the path resolves there however the caller named a workspace.
     out.push(path.resolve(REPO, ...rest));
-  } else {
+  } else if (explicit === undefined) {
+    // The documents repository is inside this checkout on CI. With an explicit `--root` it is **not** looked
+    // for here: the flag has to be able to describe a workspace that has no documents repository at all, or
+    // the "absent is skipped, not failed" path could not be exercised anywhere and every fixture would
+    // silently read the real evidence.
     out.push(path.resolve(REPO, relative));
   }
-  // The workspace forms come last and only when the operator did not name a workspace of their own.
   if (explicit === undefined) out.push(path.resolve(DEFAULT_ROOT, relative));
   return [...new Set(out)];
 }
