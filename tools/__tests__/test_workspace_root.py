@@ -19,9 +19,12 @@ replaces the default so a fixture cannot read the real evidence behind the opera
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 MODULE = Path(__file__).resolve().parents[1] / 'workspace-root.mjs'
 
@@ -126,3 +129,31 @@ def test_an_explicit_root_is_the_only_place_the_documents_repository_is_looked_f
     other.mkdir()
 
     assert locate(repo, 'cortex-docs/evidence/x.json', str(other)) == ''
+
+
+# The bug this file was written for survived its own unit tests, because the rule was right and both
+# callers handed it the resolved default as if the operator had named it: `locate(relative, root)` with
+# `root = flag('--root') ?? path.resolve(REPO, '..')` makes every path look explicitly rooted, which
+# suppresses the nested `cortex-docs` candidate. Locally that is invisible -- the default root *is* the
+# right place there -- and on CI it turned the matrix and a third of the markers unreadable again, with
+# the same word as before. So the callers are pinned, in the only way that costs nothing: they must pass
+# what the flag said.
+CALLERS = ('acceptance-check.mjs', 'docs-crosscheck.mjs')
+
+
+@pytest.mark.parametrize('caller', CALLERS)
+def test_no_caller_passes_the_resolved_default_as_an_explicit_root(caller: str) -> None:
+    source = (MODULE.parent / caller).read_text()
+    assert 'const rootFlag = flag(' in source, (
+        f'{caller} must keep what the caller said in its own name; without it there is nothing to pass '
+        'to the resolver that distinguishes "no flag" from "a flag naming the default"'
+    )
+    offenders = [
+        line.strip()
+        for line in source.splitlines()
+        if not line.strip().startswith('//') and re.search(r'\b(locate|candidates)\([^)]*,\s*root\s*\)', line)
+    ]
+    assert offenders == [], (
+        f'{caller} hands the resolved default to the resolver: {offenders}. Pass `rootFlag`, or the '
+        'nested documents repository is never tried and CI reads nothing'
+    )

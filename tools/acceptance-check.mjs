@@ -51,11 +51,16 @@ const flag = (name) => {
 };
 const asJson = argv.includes('--json');
 const strictUnrun = argv.includes('--strict-unrun');
-const root = flag('--root') ?? path.resolve(REPO, '..');
+// Two names for one thing, and the difference is load-bearing: `rootFlag` is what the caller said,
+// `root` is where a developer's workspace is. Only the first may reach `locate` -- passing the resolved
+// default made every path look explicitly rooted, which suppressed the nested `cortex-docs` candidate and
+// left CI reading nothing while this file looked correct.
+const rootFlag = flag('--root');
+const root = rootFlag ?? path.resolve(REPO, '..');
 const reviewHtml =
   flag('--html') ??
   process.env.CORTEX_REVIEW_HTML ??
-  (locate('cortex-docs/evidence/a3-review/review-remote.html', root) ??
+  (locate('cortex-docs/evidence/a3-review/review-remote.html', rootFlag) ??
     path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html'));
 
 /** Read a dotted path out of a JSON document, or `undefined` when any step is missing. */
@@ -88,7 +93,7 @@ function pluck(value, key) {
 const artifactCache = new Map();
 function artifactAt(relative) {
   if (artifactCache.has(relative)) return artifactCache.get(relative);
-  const file = locate(relative, root);
+  const file = locate(relative, rootFlag);
   let parsed;
   try {
     parsed = file === undefined ? undefined : JSON.parse(readFileSync(file, 'utf8'));

@@ -49,12 +49,16 @@ const flag = (name) => {
   const at = argv.indexOf(name);
   return at === -1 ? undefined : argv[at + 1];
 };
-const root = flag('--root') ?? path.resolve(REPO, '..');
+// `rootFlag` is what the caller said and `root` is the developer default; only the first may reach the
+// resolver, or every path would look explicitly rooted and the nested `cortex-docs` candidate would never
+// be tried.
+const rootFlag = flag('--root');
+const root = rootFlag ?? path.resolve(REPO, '..');
 const listOnly = argv.includes('--list');
 const reviewHtml =
   flag('--html') ??
   process.env.CORTEX_REVIEW_HTML ??
-  (locate('cortex-docs/evidence/a3-review/review-remote.html', root) ??
+  (locate('cortex-docs/evidence/a3-review/review-remote.html', rootFlag) ??
     path.join(root, 'cortex-docs/evidence/a3-review/review-remote.html'));
 
 let setCache;
@@ -96,7 +100,7 @@ function probeReading(name) {
 const resolve = {
   probe: probeReading,
   artifact: (relative, key) => {
-    const file = locate(relative, root);
+    const file = locate(relative, rootFlag);
     if (file === undefined) return undefined;
     try {
       let cursor = JSON.parse(readFileSync(file, 'utf8'));
@@ -174,7 +178,7 @@ if (listOnly) {
 function markdownFiles() {
   const roots = [
     path.join(REPO, 'docs'),
-    ...candidates('cortex-docs/docs', root),
+    ...candidates('cortex-docs/docs', rootFlag),
   ];
   const found = [];
   for (const dir of [...new Set(roots)]) {
