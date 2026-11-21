@@ -48,19 +48,17 @@ def document(windows=2, corpora=2, runs=2, carry=None, marker="#w", pair=None):
     if pair is not None:
         payload["featureConfig"] = {pair: True}
     if pair == "resolutionPair":
-        # A `resolution` artifact always carries the density vectors: `runAblation` requests the baseline
-        # capture unconditionally on the call that evaluates it, so an artifact that omits them is either
-        # older than the field or not the pair it claims. Filling them here keeps every fixture a document
-        # the arm could actually have written, and the tests that need a degenerate side overwrite them.
-        count = len(ids)
+        # A `resolution` artifact always carries both sides: the baseline's two numbers as vectors in
+        # `ablation` (there is no baseline row to live in) and the feature's on the roster (which is the
+        # feature's, one row per question). Filling them here keeps every fixture a document the arm could
+        # actually have written, and the tests that need a degenerate side overwrite them.
         payload["ablation"]["baselineRoleCensuses"] = [
-            {"counts": {"user": 10}, "unclassified": 0, "total": 10} for _ in range(count)
+            {"counts": {"user": 10}, "unclassified": 0, "total": 10} for _ in ids
         ]
-        payload["ablation"]["featureRoleCensuses"] = [
-            {"counts": {"user": 13}, "unclassified": 0, "total": 13} for _ in range(count)
-        ]
-        payload["ablation"]["baselinePromptChars"] = [40000] * count
-        payload["ablation"]["featurePromptTexts"] = ["x" * 40000] * count
+        payload["ablation"]["baselinePromptChars"] = [40000] * len(ids)
+        for row in payload["questions"]:
+            row["roleCensus"] = {"counts": {"user": 13}, "unclassified": 0, "total": 13}
+            row["promptChars"] = 40000
     return payload
 
 
@@ -321,14 +319,12 @@ def test_a_resolution_pair_reports_the_density_ratio_f3_divides(tmp_path):
         {"counts": {"user": 14}, "unclassified": 0, "total": 14},
         {"counts": {"user": 16}, "unclassified": 0, "total": 16},
     ]
-    payload["ablation"]["featureRoleCensuses"] = [
-        {"counts": {"user": 15}, "unclassified": 0, "total": 15},
-        {"counts": {"user": 18}, "unclassified": 0, "total": 18},
-        {"counts": {"user": 21}, "unclassified": 0, "total": 21},
-        {"counts": {"user": 24}, "unclassified": 0, "total": 24},
-    ]
     payload["ablation"]["baselinePromptChars"] = [40000, 40100, 40200, 40300]
-    payload["ablation"]["featurePromptTexts"] = ["x" * 40400, "x" * 40500, "x" * 40600, "x" * 40700]
+    for row, turns, chars in zip(
+        payload["questions"], (15, 18, 21, 24), (40400, 40500, 40600, 40700)
+    ):
+        row["roleCensus"] = {"counts": {"user": turns}, "unclassified": 0, "total": turns}
+        row["promptChars"] = chars
     result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
     assert result.returncode == 0, result.stderr
     # Medians of 4 even counts are the mean of the middle two: baseline (12+14)/2 = 13, feature 19.5.
@@ -345,11 +341,10 @@ def test_a_density_reading_that_misses_the_threshold_says_which_clause_failed(tm
     payload["ablation"]["baselineRoleCensuses"] = [
         {"counts": {"user": 10}, "unclassified": 0, "total": 10}
     ] * 4
-    payload["ablation"]["featureRoleCensuses"] = [
-        {"counts": {"user": 11}, "unclassified": 0, "total": 11}
-    ] * 4
     payload["ablation"]["baselinePromptChars"] = [40000] * 4
-    payload["ablation"]["featurePromptTexts"] = ["x" * 40000] * 4
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 11}, "unclassified": 0, "total": 11}
+        row["promptChars"] = 40000
     result = run(tmp_path, payload, "--pairing", "resolution")
     assert result.returncode == 0, result.stderr
     assert "(+10.0%)" in result.stdout
@@ -365,10 +360,6 @@ def test_a_density_reading_with_no_baseline_census_is_refused_rather_than_guesse
     """
     payload = document(windows=1, corpora=2, pair="resolutionPair")
     payload["ablation"]["baselineRoleCensuses"] = [None, None]
-    payload["ablation"]["featureRoleCensuses"] = [
-        {"counts": {"user": 15}, "unclassified": 0, "total": 15},
-        {"counts": {"user": 15}, "unclassified": 0, "total": 15},
-    ]
     result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
     assert result.returncode == 1
     assert "no density reading" in result.stderr

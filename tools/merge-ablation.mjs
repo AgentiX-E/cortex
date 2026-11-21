@@ -395,6 +395,54 @@ function merge(dir, shards) {
 
   const baselineAccuracy = perRunAccuracy(vectors.baseline);
   const featureAccuracy = perRunAccuracy(vectors.feature);
+
+  /**
+   * One per-question vector, concatenated in shard order, or `undefined` if the parts do not all carry it.
+   *
+   * `undefined` rather than a short array: a vector built from the parts that happened to have the field
+   * would be shorter than the roster and every median computed from it would silently drop the shards
+   * that did not -- the failure `concatenated bitstring carries N verdicts for M questions` refuses one
+   * level up. A field that is not in every part is a field this merge cannot carry, and saying so is what
+   * `notCarried` below is for.
+   */
+  const concatenate = (key) => {
+    const values = ordered.map((part) => part.document.ablation?.[key]);
+    if (values.some((value) => !Array.isArray(value))) return undefined;
+    const flat = values.flat();
+    if (flat.length !== mergedCount) {
+      throw new Error(
+        `ablation.${key} concatenates to ${flat.length} entries for ${mergedCount} questions, so at ` +
+          "least one shard's vector is not aligned with its own roster.",
+      );
+    }
+    return flat;
+  };
+
+  const baselineRoleCensuses = concatenate('baselineRoleCensuses');
+  const baselinePromptChars = concatenate('baselinePromptChars');
+  const ablation = {
+    baselineCorrectByRun: vectors.baseline,
+    featureCorrectByRun: vectors.feature,
+    // Deprecated mirrors of the first repetition, which the artifact has always carried. Written
+    // because every existing reader of a single artifact reads them; the bitstrings above are what
+    // the reading script actually takes.
+    baselineCorrect: [...vectors.baseline[0]].map((bit) => bit === '1'),
+    featureCorrect: [...vectors.feature[0]].map((bit) => bit === '1'),
+    // `C7`'s `F3` divides a turns median on this side by the feature's, over one roster -- so both have
+    // to be here. Written on the same absence rule as `turnWindow` above: a dispatch whose arm predates
+    // the fields produces a merged document without them, and `read-merged-population.py` reports that
+    // as "no density reading" rather than as a ratio over half a population.
+    ...(baselineRoleCensuses === undefined ? {} : { baselineRoleCensuses }),
+    ...(baselinePromptChars === undefined ? {} : { baselinePromptChars }),
+  };
+
+  // Whatever a part wrote and this merge did not produce, derived rather than restated. The list of
+  // carried keys used to be prose, and prose lost `turnWindow` for a full round: every hop that carried
+  // the census had a test and this tool rebuilt the document without it. A derived list makes the next
+  // omission visible in the artifact instead of in a reader's surprise.
+  const written = new Set(ordered.flatMap((part) => Object.keys(part.document.ablation ?? {})));
+  const carried = new Set(Object.keys(ablation));
+  const notCarried = [...written].filter((key) => !carried.has(key)).sort();
   const document = {
     kind: 'merged-ablation',
     dataset: reference.document.dataset,
@@ -416,18 +464,14 @@ function merge(dir, shards) {
     featureConfig: reference.document.featureConfig,
     passShape: reference.document.passShape,
     datasetFingerprint: reference.document.datasetFingerprint,
-    ablation: {
-      baselineCorrectByRun: vectors.baseline,
-      featureCorrectByRun: vectors.feature,
-      // Deprecated mirrors of the first repetition, which the artifact has always carried. Written
-      // because every existing reader of a single artifact reads them; the bitstrings above are what
-      // the reading script actually takes.
-      baselineCorrect: [...vectors.baseline[0]].map((bit) => bit === '1'),
-      featureCorrect: [...vectors.feature[0]].map((bit) => bit === '1'),
-    },
+    ablation,
     questions,
     merged: {
       shards,
+      // Derived, not restated: every `ablation` key a part wrote that this merge did not produce. The
+      // carried list above is code, and code can lose a field the way prose lost `turnWindow` for a
+      // round -- but here the loss is named in the artifact instead of waiting for a reader holding both.
+      notCarried,
       parts: ordered.map((part) => ({
         index: part.shard.index,
         questions: part.document.questions.length,

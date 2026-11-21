@@ -112,26 +112,33 @@ def print_density(document: dict) -> None:
     strongest possible claim from no evidence.
     """
     ablation = document.get('ablation', {}) or {}
+    rows = document.get('questions', []) or []
+    # The feature side reads off the roster, the baseline side off the ablation. Not symmetric, and the
+    # asymmetry is what the artifact already is: `questions` is one row per question for the FEATURE --
+    # it carries that side's `roleCensus` and `promptChars` -- while the baseline's two numbers have no
+    # row to live in and travel as vectors. Reading the feature side out of `ablation` would need a second
+    # copy of `promptTexts` in the merged document, which is the whole corpus an extra time.
     baseline_censuses = ablation.get('baselineRoleCensuses')
-    feature_censuses = ablation.get('featureRoleCensuses')
     baseline_chars = ablation.get('baselinePromptChars')
-    feature_texts = ablation.get('featurePromptTexts')
-    sides = {
-        'baseline role census': baseline_censuses,
-        'feature role census': feature_censuses,
-        'baseline prompt chars': baseline_chars,
-        'feature prompt texts': feature_texts,
-    }
-    missing = [name for name, vector in sides.items() if not vector]
+    missing = [
+        name
+        for name, vector in (
+            ('baseline role census', baseline_censuses),
+            ('baseline prompt chars', baseline_chars),
+        )
+        if not vector
+    ]
     if missing:
         raise SystemExit(
             f'refusing: no density reading -- the artifact carries no {", ".join(missing)}. C7\'s F3 '
             'divides two medians of one population, and a median over an absent side is not zero.'
         )
     baseline_turns = [c['total'] for c in baseline_censuses if c is not None]
-    feature_turns = [c['total'] for c in feature_censuses if c is not None]
     baseline_lengths = [n for n in baseline_chars if n is not None]
-    feature_lengths = [len(text) for text in feature_texts if text is not None]
+    feature_turns = [
+        row['roleCensus']['total'] for row in rows if isinstance(row.get('roleCensus'), dict)
+    ]
+    feature_lengths = [row['promptChars'] for row in rows if row.get('promptChars') is not None]
     if not baseline_turns or not feature_turns or not baseline_lengths or not feature_lengths:
         raise SystemExit(
             'refusing: no density reading -- one side reported a null for every question, so it exposed no '

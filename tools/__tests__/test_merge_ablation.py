@@ -455,3 +455,55 @@ class TestOneRepetition:
         result, out = merged(tmp_path, 2, [document, self.one_run(1, 2, ["b"])])
         assert result.returncode == 1
         assert "carries 3 verdicts for 2 questions" in result.stderr
+
+
+class TestWhatTheMergeCarries:
+    """The list of carried keys is prose, and prose has already lost one field.
+
+    `turnWindow` was missing from it for a round and the omission was invisible: the four hops that
+    carry the census all had tests, and the merge rebuilt the document without it. `C7`'s `F3` then
+    needed two vectors the list had never heard of, and the merged artifact of run `44905275457`
+    reported `no density reading` while every shard artifact it was built from carried both.
+
+    So the round added the vectors AND made the omission visible: whatever a part wrote and the merge
+    did not is named in `merged.notCarried`, derived rather than restated.
+    """
+
+    def test_the_density_vectors_are_concatenated_like_the_verdicts(self, tmp_path):
+        first = artifact(0, 2, ["c0", "c1"])
+        second = artifact(1, 2, ["c2", "c3"])
+        for document, totals in ((first, (10, 12)), (second, (14, 16))):
+            count = document["questionCount"]
+            document["ablation"]["baselineRoleCensuses"] = [
+                {"counts": {"user": 7}, "unclassified": 0, "total": 7} for _ in range(count)
+            ]
+            document["ablation"]["baselinePromptChars"] = [40000 + i for i in range(count)]
+            for row in document["questions"]:
+                row["roleCensus"] = {"counts": {"user": 9}, "unclassified": 0, "total": 9}
+                row["promptChars"] = 50000
+            assert totals  # the values above are per part; the merge must not pick one of them
+        result, out = merged(tmp_path, 2, [second, first])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        # Flattened in shard order, so a reader can zip them against `questions` the way it can zip the
+        # verdict bitstrings. A `first part` rule would report 4 entries for 8 questions and every
+        # median computed from it would be about the smallest shard.
+        assert len(document["ablation"]["baselineRoleCensuses"]) == document["questionCount"] == 8
+        assert len(document["ablation"]["baselinePromptChars"]) == 8
+        assert [c["total"] for c in document["ablation"]["baselineRoleCensuses"]] == [7] * 8
+
+    def test_a_field_the_merge_does_not_carry_is_named_rather_than_dropped(self, tmp_path):
+        document = artifact(0, 1, ["c0"])
+        document["ablation"]["baselineMetrics"] = {"correct": 1, "total": 2}
+        result, out = merged(tmp_path, 1, [document])
+        assert result.returncode == 0, result.stderr
+        merged_document = json.loads(out.read_text())
+        assert "baselineMetrics" in merged_document["merged"]["notCarried"], (
+            "a shard wrote an ablation field the merge does not carry and the merged document says "
+            "nothing about it: that is the `turnWindow` omission one field over, and the only reader who "
+            "could notice is one holding both artifacts"
+        )
+        assert "baselineCorrectByRun" not in merged_document["merged"]["notCarried"], (
+            "the list must be derived from what the parts wrote against what the merge produced, so a "
+            "carried field cannot appear in it"
+        )
