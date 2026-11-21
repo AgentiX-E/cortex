@@ -1839,6 +1839,74 @@ anything to say. If you inject your own `relevanceFor`, this is what it means fo
   prevent that: the information is gone before it arrives. If you are chasing reproducibility across
   providers, quantise the signal at the source and the ordering will follow it.
 
+### 6.14 Retrieving in steps, with the reader writing the queries
+
+`assembleMemory` retrieves once: one ranking, then one prompt, then one answer. That is the shape every
+number in this repository was measured on, and it has a limit worth knowing about. The ranking is produced
+from the **question**, and a question is frequently not the wording its evidence uses — so the turns that
+answer it are found by a phrase nobody typed.
+
+`@agentix-e/cortex-agent` is the other shape. It gives the reader three tools — search, open a
+conversation, stop — and lets it write one query at a time until it says the evidence is enough. Then it
+composes the answer prompt through **the same builder** `assembleMemory` uses, so what changes is which
+turns are printed, not how they are printed.
+
+```ts
+import type { LLM } from '@agentix-e/cortex-core';
+import { SearchIndex } from '@agentix-e/cortex-memory';
+import { composeAgentPrompt, indexRetrieval, retrieveStepwise } from '@agentix-e/cortex-agent';
+
+declare const llm: LLM;
+
+const question = 'How much did the charity run raise, and who did it go to?';
+const turns: string[] = [
+  'I ran the charity ten kilometre race in fifty two minutes.',
+  'The race raised four hundred pounds for the animal shelter near the park.',
+  'My sister moved to Lisbon last spring.',
+];
+
+const index = new SearchIndex();
+index.add(turns);
+
+const result = await retrieveStepwise(question, {
+  retrieval: indexRetrieval(index, turns),
+  llm,
+  // Two decisions: the reader may search twice. `0` is a single retrieval with no model call at all.
+  maxSteps: 2,
+});
+
+const composed = composeAgentPrompt(question, turns, result.selected, {
+  contract: 'abstention',
+  maxChars: 48_460,
+});
+
+console.log(result.trace.stop, result.trace.calls, result.trace.queries, composed.evidenceChars);
+```
+
+Five things about it are decisions rather than details:
+
+- **`maxSteps: 0` is the configuration you already run.** No model call, and `result.selected` is the seed
+  retrieval. That is deliberate: it is the control, so turning the mechanism on is a comparison rather than
+  a new system.
+- **The reader sees a digest, not the evidence.** Each held turn contributes one line and a prefix of its
+  text, so the deciding call is cheap and the answering call is the expensive one. `trace.promptChars` is
+  the exact size of what was issued, which is why the bill of a two-step run is arithmetic over the trace.
+- **`indexRetrieval` is the only adapter.** It delegates to your `SearchIndex` and adds no scoring, so the
+  loop ranks with the code your `assembleMemory` call ranks with. Pass `sessionOf` if you want the
+  conversation tool to open real boundaries rather than one turn.
+- **Every stop is named.** `trace.stop` is one of `answered`, `step-limit`, `no-new-evidence`,
+  `empty-query`, `unparsed`, `llm-error`, `corpus-exhausted` or `budget`. A provider outage and a reply the
+  loop could not read are different reasons because the repairs differ.
+- **`composeAgentPrompt` is not optional.** It is the only supported way to turn a selection into a prompt.
+  A prompt written by hand would be a second rendering path, and its results would not be comparable with
+  anything already measured.
+
+`probeMultiStep` answers the question you should ask before paying for this: **does the reader's own search
+find evidence the static retrieval missed?** It runs the loop over a labelled population, composes each
+prompt, and reports gold turns found by the reader against gold turns the seed already had. Run it with
+`pnpm --filter @agentix-e/cortex-agent probe:multi-step` and a `LONGMEMEVAL_PATH`; it is a diagnostic, not a
+score, and it never calls a judge.
+
 ## 11. Choosing routes deliberately
 
 Six routes exist because six question shapes need different prompts, and the names are exported as a

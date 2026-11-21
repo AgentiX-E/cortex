@@ -80,6 +80,17 @@ cortex-ai          one subpath per dependency profile
   ├─ ./local       transformers.js embedding + cross-encoder                      (optional peer)
   └─ ./web         the browser's built-in model                                   (no dependency)
 
+cortex-agent       retrieval the reader drives: the loop, the three tools, the trace, and the
+                   composition back into `cortex-memory`'s renderer
+  ├─ loop          retrieve, ask what to look for next, retrieve again, stop (the only async module)
+  ├─ tools         SearchIndex -> search / session / read, with no scoring of its own
+  ├─ prompt        the one deciding prompt, and the JSON schema it asks for
+  ├─ parse         one reply as a decision: fences, preambles, truncation, all recoverable
+  ├─ stop          why the loop stopped, as one pure function of what the last step bought
+  ├─ trace         the selection order: the order the evidence reached the reader
+  ├─ compose       the selection -> the registered `buildPrompt`, unchanged
+  └─ probe         the cheap reading that decides whether a two-step dispatch is worth buying
+
 cortex-eval        the instrument, not the product: dataset types, the memory-system contract,
                    scoring, paired statistics, ablation reports
 ```
@@ -97,6 +108,16 @@ Two notes on that map, because an earlier version of it misled a reader:
   is a `SupersessionVerdict` produced by a model call. See
   [`docs/AUDIT-SEMANTIC-REACH.md`](docs/AUDIT-SEMANTIC-REACH.md) §14 for the round that moved the first, and
   for the two counters that keep the second where it is.
+
+`cortex-agent` is the second product surface rather than a mechanism inside `CortexMemory`: an
+installer who wants retrieval in steps calls `retrieveStepwise` and `composeAgentPrompt`, and the loop
+composes through the same renderer the memory uses, so what changes is which turns are printed and not
+how they are printed. The design and the pre-registration are in
+[`docs/DESIGN-MULTI-STEP-RETRIEVAL.md`](docs/DESIGN-MULTI-STEP-RETRIEVAL.md); the usage is in the
+manual, §6.14. Its dependency is `{cortex-core, cortex-memory}` and nothing else — notably **not**
+`cortex-ai`, because a dependency on an adapter package is a dependency on a provider list, and the
+loop takes `cortex-core`'s `LLM` so any provider (or a local model, or a caller's own implementation)
+can drive it.
 
 The dependency edges run **downward only**: `cortex-memory` and `cortex-eval` both depend on
 `cortex-core`, and neither depends on the other — `cortex-eval` does not import the product and does

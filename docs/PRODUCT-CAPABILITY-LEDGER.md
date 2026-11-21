@@ -22,7 +22,7 @@ as a literal against the product source: a gate removed from the code and a gate
 never there are the same defect. `D3` is **declared, not derived** — see the note below the
 table.
 
-## The ledger (27 rows)
+## The ledger (28 rows)
 
 | # | capability | claim | state | D1 | D2 | D3 (declared) | D4 | product callers | site |
 | ---: | --- | --- | --- | :---: | :---: | --- | :---: | --- | --- |
@@ -36,7 +36,7 @@ table.
 | 8 | parse and abstain, null is not empty | product | **product** | ✓ | ✓ | declared: reads the reader's reply; the abstention token is the product's own | ✓ | 3, e.g. `packages/cortex-memory/bench/reparse-report.ts` | `packages/cortex-memory/src/parse.ts` |
 | 9 | reply contract repair | product | **product (gated)** | ✓ | ✓ | declared: classifies the reply the product received and plans a repair from its own policy | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/reply-repair.ts` |
 | 10 | erasure across eight surfaces and their bytes | product | **product** | ✓ | ✓ | declared: reads the private and shared stores it was constructed over, and the transcript it is handed | ✓ | `packages/cortex-memory/src/assemble.ts` | `packages/cortex-memory/src/disclosure/session.ts` |
-| 11 | retrieval: postings, vectors, RRF over one or more queries, and the channels a call names | product | **product** | ✓ | ✓ | declared: indexes the turns the memory was given, ranks them on the channels the caller named, and fuses the per-query rankings of whatever query set the caller’s plan produced | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/retrieval/search-index.ts` |
+| 11 | retrieval: postings, vectors, RRF over one or more queries, and the channels a call names | product | **product** | ✓ | ✓ | declared: indexes the turns the memory was given, ranks them on the channels the caller named, and fuses the per-query rankings of whatever query set the caller’s plan produced | ✓ | 3, e.g. `packages/cortex-agent/src/probe.ts` | `packages/cortex-memory/src/retrieval/search-index.ts` |
 | 12 | embedding memoisation | product | **product** | ✓ | ✓ | declared: keys its own cache on the text hash; the provider is injected | ✓ | 2, e.g. `packages/cortex-memory/src/assemble.ts` | `packages/cortex-core/src/cache/embedding-cache.ts` |
 | 13 | an injected store: any Storage backend | product | **product** | ✓ | ✓ | declared: the transcript is the state, and the port is an interface the caller implements | ✓ | 3, e.g. `packages/cortex-memory/src/assemble.ts` | `packages/cortex-memory/src/corpus.ts` |
 | 14 | per-type retention and eviction | product | **product** | ✓ | ✓ | declared: a pure function of the entries the product holds | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-core/src/domain/retention.ts` |
@@ -53,19 +53,20 @@ table.
 | 25 | paired statistics, noise floor, resolution | instrument | **instrument** | ✗ | ✗ | declared: a pure function of the observations it is handed | ✗ | — | `packages/cortex-eval/src/stats.ts` |
 | 26 | competitor adapters | instrument | **instrument** | — | — | declared: wraps the product behind a MemorySystem and drives the competitor's harness against it | — | — | `tools/competitor-sut.mjs` |
 | 27 | session boundary clock | product | **product (gated)** | ✓ | ✓ | declared: dates every rendered session boundary with the range its own block states, read from the block rather than from the selection | ✓ | `packages/cortex-memory/src/memory.ts` | `packages/cortex-memory/src/turn-clock.ts` |
+| 28 | multi-step retrieval | product | **product** | ✓ | ✓ | declared: the reader's queries are matched by the product's own index and the answer prompt is composed by the product's own renderer, so every token it prints is state the product holds | ✓ | `packages/cortex-agent/src/probe.ts` | `packages/cortex-agent/src/loop.ts` |
 
 ## Summary
 
 | | rows |
 | --- | ---: |
-| product | 18 |
+| product | 19 |
 | blocked | 0 |
 | instrument | 9 |
 | gap | 0 |
 | of the product rows, behind a configuration switch | 7 |
-| **total** | **27** |
+| **total** | **28** |
 
-Product completeness by this measure: **18/27** capabilities are reachable by a customer. The rest are 0 blocked, 9 owned by the instrument and 0 absent.
+Product completeness by this measure: **19/28** capabilities are reachable by a customer. The rest are 0 blocked, 9 owned by the instrument and 0 absent.
 
 ## Why `D3` is declared and not derived
 

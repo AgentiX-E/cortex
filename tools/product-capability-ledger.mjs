@@ -139,7 +139,7 @@ const strict = argv.includes('--strict');
 const asJson = argv.includes('--json');
 
 /** The packages a customer installs. Everything else is the measurement. */
-const PRODUCT_PACKAGES = new Set(['cortex-core', 'cortex-memory', 'cortex-storage', 'cortex-ai']);
+const PRODUCT_PACKAGES = new Set(['cortex-core', 'cortex-memory', 'cortex-storage', 'cortex-ai', 'cortex-agent']);
 
 /** A refusal: a message for stderr and a non-zero exit, never a silent downgrade. */
 class LedgerRefused extends Error {}
@@ -327,6 +327,14 @@ const ENTRY_FILES = [
   // unreachable after the product started reaching it, which is a `blocked` row that is wrong in the
   // direction that costs a customer: it says "you cannot use this" about something you can.
   'packages/cortex-memory/src/assemble.ts',
+  // The third entry: `cortex-agent` is a second product surface rather than a mechanism inside
+  // `CortexMemory`, and the reason is the one this list exists for. An installer who wants retrieval
+  // in steps does not call `assembleMemory` -- there is no option on it that reaches the loop -- they
+  // call `retrieveStepwise`, compose with `composeAgentPrompt`, and hand the result to their own
+  // model. Nothing in this repository's `src/` does that, because the caller is the customer's
+  // application, and an entry list that omitted it would report a capability a customer can install
+  // as `instrument` -- the direction the comment above says costs a customer.
+  'packages/cortex-agent/src/index.ts',
 ];
 
 /**

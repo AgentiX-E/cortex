@@ -10,6 +10,14 @@
     "note": "Counts, not rates: the gate compares covered/total by cross-multiplication so no comparison goes through a float. Regenerate with tools/coverage-per-file.mjs --write-baseline, which refuses to lower a recorded rate or admit new debt without being told to."
   },
   "exempt": {
+    "cortex-agent/src/index.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "The package entry point, and it is `export ... from` only. A re-export produces no counter under the v8 provider, so the file reports 0/0 while every module it names is measured on its own entry."
+    },
+    "cortex-agent/src/types.ts": {
+      "kind": "nothing-to-execute",
+      "reason": "Type declarations and their documentation only: `Retrieval`, `Decision`, `StopReason`, `AgentStep`, `AgentTrace` and the option bag. It emits no runtime code, which is why `Decision`, `StopReason` and the rest are exercised through `parse.ts`, `stop.ts` and `loop.ts` rather than here."
+    },
     "cortex-ai/src/index.ts": {
       "kind": "nothing-to-execute",
       "reason": "The Node entry point, and it is `export ... from` only. A re-export statement produces no counter under the v8 provider, so the file reports 0/0 while every module it names is measured on its own entry."

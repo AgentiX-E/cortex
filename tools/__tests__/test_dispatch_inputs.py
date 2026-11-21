@@ -71,6 +71,11 @@ SCRIPT_WORKFLOW = {
     # `limit`) and a reader, not an arm configuration, which is why they could not ride the arm's
     # workflow: that file sits one input below GitHub's ceiling of 25.
     "dispatch-semantic-carry.py": "semantic-carry.yml",
+    # The reader's probe. It runs before the arm it gates rather than as part of it, so it needs a
+    # workflow whose population is the probe's (`steps`, `capability`, `limit`) and whose artifact is
+    # the probe's own reading -- a `--steps 1` dispatch of `benchmark.yml` would be the arm measured
+    # with the reader's decision calls billed as if they were answers.
+    "dispatch-multi-step-probe.py": "probe-multi-step.yml",
 }
 
 

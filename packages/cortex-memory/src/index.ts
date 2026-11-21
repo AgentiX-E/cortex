@@ -49,6 +49,7 @@ export {
   type QueryPlan,
   type SearchCensus,
   type SearchChannel,
+  type SearchHit,
   type SearchIndexOptions,
 } from './retrieval/search-index.js';
 
@@ -123,6 +124,7 @@ export {
   // which the extractive ask does NOT change, so the reach is the difference between a
   // readable result and a misleading one.
   ASK_ROUTES,
+  type AssembledPrompt,
   type EvidenceAsk,
   type EvidenceOrdering,
   type PromptContract,
