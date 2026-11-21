@@ -1312,7 +1312,38 @@ export class CortexMemory implements SessionAwareMemorySystem {
   lastTurnWindowCensus(): TurnWindowCensus | null {
     const census = this.#lastTurnWindowCensus;
     if (census === null) return null;
-    return { cut: census.cut, marked: census.marked, whole: census.whole };
+    // `forms` forwarded rather than dropped, and the drop is measured rather than feared: this accessor was
+    // written as an explicit three-key copy when the census had three keys, so the per-form split that
+    // `resolution.ts` charges reached `CortexMemory` and never left it. Run `44915923906` is the reading that
+    // found it -- the run-level block said 3,710 turns shortened, and `forms` was absent from all 500 records,
+    // which the reader reported as "no form reached the population" when in fact a form had rendered every
+    // one of them.
+    //
+    // A copy is still a copy, for the reason the class's other accessors copy: the arm serialises what it
+    // reads, and a consumer that mutated the tally would change what the next reader sees. The split is
+    // copied key by key rather than shared, because a shallow share would make that promise true of the three
+    // counts and false of the six numbers inside `forms` -- the shape of every "it is a copy" comment that
+    // was written before the nested object existed.
+    //
+    // The absent state stays absent: `{ raw: 0, excerpt: 0, record: 0 }` would say "the forms chose nothing",
+    // which is a different claim from "no form was involved".
+    if (census.forms === undefined) {
+      return { cut: census.cut, marked: census.marked, whole: census.whole };
+    }
+    const copied = (form: { turns: number; chars: number }): { turns: number; chars: number } => ({
+      turns: form.turns,
+      chars: form.chars,
+    });
+    return {
+      cut: census.cut,
+      marked: census.marked,
+      whole: census.whole,
+      forms: {
+        raw: copied(census.forms.raw),
+        excerpt: copied(census.forms.excerpt),
+        record: copied(census.forms.record),
+      },
+    };
   }
 
   /**

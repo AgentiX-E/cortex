@@ -932,7 +932,7 @@ reachable as a default any more; state it per route if you want to reproduce an 
 | `maxTurnChars` | `number` | absent (no cap) | Upper bound on what one turn may contribute, in UTF-16 code units. The cap is what makes a long narrative's tail stop competing with the turns that answer the question. Absent reproduces every archived prompt byte for byte. |
 | `turnCutMarker` | `'none' \| 'ellipsis'` | absent | Whether a turn the width cut says so, with one character at the cut. Refused without `maxTurnChars`: a mark on a turn nothing cut is a claim about a prompt that never happened. |
 | `turnWindow` | `'head' \| 'match'` | absent (`'head'`) | Which slice of a long turn the width keeps. `'match'` spends the same characters on the window around the question's densest lexical match and marks every elision. Needs `maxTurnChars`. Cannot be combined with `resolution: 'layered'`, which decides the same thing. |
-| `resolution` | `'raw' \| 'layered'` | absent (`'raw'`) | Whether a capped turn prints whole or by form. The only path measured to a smaller bill that does not remove evidence, because the instruction block is 0.76% of a prompt and every other saving came out of the turns. §6.12. |
+| `resolution` | `'raw' \| 'layered'` | absent (`'raw'`) | Whether a capped turn prints whole or by form. Measured to hold accuracy while spending **fewer characters** — not, so far, fewer tokens: two dispatches priced the bill and both came out slightly above their control (chars −5.2% / tokens +0.75%; chars −2.8% / tokens +0.18%), because the form keeps the sentences that carry numbers and a digit-dense line tokenises worse than the prose it replaced. §6.12. |
 <!-- /contract-table -->
 
 ```ts
@@ -1779,7 +1779,9 @@ match would turn that into a decline.
 A per-turn width is the cheapest way to keep one long narrative from spending a whole window, and it has a
 cost that is easy to miss: the characters it keeps are **the first ones**, which are the ones that happen to
 be first. `turnWindow: 'match'` fixes the *position* of that cut and keeps the width. `resolution: 'layered'`
-fixes the *width* instead, and it is what to reach for when the bill is the constraint:
+fixes the *width* instead — and it is the one option here whose saving is measured in characters rather than
+in money: two dispatches measured the bill and it did not fall (see the table's row for this field), so reach
+for it when accuracy is what you want from the same room, not when the invoice is:
 
 ```ts
 import type { LLM } from '@agentix-e/cortex-core';

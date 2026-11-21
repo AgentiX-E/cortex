@@ -76,6 +76,26 @@
  * appear in most of its turns is a width *increase* wearing a layering label, which is the same confound
  * this section rejected one paragraph above, arriving from the other side.
  *
+ * ## Characters are not tokens, and two dispatches say so
+ *
+ * The reason this exists is the bill, so the bill has to be the thing that is read. Two paired dispatches have
+ * now priced it, and in both the characters fell while the tokens rose:
+ *
+ * | run | population | characters | tokens |
+ * | --- | --- | --- | --- |
+ * | `44905275457` | `MR`, 121 questions | -5.2% | +0.75% |
+ * | `44915923906` | all, 500 questions | -2.81% | +0.19% |
+ *
+ * The mechanism is the reason: `record` keeps the sentences that carry a digit, and `excerpt` keeps the window
+ * around a lexical match, so what leaves is prose and what stays is numbers and the densest span of a turn.
+ * A digit-dense line tokenises worse per character than the prose it replaced, which is enough to invert a
+ * 2.8% character saving.
+ *
+ * So the honest statement of what this buys is **the same room carrying more of what the question is about**
+ * -- accuracy at a bill that is flat rather than lower. `C8`'s cost clause is closed on that reading
+ * (`docs/RETRACTIONS.md` §7), and a future cost mechanism has to be measured in tokens from the start: the
+ * character is a proxy that this rendering breaks, and it broke it twice.
+ *
  * ## Every cut is marked, including `record`'s
  *
  * `excerptAround` already marks its elisions, which is why the window and the mark are one decision in

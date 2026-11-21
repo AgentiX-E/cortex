@@ -76,6 +76,59 @@ describe('the turn window census on the answered instance', () => {
     expect(census!.marked).toBe(0);
   });
 
+  it('carries the per-form split, which is the half a three-key copy would have dropped', async () => {
+    // This is the assertion `C8`'s first dispatch (44915923906) paid for: the accessor was written when the
+    // census had three keys, and it copied exactly those three, so 3,710 shortened turns reached the artifact
+    // with no `forms` beside them and the reader concluded that no form had rendered anything. The identity
+    // below is the one the type documents -- one form per delivered turn -- so it fails both when the split
+    // is dropped and when a form is charged twice.
+    const memory = system({ maxTurnChars: 80, resolution: 'layered' });
+    await memory.answerKnowledgeUpdate(QUESTION, [LONG, SHORT]);
+
+    const census = memory.lastTurnWindowCensus();
+    expect(census).not.toBeNull();
+    const forms = census!.forms;
+    expect(forms).toBeDefined();
+    expect(forms!.raw.turns + forms!.excerpt.turns + forms!.record.turns).toBe(
+      census!.cut + census!.whole,
+    );
+    // The long turn shares a term with the question ("booked"/"pottery"), so the form that handled it is the
+    // window rather than the one-line record: a counter that charged every shortened turn to `record` would
+    // satisfy the identity above and describe a different mechanism.
+    expect(forms!.excerpt.turns).toBeGreaterThanOrEqual(1);
+    expect(forms!.excerpt.chars).toBeGreaterThan(0);
+  });
+
+  it('does not publish a zeroed split where no form chose a rendering', async () => {
+    // The absent state, on the same rule the prompt-level census uses: a head cut decides a length rather
+    // than choosing between renderings, and `{ raw: 0, excerpt: 0, record: 0 }` beside it would say the forms
+    // chose nothing -- a claim about a mechanism that never ran.
+    const memory = system({ maxTurnChars: 80 });
+    await memory.answerKnowledgeUpdate(QUESTION, [LONG, SHORT]);
+
+    const census = memory.lastTurnWindowCensus();
+    expect(census!.cut).toBeGreaterThanOrEqual(1);
+    expect(census!.forms).toBeUndefined();
+  });
+
+  it('copies the split, so a caller cannot change what the next reader sees', async () => {
+    // The nested half of the copy promise above. A shallow share would make the comment true of the three
+    // counts and false of the six numbers inside `forms`, which is the standard way a copy stops being one.
+    const memory = system({ maxTurnChars: 80, resolution: 'layered' });
+    await memory.answerKnowledgeUpdate(QUESTION, [LONG]);
+
+    const census = memory.lastTurnWindowCensus();
+    const forms = census!.forms! as unknown as {
+      record: { turns: number };
+      excerpt: { chars: number };
+    };
+    forms.record.turns = 999;
+    forms.excerpt.chars = 999;
+    const again = memory.lastTurnWindowCensus()!.forms!;
+    expect(again.record.turns).not.toBe(999);
+    expect(again.excerpt.chars).not.toBe(999);
+  });
+
   it('hands back a copy, so a caller cannot change what the next reader sees', async () => {
     const memory = system({ maxTurnChars: 80 });
     await memory.answerKnowledgeUpdate(QUESTION, [LONG]);

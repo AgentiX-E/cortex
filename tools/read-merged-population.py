@@ -112,12 +112,13 @@ def _number(value: float) -> str:
 
 
 def delivered_medians(document: dict) -> tuple[float, float, float, float]:
-    """The four medians `F3` and `C8`'s `G2` both divide: turns and characters, on both sides.
+    """The four medians `F3` divides: turns and characters, per question, on both sides.
 
-    One extraction with two claims hanging off it, because the two claims disagree about the direction and
-    must still be about the same numbers: `F3` requires characters within +-2% while turns rise, `G2`
-    requires characters DOWN while turns rise. A reading where each claim computed its own medians could
-    publish both verdicts from two slightly different populations and nobody would see why.
+    `F3` is registered on **medians** -- "the same room carrying more turns" is a statement about a typical
+    question, and a sum would let one enormous corpus decide the verdict. `C8`'s `G2` is registered on
+    **totals** instead, and the two live in separate functions for that reason (see
+    {@link delivered_totals}): one function returning both would invite a claim to be evaluated on the wrong
+    one, which is the error this pair of functions exists to make impossible.
 
     The feature side reads off the roster, the baseline side off the ablation. Not symmetric, and the
     asymmetry is what the artifact already is: `questions` is one row per question for the FEATURE -- it
@@ -160,6 +161,49 @@ def delivered_medians(document: dict) -> tuple[float, float, float, float]:
         _median(baseline_lengths),
         _median(feature_lengths),
     )
+
+
+def delivered_totals(document: dict) -> tuple[int, int, int, int]:
+    """The four **totals** `C8`'s `G2` divides: turns and characters, summed over the population.
+
+    Registered as totals rather than medians because the claim is about the **bill**: reallocation pays if
+    the population as a whole spends fewer characters for the same questions, and a median answers "what did
+    a typical question spend", which a mechanism that compresses most long turns and widens a few can leave
+    untouched while the total falls. `C7`'s `F3` is the opposite choice for the opposite reason, and having
+    both here is not redundancy -- it is the two criteria being read on the quantity each was written on.
+
+    Summed over **paired positions only**: a question whose baseline reported nothing is left out of both
+    sides, because a total that counted one side's question and not the other's would make the ratio a
+    statement about coverage rather than about characters.
+
+    Integers, not floats: these are counts of UTF-16 units and of turns, and `_number` prints them as such.
+    """
+    ablation = document.get('ablation', {}) or {}
+    rows = document.get('questions', []) or []
+    baseline_censuses = ablation.get('baselineRoleCensuses') or []
+    baseline_chars = ablation.get('baselinePromptChars') or []
+    if not baseline_censuses or not baseline_chars:
+        raise SystemExit(
+            'refusing: no reallocation reading -- the artifact carries no baseline role census or no '
+            "baseline prompt characters, so G2's two ratios would each have a side that does not exist."
+        )
+    turns_before = turns_after = 0
+    for position, row in enumerate(rows):
+        baseline_census = baseline_censuses[position] if position < len(baseline_censuses) else None
+        feature_census = row.get('roleCensus')
+        if not isinstance(baseline_census, dict) or not isinstance(feature_census, dict):
+            continue
+        turns_before += baseline_census['total']
+        turns_after += feature_census['total']
+    chars_before = chars_after = 0
+    for position, row in enumerate(rows):
+        baseline_length = baseline_chars[position] if position < len(baseline_chars) else None
+        feature_length = row.get('promptChars')
+        if baseline_length is None or feature_length is None:
+            continue
+        chars_before += baseline_length
+        chars_after += feature_length
+    return turns_before, turns_after, chars_before, chars_after
 
 
 def print_density(document: dict) -> None:
@@ -285,13 +329,25 @@ def print_forms(document: dict, control: dict[int, float], treated: dict[int, fl
             'every long turn as raw -- and neither is a reading of the mechanism'
         )
 
-    turns_before, turns_after, chars_before, chars_after = delivered_medians(document)
+    # Totals, because `G2` is registered on the bill: "characters leave while turns stay or rise" is a claim
+    # about the population's spend, and a median can hold still while the total falls.
+    turns_before, turns_after, chars_before, chars_after = delivered_totals(document)
     char_change = (chars_after - chars_before) / chars_before * 100 if chars_before else 0.0
     turn_change = (turns_after - turns_before) / turns_before * 100 if turns_before else 0.0
     if char_change <= -G2_CHAR_DROP_PCT and turn_change >= G2_TURN_RISE_PCT:
         print(
             f'G2 pass  chars {char_change:+.1f}% <= -{G2_CHAR_DROP_PCT:.0f}% with turns '
             f'{turn_change:+.1f}% >= +{G2_TURN_RISE_PCT:.0f}% (the reallocation signature)'
+        )
+    elif turn_change >= G2_TURN_RISE_PCT and char_change < 0:
+        # The direction without the magnitude, which is a different finding from "the hypothesis is wrong"
+        # and run `44915923906` produced it: characters fell 2.8% while turns rose 3.7%. A message that said
+        # "the direction did not appear" over that would send the next round after the mechanism when the
+        # mechanism did exactly what it claimed -- it just did 0.2 points less of it than the floor asked.
+        print(
+            f'G2 fail on magnitude: the direction appeared (chars {char_change:+.1f}% with turns '
+            f'{turn_change:+.1f}%), but characters fell less than the {G2_CHAR_DROP_PCT:.0f}% floor. The '
+            'clause is the floor, not the direction, so what closes is the size of the saving'
         )
     else:
         print(
@@ -300,6 +356,16 @@ def print_forms(document: dict, control: dict[int, float], treated: dict[int, fl
             f'+{G2_TURN_RISE_PCT:.0f}%), so the direction C8 predicts did not appear'
         )
 
+    # The two empty states are different findings and were printed as one until run `44915923906` produced
+    # the first of them: that run's mechanism shortened 3,710 turns, the product's accessor dropped the split,
+    # and the reader said "no question improved" over a population where 27 had. A message that names the
+    # wrong absence sends the next round after the mechanism instead of after the instrument.
+    if not shares:
+        print(
+            'G4 unread: no question carries a form split, so there is no share to compare -- G1 already '
+            'says why, and the repair is the instrument rather than the mechanism'
+        )
+        return
     gainers = [at for at in shares if treated.get(at, 0.0) > control.get(at, 0.0)]
     if not gainers:
         print(
@@ -309,7 +375,18 @@ def print_forms(document: dict, control: dict[int, float], treated: dict[int, fl
         return
     gainer_median = _median([shares[at] for at in gainers])
     population_median = _median(list(shares.values()))
-    ratio = gainer_median / population_median if population_median else float('inf')
+    # A zero denominator is not an infinite ratio. Before this guard the script printed `ratio inf` and
+    # `G4 pass  gainers 0.000 are >= 1.5x the population 0.000` on a population where no question compressed
+    # anything -- the criterion passing itself, which is the one failure mode a criterion must not have. A
+    # median of zero means there is no share to compare, and `G1` has already said why.
+    if population_median <= 0:
+        print(
+            'G4 unread: the population median record share is 0.000, so no question compressed a turn and '
+            'there is no ratio to take -- G1 already says why, and a zero denominator is not an infinite '
+            'effect'
+        )
+        return
+    ratio = gainer_median / population_median
     print(
         f'record share median: gainers {gainer_median:.3f} (n={len(gainers)}) vs population '
         f'{population_median:.3f} (n={len(shares)})  ratio {ratio:.2f}'

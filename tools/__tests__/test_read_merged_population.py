@@ -485,6 +485,34 @@ def test_g1_fails_when_no_form_reached_a_single_question(tmp_path):
     result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
     assert result.returncode == 0, result.stderr
     assert "G1 fail: 0 of 2 questions had a compressed or widened turn" in result.stdout
+    # And the absence of a split is named as an absence of a split. Run `44915923906` printed "no question
+    # improved" over a population where 27 had, because an empty share map and an empty gainer set led to the
+    # same line; that sentence sent the reading after the mechanism instead of after the instrument.
+    # The fixture's two questions carry a form (every turn is `raw`), so the shares exist and are all zero:
+    # that is the denominator case, not the absent case. Printed as `ratio inf` and `G4 pass` before the guard.
+    assert "G4 unread: the population median record share is 0.000" in result.stdout
+
+
+def test_g4_is_unread_rather_than_infinite_when_no_question_carries_a_split(tmp_path):
+    # The other empty state: head-cut censuses with no `forms` at all. Run `44915923906` produced exactly this
+    # shape by accident -- the product's accessor dropped the split -- and the reader answered "no question
+    # improved" over 27 that had.
+    payload = document(windows=1, corpora=2, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["10"]
+    payload["ablation"]["featureCorrectByRun"] = ["11"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 2
+    payload["ablation"]["baselinePromptChars"] = [40000] * 2
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 15}, "unclassified": 0, "total": 15}
+        row["promptChars"] = 38000
+        row["turnWindowCensus"] = {"cut": 4, "marked": 4, "whole": 11}
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "G4 unread: no question carries a form split" in result.stdout
+    assert "ratio inf" not in result.stdout
 
 
 def test_a_question_without_a_split_is_left_out_of_g4_rather_than_counted_as_zero(tmp_path):
@@ -510,3 +538,58 @@ def test_a_question_without_a_split_is_left_out_of_g4_rather_than_counted_as_zer
     # `formed` counts the two rows that carry a split, and the population median is over those two only.
     assert "forms: 2/3 questions rendered by a form" in result.stdout
     assert "vs population 1.000 (n=2)" in result.stdout
+
+
+def test_g2_reads_totals_where_f3_reads_medians(tmp_path):
+    """The one population where the two quantities give opposite verdicts, so the wiring is observable.
+
+    Baseline 40,000 characters on every question and feature 40,000 on three of them with 20,000 on the
+    fourth: the **median does not move at all** while the **total falls 12.5%**. `C8`'s `G2` is registered on
+    totals -- reallocation pays if the population spends fewer characters -- so the verdict here is `pass`,
+    and a `print_forms` that had been handed `delivered_medians` would print `0.0%` and fail it.
+    """
+    payload = document(windows=1, corpora=4, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["0000"]
+    payload["ablation"]["featureCorrectByRun"] = ["0000"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 4
+    payload["ablation"]["baselinePromptChars"] = [40000] * 4
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 13}, "unclassified": 0, "total": 13}
+    payload["questions"][0]["promptChars"] = 40000
+    payload["questions"][1]["promptChars"] = 40000
+    payload["questions"][2]["promptChars"] = 40000
+    payload["questions"][3]["promptChars"] = 20000
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    # `F3`'s medians are untouched by the fourth question...
+    assert "chars median 40000 -> 40000  (+0.0%)" in result.stdout
+    # ...while `G2`'s totals are not, and that difference is the whole reason the two functions exist.
+    assert "G2 pass  chars -12.5% <= -3% with turns +30.0% >= +1%" in result.stdout
+
+
+def test_g2_names_a_magnitude_failure_apart_from_a_direction_failure(tmp_path):
+    """Characters down 3.3% with turns flat is a direction failure; the reverse split is a floor failure.
+
+    Both are `fail`, and they send the next round in opposite directions: one says the mechanism does not
+    reallocate, the other says it does and the saving is smaller than the floor. Run `44915923906` produced
+    the second (chars -2.8%, turns +3.7%) and the script called it the first until this test existed.
+    """
+    payload = document(windows=1, corpora=4, runs=1, pair="resolutionPair")
+    payload["ablation"]["baselineCorrectByRun"] = ["0000"]
+    payload["ablation"]["featureCorrectByRun"] = ["0000"]
+    payload["ablation"]["baselineRoleCensuses"] = [
+        {"counts": {"user": 10}, "unclassified": 0, "total": 10}
+    ] * 4
+    payload["ablation"]["baselinePromptChars"] = [40000] * 4
+    for row in payload["questions"]:
+        row["roleCensus"] = {"counts": {"user": 11}, "unclassified": 0, "total": 11}
+        row["promptChars"] = 39000
+        row["turnWindowCensus"] = census(raw=11)
+
+    result = run(tmp_path, payload, "--windows", "1", "--pairing", "resolution")
+    assert result.returncode == 0, result.stderr
+    assert "G2 fail on magnitude" in result.stdout
+    assert "the direction appeared (chars -2.5% with turns +10.0%)" in result.stdout
