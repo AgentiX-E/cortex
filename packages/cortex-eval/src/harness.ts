@@ -23,7 +23,7 @@
  */
 
 import type { Capability, BenchmarkDataset, Question } from './types.js';
-import type { MemoryProvider, MemorySession, SearchHit } from './competitor.js';
+import type { MemoryProvider, MemorySession, ProviderUsage, SearchHit } from './competitor.js';
 
 /**
  * Whether a reader's reply is a refusal rather than an attempt.
@@ -161,6 +161,19 @@ export type ProviderScore = {
   readonly accuracy: number | null;
   /** Questions the reader declined to answer, counted apart from a wrong answer. */
   readonly abstained: number;
+  /**
+   * Who wrote the answer this row was graded on.
+   *
+   * `shared` is the harness's one reader, used for every provider that only retrieves. `self` is the provider's
+   * own generator, for systems whose retrieval and reasoning are the same act. `none` means the arm was not read.
+   *
+   * The field exists because the alternative is a table in which a `self` row and a `shared` row sit one line
+   * apart with nothing between them, and a reader subtracts two numbers produced by two different readers. Mastra
+   * measured that difference on its own system: 84.23% with one reader, 94.87% with another, same memory.
+   */
+  readonly answerer: 'shared' | 'self' | 'none';
+  /** The provider's own model spend, when it reports one. `null` is "not measured", not zero. */
+  readonly usage: ProviderUsage | null;
   readonly skipped: readonly string[];
   readonly byCapability: Readonly<Partial<Record<Capability, CapabilityScore>>>;
   /** Questions the provider's ingest reported as skipped, so a partial store is visible in the score line. */
@@ -259,6 +272,19 @@ export async function measureRetrieval(
     let abstained = 0;
     const records: QuestionRecord[] = [];
     const graded = accuracyFor.includes(provider.name);
+    // A system that writes its own answer is read by its own generator; the shared reader must not also run. Both
+    // halves matter: running the shared reader on a navigator's hits would bill it twice and measure a system it is
+    // not, and skipping the answer step entirely would print `—` in the accuracy column of the one arm whose
+    // accuracy is the point.
+    const selfAnswering = typeof provider.answer === 'function';
+    // The judge is required in both branches: a system that writes its own answer still has to be graded by the
+    // same judge as everyone else, or the accuracy column compares two graders.
+    const canRead = graded && judge !== undefined && (selfAnswering || answer !== undefined);
+    const answerer: ProviderScore['answerer'] = !canRead
+      ? 'none'
+      : selfAnswering
+        ? 'self'
+        : 'shared';
     const skipped: string[] = [];
     const byCapability: Partial<Record<Capability, CapabilityScore>> = {};
 
@@ -295,8 +321,13 @@ export async function measureRetrieval(
       // Reading happens here, in the same pass, so `accuracy` and `recallAtK` are two statements about one run of
       // one corpus. A second pass would differ in ingest order and in nothing a reader would ever check.
       let lastCorrect = false;
-      if (graded && answer !== undefined && judge !== undefined) {
-        const reply = await answer(question, hits);
+      if (canRead) {
+        const reply = selfAnswering
+          ? await provider.answer!(question.question, {
+              limit,
+              ...(question.questionDate === undefined ? {} : { askedAt: question.questionDate }),
+            })
+          : await answer!(question, hits);
         readCount += 1;
         if (isAbstentionReply(reply)) abstained += 1;
         const accepted = await judge(question, reply);
@@ -335,8 +366,8 @@ export async function measureRetrieval(
         foundAll: gold.every((turn) =>
           hits.some((hit) => (contains ? hit.text.includes(turn) : hit.text === turn)),
         ),
-        read: graded && answer !== undefined && judge !== undefined,
-        correct: graded && answer !== undefined && judge !== undefined ? lastCorrect : false,
+        read: canRead,
+        correct: canRead ? lastCorrect : false,
       });
 
       const seen = byCapability[question.capability]!;
@@ -368,6 +399,10 @@ export async function measureRetrieval(
       read: readCount,
       accuracy: readCount === 0 ? null : correctCount / readCount,
       abstained,
+      // Read at the end of the arm, because a proxy-backed driver only knows its total once the last question has
+      // been answered. Reading it at construction would report the spend of the first question forever.
+      answerer,
+      usage: provider.usage ?? null,
       skipped,
       byCapability,
       ingestSkipped: skipped.length,

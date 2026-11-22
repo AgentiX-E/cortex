@@ -123,7 +123,7 @@ const DEFAULT_READ_ARMS = [
  */
 const READ_ARMS =
   flag('--read-arms') === undefined
-    ? DEFAULT_READ_ARMS
+    ? [...DEFAULT_READ_ARMS]
     : flag('--read-arms')
         .split(',')
         .map((name) => name.trim())
@@ -244,6 +244,15 @@ const providers = [
 const sutDriver = flag('--sut');
 const sut = sutDriver === undefined ? null : await createSutProvider({ driver: sutDriver });
 if (sut !== null) providers.push(sut);
+/**
+ * A system under test is read by default.
+ *
+ * `--sut` is a request to measure that system, and a run that ingested it, retrieved with it and then printed `—`
+ * in its accuracy column has measured nothing -- which is what run 43170314351 did: its table carried `mem0` at
+ * 100.0% recall and no `mem0` row in the reading table at all, because the default arm list predates the flag.
+ * An explicit `--read-arms` still wins, so a caller can run the ingest for the recall column alone and say so.
+ */
+if (sut !== null && !READ_ARMS.includes(sut.name)) READ_ARMS.push(sut.name);
 
 let reader = null;
 let judge = null;
@@ -343,7 +352,7 @@ if (sut !== null) {
 process.stdout.write('\n');
 
 process.stdout.write(
-  `${pad('provider', 20)}${pad('build', 7)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('acc', 9)}${pad('~tok', 8)}unmeasurable\n`,
+  `${pad('provider', 20)}${pad('build', 7)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('acc', 9)}${pad('by', 6)}${pad('llm/q', 8)}${pad('~tok', 8)}unmeasurable\n`,
 );
 for (const score of scores) {
   // `~tok` is `meanContextChars / 4`, the same conversion `charsForTokens` applies to the budget. It is what the
@@ -353,8 +362,21 @@ for (const score of scores) {
   // everything wrong has zero, and collapsing the two would let a skipped stage read as a failed one.
   const acc =
     score.accuracy === null ? '—' : `${pct(score.accuracy)} (${score.correct}/${score.read})`;
+  // A self-answering system has no ranked list to score: its retrieval *is* the navigation, and the pages it read
+  // are a reasoning trace rather than a result set. Printing `0.0%` there would say "it found nothing", which is a
+  // claim about the system made from a fact about the interface.
+  const recall = score.answerer === 'self' ? '—' : pct(score.recallAtK);
+  const allGold = score.answerer === 'self' ? '—' : pct(score.recallAllAtK);
+  const mrr = score.answerer === 'self' ? '—' : score.mrr.toFixed(3);
+  // The system's own model spend per question, which is the half of the cost axis a retrieval-only table cannot
+  // show. `—` is "not measured", and it must not print `0`: a system whose spend was never observed is not free.
+  const llmPerQuestion =
+    score.usage === null
+      ? '—'
+      : String(Math.round((score.usage.promptTokens + score.usage.completionTokens) / Math.max(score.measured, 1)));
+  const who = score.answerer === 'none' ? '—' : score.answerer;
   process.stdout.write(
-    `${pad(score.provider, 20)}${pad(score.build, 7)}${pad(pct(score.recallAtK), 10)}${pad(pct(score.recallAllAtK), 10)}${pad(score.mrr.toFixed(3), 8)}${pad(acc, 9)}${pad(tokens, 8)}${score.unmeasurable}\n`,
+    `${pad(score.provider, 20)}${pad(score.build, 7)}${pad(recall, 10)}${pad(allGold, 10)}${pad(mrr, 8)}${pad(acc, 9)}${pad(who, 6)}${pad(llmPerQuestion, 8)}${pad(tokens, 8)}${score.unmeasurable}\n`,
   );
 }
 

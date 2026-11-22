@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { measureRetrieval, NullProvider, sessionsOf, type HarnessOptions } from '../harness.js';
-import { LexicalProvider } from '../competitor.js';
+import { LexicalProvider, type MemoryProvider } from '../competitor.js';
 import type { BenchmarkDataset, Question } from '../types.js';
 
 function questionOf(overrides: Partial<Question> & Pick<Question, 'id'>): Question {
@@ -266,11 +266,23 @@ describe('sessionsOf: the benchmark history in the provider shape', () => {
 describe('measureRetrieval: the reading stage', () => {
   type Call = { readonly provider: string; readonly question: string };
 
-  /** A provider that records which questions it answered, so the call count is an assertion rather than a hope. */
+  /**
+   * A retrieval provider and a reader, as **two** objects.
+   *
+   * They were one object until `MemoryProvider.answer` existed, and the split is the fix rather than a
+   * formality: a provider's `answer(query, options)` is the system generating from its own store, while
+   * `HarnessOptions.answer(question, hits)` is the one shared reader every retrieval-only arm is read by.
+   * One object implementing both would type-check under neither meaning and would let a fixture quietly
+   * demonstrate the wrong capability.
+   */
   function recording(answerFor: (question: string) => string, calls: Call[], name = 'reader') {
-    return {
+    const reader = async (question: Question): Promise<string> => {
+      calls.push({ provider: name, question: question.id });
+      return answerFor(question.id);
+    };
+    const provider: MemoryProvider = {
       name,
-      build: 'none' as const,
+      build: 'none',
       async ingest() {
         return { sessions: 0, turns: 0, skipped: [] };
       },
@@ -278,11 +290,8 @@ describe('measureRetrieval: the reading stage', () => {
         return [{ text: 'I live in London.' }];
       },
       async reset() {},
-      answer: async (question: Question): Promise<string> => {
-        calls.push({ provider: name, question: question.id });
-        return answerFor(question.id);
-      },
     };
+    return { provider, reader };
   }
 
   it('reports null rather than zero when no reader ran', async () => {
@@ -295,10 +304,10 @@ describe('measureRetrieval: the reading stage', () => {
 
   it('grades every measured question once when the provider is named', async () => {
     const calls: Call[] = [];
-    const provider = recording(() => 'London', calls);
+    const { provider, reader } = recording(() => 'London', calls);
     const graded: string[] = [];
     const scores = await measureRetrieval(DATASET, [provider], {
-      answer: provider.answer,
+      answer: reader,
       judge: async (question, reply) => {
         graded.push(`${question.id}:${reply}`);
         return question.id !== 'q2';
@@ -311,13 +320,17 @@ describe('measureRetrieval: the reading stage', () => {
     expect(scores[0]!.read).toBe(2);
     expect(scores[0]!.correct).toBe(1);
     expect(scores[0]!.accuracy).toBe(0.5);
+    // The regression that matters for the self-answering branch: a provider without `answer` is still read by the
+    // shared reader, and the row says so. If this line ever reads `self`, the branch above has started swallowing
+    // ordinary arms.
+    expect(scores[0]!.answerer).toBe('shared');
   });
 
   it('does not read a provider that is not named in accuracyFor', async () => {
     const calls: Call[] = [];
-    const provider = recording(() => 'London', calls);
+    const { provider, reader } = recording(() => 'London', calls);
     const scores = await measureRetrieval(DATASET, [provider], {
-      answer: provider.answer,
+      answer: reader,
       judge: async () => true,
       accuracyFor: ['someone-else'],
     });
@@ -328,9 +341,9 @@ describe('measureRetrieval: the reading stage', () => {
   it('counts a refusal apart from a wrong answer, and still grades it', async () => {
     // A refusal to an abstention question is a correct answer, so the count is diagnostic only and must never
     // shorten `read`.
-    const provider = recording(() => "I don't know", []);
+    const { provider, reader } = recording(() => "I don't know", []);
     const scores = await measureRetrieval(DATASET, [provider], {
-      answer: provider.answer,
+      answer: reader,
       judge: async () => false,
       accuracyFor: ['reader'],
     });
@@ -344,9 +357,9 @@ describe('measureRetrieval: the reading stage', () => {
     // The two stages must not interact: a reader that throws would otherwise be indistinguishable from a
     // retrieval regression, and a reader that is slow would tempt somebody to change the loop.
     const plain = await measureRetrieval(DATASET, [new LexicalProvider()]);
-    const provider = recording(() => 'London', []);
+    const { reader } = recording(() => 'London', []);
     const read = await measureRetrieval(DATASET, [new LexicalProvider()], {
-      answer: provider.answer,
+      answer: reader,
       judge: async () => true,
       accuracyFor: ['lexical-reference'],
     });
@@ -354,5 +367,140 @@ describe('measureRetrieval: the reading stage', () => {
     expect(read[0]!.recallAllAtK).toBe(plain[0]!.recallAllAtK);
     expect(read[0]!.mrr).toBe(plain[0]!.mrr);
     expect(read[0]!.meanContextChars).toBe(plain[0]!.meanContextChars);
+  });
+
+  /**
+   * The self-answering branch: a system whose retrieval and reasoning are one act.
+   *
+   * Four properties, and the first is the one a wrong implementation passes by accident: the shared reader must
+   * not also run. It is asserted with a reader that throws rather than one that records, because a harness that
+   * called both would still produce a plausible answer from the shared side and the extra spend would only show
+   * up on a bill.
+   */
+  describe('a provider that writes its own answer', () => {
+    function selfAnswering(replies: readonly string[], usage?: { calls: number; promptTokens: number; completionTokens: number }) {
+      const asked: string[] = [];
+      const provider: MemoryProvider = {
+        name: 'navigator',
+        build: 'llm',
+        async ingest() {
+          return { sessions: 1, turns: 2, skipped: [] };
+        },
+        async search() {
+          // A navigator has no retrieval endpoint to hand over: the pages it read are the reasoning trace, not a
+          // ranked list. Returning nothing is honest, and the report prints `—` for its recall column.
+          return [];
+        },
+        async reset() {},
+        async answer(query: string) {
+          asked.push(query);
+          return replies[asked.length - 1] ?? '';
+        },
+        ...(usage === undefined ? {} : { usage }),
+      };
+      return { provider, asked };
+    }
+
+    it('is read by its own generator, and the shared reader never runs', async () => {
+      const { provider, asked } = selfAnswering(['London', 'Paris']);
+      const scores = await measureRetrieval(DATASET, [provider], {
+        answer: async () => {
+          throw new Error('the shared reader must not run for a self-answering provider');
+        },
+        judge: async () => true,
+        accuracyFor: ['navigator'],
+      });
+      expect(asked).toEqual(['Where does the user live now?', 'How many cats does the user have?']);
+      expect(scores[0]!.answerer).toBe('self');
+      expect(scores[0]!.read).toBe(2);
+      expect(scores[0]!.correct).toBe(2);
+      expect(scores[0]!.accuracy).toBe(1);
+    });
+
+    it('is not asked anything when it is outside accuracyFor', async () => {
+      // The generator is the expensive half. Reading an arm that was not selected would spend its bill and change
+      // no column.
+      const { provider, asked } = selfAnswering(['London']);
+      const scores = await measureRetrieval(DATASET, [provider], {
+        answer: async () => 'unused',
+        judge: async () => true,
+        accuracyFor: [],
+      });
+      expect(asked).toEqual([]);
+      expect(scores[0]!.answerer).toBe('none');
+      expect(scores[0]!.accuracy).toBeNull();
+    });
+
+    it('still needs a judge, and says `none` rather than grading itself', async () => {
+      const { provider, asked } = selfAnswering(['London']);
+      const scores = await measureRetrieval(DATASET, [provider], { accuracyFor: ['navigator'] });
+      expect(asked).toEqual([]);
+      expect(scores[0]!.answerer).toBe('none');
+      expect(scores[0]!.read).toBe(0);
+    });
+
+    it('receives the corpus\'s own spelling of the question date', async () => {
+      // MemCog's generation prompt is `Current Date: {date}` taken verbatim from the instance. A harness that passed
+      // an epoch, or nothing at all, would change the prompt the authors' own harness builds -- and on LongMemEval's
+      // temporal family that difference is the answer.
+      const seen: Array<string | undefined> = [];
+      const provider: MemoryProvider = {
+        name: 'navigator',
+        build: 'llm',
+        async ingest() {
+          return { sessions: 0, turns: 0, skipped: [] };
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async answer(_query: string, options: { askedAt?: string }) {
+          seen.push(options.askedAt);
+          return 'London';
+        },
+      };
+      const dated: BenchmarkDataset = {
+        name: 'dated',
+        questions: [
+          questionOf({
+            id: 'q1',
+            questionDate: '2023/05/25 (Thu) 06:13',
+            // A question with no gold is unmeasurable and is never read, so the dataset has to carry evidence for
+            // the reading path to be reached at all.
+            goldTurns: ['I live in London.'],
+          }),
+        ],
+      };
+      await measureRetrieval(dated, [provider], {
+        answer: async () => 'unused',
+        judge: async () => true,
+        accuracyFor: ['navigator'],
+      });
+      expect(seen).toEqual(['2023/05/25 (Thu) 06:13']);
+    });
+
+    it('carries its own spend to the score, and null when it does not report one', async () => {
+      const reported = selfAnswering(['London', 'Paris'], {
+        calls: 9,
+        promptTokens: 1234,
+        completionTokens: 56,
+      });
+      const withUsage = await measureRetrieval(DATASET, [reported.provider], {
+        answer: async () => 'unused',
+        judge: async () => true,
+        accuracyFor: ['navigator'],
+      });
+      expect(withUsage[0]!.usage).toEqual({ calls: 9, promptTokens: 1234, completionTokens: 56 });
+
+      const silent = selfAnswering(['London', 'Paris']);
+      const withoutUsage = await measureRetrieval(DATASET, [silent.provider], {
+        answer: async () => 'unused',
+        judge: async () => true,
+        accuracyFor: ['navigator'],
+      });
+      // `null` is "not measured", which a table prints differently from a measured zero: a system whose spend was
+      // never observed is not a free system.
+      expect(withoutUsage[0]!.usage).toBeNull();
+    });
   });
 });

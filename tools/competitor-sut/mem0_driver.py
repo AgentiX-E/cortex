@@ -39,6 +39,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.request
 from typing import Any
 
 # Telemetry off before anything imports mem0: the OSS SDK posts usage events on `add`, and on a runner with no
@@ -62,6 +63,29 @@ try:  # pragma: no cover - the import failure path is exercised by the parent, n
     VERSION = _dist_version("mem0ai")
 except Exception:  # pragma: no cover
     VERSION = "unknown"
+
+# `X-Sut-Label` on every request Mem0 makes, so the metering proxy can attribute its spend.
+#
+# Mem0 builds its own OpenAI client deep inside `Memory.from_config` and passes no headers of its own, so the only
+# place to stamp one without editing the package is the client class. This is the same discipline `ROUTING` applies
+# to the model: the driver configures Mem0 rather than modifying it, and a reader can see every line of it here.
+#
+# The patch is installed before `from mem0 import Memory` because that import constructs nothing but does import
+# `openai`, and a class patched after a client exists would leave that client unlabelled.
+try:  # pragma: no cover - exercised by the workflow, not by a unit test that would have to import mem0
+    import openai as _openai
+
+    _ORIGINAL_INIT = _openai.OpenAI.__init__
+
+    def _labelled_init(self, *args, **kwargs):
+        headers = dict(kwargs.get("default_headers") or {})
+        headers.setdefault("X-Sut-Label", "mem0/llm")
+        kwargs["default_headers"] = headers
+        _ORIGINAL_INIT(self, *args, **kwargs)
+
+    _openai.OpenAI.__init__ = _labelled_init
+except Exception as _patch_error:  # pragma: no cover
+    print(f"could not label the OpenAI client: {_patch_error}", file=sys.stderr)
 
 try:  # pragma: no cover
     from mem0 import Memory
@@ -95,6 +119,18 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
         "llm": {"provider": llm_provider, "config": {"api_key": llm_key}},
         "embedder": {"provider": embedder_provider, "config": {}},
         "vector_store": {"provider": store, "config": {"collection_name": "longmemeval"}},
+    }
+    # The proxy, when there is one. `deepseek_base_url` is read by `DeepSeekLLM` in mem0ai 2.x; the environment
+    # variable is its own fallback, and both are set from the same source so a run cannot point one of them at the
+    # real endpoint and the other at the proxy.
+    llm_base = os.environ.get("MEM0_LLM_BASE_URL") or os.environ.get("DEEPSEEK_API_BASE")
+    if llm_base and llm_provider == "deepseek":
+        config["llm"]["config"]["deepseek_base_url"] = llm_base
+    llm_notes: dict[str, Any] = {
+        "provider": llm_provider,
+        "model": os.environ.get("MEM0_LLM_MODEL") or os.environ.get("SUT_LLM_MODEL") or "deepseek-chat",
+        "base_url": llm_base or "provider default",
+        "used": bool(infer),
     }
     embedder_notes: dict[str, Any] = {"provider": embedder_provider}
     # Resolved by whichever embedder branch below runs, then handed to the vector store. Mem0 keeps the two
@@ -197,7 +233,9 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
 
     notes = {
         "infer": infer,
-        "llm": llm_provider if infer else "unused",
+        # The provider *and* where its calls went. `llm: "deepseek"` alone was the shape that let a run report a
+        # vendor name while its requests went somewhere else; the base URL is what makes the claim checkable.
+        "llm": llm_notes if infer else {"provider": "unused", "reason": "infer=0 stores turns as given"},
         "embedder": embedder_notes,
         "vector_store": store,
         # Printed because the two numbers being equal is the whole fix: the manifest is the only place a reader
@@ -205,6 +243,28 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
         "vector_store_dims": dimensions,
     }
     return config, notes
+
+
+def _proxy_usage() -> dict[str, Any] | None:
+    """What this system has spent, read from the metering proxy when one is in the path.
+
+    `None` rather than zeros when there is no proxy: the report prints `—` for an unmeasured arm, and a zero would be
+    read as a free one. The prefix selects Mem0's rows out of a proxy shared with the other systems in the run.
+    """
+    base = os.environ.get("MEM0_LLM_BASE_URL") or os.environ.get("DEEPSEEK_API_BASE")
+    if not base:
+        return None
+    root = base.rstrip("/").removesuffix("/v1")
+    try:
+        with urllib.request.urlopen(f"{root}/stats?prefix=mem0", timeout=10) as response:
+            stats = json.loads(response.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001 - an unreachable proxy is "not measured", not a run failure
+        return None
+    return {
+        "calls": int(stats.get("calls") or 0),
+        "prompt_tokens": int(stats.get("prompt_tokens") or 0),
+        "completion_tokens": int(stats.get("completion_tokens") or 0),
+    }
 
 
 def normalise_hits(payload: Any, limit: int) -> list[dict[str, Any]]:
@@ -269,6 +329,11 @@ class Driver:
             "version": VERSION,
             "notes": json.dumps({**self.notes, "timestamped_sessions": self.timestamped}, sort_keys=True),
         }
+        # The proxy's counter for this system, when there is one in the path. Absent rather than zero when there
+        # is not: an unmeasured arm is not a free one.
+        stats = _proxy_usage()
+        if stats is not None:
+            document["usage"] = stats
         # Read here rather than stored at construction, because these counters are only meaningful after ingest and
         # a manifest written before the work would say the cache did nothing on a run that used it.
         if _CACHES:
@@ -329,13 +394,21 @@ class Driver:
                 "turns": 0,
                 "skipped": skipped,
             }
-        return {"ok": True, "sessions": len(sessions) - len(skipped), "turns": turns, "skipped": skipped}
+        stored = {"ok": True, "sessions": len(sessions) - len(skipped), "turns": turns, "skipped": skipped}
+        stats = _proxy_usage()
+        if stats is not None:
+            stored["usage"] = stats
+        return stored
 
     def search(self, query: str, limit: int) -> dict[str, Any]:
         # `user_id=` at the top level is rejected in 2.x: "Use filters={'user_id': ...} instead". Both spellings
         # were tried against the installed version rather than guessed from documentation.
         payload = self.memory.search(query, filters={"user_id": USER}, top_k=limit)
-        return {"ok": True, "hits": normalise_hits(payload, limit)}
+        result = {"ok": True, "hits": normalise_hits(payload, limit)}
+        stats = _proxy_usage()
+        if stats is not None:
+            result["usage"] = stats
+        return result
 
 
 def main() -> int:

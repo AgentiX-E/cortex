@@ -67,3 +67,7 @@ probe/
 # failure list as source. Found by looking at what my own checkout had staged, not by a defect
 # report: the ignore rules named the byte code and not the cache beside it.
 .pytest_cache/
+
+# Competitor checkouts and dependency trees, fetched by the workflow at a pinned commit.
+# Vendoring either into the repository would ship someone else's code as ours.
+tools/competitor-sut/.vendor/

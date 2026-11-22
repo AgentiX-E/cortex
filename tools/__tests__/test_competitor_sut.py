@@ -449,3 +449,20 @@ def test_the_ingest_line_is_printed_when_nothing_was_refused() -> None:
     kept, offered, refused = (int(group) for group in stored.groups())
     assert refused == 0
     assert kept == offered > 0
+
+
+def test_the_self_answering_branch_is_an_executable_contract():
+    """`answer` is optional, so it needs a driver that implements it and one that does not.
+
+    Without this, the branch is exercised only by MemCog and Mastra -- each of which needs a vendor package, a key
+    and a bill -- so the failure mode it protects against would first appear on a runner that cost money. The two
+    assertions that matter are the pair: a driver without `answers` must not expose the method (or Mem0 answers
+    five hundred unknown-op refusals), and a driver with it must deliver a non-empty string plus its usage.
+    """
+    result = node('answer')
+    assert result['answers'] is True
+    assert result['build'] == 'llm'
+    assert isinstance(result['answer'], str) and result['answer'] != ''
+    assert result['usage'] is not None
+    assert result['usage']['calls'] >= 1
+    assert result['usage']['promptTokens'] >= 0

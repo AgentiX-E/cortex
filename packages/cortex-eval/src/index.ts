@@ -660,6 +660,7 @@ export {
   type MemoryProvider,
   type MemorySession,
   type MemoryTurn,
+  type ProviderUsage,
   type RunConfig,
   type SearchHit,
   type SearchOptions,

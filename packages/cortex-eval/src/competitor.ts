@@ -68,6 +68,15 @@ export type SearchOptions = {
   readonly limit: number;
   /** The instant the question is asked. A provider with a temporal model uses it; one without ignores it. */
   readonly asOf?: number;
+  /**
+   * The same instant as the corpus spells it, e.g. `2023/05/20 (Sat) 02:21`.
+   *
+   * Carried beside `asOf` rather than derived from it, because a system that puts a date into a prompt needs the
+   * text the benchmark wrote, not a rendering of it: MemCog's generation prompt is `Current Date: {date}` taken
+   * verbatim from the instance, and reformatting it would change the prompt the authors' own harness produces.
+   * A provider that only wants arithmetic uses `asOf`; a provider that wants the original uses this.
+   */
+  readonly askedAt?: string;
 };
 
 /**
@@ -79,6 +88,19 @@ export type SearchOptions = {
  */
 export type BuildCost = 'llm' | 'embedding' | 'none';
 
+/**
+ * What a system spent on its own model calls, when it makes any.
+ *
+ * Reported by the system rather than inferred from a request count, because the two are not the same number and
+ * the difference is the whole cost argument: a `llm`-build system that extracts one fact per turn spends one call
+ * per turn, while a navigator spends two to seven per *question*. `calls` alone cannot tell them apart.
+ */
+export type ProviderUsage = {
+  readonly calls: number;
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+};
+
 export type MemoryProvider = {
   readonly name: string;
   readonly build: BuildCost;
@@ -86,6 +108,24 @@ export type MemoryProvider = {
   ingest(sessions: readonly MemorySession[]): Promise<IngestReport>;
   /** Retrieve what the question needs. No generation: the reader does that, once, for everyone. */
   search(query: string, options: SearchOptions): Promise<readonly SearchHit[]>;
+  /**
+   * The answer, when the system is the thing that writes it.
+   *
+   * Optional, and its presence is a **claim about the architecture**, not a flag to raise a score. A system in
+   * which retrieval and reasoning are the same act -- MemCog navigates a store with tool calls until it can
+   * answer; Mastra's observational memory compresses a window and replies from it -- has no retrieval endpoint to
+   * hand a shared reader. Forcing one into `search` would either discard the multi-step behaviour that is the
+   * mechanism being measured, or run the model twice and bill the system for a reader it does not use.
+   *
+   * A provider that implements this is read by **its own** generator, and the row says so: `ProviderScore.answerer`
+   * is `self`. The judge is still the shared one, so accuracy stays comparable; the *reader* is not shared, so a
+   * gap against a `shared` row is a gap in reader plus memory and cannot be attributed to memory alone. That is a
+   * strictly weaker claim than an `A` comparison and the report must grade it as such rather than print one
+   * column of numbers that quietly mixes two kinds of experiment.
+   */
+  answer?(query: string, options: SearchOptions): Promise<string>;
+  /** Cumulative spend, when the system can report it. Absent means "not measured", which is not zero. */
+  readonly usage?: ProviderUsage;
   /** Drop everything, so the next question starts from nothing. */
   reset(): Promise<void>;
 };

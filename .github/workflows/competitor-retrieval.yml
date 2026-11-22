@@ -81,6 +81,13 @@ on:
         description: 'For `mem0`: 1 runs its LLM extraction at ingest (one model call per turn, ~275k on 500 questions) — 0 stores turns as given'
         required: false
         default: '0'
+      # The model every system's own calls go to. It is a separate input from `DEEPSEEK_MODEL`, which names the
+      # *reader*, because the point of the run is that the two are the same and a reader has to be able to see that
+      # they were set independently and still agreed.
+      sut_llm:
+        description: 'Model id for the systems under test (Mem0 extraction, MemCog build+navigation, Mastra Observer/Reflector); empty = the same id as the reader'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -188,38 +195,130 @@ jobs:
           tail -n 200 letta-server.log
           exit 1
 
+      # §14.132. MemCog and Mastra are the two systems whose retrieval *is* their reasoning, so they answer rather
+      # than retrieve, and the protocol grew an optional `answer` operation for them. Both are vendored at a commit
+      # and a version rather than installed by name, because neither name resolves to a runnable system: MemCog has
+      # no PyPI package and ships an LLM client whose body is commented out, and Mastra is a framework whose memory
+      # behaviour is a function of four separate package versions.
+      - name: Install the system under test (memcog, vendored at a commit)
+        if: inputs.sut == 'memcog'
+        run: |
+          set -o pipefail
+          git clone --quiet https://github.com/WeAgentAI/MemCog.git tools/competitor-sut/.vendor/MemCog
+          cd tools/competitor-sut/.vendor/MemCog
+          # Pinned. `main` moved after the paper, and a number from a later tree is a number about a later system.
+          git checkout --quiet fff97b2d4190
+          git rev-parse HEAD
+          # The package's own dependencies. `openai` is what the authors' commented-out example uses; `requests` is
+          # imported by the client module whether or not its body runs.
+          python3 -m pip install --quiet openai requests
+          python3 -c "import sys; sys.path.insert(0, 'src'); import core.llm_client; print('memcog importable')"
+
+      # Mastra's dependency tree is 174 packages and lives in its own package.json under `tools/competitor-sut/`,
+      # deliberately outside the workspace lockfile: every install in this repository would otherwise pay for a
+      # framework that exactly one dispatch uses.
+      - name: Install the system under test (mastra, exact versions)
+        if: inputs.sut == 'mastra'
+        run: |
+          set -o pipefail
+          npm install --prefix tools/competitor-sut --no-audit --no-fund
+          # Printed because the driver's manifest quotes them, and a manifest that disagreed with the tree would be
+          # a version number about a different system.
+          node --input-type=module -e "
+            import { createRequire } from 'node:module';
+            const require = createRequire(process.cwd() + '/tools/competitor-sut/package.json');
+            console.log('@mastra/memory', require('@mastra/memory/package.json').version);
+            console.log('@mastra/core  ', require('@mastra/core/package.json').version);
+          "
+
+      # A protocol round trip that needs no key and no model, run against the *installed* tree rather than against a
+      # stub: it proves the four packages import, that the driver starts under the same Node the job uses, and that
+      # it declares itself as a self-answering `llm` build. The unit tests cannot cover this -- they run where the 174
+      # packages are deliberately not installed -- so it lives here, next to the install it depends on.
+      - name: Mastra protocol smoke (manifest only, no model call)
+        if: inputs.sut == 'mastra'
+        run: |
+          set -o pipefail
+          printf '{"op":"manifest"}\n{"op":"shutdown"}\n' | node tools/competitor-sut/mastra_driver.mjs > mastra-manifest.json
+          cat mastra-manifest.json
+          node -e "
+            const lines = require('node:fs').readFileSync('mastra-manifest.json', 'utf8').trim().split('\n').map(JSON.parse);
+            const manifest = lines[0];
+            if (manifest.name !== 'mastra') throw new Error('name is ' + manifest.name);
+            if (manifest.answers !== true) throw new Error('does not declare answers:true');
+            if (manifest.build !== 'llm') throw new Error('build is ' + manifest.build);
+            if (typeof manifest.version !== 'string' || !manifest.version.startsWith('@mastra/memory@')) {
+              throw new Error('version does not name the package: ' + manifest.version);
+            }
+            if (!manifest.llm || !manifest.llm.model) throw new Error('manifest names no model');
+            console.log('mastra manifest ok:', manifest.version, manifest.llm.model);
+          "
+
+      # The one door every system's model calls go through, so "the same LLM" is a base URL and the token column is
+      # the provider's own accounting rather than a request count multiplied by an estimate. Started before the
+      # reading stage and left running for the whole job; the cost step reads its `/stats` at the end.
+      - name: Start the metering proxy
+        if: inputs.sut == 'memcog' || inputs.sut == 'mastra' || inputs.sut == 'mem0'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          set -o pipefail
+          export UPSTREAM_BASE_URL="${SUT_LLM_UPSTREAM:-https://api.deepseek.com}"
+          export UPSTREAM_API_KEY="$DEEPSEEK_API_KEY"
+          export SUT_LLM_LOG="${{ github.workspace }}/sut-llm-calls.jsonl"
+          nohup python3 tools/competitor-sut/sut_llm_proxy.py > sut-llm-proxy.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8399/health > /dev/null; then
+              echo "proxy up after ${attempt} attempt(s)"
+              curl -fsS http://127.0.0.1:8399/health
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "the proxy did not answer /health within 30 seconds; its log follows"
+          cat sut-llm-proxy.log
+          exit 1
+
       - name: Download LongMemEval-S
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # Paths through the environment rather than `process.argv`, because the programs below arrive on stdin: the
+          # shell-interpolation guard (`docs/OPS-SHELL-INTERPOLATION.md`) requires a quoted here-doc for an interpreter
+          # payload, and a here-doc has no argv to pass.
+          CORPUS: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
+          DIGEST: ${{ github.workspace }}/data/dataset.sha256
         run: |
           mkdir -p "${{ github.workspace }}/data"
           curl -fL --retry 3 --retry-delay 5 \
             -H "Authorization: Bearer ${HF_TOKEN}" \
-            -o "${{ github.workspace }}/data/longmemeval_s_cleaned.json" \
+            -o "$CORPUS" \
             "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
-          node -e '
-            const rows = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-            if (!Array.isArray(rows) || rows.length === 0) {
-              console.error("the corpus is not a non-empty JSON array");
-              process.exit(1);
-            }
-            const annotated = rows.filter((row) => Array.isArray(row.answer_session_ids) && row.answer_session_ids.length > 0);
-            console.log(`instances: ${rows.length}, with annotated gold: ${annotated.length}`);
-            if (annotated.length === 0) {
-              console.error("no instance carries answer_session_ids; every question would be unmeasurable");
-              process.exit(1);
-            }
-          ' "${{ github.workspace }}/data/longmemeval_s_cleaned.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const rows = JSON.parse(readFileSync(process.env.CORPUS, 'utf8'));
+          if (!Array.isArray(rows) || rows.length === 0) {
+            console.error('the corpus is not a non-empty JSON array');
+            process.exit(1);
+          }
+          const annotated = rows.filter(
+            (row) => Array.isArray(row.answer_session_ids) && row.answer_session_ids.length > 0,
+          );
+          console.log(`instances: ${rows.length}, with annotated gold: ${annotated.length}`);
+          if (annotated.length === 0) {
+            console.error('no instance carries answer_session_ids; every question would be unmeasurable');
+            process.exit(1);
+          }
+          NODE
           # A 64-byte digest, because `hashFiles` is evaluated by the template service under a 120-second budget
           # for the whole template and the corpus is 100+ MB. Keying on the corpus itself is the failure
           # `test_embedding_cache_key.py` pins: run 41842684629 died in three minutes with no measurement.
-          node -e '
-            const crypto = require("crypto");
-            const fs = require("fs");
-            const digest = crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex");
-            fs.writeFileSync(process.argv[2], digest + "\n");
-            console.log(`corpus sha256 ${digest}`);
-          ' "${{ github.workspace }}/data/longmemeval_s_cleaned.json" "${{ github.workspace }}/data/dataset.sha256"
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const digest = createHash('sha256').update(readFileSync(process.env.CORPUS)).digest('hex');
+          writeFileSync(process.env.DIGEST, digest + '\n');
+          console.log(`corpus sha256 ${digest}`);
+          NODE
 
       # The cache is carried between dispatches, because the saving is not only within one run.
       #
@@ -328,6 +427,14 @@ jobs:
           # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
           # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          # §14.132. Every model call a system under test makes goes to the metering proxy, so "the same LLM" is a
+          # base URL rather than a claim, and the token column comes back from the provider's own `usage`. These are
+          # set for every dispatch and read only by the drivers that call a model.
+          SUT_LLM_BASE_URL: http://127.0.0.1:8399/v1
+          SUT_LLM_MODEL: ${{ github.event.inputs.sut_llm || vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
+          MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
+          MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
         run: |
           if [ "$READ_QUESTIONS" = "0" ]; then
             echo "reading stage skipped by input"
@@ -368,6 +475,14 @@ jobs:
           # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
           # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          # §14.132. Every model call a system under test makes goes to the metering proxy, so "the same LLM" is a
+          # base URL rather than a claim, and the token column comes back from the provider's own `usage`. These are
+          # set for every dispatch and read only by the drivers that call a model.
+          SUT_LLM_BASE_URL: http://127.0.0.1:8399/v1
+          SUT_LLM_MODEL: ${{ github.event.inputs.sut_llm || vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
+          MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
+          MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
         run: |
           # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
           SUT_ARG=""
@@ -403,6 +518,14 @@ jobs:
           # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
           # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          # §14.132. Every model call a system under test makes goes to the metering proxy, so "the same LLM" is a
+          # base URL rather than a claim, and the token column comes back from the provider's own `usage`. These are
+          # set for every dispatch and read only by the drivers that call a model.
+          SUT_LLM_BASE_URL: http://127.0.0.1:8399/v1
+          SUT_LLM_MODEL: ${{ github.event.inputs.sut_llm || vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
+          MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
+          MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
         run: |
           # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
           SUT_ARG=""

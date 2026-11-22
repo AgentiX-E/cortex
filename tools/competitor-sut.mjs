@@ -42,7 +42,14 @@ import { dirname, join } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUT_DIR = join(HERE, 'competitor-sut');
 
-/** Drivers this adapter knows how to launch. A competitor is added here and nowhere else. */
+/**
+ * Drivers this adapter knows how to launch. A competitor is added here and nowhere else.
+ *
+ * `interpreter` defaults to the Python the caller passed, because six of the seven systems in this census are
+ * Python packages. Mastra is not: it is a TypeScript framework, and a driver that shelled out to `python -c
+ * "import mastra"` would be a driver for a system that does not exist. The field is per-driver so the protocol stays
+ * language-agnostic -- which it always was, since it is newline-delimited JSON over stdio.
+ */
 const DRIVERS = {
   reference: { script: 'stub_driver.py', name: 'reference/lexical' },
   mem0: { script: 'mem0_driver.py', name: 'mem0' },
@@ -52,6 +59,12 @@ const DRIVERS = {
   // because the name `letta` now installs a different product (the terminal agent `letta-code`) and the
   // framework's own `main` branch is a pointer README.
   letta: { script: 'letta_driver.py', name: 'letta' },
+  // Memory-as-cognition: the store is built by a model and navigated by one, so there is no ranked list to hand a
+  // reader. `mastra` is the same shape from the other direction -- observational memory compresses a window and
+  // replies from the compression -- so both declare `answers: true` in their manifest and are graded by the shared
+  // judge on their own generator.
+  memcog: { script: 'memcog_driver.py', name: 'memcog' },
+  mastra: { script: 'mastra_driver.mjs', name: 'mastra', interpreter: 'node' },
 };
 
 /** The default patience for one operation. Ingest of a five-hundred-turn haystack is minutes, not seconds. */
@@ -207,7 +220,7 @@ export async function createSutProvider({
     );
   }
   const budget = timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const channel = new Channel(python, [join(SUT_DIR, spec.script)], {
+  const channel = new Channel(spec.interpreter ?? python, [join(SUT_DIR, spec.script)], {
     env,
     ...(cwd === undefined ? {} : { cwd }),
   });
@@ -228,6 +241,20 @@ export async function createSutProvider({
       `${spec.name} declared build ${JSON.stringify(manifest.build)}, which is not a cost class`,
     );
   }
+  /**
+   * `answers: true` is a claim about the architecture, and it has a cost consequence that must be declared with it.
+   *
+   * A system that generates its own answer calls a model per question; a system that only retrieves calls none. So
+   * `answers: true` next to `build: 'embedding'` is a contradiction rather than a configuration, and it would put a
+   * model-driven row in the embedding cost class where the budget sweep reads it as cheap.
+   */
+  const answers = manifest.answers === true;
+  if (answers && manifest.build !== 'llm') {
+    throw new SutFailure(
+      `${spec.name} declares answers:true, which spends a model call per question, but build ` +
+        `${JSON.stringify(manifest.build)}; a self-answering system is an \`llm\` build`,
+    );
+  }
 
   /** Per-question refusals, kept so the summary can separate them from empty results. */
   const refusals = [];
@@ -243,6 +270,23 @@ export async function createSutProvider({
   const ingestSkips = [];
   let ingestedSessions = 0;
   let offeredSessions = 0;
+  /**
+   * The system's own spend, as last reported.
+   *
+   * Carried on the response rather than asked for separately, because a driver that queried its metering proxy after
+   * every call would double the number of round trips to answer a question nobody asks until the arm is over. The
+   * latest reading wins: the counter is cumulative, so the final response of the arm carries the total.
+   */
+  let lastUsage = null;
+  const noteUsage = (response) => {
+    const reported = response.usage;
+    if (reported === null || typeof reported !== 'object') return;
+    lastUsage = {
+      calls: Number(reported.calls ?? 0),
+      promptTokens: Number(reported.prompt_tokens ?? 0),
+      completionTokens: Number(reported.completion_tokens ?? 0),
+    };
+  };
 
   return {
     name: manifest.name,
@@ -260,6 +304,16 @@ export async function createSutProvider({
     get offeredSessions() {
       return offeredSessions;
     },
+    /**
+     * Present only when the driver reports one.
+     *
+     * `null` rather than zeros: a system whose spend was never observed is not a free system, and a table that
+     * printed `0` for it would be read as one. The harness turns this into `ProviderScore.usage` at the end of the
+     * arm, which is the only moment the number is complete.
+     */
+    get usage() {
+      return lastUsage;
+    },
     async ingest(sessions) {
       const response = await channel.send({ op: 'ingest', sessions }, Math.max(budget, 1_800_000));
       if (!response.ok) {
@@ -272,6 +326,7 @@ export async function createSutProvider({
           `ingest refused: ${String(response.error)}${detail === '' ? '' : ` [${detail}]`}`,
         );
       }
+      noteUsage(response);
       const skipped = Array.isArray(response.skipped) ? response.skipped.map(String) : [];
       offeredSessions += sessions.length;
       ingestedSessions += Number(response.sessions ?? 0);
@@ -320,6 +375,7 @@ export async function createSutProvider({
             'the contract is a ceiling and a system that ignores it is not being compared',
         );
       }
+      noteUsage(response);
       if (response.hits.length === 0) emptyResults += 1;
       return response.hits.map((hit) => ({
         text: String(hit.text),
@@ -327,6 +383,39 @@ export async function createSutProvider({
         ...(typeof hit.at === 'number' ? { at: hit.at } : {}),
       }));
     },
+    ...(answers
+      ? {
+          /**
+           * The system's own generator, for systems whose retrieval and reasoning are one act.
+           *
+           * The budget is the ingest budget rather than the per-operation one: a navigator makes two to seven model
+           * calls and reads pages between them, which is minutes when the pages are transcripts. A refusal is
+           * recorded and answered with an empty string, because "this question could not be navigated" is a claim
+           * about the system and must not abort a five-hundred-question run at question twelve.
+           */
+          async answer(query, options = {}) {
+            const response = await channel.send(
+              {
+                op: 'answer',
+                query,
+                ...(options.askedAt === undefined ? {} : { askedAt: options.askedAt }),
+              },
+              Math.max(budget, 1_800_000),
+            );
+            if (!response.ok) {
+              refusals.push({ query, error: String(response.error) });
+              return '';
+            }
+            if (typeof response.answer !== 'string') {
+              throw new SutFailure(
+                `answer produced no string: ${JSON.stringify(response).slice(0, 200)}`,
+              );
+            }
+            noteUsage(response);
+            return response.answer;
+          },
+        }
+      : {}),
     async reset() {
       const response = await channel.send({ op: 'reset' }, budget);
       if (!response.ok) throw new SutFailure(`reset refused: ${String(response.error)}`);
@@ -377,6 +466,68 @@ async function selftest() {
   if (afterReset.length !== 0) throw new SutFailure('reset left retrievable text behind');
 }
 
+/**
+ * The self-answering half of the protocol, over the same reference driver.
+ *
+ * Four properties, and each one is a way the optional operation can be half-implemented:
+ *
+ * 1. a driver that does **not** declare `answers` must not expose the method -- a parent that always attached it
+ *    would call `answer` on Mem0 and get an unknown-op refusal for all five hundred questions;
+ * 2. a driver that does must produce a string, not `undefined` cast through a template;
+ * 3. the usage it reports must arrive at the provider, because a cost column fed by nothing prints zeros;
+ * 4. `search` must still work, because the harness collects hits for the context-cost column even when the arm's
+ *    accuracy came from its own generator.
+ */
+async function answerSelftest() {
+  const silent = await createSutProvider({ driver: 'reference' });
+  if (typeof silent.answer === 'function') {
+    throw new SutFailure('a driver without `answers` exposed an answer method');
+  }
+  if (silent.usage !== null) {
+    throw new SutFailure('a driver that reported no usage produced a usage object');
+  }
+  await silent.close();
+
+  const speaking = await createSutProvider({
+    driver: 'reference',
+    env: { STUB_ANSWERS: '1' },
+  });
+  if (speaking.manifest.answers !== true) {
+    throw new SutFailure('the self-answering driver did not declare `answers: true`');
+  }
+  await speaking.ingest([
+    { id: 's1', at: 1_685_000_000_000, turns: [{ role: 'user', content: 'I live in London.' }] },
+  ]);
+  const answer = await speaking.answer('where does the user live', { limit: 10 });
+  const hits = await speaking.search('london', { limit: 2 });
+  const usage = speaking.usage;
+  await speaking.close();
+
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        answers: speaking.manifest.answers,
+        build: speaking.manifest.build,
+        answer,
+        hits: hits.length,
+        usage,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  if (typeof answer !== 'string' || answer.length === 0) {
+    throw new SutFailure('the self-answering driver produced no answer');
+  }
+  if (usage === null || usage.calls < 1) {
+    throw new SutFailure('the usage the driver reported did not reach the provider');
+  }
+  if (speaking.manifest.build !== 'llm') {
+    throw new SutFailure('a self-answering driver reported a non-llm build');
+  }
+}
+
 if (process.argv[1] !== undefined && process.argv[1].endsWith('competitor-sut.mjs')) {
-  await selftest();
+  if (process.argv[2] === 'answer') await answerSelftest();
+  else await selftest();
 }

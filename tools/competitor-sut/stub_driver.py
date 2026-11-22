@@ -101,15 +101,31 @@ class Store:
         }
 
 
+# `STUB_ANSWERS=1` turns this driver into the reference implementation of the **other** half of the protocol: a
+# system that writes its own answer. It exists because `answer` is an optional operation, and an optional operation
+# with no executable example is a paragraph rather than a contract -- the parent's branch would be tested only by
+# the two real drivers, each of which needs a vendor package, a key and a bill.
+#
+# The answer is deterministic text, not a model call: a reference implementation that called a model would be a
+# competitor, and the point of this one is that its output can be predicted from its input by hand.
+ANSWERS = os.environ.get("STUB_ANSWERS", "0") not in ("", "0", "false", "False")
+
+
 def handle(store: Store, request: dict[str, Any]) -> dict[str, Any]:
     op = request.get("op")
     if op == "manifest":
         return {
             "ok": True,
             "name": NAME,
-            "build": "none",
+            "build": "llm" if ANSWERS else "none",
             "version": VERSION,
-            "notes": "reference implementation of the SUT protocol; lexical overlap, no model, no vectors",
+            **({"answers": True} if ANSWERS else {}),
+            "notes": (
+                "reference implementation of the SUT protocol with a self-answering generator; deterministic text, "
+                "no model"
+                if ANSWERS
+                else "reference implementation of the SUT protocol; lexical overlap, no model, no vectors"
+            ),
         }
     if op == "reset":
         store.reset()
@@ -121,6 +137,16 @@ def handle(store: Store, request: dict[str, Any]) -> dict[str, Any]:
         if limit <= 0:
             return {"ok": False, "error": "search needs a positive limit"}
         return {"ok": True, **store.search(str(request.get("query") or ""), limit)}
+    if op == "answer":
+        # Deliberately *not* the gold answer: this driver must be able to be wrong, or the judge path it exercises
+        # would only ever be seen accepting.
+        query = str(request.get("query") or "")
+        return {
+            "ok": True,
+            "answer": f"the reference driver read {len(store.entries)} turns and answers {query!r} with nothing",
+            # A counter that moves with the work, so the parent's usage passthrough has something real to carry.
+            "usage": {"calls": 1, "prompt_tokens": len(query) // 4 + len(store.entries), "completion_tokens": 12},
+        }
     if op == "shutdown":
         return {"ok": True}
     return {"ok": False, "error": f"unknown op {op!r}"}

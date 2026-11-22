@@ -101,3 +101,51 @@ The same rule caught `frdel/agent-zero` earlier — a general agent framework th
 returns, and that is not the system reporting 95.60%. Two name collisions in one census is not bad luck; it is
 what a field with no registry looks like, and it is why `manifest` is mandatory and why its `version` is quoted
 beside every score.
+
+## The optional fourth operation, for systems where retrieval and reasoning are one act
+
+Three of the systems in this census return a ranked list. Two do not: **MemCog** navigates a store with tool calls
+until it can answer, and **Mastra's observational memory** compresses a window and replies from the compression.
+Neither has a retrieval endpoint to hand to a shared reader.
+
+Forcing them into `search` would fail in one of two ways, and both are worse than a refused comparison:
+
+* discarding the multi-step behaviour and returning the pages the agent happened to read, which measures a system
+  nobody ships;
+* running the shared reader over those pages as well, which bills the system for a reader it does not use and
+  measures **two** models' worth of behaviour while attributing the result to one.
+
+So the protocol grew one optional operation. It is optional in the manifest and in the parent: a driver that does not
+declare it is read by the shared reader exactly as before, and the byte-identity of that path is asserted in
+`harness.test.ts` rather than assumed.
+
+```jsonc
+{"op": "answer", "query": "...", "askedAt": "2023/05/25 (Thu) 06:13"}
+```
+
+| op | success payload |
+| --- | --- |
+| `answer` | `{"answer": "...", "usage": {"calls": 12, "prompt_tokens": 48120, "completion_tokens": 903}}` |
+
+`askedAt` is the question's date **as the corpus spells it**, not a rendering of an epoch: MemCog's generation prompt
+is `Current Date: {date}` taken verbatim from the instance, and reformatting it would change the prompt the authors'
+own harness produces.
+
+A manifest that declares `answers: true` must also declare `build: "llm"`. The parent refuses the pair otherwise,
+because a self-answering system spends a model call per question and `embedding` is the cost class a budget sweep
+reads as cheap.
+
+### What a number from this operation may be compared with
+
+The judge is still shared, so accuracy stays a measurement of answer correctness. The **reader** is not shared, so
+the comparison has a different shape, and `ProviderScore.answerer` records which one it is:
+
+| `answerer` | what a row may be subtracted from |
+| --- | --- |
+| `shared` | any other `shared` row in the same run |
+| `self` | nothing, without stating that the gap is *reader plus memory* |
+| `none` | nothing — the arm was not read |
+
+This is the whole reason the field exists. Mastra publishes the same memory system at **84.23 with `gpt-4o`** and
+**94.87 with `gpt-5-mini`**; a table that put a `self` row one line above a `shared` row and printed both totals
+would invite exactly the subtraction those 10.64 points forbid.

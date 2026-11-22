@@ -1,0 +1,12 @@
+{
+  "name": "@agentix-e/competitor-sut-node",
+  "private": true,
+  "type": "module",
+  "description": "Dependency tree for Node-language competitor drivers. Deliberately separate from the workspace: Mastra is a framework with 159 transitive packages, and putting it in the repository's own lockfile would make every install pay for a competitor that one workflow step needs. Versions are exact because a driver's manifest quotes them.",
+  "dependencies": {
+    "@ai-sdk/deepseek": "3.0.89",
+    "@mastra/core": "1.85.0",
+    "@mastra/libsql": "1.31.1",
+    "@mastra/memory": "1.41.2"
+  }
+}
