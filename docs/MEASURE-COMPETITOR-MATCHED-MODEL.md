@@ -252,8 +252,15 @@ model calls over pages the build wrote — is the part `DESIGN-MULTI-STEP-RETRIE
 two questions it is also the cheapest thing in the table.
 
 Why the numbers move so much: MemCog scores 1 of 2, the same as `mem0`, and `n=2` cannot separate it from any arm
-here. Its `recall@k` is 0.0% for the same reason Mem0's is — a hit is counted when its text contains a gold _turn_,
-and a generated page is not a turn — so the accuracy column is the only one with content. What the two questions do
+here. Within its own run the pairing is `lexical-reference -> memcog  +0/-1  delta -50.0%  p=1.0000` and
+`cortex-session -> memcog  0/0  0.0%`: one question, in both directions, which is what n=2 is worth. Its `recall@k`
+is 0.0% for the same reason Mem0's is — a hit is counted when its text contains a gold _turn_, and a generated page
+is not a turn — so the accuracy column is the only one with content.
+
+One cross-check did come out of those arm pairs. A self-answering system never sees the reader prompt, so its score
+must be **invariant** across `con`, `dispatch` and `dispatch2`, and it was: `0/0 no change` for both transitions,
+while `cortex-session` moved one question between the second pair. The three reader arms are therefore not a variable
+that leaks into an arm that does not read. What the two questions do
 establish is the price: **621× `cortex/trim-2.8k`'s 2.8k read (¥0.0056), 52× `cortex-session` (¥0.067), 12.7×
 Mastra (¥0.275)** — and a shared arm's `¥/q` is its reader input only, so every one of those ratios is a lower bound
 on the gap.
