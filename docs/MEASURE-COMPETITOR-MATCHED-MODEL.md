@@ -566,3 +566,36 @@ not the axis on which Cortex is behind**. The axis is accuracy at a matched budg
 7,448 tokens (500 questions, four passes) is the row that belongs in this table and is not in it yet — because it is
 measured by `cortex-eval`'s arm and this table is produced by the competitor harness. §11.2 named that gap; §12.4
 removed one of the two reasons it existed.
+
+### 12.6 Where the shipped arm sits, on the same axes and from a different pipeline
+
+The table above cannot carry the `cortex-memory` row yet, and the reason is worth stating precisely: that reading is
+produced by `cortex-eval`'s arm (`runBenchmark`, 500 questions × 4 passes, artifact `landscape.json`), while every row
+above is produced by `tools/competitor-harness.mjs`. Two pipelines, two samplers, two cost ledgers. Putting the number
+in the table would be the same defect this section is about, one level up.
+
+What can be said without merging them is where it points. The shipped arm reads **91.25% at 7,448 prompt tokens per
+question**; normalised on the same denominator, that is **122.50 points per million tokens**.
+
+| arm              |      accuracy | prompt tok/q | pts / 1M tok | vs the shipped arm           |
+| ---------------- | ------------: | -----------: | -----------: | ---------------------------- |
+| `cortex-memory`  | **91.25%** \* |    **7,448** |   **122.50** | —                            |
+| `mastra` @3k     |         66.7% |      120,221 |         5.55 | −24.6 points, 16× the tokens |
+| `mem0` `infer=1` |         63.3% |      544,884 |         1.16 | −27.9 points, 73× the tokens |
+
+\*500 questions × 4 passes, `S16`, run 44017278305; not the 30-question sample the rows below it were taken on.
+
+Two conclusions follow, and they are what the "copy or do not copy" question actually needed:
+
+1. **Neither competitor wins on either axis.** Mastra buys 24.6 fewer points with 16× the tokens; Mem0 buys 27.9 fewer
+   with 73×. There is no cell of this comparison in which copying either mechanism is a shortcut to a better ratio —
+   the ratio is already better by an order of magnitude.
+2. **The remaining gap is not against these two.** It is against the published 95.6% at 7.4K (Maximem Synap, §11.3) and
+   the 96–98% tier in `SOTA-BASELINE.md`, all of which sit above the shipped arm at a comparable or smaller bill. That
+   is a gap in _what the token buys_, not in how many tokens are spent — which is why the next mechanism worth building
+   is a semantic compressor that runs before the answer (§12.3), not an Observer that runs after it.
+
+The one thing this comparison still cannot say is whether `cortex-memory` would score 91.25% on the thirty questions
+these rows were taken on. At 30 questions the sampling error is ±9 points, and the shipped arm's advantage over
+`cortex-session` is 28. That is large enough to survive the resampling, but it is an inference, not a measurement, and
+§11.2's repair — one harness, one ledger, one sample — is still the way to turn it into one.
