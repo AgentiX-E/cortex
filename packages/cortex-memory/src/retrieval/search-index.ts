@@ -402,6 +402,19 @@ export type SearchCensus = {
    * both rank the same turns, and a reader deciding whether an expansion arm acted needs that difference.
    */
   readonly queries: number;
+  /**
+   * How wide the **most recent** search was: the number of turns that could receive a score at all.
+   *
+   * A per-search value, for `queries`'s reason one field up: an index is built per question, and summing a
+   * width across searches would describe nothing. Before the first search it is the width a search *would*
+   * resolve, which is the configured `k` or {@link DEFAULT_K}.
+   *
+   * It is reported because it is the one number that says whether a ranking was consulted or a corpus was
+   * merely scanned. At `DEFAULT_K = 64` over a corpus of four hundred turns, eighty percent of the evidence
+   * receives the unscored floor and the selection falls back to arrival order for exactly the questions a
+   * ranking exists to answer -- and the artifact, before this field, read identically at 64 and at 256.
+   */
+  readonly k: number;
   readonly channels: readonly ('lexical' | 'vector' | 'rerank')[];
 };
 
@@ -599,6 +612,15 @@ export class SearchIndex implements VectorEraser {
   readonly #termWeight: TermWeight;
   /** How many queries the most recent search issued. See {@link SearchCensus.queries}. */
   #lastQueries = 0;
+  /**
+   * The width the most recent search resolved, or `null` before the first one.
+   *
+   * The search's `k` is a **parameter with a default**, and a default is not observable from outside: a caller
+   * who reads `options.k` learns what a search *would* resolve, not what the one that produced an answer did.
+   * The two differ whenever a caller passes `k` explicitly -- `lookup(question, k)` does, and it is the only
+   * path the prompt takes -- so the census records the resolved value rather than the configured one.
+   */
+  #lastK: number | null = null;
 
   constructor(options: SearchIndexOptions = {}) {
     this.#options = options;
@@ -758,6 +780,7 @@ export class SearchIndex implements VectorEraser {
    * the lexical signal and the prompt sorts on the number it is given.
    */
   async search(question: string, k = this.#options.k ?? DEFAULT_K): Promise<readonly SearchHit[]> {
+    this.#lastK = k;
     const queries = await this.#queriesFor(question);
     this.#lastQueries = queries.length;
     // One query is the single-query path, byte for byte -- see `SearchIndexOptions.queryPlan` for why a
@@ -973,6 +996,7 @@ export class SearchIndex implements VectorEraser {
       embedDegraded: this.#embedDegraded,
       embedFailure: this.#embedFailure,
       queries: this.#lastQueries,
+      k: this.#lastK ?? this.#options.k ?? DEFAULT_K,
       channels,
     };
   }

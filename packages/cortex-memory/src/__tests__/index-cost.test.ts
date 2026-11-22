@@ -177,6 +177,9 @@ function census(overrides: Partial<SearchCensus> = {}): SearchCensus {
     embedDegraded: 0,
     embedFailure: null,
     queries: 1,
+    // Present because `SearchCensus` is a shape, absent from `IndexCost` because a width is not a bill: the
+    // fold adds calls, texts and hits, and the width is a property of one retrieval rather than a total.
+    k: 64,
     channels: ['lexical', 'vector'],
     ...overrides,
   };

@@ -348,6 +348,17 @@ export function assembleMemory(options: AssembleOptions): Installation {
       ? undefined
       : {
           ...options.index,
+          // The width, resolved here for the reason the two instruction levers are resolved below: a
+          // composition root that declines to name an arm does not decline to have one. `SearchIndex`'s own
+          // default is 64, which is a module default and not an arm -- the reading this file's header reports
+          // for `reader` (91.25% at 7,448 prompt tokens) was taken at `REGISTERED_ARM.relevanceTopK`.
+          //
+          // The gap this closes is `registered-arm.ts`'s own defect class, one field over from the two that
+          // file fixed: `relevanceTopK` was a constant with no reader, so a bare call built an index that
+          // scored a quarter of the turns the published number was measured over. At 64 the turns past the
+          // sixtieth position receive the unscored floor and the selection degrades to arrival order, which is
+          // invisible in the prompt and was invisible in the artifact until `SearchCensus.k` existed.
+          k: options.index?.k ?? REGISTERED_ARM.relevanceTopK,
           ...(embed === undefined || vectors === undefined ? {} : { embed, store: vectors }),
         };
 

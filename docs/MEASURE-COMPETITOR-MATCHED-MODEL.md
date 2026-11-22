@@ -445,3 +445,124 @@ harness. An **answer-level re-grade** is available and cheap: no ingest, no read
 over their 500 records. That is a stronger instrument than a race, because it removes the reader from the comparison
 entirely. Closed source blocks running their system; it does not block reading their mechanism or re-grading their
 verdicts.
+
+## 12. Two runs came back, and the pre-registration's third row is the one that happened
+
+### 12.1 Mem0 at n=30: the extraction bill, now measured on thirty questions instead of two
+
+The 2-question Mem0 row in §11 is a coin. The same arm on the same sample as every other row:
+
+| arm                 |   n | accuracy | ctx tok/q | own prompt tok/q | own ¥/q | calls/q |
+| ------------------- | --: | -------: | --------: | ---------------: | ------: | ------: |
+| `lexical-reference` |  30 |    70.0% |    34,974 |                0 |   0.070 |       0 |
+| `cortex-session`    |  30 |    60.0% |    33,270 |                0 |   0.067 |       0 |
+| `cortex/trim-2.8k`  |  30 |    53.3% |     2,799 |                0 |   0.006 |       0 |
+| **mem0 `infer=1`**  |  30 |    63.3% |   **407** |      **544,477** |   1.295 |    47.9 |
+
+The two numbers in bold are the finding, and they are one mechanism. Mem0 hands the reader **407 tokens per
+question** and spends **544,477 of its own** producing them: 1,437 model calls over 30 questions, one per stored
+session, each reading ~11.4k prompt tokens and writing ~537 completion tokens. Every one of those calls is an
+`add`; Mem0's `search` calls no model at all. So the arm is not expensive because it is doing something hard —
+it is expensive because **it pays a model to write the memory, once per session, whether or not any question
+will ever need that session.**
+
+Normalised, that is **1.16 points per million tokens** against `trim-2.8k`'s 190.43 and `cortex-session`'s 18.03.
+To draw with `cortex-session` it would need 983% accuracy. On the paired test it is `+2/−1, p = 1.0000` against
+`cortex-session` — indistinguishable, as a 30-question sample can only be.
+
+### 12.2 Mastra at `messageTokens=3000`: §10's third row, and why
+
+The pre-registered table in §10 had three rows and the run landed on the one with no fallback:
+
+| prompt tokens per question | outcome                    | what it would establish                      |
+| -------------------------: | -------------------------- | -------------------------------------------- |
+|                   ≤ 40,000 | —                          | did not happen                               |
+|                   ≤ 40,000 | —                          | did not happen                               |
+|               **> 40,000** | **120,221 (from 125,296)** | **the trigger does not control the context** |
+
+A tenfold lower trigger moved the prompt by **4.05%** and the accuracy by **−3.3 points** (70.0% → 66.7%, 21/30 → 20/30).
+§9's verdict for Mastra — "copy the budget, not the mechanism" — is withdrawn: there is no budget to copy, because the
+number the trigger controls is not the number that is large.
+
+### 12.3 The mechanism is not untunable; it is aimed at a different protocol
+
+The call log says exactly where the 120,221 tokens go, and the answer is not "an observation log that grew to the
+size of the corpus" (which is what §9 inferred without a per-call record):
+
+- **60 calls for 30 questions**: exactly two per question, alternating large then small.
+- The 30 large calls are **all ≥ 100k** (max 118,781, min of that group 116,189). The 30 small calls are **all < 10k**
+  (median ~2.1k).
+- Under `mastra/answer` for both, because the driver stamps the label from a module variable and the answering phase
+  is the phase during which the Observer fires. `mastra/observe` appears **zero** times: nothing observes during
+  `ingest`, and `settled()` returns immediately because nothing is pending.
+
+So the large call is the answering agent reading the whole transcript (~480 turns, ~117k tokens) and the small call is
+the Observer compressing the unobserved window (≤ `messageTokens`, which is what the trigger actually bounds). The
+large call comes **first**. An observation that runs after the answer it could have shortened cannot shorten it, and
+with `mode: isolated` every question starts a fresh thread with one ingest and one answer — so the compressed form is
+never read by anything. Lowering the trigger does not fail to help; under this protocol it **cannot** help.
+
+That reframes the copy question rather than closing it. Mastra's observational memory is built for a conversation
+that continues, where the observation is read by the next turn. LongMemEval's isolated protocol is the opposite shape.
+The mechanism may well be worth having; this arm cannot show it, and no threshold will.
+
+**The prediction that would confirm this reading**, registered before it is run: under `mode: shared` — one thread
+across all thirty questions — questions 2..30 should cost materially less than question 1 for the same arm, because
+each question's observation becomes input to the next. If that does not happen, the Observer is not running at all and
+the 66.7% is a plain full-context arm wearing an observational-memory manifest.
+
+Two things this does not say. It does not say Mastra's 94.87% is wrong — their harness, prompt and ingest order are
+still unpublished. And it does not say Cortex should skip compression: it says the compression Cortex would need is one
+that runs **before** the answer, over what the answer will read, which is what `cortex/trim-*` already is at the
+character level and what a semantic compressor would have to be at the token level.
+
+### 12.4 Two defects this round found in Cortex, and one that would have shipped
+
+Writing down "the product arm should be the control" (§11.2) made it worth checking that the product arm is reachable
+from the published entry. It was not.
+
+`registered-arm.ts` exists because the product could publish a number for one configuration and ship another. It fixed
+`promptContract` and `ask` by giving `assembleMemory` a default for each. The third field, `relevanceTopK = 256`, got a
+constant and **no reader**: `assembleMemory` passed `options.index` through untouched, so `SearchIndex` resolved its own
+module default of **64**. A bare `assembleMemory({ llm, storage })` — which is what `docs/USER-MANUAL.md` §6.6 tells a
+user to write for "the arm that was measured" — therefore scored a quarter of the turns the 91.25% reading was taken
+over, and the turns past the sixtieth position received the unscored floor.
+
+Worse, it was **unobservable**. `SearchCensus` reported turns, terms, vectors, embed calls and queries, and none of
+them changes with the width. An artifact at 64 and an artifact at 256 were identical in every field a reader could
+see. So the repair is two lines and one field, and they belong together:
+
+- `assembleMemory` resolves `index.k` from `REGISTERED_ARM.relevanceTopK` when the caller names none, on the rule the
+  two instruction levers already follow: a composition root that declines to name an arm does not decline to have one.
+- `SearchCensus.k` reports the width the retrieval actually resolved, so "this question ranked 256 turns" and "this
+  question ranked 64" stop printing the same artifact.
+- `registered-arm-width.test.ts` drives the three steps a user takes (assemble, `remember`, `askStored`) and reads the
+  width off the census of the retrieval that ran, because a test of the option would agree with a caller that never
+  reached the index.
+
+What this changes in every number above: **nothing**, because those rows are `cortex-session` — a bare provider that
+builds no index — and the competitor arms. What it changes is the number the product ships against: the `reader`
+profile's documented 91.25% at 7,448 tokens was measured at 256 and until this commit was assembled at 64.
+
+### 12.5 The table, with every row on one sample
+
+| arm                 |   n | accuracy | ctx tok/q | own prompt tok/q | ¥/q   | pts / 1M tok |
+| ------------------- | --: | -------: | --------: | ---------------: | ----- | -----------: |
+| `cortex/trim-2.8k`  |  30 |    53.3% |     2,799 |                0 | 0.006 |   **190.43** |
+| `lexical-reference` |  30 |    70.0% |    34,974 |                0 | 0.070 |        20.01 |
+| `cortex-session`    |  30 |    60.0% |    33,270 |                0 | 0.067 |        18.03 |
+| `mastra` @3k        |  30 |    66.7% |         0 |          120,221 | 0.261 |         5.55 |
+| `mem0` `infer=1`    |  30 |    63.3% |       407 |          544,477 | 1.295 |         1.16 |
+| `memcog`            |   2 |    50.0% |         — |      1,287,032\* | 3.480 |         0.19 |
+
+Every row is one stratified sample of the same thirty questions, one judge, one model, `k=10`, `mode: isolated`. The
+two self-answering systems are marked in `--reference` runs; `memcog` is still n=2 and its row is a coin, which the
+`cannot` verdict makes survivable rather than decisive. \*MemCog's own figure is prompt plus completion per question,
+from the §7 correction; its context column is `—` because `memcog` returns pages rather than contexts and the
+character count was never taken on the two-question run.
+
+The leader is still a Cortex arm that scores 53.3%, and that is the honest state of this comparison: **efficiency is
+not the axis on which Cortex is behind**. The axis is accuracy at a matched budget, and the shipped arm's 91.25% at
+7,448 tokens (500 questions, four passes) is the row that belongs in this table and is not in it yet — because it is
+measured by `cortex-eval`'s arm and this table is produced by the competitor harness. §11.2 named that gap; §12.4
+removed one of the two reasons it existed.
