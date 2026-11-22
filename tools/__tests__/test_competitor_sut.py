@@ -466,3 +466,33 @@ def test_the_self_answering_branch_is_an_executable_contract():
     assert result['usage'] is not None
     assert result['usage']['calls'] >= 1
     assert result['usage']['promptTokens'] >= 0
+
+
+def test_a_proxied_run_needs_no_vendor_key_and_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The credential a proxied run does not use must not be able to stop it.
+
+    Run 45015350567 died at import with `Missing credentials`: the retrieval stage does not carry
+    `DEEPSEEK_API_KEY`, `Mem0`'s DeepSeek factory builds an `OpenAI` client regardless, and the driver passed it an
+    empty string. Nothing in that path reads the client's credential -- `sut_llm_proxy.py` replaces `Authorization`
+    with its own upstream key -- so the run was lost to a requirement that did not exist.
+
+    The second half is the one that keeps the first honest: with no proxy in the path an inferring run still refuses
+    to invent a credential, because a placeholder sent to the vendor's endpoint would be a 401 reported as a result
+    about Mem0.
+    """
+    driver = load_mem0_driver(monkeypatch)
+    monkeypatch.setenv("MEM0_EMBEDDER", "openai")
+    monkeypatch.setenv("MEM0_INFER", "1")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("MEM0_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_BASE", raising=False)
+
+    monkeypatch.setenv("MEM0_LLM_BASE_URL", "http://127.0.0.1:8399/v1")
+    config, notes = driver.build_config()
+    assert config["llm"]["config"]["api_key"] == "proxied"
+    assert notes["llm"]["api_key"] == "proxied"
+
+    monkeypatch.setenv("MEM0_LLM_BASE_URL", "https://api.deepseek.com")
+    config, notes = driver.build_config()
+    assert config["llm"]["config"]["api_key"] == ""
+    assert "api_key" not in notes["llm"]

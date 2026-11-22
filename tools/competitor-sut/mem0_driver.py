@@ -99,6 +99,15 @@ except Exception as error:  # pragma: no cover
 sys.path.append(str(__import__("pathlib").Path(__file__).resolve().parent))
 
 
+def is_local_proxy(base_url: str) -> bool:
+    """True when the configured endpoint is a proxy on this machine rather than the vendor's own API.
+
+    Loopback only. A remote URL is treated as the vendor's, because guessing that some other host is a proxy is how
+    a run ends up sending a placeholder credential to a real endpoint and reading the 401 as a result about Mem0.
+    """
+    return base_url.startswith(("http://127.0.0.1:", "http://localhost:", "http://[::1]:"))
+
+
 def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
     """The Mem0 configuration, plus the terms a reader needs in order to quote a number from it."""
     infer = os.environ.get("MEM0_INFER", "0") not in ("", "0", "false", "False")
@@ -107,13 +116,22 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
     store = os.environ.get("MEM0_VECTOR_STORE", "faiss")
 
     # Mem0 constructs its LLM client even when `infer=0`, and an OpenAI-compatible client refuses to exist without
-    # a key. The placeholder is correct rather than a workaround: with `infer=0` the model is never called, and a
-    # driver that refused to start for lack of a key it does not use would make every no-LLM reproduction need a
-    # vendor account.
+    # a key. Two placeholders, and both are statements rather than workarounds:
+    #
+    # `unused-infer-off` -- the model is never called, so a driver that refused to start for lack of a key it does
+    # not use would make every no-LLM reproduction need a vendor account.
+    #
+    # `proxied` -- the request goes to `sut_llm_proxy.py`, which replaces `Authorization` with its own upstream key
+    # (`UPSTREAM_API_KEY`), so the client's own credential is never read. Run 45015350567 is why this exists: the
+    # retrieval stage does not carry `DEEPSEEK_API_KEY`, the driver passed `api_key=""` to `OpenAI`, and the arm
+    # died at import with `Missing credentials` -- a measurement lost for a credential nothing in the path uses.
+    # The manifest records which placeholder was used, so a run whose calls went to the vendor's endpoint can never
+    # be mistaken for one that went to the proxy.
+    llm_base = os.environ.get("MEM0_LLM_BASE_URL") or os.environ.get("DEEPSEEK_API_BASE") or ""
     llm_key = (
         os.environ.get("DEEPSEEK_API_KEY")
         or os.environ.get("MEM0_LLM_API_KEY")
-        or ("unused-infer-off" if not infer else "")
+        or ("proxied" if is_local_proxy(llm_base) else ("unused-infer-off" if not infer else ""))
     )
     config: dict[str, Any] = {
         "llm": {"provider": llm_provider, "config": {"api_key": llm_key}},
@@ -122,8 +140,7 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
     }
     # The proxy, when there is one. `deepseek_base_url` is read by `DeepSeekLLM` in mem0ai 2.x; the environment
     # variable is its own fallback, and both are set from the same source so a run cannot point one of them at the
-    # real endpoint and the other at the proxy.
-    llm_base = os.environ.get("MEM0_LLM_BASE_URL") or os.environ.get("DEEPSEEK_API_BASE")
+    # real endpoint and the other at the proxy. `llm_base` was resolved above, where the credential rule needed it.
     if llm_base and llm_provider == "deepseek":
         config["llm"]["config"]["deepseek_base_url"] = llm_base
     llm_notes: dict[str, Any] = {
@@ -132,6 +149,10 @@ def build_config() -> tuple[dict[str, Any], dict[str, Any]]:
         "base_url": llm_base or "provider default",
         "used": bool(infer),
     }
+    # Only when it was a placeholder: a run that had a real key needs no annotation, and one that did not is a run
+    # whose authentication came from the proxy.
+    if llm_key in ("proxied", "unused-infer-off"):
+        llm_notes["api_key"] = llm_key
     embedder_notes: dict[str, Any] = {"provider": embedder_provider}
     # Resolved by whichever embedder branch below runs, then handed to the vector store. Mem0 keeps the two
     # settings apart: the embedder is told what width it produces and the store is told what width its index is,
