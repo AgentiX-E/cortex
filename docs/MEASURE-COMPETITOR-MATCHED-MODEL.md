@@ -53,6 +53,27 @@ no retry ladder beyond theirs, no prompt change, no parsing.
 That is not a defect in their paper; it is a fact about what a quoted number from that repository can mean. A
 reproduction is MemCog's pipeline **plus a transport**, and the manifest says so in those words.
 
+### 2.1 And it does not run on Python older than 3.12, which the repository does not say
+
+The first real dispatch died on `manifest produced no response`. The driver's stderr had the reason:
+
+```
+File ".../store_build/sources.py", line 75
+SyntaxError: f-string expression part cannot include a backslash
+```
+
+PEP 701 legalised backslashes inside f-string replacement fields in Python **3.12**. The runner has 3.11.18. So the
+module does not import, the failure happens before `main()`, and the parent reports it as a dead driver rather than
+as a version assumption nobody checked — the README names no minimum version.
+
+Two consequences, and they matter beyond this file:
+
+* a competitor's runtime requirement is **part of its configuration**, and a driver that discovers it late has
+  already spent a dispatch. `memcog_driver.py` now re-execs into `MEMCOG_PYTHON` when it is younger than 3.12, and
+  otherwise exits with one sentence naming the version, the file and the PEP;
+* the interpreter is installed **beside** the job's 3.11 rather than replacing it, because every other step in this
+  comparison runs on 3.11 and swapping it would be a second variable inside the experiment.
+
 ## 3. Mastra's `agent.generate` runs over the streaming path, and refusing it was my bug
 
 The proxy refused `stream: true` on the argument that usage is only complete in the final chunk and a proxy that

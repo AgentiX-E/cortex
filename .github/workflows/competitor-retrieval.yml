@@ -218,16 +218,17 @@ jobs:
           # Installed side by side instead of replacing the job's Python, because every other step here is measured
           # on 3.11 and changing the interpreter for the job would be a second variable inside a comparison.
           python3 -m pip install --quiet uv
-          uv python install 3.12
-          MEMCOG_PYTHON="$(uv python find 3.12)"
+          # A venv, not a bare `uv python install`: the standalone interpreter uv downloads is marked externally
+          # managed and refuses `pip install` into itself. The venv is also the right isolation story -- the driver
+          # is a subprocess and nothing else in this job imports these packages.
+          uv venv --python 3.12 "$RUNNER_TEMP/memcog-venv"
+          MEMCOG_PYTHON="$RUNNER_TEMP/memcog-venv/bin/python"
           echo "MEMCOG_PYTHON=$MEMCOG_PYTHON" >> "$GITHUB_ENV"
-          echo "memcog interpreter: $MEMCOG_PYTHON ($("$MEMCOG_PYTHON" -c 'import sys; print(sys.version.split()[0])'))"
-
           # The package's own dependencies, into the interpreter the driver re-execs into. `openai` is what the
           # authors' commented-out example uses; `requests` is imported by the client module whether or not its body
-          # runs. Installed with `uv pip` because a venv is not needed -- the driver is the only thing that imports
-          # them, and it is a subprocess.
+          # runs.
           uv pip install --python "$MEMCOG_PYTHON" --quiet openai requests
+          echo "memcog interpreter: $MEMCOG_PYTHON ($("$MEMCOG_PYTHON" -c 'import sys; print(sys.version.split()[0])'))"
           "$MEMCOG_PYTHON" -c "import sys; sys.path.insert(0, 'src'); import core.llm_client; print('memcog importable')"
 
       # Mastra's dependency tree is 174 packages and lives in its own package.json under `tools/competitor-sut/`,
