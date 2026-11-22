@@ -25,6 +25,7 @@ printed table tests the thing a reader reads.
 from __future__ import annotations
 
 import json
+import os
 import pytest
 import subprocess
 import sys
@@ -328,6 +329,57 @@ def test_progress_lines_say_which_question_and_what_it_cost() -> None:
     assert any("returned in" in line for line in lines), completed.stderr
     # No proxy in this test, so no token claim. An invented number is worse than an absent one.
     assert not any("token" in line for line in lines), completed.stderr
+
+
+def test_a_self_answering_system_is_not_ingested_for_a_column_it_cannot_fill() -> None:
+    """The retrieval-only stage has nothing to say about a system whose context is built while it answers.
+
+    `search` on Mastra and MemCog returns no hits by construction, so the only recall they can print is 0.0% --
+    an artefact of the instrument. Meanwhile the reading stage re-launches the driver and the protocol resets the
+    store before every question, so the store this stage builds is gone before anything reads it. Run 45011905117
+    paid for that twice: ¥6.71 and 39 minutes on two questions, then the same two stores built again.
+
+    The reference driver is the case that can be tested offline: `STUB_ANSWERS=1` makes it declare
+    `answers: true`, so the same binary goes down both branches.
+    """
+    env = {**os.environ, "STUB_ANSWERS": "1"}
+    skipped = subprocess.run(
+        ["node", str(TOOL), "--json", "--data", str(FIXTURE), "--questions", "2", "--limit", "2", "--sut", "reference"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+        env=env,
+    )
+    assert skipped.returncode == 0, skipped.stderr
+    names = {score["provider"] for score in json.loads(skipped.stdout)["scores"]}
+    assert "reference/lexical" not in names, names
+    # And it did not silently run: the harness says why the row is absent, because a table that omits a system
+    # someone asked for is the failure this file is written against.
+    printed = subprocess.run(
+        ["node", str(TOOL), "--data", str(FIXTURE), "--questions", "2", "--limit", "2", "--sut", "reference"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+        env=env,
+    )
+    assert printed.returncode == 0, printed.stderr
+    assert "has no\ncolumn to fill" in printed.stdout or "no column to fill" in printed.stdout, printed.stdout
+    # Nothing was ingested, so no question was announced. One `ingest` per question is what the skip removes.
+    assert not any("ingest" in line for line in printed.stderr.splitlines()), printed.stderr
+
+
+def test_a_retrieving_system_is_still_ingested_there() -> None:
+    """The control for the skip: Mem0 and Letta have a ranked list, so their recall column is a measurement.
+
+    Without this, the skip could be widened to every system under test and no table would notice -- the reading
+    stage would still print accuracy for each one.
+    """
+    payload = run("--data", str(FIXTURE), "--questions", "2", "--limit", "2", "--sut", "reference")
+    assert "reference/lexical" in by_provider(payload["scores"]), payload["scores"]
 
 
 if __name__ == "__main__":

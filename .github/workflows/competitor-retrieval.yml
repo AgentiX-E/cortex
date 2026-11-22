@@ -460,11 +460,32 @@ jobs:
           # second variable inside the arm that is supposed to vary only the store.
           LETTA_BASE_URL: http://127.0.0.1:8283
           LETTA_PASSAGE_BATCH: '32'
+          # Only read, to answer one question: will a reading stage measure this same system under test? If it will,
+          # the ingest below is paid for twice, because the protocol runs `mode: isolated` and every stage starts
+          # from an empty store.
+          READ_ARMS_INPUT: ${{ github.event.inputs.read_arms }}
         run: |
           # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
           # harness into a green step with a zero-byte artifact. That is how three reading stages
           # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
           set -o pipefail
+          # The reading stage re-launches this driver and ingests the same corpus again, and its row carries the
+          # same recall columns this stage exists to produce: `competitor-read.json` records `recallAtK`,
+          # `recallAllAtK` and `mrr` for the system under test, at the same top-k, because `--budget-tokens` trims
+          # only this repository's own arms. So a dispatch that reads is paying for the ingest twice — run
+          # 45011905117 spent 39 minutes and ¥6.71 here and rebuilt the same two stores immediately afterwards.
+          # Skipped rather than deleted: a retrieval-only dispatch (`read_questions=0`) still needs this stage, and
+          # so does one whose arm list names systems other than this one, which is what the guard below checks.
+          if [ "$READ_QUESTIONS" != "0" ]; then
+            case ",${READ_ARMS_INPUT}," in
+              ,,* | *",${SUT},"*)
+                echo "skipped: the reading stage measures ${SUT} at the same top-k and re-ingests it anyway;" \
+                  "its recall columns are in competitor-read*.json" \
+                  | tee "competitor-sut-$(echo "$SUT" | tr '/' '-').txt"
+                exit 0
+                ;;
+            esac
+          fi
           # `2>&1`, because the progress lines the harness prints per question and the vendor package's own
           # build output both go to stderr. Run 45002769709 piped only stdout into this file, so a step that ran
           # thirty-six minutes left an **empty** artifact: the table is printed when the last question is graded,

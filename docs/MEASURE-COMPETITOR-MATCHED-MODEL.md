@@ -265,9 +265,10 @@ establish is the price: **621× `cortex/trim-2.8k`'s 2.8k read (¥0.0056), 52× 
 Mastra (¥0.275)** — and a shared arm's `¥/q` is its reader input only, so every one of those ratios is a lower bound
 on the gap.
 
-## 8. Three defects the dispatching found, and what they had in common
+## 8. Four defects the dispatching found, and what they had in common
 
-None is about a competitor. All three are about a run that reports something it did not measure.
+None is about a competitor. All four are about a run that reports something it did not measure — or pays for
+something it does not report.
 
 ### 8.1 A crashed harness was a green step with an empty file
 
@@ -322,8 +323,38 @@ is `own ¥/q` rather than `own ¥`, because it sits beside `own tok/q` and a tot
 30× error at n=30. `tools/competitor-sut.mjs usage-scope` is the three-case self-test, and the progress line now
 prints `since launch` rather than `cumulative` for the same reason one layer up.
 
-## 9. What this says to copy, and what it says not to
+### 8.4 A stage that built a store nothing would read
 
+The workflow runs a retrieval-only stage against the system under test and then three reading stages, and **every one
+of them launches the driver and ingests again**: the protocol runs `mode: isolated`, which resets the store before
+each question, so there is no state for a later stage to inherit. That repetition is not a measurement of anything
+the reading stage does not already report — its row for the system under test carries `recallAtK`, `recallAllAtK` and
+`mrr` at the same top-k, because `--budget-tokens` trims only this repository's own arms. So the first stage was
+buying a second copy of a table one column over: run 45011905117 spent **¥6.71 and 39 minutes** on it for two
+questions, and the `con` arm rebuilt the same two stores immediately afterwards.
+
+It is now skipped whenever a reading stage will measure the same system, and the artifact says so in a line of its
+own rather than by leaving a requested system's row quietly absent. Two cases still run it: a retrieval-only
+dispatch (`read_questions=0`), and a dispatch whose explicit arm list names systems other than this one — which is
+the only way the reading stage would not carry its row. That second skip is worth more than it looks: at Mem0's
+measured 4.7 s per extraction call, thirty questions ingest in about two hours, and the duplicate put the dispatch
+against the job's 300-minute ceiling with no margin.
+
+Inside the stage there is a second skip, for a different reason. When the stage does run — a retrieval-only dispatch
+— a self-answering system has nothing to contribute to it: `search` on Mastra and MemCog returns `hits: []` by
+construction, because their context is assembled while they answer, so the only recall they can print is 0.0%, which
+is a statement about the instrument. The stage is skipped for them on `answers: true` in the manifest, keyed on the
+declaration rather than on a workflow input: a flag is one more thing a dispatch can get wrong, and the declaration
+of the architecture is already being read to decide whether `answer` may be called at all. Mem0, Letta and the
+reference driver still get it, because a ranked list is something their recall column can measure.
+
+The accounting consequence is worth stating before it is discovered in the next bill: a self-answering arm's
+per-question cost **includes a store build per question**, and that is not a distortion — it is what the system costs
+to answer one isolated question, which is the protocol every other arm is held to. What it does mean is that
+`read_prompts` multiplies that cost by the number of arms, so a three-prompt sweep rebuilds the same stores three
+times, and a MemCog comparison of reader prompts is a ¥10-per-question experiment rather than a ¥3.48 one.
+
+## 9. What this says to copy, and what it says not to
 | system         | what it actually does, as measured here                                                                                          | verdict for Cortex                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mastra OM      | 2 calls/question, the answering one at 112k median tokens: full context with an observation log attached                         | **Copy the budget, not the mechanism.** The +6.7 points are context volume; `maxPromptCharsByRoute` is the cheaper lever, and the experiment to run is a window sweep, not an Observer                                                                                                                                                                                                       |

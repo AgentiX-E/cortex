@@ -381,7 +381,23 @@ function withProgress(provider, planned) {
  */
 const sutDriver = flag('--sut');
 const sut = sutDriver === undefined ? null : await createSutProvider({ driver: sutDriver });
-if (sut !== null) providers.push(withProgress(sut, dataset.questions.length));
+/**
+ * A self-answering system has no retrieval-only column to fill, and building its store to prove that is not free.
+ *
+ * Mastra and MemCog both return `hits: []` from `search` by construction: their context is assembled while they
+ * answer, and a hit list would be a context they never assembled, so the only recall they can report is 0.0% -- a
+ * statement about the instrument rather than about them. Meanwhile the protocol runs `mode: isolated`, which resets
+ * the store before every question, so each reading stage builds its own copy from scratch and the store this stage
+ * builds is gone before anything reads it.
+ *
+ * Run 45011905117 paid for that twice: the retrieval-only stage spent ¥6.71 and 39 minutes on two questions, and
+ * the reading stage immediately built the same two stores again. The skip is keyed on `answers` in the manifest
+ * rather than on a workflow input, because it is a property of the system -- a flag would be one more thing a
+ * dispatch can get wrong, and the manifest is already the driver's own declaration of its architecture.
+ */
+const unmeasuredSelfAnswerer = sut !== null && !readAnswers && sut.manifest.answers === true;
+if (sut !== null && !unmeasuredSelfAnswerer)
+  providers.push(withProgress(sut, dataset.questions.length));
 /**
  * A system under test is read by default.
  *
@@ -390,7 +406,8 @@ if (sut !== null) providers.push(withProgress(sut, dataset.questions.length));
  * 100.0% recall and no `mem0` row in the reading table at all, because the default arm list predates the flag.
  * An explicit `--read-arms` still wins, so a caller can run the ingest for the recall column alone and say so.
  */
-if (sut !== null && !READ_ARMS.includes(sut.name)) READ_ARMS.push(sut.name);
+if (sut !== null && !unmeasuredSelfAnswerer && !READ_ARMS.includes(sut.name))
+  READ_ARMS.push(sut.name);
 
 let reader = null;
 let judge = null;
@@ -486,6 +503,14 @@ if (sut !== null) {
     `system under test: ${sut.manifest.name} ${sut.manifest.version} (build=${sut.manifest.build}) — ` +
       `${sut.manifest.notes}\n`,
   );
+  if (unmeasuredSelfAnswerer) {
+    // Said out loud rather than left as an absent row: a table that simply omits a system someone asked for is the
+    // failure this whole file is written against.
+    process.stdout.write(
+      `system under test: ${sut.manifest.name} answers its own questions, so this retrieval-only stage has no ` +
+        `column to fill and nothing was ingested; the reading stage builds the store it needs.\n`,
+    );
+  }
 }
 process.stdout.write('\n');
 
