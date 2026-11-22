@@ -208,14 +208,19 @@ if (dataPath === undefined) {
     throw new Error(`${dataPath} must contain a JSON array of LongMemEval instances`);
   }
   const loaded = loadLongMemEval(parsed);
-  const subset = stratify(loaded.questions, Math.min(wanted + offset, loaded.questions.length)).slice(offset);
+  const subset = stratify(
+    loaded.questions,
+    Math.min(wanted + offset, loaded.questions.length),
+  ).slice(offset);
   dataset = { name: `${loaded.name}/s`, questions: subset };
   // The only gold this tool subtracts on: an annotation in the file, not an inference.
   goldOf = (question) => question.goldTurns ?? [];
   provenance =
     `gold: Question.goldTurns from answer_session_ids (${parsed.length} instances in file, ` +
     `${subset.length} sampled round-robin across capabilities` +
-    (offset === 0 ? '' : `, block [${offset}, ${offset + subset.length}) of the ${wanted + offset}-question sample`) +
+    (offset === 0
+      ? ''
+      : `, block [${offset}, ${offset + subset.length}) of the ${wanted + offset}-question sample`) +
     ')';
 }
 
@@ -273,8 +278,14 @@ function proxyStatsEndpoint() {
 
 const statsEndpoint = proxyStatsEndpoint();
 
-/** Cumulative calls and tokens for one system, as the proxy counted them. `''` when it cannot be read. */
-async function cumulativeUsage(prefix) {
+/**
+ * Cumulative calls and tokens for one system, counted from when **this arm** started.
+ *
+ * The proxy's counter is scoped to the job, and one job runs four arms of the same system. A line that read
+ * `11.20M token(s) cumulative` for an arm that had spent 3.5M would be the cost-attribution defect one layer up,
+ * so the baseline the provider read at construction is subtracted here too -- the same number, from the same place.
+ */
+async function cumulativeUsage(prefix, baseline = null) {
   if (statsEndpoint === null) return '';
   try {
     const response = await fetch(`${statsEndpoint}?prefix=${encodeURIComponent(prefix)}`, {
@@ -282,8 +293,12 @@ async function cumulativeUsage(prefix) {
     });
     if (!response.ok) return ` · stats unavailable (${String(response.status)})`;
     const stats = await response.json();
-    const tokens = Number(stats['prompt_tokens'] ?? 0) + Number(stats['completion_tokens'] ?? 0);
-    return ` · ${String(stats['calls'] ?? 0)} call(s), ${(tokens / 1e6).toFixed(2)}M token(s) cumulative`;
+    const tokens =
+      Number(stats['prompt_tokens'] ?? 0) +
+      Number(stats['completion_tokens'] ?? 0) -
+      (baseline === null ? 0 : baseline.promptTokens + baseline.completionTokens);
+    const calls = Number(stats['calls'] ?? 0) - (baseline === null ? 0 : baseline.calls);
+    return ` · ${String(calls)} call(s), ${(Math.max(tokens, 0) / 1e6).toFixed(2)}M token(s) since launch`;
   } catch {
     // A progress line is a courtesy, not a measurement: a proxy that is down must not fail the run that is
     // already measuring it.
@@ -332,7 +347,7 @@ function withProgress(provider, planned) {
       say(
         `${provider.name} question ${scope}: ${op} returned in ${took}s` +
           `${op === 'ingest' ? ` · ${String(stored)} session(s) stored cumulative, ${String(skipped)} refused` : ''}` +
-          (await cumulativeUsage(provider.name)),
+          (await cumulativeUsage(provider.name, provider.usageBaseline ?? null)),
       );
     }
   };
@@ -344,7 +359,11 @@ function withProgress(provider, planned) {
     ingest: { value: (sessions) => timed('ingest', () => provider.ingest(sessions)) },
     search: { value: (query, options) => timed('search', () => provider.search(query, options)) },
     ...(selfAnswering
-      ? { answer: { value: (query, options) => timed('answer', () => provider.answer(query, options)) } }
+      ? {
+          answer: {
+            value: (query, options) => timed('answer', () => provider.answer(query, options)),
+          },
+        }
       : {}),
   });
 }
@@ -492,7 +511,11 @@ for (const score of scores) {
   const llmPerQuestion =
     score.usage === null
       ? '—'
-      : String(Math.round((score.usage.promptTokens + score.usage.completionTokens) / Math.max(score.measured, 1)));
+      : String(
+          Math.round(
+            (score.usage.promptTokens + score.usage.completionTokens) / Math.max(score.measured, 1),
+          ),
+        );
   const who = score.answerer === 'none' ? '—' : score.answerer;
   process.stdout.write(
     `${pad(score.provider, 20)}${pad(score.build, 7)}${pad(recall, 10)}${pad(allGold, 10)}${pad(mrr, 8)}${pad(acc, 9)}${pad(who, 6)}${pad(llmPerQuestion, 8)}${pad(tokens, 8)}${score.unmeasurable}\n`,

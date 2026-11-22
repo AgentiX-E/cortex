@@ -496,3 +496,80 @@ def test_a_proxied_run_needs_no_vendor_key_and_says_so(monkeypatch: pytest.Monke
     config, notes = driver.build_config()
     assert config["llm"]["config"]["api_key"] == ""
     assert "api_key" not in notes["llm"]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Cost attribution: one arm's row must carry one arm's spend.
+#
+# Run 45011905117 printed `memcog ... 2,799,803 tok/q ... ¥13.91` and both numbers described **two** arms. The
+# proxy's counter is scoped to the job, one job runs four arms of the same system under the same label, and every
+# driver reports that counter verbatim -- which is correct for a driver to report and wrong to attribute to a row.
+# `5,148,346`, exactly the retrieval arm plus the `con` arm, is what the row had recorded; segmenting
+# `sut-llm-calls.jsonl` at each return to `q1` gave ¥3.36 / 3.60 / 3.51 / 3.45 per question, so one question of one
+# arm cost ¥3.48. The arithmetic closed to the token, which is why this is a defect and not a rounding argument.
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def test_the_cost_of_an_arm_is_what_the_arm_spent() -> None:
+    """Three cases, because the subtraction has three outcomes and only one of them is a number.
+
+    | the proxy before the arm | the arm | because |
+    | --- | --- | --- |
+    | `0` | reports its own calls | nothing to subtract |
+    | `900` | **fails** | the driver's counter is not the proxy's; the cost is unattributable |
+    | nothing | **fails before spending** | a job-scoped counter with no baseline prices the job |
+
+    The third case is the one that has to happen at construction rather than at the end: a run that learns at
+    minute forty that it cannot price itself has already spent the money.
+    """
+    result = node("usage-scope")
+
+    assert result["pure"] == {"calls": 2, "promptTokens": 2000, "completionTokens": 200}, result["pure"]
+    # A clean proxy: nothing to subtract, and the arm's own numbers survive the round trip.
+    assert result["fresh"]["baseline"]["calls"] == 0, result["fresh"]
+    assert result["fresh"]["usage"]["calls"] >= 1, result["fresh"]
+    # A counter that is already ahead of the arm: the arm cannot be priced, and saying so is the only correct
+    # answer -- a clamped zero would print as "free".
+    assert "cannot be attributed" in result["misattributed"], result
+    # And a proxy with no ledger at all must stop the arm before it spends.
+    assert "without a baseline" in result["unreadable"], result
+
+
+def test_a_row_is_priced_per_question_not_per_run(tmp_path: Path) -> None:
+    """`own ¥` sat in a table whose every other money column is per question, and a total there is a 30x error.
+
+    At n=30 the two readings differ by a factor of thirty, which is the size of gap that starts arguments about
+    which system is cheaper. The header says `/q` so that the number under it cannot be read as a run.
+    """
+    payload = {
+        "scores": [
+            {
+                "provider": "mastra",
+                "build": "llm",
+                "measured": 30,
+                "read": 30,
+                "answerer": "self",
+                "accuracy": 0.7,
+                "meanContextChars": 0,
+                "usage": {"calls": 60, "promptTokens": 3_600_000, "completionTokens": 300_000},
+            }
+        ]
+    }
+    path = tmp_path / "competitor-read.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(REPO / "tools" / "sut-cost-report.mjs"), "--read", str(path)],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode == 0, completed.stderr
+    out = completed.stdout
+
+    assert "own ¥/q" in out
+    row = next(line for line in out.splitlines() if line.startswith("mastra"))
+    # 3.6M prompt at ¥2/M plus 0.3M completion at ¥8/M is ¥9.60 for the arm: ¥0.320 a question, not ¥9.60.
+    assert "0.320" in row, row
+    assert "9.600" not in row, row

@@ -35,6 +35,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -207,6 +208,97 @@ function tail(text, limit = 600) {
 }
 
 /**
+ * Where the metering proxy's ledger lives, when the system under test is being run through one.
+ *
+ * Only loopback counts. A driver pointed straight at a vendor endpoint has no `/stats` to read and reports no
+ * `usage` at all, which the report prints as `—`; the subtraction below exists for the proxied case and must not
+ * turn a vendor-direct run into a failure.
+ */
+function meteringEndpoint(base) {
+  if (base === undefined || base === '') return null;
+  try {
+    const url = new URL(base);
+    const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname);
+    return loopback ? `${url.origin}/stats` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the **job** had already spent under this system's label before this arm started.
+ *
+ * The proxy's counter is job-scoped, not arm-scoped: it is started once for the workflow and kept alive across the
+ * retrieval step and the three reading arms, because it is also what the reading steps are metered by. Every driver
+ * in `DRIVERS` reports `/stats?prefix=<its own name>` verbatim -- which is the right thing for a driver to report
+ * and the wrong thing to attribute to one arm.
+ *
+ * Run 45011905117 is what that costs. Its `competitor-read.json` carried memcog at `2,799,803` tokens per question
+ * and `¥13.91`; the job ledger held 5,339 calls and 11,199,346 prompt tokens across **four** arms. `5,148,346` --
+ * the retrieval arm plus the `con` arm, exactly -- was what the row had recorded, and dividing a two-arm total by
+ * two questions printed four times the cost of one question. The numbers closed to the token, which is how the
+ * defect was identified rather than argued about: segmenting `sut-llm-calls.jsonl` at each return to `q1` gave
+ * ¥3.36 / 3.60 / 3.51 / 3.45 per question for the four arms, so the row that said ¥13.91 was describing ¥3.48.
+ *
+ * The fix is a baseline: read the counter before the arm spends anything and subtract it. A driver cannot do this
+ * itself, because a driver does not know whether another arm of the same system ran before it in this job.
+ */
+async function readMeteringBaseline(name, base) {
+  const endpoint = meteringEndpoint(base);
+  if (endpoint === null) return null;
+  let response;
+  try {
+    response = await fetch(`${endpoint}?prefix=${encodeURIComponent(name)}`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (error) {
+    throw new SutFailure(
+      `the metering proxy at ${endpoint} could not be read before ${name} started ` +
+        `(${error?.message ?? String(error)}); without a baseline this arm's cost would be the job's cost`,
+    );
+  }
+  if (!response.ok) {
+    throw new SutFailure(
+      `the metering proxy at ${endpoint} answered ${String(response.status)} for ${name}; without a baseline ` +
+        "this arm's cost would be the job's cost",
+    );
+  }
+  const stats = await response.json();
+  return {
+    calls: Number(stats.calls ?? 0),
+    promptTokens: Number(stats.prompt_tokens ?? 0),
+    completionTokens: Number(stats.completion_tokens ?? 0),
+  };
+}
+
+/**
+ * This arm's own spend, given what the driver reported and what the job had already spent under its label.
+ *
+ * Exported because it is the whole of the arithmetic and a test can pin it without a proxy, a driver or a key.
+ */
+export function subtractUsage(reported, baseline) {
+  const scoped = {
+    calls: reported.calls - baseline.calls,
+    promptTokens: reported.promptTokens - baseline.promptTokens,
+    completionTokens: reported.completionTokens - baseline.completionTokens,
+  };
+  if (scoped.calls < 0) {
+    throw new SutFailure(
+      `the driver reported ${String(reported.calls)} call(s) while the job had already spent ` +
+        `${String(baseline.calls)} under this label; its counter is not the proxy's cumulative counter, so this ` +
+        "arm's cost cannot be attributed -- and a cost column that cannot be attributed is not one",
+    );
+  }
+  return {
+    // Tokens can only go backwards if the call count did, and that case is the one above; a negative here would be
+    // a proxy that restarted mid-arm, which the run has to see rather than round away.
+    calls: scoped.calls,
+    promptTokens: Math.max(0, scoped.promptTokens),
+    completionTokens: Math.max(0, scoped.completionTokens),
+  };
+}
+
+/**
  * Build a `MemoryProvider` over one driver process.
  *
  * The provider is stateful on purpose: `ingest` and `search` both go to the same child, so a system that caches
@@ -231,20 +323,39 @@ export async function createSutProvider({
     ...(cwd === undefined ? {} : { cwd }),
   });
 
+  /**
+   * Close the child before throwing, for every check between here and the return.
+   *
+   * A spawned driver that is never closed keeps the readline stream and the child handle alive, so the parent's
+   * event loop never empties and a **failing** pre-flight hangs instead of failing. The `usage-scope` self-test
+   * found this the moment a pre-flight check was added that can throw: the third case printed its error and then
+   * sat there for four minutes.
+   */
+  const abort = async (error) => {
+    await channel.close();
+    return error;
+  };
+
   const manifest = await channel.send({ op: 'manifest' }, budget);
   if (!manifest.ok) {
-    throw new SutFailure(`${spec.name} could not describe itself: ${String(manifest.error)}`);
+    throw await abort(
+      new SutFailure(`${spec.name} could not describe itself: ${String(manifest.error)}`),
+    );
   }
   for (const field of ['name', 'build', 'version']) {
     if (typeof manifest[field] !== 'string') {
-      throw new SutFailure(
-        `${spec.name} manifest has no string \`${field}\`: ${JSON.stringify(manifest)}`,
+      throw await abort(
+        new SutFailure(
+          `${spec.name} manifest has no string \`${field}\`: ${JSON.stringify(manifest)}`,
+        ),
       );
     }
   }
   if (!['llm', 'embedding', 'none'].includes(manifest.build)) {
-    throw new SutFailure(
-      `${spec.name} declared build ${JSON.stringify(manifest.build)}, which is not a cost class`,
+    throw await abort(
+      new SutFailure(
+        `${spec.name} declared build ${JSON.stringify(manifest.build)}, which is not a cost class`,
+      ),
     );
   }
   /**
@@ -256,10 +367,29 @@ export async function createSutProvider({
    */
   const answers = manifest.answers === true;
   if (answers && manifest.build !== 'llm') {
-    throw new SutFailure(
-      `${spec.name} declares answers:true, which spends a model call per question, but build ` +
-        `${JSON.stringify(manifest.build)}; a self-answering system is an \`llm\` build`,
+    throw await abort(
+      new SutFailure(
+        `${spec.name} declares answers:true, which spends a model call per question, but build ` +
+          `${JSON.stringify(manifest.build)}; a self-answering system is an \`llm\` build`,
+      ),
     );
+  }
+
+  /**
+   * The job's spend under this label before this arm, read here because here is the last moment it is still zero.
+   *
+   * The driver has answered `manifest` and nothing else; every operation that spends a model call comes after this
+   * line. Read from the arm's own environment first, because `SUT_LLM_BASE_URL` is set at workflow level and a
+   * caller that passes it per-provider would otherwise get a baseline from a proxy this arm never talks to.
+   */
+  let baseline;
+  try {
+    baseline = await readMeteringBaseline(
+      manifest.name,
+      env['SUT_LLM_BASE_URL'] ?? process.env['SUT_LLM_BASE_URL'],
+    );
+  } catch (error) {
+    throw await abort(error);
   }
 
   /** Per-question refusals, kept so the summary can separate them from empty results. */
@@ -277,21 +407,26 @@ export async function createSutProvider({
   let ingestedSessions = 0;
   let offeredSessions = 0;
   /**
-   * The system's own spend, as last reported.
+   * The system's own spend, as last reported **minus what the job had already spent under its label**.
    *
    * Carried on the response rather than asked for separately, because a driver that queried its metering proxy after
    * every call would double the number of round trips to answer a question nobody asks until the arm is over. The
    * latest reading wins: the counter is cumulative, so the final response of the arm carries the total.
+   *
+   * "Cumulative" is the word that had to be qualified. It is cumulative for the *job*, and the four arms of one
+   * comparison share a proxy, so the first arm after another one used to report both arms' spend. See
+   * `readMeteringBaseline`.
    */
   let lastUsage = null;
   const noteUsage = (response) => {
     const reported = response.usage;
     if (reported === null || typeof reported !== 'object') return;
-    lastUsage = {
+    const absolute = {
       calls: Number(reported.calls ?? 0),
       promptTokens: Number(reported.prompt_tokens ?? 0),
       completionTokens: Number(reported.completion_tokens ?? 0),
     };
+    lastUsage = baseline === null ? absolute : subtractUsage(absolute, baseline);
   };
 
   return {
@@ -299,6 +434,14 @@ export async function createSutProvider({
     build: manifest.build,
     /** What the driver says about its own configuration, verbatim, for the report to print. */
     manifest,
+    /**
+     * The job's spend under this label when the arm started, so a progress line can report arm-local tokens.
+     *
+     * Exposed rather than kept private because the harness's per-question line is the only live readout a
+     * twenty-minute ingest has, and a line reading `11.20M token(s) cumulative` for an arm that has spent 3.5M is
+     * the same defect as the cost column, one layer up.
+     */
+    usageBaseline: baseline,
     refusals,
     get emptyResults() {
       return emptyResults;
@@ -533,7 +676,109 @@ async function answerSelftest() {
   }
 }
 
+/**
+ * The cost-attribution half: one arm's spend is the counter's reading minus the counter's reading when it started.
+ *
+ * Three cases, because the subtraction has three outcomes and only one of them is a number:
+ *
+ * | what the proxy says | what the arm reports | because |
+ * | --- | --- | --- |
+ * | `0` before the arm | its own calls | nothing to subtract, and the reported figure is already arm-local |
+ * | `900` before the arm | **fails** | the driver's counter is not the proxy's counter; the arm's cost is unknown |
+ * | nothing at all | **fails** before spending | a job-scoped counter with no baseline prices the job, not the arm |
+ *
+ * The third one is the reason the baseline is read at construction rather than lazily: a run that discovers at
+ * minute forty that it cannot attribute its cost has already spent it.
+ */
+async function usageScopeSelftest() {
+  const pure = subtractUsage(
+    { calls: 9, promptTokens: 9_000, completionTokens: 900 },
+    { calls: 7, promptTokens: 7_000, completionTokens: 700 },
+  );
+
+  const withProxy = async (payload, body) => {
+    const server = createServer((request, response) => {
+      if (payload === 'error') {
+        response.writeHead(503).end('no ledger');
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(payload));
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${String(server.address().port)}/v1`;
+    try {
+      return await body(base);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  };
+
+  const corpus = [
+    { id: 's1', at: 1_685_000_000_000, turns: [{ role: 'user', content: 'I live in London.' }] },
+  ];
+
+  const fresh = await withProxy(
+    { calls: 0, prompt_tokens: 0, completion_tokens: 0 },
+    async (base) => {
+      const provider = await createSutProvider({
+        driver: 'reference',
+        env: { SUT_LLM_BASE_URL: base, STUB_ANSWERS: '1' },
+      });
+      await provider.ingest(corpus);
+      await provider.answer('where does the user live');
+      const result = { baseline: provider.usageBaseline, usage: provider.usage };
+      await provider.close();
+      return result;
+    },
+  );
+
+  let misattributed = null;
+  await withProxy(
+    { calls: 900, prompt_tokens: 900_000, completion_tokens: 9_000 },
+    async (base) => {
+      const provider = await createSutProvider({
+        driver: 'reference',
+        env: { SUT_LLM_BASE_URL: base, STUB_ANSWERS: '1' },
+      });
+      try {
+        await provider.ingest(corpus);
+        // `ingest` and `search` on the reference driver report no `usage`; the counter arrives with the operation
+        // that spends a model call, which is where this arm has to notice it cannot be priced.
+        await provider.answer('where does the user live');
+      } catch (error) {
+        misattributed = `${error.name}: ${error.message}`;
+      }
+      await provider.close();
+    },
+  ).catch(() => {});
+
+  let unreadable = null;
+  await withProxy('error', async (base) => {
+    try {
+      await createSutProvider({ driver: 'reference', env: { SUT_LLM_BASE_URL: base } });
+    } catch (error) {
+      unreadable = `${error.name}: ${error.message}`;
+    }
+  });
+
+  process.stdout.write(`${JSON.stringify({ pure, fresh, misattributed, unreadable }, null, 2)}\n`);
+
+  if (pure.calls !== 2 || pure.promptTokens !== 2_000) {
+    throw new SutFailure(`the subtraction is wrong: ${JSON.stringify(pure)}`);
+  }
+  if (fresh.baseline?.calls !== 0 || (fresh.usage?.calls ?? 0) < 1) {
+    throw new SutFailure(`a clean proxy produced no arm-local usage: ${JSON.stringify(fresh)}`);
+  }
+  if (misattributed === null || !misattributed.includes('cannot be attributed')) {
+    throw new SutFailure('an arm whose counter was below the baseline was priced anyway');
+  }
+  if (unreadable === null || !unreadable.includes('without a baseline')) {
+    throw new SutFailure('a proxy with no ledger was allowed to start an arm it could not price');
+  }
+}
+
 if (process.argv[1] !== undefined && process.argv[1].endsWith('competitor-sut.mjs')) {
   if (process.argv[2] === 'answer') await answerSelftest();
+  else if (process.argv[2] === 'usage-scope') await usageScopeSelftest();
   else await selftest();
 }

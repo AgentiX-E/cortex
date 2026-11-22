@@ -71,18 +71,28 @@ function row(score) {
   const contextPerQuestion = Math.round(Number(score.meanContextChars ?? 0) / 4);
   const own = score.usage ?? null;
   const ownPerQuestion =
-    own === null ? null : Math.round((Number(own.promptTokens ?? 0) + Number(own.completionTokens ?? 0)) / measured);
+    own === null
+      ? null
+      : Math.round((Number(own.promptTokens ?? 0) + Number(own.completionTokens ?? 0)) / measured);
   const ownPrompt = own === null ? 0 : Number(own.promptTokens ?? 0);
   const ownCompletion = own === null ? 0 : Number(own.completionTokens ?? 0);
+  const ownCost =
+    own === null ? null : yuan(ownPrompt, PRICE.prompt) + yuan(ownCompletion, PRICE.completion);
   return {
     provider: score.provider,
     answerer: score.answerer ?? 'none',
-    accuracy: score.accuracy === null || score.accuracy === undefined ? '—' : `${(score.accuracy * 100).toFixed(1)}%`,
+    accuracy:
+      score.accuracy === null || score.accuracy === undefined
+        ? '—'
+        : `${(score.accuracy * 100).toFixed(1)}%`,
     read: score.read ?? 0,
     measured,
     contextPerQuestion,
     ownPerQuestion,
-    ownCost: own === null ? null : yuan(ownPrompt, PRICE.prompt) + yuan(ownCompletion, PRICE.completion),
+    // Per question, because the column sits beside `own tok/q` and a total under a per-question heading is a
+    // 30x error at n=30 that no reader would catch. Run 45011905117 printed `¥13.91` for memcog under this
+    // heading: it was two arms' spend, and one question of one arm cost ¥3.48.
+    ownCostPerQuestion: ownCost === null ? null : ownCost / measured,
   };
 }
 
@@ -94,13 +104,13 @@ process.stdout.write(
     `prices: ¥${PRICE.prompt}/M prompt, ¥${PRICE.completion}/M completion (list, ${PRICE.date}); cache hits not modelled, so this over-reports\n\n`,
 );
 process.stdout.write(
-  `${pad('provider', 20)}${pad('by', 6)}${pad('acc', 9)}${pad('read', 6)}${pad('ctx tok/q', 10)}${pad('own tok/q', 10)}${pad('own ¥', 10)}\n`,
+  `${pad('provider', 20)}${pad('by', 6)}${pad('acc', 9)}${pad('read', 6)}${pad('ctx tok/q', 10)}${pad('own tok/q', 10)}${pad('own ¥/q', 10)}\n`,
 );
 for (const entry of rows) {
   process.stdout.write(
     `${pad(entry.provider, 20)}${pad(entry.answerer, 6)}${pad(entry.accuracy, 9)}${pad(entry.read, 6)}` +
       `${pad(entry.contextPerQuestion, 10)}${pad(entry.ownPerQuestion === null ? '—' : entry.ownPerQuestion, 10)}` +
-      `${pad(entry.ownCost === null ? '—' : entry.ownCost.toFixed(2), 10)}\n`,
+      `${pad(entry.ownCostPerQuestion === null ? '—' : entry.ownCostPerQuestion.toFixed(3), 10)}\n`,
   );
 }
 
@@ -112,7 +122,9 @@ for (const entry of rows) {
  * own generator, so its "own" column includes the answering cost while a `shared` row's does not. Subtracting the
  * two accuracies without stating that is the error `ProviderScore.answerer` exists to prevent.
  */
-const selfAnswered = rows.filter((entry) => entry.answerer === 'self').map((entry) => entry.provider);
+const selfAnswered = rows
+  .filter((entry) => entry.answerer === 'self')
+  .map((entry) => entry.provider);
 const shared = rows.filter((entry) => entry.answerer === 'shared').map((entry) => entry.provider);
 process.stdout.write(
   '\n' +

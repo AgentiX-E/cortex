@@ -2,8 +2,15 @@
 
 **The instruction this answers.** Run Mastra, Mem0 and MemCog with the same LLM Cortex reads with, compare accuracy
 and cost, and decide from the numbers which mechanism is worth copying. This file records the machinery that makes
-that a configuration, the four facts it established before any score existed, and the arithmetic that says what a
-full run costs.
+that a configuration, the four facts it established before any score existed, the arithmetic that says what a full
+run costs — and, once all three arms had run, what they actually cost.
+
+**The answer, before the evidence.** None of the three beats Cortex's own window at the same context budget, and the
+two that spend the most buy the least: MemCog builds a store for **¥3.48 a question** and 97% of that is the build,
+Mem0 extracts facts for **¥1.37** and lost a question Cortex answered, Mastra reads the full 112k transcript for
+**¥0.275** and gains 6.7 points that `p=0.73` cannot separate from noise. What is worth copying is not a mechanism
+but a **shape**: MemCog's navigable pages plus two tools plus a bounded number of rounds, which is 2.8% of MemCog's
+own bill. §7 has the measured table, §9 the verdicts.
 
 ## 1. "The same LLM" has to be a base URL, because three of the four positions are invisible
 
@@ -120,6 +127,14 @@ Mem0, **¥250** for MemCog and **¥60** for Mastra, plus the shared reader and j
 arm whose bill is large enough to change the plan, which is why it has its own input (`sut_infer`) and why `infer=0`
 remains the default: a run at `infer=0` is a **different system**, and the manifest says which one ran.
 
+Three of those four estimates were wrong, in both directions, and §7 is the correction: MemCog came in at
+**1,287,032 tokens and ¥3.48 a question** (6.4× its estimate — the table guessed ~50 build calls and the build actually
+takes 665), Mastra at 125,296 and ¥0.275 (3.5× its estimate), Mem0 at 576,772 and ¥1.37 (a third of its estimate,
+because the haystack is ~52 sessions per question rather than 550 extracted turns). At measured prices the
+500-question column is ≈¥1,740 for MemCog, ≈¥685 for Mem0 and ≈¥138 for Mastra. The estimates stay in this section
+rather than being replaced by the measurements: a pre-registered number that turned out wrong is the only evidence
+that the measurement did any work.
+
 The wall-clock column is the binding constraint, not the money: 500 Mastra questions at 5 minutes each is 41 hours,
 so the first dispatch is 100 questions and the 500-question arm needs sharding.
 
@@ -138,27 +153,31 @@ The question each number answers is narrow on purpose. It is **not** "is Cortex 
 - Mem0 at `infer=1` against Mem0 at `infer=0` — the extraction ablation is free once the arm exists, and it is the
   one measurement that says whether fact extraction buys anything at all on this corpus.
 
+None of the three has been run at 100 questions yet. What has run is 30 / 2 / 2 (§7), which is enough to price the
+arms and to eliminate one hypothesis per arm, and not enough to separate any of them from Cortex on accuracy. The
+dispatch that matters — 100 questions, sharded at 700 (`--offset`) so a paired test has power — is the next one.
+
 A competitor that loses still answers a question, and that is the point of running their code rather than reading
 their table: the four facts in §2–§3 above were all obtained before a single question was scored.
 
-## 7. What the arms measured, and what two of them cost
+## 7. What the arms measured, and what all three cost
 
-Two dispatches produced numbers under the same judge and the same model, on the same sampled questions. Both are
-small — 30 questions for Mastra, 2 for Mem0's first pass — and every figure below carries its `n`, because a 30-question
-difference of two questions is a coin.
+Three dispatches produced numbers under the same judge and the same model, on the same sampled questions. All are
+small — 30 questions for Mastra, 2 each for Mem0's and MemCog's passes — and every figure below carries its `n`,
+because a 30-question difference of two questions is a coin.
 
 | arm                              |   n |          accuracy |            calls/q | prompt tok/q | ¥/q (list) | what its context is                          |
 | -------------------------------- | --: | ----------------: | -----------------: | -----------: | ---------: | -------------------------------------------- |
-| `mastra` (self-answering)        |  30 | **70.0%** (21/30) |                2.0 |      125,104 |      0.273 | its own generator, observations + transcript |
+| `mastra` (self-answering)        |  30 | **70.0%** (21/30) |                2.0 |      125,296 |      0.275 | its own generator, observations + transcript |
 | `cortex-session` (shared reader) |  30 |     63.3% (19/30) | 1 reader + 1 judge |       33,270 |      0.067 | whole sessions, budget 8 turns               |
 | `lexical-reference` (shared)     |  30 |     63.3% (19/30) |              1 + 1 |       34,974 |      0.070 | lexical top-k over the same sessions         |
 | `cortex/trim-2.8k` (shared)      |  30 |     56.7% (17/30) |              1 + 1 |        2,799 |      0.006 | a 2.8k-character window                      |
 | `mem0` `infer=1` (shared)        |   2 |       50.0% (1/2) |               51.5 |      576,772 |       1.37 | extracted facts, vector top-k                |
+| `memcog` (self-answering)        |   2 |       50.0% (1/2) |                667 |    1,287,032 |       3.48 | pages written by the model, read back by it  |
 
-Per-stage cost is read from the artifacts rather than from a counter: `usage` in each `competitor-read*.json` is the
-proxy's cumulative total at the moment that stage ended, so the difference between two consecutive files is that
-stage's own spend, and the SUT step's spend is the remainder. That is why the same number can be quoted as a bill per
-question without a second instrumentation channel to keep in agreement with the first.
+Each row's cost is **one arm's own spend per question**, read from that arm's `usage` after the job's baseline under
+the same label is subtracted (§8.3). MemCog's row is the only one that had to be recovered from the job ledger rather
+than taken from its artifact, and the difference between the two is a factor of four — see §7.3.
 
 The paired test is in the artifact, so the comparison is question by question rather than rate against rate:
 
@@ -205,17 +224,55 @@ Recall@k for this arm is 0.0%, and that number is a statement about the metric, 
 its text contains a gold _turn_, and an extracted fact is not a turn. The metric cannot see an extraction system at
 all. Its accuracy column is the only one that can be read.
 
-## 8. Two defects the dispatching found, and what they had in common
+### 7.3 MemCog: 1.29M prompt tokens and ¥3.48 a question, 97% of it before the question is asked
 
-Neither is about a competitor. Both are about a run that reports something it did not measure.
+MemCog is the only arm whose cost had to be reconstructed rather than read: its artifact said `¥13.91` and
+`2,799,803` tokens per question, and both numbers described **two** arms (§8.3). The job ledger is the primary
+source, and it segments cleanly at each return to `q1` because the four arms ran one after another:
 
-**A crashed harness was a green step with an empty file.** Nine measurement steps piped `node ... | tee artifact`,
+| arm in the job       | calls | prompt tokens |     ¥ | ¥/question |
+| -------------------- | ----: | ------------: | ----: | ---------: |
+| retrieval step       | 1,312 |     2,471,285 |  6.71 |       3.36 |
+| reading, `con`       | 1,363 |     2,677,061 |  7.19 |       3.60 |
+| reading, `dispatch`  | 1,336 |     2,600,276 |  7.01 |       3.51 |
+| reading, `dispatch2` | 1,328 |     2,547,637 |  6.90 |       3.45 |
+| **job total**        | 5,339 |    10,296,259 | 27.82 |       3.48 |
+
+Two questions per arm, 103 sessions and 1,037 turns of haystack. So one question costs **1,287,032 prompt tokens,
+667 calls and sixteen minutes** — and the split says where it goes:
+
+| phase    | calls | prompt tokens | share |
+| -------- | ----: | ------------: | ----: |
+| build    | 5,319 |    10,005,968 | 97.2% |
+| navigate |    20 |       290,291 |  2.8% |
+
+That is the whole finding. **97% of what MemCog spends buys the store, and 2.8% buys the reasoning that could be
+copied.** Per session the build costs about 24,300 prompt tokens; per turn about 2,400. Navigation — two to seven
+model calls over pages the build wrote — is the part `DESIGN-MULTI-STEP-RETRIEVAL.md` describes, and at 20 calls for
+two questions it is also the cheapest thing in the table.
+
+Why the numbers move so much: MemCog scores 1 of 2, the same as `mem0`, and `n=2` cannot separate it from any arm
+here. Its `recall@k` is 0.0% for the same reason Mem0's is — a hit is counted when its text contains a gold _turn_,
+and a generated page is not a turn — so the accuracy column is the only one with content. What the two questions do
+establish is the price: **621× `cortex/trim-2.8k`'s 2.8k read (¥0.0056), 52× `cortex-session` (¥0.067), 12.7×
+Mastra (¥0.275)** — and a shared arm's `¥/q` is its reader input only, so every one of those ratios is a lower bound
+on the gap.
+
+## 8. Three defects the dispatching found, and what they had in common
+
+None is about a competitor. All three are about a run that reports something it did not measure.
+
+### 8.1 A crashed harness was a green step with an empty file
+
+Nine measurement steps piped `node ... | tee artifact`,
 and a pipeline reports the exit status of its last command. Run 45011910491 therefore finished _successfully_ with a
 zero-byte reading table and a cost report reading `the reading stage wrote no json`. The harness had died at import,
 before its first line of output. `set -o pipefail` is now on every one of those steps; the same class of failure on a
 later dispatch shows up as a red X instead of a silent success, which is how the second defect below was found.
 
-**A store path whose parent no step created.** `MASTRA_STORE` named `<workspace>/.cache/mastra/store.db` in the three
+### 8.2 A store path whose parent no step created
+
+`MASTRA_STORE` named `<workspace>/.cache/mastra/store.db` in the three
 reading steps and in neither of the steps that ingest. The ingest therefore used the driver's `/tmp` default, no step
 created `.cache/mastra/`, and libsql answered the reading stages with
 `ConnectionFailed("Unable to open connection to local database ...: 14")` — SQLITE_CANTOPEN, which reads like a
@@ -223,19 +280,48 @@ permissions or corruption problem and is neither. The variables that address the
 now live in the job's `env` rather than in per-step copies, the driver creates the parent of the path it is handed,
 and the live round-trip test passes it a path whose parent does not exist.
 
-A third, smaller one belongs here for the same reason: Mem0's DeepSeek factory builds an `OpenAI` client whether or
+A second, smaller one belongs here for the same reason: Mem0's DeepSeek factory builds an `OpenAI` client whether or
 not the model is reachable, and the retrieval stage does not carry `DEEPSEEK_API_KEY`, so the driver handed it `""`
 and died with `Missing credentials`. Nothing on that path reads the client's credential — the proxy replaces
 `Authorization` with its own upstream key. A loopback base URL now gets an explicit `proxied` placeholder, the
 manifest records which placeholder was used, and any other URL still gets nothing.
 
+### 8.3 A cost column that was the job's, not the arm's
+
+The metering proxy is started once per job and kept alive across the retrieval step and the three reading arms,
+because it is also what meters the reading. Its `/stats` counter is therefore **job-scoped**, and every driver in
+`DRIVERS` reports that counter verbatim — correct for a driver to report, wrong to attribute to one row.
+
+MemCog is the first arm where it mattered, and the arithmetic closed to the token rather than to an argument:
+
+| quantity                             | value                     | where it comes from                      |
+| ------------------------------------ | ------------------------- | ---------------------------------------- |
+| what the row recorded                | `5,148,346` prompt tokens | `usage` in its `competitor-read.json`    |
+| the retrieval arm plus the `con` arm | `5,148,346` prompt tokens | `2,471,285 + 2,677,061` from the ledger  |
+| what one arm of two questions spent  | `2,574,173` prompt tokens | ledger, segmented at each return to `q1` |
+| what the row printed per question    | `¥13.91`                  | `usage ÷ 2 questions`                    |
+| what one question cost               | `¥3.48`                   | `¥27.82 ÷ 8 (four arms × two questions)` |
+
+The other two rows were arm-local **by accident**, and the accident is worth naming: Mastra's ingest is storage-only
+(`0 call(s)` in its own progress line) and Mem0's retrieval step died on the credentials defect in 8.2, so neither
+label had spend in it when the `con` arm started. MemCog's retrieval step builds its store with the model, so it is
+the only one of the three where an earlier arm had already spent under the label the reading arm would report.
+
+Two things changed so the next run needs no archaeology: the adapter reads `/stats?prefix=<name>` **before** the
+driver can spend anything and subtracts that baseline from every reading, failing the arm if the counter cannot be
+read (a job-scoped counter with no baseline prices the job, not the arm) or if the driver reports fewer calls than
+the baseline (its counter is not the proxy's, so the arm cannot be attributed at all); and the report's money column
+is `own ¥/q` rather than `own ¥`, because it sits beside `own tok/q` and a total under a per-question heading is a
+30× error at n=30. `tools/competitor-sut.mjs usage-scope` is the three-case self-test, and the progress line now
+prints `since launch` rather than `cumulative` for the same reason one layer up.
+
 ## 9. What this says to copy, and what it says not to
 
-| system         | what it actually does, as measured here                                                                                          | verdict for Cortex                                                                                                                                                                                                                                                                                                                                                                |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mastra OM      | 2 calls/question, the answering one at 112k median tokens: full context with an observation log attached                         | **Copy the budget, not the mechanism.** The +6.7 points are context volume; `maxPromptCharsByRoute` is the cheaper lever, and the experiment to run is a window sweep, not an Observer                                                                                                                                                                                            |
-| Mem0 `infer=1` | 51.5 calls and 577k prompt tokens per question — five times the haystack — to turn sessions into facts, then lose both questions | **Do not copy the extraction.** It is the most expensive context in the table by two orders of magnitude; the `infer=0` ablation is the cheap control that says whether extraction itself or only its price is the problem                                                                                                                                                        |
-| MemCog         | a store built by the model — 1,198 calls and 2.15M prompt tokens in 36 minutes, ending with no answer at all                     | **Copy the interface, not the build.** Navigable pages plus two tools plus a bounded number of rounds is a smaller change than it looks (`DESIGN-MULTI-STEP-RETRIEVAL.md`); what its build costs per question is being measured with per-question labels, because the first ledger had one label for the whole 36 minutes and could not say whether that was one question or five |
+| system         | what it actually does, as measured here                                                                                          | verdict for Cortex                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mastra OM      | 2 calls/question, the answering one at 112k median tokens: full context with an observation log attached                         | **Copy the budget, not the mechanism.** The +6.7 points are context volume; `maxPromptCharsByRoute` is the cheaper lever, and the experiment to run is a window sweep, not an Observer                                                                                                                                                                                                       |
+| Mem0 `infer=1` | 51.5 calls and 577k prompt tokens per question — five times the haystack — to turn sessions into facts, then lose both questions | **Do not copy the extraction.** It is the most expensive context in the table by two orders of magnitude; the `infer=0` ablation is the cheap control that says whether extraction itself or only its price is the problem                                                                                                                                                                   |
+| MemCog         | 1.29M prompt tokens, 667 calls and ¥3.48 per question — 97.2% of it building the store, 2.8% navigating it — and 1 of 2 answered | **Copy the interface, not the build.** Navigable pages plus two tools plus a bounded number of rounds is a smaller change than it looks (`DESIGN-MULTI-STEP-RETRIEVAL.md`), and it is the 2.8% of this bill: 20 calls and 290k prompt tokens for two questions. The build is what makes the arm 52× `cortex-session` and it bought an answer the judge could not separate from a coin at n=2 |
 
 The one thing none of the three demonstrates is a mechanism that beats Cortex's own window _at the same context
 budget_. That is the experiment the next round should run: fix the reader input at 33k tokens for every arm, and see
