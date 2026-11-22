@@ -1865,15 +1865,15 @@ number in this repository was measured on, and it has a limit worth knowing abou
 from the **question**, and a question is frequently not the wording its evidence uses — so the turns that
 answer it are found by a phrase nobody typed.
 
-`@agentix-e/cortex-agent` is the other shape. It gives the reader three tools — search, open a
+`@agentix-e/cortex-ai/agent` is the other shape. It gives the reader three tools — search, open a
 conversation, stop — and lets it write one query at a time until it says the evidence is enough. Then it
 composes the answer prompt through **the same builder** `assembleMemory` uses, so what changes is which
 turns are printed, not how they are printed.
 
 ```ts
 import type { LLM } from '@agentix-e/cortex-core';
-import { SearchIndex } from '@agentix-e/cortex-memory';
-import { composeAgentPrompt, indexRetrieval, retrieveStepwise } from '@agentix-e/cortex-agent';
+import { renderInOrder, SearchIndex } from '@agentix-e/cortex-memory';
+import { composeAgentPrompt, indexRetrieval, retrieveStepwise } from '@agentix-e/cortex-ai/agent';
 
 declare const llm: LLM;
 
@@ -1894,9 +1894,10 @@ const result = await retrieveStepwise(question, {
   maxSteps: 2,
 });
 
+// The renderer is a parameter, not an import: pass the one your arm prints through.
 const composed = composeAgentPrompt(question, turns, result.selected, {
-  contract: 'abstention',
-  maxChars: 48_460,
+  renderer: renderInOrder,
+  config: { contract: 'abstention', maxChars: 48_460 },
 });
 
 console.log(result.trace.stop, result.trace.calls, result.trace.queries, composed.evidenceChars);
@@ -1916,14 +1917,15 @@ Five things about it are decisions rather than details:
 - **Every stop is named.** `trace.stop` is one of `answered`, `step-limit`, `no-new-evidence`,
   `empty-query`, `unparsed`, `llm-error`, `corpus-exhausted` or `budget`. A provider outage and a reply the
   loop could not read are different reasons because the repairs differ.
-- **`composeAgentPrompt` is not optional.** It is the only supported way to turn a selection into a prompt.
-  A prompt written by hand would be a second rendering path, and its results would not be comparable with
-  anything already measured.
+- **`composeAgentPrompt` is not optional, and neither is `renderer`.** It is the only supported way to turn
+  a selection into a prompt, and the renderer you give it should be the one your non-agent path uses --
+  `renderInOrder` from `cortex-memory` is that function. A prompt written by hand would be a second
+  rendering path, and its results would not be comparable with anything already measured.
 
 `probeMultiStep` answers the question you should ask before paying for this: **does the reader's own search
 find evidence the static retrieval missed?** It runs the loop over a labelled population, composes each
 prompt, and reports gold turns found by the reader against gold turns the seed already had. Run it with
-`pnpm --filter @agentix-e/cortex-agent probe:multi-step` and a `LONGMEMEVAL_PATH`; it is a diagnostic, not a
+`pnpm --filter @agentix-e/cortex-memory probe:multi-step` and a `LONGMEMEVAL_PATH`; it is a diagnostic, not a
 score, and it never calls a judge.
 
 ## 11. Choosing routes deliberately

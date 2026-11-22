@@ -1,7 +1,7 @@
 {
   "name": "@agentix-e/cortex-ai",
   "version": "0.1.0",
-  "description": "cortex-ai \u2014 provider-agnostic model adapters: remote OpenAI-compatible LLM and embedding, local transformers.js, and the browser built-in language model",
+  "description": "cortex-ai \u2014 provider-agnostic model adapters (remote OpenAI-compatible, local transformers.js, browser built-in) and `./agent`, the retrieval loop the reader drives",
   "license": "MIT",
   "author": "Lambertyan",
   "type": "module",
@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./agent": {
+      "types": "./dist/agent/index.d.ts",
+      "import": "./dist/agent/index.js"
     },
     "./local": {
       "types": "./dist/local/index.d.ts",

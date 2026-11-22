@@ -49,7 +49,6 @@ export {
   type QueryPlan,
   type SearchCensus,
   type SearchChannel,
-  type SearchHit,
   type SearchIndexOptions,
 } from './retrieval/search-index.js';
 
@@ -153,6 +152,22 @@ export {
 // publishing them would be a wider surface with the same number of users, which is the shape the census
 // exists to refuse.
 export type { ResolutionMode } from './resolution.js';
+
+// render in order
+/**
+ * Print a caller's chosen turns in the caller's order, through the shipped renderer.
+ *
+ * Exported because `@agentix-e/cortex-ai/agent` selects turns and must not import a renderer: the
+ * loop takes a `Renderer` seam, and this is the implementation an arm passes to it. Two things
+ * follow from putting it here rather than there -- the loop's package depends only on `core`, and
+ * "the multi-step arm prints through the registered renderer" becomes a claim about the *instance*
+ * a caller passes rather than about a package name.
+ *
+ * The caller that keeps this symbol from being an orphan before the evaluation arm is wired is
+ * `cortex-eval/bench/probe-multi-step.ts`, which is scanned by the export census for exactly this
+ * reason.
+ */
+export { renderInOrder, type RenderInOrderOptions } from './render-in-order.js';
 
 // parse
 export { parseAnswer, isAbstention, ABSTAIN_TOKEN } from './parse.js';

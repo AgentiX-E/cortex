@@ -257,7 +257,7 @@
       "capability": "multi-step retrieval",
       "expect": "product",
       "symbol": "retrieveStepwise",
-      "site": "packages/cortex-agent/src/loop.ts",
+      "site": "packages/cortex-ai/src/agent/loop.ts",
       "d3": "declared: the reader's queries are matched by the product's own index and the answer prompt is composed by the product's own renderer, so every token it prints is state the product holds"
     }
   ],

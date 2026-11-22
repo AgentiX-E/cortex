@@ -5,22 +5,72 @@
  *
  * The loop never holds turns, never ranks them, and never renders them. It asks a
  * {@link Retrieval} for ids, and it hands ids back. Everything that decides *what a turn is*
- * -- deduplication, the lexical and vector channels, rank fusion, the reranker -- stays in
- * `cortex-memory`'s `SearchIndex`, which is the same code the registered arm runs. A loop that
- * carried its own ranking would be a second implementation of the measurement's central object,
- * and the first divergence between the two would be invisible: both would still answer questions.
+ * -- deduplication, the lexical and vector channels, rank fusion, the reranker -- stays in the
+ * caller's index, which is the same code the registered arm runs. A loop that carried its own
+ * ranking would be a second implementation of the measurement's central object, and the first
+ * divergence between the two would be invisible: both would still answer questions.
  *
- * ## Why the reader's LLM is `cortex-core`'s `LLM` and not a provider
+ * ## Why all three seams are interfaces rather than adapters
  *
- * Because the loop must run on a weak model, a strong model, a local model and whatever the
- * customer brings, and the only way to promise that is to depend on the interface rather than on
- * an adapter. `@agentix-e/cortex-agent` therefore does not depend on `@agentix-e/cortex-ai` at
- * all: the application constructs `OpenAICompatibleLLM`, a local model or its own implementation
- * and passes it in. Plan §14.98.3 listed `cortex-ai` as a dependency; this is the deviation and
- * the reason -- a dependency on an adapter package is a dependency on a provider list.
+ * The loop must run on a weak model, a strong model, a local model and whatever the customer
+ * brings, and it must print through the renderer the caller's arm already prints through. The only
+ * way to promise both is to depend on interfaces rather than on the packages that implement them.
+ * So this module imports **one** thing: `cortex-core`'s `LLM`. There is no import of
+ * `@agentix-e/cortex-memory` and no import of this package's own provider adapters -- a caller
+ * constructs `OpenAICompatibleLLM`, `renderInOrder`, its own index, or its own implementations, and
+ * passes them in. Plan §14.98.3 listed an adapter dependency; §14.98.7 dropped one of them and the
+ * renderer seam finished the job.
  */
 import type { LLM } from '@agentix-e/cortex-core';
-import type { SearchHit } from '@agentix-e/cortex-memory';
+
+/** One ranked id and the index's own score for it. */
+export type SearchHit = {
+  readonly turn: number;
+  readonly score: number;
+};
+
+/**
+ * The renderer seam: what a caller must supply for a selection to become a prompt.
+ *
+ * ## Why `Config` is a type parameter and not a `PromptContract`
+ *
+ * Because this module has no opinion about what a contract, an ask or a room is. Naming those
+ * unions here would make the loop depend on the renderer's vocabulary, and the first time a route
+ * added an ask the loop would need a release. A caller passes whatever its renderer takes;
+ * `renderInOrder` in `cortex-memory` takes `{ contract, maxChars, ask, questionDate }` and this
+ * module never looks inside.
+ *
+ * ## Why the result carries `carried` rather than a count
+ *
+ * `evidenceChars` says how much reached the prompt and cannot say **which**. A caller comparing a
+ * selection with a gold set needs the identities after the room's cut, and a count cannot supply
+ * them. The shape here is structural: any object whose `carried` entries expose `ordinal` fits, so
+ * `cortex-memory`'s `AssembledPrompt` satisfies it without this module importing it.
+ */
+export type RenderedPrompt = {
+  /** The text handed to the model. */
+  readonly prompt: string;
+  /** Characters of evidence the prompt carries, after the room's cut. */
+  readonly evidenceChars: number;
+  /** The turns the prompt carries, in printed order. */
+  readonly carried: readonly { readonly ordinal: number }[];
+};
+
+/**
+ * A function that turns a chosen order into a prompt.
+ *
+ * The parameter is written inline: `RenderInput` as a named type would be an export whose only
+ * mention is this declaration, and a caller that wants to name it can write
+ * `Parameters<Renderer<Config>>[0]`. The fields are the whole contract --
+ * `question` (what is being asked), `turns` (the corpus the ids index, in dataset order),
+ * `ordered` (the turns to print, already unique and in range) and `config` (opaque here).
+ */
+export type Renderer<Config> = (input: {
+  readonly question: string;
+  readonly turns: readonly string[];
+  readonly ordered: readonly number[];
+  readonly config: Config;
+}) => RenderedPrompt;
 
 /**
  * The three tools, as the loop sees them.

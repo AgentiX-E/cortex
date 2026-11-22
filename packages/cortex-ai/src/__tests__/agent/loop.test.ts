@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { retrieveStepwise } from '../loop.js';
+import { retrieveStepwise } from '../../agent/loop.js';
 
 import { FailingLlm, ScriptedLlm, scriptedRetrieval } from './fixtures.js';
 

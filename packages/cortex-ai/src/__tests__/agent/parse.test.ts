@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { parseDecision } from '../parse.js';
+import { parseDecision } from '../../agent/parse.js';
 
 describe('parseDecision', () => {
   it('reads the three actions', () => {

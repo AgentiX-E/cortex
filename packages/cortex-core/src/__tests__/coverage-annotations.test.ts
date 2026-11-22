@@ -399,7 +399,6 @@ describe('the coverage-ignore annotation set is pinned', () => {
     // unscanned while every assertion above still passed.
     const packages = new Set(sourceFiles().map(packageOf));
     expect([...packages].sort()).toEqual([
-      'cortex-agent',
       'cortex-ai',
       'cortex-core',
       'cortex-eval',

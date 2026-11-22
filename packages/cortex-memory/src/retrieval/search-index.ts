@@ -338,8 +338,17 @@ export type SearchIndexOptions = {
   readonly channels?: readonly SearchChannel[] | undefined;
 };
 
-/** One retrieved turn: its position in the corpus, and the score the prompt will sort on. */
-export type SearchHit = {
+/**
+ * One retrieved turn: its position in the corpus, and the score the prompt will sort on.
+ *
+ * Not exported, because nothing outside this file names it: `SearchIndex.search` is the only way to
+ * obtain one, and every caller either uses it structurally or reads `.turn`/`.score` directly. It
+ * was on the barrel while `@agentix-e/cortex-agent` imported it; that package now declares its own
+ * structurally identical type so it can depend on `cortex-core` alone, and the export census
+ * refused the barrel entry the moment the last caller left. The declaration still travels in
+ * `dist` -- TypeScript emits it beside the class -- so consumers see the same shape.
+ */
+type SearchHit = {
   readonly turn: number;
   readonly score: number;
 };

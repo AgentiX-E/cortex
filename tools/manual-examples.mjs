@@ -47,11 +47,12 @@ const DEFAULT_README = join(REPO, 'README.md');
 /**
  * Packages whose declarations the examples are compiled against.
  *
- * Derived from the workspace rather than listed, and `@agentix-e/cortex-agent` is why: it shipped with
- * a manual section and every example naming it failed with "not an export of any workspace package",
- * which is the one diagnosis a hardcoded list can never produce about itself. A list a new package has
- * to be added to is a list that will be missed, and the failure it produces points at the prose rather
- * than at the list.
+ * Derived from the workspace rather than listed, and the retired `@agentix-e/cortex-agent` is why: it
+ * shipped with a manual section and every example naming it failed with "not an export of any workspace
+ * package", which is the one diagnosis a hardcoded list can never produce about itself. A list a new
+ * package has to be added to is a list that will be missed, and the failure it produces points at the
+ * prose rather than at the list. The package became the `./agent` subpath of `cortex-ai`, which this
+ * function picked up with no edit -- the same property, one level in.
  */
 const PACKAGES = readdirSync(join(REPO, 'packages'), { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && existsSync(join(REPO, 'packages', entry.name, 'package.json')))

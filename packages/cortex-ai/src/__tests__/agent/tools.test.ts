@@ -1,19 +1,23 @@
 /**
- * The adapter, against a real `SearchIndex` rather than a stand-in.
+ * The adapter: what it passes through, and what it must not do to the answer.
  *
- * ## Why the real index
+ * ## Why the index here is written out
  *
- * Because the claim this file exists to hold up is "the loop ranks with the same code the
- * registered arm ranks with". A fake index would make that a statement about the fake. So the
- * search cases below build a genuine lexical `SearchIndex`, ask it, ask the adapter, and compare --
- * and the comparison is by id and order, since an adapter that returned the right set in a
- * different order would still produce a different prompt.
+ * This file used to build a real `SearchIndex` and compare, on the argument that "the loop ranks
+ * with the same code the registered arm ranks with" must not be a claim about a fake. The argument
+ * still holds and the case moved: `cortex-eval` builds the real index and asserts the equivalence
+ * through `renderInOrder`, because this package may not import `cortex-memory` and a workspace edge
+ * added for a test is still an edge. What is left here is the adapter's own contract -- it adds no
+ * scoring, keeps the index's order and `k`, and answers `read`/`session` from the array it was given.
+ *
+ * A pass-through is exactly the kind of thing that can be tested against a table: every hit is
+ * written down in advance, so "the adapter changed something" is visible as a difference rather than
+ * as a hunch about two rankings.
  */
 import { describe, expect, it } from 'vitest';
 
-import { SearchIndex } from '@agentix-e/cortex-memory';
-
-import { indexRetrieval } from '../tools.js';
+import { indexRetrieval } from '../../agent/tools.js';
+import type { SearchHit } from '../../agent/types.js';
 
 const TURNS = [
   'I adopted a dog named Biscuit in March.',
@@ -22,11 +26,26 @@ const TURNS = [
   'I ran the charity ten kilometre race in fifty two minutes.',
 ];
 
-const indexOver = (turns: readonly string[]): SearchIndex => {
-  const index = new SearchIndex();
-  index.add(turns);
-  return index;
+type Recorded = {
+  search(query: string, k: number): Promise<readonly SearchHit[]>;
+  readonly asked: { query: string; k: number }[];
 };
+
+/** A substring index whose answers are checkable by hand. */
+function indexOver(turns: readonly string[]): Recorded {
+  const asked: { query: string; k: number }[] = [];
+  return {
+    asked,
+    search(query: string, k: number) {
+      asked.push({ query, k });
+      const hits: SearchHit[] = [];
+      for (const [id, text] of turns.entries()) {
+        if (text.toLowerCase().includes(query.toLowerCase())) hits.push({ turn: id, score: 1 });
+      }
+      return Promise.resolve(hits.slice(0, k));
+    },
+  };
+}
 
 describe('indexRetrieval', () => {
   it('returns exactly the index answer, in the index order', async () => {
@@ -42,8 +61,11 @@ describe('indexRetrieval', () => {
   });
 
   it('honours k, because the caller bounds what a step may cost', async () => {
-    const retrieval = indexRetrieval(indexOver(TURNS), TURNS);
+    const index = indexOver(TURNS);
+    const retrieval = indexRetrieval(index, TURNS);
     expect((await retrieval.search('Biscuit', 1)).length).toBe(1);
+    // And it is the caller's `k` the index saw, not one the adapter chose.
+    expect(index.asked).toEqual([{ query: 'Biscuit', k: 1 }]);
   });
 
   it('reads a turn verbatim and reports nothing for an id outside the corpus', () => {

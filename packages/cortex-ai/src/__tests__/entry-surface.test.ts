@@ -40,10 +40,14 @@ describe('manifest', () => {
     expect(manifest.name).toBe('@agentix-e/cortex-ai');
   });
 
-  it('publishes exactly three entries', () => {
-    // Written out rather than derived: adding an entry is a deliberate act, and a fourth one would
-    // need its own dependency story before it needs an `exports` key.
-    expect(Object.keys(manifest.exports).sort()).toEqual(['.', './local', './web']);
+  it('publishes exactly four entries', () => {
+    // Written out rather than derived: adding an entry is a deliberate act, and a fifth one would
+    // need its own dependency story before it needs an `exports` key. `./agent` was the fourth, and
+    // it is the reason this assertion is written this way -- the merge of `@agentix-e/cortex-agent`
+    // into this package had to edit this line, which is the guard working rather than a nuisance.
+    // Its dependency story: nothing. The subpath imports `cortex-core` and no adapter, no renderer
+    // and no index, so it adds no edge to this package's manifest.
+    expect(Object.keys(manifest.exports).sort()).toEqual(['.', './agent', './local', './web']);
   });
 
   it('points every entry at a file that exists', () => {

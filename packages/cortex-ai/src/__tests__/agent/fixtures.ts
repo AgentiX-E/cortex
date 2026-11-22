@@ -21,7 +21,7 @@
  */
 import type { CompleteOptions, JsonSchema, LLM } from '@agentix-e/cortex-core';
 
-import type { Retrieval } from '../types.js';
+import type { Retrieval } from '../../agent/types.js';
 
 /** One LLM whose every reply is scripted, and which records what it was asked. */
 export class ScriptedLlm implements LLM {

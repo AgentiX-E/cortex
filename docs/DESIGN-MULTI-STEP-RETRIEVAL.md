@@ -1,4 +1,4 @@
-# Design: multi-step retrieval (`@agentix-e/cortex-agent`)
+# Design: multi-step retrieval (`@agentix-e/cortex-ai/agent`)
 
 **Status:** built, unit-measured, **not yet dispatched**. The mechanism is in the published package
 and documented in the user manual (§6.14); what is missing is one dispatch, and it is deliberately
@@ -27,7 +27,7 @@ is to let the reader build the list.
 
 ```
                  ┌───────────────────────────┐
-   question ───▶ │  cortex-agent             │
+   question ───▶ │  cortex-ai/agent          │
                  │                           │
                  │  loop.ts ──▶ prompt.ts    │   one decision per step:
                  │    │        parse.ts      │   search / session / answer
@@ -55,14 +55,25 @@ Three properties of that picture carry the design:
 2. **The prompt is not written here.** `composeAgentPrompt` converts the reader's order into the
    `relevanceFor` signal `buildPrompt` already understands, so the printed bytes come from the one
    renderer. Anything a dispatch measures is therefore attributable to *which* turns were chosen.
-3. **The package does not depend on a provider.** `LLM` is `cortex-core`'s interface; the application
-   constructs `OpenAICompatibleLLM`, a local model or its own implementation. Plan §14.98.3 listed
-   `cortex-ai` as a dependency and this is the deviation: a dependency on an adapter package is a
-   dependency on a provider list.
+3. **The subpath depends on nothing but `cortex-core`.** `LLM` is `cortex-core`'s interface; the
+   application constructs `OpenAICompatibleLLM`, a local model or its own implementation. Plan
+   §14.98.3 listed an adapter package as a dependency and that was the first deviation; the renderer
+   was the second. The loop now takes a `Renderer<Config>` seam, so it imports neither a provider nor
+   a renderer.
 
-Dependency direction, unchanged at the bottom: `cortex-agent → {cortex-core, cortex-memory}`;
-`cortex-memory ↛ cortex-agent`. No cycle exists, which is what makes the agent an *addition* rather
-than a rewrite of the measured path.
+Dependency direction: `cortex-ai/agent → cortex-core`, and nothing else. The corpus and the renderer
+are interfaces the caller fills, which is why `cortex-ai` gains no edge to `cortex-memory` and
+`cortex-memory` gains none to the loop. The seam is not a style preference: it is what keeps the
+equivalence "this selection, through the registered renderer, is the registered prompt" a statement
+about the object a caller passes rather than about a package name.
+
+**Why this is a subpath and not its own package.** It was one
+(`@agentix-e/cortex-agent`). The merge was decided by a measurement rather than a taste: in the 11
+commits that touched either tree, **zero** touched both, so the two packages had no shared change
+surface -- while the one edge that did exist (renderer) was structural and got removed instead of
+being housed. A subpath keeps that separation visible to a reader (`cortex-ai`'s root is still "how to
+reach a model") without paying a package's worth of manifests for 1,159 lines that depend on one
+interface.
 
 ## 3. The protocol
 

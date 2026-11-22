@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { decideStop, type StopInput } from '../stop.js';
+import { decideStop, type StopInput } from '../../agent/stop.js';
 
 const BASE: StopInput = {
   calls: 1,

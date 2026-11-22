@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { buildDecisionPrompt } from '../prompt.js';
+import { buildDecisionPrompt } from '../../agent/prompt.js';
 
 import { scriptedRetrieval } from './fixtures.js';
 

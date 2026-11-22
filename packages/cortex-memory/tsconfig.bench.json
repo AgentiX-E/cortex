@@ -9,5 +9,5 @@
     "rootDir": "."
   },
   "include": ["bench"],
-  "references": [{ "path": "." }, { "path": "../cortex-eval" }]
+  "references": [{ "path": "." }, { "path": "../cortex-eval" }, { "path": "../cortex-ai" }]
 }

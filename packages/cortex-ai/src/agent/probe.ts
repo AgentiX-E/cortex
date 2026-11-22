@@ -32,13 +32,10 @@
  * That is why a probe over 121 questions is affordable and a judged dispatch is not.
  */
 import type { LLM } from '@agentix-e/cortex-core';
-import type { PromptContract } from '@agentix-e/cortex-memory';
-import { SearchIndex } from '@agentix-e/cortex-memory';
 
-import { carriedIds, composeAgentPrompt, type ComposeOptions } from './compose.js';
+import { carriedIds, composeAgentPrompt } from './compose.js';
 import { retrieveStepwise } from './loop.js';
-import { indexRetrieval, type IndexRetrievalOptions } from './tools.js';
-import type { AgentTrace } from './types.js';
+import type { AgentTrace, Renderer, Retrieval } from './types.js';
 
 /** One question, as the probe needs it. Nothing here is `cortex-eval`'s shape. */
 export type ProbeCase = {
@@ -52,16 +49,28 @@ export type ProbeCase = {
   readonly goldTurns: readonly string[];
 };
 
-export type ProbeOptions = {
+export type ProbeOptions<Config> = {
   readonly llm: LLM;
+  /**
+   * Builds the retriever for one case's haystack.
+   *
+   * A factory rather than a retriever, because every LongMemEval-S question brings its own corpus
+   * and a shared index would be a corpus no question has. `indexRetrieval(new SearchIndex(), ...)`
+   * is the common implementation; a caller with a hosted store supplies its own.
+   */
+  readonly retrievalFor: (
+    turns: readonly string[],
+    sessionOf: readonly number[] | undefined,
+  ) => Retrieval;
+  /** The renderer the arm prints through, so `foundNotCarried` is measured at the arm's width. */
+  readonly renderer: Renderer<Config>;
+  /** The renderer's own options: the room, the contract, the ask. Opaque here. */
+  readonly config: Config;
   /** Reader decisions per question. `0` measures the single retrieval this is compared against. */
   readonly maxSteps?: number;
   readonly k?: number;
   readonly digestChars?: number;
   readonly digestTurns?: number;
-  /** The room the composed prompt is cut to, so `foundNotCarried` is measured at the arm's width. */
-  readonly maxChars?: number;
-  readonly contract?: PromptContract;
 };
 
 /**
@@ -115,25 +124,20 @@ export type ProbeReport = {
 /**
  * Run the loop over each case and report where the gold went.
  *
- * One index per case, because that is what the protocol is: every LongMemEval-S question brings its
- * own haystack, so a shared index would be a corpus no question has. The index is lexical -- the
- * vector channel is the reader's tool to choose, and adding one here would make the probe's numbers
- * a property of an embedder rather than of the mechanism.
+ * One retriever per case, because that is what the protocol is: every LongMemEval-S question brings
+ * its own haystack, so a shared index would be a corpus no question has. `retrievalFor` is the
+ * caller's, so the probe measures whatever index the arm runs -- it does not build one of its own
+ * and then report a number about a different stack.
  */
-export async function probeMultiStep(
+export async function probeMultiStep<Config>(
   cases: readonly ProbeCase[],
-  options: ProbeOptions,
+  options: ProbeOptions<Config>,
 ): Promise<ProbeReport> {
   const maxSteps = options.maxSteps ?? 1;
-  const contract = options.contract ?? 'abstention';
   const perCase: ProbeCaseResult[] = [];
 
   for (const probeCase of cases) {
-    const index = new SearchIndex();
-    index.add(probeCase.turns);
-    const retrievalOptions: IndexRetrievalOptions =
-      probeCase.sessionOf === undefined ? {} : { sessionOf: probeCase.sessionOf };
-    const retrieval = indexRetrieval(index, probeCase.turns, retrievalOptions);
+    const retrieval = options.retrievalFor(probeCase.turns, probeCase.sessionOf);
     const result = await retrieveStepwise(probeCase.question, {
       retrieval,
       llm: options.llm,
@@ -152,16 +156,10 @@ export async function probeMultiStep(
       if (goldTexts.has(text)) goldIds.add(id);
     }
 
-    const composeOptions: ComposeOptions = {
-      contract,
-      ...(options.maxChars === undefined ? {} : { maxChars: options.maxChars }),
-    };
-    const composed = composeAgentPrompt(
-      probeCase.question,
-      probeCase.turns,
-      result.selected,
-      composeOptions,
-    );
+    const composed = composeAgentPrompt(probeCase.question, probeCase.turns, result.selected, {
+      renderer: options.renderer,
+      config: options.config,
+    });
     const carried = new Set(carriedIds(composed));
 
     // The seed's own hits, read from the trace rather than re-queried: re-running the retrieval

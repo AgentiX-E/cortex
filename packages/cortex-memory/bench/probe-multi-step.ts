@@ -1,14 +1,23 @@
 /**
- * The `cortex-agent` probe entry point.
+ * The multi-step probe entry point: `@agentix-e/cortex-ai/agent` against this harness's loader.
  *
  * ## What is here, and what is deliberately not
  *
  * Construction and delegation only: read the corpus path, load it through `cortex-eval`'s loader,
  * hand the cases to `probeMultiStep`, write what it returns. Every decision -- which turns are gold,
  * what a step cost, whether the reader's search added evidence -- is in
- * `src/probe.ts`, inside the coverage boundary. `cortex-memory/bench/run-ablation.ts` records why:
- * this directory is excluded from coverage, so a decision written here is a decision no test can
- * reach, and three of them shipped wrong before that rule existed.
+ * `cortex-ai/src/agent/probe.ts`, inside the coverage boundary. `cortex-memory/bench/run-ablation.ts`
+ * records why: a bench directory is excluded from coverage, so a decision written here is a decision
+ * no test can reach, and three of them shipped wrong before that rule existed.
+ *
+ * ## Why it lives in `cortex-memory` and not beside the loop
+ *
+ * Because it needs three packages at once: the loop, this package's renderer, and the harness's
+ * corpus loader and LLM factory. The loop lives in `cortex-ai`, which must not depend on this
+ * package; the harness lives in `cortex-eval`, which must not depend on this one either without
+ * closing a cycle (this package already takes it as a dev dependency). This package has both edges
+ * already, so the entry sits here -- and the export census scans `bench/`, which is what keeps
+ * `renderInOrder` from being an orphan before the evaluation arm is wired.
  *
  * ## Why it is not wired into every push
  *
@@ -20,7 +29,7 @@
  *
  *   LONGMEMEVAL_PATH=data/longmemeval_s_cleaned.json \
  *   DEEPSEEK_API_KEY=... \
- *   pnpm --filter @agentix-e/cortex-agent probe:multi-step -- --steps 1 --out probe.json
+ *   pnpm --filter @agentix-e/cortex-memory probe:multi-step -- --steps 1 --out probe.json
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -31,12 +40,15 @@ import {
 } from '@agentix-e/cortex-eval';
 
 import {
+  indexRetrieval,
   probeMultiStep,
   type ProbeCase,
   type ProbeCaseResult,
   type ProbeOptions,
   type ProbeReport,
-} from '@agentix-e/cortex-agent';
+  type Retrieval,
+} from '@agentix-e/cortex-ai/agent';
+import { renderInOrder, SearchIndex, type RenderInOrderOptions } from '../src/index.js';
 
 /** `--name value`, the only argument shape this entry accepts. */
 function flag(name: string, fallback: string): string {
@@ -88,7 +100,25 @@ async function main(): Promise<void> {
     goldTurns: question.goldTurns ?? [],
   }));
 
-  const options: ProbeOptions = { llm: createLlmFromEnv(process.env), maxSteps: steps };
+  // The retriever the arm runs, built here because the loop owns no corpus: one index per case,
+  // lexical, because the vector channel is the reader's tool to choose and adding one here would
+  // make the probe's numbers a property of an embedder rather than of the mechanism.
+  const retrievalFor = (
+    turns: readonly string[],
+    sessionOf: readonly number[] | undefined,
+  ): Retrieval => {
+    const index = new SearchIndex();
+    index.add(turns);
+    return indexRetrieval(index, turns, sessionOf === undefined ? {} : { sessionOf });
+  };
+  const config: RenderInOrderOptions = { contract: 'abstention' };
+  const options: ProbeOptions<typeof config> = {
+    llm: createLlmFromEnv(process.env),
+    maxSteps: steps,
+    retrievalFor,
+    renderer: renderInOrder,
+    config,
+  };
   const report: ProbeReport = await probeMultiStep(cases, options);
   writeFileSync(out, `${JSON.stringify({ dataset: path, capability, ...report }, null, 2)}\n`);
 

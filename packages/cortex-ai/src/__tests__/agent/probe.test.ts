@@ -9,10 +9,21 @@
  * different consequence for the campaign -- dispatch, cancel, widen the room, exclude from coverage
  * claims -- and a probe that reported one number for all four would be the kind of instrument this
  * campaign has already paid for: one that prints the same word for different failures.
+ *
+ * ## Why the retriever and renderer here are written out rather than imported
+ *
+ * Because this package must not depend on `cortex-memory`, and a workspace edge added for a test is
+ * still an edge: `pnpm` reported the cycle on the first install. The probe takes both as parameters,
+ * so the cases supply a lookup table and a recorder -- objects with real behaviour, not mocks -- and
+ * the equivalence between this seam and the shipped renderer is asserted once, in `cortex-eval`,
+ * which may see both sides.
  */
 import { describe, expect, it } from 'vitest';
 
-import { probeMultiStep, type ProbeCase } from '../probe.js';
+import type { LLM } from '@agentix-e/cortex-core';
+
+import { probeMultiStep, type ProbeCase, type ProbeReport } from '../../agent/probe.js';
+import type { RenderedPrompt, Renderer, Retrieval } from '../../agent/types.js';
 
 import { ScriptedLlm } from './fixtures.js';
 
@@ -32,10 +43,97 @@ const CASE: ProbeCase = {
   goldTurns: [TURNS[0], TURNS[3]],
 };
 
+/**
+ * A retriever that answers from a table.
+ *
+ * A real lexical index would be the honest stand-in, but it is in a package this one may not import.
+ * A table is the next best thing and is not a mock: it returns ids and scores for a query, text for
+ * an id, and the conversation for a turn -- the three things the loop asks for, with no recorder in
+ * between.
+ */
+function retrievalFor(
+  turns: readonly string[],
+  sessionOf: readonly number[] | undefined,
+): Retrieval {
+  const table = new Map<string, readonly number[]>([
+    [QUESTION, [3]],
+    ['Biscuit', [0, 1]],
+    ['Lisbon', [2]],
+  ]);
+  return {
+    turns: turns.length,
+    search(query: string, k: number) {
+      return Promise.resolve(
+        (table.get(query) ?? []).slice(0, k).map((turn) => ({ turn, score: 1 })),
+      );
+    },
+    read(turn: number) {
+      return turns[turn];
+    },
+    session(turn: number) {
+      if (sessionOf === undefined) return [turn];
+      const key = sessionOf[turn];
+      const ids: number[] = [];
+      for (let id = 0; id < sessionOf.length; id += 1) {
+        if (sessionOf[id] === key) ids.push(id);
+      }
+      return ids;
+    },
+  };
+}
+
+type Config = {
+  readonly contract: string;
+  readonly maxChars?: number | undefined;
+};
+
+/** A renderer that delivers every turn it was given: the wide-room case. */
+const deliverAll: Renderer<Config> = (input): RenderedPrompt => ({
+  prompt: `<${String(input.ordered.length)} turns>`,
+  evidenceChars: 0,
+  carried: input.ordered.map((ordinal) => ({ ordinal })),
+});
+
+/** A renderer that delivers only the first turn: the room-bound case. */
+const deliverFirst: Renderer<Config> = (input): RenderedPrompt => ({
+  prompt: '<1 turn>',
+  evidenceChars: 0,
+  carried: input.ordered.slice(0, 1).map((ordinal) => ({ ordinal })),
+});
+
+type ProbeCaseOptions = {
+  readonly llm: LLM;
+  readonly k?: number | undefined;
+  readonly maxSteps?: number | undefined;
+  readonly digestChars?: number | undefined;
+  readonly digestTurns?: number | undefined;
+  readonly config?: Config | undefined;
+  readonly renderer?: Renderer<Config> | undefined;
+};
+
+/**
+ * The probe with its seams filled in once, so each case states only what it varies.
+ *
+ * Filling them per case would let one case quietly run a different retriever or renderer, and a
+ * reading about a stack the arm does not run is the exact shape this campaign has paid for before.
+ */
+function run(cases: readonly ProbeCase[], options: ProbeCaseOptions): Promise<ProbeReport> {
+  return probeMultiStep(cases, {
+    llm: options.llm,
+    retrievalFor,
+    renderer: options.renderer ?? deliverAll,
+    config: options.config ?? { contract: 'abstention' },
+    ...(options.k === undefined ? {} : { k: options.k }),
+    ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
+    ...(options.digestChars === undefined ? {} : { digestChars: options.digestChars }),
+    ...(options.digestTurns === undefined ? {} : { digestTurns: options.digestTurns }),
+  });
+}
+
 describe('probeMultiStep', () => {
   it('separates gold the reader found from evidence it merely added', async () => {
     const llm = new ScriptedLlm(['{"action":"search","query":"Biscuit"}', '{"action":"answer"}']);
-    const report = await probeMultiStep([CASE], { llm, k: 4, maxSteps: 2 });
+    const report = await run([CASE], { llm, k: 4, maxSteps: 2 });
 
     // The seed is the question, so `4` is what the static retrieval had.
     expect(report.goldSeed).toBe(1);
@@ -51,7 +149,7 @@ describe('probeMultiStep', () => {
 
   it('reports a reader that searched and found nothing new with no gold', async () => {
     const llm = new ScriptedLlm(['{"action":"search","query":"Lisbon"}', '{"action":"answer"}']);
-    const report = await probeMultiStep([CASE], { llm, k: 4, maxSteps: 2 });
+    const report = await run([CASE], { llm, k: 4, maxSteps: 2 });
 
     expect(report.addedQuestions).toBe(1);
     expect(report.newGold).toBe(0);
@@ -63,7 +161,13 @@ describe('probeMultiStep', () => {
 
   it('reports gold the reader found and the room then dropped', async () => {
     const llm = new ScriptedLlm(['{"action":"search","query":"Biscuit"}', '{"action":"answer"}']);
-    const report = await probeMultiStep([CASE], { llm, k: 4, maxChars: 500, maxSteps: 2 });
+    const report = await run([CASE], {
+      llm,
+      k: 4,
+      maxSteps: 2,
+      renderer: deliverFirst,
+      config: { contract: 'abstention', maxChars: 500 },
+    });
 
     expect(report.goldSelected).toBe(2);
     expect(report.goldCarried).toBeLessThan(2);
@@ -73,7 +177,7 @@ describe('probeMultiStep', () => {
   it('counts a corpus with no gold annotation as zero rather than as perfect coverage', async () => {
     const unannotated: ProbeCase = { ...CASE, id: 'q2', goldTurns: [] };
     const llm = new ScriptedLlm([]);
-    const report = await probeMultiStep([unannotated], { llm, maxSteps: 0 });
+    const report = await run([unannotated], { llm, maxSteps: 0 });
 
     expect(report.goldTotal).toBe(0);
     expect(report.goldSeed).toBe(0);
@@ -84,7 +188,7 @@ describe('probeMultiStep', () => {
 
   it('measures the single retrieval when the reader is allowed no decisions', async () => {
     const llm = new ScriptedLlm([]);
-    const report = await probeMultiStep([CASE], { llm, maxSteps: 0 });
+    const report = await run([CASE], { llm, maxSteps: 0 });
 
     expect(report.calls).toBe(0);
     expect(report.queries).toBe(0);
@@ -100,7 +204,7 @@ describe('probeMultiStep', () => {
       '{"action":"search","query":"Lisbon"}',
       '{"action":"answer"}',
     ]);
-    const report = await probeMultiStep([CASE, second], { llm, k: 4, maxSteps: 2 });
+    const report = await run([CASE, second], { llm, k: 4, maxSteps: 2 });
 
     expect(report.cases).toBe(2);
     expect(report.gainedQuestions).toBe(1);
@@ -115,9 +219,9 @@ describe('probeMultiStep', () => {
     expect(report.promptChars).toBeGreaterThan(0);
   });
 
-  it('runs on its defaults, which are one decision and the abstention contract', async () => {
+  it('runs on its defaults, which are one decision and one retrievable corpus', async () => {
     const llm = new ScriptedLlm(['{"action":"search","query":"Biscuit"}']);
-    const report = await probeMultiStep([CASE], { llm });
+    const report = await run([CASE], { llm });
 
     expect(report.maxSteps).toBe(1);
     expect(report.cases).toBe(1);
@@ -128,17 +232,16 @@ describe('probeMultiStep', () => {
 
   it('threads every width it was given, so a read can price a narrower reader', async () => {
     const llm = new ScriptedLlm(['{"action":"search","query":"Biscuit"}']);
-    const wide = await probeMultiStep([CASE], {
+    const wide = await run([CASE], {
       llm: new ScriptedLlm(['{"action":"search","query":"Biscuit"}']),
       maxSteps: 1,
     });
-    const narrow = await probeMultiStep([CASE], {
+    const narrow = await run([CASE], {
       llm,
-      contract: 'temporal',
       k: 2,
       digestChars: 40,
       digestTurns: 1,
-      maxChars: 900,
+      config: { contract: 'temporal', maxChars: 900 },
       maxSteps: 1,
     });
 
@@ -149,7 +252,7 @@ describe('probeMultiStep', () => {
   it('hands the reader the session tool on a corpus that has boundaries', async () => {
     const withBoundaries: ProbeCase = { ...CASE, sessionOf: [0, 0, 1, 1] };
     const llm = new ScriptedLlm(['{"action":"session","turn":0}', '{"action":"answer"}']);
-    const report = await probeMultiStep([withBoundaries], { llm, k: 4, maxSteps: 2 });
+    const report = await run([withBoundaries], { llm, k: 4, maxSteps: 2 });
 
     // The seed is the question, so turn 0 is not in hand until the session opens it; the probe
     // records what the step bought rather than what the reader asked for.

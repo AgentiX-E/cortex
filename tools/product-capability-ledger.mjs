@@ -327,14 +327,21 @@ const ENTRY_FILES = [
   // unreachable after the product started reaching it, which is a `blocked` row that is wrong in the
   // direction that costs a customer: it says "you cannot use this" about something you can.
   'packages/cortex-memory/src/assemble.ts',
-  // The third entry: `cortex-agent` is a second product surface rather than a mechanism inside
-  // `CortexMemory`, and the reason is the one this list exists for. An installer who wants retrieval
-  // in steps does not call `assembleMemory` -- there is no option on it that reaches the loop -- they
-  // call `retrieveStepwise`, compose with `composeAgentPrompt`, and hand the result to their own
-  // model. Nothing in this repository's `src/` does that, because the caller is the customer's
-  // application, and an entry list that omitted it would report a capability a customer can install
-  // as `instrument` -- the direction the comment above says costs a customer.
-  'packages/cortex-agent/src/index.ts',
+  // The third entry: `@agentix-e/cortex-ai/agent` is a second product surface rather than a mechanism
+  // inside `CortexMemory`, and the reason is the one this list exists for. An installer who wants
+  // retrieval in steps does not call `assembleMemory` -- there is no option on it that reaches the loop
+  // -- they call `retrieveStepwise`, compose with `composeAgentPrompt`, and hand the result to their
+  // own model. Nothing in this repository's `src/` does that, because the caller is the customer's
+  // application, and an entry list that omitted it would report a capability a customer can install as
+  // `instrument` -- the direction the comment above says costs a customer.
+  //
+  // The path moved when the package did: this was `packages/cortex-agent/src/index.ts` until the merge
+  // into `cortex-ai`. The entry is the *subpath's* barrel, not `cortex-ai/src/index.ts`, because the
+  // root barrel deliberately does not re-export the loop -- a caller that only wants an embedding
+  // should not acquire a retrieval strategy. Naming the root file here would report this row
+  // `blocked` after the capability became reachable, which is the failure mode this list was built to
+  // refuse.
+  'packages/cortex-ai/src/agent/index.ts',
 ];
 
 /**
