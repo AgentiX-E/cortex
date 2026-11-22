@@ -573,3 +573,84 @@ def test_a_row_is_priced_per_question_not_per_run(tmp_path: Path) -> None:
     # 3.6M prompt at ¥2/M plus 0.3M completion at ¥8/M is ¥9.60 for the arm: ¥0.320 a question, not ¥9.60.
     assert "0.320" in row, row
     assert "9.600" not in row, row
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The normalised column: accuracy per million tokens the system caused to be read.
+#
+# A `shared` arm pays twice -- what the reader read, and what the system spent producing it -- and the two halves can
+# differ by three orders of magnitude. Mem0 hands the reader 359 tokens per question and spends 603,503 of its own
+# turning sessions into facts, so a denominator built from the reader alone ranks the most expensive arm this
+# repository has measured as the most efficient one. That is also the number a vendor's "context per question"
+# publishes, which is why the flattery has to be made impossible in the tool rather than noticed in a review.
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def cost_report(directory: Path, payload: dict, *args: str) -> subprocess.CompletedProcess:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "competitor-read.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return subprocess.run(
+        ["node", str(REPO / "tools" / "sut-cost-report.mjs"), "--read", str(path), *args],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def test_the_normalised_column_charges_the_ingest_not_only_the_reader(tmp_path: Path) -> None:
+    """Two rows, one of which looks 20,000x cheaper if you count only what the reader was handed."""
+    payload = {
+        "scores": [
+            {
+                "provider": "cortex-session",
+                "answerer": "shared",
+                "accuracy": 0.633,
+                "measured": 30,
+                "read": 30,
+                "meanContextChars": 133_080,  # 33,270 tokens
+                "usage": None,
+            },
+            {
+                "provider": "mem0",
+                "answerer": "shared",
+                "accuracy": 0.5,
+                "measured": 2,
+                "read": 2,
+                "meanContextChars": 1_436,  # 359 tokens: the facts it hands the reader
+                "usage": {"calls": 103, "promptTokens": 1_153_543, "completionTokens": 53_462},
+            },
+        ]
+    }
+    completed = cost_report(tmp_path, payload, "--reference", "cortex-session")
+    assert completed.returncode == 0, completed.stderr
+    out = completed.stdout
+
+    # The leader must be the arm that read the fewest tokens *in total*, not the one that handed the reader the
+    # smallest context: 33,270 against 359 + 576,772.
+    leader = next(line for line in out.splitlines() if "(leader)" in line)
+    assert leader.startswith("cortex-session"), out
+    # And the facts row cannot draw with it at any accuracy: 0.633 x (577,131 / 33,270) = 1,098%.
+    assert "mem0 cannot (1098%)" in out, out
+
+
+def test_a_named_reference_prices_every_other_row_against_it(tmp_path: Path) -> None:
+    """The verdict a copy/don't-copy decision needs, and the warning when the name is not a row."""
+    payload = {
+        "scores": [
+            {"provider": "ours", "answerer": "shared", "accuracy": 0.5, "measured": 10, "read": 10, "meanContextChars": 40_000},
+            {"provider": "theirs", "answerer": "self", "accuracy": 0.7, "measured": 10, "read": 10, "meanContextChars": 0,
+             "usage": {"calls": 20, "promptTokens": 1_200_000, "completionTokens": 90_000}},
+        ]
+    }
+    completed = cost_report(tmp_path, payload, "--reference", "ours")
+    assert completed.returncode == 0, completed.stderr
+    # 0.5 x (120,000 / 10,000) = 600% -- a self-answering arm at twelve times the tokens cannot draw with half the
+    # accuracy, whatever the sample size.
+    assert "theirs cannot (600%)" in completed.stdout, completed.stdout
+
+    missing = cost_report(tmp_path / "second", payload, "--reference", "nobody")
+    assert missing.returncode == 0, missing.stderr
+    assert "nobody is not a row with an accuracy" in missing.stderr
+    assert "to draw with" not in missing.stdout

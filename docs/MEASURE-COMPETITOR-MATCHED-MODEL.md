@@ -392,3 +392,56 @@ Two things this experiment cannot settle, stated now so they are not read into t
 of two questions is still a coin — a 63.3%-versus-63.3% outcome is "indistinguishable", not "equal". And it moves one
 number inside a vendor's own configuration: it answers "can this mechanism live in a 33k envelope", not "is an
 Observer better than a good window", which is a question only an implementation inside Cortex can answer.
+
+## 11. What the normalised column establishes, and three corrections to the obvious reading
+
+`tools/sut-cost-report.mjs` now prints the column this comparison was missing: **points per million prompt tokens the
+system caused to be read**, with `--reference <arm>` pricing every other row against one named arm. The denominator is
+the system total — what the reader read plus what the system spent producing it — and that choice is the whole
+argument, because the two halves differ by three orders of magnitude for an extraction system.
+
+On the 30-question run:
+
+| arm                 | prompt tok/q (system) | accuracy | pts / 1M tok | to draw with `cortex-session` |
+| ------------------- | --------------------: | -------: | -----------: | ----------------------------- |
+| `cortex/trim-2.8k`  |                 2,799 |    56.7% |       202.57 | at 5.3%                       |
+| `cortex-session`    |                33,270 |    63.3% |        19.03 | — (the reference)             |
+| `lexical-reference` |                34,974 |    63.3% |        18.10 | at 66.5%                      |
+| `mastra`            |               125,296 |    70.0% |         5.59 | **cannot (238%)**             |
+
+The same command on the two 2-question runs reads `mem0 cannot (1745%)` and `memcog cannot (3892%)`. Those rows are
+one coin of accuracy each, and the verdict does not care: a row that needs more than 100% accuracy cannot draw with
+the reference whatever its accuracy turns out to be, so **the ordering is independent of the sample size**. That is a
+stronger statement than the paired test can make at n=30, and it is the one the copy decision should rest on.
+
+### 11.1 The denominator is the finding
+
+Built from the reader's context alone — which is the number a vendor publishes as "context per question" — the same
+command ranks **Mem0 first at 1,392.76 points per million tokens**, 39× the leader it actually is, because it hands the
+reader 359 tokens per question and spends 603,503 of its own turning sessions into facts. A tool that reports the
+small denominator without the large one does not merely flatter extraction: it inverts the ranking. That is why the
+column is named after what the system _caused to be read_ rather than after what the reader saw.
+
+### 11.2 The arm this compares against is not the shipped arm
+
+`cortex-session` is a baseline. The shipped configuration — `cortex-memory`, six-route room map,
+`relevanceTopK=256` — reads **91.25% at 7,448 tokens per question** over 500 questions and four passes
+(`landscape.json`, run 44017278305), and the supersede arm reads 91.35% at 9,241. So the honest form of the previous
+section's conclusion is: _no measured competitor draws with Cortex's **baseline** arm_, and the shipped arm is both
+28 points higher and 3.6× cheaper per question than that baseline. The comparison is therefore asked of the wrong
+control, and the repair is not a new dispatch — it is putting the product arm on the same harness, so that "should
+Cortex copy this mechanism" is asked against what Cortex ships.
+
+### 11.3 Synap is not "above and out of reach"
+
+95.6% (478/500) at **7.4K tokens per question**, answered by Gemini 3.8 Flash and judged by gpt-4o. Against Cortex's
+91.25% at 7.4K that is +4.3 points, and this repository has measured that swapping a judge moves its own 467 recorded
+answers by **−3.21 points, 13 down and 0 up**. A 4.3-point gap inside a 3.2-point instrument band, with a different
+reader class on each side, is **not decidable**, in either direction.
+
+"Closed source" also does not put it out of reach of copying. Their repository publishes every per-question record —
+retrieved memories, written answer, judge verdict — plus the answering prompt, two run manifests and the `bench/`
+harness. An **answer-level re-grade** is available and cheap: no ingest, no reader, no dispatch, one pass of our judge
+over their 500 records. That is a stronger instrument than a race, because it removes the reader from the comparison
+entirely. Closed source blocks running their system; it does not block reading their mechanism or re-grading their
+verdicts.

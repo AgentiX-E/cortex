@@ -89,6 +89,10 @@ function row(score) {
     measured,
     contextPerQuestion,
     ownPerQuestion,
+    // The half of `ownPerQuestion` that the answering model actually read. A self-answering arm's prompt column is
+    // the only context cost it has -- it reports no retrieved context -- so this is its denominator in the
+    // normalised view below, and the completion tokens are the part that must not be counted as context.
+    ownPromptPerQuestion: own === null ? null : Math.round(ownPrompt / measured),
     // Per question, because the column sits beside `own tok/q` and a total under a per-question heading is a
     // 30x error at n=30 that no reader would catch. Run 45011905117 printed `¥13.91` for memcog under this
     // heading: it was two arms' spend, and one question of one arm cost ¥3.48.
@@ -97,6 +101,47 @@ function row(score) {
 }
 
 const rows = scores.map(row);
+
+/**
+ * The normalised column: accuracy per million prompt tokens the system caused to be **read**.
+ *
+ * The denominator is not the context the row handed the reader, and the difference is not academic. Mem0 hands the
+ * reader 359 tokens per question and spends 603,503 of its own turning sessions into facts; a reader-only denominator
+ * therefore ranks the most expensive arm this repository has ever measured as the most efficient one, by a factor of
+ * 39. That is also how a vendor's "context per question" figure flatters an extraction system, so this column exists
+ * to make the flattery impossible rather than to repeat it.
+ *
+ * A `self` arm has no separate reader: its own prompt *is* its context, so its ingest spend must not be added twice.
+ * A `shared` arm pays twice and both halves are counted: what the reader read plus what the system spent producing it.
+ *
+ * `null` when there is nothing to normalise: an arm that was not read has no accuracy, and an arm that read zero
+ * tokens has no denominator. Neither becomes a zero, because a zero here sorts to the bottom of a ranking it did not
+ * enter.
+ */
+function efficiency(entry) {
+  if (entry.accuracy === '—') return null;
+  const accuracy = Number(entry.accuracy.replace('%', '')) / 100;
+  const promptTokens =
+    entry.ownPromptPerQuestion === null
+      ? entry.contextPerQuestion
+      : entry.ownPromptPerQuestion + (entry.answerer === 'self' ? 0 : entry.contextPerQuestion);
+  if (!Number.isFinite(promptTokens) || promptTokens <= 0) return null;
+  return { accuracy, promptTokens, perMillion: (accuracy * 1_000_000) / promptTokens };
+}
+
+const efficiencyOf = new Map(rows.map((entry) => [entry.provider, efficiency(entry)]));
+
+/**
+ * How much accuracy a row would need to match the best row's accuracy per token, and whether that is even possible.
+ *
+ * This is the arithmetic that makes an efficiency verdict independent of the accuracy noise. A row that costs 3.8x
+ * the tokens of another needs 3.8x its accuracy to draw; once that product exceeds 100% the ordering cannot be
+ * reversed by any measurement error at all, which is a stronger statement than a paired test at n=30 can make.
+ */
+const ranked = rows
+  .map((entry) => ({ entry, eff: efficiencyOf.get(entry.provider) }))
+  .filter((item) => item.eff !== null)
+  .sort((a, b) => b.eff.perMillion - a.eff.perMillion);
 
 const pad = (text, width) => String(text).padEnd(width);
 process.stdout.write(
@@ -138,4 +183,64 @@ if (rows.some((entry) => entry.ownPerQuestion === null)) {
   process.stdout.write(
     'an arm printing `—` for its own tokens did not report them; that is "not measured", not "free".\n',
   );
+}
+
+if (ranked.length >= 2) {
+  const best = ranked[0];
+  process.stdout.write(
+    '\nnormalised: accuracy per million prompt tokens the system caused to be read\n' +
+      `${pad('provider', 20)}${pad('prompt tok/q', 13)}${pad('acc', 9)}${pad('pts / 1M tok', 13)}can it draw?\n`,
+  );
+  for (const item of ranked) {
+    // The accuracy this row would need to match the leader's ratio. Above 100% is not a forecast, it is a proof
+    // that no accuracy outcome can change the ranking -- which is why it is printed as `cannot` rather than as a
+    // very large number a reader might try to interpret.
+    const needed = best.eff.accuracy * (item.eff.promptTokens / best.eff.promptTokens);
+    const verdict =
+      item === best
+        ? '— (leader)'
+        : needed > 1
+          ? `cannot, needs ${(needed * 100).toFixed(0)}%`
+          : `drawable at ${(needed * 100).toFixed(1)}%`;
+    process.stdout.write(
+      `${pad(item.entry.provider, 20)}${pad(item.eff.promptTokens, 13)}` +
+        `${pad(`${(item.eff.accuracy * 100).toFixed(1)}%`, 9)}${pad(item.eff.perMillion.toFixed(2), 13)}${verdict}\n`,
+    );
+  }
+  process.stdout.write(
+    `\nthe leader is ${best.entry.provider} at ${best.eff.perMillion.toFixed(2)} points per million tokens. A row that ` +
+      'cannot draw needs more than 100% accuracy, so its position does not depend on the sample size; a row that can ' +
+      'is a question for a paired test, not for this table.\n',
+  );
+
+  /**
+   * Head to head against one named arm, which is the only form of this comparison a decision can use.
+   *
+   * The ranking above answers "who spends least per point" and the leader is whichever row that is; the question a
+   * mechanism decision asks is different -- "could this competitor draw with *our* arm at the tokens it spends" -- and
+   * naming the arm is how the answer stays checkable. `--reference cortex-session` on the 30-question run prints that
+   * Mastra would need 238% accuracy, which is what makes the verdict independent of the paired test's noise.
+   */
+  const referenceName = flag('reference');
+  const reference = ranked.find((item) => item.entry.provider === referenceName);
+  if (referenceName !== undefined && reference === undefined) {
+    process.stderr.write(`${referenceName} is not a row with an accuracy in ${readPath}\n`);
+  }
+  if (reference !== undefined) {
+    const lines = ranked
+      .filter((item) => item !== reference)
+      .map((item) => {
+        const needed =
+          reference.eff.accuracy * (item.eff.promptTokens / reference.eff.promptTokens);
+        const verdict =
+          needed > 1
+            ? `cannot (${(needed * 100).toFixed(0)}%)`
+            : `at ${(needed * 100).toFixed(1)}%`;
+        return `${item.entry.provider} ${verdict}`;
+      });
+    process.stdout.write(
+      `\nto draw with ${reference.entry.provider} (${(reference.eff.accuracy * 100).toFixed(1)}%, ` +
+        `${reference.eff.promptTokens} tok/q) each row would need: ${lines.join('; ')}\n`,
+    );
+  }
 }
