@@ -209,10 +209,26 @@ jobs:
           # Pinned. `main` moved after the paper, and a number from a later tree is a number about a later system.
           git checkout --quiet fff97b2d4190
           git rev-parse HEAD
-          # The package's own dependencies. `openai` is what the authors' commented-out example uses; `requests` is
-          # imported by the client module whether or not its body runs.
-          python3 -m pip install --quiet openai requests
-          python3 -c "import sys; sys.path.insert(0, 'src'); import core.llm_client; print('memcog importable')"
+
+          # §14.133. MemCog does not import on Python 3.11, and the error is a syntax error rather than a version
+          # check: `store_build/sources.py:75` puts a backslash inside an f-string replacement field, which PEP 701
+          # legalised in 3.12. The repository states no minimum version. A dispatch on 3.11 spent its whole duration
+          # on `manifest produced no response` -- a broken version assumption, reported as a broken driver.
+          #
+          # Installed side by side instead of replacing the job's Python, because every other step here is measured
+          # on 3.11 and changing the interpreter for the job would be a second variable inside a comparison.
+          python3 -m pip install --quiet uv
+          uv python install 3.12
+          MEMCOG_PYTHON="$(uv python find 3.12)"
+          echo "MEMCOG_PYTHON=$MEMCOG_PYTHON" >> "$GITHUB_ENV"
+          echo "memcog interpreter: $MEMCOG_PYTHON ($("$MEMCOG_PYTHON" -c 'import sys; print(sys.version.split()[0])'))"
+
+          # The package's own dependencies, into the interpreter the driver re-execs into. `openai` is what the
+          # authors' commented-out example uses; `requests` is imported by the client module whether or not its body
+          # runs. Installed with `uv pip` because a venv is not needed -- the driver is the only thing that imports
+          # them, and it is a subprocess.
+          uv pip install --python "$MEMCOG_PYTHON" --quiet openai requests
+          "$MEMCOG_PYTHON" -c "import sys; sys.path.insert(0, 'src'); import core.llm_client; print('memcog importable')"
 
       # Mastra's dependency tree is 174 packages and lives in its own package.json under `tools/competitor-sut/`,
       # deliberately outside the workspace lockfile: every install in this repository would otherwise pay for a

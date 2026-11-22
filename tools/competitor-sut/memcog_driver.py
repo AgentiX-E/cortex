@@ -56,6 +56,29 @@ from typing import Any
 PROTOCOL_OUT = sys.stdout
 sys.stdout = sys.stderr
 
+# MemCog does not run on Python older than 3.12, and the reason is a syntax error rather than a version check.
+#
+# `store_build/sources.py:75` writes an f-string whose replacement field contains a backslash, which PEP 701 legalised
+# in 3.12. On 3.11 the module does not import at all: `SyntaxError: f-string expression part cannot include a
+# backslash`, raised before `main()` and therefore before any protocol response -- so the parent reports "manifest
+# produced no response" and the run looks like a broken driver rather than a broken version assumption. The
+# repository states no minimum version anywhere, which is why this cost a dispatch.
+#
+# Re-exec rather than refuse: the alternative is patching somebody else's file, and a patched vendor tree is a
+# measurement of the patch. `MEMCOG_PYTHON` names an interpreter the workflow installed; without it the driver says
+# exactly what is wrong and exits, because guessing (`python3.12` on PATH, a pyenv shim) is how the wrong interpreter
+# gets used silently.
+if sys.version_info < (3, 12):
+    _alternative = os.environ.get("MEMCOG_PYTHON")
+    if _alternative and os.path.exists(_alternative):
+        os.execv(_alternative, [_alternative, os.path.abspath(__file__), *sys.argv[1:]])
+    print(
+        f"MemCog needs Python 3.12 or newer (this is {sys.version.split()[0]}): its f-strings use backslashes inside "
+        "replacement fields, which PEP 701 only allows from 3.12. Set MEMCOG_PYTHON to a 3.12 interpreter.",
+        file=sys.stderr,
+    )
+    raise SystemExit(3)
+
 # The commit this driver was written against. `MEMCOG_VENDOR` may point anywhere, but the manifest reports the commit
 # it found with `git rev-parse`, not this constant: a driver that printed a pinned sha while running a different tree
 # would be the "name is not the product" failure `PROTOCOL.md` records for Letta.
