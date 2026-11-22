@@ -98,6 +98,17 @@ on:
         required: false
         default: ''
         type: string
+      # Mastra's unobserved-token trigger, which is the one knob that changes whether its arm compresses at all. At its
+      # own default (30k) the answering call measured a 112k median prompt on a 115k-token haystack -- the agent read
+      # the transcript plus an observation log that had grown to the size of the corpus, so "observational memory"
+      # bought no context savings to compare against. Lowering it is the experiment that makes the comparison fair:
+      # the same mechanism inside Cortex's own 33k prompt budget, which is the only envelope where accuracy per token
+      # is a question with an answer. Empty = the vendor default.
+      sut_mastra_message_tokens:
+        description: 'For `mastra`: the `observation.messageTokens` trigger; empty = the vendor default of 30,000'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -139,6 +150,8 @@ jobs:
       MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
       MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
       MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
+      # Empty when the input is blank, which the driver reads as the vendor default rather than as a zero trigger.
+      MASTRA_MESSAGE_TOKENS: ${{ github.event.inputs.sut_mastra_message_tokens }}
     # 500 questions x 2 arms x 2 calls per arm is ~2,000 calls for ONE reading arm, and this workflow now runs
     # three of them. The measured cost of the first arm alone was about 45 minutes on a runner, so 120 was already
     # marginal and three arms made it a coin flip. Raised rather than cutting the question count: a 500-question

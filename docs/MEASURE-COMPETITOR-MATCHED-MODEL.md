@@ -355,6 +355,7 @@ to answer one isolated question, which is the protocol every other arm is held t
 times, and a MemCog comparison of reader prompts is a ¥10-per-question experiment rather than a ¥3.48 one.
 
 ## 9. What this says to copy, and what it says not to
+
 | system         | what it actually does, as measured here                                                                                          | verdict for Cortex                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mastra OM      | 2 calls/question, the answering one at 112k median tokens: full context with an observation log attached                         | **Copy the budget, not the mechanism.** The +6.7 points are context volume; `maxPromptCharsByRoute` is the cheaper lever, and the experiment to run is a window sweep, not an Observer                                                                                                                                                                                                       |
@@ -364,3 +365,30 @@ times, and a MemCog comparison of reader prompts is a ¥10-per-question experime
 The one thing none of the three demonstrates is a mechanism that beats Cortex's own window _at the same context
 budget_. That is the experiment the next round should run: fix the reader input at 33k tokens for every arm, and see
 whether observations, facts or navigation beat verbatim sessions **inside** the same envelope.
+
+## 10. The next dispatch, registered before it runs
+
+Cortex's own arms cannot be moved to Mastra's envelope — 112k tokens per question is 3.8× anything in the reading
+table — but Mastra's **can be moved to Cortex's**. `messageTokens` is the trigger that decides how often the Observer
+compresses, and at the vendor default of 30,000 nothing is compressed enough to matter: the answering call read the
+corpus _plus_ an observation log that had grown to the size of the corpus. Lowering the trigger is one number, and it
+turns the comparison into the one the table cannot currently make — the same mechanism inside a 33k prompt budget,
+against `cortex-session` on the same questions, same judge, same model, same sample.
+
+So the dispatch is `sut=mastra`, `sut_mastra_message_tokens=3000`, `questions=30`, `read_questions=30`,
+`read_prompts=con`, `offset=0`. The control is not a new arm: it is the 30-question Mastra row already in §7, read on
+the same sample, so the pairing is within-question and the only thing that moved is the trigger.
+
+| prompt tokens per question | accuracy against `cortex-session`'s 63.3% | what it would establish                                                                                                           |
+| -------------------------: | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+|                   ≤ 40,000 | ≥ 63.3%                                   | compression fits the envelope and beats verbatim sessions inside it — **build the compressor**, the mechanism transfers           |
+|                   ≤ 40,000 | < 63.3%                                   | compression loses when it has to fit — copy the budget knob only, and the Observer stays out of Cortex                            |
+|                   > 40,000 | any                                       | the trigger does not control the context, because the observation log dominates it — Mastra's cost is structural, not a threshold |
+
+The third row is the one with no fallback: if a 10× lower trigger leaves the prompt above 40k, then nothing about this
+system's price is tunable, and the "copy the budget" verdict in §9 upgrades from an inference to a measurement.
+
+Two things this experiment cannot settle, stated now so they are not read into the result. It is n=30, so a difference
+of two questions is still a coin — a 63.3%-versus-63.3% outcome is "indistinguishable", not "equal". And it moves one
+number inside a vendor's own configuration: it answers "can this mechanism live in a 33k envelope", not "is an
+Observer better than a good window", which is a question only an implementation inside Cortex can answer.

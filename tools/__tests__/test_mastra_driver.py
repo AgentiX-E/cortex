@@ -105,3 +105,29 @@ def test_a_live_manifest_round_trip(tmp_path):
     assert manifest["build"] == "llm"
     assert manifest["version"].startswith("@mastra/memory@")
     assert manifest["llm"]["model"]
+
+
+@pytest.mark.skipif(
+    not (NODE_MODULES / "@mastra" / "memory").is_dir(),
+    reason="the Mastra tree is installed by the workflow and by `npm install --prefix tools/competitor-sut`",
+)
+def test_a_blank_trigger_means_the_vendor_default_not_zero(tmp_path) -> None:
+    """The workflow passes its optional input through the environment, and a blank input arrives as `\"\"`.
+
+    `Number("")` is `0`, and a zero-token trigger would observe every turn -- a summariser rather than a memory
+    system, and a manifest that reported `messageTokens: 0` would describe a configuration nobody chose. So the
+    empty string has to fall back to 30,000, and a chosen value has to reach the manifest unchanged.
+    """
+    for value, expected in (("", 30_000), ("4000", 4_000)):
+        completed = subprocess.run(
+            ["node", str(DRIVER)],
+            input='{"op":"manifest"}\n{"op":"shutdown"}\n',
+            capture_output=True,
+            text=True,
+            timeout=240,
+            cwd=REPO,
+            env={**os.environ, "MASTRA_STORE": str(tmp_path / f"s{expected or 0}.db"), "MASTRA_MESSAGE_TOKENS": value},
+        )
+        assert completed.returncode == 0, completed.stderr[-2000:]
+        manifest = json.loads(completed.stdout.strip().splitlines()[0])
+        assert manifest["config"]["messageTokens"] == expected, manifest["config"]

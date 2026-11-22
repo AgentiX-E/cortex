@@ -119,14 +119,16 @@ const storage = new LibSQLStore({ id: 'mastra-sut', url: `file:${storePath}` });
  * `messageTokens` is the unobserved-token trigger and defaults to 30k. It is exposed because it is the one number
  * that changes what the arm measures: too high and nothing is ever compressed (the agent reads the whole transcript,
  * which is not the mechanism), too low and every turn becomes an observation (which is a summariser, not a memory
- * system). The default is left at Mastra's own unless the environment overrides it, and the manifest reports it.
+ * system). The default is left at Mastra's own unless the environment overrides it, and the manifest reports it. An
+ * empty value means the default rather than zero: `Number('')` is `0`, and a zero trigger would observe every turn --
+ * the workflow passes this through as an optional input, and an input left blank arrives as an empty string.
  *
  * `temporalMarkers` is Mastra's own answer to relative-time questions: a marker inserted before a message that
  * follows a gap of ten minutes, which the Observer can anchor to. It is on, because LongMemEval's temporal family is
  * a quarter of the population and turning it off would measure a weaker configuration than the one the vendor
  * documents.
  */
-const messageTokens = Number(process.env.MASTRA_MESSAGE_TOKENS ?? 30_000);
+const messageTokens = Number(process.env.MASTRA_MESSAGE_TOKENS ?? '') || 30_000;
 const temporalMarkers = (process.env.MASTRA_TEMPORAL_MARKERS ?? '1') !== '0';
 
 const memory = new Memory({
@@ -254,7 +256,11 @@ const handlers = {
 
   async search() {
     // No ranked retrieval to hand over. The observation log is the context and the agent reads it directly.
-    return { ok: true, hits: [], notes: 'mastra observational memory has no ranked retrieval; see `answer`' };
+    return {
+      ok: true,
+      hits: [],
+      notes: 'mastra observational memory has no ranked retrieval; see `answer`',
+    };
   },
 
   async answer(request) {
@@ -267,13 +273,19 @@ const handlers = {
         ? `Question: ${request.query}\nAnswer:`
         : `Current Date: ${date}\nQuestion: ${request.query}\nAnswer:`;
     try {
-      const result = await agent.generate(prompt, { memory: { thread: currentThread, resource: resourceId } });
+      const result = await agent.generate(prompt, {
+        memory: { thread: currentThread, resource: resourceId },
+      });
       // `settled` again: the answering turn itself may trigger an observation, and a run that left it pending would
       // close the storage connection underneath it.
       await memory.settled();
       return { ok: true, answer: String(result.text ?? ''), ...(await usageBlock()) };
     } catch (error) {
-      return { ok: false, error: `${error?.name ?? 'Error'}: ${error?.message ?? String(error)}`, ...(await usageBlock()) };
+      return {
+        ok: false,
+        error: `${error?.name ?? 'Error'}: ${error?.message ?? String(error)}`,
+        ...(await usageBlock()),
+      };
     }
   },
 };
