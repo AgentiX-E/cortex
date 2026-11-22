@@ -110,6 +110,104 @@ def _pct(value: float) -> str:
     return f'{value * 100:+.2f}pp'
 
 
+#: The summary's own version, so a consumer can refuse a shape it does not know.
+#:
+#: Versioned rather than additive because this object is read by something other than the
+#: program that wrote it. A field renamed in place would make an archived summary a false
+#: statement about a run that can no longer be re-derived.
+SUMMARY_SCHEMA = 'cortex-readout-summary/1'
+
+#: The roster fields a judgement needs, in the order they are written.
+#:
+#: `answer` is kept rather than reduced to `declined: answer is None`, because a projection a
+#: reader cannot re-derive is a projection they have to trust. With the string present, the
+#: same row can be found in the 60 MB artifact by `grep`; without it, a wrong answer and a
+#: refusal are the same two booleans and the two have different remedies.
+#:
+#: `questionId` rather than `id`: the roster is written by `ablation.ts`, which names the field
+#: the dataset names it, and a rename here would silently produce rows with no identifier.
+SUMMARY_ROSTER_FIELDS = ('questionId', 'capability', 'correct', 'answer')
+
+#: The per-capability fields kept on each side.
+SUMMARY_CAPABILITY_FIELDS = ('total', 'correct', 'accuracy', 'abstained')
+
+
+def _summary_metrics(metrics: dict) -> dict:
+    """One side's headline numbers, plus its per-capability rows.
+
+    Absent keys stay absent rather than becoming `None`: `null` in this object means "the
+    artifact said null", and a missing key means "the artifact did not say". Collapsing the
+    two would make a reduced report indistinguishable from a run that abstained on
+    everything.
+    """
+    per = metrics.get('perCapability') or {}
+    row: dict = {}
+    for key in ('accuracy', 'total', 'correct', 'abstentionRate'):
+        if key in metrics:
+            row[key] = metrics[key]
+    row['perCapability'] = {
+        str(name): {
+            key: value[key] for key in SUMMARY_CAPABILITY_FIELDS if isinstance(value, dict) and key in value
+        }
+        for name, value in per.items()
+        if isinstance(value, dict)
+    }
+    return row
+
+
+def summary_of(report: dict) -> dict:
+    """Project a report onto the numbers a decision needs, without reinterpreting any of them.
+
+    ## Why this exists
+
+    The artifact this reads is 60 MB, and the numbers a judgement uses are under 40 KB of it.
+    On run `44962474136` the score was finished before the reading could start: the download
+    moved at ~20 KB/s and timed out at 6 MB, so a completed, successful measurement sat
+    unread while every downstream decision waited on a file transfer. That is a defect in the
+    instrument, not in the network -- a measurement whose reading costs fifty minutes is a
+    measurement that will not be read.
+
+    Nothing here decides anything. Every field is copied from the report under the name the
+    report gives it, so a reader who distrusts the projection can diff it against the artifact
+    and is not asked to trust a second computation of accuracy.
+
+    ## What it deliberately drops
+
+    Raw transcripts, per-question `turns`, `goldOverlap` and every mechanism trace. Those are
+    what makes the artifact 60 MB, and none of them changes a verdict: a reader who needs
+    them has a reason to name one question, and naming one question is what `--final` and the
+    other sections are for.
+    """
+    ablation = report.get('ablation') or {}
+    roster = _questions(report) or []
+    summary: dict = {'schema': SUMMARY_SCHEMA}
+    for key in ('generatedAt', 'revision', 'population', 'datasetFingerprint'):
+        if key in report:
+            summary[key] = report[key]
+    summary['config'] = report.get('memoryArmConfig') or {}
+    summary['baseline'] = _summary_metrics((report.get('baseline') or {}).get('metrics') or {})
+    summary['feature'] = _summary_metrics((report.get('feature') or {}).get('metrics') or {})
+    summary['ablation'] = {
+        key: ablation[key]
+        for key in (
+            'delta',
+            'runs',
+            'mcnemarPValue',
+            'mcnemarSignificant',
+            'discordant',
+            'baselineAggregate',
+            'featureAggregate',
+        )
+        if key in ablation
+    }
+    summary['roster'] = [
+        {key: row[key] for key in SUMMARY_ROSTER_FIELDS if key in row}
+        for row in roster
+        if isinstance(row, dict)
+    ]
+    return summary
+
+
 def describe(report: dict, reference: bool) -> str:
     lines: list[str] = []
     config = report.get('memoryArmConfig') or {}
@@ -5718,6 +5816,15 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('report', type=Path, help='a benchmark-cortex-memory-ablation-report.json')
     parser.add_argument(
+        '--summary-json',
+        type=Path,
+        metavar='PATH',
+        help='write a projection of this report -- headline numbers, the five per-capability '
+        'rows and the roster -- and exit. The artifact is 60 MB and the numbers a judgement '
+        'needs are a fraction of it, so a reader that cannot download the whole thing can '
+        'still decide about the run',
+    )
+    parser.add_argument(
         '--reference',
         action='store_true',
         help=f'compare per-capability counts against run {REFERENCE_RUN}',
@@ -5967,6 +6074,26 @@ def main(argv: list[str]) -> int:
     except (OSError, json.JSONDecodeError) as error:
         print(f'{args.report}: {error}', file=sys.stderr)
         return 2
+
+    # Before every other branch, including `--partial`: a projection is the one reading that is
+    # safe on any report shape, because it copies rather than interprets. Placing it after the
+    # roster guard would make the projection unavailable on exactly the runs -- reduced and
+    # partial -- whose artifacts are the ones a reader most needs a small version of.
+    if args.summary_json is not None:
+        summary = summary_of(report)
+        try:
+            args.summary_json.write_text(
+                json.dumps(summary, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
+            )
+        except OSError as error:
+            print(f'{args.summary_json}: {error}', file=sys.stderr)
+            return 2
+        size = args.summary_json.stat().st_size
+        print(
+            f'{args.report}: wrote {args.summary_json} '
+            f'({size} bytes, {len(summary["roster"])} roster rows)'
+        )
+        return 0
 
     # Before the roster guard, and that order is the whole reason this branch works: a partial
     # record has no `questions` and no `ablation`, so the guard below would reject it with

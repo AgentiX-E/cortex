@@ -4259,3 +4259,188 @@ class TestTheInstrument:
         assert self._field(r.stdout, 'classified') == '4'
         # the delivered total, read as the pair the line prints: the sum and its denominator
         assert '4 of 8 (50.00%)' in r.stdout
+
+
+class TestSummaryProjection:
+    """The small projection that lets a judgement happen without the 60 MB download.
+
+    The run this exists for is `44962474136`: `completed / success` at `01:41:26Z` and unread
+    at `12:16Z`, because its artifact is 62.8 MB and the transfer that carries it moved at
+    ~20 KB/s and timed out. A reading step that can fail on a file transfer is not a reading
+    step, so the arm writes a second artifact and this is the projection behind it.
+
+    The assertions below are about what the projection *keeps* and what it *drops*, and the
+    third group is the one that matters: a projection that renamed a field would be a second
+    definition of a number, and the whole point of copying is that a reader can `grep` the
+    same row out of the artifact and compare.
+    """
+
+    @staticmethod
+    def _run(report: dict, tmp_path: Path, *extra: str) -> tuple['subprocess.CompletedProcess[str]', Path]:
+        source = tmp_path / 'report.json'
+        source.write_text(json.dumps(report), encoding='utf-8')
+        out = tmp_path / 'summary.json'
+        r = subprocess.run(
+            [sys.executable, str(TOOL), str(source), '--summary-json', str(out), *extra],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return r, out
+
+    def test_it_writes_the_projection_and_says_what_it_wrote(self, tmp_path: Path) -> None:
+        r, out = self._run(_synthetic_report(), tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert out.is_file()
+        # The roster is seven rows in the fixture, and the line that says so is what a reader
+        # uses to tell "projected nothing" from "projected an empty run".
+        assert '7 roster rows' in r.stdout
+
+    def test_the_schema_is_versioned_so_a_consumer_can_refuse_it(self, tmp_path: Path) -> None:
+        r, out = self._run(_synthetic_report(), tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert json.loads(out.read_text(encoding='utf-8'))['schema'] == 'cortex-readout-summary/1'
+
+    def test_the_roster_keeps_the_answer_so_a_row_stays_checkable(self, tmp_path: Path) -> None:
+        r, out = self._run(_synthetic_report(), tmp_path)
+        assert r.returncode == 0, r.stderr
+        roster = json.loads(out.read_text(encoding='utf-8'))['roster']
+        assert [row['correct'] for row in roster] == [True, False, False, True, False, True, True]
+        # The wrong answer and the refusal are distinct rows, which is the reason `answer` is
+        # carried rather than collapsed into a boolean.
+        assert roster[1]['answer'] == '4'
+        assert roster[2]['answer'] is None
+        assert roster[0]['questionId'] == 'MR-3-True'
+
+    def test_it_drops_what_makes_the_artifact_large(self, tmp_path: Path) -> None:
+        report = _synthetic_report()
+        report['questions'][0]['turns'] = ['a very long turn ' * 200]
+        report['questions'][0]['goldOverlap'] = {'total': 3, 'carried': 2}
+        r, out = self._run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        row = json.loads(out.read_text(encoding='utf-8'))['roster'][0]
+        assert set(row) == {'questionId', 'capability', 'correct', 'answer'}
+
+    def test_the_five_capability_rows_come_from_the_metrics_not_from_a_recount(
+        self, tmp_path: Path
+    ) -> None:
+        report = _synthetic_report()
+        report['feature']['metrics']['perCapability'] = {
+            'MR': {'total': 121, 'correct': 110, 'accuracy': 110 / 121, 'abstained': 4},
+            'IE': {'total': 150, 'correct': 143, 'accuracy': 143 / 150, 'abstained': 0},
+        }
+        report['baseline']['metrics']['perCapability'] = {
+            'MR': {'total': 121, 'correct': 96, 'accuracy': 96 / 121, 'abstained': 2},
+        }
+        r, out = self._run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        summary = json.loads(out.read_text(encoding='utf-8'))
+        assert summary['feature']['perCapability']['MR']['correct'] == 110
+        assert summary['baseline']['perCapability']['MR']['correct'] == 96
+        # Absent on the baseline side stays absent. A `null` here would be indistinguishable
+        # from a run that scored null on IE, and `null` means something specific in a report.
+        assert 'IE' not in summary['baseline']['perCapability']
+
+    def test_a_missing_metric_stays_missing_rather_than_becoming_null(self, tmp_path: Path) -> None:
+        report = _synthetic_report()
+        report['baseline']['metrics'] = {'accuracy': 0.4}
+        r, out = self._run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        baseline = json.loads(out.read_text(encoding='utf-8'))['baseline']
+        assert baseline['accuracy'] == 0.4
+        assert 'total' not in baseline
+        assert baseline['perCapability'] == {}
+
+    def test_a_malformed_capability_row_is_dropped_rather_than_fatal(self, tmp_path: Path) -> None:
+        # A producer that wrote a list where a record belongs should not make the small artifact
+        # unavailable: the artifact is how the defect is reported in the first place.
+        report = _synthetic_report()
+        report['feature']['metrics']['perCapability'] = {'MR': [1, 2, 3]}
+        report['questions'].append('not a record')
+        r, out = self._run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        summary = json.loads(out.read_text(encoding='utf-8'))
+        assert summary['feature']['perCapability'] == {}
+        assert len(summary['roster']) == 7
+
+    def test_a_report_without_a_roster_still_projects(self, tmp_path: Path) -> None:
+        # `serializeReportOrReduce` drops the roster on a large run, and a reduced report is
+        # exactly the case where a reader most wants a small file: the headline numbers are all
+        # the reading that run can support.
+        report = _synthetic_report()
+        del report['questions']
+        r, out = self._run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        summary = json.loads(out.read_text(encoding='utf-8'))
+        assert summary['roster'] == []
+        assert summary['ablation']['delta'] == 0.24
+        assert '0 roster rows' in r.stdout
+
+    def test_it_wins_over_a_section_that_needs_the_roster(self, tmp_path: Path) -> None:
+        # The projection is the one reading that is safe on any shape, so it is answered first.
+        # Otherwise `--summary-json --final` on a reduced report would exit 2 with a sentence
+        # about a roster the caller never asked to use.
+        r, out = self._run(_synthetic_report(), tmp_path, '--final')
+        assert r.returncode == 0, r.stderr
+        assert out.is_file()
+
+    def test_it_does_not_touch_the_report_it_reads(self, tmp_path: Path) -> None:
+        report = _synthetic_report()
+        source = tmp_path / 'report.json'
+        source.write_text(json.dumps(report), encoding='utf-8')
+        before = source.read_bytes()
+        r = subprocess.run(
+            [
+                sys.executable,
+                str(TOOL),
+                str(source),
+                '--summary-json',
+                str(tmp_path / 'summary.json'),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert r.returncode == 0, r.stderr
+        assert source.read_bytes() == before
+
+    def test_an_unwritable_destination_is_an_error_with_a_reason(self, tmp_path: Path) -> None:
+        source = tmp_path / 'report.json'
+        source.write_text(json.dumps(_synthetic_report()), encoding='utf-8')
+        missing = tmp_path / 'absent' / 'summary.json'
+        r = subprocess.run(
+            [sys.executable, str(TOOL), str(source), '--summary-json', str(missing)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert r.returncode == 2
+        assert 'summary.json' in r.stderr
+        # A traceback would say where the interpreter died; the reader needs to know which
+        # path it could not write.
+        assert 'Traceback' not in r.stderr
+
+    def test_five_hundred_rows_stay_small_enough_to_be_worth_downloading(self, tmp_path: Path) -> None:
+        # The number this guards: the artifact this replaces was 62.8 MB for 500 questions.
+        # The bound is deliberately tight -- a projection that grows with the transcript would
+        # reproduce the problem it was written to remove.
+        report = _synthetic_report()
+        report['questions'] = [
+            {
+                'questionId': f'q{i}',
+                'capability': 'MR',
+                'correct': i % 3 == 0,
+                'answer': f'answer {i} with a few words in it',
+                'rawOutput': 'x' * 4000,
+                'turns': ['y' * 2000] * 8,
+            }
+            for i in range(500)
+        ]
+        report['feature']['metrics']['perCapability'] = {
+            name: {'total': 100, 'correct': 90, 'accuracy': 0.9, 'abstained': 1}
+            for name in ('MR', 'TR', 'KU', 'IE', 'ABS')
+        }
+        r, out = self._run(report, tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert out.stat().st_size < 120_000
+        assert len(json.loads(out.read_text(encoding='utf-8'))['roster']) == 500

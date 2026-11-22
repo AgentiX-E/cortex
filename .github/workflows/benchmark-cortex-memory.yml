@@ -798,6 +798,34 @@ jobs:
             packages/cortex-memory/benchmark-error.log
           retention-days: 30
 
+      # The 60 MB artifact is the record. This is the part of it a decision needs.
+      #
+      # Run `44962474136` finished `success` at `01:41:26Z` and was still unread twelve hours
+      # later: the download moved at ~20 KB/s, timed out at 6 MB, and every downstream choice
+      # -- which axis to price next, whether to retract one -- waited on a file transfer. A
+      # score that exists and cannot be read is not a measurement, so the arm publishes the
+      # projection as its own artifact. Tens of KB, a second to fetch, and the same numbers the
+      # full report carries under the same field names.
+      - name: Write the readout projection
+        if: always()
+        run: |
+          report=packages/cortex-memory/benchmark-cortex-memory-ablation-report.json
+          if [ ! -f "$report" ]; then
+            echo "::notice::no report to project: the run did not finish, and the audit step is the one that says so"
+            exit 0
+          fi
+          python3 tools/readout-arm-run.py "$report" \
+            --summary-json packages/cortex-memory/benchmark-readout-summary.json
+
+      - name: Upload the readout projection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: longmemeval-s-readout
+          path: packages/cortex-memory/benchmark-readout-summary.json
+          if-no-files-found: ignore
+          retention-days: 30
+
       # §13.107. Three defects in three rounds were found by a person reading an artifact and
       # none of them by a test: a `vote=0/0/0` census on a run that never voted, a reach table
       # that disagreed with the fallthrough implementing it, and a census that counted
