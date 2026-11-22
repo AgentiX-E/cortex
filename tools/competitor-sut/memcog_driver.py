@@ -83,25 +83,31 @@ def vendor_dir() -> Path | None:
     return None
 
 
-def vendor_commit(root: Path) -> str:
-    """The commit actually checked out.
+def vendor_commit(root: Path) -> tuple[str, str]:
+    """`(sha, source)`, where source says whether the sha was read or declared.
 
     Read from `.git/HEAD` rather than by shelling out to git, because the runner may not have git on `PATH` in the
     driver's environment and a `subprocess` call that fails would have to fall back to a constant -- which is the
     thing this function exists to avoid.
+
+    `MEMCOG_COMMIT` is the fallback, and the second return value is why it exists rather than the sha alone: a
+    fixture cannot ship a `.git` directory (git refuses to track one), so the unit tests declare the commit while the
+    workflow reads it from the checkout. A manifest that could not distinguish those two cases would let a declared
+    sha stand in for a measured one, which is the failure `PROTOCOL.md` records for Letta's name.
     """
     head = root / ".git" / "HEAD"
-    try:
+    if head.is_file():
         text = head.read_text(encoding="utf-8").strip()
-    except OSError:
-        return "unknown (no .git)"
-    if text.startswith("ref: "):
-        ref = root / ".git" / text[5:].strip()
-        try:
-            return ref.read_text(encoding="utf-8").strip()[:12]
-        except OSError:
-            return f"unknown ({text})"
-    return text[:12]
+        if text.startswith("ref: "):
+            ref = root / ".git" / text[5:].strip()
+            if ref.is_file():
+                return ref.read_text(encoding="utf-8").strip()[:12], "git"
+            return f"unreadable ({text})", "git"
+        return text[:12], "git"
+    declared = os.environ.get("MEMCOG_COMMIT")
+    if declared:
+        return declared[:12], "declared"
+    return "unknown", "none"
 
 
 def proxy_base() -> str:
@@ -259,7 +265,7 @@ class Driver:
                 "tools/competitor-sut/.vendor/MemCog. There is no PyPI package by this name."
             )
         self.root = root
-        self.commit = vendor_commit(root)
+        self.commit, self.commit_source = vendor_commit(root)
         sys.path.insert(0, str(root / "src"))
         install_client()  # before anything imports `store_build` or `navigation`
 
@@ -289,9 +295,11 @@ class Driver:
             "build": "llm",
             "answers": True,
             "version": f"vendor@{self.commit}",
+            "versionSource": self.commit_source,
             "llm": {"provider": "deepseek-compatible", "model": self.model, "base_url": proxy_base()},
             "notes": (
-                "WeAgentAI/MemCog, MIT, at the vendored commit above. The package ships no working model client "
+                f"WeAgentAI/MemCog, MIT, at the vendored commit above (sha source: {self.commit_source}). "
+                "The package ships no working model client "
                 "(src/core/llm_client.py returns {} behind a TODO), so this driver supplies the OpenAI-compatible "
                 "call the README's own example shows, routed at a metering proxy. Store build and navigation both "
                 "run on that one model; the answer is MemCog's, the judge is the harness's."

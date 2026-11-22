@@ -98,6 +98,9 @@ class Driver:
             "MEMCOG_STORE": str(store),
             "SUT_LLM_BASE_URL": base_url,
             "SUT_LLM_MODEL": "deepseek-chat",
+            # The fixture cannot ship a `.git` directory -- git refuses to track one -- so the sha is declared. The
+            # reader that parses a real `.git/HEAD` is tested separately, against a temporary tree this test builds.
+            "MEMCOG_COMMIT": "deadbeefcafe1234",
         }
         self.process = subprocess.Popen(
             [sys.executable, str(DRIVER)],
@@ -138,6 +141,8 @@ def test_it_declares_itself_as_a_self_answering_llm_system(proxy, tmp_path):
     assert manifest["build"] == "llm"
     # The commit comes from the checkout, not from a constant in the driver.
     assert manifest["version"] == "vendor@deadbeefcafe"
+    # Measured and declared are different claims, and the manifest says which one this is.
+    assert manifest["versionSource"] == "declared"
     assert "no working model client" in manifest["notes"]
 
 
@@ -260,3 +265,38 @@ def test_a_session_the_pipeline_drops_is_counted_not_hidden(proxy, tmp_path):
     assert result["sessions"] == 1
     assert len(result["skipped"]) == 1
     assert "empty" in result["skipped"][0]
+
+
+def test_the_commit_reader_parses_a_real_git_head(tmp_path):
+    """The production path: a checkout, a symbolic `HEAD`, and a ref file.
+
+    This is why the driver does not simply trust an environment variable. On a runner the vendored tree *has* a
+    `.git`, and the sha a reader can check is the one in it. The test builds the smallest tree that exercises the
+    parser -- `ref: refs/heads/main` plus the file it points at -- because the fixture tree itself cannot carry one.
+    """
+    module = _load_driver_module()
+    head = tmp_path / ".git" / "HEAD"
+    ref = tmp_path / ".git" / "refs" / "heads" / "main"
+    ref.parent.mkdir(parents=True)
+    head.write_text("ref: refs/heads/main\n", encoding="utf-8")
+    ref.write_text("0123456789abcdef0123\n", encoding="utf-8")
+    assert module.vendor_commit(tmp_path) == ("0123456789ab", "git")
+
+    # A detached HEAD is a bare sha, and it must not be mistaken for a ref.
+    head.write_text("fedcba9876543210\n", encoding="utf-8")
+    assert module.vendor_commit(tmp_path) == ("fedcba987654", "git")
+
+    # A tree with neither a `.git` nor a declaration has no sha, and says so rather than inventing one.
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    assert module.vendor_commit(bare) == ("unknown", "none")
+
+
+def _load_driver_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("memcog_driver_under_test", DRIVER)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
