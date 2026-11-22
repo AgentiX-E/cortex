@@ -391,7 +391,11 @@ jobs:
       # Contextier 91.6% at 2,807 mean tokens, Zep 90.2% at 4,408 median, Mem0 93.4% at 6,787 mean -- so a single
       # budget here would produce a number that cannot be placed beside any of them. Three rows, one per published
       # budget, is the smallest sweep that answers "at what cost" rather than "how high".
+      # Gated on the sample size, because the three-budget sweep is 1,500 questions' worth of the repository's own
+      # retrieval and it exists to answer "at what cost", not "how high". A four-question smoke run was spending more
+      # wall clock here than on everything else together, and the step's own output is unreadable at n=4 anyway.
       - name: Compare providers (full file, budget sweep)
+        if: ${{ github.event.inputs.questions == '0' || fromJSON(github.event.inputs.questions || '100') >= 100 }}
         env:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
         run: |
@@ -582,6 +586,21 @@ jobs:
             echo '=== arms: skipped, the reading stage wrote no json ===' | tee -a competitor-paired.txt
           fi
 
+      # The two columns a vendor table never shows together: what it scored, and what it spent doing so. The stats
+      # file is the proxy's own accounting, kept beside the reading so a money number in a report can be traced to a
+      # response the provider produced.
+      - name: Cost and accuracy
+        if: ${{ always() && github.event.inputs.read_questions != '0' && github.event.inputs.sut != '' }}
+        run: |
+          curl -fsS "http://127.0.0.1:8399/stats" > sut-llm-stats.json || echo '{}' > sut-llm-stats.json
+          cat sut-llm-stats.json | head -c 2000
+          echo
+          if [ -f competitor-read.json ]; then
+            node tools/sut-cost-report.mjs --read competitor-read.json | tee sut-cost.txt
+          else
+            echo "the reading stage wrote no json, so no row can be priced" | tee sut-cost.txt
+          fi
+
       - name: Summary
         if: always()
         run: |
@@ -620,6 +639,16 @@ jobs:
             cat competitor-read-dispatch2.txt 2>/dev/null || echo 'rewrite arm did not run'
             echo '```'
             echo ''
+            echo '### Cost and accuracy'
+            echo ''
+            echo 'The system-under-test column is its own spend, measured by the metering proxy from the provider'
+            echo '`usage`. Prices and their date are printed by the tool, because a money column without them is not'
+            echo 'checkable.'
+            echo ''
+            echo '```'
+            cat sut-cost.txt 2>/dev/null || echo 'no cost row: no system under test, or no reading'
+            echo '```'
+            echo ''
             echo '### Paired tests'
             echo ''
             echo 'Exact McNemar over the questions that changed. A total four points apart can be a coin; this says'
@@ -652,6 +681,10 @@ jobs:
             competitor-read-dispatch.txt
             competitor-read-dispatch.json
             competitor-sut-*.txt
+            sut-llm-stats.json
+            sut-cost.txt
+            sut-llm-calls.jsonl
+            mastra-manifest.json
             competitor-read-dispatch2.txt
             competitor-read-dispatch2.json
             competitor-paired.txt
