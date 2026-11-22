@@ -128,6 +128,17 @@ jobs:
       TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
       MEM0_EMBEDDER: ${{ github.event.inputs.sut_embed_cache || 'openai-cached' }}
       MEM0_EMBED_CACHE_PATH: ${{ github.workspace }}/.cache/competitor-embed/embeddings.sqlite
+      # §14.132. Every model call a system under test makes goes to the metering proxy, so "the same LLM" is a base
+      # URL rather than a claim, and the token column comes back from the provider's own `usage`. These belong to the
+      # job rather than to each step: they were declared per step, and the ingest step was missing the ones the three
+      # reading steps had. That is how `MASTRA_STORE` came to name a directory no step created -- the ingest fell back
+      # to `/tmp` and every reading stage died at import with `SQLITE_CANTOPEN`, reported as success because the
+      # step piped a dead process into `tee`. One definition, so a new step cannot inherit four of five variables.
+      SUT_LLM_BASE_URL: http://127.0.0.1:8399/v1
+      SUT_LLM_MODEL: ${{ github.event.inputs.sut_llm || vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+      MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
+      MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
+      MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
     # 500 questions x 2 arms x 2 calls per arm is ~2,000 calls for ONE reading arm, and this workflow now runs
     # three of them. The measured cost of the first arm alone was about 45 minutes on a runner, so 120 was already
     # marginal and three arms made it a coin flip. Raised rather than cutting the question count: a 500-question
@@ -414,6 +425,10 @@ jobs:
         env:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
             --questions "$QUESTIONS" \
@@ -446,6 +461,10 @@ jobs:
           LETTA_BASE_URL: http://127.0.0.1:8283
           LETTA_PASSAGE_BATCH: '32'
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           # `2>&1`, because the progress lines the harness prints per question and the vendor package's own
           # build output both go to stderr. Run 45002769709 piped only stdout into this file, so a step that ran
           # thirty-six minutes left an **empty** artifact: the table is printed when the last question is graded,
@@ -470,6 +489,10 @@ jobs:
         env:
           LONGMEMEVAL_PATH: ${{ github.workspace }}/data/longmemeval_s_cleaned.json
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           : > competitor-full.txt
           for tokens in 2800 4400 6800; do
             echo "=== --budget-tokens $tokens ===" | tee -a competitor-full.txt
@@ -502,15 +525,11 @@ jobs:
           # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
           # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
-          # §14.132. Every model call a system under test makes goes to the metering proxy, so "the same LLM" is a
-          # base URL rather than a claim, and the token column comes back from the provider's own `usage`. These are
-          # set for every dispatch and read only by the drivers that call a model.
-          SUT_LLM_BASE_URL: http://127.0.0.1:8399/v1
-          SUT_LLM_MODEL: ${{ github.event.inputs.sut_llm || vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
-          MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
-          MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           if [ "$READ_QUESTIONS" = "0" ]; then
             echo "reading stage skipped by input"
             exit 0
@@ -550,15 +569,11 @@ jobs:
           # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
           # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
-          # §14.132. Every model call a system under test makes goes to the metering proxy, so "the same LLM" is a
-          # base URL rather than a claim, and the token column comes back from the provider's own `usage`. These are
-          # set for every dispatch and read only by the drivers that call a model.
-          SUT_LLM_BASE_URL: http://127.0.0.1:8399/v1
-          SUT_LLM_MODEL: ${{ github.event.inputs.sut_llm || vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
-          MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
-          MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
           SUT_ARG=""
           if [ -n "$SUT" ]; then SUT_ARG="--sut $SUT"; fi
@@ -593,15 +608,11 @@ jobs:
           # which is what run 43170314351 did -- its retrieval table carried mem0 at 100.0% recall and its reading
           # table carried no mem0 row at all, so the only A-grade arm in the run was silently absent.
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
-          # §14.132. Every model call a system under test makes goes to the metering proxy, so "the same LLM" is a
-          # base URL rather than a claim, and the token column comes back from the provider's own `usage`. These are
-          # set for every dispatch and read only by the drivers that call a model.
-          SUT_LLM_BASE_URL: http://127.0.0.1:8399/v1
-          SUT_LLM_MODEL: ${{ github.event.inputs.sut_llm || vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          MEM0_LLM_BASE_URL: http://127.0.0.1:8399/v1
-          MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
-          MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
           SUT_ARG=""
           if [ -n "$SUT" ]; then SUT_ARG="--sut $SUT"; fi
@@ -624,6 +635,10 @@ jobs:
       - name: Paired tests across the three arms
         if: ${{ always() && github.event.inputs.read_questions != '0' }}
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           set -e
           # The pairs that can be run given which arms were selected. `con->dispatch` needs the control file,
           # which a `read_prompts=dispatch,dispatch2` dispatch does not produce; the loop reports that rather
@@ -649,6 +664,10 @@ jobs:
       - name: Paired tests across the arms in one run
         if: ${{ always() && github.event.inputs.read_questions != '0' }}
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           if [ -f competitor-read.json ]; then
             echo '=== arms in competitor-read.json ===' | tee -a competitor-paired.txt
             node tools/paired-test.mjs --within competitor-read.json | tee -a competitor-paired.txt
@@ -663,6 +682,10 @@ jobs:
       - name: Cost and accuracy
         if: ${{ always() && github.event.inputs.read_questions != '0' && github.event.inputs.sut != '' }}
         run: |
+          # A pipeline reports the exit status of its last command, so `node ... | tee` turns a crashed
+          # harness into a green step with a zero-byte artifact. That is how three reading stages
+          # that died at import (SQLITE_CANTOPEN) were reported as success in run 45011910491.
+          set -o pipefail
           curl -fsS "http://127.0.0.1:8399/stats" > sut-llm-stats.json || echo '{}' > sut-llm-stats.json
           cat sut-llm-stats.json | head -c 2000
           echo

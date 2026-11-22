@@ -38,7 +38,9 @@
 
 import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 
 // The protocol channel, captured before anything can print. Mastra logs through `console` in several places, and a
 // banner on stdout is a protocol failure the parent will report and abort on.
@@ -98,6 +100,16 @@ async function usageBlock() {
 }
 
 const memoryVersion = createRequire(import.meta.url)('@mastra/memory/package.json').version;
+
+// The parent directory is created here because the path arrives from the environment.
+//
+// libsql reports a missing parent as `ConnectionFailed("Unable to open connection to local database <path>: 14")`
+// -- SQLITE_CANTOPEN, which reads like a permissions or corruption problem and is neither. Three reading steps
+// were handed `MASTRA_STORE=<workspace>/.cache/mastra/store.db` while the step that actually ingested the corpus
+// used the default `/tmp` path, so `.cache/mastra/` was never created: each reading stage died at import, and
+// because the step piped a dead process into `tee` it reported success with a zero-byte artifact. Two repairs
+// went in for that: this one, and `set -o pipefail` on the steps that pipe.
+mkdirSync(dirname(storePath), { recursive: true });
 
 const storage = new LibSQLStore({ id: 'mastra-sut', url: `file:${storePath}` });
 
