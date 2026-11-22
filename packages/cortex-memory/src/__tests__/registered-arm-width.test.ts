@@ -35,6 +35,7 @@ import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
 
 import { assembleMemory, type AssembleOptions } from '../assemble.js';
 import { REGISTERED_ARM } from '../registered-arm.js';
+import { SearchIndex } from '../retrieval/search-index.js';
 
 const NOW = 1_759_470_000_000;
 
@@ -89,5 +90,20 @@ describe('the reader profile scores at the width the registration measured', () 
     await install.memory.remember(CONVERSATION);
     await install.memory.askStored('Where did I move?');
     expect(install.memory.lastIndexCensus()).toBeUndefined();
+  });
+});
+
+describe('the census answers "how wide would a search be" before one runs', () => {
+  // The three states of `SearchCensus.k` are "a search resolved a width", "the configuration names one" and "the
+  // module default". The assembly tests above reach the first; these reach the other two, because a field whose
+  // fallbacks are never exercised is a field that reports whatever the last branch happened to return.
+  it('a configured width is reported before the first search', () => {
+    expect(new SearchIndex({ k: 7 }).census().k).toBe(7);
+  });
+
+  it('no configuration and no search is the module default, not zero', () => {
+    // Zero would sort below every real width and would read as "nothing was scored", which is the one statement an
+    // un-run index cannot make.
+    expect(new SearchIndex().census().k).toBeGreaterThan(0);
   });
 });
