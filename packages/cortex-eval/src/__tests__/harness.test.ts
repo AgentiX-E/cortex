@@ -378,7 +378,10 @@ describe('measureRetrieval: the reading stage', () => {
    * up on a bill.
    */
   describe('a provider that writes its own answer', () => {
-    function selfAnswering(replies: readonly string[], usage?: { calls: number; promptTokens: number; completionTokens: number }) {
+    function selfAnswering(
+      replies: readonly string[],
+      usage?: { calls: number; promptTokens: number; completionTokens: number },
+    ) {
       const asked: string[] = [];
       const provider: MemoryProvider = {
         name: 'navigator',
@@ -439,7 +442,7 @@ describe('measureRetrieval: the reading stage', () => {
       expect(scores[0]!.read).toBe(0);
     });
 
-    it('receives the corpus\'s own spelling of the question date', async () => {
+    it("receives the corpus's own spelling of the question date", async () => {
       // MemCog's generation prompt is `Current Date: {date}` taken verbatim from the instance. A harness that passed
       // an epoch, or nothing at all, would change the prompt the authors' own harness builds -- and on LongMemEval's
       // temporal family that difference is the answer.

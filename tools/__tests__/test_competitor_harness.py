@@ -261,5 +261,74 @@ def test_a_malformed_corpus_is_rejected_rather_than_scored(tmp_path: Path) -> No
     assert "JSON array" in completed.stderr
 
 
+def test_offset_takes_a_block_of_the_same_sample() -> None:
+    """`--offset` splits one sample across dispatches; it does not draw a different one.
+
+    The alternative a run reaches for when an arm does not fit in a job is fewer questions, which changes what
+    the number is *about*: `--questions 50` is not the first half of the hundred-question sample, it is a
+    round-robin subset that reaches further across capabilities per question. `--questions 50 --offset 50` is
+    the second half of the **hundred**-question block, which is why the two can be reported as one number.
+    """
+    whole = run("--data", str(FIXTURE), "--questions", "4")
+    first = run("--data", str(FIXTURE), "--questions", "2")
+    second = run("--data", str(FIXTURE), "--questions", "2", "--offset", "2")
+
+    ids = lambda payload: [record["id"] for record in payload["scores"][0]["records"]]  # noqa: E731
+    # The prefix property: the two-question sample is the head of the four-question one, and the block taken at
+    # offset 2 is its tail. Without this, a shard taken by offset would be a different experiment wearing the same
+    # name -- which is the failure the harness's own docstring about `--questions` warns about.
+    assert ids(first) == ids(whole)[:2]
+    assert ids(second) == ids(whole)[2:4]
+    assert not set(ids(first)) & set(ids(second))
+    # And the provenance says so, because a table that reports a block without naming it is a table about a subset
+    # that reads as the whole sample.
+    assert "block [2, 4)" in payload_provenance("--questions", "2", "--offset", "2")
+
+
+def payload_provenance(*args: str) -> str:
+    """The provenance line the tool prints, which is where the sample is described."""
+    completed = subprocess.run(
+        ["node", str(TOOL), "--data", str(FIXTURE), *args],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    for line in completed.stdout.splitlines():
+        if line.startswith("gold: "):
+            return line
+    raise AssertionError(f"no provenance line in:\n{completed.stdout}")
+
+
+def test_progress_lines_say_which_question_and_what_it_cost() -> None:
+    """A slow arm has to be observable while it is slow.
+
+    Run 45002769709 spent thirty-six minutes in one competitor's ingest and left an **empty** artifact: the table
+    is printed after the last question is graded, and the step piped a silent program into a file. These lines are
+    the difference between "it ran for an hour and produced nothing" and "question two's ingest is still going".
+    They go to stderr so `--json` stays parseable.
+    """
+    completed = subprocess.run(
+        ["node", str(TOOL), "--data", str(FIXTURE), "--questions", "2", "--limit", "5", "--sut", "reference"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    lines = [line for line in completed.stderr.splitlines() if line.startswith("[sut] ")]
+    # Two questions, an ingest and a search each, and the question number is the question's -- not the
+    # operation's. A per-operation counter printed `ingest 1, search 2`.
+    assert any("question 1/2: ingest started" in line for line in lines), completed.stderr
+    assert any("question 1/2: search started" in line for line in lines), completed.stderr
+    assert any("question 2/2: ingest started" in line for line in lines), completed.stderr
+    assert any("returned in" in line for line in lines), completed.stderr
+    # No proxy in this test, so no token claim. An invented number is worse than an absent one.
+    assert not any("token" in line for line in lines), completed.stderr
+
+
 if __name__ == "__main__":
     sys.exit(subprocess.call(["pytest", "-q", __file__]))

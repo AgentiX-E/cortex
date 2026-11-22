@@ -39,6 +39,11 @@ def process_session(session, user_id, ass_id, verbose=False, lang="en", base_mod
     # A patched client returns `{"choices": ...}`; the fixture's own returns `{}`. That difference is how a test can
     # tell "the driver patched the module" from "the driver imported the package and hoped".
     if not response.get("choices"):
+        # The real pipeline prints ` <step> failed: <exception>` and returns `{}`, and that print is the only place
+        # the reason ever appears. Modelled here so the driver's capture of it is testable against a stand-in that
+        # behaves like the original rather than like a function that returns nothing for no stated reason.
+        if verbose:
+            print(" Step 1: Writing sources failed: no completion returned")
         return {}
 
     store = get_store_root() / user_id / ass_id

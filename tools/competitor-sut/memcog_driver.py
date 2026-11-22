@@ -37,6 +37,7 @@ with question 12's history -- the failure `mem0_driver.py` documents for its own
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
@@ -45,6 +46,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -64,14 +66,21 @@ sys.stdout = sys.stderr
 # produced no response" and the run looks like a broken driver rather than a broken version assumption. The
 # repository states no minimum version anywhere, which is why this cost a dispatch.
 #
-# Re-exec rather than refuse: the alternative is patching somebody else's file, and a patched vendor tree is a
-# measurement of the patch. `MEMCOG_PYTHON` names an interpreter the workflow installed; without it the driver says
-# exactly what is wrong and exits, because guessing (`python3.12` on PATH, a pyenv shim) is how the wrong interpreter
-# gets used silently.
-if sys.version_info < (3, 12):
-    _alternative = os.environ.get("MEMCOG_PYTHON")
-    if _alternative and os.path.exists(_alternative):
-        os.execv(_alternative, [_alternative, os.path.abspath(__file__), *sys.argv[1:]])
+# The check is a function, and it runs from `__main__` rather than at import, because this module is also imported by
+# its tests on 3.11 to exercise the parts that do not need the package (the commit reader, for one). A guard at module
+# scope would make `import memcog_driver` exit the test process.
+def require_python_312() -> None:
+    """Re-exec into `MEMCOG_PYTHON` when this interpreter is too old, or explain and stop.
+
+    Re-exec rather than refuse: the alternative is patching somebody else's file, and a patched vendor tree is a
+    measurement of the patch. And refusing rather than guessing (`python3.12` on PATH, a pyenv shim): a wrong
+    interpreter chosen silently is the failure this whole guard exists to make impossible.
+    """
+    if sys.version_info >= (3, 12):
+        return
+    alternative = os.environ.get("MEMCOG_PYTHON")
+    if alternative and os.path.exists(alternative):
+        os.execv(alternative, [alternative, os.path.abspath(__file__), *sys.argv[1:]])
     print(
         f"MemCog needs Python 3.12 or newer (this is {sys.version.split()[0]}): its f-strings use backslashes inside "
         "replacement fields, which PEP 701 only allows from 3.12. Set MEMCOG_PYTHON to a 3.12 interpreter.",
@@ -79,10 +88,6 @@ if sys.version_info < (3, 12):
     )
     raise SystemExit(3)
 
-# The commit this driver was written against. `MEMCOG_VENDOR` may point anywhere, but the manifest reports the commit
-# it found with `git rev-parse`, not this constant: a driver that printed a pinned sha while running a different tree
-# would be the "name is not the product" failure `PROTOCOL.md` records for Letta.
-PINNED_COMMIT = "b0c4b1e"  # replaced at run time by whatever the checkout says; see `vendor_commit()`
 
 LABEL_PREFIX = "memcog"
 USER_ID = "user"
@@ -167,7 +172,34 @@ def usage_block() -> dict[str, Any]:
 # Which phase the next model call belongs to. Read by the proxy through a header, so the cost table can separate
 # building the store from navigating it -- the two halves have different repairs and, on this system, wildly
 # different sizes.
-_PHASE = {"label": f"{LABEL_PREFIX}/build"}
+#
+# The question number is part of the label, because the table's only useful question is "what did **one question**
+# cost" and the ledger could not answer it: run 45002769709 recorded 1198 calls, every one labelled `memcog/build`,
+# with no way to tell one question's ingest from five. A block that cannot be attributed to a question is a block
+# that cannot be set beside the other systems' per-question cost.
+_PHASE = {"label": f"{LABEL_PREFIX}/build/q0", "question": 0}
+
+
+def phase(name: str) -> None:
+    """Label the next model calls with `name` and the question they belong to."""
+    _PHASE["label"] = f"{LABEL_PREFIX}/{name}/q{_PHASE['question']}"
+
+
+def failure_reason(transcript: str) -> str:
+    """The step that failed, taken from the authors' own progress prints.
+
+    `process_session` runs five steps, prints ` <step> failed: <exception>` when one of them raises, and returns
+    `{}`. Nothing carries the reason back to the caller, so a driver that only looks at the return value reports
+    `the write pipeline returned nothing` for a `KeyError`, a parse error and a refused connection alike. This
+    turns that one sentence into the one that says which step failed and why.
+    """
+    lines = [line.strip() for line in transcript.splitlines() if line.strip()]
+    for line in lines:
+        if "failed:" in line:
+            return line
+    if lines:
+        return f"the write pipeline returned nothing; last line printed: {lines[-1]}"
+    return "the write pipeline returned nothing, and printed no reason"
 
 
 def _openai_compatible_call(
@@ -330,6 +362,21 @@ class Driver:
             **usage_block(),
         }
 
+    def store_listing(self) -> str:
+        """What the store directory actually holds, for a refusal a reader can act on.
+
+        The interesting case is not "the directory is empty" but "the sources were written and the root index was
+        not": the corpus went in, the navigation entry point never appeared, and the two need different repairs.
+        """
+        root = self.store_root / USER_ID / ASS_ID
+        if not root.exists():
+            return "nothing (the directory does not exist)"
+        entries = sorted(f"{entry.name}/" if entry.is_dir() else entry.name for entry in root.iterdir())
+        if not entries:
+            return "an empty directory"
+        shown = ", ".join(entries[:12])
+        return shown + (f" (+{len(entries) - 12} more)" if len(entries) > 12 else "")
+
     def reset(self) -> dict[str, Any]:
         # The store is a directory tree; MemCog has no drop operation. Removing it is the same contract every other
         # driver implements, and it is checked before the next question rather than after the last.
@@ -339,10 +386,12 @@ class Driver:
         self.settings.set_store_root(self.store_root)
         self.ingested_sessions = 0
         self.ingested_turns = 0
+        _PHASE["question"] += 1
+        phase("build")
         return {"ok": True}
 
     def ingest(self, sessions: list[dict[str, Any]]) -> dict[str, Any]:
-        _PHASE["label"] = f"{LABEL_PREFIX}/build"
+        phase("build")
         skipped: list[str] = []
         turns = 0
         stored = 0
@@ -351,23 +400,34 @@ class Driver:
             if not converted["messages"]:
                 skipped.append(f"session {converted['session_id']} had no turns")
                 continue
+            # The authors' pipeline prints why a step failed and then returns `{}`; with `verbose=False` that
+            # reason is simply lost, which is what made this arm unreadable. Run 45002769709 stored nothing for
+            # thirty-six minutes and reported `the write pipeline returned nothing` -- a sentence that names the
+            # symptom and hides the cause. The prints are captured here instead of forwarded so they can be
+            # attached to the session they belong to.
+            transcript = io.StringIO()
             try:
-                result = self.process_session(
-                    converted,
-                    USER_ID,
-                    ASS_ID,
-                    verbose=False,
-                    lang=self.lang,
-                    base_model="gpt",
-                    model=self.model,
-                )
+                with redirect_stdout(transcript):
+                    result = self.process_session(
+                        converted,
+                        USER_ID,
+                        ASS_ID,
+                        verbose=True,
+                        lang=self.lang,
+                        base_model="gpt",
+                        model=self.model,
+                    )
             except Exception as error:  # noqa: BLE001 - one session failing is a skip, not a run failure
                 skipped.append(f"session {converted['session_id']}: {type(error).__name__}: {error}")
                 continue
             # `process_session` returns `{}` when a step fails rather than raising. An empty result is a session that
             # did not enter the store, and counting it as stored would produce a score with a hole in its corpus.
             if not result:
-                skipped.append(f"session {converted['session_id']}: the write pipeline returned nothing")
+                reason = failure_reason(transcript.getvalue())
+                # Printed as well as recorded, because `skipped` is only rendered when the last question is graded
+                # and a store that is refusing every session has to say why while it is refusing them.
+                print(f"memcog: session {converted['session_id']} skipped: {reason}", file=sys.stderr)
+                skipped.append(f"session {converted['session_id']}: {reason}")
                 continue
             stored += 1
             turns += len(converted["messages"])
@@ -391,13 +451,19 @@ class Driver:
         return {"ok": True, "hits": [], "notes": "memcog has no ranked retrieval; see `answer`", **usage_block()}
 
     def answer(self, query: str, asked_at: str | None) -> dict[str, Any]:
-        _PHASE["label"] = f"{LABEL_PREFIX}/navigate"
+        phase("navigate")
         context, _trace = self.load_context(USER_ID, ASS_ID)
         if not context:
             # A store that was never built cannot be navigated. Reported as a refusal for this question rather than
             # an exception, because a corpus that failed to ingest is already in `skipped` and this is its
-            # consequence.
-            return {"ok": False, "error": "the store has no index.md; ingest wrote nothing", **usage_block()}
+            # consequence -- but the message says **what the store does hold**, because "no index.md" was printed
+            # for thirty-six minutes of a run whose corpus may have been written and merely not indexed. A
+            # refusal that cannot be distinguished from a missing top-level file is not a diagnosis.
+            return {
+                "ok": False,
+                "error": f"the store has no index.md; {USER_ID}/{ASS_ID} holds: {self.store_listing()}",
+                **usage_block(),
+            }
         date = asked_at or datetime.now(timezone.utc).strftime("%Y/%m/%d (%a) %H:%M")
         user_prompt = f"Current Date: {date}\nQuestion: {query}\nAnswer:"
         try:
@@ -461,4 +527,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    require_python_312()
     raise SystemExit(main())

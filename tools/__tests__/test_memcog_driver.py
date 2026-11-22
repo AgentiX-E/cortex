@@ -24,6 +24,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -36,6 +37,38 @@ REPO = Path(__file__).resolve().parents[2]
 DRIVER = REPO / "tools" / "competitor-sut" / "memcog_driver.py"
 PROXY = REPO / "tools" / "competitor-sut" / "sut_llm_proxy.py"
 VENDOR = REPO / "tools" / "__tests__" / "fixtures" / "fake_memcog"
+
+
+def find_python_312() -> str | None:
+    """An interpreter the driver can re-exec into, or `None`.
+
+    The driver refuses to run below 3.12 (MemCog's f-strings need PEP 701), so an end-to-end test needs one. It is
+    looked for in three places and the search is *reported* rather than silent: `MEMCOG_PYTHON` first, then whatever
+    `python3.12` resolves to, then the system path. Where there is none the end-to-end tests say so, and the protocol
+    round trip is covered by the workflow step that installs 3.12 -- the same arrangement the Mastra driver uses.
+    """
+    for candidate in (os.environ.get("MEMCOG_PYTHON"), shutil.which("python3.12"), "/usr/bin/python3.12"):
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return None
+
+
+TWELVE = find_python_312()
+needs_312 = pytest.mark.skipif(
+    TWELVE is None,
+    reason="MemCog needs Python 3.12 (PEP 701 f-strings); the workflow covers this round trip on an installed 3.12",
+)
+
+
+def by_phase(stats: dict, name: str) -> int:
+    """Calls the proxy recorded for one phase, summed over every question suffix.
+
+    The label is `memcog/<phase>/q<n>`. Summing is the readable half of the assertion: a test that named the exact
+    label would fail on the question index, which is a different claim and is tested separately.
+    """
+    return sum(
+        int(row["calls"]) for label, row in stats["by_label"].items() if label.startswith(f"memcog/{name}/")
+    )
 
 
 def load_proxy():
@@ -101,6 +134,7 @@ class Driver:
             # The fixture cannot ship a `.git` directory -- git refuses to track one -- so the sha is declared. The
             # reader that parses a real `.git/HEAD` is tested separately, against a temporary tree this test builds.
             "MEMCOG_COMMIT": "deadbeefcafe1234",
+            **({"MEMCOG_PYTHON": TWELVE} if TWELVE is not None else {}),
         }
         self.process = subprocess.Popen(
             [sys.executable, str(DRIVER)],
@@ -126,6 +160,7 @@ class Driver:
             self.process.wait(timeout=30)
 
 
+@needs_312
 def test_it_declares_itself_as_a_self_answering_llm_system(proxy, tmp_path):
     base_url, _ = proxy
     driver = Driver(base_url, tmp_path / "store")
@@ -146,6 +181,7 @@ def test_it_declares_itself_as_a_self_answering_llm_system(proxy, tmp_path):
     assert "no working model client" in manifest["notes"]
 
 
+@needs_312
 def test_the_patch_lands_before_the_package_imports_the_client(proxy, tmp_path):
     """The failure this guards: a driver that patches after `store_build` imported `call_llm` gets `{}` forever."""
     base_url, module = proxy
@@ -175,12 +211,15 @@ def test_the_patch_lands_before_the_package_imports_the_client(proxy, tmp_path):
 
     stats = module.ACCOUNTANT.snapshot_for("memcog")
     # One call to write the session, two in the navigation loop. Anything else means a phase is counting the other's
-    # calls, which is the failure the label split exists to prevent.
-    assert stats["by_label"]["memcog/build"]["calls"] == 1
-    assert stats["by_label"]["memcog/navigate"]["calls"] == 2
+    # calls, which is the failure the label split exists to prevent. Summed over the question suffix rather than
+    # asserting one exact label, because the index is tested on its own below; what this test is about is the split
+    # between building and navigating.
+    assert by_phase(stats, "build") == 1
+    assert by_phase(stats, "navigate") == 2
     assert stats["calls"] == 3
 
 
+@needs_312
 def test_usage_travels_with_every_response(proxy, tmp_path):
     base_url, _ = proxy
     driver = Driver(base_url, tmp_path / "store")
@@ -200,6 +239,7 @@ def test_usage_travels_with_every_response(proxy, tmp_path):
     assert evidence["usage"]["completion_tokens"] == 15
 
 
+@needs_312
 def test_search_is_empty_and_says_why(proxy, tmp_path):
     base_url, _ = proxy
     driver = Driver(base_url, tmp_path / "store")
@@ -214,6 +254,7 @@ def test_search_is_empty_and_says_why(proxy, tmp_path):
     assert "no ranked retrieval" in result["notes"]
 
 
+@needs_312
 def test_a_store_that_never_built_refuses_the_question(proxy, tmp_path):
     """The distinction the whole protocol rests on: a refusal is a claim about the system, not an empty answer."""
     base_url, _ = proxy
@@ -226,6 +267,7 @@ def test_a_store_that_never_built_refuses_the_question(proxy, tmp_path):
     assert "index.md" in answer["error"]
 
 
+@needs_312
 def test_reset_removes_the_tree_so_the_next_question_starts_empty(proxy, tmp_path):
     base_url, _ = proxy
     store = tmp_path / "store"
@@ -246,6 +288,7 @@ def test_reset_removes_the_tree_so_the_next_question_starts_empty(proxy, tmp_pat
     assert not (store / "user" / "assistant" / "index.md").exists()
 
 
+@needs_312
 def test_a_session_the_pipeline_drops_is_counted_not_hidden(proxy, tmp_path):
     """`process_session` returns `{}` on a failed step. An ingest that counted it would score a corpus with a hole."""
     base_url, _ = proxy
@@ -265,6 +308,81 @@ def test_a_session_the_pipeline_drops_is_counted_not_hidden(proxy, tmp_path):
     assert result["sessions"] == 1
     assert len(result["skipped"]) == 1
     assert "empty" in result["skipped"][0]
+
+
+def test_failure_reason_names_the_step_that_failed():
+    """`process_session` prints the reason and returns `{}`; the driver has to carry the print back.
+
+    The real pipeline catches each step's exception, prints ` <step> failed: <exception>` when `verbose` is set and
+    returns an empty dict. Run 45002769709 turned that into `the write pipeline returned nothing` for every session,
+    which names a symptom every step shares and no cause at all -- so the run could not say whether the corpus, the
+    model, the parser or the store was at fault.
+    """
+    module = _load_driver_module()
+
+    transcript = "\nProcessing session [s1]\n Step 1: Writing sources...\n Writing sources failed: 'msg_time'\n"
+    assert module.failure_reason(transcript) == "Writing sources failed: 'msg_time'"
+
+    # A later step wins over an earlier one, because the earlier ones succeeded by definition: the pipeline returns
+    # at the first failure, and a transcript that mentions two is a transcript of two sessions.
+    later = " Writing sources failed: x\n Step 2: Writing context failed: y\n"
+    assert module.failure_reason(later) == "Writing sources failed: x"
+
+    # No reason printed at all is still a sentence, not an empty string, and it does not invent a cause.
+    assert "printed no reason" in module.failure_reason("")
+    assert "last line printed" in module.failure_reason("\n[fake] processing s1\n")
+
+
+@needs_312
+def test_each_question_carries_its_own_index(proxy, tmp_path):
+    """The label a call is billed to names the question, because a block that cannot be attributed to one is not
+    a per-question cost.
+
+    Run 45002769709 recorded 1198 calls, every one labelled `memcog/build`, over thirty-six minutes. Whether that
+    was one question's ingest or five was not in the artifact, and the cost table's only useful question is the
+    per-question one.
+    """
+    base_url, module = proxy
+    driver = Driver(base_url, tmp_path / "store")
+    sessions = [
+        {"id": "s1", "at": 1_685_000_000_000, "turns": [{"role": "user", "content": "hi"}]},
+        {"id": "s2", "at": 1_685_000_000_000, "turns": [{"role": "user", "content": "hello"}]},
+    ]
+    try:
+        for session in sessions:
+            driver.send({"op": "reset"})
+            ingest = driver.send({"op": "ingest", "sessions": [session]})
+            assert ingest["sessions"] == 1
+    finally:
+        driver.close()
+
+    stats = module.ACCOUNTANT.snapshot_for("memcog")
+    # One build call per session, and the index is the question's, counted from the reset that precedes it.
+    assert stats["by_label"]["memcog/build/q1"]["calls"] == 1
+    assert stats["by_label"]["memcog/build/q2"]["calls"] == 1
+    assert by_phase(stats, "build") == 2
+
+
+@needs_312
+def test_a_refusal_says_what_the_store_holds(proxy, tmp_path):
+    """A store with no `index.md` is two different failures, and the refusal has to say which.
+
+    "The corpus never went in" and "the corpus went in and the navigation entry point was never written" need
+    different repairs, and the earlier message said only the first -- `the store has no index.md; ingest wrote
+    nothing` -- for a refusal that could be either.
+    """
+    base_url, _ = proxy
+    driver = Driver(base_url, tmp_path / "store")
+    try:
+        driver.send({"op": "reset"})
+        refused = driver.send({"op": "answer", "query": "where do I live"})
+    finally:
+        driver.close()
+
+    assert refused["ok"] is False
+    assert "holds:" in refused["error"]
+    # A store that was never built says so, rather than listing an empty string.
+    assert "does not exist" in refused["error"] or "empty directory" in refused["error"]
 
 
 def test_the_commit_reader_parses_a_real_git_head(tmp_path):
@@ -300,3 +418,25 @@ def _load_driver_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="the guard only fires below 3.12")
+def test_the_guard_explains_the_version_it_needs():
+    """The failure that cost a dispatch, in the form that costs nothing.
+
+    On 3.11 the guard must exit 3 with a sentence naming the version, the file's requirement and the PEP -- and it
+    must write nothing to stdout, because a parent that reads half a protocol response is worse off than one that
+    reads none.
+    """
+    completed = subprocess.run(
+        [sys.executable, str(DRIVER)],
+        input='{"op":"manifest"}\n',
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "MEMCOG_PYTHON": ""},
+    )
+    assert completed.returncode == 3
+    assert completed.stdout == ""
+    assert "Python 3.12" in completed.stderr
+    assert "PEP 701" in completed.stderr

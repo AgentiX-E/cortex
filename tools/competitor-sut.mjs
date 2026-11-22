@@ -107,7 +107,13 @@ class Channel {
       }
     });
     this.#child.stderr.on('data', (chunk) => {
-      this.#stderr += String(chunk);
+      // Forwarded *and* kept. Kept, because a failure message quotes the tail (`tail()`), and forwarded, because a
+      // driver's stderr is the only place a vendor package's own progress output ever appears: MemCog prints its
+      // five build steps there, and a job that only ever sees them after a failure sees them never. Run 45002769709
+      // spent thirty-six minutes in that blind spot -- the step's log held the step's name and nothing else.
+      const text = String(chunk);
+      this.#stderr += text;
+      process.stderr.write(text);
     });
     this.#child.on('exit', (code) => {
       this.#closed = code;

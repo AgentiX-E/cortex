@@ -25,6 +25,15 @@ on:
         required: false
         default: '100'
         type: string
+      # The second half of a sample whose first half did not fit in one job. `--offset` takes a *block* of the
+      # stratified order, so `--questions 50` twice with `--offset 0` and `--offset 50` measures the same hundred
+      # questions one call would -- unlike halving the count, which samples a different (and easier to over-read)
+      # subset. Run 45002769709 is why this exists: `memcog` needs longer than the job allows for a hundred.
+      offset:
+        description: 'Questions to skip at the start of the stratified sample, to split one sample across dispatches'
+        required: false
+        default: '0'
+        type: string
       read_questions:
         description: 'Questions to read and grade (0 = skip the reading stage)'
         required: false
@@ -94,7 +103,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: competitor-retrieval-${{ github.ref }}
+  # Grouped per system under test, because this workflow is dispatch-only and the thing a repeat dispatch has to
+  # cancel is the *same arm's* previous run: a second `sut=memcog` replaces the first rather than queueing behind an
+  # hour of it. Grouping only on the ref made the three arms mutually exclusive -- dispatching `mastra` while
+  # `memcog` was measuring cancelled MemCog mid-ingest, which is how run 45002769709 died a second time.
+  group: competitor-retrieval-${{ github.ref }}-${{ inputs.sut || 'none' }}
   cancel-in-progress: true
 
 jobs:
@@ -110,6 +123,7 @@ jobs:
     env:
       QUESTIONS: ${{ github.event.inputs.questions || '100' }}
       LIMIT: ${{ github.event.inputs.limit || '10' }}
+      OFFSET: ${{ github.event.inputs.offset || '0' }}
       READ_QUESTIONS: ${{ github.event.inputs.read_questions || '100' }}
       TEMPERATURE: ${{ github.event.inputs.temperature || '0' }}
       MEM0_EMBEDDER: ${{ github.event.inputs.sut_embed_cache || 'openai-cached' }}
@@ -247,6 +261,41 @@ jobs:
             console.log('@mastra/memory', require('@mastra/memory/package.json').version);
             console.log('@mastra/core  ', require('@mastra/core/package.json').version);
           "
+
+      # The MemCog round trip, on the interpreter the driver re-execs into. The unit suite covers the driver's
+      # protocol layer against a stand-in, but it cannot cover *this* tree on *this* version: the package does not
+      # import below 3.12 and the test runner is 3.11, so the end-to-end tests skip there and this step is what
+      # actually proves the vendored checkout parses, imports and answers a manifest.
+      - name: MemCog protocol smoke (manifest only, no model call)
+        if: inputs.sut == 'memcog'
+        env:
+          MEMCOG_VENDOR: ${{ github.workspace }}/tools/competitor-sut/.vendor/MemCog
+        run: |
+          set -o pipefail
+          printf '{"op":"manifest"}\n{"op":"shutdown"}\n' | "$MEMCOG_PYTHON" tools/competitor-sut/memcog_driver.py > memcog-manifest.json
+          cat memcog-manifest.json
+          # The payload arrives on stdin rather than in a `-c` argument. Two reasons, and the first one is why this
+          # step failed to parse once: a `-c` body has to start at column zero to avoid carrying the file's own
+          # indentation into the program, and a line at column zero terminates the block scalar -- a YAML error
+          # reported against the *step*, not against the check. A quoted here-doc is also what the
+          # shell-interpolation guard (`docs/OPS-SHELL-INTERPOLATION.md`) requires for an interpreter payload, and
+          # YAML strips the block indentation before the shell ever sees the terminator.
+          "$MEMCOG_PYTHON" - <<'PY'
+          import json, sys
+          manifest = [json.loads(line) for line in open('memcog-manifest.json', encoding='utf-8') if line.strip()][0]
+          checks = {
+              'name': manifest.get('name') == 'memcog',
+              'answers': manifest.get('answers') is True,
+              'build': manifest.get('build') == 'llm',
+              'version': str(manifest.get('version', '')).startswith('vendor@'),
+              'versionSource': manifest.get('versionSource') == 'git',
+              'model': bool((manifest.get('llm') or {}).get('model')),
+          }
+          bad = [name for name, ok in checks.items() if not ok]
+          if bad:
+              sys.exit('bad manifest fields: ' + ', '.join(bad))
+          print('memcog manifest ok:', manifest['version'], manifest['llm']['model'])
+          PY
 
       # A protocol round trip that needs no key and no model, run against the *installed* tree rather than against a
       # stub: it proves the four packages import, that the driver starts under the same Node the job uses, and that
@@ -397,12 +446,17 @@ jobs:
           LETTA_BASE_URL: http://127.0.0.1:8283
           LETTA_PASSAGE_BATCH: '32'
         run: |
+          # `2>&1`, because the progress lines the harness prints per question and the vendor package's own
+          # build output both go to stderr. Run 45002769709 piped only stdout into this file, so a step that ran
+          # thirty-six minutes left an **empty** artifact: the table is printed when the last question is graded,
+          # and the only thing that could have said why it never got there was going to stderr.
           node tools/competitor-harness.mjs \
             --data "$LONGMEMEVAL_PATH" \
             --questions "$QUESTIONS" \
+            --offset "$OFFSET" \
             --limit "$LIMIT" \
             --sut "$SUT" \
-            | tee "competitor-sut-$(echo "$SUT" | tr '/' '-').txt"
+            2>&1 | tee "competitor-sut-$(echo "$SUT" | tr '/' '-').txt"
 
       # The budget sweep. The published systems report one number each at a different context cost --
       # Contextier 91.6% at 2,807 mean tokens, Zep 90.2% at 4,408 median, Mem0 93.4% at 6,787 mean -- so a single
@@ -702,6 +756,7 @@ jobs:
             sut-cost.txt
             sut-llm-calls.jsonl
             mastra-manifest.json
+            memcog-manifest.json
             competitor-read-dispatch2.txt
             competitor-read-dispatch2.json
             competitor-paired.txt

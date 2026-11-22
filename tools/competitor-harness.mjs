@@ -46,6 +46,15 @@ import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 import { createSutProvider } from './competitor-sut.mjs';
 import { NO_READER, describeJudgeIdentity, describeReaderIdentity } from './reader-identity.mjs';
 
+/**
+ * A reader who pipes this into `head` closes the pipe, and an unhandled `EPIPE` on stdout is a stack trace instead
+ * of a table. The file already carries the argument for the other half of this problem (`process.exit` racing a
+ * pipe buffer); this is the same pipe seen from the writing end.
+ */
+process.stdout.on('error', (error) => {
+  if (error.code !== 'EPIPE') throw error;
+});
+
 const argv = process.argv.slice(2);
 const flag = (name) => {
   const at = argv.indexOf(name);
@@ -73,6 +82,19 @@ const jsonOut = flag('--json-out');
 const limit = Number(flag('--limit') ?? 10);
 const people = Number(flag('--people') ?? 8);
 const wanted = Number(flag('--questions') ?? 100);
+/**
+ * Skip this many questions of the stratified order before measuring.
+ *
+ * Added because one competitor's ingest does not fit in a job. Run 45002769709 spent thirty-six minutes inside
+ * `memcog/build` and returned no row at all; the arm needs either fewer questions or two dispatches over one
+ * sample. Fewer questions changes what the number is *about*, so the cheaper option is this: `--questions 50`
+ * twice, the second with `--offset 50`, measures the same hundred questions as one call.
+ *
+ * It is a **block**, not a stride: `stratify` fills round-robin and stops at `count`, so the pick sequence does
+ * not depend on `count` and `stratify(all, n).slice(offset)` is the same list however the sample is cut up. A
+ * shard taken this way is disjoint from its neighbours and reproducible from `(path, count, offset)` alone.
+ */
+const offset = Number(flag('--offset') ?? 0);
 // Overrides the token budget of the priced row, so a test (or a reader) can force the budget below one session
 // and watch the trim happen. 2,800 is the default because that is Contextier's mean context on this benchmark.
 const budgetTokens = Number(flag('--budget-tokens') ?? 2800);
@@ -186,13 +208,15 @@ if (dataPath === undefined) {
     throw new Error(`${dataPath} must contain a JSON array of LongMemEval instances`);
   }
   const loaded = loadLongMemEval(parsed);
-  const subset = stratify(loaded.questions, Math.min(wanted, loaded.questions.length));
+  const subset = stratify(loaded.questions, Math.min(wanted + offset, loaded.questions.length)).slice(offset);
   dataset = { name: `${loaded.name}/s`, questions: subset };
   // The only gold this tool subtracts on: an annotation in the file, not an inference.
   goldOf = (question) => question.goldTurns ?? [];
   provenance =
     `gold: Question.goldTurns from answer_session_ids (${parsed.length} instances in file, ` +
-    `${subset.length} sampled round-robin across capabilities)`;
+    `${subset.length} sampled round-robin across capabilities` +
+    (offset === 0 ? '' : `, block [${offset}, ${offset + subset.length}) of the ${wanted + offset}-question sample`) +
+    ')';
 }
 
 /**
@@ -231,6 +255,101 @@ const providers = [
 ];
 
 /**
+ * Where the metering proxy answers, or `null` when this run has no proxy.
+ *
+ * Only for the progress line below: a run without a proxy measures a local provider and has no token ledger to
+ * read. It is derived from `SUT_LLM_BASE_URL` rather than configured separately, so a run whose model calls went
+ * somewhere else cannot report another proxy's numbers.
+ */
+function proxyStatsEndpoint() {
+  const base = process.env['SUT_LLM_BASE_URL'];
+  if (base === undefined || base === '') return null;
+  try {
+    return `${new URL(base).origin}/stats`;
+  } catch {
+    return null;
+  }
+}
+
+const statsEndpoint = proxyStatsEndpoint();
+
+/** Cumulative calls and tokens for one system, as the proxy counted them. `''` when it cannot be read. */
+async function cumulativeUsage(prefix) {
+  if (statsEndpoint === null) return '';
+  try {
+    const response = await fetch(`${statsEndpoint}?prefix=${encodeURIComponent(prefix)}`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return ` · stats unavailable (${String(response.status)})`;
+    const stats = await response.json();
+    const tokens = Number(stats['prompt_tokens'] ?? 0) + Number(stats['completion_tokens'] ?? 0);
+    return ` · ${String(stats['calls'] ?? 0)} call(s), ${(tokens / 1e6).toFixed(2)}M token(s) cumulative`;
+  } catch {
+    // A progress line is a courtesy, not a measurement: a proxy that is down must not fail the run that is
+    // already measuring it.
+    return '';
+  }
+}
+
+/**
+ * One stderr line per question per operation, with wall clock and cumulative model use.
+ *
+ * Run 45002769709 sat inside `memcog/build` for thirty-six minutes and produced an **empty** artifact: the table
+ * is written when the last question is graded, the step piped a silent program into `tee`, and the job limit
+ * arrived first. Thirty-six minutes and about six yuan bought no evidence at all -- not even which question it
+ * was on, or whether the ingest had stored anything.
+ *
+ * That is a reporting failure rather than a competitor failure, and it is cheap to fix: the provider already
+ * knows when it is asked a question, and the proxy already knows what that has cost so far. Printed to stderr so
+ * `--json` stays parseable and so a caller reading the table on stdout is not interleaved with progress.
+ *
+ * Money is deliberately **not** printed. The price table lives in `sut-cost-report.mjs`, and a second copy of it
+ * here is how two artifacts come to disagree about one run. Tokens are the proxy's own count; the conversion
+ * happens once, at the end, against a table with a date on it.
+ */
+function withProgress(provider, planned) {
+  const started = Date.now();
+  const selfAnswering = typeof provider.answer === 'function';
+  // The question index belongs to the *question*, not to the operation: in isolated mode the harness ingests a
+  // question's haystack and then asks it, and counting per operation would print `ingest 1, search 2`. Advancing
+  // on `ingest` is what makes the two lines that belong to one question share a number.
+  let question = 0;
+  const at = () => `t+${String(Math.round((Date.now() - started) / 1000))}s`;
+  const say = (line) => process.stderr.write(`[sut] ${line}\n`);
+
+  const timed = async (op, call) => {
+    if (op === 'ingest') question += 1;
+    const index = op === 'ingest' ? question : Math.max(question, 1);
+    const scope = planned > 0 ? `${String(index)}/${String(planned)}` : String(index);
+    const began = Date.now();
+    say(`${provider.name} question ${scope}: ${op} started (${at()})`);
+    try {
+      return await call();
+    } finally {
+      const took = ((Date.now() - began) / 1000).toFixed(1);
+      const stored = Number(provider.ingestedSessions ?? 0);
+      const skipped = provider.ingestSkips?.length ?? 0;
+      say(
+        `${provider.name} question ${scope}: ${op} returned in ${took}s` +
+          `${op === 'ingest' ? ` · ${String(stored)} session(s) stored cumulative, ${String(skipped)} refused` : ''}` +
+          (await cumulativeUsage(provider.name)),
+      );
+    }
+  };
+
+  return Object.create(provider, {
+    // Ingest is where a store-building system spends everything, so it gets a line of its own -- and it is what
+    // advances the question number, because every driver here ingests the haystack of the question it is about
+    // to be asked (protocol `mode: isolated`).
+    ingest: { value: (sessions) => timed('ingest', () => provider.ingest(sessions)) },
+    search: { value: (query, options) => timed('search', () => provider.search(query, options)) },
+    ...(selfAnswering
+      ? { answer: { value: (query, options) => timed('answer', () => provider.answer(query, options)) } }
+      : {}),
+  });
+}
+
+/**
  * A competitor's own code, as one more arm.
  *
  * `--sut mem0` launches `tools/competitor-sut/mem0_driver.py` and treats it like any other provider, which is the
@@ -243,7 +362,7 @@ const providers = [
  */
 const sutDriver = flag('--sut');
 const sut = sutDriver === undefined ? null : await createSutProvider({ driver: sutDriver });
-if (sut !== null) providers.push(sut);
+if (sut !== null) providers.push(withProgress(sut, dataset.questions.length));
 /**
  * A system under test is read by default.
  *
