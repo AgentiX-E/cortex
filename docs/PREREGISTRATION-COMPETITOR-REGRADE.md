@@ -144,3 +144,73 @@ from the one this file names (a newer `question_records_*.json`), a judge model 
 `deepseek-chat`, a scorer other than `judgeScorer`, a `LIMIT` below 500, or a run whose
 `answerFieldSource` is `override` — the last one is admissible, but its provenance has to be stated in
 the same sentence as the number.
+
+## 10. Result (dispatched 2026-11-23, run `45229423125`)
+
+The pre-registration above was written before the run and is unchanged. What follows is what came back.
+
+### 10.1 Admissibility, condition by condition
+
+| # | required | observed | verdict |
+| --- | --- | --- | --- |
+| A1 | answer field converged | `answering.generated_answer` — 472 distinct values over 500 records; the census refused the two high-cardinality neighbours and a person named the column (`answerFieldSource: override`) | ✓ |
+| A2 | their verdicts reproduce 95.6% ± 0.5 | **478/500 = 95.60%**, exact to two decimals; the verdict column is `judge.judge_raw`, whose values are `Yes.` ×355, `Yes` ×110, `yes` ×13, `No.` ×11, `No` ×11 | ✓ |
+| A3 | ≥ 490 non-empty answers | **500/500** | ✓ |
+| A4 | ≤ 5 unreadable judge replies | **0**, and `unjudged: 0` | ✓ |
+| A5 | the 500 ids match the corpus | intersection **500/500** | ✓ |
+
+A2 fired usefully before it passed: an earlier parse kept only `Yes`/`No`/`yes` (134 questions) and read
+91.79%. The 366 that went missing were `Yes.` — a trailing full stop, against a `cortex-eval` parser that
+reads verdicts by prefix and had always accepted them. The instrument was stricter than the instrument it
+was measuring with.
+
+### 10.2 The three readings
+
+| reading | pairs | left | right | delta | discordant | p |
+| --- | --- | --- | --- | --- | --- | --- |
+| **ruler** (their answers, two judges) | 500 | 95.80% ours | 95.60% theirs | **+0.20** | 3 / 2 | **1.0000** |
+| **system** (our judge, two answer sets) | 500 | 91.20% cortex | 95.80% Synap | **−4.60** | 14 / 37 | **0.0018** |
+| reference (the old headline) | 500 | 91.20% | 95.60% | −4.40 | 14 / 36 | 0.0026 |
+
+**R1 is refuted.** `|0.20| ≪ 3.21` and the discordant split is 3-to-2, which is no direction at all.
+Replacing their judge with ours does not move their number. The hypothesis that the 4.4-point gap was an
+instrument artefact — the hypothesis this pre-registration was written to test — is false.
+
+**R2 holds.** Under one judge, on one 500-question population, with 500/500 paired ids, Synap leads by
+**4.60 points** and the sign test over 51 discordant pairs gives `p = 0.0018`. The gap is larger than the
+headline by 0.2 points, because our judge is marginally more lenient and it is lenient on both sides.
+
+### 10.3 What the channel split adds, and one asymmetry in it
+
+`scorerChannelStats` for the re-grade: `judge 500/500 = 100.0%`, `exact 0`, `numeric 0`, `structural 0`.
+Cortex's own run reached 42.0% of its verdicts by normalised string equality (210 of 500 answers are
+literally the gold). So the comparison is: **210 of cortex's 456 correct answers were decided by a test
+that cannot be wrong, and none of Synap's 479 were.**
+
+That does not weaken the result — it strengthens its direction, since Synap reached 95.80% without the
+free channel. It does mean the two accuracies lean on the judge by different amounts, which is why the
+channel split is recorded beside them rather than summarised.
+
+### 10.4 Answer length, and the one hypothesis it leaves standing
+
+| | median characters |
+| --- | --- |
+| cortex answers | 14.5 (gold: 9) |
+| Synap answers | 181.5 |
+| Synap answers on the 44 questions cortex got wrong | **365** |
+| Synap answers on the 456 cortex got right | 177 |
+
+Cortex answers in short phrases and Synap in explained paragraphs that double in length where cortex
+fails. Of cortex's 44 failures, **20** are shorter than the gold — the shape the official default template
+rejects by name ("if the response only contains a subset of the information required by the answer, answer
+no") — and 24 are wrong answers of a comparable length. Synap answered 37 of those 44 correctly.
+
+So "answer too short" does not explain the gap, but "answer incomplete" has a **measured upper bound of 20
+questions = 4.0 points**, which is the same order as the 4.60-point gap. That is the next experiment, and
+its ceiling is not an estimate.
+
+### 10.5 Cost
+
+500 judge calls, 120,284 prompt tokens, **≈¥0.3**. The plan predicted 120,284 before the first call,
+because it computes the size with `buildJudgePrompt` rather than with a character heuristic — and the two
+agreed exactly, which is the check that the plan and the run graded the same strings.
