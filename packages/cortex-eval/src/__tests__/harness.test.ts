@@ -482,6 +482,54 @@ describe('measureRetrieval: the reading stage', () => {
       expect(seen).toEqual(['2023/05/25 (Thu) 06:13']);
     });
 
+    it('carries the dispatch keys, and omits the one the question does not have', async () => {
+      // A system whose routes are capability-specific cannot be read faithfully from a bare string: `benchmark.ts`
+      // sends `MR` to `answerSessions`, `TR` to `answerTemporal`, `ABS` to `answerAbstention`, and the two typed
+      // branches to their own paths. A provider handed only the question answers all six families through whichever
+      // route its author picked -- run `45090697310` measured that as 10,780 prompt tokens per question against the
+      // registered 7,448 and 3 of 6 on `ABS`.
+      //
+      // The second assertion is about *absence* rather than `undefined`: the field is spread, so a question with no
+      // type reaches the provider with no key at all. A provider that checked `'questionType' in options` to decide
+      // whether the dataset classified the question would read a present-but-undefined key as a classification.
+      const seen: Array<Record<string, unknown>> = [];
+      const provider: MemoryProvider = {
+        name: 'navigator',
+        build: 'llm',
+        async ingest() {
+          return { sessions: 0, turns: 0, skipped: [] };
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async answer(_query: string, options: Record<string, unknown>) {
+          seen.push({ ...options });
+          return 'London';
+        },
+      };
+      const typed: BenchmarkDataset = {
+        name: 'typed',
+        questions: [
+          questionOf({
+            id: 'q1',
+            capability: 'KU',
+            questionType: 'knowledge-update',
+            goldTurns: ['a'],
+          }),
+          questionOf({ id: 'q2', capability: 'MR', goldTurns: ['b'] }),
+        ],
+      };
+      await measureRetrieval(typed, [provider], {
+        answer: async () => 'unused',
+        judge: async () => true,
+        accuracyFor: ['navigator'],
+      });
+      expect(seen[0]).toMatchObject({ capability: 'KU', questionType: 'knowledge-update' });
+      expect(seen[1]).toMatchObject({ capability: 'MR' });
+      expect(Object.hasOwn(seen[1]!, 'questionType')).toBe(false);
+    });
+
     it('carries its own spend to the score, and null when it does not report one', async () => {
       const reported = selfAnswering(['London', 'Paris'], {
         calls: 9,

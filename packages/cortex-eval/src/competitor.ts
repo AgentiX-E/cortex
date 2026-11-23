@@ -77,6 +77,24 @@ export type SearchOptions = {
    * A provider that only wants arithmetic uses `asOf`; a provider that wants the original uses this.
    */
   readonly askedAt?: string;
+  /**
+   * The dataset's capability bucket, when the caller knows it.
+   *
+   * A system whose routes are capability-specific cannot be asked faithfully without it: `benchmark.ts` sends
+   * `MR` to `answerSessions`, `TR` to `answerTemporal`, `ABS` to `answerAbstention` and everything else down the
+   * flat path, so a provider handed only a question string answers every one of them through whichever route its
+   * author picked -- which is what run 45090697310 measured as 10,780 prompt tokens per question against the
+   * registered arm's 7,448, and as 3 of 6 on `ABS`.
+   */
+  readonly capability?: string;
+  /**
+   * The dataset's finer question type, when the caller knows it.
+   *
+   * Beside `capability` because two of the dispatch decisions are type-specific and not capability-specific:
+   * `single-session-assistant` routes to a path that includes assistant turns, and `knowledge-update` routes to
+   * the time-qualifier prompt while its capability bucket is `KU`.
+   */
+  readonly questionType?: string;
 };
 
 /**

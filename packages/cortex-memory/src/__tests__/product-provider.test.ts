@@ -124,7 +124,10 @@ describe('CortexProductProvider: the assembled product as a provider', () => {
       storage: () => new SqliteStorage(),
     });
     await provider.ingest(SESSIONS);
-    await provider.answer('Where did I move?');
+    // `MR` is the route `askStored` takes, so this is the one capability under which the two assemblies must be
+    // byte-identical: the adapter resolving a different route from the same question is a different comparison,
+    // and `product-provider-route.test.ts` is where the six routes are asserted.
+    await provider.answer('Where did I move?', { limit: 10, capability: 'MR' });
     const throughAdapter = provider.lastPromptText();
 
     const direct = assembleMemory({

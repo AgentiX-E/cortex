@@ -105,6 +105,12 @@ export type ProviderIngestReport = {
 export type ProviderSearchOptions = {
   readonly limit: number;
   readonly asOf?: number;
+  /** The dataset's capability bucket (`MR`, `TR`, `ABS`, `KU`, `IE`), when the caller knows it. */
+  readonly capability?: string;
+  /** The dataset's finer question type, when the caller knows it. */
+  readonly questionType?: string;
+  /** The question's own timestamp as the corpus spells it, when the dataset carries one. */
+  readonly askedAt?: string;
 };
 
 export type CortexSessionProviderOptions = {

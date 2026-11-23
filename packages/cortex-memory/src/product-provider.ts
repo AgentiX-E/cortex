@@ -184,18 +184,57 @@ export class CortexProductProvider {
   }
 
   /**
-   * The product's own answer, from the corpus this question was ingested into.
+   * The product's own answer, through the route the benchmark would have chosen for this question.
    *
-   * `askStored` rather than `answerSessions(question, sessions)` because the stored path is the one the
-   * manual documents and it re-reads the corpus rather than a copy held here — the same call a user makes.
+   * ## Why the route is not always `askStored`
    *
-   * A refusal (`null`) is rendered as the product's own abstention token rather than as an empty string.
-   * The judge's abstention template reads the response; an empty one is ambiguous between "declined" and
-   * "produced nothing", and the product already has a token that means the former.
+   * `askStored` delegates to `answerSessions` — the multi-session route — and that is right for a stored corpus
+   * asked a generic question. It is not right for a *benchmark*: the registered arm's readings are taken through
+   * `benchmark.ts`'s dispatch, which sends `MR` to `answerSessions`, `TR` to `answerTemporal`, `ABS` to
+   * `answerAbstention`, `single-session-assistant` to `answerAssistant`, `knowledge-update` to
+   * `answerKnowledgeUpdate` and everything else down the flat path. Each route has its own contract, its own room
+   * and its own reach.
+   *
+   * Run `45090697310` is what happens without this: an arm that answered all thirty questions through
+   * `answerSessions` read **10,780 prompt tokens per question** against the registered 7,448 (the multi-session
+   * room is 48,460 characters, the widest of the six, and every question spent it) and scored **3 of 6 on `ABS`**,
+   * because the abstention contract is not the multi-session one. Two thirds of the row was a different system
+   * wearing the registered arm's name.
+   *
+   * ## Why the table is here and not imported
+   *
+   * `benchmark.ts` lives in `cortex-eval`, which depends on this package and not the other way round, so the
+   * dispatch cannot be shared by import. It is therefore restated — in the same order, because the order is
+   * load-bearing: an `ABS` question can carry `single-session-assistant`, and the abstention branch has to win.
+   * `product-provider-route.test.ts` asserts the six rows through `lastRoute()`, so a divergence from the
+   * benchmark's table is a red test rather than a quiet difference in a published row.
    */
-  async answer(question: string, _options?: ProviderSearchOptions): Promise<string> {
-    const answer = await this.#installation.memory.askStored(question);
-    return answer ?? ABSTAIN_TOKEN;
+  async answer(question: string, options: ProviderSearchOptions = { limit: 10 }): Promise<string> {
+    const memory = this.#installation.memory;
+    const sessions = await this.#installation.corpus.sessions();
+    const context = sessions.flat();
+    const capability = options.capability;
+    const questionType = options.questionType;
+
+    if (capability === 'MR')
+      return (await memory.answerSessions(question, sessions)) ?? ABSTAIN_TOKEN;
+    if (capability === 'TR') {
+      return (
+        (await memory.answerTemporal(question, context, options.askedAt, sessions)) ?? ABSTAIN_TOKEN
+      );
+    }
+    if (capability === 'ABS')
+      return (await memory.answerAbstention(question, context, sessions)) ?? ABSTAIN_TOKEN;
+    if (questionType === 'single-session-assistant') {
+      return (await memory.answerAssistant(question, context, sessions)) ?? ABSTAIN_TOKEN;
+    }
+    if (questionType === 'knowledge-update') {
+      return (await memory.answerKnowledgeUpdate(question, context, sessions)) ?? ABSTAIN_TOKEN;
+    }
+    // The flat path, which is also where a `single-session-preference` question lands: `CortexMemory` has no
+    // `answerPreference` (the header states why), and inventing one here would be a route the product does not
+    // ship.
+    return (await memory.answer(question, context, sessions)) ?? ABSTAIN_TOKEN;
   }
 
   /**
@@ -209,6 +248,17 @@ export class CortexProductProvider {
     | { readonly calls: number; readonly promptTokens: number; readonly completionTokens: number }
     | undefined {
     return this.#options.usage?.();
+  }
+
+  /**
+   * Which route the most recent answer took, forwarded so a caller can check the dispatch rather than the score.
+   *
+   * The benchmark's row and this row are the same arm only if they chose the same route for the same question, and
+   * a score cannot say that: two routes can produce the same percentage while one of them spends twice the room.
+   * Null before any answer.
+   */
+  lastRoute(): string | null {
+    return this.#installation.memory.lastRoute();
   }
 
   /**

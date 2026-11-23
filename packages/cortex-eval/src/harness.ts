@@ -325,6 +325,18 @@ export async function measureRetrieval(
         const reply = selfAnswering
           ? await provider.answer!(question.question, {
               limit,
+              // The two dispatch keys travel with the question, because a system with capability-specific routes
+              // that is handed only a string answers every question through one route. See `SearchOptions`.
+              //
+              // `questionType` is spread rather than passed as `undefined`, and the test is `=== undefined` rather
+              // than a nullish check: `Question.questionType` is declared `string | undefined` and the loader fills
+              // it from a field the LongMemEval format guarantees. A `=== null` arm would be a branch no input can
+              // reach and no honest test can cover -- the coverage gate refused exactly that when this line was
+              // written as `=== null || === undefined`.
+              capability: question.capability,
+              ...(question.questionType === undefined
+                ? {}
+                : { questionType: question.questionType }),
               ...(question.questionDate === undefined ? {} : { askedAt: question.questionDate }),
             })
           : await answer!(question, hits);
