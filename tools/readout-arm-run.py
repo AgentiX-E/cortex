@@ -40,6 +40,7 @@ Usage:
     python3 tools/readout-arm-run.py --ranks path/to/report.json
     python3 tools/readout-arm-run.py --turns path/to/report.json
     python3 tools/readout-arm-run.py --window path/to/report.json
+    python3 tools/readout-arm-run.py --goldcut path/to/report.json
     python3 tools/readout-arm-run.py --final path/to/report.json
     python3 tools/readout-arm-run.py --numbers path/to/report.json
     python3 tools/readout-arm-run.py --counting path/to/report.json
@@ -3878,6 +3879,176 @@ CAPABILITY_ROUTE = {
 ROLE_PREFIX = re.compile(r'^\[[^\]]+\]\s*(user|assistant)\s*:', re.I)
 
 
+GOLD_CUT_PREFIX = 120
+
+
+def gold_turn_state(prompt: str, gold: str, min_prefix: int = GOLD_CUT_PREFIX) -> str:
+    """`whole`, `cut`, or `absent`: what the rendered prompt did to one gold turn.
+
+    ## Why the prefix length is searched rather than assumed
+
+    A truncated turn is a **prefix** of the record's text, and the cap that produced it is a
+    character count the artifact also states (`maxTurnChars`). Testing those two for equality would
+    only work on the turns that happened to be cut at exactly the cap and started at their first
+    character -- which is most of them under `head`, and none of them under `match`, because the
+    window keeps a slice around the anchor and drops both ends.
+
+    So the question is "how much of this gold turn is present", and the answer is the longest
+    prefix that appears. Found by binary search because the predicate is monotone in the prefix
+    length: if a prefix of length n is absent, every longer one is absent too.
+
+    ## Why `min_prefix` is not zero
+
+    A twelve-character gold turn like `3` would match inside almost any prompt, and counting that
+    as "carried" would make the table report delivery it never observed. A hundred and twenty
+    characters is well above the accidental-overlap regime and well below the 400-character cap
+    this campaign runs at.
+    """
+    if gold in prompt:
+        return 'whole'
+    low, high, best = min_prefix, len(gold), 0
+    while low <= high:
+        middle = (low + high) // 2
+        if gold[:middle] in prompt:
+            best = middle
+            low = middle + 1
+        else:
+            high = middle - 1
+    return 'cut' if best >= min_prefix else 'absent'
+
+
+def correct_runs(report: dict, side: str) -> list[list[bool]] | None:
+    """The per-repetition correctness masks, as booleans, whatever the artifact spelled them as.
+
+    ## The trap this exists for
+
+    `featureCorrectByRun` is a list of **strings** of `'0'` and `'1'` -- 500 characters each -- not
+    a list of boolean lists. `if mask[i]` on that reads `'0'` as true, so every question is
+    "always right", and the first version of the readout this section generalises printed exactly
+    that: 0 always-wrong questions, on an artifact whose accuracy is 91.2%.
+
+    The two spellings are both accepted because both have shipped: the arms write `'0'`/`'1'`
+    characters, and a future artifact may carry real booleans. Collapsing them here means the
+    section below never has to know.
+    """
+    masks = report.get('ablation', {}).get(f'{side}CorrectByRun')
+    if not isinstance(masks, list) or not masks:
+        return None
+    out: list[list[bool]] = []
+    for mask in masks:
+        if isinstance(mask, str):
+            out.append([character == '1' for character in mask])
+        elif isinstance(mask, list):
+            out.append([bool(one) for one in mask])
+        else:
+            return None
+    return out
+
+
+def gold_cut_section(report: dict) -> tuple[str, int]:
+    """How much of each gold turn the rendered prompt actually carried, per capability and by outcome.
+
+    ## Why this is the mechanism check a coverage number cannot replace
+
+    `PREREGISTRATION-TURN-WINDOW-MATCH.md` §3 puts B3 ahead of B4 for a reason: a window that moves
+    the cut point and does not raise accuracy means something different from a window that never
+    moved, and an accuracy reading cannot tell the two apart. The cut rate **is** the mechanism's
+    direct output, so it is read first and the accuracy criterion is only read if this one passes.
+
+    ## Why `absent` is its own column
+
+    A gold turn the prompt never carried is a retrieval result, not a rendering one. Folding it into
+    `cut` would attribute a selection failure to the window, which is the attribution error
+    §2.2 of `ANALYSIS-AGGREGATION-GAP.md` was written to avoid.
+
+    ## Why the outcome split is beside the capability split
+
+    The hypothesis behind the window is that cutting costs accuracy on the questions that are wrong
+    **every time**, not uniformly. A table that reported only the per-capability rate would answer
+    "how much is cut" and not "is what is cut the thing that fails", and the second is what the
+    treatment claims.
+    """
+    questions = report.get('questions')
+    prompts = report.get('ablation', {}).get('featurePromptTexts')
+    if not isinstance(questions, list) or not isinstance(prompts, list):
+        return '', 2
+    if len(questions) != len(prompts):
+        return f'\nthe artifact has {len(questions)} questions and {len(prompts)} prompts; refusing to pair them', 2
+
+    runs = correct_runs(report, 'feature')
+    by_capability: dict[str, dict[str, int]] = {}
+    by_outcome: dict[str, dict[str, int]] = {
+        'always wrong': {'questions': 0, 'whole': 0, 'cut': 0, 'absent': 0},
+        'mixed': {'questions': 0, 'whole': 0, 'cut': 0, 'absent': 0},
+        'always right': {'questions': 0, 'whole': 0, 'cut': 0, 'absent': 0},
+    }
+    for index, question in enumerate(questions):
+        overlap = question.get('goldOverlap')
+        golds = overlap.get('goldTurns') if isinstance(overlap, dict) else None
+        if not isinstance(golds, list) or not golds:
+            continue
+        prompt = prompts[index]
+        if not isinstance(prompt, str):
+            continue
+        capability = str(question.get('capability', '?'))
+        bucket = by_capability.setdefault(capability, {'whole': 0, 'cut': 0, 'absent': 0})
+        states = [gold_turn_state(prompt, str(gold)) for gold in golds]
+        for state in states:
+            bucket[state] += 1
+        if runs is None:
+            continue
+        flags = [run[index] if index < len(run) else False for run in runs]
+        outcome = 'always right' if all(flags) else 'always wrong' if not any(flags) else 'mixed'
+        by_outcome[outcome]['questions'] += 1
+        for state in states:
+            by_outcome[outcome][state] += 1
+
+    if not by_capability:
+        return '\nno question carries `goldOverlap.goldTurns`; this artifact cannot answer the gold-turn question', 2
+
+    lines = ['', 'what the rendered prompt did to each gold turn (whole / cut at the cap / absent)']
+    lines.append(
+        f'  {"capability":<12}{"gold":>7}{"whole":>7}{"cut":>7}{"absent":>8}{"cut%":>8}'
+    )
+    total = {'whole': 0, 'cut': 0, 'absent': 0}
+    for capability in sorted(by_capability):
+        bucket = by_capability[capability]
+        count = bucket['whole'] + bucket['cut'] + bucket['absent']
+        for key in total:
+            total[key] += bucket[key]
+        share = bucket['cut'] / count if count else 0.0
+        lines.append(
+            f'  {capability:<12}{count:>7}{bucket["whole"]:>7}{bucket["cut"]:>7}'
+            f'{bucket["absent"]:>8}{share:>7.2%}'
+        )
+    count = total['whole'] + total['cut'] + total['absent']
+    lines.append(
+        f'  {"TOTAL":<12}{count:>7}{total["whole"]:>7}{total["cut"]:>7}{total["absent"]:>8}'
+        f'{(total["cut"] / count if count else 0.0):>7.2%}'
+    )
+    if runs is not None:
+        lines.append('')
+        lines.append('  by outcome over the repetitions (a question is "always wrong" when no run got it)')
+        lines.append(
+            f'  {"outcome":<14}{"questions":>11}{"gold":>7}{"whole":>7}{"cut":>7}{"absent":>8}{"cut%":>8}'
+        )
+        for outcome in ('always wrong', 'mixed', 'always right'):
+            bucket = by_outcome[outcome]
+            count = bucket['whole'] + bucket['cut'] + bucket['absent']
+            share = bucket['cut'] / count if count else 0.0
+            lines.append(
+                f'  {outcome:<14}{bucket["questions"]:>11}{count:>7}{bucket["whole"]:>7}'
+                f'{bucket["cut"]:>7}{bucket["absent"]:>8}{share:>7.2%}'
+            )
+    lines.append(
+        '  "whole" is the full gold turn verbatim in the rendered prompt; "cut" is a prefix of at'
+        f' least {GOLD_CUT_PREFIX} characters with the tail missing; "absent" is neither, which is a'
+        ' selection result rather than a rendering one. The cap this run applied is printed by'
+        " `--window`'s sibling `--turns`; the rate here is what a window change is supposed to move."
+    )
+    return '\n'.join(lines), 0
+
+
 def capability_spreads(report: dict) -> tuple[dict, dict] | None:
     """The per-capability correct counts across repetitions, and their denominators.
 
@@ -5935,6 +6106,11 @@ def main(argv: list[str]) -> int:
         help='print how many turns the prompt held and how much of the budget they spent',
     )
     parser.add_argument(
+        '--goldcut',
+        action='store_true',
+        help='print what the rendered prompt did to each gold turn: whole, cut at the cap, or absent',
+    )
+    parser.add_argument(
         '--turns',
         action='store_true',
         help='print the delivered turn lengths and what a per-turn cap would buy',
@@ -6488,6 +6664,12 @@ def main(argv: list[str]) -> int:
             return 2
         print(section)
         return 0
+
+    if args.goldcut:
+        text, code = gold_cut_section(report)
+        if text:
+            print(text)
+        return code
 
     if args.window:
         try:
