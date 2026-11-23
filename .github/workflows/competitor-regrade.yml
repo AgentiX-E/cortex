@@ -116,7 +116,11 @@ jobs:
       - name: Fetch the prepared answer set
         run: |
           set -euo pipefail
-          mkdir -p prep/competitor-records
+          # Both directories up front. The first run of this job died on `readings/plan.txt: No such file
+          # or directory` from `tee` -- exit 1 with no stack trace, twenty lines after a plan that had
+          # already printed 500 questions, which reads as the plan having failed. `tee` does not create
+          # parents, and neither does `curl -o`: the LoCoMo job hit the same thing one file over.
+          mkdir -p prep/competitor-records readings
           gh run download "$PREP_RUN_ID" --repo "$GITHUB_REPOSITORY" \
             --name prep-competitor-records --dir prep/competitor-records
           ls -la prep/competitor-records
