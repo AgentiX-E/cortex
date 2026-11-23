@@ -81,7 +81,7 @@ import { CortexMemory } from './memory.js';
 import { REGISTERED_ARM } from './registered-arm.js';
 import type { SearchIndexOptions } from './retrieval/search-index.js';
 import type { SupersededRendering } from './superseded.js';
-import type { GateOptions, TurnCapRoute } from './types.js';
+import type { GateOptions, ReplyRepair, ReviewPass, TurnCapRoute } from './types.js';
 import type { EvidenceAsk, PromptContract, TurnCutMarker } from './prompt.js';
 import type { TurnWindow } from './excerpt.js';
 import type { ResolutionMode } from './resolution.js';
@@ -282,6 +282,55 @@ export type AssembleOptions = {
    * that a component test cannot cover.
    */
   readonly sessionClock?: boolean | undefined;
+  /**
+   * The second consultation `answerSessions` runs, if any. Absent is the historical silence.
+   *
+   * ## Why this field was the last one and not the first
+   *
+   * The module comment says a caller who needs a fourth **profile** composes `CortexMemory` directly, and
+   * that sentence was read as covering the options as well. It does not: it says a matrix of thirty options
+   * is what the class already is, which is an argument against *profiles*, not against reachability. The
+   * four fields above it were added under requirement ⑯'s asymmetry — "a capability that exists in
+   * `CortexMemory` and not in the one function an installer calls is a capability the published package does
+   * not have" — and the same sentence applies here unchanged, because `reviewPass` has five measured values,
+   * one of which is the shipped arm's `recover`, and a customer who wanted `tally` had to rebuild the whole
+   * composition and could drift from the registration while doing it.
+   *
+   * ## Why `undefined` and not `'none'`
+   *
+   * `CortexMemory` reads `undefined` and `'none'` the same way, so both work; `undefined` is what the
+   * artifact prints for an absent field, and forwarding is what keeps a bare call's bytes equal to the bytes
+   * every archived artifact recorded.
+   *
+   * The `replyRepair` / `reviewPass` pair stays refused. Both fields reach the constructor, so the guard in
+   * `memory.ts` fires on a call that names both — forwarding must not be able to produce a configuration the
+   * class refuses to build by hand.
+   */
+  readonly reviewPass?: ReviewPass | undefined;
+  /**
+   * What the memory does with a reply that broke the contract. Absent is the historical silence (`off`).
+   *
+   * Same argument as {@link AssembleOptions.reviewPass}, and the same guard: the two second-consultation
+   * mechanisms are refused together by the constructor rather than ranked here.
+   */
+  readonly replyRepair?: ReplyRepair | undefined;
+  /**
+   * Whether a prompt may carry a fact the record later replaced, alongside the one that replaced it.
+   *
+   * Forwarded with {@link AssembleOptions.factTimeline}, not separately: the interval that field appends
+   * describes a fact only this switch puts in the prompt, so `factTimeline` on its own renders nothing. A pair
+   * where one half is reachable and the other is not is the asymmetry this file keeps recording, one field
+   * deeper -- and it would have shipped as a configuration line naming a treatment the run never administered.
+   */
+  readonly semanticCarry?: boolean | undefined;
+  /**
+   * Whether a value the record later replaced is printed with both of the instants its supersession
+   * authorised. Absent is off, and inert without {@link AssembleOptions.semanticCarry}.
+   *
+   * The mechanism dates each value from the record's own two instants rather than from the question's clock,
+   * which is why it is a `boolean` and not a mode: there is nothing to choose between.
+   */
+  readonly factTimeline?: boolean | undefined;
 };
 
 /** What a profile wires up, as the objects themselves rather than as a bag of booleans. */
@@ -429,6 +478,18 @@ export function assembleMemory(options: AssembleOptions): Installation {
     ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
     ...(options.resolution === undefined ? {} : { resolution: options.resolution }),
+    // The three options requirement ⑯ had not reached. Forwarded, not defaulted, for the reason stated on
+    // each field: `undefined` is the historical silence, and a composition root that defaults a mechanism on
+    // is a second arm. `replyRepair` and `reviewPass` are forwarded separately rather than as a pair so the
+    // constructor's mutual exclusion keeps firing -- a call naming both has to fail here exactly as it fails
+    // when the class is built by hand, otherwise this file would be a way around a guard.
+    ...(options.reviewPass === undefined ? {} : { reviewPass: options.reviewPass }),
+    ...(options.replyRepair === undefined ? {} : { replyRepair: options.replyRepair }),
+    // The pair, because either alone is a field that cannot act: `factTimeline` dates facts `semanticCarry`
+    // serves, so `factTimeline` without it renders nothing -- which is what `memory.ts` states and what
+    // `assemble-options.test.ts` asserts rather than assumes.
+    ...(options.semanticCarry === undefined ? {} : { semanticCarry: options.semanticCarry }),
+    ...(options.factTimeline === undefined ? {} : { factTimeline: options.factTimeline }),
   });
 
   return { profile, memory, corpus, disclosure };

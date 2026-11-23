@@ -935,6 +935,10 @@ reachable as a default any more; state it per route if you want to reproduce an 
 | `turnCutMarker` | `'none' \| 'ellipsis'` | absent | Whether a turn the width cut says so, with one character at the cut. Refused without `maxTurnChars`: a mark on a turn nothing cut is a claim about a prompt that never happened. |
 | `turnWindow` | `'head' \| 'match'` | absent (`'head'`) | Which slice of a long turn the width keeps. `'match'` spends the same characters on the window around the question's densest lexical match and marks every elision. Needs `maxTurnChars`. Cannot be combined with `resolution: 'layered'`, which decides the same thing. |
 | `resolution` | `'raw' \| 'layered'` | absent (`'raw'`) | Whether a capped turn prints whole or by form. Measured to hold accuracy while spending **fewer characters** — not, so far, fewer tokens: two dispatches priced the bill and both came out slightly above their control (chars −5.2% / tokens +0.75%; chars −2.8% / tokens +0.18%), because the form keeps the sentences that carry numbers and a digit-dense line tokenises worse than the prose it replaced. §6.12. |
+| `reviewPass` | `'none' \| 'audit' \| 'recover' \| 'tally' \| 'spec' \| 'supersede'` | absent (`'none'`) | The second consultation the multi-session route may run, and what it asks for. `'tally'` takes the arithmetic away from the reader (it tags each operand, the product adds them); `'supersede'` authorises a substitution a later turn makes. Five values, five documented readings, and until this field existed none of them was nameable from this function — a customer who wanted one had to rebuild the whole composition and could drift from the registration while doing it. Refused together with `replyRepair`. §6.15. |
+| `replyRepair` | `'off' \| 'commitment' \| 'echo' \| 'shape' \| 'both'` | absent (`'off'`) | What the product does with a reply that broke the contract above it: a refusal in prose, a list of quotations where an answer was asked for. At most one extra consultation per question, only on questions that already answered in a broken shape. §6.15. |
+| `semanticCarry` | `boolean` | absent (off) | Whether a prompt may carry a fact the record later replaced, beside the one that replaced it. Needs `reviewPass: 'supersede'` to have authorised the substitution, so on its own it renders nothing. §6.15. |
+| `factTimeline` | `boolean` | absent (off) | Whether a carried fact also gets its interval — the two record instants its supersession authorised — as one `timeline: <value> [<from> -> <to>]` line. Inert without `semanticCarry`, because an interval describes a fact the prompt does not carry. §6.15. |
 <!-- /contract-table -->
 
 ```ts
@@ -1979,6 +1983,63 @@ find evidence the static retrieval missed?** It runs the loop over a labelled po
 prompt, and reports gold turns found by the reader against gold turns the seed already had. Run it with
 `pnpm --filter @agentix-e/cortex-memory probe:multi-step` and a `LONGMEMEVAL_PATH`; it is a diagnostic, not a
 score, and it never calls a judge.
+
+### 6.15 Four mechanisms that used to require building the class by hand
+
+`CortexMemory` has thirty optional fields. `assembleMemory` is the function this page tells you to call, and
+until this release four of those fields — `reviewPass`, `replyRepair`, `semanticCarry`, `factTimeline` — were
+nameable only on the class. A caller who wanted one had to rebuild the whole composition, and in doing so had
+every opportunity to drift from the arm that has a published number.
+
+They were on the wrong side of a sentence this page's sibling makes about three *profiles*: "a caller who needs
+a fourth composes `CortexMemory` directly, which is what the fields are for." That sentence is about profiles.
+Read against the field-level argument in the same file — *a capability that exists in `CortexMemory` and not in
+the one function an installer calls is a capability the published package does not have* — it says the
+opposite, and the ledger was claiming reachability the documented path did not have.
+
+```ts
+import { assembleMemory } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+import type { LLM } from '@agentix-e/cortex-core';
+
+declare const llm: LLM;
+const storage = new SqliteStorage();
+const now = Date.UTC(2026, 0, 1);
+
+// A count question, answered by the reader and then added up by the product. The second pass tags each
+// operand; `parseTallyLedger` sums them, so the arithmetic is not the reader's to get wrong.
+const tallied = assembleMemory({ llm, now, storage, reviewPass: 'tally' });
+void tallied;
+
+// A reply that refused in prose is re-asked with a commitment rule instead of being accepted as an answer.
+// At most one extra consultation per question, and only where the first reply broke the contract.
+const repaired = assembleMemory({ llm, now, storage, replyRepair: 'commitment' });
+void repaired;
+
+// The two halves of the bitemporal render travel together: `semanticCarry` puts the replaced fact in the
+// prompt, `factTimeline` dates it. Naming either alone renders nothing, which is why the pair is documented
+// as a pair rather than as two independent switches.
+const dated = assembleMemory({
+  llm,
+  now,
+  storage,
+  reviewPass: 'supersede',
+  semanticCarry: true,
+  factTimeline: true,
+});
+void dated;
+```
+
+Three things to know before you set one:
+
+- **`reviewPass` and `replyRepair` are refused together.** Both are second consultations on the same route with
+  overlapping populations, and nothing has measured what they do to each other. The assembly throws rather than
+  ranking them, which is deliberate: a configuration whose reading nobody can attribute is worse than a refusal.
+- **`factTimeline` without `semanticCarry` is inert, not half-on.** It dates facts the prompt carries, so with
+  nothing carried there is nothing to date. `assemble-options.test.ts` asserts that absence rather than leaving
+  it to be discovered.
+- **None of the four is on by default.** Absent reproduces every archived prompt byte for byte, which is what
+  lets a reader compare a mechanism against the arm that has a number.
 
 ## 11. Choosing routes deliberately
 

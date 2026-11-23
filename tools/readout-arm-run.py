@@ -3882,39 +3882,76 @@ ROLE_PREFIX = re.compile(r'^\[[^\]]+\]\s*(user|assistant)\s*:', re.I)
 GOLD_CUT_PREFIX = 120
 
 
-def gold_turn_state(prompt: str, gold: str, min_prefix: int = GOLD_CUT_PREFIX) -> str:
-    """`whole`, `cut`, or `absent`: what the rendered prompt did to one gold turn.
+def prompt_grams(prompt: str, width: int = GOLD_CUT_PREFIX) -> set[str]:
+    """Every `width`-character substring of the prompt, so a gold turn can be tested in one pass.
 
-    ## Why the prefix length is searched rather than assumed
+    ## Why a set of substrings rather than a substring search
 
-    A truncated turn is a **prefix** of the record's text, and the cap that produced it is a
-    character count the artifact also states (`maxTurnChars`). Testing those two for equality would
-    only work on the turns that happened to be cut at exactly the cap and started at their first
-    character -- which is most of them under `head`, and none of them under `match`, because the
-    window keeps a slice around the anchor and drops both ends.
+    "Was any stretch of this gold turn carried?" is a longest-common-substring question, and the honest cheap
+    version is to fix the length: a stretch of `width` or more is present **iff** one of its first `width`
+    characters is, so a set of the prompt's `width`-grams answers it exactly for every gold turn in that prompt.
 
-    So the question is "how much of this gold turn is present", and the answer is the longest
-    prefix that appears. Found by binary search because the predicate is monotone in the prefix
-    length: if a prefix of length n is absent, every longer one is absent too.
+    ## Why not a probe at three offsets
 
-    ## Why `min_prefix` is not zero
+    The first version of this table probed the head, the middle and the tail, and a fixture whose kept slice
+    started nowhere near one of the three scored `partial` as `absent`. That is the same class of defect as the
+    prefix test it replaced, one level down: a measurement whose answer depends on where an arbitrary grid falls.
+    The set has no grid. It costs one pass over the prompt per question -- the artifact holds 500 of them -- and
+    the tests then run in milliseconds.
+    """
+    if len(prompt) < width:
+        return set()
+    return {prompt[index : index + width] for index in range(len(prompt) - width + 1)}
 
-    A twelve-character gold turn like `3` would match inside almost any prompt, and counting that
-    as "carried" would make the table report delivery it never observed. A hundred and twenty
-    characters is well above the accidental-overlap regime and well below the 400-character cap
-    this campaign runs at.
+
+def gold_turn_state(
+    prompt: str,
+    gold: str,
+    min_prefix: int = GOLD_CUT_PREFIX,
+    grams: set[str] | None = None,
+) -> str:
+    """`whole`, `partial`, or `absent`: what the rendered prompt did to one gold turn.
+
+    ## The defect this replaced, and how it was found
+
+    The first version asked one question -- "does the prompt still hold the *beginning* of this turn?" -- and
+    answered `cut` when the head was present and the tail was not. That is a correct instrument for a window that
+    truncates from the right, which `turnWindow: 'head'` does.
+
+    Run `45100881559` dispatched `turnWindow: 'match'`, which keeps a slice **around the question's densest match**
+    and drops both ends. Under that window a truncated gold turn has no head, so the old definition scored it
+    `absent` -- the bucket reserved for "the prompt never carried this turn at all", which is a **selection**
+    result. On `MR` it read `cut` 245 -> 109 and `absent` 30 -> 164, so the rate fell 13.37% -> 5.95% **with
+    nothing recovered**: `whole` went 1557 -> 1559.
+
+    The number moved because the classifier changed which bucket a truncated turn fell into, and that number was
+    the one a pre-registered criterion (B3) was written against. The fix is not a new threshold: it is to ask the
+    question that does not depend on *where* the kept slice is.
+
+    ## The three states
+
+    - **whole** -- the full text appears verbatim. The only state in which the rendering delivered the turn, and
+      the rate a window change is supposed to raise.
+    - **partial** -- a `min_prefix`-character stretch appears somewhere. Exact, via {@link prompt_grams}.
+    - **absent** -- neither. The prompt never carried this turn, which is a **selection** result; folding it into
+      `partial` would attribute a retrieval failure to the window.
+
+    ## Why `min_prefix` is not smaller
+
+    A twelve-character gold turn like `3` would match inside almost any prompt, and counting that as "carried"
+    would make the table report delivery it never observed. A hundred and twenty characters is well above the
+    accidental-overlap regime and well below the 400-character cap this campaign runs at.
     """
     if gold in prompt:
         return 'whole'
-    low, high, best = min_prefix, len(gold), 0
-    while low <= high:
-        middle = (low + high) // 2
-        if gold[:middle] in prompt:
-            best = middle
-            low = middle + 1
-        else:
-            high = middle - 1
-    return 'cut' if best >= min_prefix else 'absent'
+    if len(gold) < min_prefix:
+        return 'absent'
+    if grams is None:
+        grams = prompt_grams(prompt, min_prefix)
+    for index in range(len(gold) - min_prefix + 1):
+        if gold[index : index + min_prefix] in grams:
+            return 'partial'
+    return 'absent'
 
 
 def correct_runs(report: dict, side: str) -> list[list[bool]] | None:
@@ -3952,21 +3989,35 @@ def gold_cut_section(report: dict) -> tuple[str, int]:
 
     `PREREGISTRATION-TURN-WINDOW-MATCH.md` §3 puts B3 ahead of B4 for a reason: a window that moves
     the cut point and does not raise accuracy means something different from a window that never
-    moved, and an accuracy reading cannot tell the two apart. The cut rate **is** the mechanism's
-    direct output, so it is read first and the accuracy criterion is only read if this one passes.
+    moved, and an accuracy reading cannot tell the two apart. What the prompt carried **is** the
+    mechanism's direct output, so it is read first and the accuracy criterion is only read if this
+    one passes.
+
+    ## The column that is the claim, and the two that are not
+
+    **`whole`** is the claim: the rendering delivered the turn, all of it. A window that puts the
+    400 characters on the part of a turn that answers the question should raise this number, and a
+    window that raises nothing else has moved the slice without carrying more of the turn.
+
+    **`partial`** says a stretch of the turn is present and its extent is not. Under `head` that is
+    the tail; under `match` it is one or both ends. It exists so the two regimes can be compared at
+    all -- the first version of this function reported only `cut` (a present head, an absent tail),
+    which scored every `match` truncation as `absent` and made the rate fall 13.37% -> 5.95% on a run
+    that recovered two gold turns. That is the measurement defect this column is the fix for, and
+    the baseline's `whole` and `partial` counts are unchanged by it.
 
     ## Why `absent` is its own column
 
     A gold turn the prompt never carried is a retrieval result, not a rendering one. Folding it into
-    `cut` would attribute a selection failure to the window, which is the attribution error
+    `partial` would attribute a selection failure to the window, which is the attribution error
     §2.2 of `ANALYSIS-AGGREGATION-GAP.md` was written to avoid.
 
     ## Why the outcome split is beside the capability split
 
     The hypothesis behind the window is that cutting costs accuracy on the questions that are wrong
     **every time**, not uniformly. A table that reported only the per-capability rate would answer
-    "how much is cut" and not "is what is cut the thing that fails", and the second is what the
-    treatment claims.
+    "how much is carried" and not "is what is missing the thing that fails", and the second is what
+    the treatment claims.
     """
     questions = report.get('questions')
     prompts = report.get('ablation', {}).get('featurePromptTexts')
@@ -3978,9 +4029,9 @@ def gold_cut_section(report: dict) -> tuple[str, int]:
     runs = correct_runs(report, 'feature')
     by_capability: dict[str, dict[str, int]] = {}
     by_outcome: dict[str, dict[str, int]] = {
-        'always wrong': {'questions': 0, 'whole': 0, 'cut': 0, 'absent': 0},
-        'mixed': {'questions': 0, 'whole': 0, 'cut': 0, 'absent': 0},
-        'always right': {'questions': 0, 'whole': 0, 'cut': 0, 'absent': 0},
+        'always wrong': {'questions': 0, 'whole': 0, 'partial': 0, 'absent': 0},
+        'mixed': {'questions': 0, 'whole': 0, 'partial': 0, 'absent': 0},
+        'always right': {'questions': 0, 'whole': 0, 'partial': 0, 'absent': 0},
     }
     for index, question in enumerate(questions):
         overlap = question.get('goldOverlap')
@@ -3991,8 +4042,9 @@ def gold_cut_section(report: dict) -> tuple[str, int]:
         if not isinstance(prompt, str):
             continue
         capability = str(question.get('capability', '?'))
-        bucket = by_capability.setdefault(capability, {'whole': 0, 'cut': 0, 'absent': 0})
-        states = [gold_turn_state(prompt, str(gold)) for gold in golds]
+        bucket = by_capability.setdefault(capability, {'whole': 0, 'partial': 0, 'absent': 0})
+        grams = prompt_grams(prompt)
+        states = [gold_turn_state(prompt, str(gold), grams=grams) for gold in golds]
         for state in states:
             bucket[state] += 1
         if runs is None:
@@ -4006,45 +4058,47 @@ def gold_cut_section(report: dict) -> tuple[str, int]:
     if not by_capability:
         return '\nno question carries `goldOverlap.goldTurns`; this artifact cannot answer the gold-turn question', 2
 
-    lines = ['', 'what the rendered prompt did to each gold turn (whole / cut at the cap / absent)']
+    lines = ['', 'what the rendered prompt did to each gold turn (whole / a stretch of it / absent)']
     lines.append(
-        f'  {"capability":<12}{"gold":>7}{"whole":>7}{"cut":>7}{"absent":>8}{"cut%":>8}'
+        f'  {"capability":<12}{"gold":>7}{"whole":>7}{"partial":>9}{"absent":>8}{"whole%":>9}'
     )
-    total = {'whole': 0, 'cut': 0, 'absent': 0}
+    total = {'whole': 0, 'partial': 0, 'absent': 0}
     for capability in sorted(by_capability):
         bucket = by_capability[capability]
-        count = bucket['whole'] + bucket['cut'] + bucket['absent']
+        count = bucket['whole'] + bucket['partial'] + bucket['absent']
         for key in total:
             total[key] += bucket[key]
-        share = bucket['cut'] / count if count else 0.0
+        share = bucket['whole'] / count if count else 0.0
         lines.append(
-            f'  {capability:<12}{count:>7}{bucket["whole"]:>7}{bucket["cut"]:>7}'
-            f'{bucket["absent"]:>8}{share:>7.2%}'
+            f'  {capability:<12}{count:>7}{bucket["whole"]:>7}{bucket["partial"]:>9}'
+            f'{bucket["absent"]:>8}{share:>8.2%}'
         )
-    count = total['whole'] + total['cut'] + total['absent']
+    count = total['whole'] + total['partial'] + total['absent']
     lines.append(
-        f'  {"TOTAL":<12}{count:>7}{total["whole"]:>7}{total["cut"]:>7}{total["absent"]:>8}'
-        f'{(total["cut"] / count if count else 0.0):>7.2%}'
+        f'  {"TOTAL":<12}{count:>7}{total["whole"]:>7}{total["partial"]:>9}{total["absent"]:>8}'
+        f'{(total["whole"] / count if count else 0.0):>8.2%}'
     )
     if runs is not None:
         lines.append('')
         lines.append('  by outcome over the repetitions (a question is "always wrong" when no run got it)')
         lines.append(
-            f'  {"outcome":<14}{"questions":>11}{"gold":>7}{"whole":>7}{"cut":>7}{"absent":>8}{"cut%":>8}'
+            f'  {"outcome":<14}{"questions":>11}{"gold":>7}{"whole":>7}{"partial":>9}{"absent":>8}{"whole%":>9}'
         )
         for outcome in ('always wrong', 'mixed', 'always right'):
             bucket = by_outcome[outcome]
-            count = bucket['whole'] + bucket['cut'] + bucket['absent']
-            share = bucket['cut'] / count if count else 0.0
+            count = bucket['whole'] + bucket['partial'] + bucket['absent']
+            share = bucket['whole'] / count if count else 0.0
             lines.append(
                 f'  {outcome:<14}{bucket["questions"]:>11}{count:>7}{bucket["whole"]:>7}'
-                f'{bucket["cut"]:>7}{bucket["absent"]:>8}{share:>7.2%}'
+                f'{bucket["partial"]:>9}{bucket["absent"]:>8}{share:>8.2%}'
             )
     lines.append(
-        '  "whole" is the full gold turn verbatim in the rendered prompt; "cut" is a prefix of at'
-        f' least {GOLD_CUT_PREFIX} characters with the tail missing; "absent" is neither, which is a'
+        '  "whole" is the full gold turn verbatim in the rendered prompt -- the only state in which'
+        ' the rendering delivered it, and the rate a window change is supposed to raise.'
+        f' "partial" is a {GOLD_CUT_PREFIX}-character stretch present somewhere (head, middle or tail'
+        ' probed, not searched exhaustively), so it is a floor; "absent" is neither, which is a'
         ' selection result rather than a rendering one. The cap this run applied is printed by'
-        " `--window`'s sibling `--turns`; the rate here is what a window change is supposed to move."
+        " `--window`'s sibling `--turns`."
     )
     return '\n'.join(lines), 0
 

@@ -138,7 +138,7 @@
       "expect": "product",
       "symbol": "semanticUpdateFrom",
       "site": "packages/cortex-memory/src/semantic-facts.ts",
-      "gate": "this.#semanticUpdates.push(",
+      "gate": "this.#options.semanticCarry !== true",
       "d3": "declared: records the update in the memory's own update list and renders it on later turns"
     },
     {

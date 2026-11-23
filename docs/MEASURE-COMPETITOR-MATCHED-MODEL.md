@@ -843,3 +843,125 @@ arm's 91.25% is 500 questions with four repeats; this is 100 questions, one repe
 model-free floor whose purpose is to establish that the pipeline can score at all. What it does say is the thing
 that was unmeasured until this round: **the shipped arm, answering through its own six routes, is 13.0 points above
 that floor with `p = 0.0192`, and it spends 6,147 prompt tokens per question against the registered arm's 7,448.**
+
+### 12.10 The turn window: five criteria read, one criterion falsified, and an instrument that lied
+
+Run `45100881559` is the `turnWindow: 'match'` dispatch `PREREGISTRATION-TURN-WINDOW-MATCH.md` §7 registered:
+500 questions × 4 repetitions, `cortex_memory_max_turn_chars = 400::match` the only departure, **14.26 CNY**
+projected. Two hours of wall clock, 15,649 calls, **zero retries and zero `429`s** — the quota latch never had to
+fire, so this is the first 500×4 run since the Zhipu exhaustion that finished on the mechanism rather than on the
+provider.
+
+#### 12.10.1 The six criteria, read against what was written before the dispatch
+
+| # | criterion | threshold | reading | verdict |
+| --- | --- | --- | --- | --- |
+| B1 | the window reached the routes it claims | every `MR`/`TR` prompt digest differs | **121/121 and 127/127 differ** | **pass** |
+| B2 | it did not cross into `IE`/`KU`/`ABS` | unchanged | 2 of 252 differ (see 12.10.3) | **fail, 2 questions** |
+| B3 | `MR` gold turns cut falls | 13.4% → **< 5%** | **13.10%** under a valid definition | **fail** |
+| B4 | `MR` accuracy | mean ≥ 105.25 and question-level `up − down ≥ +4` | 106.5; **+4** (9 up, 5 down) | **pass, at the threshold** |
+| B5 | `TR` not worse | mean ≥ 118.25 | **119.8** | **pass** |
+| B6 | cost | ≤ 7,822 prompt tokens per question | **7,456.7** | **pass** |
+
+| arm | accuracy, all runs | accuracy, first repetition | prompt tokens per question |
+| --- | ---: | ---: | ---: |
+| `44017278305` (`turnWindow: 'head'`) | 91.25% | 91.20% | 7,447.8 |
+| `45100881559` (`turnWindow: 'match'`) | **91.90%** (min 91.40, max 92.40) | **92.00%** | **7,456.7** |
+
+Paired on the first repetition: 15 bought, 11 sold, net **+4 of 500**, `p = 0.557`. Overall the arm is **+0.65
+points** on all-runs and **+0.80** on the first repetition — both at or under the **0.70-point cross-dispatch
+floor** §3 states, which is why the criteria were written per capability and not on the total.
+
+#### 12.10.2 B3 fails, and the 5.95% that looked like a near miss was the instrument
+
+The first read of B3 came from `--goldcut` as it was written, which classified a gold turn as `cut` when the
+prompt still held its **beginning** and not its tail:
+
+| | `head` | `match` | reading |
+| --- | ---: | ---: | --- |
+| `MR` whole | 1,557 | 1,559 | **+2 gold turns delivered whole** |
+| `MR` "cut" | 245 | **109** | ↓ 13.37% → **5.95%** |
+| `MR` absent | 30 | **164** | ↑ 5.5× |
+
+`5.95%` is under the threshold of a looser reading and above 5%, but the honest reading of that row is not "near
+miss". `whole` moved by **two turns**. The rate fell because 134 truncated turns stopped having a head: the
+`match` window keeps the slice **around the question's match** and drops both ends, so a prefix test scores them
+`absent` — the bucket reserved for turns the prompt never carried, which is a *selection* result. The classifier
+changed which bucket a turn fell into; the prompt did not deliver more of anything.
+
+That is the same defect class as §12.9.1's four table cells, one level down: **a measurement whose answer depends
+on a property the treatment deliberately changes**. The fix is not a threshold. `--goldcut` now asks the question
+that does not depend on *where* the kept slice is — is a 120-character stretch present anywhere, by an exact
+n·gram set rather than a probe at three offsets — and reports three states:
+
+| capability | gold turns | whole | partial | absent | whole% | whole%, `head` | Δ |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `MR` | 1,832 | **1,559** | 240 | 33 | **85.10%** | 84.99% | **+0.11** |
+| `TR` | 1,615 | **1,147** | 245 | 223 | **71.02%** | 70.22% | **+0.80** |
+| `IE` | 1,709 | 998 | 11 | 700 | 58.40% | 58.34% | +0.06 |
+| `KU` | 1,688 | 845 | 19 | 824 | 50.06% | 50.06% | 0.00 |
+| `ABS` | 672 | 239 | 4 | 429 | 35.57% | 35.57% | 0.00 |
+| **total** | 7,516 | **4,788** | 519 | 2,209 | **63.70%** | 63.49% | **+0.21** |
+
+Under the definition that can see a middle slice, the baseline's own number is **unchanged** (13.37% → 13.10% is
+the treatment's movement, not the fix's): the fix restores the baseline rather than moving the threshold to meet
+the code, which is the rule `ACCEPTANCE-MATRIX.md` §6 states. **B3 as registered therefore fails at 13.10%
+against `< 5%`, and it does not fail narrowly.** The window recovers **16 gold turns out of 7,516** — 0.21%.
+
+#### 12.10.3 P1 is falsified, and that is the more useful result
+
+§4 predicted that a real effect would **concentrate on the questions that are wrong every time**, rather than
+spread over the rest. The paired baseline's always-wrong population is 33 questions of 500 (wrong in all four
+repetitions); the baseline gets 44 wrong on its first repetition, so 75% of any uniform movement over
+first-repetition-wrong questions should land in the 33.
+
+| | count |
+| --- | ---: |
+| questions bought (wrong → right) | 15 |
+| of those, on an always-wrong question | **9 (60%)** |
+| of those, on a question the baseline sometimes got | 6 (40%) |
+| questions sold (right → wrong) | 11 |
+| of those, on an always-wrong question | **0** |
+
+60% against a 75% base rate is not concentration; it is mild dilution. **P1 is falsified**, and the carriage
+reading says the same thing from the other side. Holding the population fixed at the paired baseline's 33
+always-wrong questions -- *not* at each run's own set, which differs because the treatment moves questions into
+and out of it -- the +16 gold turns split **+1 there and +15 among the other 467**:
+
+| population (fixed at `44017278305`) | questions | `whole`, `head` | `whole`, `match` | Δ turns |
+| --- | ---: | ---: | ---: | ---: |
+| always wrong (0/4) | 33 | 324/555 = 58.38% | **325/555 = 58.56%** | **+1** |
+| everything else | 467 | 4,448/6,961 = 63.90% | **4,463/6,961 = 64.11%** | **+15** |
+
+That table is also a correction of this section's own first draft, which compared each run's own always-wrong
+group and read the treatment as having made things worse (58.38% → 57.32%). The two groups are not the same
+population -- the `match` run has 28 always-wrong questions, not 33 -- so that comparison was between two
+different sets wearing one label, which is the error `--goldcut`'s outcome table exists to prevent one level up.
+
+So the three readings agree with each other and disagree with the mechanism's story: the window changes every
+prompt on the two routes it reaches, delivers **+16 gold turns** in total, moves accuracy by **+4 of 500**
+(`p = 0.557`), and does **not** concentrate where the hypothesis said it would. What it demonstrably does is
+change *which* part of a long turn is visible — which helps some questions and hurts others at roughly the same
+rate.
+
+#### 12.10.4 What §3.1 says to do, and what was done
+
+The consequence table is unambiguous: **B3 fails → the run is void, fix the implementation, and do not interpret
+the accuracy.** No default was flipped. `turnWindow` stays absent, which is `'head'`, which is the arm every
+published number was taken under. The 91.90% is recorded here as a reading and **not** adopted as a registration.
+
+Three things the next dispatch should carry, in the order the evidence supports them:
+
+1. **`MR`'s remaining 14.5 wrong per run (121 − 106.5) are not a truncation problem.** The window delivered
+   **one** gold turn to the 33 always-wrong questions, so the next hypothesis about them cannot be "the evidence
+   was cut". The measured shape — 121 questions, 33 wrong in all four repetitions — is the population
+   `MEASURE-MR-CEILING.md` calls membership failures, and the aggregation candidates remain the only untested
+   family there.
+2. **`TR` is where the window actually delivered** (+13 gold turns, 70.22% → 71.02%, accuracy 120 → 121 of 127 on
+   the first repetition, mean 119.8). If the window is to be pursued at all, it is as a `temporal`-only reach,
+   which the preregistration's own last row already allows for — and that needs a route axis on `turnWindow`,
+   which does not exist yet and would be a new mechanism with its own registration.
+3. **The two control-route prompts that changed** (`0862e8bf_abs` on `abstention`, `ac031881` on `assistant`,
+   −214 and +295 characters, identical turn counts and identical routes) cannot be the window: `buildSessionPrompt`
+   is reached only from `answerSessions`. The next run should say what they are before B2 is read again, because
+   a reach criterion that fails for an unexplained reason is not a criterion.
