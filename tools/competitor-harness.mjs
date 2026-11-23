@@ -58,6 +58,7 @@ import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 import { createSutProvider } from './competitor-sut.mjs';
 import { createProgressWrapper } from './progress-wrap.mjs';
 import { createProductProvider } from './competitor-product.mjs';
+import { capabilityCell, configurationLine } from './report-render.mjs';
 import { NO_READER, describeJudgeIdentity, describeReaderIdentity } from './reader-identity.mjs';
 
 /**
@@ -378,9 +379,12 @@ if (readAnswers) {
     );
 }
 
+// Named once and printed from this binding: the footer used to repeat the string, so the two could drift.
+const MODE = 'isolated';
+
 const scores = await measureRetrieval(dataset, providers, {
   limit,
-  mode: 'isolated',
+  mode: MODE,
   goldOf,
   ...(reader === null || judge === null ? {} : { answer: reader, judge, accuracyFor: READ_ARMS }),
 });
@@ -507,26 +511,36 @@ if (capabilities.length > 0) {
     `\n${pad('capability', 12)}${scores.map((score) => pad(score.provider, 20)).join('')}\n`,
   );
   for (const capability of capabilities) {
-    const cells = scores.map((score) => {
-      const bucket = score.byCapability[capability];
-      if (bucket === undefined) return pad('—', 20);
-      // `found/measured` is retrieval; `acc` is what the reader did with it. Both, because a family can be found
-      // and then lost in reading, and that is the difference a repair follows from.
-      const shown =
-        bucket.read === 0
-          ? `${bucket.found}/${bucket.measured}`
-          : `${bucket.found}/${bucket.measured} a${bucket.correct}/${bucket.read}`;
-      return pad(shown, 20);
-    });
+    // One rule for both halves of the cell, in `report-cells.mjs` beside the argument it inherits from the recall
+    // columns above: a self-answering arm's `found` count is zero by construction, and printing it says
+    // "found nothing" about a system that answered its questions.
+    const cells = scores.map((score) => pad(capabilityCell(score, capability), 20));
     process.stdout.write(`${pad(capability, 12)}${cells.join('')}\n`);
   }
 }
 
-// The comparison is a function of the two configurations, so the tool states it rather than leaving the reader
-// to assume the two runs are on one axis.
-const sameRun = comparability(config, config);
+// What this stage is, named from the values that ran rather than from constants.
+//
+// The line used to read `k=${limit}, mode=isolated, reader/judge=none`: the last two are literals, and the second
+// was false on every reading run. Run `45096017960` answered its thirty questions with `deepseek-chat` and graded
+// them with `deepseek-chat` -- its own JSON says so -- while the footer under its table said `reader/judge=none`.
+// A reader quoting that footer would describe a retrieval-only table, which is the one thing this stage is not.
+//
+// `comparability(config, config)` used to supply a grade here, and a value compared with itself can only ever be
+// A: a check whose failure branch is unreachable. What is worth stating instead is the difference between this
+// reading stage and a retrieval-only run of the same arms, because that difference is exactly what has to be
+// accounted for when these numbers are placed beside the retrieval table. It is a fact about the two stages, and
+// `differing` names it field by field.
+const retrievalOnly = { ...config, reader: NO_READER, judge: NO_READER, judgePolicy: 'n/a' };
+const versusRetrieval = comparability(config, retrievalOnly);
 process.stdout.write(
-  `\nconfiguration: k=${limit}, mode=isolated, reader/judge=none\ncomparability(identical): ${sameRun.grade}\n`,
+  configurationLine({
+    limit,
+    mode: MODE,
+    reader: config.reader,
+    judge: config.judge,
+    differing: versusRetrieval.differing,
+  }),
 );
 process.stdout.write(
   '\nscope: lexical-reference covers ordering and the empty store; cortex-session covers admission, the\n' +

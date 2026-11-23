@@ -679,3 +679,100 @@ Two things follow for how this campaign reads a failed dispatch. The dispatch sp
 question's model call before it died, and the artifact said so: the progress lines carried the question number,
 which is the reporting repair `45002769709` bought. And neither defect would have been visible in a score — the
 first would have printed a cost of zero, the second would have printed nothing at all.
+
+### 12.9 The arm was reading every question through one route, and the table did not say so
+
+Run `45090697310` was the first dispatch to return a number for the shipped arm: **76.7% (23/30)** against
+`lexical-reference`'s 70.0%, paired +6/−4, `p = 0.7539`. Two other numbers in the same artifact said the row was
+not the registered arm.
+
+| reading | `45090697310` | the registered arm | what the difference means |
+| --- | ---: | ---: | --- |
+| own prompt tokens per question | **10,780** | 7,448 | every question spent the widest room in the product |
+| `ABS` | **3/6** | 6/6 on every prior reading | the abstention contract was not applied |
+
+Both are one fact. `CortexProductProvider.answer` called `askStored`, which delegates to `answerSessions` — the
+multi-session route, 48,460 characters wide against the other routes' 24,000. That is the right call for a stored
+corpus asked a generic question. It is the wrong call for a benchmark: the registered arm's readings are taken
+through `benchmark.ts`'s dispatch, which sends `MR` to `answerSessions`, `TR` to `answerTemporal`, `ABS` to
+`answerAbstention`, `single-session-assistant` to `answerAssistant`, `knowledge-update` to `answerKnowledgeUpdate`
+and everything else down the flat path. Two thirds of that row was a different system wearing the registered arm's
+name, and no score could have said so — a percentage is the same whether it was bought from one room or six.
+
+The two dispatch keys now travel with the question (`capability`, `questionType` on `SearchOptions` and
+`ProviderSearchOptions`), and the arm restates the six-row table in the same order because the order is
+load-bearing: an `ABS` question can carry `single-session-assistant`, and the abstention branch has to win. The
+table cannot be imported — `benchmark.ts` lives in `cortex-eval`, which depends on `cortex-memory` and not the
+reverse — so it is restated and pinned: `lastRoute()` reports which branch the product entered, and
+`product-provider-route.test.ts` asserts all six plus the two absences.
+
+Run `45096017960` is the same thirty questions after that fix.
+
+| arm | accuracy | own spend per question | calls |
+| --- | ---: | ---: | ---: |
+| `lexical-reference` | 66.7% (20/30) | — (no model) | 0 |
+| `cortex-product` | **80.0% (24/30)** | **6,110 prompt** / 6,180 with completion | 30 |
+
+| capability | `lexical-reference` | `cortex-product` |
+| --- | ---: | ---: |
+| `ABS` | 6/6 | **6/6** (was 3/6) |
+| `IE` | 2/6 | 4/6 |
+| `KU` | 5/6 | 5/6 |
+| `MR` | 4/6 | 4/6 |
+| `TR` | 3/6 | 5/6 |
+
+Three criteria were registered before the dispatch. Two pass and one does not, and the one that does not is about
+sample size rather than about the arm:
+
+| # | criterion | threshold | reading | verdict |
+| --- | --- | --- | --- | --- |
+| 1 | own prompt tokens per question | 5.2k–9.7k (7,448 ± 30%) | 6,110 | **pass** |
+| 2 | accuracy | ≥ 75% (91.25 − 2σ at n=30) | 80.0% | **pass** |
+| 3 | paired against `lexical-reference` | `p < 0.05` | `p = 0.2188` (+5/−1) | **fail** |
+
+Criterion 3 cannot pass at n=30 and that was predictable: six discordant pairs is the most a thirty-question sample
+can produce, and five-to-one is `p = 0.22`. At n=100 the same rates give roughly 17 to 3, which is `p ≈ 0.003`. The
+cost of finding out is the product arm's own calls only — 100 questions is about ¥0.8, because the other arm in the
+pair declares `build=none` and spends nothing — so the next dispatch is 100 questions rather than a different
+mechanism.
+
+**What the two thirty-question runs also show is that n=30 cannot resolve five points even for a model-free arm.**
+`lexical-reference` is deterministic: no model, no judge, a fixed sample. It read 21/30 on the first dispatch and
+20/30 on the second, and the two artifacts agree on which question moved (`0bc8ad92`, `TR`), with `found = true` in
+both — so the arm retrieved the same evidence twice and the *reader* graded it differently. Reading is where the
+churn is, at temperature 0, one question in thirty. That is the floor under every paired comparison in this
+campaign, and it is why a threshold written on accuracy alone at small n would be a coin with a decimal point.
+
+#### 12.9.1 Two sentences in the table were about a run that did not happen
+
+The same artifact printed, under its own table:
+
+```
+ABS   0/6 a6/6    IE   0/6 a4/6    KU   0/6 a5/6    MR   0/6 a4/6    TR   0/6 a5/6
+configuration: k=10, mode=isolated, reader/judge=none
+comparability(identical): A
+```
+
+Three claims, none of them true of the run that produced it.
+
+**`0/6`** is `found/measured`, and `found` is zero by construction for a system with no ranked-list endpoint: the
+product's `search` returns `[]` because its retrieval *is* its navigation. The cell therefore said "found nothing"
+five times about an arm that answered 24 of 30. The table thirty lines above already refuses this for its own
+recall columns — `score.answerer === 'self' ? '—' : pct(score.recallAtK)` — with the reason written beside it; the
+capability block was added later and the argument did not travel with it.
+
+**`reader/judge=none`** was a literal. The run's own JSON says `reader: deepseek-chat (chain-of-note/con, temp=0,
+one request)` and the same for the judge, because reading is what the stage does. A reader quoting that footer
+would describe a retrieval-only table.
+
+**`comparability(identical): A`** came from `comparability(config, config)`. A value compared with itself cannot
+differ, so the grade could only ever be `A`: a guard whose failure branch is unreachable, printed as a measurement.
+
+All three are now one module with a seam (`tools/report-render.mjs`) and seven assertions
+(`test_report_render.py`), because a printer that can only be exercised by a paid run is a printer nobody checks.
+The footer states the reader and judge that ran, and what the reading stage adds over a retrieval-only run of the
+same arms (`reader, judge, judgePolicy`) — a fact about two configurations rather than a value compared with itself.
+
+The lesson is the one this campaign keeps relearning in a new costume: **the score was accurate and the table was
+not.** A row that reads 80% while its detail block reads `0/6` is a table a careful reader distrusts and a careless
+one quotes.
