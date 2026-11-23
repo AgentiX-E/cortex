@@ -288,6 +288,12 @@ jobs:
           CORTEX_RESULTS_BUNDLE: /tmp/fresh-bundle-run.json
         run: pnpm test:browser
 
+      # The general form of the bundle defect below: a probe that writes its reading back into the
+      # checkout leaves one file that always agrees with itself. Asserted here, where the checkout
+      # starts clean, rather than in `pnpm check`, where a developer's tree is dirty by definition.
+      - name: The suites wrote nothing into the checkout
+        run: node tools/readings-in-place.mjs
+
       - name: The committed reading still describes this tree
         run: |
           node tools/browser-reading-check.mjs \
@@ -372,6 +378,9 @@ jobs:
           CORTEX_ROWS: '400'
           CORTEX_RESULTS: /tmp/fresh-firefox-run.json
         run: pnpm --filter @agentix-e/cortex-storage test:browser:firefox
+
+      - name: The suite wrote nothing into the checkout
+        run: node tools/readings-in-place.mjs
 
       - name: The committed Firefox reading still describes this tree
         run: |

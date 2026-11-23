@@ -82,11 +82,13 @@ without Firefox:
   object branch to `return remote.value;` fails by name (`4 passed, 4 failed` — the four cases whose
   result is an object).
 
-Two more facts paid for along the way, recorded where they are needed: `browsingContext.getTree` is
-refused with *"System access is required. Start Firefox with the MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1"*, so
-the tab id is exposed as a read-only accessor (`connection.context`) instead of rediscovered; and the
-self-test guard cannot be `argv[1].endsWith('bidi.mjs')`, because a mutation fixture under another name
-would then skip the test — it is `import.meta.url === pathToFileURL(argv[1]).href`.
+Two more facts paid for along the way, recorded where they are needed: `browsingContext.getTree` was
+refused on Firefox 159 with *"System access is required. Start Firefox with the
+MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1"*, so the tab id is exposed as a read-only accessor
+(`connection.context`) instead of rediscovered — **and on Firefox 132 that refusal does not happen**,
+which is what made the CI job below possible; the self-test guard cannot be `argv[1].endsWith('bidi.mjs')`,
+because a mutation fixture under another name would then skip the test — it is
+`import.meta.url === pathToFileURL(argv[1]).href`.
 
 ## Engine differences the suite deliberately does not depend on
 
@@ -118,16 +120,54 @@ Not closed by it:
   contract. Quota behaviour, eviction order and sync-handle contention across many tabs are a different
   sentence with a different measurement.
 
+## The reading reproduces on a second Firefox build — and the harness could not have said so
+
+The reading above was taken by hand on Firefox 159. Nothing re-derived it: `git grep firefox
+.github/workflows` returned nothing until this section existed, so gate 2's evidence was a file whose
+only consumer was `guard:browser` — which compares it to the **Chromium** reading. Two committed
+artefacts agreeing with each other prove the two engines agree about a tree neither of them had to
+describe.
+
+Making it a job needed one fix in the harness first, and the failure was a hang rather than a message:
+on the Firefox that `npx --yes playwright@1.49.1 install firefox` provides (132.0, playwright build
+1466), `browsingContext.create` is answered with **nothing at all** — no error, no reply — so
+`start()`'s await never settled and the probe sat there until the job's timeout. `session.new` and
+`browsingContext.getTree` on the same build both answer in well under a second. `start()` now reuses
+the session's own tab, which is the shape WebDriver BiDi is designed around (`session.new` is followed
+by a context that already exists) and keeps `create` as the fallback for an engine that reports none.
+
+The reading it produces, at 10 rows locally and 400 rows in CI:
+
+| criterion | committed reading (Firefox 159) | fresh run (Firefox 132) |
+| --------- | ------------------------------- | ----------------------- |
+| checks | 24 / 24 | **24 / 24** |
+| the 24 names | — | **identical in order and in string** |
+| the tier | `opfs`, `refused: []` | `opfs`, `refused: []` |
+| the digest after a restart | `matches: true` | `matches: true` (`1489868687 == 1489868687` at 10 rows) |
+
+So gate 2's claim survives a 27-version gap between the build the reading was taken on and the build
+that now reproduces it, and there is a job that keeps asking.
+
 ## Where this runs now
 
-The readings above were taken by hand. Two of the three checks below need no browser, which is why two of them gate
-every push:
+The readings above were taken by hand. The two comparators need no browser, which is why they gate
+every push; the runs happen where a browser exists.
 
 | where | asserts | browser |
 | ----- | ------- | ------- |
 | `pnpm check` → `guard:browser` | the two **committed** readings run the same 24 checks, same order, same strings, both `opfs`, both digest-matched | no |
-| `Verify` job `browser` | the suite still passes on a real Chromium at 400 rows, and `last-run.json` still describes the tree | Chromium |
-| `tools/__tests__/test_browser_reading_check.py` (6) | the comparator bites: renamed check, dropped check, `idb` reading, unread digest, missing argument | no |
+| `Verify` job `browser` | the suite still passes on a real Chromium at 400 rows, and `last-run.json`, `corpus-run.json` **and** `bundle-run.json` still describe the tree | Chromium |
+| `Verify` job `browser-firefox` | the suite still passes on a real Firefox at 400 rows, and `last-run-firefox.json` still describes the tree | Firefox |
+| both browser jobs → `tools/readings-in-place.mjs` | the suites changed no tracked file, so no reading was regenerated in place | Chromium, Firefox |
+| `tools/__tests__/test_browser_reading_check.py` (11) | the comparator bites: renamed check, dropped check, `idb` reading, unread digest, missing argument, a bundle reading whose tier or round-trip digest disagrees, and the verdict naming both files instead of "the tree" | no |
+| `tools/__tests__/test_readings_in_place.py` (4) | the checkout assertion bites: ignored build output passes, a rewritten reading is named with the variable that prevents it, a new file counts, a non-repository fails with a reason | no |
+
+Two of those rows exist because of what the third one could not say. `guard:browser` runs no browser,
+so its verdict names the two files it read (`…/last-run-firefox.json agrees with …/last-run.json`)
+rather than claiming the tree; and `bundle-run.json` — the only evidence for the `workerUrl` contract,
+whose first check quotes the product's own refusal text — was compared by nothing at all until the
+reader learned that this reading records its tier at `facts.tier` and its digest as
+`facts.roundTrip.written == .read`, because it runs once and has no phase to stage a restart in.
 
 `CORTEX_RESULTS` (restart probes) and `CORTEX_RESULTS_BUNDLE` (the bundle suite) exist so a CI run writes its own
 reading instead of overwriting the committed evidence — one shared variable let the bundle reading clobber the restart
