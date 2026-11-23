@@ -1,8 +1,9 @@
 # Design: multi-step retrieval (`@agentix-e/cortex-ai/agent`)
 
-**Status:** built, unit-measured, **not yet dispatched**. The mechanism is in the published package
-and documented in the user manual (§6.14); what is missing is one dispatch, and it is deliberately
-behind a cheaper reading (§6 below).
+**Status:** built, unit-measured, and the probe **has been dispatched and read back** (`44867629266`:
+`gainedQuestions` 105 of 121). The judged ablation is **not scheduled**, and §6.1 is why: the ceiling of
+the whole evidence axis has since been measured, and this mechanism lives inside it. This document used
+to say "not yet dispatched"; that sentence was true when it was written and stopped being true at §149.
 
 ---
 
@@ -144,6 +145,47 @@ killed a dispatch before the probe started. `Verify` runs on every push, so the 
 already has a verdict -- and `tools/dispatch-multi-step-probe.py` reads it and refuses to dispatch
 unless it is `success`. Provenance belongs at the point where money is spent, not inside the job that
 spends it: a refusal there is free, and a duplicated suite is a second thing that can be wrong.
+
+### 6.1 The reading, and what it did not license
+
+| reading (`maxSteps 1`, `MR`, 121 questions, DeepSeek reader) | value |
+| --- | ---: |
+| decision calls / questions that wrote a query | 121 / 106 |
+| questions where the reader's action added evidence | 118 |
+| gold turns the seed retrieval did not have (`newGold`) | **586 turns / 105 questions** |
+| gold in the prompt, seed → selected → carried | 862 → 1448 → 1377 |
+| selected then dropped by the room (`foundNotCarried`) | 71 |
+| decision prompt, actual cost | 4,141 chars/question, ≈0.28 CNY |
+
+The cancel condition (`gainedQuestions ≤ 2`) is dead: the seed retrieval does miss gold, and the prompt
+that reaches the reader carries 1.68× more of it. **That is the whole of what the probe bought**, and it
+is less than the table above §6 originally promised, for three reasons that are separate facts:
+
+1. **`newGold` is not the gold the failing answers needed.** `AUDIT-MR-ENUMERATION.md` §3 measured the
+   complementary quantity: of 22 stable `MR` failures, **18 already had their numeric gold in the
+   prompt**, median best rank 0, and 22/22 answers equalled the row count of step 1. More gold in a
+   prompt whose reader already fails to enumerate it is more enumeration. The two readings are about
+   different quantities and cannot corroborate each other -- §149.3.1 says so in the same words.
+2. **A new set is not a filtered set.** 586 added gold turns arrive with their non-gold neighbours, and
+   "more evidence = more noise" is the only risk this arm carries. That is precisely why it would need a
+   paired judged reading rather than the probe.
+3. **The evidence axis has a measured ceiling, and it is one point.** The oracle-evidence condition --
+   same reader, judge, prompt, protocol, 500 questions, four repetitions, run twice with 491/500
+   agreement -- reads **92.90%** against the registered configuration's **91.90%**. `C − S = 5
+   questions = 1.00 point`, exact McNemar `p = 0.44`. Every mechanism that changes *which turns are in
+   the prompt* is bounded by the state where the prompt holds the gold evidence. That state has been
+   measured, and it is worth one point. The `MR` cell is 121 of 500 questions, so the pre-registration's
+   own success threshold (+3 questions on `MR`) is **+0.6 points on the headline** -- against a 4.35-point
+   gap that sits inside a ±3.21-point judge band. **No outcome of this ablation, including full success,
+   moves the SOTA verdict.** That is the reason it is not scheduled, and it is a stronger reason than
+   cost: 14 CNY would buy a confirmation of a bound, not a decision.
+
+What would revive it, stated so the decision can be reversed by evidence rather than by mood: (a) an
+oracle re-measurement that reads materially above 92.90%, which moves the bound; (b) the `MR` cell
+becoming the target on its own terms rather than as a contribution to the headline; (c) a product
+requirement for this subpath that a 121-question reading would satisfy -- and in that case the wiring,
+not the money, is the prerequisite: `multiStep` is still absent from `cortex-eval`'s arm, and `S18` is no
+longer a free id (query expansion took it).
 
 ## 7. What is not here
 
