@@ -372,8 +372,13 @@ jobs:
       # The one door every system's model calls go through, so "the same LLM" is a base URL and the token column is
       # the provider's own accounting rather than a request count multiplied by an estimate. Started before the
       # reading stage and left running for the whole job; the cost step reads its `/stats` at the end.
+      #
+      # `product` is in the condition because the product arm's chat calls go through this proxy too -- and run
+      # 45089801550 is what happens without it: the step was skipped, `SUT_LLM_BASE_URL` still named this port, and
+      # the reading stage failed on its first model call. The proxy is not a competitor's convenience; it is the
+      # product row's cost column.
       - name: Start the metering proxy
-        if: inputs.sut == 'memcog' || inputs.sut == 'mastra' || inputs.sut == 'mem0'
+        if: inputs.sut == 'memcog' || inputs.sut == 'mastra' || inputs.sut == 'mem0' || inputs.product != ''
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |

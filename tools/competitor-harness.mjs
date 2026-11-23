@@ -56,6 +56,7 @@ import { loadLongMemEval } from '../packages/cortex-eval/dist/datasets/longmemev
 import { generateSyntheticBenchmark } from '../packages/cortex-eval/dist/datasets/synthetic-benchmark.js';
 import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 import { createSutProvider } from './competitor-sut.mjs';
+import { createProgressWrapper } from './progress-wrap.mjs';
 import { createProductProvider } from './competitor-product.mjs';
 import { NO_READER, describeJudgeIdentity, describeReaderIdentity } from './reader-identity.mjs';
 
@@ -290,96 +291,9 @@ function proxyStatsEndpoint() {
 }
 
 const statsEndpoint = proxyStatsEndpoint();
-
-/**
- * Cumulative calls and tokens for one system, counted from when **this arm** started.
- *
- * The proxy's counter is scoped to the job, and one job runs four arms of the same system. A line that read
- * `11.20M token(s) cumulative` for an arm that had spent 3.5M would be the cost-attribution defect one layer up,
- * so the baseline the provider read at construction is subtracted here too -- the same number, from the same place.
- */
-async function cumulativeUsage(prefix, baseline = null) {
-  if (statsEndpoint === null) return '';
-  try {
-    const response = await fetch(`${statsEndpoint}?prefix=${encodeURIComponent(prefix)}`, {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!response.ok) return ` · stats unavailable (${String(response.status)})`;
-    const stats = await response.json();
-    const tokens =
-      Number(stats['prompt_tokens'] ?? 0) +
-      Number(stats['completion_tokens'] ?? 0) -
-      (baseline === null ? 0 : baseline.promptTokens + baseline.completionTokens);
-    const calls = Number(stats['calls'] ?? 0) - (baseline === null ? 0 : baseline.calls);
-    return ` · ${String(calls)} call(s), ${(Math.max(tokens, 0) / 1e6).toFixed(2)}M token(s) since launch`;
-  } catch {
-    // A progress line is a courtesy, not a measurement: a proxy that is down must not fail the run that is
-    // already measuring it.
-    return '';
-  }
-}
-
-/**
- * One stderr line per question per operation, with wall clock and cumulative model use.
- *
- * Run 45002769709 sat inside `memcog/build` for thirty-six minutes and produced an **empty** artifact: the table
- * is written when the last question is graded, the step piped a silent program into `tee`, and the job limit
- * arrived first. Thirty-six minutes and about six yuan bought no evidence at all -- not even which question it
- * was on, or whether the ingest had stored anything.
- *
- * That is a reporting failure rather than a competitor failure, and it is cheap to fix: the provider already
- * knows when it is asked a question, and the proxy already knows what that has cost so far. Printed to stderr so
- * `--json` stays parseable and so a caller reading the table on stdout is not interleaved with progress.
- *
- * Money is deliberately **not** printed. The price table lives in `sut-cost-report.mjs`, and a second copy of it
- * here is how two artifacts come to disagree about one run. Tokens are the proxy's own count; the conversion
- * happens once, at the end, against a table with a date on it.
- */
-function withProgress(provider, planned) {
-  const started = Date.now();
-  const selfAnswering = typeof provider.answer === 'function';
-  // The question index belongs to the *question*, not to the operation: in isolated mode the harness ingests a
-  // question's haystack and then asks it, and counting per operation would print `ingest 1, search 2`. Advancing
-  // on `ingest` is what makes the two lines that belong to one question share a number.
-  let question = 0;
-  const at = () => `t+${String(Math.round((Date.now() - started) / 1000))}s`;
-  const say = (line) => process.stderr.write(`[sut] ${line}\n`);
-
-  const timed = async (op, call) => {
-    if (op === 'ingest') question += 1;
-    const index = op === 'ingest' ? question : Math.max(question, 1);
-    const scope = planned > 0 ? `${String(index)}/${String(planned)}` : String(index);
-    const began = Date.now();
-    say(`${provider.name} question ${scope}: ${op} started (${at()})`);
-    try {
-      return await call();
-    } finally {
-      const took = ((Date.now() - began) / 1000).toFixed(1);
-      const stored = Number(provider.ingestedSessions ?? 0);
-      const skipped = provider.ingestSkips?.length ?? 0;
-      say(
-        `${provider.name} question ${scope}: ${op} returned in ${took}s` +
-          `${op === 'ingest' ? ` · ${String(stored)} session(s) stored cumulative, ${String(skipped)} refused` : ''}` +
-          (await cumulativeUsage(provider.name, provider.usageBaseline ?? null)),
-      );
-    }
-  };
-
-  return Object.create(provider, {
-    // Ingest is where a store-building system spends everything, so it gets a line of its own -- and it is what
-    // advances the question number, because every driver here ingests the haystack of the question it is about
-    // to be asked (protocol `mode: isolated`).
-    ingest: { value: (sessions) => timed('ingest', () => provider.ingest(sessions)) },
-    search: { value: (query, options) => timed('search', () => provider.search(query, options)) },
-    ...(selfAnswering
-      ? {
-          answer: {
-            value: (query, options) => timed('answer', () => provider.answer(query, options)),
-          },
-        }
-      : {}),
-  });
-}
+// Delegation rather than inheritance: `progress-wrap.mjs` records the private-field failure that made the
+// difference matter, on run 45089801550.
+const withProgress = createProgressWrapper(statsEndpoint);
 
 /**
  * A competitor's own code, as one more arm.
