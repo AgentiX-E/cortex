@@ -100,7 +100,7 @@ def test_a_field_echoing_the_question_is_not_the_answer(tmp_path: Path) -> None:
         ],
     )
     assert answers['answerField'] == 'response'
-    echo = next(row for row in census['topLevel'] if row['key'] == 'echo')
+    echo = next(row for row in census['columns'] if row['key'] == 'echo')
     assert echo['echoOfQuestion'] == 3
     assert echo['key'] not in [candidate['key'] for candidate in census['answerCandidates']]
 
@@ -115,7 +115,7 @@ def test_a_field_missing_from_some_records_is_not_the_answer(tmp_path: Path) -> 
     _, census, answers = prepare(tmp_path, records)
     assert answers['answerField'] is None
     assert 'refused' in answers
-    response = next(row for row in census['topLevel'] if row['key'] == 'response')
+    response = next(row for row in census['columns'] if row['key'] == 'response')
     assert response['count'] == 2
 
 
@@ -125,7 +125,7 @@ def test_a_context_sized_field_is_not_an_answer(tmp_path: Path) -> None:
         [record('a?', 'x', context='word ' * 4000), record('b?', 'y', context='word ' * 4200)],
     )
     assert answers['answerField'] is None
-    context = next(row for row in census['topLevel'] if row['key'] == 'context')
+    context = next(row for row in census['columns'] if row['key'] == 'context')
     assert context['lengthMedian'] > 4000
 
 
@@ -182,6 +182,81 @@ def test_a_bare_array_and_a_wrapped_records_object_are_both_read(tmp_path: Path)
     _, wrapped, _ = prepare(tmp_path / 'wrapped', {'records': records, 'run': 'gemini-3.8-flash'})
     assert bare['records'] == wrapped['records'] == 2
     assert bare['fieldMap'] == wrapped['fieldMap']
+
+
+def test_the_real_shape_is_censused_to_two_levels_and_still_refuses_to_choose(tmp_path: Path) -> None:
+    # This is the real file's shape: `answer` is the gold, `retrieval`/`answering`/`judge` are objects,
+    # the model's answer is `answering.response`, and the judge's note is `judge.rationale`. The
+    # top-level-only version of the tool found nothing in it, which was the right answer to the wrong
+    # question -- so the census reads two levels. What it still does not do is choose between two
+    # high-cardinality text columns: both are answer-shaped, both are unique per question, and the only
+    # thing separating them is a name. That is what `--answer-field` is for, and what its provenance
+    # field records.
+    records = [
+        {
+            'question_id': 'q1',
+            'question_type': 'knowledge-update',
+            'question': 'What was my best time?',
+            'answer': '25 minutes and 50 seconds',
+            'retrieval': {'abstention': False, 'search_query_sent': 'What was my best time?', 'retrieved_context': [{'memory': 'x'}]},
+            'answering': {'response': 'Your best time was 27:12, later 25:50.', 'model': 'gemini-3.8-flash'},
+            'judge': {'correct': True, 'rationale': 'contains the gold'},
+        },
+        {
+            'question_id': 'q2',
+            'question_type': 'single-session-user',
+            'question': 'What degree did I graduate with?',
+            'answer': 'Business Administration',
+            'retrieval': {'abstention': True, 'retrieved_context': []},
+            'answering': {'response': 'Business Administration.', 'model': 'gemini-3.8-flash'},
+            'judge': {'correct': False, 'rationale': 'nope'},
+        },
+    ]
+    _, census, answers = prepare(tmp_path, records)
+    assert answers['answerField'] is None
+    assert 'refused' in answers
+    # `answering.model` is a string of similar length and is *not* a candidate: it is the same value on
+    # both records, and an answer is not.
+    assert {candidate['key'] for candidate in census['answerCandidates']} == {
+        'answering.response',
+        'answering.model',
+        'judge.rationale',
+    }
+    # Ruled out by cardinality rather than by the census never seeing it: the model name is one value.
+    assert {candidate['key'] for candidate in census['answerNearUnique']} == {
+        'answering.response',
+        'judge.rationale',
+    }
+    keys = {column['key'] for column in census['columns']}
+    assert {'retrieval.abstention', 'judge.correct', 'answering.model'} <= keys
+
+    _, census, answers = prepare(
+        tmp_path / 'named', records, '--answer-field', 'answering.response'
+    )
+    assert answers['answerField'] == 'answering.response'
+    assert answers['answerFieldSource'] == 'override'
+    assert answers['questions'][0]['response'] == 'Your best time was 27:12, later 25:50.'
+    assert answers['questions'][0]['gold'] == '25 minutes and 50 seconds'
+    assert [question['abstention'] for question in answers['questions']] == [False, True]
+    # The verdict is a boolean column and so is `retrieval.abstention`, so it too refuses rather than
+    # picking the first boolean it meets.
+    assert answers['verdictField'] is None
+
+
+def test_a_list_is_not_a_column(tmp_path: Path) -> None:
+    # `retrieval.retrieved_context` is an array of evidence blocks: a path into it is a per-record
+    # detail, and treating it as a column would put a giant string in the candidate list on every file.
+    _, census, _ = prepare(
+        tmp_path,
+        [{'question': 'q?', 'answer': 'a', 'response': 'a.', 'retrieval': {'retrieved_context': [{'x': 1}]}}],
+    )
+    keys = {column['key'] for column in census['columns']}
+    assert 'retrieval.retrieved_context' not in keys
+    assert answers_answer(census) == 'response'
+
+
+def answers_answer(census) -> str:
+    return census['fieldMap']['answer']
 
 
 def test_the_abstention_flag_is_carried_so_the_judge_template_can_match(tmp_path: Path) -> None:

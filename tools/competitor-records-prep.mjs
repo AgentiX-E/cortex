@@ -76,26 +76,87 @@ function typeOf(value) {
   return typeof value;
 }
 
+/** A value that is a record rather than a list or a scalar. */
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 /**
- * Per-key statistics over a list of objects.
+ * Every column the records carry, two levels deep, as dotted paths.
  *
- * `count` is the number of records carrying the key at all, which is what separates a column from a
+ * ## Why the second level exists, and why it stops there
+ *
+ * The first version of this tool read the top level only, and on the real file it found **no
+ * answer-shaped field at all**: the seven top-level keys are `question_id`, `question`,
+ * `question_type`, `answer` (the gold), and three objects — `retrieval`, `answering`, `judge`. The
+ * model's answer is inside `answering` and the verdict inside `judge`, so a top-level census could
+ * refuse the file forever while the field it wanted sat one level down. Refusing was the right answer
+ * to the wrong question.
+ *
+ * Two levels is where it stops because the third is a list element: `retrieval.retrieved_context` is an
+ * array of evidence blocks, and a path into it is a per-record detail rather than a column. Array-valued
+ * keys are skipped for that reason rather than for convenience.
+ */
+export function columnPaths(objects) {
+  const paths = new Set();
+  for (const object of objects) {
+    if (!isPlainObject(object)) continue;
+    for (const [key, value] of Object.entries(object)) {
+      if (isPlainObject(value)) {
+        for (const [child, grandchild] of Object.entries(value)) {
+          if (!Array.isArray(grandchild) || grandchild.length === 0) paths.add(`${key}.${child}`);
+        }
+        continue;
+      }
+      if (!Array.isArray(value)) paths.add(key);
+    }
+  }
+  return [...paths].sort();
+}
+
+/** Read a dotted path, so a column named `answering.response` is readable without special cases. */
+export function readPath(object, path) {
+  // A null path is a column the field map could not find. Returning `undefined` rather than throwing is
+  // what lets the projection print an empty string and stay honest about it, instead of turning a
+  // missing identifying column into a stack trace three frames from the cause.
+  if (typeof path !== 'string') return undefined;
+  const dot = path.indexOf('.');
+  if (dot === -1) return object?.[path];
+  return object?.[path.slice(0, dot)]?.[path.slice(dot + 1)];
+}
+
+/** The leaf name of a path, which is what the never-an-answer list is matched against. */
+function leaf(path) {
+  const dot = path.lastIndexOf('.');
+  return dot === -1 ? path : path.slice(dot + 1);
+}
+
+/**
+ * Per-column statistics over a list of records, keyed by dotted path.
+ *
+ * `count` is the number of records carrying the column at all, which is what separates a column from a
  * per-record detail; `types` is the set seen, because one record with a `null` where the rest have a
  * string is a real population in these files and collapses to "string" under a first-value read.
  */
-export function census(objects) {
-  const rows = new Map();
+export function census(objects, paths = columnPaths(objects)) {
+  const rows = new Map(
+    paths.map((path) => [
+      path,
+      { key: path, count: 0, types: new Set(), lengths: [], echoOfQuestion: 0, seen: new Set() },
+    ]),
+  );
   for (const object of objects) {
-    if (object === null || typeof object !== 'object' || Array.isArray(object)) continue;
-    for (const [key, value] of Object.entries(object)) {
-      const row = rows.get(key) ?? { key, count: 0, types: new Set(), lengths: [], echoOfQuestion: 0 };
+    if (!isPlainObject(object)) continue;
+    for (const [path, row] of rows) {
+      const value = readPath(object, path);
+      if (value === undefined) continue;
       row.count += 1;
       row.types.add(typeOf(value));
       if (typeof value === 'string') {
         row.lengths.push(value.length);
+        row.seen.add(value);
         if (typeof object.question === 'string' && value === object.question) row.echoOfQuestion += 1;
       }
-      rows.set(key, row);
     }
   }
   return [...rows.values()].map((row) => ({
@@ -105,11 +166,12 @@ export function census(objects) {
     lengthMedian: median(row.lengths),
     lengthMax: row.lengths.length === 0 ? null : Math.max(...row.lengths),
     echoOfQuestion: row.echoOfQuestion,
+    distinct: row.seen.size,
   }));
 }
 
 /**
- * The one key that holds the model's answer, or `null` with the candidates that survived.
+ * The one column that holds the model's answer, or `null` with the candidates that survived.
  *
  * Returns `{ key, candidates }`. `candidates` is always the full survivor list, including the one that
  * won, so a reading can be re-checked without re-running: if a later file gains a second answer-shaped
@@ -121,13 +183,28 @@ export function identifyAnswerField(rows, recordCount) {
       row.count === recordCount &&
       row.types.length === 1 &&
       row.types[0] === 'string' &&
-      !NEVER_ANSWER.has(row.key) &&
+      !NEVER_ANSWER.has(leaf(row.key)) &&
       row.echoOfQuestion * 2 <= recordCount &&
       row.lengthMedian !== null &&
       row.lengthMedian >= 1 &&
       row.lengthMedian <= MAX_ANSWER_MEDIAN,
   );
-  return { key: survivors.length === 1 ? survivors[0].key : null, candidates: survivors };
+  if (survivors.length === 1) return { key: survivors[0].key, candidates: survivors, nearUnique: survivors };
+  // More than one column is answer-shaped, and the separator is cardinality: an answer is different for
+  // almost every question, while the metadata sitting beside it -- the model name, the prompt version,
+  // the scope -- is the same string on all of them. Without this rule the real file refuses on
+  // `answering.response` against `answering.model`, which is a refusal about two strings of similar
+  // length rather than about which one is the answer.
+  //
+  // The threshold is a share and not a threshold on the count of distinct values, so it means the same
+  // thing on a 500-record file and a 5,000-record one. A file whose answers really are low-cardinality
+  // (`yes`/`no`) lands outside it and is refused, which is the safe direction: `--answer-field` records
+  // that a person read the census.
+  const nearUnique = survivors.filter((row) => row.distinct * 10 >= recordCount * 9);
+  // Both sets are returned. `candidates` is everything shaped like an answer and `nearUnique` is the
+  // subset that is also different on almost every question -- so a reading can see that a metadata
+  // column was ruled out by cardinality rather than by being invisible to the census.
+  return { key: nearUnique.length === 1 ? nearUnique[0].key : null, candidates: survivors, nearUnique };
 }
 
 /**
@@ -139,7 +216,7 @@ export function identifyAnswerField(rows, recordCount) {
  */
 export function identifyVerdictField(rows, recordCount, taken) {
   const survivors = rows.filter((row) => {
-    if (row.count !== recordCount || row.key === taken || NEVER_ANSWER.has(row.key)) return false;
+    if (row.count !== recordCount || row.key === taken || NEVER_ANSWER.has(leaf(row.key))) return false;
     return row.types.length === 1 && (row.types[0] === 'boolean' || ((row.types[0] === 'number' || row.types[0] === 'string') && row.lengthMedian !== null && row.lengthMax !== null && row.lengthMax <= 5));
   });
   return { key: survivors.length === 1 ? survivors[0].key : null, candidates: survivors };
@@ -186,14 +263,13 @@ async function main() {
   const answer =
     override === undefined || override === ''
       ? { ...inferred, source: 'census' }
-      : { key: override, candidates: inferred.candidates, source: 'override' };
+      : { key: override, candidates: inferred.candidates, nearUnique: inferred.nearUnique, source: 'override' };
   if (answer.key !== null && !rows.some((row) => row.key === answer.key && row.count === records.length)) {
     throw new TypeError(
       `--answer-field ${answer.key} is not carried by every record, so re-grading would cover a subset and report it as the whole`,
     );
   }
   const verdict = identifyVerdictField(rows, records.length, answer.key);
-  const retrievalKeys = records.some((record) => record?.retrieval !== undefined) ? census(records.map((record) => record?.retrieval).filter((value) => value !== undefined)) : null;
 
   const refused =
     answer.key === null
@@ -212,19 +288,22 @@ async function main() {
   const questions =
     refused === undefined
       ? records.map((record) => ({
-          questionId: String(record[fieldMap.questionId]),
-          questionType: String(record[fieldMap.questionType] ?? ''),
-          question: String(record[fieldMap.question]),
-          gold: String(record[fieldMap.gold]),
-          response: String(record[answer.key]),
-          publishedVerdict: verdict.key === null ? null : valueLooksVerdict(record[verdict.key]),
+          questionId: String(readPath(record, fieldMap.questionId)),
+          questionType: String(readPath(record, fieldMap.questionType) ?? ''),
+          question: String(readPath(record, fieldMap.question)),
+          gold: String(readPath(record, fieldMap.gold)),
+          response: String(readPath(record, answer.key)),
+          publishedVerdict:
+            verdict.key === null ? null : valueLooksVerdict(readPath(record, verdict.key)),
           // Carried because the judge template depends on it: an abstention question is graded by a
           // different prompt in the official protocol, and `retrieval.abstention` is where these
           // records say so. `null` rather than `false` when the field is absent, because "not an
           // abstention question" and "this file does not say" are different facts and the second one
           // has to be visible before a re-grade quotes an abstention rate.
-          abstention:
-            typeof record?.retrieval?.abstention === 'boolean' ? record.retrieval.abstention : null,
+          abstention: (() => {
+            const flagValue = readPath(record, 'retrieval.abstention');
+            return typeof flagValue === 'boolean' ? flagValue : null;
+          })(),
         }))
       : [];
 
@@ -232,11 +311,11 @@ async function main() {
     source: { ...source, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') },
     records: records.length,
     parseMs: Date.now() - started,
-    topLevel: rows,
-    retrieval: retrievalKeys,
+    columns: rows,
     fieldMap,
     answerFieldSource: answer.source,
     answerCandidates: answer.candidates,
+    answerNearUnique: answer.nearUnique,
     verdictCandidates: verdict.candidates,
     ...(refused === undefined ? {} : { refused }),
   };
