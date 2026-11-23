@@ -75,8 +75,8 @@ function main() {
     '\nA reading regenerated in place is not compared by anything: the comparison needs the committed\n' +
       'file and a fresh one, and writing the fresh one over the committed one leaves a single file that\n' +
       'always agrees with itself. Point the probe somewhere else -- `CORTEX_RESULTS`,\n' +
-      '`CORTEX_RESULTS_CORPUS`, `CORTEX_RESULTS_BUNDLE`, `CORTEX_RESULTS_TWO_TAB` or\n' +
-      '`CORTEX_RESULTS_QUOTA` -- and let the run be\n' +
+      '`CORTEX_RESULTS_CORPUS`, `CORTEX_RESULTS_BUNDLE`, `CORTEX_RESULTS_TWO_TAB`,\n' +
+      '`CORTEX_RESULTS_QUOTA` or `CORTEX_RESULTS_INCOGNITO` -- and let the run be\n' +
       'compared.',
   );
   process.exitCode = 1;

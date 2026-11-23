@@ -367,6 +367,34 @@
       }
 
       /**
+       * Work on a connection this page already holds.
+       *
+       * A driver that wants to read after writing has to use this rather than `runTab`: opening a second
+       * time from the same page is refused by this page's own claim, which is correct behaviour and the
+       * wrong tool for measuring something else. Keeping the operation on the held connection also keeps
+       * the claim's lifetime -- the writer's -- out of the measurement's way.
+       */
+      async function runHeld(request) {
+        const opened = held.get(request.slot);
+        if (opened === undefined) return { mode: 'held', held: false, name: 'nothing-held' };
+        const result = { mode: 'held', held: true, tier: opened.tier, writer: opened.writer };
+        try {
+          if (request.write !== undefined) {
+            await opened.storage.put(request.table, request.write.key, { v: request.write.value });
+            result.wrote = request.write.key;
+          }
+          if (request.read !== undefined) {
+            result.read = (await opened.storage.get(request.table, request.read)) ?? null;
+          }
+          return result;
+        } catch (error) {
+          result.name = error?.name ?? 'Error';
+          result.message = String(error?.message ?? error).slice(0, 200);
+          return result;
+        }
+      }
+
+      /**
        * The quota scenario, driven from outside: the browser's quota is set between steps, so the
        * page cannot script the whole thing. `prepare` leaves a row behind while there is room;
        * `attempt` writes and reads under whatever quota the driver has set.
@@ -448,6 +476,7 @@
         if (request.mode === 'write') return runWrite(request.rows);
         if (request.mode === 'two-tab') return runTab(request);
         if (request.mode === 'close-held') return closeHeld(request.slot);
+        if (request.mode === 'held') return runHeld(request);
         if (request.mode === 'quota') return runQuota(request);
         return runRead(request.rows, request.expected);
       };

@@ -117,12 +117,14 @@ Not closed by it:
   engine needs a real device; that stays a listed boundary, not a gap;
 - **multi-tab concurrency** — no longer unexercised: `test/browser/two-tab-probe.mjs` runs two Chromium
   targets on one profile and one origin, and `docs/DESIGN-TWO-TABS.md` records what it found (the second tab
-  was silently getting a second database, and now it is refused by name). Two things it does **not** cover,
+  was silently getting a second database, and now it is refused by name). Three probes now commit a check
+  list (`two-tab`, `quota`, `incognito`) and share one comparator, `test/browser/committed.mjs`: three
+  copies of "a reordering fails too" would agree on the day they were written. Two things it does **not** cover,
   and they stay boundaries: Firefox, whose BiDi build cannot create a second browsing context, and
   cross-tab *synchronisation* — the claim makes a second writer visible, it does not make two writers safe;
 - **quota exhaustion** — no longer unexercised: `test/browser/quota-probe.mjs` sets the origin's quota to
-  zero over the DevTools protocol, writes, lifts it, and writes again. Eleven named checks, committed in
-  `test/browser/quota-run.json` and re-derived by `verify.yml`. Three of them are the reason the product
+  zero over the DevTools protocol, writes, lifts it, and writes again. Ten named checks, committed in
+  `test/browser/quota-run.json` and re-derived by `verify.yml`. Two of them are the reason the product
   does not claim to diagnose the cause:
 
   | reading | what it rules out |
@@ -141,7 +143,23 @@ Not closed by it:
   wrong about half the time. The row written before the exhaustion stays readable, and the same write
   succeeds once the quota is restored: the refusal is loud and it is not permanent.
 
-- **private browsing** — still unexercised by any probe;
+- **private browsing** — no longer unexercised: `test/browser/incognito-probe.mjs` opens the product in a
+  context created with `Target.createBrowserContext` (a page-level session is refused: *"Not allowed"*,
+  measured before the probe was written) and commits **ten** checks in `test/browser/incognito-run.json`,
+  re-derived by `verify.yml`. A private window turns out not to be a degraded platform, which is the
+  reading that matters:
+
+  | reading | why it is a check and not a sentence |
+  | --- | --- |
+  | the tier is still `opfs`, `refused: []` | a fallback here would give private-window users a different database |
+  | the claim **acquires** under the same pool name the default context holds | the claim is partition-scoped, so neither context locks the other out |
+  | the row the default context wrote is `null` in the private window, and `{v: 2}` written there stays invisible to it | the partition is separate in both directions |
+  | a second tab **inside** the private window is refused by name (`BrowserStorageBusy`) | a mechanism present in one context and silently absent in another is the defect shape this repository keeps catching |
+  | a newly created private context reads `null` where the previous one wrote `{v: 2}` | the browser forgets — a property of the platform, recorded so nobody attributes it to the product |
+
+  What a private window therefore means for a deployment: memory created there is invisible to the normal
+  window and does not outlive the window. That is the browser's promise, not a product limitation, and it
+  is now a measurement rather than an assumption;
 - **that Firefox is supported as a product.** Obtaining the tier and surviving a restart is the API
   contract. Quota behaviour, eviction order and sync-handle contention across many tabs are a different
   sentence with a different measurement.

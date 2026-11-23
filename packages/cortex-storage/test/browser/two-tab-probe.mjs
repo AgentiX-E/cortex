@@ -30,16 +30,15 @@
  *   node test/browser/two-tab-probe.mjs
  *   CORTEX_CHROME=/path/to/chrome node test/browser/two-tab-probe.mjs
  */
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Connection, findChrome, launch, sleep, waitReady } from './cdp.mjs';
+import { agreeWithCommitted, collector } from './committed.mjs';
 import { serveDist } from './server.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** The repository root, so a `--committed` path from the workflow resolves the same from any directory. */
-const REPO_ROOT = resolve(HERE, '..', '..', '..', '..');
 const PACKAGE = resolve(HERE, '..', '..');
 // A variable of its own, not `CORTEX_RESULTS`: `probe.mjs` already owns that name for `last-run.json`,
 // and the two would overwrite each other -- the failure `verify.yml` spent a round fixing for the bundle
@@ -82,7 +81,7 @@ async function main() {
   const profile = mkdtempSync(join(tmpdir(), 'cortex-two-tab-'));
   const debugPort = 9900 + Math.floor(Math.random() * 90);
   const launched = await launch({ chrome, profile, port: debugPort });
-  const checks = [];
+  const probe = collector();
   try {
     // `launch` hands back a target on `about:blank`; the origin is what makes two tabs share storage, so
     // the first tab is navigated before anything is measured.
@@ -94,12 +93,7 @@ async function main() {
     throw error;
   }
 
-  const check = (name, ok, detail) => {
-    checks.push({ name, ok: ok === true, detail });
-    console.log(
-      `${ok === true ? 'ok  ' : 'FAIL'} ${name}${ok === true ? '' : ` -- ${JSON.stringify(detail)}`}`,
-    );
-  };
+  const check = probe.check;
 
   try {
     const run = (connection, request) =>
@@ -179,7 +173,7 @@ async function main() {
     server.close();
   }
 
-  const passed = checks.filter((entry) => entry.ok).length;
+  const { checks, passed } = probe;
   console.log(`\n${passed}/${checks.length} two-tab checks passed`);
   writeFileSync(
     RESULTS,
@@ -201,62 +195,10 @@ async function main() {
   console.log(`wrote ${RESULTS}`);
   if (passed !== checks.length) process.exitCode = 1;
   if (process.argv.includes('--check')) {
-    const agreed = compareWithCommitted(checks, passed);
-    if (!agreed) process.exitCode = 1;
+    if (!agreeWithCommitted({ checks, passed, resultsPath: RESULTS, fallback: 'two-tab-run.json' })) {
+      process.exitCode = 1;
+    }
   }
-}
-
-/**
- * Whether a fresh run agrees with the committed reading, check by check.
- *
- * ## Why the comparator lives in the probe
- *
- * `tools/browser-reading-check.mjs` compares the three *arm* readings by their tier and digest. This
- * artefact is a list of named checks with a verdict, which is a different shape, and a comparator that
- * handled both would be a comparator with a switch in it. What the two share is the rule: a committed
- * reading is only evidence if something re-derives it and says so, so a run that disagrees must fail.
- *
- * Order is compared too. These checks are a sequence -- the refusal, the allowed open, the release, the
- * retry -- and a reordering would mean the flow changed while every verdict stayed green.
- */
-function compareWithCommitted(fresh, passedCount) {
-  // Named on the command line by the workflow that re-derives it, so the step and the reading are tied
-  // together in the one place a reader looks -- the same rule the other three readings follow through
-  // `tools/browser-reading-check.mjs --committed`.
-  // Relative to the repository root rather than the working directory: `pnpm --filter` runs a package
-  // script with the package as its cwd, so a path a workflow writes from the root would otherwise resolve
-  // twice -- which it did, and the failure was "no committed reading at packages/packages/...".
-  const flag = process.argv.indexOf('--committed');
-  const named = flag >= 0 ? process.argv[flag + 1] : undefined;
-  const committedPath =
-    named === undefined ? join(HERE, 'two-tab-run.json') : resolve(REPO_ROOT, named);
-  if (!existsSync(committedPath)) {
-    console.error(`FAIL no committed reading at ${committedPath}`);
-    return false;
-  }
-  const committed = JSON.parse(readFileSync(committedPath, 'utf8'));
-  const before = committed.checks ?? [];
-  const differences = [];
-  if (before.length !== fresh.length)
-    differences.push(`${before.length} checks against ${fresh.length}`);
-  for (let index = 0; index < Math.min(before.length, fresh.length); index += 1) {
-    const one = before[index];
-    const two = fresh[index];
-    if (one.name !== two.name)
-      differences.push(`#${index + 1} is named "${one.name}", fresh "${two.name}"`);
-    if (one.ok !== two.ok)
-      differences.push(`#${index + 1} "${one.name}" was ${one.ok}, fresh ${two.ok}`);
-  }
-  if (differences.length > 0) {
-    console.error(`FAIL ${RESULTS} disagrees with ${committedPath}:`);
-    for (const difference of differences) console.error(`  ${difference}`);
-    return false;
-  }
-  console.log(
-    `ok ${RESULTS} agrees with ${committedPath}: ${fresh.length} checks, identical in order and verdict` +
-      ` (${passedCount}/${fresh.length} green in both)`,
-  );
-  return true;
 }
 
 await main();

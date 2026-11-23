@@ -307,13 +307,10 @@ jobs:
           node packages/cortex-storage/test/browser/two-tab-probe.mjs \
             --check --committed packages/cortex-storage/test/browser/two-tab-run.json
 
-      # The general form of the bundle defect below: a probe that writes its reading back into the
-      # checkout leaves one file that always agrees with itself. Asserted here, where the checkout
-      # starts clean, rather than in `pnpm check`, where a developer's tree is dirty by definition.
       # The quota, created the only way a page cannot: the DevTools protocol. This step exists because
       # the first design for it was wrong in a way only a browser could reveal -- a one-byte write was
       # supposed to tell a full origin from a failing device, and at a zero quota that write still
-      # succeeds (eight megabytes of it does). The three platform checks that record this are the
+      # succeeds (eight megabytes of it does). The two platform checks that record this are the
       # reason the class is `StorageUnavailableError` rather than `StorageFullError`, so they are
       # compared here exactly like the two-tab claim above.
       - name: The quota, re-derived and compared
@@ -323,6 +320,23 @@ jobs:
           node packages/cortex-storage/test/browser/quota-probe.mjs \
             --check --committed packages/cortex-storage/test/browser/quota-run.json
 
+      # A private window is a separate storage partition, and the protected claim has to hold there too.
+      # The checks record what a caller depends on and no document can assert: the tier is still OPFS (a
+      # private window is not a degraded platform), the claim still acquires with Web Locks and does so
+      # under the same pool name the other context holds, the row the default context wrote is invisible,
+      # and a second tab inside the same private window is still refused by name. The final check is the
+      # one that makes "released" measurable rather than assumed; the dispose check is the browser's
+      # promise -- forgotten -- not the product's.
+      - name: The private window, re-derived and compared
+        env:
+          CORTEX_RESULTS_INCOGNITO: /tmp/fresh-incognito-run.json
+        run: |
+          node packages/cortex-storage/test/browser/incognito-probe.mjs \
+            --check --committed packages/cortex-storage/test/browser/incognito-run.json
+
+      # The general form of the bundle defect below: a probe that writes its reading back into the
+      # checkout leaves one file that always agrees with itself. Asserted here, where the checkout
+      # starts clean, rather than in `pnpm check`, where a developer's tree is dirty by definition.
       - name: The suites wrote nothing into the checkout
         run: node tools/readings-in-place.mjs
 
@@ -362,6 +376,7 @@ jobs:
             /tmp/fresh-bundle-run.json
             /tmp/fresh-two-tab-run.json
             /tmp/fresh-quota-run.json
+            /tmp/fresh-incognito-run.json
             packages/cortex-memory/test/browser/corpus-run.json
           if-no-files-found: ignore
 

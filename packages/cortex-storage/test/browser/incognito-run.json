@@ -1,0 +1,170 @@
+{
+  "engine": "chromium",
+  "checks": [
+    {
+      "name": "the default context opens on OPFS and holds the claim",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "refused": [],
+        "wrote": "privacy"
+      }
+    },
+    {
+      "name": "a private window has Web Locks and an origin directory",
+      "ok": true,
+      "detail": {
+        "locks": true,
+        "opfs": true
+      }
+    },
+    {
+      "name": "the private window opens on OPFS and acquires the same pool name the other context holds",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "refused": []
+      }
+    },
+    {
+      "name": "the private window cannot see the row the default context wrote",
+      "ok": true,
+      "detail": {
+        "mode": "held",
+        "held": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "read": null
+      }
+    },
+    {
+      "name": "the private window writes and reads back its own row",
+      "ok": true,
+      "detail": {
+        "mode": "held",
+        "held": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "wrote": "privacy",
+        "read": {
+          "v": 2
+        }
+      }
+    },
+    {
+      "name": "the default context still reads its own row, untouched",
+      "ok": true,
+      "detail": {
+        "mode": "held",
+        "held": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "read": {
+          "v": 1
+        }
+      }
+    },
+    {
+      "name": "a second tab in the same private window is refused by name",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": false,
+        "name": "BrowserStorageBusy",
+        "pool": "cortex",
+        "mechanism": "web-locks",
+        "message": "another tab of this origin holds the cortex database \"cortex\" (single-writer claim via web-locks). Close it, or pass `onSecondTab: 'allow'` to open a second database alongside it — the two will not share rows."
+      }
+    },
+    {
+      "name": "a new private window starts empty: the previous one took its row with it",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "refused": [],
+        "read": null
+      }
+    },
+    {
+      "name": "the default context still holds its row at the end",
+      "ok": true,
+      "detail": {
+        "mode": "held",
+        "held": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "read": {
+          "v": 1
+        }
+      }
+    },
+    {
+      "name": "after the writer closes, a fresh tab opens and still reads the row",
+      "ok": true,
+      "detail": {
+        "closed": {
+          "closed": true
+        },
+        "reopened": {
+          "mode": "two-tab",
+          "onSecondTab": "refuse",
+          "ok": true,
+          "tier": "opfs",
+          "writer": {
+            "pool": "cortex",
+            "acquired": true,
+            "mechanism": "web-locks"
+          },
+          "refused": [],
+          "read": {
+            "v": 1
+          }
+        }
+      }
+    }
+  ],
+  "passed": 10,
+  "total": 10,
+  "note": "One profile, one origin, two browser contexts: the default one and one created with Target.createBrowserContext (which a page-level session is refused: \"Not allowed\", measured before this file was written). Timings are not recorded because nothing here depends on them. The private context is disposed before check 8, so \"forgotten\" is a reading about the browser and not about the product: the product stores what the platform gives it."
+}

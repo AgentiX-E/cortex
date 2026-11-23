@@ -50,11 +50,12 @@
  *   node test/browser/quota-probe.mjs
  *   node test/browser/quota-probe.mjs --check --committed packages/cortex-storage/test/browser/quota-run.json
  */
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findChrome, launch, sleep, waitReady } from './cdp.mjs';
+import { agreeWithCommitted, collector } from './committed.mjs';
 import { serveDist } from './server.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -82,7 +83,7 @@ async function main() {
   const profile = mkdtempSync(join(tmpdir(), 'cortex-quota-'));
   const debugPort = 9950 + Math.floor(Math.random() * 40);
   const launched = await launch({ chrome, profile, port: debugPort });
-  const checks = [];
+  const probe = collector();
   try {
     await launched.connection.send('Page.navigate', { url: `${origin}/` });
     await waitReady(launched.connection);
@@ -92,10 +93,7 @@ async function main() {
     throw error;
   }
 
-  const check = (name, ok, detail) => {
-    checks.push({ name, ok: ok === true, detail });
-    console.log(`${ok === true ? 'ok  ' : 'FAIL'} ${name}${ok === true ? '' : ` -- ${JSON.stringify(detail)}`}`);
-  };
+  const check = probe.check;
   const send = (method, params) => launched.connection.send(method, params);
   const run = (request) => launched.connection.evaluate(`window.__run(${JSON.stringify(request)})`);
 
@@ -167,7 +165,7 @@ async function main() {
     server.close();
   }
 
-  const passed = checks.filter((entry) => entry.ok).length;
+  const { checks, passed } = probe;
   console.log(`\n${passed}/${checks.length} quota checks passed`);
   writeFileSync(
     RESULTS,
@@ -193,45 +191,10 @@ async function main() {
   console.log(`wrote ${RESULTS}`);
   if (passed !== checks.length) process.exitCode = 1;
   if (process.argv.includes('--check')) {
-    if (!compareWithCommitted(checks, passed)) process.exitCode = 1;
+    if (!agreeWithCommitted({ checks, passed, resultsPath: RESULTS, fallback: 'quota-run.json' })) {
+      process.exitCode = 1;
+    }
   }
-}
-
-/**
- * Whether a fresh run agrees with the committed reading, check by check and in order.
- *
- * The same rule the two-tab probe follows: a committed reading is evidence only if something
- * re-derives it and says so, and a reordering is a change to the flow even when every verdict stays
- * green.
- */
-function compareWithCommitted(fresh, passedCount) {
-  const flag = process.argv.indexOf('--committed');
-  const named = flag >= 0 ? process.argv[flag + 1] : undefined;
-  const committedPath = named === undefined ? join(HERE, 'quota-run.json') : resolve(REPO_ROOT, named);
-  if (!existsSync(committedPath)) {
-    console.error(`FAIL no committed reading at ${committedPath}`);
-    return false;
-  }
-  const committed = JSON.parse(readFileSync(committedPath, 'utf8'));
-  const before = committed.checks ?? [];
-  const differences = [];
-  if (before.length !== fresh.length) differences.push(`${before.length} checks against ${fresh.length}`);
-  for (let index = 0; index < Math.min(before.length, fresh.length); index += 1) {
-    const one = before[index];
-    const two = fresh[index];
-    if (one.name !== two.name) differences.push(`#${index + 1} is named "${one.name}", fresh "${two.name}"`);
-    if (one.ok !== two.ok) differences.push(`#${index + 1} "${one.name}" was ${one.ok}, fresh ${two.ok}`);
-  }
-  if (differences.length > 0) {
-    console.error(`FAIL ${RESULTS} disagrees with ${committedPath}:`);
-    for (const difference of differences) console.error(`  ${difference}`);
-    return false;
-  }
-  console.log(
-    `ok ${RESULTS} agrees with ${committedPath}: ${fresh.length} checks, identical in order and verdict` +
-      ` (${passedCount}/${fresh.length} green in both)`,
-  );
-  return true;
 }
 
 await main();

@@ -421,6 +421,20 @@ succeeds, so from inside the page a full origin and a failing device are the sam
 apart; the engine's own message is kept as `cause`. The statement did not run, so nothing is
 half-written: check free space first, then the origin's quota.
 
+**Two tabs and private windows.** A browser origin holds one writable database, so
+`openBrowserStorage` claims it with Web Locks before it opens any tier. A second tab gets
+`BrowserStorageBusy` instead of a second database that would silently diverge; pass
+`onSecondTab: 'allow'` if you *want* the second one, and read the rows as separate from the first.
+Closing the first tab releases the claim, and a tab that asks again right afterwards is served — the
+release is observed by the platform one task later, which is why the claim retries briefly rather than
+answering on the first refusal.
+
+A **private window is a separate storage partition**, not a degraded platform: it opens on OPFS, it
+claims the origin just as a normal window does, and the two cannot see each other's rows or each
+other's locks. Memory written in a private window therefore does not outlive it — the browser drops
+the partition when the window closes. That is the platform's promise rather than a limitation of this
+library, and it is measured (`test/browser/incognito-probe.mjs`) rather than assumed.
+
 ### 5.3 What the store is now: the corpus the memory keeps
 
 Until this release the two chapters above read as if the memory might touch a `Storage`, and it never

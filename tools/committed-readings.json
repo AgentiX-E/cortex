@@ -147,6 +147,13 @@
       "job": "browser",
       "workflow": ".github/workflows/verify.yml",
       "why": "The quota probe sets the origin's quota to zero over the DevTools protocol, writes, lifts it, writes again, and compares eleven named checks with the committed copy. Three of them exist to record a negative result -- a raw OPFS write of eight megabytes still succeeds, IndexedDB still writes, `estimate()` still reports 10 GiB -- which is why the tier raises `StorageUnavailableError` instead of naming the quota."
+    },
+    {
+      "path": "packages/cortex-storage/test/browser/incognito-run.json",
+      "kind": "recomputed",
+      "job": "browser",
+      "workflow": ".github/workflows/verify.yml",
+      "why": "A private window is a separate storage partition: the probe opens the product in the default context, then in one created with Target.createBrowserContext, and compares ten named checks. The ones that matter are that the tier is still OPFS rather than a fallback, that the claim acquires with Web Locks under the same pool name the other context holds (partition-scoped, so neither context can lock the other out), that the rows stay invisible to each other, and that a second tab inside the private window is still refused by name. A mechanism present in one context and silently absent in another is the failure this reading exists to rule out."
     }
   ]
 }
