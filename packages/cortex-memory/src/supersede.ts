@@ -75,6 +75,8 @@
  *   a known-correct answer shape is the exact defect `42976296380` was lost to.
  */
 
+import { classifyTemporalIntent, type TemporalDirection } from './temporal-intent.js';
+
 /**
  * What the reader said about the pair, before any check.
  *
@@ -112,6 +114,7 @@ export type SupersessionRefusal =
   | 'no-quote'
   | 'agrees'
   | 'restates'
+  | 'asks-earlier'
   | 'not-in-evidence'
   | 'date-not-on-line'
   | 'not-later';
@@ -514,15 +517,31 @@ function noneIfPlaceholder(value: string | null): string | null {
 }
 
 /**
- * The whole decision: a report, the answer it is about, and the evidence both of them read.
+ * The whole decision: a report, the answer it is about, the evidence both of them read, and the question
+ * that asked for the answer.
  *
  * The order of the checks is the order of the costs they impose on a correct answer, cheapest first,
  * and every `keep` is a named refusal rather than a silent pass.
+ *
+ * ## Why the question is a parameter rather than something the pass reads for itself
+ *
+ * The seven checks below all answer "is this substitution supported". None of them answers "is this
+ * substitution **wanted**", and the two are different questions whenever the question asks for a value
+ * from before a change. `50635ada` is the measurement: with the pass off it answered `Premier Silver`
+ * and was right; with the pass on it answered `Premier Gold` -- the value the corpus moved to later --
+ * because the question says **previous** and nothing between the report and the verdict read that word.
+ * Seven substitutions on one question, in the direction the mechanism is named for and the question did
+ * not ask for.
+ *
+ * The check sits after `restates` and before the evidence checks, because it costs one regex over the
+ * question and because a direction error is a defect of the substitution rather than of the evidence:
+ * an authorised quote in the perfect record still answers the wrong half of a before/after question.
  */
 export function adjudicateSupersession(
   report: SupersessionReport,
   firstAnswer: string,
   evidence: string,
+  question: string,
 ): SupersessionVerdict {
   if (report.changed === null) return { kind: 'keep', reason: 'unreadable' };
   if (!report.changed) return { kind: 'keep', reason: 'no-change' };
@@ -538,6 +557,13 @@ export function adjudicateSupersession(
   // what the answer becomes. A span whose numerals are all already in the answer is a restatement.
   const value = substitutedValue(report.later, firstAnswer);
   if (value.kind === 'restates') return { kind: 'keep', reason: 'restates' };
+
+  // The direction the question named. A replacement always hands the answer the **later** value, which is
+  // the right answer to "what is it now" and the wrong answer to "what was it before", so a question that
+  // asks for the earlier end refuses the substitution outright. `both` is refused for the same reason at a
+  // larger scale: its gold spans the two ends, and a replacement answers one and drops the other.
+  const direction: TemporalDirection = classifyTemporalIntent(question);
+  if (direction !== 'latest') return { kind: 'keep', reason: 'asks-earlier' };
 
   const records = evidenceRecords(evidence);
   const matching = records
@@ -641,6 +667,7 @@ export function emptySupersessionCensus(): {
       'no-quote': 0,
       agrees: 0,
       restates: 0,
+      'asks-earlier': 0,
       'not-in-evidence': 0,
       'date-not-on-line': 0,
       'not-later': 0,

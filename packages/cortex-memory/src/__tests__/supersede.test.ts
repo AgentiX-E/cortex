@@ -29,6 +29,16 @@ const EVIDENCE = [
   '[2023/03/12 (Sun) 11:40] user: Small update, I crossed 1300 followers last week.',
 ].join('\n');
 
+/**
+ * The question every fixture below is asked against, unless a test says otherwise.
+ *
+ * `adjudicateSupersession` reads the question now, and the direction it names decides whether a
+ * substitution is wanted at all -- so a fixture that did not state one would be a fixture whose expected
+ * verdict depends on a default. Stated once, in the shape the corpus actually has: a present-tense ask
+ * for the value in force, which is 60 of the 72 `KU` questions.
+ */
+const LATEST = 'How many followers do I have on Instagram now?';
+
 function report(over: Partial<SupersessionReport> = {}): SupersessionReport {
   return {
     changed: true,
@@ -50,7 +60,7 @@ describe('what counts as one evidence record', () => {
       '[2023/03/12 (Sun) 11:40] user: I crossed 1300',
       'followers last week',
     ].join('\n');
-    const verdict = adjudicateSupersession(report(), '1250', multiline);
+    const verdict = adjudicateSupersession(report(), '1250', multiline, LATEST);
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 1 });
   });
@@ -60,7 +70,7 @@ describe('what counts as one evidence record', () => {
     // cannot be authorised against it. That is the correct direction: the alternative is authorising on a date
     // the evidence never wrote.
     const undated = 'my follower count is 1250\nI crossed 1300 followers';
-    const verdict = adjudicateSupersession(report(), '1250', undated);
+    const verdict = adjudicateSupersession(report(), '1250', undated, LATEST);
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'date-not-on-line' });
   });
@@ -73,6 +83,7 @@ describe('how a span is compared to the evidence', () => {
       { changed: true, later: 'FRIDAY', when: '2023/01/01 (Sun) 00:00', shape: 'three-lines' },
       'Thursday',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: 'FRIDAY', record: 0 });
@@ -86,11 +97,13 @@ describe('how a span is compared to the evidence', () => {
       { changed: true, later: '3750', when: '2023/01/01 (Sun) 00:00', shape: 'three-lines' },
       '2,000',
       evidence,
+      LATEST,
     );
     const exact = adjudicateSupersession(
       { changed: true, later: '$3,750', when: '2023/01/01 (Sun) 00:00', shape: 'three-lines' },
       '2,000',
       evidence,
+      LATEST,
     );
 
     expect(stripped).toMatchObject({ kind: 'keep', reason: 'not-in-evidence' });
@@ -164,13 +177,13 @@ describe('reading the three lines', () => {
 
 describe('the adjudication', () => {
   it('replaces when the span is in the evidence and its date is on the same record', () => {
-    const verdict = adjudicateSupersession(report(), '1250', EVIDENCE);
+    const verdict = adjudicateSupersession(report(), '1250', EVIDENCE, LATEST);
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 2 });
   });
 
   it('refuses a claim that is not in the evidence, and says so by name', () => {
-    const verdict = adjudicateSupersession(report({ later: '1400' }), '1250', EVIDENCE);
+    const verdict = adjudicateSupersession(report({ later: '1400' }), '1250', EVIDENCE, LATEST);
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'not-in-evidence' });
   });
@@ -183,13 +196,14 @@ describe('the adjudication', () => {
       report({ when: '2023/04/01 (Sat) 00:00' }),
       '1250',
       EVIDENCE,
+      LATEST,
     );
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'date-not-on-line' });
   });
 
   it('refuses a claim that names no date at all', () => {
-    expect(adjudicateSupersession(report({ when: null }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ when: null }), '1250', EVIDENCE, LATEST)).toEqual({
       kind: 'keep',
       reason: 'date-not-on-line',
     });
@@ -199,7 +213,7 @@ describe('the adjudication', () => {
     // `WHEN: ""` normalises to the empty string, and an empty string is a substring of every record — so
     // without this check the date requirement would pass on any evidence at all. It is the one place where
     // "contains" is true of everything and therefore means nothing.
-    expect(adjudicateSupersession(report({ when: '""' }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ when: '""' }), '1250', EVIDENCE, LATEST)).toEqual({
       kind: 'keep',
       reason: 'date-not-on-line',
     });
@@ -214,7 +228,7 @@ describe('the adjudication', () => {
       '[2023/01/10 (Tue) 03:14] user: I have 1300 followers.',
       '[2023/03/12 (Sun) 11:40] user: I crossed 1300 followers.',
     ].join('\n');
-    const verdict = adjudicateSupersession(report(), '1250', twice);
+    const verdict = adjudicateSupersession(report(), '1250', twice, LATEST);
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'date-not-on-line' });
   });
@@ -222,7 +236,7 @@ describe('the adjudication', () => {
   it('refuses a quote that is just the answer it would replace', () => {
     // Without this the pass reports a replacement on every question where the reader copies its own answer,
     // and `replaced` counts conversions that never happened.
-    expect(adjudicateSupersession(report({ later: '1250' }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ later: '1250' }), '1250', EVIDENCE, LATEST)).toEqual({
       kind: 'keep',
       reason: 'agrees',
     });
@@ -234,7 +248,9 @@ describe('the adjudication', () => {
     // of the six were the gate's own targets. The span is how the reader demonstrates that it copied; the
     // numeral inside it is what the answer becomes.
     const sentence = 'Small update, I crossed 1300 followers last week.';
-    expect(adjudicateSupersession(report({ later: sentence }), '1250', EVIDENCE)).toMatchObject({
+    expect(
+      adjudicateSupersession(report({ later: sentence }), '1250', EVIDENCE, LATEST),
+    ).toMatchObject({
       kind: 'replace',
       value: '1300 followers',
       record: 2,
@@ -252,6 +268,7 @@ describe('the adjudication', () => {
       },
       '20 dozen',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '30 dozen', record: 0 });
@@ -268,6 +285,7 @@ describe('the adjudication', () => {
       },
       '1250',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 0 });
@@ -284,6 +302,7 @@ describe('the adjudication', () => {
       },
       '1250',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '1300 followers', record: 0 });
@@ -303,6 +322,7 @@ describe('the adjudication', () => {
       },
       '7:30 am',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'restates' });
@@ -317,6 +337,7 @@ describe('the adjudication', () => {
       { changed: true, later: 'Friday', when: '2023/03/12 (Sun) 11:40', shape: 'three-lines' },
       'Thursday',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: 'Friday', record: 0 });
@@ -333,6 +354,7 @@ describe('the adjudication', () => {
       },
       'Thursday',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'restates' });
@@ -351,6 +373,7 @@ describe('the adjudication', () => {
       },
       'Thursday',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'restates' });
@@ -367,6 +390,7 @@ describe('the adjudication', () => {
       },
       '1250',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 0 });
@@ -385,6 +409,7 @@ describe('the adjudication', () => {
       },
       '250',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '300', record: 0 });
@@ -392,7 +417,9 @@ describe('the adjudication', () => {
 
   it('accepts a span that carries a line break, because the value is one token of it', () => {
     const wrapped = '1300 followers\nlast week';
-    expect(adjudicateSupersession(report({ later: wrapped }), '1250', EVIDENCE)).toMatchObject({
+    expect(
+      adjudicateSupersession(report({ later: wrapped }), '1250', EVIDENCE, LATEST),
+    ).toMatchObject({
       kind: 'replace',
       value: '1300 followers',
       record: 2,
@@ -400,32 +427,32 @@ describe('the adjudication', () => {
   });
 
   it('takes the reader at its word when it says nothing changed', () => {
-    expect(adjudicateSupersession(report({ changed: false }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ changed: false }), '1250', EVIDENCE, LATEST)).toEqual({
       kind: 'keep',
       reason: 'no-change',
     });
   });
 
   it('refuses an unreadable reply rather than reading it as a no', () => {
-    expect(adjudicateSupersession(report({ changed: null }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ changed: null }), '1250', EVIDENCE, LATEST)).toEqual({
       kind: 'keep',
       reason: 'unreadable',
     });
   });
 
   it('refuses a yes with no span, and a span that is empty once unquoted', () => {
-    expect(adjudicateSupersession(report({ later: null }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ later: null }), '1250', EVIDENCE, LATEST)).toEqual({
       kind: 'keep',
       reason: 'no-quote',
     });
-    expect(adjudicateSupersession(report({ later: '""' }), '1250', EVIDENCE)).toEqual({
+    expect(adjudicateSupersession(report({ later: '""' }), '1250', EVIDENCE, LATEST)).toEqual({
       kind: 'keep',
       reason: 'no-quote',
     });
   });
 
   it('accepts a quote the reader wrapped in quotation marks, and returns it trimmed', () => {
-    const verdict = adjudicateSupersession(report({ later: '"1300"' }), '1250', EVIDENCE);
+    const verdict = adjudicateSupersession(report({ later: '"1300"' }), '1250', EVIDENCE, LATEST);
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '"1300"', record: 2 });
   });
@@ -434,11 +461,27 @@ describe('the adjudication', () => {
 describe('the census', () => {
   it('starts with every reason present at zero, so absence is never inferred from a missing key', () => {
     const census = emptySupersessionCensus();
+    // The reasons are written out rather than counted. A count says "a key is missing or extra" and sends
+    // the reader to the union; this says which one, and it fails in the same place either way -- which is
+    // what makes adding a reason to `SupersessionRefusal` a change that cannot be forgotten here. This
+    // assertion is the census's own rule ("two defects with one name is one defect the census cannot see")
+    // applied to the census.
+    const REASONS = [
+      'unreadable',
+      'no-change',
+      'no-quote',
+      'agrees',
+      'restates',
+      'asks-earlier',
+      'not-in-evidence',
+      'date-not-on-line',
+      'not-later',
+    ] as const;
 
     expect(census.attempted).toBe(0);
     expect(census.replaced).toBe(0);
     expect(Object.values(census.refusals).every((count) => count === 0)).toBe(true);
-    expect(Object.keys(census.refusals)).toHaveLength(8);
+    expect(Object.keys(census.refusals).sort()).toEqual([...REASONS].sort());
   });
 });
 
@@ -463,6 +506,7 @@ describe('the ordering check, which the span and the date cannot supply', () => 
       },
       '20 dozen',
       EGG_EVIDENCE,
+      LATEST,
     );
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'not-later' });
@@ -478,6 +522,7 @@ describe('the ordering check, which the span and the date cannot supply', () => 
       },
       '30 dozen',
       EGG_EVIDENCE,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
@@ -499,6 +544,7 @@ describe('the ordering check, which the span and the date cannot supply', () => 
       },
       '1250',
       oneTurn,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '1300', record: 0 });
@@ -517,6 +563,7 @@ describe('the ordering check, which the span and the date cannot supply', () => 
       },
       'about twenty egg cartons',
       EGG_EVIDENCE,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
@@ -536,6 +583,7 @@ describe('the stamps the ordering check can and cannot read', () => {
       { changed: true, later: '30 dozen', when: '2023/01/11', shape: 'three-lines' },
       '20 dozen',
       dated,
+      LATEST,
     );
 
     expect(verdict).toEqual({ kind: 'keep', reason: 'not-later' });
@@ -553,6 +601,7 @@ describe('the stamps the ordering check can and cannot read', () => {
       { changed: true, later: '30 dozen', when: 'undated', shape: 'three-lines' },
       '20 dozen',
       undated,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '30 dozen', record: 0 });
@@ -564,6 +613,7 @@ describe('the stamps the ordering check can and cannot read', () => {
       { changed: true, later: '20 dozen', when: '2023/03/15 (Wed) 10:52', shape: 'three-lines' },
       '',
       evidence,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 0 });
@@ -588,6 +638,7 @@ describe('two records that carry the same stamp', () => {
       },
       '30 dozen',
       twice,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
@@ -612,6 +663,7 @@ describe('an answer whose own record carries no date at all', () => {
       },
       '20 dozen',
       mixed,
+      LATEST,
     );
 
     expect(verdict).toMatchObject({ kind: 'replace', value: '30 dozen', record: 1 });
@@ -639,6 +691,7 @@ describe('evidence the renderer numbered, which is every prompt the product send
       },
       '30 dozen',
       NUMBERED,
+      LATEST,
     );
     // `record: 1`, not `0`. On the old splitter this was always `0` because there was always one record, and a
     // census reading `record` was reading a constant.
@@ -658,6 +711,7 @@ describe('evidence the renderer numbered, which is every prompt the product send
       },
       '20 dozen stocked up',
       NUMBERED,
+      LATEST,
     );
     expect(verdict).toEqual({ kind: 'keep', reason: 'not-later' });
   });
@@ -675,6 +729,7 @@ describe('evidence the renderer numbered, which is every prompt the product send
       },
       'nothing at all',
       NUMBERED,
+      LATEST,
     );
     expect(verdict).toEqual({ kind: 'keep', reason: 'date-not-on-line' });
   });
@@ -693,6 +748,7 @@ describe('evidence the renderer numbered, which is every prompt the product send
       },
       '30 dozen',
       itemIds,
+      LATEST,
     );
     expect(verdict).toMatchObject({ kind: 'replace', value: '20 dozen', record: 1 });
   });
@@ -715,6 +771,7 @@ describe('the receipt the verdict carries', () => {
       },
       '30 dozen',
       NUMBERED,
+      LATEST,
     );
     expect(verdict.kind).toBe('replace');
     if (verdict.kind !== 'replace') throw new Error('expected a replacement');
@@ -738,6 +795,7 @@ describe('the receipt the verdict carries', () => {
       },
       '30 dozen',
       NUMBERED,
+      LATEST,
     );
     if (verdict.kind !== 'replace') throw new Error('expected a replacement');
     expect(verdict.authorised.later.at).toBe(Date.UTC(2023, 2, 15, 10, 52));
@@ -762,11 +820,151 @@ describe('the receipt the verdict carries', () => {
       },
       '30 dozen',
       impossible,
+      LATEST,
     );
 
     expect(verdict.kind).toBe('replace');
     if (verdict.kind !== 'replace') throw new Error('expected a replacement');
     expect(verdict.authorised.later.at).toBeNull();
     expect(verdict.authorised.later.date).toBe('2023/13/45 (Wed) 10:52');
+  });
+});
+
+/**
+ * The direction the question named, which is the one thing the seven evidence checks never read.
+ *
+ * ## Why this block exists at all, and what it is measured against
+ *
+ * `50635ada` is the measurement. On the `semantic-carry` artifact it answered `Premier Silver` -- the
+ * gold -- with the pass off, and `Premier Gold` with the pass on: seven substitutions, one question,
+ * every one of them authorised by evidence that was genuinely there and genuinely later. The question
+ * says "my **previous** frequent flyer status ... **before** I got the current status", so the later
+ * statement is not the answer to it, and no amount of evidence checking can make it one.
+ *
+ * The three tests below are the three questions of the 72 `KU` questions on which a substitution
+ * actually happened and the question asked for the earlier end. The other seven `earlier` questions in
+ * the population refused for reasons of their own, which is why this check costs no conversion there:
+ * it is inserted at a point those questions never reach with a `replace` in hand.
+ */
+describe('the direction the question named', () => {
+  const EVIDENCE_WITH_LATER_STATUS = [
+    '[2023/03/01 (Wed) 08:10] user: I have Premier Silver status on United.',
+    '[2023/05/30 (Tue) 18:44] user: I made Premier Gold status on United.',
+  ].join('\n');
+
+  it('refuses a later value on a question that asks for the previous one', () => {
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'Premier Gold',
+        when: '2023/05/30 (Tue) 18:44',
+        shape: 'three-lines',
+      },
+      'Premier Silver',
+      EVIDENCE_WITH_LATER_STATUS,
+      'What was my previous frequent flyer status on United Airlines before I got the current status?',
+    );
+
+    // The refusal is a claim about the substitution, not about the evidence: every field above is
+    // checkable, and all of it checks out. What it does not do is answer the question.
+    expect(verdict).toEqual({ kind: 'keep', reason: 'asks-earlier' });
+  });
+
+  it('refuses a value that sits outside the window the question names', () => {
+    // `0ddfec37`: "in the **first three months** of collection". The window is closed; a count from
+    // outside it is a later statement about a longer period, and substituting it answers a question the
+    // speaker did not ask. Seven substitutions in the artifact, all of them this shape.
+    const evidence = [
+      '[2023/06/02 (Fri) 10:00] user: I have 15 autographed baseballs so far.',
+      '[2023/12/30 (Sat) 02:28] user: I have added 20 autographed baseballs in the past few months.',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '20 autographed baseballs',
+        when: '2023/12/30 (Sat) 02:28',
+        shape: 'three-lines',
+      },
+      '15',
+      evidence,
+      'How many autographed baseballs have I added to my collection in the first three months of collection?',
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'asks-earlier' });
+  });
+
+  it('refuses a later value on a question about the earlier of two events', () => {
+    // `10e09553`: "the **earlier** fishing trip ... **before** the 7/22 trip". Same shape as the two
+    // above at a smaller scale -- the later catch belongs to the other trip.
+    const evidence = [
+      '[2023/06/01 (Thu) 09:00] user: We caught 7 largemouth bass on the 7/22 trip.',
+      '[2023/11/30 (Thu) 00:28] user: We caught 9 largemouth bass that day.',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: '9 largemouth bass',
+        when: '2023/11/30 (Thu) 00:28',
+        shape: 'three-lines',
+      },
+      '7',
+      evidence,
+      'How many largemouth bass did I catch with Alex on the earlier fishing trip to Lake Michigan before the 7/22 trip?',
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'asks-earlier' });
+  });
+
+  it('refuses on a question that asks for both ends, because one value cannot answer it', () => {
+    // `f685340e` and `031748ae` ask for the value before a change and the value after it in one string,
+    // and their golds span both. A replacement would answer half the question and drop the other half,
+    // which is worse than leaving the first answer standing: the first answer at least belongs to one of
+    // the two halves.
+    const evidence = [
+      '[2023/02/01 (Wed) 12:00] user: I now lead 6 engineers.',
+      '[2023/03/01 (Wed) 12:00] user: I now lead 8 engineers.',
+    ].join('\n');
+    const verdict = adjudicateSupersession(
+      { changed: true, later: '8 engineers', when: '2023/03/01 (Wed) 12:00', shape: 'three-lines' },
+      '2',
+      evidence,
+      'How many engineers do I lead when I just started my new role as Senior Software Engineer? How many engineers do I lead now?',
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'asks-earlier' });
+  });
+
+  it('keeps the earlier refusal ahead of the direction when the reader reported no change', () => {
+    // The census is read as "why did this claim fail", so the reason has to be the first one that
+    // applies rather than the most specific. A reader that said `CHANGED: no` did not lose a substitution
+    // to the question's direction, and reporting `asks-earlier` for it would credit the direction check
+    // with refusals it never made.
+    const verdict = adjudicateSupersession(
+      { changed: false, later: null, when: null, shape: 'three-lines' },
+      'Premier Silver',
+      EVIDENCE_WITH_LATER_STATUS,
+      'What was my previous frequent flyer status on United Airlines before I got the current status?',
+    );
+
+    expect(verdict).toEqual({ kind: 'keep', reason: 'no-change' });
+  });
+
+  it('still replaces on the same evidence when the question asks for the current value', () => {
+    // The control, on the same two records: the check has to be the question's direction and not the
+    // shape of the evidence. Without this row the four above would pass on a mechanism that refused every
+    // substitution.
+    const verdict = adjudicateSupersession(
+      {
+        changed: true,
+        later: 'Premier Gold',
+        when: '2023/05/30 (Tue) 18:44',
+        shape: 'three-lines',
+      },
+      'Premier Silver',
+      EVIDENCE_WITH_LATER_STATUS,
+      'What is my status on United Airlines now?',
+    );
+
+    expect(verdict).toMatchObject({ kind: 'replace', value: 'Premier Gold' });
   });
 });

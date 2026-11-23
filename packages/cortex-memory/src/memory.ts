@@ -2434,7 +2434,12 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const report: SupersessionReport = parseSupersessionReport(
       raw === null ? this.#lastRawOutput : raw,
     );
-    const verdict: SupersessionVerdict = adjudicateSupersession(report, first, built.evidence);
+    const verdict: SupersessionVerdict = adjudicateSupersession(
+      report,
+      first,
+      built.evidence,
+      question,
+    );
     if (verdict.kind === 'keep') {
       this.#supersessions.refusals[verdict.reason] += 1;
       this.#lastReview = { first, final: first, changed: false };
