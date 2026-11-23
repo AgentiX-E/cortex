@@ -288,6 +288,21 @@ jobs:
           CORTEX_RESULTS_BUNDLE: /tmp/fresh-bundle-run.json
         run: pnpm test:browser
 
+      # The fourth reading, and the first one that needs **two** targets on one profile. `onSecondTab`
+      # exists because `openBrowserStorage` used to answer a second tab with a silent fallback to
+      # IndexedDB -- two tabs, one origin, two sets of rows -- and the only way to know the claim works is
+      # to ask a real browser for the same origin twice.
+      #
+      # `--check` in the same step because the artefact is a list of named checks rather than a tier and a
+      # digest, and its comparator is the probe that wrote it. Running the flow twice to compare it with
+      # itself would double the cost of the suite to learn what one run already knows.
+      - name: The two-tab claim, re-derived and compared
+        env:
+          CORTEX_RESULTS_TWO_TAB: /tmp/fresh-two-tab-run.json
+        run: |
+          pnpm --filter @agentix-e/cortex-storage test:browser:two-tab -- \
+            --check --committed packages/cortex-storage/test/browser/two-tab-run.json
+
       # The general form of the bundle defect below: a probe that writes its reading back into the
       # checkout leaves one file that always agrees with itself. Asserted here, where the checkout
       # starts clean, rather than in `pnpm check`, where a developer's tree is dirty by definition.
@@ -328,6 +343,7 @@ jobs:
             /tmp/fresh-browser-run.json
             /tmp/fresh-corpus-run.json
             /tmp/fresh-bundle-run.json
+            /tmp/fresh-two-tab-run.json
             packages/cortex-memory/test/browser/corpus-run.json
           if-no-files-found: ignore
 

@@ -317,9 +317,60 @@
         };
       }
 
+      /**
+       * One tab's side of the two-tab question, run in a real browser.
+       *
+       * The page reports what the product did; it does not decide whether that is good. `keep` leaves the
+       * storage open so a driver can hold the origin from one target while another target asks for it --
+       * which is the only way to observe a claim, because the claim's lifetime is the writer's.
+       */
+      const held = new Map();
+      async function runTab(request) {
+        const result = { mode: 'two-tab', onSecondTab: request.onSecondTab ?? 'refuse' };
+        try {
+          const opened = await openBrowserStorage({
+            sqliteModuleUrl: SQLITE,
+            onSecondTab: result.onSecondTab,
+            ...(request.tiers === undefined ? {} : { tiers: request.tiers }),
+          });
+          result.ok = true;
+          result.tier = opened.tier;
+          result.writer = opened.writer;
+          result.refused = opened.refused;
+          if (request.write !== undefined) {
+            await opened.storage.put('two-tabs', request.write.key, { v: request.write.value });
+            result.wrote = request.write.key;
+          }
+          if (request.read !== undefined) {
+            const got = await opened.storage.get('two-tabs', request.read);
+            result.read = got ?? null;
+          }
+          if (request.keep === true) held.set(request.slot, opened);
+          else await opened.storage.close();
+          return result;
+        } catch (error) {
+          result.ok = false;
+          result.name = error?.name ?? 'Error';
+          result.pool = error?.pool ?? null;
+          result.mechanism = error?.mechanism ?? null;
+          result.message = String(error?.message ?? error);
+          return result;
+        }
+      }
+
+      async function closeHeld(slot) {
+        const opened = held.get(slot);
+        if (opened === undefined) return { closed: false, name: 'nothing-held' };
+        held.delete(slot);
+        await opened.storage.close();
+        return { closed: true };
+      }
+
       window.__run = async (request) => {
         if (request.mode === 'matrix') return runMatrix();
         if (request.mode === 'write') return runWrite(request.rows);
+        if (request.mode === 'two-tab') return runTab(request);
+        if (request.mode === 'close-held') return closeHeld(request.slot);
         return runRead(request.rows, request.expected);
       };
 

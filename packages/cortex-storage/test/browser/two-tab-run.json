@@ -1,0 +1,116 @@
+{
+  "engine": "chromium",
+  "checks": [
+    {
+      "name": "tab 1 opens OPFS and claims the origin",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "refused": [],
+        "wrote": "marker"
+      }
+    },
+    {
+      "name": "tab 1 wrote the row a later tab must find",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "refused": [],
+        "wrote": "marker"
+      }
+    },
+    {
+      "name": "tab 2 is refused by name, on the claim",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": false,
+        "name": "BrowserStorageBusy",
+        "pool": "cortex",
+        "mechanism": "web-locks",
+        "message": "another tab of this origin holds the cortex database \"cortex\" (single-writer claim via web-locks). Close it, or pass `onSecondTab: 'allow'` to open a second database alongside it — the two will not share rows."
+      }
+    },
+    {
+      "name": "the refusal names the pool and the option that changes it",
+      "ok": true,
+      "detail": "another tab of this origin holds the cortex database \"cortex\" (single-writer claim via web-locks). Close it, or pass `onSecondTab: 'allow'` to open a second database alongside it — the two will not share rows."
+    },
+    {
+      "name": "tab 2 with `allow` proceeds and reports a shared origin",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "allow",
+        "ok": true,
+        "tier": "idb",
+        "writer": {
+          "pool": "cortex",
+          "acquired": false,
+          "mechanism": "web-locks"
+        },
+        "refused": [
+          {
+            "tier": "opfs",
+            "reason": "OPFS storage is unavailable: Failed to execute 'createSyncAccessHandle' on 'FileSystemFileHandle': Access Handles cannot be created if there is another open Access Handle or Writable stream associated with the same file."
+          }
+        ],
+        "read": null
+      }
+    },
+    {
+      "name": "the allowed tab does not see the first tab row, which is the divergence",
+      "ok": true,
+      "detail": {
+        "read": null,
+        "tier": "idb"
+      }
+    },
+    {
+      "name": "tab 1 releases the origin on close",
+      "ok": true,
+      "detail": {
+        "closed": true
+      }
+    },
+    {
+      "name": "tab 2 then opens OPFS and reads tab 1 row",
+      "ok": true,
+      "detail": {
+        "mode": "two-tab",
+        "onSecondTab": "refuse",
+        "ok": true,
+        "tier": "opfs",
+        "writer": {
+          "pool": "cortex",
+          "acquired": true,
+          "mechanism": "web-locks"
+        },
+        "refused": [],
+        "read": {
+          "v": 42
+        }
+      }
+    }
+  ],
+  "passed": 8,
+  "total": 8,
+  "note": "One run. `tier` and `read` are the facts; timings are not recorded because nothing here depends on them. The second-tab claim cannot be measured on Firefox: its BiDi build cannot create a second browsing context."
+}

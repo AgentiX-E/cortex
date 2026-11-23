@@ -96,6 +96,13 @@ import { configDefaults, defineConfig } from 'vitest/config';
  *
  * Everything else in `src/browser` -- the protocol, the session, the request validation -- is here,
  * exercised over a real `MessageChannel` against a real engine, and held to the same threshold.
+ *
+ * The exclusion then turned out to be **too wide**, and the fix was a split rather than a shim: the one
+ * decision inside `opfs.ts` that needs no platform -- claim the origin, refuse or proceed, try the tiers in
+ * order, release when every one fails -- moved to `src/browser/open-policy.ts`, which is excluded from
+ * nothing and now reads 100 on all four dimensions. A test written against the old layout would have
+ * shipped into this exclusion, which is the version of "we cannot cover it" that is really "we put it in the
+ * unmeasured file".
  */
 export default defineConfig({
   test: {

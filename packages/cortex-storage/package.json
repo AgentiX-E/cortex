@@ -1,7 +1,7 @@
 {
   "name": "@agentix-e/cortex-storage",
   "version": "0.1.0",
-  "description": "cortex-storage — storage backends for Cortex, one subpath per backend: SQLite and PostgreSQL in Node, OPFS and IndexedDB in the browser",
+  "description": "cortex-storage \u2014 storage backends for Cortex, one subpath per backend: SQLite and PostgreSQL in Node, OPFS and IndexedDB in the browser",
   "license": "MIT",
   "author": "Lambertyan",
   "type": "module",
@@ -44,6 +44,7 @@
     "guard": "node ../../tools/entry-guard.mjs --package .",
     "clean": "rm -rf dist *.tsbuildinfo coverage",
     "test:browser": "node test/browser/probe.mjs && node test/browser/bundle-probe.mjs",
+    "test:browser:two-tab": "node test/browser/two-tab-probe.mjs",
     "test:browser:firefox": "node test/browser/probe-firefox.mjs",
     "test:pg": "vitest run --config vitest.pg.config.ts --reporter=default --reporter=json --outputFile=/tmp/cortex-pg-report.json"
   },

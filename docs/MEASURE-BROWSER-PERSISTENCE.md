@@ -115,7 +115,12 @@ Not closed by it:
   accuracy campaign's own output;
 - **Safari/WebKit** — its OPFS has no persistent profile in the session model this suite uses, so a third
   engine needs a real device; that stays a listed boundary, not a gap;
-- **multi-tab concurrency, private browsing, quota exhaustion** — none is exercised by either probe;
+- **multi-tab concurrency** — no longer unexercised: `test/browser/two-tab-probe.mjs` runs two Chromium
+  targets on one profile and one origin, and `docs/DESIGN-TWO-TABS.md` records what it found (the second tab
+  was silently getting a second database, and now it is refused by name). Two things it does **not** cover,
+  and they stay boundaries: Firefox, whose BiDi build cannot create a second browsing context, and
+  cross-tab *synchronisation* — the claim makes a second writer visible, it does not make two writers safe;
+- **private browsing, quota exhaustion** — neither is exercised by any probe;
 - **that Firefox is supported as a product.** Obtaining the tier and surviving a restart is the API
   contract. Quota behaviour, eviction order and sync-handle contention across many tabs are a different
   sentence with a different measurement.

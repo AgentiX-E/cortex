@@ -52,6 +52,24 @@ import { gzipSync } from 'node:zlib';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..');
+/*
+ * ## The `./opfs` baseline, and the two readings behind its last change
+ *
+ * 3,813 -> 4,606 B gzip. That is +20.8%, well past the 2% this file allows, so the number was re-derived
+ * rather than absorbed, and the reason is a capability rather than a refactor: `openBrowserStorage` now takes
+ * an origin-wide writer claim before it opens a tier, so a second tab of the same origin is **refused by
+ * name** instead of silently falling back to IndexedDB and writing a second database.
+ *
+ * Two readings were taken before the baseline moved. The first was the failure itself: a real Chromium,
+ * two tabs, one profile, `tab 2` on `idb` with `read: null` while `tab 1` held the row on OPFS
+ * (`docs/DESIGN-TWO-TABS.md` §4). The second was the size: minified bundle 12,374 B, gzip 4,606 B, of which
+ * the claim machinery is ~800 B -- about 17% of what a browser consumer downloads on this subpath, for the
+ * failure mode that used to be invisible.
+ *
+ * What this baseline cannot do is catch the next +800 B as cheaply, and that cost is stated instead of being
+ * hidden by a number nobody re-derives: the 2% allowance now sits on a larger base. An ONNX runtime or a
+ * second SQL engine is still orders of magnitude over it, which is the defect the entry exists for.
+ */
 const BASELINE = join(HERE, 'bundle-guard-baseline.json');
 
 /** Default package. A second package can be guarded by pointing `--package` at it. */

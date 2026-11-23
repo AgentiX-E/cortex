@@ -105,6 +105,13 @@
       "why": "The restart suite runs in the `browser` job at 400 rows, writes to /tmp/fresh-browser-run.json, and is compared with this reading by `tools/browser-reading-check.mjs`."
     },
     {
+      "path": "packages/cortex-storage/test/browser/two-tab-run.json",
+      "kind": "recomputed",
+      "job": "browser",
+      "workflow": ".github/workflows/verify.yml",
+      "why": "The two-tab probe opens two targets on one profile and one origin, writes to /tmp/fresh-two-tab-run.json, and compares check by check. This is the only reading of the four that needs two tabs, and the only evidence for the single-writer claim."
+    },
+    {
       "path": "tools/__tests__/fixtures/longmemeval-sample.json",
       "kind": "input",
       "why": "A slice of LongMemEval-S, checked in so the readout tests parse a real answer sheet rather than a hand-written stub of one."

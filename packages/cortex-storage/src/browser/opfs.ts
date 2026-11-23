@@ -26,11 +26,21 @@
 import type { Storage } from '@agentix-e/cortex-core';
 import { SqlStorage } from '../storage/sql-storage.js';
 import { openIdbStorage } from './idb.js';
+import {
+  DEFAULT_POOL_NAME,
+  openClaimedStorage,
+  type BrowserTier,
+  type OpfsTierOptions,
+  type Refusal,
+  type TierOpeners,
+  type WriterState,
+} from './open-policy.js';
 import { EngineRpcSession, RpcError, type MessageEndpoint } from './rpc.js';
+import type { WriterLockManager, WriterMechanism } from './writer-claim.js';
 
-export type BrowserTier = 'opfs' | 'idb';
-
-export type Refusal = { tier: BrowserTier; reason: string };
+// The tier, the refusal and the pool name are owned by the policy module -- they are what a caller reads
+// when the opener refuses -- and re-exported here because this is the subpath a consumer imports.
+export { DEFAULT_POOL_NAME, type BrowserTier, type Refusal, type WriterState };
 
 export type BrowserStorage = {
   storage: Storage;
@@ -42,6 +52,9 @@ export type BrowserStorage = {
   refused: Refusal[];
 };
 
+/** A storage opened through {@link openBrowserStorage}, which also holds the origin-wide claim. */
+export type ClaimedBrowserStorage = BrowserStorage & { readonly writer: WriterState };
+
 /** Raised when no requested tier could be opened. Carries every reason, not just the last. */
 export class BrowserStorageUnavailable extends Error {
   constructor(readonly refused: Refusal[]) {
@@ -51,6 +64,36 @@ export class BrowserStorageUnavailable extends Error {
         : `no storage tier could be opened: ${refused.map((r) => `${r.tier}: ${r.reason}`).join('; ')}`,
     );
     this.name = 'BrowserStorageUnavailable';
+  }
+}
+
+/**
+ * Raised when another tab of this origin holds the database and the caller asked to be refused.
+ *
+ * ## Why this is an error class rather than a `refused` entry
+ *
+ * A plain tier refusal means *this platform cannot*, and the answer to it is the next tier. This means
+ * *somebody else is*, and the answer to it is the user -- close the other tab, or accept a second
+ * database. A caller cannot branch on a sentence, and the sentence is all a `Refusal` carries.
+ *
+ * ## The message is the whole user-facing artefact
+ *
+ * There is no `onSecondTab: 'wait'` to offer as a remedy in it: a Web Lock can be waited on, but a page
+ * that blocks its first render on another tab's lifetime is a page that appears frozen. So the message
+ * names the three things a reader can act on -- which pool, which mechanism said so, and which option
+ * changes the behaviour.
+ */
+export class BrowserStorageBusy extends Error {
+  constructor(
+    readonly pool: string,
+    readonly mechanism: WriterMechanism,
+  ) {
+    super(
+      `another tab of this origin holds the cortex database "${pool}" ` +
+        `(single-writer claim via ${mechanism}). Close it, or pass \`onSecondTab: 'allow'\` to open a ` +
+        'second database alongside it — the two will not share rows.',
+    );
+    this.name = 'BrowserStorageBusy';
   }
 }
 
@@ -196,50 +239,123 @@ export type OpenBrowserOptions = Omit<OpfsOptions, 'sqliteModuleUrl' | 'startupT
   tiers?: readonly BrowserTier[];
   /** Name of the IndexedDB database, when the fallback is used. */
   idbDatabaseName?: string;
+  /**
+   * What to do when another tab of this origin already holds the database.
+   *
+   * `refuse` (the default) throws {@link BrowserStorageBusy} before any tier is opened. `allow` proceeds,
+   * which means the second tab gets its own database -- OPFS is unavailable to it, so it lands on the
+   * fallback tier -- and reports `writer.acquired: false` so a caller can say so.
+   *
+   * The default is `refuse` because the alternative is silent: two tabs, one origin, two sets of rows,
+   * and nothing in the return value that a caller has a rule for reading.
+   */
+  onSecondTab?: 'refuse' | 'allow';
+  /**
+   * The lock manager the claim is taken with, for tests.
+   *
+   * Absent -- and `undefined` -- both mean "ask the platform", which reads `navigator.locks`. A runtime
+   * that has no such manager reports `mechanism: 'none'`; that is the platform's answer, not a default.
+   */
+  locks?: WriterLockManager | undefined;
+  /**
+   * The tier openers, for tests.
+   *
+   * Not a configuration surface: a production caller never passes this and both fields default to the real
+   * implementations. It exists because the decisions this module makes are about **ordering** -- claim
+   * before any tier, release before the throw, release on `close()` -- and Node has neither `Worker` nor
+   * `indexedDB`, so without a seam those decisions could only be observed through failures. The real
+   * openers are exercised in a real browser by `test/browser/`, which is not part of the coverage run.
+   */
+  openers?: {
+    readonly opfs?: (options: OpfsTierOptions) => Promise<{ storage: Storage; engine: string }>;
+    readonly idb?: (databaseName: string | undefined) => Promise<Storage>;
+  };
 };
 
-/** Open the best available tier, and say which one it was. */
+/**
+ * Open the best available tier, and say which one it was.
+ *
+ * ## The claim comes first, and that ordering is the whole point
+ *
+ * A second tab's SAH-pool install fails with a message that belongs to sqlite-wasm, and `refused[0].reason`
+ * is where that message used to end up -- next to a fallback that had already created a second database.
+ * Asking the platform *before* any tier is tried means the product never has to classify an error, never
+ * spends the pool's retry budget in a tab that cannot win it, and can answer the only question that
+ * matters with two named outcomes instead of a string.
+ */
 export async function openBrowserStorage(
   options: OpenBrowserOptions = {},
-): Promise<BrowserStorage> {
+): Promise<ClaimedBrowserStorage> {
   const tiers = options.tiers ?? (['opfs', 'idb'] as const);
-  const refused: Refusal[] = [];
 
-  for (const tier of tiers) {
-    if (tier === 'opfs') {
-      const sqliteModuleUrl = options.sqliteModuleUrl;
-      if (sqliteModuleUrl === undefined) {
-        // Configuration, not capability. See the module comment: falling back here would make every
-        // unlucky environment run the tier that production does not.
-        throw new TypeError(
-          'openBrowserStorage: sqliteModuleUrl is required when the opfs tier is requested',
-        );
-      }
-      try {
-        const opened = await openOpfsStorage({
-          sqliteModuleUrl,
-          ...(options.workerUrl === undefined ? {} : { workerUrl: options.workerUrl }),
-          ...(options.databasePath === undefined ? {} : { databasePath: options.databasePath }),
-          ...(options.poolName === undefined ? {} : { poolName: options.poolName }),
-          ...(options.startupTimeoutMs === undefined
-            ? {}
-            : { startupTimeoutMs: options.startupTimeoutMs }),
-        });
-        return { ...opened, refused };
-      } catch (error) {
-        refused.push({ tier, reason: error instanceof Error ? error.message : String(error) });
-      }
-    } else {
-      try {
-        const storage = await openIdbStorage(
-          options.idbDatabaseName === undefined ? {} : { databaseName: options.idbDatabaseName },
-        );
-        return { storage, tier: 'idb', engine: 'indexeddb', refused };
-      } catch (error) {
-        refused.push({ tier, reason: error instanceof Error ? error.message : String(error) });
-      }
-    }
+  // Configuration first, before the claim: a missing `sqliteModuleUrl` is the caller's own bug and must be
+  // reported as one, whether or not another tab happens to be open.
+  const sqliteModuleUrl = options.sqliteModuleUrl;
+  if (tiers.includes('opfs') && sqliteModuleUrl === undefined) {
+    throw new TypeError(
+      'openBrowserStorage: sqliteModuleUrl is required when the opfs tier is requested',
+    );
   }
 
-  throw new BrowserStorageUnavailable(refused);
+  const outcome = await openClaimedStorage({
+    tiers,
+    pool: options.poolName ?? DEFAULT_POOL_NAME,
+    onSecondTab: options.onSecondTab ?? 'refuse',
+    ...(options.locks === undefined ? {} : { locks: options.locks }),
+    ...(options.idbDatabaseName === undefined ? {} : { idbDatabaseName: options.idbDatabaseName }),
+    opfs: {
+      sqliteModuleUrl: sqliteModuleUrl ?? '',
+      ...(options.workerUrl === undefined ? {} : { workerUrl: options.workerUrl }),
+      ...(options.databasePath === undefined ? {} : { databasePath: options.databasePath }),
+      ...(options.startupTimeoutMs === undefined
+        ? {}
+        : { startupTimeoutMs: options.startupTimeoutMs }),
+    },
+    openers: openersFor(options.openers),
+  });
+
+  if (outcome.kind === 'busy') throw new BrowserStorageBusy(outcome.pool, outcome.mechanism);
+  if (outcome.kind === 'unavailable') throw new BrowserStorageUnavailable([...outcome.refused]);
+
+  return {
+    storage: outcome.storage,
+    tier: outcome.tier,
+    engine: outcome.engine,
+    refused: [...outcome.refused],
+    writer: outcome.writer,
+  };
+}
+
+/**
+ * The real tier openers, or the injected ones where a test supplied them.
+ *
+ * `openOpfsStorage` returns more than the policy needs -- the tier it obviously is, and the refusals it
+ * accumulated, which are always empty for a single-tier open -- so the projection is named here rather than
+ * twice at the call site.
+ */
+function openersFor(injected: OpenBrowserOptions['openers']): TierOpeners {
+  return {
+    opfs:
+      injected?.opfs ??
+      (async (tierOptions: OpfsTierOptions) => {
+        // Built field by field rather than spread: `OpfsOptions` is an `exactOptionalPropertyTypes` type, so
+        // an explicitly `undefined` field is a different thing from an absent one.
+        const opened = await openOpfsStorage({
+          sqliteModuleUrl: tierOptions.sqliteModuleUrl,
+          ...(tierOptions.workerUrl === undefined ? {} : { workerUrl: tierOptions.workerUrl }),
+          ...(tierOptions.databasePath === undefined
+            ? {}
+            : { databasePath: tierOptions.databasePath }),
+          ...(tierOptions.poolName === undefined ? {} : { poolName: tierOptions.poolName }),
+          ...(tierOptions.startupTimeoutMs === undefined
+            ? {}
+            : { startupTimeoutMs: tierOptions.startupTimeoutMs }),
+        });
+        return { storage: opened.storage, engine: opened.engine };
+      }),
+    idb:
+      injected?.idb ??
+      ((databaseName: string | undefined) =>
+        openIdbStorage(databaseName === undefined ? {} : { databaseName })),
+  };
 }
