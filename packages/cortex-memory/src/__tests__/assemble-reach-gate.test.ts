@@ -65,6 +65,26 @@ function gateOption(gate: string): string | null {
   return match === null ? null : (match[1] as string);
 }
 
+/**
+ * The gated rows whose literal does not name an option, each with the reason it is not one.
+ *
+ * This exists because the three assertions below all `continue` on `gateOption(...) === null`, and a gate that
+ * silently skips is the defect it is looking for. On the day it was written the set was one row: the inline
+ * superseded rendering is gated on a *local* -- `memory.ts` binds `const rendering = this.#options.
+ * supersededRendering` one line above the test, so the literal says `rendering === 'off'` and the option's
+ * name appears in the line before it.
+ *
+ * The list is checked in both directions. A new gated row that is not about an option fails here until it is
+ * explained, and an entry whose row is gone fails too -- an exemption that outlives its row is how a gate
+ * quietly narrows.
+ */
+const NOT_AN_OPTION = new Map<string, string>([
+  [
+    'inline superseded rendering',
+    'gated on a local bound from the option one line earlier (`const rendering = this.#options.supersededRendering`), so the literal names the local rather than `options.`',
+  ],
+]);
+
 describe('every gated capability names an option the composition root accepts', () => {
   it('has the declarations and the composition root to compare', () => {
     // Both inputs asserted rather than assumed: a moved file would otherwise make every loop below iterate an
@@ -73,6 +93,18 @@ describe('every gated capability names an option the composition root accepts', 
     expect(rows.length).toBeGreaterThan(20);
     expect(rows.filter((row) => typeof row.gate === 'string').length).toBeGreaterThan(4);
     expect(readFileSync(ASSEMBLE, 'utf8')).toContain('export type AssembleOptions');
+  });
+
+  it('examines every gated row, or says why one is not about an option', () => {
+    // The denominator. Without this the other two assertions answer "no gated row was wrong" for a population
+    // they chose themselves, and a row added with a literal nobody can parse would be skipped in silence.
+    const skipped = declarations()
+      .filter((row) => typeof row.gate === 'string' && gateOption(row.gate) === null)
+      .map((row) => String(row.capability));
+    expect(skipped.sort()).toEqual([...NOT_AN_OPTION.keys()].sort());
+    for (const reason of NOT_AN_OPTION.values()) {
+      expect(reason.length).toBeGreaterThan(80);
+    }
   });
 
   it('accepts the field at `AssembleOptions` for every option a gate names', () => {

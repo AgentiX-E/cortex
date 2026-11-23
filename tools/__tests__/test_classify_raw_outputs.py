@@ -371,8 +371,16 @@ class TestTheTwoReadingsOfTheNumericRule:
         assert _MODULE.numeric_mismatch_by_multiset('3', '2') is True
 
 
+ROSTERS = (
+    'mr-roster-38595325261.json',
+    'mr-roster-38828538851.json',
+    'mr-roster-38953157688.json',
+    'mr-roster-38985220145.json',
+)
+
+
 class TestThePublishedTablesAreReproducible:
-    """The calibration, pinned to the two archived rosters.
+    """The calibration, pinned to the four archived rosters.
 
     These fixtures are the only place the published numbers can be re-derived from
     without the Actions artifact store, and re-deriving them is exactly what the
@@ -417,6 +425,28 @@ class TestThePublishedTablesAreReproducible:
         assert answered_wrong == 47
         assert census['numeric_mismatch'] == 39
         assert census['numeric_mismatch'] + census['plan_output'] == 41
+
+    def test_the_third_roster_reproduces_13_40(self) -> None:
+        """Run 38953157688, published as `33 abstain / 30 plan_output` and nothing else.
+
+        This roster was committed so that table could be re-derived without the artifact store, and
+        no test read it: `tools/readings-census.mjs` found it on its first run by asking which code
+        names the file, and the only answer was a comment in the classifier. The shape is also the
+        argument for keeping `plan_output` as its own bucket -- this run has zero of every other
+        shape, so a taxonomy that folded plan output into `numeric_mismatch` would call all 63 wrong
+        answers numeric disagreements.
+        """
+        assert self._census('38953157688') == {'abstention': 33, 'plan_output': 30}
+
+    def test_every_roster_this_class_re_derives_from_is_present(self) -> None:
+        """The three files, named literally.
+
+        `_census` builds its path from the run id, which is the reason the third roster could sit in
+        the repository unread: nothing in the tree spelled its filename out. This tuple is where the
+        dependency is stated, so deleting a fixture fails here rather than making a test skip.
+        """
+        for name in ROSTERS:
+            assert (FIXTURES / name).is_file(), name
 
 
 class TestTheFailuresReport:

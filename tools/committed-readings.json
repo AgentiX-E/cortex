@@ -1,0 +1,138 @@
+{
+  "note": "Every committed JSON under a test directory, and what re-derives it. `node tools/readings-census.mjs --check` fails when a reading is missing from this record, when a `recomputed` row names a job that does not name the file, and when a `one-shot` file's bytes no longer match the hash recorded here. The reasons are the interesting column: a reading that is one-shot says what re-measuring it costs.",
+  "rows": [
+    {
+      "path": "packages/cortex-ai/test/parity/last-run.json",
+      "kind": "one-shot",
+      "sha256": "a53b1cea18afce35e0d30228a6fde617ef709526695a5b289d39d18b622ca3ab",
+      "why": "Two arms on the same 15 sentences and the same weights: the shipped adapter against `@xenova/transformers` 2.17.2. Asserting it needs a download from hf-mirror, and it changes only when the dtype mapping changes, so a per-push download would spend bandwidth proving a constant."
+    },
+    {
+      "path": "packages/cortex-ai/test/profile/result.json",
+      "kind": "one-shot",
+      "sha256": "60e94c75cb545f45175776df142a65a4fb16bcd4a644723ae503a92cd2041231",
+      "why": "Load and inference milliseconds for Qwen2.5-0.5B under ONNX q4, with the sentence digest and the call counts that prove memoisation did not run. A timing reading describes the host it was taken on, so re-running it elsewhere replaces the number rather than verifying it."
+    },
+    {
+      "path": "packages/cortex-ai/test/proposer/live-result-v3-local.json",
+      "kind": "one-shot",
+      "sha256": "b75b499d53e1cefe631421e873b633575bb34a0feca810beae9d52c8d7cd83d1",
+      "why": "The v3 counterpart of the row above, on the same 60 sentences and the same weights. The two prompt versions are compared in the documents, so both readings are kept rather than one being re-run over the other."
+    },
+    {
+      "path": "packages/cortex-ai/test/proposer/live-result.json",
+      "kind": "one-shot",
+      "sha256": "8d036803d426b92a93340d9a237a94c4cd1c6ea3996c3388629091aa2996f931",
+      "why": "Sixty sentences through the local proposer at 5.88 s each, under prompt `triage-proposer/v2`. The prompt version is in the file: this is what v2 proposed, and v3 is a different reading with its own row below."
+    },
+    {
+      "path": "packages/cortex-core/src/triage/__tests__/fixtures/triage-labels.json",
+      "kind": "input",
+      "why": "The labelled sentences the triage suite asserts against. It is the suite's input, so the suite re-reads it on every push and nothing else needs to."
+    },
+    {
+      "path": "packages/cortex-core/src/triage/__tests__/fixtures/triage-regressions.json",
+      "kind": "input",
+      "why": "Sentences that once produced a wrong label, kept as regression input. `pnpm test` re-reads them on every run, which is what stops the regression and is also why this file needs no census of its own."
+    },
+    {
+      "path": "packages/cortex-core/test/card-volume/corpus.json",
+      "kind": "input",
+      "why": "Ten evidence windows of LongMemEval-S, user turns only, checked in so the card-volume reading can be re-run without the 49 MB benchmark artefact. It is the input to that reading, not a reading."
+    },
+    {
+      "path": "packages/cortex-core/test/card-volume/result.json",
+      "kind": "one-shot",
+      "sha256": "e95f404c0ad0bf8b0c0d83cdd6b88f8bb29a9c4f5385515e82c2580f45272c56",
+      "why": "Defer rate before and after the claims gate, over 1,087 turns of the corpus beside it. Re-running means pushing that corpus through `CardQueue`, which `pnpm test` does not do: the reading is a rate, and a rate is not an assertion."
+    },
+    {
+      "path": "packages/cortex-core/test/echo/result.json",
+      "kind": "one-shot",
+      "sha256": "904c580e9ff0fc05781f5499cd8ba56d2e8aab1b2477a160187ff605aaf58caa",
+      "why": "p50 and p95 build and query timings for the legacy and Bloom echo indexes at five row counts, five runs each. Timings belong to the host, for the reason the profile row states."
+    },
+    {
+      "path": "packages/cortex-eval/test/mr-census/result-adopted.json",
+      "kind": "one-shot",
+      "sha256": "ff45897dc415ac4731819a8e57cfd39225383651d94c93cdc6e152c45a7c2db0",
+      "why": "A census of the 500 multi-session answers in the adopted arm. Its `generatedFrom` names `benchmark-cortex-memory-ablation-report.json`, a 62 MB CI artefact that is not in this repository, so re-deriving it costs a benchmark run (about CNY 14 and two hours)."
+    },
+    {
+      "path": "packages/cortex-eval/test/mr-census/result-rerun.json",
+      "kind": "one-shot",
+      "sha256": "7b56cf182d6782610d1ee8c8bd07f59dc7ff7763cd9f90d90c0acefab1f91e0c",
+      "why": "The same census over the rerun arm, with the same `generatedFrom` and the same cost. It is kept beside the adopted one because the two are compared, which is the point of a census rather than a score."
+    },
+    {
+      "path": "packages/cortex-eval/test/mr-census/result-session-unit.json",
+      "kind": "one-shot",
+      "sha256": "3f34c416bad7c3a8e8d137249f4e6aba703e58db3a2d93a380a8198871c1b2e4",
+      "why": "The same census with the session as the unit rather than the question, which changes the denominator. Same input artefact, same cost, and the difference between the three readings is the finding."
+    },
+    {
+      "path": "packages/cortex-eval/test/review-page/last-run.json",
+      "kind": "one-shot",
+      "sha256": "9a893f183efc40f3730e3189bfd358a0160be434b70efb1ebf9e5fd446123f83",
+      "why": "Seventeen checks driven through Chromium against the review page, including the cascade the unit tests could not see. The probe re-takes it in about eleven seconds, but it writes in place, so a re-run would replace the evidence rather than be compared with it; the row becomes `recomputed` the day that probe takes an output path."
+    },
+    {
+      "path": "packages/cortex-memory/test/browser/corpus-run.json",
+      "kind": "recomputed",
+      "job": "browser",
+      "workflow": ".github/workflows/verify.yml",
+      "why": "The corpus suite runs in the `browser` job at 400 rows, writes to /tmp/fresh-corpus-run.json, and `tools/browser-reading-check.mjs` compares the two readings check by check."
+    },
+    {
+      "path": "packages/cortex-storage/test/browser/bundle-run.json",
+      "kind": "recomputed",
+      "job": "browser",
+      "workflow": ".github/workflows/verify.yml",
+      "why": "The bundle suite runs in the `browser` job, writes to /tmp/fresh-bundle-run.json, and is compared: this reading had no comparison at all until the run that produced it started overwriting it."
+    },
+    {
+      "path": "packages/cortex-storage/test/browser/last-run-firefox.json",
+      "kind": "recomputed",
+      "job": "browser-firefox",
+      "workflow": ".github/workflows/verify.yml",
+      "why": "The `browser-firefox` job installs Playwright's Firefox 132, runs the same suite at 400 rows, and compares. This file is the whole of \"gate 2 holds on a second engine\", and no workflow mentioned firefox before that job."
+    },
+    {
+      "path": "packages/cortex-storage/test/browser/last-run.json",
+      "kind": "recomputed",
+      "job": "browser",
+      "workflow": ".github/workflows/verify.yml",
+      "why": "The restart suite runs in the `browser` job at 400 rows, writes to /tmp/fresh-browser-run.json, and is compared with this reading by `tools/browser-reading-check.mjs`."
+    },
+    {
+      "path": "tools/__tests__/fixtures/longmemeval-sample.json",
+      "kind": "input",
+      "why": "A slice of LongMemEval-S, checked in so the readout tests parse a real answer sheet rather than a hand-written stub of one."
+    },
+    {
+      "path": "tools/__tests__/fixtures/mr-roster-38595325261.json",
+      "kind": "input",
+      "why": "One workflow run's question roster, frozen as a fixture so the roster tests do not need GitHub. The run id is in the filename."
+    },
+    {
+      "path": "tools/__tests__/fixtures/mr-roster-38828538851.json",
+      "kind": "input",
+      "why": "A second run's roster, kept beside the first because the tool's pairing logic is a claim about two runs and needs two of them."
+    },
+    {
+      "path": "tools/__tests__/fixtures/mr-roster-38953157688.json",
+      "kind": "input",
+      "why": "A third roster, from the run whose four repeats first made the per-question variance visible."
+    },
+    {
+      "path": "tools/__tests__/fixtures/mr-roster-38985220145.json",
+      "kind": "input",
+      "why": "A fourth roster, the one the digest-reach tests read."
+    },
+    {
+      "path": "tools/__tests__/fixtures/spend-projection-42467.json",
+      "kind": "input",
+      "why": "The arithmetic of one spend projection over run 42467, frozen so the projection tool's tests assert against the numbers that were quoted rather than recomputing them."
+    }
+  ]
+}

@@ -172,3 +172,29 @@ reader learned that this reading records its tier at `facts.tier` and its digest
 `CORTEX_RESULTS` (restart probes) and `CORTEX_RESULTS_BUNDLE` (the bundle suite) exist so a CI run writes its own
 reading instead of overwriting the committed evidence — one shared variable let the bundle reading clobber the restart
 one, and the comparison then read 24 checks against 4.
+
+## The set, not only these four
+
+Everything above is about four files, and each was found by someone reading. Four identical defects found
+by reading is an argument that the fifth is not findable that way, so the question was generalised:
+**for every committed reading, what turns these bytes into a fact again?** The answer is required, in
+`tools/committed-readings.json`, for all 23 JSON files this repository commits under a test directory,
+and `pnpm readings:check` refuses the three ways a row can be wrong:
+
+| kind | the row has to carry | refused when |
+| ---- | -------------------- | ------------ |
+| `recomputed` | the job and workflow that re-run it | the job does not exist, does not name this file, or never names a path outside the checkout |
+| `one-shot` | the SHA-256 of the bytes that were measured | the file no longer hashes to it |
+| `input` | a reason, and nothing else | no tracked `.ts`, `.mjs` or `.py` names it |
+
+The four browser readings are the `recomputed` rows. `docs/COMMITTED-READINGS.md` is generated from the
+same record and lists the other nineteen with their reasons: the parity run needs two Xenova models from
+a mirror, the profile and echo readings are timings and belong to a host, the three `mr-census` readings
+need a 62 MB benchmark artefact that is not in this repository.
+
+One of the nineteen is the finding. `mr-roster-38953157688.json` was committed so that `§13.40`'s table
+could be re-derived without the artifact store, and **no test read it** — the only mention anywhere was a
+comment in `tools/classify-raw-outputs.py`. The `input` row is what surfaced it on the check's first run,
+and the repair was the test that re-derives `33 abstain / 30 plan_output` from it. A row that only says
+"this is an input" would have been a rubber stamp; requiring something to *name* the file is what makes
+the kind worth having.
