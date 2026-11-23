@@ -152,9 +152,12 @@ export function census(objects, paths = columnPaths(objects)) {
       if (value === undefined) continue;
       row.count += 1;
       row.types.add(typeOf(value));
+      // Every type is counted towards `distinct`, not only strings: a boolean column that is `false` on
+      // all 500 records has one value, and "never takes a second value" is what separates a flag from a
+      // verdict (see `identifyVerdictField`).
+      row.seen.add(typeof value === 'string' ? value : JSON.stringify(value));
       if (typeof value === 'string') {
         row.lengths.push(value.length);
-        row.seen.add(value);
         if (typeof object.question === 'string' && value === object.question) row.echoOfQuestion += 1;
       }
     }
@@ -217,6 +220,11 @@ export function identifyAnswerField(rows, recordCount) {
 export function identifyVerdictField(rows, recordCount, taken) {
   const survivors = rows.filter((row) => {
     if (row.count !== recordCount || row.key === taken || NEVER_ANSWER.has(leaf(row.key))) return false;
+    // A column that never varies is not a verdict. On the real file the two `abstention` booleans are
+    // `false` on all 500 records -- they are feature flags, and they sit beside the actual verdict
+    // (`judge.judge_raw`, `Yes`/`No`) looking exactly as qualified as it does. Cardinality is what
+    // separates them, and it is a property of the data rather than of the name.
+    if (row.distinct < 2) return false;
     return row.types.length === 1 && (row.types[0] === 'boolean' || ((row.types[0] === 'number' || row.types[0] === 'string') && row.lengthMedian !== null && row.lengthMax !== null && row.lengthMax <= 5));
   });
   return { key: survivors.length === 1 ? survivors[0].key : null, candidates: survivors };
@@ -269,7 +277,15 @@ async function main() {
       `--answer-field ${answer.key} is not carried by every record, so re-grading would cover a subset and report it as the whole`,
     );
   }
-  const verdict = identifyVerdictField(rows, records.length, answer.key);
+  const inferredVerdict = identifyVerdictField(rows, records.length, answer.key);
+  const verdictOverride = flag('--verdict-field');
+  const verdict =
+    verdictOverride === undefined || verdictOverride === ''
+      ? inferredVerdict
+      : { key: verdictOverride, candidates: inferredVerdict.candidates };
+  if (verdict.key !== null && !rows.some((row) => row.key === verdict.key && row.count === records.length)) {
+    throw new TypeError(`--verdict-field ${verdict.key} is not carried by every record`);
+  }
 
   const refused =
     answer.key === null
@@ -317,6 +333,8 @@ async function main() {
     answerCandidates: answer.candidates,
     answerNearUnique: answer.nearUnique,
     verdictCandidates: verdict.candidates,
+    verdictFieldSource:
+      verdictOverride === undefined || verdictOverride === '' ? 'census' : 'override',
     ...(refused === undefined ? {} : { refused }),
   };
 

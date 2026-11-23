@@ -243,6 +243,44 @@ def test_the_real_shape_is_censused_to_two_levels_and_still_refuses_to_choose(tm
     assert answers['verdictField'] is None
 
 
+def test_a_column_that_never_varies_is_not_a_verdict(tmp_path: Path) -> None:
+    # On the real file the two `abstention` booleans are `false` on all 500 records -- feature flags --
+    # and they look exactly as qualified as the actual verdict beside them, `judge.judge_raw`
+    # (`Yes`/`No`). Cardinality is what tells them apart: a verdict takes more than one value.
+    records = [
+        {
+            'question': f'question {index}?',
+            'answer': f'gold {index}',
+            'answering': {'generated_answer': f'answer number {index}.'},
+            'judge': {'judge_raw': 'Yes' if index % 2 == 0 else 'No', 'abstention': False},
+            'retrieval': {'abstention': False},
+        }
+        for index in range(10)
+    ]
+    _, census, answers = prepare(tmp_path, records)
+    assert answers['answerField'] == 'answering.generated_answer'
+    assert answers['verdictField'] == 'judge.judge_raw'
+    assert census['verdictFieldSource'] == 'census'
+    assert [question['publishedVerdict'] for question in answers['questions']][:2] == [True, False]
+    assert {candidate['key'] for candidate in census['verdictCandidates']} == {'judge.judge_raw'}
+
+
+def test_an_override_names_the_verdict_when_two_columns_vary(tmp_path: Path) -> None:
+    # Two varying binary columns is a file that has to be read by a person; the override records that
+    # one did, and refuses a column that is not carried by every record.
+    records = [
+        {'question': 'a?', 'answer': 'x', 'response': 'x.', 'correct': True, 'abstained': False},
+        {'question': 'b?', 'answer': 'y', 'response': 'y.', 'correct': False, 'abstained': True},
+    ]
+    _, census, answers = prepare(tmp_path, records)
+    assert answers['verdictField'] is None
+    assert {candidate['key'] for candidate in census['verdictCandidates']} == {'correct', 'abstained'}
+    _, census, answers = prepare(tmp_path / 'named', records, '--verdict-field', 'correct')
+    assert answers['verdictField'] == 'correct'
+    assert census['verdictFieldSource'] == 'override'
+    assert [question['publishedVerdict'] for question in answers['questions']] == [True, False]
+
+
 def test_a_list_is_not_a_column(tmp_path: Path) -> None:
     # `retrieval.retrieved_context` is an array of evidence blocks: a path into it is a per-record
     # detail, and treating it as a column would put a giant string in the candidate list on every file.

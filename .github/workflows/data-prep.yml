@@ -37,6 +37,11 @@ on:
         required: false
         default: ''
         type: string
+      verdict_field:
+        description: 'Name the verdict column when the census could not choose between two varying binary columns. EMPTY lets the census decide'
+        required: false
+        default: ''
+        type: string
       locomo_url:
         description: 'LoCoMo corpus URL, pinned by commit (default: the revision the published splits use)'
         required: false
@@ -65,9 +70,11 @@ jobs:
         env:
           RECORDS_URL: ${{ inputs.records_url }}
           ANSWER_FIELD: ${{ inputs.answer_field }}
+          VERDICT_FIELD: ${{ inputs.verdict_field }}
         run: |
           args=(--url "$RECORDS_URL" --out-dir prep/competitor-records)
           if [ -n "$ANSWER_FIELD" ]; then args+=(--answer-field "$ANSWER_FIELD"); fi
+          if [ -n "$VERDICT_FIELD" ]; then args+=(--verdict-field "$VERDICT_FIELD"); fi
           node tools/competitor-records-prep.mjs "${args[@]}"
       # Printed as well as uploaded: the answer field is the reading, and whoever dispatched this should
       # be able to see whether the identification converged without downloading anything.
@@ -82,6 +89,7 @@ jobs:
             console.log(`fieldMap       ${JSON.stringify(census.fieldMap)}`);
             console.log(`answerSource   ${census.answerFieldSource}`);
             console.log(`answerNearUnique ${(census.answerNearUnique ?? []).map((r) => r.key).join(", ") || "(none)"}`);
+            console.log(`verdictSource ${census.verdictFieldSource}`);
             if (census.refused) console.log(`refused        ${census.refused}`);
           '
       - uses: actions/upload-artifact@v4
