@@ -4,10 +4,22 @@
  *
  *     node tools/competitor-harness.mjs [--limit 10] [--people 8] [--json]
  *     node tools/competitor-harness.mjs --data data/longmemeval_s_cleaned.json [--questions 100] [--json]
+ *     node tools/competitor-harness.mjs --data … --read --sut mem0 --product cortex-product
  *
- * Nothing here calls a model: the providers are the lexical reference implementation, Cortex's own session
- * adapter, and a provider that returns nothing. The last exists so the table has a floor; a comparison whose
- * bottom row is not zero is measuring arithmetic.
+ * By default nothing here calls a model: the providers are the lexical reference implementation, Cortex's own
+ * session adapter, and a provider that returns nothing. The last exists so the table has a floor; a comparison
+ * whose bottom row is not zero is measuring arithmetic.
+ *
+ * Three flags add systems that do call one, and each is deliberate rather than default:
+ *
+ *   `--read`     grades answers with a shared reader and a judge (the accuracy column);
+ *   `--sut`      runs a competitor's own code in its own process, through the metering proxy;
+ *   `--product`  runs the assembled product (`CortexProductProvider`) in this process, answering its own
+ *                questions — so its row's reader is its own and the artifact says `answerer: self`.
+ *
+ * The product flag exists because a table of competitors against a *bare session adapter* answers the wrong
+ * question. `trim-2.8k` is not the shipped arm; the shipped arm is `assembleMemory` with every registered
+ * default, and it costs the same harness one more provider to say so.
  *
  * ## Two datasets, two kinds of gold, and the difference is the point
  *
@@ -44,6 +56,7 @@ import { loadLongMemEval } from '../packages/cortex-eval/dist/datasets/longmemev
 import { generateSyntheticBenchmark } from '../packages/cortex-eval/dist/datasets/synthetic-benchmark.js';
 import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 import { createSutProvider } from './competitor-sut.mjs';
+import { createProductProvider } from './competitor-product.mjs';
 import { NO_READER, describeJudgeIdentity, describeReaderIdentity } from './reader-identity.mjs';
 
 /**
@@ -380,8 +393,7 @@ function withProgress(provider, planned) {
  * same failure as one of ours without its arm name.
  */
 const sutDriver = flag('--sut');
-const sut = sutDriver === undefined ? null : await createSutProvider({ driver: sutDriver });
-/**
+const sut = sutDriver === undefined ? null : await createSutProvider({ driver: sutDriver }); /**
  * A self-answering system has no retrieval-only column to fill, and building its store to prove that is not free.
  *
  * Mastra and MemCog both return `hits: []` from `search` by construction: their context is assembled while they
@@ -408,6 +420,32 @@ if (sut !== null && !unmeasuredSelfAnswerer)
  */
 if (sut !== null && !unmeasuredSelfAnswerer && !READ_ARMS.includes(sut.name))
   READ_ARMS.push(sut.name);
+
+/**
+ * The shipped product, on the same loop as the competitors.
+ *
+ * `--sut` is the process-boundary path, and the product cannot take it: its memory is a library, and a driver
+ * would have to re-implement `assembleMemory`, which is the defect this whole comparator exists to avoid. So it
+ * arrives as one more in-process provider, built by the same module a workflow calls.
+ *
+ * Named by the caller (`--product cortex-product`) rather than switched on by a bare flag, because the row's
+ * name is what appears in every later table and in `docs/MEASURE-COMPETITOR-MATCHED-MODEL.md`; a default would
+ * make a typo'd dispatch silently publish under the registered arm's name.
+ */
+const productLabel = flag('--product');
+const product =
+  productLabel === undefined ? null : createProductProvider(process.env, { name: productLabel });
+if (product !== null) {
+  // Read by construction: a product arm that ingested and answered and then printed `—` in the accuracy column
+  // would have paid for the most expensive row in the table and reported nothing about it.
+  if (!READ_ARMS.includes(product.name)) READ_ARMS.push(product.name);
+  providers.push(withProgress(product, dataset.questions.length));
+  process.stderr.write(
+    `[product] ${product.name}: build=${product.build}, reader=${process.env['SUT_LLM_MODEL'] ?? 'deepseek-chat'}` +
+      `, embed=${process.env['ZHIPU_EMBED_MODEL'] ?? 'embedding-3'}` +
+      `, proxy=${process.env['SUT_LLM_BASE_URL'] ?? '(none)'}\n`,
+  );
+}
 
 let reader = null;
 let judge = null;

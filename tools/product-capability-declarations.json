@@ -357,6 +357,13 @@
         "CortexSessionProvider",
         "distillationOf"
       ]
+    },
+    {
+      "category": "the-competitor-table-s-own-adapter",
+      "rationale": "`CortexProductProvider` is the shipped arm in the shape a retrieval harness asks for, and its only caller is `tools/competitor-product.mjs` -- which is the property that makes it worth having. A comparison whose cortex row is a bare session adapter measures a configuration nobody installs, so the product needs one seam that a harness knowing nothing about its internals can drive. It is not a capability a deployment calls; it is the instrument's handle on the product, declared in the product because the reverse dependency (`cortex-eval` importing `cortex-memory`) is the allowed direction.",
+      "symbols": [
+        "CortexProductProvider"
+      ]
     }
   ]
 }

@@ -1050,6 +1050,58 @@ The function is named `assembleMemory` rather than `createMemory` because `corte
 `createMemory` for the domain's `Memory` value, and two functions with one name an import apart is how a
 reader calls the wrong one.
 
+### 6.6.1 Measuring the product with someone else's harness
+
+`CortexProductProvider` is the assembled product in the shape a retrieval harness asks for. It exists because a
+comparison is only about the thing you ship if the thing you ship is in it: a harness that measures a bare
+session adapter and calls the row "cortex" is measuring a configuration nobody installs.
+
+```ts
+import type { LLM } from '@agentix-e/cortex-core';
+import { CortexProductProvider } from '@agentix-e/cortex-memory';
+import { SqliteStorage } from '@agentix-e/cortex-storage/sqlite';
+
+// The two things only your deployment can supply: the reader the answers are written with, and its embedder.
+declare const llm: LLM;
+declare const embedder: { embed(texts: string[]): Promise<readonly Float64Array[]> };
+declare const sessions: readonly {
+  id: string;
+  at: number;
+  turns: readonly { role: 'user' | 'assistant'; content: string }[];
+}[];
+
+const provider = new CortexProductProvider({
+  llm,
+  now: Date.now(), // pins the recency arithmetic
+  embed: (texts) => embedder.embed(texts),
+  storage: () => new SqliteStorage(), // a fresh store per question
+});
+
+await provider.ingest(sessions);
+const answer = await provider.answer('Where did I move?');
+await provider.reset(); // forget this question's corpus, keep the embedding cache
+console.log(answer);
+```
+
+Four properties are worth knowing before you wire it up, because each one is a decision rather than a default:
+
+- **`assembleMemory` with nothing named.** Every argument above is one a user supplies; every other field is
+  `REGISTERED_ARM`. Passing the registered values explicitly would make the adapter agree with a composition root
+  that had stopped applying them, so it does not: `product-provider.test.ts` compares the prompt bytes with a
+  direct assembly instead.
+- **`search` returns nothing.** The product's retrieval and its answer are one act; there is no context list a
+  foreign reader could consume without either skipping the rendering or paying for the model twice. A harness
+  that requires a `search` endpoint will show this arm as `answerer: self`, which is the same shape Mastra's and
+  MemCog's rows have.
+- **A refusal is `INSUFFICIENT_EVIDENCE`.** `parseAnswer` returns `null` for a decline; the adapter renders that as
+  the product's own token, so a judge reading the response sees a decision rather than an empty string.
+- **`reset` keeps the embedder's cache.** The corpus is per question; the vectors are per run. A fresh cache per
+  question multiplies the embedding bill and is not the arm the published reading was taken on.
+
+The adapter declares `build: 'embedding'`, because the registered arm is `self-index` with an injected embedder.
+If you assemble without one you get a lexical system, which is a different arm and should not be reported under
+this name.
+
 ### 6.7 Marking the statement a later turn replaces
 
 A transcript that updates a value — a follower count, a class day, a price — states the old value first.

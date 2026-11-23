@@ -109,6 +109,22 @@ on:
         required: false
         default: ''
         type: string
+      # The shipped product, on the same loop as the competitors.
+      #
+      # `sut` cannot carry it: a system under test is launched as its own process, and the product is a library
+      # whose assembly *is* the thing being measured -- a driver would have to re-implement `assembleMemory` and
+      # the row would describe the driver. This input takes the row label instead (`cortex-product`), and empty
+      # means "do not run it".
+      #
+      # It runs in the `con` reading stage ONLY, and that is a cost decision with a mechanism behind it: the
+      # product answers its own questions, so the reader prompt cannot reach it. Running it in the dispatch and
+      # dispatch2 stages as well would spend the same money three times to print the same number three times,
+      # which is exactly the duplicate-ingest defect this workflow already paid for once (run 45011905117).
+      product:
+        description: 'Product arm to run inside the harness (empty = none; `cortex-product` = the assembled shipped arm). Runs in the `con` reading stage only, because its answers do not read the shared reader prompt'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -152,6 +168,15 @@ jobs:
       MASTRA_STORE: ${{ github.workspace }}/.cache/mastra/store.db
       # Empty when the input is blank, which the driver reads as the vendor default rather than as a zero trigger.
       MASTRA_MESSAGE_TOKENS: ${{ github.event.inputs.sut_mastra_message_tokens }}
+      # The product arm's row label, read by the `con` reading stage only. Declared at job level so the one step
+      # that uses it cannot inherit four of five variables, which is how `MASTRA_STORE` came to name a directory
+      # no step created.
+      PRODUCT: ${{ github.event.inputs.product }}
+      # The embedder the product arm's index calls. Zhipu's `embedding-3` at 1024 dimensions is the registered
+      # arm's own space (`tools/arm-config-baseline.json`: `embedding.provider: openai-compatible`, `dimensions:
+      # 1024`); a different space would be a different arm under the same name.
+      ZHIPU_EMBED_MODEL: embedding-3
+      ZHIPU_EMBED_DIMENSIONS: '1024'
     # 500 questions x 2 arms x 2 calls per arm is ~2,000 calls for ONE reading arm, and this workflow now runs
     # three of them. The measured cost of the first arm alone was about 45 minutes on a runner, so 120 was already
     # marginal and three arms made it a coin flip. Raised rather than cutting the question count: a 500-question
@@ -572,6 +597,11 @@ jobs:
           # Empty when no system under test was asked for, because `--sut ""` is an error rather than "none".
           SUT_ARG=""
           if [ -n "$SUT" ]; then SUT_ARG="--sut $SUT"; fi
+          # The product arm, on this stage only. It answers its own questions, so the reader prompt this stage
+          # administers cannot reach it -- three stages would be three identical readings for three times the
+          # bill.
+          PRODUCT_ARG=""
+          if [ -n "$PRODUCT" ]; then PRODUCT_ARG="--product $PRODUCT"; fi
           # One invocation, two outputs. Running it twice -- once for the JSON and once for the table -- produced an
           # artifact and a printed table from two different samples that disagreed by five questions per arm, which
           # is why `--json-out` exists.
@@ -582,6 +612,7 @@ jobs:
             --budget-tokens 2800 \
             --read $ARMS \
             $SUT_ARG \
+            $PRODUCT_ARG \
             --json-out competitor-read.json \
             | tee competitor-read.txt
 

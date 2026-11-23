@@ -303,3 +303,7 @@ export {
   type ProviderSession,
   type ProviderTurn,
 } from './provider.js';
+// The second adapter: the assembled product, so a competitor table can carry the row this repository
+// actually ships. Kept beside `CortexSessionProvider` because the difference between the two is the whole
+// point — one is a bare route, the other is `assembleMemory` with every registered default.
+export { CortexProductProvider, type CortexProductProviderOptions } from './product-provider.js';

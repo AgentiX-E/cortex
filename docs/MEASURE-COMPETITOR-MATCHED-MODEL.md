@@ -599,3 +599,51 @@ The one thing this comparison still cannot say is whether `cortex-memory` would 
 these rows were taken on. At 30 questions the sampling error is ±9 points, and the shipped arm's advantage over
 `cortex-session` is 28. That is large enough to survive the resampling, but it is an inference, not a measurement, and
 §11.2's repair — one harness, one ledger, one sample — is still the way to turn it into one.
+
+### 12.7 The control that was wrong is now one `--product` away
+
+§11.2 and §12.6 both end at the same gap: the row that matters — the assembled product at 91.25% and 7,448 tokens
+— is produced by `cortex-eval`'s arm, while every row in the table is produced by `tools/competitor-harness.mjs`.
+Two pipelines, two samplers, two cost ledgers, and an inference in between.
+
+That gap was structural, not a missing dispatch. The competitor harness measures a system through `MemoryProvider`:
+`ingest`, `search`, one answer per question. The product is a library whose assembly _is_ the thing being
+measured, so a process-boundary driver (the `--sut` path) would have had to re-implement `assembleMemory` — and a
+re-implementation is the defect this whole comparator exists to avoid.
+
+So the product arrives as one more in-process provider:
+
+```
+node tools/competitor-harness.mjs --data data/longmemeval_s_cleaned.json \
+  --questions 30 --limit 10 --read --product cortex-product
+```
+
+Three decisions are visible in that row and none of them is a default:
+
+1. **`answerer: self`.** The product's retrieval and its answer are one act. `search` returns nothing, and the
+   artifact says so; Mastra's and MemCog's rows have the same shape for the same reason. A shared reader on this
+   arm would either skip the product's rendering or bill it twice.
+2. **Chat through the metering proxy, embedding straight to the provider.** The proxy relays chat completions and
+   nothing else, so the token column is the proxy's count with `X-Sut-Label: cortex-product/answer`, and the
+   embedding bill stays where the product already reports it — `indexCost()` / `selfIndex` in the arm's own
+   census. One channel per line, rather than a sum that hides which half was billed.
+3. **One reading stage, not three.** The product writes its own answer, so the reader prompt the dispatch and
+   dispatch2 stages administer cannot reach it. Running it in all three would spend the same money three times to
+   print one number three times — the duplicate-ingest defect of run 45011905117, one layer up.
+
+Two things the wiring refuses to do, and both are tested rather than documented:
+
+| Refusal               | Why it is not a warning                                                       | Test                                    |
+| --------------------- | ----------------------------------------------------------------------------- | --------------------------------------- |
+| No `SUT_LLM_BASE_URL` | the arm would call the vendor directly and its cost column would read zero    | `test_competitor_product.py`            |
+| No `ZHIPU_API_KEY`    | the assembly would be lexical and would print under the registered arm's name | same, plus `test_product_arm_wiring.py` |
+
+The second test is the one that makes the metering claim checkable without a model: a stand-in for both endpoints
+records every request, and the assertions are that each chat call carries the label header, that the corpus was
+embedded at all, and that the answer is the product's parse (`Answer: Porto` → `Porto`) rather than the raw
+completion.
+
+What this changes about the table: the product row is now measurable **in the same invocation** as the competitors,
+on the same sample, with the same judge and one ledger. It does not make the number 91.25% — that reading is 500
+questions × four passes, and this row will be thirty questions until a dispatch says otherwise. What it removes is
+the reason the two could not be compared at all.

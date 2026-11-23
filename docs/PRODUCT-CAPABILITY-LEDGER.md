@@ -85,7 +85,7 @@ So the column records the claim and says what it was based on. Where the claim i
 work — the rows the audit grouped as "the instrument ranks, the product does not" — the
 evidence is the `state` column, which is derived.
 
-## The boundary (54 product exports)
+## The boundary (55 product exports)
 
 Product exports whose only callers are the instrument. This is the audit's §3.3 argument as a
 set of names rather than a paragraph, and `pnpm ledger:check` fails on a new member: a
@@ -133,4 +133,10 @@ Helpers of the failure censuses: how a reply is classified, what a declined item
 The adapter that presents the product as a `MemorySystem` for a competitor's harness, and the distillation hook the review page reads. Instrument by design; recorded so that 'instrument-only' is a decision on the record rather than an accident of where the file was created.
 
 `CortexSessionProvider`, `distillationOf`
+
+### the-competitor-table-s-own-adapter (1)
+
+`CortexProductProvider` is the shipped arm in the shape a retrieval harness asks for, and its only caller is `tools/competitor-product.mjs` -- which is the property that makes it worth having. A comparison whose cortex row is a bare session adapter measures a configuration nobody installs, so the product needs one seam that a harness knowing nothing about its internals can drive. It is not a capability a deployment calls; it is the instrument's handle on the product, declared in the product because the reverse dependency (`cortex-eval` importing `cortex-memory`) is the allowed direction.
+
+`CortexProductProvider`
 
