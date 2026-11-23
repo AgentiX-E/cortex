@@ -731,10 +731,19 @@ sample size rather than about the arm:
 | 3 | paired against `lexical-reference` | `p < 0.05` | `p = 0.2188` (+5/−1) | **fail** |
 
 Criterion 3 cannot pass at n=30 and that was predictable: six discordant pairs is the most a thirty-question sample
-can produce, and five-to-one is `p = 0.22`. At n=100 the same rates give roughly 17 to 3, which is `p ≈ 0.003`. The
-cost of finding out is the product arm's own calls only — 100 questions is about ¥0.8, because the other arm in the
-pair declares `build=none` and spends nothing — so the next dispatch is 100 questions rather than a different
-mechanism.
+can produce, and five-to-one is `p = 0.22`. At n=100 the same rates give roughly 17 to 3, which is `p ≈ 0.003`, so
+the next dispatch is a hundred questions rather than a different mechanism.
+
+**A cost caveat, because the first version of this paragraph got it wrong.** It said the hundred questions cost only
+the product arm's calls, "because the other arm in the pair declares `build=none` and spends nothing". `build=none`
+says that arm builds no index; it does not say it is free. `lexical-reference` is `answerer: shared`, so the shared
+reader answered its hundred questions and the judge graded them — two more model calls per question that this
+dispatch paid for and whose spend is **not** in the artifact, because the metering proxy only sees the product arm's
+labelled calls (`sut-llm-calls.jsonl` holds exactly 100 rows, all `cortex-product/answer`) and the workflow's
+`Cost and accuracy` step was skipped. What can be priced from the artifact is the arm's own calls: 614,684 prompt
+plus 7,229 completion tokens, which at the rate the thirty-question run's ledger implies (¥0.235 for 323,393 tokens,
+≈¥0.73/M blended) is **≈¥0.45**. The reader's and judge's share is unmeasured here rather than zero, which is the
+same distinction `usage: null` makes in the table.
 
 **What the two thirty-question runs also show is that n=30 cannot resolve five points even for a model-free arm.**
 `lexical-reference` is deterministic: no model, no judge, a fixed sample. It read 21/30 on the first dispatch and
@@ -776,3 +785,51 @@ same arms (`reader, judge, judgePolicy`) — a fact about two configurations rat
 The lesson is the one this campaign keeps relearning in a new costume: **the score was accurate and the table was
 not.** A row that reads 80% while its detail block reads `0/6` is a table a careful reader distrusts and a careless
 one quotes.
+
+#### 12.9.2 The hundred-question dispatch: the third criterion, and the one family that is now the weakest
+
+Run `45097142584` is the same pipeline at n=100, `con` prompt only, dispatched for the power the third criterion
+needed. The `calls` column below is the product arm's own — the only channel the metering proxy sees — and the
+shared reader and judge were paid per question as well (see the cost caveat above: their share is unmeasured here,
+not zero).
+
+| arm | accuracy | prompt/q | total/q | calls |
+| --- | ---: | ---: | ---: | ---: |
+| `lexical-reference` | 66.0% (66/100) | — (no model) | — | 0 |
+| `cortex-product` | **79.0% (79/100)** | **6,147** | 6,219 | 100 |
+
+| capability | `lexical-reference` | `cortex-product` | Δ |
+| --- | ---: | ---: | ---: |
+| `ABS` | 19/20 | **20/20** | +1 |
+| `IE` | 9/20 | **14/20** | +5 |
+| `KU` | 17/20 | **19/20** | +2 |
+| `MR` | 12/20 | **14/20** | +2 |
+| `TR` | 9/20 | **12/20** | +3 |
+
+Paired, the two arms disagree on 27 of 100 questions and the product wins twenty of them:
+
+```
+baseline->treatment                 n     +     -     delta    p         verdict
+lexical-reference->cortex-product   100   20    7     13.0%    0.0192    improved
+```
+
+All three pre-registered criteria now pass, and the third only passed because the sample grew:
+
+| # | criterion | threshold | n=30 | n=100 | verdict |
+| --- | --- | --- | ---: | ---: | --- |
+| 1 | own prompt tokens per question | 5.2k–9.7k | 6,110 | **6,147** | pass |
+| 2 | accuracy | ≥ 75% | 80.0% | **79.0%** | pass |
+| 3 | paired against `lexical-reference` | `p < 0.05` | 0.2188 | **0.0192** | pass |
+
+**The row that moved is `TR`.** At n=30 the product read `TR` 5/6 and `lexical-reference` 3/6; at n=100 it is 12/20
+against 9/20 — the smallest margin of any family, and 60% is now the product's weakest reading while `ABS` is perfect.
+That is the opposite of the shape the 500-question registered arm reports (`TR` 115+/127, `ABS` 30/30), so the first
+hypothesis is sampling rather than regression: twenty questions per family, one question of reader churn, and the
+sample is stratified rather than drawn. The registered arm's per-capability numbers on 500 questions are the ones to
+compare against, and the honest statement here is that this sample is too small to place `TR` — not that `TR` moved.
+
+What this does not say: that the product arm beats the registered arm, or that 79% is a SOTA number. The registered
+arm's 91.25% is 500 questions with four repeats; this is 100 questions, one repeat, and the arm it beats is a
+model-free floor whose purpose is to establish that the pipeline can score at all. What it does say is the thing
+that was unmeasured until this round: **the shipped arm, answering through its own six routes, is 13.0 points above
+that floor with `p = 0.0192`, and it spends 6,147 prompt tokens per question against the registered arm's 7,448.**
