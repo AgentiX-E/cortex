@@ -299,8 +299,12 @@ jobs:
       - name: The two-tab claim, re-derived and compared
         env:
           CORTEX_RESULTS_TWO_TAB: /tmp/fresh-two-tab-run.json
+        # `node` rather than `pnpm --filter ... -- --check`: whether `--` reaches the script or is eaten by
+        # the package manager is a per-version detail, and the failure mode is silent -- the probe would run,
+        # write its reading, and exit 0 without comparing anything, which is the defect this step exists to
+        # prevent one layer up.
         run: |
-          pnpm --filter @agentix-e/cortex-storage test:browser:two-tab -- \
+          node packages/cortex-storage/test/browser/two-tab-probe.mjs \
             --check --committed packages/cortex-storage/test/browser/two-tab-run.json
 
       # The general form of the bundle defect below: a probe that writes its reading back into the
