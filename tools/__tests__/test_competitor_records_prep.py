@@ -263,6 +263,10 @@ def test_a_column_that_never_varies_is_not_a_verdict(tmp_path: Path) -> None:
     assert census['verdictFieldSource'] == 'census'
     assert [question['publishedVerdict'] for question in answers['questions']][:2] == [True, False]
     assert {candidate['key'] for candidate in census['verdictCandidates']} == {'judge.judge_raw'}
+    # The value counts are recorded because a verdict that does not parse is always a spelling, and the
+    # census is the only place that can say which spelling without another download.
+    raw = next(column for column in census['columns'] if column['key'] == 'judge.judge_raw')
+    assert raw['topValues'][0]['count'] == 5
 
 
 def test_an_override_names_the_verdict_when_two_columns_vary(tmp_path: Path) -> None:

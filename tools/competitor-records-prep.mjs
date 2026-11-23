@@ -142,7 +142,7 @@ export function census(objects, paths = columnPaths(objects)) {
   const rows = new Map(
     paths.map((path) => [
       path,
-      { key: path, count: 0, types: new Set(), lengths: [], echoOfQuestion: 0, seen: new Set() },
+      { key: path, count: 0, types: new Set(), lengths: [], echoOfQuestion: 0, seen: new Map() },
     ]),
   );
   for (const object of objects) {
@@ -155,7 +155,8 @@ export function census(objects, paths = columnPaths(objects)) {
       // Every type is counted towards `distinct`, not only strings: a boolean column that is `false` on
       // all 500 records has one value, and "never takes a second value" is what separates a flag from a
       // verdict (see `identifyVerdictField`).
-      row.seen.add(typeof value === 'string' ? value : JSON.stringify(value));
+      const key = typeof value === 'string' ? value : JSON.stringify(value);
+      row.seen.set(key, (row.seen.get(key) ?? 0) + 1);
       if (typeof value === 'string') {
         row.lengths.push(value.length);
         if (typeof object.question === 'string' && value === object.question) row.echoOfQuestion += 1;
@@ -170,6 +171,13 @@ export function census(objects, paths = columnPaths(objects)) {
     lengthMax: row.lengths.length === 0 ? null : Math.max(...row.lengths),
     echoOfQuestion: row.echoOfQuestion,
     distinct: row.seen.size,
+    // The most frequent values, truncated. A census that reports only counts cannot answer "why did
+    // three of these values not parse as a verdict", and the answer is always a spelling: `Yes.`,
+    // `yes`, an empty string. Recorded here rather than discovered by re-downloading the file.
+    topValues: [...row.seen.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([value, count]) => ({ value: value.slice(0, 40), count })),
   }));
 }
 
@@ -234,7 +242,12 @@ function valueLooksVerdict(value) {
   if (typeof value === 'boolean') return value;
   if (value === 1 || value === 0) return value === 1;
   if (typeof value === 'string') {
-    const lowered = value.trim().toLowerCase();
+    // Trailing punctuation is stripped because a judge model writes `Yes.` and the parser in
+    // `cortex-eval` already reads a verdict by prefix (`startsWith('YES')`). Being stricter here than
+    // the instrument that produced our own numbers would reject verdicts that instrument accepted --
+    // and the rejection is silent: an unparsed verdict becomes `null` and the question leaves the
+    // paired population without saying so.
+    const lowered = value.trim().toLowerCase().replace(/[.!\s]+$/, '');
     if (lowered === 'true' || lowered === '1' || lowered === 'yes' || lowered === 'correct') return true;
     if (lowered === 'false' || lowered === '0' || lowered === 'no' || lowered === 'incorrect') return false;
   }
