@@ -417,8 +417,7 @@ A statement can also fail **after** the store is open. When the failure comes fr
 itself, a write — or a read, because reads purge expired rows — raises `StorageUnavailableError`
 rather than an engine error you would have to match on a string. The class is deliberately not named
 `StorageFullError`: in a real Chromium at a zero quota, a raw OPFS write of eight megabytes still
-succeeds and `navigator.storage.estimate()` still reports 10 GiB, so from inside the page a full origin
-and a failing device are the same event. The message names both causes and says they cannot be told
+succeeds, so from inside the page a full origin and a failing device are the same event. The message names both causes and says they cannot be told
 apart; the engine's own message is kept as `cause`. The statement did not run, so nothing is
 half-written: check free space first, then the origin's quota.
 

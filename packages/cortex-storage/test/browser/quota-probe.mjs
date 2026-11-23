@@ -13,15 +13,24 @@
  * The first version of this probe was written to *diagnose* a full origin: a one-byte write into the
  * origin's directory would either succeed (device failure) or raise `QuotaExceededError` (quota), and
  * the library would then name the cause. Run against a real Chromium with the quota overridden to
- * zero, that premise is false -- three checks below record it:
+ * zero, that premise is false -- two checks below record it:
  *
- *   * `navigator.storage.estimate()` still reports the default 10 GiB (check 3);
- *   * a raw OPFS write of **eight megabytes** still succeeds (check 4);
- *   * a fresh IndexedDB write still lands (check 5).
+ *   * a raw OPFS write of **eight megabytes** still succeeds (check 3);
+ *   * a fresh IndexedDB write still lands (check 4).
  *
  * Only SQLite's own writes through the access-handle pool fail. So the library cannot tell the two
  * causes apart, the class it raises is `StorageUnavailableError` rather than `StorageFullError`, and
  * its message states the ambiguity instead of guessing. That is what this file is for.
+ *
+ * ## The check that was removed, because the platform does not answer it the same way twice
+ *
+ * The first version also asserted that `navigator.storage.estimate()` keeps reporting the default
+ * 10 GiB at a zero quota. That is true of the Chromium this was developed against (1208, which is what
+ * the committed reading came from) and **false of the Chromium the workflow runs** (it reports 0).
+ * The verdict is recorded instead of asserted -- `estimateQuotaAtZero` below -- because a reading that
+ * depends on the browser build is not a property of the product, and a check that flipped with the
+ * runner would train the next reader to re-dispatch until the number looked familiar. The variability
+ * is itself the reason the estimate cannot be a signal: the same code sees two different answers.
  *
  * ## Why the quota is set from the driver and not from the page
  *
@@ -90,6 +99,7 @@ async function main() {
   const send = (method, params) => launched.connection.send(method, params);
   const run = (request) => launched.connection.evaluate(`window.__run(${JSON.stringify(request)})`);
 
+  let platformEstimate = null;
   try {
     // A row written while there is room. Everything after this is about not losing it.
     const prepared = await run({ mode: 'quota', step: 'prepare' });
@@ -104,14 +114,11 @@ async function main() {
       enforced,
     );
 
-    // The three platform facts that make a page-side diagnosis impossible. They are checks rather
-    // than prose because each one is a premise the product's error message depends on.
+    // The two platform facts that make a page-side diagnosis impossible. They are checks rather than
+    // prose because each one is a premise the product's error message depends on. The estimate is
+    // recorded and not checked: see the header for why it answers differently on two Chromium builds.
     const platform = await run({ mode: 'quota', step: 'platform' });
-    check(
-      'the page cannot see the override: the estimate still reports gigabytes',
-      typeof platform.estimateQuota === 'number' && platform.estimateQuota > 1_000_000_000,
-      { estimateQuota: platform.estimateQuota, enforced: enforced.quota },
-    );
+    platformEstimate = platform.estimateQuota ?? null;
     check(
       'a raw OPFS write of eight megabytes still succeeds at a zero quota',
       platform.rawOpfs === 'wrote-8MiB',
@@ -170,10 +177,14 @@ async function main() {
         checks,
         passed,
         total: checks.length,
+        estimateQuotaAtZero: platformEstimate,
         note:
           'One run, one origin. The quota is created with the DevTools protocol ' +
           '(Storage.overrideQuotaForOrigin), which is the only method this Chromium answers; the page ' +
-          'cannot do it. Timings are not recorded because nothing here depends on them.',
+          'cannot do it. Timings are not recorded because nothing here depends on them. ' +
+          '`estimateQuotaAtZero` is recorded rather than asserted: Chromium 1208 reports the default ' +
+          '10 GiB while the browser enforces zero, and the CI Chromium reports 0. The same code sees ' +
+          'two answers, which is why the estimate is not a signal the product can use.',
       },
       null,
       2,

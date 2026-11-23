@@ -10,7 +10,7 @@
         "tier": "opfs",
         "refused": [],
         "wrote": true,
-        "estimateQuota": 10745808506,
+        "estimateQuota": 10745808508,
         "ok": true
       }
     },
@@ -18,13 +18,13 @@
       "name": "the browser enforces a zero quota for this origin",
       "ok": true,
       "detail": {
-        "usage": 75386,
+        "usage": 75388,
         "quota": 0,
         "overrideActive": true,
         "usageBreakdown": [
           {
             "storageType": "file_systems",
-            "usage": 75386
+            "usage": 75388
           },
           {
             "storageType": "indexeddb",
@@ -39,14 +39,6 @@
             "usage": 0
           }
         ]
-      }
-    },
-    {
-      "name": "the page cannot see the override: the estimate still reports gigabytes",
-      "ok": true,
-      "detail": {
-        "estimateQuota": 10737496270,
-        "enforced": 0
       }
     },
     {
@@ -79,7 +71,7 @@
           "v": 42
         },
         "blocked": null,
-        "estimateQuota": 10737496270,
+        "estimateQuota": 10737496272,
         "ok": true
       }
     },
@@ -99,7 +91,7 @@
           "v": 42
         },
         "blocked": null,
-        "estimateQuota": 10737496270,
+        "estimateQuota": 10737496272,
         "ok": true
       }
     },
@@ -141,7 +133,8 @@
       }
     }
   ],
-  "passed": 11,
-  "total": 11,
-  "note": "One run, one origin. The quota is created with the DevTools protocol (Storage.overrideQuotaForOrigin), which is the only method this Chromium answers; the page cannot do it. Timings are not recorded because nothing here depends on them."
+  "passed": 10,
+  "total": 10,
+  "estimateQuotaAtZero": 10737496272,
+  "note": "One run, one origin. The quota is created with the DevTools protocol (Storage.overrideQuotaForOrigin), which is the only method this Chromium answers; the page cannot do it. Timings are not recorded because nothing here depends on them. `estimateQuotaAtZero` is recorded rather than asserted: Chromium 1208 reports the default 10 GiB while the browser enforces zero, and the CI Chromium reports 0. The same code sees two answers, which is why the estimate is not a signal the product can use."
 }

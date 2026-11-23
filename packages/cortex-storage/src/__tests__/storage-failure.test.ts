@@ -12,9 +12,10 @@
  *
  * Whether the cause was a device or a quota. That question was measured in a real Chromium and the
  * answer is that the page cannot tell (`test/browser/quota-probe.mjs`): at a zero quota a raw OPFS
- * write of eight megabytes still succeeds and `navigator.storage.estimate()` still reports 10 GiB,
- * while SQLite's own write fails. A test cannot assert a distinction the platform does not provide,
- * so the error's message states the ambiguity and this file asserts that it is stated.
+ * write of eight megabytes still succeeds while SQLite's own write fails, and the storage estimate
+ * reports the override on one Chromium build and ignores it on another. A test cannot assert a
+ * distinction the platform does not provide, so the error's message states the ambiguity and this
+ * file asserts that it is stated.
  */
 import { describe, expect, it } from 'vitest';
 import { StorageUnavailableError } from '../storage/errors.js';

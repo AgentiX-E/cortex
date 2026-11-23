@@ -16,10 +16,12 @@
  * What it does **not** do is decide whether the cause was a failing device or an exhausted origin
  * quota. That was tried, in this file, with a one-byte write into the origin's directory, and it was
  * wrong: measured in a real Chromium with the origin's quota overridden to zero, a raw OPFS write of
- * one byte -- and of eight megabytes -- still succeeds, `navigator.storage.estimate()` still reports
- * the default 10 GiB, and a fresh IndexedDB write still lands. Only SQLite's own writes through the
- * access-handle pool fail. There is no page-side signal that separates the two causes, so the error
- * says so instead of guessing, and `test/browser/quota-probe.mjs` keeps all four facts as a reading.
+ * one byte -- and of eight megabytes -- still succeeds and a fresh IndexedDB write still lands. Only
+ * SQLite's own writes through the access-handle pool fail. The third candidate, the storage estimate,
+ * turned out to depend on the browser build: it reports the default 10 GiB on Chromium 1208 and 0 on
+ * the CI Chromium, which is a reason not to use it rather than a reason to trust it. There is no
+ * page-side signal that separates the two causes, so the error says so instead of guessing, and
+ * `test/browser/quota-probe.mjs` keeps the facts as a reading.
  *
  * ## Why the name is about the layer, not about space
  *

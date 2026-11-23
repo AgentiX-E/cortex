@@ -127,9 +127,13 @@ Not closed by it:
 
   | reading | what it rules out |
   | --- | --- |
-  | `navigator.storage.estimate()` still reports 10 GiB at a zero quota | "check the estimate before writing" |
   | a raw OPFS write of **8 MiB** still succeeds at a zero quota | "probe the directory with one byte" |
   | a fresh IndexedDB write still lands at a zero quota | "the fallback tier will notice" |
+
+  A third candidate was removed from the checks after the workflow ran it: `navigator.storage.estimate()`
+  reports the default 10 GiB at a zero quota on Chromium 1208 and **0** on the CI Chromium. The value is
+  recorded as `estimateQuotaAtZero` rather than asserted, because a reading that flips with the browser
+  build is a fact about the build -- and a good reason not to let a product depend on it.
 
   Only SQLite's own writes through the access-handle pool fail, with `SQLITE_IOERR` (result code 10) --
   the same code a failing device produces. So the tier raises `StorageUnavailableError`, whose message

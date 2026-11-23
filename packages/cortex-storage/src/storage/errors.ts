@@ -57,12 +57,16 @@ export class TransactionOpenError extends Error {
  *
  * It was, for one round. The browser tier measured what a full origin actually produces -- and the
  * answer is that the page cannot tell. With the origin's quota overridden to zero, SQLite reports
- * `SQLITE_IOERR` (result code 10), the same code it reports for a failing device; meanwhile a raw
- * OPFS write of eight megabytes still succeeds and `navigator.storage.estimate()` still reports the
- * default 10 GiB (`test/browser/quota-probe.mjs`, reading committed beside it). A class named
- * `StorageFullError` would therefore have been wrong in one of the two cases, and wrong in the
- * direction that costs a user: told to free space when the disk is failing, or told to replace a
- * device when all they need is a deleted row.
+ * `SQLITE_IOERR` (result code 10), the same code it reports for a failing device, while a raw OPFS
+ * write of eight megabytes still succeeds (`test/browser/quota-probe.mjs`, reading committed beside
+ * it). A class named `StorageFullError` would therefore have been wrong in one of the two cases, and
+ * wrong in the direction that costs a user: told to free space when the disk is failing, or told to
+ * replace a device when all they need is a deleted row.
+ *
+ * The one signal that looked promising made the case stronger rather than weaker:
+ * `navigator.storage.estimate()` reports the default 10 GiB at a zero quota on Chromium 1208 and
+ * reports **0** on the Chromium the workflow runs. The same code, two answers -- so the estimate is
+ * a property of the browser build, not of this origin.
  *
  * ## What a caller can act on
  *
