@@ -647,3 +647,35 @@ What this changes about the table: the product row is now measurable **in the sa
 on the same sample, with the same judge and one ledger. It does not make the number 91.25% — that reading is 500
 questions × four passes, and this row will be thirty questions until a dispatch says otherwise. What it removes is
 the reason the two could not be compared at all.
+
+### 12.8 The product arm's first dispatch found two defects before it found a number
+
+Run `45089801550` is the receipt, and both failures belonged to the wiring rather than to the arm.
+
+**The proxy was gated on `sut`.** The metering proxy's step ran only when a system under test was named, so a
+dispatch with `product=cortex-product` and no competitor skipped it while `SUT_LLM_BASE_URL` still pointed at its
+port. The product row's chat calls therefore went to a socket nobody was listening on. The proxy is not a
+competitor's convenience — it is where the product row's cost column comes from — so `product != ''` joins the
+condition.
+
+**The progress wrapper inherited instead of delegating.** `withProgress` built its wrapper with
+`Object.create(provider, {...})`: the wrapper's prototype is the instance, so `this` inside a forwarded method is
+the _wrapper_, and JavaScript checks private-field access against the receiver. `reset()` therefore threw
+`Receiver must be an instance of class CortexProductProvider` on the first question — **after** the corpus had
+been embedded and one question paid for. The trick was correct for exactly as long as every wrapped provider was
+a plain object, which is what the drivers are and what the product is not.
+
+The wrapper now lives in `tools/progress-wrap.mjs` and delegates: it holds the provider and forwards, so `this`
+is the real object. Its two value-carrying members are getters rather than copies, because `usage` read at
+construction reports the corpus build and none of the answers — the direction that makes an arm look cheap.
+
+`test_progress_wrap.py` is the guard, and it is written against the shape rather than the symptom: a provider
+with `#private` state is driven through `ingest`, `answer`, two `reset`s and a `search`, and the assertions are
+that the counter is live after it moves, that `search` still exists on a self-answering arm, and that no driver
+manifest was invented for an in-process provider. The failure is reproducible in one line — `Object.create` a
+product provider and call `reset` — which is what makes the guard a test rather than a comment.
+
+Two things follow for how this campaign reads a failed dispatch. The dispatch spent an embedding pass and one
+question's model call before it died, and the artifact said so: the progress lines carried the question number,
+which is the reporting repair `45002769709` bought. And neither defect would have been visible in a score — the
+first would have printed a cost of zero, the second would have printed nothing at all.
