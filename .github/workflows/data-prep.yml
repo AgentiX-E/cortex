@@ -1,0 +1,114 @@
+# Fetch the two corpora the SOTA comparison is blocked on, and reduce each to an artefact this
+# repository can actually read.
+#
+# ## Why this is a workflow and not a step in the sandbox
+#
+# The development sandbox reaches `api.github.com` and, at roughly 12 KB/s through the proxy, part of
+# `raw.githubusercontent.com`. Two measurements failed there for that reason and only that reason
+# (§169.5): Maximem Synap's per-question record file stopped at 5.4 MB of 23.7 MB, and a `Range` request
+# for the remainder timed out. Neither failure says anything about the file. A runner has the network
+# and moves both in seconds, so the corpus is fetched here and the *reduced* artefact is what comes back.
+#
+# ## Why no model, no key, and no accuracy number
+#
+# This job answers one question -- what is in the file -- and the two things downstream need are
+# structure and a lined-up answer set. A job that also graded would make every schema question a paid
+# one, and the schema question is the one that has to be asked before the paid one is worth asking.
+# The re-grade is a separate dispatch with its own preregistration.
+#
+# ## Why the record file is fetched from a pinned commit
+#
+# `results/longmemeval/` sits on a branch, and a re-grade is only about the bytes it names. The default
+# below is the tree this campaign's reading was taken against; `records_url` exists so a later revision
+# can be measured deliberately rather than by drift. The digest of whatever was actually read is
+# recorded in `records-census.json` by the tool itself, not by this file.
+name: Data prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      records_url:
+        description: 'Competitor per-question record file to census (default: Synap LongMemEval records)'
+        required: false
+        default: 'https://raw.githubusercontent.com/maximem-ai/eval_benchmark_runs_output/main/results/longmemeval/question_records_gemini-3.8-flash.json'
+        type: string
+      locomo_url:
+        description: 'LoCoMo corpus URL, pinned by commit (default: the revision the published splits use)'
+        required: false
+        default: 'https://raw.githubusercontent.com/snap-research/locomo/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/data/locomo10.json'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  competitor-records:
+    name: Census the competitor records
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+      # No `pnpm install`: the tool is plain Node with no dependency, and a lockfile step here would
+      # put the census behind the package graph for no reason.
+      - name: Fetch, census, and line up one answer per question
+        env:
+          RECORDS_URL: ${{ inputs.records_url }}
+        run: |
+          node tools/competitor-records-prep.mjs \
+            --url "$RECORDS_URL" \
+            --out-dir prep/competitor-records
+      # Printed as well as uploaded: the answer field is the reading, and whoever dispatched this should
+      # be able to see whether the identification converged without downloading anything.
+      - name: Say what was found
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const census = JSON.parse(fs.readFileSync("prep/competitor-records/records-census.json", "utf8"));
+            console.log(`records        ${census.records}`);
+            console.log(`bytes          ${census.source.bytes}`);
+            console.log(`sha256         ${census.source.sha256}`);
+            console.log(`fieldMap       ${JSON.stringify(census.fieldMap)}`);
+            console.log(`answerSource   ${census.answerFieldSource}`);
+            if (census.refused) console.log(`refused        ${census.refused}`);
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prep-competitor-records
+          path: prep/competitor-records
+          retention-days: 30
+
+  locomo:
+    name: Census the LoCoMo corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+      # The digest is asserted, not reported. A corpus that arrived truncated parses as JSON only if the
+      # truncation happens to close every bracket — and the reading it would produce is a smaller
+      # population wearing the name of the published one, which is the exact failure §164 recorded for a
+      # different file. `sha256sum --check` is what makes a short read a failed job rather than a quiet
+      # corpus; `curl --fail` alone does not, because a connection that closes early is a transport
+      # result and not an HTTP status.
+      - name: Fetch the corpus and check its digest
+        env:
+          LOCOMO_URL: ${{ inputs.locomo_url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            "$LOCOMO_URL" -o prep/locomo10.json
+          echo "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4  prep/locomo10.json" \
+            | sha256sum --check --strict -
+      - name: Census it
+        run: |
+          node tools/locomo-prep.mjs --input prep/locomo10.json --out-dir prep/locomo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prep-locomo
+          path: prep/locomo
+          retention-days: 30

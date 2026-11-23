@@ -1,0 +1,164 @@
+# Re-grade a competitor's published answers with this repository's judge.
+#
+# ## What this workflow is for, and what it is not
+#
+# Cortex reads 91.2% on LongMemEval-S (456/500) and Maximem Synap publishes 95.6%. The gap is quoted
+# as 4.35 points, and it is not a measurement of two systems: their 95.6% was produced by the official
+# `evaluate_qa.py` prompts under a judge model their manifest does not pin, ours by `deepseek-chat` at
+# temperature 0 (§169.5). Two readings taken with two rulers. This puts **their answers** through **our
+# ruler**, so the difference that survives is between two systems.
+#
+# It is one-directional by construction and the artefact says so: their ruler cannot be reproduced
+# (the judge model is not published), so there is no reading of our answers under their ruler.
+#
+# ## Why the population comes from a separate job
+#
+# `data-prep.yml` fetches the 23.7 MB record file and reduces it to 500 lined-up answers at no model
+# cost. That reduction is what a person can review before anything is spent: the answer field had to be
+# identified from a file with no schema, and a wrong identification produces a plausible accuracy
+# rather than an error. So the prep is a separate dispatch, its census is readable, and this workflow
+# names the run it is grading.
+#
+# ## Why `judgeScorer` and not a bare judge
+#
+# Cortex's 91.2% was scored by `judgeScorer`, which settles exact matches, absent answers and counting
+# questions without a model. Sending every competitor answer to the judge would put it through a
+# stricter pipeline than the one that produced our own number, and the gap would measure this file.
+#
+# ## Why the plan runs first, always
+#
+# The plan computes the call count and the prompt size from `buildJudgePrompt` itself, with no key and
+# no network. A dispatch is then a decision about a number rather than a hope: `max_calls` is checked
+# before the first request, and the reading records whether a price was supplied or only tokens were
+# reported.
+#
+# ## Dispatch only
+#
+# It spends credits, its input is an artefact of another run, and its reading is only meaningful
+# against that artefact. Nothing here runs on push.
+name: Competitor regrade
+
+on:
+  workflow_dispatch:
+    inputs:
+      prep_run_id:
+        description: 'Run id of a successful `Data prep` run whose `prep-competitor-records` artefact is graded'
+        required: true
+        type: string
+      limit:
+        description: 'Answers to grade (0 = all in the artefact)'
+        required: false
+        default: '0'
+        type: string
+      max_calls:
+        description: 'Hard ceiling on judge requests; the run refuses to start above it'
+        required: false
+        default: '600'
+        type: string
+      model:
+        description: 'Judge as `provider:model` or a bare id. EMPTY means `deepseek-chat`, the judge that produced 91.25%, because a re-grade under another ruler does not answer the question this exists for'
+        required: false
+        default: 'deepseek-chat'
+        type: string
+      price_cny_per_mtok:
+        description: 'Optional price per million prompt tokens in CNY. EMPTY reports tokens and no money, because a price written into a file is a number nobody re-checks'
+        required: false
+        default: ''
+        type: string
+      plan_only:
+        description: 'true = compute the population and the prompt size, spend nothing'
+        required: false
+        default: 'false'
+        type: string
+
+permissions:
+  contents: read
+  actions: read # `gh run download` of the preparation artefact
+
+env:
+  PREP_RUN_ID: ${{ inputs.prep_run_id }}
+  LIMIT: ${{ inputs.limit }}
+  MAX_CALLS: ${{ inputs.max_calls }}
+  JUDGE_MODEL: ${{ inputs.model }}
+  PRICE: ${{ inputs.price_cny_per_mtok }}
+  PLAN_ONLY: ${{ inputs.plan_only }}
+  # Pinned so the judge identity is the one that produced 91.25% (`memoryArmConfig.judge` in run
+  # 44017278305: `deepseek` / `deepseek-chat` / temperature 0). The scorer applies temperature 0 itself;
+  # the model is pinned here because an unset variable is not an error and would silently grade with
+  # whatever `DEEPSEEK_MODEL` happened to be.
+  DEEPSEEK_MODEL: deepseek-chat
+  GH_TOKEN: ${{ github.token }}
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+jobs:
+  regrade:
+    name: Re-grade the competitor's answers
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Fetch the prepared answer set
+        run: |
+          set -euo pipefail
+          mkdir -p prep/competitor-records
+          gh run download "$PREP_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name prep-competitor-records --dir prep/competitor-records
+          ls -la prep/competitor-records
+
+      # Printed before any call: which field was read as the answer is the premise of every number
+      # below, and a reader of this log should be able to reject it without downloading anything.
+      - name: Say which field the answers came from
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const answers = JSON.parse(fs.readFileSync("prep/competitor-records/records-answers.json", "utf8"));
+            const census = JSON.parse(fs.readFileSync("prep/competitor-records/records-census.json", "utf8"));
+            console.log(`records      ${answers.records}`);
+            console.log(`answerField  ${answers.answerField} (${answers.answerFieldSource})`);
+            console.log(`verdictField ${answers.verdictField}`);
+            console.log(`sha256       ${census.source.sha256}`);
+            if (answers.refused) console.log(`refused      ${answers.refused}`);
+          '
+
+      # An array rather than `${PRICE:+--flag "$PRICE"}`: the conditional expansion splits on the value
+      # it substitutes, so a price that ever contains a space would become two arguments to a command
+      # whose whole job is to bound what gets spent.
+      - name: Plan (no model, no key)
+        run: |
+          set -o pipefail
+          args=(--answers prep/competitor-records/records-answers.json --out-dir readings
+                --limit "$LIMIT" --max-calls "$MAX_CALLS" --plan-only)
+          if [ -n "$PRICE" ]; then args+=(--price-cny-per-mtok "$PRICE"); fi
+          node tools/competitor-regrade.mjs "${args[@]}" 2>&1 | tee readings/plan.txt
+
+      - name: Re-grade
+        if: env.PLAN_ONLY != 'true'
+        run: |
+          set -o pipefail
+          args=(--answers prep/competitor-records/records-answers.json --out-dir readings
+                --limit "$LIMIT" --max-calls "$MAX_CALLS")
+          if [ -n "$PRICE" ]; then args+=(--price-cny-per-mtok "$PRICE"); fi
+          node tools/competitor-regrade.mjs "${args[@]}" 2>&1 | tee readings/regrade.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regrade-competitor
+          path: readings
+          retention-days: 30
