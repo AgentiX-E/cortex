@@ -120,7 +120,24 @@ Not closed by it:
   was silently getting a second database, and now it is refused by name). Two things it does **not** cover,
   and they stay boundaries: Firefox, whose BiDi build cannot create a second browsing context, and
   cross-tab *synchronisation* — the claim makes a second writer visible, it does not make two writers safe;
-- **private browsing, quota exhaustion** — neither is exercised by any probe;
+- **quota exhaustion** — no longer unexercised: `test/browser/quota-probe.mjs` sets the origin's quota to
+  zero over the DevTools protocol, writes, lifts it, and writes again. Eleven named checks, committed in
+  `test/browser/quota-run.json` and re-derived by `verify.yml`. Three of them are the reason the product
+  does not claim to diagnose the cause:
+
+  | reading | what it rules out |
+  | --- | --- |
+  | `navigator.storage.estimate()` still reports 10 GiB at a zero quota | "check the estimate before writing" |
+  | a raw OPFS write of **8 MiB** still succeeds at a zero quota | "probe the directory with one byte" |
+  | a fresh IndexedDB write still lands at a zero quota | "the fallback tier will notice" |
+
+  Only SQLite's own writes through the access-handle pool fail, with `SQLITE_IOERR` (result code 10) --
+  the same code a failing device produces. So the tier raises `StorageUnavailableError`, whose message
+  names both causes and says they cannot be told apart, instead of a `StorageFullError` that would be
+  wrong about half the time. The row written before the exhaustion stays readable, and the same write
+  succeeds once the quota is restored: the refusal is loud and it is not permanent.
+
+- **private browsing** — still unexercised by any probe;
 - **that Firefox is supported as a product.** Obtaining the tier and surviving a restart is the API
   contract. Quota behaviour, eviction order and sync-handle contention across many tabs are a different
   sentence with a different measurement.

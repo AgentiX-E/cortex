@@ -140,6 +140,13 @@
       "path": "tools/__tests__/fixtures/spend-projection-42467.json",
       "kind": "input",
       "why": "The arithmetic of one spend projection over run 42467, frozen so the projection tool's tests assert against the numbers that were quoted rather than recomputing them."
+    },
+    {
+      "path": "packages/cortex-storage/test/browser/quota-run.json",
+      "kind": "recomputed",
+      "job": "browser",
+      "workflow": ".github/workflows/verify.yml",
+      "why": "The quota probe sets the origin's quota to zero over the DevTools protocol, writes, lifts it, writes again, and compares eleven named checks with the committed copy. Three of them exist to record a negative result -- a raw OPFS write of eight megabytes still succeeds, IndexedDB still writes, `estimate()` still reports 10 GiB -- which is why the tier raises `StorageUnavailableError` instead of naming the quota."
     }
   ]
 }

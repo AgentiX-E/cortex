@@ -59,6 +59,8 @@ export { StorageClosedError, TransactionOpenError } from './errors.js';
 export class SqlStorage implements Storage {
   readonly #session: SqlSession;
   readonly #ready: Promise<void>;
+  /** Rewrites a failure before the caller sees it. Absent means every error passes through. */
+  readonly #translateFailure: ((error: unknown) => Promise<unknown>) | undefined;
   #open = false;
   #closed = false;
 
@@ -71,8 +73,12 @@ export class SqlStorage implements Storage {
    */
   #queue: Promise<unknown> = Promise.resolve();
 
-  constructor(session: SqlSession) {
+  constructor(
+    session: SqlSession,
+    options: { readonly translateFailure?: (error: unknown) => Promise<unknown> } = {},
+  ) {
     this.#session = session;
+    this.#translateFailure = options.translateFailure;
     // The schema is applied eagerly but asynchronously, and every operation awaits this. A
     // synchronous engine settles it before the first call returns; the worker-backed one resolves
     // after the worker has answered. Either way "the table exists" is a precondition of every
@@ -82,27 +88,29 @@ export class SqlStorage implements Storage {
 
   async put(table: string, key: string, value: unknown, opts?: PutOptions): Promise<void> {
     this.#assertWritable('put');
-    await this.#put(table, key, value, opts);
+    await this.#translated(() => this.#put(table, key, value, opts));
   }
 
   async get<T>(table: string, key: string): Promise<T | undefined> {
     this.#assertUsable();
-    return this.#get<T>(table, key);
+    return this.#translated(() => this.#get<T>(table, key));
   }
 
   async del(table: string, key: string): Promise<void> {
     this.#assertWritable('del');
-    await this.#del(table, key);
+    await this.#translated(() => this.#del(table, key));
   }
 
   async query<T>(table: string, predicate: QueryPredicate = {}): Promise<T[]> {
     this.#assertUsable();
-    await this.#ready;
-    await this.#purge(table);
+    return this.#translated(async () => {
+      await this.#ready;
+      await this.#purge(table);
 
-    const { sql, params } = kvQuery(table, predicate);
-    const rows = await this.#session.all(sql, params);
-    return selectPage<T>(rows as KvRow[], predicate);
+      const { sql, params } = kvQuery(table, predicate);
+      const rows = await this.#session.all(sql, params);
+      return selectPage<T>(rows as KvRow[], predicate);
+    });
   }
 
   async transaction<T>(fn: (tx: StorageTransaction) => Promise<T>): Promise<T> {
@@ -113,7 +121,7 @@ export class SqlStorage implements Storage {
 
     // The queue is advanced even when the body fails, so one failed transaction does not wedge
     // every transaction behind it.
-    const run = this.#queue.then(() => this.#runTransaction(fn));
+    const run = this.#queue.then(() => this.#translated(() => this.#runTransaction(fn)));
     this.#queue = run.then(
       () => undefined,
       () => undefined,
@@ -129,6 +137,24 @@ export class SqlStorage implements Storage {
     // would leak the file handle that `close` exists to release.
     await this.#ready.catch(() => undefined);
     await this.#session.close();
+  }
+
+  /**
+   * Runs one unit of work and lets the backend name the failure before it reaches the caller.
+   *
+   * The translator sits at the public boundary rather than inside each statement so that a
+   * transaction is translated once, as one failure, instead of once per statement that happened to
+   * fail inside it. With no translator installed -- every backend but the browser's OPFS tier -- this
+   * is an identity function, and its only cost is one `catch`.
+   */
+  async #translated<T>(body: () => Promise<T>): Promise<T> {
+    try {
+      return await body();
+    } catch (error) {
+      const translate = this.#translateFailure;
+      if (translate === undefined) throw error;
+      throw await translate(error);
+    }
   }
 
   async #runTransaction<T>(fn: (tx: StorageTransaction) => Promise<T>): Promise<T> {

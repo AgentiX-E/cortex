@@ -1,0 +1,147 @@
+{
+  "engine": "chromium",
+  "checks": [
+    {
+      "name": "the origin opens on a tier and accepts a row while there is room",
+      "ok": true,
+      "detail": {
+        "mode": "quota",
+        "step": "prepare",
+        "tier": "opfs",
+        "refused": [],
+        "wrote": true,
+        "estimateQuota": 10745808506,
+        "ok": true
+      }
+    },
+    {
+      "name": "the browser enforces a zero quota for this origin",
+      "ok": true,
+      "detail": {
+        "usage": 75386,
+        "quota": 0,
+        "overrideActive": true,
+        "usageBreakdown": [
+          {
+            "storageType": "file_systems",
+            "usage": 75386
+          },
+          {
+            "storageType": "indexeddb",
+            "usage": 0
+          },
+          {
+            "storageType": "cache_storage",
+            "usage": 0
+          },
+          {
+            "storageType": "service_workers",
+            "usage": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "the page cannot see the override: the estimate still reports gigabytes",
+      "ok": true,
+      "detail": {
+        "estimateQuota": 10737496270,
+        "enforced": 0
+      }
+    },
+    {
+      "name": "a raw OPFS write of eight megabytes still succeeds at a zero quota",
+      "ok": true,
+      "detail": {
+        "rawOpfs": "wrote-8MiB"
+      }
+    },
+    {
+      "name": "a fresh IndexedDB write still lands at a zero quota",
+      "ok": true,
+      "detail": {
+        "indexedDb": "wrote"
+      }
+    },
+    {
+      "name": "opening under a zero quota still answers, on OPFS",
+      "ok": true,
+      "detail": {
+        "mode": "quota",
+        "step": "attempt",
+        "tier": "opfs",
+        "refused": [],
+        "wrote": false,
+        "name": "StorageUnavailableError",
+        "message": "the storage layer could not carry out this statement, so nothing was written and nothing was half-written. Two causes reach this error and this library cannot tell them apart: the device is failing, o",
+        "cause": "SQLITE_IOERR: sqlite3 result code 10: disk I/O error",
+        "read": {
+          "v": 42
+        },
+        "blocked": null,
+        "estimateQuota": 10737496270,
+        "ok": true
+      }
+    },
+    {
+      "name": "the write under a zero quota is refused by name",
+      "ok": true,
+      "detail": {
+        "mode": "quota",
+        "step": "attempt",
+        "tier": "opfs",
+        "refused": [],
+        "wrote": false,
+        "name": "StorageUnavailableError",
+        "message": "the storage layer could not carry out this statement, so nothing was written and nothing was half-written. Two causes reach this error and this library cannot tell them apart: the device is failing, o",
+        "cause": "SQLITE_IOERR: sqlite3 result code 10: disk I/O error",
+        "read": {
+          "v": 42
+        },
+        "blocked": null,
+        "estimateQuota": 10737496270,
+        "ok": true
+      }
+    },
+    {
+      "name": "the refusal keeps the SQLite cause it came from",
+      "ok": true,
+      "detail": {
+        "cause": "SQLITE_IOERR: sqlite3 result code 10: disk I/O error"
+      }
+    },
+    {
+      "name": "the row written before the exhaustion is still readable",
+      "ok": true,
+      "detail": {
+        "read": {
+          "v": 42
+        },
+        "blocked": null
+      }
+    },
+    {
+      "name": "the refusal is not permanent: with room back, the same write lands",
+      "ok": true,
+      "detail": {
+        "quota": 1073741824,
+        "wrote": true,
+        "blocked": {
+          "v": 1
+        }
+      }
+    },
+    {
+      "name": "the earlier row survived the whole episode",
+      "ok": true,
+      "detail": {
+        "read": {
+          "v": 42
+        }
+      }
+    }
+  ],
+  "passed": 11,
+  "total": 11,
+  "note": "One run, one origin. The quota is created with the DevTools protocol (Storage.overrideQuotaForOrigin), which is the only method this Chromium answers; the page cannot do it. Timings are not recorded because nothing here depends on them."
+}

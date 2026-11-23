@@ -69,6 +69,21 @@ const REPO = resolve(HERE, '..');
  * What this baseline cannot do is catch the next +800 B as cheaply, and that cost is stated instead of being
  * hidden by a number nobody re-derives: the 2% allowance now sits on a larger base. An ONNX runtime or a
  * second SQL engine is still orders of magnitude over it, which is the defect the entry exists for.
+ *
+ * ## The second move: 4,606 -> 5,022 B gzip (+9.0%), and 7,028 -> 7,108 on `./sqlite`
+ *
+ * Both are one change: a statement that fails at the storage layer now raises `StorageUnavailableError`
+ * instead of an `RpcError` whose code is `engine-error`. The codes are the reason. `engine-error` is what a
+ * typo in the SQL produces too, so a caller could not tell "your query is wrong" from "your disk is gone"
+ * without matching on a message string. The cost is a class, one `catch` per public call, and the shared
+ * `#translated` wrapper -- 416 B gzip on `./opfs` (minified 13,395 B) and 80 B on `./sqlite`, which shares
+ * `SqlStorage`.
+ *
+ * The name is not `StorageFullError` because the measurement refused it: a real Chromium at a zero quota
+ * leaves a raw OPFS write of eight megabytes succeeding and `navigator.storage.estimate()` reporting 10 GiB
+ * (`packages/cortex-storage/test/browser/quota-run.json`, checks 3-5), so the page cannot tell a full origin
+ * from a failing device. The class says that out loud instead of guessing, and the size moved for a message
+ * a user can act on rather than for a mechanism.
  */
 const BASELINE = join(HERE, 'bundle-guard-baseline.json');
 

@@ -310,6 +310,19 @@ jobs:
       # The general form of the bundle defect below: a probe that writes its reading back into the
       # checkout leaves one file that always agrees with itself. Asserted here, where the checkout
       # starts clean, rather than in `pnpm check`, where a developer's tree is dirty by definition.
+      # The quota, created the only way a page cannot: the DevTools protocol. This step exists because
+      # the first design for it was wrong in a way only a browser could reveal -- a one-byte write was
+      # supposed to tell a full origin from a failing device, and at a zero quota that write still
+      # succeeds (eight megabytes of it does). The three platform checks that record this are the
+      # reason the class is `StorageUnavailableError` rather than `StorageFullError`, so they are
+      # compared here exactly like the two-tab claim above.
+      - name: The quota, re-derived and compared
+        env:
+          CORTEX_RESULTS_QUOTA: /tmp/fresh-quota-run.json
+        run: |
+          node packages/cortex-storage/test/browser/quota-probe.mjs \
+            --check --committed packages/cortex-storage/test/browser/quota-run.json
+
       - name: The suites wrote nothing into the checkout
         run: node tools/readings-in-place.mjs
 
@@ -348,6 +361,7 @@ jobs:
             /tmp/fresh-corpus-run.json
             /tmp/fresh-bundle-run.json
             /tmp/fresh-two-tab-run.json
+            /tmp/fresh-quota-run.json
             packages/cortex-memory/test/browser/corpus-run.json
           if-no-files-found: ignore
 

@@ -13,7 +13,7 @@ makes it a claim with no expiry date, so each one says which of three things it 
 | `one-shot` | measured once on purpose; the bytes are pinned by hash so they cannot be edited quietly |
 | `input` | not a measurement: the corpus or fixture a measurement reads |
 
-24 readings: 10 one-shot, 5 recomputed, 9 input.
+25 readings: 10 one-shot, 6 recomputed, 9 input.
 
 | reading | kind | re-derived by | why this stays true |
 | --- | --- | --- | --- |
@@ -34,6 +34,7 @@ makes it a claim with no expiry date, so each one says which of three things it 
 | `packages/cortex-storage/test/browser/bundle-run.json` | recomputed | `browser` in verify.yml | The bundle suite runs in the `browser` job, writes to /tmp/fresh-bundle-run.json, and is compared: this reading had no comparison at all until the run that produced it started overwriting it. |
 | `packages/cortex-storage/test/browser/last-run-firefox.json` | recomputed | `browser-firefox` in verify.yml | The `browser-firefox` job installs Playwright's Firefox 132, runs the same suite at 400 rows, and compares. This file is the whole of "gate 2 holds on a second engine", and no workflow mentioned firefox before that job. |
 | `packages/cortex-storage/test/browser/last-run.json` | recomputed | `browser` in verify.yml | The restart suite runs in the `browser` job at 400 rows, writes to /tmp/fresh-browser-run.json, and is compared with this reading by `tools/browser-reading-check.mjs`. |
+| `packages/cortex-storage/test/browser/quota-run.json` | recomputed | `browser` in verify.yml | The quota probe sets the origin's quota to zero over the DevTools protocol, writes, lifts it, writes again, and compares eleven named checks with the committed copy. Three of them exist to record a negative result -- a raw OPFS write of eight megabytes still succeeds, IndexedDB still writes, `estimate()` still reports 10 GiB -- which is why the tier raises `StorageUnavailableError` instead of naming the quota. |
 | `packages/cortex-storage/test/browser/two-tab-run.json` | recomputed | `browser` in verify.yml | The two-tab probe opens two targets on one profile and one origin, writes to /tmp/fresh-two-tab-run.json, and compares check by check. This is the only reading of the four that needs two tabs, and the only evidence for the single-writer claim. |
 | `tools/__tests__/fixtures/longmemeval-sample.json` | input |  | A slice of LongMemEval-S, checked in so the readout tests parse a real answer sheet rather than a hand-written stub of one. |
 | `tools/__tests__/fixtures/mr-roster-38595325261.json` | input |  | One workflow run's question roster, frozen as a fixture so the roster tests do not need GitHub. The run id is in the filename. |

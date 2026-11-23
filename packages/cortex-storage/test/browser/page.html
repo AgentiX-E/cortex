@@ -366,11 +366,89 @@
         return { closed: true };
       }
 
+      /**
+       * The quota scenario, driven from outside: the browser's quota is set between steps, so the
+       * page cannot script the whole thing. `prepare` leaves a row behind while there is room;
+       * `attempt` writes and reads under whatever quota the driver has set.
+       */
+      async function runQuota(request) {
+        const result = { mode: 'quota', step: request.step };
+        try {
+          if (request.step === 'platform') {
+            // The platform's own answers, with no product code in the way. These are the facts that
+            // rule out any page-side diagnosis of a full origin: the file system and IndexedDB both
+            // keep working while SQLite's writes through the access-handle pool do not.
+            result.rawOpfs = await (async () => {
+              try {
+                const root = await navigator.storage.getDirectory();
+                const handle = await root.getFileHandle('.raw-probe', { create: true });
+                const writable = await handle.createWritable();
+                await writable.write(new Uint8Array(8 * 1024 * 1024));
+                await writable.close();
+                await root.removeEntry('.raw-probe');
+                return 'wrote-8MiB';
+              } catch (error) {
+                return error?.name ?? 'Error';
+              }
+            })();
+            result.indexedDb = await (async () => {
+              const idb = await openIdbStorage({ databaseName: 'cortex-quota-probe' });
+              try {
+                await idb.put('probe', 'k', { v: 1 });
+                return 'wrote';
+              } catch (error) {
+                return error?.name ?? 'Error';
+              } finally {
+                await idb.close();
+              }
+            })();
+            result.estimateQuota = (await navigator.storage.estimate()).quota ?? null;
+            result.ok = true;
+            return result;
+          }
+          const opened = await openBrowserStorage({ sqliteModuleUrl: SQLITE });
+          result.tier = opened.tier;
+          result.refused = opened.refused;
+          if (request.step === 'prepare') {
+            await opened.storage.put('quota', 'marker', { v: 42 });
+            result.wrote = true;
+          } else {
+            try {
+              await opened.storage.put('quota', 'blocked', { v: 1 });
+              result.wrote = true;
+            } catch (error) {
+              result.wrote = false;
+              result.name = error?.name ?? 'Error';
+              result.message = String(error?.message ?? error).slice(0, 200);
+              result.cause =
+                error?.cause === undefined
+                  ? null
+                  : String(error.cause?.message ?? error.cause).slice(0, 200);
+            }
+            // Both keys are read every time: the one written before the exhaustion and the one that
+            // may or may not have landed, so "nothing was lost" and "the refusal is not permanent"
+            // are separate readings rather than one inference.
+            result.read = (await opened.storage.get('quota', 'marker')) ?? null;
+            result.blocked = (await opened.storage.get('quota', 'blocked')) ?? null;
+          }
+          result.estimateQuota = (await navigator.storage.estimate()).quota ?? null;
+          await opened.storage.close();
+          result.ok = true;
+          return result;
+        } catch (error) {
+          result.ok = false;
+          result.name = error?.name ?? 'Error';
+          result.message = String(error?.message ?? error).slice(0, 200);
+          return result;
+        }
+      }
+
       window.__run = async (request) => {
         if (request.mode === 'matrix') return runMatrix();
         if (request.mode === 'write') return runWrite(request.rows);
         if (request.mode === 'two-tab') return runTab(request);
         if (request.mode === 'close-held') return closeHeld(request.slot);
+        if (request.mode === 'quota') return runQuota(request);
         return runRead(request.rows, request.expected);
       };
 

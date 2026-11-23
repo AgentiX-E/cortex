@@ -413,6 +413,15 @@ unbundled:
   so the worker is otherwise requested at a path your bundle never wrote and 404s. Vite and webpack 5
   emit it themselves.
 
+A statement can also fail **after** the store is open. When the failure comes from the storage layer
+itself, a write — or a read, because reads purge expired rows — raises `StorageUnavailableError`
+rather than an engine error you would have to match on a string. The class is deliberately not named
+`StorageFullError`: in a real Chromium at a zero quota, a raw OPFS write of eight megabytes still
+succeeds and `navigator.storage.estimate()` still reports 10 GiB, so from inside the page a full origin
+and a failing device are the same event. The message names both causes and says they cannot be told
+apart; the engine's own message is kept as `cause`. The statement did not run, so nothing is
+half-written: check free space first, then the origin's quota.
+
 ### 5.3 What the store is now: the corpus the memory keeps
 
 Until this release the two chapters above read as if the memory might touch a `Storage`, and it never

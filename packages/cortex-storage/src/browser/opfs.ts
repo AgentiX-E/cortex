@@ -36,6 +36,7 @@ import {
   type WriterState,
 } from './open-policy.js';
 import { EngineRpcSession, RpcError, type MessageEndpoint } from './rpc.js';
+import { translationFor } from './storage-failure.js';
 import type { WriterLockManager, WriterMechanism } from './writer-claim.js';
 
 // The tier, the refusal and the pool name are owned by the policy module -- they are what a caller reads
@@ -217,7 +218,7 @@ export async function openOpfsStorage(options: OpfsOptions): Promise<BrowserStor
     ]);
 
     return {
-      storage: new SqlStorage(session),
+      storage: new SqlStorage(session, { translateFailure: translationFor() }),
       tier: 'opfs',
       engine: `${info.engine} ${info.version} on ${info.vfs} (journal: ${info.journal ?? 'unknown'})`,
       refused: [],

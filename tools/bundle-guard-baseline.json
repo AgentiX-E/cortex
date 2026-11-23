@@ -11,8 +11,8 @@
       "bytes": 3054
     },
     "./opfs": {
-      "gzip": 4606,
-      "bytes": 12374
+      "gzip": 5022,
+      "bytes": 13395
     },
     "./opfs/worker": {
       "gzip": 1273,
@@ -23,8 +23,8 @@
       "bytes": 2722
     },
     "./sqlite": {
-      "gzip": 7028,
-      "bytes": 21360
+      "gzip": 7108,
+      "bytes": 21560
     }
   }
 }

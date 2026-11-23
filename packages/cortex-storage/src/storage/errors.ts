@@ -49,3 +49,43 @@ export class TransactionOpenError extends Error {
     this.name = 'TransactionOpenError';
   }
 }
+
+/**
+ * Raised when a statement could not reach the data because the storage layer failed.
+ *
+ * ## Why this is not called "full"
+ *
+ * It was, for one round. The browser tier measured what a full origin actually produces -- and the
+ * answer is that the page cannot tell. With the origin's quota overridden to zero, SQLite reports
+ * `SQLITE_IOERR` (result code 10), the same code it reports for a failing device; meanwhile a raw
+ * OPFS write of eight megabytes still succeeds and `navigator.storage.estimate()` still reports the
+ * default 10 GiB (`test/browser/quota-probe.mjs`, reading committed beside it). A class named
+ * `StorageFullError` would therefore have been wrong in one of the two cases, and wrong in the
+ * direction that costs a user: told to free space when the disk is failing, or told to replace a
+ * device when all they need is a deleted row.
+ *
+ * ## What a caller can act on
+ *
+ * The statement did not run: no partial write, no half-committed transaction. The engine's own
+ * message is preserved as `cause`. The two causes worth checking, in the order that costs least to
+ * check: free space on the device, and the origin's quota. Retrying the same statement unchanged is
+ * the one response that helps in neither case.
+ *
+ * ## Why reads can raise it
+ *
+ * Reads purge expired rows for the table they touch, so a read can be the statement that finds the
+ * storage unavailable. A message that said "your write failed" would be wrong about half the time it
+ * appeared.
+ */
+export class StorageUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super(
+      'the storage layer could not carry out this statement, so nothing was written and nothing was ' +
+        'half-written. Two causes reach this error and this library cannot tell them apart: the device ' +
+        'is failing, or the origin is out of quota. Check free space, then the quota. Reads purge ' +
+        'expired rows, so a read can fail this way too. Retrying the same statement will not help.',
+      { cause },
+    );
+    this.name = 'StorageUnavailableError';
+  }
+}
