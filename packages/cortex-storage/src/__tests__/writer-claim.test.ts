@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Storage, StorageTransaction } from '@agentix-e/cortex-core';
-import { claimWriter, releaseOnClose, type WriterLockManager } from '../browser/writer-claim.js';
+import { claimWithGrace, releaseOnClose, type WriterLockManager } from '../browser/writer-claim.js';
 
 /**
  * A lock manager with the one guarantee the code relies on.
@@ -50,6 +50,13 @@ function fakeLocks(): {
   };
   return { locks, held, requests };
 }
+
+/**
+ * One attempt, no retry: the raw question. Every assertion below is about a single answer, so the wrapper
+ * is asked not to retry rather than the module exporting a second entry point for each of them.
+ */
+const claimWriter = (args: { pool: string; locks?: WriterLockManager | undefined }) =>
+  claimWithGrace(args, { attempts: 1, delayMs: 0 });
 
 describe('claimWriter', () => {
   it('acquires the pool name and says which mechanism answered', async () => {
@@ -267,5 +274,50 @@ describe('releaseOnClose', () => {
 
     await Promise.all([owning.close(), owning.close()]);
     expect(releases).toBe(1);
+  });
+});
+
+describe('claimWithGrace', () => {
+  it('takes the first answer when it is yes, and asks once', async () => {
+    const { locks, requests } = fakeLocks();
+    const claim = await claimWithGrace({ pool: 'cortex', locks }, { attempts: 4, delayMs: 0 });
+
+    expect(claim.acquired).toBe(true);
+    expect(requests).toHaveLength(1);
+  });
+
+  it('re-grants a claim that this page released a moment ago', async () => {
+    // The race the two-tab suite found in CI. The predecessor's `release()` has resolved, but the platform
+    // frees the name a beat later, so the very next request is answered `null` -- and the product used to
+    // believe that answer and refuse a page its own database.
+    const { locks } = fakeLocks();
+    const first = await claimWriter({ pool: 'cortex', locks });
+    first.release();
+    // Deliberately no `await` between the release and the re-open: that is the sequence the suite performs.
+    const second = await claimWithGrace({ pool: 'cortex', locks }, { attempts: 6, delayMs: 1 });
+
+    expect(second.acquired).toBe(true);
+  });
+
+  it('still refuses, after the bounded attempts, when another context really holds the pool', async () => {
+    const { locks, requests } = fakeLocks();
+    // A claim nobody releases is another tab: it holds for its whole lifetime.
+    const other = await claimWriter({ pool: 'cortex', locks });
+    const claim = await claimWithGrace({ pool: 'cortex', locks }, { attempts: 3, delayMs: 1 });
+
+    expect(other.acquired).toBe(true);
+    expect(claim.acquired).toBe(false);
+    // The bound is the claim's honesty: retried, and then believed rather than waited on forever.
+    expect(requests).toHaveLength(1 + 3);
+  });
+
+  it('treats a non-positive attempt count as one attempt rather than as zero', async () => {
+    // `Math.max(1, ...)` exists because zero attempts would return the initial claim without ever asking,
+    // which reports `acquired: false` on a page that is alone.
+    const { locks, requests } = fakeLocks();
+    const claim = await claimWithGrace({ pool: 'cortex', locks }, { attempts: 0, delayMs: 0 });
+
+    expect(claim.acquired).toBe(true);
+    expect(requests).toHaveLength(1);
   });
 });

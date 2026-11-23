@@ -75,13 +75,18 @@ function globalLocks(): WriterLockManager | undefined {
 }
 
 /**
- * Ask the platform whether this context may be the origin's writer.
+ * Ask the platform whether this context may be the origin's writer, once.
+ *
+ * Not exported: `claimWithGrace` is the entry point a caller uses, because a single answer is exactly what
+ * a page re-opening its own database cannot afford to believe (see that function). The tests reach it
+ * through the wrapper with `attempts: 1`, which is the same call and keeps this module's surface to what a
+ * consumer actually uses.
  *
  * Never throws for a platform reason. A lock manager that is missing, or one whose `request` rejects
  * (a `SecurityError` on an opaque origin), degrades to `mechanism: 'none'` -- because the claim is a
  * diagnosis, and losing it must not lose the database the caller was going to open anyway.
  */
-export async function claimWriter(args: {
+async function claimWriter(args: {
   readonly pool: string;
   /**
    * The manager to ask, or `undefined` to ask the platform.
@@ -148,6 +153,43 @@ export async function claimWriter(args: {
     return { pool: args.pool, acquired: false, mechanism: 'web-locks', release: () => undefined };
   }
   return { pool: args.pool, acquired: true, mechanism: 'web-locks', release };
+}
+
+/**
+ * The claim, retried for a beat when it comes back refused.
+ *
+ * ## The race this exists for, measured in CI rather than argued about
+ *
+ * `release()` resolves the promise the platform is holding the lock with, and the platform frees the name
+ * **a beat later** -- there is no event, and `navigator.locks.query()` would be a second source of truth
+ * about a thing this module already knows it did. So a page that closes storage and opens it again in the
+ * same task can be refused *by its own predecessor*: the two-tab suite does exactly that three times
+ * (`matrix`, `write`, `read` in one page), and it failed on both engines in CI while passing locally,
+ * because the window is a couple of microseconds wide.
+ *
+ * A refusal is therefore retried a bounded number of times before it is believed. The bound is what keeps
+ * the genuine second-tab case honest: another tab holds the lock for its whole lifetime, so every attempt
+ * fails and the caller is refused after `attempts x delayMs` -- 240 ms by default, which is a pause a user
+ * will not notice in a failure path and is far cheaper than a flaky suite.
+ *
+ * ## Why not a context-scoped singleton instead
+ *
+ * Holding one claim per page and never re-acquiring would remove the race, at the price of a page that
+ * closed its storage continuing to refuse every other tab until the page goes away -- a worse failure than
+ * a 240 ms pause, because it is invisible and it outlives the reason it existed.
+ */
+export async function claimWithGrace(
+  args: { readonly pool: string; readonly locks?: WriterLockManager | undefined },
+  options: { readonly attempts?: number; readonly delayMs?: number } = {},
+): Promise<WriterClaim> {
+  const attempts = Math.max(1, options.attempts ?? 6);
+  const delayMs = options.delayMs ?? 40;
+  let claim = await claimWriter(args);
+  for (let attempt = 1; attempt < attempts && !claim.acquired; attempt += 1) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, delayMs));
+    claim = await claimWriter(args);
+  }
+  return claim;
 }
 
 /**

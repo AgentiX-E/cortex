@@ -22,7 +22,7 @@
  */
 import type { Storage } from '@agentix-e/cortex-core';
 import {
-  claimWriter,
+  claimWithGrace,
   releaseOnClose,
   type WriterLockManager,
   type WriterMechanism,
@@ -106,7 +106,10 @@ export async function openClaimedStorage(args: {
   readonly openers: TierOpeners;
 }): Promise<OpenOutcome> {
   const refused: Refusal[] = [];
-  const claim = await claimWriter({ pool: args.pool, locks: args.locks });
+  // `claimWithGrace`, not `claimWriter`: a release performed by this page is observed by the platform one
+  // beat later, so a re-open in the same task would otherwise be refused by its own predecessor. See that
+  // function for the failure this fixes and for why the retry is bounded.
+  const claim = await claimWithGrace({ pool: args.pool, locks: args.locks });
   if (!claim.acquired && args.onSecondTab === 'refuse') {
     // Nothing was opened, so there is nothing to release: a refused claim's `release` is a no-op by
     // construction, which is why no branch here calls it.

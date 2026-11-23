@@ -90,6 +90,30 @@ The Node suites could not catch it: each of them either hands a manager over exp
 a real browser crossing it could see it. `??` replaced the `in` test; the docstring on the option now says
 that `undefined` means "ask the platform" rather than "there is no platform".
 
+### The second bug, found by CI on a suite this round did not write
+
+The first commit of this mechanism turned **both** browser jobs red at their existing restart suite, on
+Chromium and on Firefox, with `BrowserStorageBusy` from a page that was alone. Locally the same suite passed
+24/24.
+
+`release()` resolves the promise the platform holds the lock with, and the platform frees the name **a beat
+later** -- there is no event, and the sequence that hits it is ordinary: `matrix`, `write` and `read` are
+three opens and closes in one page. Close then reopen in the same task is a re-acquisition that can be
+refused *by its own predecessor*, and the width of that window is a scheduling property, which is why CI
+(a slower machine) hit it every time and this one hit it never.
+
+The repair is `claimWithGrace`: a refusal is retried a bounded number of times (6 x 40 ms) before it is
+believed. The bound is what keeps the two-tab case honest -- another tab holds the lock for its whole
+lifetime, so every attempt fails and the caller is refused after 240 ms, which nobody notices in a failure
+path. Holding one claim per page and never re-acquiring would also remove the race, and was rejected: a page
+that closed its storage would then refuse every other tab until it went away, which is invisible and outlives
+the reason it existed.
+
+Two things this says about the round's own process. The probe could not have found it: it releases and
+re-acquires only in a **different** context, where the predecessor is the platform's own teardown. And the
+local suite could not have found it either, at the speed this machine runs. It took the one environment that
+is neither the probe nor the unit test.
+
 ## 5. Where the decision lives, and why it moved
 
 `src/browser/opfs.ts` is excluded from the Node coverage number (`vitest.config.ts` says why, correctly:
