@@ -40,6 +40,22 @@ export function capabilityCell(score, capability) {
 }
 
 /**
+ * The delivered-context column, which is `meanContextChars / 4` — and undefined for an arm with no hit list.
+ *
+ * `null-floor` prints `0` here and should: it searched and found nothing, and zero is the measurement. A
+ * self-answering arm also computes zero, because the column is derived from the hits it returns and it returns none
+ * — but its context was its own prompt, which is a different quantity and is reported by `llm/q`. Printing `0` for
+ * it says "delivered nothing" about a system that delivered 4,903 turns to itself.
+ *
+ * @param {{ answerer?: string, meanContextChars?: number }} score
+ * @returns {string}
+ */
+export function contextTokensCell(score) {
+  if (score.answerer === 'self') return '—';
+  return String(Math.round((score.meanContextChars ?? 0) / 4));
+}
+
+/**
  * The line under the table that says which configuration produced it.
  *
  * `differing` comes from `comparability()` between this stage and a retrieval-only run of the same arms -- the

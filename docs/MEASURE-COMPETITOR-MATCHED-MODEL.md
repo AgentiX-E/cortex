@@ -752,23 +752,33 @@ both — so the arm retrieved the same evidence twice and the *reader* graded it
 churn is, at temperature 0, one question in thirty. That is the floor under every paired comparison in this
 campaign, and it is why a threshold written on accuracy alone at small n would be a coin with a decimal point.
 
-#### 12.9.1 Two sentences in the table were about a run that did not happen
+#### 12.9.1 Four cells in the table were about a run that did not happen
 
 The same artifact printed, under its own table:
 
 ```
+provider            build  recall@k  all-gold  mrr     acc      by    llm/q   ~tok    unmeasurable
+cortex-product      embedding—         —         —       79.0% (79/100)self  6219    0       0
+
 ABS   0/6 a6/6    IE   0/6 a4/6    KU   0/6 a5/6    MR   0/6 a4/6    TR   0/6 a5/6
 configuration: k=10, mode=isolated, reader/judge=none
 comparability(identical): A
 ```
 
-Three claims, none of them true of the run that produced it.
+Four claims, none of them true of the run that produced it. The three columns to the right of `acc` in the row are
+`—`, `6219`, `0`; the two to the left are already dashes, which is what makes the fourth one visible as an
+omission rather than as a decision.
 
 **`0/6`** is `found/measured`, and `found` is zero by construction for a system with no ranked-list endpoint: the
 product's `search` returns `[]` because its retrieval *is* its navigation. The cell therefore said "found nothing"
 five times about an arm that answered 24 of 30. The table thirty lines above already refuses this for its own
 recall columns — `score.answerer === 'self' ? '—' : pct(score.recallAtK)` — with the reason written beside it; the
 capability block was added later and the argument did not travel with it.
+
+**`~tok` = `0`** is the same omission one column over. The field is `meanContextChars / 4`, derived from the hits an
+arm returns, and a self-answering arm returns none — so it computed zero. But `null-floor` also computes zero, and
+*that* zero is the measurement: it searched and found nothing. The two had the same rendering, one column apart from
+a `llm/q` of 6,219 that says the arm did deliver a context, to itself, and paid for it.
 
 **`reader/judge=none`** was a literal. The run's own JSON says `reader: deepseek-chat (chain-of-note/con, temp=0,
 one request)` and the same for the judge, because reading is what the stage does. A reader quoting that footer
@@ -777,14 +787,14 @@ would describe a retrieval-only table.
 **`comparability(identical): A`** came from `comparability(config, config)`. A value compared with itself cannot
 differ, so the grade could only ever be `A`: a guard whose failure branch is unreachable, printed as a measurement.
 
-All three are now one module with a seam (`tools/report-render.mjs`) and seven assertions
+All four are now one module with a seam (`tools/report-render.mjs`) and ten assertions
 (`test_report_render.py`), because a printer that can only be exercised by a paid run is a printer nobody checks.
 The footer states the reader and judge that ran, and what the reading stage adds over a retrieval-only run of the
 same arms (`reader, judge, judgePolicy`) — a fact about two configurations rather than a value compared with itself.
 
 The lesson is the one this campaign keeps relearning in a new costume: **the score was accurate and the table was
-not.** A row that reads 80% while its detail block reads `0/6` is a table a careful reader distrusts and a careless
-one quotes.
+not.** A row that reads 79% while its detail block reads `0/6`, with a delivered context of zero beside a bill of
+6,219 tokens, is a table a careful reader distrusts and a careless one quotes.
 
 #### 12.9.2 The hundred-question dispatch: the third criterion, and the one family that is now the weakest
 

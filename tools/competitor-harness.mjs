@@ -58,7 +58,7 @@ import { CortexSessionProvider } from '../packages/cortex-memory/dist/index.js';
 import { createSutProvider } from './competitor-sut.mjs';
 import { createProgressWrapper } from './progress-wrap.mjs';
 import { createProductProvider } from './competitor-product.mjs';
-import { capabilityCell, configurationLine } from './report-render.mjs';
+import { capabilityCell, configurationLine, contextTokensCell } from './report-render.mjs';
 import { NO_READER, describeJudgeIdentity, describeReaderIdentity } from './reader-identity.mjs';
 
 /**
@@ -474,9 +474,10 @@ process.stdout.write(
   `${pad('provider', 20)}${pad('build', 7)}${pad('recall@k', 10)}${pad('all-gold', 10)}${pad('mrr', 8)}${pad('acc', 9)}${pad('by', 6)}${pad('llm/q', 8)}${pad('~tok', 8)}unmeasurable\n`,
 );
 for (const score of scores) {
-  // `~tok` is `meanContextChars / 4`, the same conversion `charsForTokens` applies to the budget. It is what the
-  // published systems report, so it is the only column here that can be set beside a vendor figure at all.
-  const tokens = Math.round(score.meanContextChars / 4);
+  // `~tok` is `meanContextChars / 4`, the same conversion `charsForTokens` applies to the budget, and it is the only
+  // column here that can be set beside a vendor figure. It is a dash rather than a zero for a self-answering arm:
+  // the field it reads is derived from hits, and that arm has none. `contextTokensCell` states the rule.
+  const tokens = contextTokensCell(score);
   // `—` and `0.0%` are different cells. An arm that was not read has no accuracy; one that was read and got
   // everything wrong has zero, and collapsing the two would let a skipped stage read as a failed one.
   const acc =

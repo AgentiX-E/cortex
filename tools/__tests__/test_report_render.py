@@ -95,3 +95,20 @@ def test_the_footer_of_a_retrieval_only_stage_says_so() -> None:
     shown = cells()
     assert "reader=none, judge=none" in shown["retrievalFooter"], shown
     assert "differs in nothing" in shown["retrievalFooter"], shown
+
+
+def test_a_self_answering_arm_does_not_print_a_delivered_context_of_zero() -> None:
+    """`0` is a measurement for `null-floor` and a category error for an arm with no hit list."""
+    shown = cells()
+    assert shown["selfContext"] == "—", shown
+
+
+def test_a_search_that_found_nothing_is_still_a_measured_zero() -> None:
+    """The fix must not turn the one arm whose zero is the reading into a dash."""
+    shown = cells()
+    assert shown["emptySearchContext"] == "0", shown
+
+
+def test_a_retrieval_arm_keeps_its_delivered_context() -> None:
+    shown = cells()
+    assert shown["measuredContext"] == "34563", shown

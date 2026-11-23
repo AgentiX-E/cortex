@@ -10,7 +10,7 @@
  *
  * Printed as one JSON line so the pytest side asserts values rather than scraping a table.
  */
-import { capabilityCell, configurationLine } from '../../report-render.mjs';
+import { capabilityCell, configurationLine, contextTokensCell } from '../../report-render.mjs';
 
 const products = { answerer: 'self', byCapability: { ABS: { found: 0, measured: 6, correct: 6, read: 6 } } };
 const retrieval = {
@@ -37,6 +37,10 @@ process.stdout.write(
     // A score object with no `byCapability` at all: the harness builds one for an arm whose build failed, and a
     // cell that threw here would take the whole table down rather than printing the one dash it knows.
     noCapability: capabilityCell({ answerer: 'none' }, 'ABS'),
+    // The delivered-context column: a search that found nothing is a measured zero, an arm with no hit list is not.
+    selfContext: contextTokensCell({ answerer: 'self', meanContextChars: 0 }),
+    emptySearchContext: contextTokensCell({ answerer: 'shared', meanContextChars: 0 }),
+    measuredContext: contextTokensCell({ answerer: 'shared', meanContextChars: 34_563 * 4 }),
     readingFooter,
     retrievalFooter,
   })}\n`,
