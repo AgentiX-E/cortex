@@ -55,6 +55,22 @@ export function findFirefox() {
   return undefined;
 }
 
+/**
+ * The top-level context in a `browsingContext.getTree` answer, or `undefined` if there is none.
+ *
+ * Pure and exported so the choice can be asserted without a browser, which matters because the
+ * browser that made this function necessary is the one CI cannot reliably start. Three shapes it has
+ * to tell apart: one tab (the normal answer), a tab with `children` (iframes -- a child is not a tab
+ * and navigating one would test the wrong document), and an empty tree (an engine that expects
+ * `browsingContext.create` to provide the tab).
+ */
+export function contextFromTree(tree) {
+  const contexts = tree?.contexts;
+  if (!Array.isArray(contexts) || contexts.length === 0) return undefined;
+  const top = contexts.find((context) => typeof context?.parent !== 'string');
+  return typeof top?.context === 'string' ? top.context : undefined;
+}
+
 /** A BiDi connection to one browser, which is also the session. */
 export class BiDiConnection {
   #socket;
@@ -103,18 +119,36 @@ export class BiDiConnection {
    * The tab every later command targets.
    *
    * Read-only, and public because a command this class does not wrap needs it to build its own
-   * `target`. `browsingContext.getTree` would be the obvious way to rediscover it and it does not
-   * work: Firefox answers "System access is required. Start Firefox with the
-   * MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 environment variable" -- a capability this suite must not need
-   * just to look up an id it already holds.
+   * `target`.
    */
   get context() {
     return this.#context;
   }
 
-  /** Open the session, then a tab, and remember the tab: every later command targets it. */
+  /**
+   * Open the session, then find the tab, and remember it: every later command targets it.
+   *
+   * `browsingContext.create` is the obvious way to get a tab and it is not a portable one. On the
+   * Firefox 132 build that `npx --yes playwright install firefox` produces, the command is answered
+   * with **nothing at all** -- no error, no reply -- so the await never settles and the probe hangs
+   * until the job's timeout instead of failing with a reason. Measured on this build, not inferred:
+   * `session.new` and `browsingContext.getTree` both answer in well under a second, and `create`
+   * answers never. (An earlier note in this file said `getTree` needed
+   * `MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1`; that was not true of this build either -- the answer above
+   * came back from a bare `--headless --remote-debugging-port` launch with no environment help.)
+   *
+   * The session's own tab is therefore used when there is one, which is the shape WebDriver BiDi is
+   * designed around: `session.new` is followed by a context that already exists. `create` stays as
+   * the fallback for an engine that reports no context -- the case the old code assumed was the
+   * only one.
+   */
   async start() {
     await this.send('session.new', { capabilities: {} });
+    const existing = contextFromTree(await this.send('browsingContext.getTree', {}));
+    if (existing !== undefined) {
+      this.#context = existing;
+      return existing;
+    }
     const created = await this.send('browsingContext.create', { type: 'tab' });
     this.#context = created.context;
     return this.#context;
@@ -438,6 +472,51 @@ function selfTest() {
           exceptionDetails: { text: 'the page threw before it wrote anything' },
         };
         throws(() => valueOf(wire), /threw before it wrote/);
+      },
+    ],
+    [
+      'the session tab is used, so no tab has to be created',
+      () => {
+        // The answer Firefox 132 gives to `browsingContext.getTree` on a bare headless launch,
+        // transcribed from a live run. `create` never answers on that build, so this path is the
+        // difference between a suite and a hang.
+        const tree = {
+          contexts: [
+            {
+              children: [],
+              context: '4c3c7a49-a0d7-438a-8038-3cf23cbfc3fb',
+              originalOpener: null,
+              url: 'about:blank',
+              userContext: 'default',
+              parent: null,
+            },
+          ],
+        };
+        deepStrictEqual(contextFromTree(tree), '4c3c7a49-a0d7-438a-8038-3cf23cbfc3fb');
+      },
+    ],
+    [
+      'a tab with frames in it is still the tab, not its frames',
+      () => {
+        const tree = {
+          contexts: [
+            {
+              children: [{ context: 'frame-1', parent: 'tab-1', url: 'about:blank', children: [] }],
+              context: 'tab-1',
+              parent: null,
+              url: 'https://example.invalid/',
+              children_count: 1,
+            },
+          ],
+        };
+        deepStrictEqual(contextFromTree(tree), 'tab-1');
+      },
+    ],
+    [
+      'an empty tree leaves the tab to be created',
+      () => {
+        deepStrictEqual(contextFromTree({ contexts: [] }), undefined);
+        deepStrictEqual(contextFromTree({}), undefined);
       },
     ],
   ];

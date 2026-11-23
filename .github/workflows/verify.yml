@@ -277,6 +277,15 @@ jobs:
           # variable would have them overwrite each other and the comparisons below report one
           # suite's checks against another's.
           CORTEX_RESULTS_CORPUS: /tmp/fresh-corpus-run.json
+          # The fourth, and the one this job was missing. `bundle-probe.mjs` defaults to writing
+          # `packages/cortex-storage/test/browser/bundle-run.json` -- the committed artefact -- so
+          # every run of this job **overwrote the evidence in the workspace** and the artifact upload
+          # then showed the fresh file where the committed one used to be. A run that disagreed with
+          # the committed reading was therefore invisible: the file it would have disagreed with had
+          # already been replaced. `bundle-probe.mjs`'s own comment described this comparison ("the
+          # CI comparison would then report 24 checks against 4") three lines above a step that did
+          # not exist. Measured by reading `git grep CORTEX_RESULTS_BUNDLE`: defined, never set.
+          CORTEX_RESULTS_BUNDLE: /tmp/fresh-bundle-run.json
         run: pnpm test:browser
 
       - name: The committed reading still describes this tree
@@ -294,6 +303,16 @@ jobs:
             --committed packages/cortex-memory/test/browser/corpus-run.json \
             --fresh /tmp/fresh-corpus-run.json
 
+      # The bundle reading is the third, and the only evidence for the `workerUrl` contract -- it
+      # quotes the product's refusal text as its first check. It records its tier and its digest in
+      # its own shape (`facts.tier`, `facts.roundTrip`), which is why the reader had to learn that
+      # shape before this step could exist at all.
+      - name: The committed bundle reading still describes this tree
+        run: |
+          node tools/browser-reading-check.mjs \
+            --committed packages/cortex-storage/test/browser/bundle-run.json \
+            --fresh /tmp/fresh-bundle-run.json
+
       - name: Upload the readings
         if: always()
         uses: actions/upload-artifact@v4
@@ -302,6 +321,68 @@ jobs:
           path: |
             /tmp/fresh-browser-run.json
             /tmp/fresh-corpus-run.json
-            packages/cortex-storage/test/browser/bundle-run.json
+            /tmp/fresh-bundle-run.json
             packages/cortex-memory/test/browser/corpus-run.json
+          if-no-files-found: ignore
+
+  # `§10.2` gate 2 -- "the browser tier's persistence reproduces on at least two engines" -- had one
+  # artefact and no run. `last-run-firefox.json` is committed evidence, its **only** consumer was
+  # `guard:browser` in `pnpm check`, and that consumer compares it to the Chromium reading: two
+  # artefacts agreeing with each other about a tree neither of them had to describe. `git grep
+  # firefox .github/workflows` returned nothing, which is how this job came to be written.
+  #
+  # Playwright's Firefox is used for the same reason Playwright's Chromium is: one pinned download,
+  # no `apt`, no system Firefox (which on `ubuntu-latest` is a snap and cannot be installed
+  # non-interactively). The engine is Firefox 132, and the committed reading was taken on 159 --
+  # which turned out to be worth knowing rather than a problem: a fresh 132 run reproduces all 24
+  # checks, in order, on opfs, with a digest that matches, so gate 2's claim survives a 27-version
+  # gap and this job keeps proving it.
+  browser-firefox:
+    name: Verify the browser suite on Firefox
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `findFirefox()` looks in `~/.cache/ms-playwright` first, so the install below is the whole
+      # setup; `CORTEX_FIREFOX` exists for a hand-run against a release build and is not needed here.
+      - name: Install Firefox
+        run: npx --yes playwright@1.49.1 install firefox
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run the suite on Firefox
+        env:
+          CORTEX_ROWS: '400'
+          CORTEX_RESULTS: /tmp/fresh-firefox-run.json
+        run: pnpm --filter @agentix-e/cortex-storage test:browser:firefox
+
+      - name: The committed Firefox reading still describes this tree
+        run: |
+          node tools/browser-reading-check.mjs \
+            --committed packages/cortex-storage/test/browser/last-run-firefox.json \
+            --fresh /tmp/fresh-firefox-run.json
+
+      - name: Upload the Firefox reading
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-readings-firefox
+          path: /tmp/fresh-firefox-run.json
           if-no-files-found: ignore

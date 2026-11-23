@@ -48,6 +48,9 @@ CASES = [
     'an object with no pairs is an empty object',
     'a nested pair list inside an array is deserialised too',
     'an exception is thrown, not returned as a value',
+    'the session tab is used, so no tab has to be created',
+    'a tab with frames in it is still the tab, not its frames',
+    'an empty tree leaves the tab to be created',
 ]
 
 
@@ -64,7 +67,7 @@ def run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]
 def test_the_self_test_passes_without_a_browser() -> None:
     result = run('--self-test')
     assert result.returncode == 0, result.stdout + result.stderr
-    assert '8 passed, 0 failed' in result.stdout, result.stdout
+    assert '11 passed, 0 failed' in result.stdout, result.stdout
     assert 'FAIL' not in result.stdout, result.stdout
 
 
@@ -102,7 +105,7 @@ def test_reverting_the_object_branch_fails_the_self_test_by_name(tmp_path: Path)
     # branch's real blast radius -- and the suite the fix exists for reads every result that way.
     assert 'PASS  an array keeps its order and its null' in result.stdout
     assert 'PASS  a number comes back a number' in result.stdout
-    assert '4 passed, 4 failed' in result.stdout, result.stdout
+    assert '7 passed, 4 failed' in result.stdout, result.stdout
 
 
 def test_importing_the_module_runs_no_test(tmp_path: Path) -> None:
@@ -123,5 +126,5 @@ def test_importing_the_module_runs_no_test(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert 'passed,' not in result.stdout
     assert result.stdout.strip() == (
-        'BiDiConnection,deserialize,findFirefox,launchFirefox,valueOf,waitForReady'
+        'BiDiConnection,contextFromTree,deserialize,findFirefox,launchFirefox,valueOf,waitForReady'
     ), result.stdout
