@@ -64,7 +64,7 @@ on:
         default: 'multi-session+temporal'
         type: string
       embedding_batch_interval_ms:
-        description: 'Minimum spacing between consecutive embedding requests in ms (0 = unpaced). Zhipu throttles on request rate, so a real run should pace'
+        description: 'Minimum spacing between consecutive embedding requests in ms (0 = unpaced). The default is 0 and every archived run is unpaced, so a paced dispatch is a different execution and not a different prompt -- it moves no byte of any block and no vector. Pace when a run reports rate limiting, which is the one failure mode the arm absorbs as embedDegraded: draw 1 of the preference route read 8 of 600 and one rateLimited call, and that gave nine questions two prompts across four passes. Pacing it costs wall clock rather than accuracy.'
         required: false
         default: '0'
         type: string
