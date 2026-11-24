@@ -1,10 +1,13 @@
-# Measure: what a pair of dispatches has to reproduce, and the two clauses that disagree
+# Measure: what a pair of dispatches has to reproduce, and the control that decides the answer
 
 The width axis was registered with one internal control: *the four routes the cap cannot reach must
-reproduce their prompts.* Run `45340177345` failed it. The failure was established by reading two
-artifacts by hand and is correct, but **the clause the registration actually wrote was met**, and the
-difference between those two statements is 26 questions. This file is the instrument that separates
-them, and it exists because a 500-record comparison done by eye is not a measurement.
+reproduce their prompts.* Run `45340177345` failed it, and the failure was established by reading two
+artifacts by hand. Both the reading and the verdict turned out to be about the **control**: the artifacts
+it compared were four days and several commits apart, and against a control dispatched at the same commit
+the same 252 questions reproduce **byte for byte**. A comparison is only as single-variable as its two
+files, and a 500-record comparison done by eye cannot say which files it read. This is the instrument
+that can.
+
 
 ## 0. One paragraph
 
@@ -12,10 +15,15 @@ them, and it exists because a 500-record comparison done by eye is not a measure
 every question into `reachable` (a route the cap reaches) or `unreachable`, and gives each pair one of
 five verdicts from the two records alone. It prints two gates: the one
 `docs/PREREGISTRATION-TURN-WIDTH.md` §4 wrote, which is about **evidence characters**, and the one every
-later comparison needs, which is about the **prompt**. On the pair that prompted it the first gate fails
-on the questions whose delivered set moved and the second fails on those plus every question whose frame
-moved — so the same two files support "the dispatch changed one thing" and "the dispatch did not
-reproduce", and neither sentence is allowed to stand in for the other.
+later comparison needs, which is about the **prompt**.
+
+Run on the pair the gate was about — the 600 run `45340177345` against the same-commit control
+`45367733613` — the unreached routes reproduce **252 of 252**. Run on the pair the hand reading used —
+the same 600 run against `44017278305`, which is four days and several commits older — it reproduces the
+hand reading **exactly**: 220 identical, 26 with a 125-character frame delta, 6 with a different
+delivered set. Both statements are measurements of the same dispatch. The gate's verdict depends on
+which control it is read against, and only one of the two controls makes the comparison single-variable.
+
 
 ## 1. Why a digest decides identity and a length decides only the verdict
 
@@ -90,3 +98,59 @@ instrumentation this file argues for rather than a defect it fixes.
 3. **It does not make a difference smaller.** A provider whose noise exceeds the ordering quantum flips
    a boundary no client can recover; `relevance-order.ts` states that bound and this tool inherits it.
 4. **It says nothing about accuracy.** Every row here is a property of what was sent.
+
+## 5. What the two pairs read
+
+Both tables are one command each, on the artifacts `45340177345` (600), `45367733613` (400, same code)
+and `44017278305` (400, four days older).
+
+### 5.1 The cross-commit pair: the calibration
+
+| partition | identical | overhead | evidence | unattributed | total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `reachable` | 0 | 0 | 247 | 1 | 248 |
+| `unreachable` | 220 | **26** | **6** | 0 | 252 |
+
+Frame delta: **26 questions at 125 characters**, one at 0. Registered gate **fails** on 6, strict gate
+**fails** on 32. Those are the numbers `MEASURE-TURN-WIDTH.md` §181 obtained by reading the records, so
+the instrument is calibrated against the reading it replaces rather than against its own idea of the
+question.
+
+### 5.2 The same-commit pair: the gate's actual verdict
+
+| partition | identical | overhead | evidence | unattributed | total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `reachable` | 0 | 0 | 245 | 3 | 248 |
+| `unreachable` | **252** | 0 | 0 | 0 | 252 |
+
+**252 of 252 reproduce.** No evidence moved, no frame moved, no digest moved on a route the cap cannot
+reach, so the width dispatch is single-variable and the 32 differences above are code drift — which is
+what §181.4 inferred from a file list and is now measured.
+
+The frame delta is the part that dies: `+125 characters` is a property of the *older commit*, not a
+property of the width, and on the pair that matters it is zero.
+
+### 5.3 The three questions that arrived at the same length and different bytes
+
+`reachable` has three `unattributed` pairs — equal evidence characters, equal delivered characters,
+unequal digests:
+
+| question | route | evidence chars (both) | delivered chars (both) |
+| --- | --- | ---: | ---: |
+| `d23cf73b` | `multi-session` | 45,726 | 48,270 |
+| `37f165cf` | `multi-session` | 45,849 | 48,380 |
+| `gpt4_a1b77f9c` | `temporal` | 23,186 | 23,930 |
+
+A fixed room filled to a fixed count with a different arrangement is the allocator's boundary: the same
+number of characters arrived, and which turn occupied the last slot changed. That is the treatment — the
+cap moved from 400 to 600, so a different turn fits — and it is filed as `unattributed` rather than
+`evidence` only because the lengths coincide. It is recorded because it is the cell a length-based
+control cannot see, and because two of the three are questions the width was supposed to help.
+
+### 5.4 What the pair settles about the placebo
+
+`IE` moved **+3** between these two runs on prompts that are byte-identical on all 150 of its questions.
+That was already the reading in §182.4 and it is now the *measured* identity of the pair rather than an
+inference: the noise floor of a between-run comparison on this instrument is around three questions, and
+`MR`'s +6 sits 1.18 times that floor. The width axis is blocked on power, not on identity, and no further
+money spent on the identity question can unblock it.

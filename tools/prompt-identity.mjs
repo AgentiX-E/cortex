@@ -11,6 +11,22 @@
  * Reading 500 records by hand is not an instrument. This file is, and it prints the same three numbers
  * from the same two files.
  *
+ * ## Two pairs, and the one that answers the question
+ *
+ * The failure above was read off a pair that spans two commits: `45340177345` (the 600 run) against
+ * `44017278305` (the 91.25% run, dispatched days earlier). Against that pair this tool reproduces the hand
+ * reading exactly -- **220 identical, 26 with a 125-character frame delta, 6 with a different delivered
+ * set** -- which is its calibration: it is measuring what a person measured, in a second.
+ *
+ * It is not the pair the gate was about. The gate is about a *single-variable* comparison, so the control
+ * has to be the same code, and `45367733613` is that control (`max_turn_chars=400`, current master). Against
+ * **that** pair the unreached routes reproduce **252 of 252**: no evidence moved, no frame moved, no
+ * digest moved. So the 32 differences were the code drift `MEASURE-TURN-WIDTH.md` §181.4 inferred from a
+ * file list, now measured directly, and the width dispatch is single-variable after all.
+ *
+ * The lesson is the one this file is built on: *which two files are compared* is part of the claim, and a
+ * tool that prints only "32 differ" invites the reading that the treatment moved 32 prompts.
+ *
  * ## Why identity is a digest and not a length
  *
  * `promptChars` is the evidence characters and `deliveredPromptChars` is the whole prompt, so a pair of
