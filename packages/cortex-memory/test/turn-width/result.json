@@ -1,0 +1,1008 @@
+{
+  "cap": 400,
+  "routes": ["multi-session", "temporal"],
+  "questions": 500,
+  "fidelity": {
+    "replayed": 247,
+    "total": 248,
+    "failures": ["bcbe585f"]
+  },
+  "rows": [
+    {
+      "width": 400,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1557,
+          "cut": 245,
+          "absent": 30,
+          "allWhole": 28,
+          "asked": 121,
+          "projection": {
+            "value": 101.9999999999998,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1134,
+          "cut": 242,
+          "absent": 239,
+          "allWhole": 10,
+          "asked": 127,
+          "projection": {
+            "value": 120.00000000000014,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 4770,
+        "cut": 487,
+        "absent": 2259,
+        "asked": 500,
+        "allWhole": 64
+      }
+    },
+    {
+      "width": 450,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1654,
+          "cut": 137,
+          "absent": 41,
+          "allWhole": 53,
+          "asked": 121,
+          "projection": {
+            "value": 105.3116883116881,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1229,
+          "cut": 135,
+          "absent": 251,
+          "allWhole": 15,
+          "asked": 127,
+          "projection": {
+            "value": 119.76404494382038,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 4962,
+        "cut": 272,
+        "absent": 2282,
+        "asked": 500,
+        "allWhole": 94
+      }
+    },
+    {
+      "width": 500,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1701,
+          "cut": 77,
+          "absent": 54,
+          "allWhole": 66,
+          "asked": 121,
+          "projection": {
+            "value": 106.87012987012966,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1271,
+          "cut": 82,
+          "absent": 262,
+          "allWhole": 18,
+          "asked": 127,
+          "projection": {
+            "value": 119.60674157303387,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5051,
+        "cut": 159,
+        "absent": 2306,
+        "asked": 500,
+        "allWhole": 110
+      }
+    },
+    {
+      "width": 550,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1723,
+          "cut": 47,
+          "absent": 62,
+          "allWhole": 76,
+          "asked": 121,
+          "projection": {
+            "value": 108.33116883116863,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1294,
+          "cut": 45,
+          "absent": 276,
+          "allWhole": 25,
+          "asked": 127,
+          "projection": {
+            "value": 119.60674157303387,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5096,
+        "cut": 92,
+        "absent": 2328,
+        "asked": 500,
+        "allWhole": 127
+      }
+    },
+    {
+      "width": 600,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1725,
+          "cut": 28,
+          "absent": 79,
+          "allWhole": 76,
+          "asked": 121,
+          "projection": {
+            "value": 107.92207792207772,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1295,
+          "cut": 32,
+          "absent": 288,
+          "allWhole": 25,
+          "asked": 127,
+          "projection": {
+            "value": 119.52808988764062,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5099,
+        "cut": 60,
+        "absent": 2357,
+        "asked": 500,
+        "allWhole": 127
+      }
+    },
+    {
+      "width": 650,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1712,
+          "cut": 21,
+          "absent": 99,
+          "allWhole": 75,
+          "asked": 121,
+          "projection": {
+            "value": 107.43506493506474,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1294,
+          "cut": 26,
+          "absent": 295,
+          "allWhole": 27,
+          "asked": 127,
+          "projection": {
+            "value": 119.52808988764062,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5085,
+        "cut": 47,
+        "absent": 2384,
+        "asked": 500,
+        "allWhole": 128
+      }
+    },
+    {
+      "width": 700,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1702,
+          "cut": 13,
+          "absent": 117,
+          "allWhole": 78,
+          "asked": 121,
+          "projection": {
+            "value": 107.87337662337644,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1288,
+          "cut": 25,
+          "absent": 302,
+          "allWhole": 27,
+          "asked": 127,
+          "projection": {
+            "value": 119.3707865168541,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5069,
+        "cut": 38,
+        "absent": 2409,
+        "asked": 500,
+        "allWhole": 131
+      }
+    },
+    {
+      "width": 800,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1686,
+          "cut": 13,
+          "absent": 133,
+          "allWhole": 78,
+          "asked": 121,
+          "projection": {
+            "value": 107.87337662337644,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1279,
+          "cut": 20,
+          "absent": 316,
+          "allWhole": 28,
+          "asked": 127,
+          "projection": {
+            "value": 119.3707865168541,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5044,
+        "cut": 33,
+        "absent": 2439,
+        "asked": 500,
+        "allWhole": 132
+      }
+    },
+    {
+      "width": 1000,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1670,
+          "cut": 5,
+          "absent": 157,
+          "allWhole": 80,
+          "asked": 121,
+          "projection": {
+            "value": 108.0292207792206,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1263,
+          "cut": 10,
+          "absent": 342,
+          "allWhole": 27,
+          "asked": 127,
+          "projection": {
+            "value": 119.13483146067432,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5012,
+        "cut": 15,
+        "absent": 2489,
+        "asked": 500,
+        "allWhole": 133
+      }
+    },
+    {
+      "width": 1200,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1667,
+          "cut": 1,
+          "absent": 164,
+          "allWhole": 81,
+          "asked": 121,
+          "projection": {
+            "value": 108.17532467532449,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1259,
+          "cut": 0,
+          "absent": 356,
+          "allWhole": 27,
+          "asked": 127,
+          "projection": {
+            "value": 119.13483146067432,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 5005,
+        "cut": 1,
+        "absent": 2510,
+        "asked": 500,
+        "allWhole": 134
+      }
+    },
+    {
+      "width": 1600,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1653,
+          "cut": 0,
+          "absent": 179,
+          "allWhole": 78,
+          "asked": 121,
+          "projection": {
+            "value": 107.46428571428554,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1234,
+          "cut": 0,
+          "absent": 381,
+          "allWhole": 26,
+          "asked": 127,
+          "projection": {
+            "value": 119.05617977528107,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 4966,
+        "cut": 0,
+        "absent": 2550,
+        "asked": 500,
+        "allWhole": 130
+      }
+    },
+    {
+      "width": 2400,
+      "byCapability": {
+        "IE": {
+          "total": 1709,
+          "whole": 997,
+          "cut": 0,
+          "absent": 712,
+          "allWhole": 26,
+          "asked": 150,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole"
+          }
+        },
+        "ABS": {
+          "total": 672,
+          "whole": 239,
+          "cut": 0,
+          "absent": 433,
+          "allWhole": 0,
+          "asked": 30,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        },
+        "MR": {
+          "total": 1832,
+          "whole": 1606,
+          "cut": 0,
+          "absent": 226,
+          "allWhole": 70,
+          "asked": 121,
+          "projection": {
+            "value": 105.74999999999984,
+            "gap": 0.14610389610389607,
+            "cells": {
+              "completeWhole": "27/28",
+              "completeCut": "63/77",
+              "partial": "12/16"
+            }
+          }
+        },
+        "TR": {
+          "total": 1615,
+          "whole": 1189,
+          "cut": 0,
+          "absent": 426,
+          "allWhole": 24,
+          "asked": 127,
+          "projection": {
+            "value": 118.89887640449454,
+            "gap": 0,
+            "cells": {
+              "completeWhole": "10/10",
+              "completeCut": "28/28",
+              "partial": "82/89"
+            }
+          }
+        },
+        "KU": {
+          "total": 1688,
+          "whole": 843,
+          "cut": 0,
+          "absent": 845,
+          "allWhole": 0,
+          "asked": 72,
+          "projection": {
+            "value": null,
+            "why": "cell(s) under 5 questions: completeWhole, completeCut"
+          }
+        }
+      },
+      "all": {
+        "total": 7516,
+        "whole": 4874,
+        "cut": 0,
+        "absent": 2642,
+        "asked": 500,
+        "allWhole": 120
+      }
+    }
+  ]
+}

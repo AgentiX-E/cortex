@@ -140,24 +140,37 @@ Two levers exist and they are not the same experiment.
 
 | lever | what it changes | population | what it can buy | price |
 | --- | --- | --- | --- | --- |
-| `maxTurnChars` 400 → 1,200 on `multi-session` | how much of a long turn is shown | 91 cut gold turns on the 19 failures (245 across all `MR`) | the missing sentence, in the same room | displacement: a longer turn spends room a lower-ranked turn had |
+| `maxTurnChars` 400 → 600 on both capped routes | how much of a long turn is shown | 91 cut gold turns on the 19 failures (245 across all `MR`) | the missing sentence, in the same room | displacement: a longer turn spends room a lower-ranked turn had |
 | `turnCutMarker: 'none'` → `'ellipsis'` | whether the reader is told | the same 245 turns | honesty, not accuracy: a reader told an operand is missing declines, and a decline scores as wrong | `~3` characters per cut turn |
 
 The width is the lever that can convert a failure, and it is bounded by measurement rather than by
 taste: on the 340 gold turns of the wrong `MR` questions, the median length is **309** characters,
-p90 is **537**, and the maximum is **1,058**. A cap of 1,200 covers every one of them, and it costs
-no token — the room is fixed, so the change is in *which* turns fill it.
+p90 is **537**, and the maximum is **1,058**. It costs no token — the room is fixed, so the change
+is in *which* turns fill it.
+
+**The width that paragraph first implied was 1,200, and it was wrong.** `MEASURE-TURN-WIDTH.md`
+replays the allocator at every candidate width and prices the displacement this section only named:
+the room is spent to within one turn (median 117 characters of 48,460 unspent), so a wider turn takes
+its characters from the tail rather than from headroom, and coverage — `whole / total`, the quantity
+§13.26 measured accuracy against — peaks at **600** on both capped routes and falls away after it.
+At 1,200 `MR` would hold **58 fewer whole gold turns** than at 600 while reaching a cut band of one
+turn. Covering the population is not the same thing as delivering it, which is why the number below
+is 600 and the derivation is a replay rather than a percentile.
 
 The registration this implies, before any dispatch:
 
-1. **Treatment**: `maxTurnChars` 400 → 1,200, `maxTurnCharsRoutes` unchanged. One variable.
-2. **Population**: all 121 `MR` questions, four repetitions, paired by question against the same
-   commit.
-3. **Prediction**: `MR` ≥ **+6** of 121 (from 102 to 108), which is the size the 18-question band
-   makes plausible and **above** the +1 the last two `MR`-shaped readings bought.
-4. **Falsified by**: `MR` ≤ +2, or any other capability down by 3 or more. Both mean the cut is a
+1. **Treatment**: `maxTurnChars` 400 → **600**, `maxTurnCharsRoutes` unchanged. One variable.
+   Registered in full in `PREREGISTRATION-TURN-WIDTH.md`.
+2. **Population**: all 500 questions with both sides in one job, so the four uncapped routes are the
+   internal control whose prompts must reproduce to the character.
+3. **Prediction**: `MR` ≥ **+4** of 121 (102 → ≥106), point **+5.9**. The sweep's own model carries a
+   single quantity — a complete-and-uncut `MR` question reads 96.43% against 81.82% for a
+   complete-and-cut one, a **14.6-point** gap on 77 questions — and its curve is flat to within 0.9
+   questions across 550–1,200, so the direction is supported while the magnitude is what the
+   dispatch measures.
+4. **Falsified by**: `MR` ≤ +1, or any other capability down by 3 or more. Both mean the cut is a
    marker of difficulty rather than a cause, and the band closes as an axis.
-5. **Cost gate**: median `promptChars` moves by ≤ 2%, and the bill stays inside 1.05× of the
+5. **Cost gate**: median `promptChars` moves by ≤ 2%, and the bill stays inside 1.02× of the
    control — a longer turn in a fixed room must not become a longer prompt.
 
 The marker is not dispatched with it, and the reason is that it cannot show a positive effect on a
@@ -169,9 +182,10 @@ the `MEASURE-ABSTENTION-RECOVERY` family), not by accuracy on `MR`.
 
 1. **That the cap causes those 18 failures.** §3's confound is real and unaddressed until a paired
    run exists.
-2. **That 1,200 is the right width.** It is the smallest round number above the population's maximum
-   (1,058). A width that covers the population is the only kind this census can justify; whether a
-   tighter one keeps the gain is a second reading.
+2. **That 600 is the right width.** It is the coverage maximum of a replay over one artifact
+   (`MEASURE-TURN-WIDTH.md` §2), which is a stronger footing than a percentile but still a replay: it
+   cannot see the pool behind the delivered list, and if a wider cap makes the arm backfill rather
+   than stop, the sweep over-states eviction. The dispatch's bill gate is what would catch that.
 3. **That the absent band is out of reach.** 2,259 gold turns were never admitted, 1,990 of them on
    routes whose room is 24,000. This file says nothing about that band except that it is not the cut
    band, and `PREREGISTRATION-TEMPORAL-BUDGET.md` §8 is the most recent attempt to move a piece of

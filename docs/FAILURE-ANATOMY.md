@@ -147,5 +147,15 @@ questions lose gold inside sessions the window already delivered, so a session-l
 recover it either.
 
 The consequence for this table: `MR`'s two rows collapse into one axis — **the per-turn cap on the two
-capped routes** — and that axis is registered in `MEASURE-GOLD-BAND.md` §5 with its population, its
-prediction (`MR ≥ +6`) and its falsifier.
+capped routes** — and that axis is registered in `PREREGISTRATION-TURN-WIDTH.md` with its population,
+its prediction (`MR ≥ +4` of 121, point `+5.9`) and its falsifier.
+
+**The width in that registration is 600, not the 1,200 this paragraph first implied.**
+`MEASURE-TURN-WIDTH.md` replays the allocator on the same artifact and finds that the room is spent to
+within one turn, so a wider turn is paid for out of the tail: coverage peaks at 600 on both capped
+routes (94.16% `MR`, 80.19% `TR`) and 1,200 would hold 58 fewer whole gold turns than 600. The sweep
+also reads the one quantity a width can transport — the accuracy gap between a complete-and-uncut
+question and a complete-and-cut one — and finds it is **14.6 points on `MR`** and **exactly zero on
+`TR`**, where all 38 questions with complete gold were answered correctly cut or not. That is why the
+registration targets `MR` and only guards `TR`, and why the temporal room experiment's +1 was the
+ceiling rather than a disappointment.
