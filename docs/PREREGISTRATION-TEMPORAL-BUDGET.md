@@ -128,3 +128,88 @@ costs today, and bounded by C3.
   expresses this treatment, which is why the change is a value rather than a surface.
 - **It does not re-derive the `TR` threshold from this run.** 125 is written here, before the
   dispatch, at the count the gap table names. A threshold read off the result would be a fit.
+
+## 8. Outcome: the budget landed and bought one question
+
+Run `45323303194`, `capability=TR`, `temporal: 48000`, the other twenty-one inputs as §5 fixes them,
+dispatched through `tools/dispatch-cortex-memory-ab.py` at `205b8f65`. It completed `success` in 27
+minutes and the registration gate passed with two declared departures (`capability`,
+`cortex_memory_max_prompt_chars`).
+
+| claim | threshold | measured | verdict |
+| --- | --- | --- | --- |
+| **C1** reach | `TR` median `promptChars` rises above 40,000 | **23,207 → 47,192**; delivered turns **98 → 207**; delivered characters **23,899 → 47,890** | **the mechanism is real** |
+| **C2** conversion | `TR` ≥ **125 of 127** | **121 of 127** (four-pass mean 94.69% against 94.49%) | **met? no — 4 questions short** |
+| **C3** cost | `TR` ≤ 2.2× its own characters | delivered characters **2.00×**, prompt tokens per question **12,793.5** | at the ceiling, not over it |
+| **C4** guard | `IE/MR/KU/ABS` hold | **not measurable on this dispatch** | see §8.2 |
+
+### 8.1 The paired reading, and the four questions whose gap reached zero
+
+| | n |
+| --- | ---: |
+| `TR` questions paired | 127 |
+| correct, archive → this run | 120 → **121** |
+| bought | **3** (`gpt4_59149c78`, `gpt4_7abb270c`, `gpt4_8279ba03`) |
+| sold | **2** (`0bc8ad93`, `9a707b81`) |
+| net | **+1 question** |
+
+That is the whole effect: one question, at twice the delivered characters. And the interesting
+reading is not the net, it is which of the seven failures the budget reached:
+
+| question | gap `total − carried` | correct | what the reply says now |
+| --- | --- | --- | --- |
+| `gpt4_59149c78` | 1 → **0** | 0 → **1** | the museum the gold names |
+| `gpt4_7abb270c` | 2 → **0** | 0 → **1** | the four museums, in order |
+| `370a8ff4` | 2 → **0** | 0 → 0 | still a date, for a gold of `15` |
+| `gpt4_f420262c` | 2 → **0** | 0 → 0 | still counts `American` twice |
+| `gpt4_7f6b06db` | 2 → 1 | 0 → 0 | still the wrong outing |
+| `gpt4_8279ba03` | 5 → 1 | 0 → **1** | the appliance instead of the refusal |
+| `eac54add` | 5 → 2 | 0 → 0 | still the surrounding activity |
+
+**Two of the four questions whose evidence went from incomplete to complete converted.** The other
+two did not, and neither is a delivery problem any more: `370a8ff4` answers a **year** where the gold
+is the count `15`, and `gpt4_f420262c` lists the right four airlines with one of them counted twice.
+Handing them the missing turn cannot fix either, and this dispatch is the first *causal* evidence for
+what `docs/FAILURE-ANATOMY.md` §1 could only infer from the population.
+
+It also prices that document's `TR` headroom. §1 printed **+7.0** as the questions a window repair
+would win if partial were lifted to full, and stated at the time that it is an assumption and not a
+measurement. The measurement is **+1**. The assumption was seven times too large, which is exactly
+the error the tool prints the number to prevent.
+
+The two sold questions are two different things and the difference matters:
+
+- **`0bc8ad93`** ("did I visit with a friend or not", gold `No`) answered **correctly** on 91 turns and
+  **wrongly** on 213: the extra evidence contains a friend, so the reader said `Yes`. More evidence
+  moved a correct answer to an incorrect one, which is the `KU` mechanism of §13.177.2 appearing on a
+  route that is not `knowledge-update`.
+- **`9a707b81`** answers `26 days ago` in both arms and is graded correct in one and incorrect in the
+  other. That is the judge, not the reader, and it is the second time this campaign has had to read a
+  one-question movement through that noise.
+
+### 8.2 Two criteria this dispatch could not read, and why they were written anyway
+
+**C1's byte-level half and C4 are not measurable on a `capability=TR` dispatch.** The other four
+capabilities were not run, so "the five routes outside `temporal` read byte-identical prompts" has no
+records to compare and "`IE/MR/KU/ABS` hold" has no population. What the run does establish is the
+mechanism — the budget reached the route and doubled the delivered characters — and what would
+establish the rest is the same treatment at `capability=all`.
+
+That is a defect in the registration rather than in the run: §4 wrote two criteria for a dispatch §5
+could not administer. The next registration of this shape states its reach criterion as *"the budget
+reached `temporal` and no other route's key moved in the artifact"*, which this artifact does answer,
+and reserves the byte comparison for a full-roster dispatch. Writing that down here, after the
+reading, is the honest place for it — a pre-registration edited at this point would not be one.
+
+### 8.3 Decision
+
+**Not adopted.** C2 fails at 121 against the registered 125, and the four-pass means differ by a
+quarter of a question (94.69% against 94.49%) at **twice the delivered characters** and 12,793 prompt
+tokens per question against the roster's 7,447.8. §6's middle row said "keep as a cost-accuracy trade"
+for 121–124; that row was written believing four questions could be bought at a price worth paying,
+and the measured price of one question is 2.0× the characters, so the row's own condition is not
+satisfied either.
+
+`temporal` stays at 24,000. The registration's value is the causal reading in §8.1, not a shipped
+change: it converts "the remaining `TR` failures might be a window problem" into "two of them were,
+and two of them are not", and it prices the population's headroom at +1 instead of +7.

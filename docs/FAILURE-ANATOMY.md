@@ -45,6 +45,15 @@ win **if** partial could be lifted to full. The tool prints it so that a plan ca
 against a larger number, and the assumption inside it is real: turning a partial question into a full
 one is not the same event as answering it correctly.
 
+**`TR`'s row was measured, and the assumption was seven times too large.** Run `45323303194` aimed a
+window at `temporal` alone — 24,000 → 48,000, the other five routes untouched — which raised `TR`'s
+median delivered characters from 23,899 to 47,890 and its median delivered turn count from 98 to 207.
+Four of the seven failures went from incomplete evidence to complete. **Two of those four converted.**
+The row that says `+7.0` is worth `+1`: `370a8ff4` still answers a year for a gold of `15`, and
+`gpt4_f420262c` still counts one airline twice, and no window can fix either.
+`PREREGISTRATION-TEMPORAL-BUDGET.md` §8 carries the reading; the number here is not rewritten, because
+a headroom that gets edited after it is measured stops being a headroom.
+
 ## 2. `MR`'s ask axis is spent, and this is what spent it
 
 | ask | mechanism | control | reading | verdict |
