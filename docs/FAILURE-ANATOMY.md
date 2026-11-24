@@ -45,6 +45,14 @@ win **if** partial could be lifted to full. The tool prints it so that a plan ca
 against a larger number, and the assumption inside it is real: turning a partial question into a full
 one is not the same event as answering it correctly.
 
+**The `MR` row above is a mixture, and the mixture is the correction `MEASURE-GOLD-BAND.md` makes.**
+`carried == total` is membership in the admitted set, and the renderer then cuts a long turn at
+`maxTurnChars` with no marker. Crossed with that cut, `MR`'s 105 "full" questions are **28 at 96.43%
+and 77 at 81.82%** — a 14.61-point spread *inside* the bucket this table reports as a single level of
+85.7%, which is larger than the 10.71-point gap *between* the buckets that §5 below was written on.
+The three other capabilities cannot show it: their routes are not capped, so the zero rows in that
+file's §2 are a control rather than a coincidence.
+
 **`TR`'s row was measured, and the assumption was seven times too large.** Run `45323303194` aimed a
 window at `temporal` alone — 24,000 → 48,000, the other five routes untouched — which raised `TR`'s
 median delivered characters from 23,899 to 47,890 and its median delivered turn count from 98 to 207.
@@ -127,3 +135,17 @@ different *shape* rather than a different sentence. `§13.246.6` names the shape
 at — session-atomic allocation, where a question receives a session whole or not at all, so there is
 no half-served band — and it is registered as a design question rather than a dispatch because it
 moves the allocator rather than a string.
+
+**That shape is now priced at four questions, and the row above is corrected rather than dispatched.**
+`MEASURE-GOLD-BAND.md` re-reads the same run's gold account in three bands instead of two and finds
+that the half-served band this file assumed is not a session-allocation defect at all: on `MR`,
+**18 of the 19 failures carry a gold turn that was admitted and then cut at `maxTurnChars: 400` with
+no marker**, and only **4** are missing a gold turn entirely. Session-atomic allocation can therefore
+reach 4 of 19 — a ceiling of **+0.8 points overall** — while the cut band reaches 18 with a change to
+one constant. The `MR` partial row's mechanism is the same finding from the other side: those 4
+questions lose gold inside sessions the window already delivered, so a session-level unit cannot
+recover it either.
+
+The consequence for this table: `MR`'s two rows collapse into one axis — **the per-turn cap on the two
+capped routes** — and that axis is registered in `MEASURE-GOLD-BAND.md` §5 with its population, its
+prediction (`MR ≥ +6`) and its falsifier.
