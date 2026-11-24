@@ -40,9 +40,21 @@ express the one that shipped.
 
 `maxTurnCharsRoutes` — a `CortexMemoryOptions` field and a manual row since that run — is forwarded now, and
 `assemble-turn-cap-reach.test.ts` asserts it end to end: one assembly cuts `multi-session` at the width and
-leaves `flat` byte-identical to a bare call. What remains is the **default**: a bare call still reaches every
-route, which is the row `REGISTERED_ARM_UNSHIPPED` keeps honest rather than an application this document can
-claim.
+leaves `flat` byte-identical to the pre-cap rendering.
+
+### 1.2 The row moved up, and the order it moved in
+
+Both halves are now **defaulted**, on the room table's rule: a bare call assembles the registered rendering,
+either field named is the caller's answer, and `minimal` withholds both for the reason it withholds the table.
+That is one step further than requirement ⑯ asks for — the capability was reachable and *unpriced*, which is
+the same defect stated in the other direction: a caller who named nothing got the class's uncapped rendering,
+which no dispatch has ever priced, and which reads **7,448 prompt tokens per question against the capped
+7,242**. The unmeasured cell was also the dearer one.
+
+The order was the one `REGISTERED_ARM_UNSHIPPED` prescribed, and it matters: forward the field (the reach
+arrives at the renderer, proven by prompt bytes), then default it, then move the row into `REGISTERED_ARM`
+and flip the tripwire from "a bare call does not apply this" to "a bare call cuts where the registration
+cuts". `[]` is the opt-out, which is why the reach is a list rather than a boolean.
 
 ## 2. The same defect on the dispatch side
 

@@ -182,11 +182,14 @@ export type AssembleOptions = {
    * calls is a capability the published package does not have -- which is the asymmetry requirement ⑯ names,
    * arriving through a composition root instead of through a component.
    *
-   * ## Why they are forwarded and not defaulted
+   * ## Why the width and its reach are defaulted and the other three are not
    *
-   * The same rule `sessionClock` states below: `undefined` is the historical rendering, and this file must
-   * not be the place a mechanism turns itself on. Absent here means the key is not passed at all, so a bare
-   * call reproduces the bytes it produced before these fields existed.
+   * The width and its reach are the two halves of the one rendering a 500-question dispatch priced, so this
+   * file resolves them on the room table's rule: nothing named -> the registration, either named -> exactly
+   * what was named, `minimal` -> neither. The other three -- the marker, the window, the form -- are
+   * departures from that rendering, each measured on its own, and a composition root that turned one on
+   * without being asked would be a second arm. `undefined` therefore still means "not passed" for those
+   * three, and a bare call reproduces the bytes it produced before they existed.
    *
    * ## Why the width is per-turn and not per-prompt
    *
@@ -196,7 +199,7 @@ export type AssembleOptions = {
    */
   readonly maxTurnChars?: number | undefined;
   /**
-   * Which routes the width reaches. Absent is every route, which is the configuration §13.72 rejected.
+   * Which routes the width reaches. Absent is the registered reach, `multi-session` and `temporal`.
    *
    * ## The one capped configuration this function could express was the rejected one
    *
@@ -214,12 +217,13 @@ export type AssembleOptions = {
    * the published number was taken with a cut; name the width, and run the cap over `IE`, the route it
    * costs thirty questions on.
    *
-   * ## Why `[]` is allowed and why it is not `undefined`
+   * ## Why `[]` is allowed and why it is the opt-out
    *
    * `[]` is a cap that reaches nowhere: a way to state a width without spending it, which is how a sweep
-   * turns the axis off without editing the configuration it compares against. `undefined` is every route,
-   * because that is what an absent list meant before this field existed, and an absent field has to
-   * reproduce the previous bytes exactly — the rule the four fields above and `sessionClock` state.
+   * turns the axis off without editing the configuration it compares against. Since the reach now defaults
+   * to the registration, `[]` is also how a caller asks for the pre-cap rendering -- one named field, not a
+   * flag. Naming it disables the default for the width as well, because a caller who says where a cap
+   * reaches has stated this decision and deriving the other half for them would be a second answer.
    */
   readonly maxTurnCharsRoutes?: readonly TurnCapRoute[] | undefined;
   /**
@@ -482,6 +486,37 @@ export function assembleMemory(options: AssembleOptions): Installation {
           ask: options.ask ?? REGISTERED_ARM.ask,
         };
 
+  // The width and its reach, resolved on the room table's rule and with the room table's reason.
+  //
+  // The table's paragraph above applies unchanged: a composition root that declines to name an arm does not
+  // decline to have one, and the one it was taking was `CortexMemory`'s -- no cap, which renders every turn
+  // whole and is not a cell any 500-question dispatch priced. Measured: the registered rendering spends the
+  // same room on fewer, longer turns and reads **7,242 prompt tokens per question against 7,448** for the
+  // uncapped one, so the unmeasured cell was also the dearer one.
+  //
+  // Three cases, the room table's three: nothing named -> the registration (`400` on `multi-session` and
+  // `temporal`); either field named -> exactly what was named, because a caller who writes a width is
+  // choosing a shape rather than filling a gap and deriving a reach for them would be a second answer to
+  // one question; `minimal` -> neither, for the reason it withholds the room table and the instruction.
+  //
+  // The opt-out is `maxTurnCharsRoutes: []`, which is the documented "a cap that reaches nowhere" -- the
+  // reason the reach is a list rather than a boolean is that disabling an axis must not require deleting a
+  // field from the type.
+  const cap =
+    profile === 'minimal'
+      ? undefined
+      : options.maxTurnChars === undefined && options.maxTurnCharsRoutes === undefined
+        ? {
+            maxTurnChars: REGISTERED_ARM.maxTurnChars,
+            maxTurnCharsRoutes: REGISTERED_ARM.maxTurnCharsRoutes,
+          }
+        : {
+            ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
+            ...(options.maxTurnCharsRoutes === undefined
+              ? {}
+              : { maxTurnCharsRoutes: options.maxTurnCharsRoutes }),
+          };
+
   const memory = new CortexMemory({
     llm: options.llm,
     now: options.now,
@@ -499,16 +534,10 @@ export function assembleMemory(options: AssembleOptions): Installation {
     // the place a mechanism turns itself on. The forwarding is what `turn-clock.test.ts` walks end to
     // end -- a flag that stops at this object is a documented feature a customer cannot reach.
     ...(options.sessionClock === undefined ? {} : { sessionClock: options.sessionClock }),
-    // The five rendering fields, forwarded for `sessionClock`'s reason and no other: `undefined` is the
-    // historical rendering, so forwarding (rather than defaulting) is what keeps a bare call's bytes fixed
-    // while making every measured rendering reachable from the published entry.
-    ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
-    // The reach rides the width, and it is forwarded rather than derived from it: `CortexMemory`'s absent
-    // list means every route, so a width named without a reach is the global cap §13.72 rejected. Deriving
-    // the registered two routes here would default a mechanism on, which the comment above rules out.
-    ...(options.maxTurnCharsRoutes === undefined
-      ? {}
-      : { maxTurnCharsRoutes: options.maxTurnCharsRoutes }),
+    // The five rendering fields, resolved above: the width and its reach from the registration, the other
+    // three forwarded as named. `undefined` for a field the caller did not name is the historical rendering
+    // for those three, and a mechanism this file must not turn on by itself.
+    ...(cap === undefined ? {} : cap),
     ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
     ...(options.resolution === undefined ? {} : { resolution: options.resolution }),

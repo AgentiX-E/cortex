@@ -53,6 +53,7 @@
  * confirmation run read 90.15% against 91.20%.
  */
 import type { EvidenceAsk, PromptContract } from './prompt.js';
+import type { TurnCapRoute } from './types.js';
 import { REGISTERED_ROOMS } from './rooms.js';
 
 /**
@@ -77,6 +78,28 @@ export const REGISTERED_ARM = {
   conflicts: false,
   /** `S16`'s table: `multi-session` 48,460 characters, the other five 24,000. */
   maxPromptCharsByRoute: REGISTERED_ROOMS,
+  /**
+   * §13.67/§13.68's width, and the two routes it reaches. The rendering every reading from `S9` onwards
+   * was taken under.
+   *
+   * ## Why these two are here rather than in the unshipped table
+   *
+   * They were the unshipped table's first two rows: the fields existed, the reach reached the renderer, and
+   * a bare `assembleMemory` still rendered every turn whole because nothing defaulted either. That is not a
+   * capability the product lacks -- it is the composition root assembling a cell no dispatch priced, which
+   * is the defect this file exists for, arriving one field lower. `assemble.ts` now resolves the pair on the
+   * room table's rule (nothing named -> the registration, one named -> that one, `minimal` -> neither), and
+   * `registered-arm.test.ts`'s tripwire became the positive assertion that a bare call cuts where the
+   * registration cuts.
+   *
+   * Their history is recorded because the value may move: `tools/turn-width.mjs` replays the allocator and
+   * puts this dataset's coverage maximum at **600**, and the reading that decides whether the width moves is
+   * a dispatch rather than this table. When it moves, it moves here and in `tools/arm-config-baseline.json`,
+   * and the paired gate in `registered-arm.test.ts` fails until both agree.
+   */
+  maxTurnChars: 400,
+  /** The two routes the width stops at. §13.72 is why the other four are left whole. */
+  maxTurnCharsRoutes: ['multi-session', 'temporal'] as readonly TurnCapRoute[],
   /** §12.5's rendering. Every reading from `S9` onwards was taken with it. */
   promptContract: 'evidence-blocks-unsourced' as PromptContract,
   /** No query expansion in the registered arm; §13.68 measured the widening and did not adopt it. */

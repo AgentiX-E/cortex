@@ -67,21 +67,29 @@ function baseline(): Baseline {
 /**
  * The registered values the product cannot yet be given, and what each one is missing.
  *
- * ## Why this table exists rather than four more fields on `AssembleOptions`
+ * ## Why this table exists rather than two more fields on `AssembleOptions`
  *
- * Because the honest state is not "the product decides this". Four fields of the measured arm reach the
- * reader through the benchmark's arm and through nothing else:
+ * Because the honest state is not "the product decides this". Two fields of the measured arm reach the reader
+ * through the benchmark's arm and through nothing else:
  *
  * | field | registered | what the published entry has |
  * | --- | --- | --- |
- * | `maxTurnChars` | `400` | the option exists and is forwarded, but nothing defaults it |
- * | `maxTurnCharsRoutes` | `multi-session,temporal` | the option exists and is forwarded, but nothing defaults it, so a bare call's reach is every route |
  * | `evidenceRoles` | `['user']` | no option at all |
  * | `evidenceRolesRoutes` | `multi-session,temporal` | no option at all |
  *
- * A call that names none of them assembles a prompt where every turn prints whole and both speakers print,
- * which is not the cell `S16` priced. Writing them into {@link REGISTERED_ARM} would have claimed an
- * application that does not happen — the exact defect this file exists to remove, restated one layer down.
+ * A call that names neither prints the assistant turns the arm excludes, which is not the cell `S16` priced.
+ * Writing them into {@link REGISTERED_ARM} would have claimed an application that does not happen — the exact
+ * defect this file exists to remove, restated one layer down.
+ *
+ * ## What used to be here, and what closed it
+ *
+ * `maxTurnChars` and `maxTurnCharsRoutes` were this table's first two rows. They moved into
+ * {@link REGISTERED_ARM} when `assemble.ts` began resolving them on the room table's rule, and the tripwire
+ * below became the positive assertion that a bare call cuts where the registration cuts. The order the table
+ * prescribed was followed: the width was forwarded first (`assemble-turn-cap-reach.test.ts` proves the reach
+ * arrives at the renderer), then both were defaulted, then the rows moved. What made the last step an
+ * adoption rather than an edit is that it moves the bytes of every prompt holding a turn over 400 characters,
+ * so it was taken with the reading that prices those bytes in hand rather than as a tidy-up.
  *
  * ## The assertion that keeps this table honest
  *
@@ -90,31 +98,16 @@ function baseline(): Baseline {
  * says "move this row up" rather than a silent improvement nobody recorded. A row that can be quietly
  * satisfied is a row that will be.
  *
- * ## Closing them is an adoption, in this order
+ * ## Closing the remaining two
  *
- * `maxTurnChars` first: the option exists, so defaulting it is one line and a byte test. The other three need
- * an option each, a manual row each (the manual gate fails an undocumented option), and a byte test proving
- * the field reached the prompt. `maxTurnCharsRoutes` is now the second closed half: the option and its row
- * exist and `assemble-turn-cap-reach.test.ts` proves the reach arrives at the renderer, so only the default
- * is missing. None of them can be done "while we are here": each moves the bytes of every prompt whose corpus
- * holds a turn over 400 characters or a non-user turn, which is a re-reading of every published number rather
- * than an edit.
+ * Neither can be done "while we are here". `evidenceRoles` is refused by the constructor without a `roleOf`
+ * classifier, so exposing it from the composition root means deciding who reads a role — a contract, not a
+ * forwarding line — and each field moves the bytes of every prompt whose corpus holds a non-user turn, which
+ * is a re-reading of every published number rather than an edit.
  */
 const REGISTERED_ARM_UNSHIPPED: Readonly<
   Record<string, { readonly value: unknown; readonly missing: string }>
 > = {
-  maxTurnChars: {
-    value: 400,
-    missing:
-      '`AssembleOptions.maxTurnChars` exists and is forwarded; nothing defaults it, so a bare call prints ' +
-      'every turn whole where the registered arm cuts at 400 on two routes',
-  },
-  maxTurnCharsRoutes: {
-    value: ['multi-session', 'temporal'],
-    missing:
-      '`AssembleOptions.maxTurnCharsRoutes` exists and is forwarded, and a bare call still passes nothing, ' +
-      'so `CortexMemory` reads the absent list as every route — the global cap §13.72 measured at −30 on `IE`',
-  },
   evidenceRoles: {
     value: ['user'],
     missing: 'no `AssembleOptions` field: a bare call prints the assistant turns the arm excludes',
@@ -317,11 +310,12 @@ describe('the arm the registration measured is the arm the product ships', () =>
     }
   });
 
-  it('does not apply the unshipped fields on a bare call, so shipping one moves the row', async () => {
-    // The tripwire. `maxTurnChars: 400` on two routes is the registered rendering, and a bare call still
-    // prints this 900-character turn whole -- which is the gap `REGISTERED_ARM_UNSHIPPED` records. When
-    // somebody defaults the cap, this assertion fails and the fix is to move `maxTurnChars` into
-    // `REGISTERED_ARM`; a test that only checked the table could never say so.
+  it('applies the registered width and reach on a bare call', async () => {
+    // The tripwire, in the direction it now points. It used to assert that a bare call printed this
+    // 900-character turn **whole**, which was the gap `REGISTERED_ARM_UNSHIPPED` recorded; it failed when the
+    // default landed, and the fix it prescribed was to move the row up rather than to relax the assertion.
+    // What it asserts now is the other half of the same claim: the arm the benchmark dispatches and the arm
+    // this function assembles cut in the same place, at the width the artifact records.
     const LONG = `${'The plumber came on the ninth and replaced the valve. '.repeat(20)}END-OF-LONG-TURN`;
     const seen: string[] = [];
     const install = assembleMemory({
@@ -335,7 +329,29 @@ describe('the arm the registration measured is the arm the product ships', () =>
     ]);
     seen.length = 0;
     await install.memory.askStored(QUESTION);
-    expect(LONG.length).toBeGreaterThan(REGISTERED_ARM_UNSHIPPED.maxTurnChars!.value as number);
+    const prompt = seen[0] ?? '';
+    expect(LONG.length).toBeGreaterThan(REGISTERED_ARM.maxTurnChars);
+    expect(prompt).not.toContain('END-OF-LONG-TURN');
+    expect(prompt).toContain(LONG.slice(0, REGISTERED_ARM.maxTurnChars));
+  });
+
+  it('lets a caller step away from the default with the empty reach', async () => {
+    // A default that cannot be stepped away from is not a default. `[]` is the documented spelling of "no
+    // cap", and the assertion is that the turn prints whole again rather than that a field changed.
+    const LONG = `${'The plumber came on the ninth and replaced the valve. '.repeat(20)}END-OF-LONG-TURN`;
+    const seen: string[] = [];
+    const install = assembleMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      storage: new SqliteStorage(),
+      maxTurnCharsRoutes: [],
+    });
+    await install.memory.remember([
+      { sessionId: 's1', ordinal: 0, text: LONG },
+      { sessionId: 's2', ordinal: 0, text: 'I bought a bicycle in April.' },
+    ]);
+    seen.length = 0;
+    await install.memory.askStored(QUESTION);
     expect(seen[0] ?? '').toContain('END-OF-LONG-TURN');
   });
 
