@@ -26,21 +26,36 @@ Zhipu GLM embedding-3, temperature 0, full N=500, 4 interleaved runs.
 defect. The two are kept side by side rather than by rewriting the anchor: a baseline that moves with the
 code is not a baseline.
 
-**Current registered configuration, measured on `41546569106`** (500 questions, 4 repetitions, 303
-minutes, 0 `429`s, `--registration` reports `same 20 field(s)`):
+**Current position, measured on `44017278305`** (the arm `S16`; 500 questions, 4 repetitions,
+`--registration` reports every field matching):
 
 | item | value |
 | --- | --- |
-| `featureAggregate.avg` | **90.15%** (min 89.40, max 91.00, median 90.10) |
+| `feature.metrics.correct` (repetition 1) | **456 / 500 = 91.20%** |
+| `featureAggregate` (four passes) | mean **91.25%**, min 90.80, max 91.60, median 91.30 |
+| per capability (repetition 1) | `IE` 137/150 = 91.33 · `MR` 102/121 = 84.30 · `KU` 67/72 = 93.06 · `TR` 120/127 = 94.49 · `ABS` 30/30 = 100.00 |
 | reader | `deepseek:deepseek-chat`, `thinking = enabled on multi-session+temporal`, `temperature 0` |
-| budget | `maxPromptChars 48,000`, `maxTurnChars 400` on those two routes, `turnCutMarker none` |
-| ranking | `retrieval-hybrid`, `relevanceTopK 256`, `relevanceUnits turn` |
+| budget | `abstention 24,000 · assistant 24,000 · flat 24,000 · knowledge-update 24,000 · multi-session 48,460 · temporal 24,000`, `maxTurnChars 400` on `multi-session,temporal`, `turnCutMarker none` |
+| prompt tokens per question | **7,447.8** on the roster |
+| ranking | `self-index`, `relevanceTopK 256`, `relevanceUnits turn` |
 | embedding | `openai-compatible/embedding-3`, 1024 |
-| per capability (first pass) | IE 96.00 / MR 76.86 / KU 86.11 / TR 95.28 / ABS 100.00 |
 
-The anchor's 83.55% and this 90.15% differ by one input: `thinking` on the two routes. 500 of 500 records
-carry the same `promptDigest`, so the prompt did not move — §13.232 records the pair, the per-capability
-decomposition and the token bill (prompt flat at 28.1 M, completion 0.24 M → 2.35 M).
+This section used to state `90.15%` from run `41546569106` as the current position. It was the current
+position when it was written and it has not been the current position since `S16`: the per-route budget
+table, the `self-index` ranking signal and `ask: verbatim-acts` all landed after it, and the arm moved
+**90.15 → 91.20** on the same 500 questions. The `90.15` row is kept in `docs/COMMITTED-READINGS.md`
+because a superseded reading is still a reading; what is not kept is the word **current** in front of it.
+
+Two measurements sit on top of 91.20 and neither is in this number:
+
+| mechanism | reading | why it is not added here |
+| --- | --- | --- |
+| `single-session preference` route | **+7 of 10** treated questions converted, twice, the same seven both draws (§`PREREGISTRATION-PREFERENCE-ROUTE.md` §9) | measured on `IE`'s 150 questions only; the other 350 were not re-run, so the roster projection (+0.9 points) is not a measurement |
+| `resolution: layered` | `MR` **+7.85** points replicated (`44915923906`, `44905275457`) | the default is still `raw`; `§14.150` declined to change it on a `p = 0.0884` reading |
+
+Both are **reachable from the product today** — the first by default, the second as an option — and the
+difference between them is that the first is what the shipped arm reads and the second is a configuration
+nobody has dispatched at 500 questions since it was measured.
 
 ### 0.1 Where that sits, corrected against the published field
 
