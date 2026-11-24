@@ -76,6 +76,34 @@ export const REGISTERED_ARM = {
   confidenceSignal: 'none',
   /** The `KU` conflict block (§11) is off in the registered arm and has no reading of its own yet. */
   conflicts: false,
+  /**
+   * §13.83/§13.84's role filter: user turns only, on the two routes below.
+   *
+   * ## Why these two are here, and the order they arrived in
+   *
+   * They were `REGISTERED_ARM_UNSHIPPED`'s last two rows, and they were the longest-lived ones: §13.84 adopted
+   * `['user']` on `multi-session,temporal` with no capability regressed, every reading from `S16` onwards was
+   * taken with the filter on, and the published entry point had no field for it. A caller assembling the
+   * product therefore printed the assistant turns four screening runs paid to exclude — the same defect
+   * `ask` and `promptContract` had, one mechanism over, and the one `assemble.ts`'s role block now closes.
+   *
+   * The order matters and is recorded because it is the order this table prescribes: the classifier and the
+   * three fields were forwarded first (`assemble-role-filter-reach.test.ts` proves the filter reaches the
+   * renderer through two different routes), the default was taken only where a classifier exists, and only
+   * then did the rows move up. What makes the last step an adoption rather than an edit is that it changes the
+   * bytes of every prompt whose corpus holds a non-user turn under a caller-supplied classifier — which is
+   * why the default is conditional: a caller with no classifier has no role to read, and the product says so
+   * in the census rather than guessing at a corpus format.
+   *
+   * ## Why `'all'` is not the opt-out
+   *
+   * The opt-out is `evidenceRolesRoutes: []` — a filter that reaches nowhere. A sentinel value would give this
+   * field two meanings (`no filter` and `the role named all`), and the workflow's own input already spells the
+   * unfiltered arm as *absence*, which is what every artifact before §13.84 records.
+   */
+  evidenceRoles: ['user'] as readonly string[],
+  /** The two routes the filter stops at. §13.72's split, one mechanism over. */
+  evidenceRolesRoutes: ['multi-session', 'temporal'] as readonly TurnCapRoute[],
   /** `S16`'s table: `multi-session` 48,460 characters, the other five 24,000. */
   maxPromptCharsByRoute: REGISTERED_ROOMS,
   /**
@@ -137,11 +165,14 @@ export const REGISTERED_ARM = {
 } as const;
 
 /*
- * The registered values this file does not hold, recorded in `__tests__/registered-arm.test.ts` with what each
- * one is missing and the assertion that fails when one of them ships: `maxTurnChars` and
- * `maxTurnCharsRoutes` are nameable at `assembleMemory` and **not defaulted** — a bare call renders every turn
- * whole over every route — while `evidenceRoles` and `evidenceRolesRoutes` still have no option at all. They
- * are next to the gate rather than here for the export census's reason: a constant nothing in the product
- * calls is API surface nobody asked for, and the only thing that reads this claim is the test that enforces
- * it.
+ * Nothing is left in the table this file once kept beside the gate. It held the four values the artifact recorded
+ * and the product could not apply: `maxTurnChars` / `maxTurnCharsRoutes` until `assemble.ts` began resolving them
+ * on the room table's rule, and `evidenceRoles` / `evidenceRolesRoutes` until it could read a role. Both pairs went
+ * up the same way -- forwarded, proven reachable at the renderer by prompt bytes, defaulted, and only then moved --
+ * and the assertion that survives them is `registered-arm.test.ts`'s: the arm this file names and the arm a bare
+ * call assembles have to be the same arm, and a re-recorded artifact fails the build until both agree.
+ *
+ * The one thing the product still cannot do without help is *see* a role: a role is a property of the caller's
+ * corpus format, so `roleOf` is an input rather than a default. A call that supplies none gets the census's `null`
+ * instead of a filter, which is the honest record of "this run could not read a role" rather than a silent zero.
  */

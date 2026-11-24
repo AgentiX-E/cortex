@@ -38,6 +38,14 @@
  *    a factory because the corpus has to be emptied without the package depending on a particular backend —
  *    `cortex-storage` is not a dependency of `cortex-memory`, and a test double is a legitimate caller.
  *
+ * 4. **The role filter's reader is this adapter's, and that is the only input it supplies.** `ProviderTurn`
+ *    carries a role as a field; the corpus stores text. `assembleMemory` takes a classifier rather than knowing a
+ *    format (`roleOf`), because a role belongs to the caller's corpus rather than to this library — so the one
+ *    thing that can cross the gap is the adapter, which saw both representations. It supplies a lookup over the
+ *    turns it stored, which means the product row in a competitor table runs the filtered arm §13.84 adopted
+ *    instead of the reference window it ran before: every archived comparison of this row was the unfiltered
+ *    arm, and this is the change that makes the row and the 91.6% reading the same configuration.
+ *
  * ## What it refuses to claim
  *
  * `build` is `'embedding'`: the registered arm is `relevanceSignal: self-index` with `indexEmbedding:
@@ -125,6 +133,26 @@ export class CortexProductProvider {
    */
   readonly build = 'embedding' as const;
 
+  /**
+   * The role of every turn this adapter has stored, keyed by the text the corpus holds.
+   *
+   * ## Why a lookup rather than a parser
+   *
+   * `ProviderTurn` carries `role` as a field and the corpus stores text, so the two representations are one
+   * conversion apart and a classifier is the only thing that crosses it without rewriting the content. A parser
+   * would have to know a prefix format the provider contract does not promise: the campaign's haystack spells
+   * `[date] role:`, a caller's own corpus need not, and a product that guessed would be wrong on the second
+   * dataset — which is `roleOf`'s whole reason for being an input.
+   *
+   * ## Why a conflict yields `undefined` and not a majority vote
+   *
+   * Two turns with the same text and different roles mean the text does not identify a role. `undefined` is the
+   * filter's documented "cannot read this turn", which **keeps** it — the rule that stops a classifier defect
+   * from emptying the prompt and reading as a corpus with no evidence. A majority would be this adapter
+   * inventing an attribution for a turn it cannot attribute.
+   */
+  readonly #roles = new Map<string, string | undefined>();
+
   readonly #options: CortexProductProviderOptions;
   readonly #embeddingStore: EmbeddingCacheStore;
   #installation: Installation;
@@ -152,6 +180,13 @@ export class CortexProductProvider {
         // and the difference between "when the conversation happened" and "when this run replayed it" is a
         // whole finding this repository has already recorded once.
         turns.push({ sessionId: session.id, ordinal, text: turn.content, at: session.at });
+        // The role, as the only place both representations exist at once. `has` before `get` because a text whose
+        // roles disagreed was recorded as `undefined`, and `get` cannot tell that from a text never stored.
+        if (this.#roles.has(turn.content) && this.#roles.get(turn.content) !== turn.role) {
+          this.#roles.set(turn.content, undefined);
+        } else if (!this.#roles.has(turn.content)) {
+          this.#roles.set(turn.content, turn.role);
+        }
       });
     }
     const report = await this.#installation.memory.remember(turns);
@@ -290,6 +325,10 @@ export class CortexProductProvider {
    * question that just finished.
    */
   async reset(): Promise<void> {
+    // The role lookup is per-question state, like the corpus it describes: kept across a reset it would describe
+    // turns the next question does not hold, and a classifier that answers for a corpus it never saw is the shape
+    // of `43465626013`'s disagreement between an audit and a filter.
+    this.#roles.clear();
     this.#installation = this.#assemble();
   }
 
@@ -306,6 +345,11 @@ export class CortexProductProvider {
       storage: this.#options.storage(),
       embed: this.#options.embed,
       embeddingStore: this.#embeddingStore,
+      // The fifth argument, and the only one this adapter adds to the four the manual names — because it is the
+      // only one no caller of `assembleMemory` can supply for it: the roles arrived as a field on `ProviderTurn`
+      // and the corpus holds text. See point 4 in the module comment. `undefined` for a text this adapter never
+      // stored is the filter's "cannot read", which keeps the turn.
+      roleOf: (turn: string) => this.#roles.get(turn),
     });
   }
 }

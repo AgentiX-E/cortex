@@ -37,6 +37,7 @@ import { assembleMemory } from '../assemble.js';
 import type { EvidenceAsk, PromptContract } from '../prompt.js';
 import { REGISTERED_ARM } from '../registered-arm.js';
 import { REGISTERED_ROOMS } from '../rooms.js';
+import type { RoleCensus, TurnCapRoute } from '../types.js';
 
 const NOW = 1_759_470_000_000;
 
@@ -53,70 +54,16 @@ function baseline(): Baseline {
 /**
  * The fields the product does **not** decide, each with the class that says why.
  *
- * These two tables live beside the gate rather than in `registered-arm.ts`, and the reason is the export
+ * This table lives beside the gate rather than in `registered-arm.ts`, and the reason is the export
  * census: a constant nothing in the product calls is API surface nobody asked for, and `census:check`
  * refuses it. The rule it enforces is right here — the partition is a claim about an *artifact*, and the
  * only thing that reads an artifact is this file.
  *
- * A field absent from both this table and {@link REGISTERED_ARM} is a field nobody decided about, and
+ * A field absent from both this table and `REGISTERED_ARM` is a field nobody decided about, and
  * `registered-arm.test.ts` fails on it. Without the reverse direction a new option would land in the
  * artifact, be unclassified on both sides, and the projection would keep passing over a row nobody
  * had considered — which is how `ask` stayed two values for nine rounds.
  */
-
-/**
- * The registered values the product cannot yet be given, and what each one is missing.
- *
- * ## Why this table exists rather than two more fields on `AssembleOptions`
- *
- * Because the honest state is not "the product decides this". Two fields of the measured arm reach the reader
- * through the benchmark's arm and through nothing else:
- *
- * | field | registered | what the published entry has |
- * | --- | --- | --- |
- * | `evidenceRoles` | `['user']` | no option at all |
- * | `evidenceRolesRoutes` | `multi-session,temporal` | no option at all |
- *
- * A call that names neither prints the assistant turns the arm excludes, which is not the cell `S16` priced.
- * Writing them into {@link REGISTERED_ARM} would have claimed an application that does not happen — the exact
- * defect this file exists to remove, restated one layer down.
- *
- * ## What used to be here, and what closed it
- *
- * `maxTurnChars` and `maxTurnCharsRoutes` were this table's first two rows. They moved into
- * {@link REGISTERED_ARM} when `assemble.ts` began resolving them on the room table's rule, and the tripwire
- * below became the positive assertion that a bare call cuts where the registration cuts. The order the table
- * prescribed was followed: the width was forwarded first (`assemble-turn-cap-reach.test.ts` proves the reach
- * arrives at the renderer), then both were defaulted, then the rows moved. What made the last step an
- * adoption rather than an edit is that it moves the bytes of every prompt holding a turn over 400 characters,
- * so it was taken with the reading that prices those bytes in hand rather than as a tidy-up.
- *
- * ## The assertion that keeps this table honest
- *
- * `registered-arm.test.ts` checks both directions. Every value here still has to equal the artifact, so the
- * table cannot drift; and a bare assembly has to still **not** apply it, so shipping one is a red test that
- * says "move this row up" rather than a silent improvement nobody recorded. A row that can be quietly
- * satisfied is a row that will be.
- *
- * ## Closing the remaining two
- *
- * Neither can be done "while we are here". `evidenceRoles` is refused by the constructor without a `roleOf`
- * classifier, so exposing it from the composition root means deciding who reads a role — a contract, not a
- * forwarding line — and each field moves the bytes of every prompt whose corpus holds a non-user turn, which
- * is a re-reading of every published number rather than an edit.
- */
-const REGISTERED_ARM_UNSHIPPED: Readonly<
-  Record<string, { readonly value: unknown; readonly missing: string }>
-> = {
-  evidenceRoles: {
-    value: ['user'],
-    missing: 'no `AssembleOptions` field: a bare call prints the assistant turns the arm excludes',
-  },
-  evidenceRolesRoutes: {
-    value: ['multi-session', 'temporal'],
-    missing: "no `AssembleOptions` field, for `evidenceRoles`'s reason",
-  },
-};
 
 const REGISTERED_ARM_ELSEWHERE: Readonly<
   Record<
@@ -267,13 +214,15 @@ describe('the arm the registration measured is the arm the product ships', () =>
     const artifact = baseline().memoryArmConfig;
     const decided = new Set<string>([
       ...Object.keys(REGISTERED_ARM),
-      ...Object.keys(REGISTERED_ARM_UNSHIPPED),
       ...Object.keys(REGISTERED_ARM_ELSEWHERE),
     ]);
 
     // A field in the artifact and in neither table: nobody decided. This is the assertion that would
     // have caught `ask` — it was projected into the arm the bench dispatches and never into the arm the
-    // product assembles, and the two tables that could have said so did not exist.
+    // product assembles, and the tables that could have said so did not exist. The second table is gone
+    // now: the last four fields it held (`maxTurnChars`, `maxTurnCharsRoutes`, `evidenceRoles`,
+    // `evidenceRolesRoutes`) are decided by the product, so a row that needs it again would be a row
+    // added to a table this file no longer has — which is the point rather than an inconvenience.
     expect([...Object.keys(artifact)].filter((key) => !decided.has(key))).toEqual([]);
     // And the reverse: a field this file decided about that the artifact does not carry is a stale
     // classification, which is how a removed option keeps a reason nobody re-read.
@@ -300,19 +249,9 @@ describe('the arm the registration measured is the arm the product ships', () =>
     expect(disagreements).toEqual([]);
   });
 
-  it('agrees with the artifact on the fields it records but cannot ship, and says what each needs', () => {
-    const artifact = baseline().memoryArmConfig;
-    for (const [key, entry] of Object.entries(REGISTERED_ARM_UNSHIPPED)) {
-      expect({ key, value: entry.value }).toEqual({ key, value: artifact[key] });
-      // A row without a reason is a row nobody has to close. The reason is prose, so the assertion is that
-      // it exists and names something -- an empty string would satisfy a truthiness check on the record.
-      expect(entry.missing.length).toBeGreaterThan(30);
-    }
-  });
-
   it('applies the registered width and reach on a bare call', async () => {
     // The tripwire, in the direction it now points. It used to assert that a bare call printed this
-    // 900-character turn **whole**, which was the gap `REGISTERED_ARM_UNSHIPPED` recorded; it failed when the
+    // 900-character turn **whole**, which was the gap the unshipped table recorded; it failed when the
     // default landed, and the fix it prescribed was to move the row up rather than to relax the assertion.
     // What it asserts now is the other half of the same claim: the arm the benchmark dispatches and the arm
     // this function assembles cut in the same place, at the width the artifact records.
@@ -405,5 +344,112 @@ describe('the arm the registration measured is the arm the product ships', () =>
     const minimal = await promptWith({ profile: 'minimal' });
     expect(minimal).not.toContain('A mention counts when the evidence describes the same ACT');
     expect(minimal).not.toBe(await barePrompt());
+  });
+
+  /**
+   * Two turns a role filter can tell apart, both long enough that the room never binds them.
+   *
+   * `USER-FACT` and `ASSISTANT-CLAIM` sit **inside** the turns rather than beside them because the assertion is
+   * on prompt bytes: a prompt carrying `ASSISTANT-CLAIM` was not filtered, whatever a field said.
+   */
+  const ROLE_TURNS = [
+    {
+      sessionId: 's1',
+      ordinal: 0,
+      text: '[2023/02/15 (Wed) 03:14] user: USER-FACT the boiler was replaced in March.',
+    },
+    {
+      sessionId: 's1',
+      ordinal: 1,
+      text: '[2023/02/15 (Wed) 03:15] assistant: ASSISTANT-CLAIM I would check the guarantee first.',
+    },
+    {
+      sessionId: 's2',
+      ordinal: 0,
+      text: '[2023/02/25 (Sat) 09:00] user: USER-FACT I have two cats.',
+    },
+  ] as const;
+
+  /**
+   * The classifier the campaign's haystack needs, written here so the product can be asserted without one.
+   *
+   * `cortex-eval` owns the real one (`roleOfTurn`), and it is not importable from this package for the reason
+   * the dependency runs the other way. This is the same shape on a smaller format: the point of the test is
+   * that the **product** takes a reader rather than knowing one.
+   */
+  function roleOf(text: string): string | undefined {
+    return /^\[[^\]]+\]\s*(user|assistant)\s*:/i.exec(text)?.[1]?.toLowerCase();
+  }
+
+  /** One assembly, the prompt `MR` renders, and the census that describes the same window. */
+  async function rolePrompt(arm: {
+    roleOf?: (turn: string) => string | undefined;
+    evidenceRoles?: readonly string[];
+    evidenceRolesRoutes?: readonly TurnCapRoute[];
+  }): Promise<{ prompt: string; census: RoleCensus | null }> {
+    const seen: string[] = [];
+    const install = assembleMemory({
+      llm: recordingLlm(seen),
+      now: NOW,
+      storage: new SqliteStorage(),
+      ...(arm.roleOf === undefined ? {} : { roleOf: arm.roleOf }),
+      ...(arm.evidenceRoles === undefined ? {} : { evidenceRoles: arm.evidenceRoles }),
+      ...(arm.evidenceRolesRoutes === undefined
+        ? {}
+        : { evidenceRolesRoutes: arm.evidenceRolesRoutes }),
+    });
+    await install.memory.remember([...ROLE_TURNS]);
+    seen.length = 0;
+    await install.memory.askStored(QUESTION);
+    return { prompt: seen[0] ?? '', census: install.memory.lastRoleCensus() };
+  }
+
+  it('applies the registered role filter on a call that supplies a classifier', async () => {
+    // The tripwire for the last two rows the unshipped table held. A caller who can read a role now gets the
+    // arm §13.84 adopted -- user turns only, on `multi-session` and `temporal` -- instead of the reference
+    // window that printed every assistant turn four screening runs paid to exclude.
+    const bare = await rolePrompt({ roleOf });
+    expect(bare.prompt).toContain('USER-FACT');
+    expect(bare.prompt).not.toContain('ASSISTANT-CLAIM');
+    // And the census is the effect rather than the configuration: the window carried user turns and no
+    // assistant turn, which is what `43465626013` could not read from its own artifact.
+    expect(bare.census).not.toBeNull();
+    expect(bare.census?.counts).toEqual({ user: 2 });
+    expect(bare.census?.unclassified).toBe(0);
+    expect(bare.census?.total).toBe(2);
+  });
+
+  it('filters nothing when the call brings no classifier, and says so in the census', async () => {
+    // The other half of the conditional default, and the reason it is conditional: without a reader the product
+    // cannot see a role, so the honest result is every turn plus a `null` census rather than a filter that
+    // silently kept everything while reporting that it kept `user` -- the inert-configuration class §10.10
+    // recorded for the retrieval gate.
+    const withoutReader = await rolePrompt({});
+    expect(withoutReader.prompt).toContain('ASSISTANT-CLAIM');
+    expect(withoutReader.census).toBeNull();
+  });
+
+  it('lets a caller keep the classifier and drop the filter with the empty reach', async () => {
+    // A default that cannot be stepped away from is not a default, and the step is the same spelling the width
+    // uses: a filter that reaches nowhere. The prompt then equals the unfiltered one byte for byte, and the
+    // census still runs -- which is the configuration an audit wants and could not get before either.
+    const watched = await rolePrompt({ roleOf, evidenceRolesRoutes: [] });
+    const withoutReader = await rolePrompt({});
+    expect(watched.prompt).toBe(withoutReader.prompt);
+    expect(watched.census?.counts).toEqual({ user: 2, assistant: 1 });
+    expect(watched.census?.total).toBe(3);
+  });
+
+  it('refuses the filter through this entry point when no classifier came with it', async () => {
+    // The constructor's guard, forwarded rather than re-implemented: a composition root that swallowed it would
+    // be a way around a rule the class states, and the failure has to name the missing field.
+    expect(() =>
+      assembleMemory({
+        llm: recordingLlm(),
+        now: NOW,
+        storage: new SqliteStorage(),
+        evidenceRoles: REGISTERED_ARM.evidenceRoles,
+      }),
+    ).toThrow(/roleOf/);
   });
 });

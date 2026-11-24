@@ -130,23 +130,82 @@ describe('CortexProductProvider: the assembled product as a provider', () => {
     await provider.answer('Where did I move?', { limit: 10, capability: 'MR' });
     const throughAdapter = provider.lastPromptText();
 
+    // The role lookup the adapter derives from the sessions it was handed, spelled out here because a direct
+    // caller has to derive it too: the provider carries a role as a field and the corpus holds text, so the
+    // classifier is the one argument this comparison cannot omit without comparing two different arms.
+    const roles = new Map<string, string | undefined>();
+    for (const session of SESSIONS) {
+      for (const turn of session.turns) roles.set(turn.content, turn.role);
+    }
     const direct = assembleMemory({
       llm,
       now: T0 + 30 * DAY,
       storage: new SqliteStorage(),
       embed: embed.embed,
+      roleOf: (text: string) => roles.get(text),
     });
-    await direct.memory.remember([
+    const contents = [
       { sessionId: 's1', ordinal: 0, text: SESSIONS[0]!.turns[0]!.content, at: T0 },
       { sessionId: 's1', ordinal: 1, text: SESSIONS[0]!.turns[1]!.content, at: T0 },
       { sessionId: 's2', ordinal: 0, text: SESSIONS[1]!.turns[0]!.content, at: T0 + 10 * DAY },
-    ]);
+    ];
+    await direct.memory.remember(contents);
     await direct.memory.askStored('Where did I move?');
 
     // One text, two assemblies. If the adapter ever grows an argument the manual does not document, this
     // fails at the byte where the two arms diverge rather than at a field nobody compared.
     expect(throughAdapter).not.toBeNull();
     expect(throughAdapter).toBe(direct.memory.lastPromptText());
+
+    // And the counterfactual, which is the finding rather than a second assertion: without the classifier the
+    // same call prints the assistant turn the adapter drops, so every comparison row this class published
+    // before this round was the **unfiltered** arm while the 91.6% reading was taken filtered. The two arms
+    // differ on one argument, and this is the byte where they differ.
+    const blind = assembleMemory({
+      llm,
+      now: T0 + 30 * DAY,
+      storage: new SqliteStorage(),
+      embed: embed.embed,
+    });
+    await blind.memory.remember(contents);
+    await blind.memory.askStored('Where did I move?');
+    expect(blind.memory.lastPromptText()).not.toBe(throughAdapter);
+    expect(blind.memory.lastPromptText()).toContain('Noted, Porto.');
+    expect(throughAdapter).not.toContain('Noted, Porto.');
+  });
+
+  it('carries the filter’s reach through the adapter, so `IE` still sees the assistant turn', async () => {
+    // The reach is `multi-session` and `temporal`, and this is the row a comparison table would get wrong: an
+    // adapter that filtered every route would delete the evidence a `single-session-assistant` question asks
+    // about — the `-30` on `IE` that §13.72 measured when the width spread to six routes, one mechanism over.
+    const provider = providerOf();
+    await provider.ingest(SESSIONS);
+    await provider.answer('What did you note about Porto?', { limit: 10, capability: 'IE' });
+    const prompt = provider.lastPromptText() ?? '';
+    expect(prompt).toContain('I moved to Porto in January.');
+    expect(prompt).toContain('Noted, Porto.');
+  });
+
+  it('keeps a turn whose text arrived under two roles, and does not pick one', async () => {
+    // Two sessions can carry the same sentence from different speakers — a quote, a repetition, a fixture
+    // reused — and then the text does not identify a role. The classifier's answer is `undefined`, which the
+    // filter **keeps**: dropping it would let a turn it cannot attribute delete evidence, and the conservative
+    // direction is the one that reads as a corpus rather than as a filter defect. First-wins would have dropped
+    // it here, which is why the assistant turn is the one that arrives first.
+    const AMBIGUOUS = 'I moved to Porto in January.';
+    const provider = providerOf();
+    await provider.ingest([
+      { id: 'a1', at: T0, turns: [{ role: 'assistant', content: AMBIGUOUS }] },
+      { id: 'a2', at: T0 + DAY, turns: [{ role: 'user', content: AMBIGUOUS }] },
+      {
+        id: 'a3',
+        at: T0 + 2 * DAY,
+        turns: [{ role: 'user', content: 'I have two cats.' }],
+      },
+    ]);
+    await provider.answer('Where did I move?', { limit: 10, capability: 'MR' });
+    // Kept, and kept twice: the ambiguity is recorded rather than resolved, so neither session loses the line.
+    expect((provider.lastPromptText() ?? '').split(AMBIGUOUS).length - 1).toBe(2);
   });
 
   it('reports what the store holds, not what the call offered', async () => {

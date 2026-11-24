@@ -227,6 +227,96 @@ export type AssembleOptions = {
    */
   readonly maxTurnCharsRoutes?: readonly TurnCapRoute[] | undefined;
   /**
+   * How to read a turn's role, when the caller's corpus encodes one.
+   *
+   * ## Why the product takes a classifier instead of knowing the format
+   *
+   * A role is a property of the caller's transcript, not of this package: `cortex-memory` stores text, and the
+   * three corpora in the campaign spell a role three ways (`[2023/02/15 (Wed) 03:14] user: …` in the haystack,
+   * `user: …` in the fixture, and nothing at all in a corpus that only ever holds one speaker). Teaching the
+   * product one of those would make it wrong on the other two and would put a dataset's format inside a
+   * published library's prompt path. So the caller supplies the reader, exactly as it supplies `llm`, `embed`
+   * and `valueFunction` — the same boundary those three draw.
+   *
+   * ## What it enables, and what it costs to omit
+   *
+   * Supplying it enables two things and they are separate on purpose. The **census**
+   * (`memory.lastRoleCensus()`) counts the roles a window carried, which is the field
+   * screen `43465626013` needed and did not have: its audit could only see the filter's configuration, and
+   * separating "the filter stopped working" from "the audit read the wrong set" cost a manual reconstruction
+   * of four records. The **filter** ({@link AssembleOptions.evidenceRoles}) then drops the roles it does not
+   * name. Omitting the classifier omits both, and the census reports `null` rather than a window of
+   * unreadable turns — the two are different statements and this package keeps them apart.
+   *
+   * ## Why this field is the precondition rather than a convenience
+   *
+   * `CortexMemory` refuses `evidenceRoles` without it, because a filter with no way to read a role keeps
+   * every turn while the configuration says it kept some — the inert-configuration class §10.10 recorded for
+   * the retrieval gate. That refusal is forwarded, not re-implemented: a call naming roles without a
+   * classifier fails here for the reason it fails when the class is built by hand, and a composition root
+   * that swallowed it would be a way around a guard.
+   */
+  readonly roleOf?: ((turn: string) => string | undefined) | undefined;
+  /**
+   * Which roles the evidence may be built from. Absent is the registered filter — `['user']` — **for a caller
+   * who supplied {@link AssembleOptions.roleOf}**, and no filter for a caller who did not.
+   *
+   * ## The rows this closes, and why they lasted
+   *
+   * This and {@link AssembleOptions.evidenceRolesRoutes} were the last two rows of
+   * `REGISTERED_ARM_UNSHIPPED`. §13.83 registered `evidenceRoles: user` at the identity and §13.84 adopted it
+   * on two routes with no capability regressed, and every reading from `S16` onwards was taken with it — while
+   * the published entry point had no field for it at all. A caller who assembled the product got the arm the
+   * file's own header calls "the reference rendering at the reference instruction": every assistant turn in
+   * the window, which is the cell four screening runs paid to exclude.
+   *
+   * ## Why the default is conditional, which is the one place this differs from the width
+   *
+   * The width defaults unconditionally because it needs nothing from the caller. The filter needs a reader for
+   * the corpus's role format, and `undefined` there is not "unfiltered by preference" — it is "the product
+   * cannot see a role". So the registration applies exactly where it can be executed:
+   *
+   * | what the caller wrote | what they get |
+   * | --- | --- |
+   * | `roleOf` only | the registered filter: `['user']` on `multi-session` and `temporal` |
+   * | nothing | no filter, and `lastRoleCensus()` is `null` — the run's own record of why |
+   * | `evidenceRoles` named | exactly what was named, and the constructor's guard if no classifier came with it |
+   * | `evidenceRolesRoutes: []` | a filter that reaches nowhere: the census runs, no turn is dropped |
+   *
+   * The last row is the opt-out, and it is the same spelling the width uses for the same reason — a
+   * mechanism an axis can be stepped away from through the field it is configured with, rather than a boolean
+   * beside it. The second row is not an oversight: a corpus whose turns carry no role has nothing to filter,
+   * and inventing a reader for it here would be this package guessing at a caller's format.
+   *
+   * ## What does not take it
+   *
+   * `minimal`, for the reason it withholds the room table and the width: its 39.55% was measured on the
+   * unfiltered transcript in arrival order, and a filter would move bytes under a reading nobody re-took.
+   *
+   * ## What it costs, and what it cannot claim
+   *
+   * Dropping assistant turns on two routes is a change to the evidence, not to the rendering, so it is
+   * invisible in a token count that only reads the prompt: the four screening runs that priced it report the
+   * accuracy, and the token saving is a by-product of less evidence reaching the same room. `'all'` is not a
+   * value: a caller who wants every role names every role, and a caller who wants no filter says so with an
+   * empty reach instead of a sentinel that would be a second meaning for this field.
+   */
+  readonly evidenceRoles?: readonly string[] | undefined;
+  /**
+   * Which routes the role filter reaches. Absent is the registered reach, `multi-session` and `temporal`.
+   *
+   * `[]` is a filter that reaches nowhere — the opt-out the default above needs, and the reason this is a
+   * list rather than a boolean. Naming it alone names nothing to filter with: the reach is inert without
+   * {@link AssembleOptions.evidenceRoles} to spend it on, exactly as `maxTurnCharsRoutes` is inert without a
+   * width, and `CortexMemory` reads it that way rather than as an implied filter.
+   *
+   * Why the two routes and not six: the four the filter does not reach are the ones whose gold evidence can
+   * *be* an assistant turn (`single-session-assistant` is a whole `IE` type), so a filter there would delete
+   * the answer while the question asks for it. §13.72's reading is the same split for the same reason, one
+   * mechanism over.
+   */
+  readonly evidenceRolesRoutes?: readonly TurnCapRoute[] | undefined;
+  /**
    * Whether a turn the width cut says so. `'ellipsis'` marks; absent is the historical silence.
    *
    * Inert without {@link AssembleOptions.maxTurnChars}, and `CortexMemory` refuses the pairing that would
@@ -517,6 +607,43 @@ export function assembleMemory(options: AssembleOptions): Installation {
               : { maxTurnCharsRoutes: options.maxTurnCharsRoutes }),
           };
 
+  // The role filter and its reach, on the room table's rule with one difference that is the whole point: the
+  // registration applies **where it can be executed**, and nowhere else.
+  //
+  // The width above can default unconditionally because it needs nothing from the caller. This needs a reader
+  // for the corpus's role format, and that reader is the caller's -- so `undefined` is not a preference here,
+  // it is the product's inability to see a role at all. Four cases, and the first is the one that closes the
+  // last two rows of `REGISTERED_ARM_UNSHIPPED`:
+  //
+  //   - `roleOf` given, neither field named -> the registration: `['user']` on `multi-session` and `temporal`;
+  //   - either field named                    -> exactly what was named (the constructor refuses roles
+  //                                              without a classifier, and that refusal is forwarded);
+  //   - no classifier, nothing named          -> no filter, and `lastRoleCensus()` reports `null` so the run
+  //                                              records which of the two reasons applied;
+  //   - `minimal`                             -> neither, for the reason it withholds the room table.
+  //
+  // The opt-out is `evidenceRolesRoutes: []`, the same spelling the width uses: a filter that reaches nowhere
+  // runs the census and drops no evidence, which is what a caller who wants to *watch* roles needs and what
+  // §10.10's audit was reconstructed by hand to obtain.
+  const roles =
+    profile === 'minimal'
+      ? undefined
+      : options.evidenceRoles === undefined && options.evidenceRolesRoutes === undefined
+        ? options.roleOf === undefined
+          ? undefined
+          : {
+              evidenceRoles: REGISTERED_ARM.evidenceRoles,
+              evidenceRolesRoutes: REGISTERED_ARM.evidenceRolesRoutes,
+            }
+        : {
+            ...(options.evidenceRoles === undefined
+              ? {}
+              : { evidenceRoles: options.evidenceRoles }),
+            ...(options.evidenceRolesRoutes === undefined
+              ? {}
+              : { evidenceRolesRoutes: options.evidenceRolesRoutes }),
+          };
+
   const memory = new CortexMemory({
     llm: options.llm,
     now: options.now,
@@ -538,6 +665,11 @@ export function assembleMemory(options: AssembleOptions): Installation {
     // three forwarded as named. `undefined` for a field the caller did not name is the historical rendering
     // for those three, and a mechanism this file must not turn on by itself.
     ...(cap === undefined ? {} : cap),
+    // The classifier is forwarded even when the filter is not, because the two things it enables are separate:
+    // a caller who passes only `roleOf` gets the census on every profile, including `minimal`, and gets the
+    // registered filter wherever the profile can run one.
+    ...(options.roleOf === undefined ? {} : { roleOf: options.roleOf }),
+    ...(roles === undefined ? {} : roles),
     ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
     ...(options.resolution === undefined ? {} : { resolution: options.resolution }),

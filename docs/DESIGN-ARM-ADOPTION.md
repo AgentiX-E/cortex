@@ -1,7 +1,8 @@
 # The arm that ships is the arm that was measured
 
 **Status:** implemented (`packages/cortex-memory/src/registered-arm.ts`, `tools/arm-config-guard.mjs`,
-`packages/cortex-memory/src/__tests__/registered-arm.test.ts`)
+`packages/cortex-memory/src/__tests__/registered-arm.test.ts`, `assemble-turn-cap-reach.test.ts`,
+`assemble-role-filter-reach.test.ts`)
 **Supersedes:** nothing. **Amends:** the room table's pinning discipline, one level wider.
 
 ## 1. What was wrong, in one table
@@ -17,8 +18,15 @@ something else:
 | `maxPromptCharsByRoute` | 48,460 / 24,000×5 | the same, since `rooms.ts` was pinned |
 | `maxTurnChars` | 400 on two routes | absent |
 | `maxTurnCharsRoutes` | `multi-session,temporal` | absent — every route |
+| `evidenceRoles` | `['user']` | absent — no filter, and no field to name one with |
+| `evidenceRolesRoutes` | `multi-session,temporal` | absent — every route |
 
-The last row is the exception that proves the rule. `rooms.ts` carries a constant pinned to that
+**Every row in that table is closed now**, in the order the campaign could pay for: the two instruction levers
+(§1), the width and its reach (§1.2), and the role filter with its reach (§1.3). The table is kept as the record
+of what the gap was, because a document that only describes the fixed state cannot be used to check whether the
+fix is still there.
+
+The room table is the exception that proves the rule. `rooms.ts` carries a constant pinned to that
 baseline by `assemble-rooms.test.ts`, in both directions, so a re-recorded arm that forgot the room
 table is a red build. Nothing else had a counterpart at all: `AssembleOptions` had no field for
 `promptContract` or `ask`, so the two levers the campaign spent §12.5 and §13.291–§13.318 adopting
@@ -55,6 +63,49 @@ The order was the one `REGISTERED_ARM_UNSHIPPED` prescribed, and it matters: for
 arrives at the renderer, proven by prompt bytes), then default it, then move the row into `REGISTERED_ARM`
 and flip the tripwire from "a bare call does not apply this" to "a bare call cuts where the registration
 cuts". `[]` is the opt-out, which is why the reach is a list rather than a boolean.
+
+### 1.3 The last two rows, and the one condition on their default
+
+`evidenceRoles` and `evidenceRolesRoutes` were the table's longest-lived rows. §13.83 registered user-only
+evidence at the identity, §13.84 adopted it on `multi-session` and `temporal` with no capability regressed, and
+every reading from `S16` onwards was taken with the filter on — while `AssembleOptions` had no field for either.
+The documented call therefore printed every assistant turn the arm excludes: the reference window, which is the
+one cell four screening runs paid to remove.
+
+Both are forwarded and defaulted now, and the default carries **one condition** the width's does not:
+
+| what the caller wrote | what they get |
+| --- | --- |
+| `roleOf` only | the registration: `['user']` on `multi-session` and `temporal` |
+| nothing | no filter, and `lastRoleCensus() === null` |
+| `evidenceRoles` named | exactly what was named, and the constructor's refusal if no classifier came with it |
+| `evidenceRolesRoutes: []` | the census runs, no turn is dropped |
+
+The condition is not caution. A width needs nothing from the caller; a role is a property of the caller's
+**corpus format**, and this package stores text. `[2023/02/15 (Wed) 03:14] user: …` is the campaign's haystack,
+`Assistant: …` is a fixture's, and a transcript with one speaker has none — three formats, and a product that
+read one of them would be wrong on the other two and would have a dataset's spelling inside a published
+library's prompt path. So `roleOf` is an input, like `llm` and `embed`, and the honest state for a call that
+brings none is "this run could not read a role" — which the census records as `null` rather than as a filter
+that silently kept everything. That distinction is exactly what `43465626013` could not make from its own
+artifact.
+
+The opt-out is the width's spelling: `evidenceRolesRoutes: []`, a filter that reaches nowhere. `'all'` is not a
+value, because a sentinel would give one field two meanings and because the dispatcher already spells the
+unfiltered arm as *absence*, which is what every artifact before §13.84 records.
+
+**The published adapter changed with it, and that is a finding rather than a tidy-up.** `CortexProductProvider`
+— the row the product prints in a competitor table — ingests `ProviderTurn`s, which carry `role` as a field, and
+the corpus stores text. Before this round it dropped the role at that boundary and assembled the **unfiltered**
+arm: every comparison published for that row described a configuration the 91.6% reading did not use. The
+adapter now derives a lookup over the turns it stored and supplies it as `roleOf`, so the row and the reading
+are one arm; `product-provider.test.ts` holds both halves, asserting byte equality against a direct assembly
+that derives the same lookup **and** inequality against one that does not.
+
+`assemble-role-filter-reach.test.ts` proves the reach at the renderer through two routes in both directions —
+the registered pair filters `multi-session` and leaves `flat` identical, and the same filter named for `flat`
+alone does the opposite. The second direction is the one no dispatch has ever run, which is why it lives in a
+test rather than in a paragraph: a reach that can only ever be pointed one way is a boolean wearing a list.
 
 ## 2. The same defect on the dispatch side
 
@@ -93,16 +144,18 @@ decided from a value that had quietly stopped matching.
                        (every evidence file a row reads, and its mirror)
 ```
 
-The partition has three tables, not two. `REGISTERED_ARM` holds the nineteen fields the product applies;
-`REGISTERED_ARM_UNSHIPPED` holds the four the registration carries and the published entry **does not apply**
-(`maxTurnChars` and `maxTurnCharsRoutes` are nameable and forwarded but nothing defaults them;
-`evidenceRoles` and `evidenceRolesRoutes` have no option at all); `REGISTERED_ARM_ELSEWHERE` holds the
-fourteen that are not a product decision, each with its class.
+The partition has two tables, not three. `REGISTERED_ARM` holds the twenty-three fields the product applies —
+including the four the middle table used to hold (`maxTurnChars`, `maxTurnCharsRoutes`, `evidenceRoles`,
+`evidenceRolesRoutes`), each of which moved up only after its reach was proven at the renderer and, in the role
+pair's case, only after the default was made conditional on a classifier existing; `REGISTERED_ARM_ELSEWHERE`
+holds the fourteen that are not a product decision, each with its class.
 
-The middle table is the honest one. Writing those four into `REGISTERED_ARM` would have claimed an
-application that does not happen — the same defect this document is about, one layer down — and its assertion
-is bidirectional: every value still has to equal the artifact, and a bare assembly must still **not** apply it,
-so shipping one turns the gate red with "move this row up" rather than passing quietly.
+The middle table is gone, and its disappearance is the point. While it existed it was the honest one: writing
+those four into `REGISTERED_ARM` would have claimed an application that does not happen — the same defect this
+document is about, one layer down — and its assertion was bidirectional, so shipping one turned the gate red
+with "move this row up" rather than passing quietly. What replaces it is the positive form of the same claim:
+a bare call cuts, filters and renders where the artifact says, and `registered-arm.test.ts` fails if a
+re-recorded artifact disagrees in either direction.
 
 Four claims, each with a checker:
 
