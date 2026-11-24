@@ -1,5 +1,7 @@
 # Pre-registration: the per-turn cap at 600 characters
 
+**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+
 Written before dispatch. The measurement that motivates it is `MEASURE-TURN-WIDTH.md`; the defect it
 addresses is `FAILURE-ANATOMY.md` §1 and §3.
 

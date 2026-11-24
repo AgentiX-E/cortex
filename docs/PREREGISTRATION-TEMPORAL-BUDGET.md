@@ -1,5 +1,7 @@
 # A route-scoped window: `temporal` at 48,000, and nothing else moved
 
+**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+
 > **STATUS: REGISTERED, dispatch pending.** The population below is counted on the archived arm, not
 > estimated; §5 fixes the dispatch and §6 the decision rules. Nothing in this file changes a string —
 > the treatment is one key of the per-route budget table.

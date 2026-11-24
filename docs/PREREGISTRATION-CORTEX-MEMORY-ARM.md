@@ -1,6 +1,6 @@
 # PREREGISTRATION — the `cortex-memory` benchmark arm
 
-**Status:** registered before dispatch, as `AUDIT-CODE-VS-DOCS.md` §6.3 requires.
+**Status:** live — a standing ledger rather than one experiment, so it accumulates results; `registered before dispatch, as `AUDIT-CODE-VS-DOCS.md` §6.3 requires.`
 **Registered at revision:** the commit that adds `packages/cortex-eval/src/bench-memory-arm.ts`.
 **Arm:** `cortex-memory` (`CortexMemory`) as the **feature** side; `cortex-eval`'s
 `NaturalLanguageMemorySystem` reference pipeline as the **baseline** side.

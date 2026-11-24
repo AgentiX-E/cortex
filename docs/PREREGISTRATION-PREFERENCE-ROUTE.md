@@ -1,5 +1,7 @@
 # PREREGISTRATION-PREFERENCE-ROUTE
 
+**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+
 A pre-registration, written before the code, for giving the preference question its own answer
 contract in the product.
 

@@ -1,5 +1,7 @@
 # Pre-registration — the reader looks twice
 
+**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+
 ## 0. What is being tested, and why now
 
 `MR` is the only capability where this repository is level with its own reference pipeline and behind

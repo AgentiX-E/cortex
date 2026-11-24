@@ -1,6 +1,6 @@
 # Pre-registration: an assumption ledger, and what it has to beat
 
-**Status:** written before implementation. The criteria in §5 are fixed now so that the numbers in
+**Status:** pending — written before implementation — The criteria in §5 are fixed now so that the numbers in
 §6 cannot be chosen after the fact. Nothing in this file has been run.
 
 ---

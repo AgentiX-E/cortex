@@ -902,6 +902,26 @@ export type PromptOptions = {
    * the first four bands of `goldOverlap` coverage, while its carried count has a median
    * of 14 against a median total of 24. The turn unit scatters a session across the
    * window; the reference pipeline completes it and scores 86.78% on MR.
+   *
+   * ## `'session-text'`, and the experiment the other three could not represent
+   *
+   * Every rule above inherits its numbers from per-turn scoring: `'session'` and `'session-fill'` rank a
+   * session by the **maximum** of its turns' scores. `PREREG-MR-SESSION-CHANNEL.md` §2 recorded that this is
+   * not what the `reference-pipeline` does — it embeds *the session's concatenated text, one embedding* —
+   * and that the arm "cannot express" that. The two are different estimators, not two spellings of one: a
+   * maximum is decided by the single best-matching sentence, so a session holding one incidental keyword
+   * outranks a session that is *about* the question as a whole, and a later turn that answers the question
+   * but reads unlike it contributes nothing.
+   *
+   * So `'session-text'` changes what is scored rather than how scores are grouped. `CortexMemory` embeds
+   * one document per session, projects that score onto every turn the session owns, and hands the result to
+   * the **same** `selectBySession` rule the maximum-based unit uses. The projection is what makes the
+   * comparison single-variable: with every turn of a session carrying the session's own score, "the best
+   * turn of a session" *is* the session score, so the budget code below is untouched and the only thing
+   * that moved is the estimator.
+   *
+   * It costs less as well as differing: one embedding per session rather than one per turn, on a corpus
+   * whose sessions hold four to five turns each.
    */
   relevanceUnits?: RelevanceUnits;
   /**
@@ -962,8 +982,14 @@ export type PromptOptions = {
   knownUpdates?: readonly string[];
 };
 
-/** The unit the evidence room is spent in. */
-export type RelevanceUnits = 'turn' | 'session' | 'session-fill' | 'anchor-window';
+/**
+ * The unit the evidence room is spent in.
+ *
+ * Four of these five regroup scores that were taken **per turn**; `'session-text'` is the one that scores
+ * a session as a document. The difference is not a detail of the regrouping rule — it is what the score
+ * means — and it is the only difference between this arm and the `reference-pipeline`'s session route.
+ */
+export type RelevanceUnits = 'turn' | 'session' | 'session-fill' | 'anchor-window' | 'session-text';
 
 /**
  * Whether a turn the per-turn cap cut says so.
@@ -3878,7 +3904,11 @@ function chooseEvidence(
   }
   const sessionOf = plan.sessionOf;
   if (sessionOf !== undefined) {
-    if (plan.relevanceUnits === 'session') {
+    // Two spellings, one rule. `'session-text'` differs from `'session'` in **how a session was scored**
+    // (`CortexMemory` embeds the session's concatenated text and projects that number onto its turns),
+    // not in what the room buys, so routing them through one selector is what keeps the comparison
+    // single-variable. A second copy of the prefix rule here would be a second copy of its tie-break.
+    if (plan.relevanceUnits === 'session' || plan.relevanceUnits === 'session-text') {
       return selectBySession(question, plan, sessionOf, plan.relevanceFor, room);
     }
     if (plan.relevanceUnits === 'session-fill') {

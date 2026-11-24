@@ -1,5 +1,7 @@
 # PREREGISTRATION-COMPETITOR-REGRADE
 
+**Status:** decided — run `45229423125` — dispatched and read; the reading is in this file.
+
 A pre-registration, written before the dispatch, for putting a competitor's published answers through
 this repository's judge.
 

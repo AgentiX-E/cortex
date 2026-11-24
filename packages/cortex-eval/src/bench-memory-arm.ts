@@ -868,7 +868,32 @@ const RELEVANCE_UNITS = {
    * radius axis would be a second variable in a dispatch whose value is that it has one.
    */
   'anchor-window': 'anchor-window',
+  /**
+   * The budget buys whole sessions, ordered by **the joined text's own** score rather than by their best
+   * turn's, on the same prefix rule as `session`.
+   *
+   * `PREREG-SESSION-TEXT-UNIT.md`. `session` ranks a session by the maximum of its turns' scores, which is
+   * what `MEASURE-MR-UNITS.md` measured at −28 questions; the reference pipeline it is measured against
+   * embeds *the session's concatenated text, one embedding* instead, and this arm could not express that
+   * until now. Two estimators, not two spellings: a maximum is decided by the single best-matching
+   * sentence, so a session holding one incidental match outranks a session that is about the question.
+   *
+   * `session` stays frozen beside it rather than being redefined, for the reason §13.31 gives: a value whose
+   * meaning changed between two archived runs makes both artifacts ambiguous.
+   */
+  'session-text': 'session-text',
 } as const;
+/**
+ * This table mirrors the product's `RelevanceUnits`, and it is **not** the enforcement point.
+ *
+ * `cortex-eval` does not depend on `cortex-memory` — the edge runs the other way, through that package's
+ * `bench/` — so a `satisfies Record<RelevanceUnits, …>` is not available here. The enforcement lives on the
+ * side that can see the union: `cortex-memory/bench/run-ablation.ts` declares
+ * `Record<RelevanceUnits, RelevanceUnits | undefined>`, so a sixth unit fails to compile there until it is
+ * forwarded. Missing a row **here** fails loudly too, one layer out: `readRelevanceUnits` refuses an
+ * unlisted name instead of defaulting to `turn`, which is the §13.32 defect that produced a `session-fill`
+ * artifact describing the turn unit.
+ */
 
 /** The unit a run gets when it does not name one. */
 const DEFAULT_RELEVANCE_UNITS = RELEVANCE_UNITS.turn;

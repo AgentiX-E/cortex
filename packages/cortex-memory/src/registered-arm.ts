@@ -134,7 +134,13 @@ export const REGISTERED_ARM = {
   queryExpansion: 'none',
   /** The width the product's own index scores per question (§13.27). */
   relevanceTopK: 256,
-  /** Turns rather than characters, because the ranking scores turns. */
+  /**
+   * Turns rather than characters, because the ranking scores turns.
+   *
+   * The `'session-text'` unit is reachable and **not** registered here: it changes what a session's score is
+   * taken from, and no reading has priced that yet. `PREREG-SESSION-TEXT-UNIT.md` registers the dispatch and
+   * the rule that retires the axis if it fails.
+   */
   relevanceUnits: 'turn',
   /** The bare retry's repair pass is off: a re-ask is not a repair (§13.73). */
   replyRepair: 'off',

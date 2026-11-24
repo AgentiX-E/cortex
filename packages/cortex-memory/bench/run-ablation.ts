@@ -324,6 +324,10 @@ const RELEVANCE_UNIT_FORWARDING: Record<RelevanceUnits, RelevanceUnits | undefin
   session: 'session',
   'session-fill': 'session-fill',
   'anchor-window': 'anchor-window',
+  // The fifth unit, and the compile error that arrived with it is this table doing its job: the row was
+  // added because the union grew, not because a test read the source. `PREREG-SESSION-TEXT-UNIT.md` names
+  // the dispatch that will read it.
+  'session-text': 'session-text',
 };
 
 /**

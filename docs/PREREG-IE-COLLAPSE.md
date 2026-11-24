@@ -1,5 +1,7 @@
 # Pre-registration: is the entity-identity clause what collapses IE and KU?
 
+**Status:** decided — run `40427127569` — dispatched and read; the reading is in this file.
+
 **Registered 2026-10-27, before the dispatch it describes.**
 Context: `MEASURE-BASELINE-DRIFT.md` §8 (two systems, not a drift) and the three runs tabulated in
 §9 below.

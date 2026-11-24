@@ -1,5 +1,7 @@
 # PREREG-DATE-FRAME
 
+**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+
 A pre-registration, written before the code, for telling the reader what day it is.
 
 > **STATUS: WITHDRAWN, never dispatched.** The premise below — "the reader is told nothing" — is

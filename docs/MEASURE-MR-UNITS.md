@@ -118,3 +118,31 @@ possibility (the unit of the budget) from that list.
 (`§13.100.2`), so the bar is **MR ≥ 96/121** (79.34%, twelve questions above the 69.42% control). An earlier draft
 said 80/121, which is _below_ the baseline — a floor a no-op would clear. Corrected in
 `PREREG-MR-SESSION-CHANNEL.md` §5 and left visible here.
+
+## 4. What happened to the channel this document leaves standing — read this before citing it
+
+The section above ends by leaving one thing open: *a session-level embedding channel, scoring a session's
+concatenated turns as one unit*. It reads as a plan, and for four weeks it was read as one. **It was built
+and it was measured, and it lost by one question.**
+
+`PREREG-MR-SESSION-CHANNEL.md` is that registration, and its `§6. Result` is the reading: run
+**`40498191604`**, gate line `relevanceSignal=retrieval-session, relevanceUnits=session`, **MR 83/121 =
+68.60%** against the control's 84. `MEASURE-PAIRED-FLIP.md` §6 lists it under "what this withdraws", and
+`§6.2` closed the retrieval-unit axis on two lines — the paired loss, and the fact that the gold turn reaches
+the rendered prompt for 500 of 500 questions.
+
+So the two rows of the table above are **both refuted**, and they are refuted as different estimators:
+
+| estimator | where it ran | reading |
+| --- | --- | --- |
+| a session's score is the **maximum** of its turns' | this document, run `39699987781` | MR 62.81% against 71.90%, **−28 questions** |
+| a session's score is **its joined text's** own | `PREREG-MR-SESSION-CHANNEL.md` §6, run `40498191604` | MR 83/121 against 84, **−1 question** |
+
+The second row is the one this file's closing section was asking for, and leaving it out is what makes this
+file dangerous to cite: a reader who takes "the negative result leaves this standing" literally will build
+the channel, dispatch it, and spend money re-measuring a closed axis. That happened — see
+`DESIGN-SESSION-TEXT-UNIT.md` §2 for the reconstruction, and `tools/prereg-status.mjs` for the guard that
+now fails the build when a decided registration is cited as a plan.
+
+The direction of the remaining `MR` gap is not a retrieval unit. `MEASURE-MR-CEILING.md` §1 is where it
+points: every one of `MR`'s failures carries its gold turns inside the delivered window.

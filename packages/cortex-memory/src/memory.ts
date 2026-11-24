@@ -1969,6 +1969,10 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const relevance = await this.#relevanceFor(
       question,
       eligible.flatMap((session) => session.turns),
+      // The boundaries, for the one unit that scores a session as a document. Passed unconditionally rather
+      // than only when that unit is configured: the argument is what the route *has*, and a caller-side
+      // `if` would make this the second place that knows which unit needs what.
+      eligible.map((session) => session.turns),
     );
     const selected = selectSessionBudget(
       eligible,
@@ -3356,6 +3360,16 @@ export class CortexMemory implements SessionAwareMemorySystem {
   async #relevanceFor(
     question: string,
     turns: readonly AdmittedTurn[],
+    /**
+     * The session boundaries this route holds, when it holds any.
+     *
+     * Supplied by the one caller that has them, and required by `'session-text'` because that unit scores a
+     * **document** rather than a turn: without boundaries there is no document to score, and a fallback to
+     * per-turn scoring would be a run whose artifact says `relevanceUnits: 'session-text'` while nothing
+     * about it differs from the turn unit — the inert-configuration class `§10.10` recorded. Refused rather
+     * than degraded, and the message names the field so the fix is in the call rather than in a search.
+     */
+    sessions?: readonly (readonly AdmittedTurn[])[],
   ): Promise<((question: string, turn: string) => number) | undefined> {
     // Cleared here rather than at each exit, so the slot can never describe a question this call is not
     // answering: the three states below are "the caller ranked", "the product ranked" and "nothing ranked",
@@ -3370,8 +3384,34 @@ export class CortexMemory implements SessionAwareMemorySystem {
     const index = this.#indexOptions;
     if (index === undefined || turns.length === 0) return undefined;
 
+    // A session scored as a document, or the turn unit as it has always been. The branch is on the
+    // configured unit rather than on whether boundaries arrived, so a run that named `'session-text'` and
+    // reached a route without them fails loudly instead of producing turn-unit numbers under a session-unit
+    // label.
+    //
+    // `boundaries` is assigned once and read three times below, rather than re-testing
+    // `asDocument && sessions !== undefined` at each use: after the refusal the conjunction is settled, so a
+    // repeated test is a branch the throw has already made unreachable -- and an unreachable branch in this
+    // file is a finding at the 100% ratchet, not a dead line.
+    const documentUnit = this.#options.relevanceUnits === 'session-text';
+    const boundaries = documentUnit ? sessions : undefined;
+    if (documentUnit && boundaries === undefined) {
+      throw new Error(
+        "relevanceUnits: 'session-text' scores a whole session as one document, so it needs the session " +
+          'boundaries this call did not receive. It is reachable from answerSessions(), which has them, and ' +
+          'not from the flat routes, which flatten the corpus before ranking. Drop the unit to "turn" for a ' +
+          'flat route, or answer through answerSessions().',
+      );
+    }
+    // The texts the index embeds. One per turn, or one per session, and the second is the whole of what
+    // `'session-text'` changes about the index — the selector below is shared with `'session'`.
+    const documents =
+      boundaries === undefined
+        ? turns.map((turn) => turn.content)
+        : boundaries.map((session) => session.map((turn) => turn.content).join('\n'));
+
     const built = new SearchIndex(index);
-    built.add(turns.map((turn) => turn.content));
+    built.add(documents);
     await built.prime();
     // `k` is spent per channel by the index and again on the fused list, so a caller naming `k` bounds the
     // pool the budget may draw from rather than only the vector channel's contribution to it.
@@ -3391,6 +3431,31 @@ export class CortexMemory implements SessionAwareMemorySystem {
     // artifact whose per-question and cumulative numbers disagree is unreadable in the one place it matters.
     this.#indexCost = foldIndexCost(this.#indexCost, census);
     this.#rankingIsProductOwn = true;
+
+    if (boundaries !== undefined) {
+      // The projection that makes the comparison single-variable. Every turn of a session carries that
+      // session's own score, so `'session'`'s "maximum of its turns" **is** the session score and the
+      // selector needs no second implementation. See `PromptOptions.relevanceUnits`.
+      //
+      // First occurrence wins, which is `SearchIndex.lookup`'s own rule for a repeated text ("the first
+      // occurrence of a text is its best score"). A text that appears in two sessions therefore takes the
+      // score of the session it first arrived in, matching the arrival-order tie-break the selector uses for
+      // sessions the signal cannot separate — a second rule here would let one turn be ranked under one
+      // session and grouped under another.
+      const projected = new Map<string, number>();
+      boundaries.forEach((session, at) => {
+        const score = scorer(question, documents[at] as string);
+        for (const turn of session) {
+          if (!projected.has(turn.content)) projected.set(turn.content, score);
+        }
+      });
+      // No `?? 0`. A text the projection never saw is impossible — `projected` is built from the same
+      // boundaries the prompt's turns come from — and a default of zero would rank it at the bottom instead
+      // of saying so. Left unmapped, the `undefined` reaches `validateRelevance`, which refuses a
+      // non-finite score by name; a silent zero would make the same state read as a real ranking.
+      return (_question: string, text: string) => projected.get(text) as number;
+    }
+
     return scorer;
   }
 

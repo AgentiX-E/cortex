@@ -1,5 +1,7 @@
 # Pre-registration: scoring a session as one unit, on the route that needs it
 
+**Status:** decided — run `40498191604` — dispatched and read; the reading is in this file.
+
 **Registered 2026-10-27, before the implementation it describes.**
 Reads with `MEASURE-MR-UNITS.md` (the negative result this is built on) and
 `PREREGISTRATION-CORTEX-MEMORY-ARM.md` §13.105 (the registration it supersedes).

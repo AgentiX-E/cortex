@@ -1,5 +1,7 @@
 # PREREG-READER-AXIS
 
+**Status:** pending — not dispatched, or dispatched and not yet read: no Result section exists for it.
+
 Holding the hits fixed and changing only the model that reads them, because the largest published delta on this
 benchmark is a reader swap and this project has never measured its own.
 
