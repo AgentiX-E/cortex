@@ -17,7 +17,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
     "test": "vitest run --coverage",
     "lint": "eslint src/",
     "typecheck": "tsc -p tsconfig.json --noEmit",

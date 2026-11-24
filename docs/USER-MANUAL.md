@@ -44,6 +44,12 @@ pnpm add @agentix-e/cortex-storage pg                  # Node, shared PostgreSQL
 `better-sqlite3` and `pg` are **optional peer dependencies**: they are not installed for you, and
 nothing in the package root reaches them. A build only links the backend it imports.
 
+Each package ships `dist` and nothing else: no compiled tests, no declaration maps, and every
+JavaScript source map carries its `.ts` source inline, so a stack trace resolves to the code that
+produced it without a second download. `pnpm manual:check` and `tools/install-smoke.mjs` keep those
+three sentences true — the second one installs the packed tarballs into an empty project and asks this
+manual's own composition a question.
+
 ## 3. The smallest thing that works
 
 The contract is deliberately tiny. If you already have a memory implementation, you do not need
