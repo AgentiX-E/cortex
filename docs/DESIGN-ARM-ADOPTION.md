@@ -107,6 +107,25 @@ the registered pair filters `multi-session` and leaves `flat` identical, and the
 alone does the opposite. The second direction is the one no dispatch has ever run, which is why it lives in a
 test rather than in a paragraph: a reach that can only ever be pointed one way is a boolean wearing a list.
 
+### 1.4 The fifth field: forwarded without being adopted
+
+`conflicts` is the first mechanism to arrive here **without** an adopted default. It has a reach reading
+(`MEASURE-CONFLICT-SURFACING.md` §2: four of the seven `KU` questions that fail in all four repetitions carry the
+replacing statement inside the delivered window) and **no accuracy reading**, because an adoption needs a paired
+dispatch and none has been made. The registered value is `false`, and it stays `false`.
+
+That is precisely the configuration in which this defect is invisible. Every previous field arrived with a number
+behind it, so the missing field could be found by comparing the registration against the manual. A mechanism that
+is off cannot be found that way: the arm's bytes are correct, the artifact's `conflicts: false` is correct, and the
+only thing wrong is that a customer who read the reach table could not turn the mechanism on. `assembleMemory` is
+the only construction path the published package offers, and it had no field for it.
+
+So the rule this round adopts is wider than "forward what ships": **every mechanism the class accepts is forwarded,
+whether or not its default is the adopted one**, because the cost of forwarding is one spread expression and the
+cost of not forwarding is a measurement a customer cannot reproduce. `assemble-conflict-reach.test.ts` holds the
+reach at the composed level — four routes move, two stay byte-identical, and deleting the block reproduces the
+off-prompt exactly — and its own mutation (deleting the forwarding line) turns three of its six assertions red.
+
 ## 2. The same defect on the dispatch side
 
 Three documents agreed with each other and disagreed with the run:

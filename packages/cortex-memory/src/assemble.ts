@@ -397,6 +397,37 @@ export type AssembleOptions = {
    */
   readonly supersededRendering?: SupersededRendering | undefined;
   /**
+   * Insert the related-statements block: two statements of one detail, in evidence order, before the question.
+   *
+   * ## Why this field exists even though the registered value is `false`
+   *
+   * The mechanism has a **measured reach** and **no live reading**. `docs/MEASURE-CONFLICT-SURFACING.md`
+   * counted, on run `42355323615`'s own windows, that the block fires on four of the seven `KU` questions
+   * that fail in all four repetitions — a ceiling of four questions on that capability — and the shipped arm
+   * still carries `conflicts: false`, because an adoption needs a paired dispatch and none has been made.
+   *
+   * That is exactly the configuration in which a missing field is invisible: the dispatch that would produce
+   * the reading builds `CortexMemory` directly, so the harness can name the option whether or not the
+   * composition root can, and the first person to discover the gap would be a customer who read the
+   * measurement and could not reproduce the arm. This is the fifth field to arrive under requirement ⑯'s
+   * asymmetry — after `ask`, `promptContract`, `supersededRendering` and `evidenceRoles` — and the pattern is
+   * the argument for forwarding every mechanism rather than the ones with an adopted default.
+   *
+   * ## Why the default stays off
+   *
+   * Because it has no reading. Forwarding a mechanism is not adopting one: `undefined` reaches
+   * `CortexMemory` as the historical bytes, so a bare call still assembles the arm every archived artifact
+   * records, and only a caller who names this field pays the block's characters.
+   *
+   * ## The reach, asserted through this function
+   *
+   * `assemble-conflict-reach.test.ts` drives `flat`, `knowledge-update`, `temporal` and `assistant` through
+   * the assembled memory and requires the block; `abstention` and `multi-session` must stay byte-identical,
+   * for the two reasons `memory.ts#withConflicts` states (a decline is `ABS`'s gold, and a flattened block
+   * would undo the session boundaries that builder exists for).
+   */
+  readonly conflicts?: boolean | undefined;
+  /**
    * Label every rendered session boundary with the date its turns state.
    *
    * Off unless named. The mechanism, its reading and its cost are documented on `Types.sessionClock`; the
@@ -657,6 +688,10 @@ export function assembleMemory(options: AssembleOptions): Installation {
     ...(options.supersededRendering === undefined
       ? {}
       : { supersededRendering: options.supersededRendering }),
+    // Forwarded, not defaulted, for the reason on the field: the registered value is `false` and the
+    // mechanism has no live reading, so this line changes no shipped byte and makes the arm a dispatch
+    // prices reproducible by a customer.
+    ...(options.conflicts === undefined ? {} : { conflicts: options.conflicts }),
     // Forwarded rather than defaulted: `CortexMemory` reads `undefined` as off, and this file must not be
     // the place a mechanism turns itself on. The forwarding is what `turn-clock.test.ts` walks end to
     // end -- a flag that stops at this object is a documented feature a customer cannot reach.
