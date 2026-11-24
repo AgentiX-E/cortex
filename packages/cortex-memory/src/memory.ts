@@ -18,7 +18,8 @@
  *    notice an absence; here the absence is detected before the model is
  *    consulted, which cannot hallucinate and does not cost a request.
  * 2. **The contract is structural.** Plain object literals satisfy it, no class
- *    hierarchy is required, and `answerPreference` is deliberately absent.
+ *    hierarchy is required, and every one of the six optional paths is declared
+ *    by name rather than inherited from a base class.
  */
 import type {
   Answer,
@@ -201,7 +202,7 @@ function admittedEvidenceOf(admitted: readonly AdmittedTurn[]): { turns: number;
  * than by symmetry. `answerPreference` was omitted on the argument that "a value gate filters
  * *evidence*, while a preference question asks for a *suggestion*" -- true, and beside the point:
  * the flat path then answered those questions with a contract written for a different kind of
- * question, and 29 preference questions in the archived arm read 20 correct with seven of the nine
+ * `question, and 30 preference questions in the archived arm read 20 correct with eight of the ten
  * failures replying that the evidence did not answer. `docs/PREREGISTRATION-PREFERENCE-ROUTE.md`
  * §1 counts the population and §4 states what the dispatch has to show.
  */
@@ -1815,8 +1816,8 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * written for a different kind of question.
    *
    * `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1 counts it on the archived arm `S16`
-   * (`44017278305`): **29** questions whose gold begins `The user would prefer`, all 29 on the flat
-   * route, **20 correct, 9 wrong**, and seven of the nine replying that the evidence does not answer
+   * (`44017278305`): **30** questions whose gold states what the user would prefer, all 30 on the flat
+   * route, **20 correct, 10 wrong**, and eight of the ten replying that the evidence does not answer
    * the question. They were reading `Reply with the answer alone. If the evidence does not contain the
    * answer, reply exactly <token>.`, which is exactly what they did.
    *

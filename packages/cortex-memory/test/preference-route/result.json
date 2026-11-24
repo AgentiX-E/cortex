@@ -1,0 +1,93 @@
+{
+  "what": "The preference route's first draw: the paired conversion against the archived control, split by whether the prompt changed, with the cost that came with it.",
+  "why": "The numbers are read off two 60 MB artifacts that are not in this repository, so the reading could not be re-derived inside `pnpm check`. What the test beside it does enforce is the arithmetic that has to hold between the numbers -- a delta that does not equal its own bucket sum is how a round reports +7 next to a +8 movement.",
+  "generatedFrom": {
+    "questionCount": 150,
+    "capability": "IE",
+    "runs": 4,
+    "treatment": {
+      "runId": "45297492685",
+      "revision": "42ce2376df64dec649f9d92bfdc9f319b6c46a75",
+      "workflow": "Benchmark (cortex-memory A/B)",
+      "inputs": {
+        "limit": 0,
+        "capability": "IE",
+        "ablation_runs": 4,
+        "cortex_memory_ask": "verbatim-acts",
+        "cortex_memory_prompt_contract": "evidence-blocks-unsourced"
+      },
+      "artifact": "benchmark-cortex-memory-ablation-report.json"
+    },
+    "control": {
+      "runId": "44017278305",
+      "arm": "S16",
+      "note": "the same artifact, filtered to the 150 questions the treatment ran; a 500-question roster cannot be paired against a 150-question one, and `--attribution` refuses it",
+      "artifact": "benchmark-cortex-memory-ablation-report.json"
+    }
+  },
+  "derivedBy": [
+    "python3 tools/readout-arm-run.py --attribution <control-ie.json> <treatment.json>",
+    "python3 tools/classify-raw-outputs.py --failures <control-ie.json>",
+    "python3 tools/classify-raw-outputs.py --failures <treatment.json>"
+  ],
+  "population": {
+    "preferenceQuestions": 30,
+    "identifiedBy": "gold contains \"would prefer\"",
+    "capability": "IE",
+    "route": "flat"
+  },
+  "repetition1": {
+    "controlCorrect": 137,
+    "treatmentCorrect": 145,
+    "total": 150
+  },
+  "fourPass": {
+    "control": { "min": 137, "avg": 138.25, "max": 139 },
+    "treatment": { "min": 139, "avg": 142.5, "max": 145 }
+  },
+  "paired": {
+    "up": 8,
+    "down": 0,
+    "buckets": {
+      "identicalPrompt": { "n": 118, "up": 1, "down": 0, "goldCarried": 0 },
+      "changedPrompt": { "n": 32, "up": 7, "down": 0, "goldCarried": 1 }
+    }
+  },
+  "preference": {
+    "control": { "correct": 20, "wrong": 10 },
+    "treatment": { "correct": 27, "wrong": 3 },
+    "stillWrong": ["75832dbd", "1da05512", "1d4e3b97"]
+  },
+  "singleVariable": {
+    "questionsWithIdenticalEvidence": 26,
+    "deliveredPromptDeltaChars": 125,
+    "evidenceDrifted": ["1c0ddc50", "32260d93", "38146c39", "caf03d32"],
+    "conversionsOnDriftedQuestions": 0
+  },
+  "failureStates": {
+    "control": { "long_prose": 9, "other": 4 },
+    "treatment": { "long_prose": 3, "other": 2 }
+  },
+  "cost": {
+    "llmCalls": 1568,
+    "featureCalls": 616,
+    "baselineCalls": 765,
+    "promptTokens": 3761893,
+    "featurePromptTokens": 3085653,
+    "cacheHitPromptTokens": 3425864,
+    "completionTokens": 27502,
+    "callsPerQuestionPass": 2.613,
+    "controlCallsPerQuestionPass": 2.83,
+    "promptTokensPerQuestion": 5142.755
+  },
+  "audit": {
+    "verdict": "FAIL",
+    "reason": "embedDegraded 8 of 600: one refused embedding call left nine assistant-route questions with two prompt variants across their four passes",
+    "untouchedByThePopulation": "none of the nine is in the 30, and all 30 carry promptVariants 1"
+  },
+  "confirmation": {
+    "attempted": "45301338541",
+    "outcome": "failed in its embedding preflight with 429 余额不足或无可用资源包,请充值。",
+    "consequence": "the draw stands as one draw; a replication needs the balance topped up, and the offline embedder would be the S14 configuration rather than a replication of this arm"
+  }
+}

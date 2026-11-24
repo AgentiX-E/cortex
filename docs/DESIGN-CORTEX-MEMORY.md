@@ -342,4 +342,8 @@ validation note.
   dependency and buy nothing testable. It enters in step 3, when an arm has to
   survive across questions.
 - **No claim of improvement.** See §2.
-- **No `answerPreference`.** See §5.
+- **No `answerPreference`** — this one was absent for two rounds and is not any more. §5 says why the
+  argument that kept it out did not hold, and `PREREGISTRATION-PREFERENCE-ROUTE.md` §8 records what
+  happened when it was let in: 7 of the 10 treated questions converted, none was lost, exact one-sided
+  p = 0.0078, and **one** flip on a prompt whose bytes never moved — counted once, as reader variance,
+  in both the attribution split and the guard.

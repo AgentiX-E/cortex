@@ -3,9 +3,11 @@
 A pre-registration, written before the code, for giving the preference question its own answer
 contract in the product.
 
-> **STATUS: REGISTERED, code in this commit, dispatch pending.** The population below is counted on
-> an archived artifact, not estimated; §5 fixes the dispatch and §6 the decision rules, so the readout
-> cannot choose its own bar.
+> **STATUS: DISPATCHED ONCE, C1–C4 MET, artifact FAILS ITS OWN AUDIT (§8.2), confirmation draw
+> blocked by the embedding balance (§8.4).** The population below is counted on an archived artifact,
+> not estimated; §5 fixes the dispatch and §6 the decision rules, so the readout cannot choose its own
+> bar. §8 is the outcome and was written after the numbers were read, which is the only order that
+> makes §6 mean anything.
 
 ## 1. The population, counted
 
@@ -148,7 +150,7 @@ Cost: `150 questions × 4 repetitions = 600` reader calls plus 600 judge calls, 
 
 | readout | action |
 | --- | --- |
-| C1 holds **and** C2 ≥ 5/9 **and** C3 ≥ 0 at +≤ 1.0% **and** C4 holds | **adopt**: this is already the product's behaviour (no flag, no arm field), so adoption is keeping the commit, recording the reading in `COMMITTED-READINGS.md` and the row in `ACCEPTANCE-MATRIX.md` |
+| C1 holds **and** C2 ≥ 5 of 10 **and** C3 ≥ 0 at +≤ 1.0% **and** C4 holds | **adopt**: this is already the product's behaviour (no flag, no arm field), so adoption is keeping the commit, recording the reading in `COMMITTED-READINGS.md` and the row in `ACCEPTANCE-MATRIX.md` — done, as `S19` |
 | C2 in 3..4 | one confirmation dispatch at the same load before any statement beyond "inconclusive" |
 | C2 ≤ 2, or C4 fails | **revert** the route, keep this file and the contract as the ablation reference, and record in `RETRACTIONS.md` why a mechanism the reference pipeline reports as a win here did not produce one |
 
@@ -171,31 +173,78 @@ Run `45297492685`, `limit=0 capability=IE ablation_runs=4`, at commit `42ce2376`
 difference, so the numbers below are the arm's; `capability` is the population selector the
 registration declares and not an arm field.
 
+Two accuracies come out of one report — one repetition's in `feature.metrics`, the mean over four in
+`ablation` — and §13.41.5 is the round this campaign confused them. Both are stated, labelled:
+
+| scale | control (S16, same 150) | treatment | delta |
+| --- | --- | --- | --- |
+| repetition 1 (`feature.metrics.correct`) | 137 / 150 = 91.33% | **145 / 150 = 96.67%** | **+8 questions, +5.33 points** |
+| mean of four (`ablation.featureByCapability.IE`) | 137 / 138.25 / 139 | 139 / **142.5** / 145 | **+4.25 questions, +2.83 points** |
+
+The paired ledger below is a per-question pairing, so it is a repetition-1 comparison; the mean is the
+scale the arm's own `costEfficiency` quotes (`accuracy: 0.95`, `accuracySource: all-runs`). The
+treatment's own four passes span 6 questions (139–145) against the control's 2 (137–139), so +8 is
+**inside the treatment's own spread** and +4.25 is the number to carry into a projection. The
+attribution is what makes either number a mechanism rather than a draw.
+
 | claim | threshold | measured | verdict |
 | --- | --- | --- | --- |
 | C1 reach | 470 of 470 non-treated prompts byte-identical | **118 of 120** identical; the 2 exceptions are on the `assistant` route, which the treatment cannot reach, and are explained by §8.2 | holds on the population the treatment can touch |
-| C2 conversion | ≥ 5 of 10 | **7 of 10 rescued, 0 lost**; McNemar exact one-sided **p = 0.0078** | **met** |
-| C3 cost | calls unchanged, tokens +≤ 0.5% | **2.613 calls per question-pass** against the archive's 2.83, and prompt tokens per question **5,142.8** on an `IE`-scoped roster (§8.3) | **met** |
+| C2 conversion | ≥ 5 of 10 | **7 of 10 rescued, 0 lost**; exact one-sided **p = 0.0078** (two-sided 0.0156) | **met** |
+| C3 cost | calls unchanged, tokens +≤ 0.5% | **2.613 calls per question-pass** against the archive's 2.83, and **5,142.8** prompt tokens per question-pass on the arm's own `costEfficiency` (§8.3) | **met** |
 | C4 guard | ≤ 7 flips on the 120 non-treated | **1 up, 0 down** (`a82c026e`) | **met** |
 
 ### 8.1 The decisive line is the attribution split, not the aggregate
 
 `readout-arm-run.py --attribution` splits the pair by whether the prompt changed, which is the test
-`recommend`'s failure in §13.129 produced:
+`recommend`'s failure in §13.129 produced. `p` is the exact sign test the tool prints, two-sided:
 
-| bucket | n | up | down | tie | flip | p | net |
+| bucket | n | up | down | tie | flip | p | gold carried |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| identical prompt | 118 | 1 | 0 | 117 | 0.85% | 1.0000 | **+0** |
-| changed prompt | 32 | **7** | **0** | 25 | 21.88% | **0.0156** | **+7** |
+| identical prompt | 118 | 1 | 0 | 117 | 0.85% | 1.0000 | **0** |
+| changed prompt | 32 | **7** | **0** | 25 | 21.88% | **0.0156** | +1 |
 
-**Attributable delta: +7 questions of 150 = +4.67 points on `IE`, +1.40 points on the 500 roster.**
-The untouched bucket bought nothing and lost nothing; every point is in the bucket whose bytes moved.
+**Attributable delta: +7 questions of 150 = +4.67 points on `IE`, +1.40 points on the 500 roster**
+(repetition-1 scale; on the four-pass mean it is +0.85). The identical-prompt bucket is **+1, not +0**:
+`a82c026e` flipped on a prompt whose digest did not change, which is reader variance and is the same
+single flip C4's guard counts — not a second one. The `gold carried` column is the split's own
+self-check: a delivered turn cannot enter or leave without the prompt changing, and the identical
+bucket reads **0**, so `promptDigest` and the pairing key agree.
+
 This is the opposite shape to §13.129, where seven of nine came from prompts that never changed.
 
-The state transitions say the same thing from the failures' side: 8 of 150 changed state, **6 from
-`long_prose` to correct** and 2 from `other`, with **no question moving out of `correct`**. `long_prose`
-is precisely the state the treatment was written for — a reader that answers a composition question in
-prose because "the answer alone" is not in the window.
+### 8.1.1 The variable was actually single on 26 of the 30
+
+An attribution split says the prompt moved; it does not say *only the block* moved. That was checked
+directly on the 30 treated questions, and it does not hold for all of them:
+
+* **26 of 30** carry the same `promptChars`, the same `evidenceChars`, the same turn count and the same
+  `turnWindowCensus` on both sides, and their `deliveredPromptChars` differ by **exactly +125** — the
+  block's own length. For these, the contract is the only variable.
+* **4 of the 30** also lost a turn to retrieval (`1c0ddc50` 18→17, `32260d93` 49→48, `38146c39` 16→15,
+  `caf03d32` 20→19). **None of the four flipped.** Their prompts moved for two reasons, so they cannot
+  carry attribution either way, and they are named rather than averaged in.
+* **all seven conversions are among the 26.** No conversion sits on a question whose evidence also
+  moved, which is the sentence this section exists to be able to write.
+
+The three that did not convert are `75832dbd`, `1da05512` and `1d4e3b97`; the first names research-paper
+recommendations whose retrieval half §7 already excluded, and the other two are the retrieval questions
+§7 left to the ranking axis.
+
+### 8.1.2 From the failures' side
+
+`classify-raw-outputs.py --failures` grades the answer each arm actually sent. Non-correct falls from
+**13 to 5**, and the taxonomy says where they went:
+
+| state | control | treatment |
+| --- | --- | --- |
+| `long_prose` (≥ 200 characters) | 9 | 3 |
+| `other` | 4 | 2 |
+| non-correct total | **13** | **5** |
+
+Six of the eight conversions leave `long_prose`, which is precisely the state the contract was written
+for — a reader that answers a composition question in prose because "the answer alone" is not in the
+window — and no question moves out of `correct` in either direction.
 
 ### 8.2 The audit failed, and the cause is outside the population
 
@@ -223,11 +272,12 @@ part of it is being read and why.
 
 | reading | value |
 | --- | --- |
-| calls | 1,568 (600 answers, 600 verdicts, plus the phrasing stage) |
-| prompt tokens | 3,761,893, of which **3,425,864 (91.1%) were cache hits** |
+| LLM calls | `llmUsage.calls = 1,568` for the run; `usageBySide` attributes **616** to the feature arm and **765** to the reference baseline, and does not attribute the remaining 187 |
+| HTTP attempts | `transportRetry.calls = 5,353`, of which `refusedCalls: 1`, `rateLimited: 1` — the two entries §8.2 is about |
+| prompt tokens | 3,761,893 total (**feature 3,085,653**, baseline 632,068), of which **3,425,864 (91.1%) were cache hits** |
 | completion tokens | 27,502 |
-| prompt tokens per question | **5,142.8** (IE-scoped; the roster's 7,448 carries `multi-session`'s 48,460-character room) |
-| block delta | +125 characters on each of 30 questions — **0.02%** of an `IE` prompt |
+| prompt tokens per question-pass | **5,142.8** — the arm's own `costEfficiency`, denominator 600 passes; the roster's 7,448 carries `multi-session`'s 48,460-character room |
+| block delta | +125 characters on each of the 26 single-variable questions, measured as `deliveredPromptChars` — **0.02%** of an `IE` prompt |
 | calls per question-pass | **2.613** (1,568 over 600 passes) against the archive's **2.83** (5,661 over 2,000) — the treatment is *cheaper* per pass, not dearer |
 
 C3 said the call count is the archive's because the retry path is the flat route's own. The measurement
@@ -255,3 +305,34 @@ Consequences, stated rather than worked around:
 * switching to the offline embedder (`@agentix-e/embed-code-node`) would not be a confirmation of this
   arm: `embedding.model` is a registered field, the 91.20% was taken with `embedding-3`, and a lexical
   or ONNX index is the configuration `S14` priced at 85.75%. That is a different experiment.
+
+### 8.5 What adoption left behind, and the one number that was wrong twice
+
+Three artefacts make this a reading rather than a paragraph, and a fourth finding came out of building
+them:
+
+* **`packages/cortex-memory/test/preference-route/result.json`** — the numbers, once, in one object, with
+  the two commands that produced them. `tools/committed-readings.json` carries it as a `one-shot` reading
+  with a hash, because re-deriving it needs a dispatch plus two 60 MB artifacts.
+* **`packages/cortex-memory/src/__tests__/preference-route-reading.test.ts`** — nine assertions about the
+  *arithmetic between* those numbers: the movement equals its own bucket sum, the buckets partition the
+  population, the conversions are the preference questions, the first-repetition count sits inside its
+  arm's four-pass range, the failure taxonomy accounts for the conversions, and the quoted p follows from
+  the up/down counts it was computed from.
+* **`S19`** in `packages/cortex-eval/src/acceptance.ts`, reading
+  `paired.buckets.changedPrompt.up` from that file with the arm's `prompt_contract` and `ask` attested, so
+  a later edit to the contract renders `STALE` rather than a number. `node tools/acceptance-check.mjs`
+  prints `S19  7  ≥ 5  pass`.
+
+The finding: **the first draft of §8.1 said the treatment converted 7 questions and the arm moved from
+137 to 145.** Both sentences were true and together they were false — 137 + 7 is 144. The eighth question
+is `a82c026e`, which flipped on a prompt whose `promptDigest` did not change, so it belongs to the reach
+guard (C4's `1 up, 0 down`) and not to the attribution. Nothing in the tree could have caught it, because
+the two numbers lived in two paragraphs of the same section; the rule that came out of it is that a
+movement and its decomposition are stored in one object and asserted against each other, which is what the
+test above does.
+
+The same recount caught four stale `29`s in code comments — `memory.ts` twice, `preference-route.test.ts`
+and `product-provider-route.test.ts` once each — left behind by §1's 29 → 30 correction, which had only
+been applied to the document. A corrected count that survives in a comment is a count that gets quoted
+again.

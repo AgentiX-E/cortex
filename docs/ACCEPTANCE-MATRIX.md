@@ -1,9 +1,12 @@
 # The acceptance matrix
 
 Every criterion this project claims, what it is measured on, what a competitor reports on the same axis, and
-what happens when it is missed. The table below is **generated from `packages/cortex-eval/src/acceptance.ts`**
-by `node tools/acceptance-check.mjs`; the numbers in this file are recomputed by
-`node tools/docs-crosscheck.mjs` on every check, so a document cannot quote a value the code does not produce.
+what happens when it is missed. The rows come from `packages/cortex-eval/src/acceptance.ts`: `node
+tools/acceptance-check.mjs` evaluates every criterion and prints this matrix, and the table below is that
+output. The tool prints rather than writes — so the copy is a copy, and the round that added `S19` corrected
+this sentence instead of repeating it. The values carrying a reading marker — an HTML comment naming a criterion id, written
+`reading:<id>` — are recomputed by `node tools/docs-crosscheck.mjs` on every check, so a document cannot
+quote a value the code does not produce.
 
 ## 1. Why this file exists
 
@@ -71,6 +74,7 @@ unrun    no value could be computed — reported, never counted as a pass
 | S15 | <!-- reading:S15 -->89.4% | ≥ 91.0%  | aim    | the prompt room, every route cut       | LongMemEval-S, 500 questions, `maxPromptCharsByRoute` at 24,000 on all six routes, paired against `S9` |
 | S16 | <!-- reading:S16 -->-1   | ≥ -5      | pass   | the prompt room, one route kept wide   | LongMemEval-S, 500 questions, `multi-session` 48,460 and the other five 24,000, paired against `S9`, **and** a bill ≤ 85% of 9,201 |
 | S17 | <!-- reading:S17 -->1.75   | ≥ +5      | aim    | query expansion on the product’s ranking | LongMemEval-S, the `MR` cell, 121 questions, `queryExpansion: llm` as the one departure from the registered table, paired against a control dispatched at the same sha, **and** a bill ≤ 1.15× that control’s, **and** `selfIndex.queries > selfIndex.indexes` |
+| S19 | <!-- reading:S19 -->7 | ≥ 5 | gate | single-session preference | LongMemEval-S `IE`, the 30 questions whose gold states a preference, run 45297492685 paired by question against the archived `S16` on the same 150, same reader, same judge, the evidence byte-identical on 26 of the 30 |
 | S10 | <!-- reading:S10 -->3      | ≥ -5      | pass   | turn window                            | LongMemEval-S, 500 questions, two dispatches paired, same cap |
 | S11 | <!-- reading:S11 -->39.6%   | ≥ 88.0%   | fail   | end-to-end memory, no ranking configured | LongMemEval-S, 500 questions, `relevanceSignal: none`, the arm default |
 | S12 | <!-- reading:S12 -->-2    | ≥ -5      | pass   | semantic layer, paired                 | LongMemEval-S, 500 corpora asked twice over one store, four repetitions, carry on against off, paired on the second window |

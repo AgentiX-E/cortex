@@ -1426,6 +1426,52 @@ export const CRITERIA: readonly Criterion[] = [
       '— `E0` is checked before any of these.',
   },
 
+  // The preference route: the first row in this family whose source is a product package's own reading
+  // rather than an `evidence/`-file artifact. `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` registered the
+  // dispatch before the code existed, on the argument that a preference question's gold is a *composition*
+  // and the flat path closes on "reply with the answer alone", which licenses the one reply that cannot be
+  // right. The number is the paired conversion of the ten questions the flat contract got wrong -- not the
+  // arm's aggregate, which moved +8 while one of those eight was a flip on a prompt whose bytes never
+  // changed. That one belongs to the reach guard, and counting it here would be the arithmetic error this
+  // round found in its own first draft: 137 + 7 is 144, and the arm moved to 145.
+  //
+  // The id starts at 19 because `S18` already names a *dispatch* in this file's prose -- the query-expansion
+  // pair that `S17` reads -- so a row reusing the label would make every sentence about that pair ambiguous.
+  {
+    id: 'S19',
+    capability: 'single-session preference',
+    metric:
+      'preference questions converted by the preference contract, paired by question against the flat contract that answered them, at the same reader, judge and evidence',
+    dataset:
+      'LongMemEval-S `IE`, the 30 questions whose gold states a preference, run 45297492685 against the archived `S16` on the same 150',
+    comparator: 'at-least',
+    threshold: 5,
+    unit: 'count',
+    kind: 'gate',
+    source: {
+      kind: 'artifact',
+      path: 'cortex/packages/cortex-memory/test/preference-route/result.json',
+      key: 'paired.buckets.changedPrompt.up',
+      // Two clauses on the arm the number was taken on. A miss in either renders `STALE` rather than a
+      // number, which is the state this row should be in the moment the contract is edited: a wording
+      // change is a change of variable, and `preference-route.test.ts` pins the bytes of that variable.
+      attest: [
+        {
+          key: 'generatedFrom.treatment.inputs.cortex_memory_prompt_contract',
+          equals: 'evidence-blocks-unsourced',
+        },
+        { key: 'generatedFrom.treatment.inputs.cortex_memory_ask', equals: 'verbatim-acts' },
+      ],
+    },
+    onMiss:
+      'Below 5 of the 10 the route reverts, and the file stays as the ablation reference the way `C6`\u2019s ' +
+      'did. The threshold is the registered one and not a fit to the reading: it was written before the ' +
+      'dispatch, at half the ceiling, so that a conversion count reachable by the guard\u2019s own 5% reader ' +
+      'floor could not pass it. A reading whose delta is larger than its own conversion count is not a ' +
+      'reading of this row -- that is the aggregate moving for a second reason, and the attribution split is ' +
+      'what names it.',
+  },
+
   // §14.143's window. Non-inferiority rather than a win, because the mechanism spends the **same**
   // characters: it can move accuracy only by printing a better sentence, and a row that promised a gain
   // would be a hypothesis with a threshold attached. The negative form is the number that matters --

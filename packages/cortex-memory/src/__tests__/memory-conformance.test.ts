@@ -216,7 +216,7 @@ describe('CortexMemory satisfies the MemorySystem conformance contract', () => {
   it('declares answerPreference, and a preference question reads a block the flat path does not', async () => {
     // This assertion used to be its own inverse: `answerPreference` was absent *on purpose*, and the
     // flat path was asserted to receive those questions. `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1
-    // counts what that cost on the archived arm: 29 preference questions, 9 wrong, 7 of them replying
+    // counts what that cost on the archived arm: 30 preference questions, 10 wrong, 8 of them replying
     // that the evidence does not answer the question -- which is what the extractive close licenses.
     //
     // The assertion is on the *instruction tail*, not on the whole prompt: the two questions differ, so

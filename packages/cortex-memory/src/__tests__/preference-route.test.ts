@@ -4,10 +4,12 @@
  * ## What this file is written against
  *
  * `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1 counts the population on the archived arm `S16`
- * (`44017278305`): **29** questions whose gold begins `The user would prefer`, all 29 routed to
- * `flat`, **20 correct, 9 wrong** — and seven of the nine reply that the evidence does not answer the
- * question. The block those seven read closes on `Reply with the answer alone. If the evidence does
- * not contain the answer, reply exactly <token>.`, which licenses exactly the reply they gave.
+ * (`44017278305`): **30** questions whose gold states what the user would prefer, all 30 routed to
+ * `flat`, **20 correct, 10 wrong** — and eight of the ten reply that the evidence does not answer the
+ * question. The block those eight read closes on `Reply with the answer alone. If the evidence does
+ * not contain the answer, reply exactly <token>.`, which licenses exactly the reply they gave. The
+ * count was 29 for one round because the filter was the prefix `The user would prefer`, and one gold
+ * (`1a1907b4`) leads with a clause; the filter is a substring match now.
  *
  * So the treatment is a contract, not a licence inserted above another contract's close: §13.55's run
  * `39035438120` measured that a rule placed above the close loses to it (21 of 28 declines declined

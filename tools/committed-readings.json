@@ -84,6 +84,12 @@
       "why": "The corpus suite runs in the `browser` job at 400 rows, writes to /tmp/fresh-corpus-run.json, and `tools/browser-reading-check.mjs` compares the two readings check by check."
     },
     {
+      "path": "packages/cortex-memory/test/preference-route/result.json",
+      "kind": "one-shot",
+      "sha256": "dd6b28db7d73fd7928a2d19c477801847894d4f22c1734c69b4487a4e7e6230a",
+      "why": "The preference route's first draw, read out of two 60 MB artifacts that are not in this repository: re-deriving it costs a dispatch (about CNY 6) and a 62 MB download, and the control side needs the archived roster filtered to the same 150 questions. The hash is what stops the numbers being edited after the fact; `src/__tests__/preference-route-reading.test.ts` is what stops them disagreeing with each other, which is how this reading's first version reported a +7 next to a +8 movement."
+    },
+    {
       "path": "packages/cortex-storage/test/browser/bundle-run.json",
       "kind": "recomputed",
       "job": "browser",

@@ -117,8 +117,8 @@ describe('CortexProductProvider: the benchmark dispatch, restated and checked', 
     // assertion is on the bytes: the contract a customer's preference question is answered under.
     //
     // What it replaces: this test used to assert the fall-through, with a comment reading "the product has no
-    // preference route". `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1 counts what that cost — 29 questions,
-    // 9 wrong, 7 of them replying that the evidence does not answer the question.
+    // preference route". `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1 counts what that cost — 30 questions,
+    // 10 wrong, 8 of them replying that the evidence does not answer the question.
     const provider = new CortexProductProvider({
       llm: quietLlm(),
       now: T0 + 30 * 24 * 60 * 60 * 1000,
