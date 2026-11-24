@@ -35,7 +35,16 @@ export type PromptContract =
   | 'abstention-evidence-blocks'
   | 'evidence-blocks-instruction-first'
   | 'evidence-blocks-unsourced'
-  | 'evidence-blocks-item-ids';
+  | 'evidence-blocks-item-ids'
+  /**
+   * The one contract whose answer is a composition rather than a statement.
+   *
+   * Absent from {@link PROMPT_CONTRACTS} on purpose: that list is what a *dispatch* may name, and this
+   * contract is not a cell of the arm — it is the block one route always reads. Naming it in a
+   * dispatch would let a run apply it to a route whose questions are not preferential, which is the
+   * opposite of the single-variable claim `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` registers.
+   */
+  | 'preference';
 
 /**
  * The contracts a run may name, in the order they are worth reading.
@@ -1154,6 +1163,15 @@ const CONTRACT_INSTRUCTIONS: Record<PromptContract, (date: string | undefined) =
   'evidence-blocks-item-ids': (...parameters) =>
     CONTRACT_INSTRUCTIONS['evidence-blocks-unsourced'](...parameters),
 
+  /**
+   * The preference route's block, by reference to the constant that registers it.
+   *
+   * A delegation rather than a fifth copy of four sentences, for the reason the three contracts above
+   * give: the wording is then one object, and the test that compares the rendered block against
+   * `PREFERENCE_INSTRUCTION` is checking the route rather than re-stating the text.
+   */
+  preference: () => PREFERENCE_INSTRUCTION,
+
   temporal: (date) =>
     [
       'Answer the question using only the evidence above.',
@@ -2013,6 +2031,69 @@ const RECOMMEND_FLAT_INSTRUCTION = withReplacedClose(
   ),
   `If the evidence contains nothing about the user's situation, reply exactly ${ABSTAIN_TOKEN}.`,
 );
+
+/**
+ * The preference route's own block: two silent steps, a composition, and a narrower decline.
+ *
+ * ## The population this is written against, counted rather than estimated
+ *
+ * `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1: on the archived arm `S16` (`44017278305`) there are
+ * **29** questions whose gold begins `The user would prefer`, every one of them routed to `flat`, of
+ * which **20 are correct and 9 are wrong**. Seven of the nine reply that the evidence does not answer
+ * the question — `The evidence does not contain any tips for improving phone battery life`, `No direct
+ * tips on rearranging bedroom furniture are in the evidence` — and five restate the evidence block
+ * while doing it. The remaining two compose a recommendation the judge did not accept, so they are
+ * not this block's target (§7 of the registration).
+ *
+ * The block the seven read is `extractive`'s, whose close is `Reply with the answer alone. If the
+ * evidence does not contain the answer, reply exactly <token>.` A preference question's gold is a
+ * suggestion **composed from** what the user said, so "the answer" is not a sentence anywhere in the
+ * window and "reply with the answer alone" asks for a short fact. The reader reports the absence it
+ * was told to look for. The reference pipeline records the same reading for the same dataset and
+ * model: *"the extractive contract is wrong for preference questions … it reads as having nothing to
+ * say and abstains."*
+ *
+ * ## Why a contract and not another ask
+ *
+ * §13.129's `ask: 'recommend'` is the same diagnosis delivered by insertion — a licence and a ban
+ * placed **above** `extractive`'s close — and it is recorded as not adopted for arithmetic reasons of
+ * its own (run `40824682542`: 7 of the 9 questions "bought" came from prompts that did not move, and
+ * claim 1 was falsified at its own ceiling). Position is the other half of the reason: §13.55's run
+ * `39035438120` put a rule above a close and 21 of the 28 declines declined again, **12 of them with
+ * the list already in hand**, because the close is read last. So the decline condition is *replaced*
+ * here rather than qualified, which is what `withReplacedClose` exists for.
+ *
+ * ## Four decisions, and the failure behind each
+ *
+ * 1. **Step 1 is silent.** `silent` (run `40792853362`) asked for the same two steps with the notes
+ *    written out and lost 26 `MR` questions; the wrong answers were under-sums of one missing item.
+ *    The step exists so the reader re-reads each turn against the question, and its output does not,
+ *    because a written list is a second task and the reader stops at the first one.
+ * 2. **Step 2 recommends.** This is the sentence `extractive` does not have and cannot have: the
+ *    answer is a composition, so the reply is the composition rather than a statement found in the
+ *    evidence.
+ * 3. **The echo ban.** `RECOMMEND_NO_ECHO` is the same constant §13.129's ask uses, by reference: the
+ *    two compositions differ in their base block, and the ban is not base-dependent. A second copy of
+ *    the sentence would be a second thing to reword.
+ * 4. **The decline is narrowed, not removed.** `extractive`'s condition is a predicate over the
+ *    *question* ("does the evidence contain the answer"), which a composition question fails by
+ *    construction; this one is a predicate over the *user* ("nothing about the user's situation"),
+ *    which the same window satisfies. A question with genuinely nothing about the user still declines,
+ *    with the same token `parseAnswer` reads, so `ABS`'s one-sided criterion is untouched.
+ *
+ * ## What it deliberately does not state
+ *
+ * No reply shape and no prefix. `answer-line` proved a shape is a tax on every question whose gold is
+ * not that shape — 117 short-gold questions 116 → 116, 33 paragraph-gold questions 24 → 12, run
+ * `40807829150` — and two of the nine here already compose without one, so a shape would be a second
+ * variable aimed at a failure that is not theirs. The only bound is the ban's own three sentences.
+ */
+const PREFERENCE_INSTRUCTION = [
+  'Step 1 — read the evidence and note what the user has said they like, want, own, or are dealing with. Keep those notes to yourself: do not write them out.',
+  'Step 2 — recommend something concrete that builds on those preferences, and reply with the recommendation itself.',
+  RECOMMEND_NO_ECHO,
+  `If the evidence contains nothing about the user's situation, reply exactly ${ABSTAIN_TOKEN}.`,
+].join('\n');
 
 /**
  * The sweep's two steps: a line per session, then a count of what the lines name.

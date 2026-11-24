@@ -206,8 +206,10 @@ export class CortexProductProvider {
    * `benchmark.ts` lives in `cortex-eval`, which depends on this package and not the other way round, so the
    * dispatch cannot be shared by import. It is therefore restated — in the same order, because the order is
    * load-bearing: an `ABS` question can carry `single-session-assistant`, and the abstention branch has to win.
-   * `product-provider-route.test.ts` asserts the six rows through `lastRoute()`, so a divergence from the
-   * benchmark's table is a red test rather than a quiet difference in a published row.
+   * `product-provider-route.test.ts` asserts the rows through `lastRoute()`, so a divergence from the
+   * benchmark's table is a red test rather than a quiet difference in a published row. The preference row is
+   * the one that cannot be asserted that way — it spends the flat route's window and room — so it is asserted
+   * on `lastPromptText()` instead, which is the stronger statement of the two.
    */
   async answer(question: string, options: ProviderSearchOptions = { limit: 10 }): Promise<string> {
     const memory = this.#installation.memory;
@@ -231,9 +233,16 @@ export class CortexProductProvider {
     if (questionType === 'knowledge-update') {
       return (await memory.answerKnowledgeUpdate(question, context, sessions)) ?? ABSTAIN_TOKEN;
     }
-    // The flat path, which is also where a `single-session-preference` question lands: `CortexMemory` has no
-    // `answerPreference` (the header states why), and inventing one here would be a route the product does not
-    // ship.
+    // The preference contract, and the last branch because it is the narrowest: a preference question
+    // is `IE`, so every branch above is a condition on a different axis and this one is read only when
+    // none of them matched. `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1 is why the branch exists at
+    // all: 29 questions, 9 wrong, 7 of them replying that the evidence does not answer the question,
+    // which is what the flat route's `extractive` close licenses.
+    if (questionType === 'single-session-preference') {
+      return (await memory.answerPreference(question, context, sessions)) ?? ABSTAIN_TOKEN;
+    }
+    // The flat path, which is everything else: a plain `IE` question, and any question whose capability
+    // and type the caller did not state.
     return (await memory.answer(question, context, sessions)) ?? ABSTAIN_TOKEN;
   }
 

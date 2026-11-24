@@ -9,7 +9,7 @@
  * twice the room and answers under a contract that never mentions abstention, so a score cannot say whether a
  * dispatch happened.
  *
- * `lastRoute()` can. Each case below is one row of `benchmark.ts`'s table — the six decisions the product's own
+ * `lastRoute()` can. Each case below is one row of `benchmark.ts`'s table — the decisions the product's own
  * readings are taken through — and the assertion is the route the product entered, not the text it returned.
  *
  * The order is part of the table: an `ABS` question may carry `single-session-assistant`, and the abstention
@@ -110,13 +110,37 @@ describe('CortexProductProvider: the benchmark dispatch, restated and checked', 
     expect(await routeFor({ limit: 10 })).toBe('flat');
   });
 
-  it('a preference question falls through to the flat path, because the product has no preference route', async () => {
-    // `memory.ts`'s header says `answerPreference` is deliberately absent; the benchmark's branch is guarded on
-    // the method existing, so it falls through as well. A provider that invented one here would be measuring a
-    // route no deployment can reach.
-    expect(
-      await routeFor({ limit: 10, capability: 'IE', questionType: 'single-session-preference' }),
-    ).toBe('flat');
+  it('a preference question reaches the preference contract inside the flat route', async () => {
+    // The route name cannot distinguish this from a plain `IE` question — the preference route *is* the flat
+    // route's window, room and filters, and a seventh `TurnCapRoute` would put a `REGISTERED_ROOMS` entry, and
+    // therefore a field of the recorded arm configuration, on a room that is flat's to the character. So the
+    // assertion is on the bytes: the contract a customer's preference question is answered under.
+    //
+    // What it replaces: this test used to assert the fall-through, with a comment reading "the product has no
+    // preference route". `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1 counts what that cost — 29 questions,
+    // 9 wrong, 7 of them replying that the evidence does not answer the question.
+    const provider = new CortexProductProvider({
+      llm: quietLlm(),
+      now: T0 + 30 * 24 * 60 * 60 * 1000,
+      embed,
+      storage: () => new SqliteStorage(),
+    });
+    await provider.ingest(SESSIONS);
+
+    await provider.answer('Where did I move?', { limit: 10, capability: 'IE' });
+    const flat = provider.lastPromptText();
+
+    await provider.answer('Where should I look for an apartment?', {
+      limit: 10,
+      capability: 'IE',
+      questionType: 'single-session-preference',
+    });
+    const preference = provider.lastPromptText();
+
+    expect(provider.lastRoute()).toBe('flat');
+    expect(preference).not.toBe(flat);
+    expect(preference).toContain('recommend something concrete');
+    expect(flat).toContain('Reply with the answer alone.');
   });
 
   it('a refusal still reaches the judge as the product’s token, on every route', async () => {

@@ -213,14 +213,14 @@ describe('CortexMemory satisfies the MemorySystem conformance contract', () => {
     expect(typeof system.answerSessions).toBe('function');
   });
 
-  it('declares answerPreference is absent, and the flat path still receives those questions', async () => {
-    // `answerPreference` is deliberately deferred: a value gate filters
-    // *evidence*, while a preference question asks for a *suggestion*. The
-    // fallback must therefore be live, not an accident.
+  it('declares answerPreference, and a preference question reads a block the flat path does not', async () => {
+    // This assertion used to be its own inverse: `answerPreference` was absent *on purpose*, and the
+    // flat path was asserted to receive those questions. `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1
+    // counts what that cost on the archived arm: 29 preference questions, 9 wrong, 7 of them replying
+    // that the evidence does not answer the question -- which is what the extractive close licenses.
     //
-    // The assertion is on the *instruction tail*, not on the whole prompt: the
-    // two questions differ, so identical strings would be the wrong expectation.
-    // What must match is which contract answered them.
+    // The assertion is on the *instruction tail*, not on the whole prompt: the two questions differ, so
+    // identical strings would be the wrong expectation. What must differ is which contract answered.
     const llm = new RecordingLlm();
     const system = new CortexMemory(options(llm));
 
@@ -228,17 +228,19 @@ describe('CortexMemory satisfies the MemorySystem conformance contract', () => {
 
     const preferenceTail = instructionTail(llm.prompts[5] ?? '');
     const flatTail = instructionTail(llm.prompts[6] ?? '');
-    expect(preferenceTail).toBe(flatTail);
-    expect(preferenceTail).toContain('Reply with the answer alone.');
+    expect(preferenceTail).not.toBe(flatTail);
+    expect(preferenceTail).toContain('recommend something concrete');
+    expect(flatTail).toContain('Reply with the answer alone.');
   });
 
-  it('routes no question to a preference path, because none is declared', async () => {
+  it('routes a preference question to its own member rather than through the fallback', async () => {
     const llm = new RecordingLlm();
     const system = new CortexMemory(options(llm));
 
-    // Read through the declared contract rather than the class type: the class
-    // does not declare the member, and `in` is what `runBenchmark` uses.
-    expect('answerPreference' in (system as SessionAwareMemorySystem)).toBe(false);
+    // Read through the declared contract rather than the class type, because `in` is what
+    // `runBenchmark` uses: a member declared on the class but missing from the contract would route
+    // here and be invisible to a dispatch that checks the contract.
+    expect('answerPreference' in (system as SessionAwareMemorySystem)).toBe(true);
 
     await runBenchmark(dataset(ROUTABLE), system);
     expect(llm.prompts).toHaveLength(ROUTABLE.length);

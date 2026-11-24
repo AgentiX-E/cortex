@@ -142,19 +142,28 @@ function hasSourceRendering(prompt: string): boolean {
  * `QUESTION:` keeps the note out of the compared region deliberately -- the note is
  * part of MR's ask and must not move -- while still catching any drift in the ask
  * itself.
+ *
+ * Two markers rather than one, because the preference route's block does not open with
+ * `Answer the question`: its first line is `Step 1 — …`, since a composition is not an
+ * extraction. The first marker found decides the slice, so a route with either opening is
+ * compared from its own first instruction line rather than from the top of the prompt --
+ * which would have folded the rendering into a comparison about the ask, exactly the
+ * confound the paragraph above exists to avoid.
  */
 function instructions(prompt: string): string {
-  const answerLine = prompt.indexOf('Answer the question');
-  return answerLine === -1 ? prompt : prompt.slice(answerLine);
+  const candidates = [prompt.indexOf('Answer the question'), prompt.indexOf('Step 1 —')].filter(
+    (at) => at !== -1,
+  );
+  return candidates.length === 0 ? prompt : prompt.slice(Math.min(...candidates));
 }
 
 /**
  * Every route `runBenchmark` can dispatch, driven through the public API.
  *
- * The list mirrors `benchmark.ts`'s branches minus `answerPreference`, which
- * `CortexMemory` does not implement and which therefore falls through to `answer`.
- * Each entry is (name, drive), so a new route is added in one place and the
- * per-route assertions below cannot silently stop covering it.
+ * The list mirrors `benchmark.ts`'s branches, all seven of them: `answerPreference` is declared by
+ * `CortexMemory` since `docs/PREREGISTRATION-PREFERENCE-ROUTE.md`, so the entry that used to be
+ * folded into `flat` is now its own row. Each entry is (name, drive), so a new route is added in one
+ * place and the per-route assertions below cannot silently stop covering it.
  */
 type Drive = (memory: CortexMemory) => Promise<unknown>;
 
@@ -165,6 +174,7 @@ const ROUTES: ReadonlyArray<readonly [string, Drive]> = [
   ['knowledge-update (KU)', (m) => m.answerKnowledgeUpdate('How many kits do I own now?', [TEXT])],
   ['assistant', (m) => m.answerAssistant('What did you tell me about the kit?', [TEXT])],
   ['flat (IE and the rest)', (m) => m.answer('What did I buy?', [TEXT])],
+  ['preference', (m) => m.answerPreference('What should I get next?', [TEXT])],
 ];
 
 describe('the evidence rendering reaches every route that can carry it', () => {
@@ -181,9 +191,9 @@ describe('the evidence rendering reaches every route that can carry it', () => {
   it('covers every route the dispatch table can select', () => {
     // Guards the list above against the dispatch growing a branch nobody added
     // here. `benchmark.ts` routes on capability and questionType; these are the
-    // six `CortexMemory` entry points it can reach, so a seventh would have to be
+    // seven `CortexMemory` entry points it can reach, so an eighth would have to be
     // added deliberately in both places.
-    expect(ROUTES).toHaveLength(6);
+    expect(ROUTES).toHaveLength(7);
   });
 });
 

@@ -197,11 +197,13 @@ function admittedEvidenceOf(admitted: readonly AdmittedTurn[]): { turns: number;
 /**
  * A `MemorySystem` whose retrieval is decided by `cortex-core`'s value gates.
  *
- * Declares five of the six optional routing paths. `answerPreference` is
- * omitted on purpose: a value gate filters *evidence*, while a preference
- * question asks for a *suggestion*, so declaring it would route those questions
- * into a path with no mechanism behind it. The flat path receives them, and the
- * conformance test asserts that it does.
+ * Declares all six of the optional routing paths, and the last one arrived by measurement rather
+ * than by symmetry. `answerPreference` was omitted on the argument that "a value gate filters
+ * *evidence*, while a preference question asks for a *suggestion*" -- true, and beside the point:
+ * the flat path then answered those questions with a contract written for a different kind of
+ * question, and 29 preference questions in the archived arm read 20 correct with seven of the nine
+ * failures replying that the evidence did not answer. `docs/PREREGISTRATION-PREFERENCE-ROUTE.md`
+ * §1 counts the population and §4 states what the dispatch has to show.
  */
 export class CortexMemory implements SessionAwareMemorySystem {
   readonly name: string;
@@ -1799,8 +1801,71 @@ export class CortexMemory implements SessionAwareMemorySystem {
    * reader of the signature finds the reason instead of the underscore.
    */
   async answer(question: string, context: string[], _sessions?: string[][]): Promise<Answer> {
+    return this.#answerFlat(question, context, 'extractive');
+  }
+
+  /**
+   * Answer a preference question with a composition rather than with a statement.
+   *
+   * ## Why this route exists, and what refuted its absence
+   *
+   * The class header used to record that `answerPreference` was omitted *on purpose*: "a value gate
+   * filters evidence, while a preference question asks for a suggestion". The premise is true and the
+   * conclusion did not follow, because the flat path then answered those questions with a contract
+   * written for a different kind of question.
+   *
+   * `docs/PREREGISTRATION-PREFERENCE-ROUTE.md` §1 counts it on the archived arm `S16`
+   * (`44017278305`): **29** questions whose gold begins `The user would prefer`, all 29 on the flat
+   * route, **20 correct, 9 wrong**, and seven of the nine replying that the evidence does not answer
+   * the question. They were reading `Reply with the answer alone. If the evidence does not contain the
+   * answer, reply exactly <token>.`, which is exactly what they did.
+   *
+   * So the route is the fifth of the six the `MemorySystem` contract declares, and the one the
+   * benchmark's dispatch was already selecting by name — `runBenchmark` calls `answerPreference`
+   * whenever the member exists and falls back to `answer` when it does not. Until this method, the
+   * product was the fallback.
+   *
+   * ## What it shares with the flat route, and what it does not
+   *
+   * The evidence: the same admission, the same width plan, the same relevance order, the same
+   * `24,000`-character room, and the same bare-decline retry — `#respond` is the one path both call,
+   * and `preference-route.test.ts` asserts the rendered prefix is byte-equal, so "only the block
+   * moved" is a fact about bytes rather than about this paragraph.
+   *
+   * The route name is `flat` for the same reason: the route is the room and the filter, and inventing
+   * a seventh would put a `REGISTERED_ROOMS` entry — and therefore a field of the arm configuration
+   * the baseline artifact records — on a window that is the flat route's to the character. What
+   * distinguishes the two calls is the contract, which is observable in `lastPromptText()`.
+   *
+   * `sessions` is accepted and ignored, exactly as `answer` accepts and ignores it, and for the same
+   * documented reason: forwarding would re-route questions onto a prompt the registration did not
+   * price.
+   */
+  async answerPreference(
+    question: string,
+    context: string[],
+    _sessions?: string[][],
+  ): Promise<Answer> {
+    return this.#answerFlat(question, context, 'preference');
+  }
+
+  /**
+   * The flat route's one entry, so that "one `#enterRoute` call per route" stays true.
+   *
+   * `evidence-census.test.ts` asserts that each route states itself exactly once, on the argument that
+   * two entries for one path means one of them is wrong. The preference contract is the first thing on
+   * this arm to share a route rather than to add one — it spends the flat window, the flat room and the
+   * flat filters — so the route is stated here, once, and the contract is the parameter. Writing the
+   * literal in both methods would have made the census red and, worse, would have left two places to
+   * change if the flat route ever moved.
+   */
+  async #answerFlat(
+    question: string,
+    context: string[],
+    contract: PromptContract,
+  ): Promise<Answer> {
     this.#enterRoute('flat');
-    return this.#respond(question, context, 'extractive');
+    return this.#respond(question, context, contract);
   }
 
   /**

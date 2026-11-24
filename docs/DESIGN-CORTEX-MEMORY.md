@@ -90,11 +90,20 @@ needed.
 | `answerAbstention?`      | yes          | **Gate mechanism.** `decideRetrieval`'s below-threshold result is a machine-derived abstention.                                                                    |
 | `answerAssistant?`       | yes          | Evidence for `single-session-assistant` questions lives in an assistant turn.                                                                                      |
 | `answerKnowledgeUpdate?` | yes          | **Gate mechanism.** A previous-vs-current question is a bitemporal query, and `cortex-core` carries `currentFacts` / `currentValue` / `findContradictions` for it. |
-| `answerPreference?`      | **deferred** | A gate filters _evidence_; a preference question asks for a _suggestion_. Declaring it would route questions into a path with no mechanism behind it.              |
+| `answerPreference?`      | yes          | **Answer-contract mechanism.** A preference question's gold is a suggestion _composed_ from what the user said, so the extractive contract ("reply with the answer alone") licenses the one reply that cannot be right. See `PREREGISTRATION-PREFERENCE-ROUTE.md`. |
 
-Deferring `answerPreference` is asserted, not assumed: the conformance suite
-checks that preference questions reach the flat path and that the contract tail
-they receive is the extractive one.
+`answerPreference` was deferred for two rounds on the argument that "a gate filters _evidence_; a
+preference question asks for a _suggestion_". The premise is true and the conclusion did not follow:
+the flat path then answered those questions with a contract written for a different kind of question.
+The archived arm prices it — **29** questions whose gold begins `The user would prefer`, all 29 on the
+flat route, **20 correct, 9 wrong**, and seven of the nine replying that the evidence does not answer
+the question, which is exactly what the extractive close licenses.
+
+The route shares the flat route's window, room and filters — it enters the same route and differs only
+in its contract — so a seventh `TurnCapRoute` was rejected: it would add a `REGISTERED_ROOMS` entry,
+and therefore a field of the arm configuration the baseline artifact records, for a room that is
+flat's to the character. The distinction is observable in `lastPromptText()`, and
+`preference-route.test.ts` asserts the rendered evidence span is byte-equal between the two calls.
 
 ## 6. Three defects found while building
 
