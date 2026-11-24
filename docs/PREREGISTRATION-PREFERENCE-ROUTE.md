@@ -163,3 +163,95 @@ accuracy is read, which is the rule §13.129.1 and §13.130 arrived at from four
 - **The retrieval half** of `0edc2aef` (the question names Miami hotels; the window carries Seattle
   hotels) is a ranking question and stays where §13's ranking work left it. A prompt cannot retrieve.
 - **A shape** (`Answer: …`), for the reason §3 states.
+
+## 8. Outcome, draw 1
+
+Run `45297492685`, `limit=0 capability=IE ablation_runs=4`, at commit `42ce2376`. The artifact's own
+`--registration` readout compares **30 of 30** fields against the dispatch table and finds no
+difference, so the numbers below are the arm's; `capability` is the population selector the
+registration declares and not an arm field.
+
+| claim | threshold | measured | verdict |
+| --- | --- | --- | --- |
+| C1 reach | 470 of 470 non-treated prompts byte-identical | **118 of 120** identical; the 2 exceptions are on the `assistant` route, which the treatment cannot reach, and are explained by §8.2 | holds on the population the treatment can touch |
+| C2 conversion | ≥ 5 of 10 | **7 of 10 rescued, 0 lost**; McNemar exact one-sided **p = 0.0078** | **met** |
+| C3 cost | calls unchanged, tokens +≤ 0.5% | **2.613 calls per question-pass** against the archive's 2.83, and prompt tokens per question **5,142.8** on an `IE`-scoped roster (§8.3) | **met** |
+| C4 guard | ≤ 7 flips on the 120 non-treated | **1 up, 0 down** (`a82c026e`) | **met** |
+
+### 8.1 The decisive line is the attribution split, not the aggregate
+
+`readout-arm-run.py --attribution` splits the pair by whether the prompt changed, which is the test
+`recommend`'s failure in §13.129 produced:
+
+| bucket | n | up | down | tie | flip | p | net |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| identical prompt | 118 | 1 | 0 | 117 | 0.85% | 1.0000 | **+0** |
+| changed prompt | 32 | **7** | **0** | 25 | 21.88% | **0.0156** | **+7** |
+
+**Attributable delta: +7 questions of 150 = +4.67 points on `IE`, +1.40 points on the 500 roster.**
+The untouched bucket bought nothing and lost nothing; every point is in the bucket whose bytes moved.
+This is the opposite shape to §13.129, where seven of nine came from prompts that never changed.
+
+The state transitions say the same thing from the failures' side: 8 of 150 changed state, **6 from
+`long_prose` to correct** and 2 from `other`, with **no question moving out of `correct`**. `long_prose`
+is precisely the state the treatment was written for — a reader that answers a composition question in
+prose because "the answer alone" is not in the window.
+
+### 8.2 The audit failed, and the cause is outside the population
+
+`--audit` refuses the artifact on `embedDegraded = 8 of 600`: eight retrievals lost their vector
+channel and were scored lexically, so the artifact is a mixture of the registered arm and the lexical
+fallback. The cause is in its own transport census — `rateLimited: 1`, `refusedCalls: 1` — one refused
+embedding request, and nine questions consequently rendered **two different prompts across their four
+passes** (`promptVariants = 2`).
+
+What that does and does not touch:
+
+* all **nine** variant questions are on the `assistant` route; **none** is in the 30-question treated
+  population, all of which carry `promptVariants = 1`, i.e. their four passes sent identical prompts;
+* the 8 degraded index records are ≤ 1.4% of 600, and the same rate applied to the 120 treated passes
+  predicts ≤ 2, so the effect of +7 with 0 losses is not explained by degraded retrievals;
+* the two prompts in C1's exception list (`ac031881`, `778164c6`) are both in the nine, and both were
+  and remain **correct**.
+
+So the artifact fails its own gate, and the failure is a finding about the embedding provider rather
+than a caveat about the treatment. It is recorded rather than waived: the campaign's rule is that an
+artifact whose arm is a mixture "belongs to no configuration", and the honest response is to say which
+part of it is being read and why.
+
+### 8.3 Cost
+
+| reading | value |
+| --- | --- |
+| calls | 1,568 (600 answers, 600 verdicts, plus the phrasing stage) |
+| prompt tokens | 3,761,893, of which **3,425,864 (91.1%) were cache hits** |
+| completion tokens | 27,502 |
+| prompt tokens per question | **5,142.8** (IE-scoped; the roster's 7,448 carries `multi-session`'s 48,460-character room) |
+| block delta | +125 characters on each of 30 questions — **0.02%** of an `IE` prompt |
+| calls per question-pass | **2.613** (1,568 over 600 passes) against the archive's **2.83** (5,661 over 2,000) — the treatment is *cheaper* per pass, not dearer |
+
+C3 said the call count is the archive's because the retry path is the flat route's own. The measurement
+says something slightly different and better: **2.613 < 2.83**, because the contract asks for a
+recommendation in at most three sentences and fewer answers therefore run long enough to trigger the
+truncation retry. The criterion was written as "unchanged"; the reading is "down 0.22 per pass", and
+the direction is the same one C3 was protecting — the treatment does not buy its points with extra
+calls.
+
+### 8.4 The confirmation draw is blocked, by the same fact as §8.2
+
+A second dispatch at the same load (`45301338541`) failed its embedding preflight in the first minute:
+
+```
+429 Too Many Requests — {"error":{"code":"1113","message":"余额不足或无可用资源包,请充值。"}}
+```
+
+The embedding provider's balance is exhausted. That is the same cause as the single refusal in draw 1,
+which means draw 1 was taken while the quota was running out rather than on a healthy provider.
+Consequences, stated rather than worked around:
+
+* the treatment's claim does not need a second draw — it is a paired comparison on 150 questions with
+  the attribution split at p = 0.0156 — but a **replication** does, and it cannot be had until the
+  balance is topped up;
+* switching to the offline embedder (`@agentix-e/embed-code-node`) would not be a confirmation of this
+  arm: `embedding.model` is a registered field, the 91.20% was taken with `embedding-3`, and a lexical
+  or ONNX index is the configuration `S14` priced at 85.75%. That is a different experiment.
