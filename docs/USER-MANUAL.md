@@ -1124,6 +1124,28 @@ Four properties are worth knowing before you wire it up, because each one is a d
 - **`reset` keeps the embedder's cache.** The corpus is per question; the vectors are per run. A fresh cache per
   question multiplies the embedding bill and is not the arm the published reading was taken on.
 
+**Which route your question takes is a parameter, not a guess.** `answer(question, options)` reads
+`options.capability` (`MR`, `TR`, `ABS`) and `options.questionType` (`single-session-assistant`,
+`knowledge-update`, `single-session-preference`) and dispatches to the matching member of
+`MemorySystem`; anything it is not told about goes down `answer`'s flat route. Each route is a
+different instruction contract over the same evidence, so the two fields are worth supplying when your
+front end already knows the shape of the question it is asking:
+
+| what you state | route | what the contract does |
+| --- | --- | --- |
+| `capability: 'MR'` | `answerSessions` | enumerates across preserved session boundaries |
+| `capability: 'TR'` | `answerTemporal` | resolves relative expressions against the question's date |
+| `capability: 'ABS'` | `answerAbstention` | declines on `decideRetrieval`'s below-threshold result |
+| `questionType: 'single-session-assistant'` | `answerAssistant` | reads evidence that lives in assistant turns |
+| `questionType: 'knowledge-update'` | `answerKnowledgeUpdate` | prefers the later of two statements |
+| `questionType: 'single-session-preference'` | `answerPreference` | composes a recommendation instead of extracting a fact |
+| nothing | `answer` | the extractive contract, which answers from one statement |
+
+The preference row is the one to notice if you are migrating: a preference question answered by the
+flat route is answered under a contract that asks for "the answer alone", and its gold is a
+recommendation composed from what the user said. This repository counts what that cost
+(`PREREGISTRATION-PREFERENCE-ROUTE.md`).
+
 The adapter declares `build: 'embedding'`, because the registered arm is `self-index` with an injected embedder.
 If you assemble without one you get a lexical system, which is a different arm and should not be reported under
 this name.
