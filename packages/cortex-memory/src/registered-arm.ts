@@ -114,9 +114,11 @@ export const REGISTERED_ARM = {
 } as const;
 
 /*
- * The registered values the product cannot yet be given — `maxTurnChars`, `maxTurnCharsRoutes`,
- * `evidenceRoles`, `evidenceRolesRoutes` — are recorded in `__tests__/registered-arm.test.ts`, with what each
- * one is missing and the assertion that fails when one of them ships. They are next to the gate rather than
- * here for the export census's reason: a constant nothing in the product calls is API surface nobody asked
- * for, and the only thing that reads this claim is the test that enforces it.
+ * The registered values this file does not hold, recorded in `__tests__/registered-arm.test.ts` with what each
+ * one is missing and the assertion that fails when one of them ships: `maxTurnChars` and
+ * `maxTurnCharsRoutes` are nameable at `assembleMemory` and **not defaulted** — a bare call renders every turn
+ * whole over every route — while `evidenceRoles` and `evidenceRolesRoutes` still have no option at all. They
+ * are next to the gate rather than here for the export census's reason: a constant nothing in the product
+ * calls is API surface nobody asked for, and the only thing that reads this claim is the test that enforces
+ * it.
  */

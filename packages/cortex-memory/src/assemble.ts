@@ -169,17 +169,18 @@ export type AssembleOptions = {
    */
   readonly maxPromptCharsByRoute?: Partial<Record<TurnCapRoute, number>> | undefined;
   /**
-   * How one turn is printed: its width, whether a cut says so, which slice a cut keeps, and its form.
+   * How one turn is printed: its width, which routes the width reaches, whether a cut says so, which
+   * slice a cut keeps, and its form.
    *
-   * ## Why these four reach the composition root at all
+   * ## Why these five reach the composition root at all
    *
    * Because every published accuracy number was produced with them and none of them was expressible here.
    * The registered arm is `maxTurnChars: 400` on two routes, and a caller of this function could not name
-   * that width, the marker that makes a cut visible, the window that spends the width on the part of a turn
-   * that answers the question, or the layering that is the only remaining path to the cost target. A
-   * capability that exists in `CortexMemory` and not in the one function an installer calls is a capability
-   * the published package does not have -- which is the asymmetry requirement ⑯ names, arriving through a
-   * composition root instead of through a component.
+   * that width, the routes it stops at, the marker that makes a cut visible, the window that spends the
+   * width on the part of a turn that answers the question, or the layering that is the only remaining path
+   * to the cost target. A capability that exists in `CortexMemory` and not in the one function an installer
+   * calls is a capability the published package does not have -- which is the asymmetry requirement ⑯ names,
+   * arriving through a composition root instead of through a component.
    *
    * ## Why they are forwarded and not defaulted
    *
@@ -194,6 +195,33 @@ export type AssembleOptions = {
    * (-18.8% of the bill, -1.15 points) separately from the width plan (-27.1%, -4.00 points).
    */
   readonly maxTurnChars?: number | undefined;
+  /**
+   * Which routes the width reaches. Absent is every route, which is the configuration §13.72 rejected.
+   *
+   * ## The one capped configuration this function could express was the rejected one
+   *
+   * {@link AssembleOptions.maxTurnChars} was forwarded so the width every published number was taken at
+   * could be named here. The width was never the whole rendering: the registered arm is `400` on
+   * `multi-session` and `temporal` and **no cap** on the other four, and `maxTurnCharsRoutes` — a field
+   * `CortexMemoryOptions` has carried, and this repository's manual has documented, since §13.72 — had no
+   * counterpart on this interface. A caller who set the width therefore got the class's own default for
+   * the reach, which is **every** route, which is the global cap one run measured at **+13 on `MR` and
+   * −30 on `IE`** and did not adopt.
+   *
+   * That is a narrower asymmetry than requirement ⑯ names and a worse one: not a capability a customer
+   * could not reach, but the only form of it they could reach being the one a measurement rejected. A
+   * caller reading this page had two ways to be wrong — name no width, and render every turn whole while
+   * the published number was taken with a cut; name the width, and run the cap over `IE`, the route it
+   * costs thirty questions on.
+   *
+   * ## Why `[]` is allowed and why it is not `undefined`
+   *
+   * `[]` is a cap that reaches nowhere: a way to state a width without spending it, which is how a sweep
+   * turns the axis off without editing the configuration it compares against. `undefined` is every route,
+   * because that is what an absent list meant before this field existed, and an absent field has to
+   * reproduce the previous bytes exactly — the rule the four fields above and `sessionClock` state.
+   */
+  readonly maxTurnCharsRoutes?: readonly TurnCapRoute[] | undefined;
   /**
    * Whether a turn the width cut says so. `'ellipsis'` marks; absent is the historical silence.
    *
@@ -471,10 +499,16 @@ export function assembleMemory(options: AssembleOptions): Installation {
     // the place a mechanism turns itself on. The forwarding is what `turn-clock.test.ts` walks end to
     // end -- a flag that stops at this object is a documented feature a customer cannot reach.
     ...(options.sessionClock === undefined ? {} : { sessionClock: options.sessionClock }),
-    // The four rendering fields, forwarded for `sessionClock`'s reason and no other: `undefined` is the
+    // The five rendering fields, forwarded for `sessionClock`'s reason and no other: `undefined` is the
     // historical rendering, so forwarding (rather than defaulting) is what keeps a bare call's bytes fixed
     // while making every measured rendering reachable from the published entry.
     ...(options.maxTurnChars === undefined ? {} : { maxTurnChars: options.maxTurnChars }),
+    // The reach rides the width, and it is forwarded rather than derived from it: `CortexMemory`'s absent
+    // list means every route, so a width named without a reach is the global cap §13.72 rejected. Deriving
+    // the registered two routes here would default a mechanism on, which the comment above rules out.
+    ...(options.maxTurnCharsRoutes === undefined
+      ? {}
+      : { maxTurnCharsRoutes: options.maxTurnCharsRoutes }),
     ...(options.turnCutMarker === undefined ? {} : { turnCutMarker: options.turnCutMarker }),
     ...(options.turnWindow === undefined ? {} : { turnWindow: options.turnWindow }),
     ...(options.resolution === undefined ? {} : { resolution: options.resolution }),

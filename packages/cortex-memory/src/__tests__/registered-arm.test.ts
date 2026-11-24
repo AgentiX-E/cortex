@@ -75,7 +75,7 @@ function baseline(): Baseline {
  * | field | registered | what the published entry has |
  * | --- | --- | --- |
  * | `maxTurnChars` | `400` | the option exists and is forwarded, but nothing defaults it |
- * | `maxTurnCharsRoutes` | `multi-session,temporal` | no option at all |
+ * | `maxTurnCharsRoutes` | `multi-session,temporal` | the option exists and is forwarded, but nothing defaults it, so a bare call's reach is every route |
  * | `evidenceRoles` | `['user']` | no option at all |
  * | `evidenceRolesRoutes` | `multi-session,temporal` | no option at all |
  *
@@ -94,9 +94,11 @@ function baseline(): Baseline {
  *
  * `maxTurnChars` first: the option exists, so defaulting it is one line and a byte test. The other three need
  * an option each, a manual row each (the manual gate fails an undocumented option), and a byte test proving
- * the field reached the prompt. None of the three can be done "while we are here": each moves the bytes of
- * every prompt whose corpus holds a turn over 400 characters or a non-user turn, which is a re-reading of
- * every published number rather than an edit.
+ * the field reached the prompt. `maxTurnCharsRoutes` is now the second closed half: the option and its row
+ * exist and `assemble-turn-cap-reach.test.ts` proves the reach arrives at the renderer, so only the default
+ * is missing. None of them can be done "while we are here": each moves the bytes of every prompt whose corpus
+ * holds a turn over 400 characters or a non-user turn, which is a re-reading of every published number rather
+ * than an edit.
  */
 const REGISTERED_ARM_UNSHIPPED: Readonly<
   Record<string, { readonly value: unknown; readonly missing: string }>
@@ -109,7 +111,9 @@ const REGISTERED_ARM_UNSHIPPED: Readonly<
   },
   maxTurnCharsRoutes: {
     value: ['multi-session', 'temporal'],
-    missing: 'no `AssembleOptions` field: the two routes the cap reaches are named only by the arm',
+    missing:
+      '`AssembleOptions.maxTurnCharsRoutes` exists and is forwarded, and a bare call still passes nothing, ' +
+      'so `CortexMemory` reads the absent list as every route — the global cap §13.72 measured at −30 on `IE`',
   },
   evidenceRoles: {
     value: ['user'],

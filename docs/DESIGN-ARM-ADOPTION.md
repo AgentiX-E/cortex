@@ -16,6 +16,7 @@ something else:
 | `ask` | `verbatim-acts` | absent — each route's reference block |
 | `maxPromptCharsByRoute` | 48,460 / 24,000×5 | the same, since `rooms.ts` was pinned |
 | `maxTurnChars` | 400 on two routes | absent |
+| `maxTurnCharsRoutes` | `multi-session,temporal` | absent — every route |
 
 The last row is the exception that proves the rule. `rooms.ts` carries a constant pinned to that
 baseline by `assemble-rooms.test.ts`, in both directions, so a re-recorded arm that forgot the room
@@ -27,6 +28,21 @@ got the pre-`S9` arm; the number published beside it described a different one.
 This is requirement ⑯'s asymmetry — "a capability that exists in a component and not in the entry
 point is a capability the package does not have" — arriving through a composition root for the third
 time, and it is invisible to every test that constructs `CortexMemory` directly.
+
+### 1.1 The row that was worse than absent
+
+`maxTurnChars`'s row understated the defect. A caller who read the manual and set the width did not get the
+registered rendering with a missing field; they got the width with `CortexMemory`'s default **reach**, which
+is every route. §13.72 is the run that priced the difference: the global cap bought **+13 on `MR`** and cost
+**−30 on `IE`**, thirty questions that went `correct → abstention` at a median coverage of 100%. So the entry
+point offered two configurations and one of them was the one a measurement had rejected, with no way to
+express the one that shipped.
+
+`maxTurnCharsRoutes` — a `CortexMemoryOptions` field and a manual row since that run — is forwarded now, and
+`assemble-turn-cap-reach.test.ts` asserts it end to end: one assembly cuts `multi-session` at the width and
+leaves `flat` byte-identical to a bare call. What remains is the **default**: a bare call still reaches every
+route, which is the row `REGISTERED_ARM_UNSHIPPED` keeps honest rather than an application this document can
+claim.
 
 ## 2. The same defect on the dispatch side
 
@@ -66,10 +82,10 @@ decided from a value that had quietly stopped matching.
 ```
 
 The partition has three tables, not two. `REGISTERED_ARM` holds the nineteen fields the product applies;
-`REGISTERED_ARM_UNSHIPPED` holds the four the registration carries and the published entry **cannot yet be
-given** (`maxTurnChars`, `maxTurnCharsRoutes`, `evidenceRoles`, `evidenceRolesRoutes` — the first has an option
-that nothing defaults, the other three have no option at all); `REGISTERED_ARM_ELSEWHERE` holds the fourteen
-that are not a product decision, each with its class.
+`REGISTERED_ARM_UNSHIPPED` holds the four the registration carries and the published entry **does not apply**
+(`maxTurnChars` and `maxTurnCharsRoutes` are nameable and forwarded but nothing defaults them;
+`evidenceRoles` and `evidenceRolesRoutes` have no option at all); `REGISTERED_ARM_ELSEWHERE` holds the
+fourteen that are not a product decision, each with its class.
 
 The middle table is the honest one. Writing those four into `REGISTERED_ARM` would have claimed an
 application that does not happen — the same defect this document is about, one layer down — and its assertion
