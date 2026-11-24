@@ -90,6 +90,12 @@
       "why": "The preference route's two draws, read out of two 60 MB artifacts that are not in this repository: re-deriving it costs a dispatch (about CNY 6) and a 62 MB download per draw, and the control side needs the archived roster filtered to the same 150 questions. The hash is what stops the numbers being edited after the fact; `src/__tests__/preference-route-reading.test.ts` is what stops them disagreeing with each other -- it caught this round's own error, a total `up` copied from the changed-prompt bucket, because 143 - 137 is 6 and 7 - 2 is 5."
     },
     {
+      "path": "packages/cortex-memory/test/turn-width/result.json",
+      "kind": "one-shot",
+      "sha256": "1f8354bfb91a87617539cd3fb163429225f5a4cd975654947114c4ffa0c77e9a",
+      "why": "A sweep of the per-turn cap over one archived report: 12 widths x 5 capabilities, the replica of the prefix allocator that produced them, and the rate cells the projection transports. Re-deriving it needs the 60 MB artifact that is not in this repository, and the numbers only move when the arm's cap, its room table or the delivery rule do -- so a per-push re-run would spend an artifact download proving a constant. The hash stops the numbers being edited after the fact; `src/__tests__/turn-width-reading.test.ts` stops them disagreeing with each other, which is how this round caught its own model: one rate per cell over a partition of the same questions is saturated, so the 'calibration' it first printed was an identity."
+    },
+    {
       "path": "packages/cortex-storage/test/browser/bundle-run.json",
       "kind": "recomputed",
       "job": "browser",
