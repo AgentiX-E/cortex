@@ -1,6 +1,6 @@
 {
-  "what": "The preference route's first draw: the paired conversion against the archived control, split by whether the prompt changed, with the cost that came with it.",
-  "why": "The numbers are read off two 60 MB artifacts that are not in this repository, so the reading could not be re-derived inside `pnpm check`. What the test beside it does enforce is the arithmetic that has to hold between the numbers -- a delta that does not equal its own bucket sum is how a round reports +7 next to a +8 movement.",
+  "what": "The preference route's two draws: the paired conversion against the archived control, split by whether the prompt changed, with the cost that came with it and the set of questions each draw converted.",
+  "why": "The numbers are read off two 60 MB artifacts that are not in this repository, so the reading could not be re-derived inside `pnpm check`. What the test beside it does enforce is the arithmetic that has to hold between the numbers -- a delta that does not equal its own bucket sum is how a round reports +7 next to a +8 movement -- and the identity of the two draws' conversion sets, which is the claim a mean cannot make.",
   "generatedFrom": {
     "questionCount": 150,
     "capability": "IE",
@@ -23,6 +23,13 @@
       "arm": "S16",
       "note": "the same artifact, filtered to the 150 questions the treatment ran; a 500-question roster cannot be paired against a 150-question one, and `--attribution` refuses it",
       "artifact": "benchmark-cortex-memory-ablation-report.json"
+    },
+    "draw2": {
+      "runId": "45314580164",
+      "revision": "5b04806a40d15b558d5ac0392d6958cd4f933d24",
+      "workflow": "Benchmark (cortex-memory A/B)",
+      "note": "the same twenty-two inputs as draw 1, dispatched again after the balance was topped up; draw 1's confirmation dispatch 45301338541 died in its embedding preflight with 429",
+      "artifact": "benchmark-cortex-memory-ablation-report.json"
     }
   },
   "derivedBy": [
@@ -42,31 +49,70 @@
     "total": 150
   },
   "fourPass": {
-    "control": { "min": 137, "avg": 138.25, "max": 139 },
-    "treatment": { "min": 139, "avg": 142.5, "max": 145 }
+    "control": {
+      "min": 137,
+      "avg": 138.25,
+      "max": 139
+    },
+    "treatment": {
+      "min": 139,
+      "avg": 142.5,
+      "max": 145
+    }
   },
   "paired": {
     "up": 8,
     "down": 0,
     "buckets": {
-      "identicalPrompt": { "n": 118, "up": 1, "down": 0, "goldCarried": 0 },
-      "changedPrompt": { "n": 32, "up": 7, "down": 0, "goldCarried": 1 }
+      "identicalPrompt": {
+        "n": 118,
+        "up": 1,
+        "down": 0,
+        "goldCarried": 0
+      },
+      "changedPrompt": {
+        "n": 32,
+        "up": 7,
+        "down": 0,
+        "goldCarried": 1
+      }
     }
   },
   "preference": {
-    "control": { "correct": 20, "wrong": 10 },
-    "treatment": { "correct": 27, "wrong": 3 },
-    "stillWrong": ["75832dbd", "1da05512", "1d4e3b97"]
+    "control": {
+      "correct": 20,
+      "wrong": 10
+    },
+    "treatment": {
+      "correct": 27,
+      "wrong": 3
+    },
+    "stillWrong": [
+      "75832dbd",
+      "1da05512",
+      "1d4e3b97"
+    ]
   },
   "singleVariable": {
     "questionsWithIdenticalEvidence": 26,
     "deliveredPromptDeltaChars": 125,
-    "evidenceDrifted": ["1c0ddc50", "32260d93", "38146c39", "caf03d32"],
+    "evidenceDrifted": [
+      "1c0ddc50",
+      "32260d93",
+      "38146c39",
+      "caf03d32"
+    ],
     "conversionsOnDriftedQuestions": 0
   },
   "failureStates": {
-    "control": { "long_prose": 9, "other": 4 },
-    "treatment": { "long_prose": 3, "other": 2 }
+    "control": {
+      "long_prose": 9,
+      "other": 4
+    },
+    "treatment": {
+      "long_prose": 3,
+      "other": 2
+    }
   },
   "cost": {
     "llmCalls": 1568,
@@ -88,6 +134,104 @@
   "confirmation": {
     "attempted": "45301338541",
     "outcome": "failed in its embedding preflight with 429 余额不足或无可用资源包,请充值。",
-    "consequence": "the draw stands as one draw; a replication needs the balance topped up, and the offline embedder would be the S14 configuration rather than a replication of this arm"
+    "resolvedBy": "45314580164, dispatched after the balance was topped up, on the same twenty-two inputs"
+  },
+  "repetition1Draw2": {
+    "controlCorrect": 137,
+    "treatmentCorrect": 143,
+    "total": 150
+  },
+  "fourPassDraw2": {
+    "control": {
+      "min": 137,
+      "avg": 138.25,
+      "max": 139
+    },
+    "treatment": {
+      "min": 140,
+      "avg": 143.25,
+      "max": 146
+    }
+  },
+  "pairedDraw2": {
+    "up": 8,
+    "down": 2,
+    "buckets": {
+      "identicalPrompt": {
+        "n": 118,
+        "up": 1,
+        "down": 0,
+        "goldCarried": 0
+      },
+      "changedPrompt": {
+        "n": 32,
+        "up": 7,
+        "down": 2,
+        "goldCarried": 1
+      }
+    },
+    "attributable": {
+      "up": 7,
+      "down": 2,
+      "bucket": "changedPrompt",
+      "note": "the attributable delta is the changed bucket's 7 - 2 = +5; the total movement is 8 - 2 = 6 and the difference is the reach guard's single flip on a prompt whose bytes never moved"
+    }
+  },
+  "preferenceDraw2": {
+    "control": {
+      "correct": 20,
+      "wrong": 10
+    },
+    "treatment": {
+      "correct": 25,
+      "wrong": 5
+    },
+    "stillWrong": [
+      "75832dbd",
+      "1da05512",
+      "1d4e3b97",
+      "1c0ddc50",
+      "32260d93"
+    ]
+  },
+  "replication": {
+    "convertedInBoth": [
+      "09d032c9",
+      "0a34ad58",
+      "0edc2aef",
+      "1a1907b4",
+      "57f827a0",
+      "d24813b1",
+      "d6233ab6"
+    ],
+    "convertedInNeither": [
+      "1d4e3b97",
+      "1da05512",
+      "75832dbd"
+    ],
+    "convertedInExactlyOne": [],
+    "chanceOfTheTwoSetsCoinciding": 0.0083,
+    "whyItIsTheStrongStatement": "ten wrong questions, seven chosen twice, the same seven: a mean cannot say that, and noise does not pick the same seven twice",
+    "theTwoLostAreExplainedByDelivery": {
+      "questions": [
+        "1c0ddc50",
+        "32260d93"
+      ],
+      "note": "both are among the four whose delivered turn count changed between the archive and the treatment (18 -> 17 and 49 -> 48); the seven stable conversions carry identical promptChars, evidenceChars, turn count and turnWindowCensus with deliveredPromptChars +125 exactly"
+    }
+  },
+  "costDraw2": {
+    "llmCalls": 1558,
+    "promptTokens": 3757345,
+    "cacheHitPromptTokens": 3443653,
+    "completionTokens": 27245,
+    "callsPerQuestionPass": 2.597,
+    "promptTokensPerQuestion": 5154.935
+  },
+  "auditDraw2": {
+    "verdict": "PASS",
+    "embedDegraded": 0,
+    "promptVariants2": 1,
+    "note": "draw 1 failed the same audit at embedDegraded 8 of 600; the difference is the unpaced request rate, not the treatment"
   }
 }

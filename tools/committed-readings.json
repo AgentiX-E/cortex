@@ -86,8 +86,8 @@
     {
       "path": "packages/cortex-memory/test/preference-route/result.json",
       "kind": "one-shot",
-      "sha256": "dd6b28db7d73fd7928a2d19c477801847894d4f22c1734c69b4487a4e7e6230a",
-      "why": "The preference route's first draw, read out of two 60 MB artifacts that are not in this repository: re-deriving it costs a dispatch (about CNY 6) and a 62 MB download, and the control side needs the archived roster filtered to the same 150 questions. The hash is what stops the numbers being edited after the fact; `src/__tests__/preference-route-reading.test.ts` is what stops them disagreeing with each other, which is how this reading's first version reported a +7 next to a +8 movement."
+      "sha256": "a2eefb051d2583ca3c32ec7d500624a107eb6fad238ff3ef20a33646122eee74",
+      "why": "The preference route's two draws, read out of two 60 MB artifacts that are not in this repository: re-deriving it costs a dispatch (about CNY 6) and a 62 MB download per draw, and the control side needs the archived roster filtered to the same 150 questions. The hash is what stops the numbers being edited after the fact; `src/__tests__/preference-route-reading.test.ts` is what stops them disagreeing with each other -- it caught this round's own error, a total `up` copied from the changed-prompt bucket, because 143 - 137 is 6 and 7 - 2 is 5."
     },
     {
       "path": "packages/cortex-storage/test/browser/bundle-run.json",

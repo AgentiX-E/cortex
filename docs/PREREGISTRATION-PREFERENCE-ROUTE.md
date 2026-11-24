@@ -336,3 +336,74 @@ The same recount caught four stale `29`s in code comments — `memory.ts` twice,
 and `product-provider-route.test.ts` once each — left behind by §1's 29 → 30 correction, which had only
 been applied to the document. A corrected count that survives in a comment is a count that gets quoted
 again.
+
+## 9. Outcome, draw 2: the seven questions are the same seven
+
+Run `45314580164`, the same twenty-two inputs, `--ref master` at `bdafe574`'s predecessor `5b04806a`,
+`limit=0 capability=IE ablation_runs=4`. Draw 1's confirmation dispatch (`45301338541`) died in its
+embedding preflight with `429 余额不足或无可用资源包,请充值。`; the balance was topped up and the run
+was dispatched again rather than reinterpreted.
+
+| reading | archive `S16` | draw 1 `45297492685` | draw 2 `45314580164` |
+| --- | ---: | ---: | ---: |
+| `IE` repetition 1 | 137/150 | 145/150 | **143/150** |
+| `IE` four-pass mean | 138.25 | 142.5 | **143.25** |
+| `IE` four-pass range | 137–139 | 139–145 | **140–146** |
+| the 30 preference questions | 20/30 | 27/30 | **25/30** |
+| `embedDegraded` | — | 8 of 600 | **0** |
+| `promptVariants == 2` | — | 9 | **1** |
+| calls | 5,661 over 2,000 passes | 1,568 | 1,558 |
+| prompt tokens per question | 7,447.8 | 5,142.8 | **5,154.9** |
+
+### 9.1 What replication means here, stated as a set rather than as a mean
+
+The archive's ten wrong preference questions, and which draw converted each:
+
+| question | draw 1 | draw 2 | |
+| --- | ---: | ---: | --- |
+| `09d032c9` `0a34ad58` `0edc2aef` `1a1907b4` `57f827a0` `d24813b1` `d6233ab6` | converted | converted | **both** |
+| `1d4e3b97` `1da05512` `75832dbd` | no | no | neither |
+| `1c0ddc50` `32260d93` | converted | **lost** | one draw only |
+
+**Seven converted twice, three converted never, and none converted exactly once.** The two that
+draw 1 held and draw 2 lost are held by a different mechanism than either, and it is visible on the
+record: both are among the four questions whose delivered turn count changed between the archive and
+the treatment (`1c0ddc50` 18 → 17, `32260d93` 49 → 48), while the seven stable conversions carry
+**identical `promptChars`, `evidenceChars`, turn count and `turnWindowCensus`** and a
+`deliveredPromptChars` delta of **exactly +125** — the block itself, on all seven.
+
+The totals are `8 up / 2 down` on the second draw — the guard's single flip plus the seven — and
+`+6` questions, which is `143 − 137`. The attributable delta is the **changed** bucket's `7 − 2 = +5`,
+and keeping those two numbers apart is the same distinction draw 1 needed: the aggregate moves for two
+reasons and only one of them is the treatment.
+
+That the same seven come back is the part a mean cannot state. Ten wrong questions, seven chosen
+twice, the same seven: if each draw drew its seven at random the probability of the two sets coinciding
+is `1 / C(10,7) = 1/120 = 0.0083`. The paired tests say the same thing less sharply — draw 1 read
+7 up / 0 down on the changed bucket at a two-sided `p = 0.0156`, draw 2 read 7 up / 2 down at
+`p = 0.1797` — and the set identity is the stronger statement, because noise does not pick the same
+seven twice.
+
+### 9.2 The audit that failed on draw 1 passes on draw 2, and the difference is one embedding call
+
+Draw 1 failed its own audit on `embedDegraded = 8 of 600`: one throttled embedding request gave nine
+`assistant`-route questions two prompts across four passes. Draw 2 reads **`embedDegraded = 0`**, one
+question with `promptVariants == 2` (`778164c6`), and its audit step is green. The mechanism was the
+unpaced request rate — the input defaults to `0`, and draw 1's run reported `rateLimited: 1` — which is
+why the workflow's description of that input now states the fact instead of recommending pacing beside
+a default that does not pace.
+
+Neither draw's mixture reaches the treated population: all thirty preference questions carry
+`promptVariants == 1` in both, so the degraded embeddings cannot explain a conversion in either
+direction.
+
+### 9.3 What this draw does not establish
+
+- **Not that nine of ten is the rate.** Two draws converted seven each; the four-pass means are 142.5
+  and 143.25, and the arm's own spread is six questions. The honest statement is "+4 to +5 questions on
+  the mean, replicated".
+- **Not that the two lost questions are reader noise.** Their evidence differs from the archive's by one
+  turn, so a third draw is what would separate "the reader is unstable on them" from "the shorter
+  window is what makes them fail". They are outside the seven and inside the four whose delivery moved.
+- **Not a second independent population.** This is the same thirty questions, which is what replication
+  of this route means and is not evidence about preference handling outside `IE`.
