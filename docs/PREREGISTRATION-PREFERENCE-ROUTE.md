@@ -12,17 +12,24 @@ contract in the product.
 The archive is the registered arm `S16` (run `44017278305`, 500 questions × 4 repetitions, 91.20% by
 per-question count: `feature.metrics.correct = 456`). The preference population is not labelled in
 that artifact — `questions[]` carries no `questionType` — so it is identified by the one field that is:
-the gold. Every LongMemEval-S preference question's gold begins `The user would prefer`, which is the
-dataset's own template rather than a heuristic:
+the gold. Every LongMemEval-S preference question's gold states what the user *would prefer*:
 
 ```
-29 questions, gold prefix "The user would prefer …"
-route:    all 29 render `flat` (nothing else can receive them)
-correct:  20 of 29
-wrong:     9 of 29
+30 questions, gold contains "would prefer"
+route:    all 30 render `flat` (nothing else can receive them)
+correct:  20 of 30
+wrong:    10 of 30
 ```
 
-The nine, with the answer the arm gave:
+**The first count of this population was 29, and it was wrong in the way this campaign keeps finding.**
+The filter was the prefix `The user would prefer`, and one gold leads with a clause instead: `1a1907b4`
+reads *"Considering their mixology class background, the user would prefer cocktail suggestions that
+build upon their existing …"*. It is a preference question, it renders `flat`, and it is **wrong** — so
+a filter that looked mechanical under-counted the population by one, and the ceiling by one. The filter
+is a substring match now and the extra question is the last row below. The union with the short-answer
+population (§4) is unchanged at 24 questions, because that question was already in the other set.
+
+The ten, with the answer the arm gave:
 
 | question | gold begins | what the arm answered | form |
 | --- | --- | --- | --- |
@@ -35,15 +42,16 @@ The nine, with the answer the arm gave:
 | `1d4e3b97` | …responses that reference specific details from their previous | "The evidence does not explain why the bike would perform better" | decline |
 | `d24813b1` | …baking suggestions that take into account their previous | "Based on the evidence, here are baking ideas…" | composed, judge refused |
 | `0a34ad58` | …responses that utilize their existing resources, such as | "Based on the evidence, here are helpful tips for getting around Tokyo…" | composed, judge refused |
+| `1a1907b4` | **Considering their mixology class background,** the user would prefer… | "The evidence mentions a Pimm's Cup with a Twist made with Hendrick's gin…" | decline + evidence echo |
 
-Seven of the nine tell the reader the evidence does not answer the question. Two already compose a
-recommendation and were not accepted. **The ceiling is therefore 9 questions = 1.80 points on the 500
-roster**, and it is a ceiling over the *treated* population, which is the whole of it: all 29 render
+Eight of the ten tell the reader the evidence does not answer the question. Two already compose a
+recommendation and were not accepted. **The ceiling is therefore 10 questions = 2.00 points on the 500
+roster**, and it is a ceiling over the *treated* population, which is the whole of it: all 30 render
 `flat`, so no question in this set is outside the treatment's reach.
 
 ## 2. Why the flat route cannot serve these, in the block's own words
 
-The registered arm routes every one of the 29 to `answer()`, which builds with the `extractive`
+The registered arm routes every one of the 30 to `answer()`, which builds with the `extractive`
 contract. Through `ask: verbatim-acts` that block closes on:
 
 > `Reply with the answer alone. If the evidence does not contain the answer, reply exactly <token>.`
@@ -63,7 +71,7 @@ move a byte, its treated bucket bought 2 and sold 0 over 34 questions, and claim
 27 against a threshold of 28 — impossible when written, because only 9 of the 33 paragraph-gold
 questions render `flat`. It was correctly not adopted. Two things are different here:
 
-1. **The reach is computed, not asserted.** The population is 29 questions, all on `flat`, all
+1. **The reach is computed, not asserted.** The population is 30 questions, all on `flat`, all
    wrongly-or-rightly treated; the ceiling arithmetic is 9, above the bar.
 2. **The treatment is a contract, not a licence on another contract.** §13.129 inserted a permission
    *above* `extractive`'s closing line, and §13.55/`39035438120` measured that a rule placed above a
@@ -86,16 +94,16 @@ If the evidence contains nothing about the user's situation, reply exactly <toke
 
 Four decisions, each with the failure it answers:
 
-| line | what it answers | which of the nine |
+| line | what it answers | which of the ten |
 | --- | --- | --- |
 | Step 1 silent | the two-step shape, with the notes *not* written out: §13.123's `silent` ask lost 26 `MR` questions by asking for a written list, so the step exists and its output does not | all 7 declines |
 | Step 2 recommends | "reply with the answer alone" replaced by "reply with the recommendation itself" | all 7 declines |
-| no echo | five of the nine replies are the evidence block restated; the ban is the half a shape guard can never reach (§13.129.3) | `75832dbd`, `0edc2aef`, `57f827a0`, `d6233ab6`, `1da05512` |
+| no echo | six of the ten replies are the evidence block restated; the ban is the half a shape guard can never reach (§13.129.3) | `75832dbd`, `0edc2aef`, `57f827a0`, `d6233ab6`, `1da05512`, `1a1907b4` |
 | narrowed close | the decline condition becomes *nothing about the user's situation* rather than *not the answer*, which is a predicate over a different thing | all 7 declines |
 
 What it deliberately does **not** do: it states no reply shape and no prefix. `answer-line` proved a
 shape is a tax on every question whose gold is not that shape — 117 short-gold questions 116 → 116,
-33 paragraph-gold questions 24 → 12 (run `40807829150`) — and two of the nine here already compose
+33 paragraph-gold questions 24 → 12 (run `40807829150`) — and two of the ten here already compose
 without a shape, so a shape would be a second variable aimed at a failure that is not theirs.
 
 ## 4. Claims, thresholds, falsifiers
@@ -105,15 +113,15 @@ artifact exists.
 
 | # | claim | threshold | falsifier |
 | --- | --- | --- | --- |
-| C1 | **reach** — the instruction block moves on exactly 29 of 500 questions; the other 471 render byte-identical prompts | `promptDigest` equal to the archive on 471 of 471; on the 29 it differs | any digest mismatch outside the 29 |
-| C2 | **conversion** — the treated nine convert | ≥ **5 of 9** (≤ 25/29 stay correct → at least 25/29), McNemar one-sided p < 0.10 over the 29 | ≤ 2 of 9 |
+| C1 | **reach** — the instruction block moves on exactly 30 of 500 questions; the other 470 render byte-identical prompts | `promptDigest` equal to the archive on 470 of 470; on the 30 it differs | any digest mismatch outside the 30 |
+| C2 | **conversion** — the treated ten convert | ≥ **5 of 10** (at least 25/30 stay correct), McNemar one-sided p < 0.10 over the 30 | ≤ 2 of 10 |
 | C3 | **cost** — one call per preference question as before, and prompt tokens per question rise by the block's own delta and no more | `calls` per question unchanged; roster tokens/query +≤ 0.5% | any extra call, or > +1.0% |
-| C4 | **guard** — no capability outside `IE` can move (not dispatched in this run), and inside `IE` the 121 non-preference questions are an internal control | flips on the 121 ≤ 7 (the 5.0% reader floor measured on 19 of 379 byte-identical prompts, §13.135.2, rounded to 121) | ≥ 10 flips on the 121 |
+| C4 | **guard** — no capability outside `IE` can move (not dispatched in this run), and inside `IE` the 120 non-preference questions are an internal control | flips on the 120 ≤ 7 (the 5.0% reader floor measured on 19 of 379 byte-identical prompts, §13.135.2, rounded to 120) | ≥ 10 flips on the 120 |
 
 C3 is arithmetic rather than a hope, and it is measured on the constant rather than guessed: the
 shipped flat block is `extractive` plus the merging sentence — **393 characters** — and the preference
-block is **518**, so the delta is **+125 characters per treated question** (≈ 31 tokens). Over 29
-questions and a 7,448-token mean across 500, that is **+0.02%**. The retry path is unchanged because
+block is **518**, so the delta is **+125 characters per treated question** (≈ 31 tokens). Over 30
+questions and a 7,448-token mean across 500, that is **+0.03%**. The retry path is unchanged because
 it is the flat route's own (`#answerWithBareRetry`), so the call count is the archive's.
 
 ## 5. The dispatch, and the load it is compared at
@@ -124,7 +132,7 @@ exists for is a run that describes a configuration the defaults silently supplie
 
 | input | value | why |
 | --- | --- | --- |
-| `limit` | `0` | full file; a sample would change which 29 exist |
+| `limit` | `0` | full file; a sample would change which 30 exist |
 | `capability` | `IE` | the treated population is inside `IE`; the other four capabilities cannot move under this change and re-running them prices nothing |
 | `ablation_runs` | `4` | the archived control's scale; a 1-run treatment against a 4-run control is two denominators |
 | `cortex_memory_ask` | `verbatim-acts` | the archive's |

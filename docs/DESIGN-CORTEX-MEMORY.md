@@ -95,9 +95,9 @@ needed.
 `answerPreference` was deferred for two rounds on the argument that "a gate filters _evidence_; a
 preference question asks for a _suggestion_". The premise is true and the conclusion did not follow:
 the flat path then answered those questions with a contract written for a different kind of question.
-The archived arm prices it — **29** questions whose gold begins `The user would prefer`, all 29 on the
-flat route, **20 correct, 9 wrong**, and seven of the nine replying that the evidence does not answer
-the question, which is exactly what the extractive close licenses.
+The archived arm prices it — **30** questions whose gold states what the user would prefer, all 30 on
+the flat route, **20 correct, 10 wrong**, and eight of the ten replying that the evidence does not
+answer the question, which is exactly what the extractive close licenses.
 
 The route shares the flat route's window, room and filters — it enters the same route and differs only
 in its contract — so a seventh `TurnCapRoute` was rejected: it would add a `REGISTERED_ROOMS` entry,
