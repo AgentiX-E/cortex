@@ -240,31 +240,8 @@ export type SearchIndexOptions = {
    * scored the way the product scores when there is no embedder, and record how often that happened. The
    * cost of that choice is already measured, so a reader can price it rather than guess.
    */
-  /**
-   * What to do when the embedder cannot produce a query vector.
-   *
-   * `'fail'` (default) rethrows. `'lexical'` degrades **this retrieval** to the lexical channel, counts it
-   * in {@link SearchCensus.embedDegraded}, and keeps the provider's message in
-   * {@link SearchCensus.embedFailure}.
-   *
-   * ## Why the default is the loud one
-   *
-   * `indexEmbedding: injected` in an artifact means the vector channel ranked. A deployment that silently
-   * scored lexically instead would publish numbers under a configuration it did not run — and the numbers
-   * would look entirely reasonable, because the lexical index is a working index (`S14`: 85.75%). The
-   * failure mode of a quiet default is therefore a plausible wrong reading rather than a crash, which is
-   * the one shape this repository refuses to leave in place.
-   *
-   * ## Why the opt-in exists at all
-   *
-   * Because the alternative is worse than degrading. Run `43866639154` configured the embedder, passed the
-   * one-vector preflight, ran for two hours, and then met an exhausted provider balance at repetition 3 of
-   * 8 — taking `432` graded answers with it. A long benchmark cannot buy insurance against a balance that
-   * empties mid-run; what it can do is state in advance that a retrieval it cannot vectorise will be
-   * scored the way the product scores when there is no embedder, and record how often that happened. The
-   * cost of that choice is already measured, so a reader can price it rather than guess.
-   */
   readonly onEmbedFailure?: 'fail' | 'lexical';
+
   /**
    * The queries to rank for one question. Absent means the question alone.
    *
