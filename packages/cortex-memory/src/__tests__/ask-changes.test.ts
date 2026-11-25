@@ -178,8 +178,15 @@ describe('every ask changes exactly the routes it declares', () => {
     // names. Absent would claim the route moves on both shapes, which is false and would be a delta
     // about nothing. §13.291's `verbatim-scope` inherits the fourth slot from §13.290 unchanged: it is
     // that block with one line added, so the shape guard it delegates through is the same one.
+    // §13.292's `verbatim-clock` is the fifth on the same grounds as the fourth.
     const shapeSpecific = Object.keys(ASK_CHANGES_WHEN_DERIVATION) as EvidenceAsk[];
-    expect(shapeSpecific).toEqual(['operands', 'verbatim', 'verbatim-acts', 'verbatim-scope']);
+    expect(shapeSpecific).toEqual([
+      'operands',
+      'verbatim',
+      'verbatim-acts',
+      'verbatim-scope',
+      'verbatim-clock',
+    ]);
     for (const ask of shapeSpecific) expect(asks).toContain(ask);
   });
 

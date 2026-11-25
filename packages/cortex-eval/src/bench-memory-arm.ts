@@ -1949,6 +1949,28 @@ const ASK_ROUTES: Record<string, readonly string[]> = {
   // them. The reason is in `SCOPE_BOUND_LINE`'s docblock and it is about the benchmark rather than
   // about the prompt: two gold totals in the same capability cannot both come from one actor rule.
   'verbatim-scope': ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.292's value: `verbatim-acts` with **one line added**, and the inverse claim to the value above.
+  //
+  // `verbatim-scope` bounded a mention by the period the question names and `S17` priced that bound at
+  // **-4 questions** (98 of 121 against the control's 102, two conversions against six regressions,
+  // exact McNemar p = 0.070). This one forbids the clock outright: a turn's date is when it was said,
+  // not when the thing happened, and an item is not excluded because the turn carrying it falls outside
+  // a period the question mentions.
+  //
+  // Read to the question, on the arm's own merged artifact (`45543010618`, 500 of 500, two
+  // repetitions): `MR` reads 108 of 121, **nine of the thirteen failures carry every gold turn** and the
+  // four that do not are short by 1, 1, 2 and 5 turns, so the route's remaining error is a decision rather
+  // than a delivery. A census over the 121 replies
+  // splits them at the decision: the 49 that exclude **nothing** read 47 (95.9%) and the 72 that
+  // exclude something read 61 (84.7%), with 50 citing a period or a date (84.0%) and eight of the
+  // thirteen failures among them. Three were read to the gold turn and all three are one arithmetic:
+  // `3a704032` drops a plant *"received last month, which points to the prior calendar month"* against a
+  // gold of three, `gpt4_731e37d7` drops two workshops as *"outside last four months"* from a
+  // `2023/02/26` question against a gold of `$720` (`$200 + $20 + $500`), and `37f165cf` drops both
+  // novels as *"finished in May, not January or March"* against a gold of `856` (`440 + 416`).
+  //
+  // Same reach, because the block is the same block; the change set is the multi-session route alone.
+  'verbatim-clock': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**

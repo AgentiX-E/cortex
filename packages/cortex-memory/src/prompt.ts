@@ -366,6 +366,11 @@ export const ASK_ROUTES: Partial<Record<EvidenceAsk, readonly string[]>> = {
   // that read the reference's contract keep reading it and the delegating routes keep delegating, so
   // the only route whose bytes may move is the one the added line lands on.
   'verbatim-scope': ['multi-session', 'flat', 'temporal', 'abstention'],
+  // §13.292. The same reach again, for the same reason, and the **inverse** claim to the value above:
+  // that one bounds a mention by the period the question names, this one forbids the turn's date from
+  // bounding anything. Both are one line on the route that reads the act rule, so the two dispatches
+  // price one axis from its two ends and neither can be read as the other's control.
+  'verbatim-clock': ['multi-session', 'flat', 'temporal', 'abstention'],
 };
 
 /**
@@ -452,6 +457,11 @@ export const ASK_CONTROLS: Record<EvidenceAsk, EvidenceAsk> = {
   // put two variables between the two arms -- the substitution line and the bound -- and the whole
   // claim is that only the second of them is new.
   'verbatim-scope': 'verbatim-acts',
+  // §13.292. The same control, and the same argument: this is `verbatim-acts` with a third line on the
+  // act rule, so the difference from the adopted arm is the line and nothing else. Naming
+  // `verbatim-scope` would price this ask against a *rejected* bound and put an addition and a
+  // subtraction in one field, which is the one thing a single-variable run cannot survive.
+  'verbatim-clock': 'verbatim-acts',
 };
 
 /**
@@ -505,6 +515,9 @@ export const ASK_CHANGES: Record<EvidenceAsk, readonly string[]> = {
   // §13.291. The same single route, for the same reason: the added line is inside the block the
   // multi-session route alone reads.
   'verbatim-scope': ['multi-session'],
+  // §13.292. The same single route, for the same reason: the third line of the act rule is inside the
+  // block the multi-session route alone reads, and every other route delegates to `verbatim-acts`.
+  'verbatim-clock': ['multi-session'],
 };
 
 /**
@@ -606,7 +619,8 @@ export type EvidenceAsk =
   | 'candidates'
   | 'verbatim'
   | 'verbatim-acts'
-  | 'verbatim-scope';
+  | 'verbatim-scope'
+  | 'verbatim-clock';
 
 /**
  * Per-turn relevance: the score that decides which turns the budget is spent on.
@@ -1962,6 +1976,92 @@ const VERBATIM_SCOPE_MULTI_SESSION_INSTRUCTION = replaceLine(
 );
 
 /**
+ * The act rule's other clock: a turn's date is not the event's date — §13.292.
+ *
+ * ## What the shipped arm's own artifact says, read to the question
+ *
+ * `45543010618` is the adopted arm (93.50% at two repetitions) and its merged artifact is the first
+ * full-width reading of it: 500 of 500 questions, two repetitions, `MR` 108 of 121. Of the route's
+ * **thirteen** failures, **nine carry every gold turn** (`goldOverlap.carried` equals `total`) and the
+ * four that do not are short by 1, 1, 2 and 5 turns — `gpt4_7fce9456` 29 of 30, `3a704032` 17 of 18,
+ * `a1cc6108` 8 of 10, `gpt4_ab202e7f` 25 of 30. So this is at most a one-turn delivery shortfall and
+ * no ranking change reaches it: the reader had the answer in front of it and took a decision the gold
+ * does not take.
+ *
+ * The decision has a name in the replies. A census over all 121 `MR` records, bucketing every
+ * `excluded` line by the reason it states:
+ *
+ * | replies | correct | accuracy |
+ * | --- | ---: | ---: |
+ * | exclude **nothing** (49) | 47 | **95.9%** |
+ * | exclude something (72) | 61 | **84.7%** |
+ * | cite a period or a date (50) | 42 | 84.0% |
+ * | cite a verb or a wording (9) | 6 | 66.7% |
+ *
+ * Eight of the thirteen failures cite a date or a period as the reason they dropped an item. Three of
+ * those were read to the gold turn by hand, and every one of them is the same arithmetic:
+ *
+ * | question | gold | the reply's stated exclusion | what it lost |
+ * | --- | --- | --- | --- |
+ * | `3a704032` | `3` | snake plant *"received last month, which points to the prior calendar month"* | the third plant |
+ * | `gpt4_731e37d7` | `$720` | two workshops *"outside last four months"* from a `2023/02/26` question | the `$500` |
+ * | `37f165cf` | `856` | both novels *"finished in May, not January or March"* | `440 + 416` |
+ *
+ * The gold counts all three. `$200 + $20 + $500 = $720` and `440 + 416 = 856` close without any
+ * interpretation, and the plant the reply called *"prior calendar month"* is the one the evidence dates
+ * *"last month"* — the period the question names. So the annotation's clock is the **mention's** clock
+ * and never the turn's: the corpus's session dates are synthetic and a reader that reconciles the
+ * question's time words against them loses items the gold counts.
+ *
+ * ## Why the inverse, and why it is measured in both directions
+ *
+ * `verbatim-scope` (§13.291) added the opposite line — *the act must fall inside the period the question
+ * names* — and `S17` read **98 of 121 against the control's 102**, two conversions against six
+ * regressions, exact McNemar p = 0.070. One of the six regressions is `3a704032`, the first row of the
+ * table above. The axis therefore has a price at both ends: a bound on the period costs four questions,
+ * and that is the only reason a *prohibition* of the bound is worth buying rather than merely plausible.
+ *
+ * ## What keeps it from being a licence to count everything
+ *
+ * The line is a **third** line of the act rule, not a replacement of it. `ACT_RULE_LINES` still requires
+ * that the evidence describe the speaker doing the act and still allows an exclusion when the act is
+ * missing or is a different kind; what the new line removes is a clock the evidence does not keep. The
+ * mention's own words may still place an item outside the period, which is the bound the four
+ * over-counting failures in §13.290's table need: `gpt4_2f8be40d`'s extra weddings and `gpt4_7fce9456`'s
+ * extra property are wrong for act and duplicate reasons, not for a period one, and neither reply
+ * invokes a turn date.
+ *
+ * A period therefore says **what to look for**. That is also the honest reading of the arm's own
+ * question set: on `MR`'s 121 questions there is no failure in which the gold excludes an item the
+ * evidence describes because of the *session* date — which is what a rule stated over the mention's
+ * words can be checked against, and what the next artifact's exclusion census tests.
+ */
+const CLOCK_LINE =
+  '  - A turn is dated by when it was said, not by when the thing happened, so that date is never a reason to exclude: an item leaves the list because the evidence does not describe the speaker doing what the question names, or describes something the question does not name, or because the mention\'s own words place it outside the period -- not because the turn that reports it is dated outside that period, and not because the question\'s "last month" cannot be reconciled with that date. A period says what to look for; a mention that describes the act counts even when the arithmetic of dates says otherwise.';
+
+/**
+ * The act rule with its clock claim: three lines, in the order a reader applies them.
+ *
+ * Built by replacing the reference block's substitution line with the **whole** group, which is the
+ * shape `verbatim-scope` already uses and for a reason this file paid for once: the act rule is one
+ * group of two lines, and a replacement anchored on the first of them leaves the second behind, so a
+ * two-line rule with a third line appended becomes a rule with a duplicated sentence. The group is
+ * therefore written whole in one place.
+ *
+ * What that makes *checkable* rather than structural is the single claim this ask makes — that it is
+ * `verbatim-acts` plus one line — and `ask-verbatim-clock.test.ts` asserts it as a diff (nothing
+ * removed, exactly one line added, order preserved) instead of trusting the construction.
+ */
+const CLOCK_RULE_LINES: readonly string[] = [...ACT_RULE_LINES, CLOCK_LINE];
+
+/** The multi-session block under `verbatim-clock`: the act rule with its clock claim, in one group. */
+const VERBATIM_CLOCK_MULTI_SESSION_INSTRUCTION = replaceLine(
+  VERBATIM_MULTI_SESSION_INSTRUCTION,
+  SUBSTITUTION_RULE_PREFIX,
+  CLOCK_RULE_LINES,
+);
+
+/**
  * The reply shape the flat route never had — §13.124.
  *
  * ## Why a shape and not a length
@@ -2260,6 +2360,9 @@ export const ASK_CHANGES_WHEN_DERIVATION: Partial<Record<EvidenceAsk, readonly s
   // §13.291. Empty for the same reason as `verbatim-acts`: a derivation question keeps the adopted
   // `operands` block, so neither the substitution line nor the bound is in its prompt.
   'verbatim-scope': [],
+  // §13.292. Empty for the same reason: the clock line is a third line of the act rule, and a
+  // derivation question reads the adopted `operands` block, where that rule is not present.
+  'verbatim-clock': [],
 };
 
 /**
@@ -2441,6 +2544,17 @@ function instructionsFor(
     // §13.104, §13.124, §13.132, §13.205 and §13.246 each record from a different direction.
     if (scope === 'multi-session' && contract === 'extractive' && shape !== 'derivation') {
       return VERBATIM_SCOPE_MULTI_SESSION_INSTRUCTION;
+    }
+    return instructionsFor(contract, date, 'verbatim-acts', scope, shape);
+  }
+  if (ask === 'verbatim-clock') {
+    // §13.292. `verbatim-acts`' reach and `verbatim-acts`' delegation, one line more on the route that
+    // reads the act rule. Written out for the reason the branch above is: the control is
+    // `verbatim-acts` and not `own`, and a fallthrough returning `own` would hand five of six routes the
+    // shipped block instead of the control's -- the defect §13.104, §13.124, §13.132, §13.205 and
+    // §13.246 each record from a different direction.
+    if (scope === 'multi-session' && contract === 'extractive' && shape !== 'derivation') {
+      return VERBATIM_CLOCK_MULTI_SESSION_INSTRUCTION;
     }
     return instructionsFor(contract, date, 'verbatim-acts', scope, shape);
   }

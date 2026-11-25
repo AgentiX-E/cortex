@@ -157,3 +157,14 @@ node tools/paired-delta-census.mjs ... --json > reader-axis-paired.json
 The tool refuses a pair whose `dataset`, `questionCount` or id set differ, because an intersection is the
 quantity that makes two populations print one table. It is wired into `pnpm check` as `guard:paired-delta`, on
 its self-test only — a guard that needs a 15 MB artifact is a guard that runs nowhere.
+
+## 6. The recommendation this document made, checked against the arm that ships
+
+§4 closed on a step: change the `Step N` heading the contract asks for, because replies that copy it instead of
+instantiating it are wrong twice as often. That reading was taken on `enumerated`. The adopted arm reads
+`verbatim-acts`, whose multi-session `Step 1` is a different sentence, and over shard 0's 63 replies **none** of
+either sentence appears: readers write `Step 1:` bare or their own heading. The discriminant's prevalence on the
+shipped configuration is zero, so the step had no population to move and `RETRACTIONS.md` §27 retires it as a
+recommendation while keeping the reading. `AUDIT-EXCLUSION-CENSUS.md` picks the axis up from the artefact the
+adopted arm actually produces.
+
