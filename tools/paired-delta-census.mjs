@@ -24,6 +24,21 @@
  * quantity that makes "500 questions" and "492 questions" print the same table, and this repository has retracted
  * that shape more than once.
  *
+ * A pair whose **arms** differ is not a pair either, and that rule is newer than the table it guards.
+ * `S8`'s first dispatch is the precedent: `44835820692` compared a control (`44829684980`) at
+ * `multi-session:62000` against a treatment at `48,460` and had to be re-derived through a third arm that read
+ * neither, because the delta mixed the ask with the room. The same shape reappeared on `45636994046`, where a
+ * clock-axis prompt was dispatched through `benchmark-cortex-memory.yml` while `CORTEX_MEMORY_RESOLUTION` fell
+ * back to its `vars.` default of `raw`, and the comparison against the *shipped* arm (`layered`) read **-6
+ * questions** that belonged to the resolution. The population rule could not see it: both sides carried 121
+ * `MR` questions and the same ids.
+ *
+ * So every field of `memoryArmConfig` is compared, and a difference is refused **unless the command line
+ * declares it** (`--allow-arm-drift ask`). The declaration is not a formality: it is the sentence "these two
+ * artifacts differ in this field and nothing else", printed with the table so the reading cannot be quoted
+ * without it. Two classes are exempt from the comparison and named below, because they differ between two runs
+ * of one configuration by construction.
+ *
  * ## Why the classifier is imported rather than re-implemented
  *
  * `classifyReply` is the product's own reading of a reply. A copy here would be a second scorer, and the first
@@ -41,6 +56,78 @@ import { classifyReply } from '../packages/cortex-memory/dist/reply-repair.js';
 
 /** The capability order every table in this repository prints in. */
 const CAPABILITIES = ['IE', 'MR', 'KU', 'TR', 'ABS'];
+
+/**
+ * The arm fields a pair may differ in without the difference meaning anything.
+ *
+ * Two kinds, and both were learned from artifacts rather than guessed:
+ *
+ * - `census` fields are counted **after** the questions were answered, so two runs of one configuration
+ *   disagree there by design. `admission.mean` is `0.5` in both arms of `45543010618` and its `candidates`
+ *   count is not -- one is a floor, the other is how much the floor let through. Refusing on it would make the
+ *   gate fire on every honest pair, and a gate that always fires is a gate somebody turns off.
+ * - `derived` fields are a function of a declared one, so comparing them would report a **second** violation for
+ *   one cause. `askRoutes` is `ASK_ROUTES[ask]`, and a pair that declared `ask` has already said what moved.
+ *
+ * Anything else -- a model, a width, a room, a rendering, a gate -- is a different experiment when it differs.
+ */
+const ARM_CENSUS = new Set([
+  'admission',
+  'censusKeys',
+  'effectivePromptChars',
+  'goldAccount',
+  'selfIndex',
+]);
+const ARM_DERIVED = new Set(['askRoutes']);
+
+/** A value two artifacts can be compared on, with object keys ordered so a key order is not a drift. */
+function canonical(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+    .join(',')}}`;
+}
+
+/**
+ * Every field of `memoryArmConfig` the two artifacts disagree about, minus the exempt and the declared.
+ *
+ * An artifact that carries no `memoryArmConfig` is not compared and the table says so (`compared: false`): the
+ * pre-`S9` artifacts genuinely have none, and inventing an equality for them is the defect this whole directory
+ * is written against. What it must not do is print *"arms equal"*, which is why the value is a tri-state.
+ */
+function armDrift(control, treatment) {
+  const left = control.report.memoryArmConfig;
+  const right = treatment.report.memoryArmConfig;
+  if (left === undefined || right === undefined || left === null || right === null) {
+    return { compared: false, fields: [] };
+  }
+  const declared = control.allowArmDrift ?? new Set();
+  const names = new Set([...Object.keys(left), ...Object.keys(right)]);
+  const fields = [];
+  for (const field of [...names].sort()) {
+    if (ARM_CENSUS.has(field) || ARM_DERIVED.has(field) || declared.has(field)) continue;
+    const a = canonical(left[field]);
+    const b = canonical(right[field]);
+    if (a !== b) fields.push({ field, control: a, treatment: b, declared: false });
+  }
+  return { compared: true, fields };
+}
+
+/** The arm fields the two artifacts differ in **because the command line said they would**. */
+function declaredDrift(control, treatment) {
+  const left = control.report.memoryArmConfig ?? {};
+  const right = treatment.report.memoryArmConfig ?? {};
+  const declared = control.allowArmDrift ?? new Set();
+  return [...declared]
+    .sort()
+    .map((field) => ({
+      field,
+      control: canonical(left[field]),
+      treatment: canonical(right[field]),
+    }));
+}
 
 /**
  * The reply kinds a lost or gained question is split into.
@@ -132,13 +219,50 @@ const DISCRIMINANTS = { 'heading-instantiation': uninstantiatedHeading };
  * refused on: a reader of *"questionCount differs"* cannot tell whether the two artifacts disagree about a
  * dispatch or about a filter.
  */
-function index(report, label, capability) {
+function index(report, label, capability, allowArmDrift, side) {
   const all = Array.isArray(report.questions) ? report.questions : [];
-  const records =
+  const scoped =
     capability === undefined ? all : all.filter((record) => record.capability === capability);
+  const records = side === 'baseline' ? baselineRecords(report, all, scoped) : scoped;
   const byId = new Map();
   for (const record of records) byId.set(record.questionId, record);
-  return { label, report, records, byId, scope: capability };
+  return { label, report, records, byId, scope: capability, allowArmDrift, side };
+}
+
+/**
+ * One artifact's **baseline** side, as records a reading can pair.
+ *
+ * ## Why this exists rather than a script in a shell history
+ *
+ * A paired artifact spells its *feature* side's configuration and stores the baseline side's verdicts only
+ * (`ablation.baselineCorrectByRun`), so the ordinary way to read a control that a pairing already ran was a
+ * throwaway script. That is the defect this directory is written against: the reading that retired the clock axis
+ * (`PREREG-CLOCK-AXIS.md` §6) was taken by one, and a number whose instrument lives in a shell history is a number
+ * nobody can re-derive.
+ *
+ * The vector is **positional over the artifact's own `questions`**, so the index is taken from the unscoped array
+ * and a length disagreement is a refusal rather than an off-by-one. Replies are not stored for this side, which
+ * the caller can see: `rawOutput` is `null`, and the only table that reads replies is the treatment's.
+ */
+function baselineRecords(report, all, scoped) {
+  const vector = report?.ablation?.baselineCorrectByRun?.[0];
+  if (typeof vector !== 'string') {
+    throw new Refusal(
+      'the artifact stores no baseline verdict vector, so its control side cannot be read',
+    );
+  }
+  if (vector.length !== all.length) {
+    throw new Refusal(
+      `baseline vector is ${vector.length} verdicts for ${all.length} questions; the vector is positional and ` +
+        'an unequal length is a pairing that would be off by an unknown number of questions',
+    );
+  }
+  const position = new Map(all.map((record, at) => [record.questionId, at]));
+  return scoped.map((record) => ({
+    ...record,
+    correct: vector[position.get(record.questionId)] === '1',
+    rawOutput: null,
+  }));
 }
 
 /**
@@ -160,6 +284,17 @@ function pair(control, treatment) {
   if (control.report.dataset !== treatment.report.dataset) {
     throw new Refusal(
       `dataset differs: ${control.report.dataset} against ${treatment.report.dataset}`,
+    );
+  }
+  const drift = armDrift(control, treatment);
+  if (drift.fields.length > 0) {
+    const named = drift.fields
+      .map((entry) => `${entry.field} ${entry.control} against ${entry.treatment}`)
+      .join('; ');
+    throw new Refusal(
+      `arm differs in ${drift.fields.length} field(s): ${named}. A pair is one mechanism, so declare the ` +
+        'difference the run was dispatched for (`--allow-arm-drift field[,field]`) or pair the like with the ' +
+        'like; a table over two changes answers neither',
     );
   }
   for (const side of [control, treatment]) {
@@ -247,9 +382,36 @@ function ratio(numerator, denominator) {
 
 function render(control, treatment, ids, censusResult, options) {
   const lines = [];
-  lines.push(`control   ${control.label}  (${control.records.length} questions)`);
+  lines.push(
+    control.side === 'baseline'
+      ? `control   ${control.label}  (${control.records.length} questions, BASELINE side: verdicts from ` +
+          '`ablation.baselineCorrectByRun[0]`, replies not stored)'
+      : `control   ${control.label}  (${control.records.length} questions)`,
+  );
   lines.push(`treatment ${treatment.label}  (${treatment.records.length} questions)`);
   lines.push(`paired    ${ids.length}`);
+  const drift = armDrift(control, treatment);
+  if (drift.compared) {
+    const declared = declaredDrift(control, treatment);
+    lines.push(
+      declared.length === 0
+        ? 'arm       equal on every field outside the census and the derived'
+        : `arm       differs only where declared: ${declared
+            .map((entry) => `${entry.field} ${entry.control} -> ${entry.treatment}`)
+            .join(', ')}`,
+    );
+    if (control.side === 'baseline') {
+      // The artifact spells its FEATURE side's configuration, so a declared field whose value came from the
+      // pairing reads inverted here. Said out loud rather than left for a reader to notice, because the line
+      // above is otherwise a claim about an arm this table is not reading.
+      lines.push(
+        '          ...but the control is the BASELINE side, so every field the pairing owns is its feature ' +
+          "side's inverse: `resolution` above is the pairing's control, not the arm this table pairs",
+      );
+    }
+  } else {
+    lines.push('arm       not comparable (an artifact carries no memoryArmConfig)');
+  }
   lines.push('');
   lines.push('| capability |    n | lost | gained | both | neither | net |');
   lines.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
@@ -301,8 +463,8 @@ function render(control, treatment, ids, censusResult, options) {
   return lines.join('\n');
 }
 
-function load(path, label, capability) {
-  return index(JSON.parse(readFileSync(path, 'utf8')), label, capability);
+function load(path, label, capability, allowArmDrift, side) {
+  return index(JSON.parse(readFileSync(path, 'utf8')), label, capability, allowArmDrift, side);
 }
 
 function main(argv) {
@@ -313,6 +475,8 @@ function main(argv) {
   const positional = [];
   let discriminant;
   let capability;
+  let allowArmDrift;
+  let controlSide;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--discriminant') {
@@ -321,6 +485,25 @@ function main(argv) {
     }
     if (argument === '--capability') {
       capability = argv[(index += 1)];
+      continue;
+    }
+    if (argument === '--control-side') {
+      const value = argv[(index += 1)];
+      if (value !== 'feature' && value !== 'baseline') {
+        process.stderr.write(`refused: unknown control side ${JSON.stringify(value)}\n`);
+        return 1;
+      }
+      controlSide = value;
+      continue;
+    }
+    if (argument === '--allow-arm-drift') {
+      const value = argv[(index += 1)] ?? '';
+      allowArmDrift = new Set(
+        value
+          .split(',')
+          .map((field) => field.trim())
+          .filter((field) => field.length > 0),
+      );
       continue;
     }
     if (argument.startsWith('--')) continue;
@@ -333,14 +516,17 @@ function main(argv) {
   if (positional.length !== 2) {
     process.stderr.write(
       'usage: paired-delta-census.mjs <control.json> <treatment.json> [--capability <NAME>] ' +
+        '[--control-side baseline|feature] [--allow-arm-drift <field[,field]>] ' +
         '[--discriminant <name>] [--json]\n',
     );
     return 1;
   }
-  const control = load(positional[0], 'control', capability);
-  const treatment = load(positional[1], 'treatment', capability);
   let ids;
+  let control;
+  let treatment;
   try {
+    control = load(positional[0], 'control', capability, allowArmDrift, controlSide);
+    treatment = load(positional[1], 'treatment', capability, allowArmDrift, undefined);
     ids = pair(control, treatment);
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
@@ -351,6 +537,10 @@ function main(argv) {
   if (argv.includes('--json')) {
     const payload = {
       paired: ids.length,
+      armDrift: {
+        compared: armDrift(control, treatment).compared,
+        declared: declaredDrift(control, treatment),
+      },
       lost: counted.lost,
       gained: counted.gained,
       byCapability: Object.fromEntries(counted.rows),
@@ -396,10 +586,26 @@ function selfTest() {
     rawOutput,
     question,
   });
+  /**
+   * The arm both fixture sides carry.
+   *
+   * Small on purpose: the gate compares every key it is given, so a fixture that spelled all thirty-eight would
+   * be a second copy of `arm-config-baseline.json` and the first time the two disagreed this test would be
+   * testing the copy. The keys here are the two the drift cases below move, plus one of each exempt class.
+   */
+  const arm = (overrides = {}) => ({
+    ask: 'verbatim-acts',
+    askRoutes: ['multi-session'],
+    admission: { candidates: 10, admitted: 10 },
+    resolution: 'layered',
+    maxTurnChars: 400,
+    ...overrides,
+  });
   const control = index(
     {
       dataset: 'fixture',
       questionCount: 7,
+      memoryArmConfig: arm(),
       questions: [
         record('q1', 'MR', true, 'Step 1 - list every item matching what I bought\n- one\n\n4'),
         record('q2', 'MR', false, 'INSUFFICIENT_EVIDENCE'),
@@ -416,6 +622,7 @@ function selfTest() {
     {
       dataset: 'fixture',
       questionCount: 7,
+      memoryArmConfig: arm(),
       questions: [
         record('q1', 'MR', false, 'INSUFFICIENT_EVIDENCE'),
         record('q2', 'MR', true, '4'),
@@ -551,6 +758,174 @@ function selfTest() {
     /carries no question for capability ZZ/.test(emptyRefusal.message),
     true,
     'and says which side',
+  );
+
+  // -- the arm gate ----------------------------------------------------------------------------------------
+  //
+  // The reading that motivated it: a 121-question clock-axis artifact was paired against the shipped arm and the
+  // table printed -6 questions, every one of which belonged to `resolution: layered -> raw`. The population rule
+  // passed, because both sides held the same 121 ids and the same dataset. Nothing in the table could say the
+  // configuration had moved, so the number was quoted as if the ask had moved it.
+  const withArm = (overrides) =>
+    index(
+      {
+        dataset: 'fixture',
+        questionCount: 7,
+        memoryArmConfig: arm(overrides),
+        questions: control.records,
+      },
+      'treatment',
+    );
+  assertEqual(pair(control, withArm({})).length, 7, 'equal arms pair');
+  assertEqual(
+    armDrift(control, withArm({})).fields.length,
+    0,
+    'and the gate finds nothing to refuse',
+  );
+  let censusOnly = null;
+  try {
+    censusOnly = pair(
+      control,
+      withArm({ admission: { candidates: 999, admitted: 999 }, selfIndex: { indexes: 3 } }),
+    );
+  } catch (error) {
+    censusOnly = error;
+  }
+  assertEqual(
+    Array.isArray(censusOnly) && censusOnly.length === 7,
+    true,
+    'a census difference is not a drift: two runs of one configuration disagree there by design',
+  );
+  let derivedOnly = null;
+  try {
+    derivedOnly = pair(control, withArm({ askRoutes: ['multi-session', 'flat'] }));
+  } catch (error) {
+    derivedOnly = error;
+  }
+  assertEqual(
+    Array.isArray(derivedOnly) && derivedOnly.length === 7,
+    true,
+    'a derived difference is not a drift, or one cause would be reported twice',
+  );
+  let armRefusal = null;
+  try {
+    pair(control, withArm({ resolution: 'raw' }));
+  } catch (error) {
+    armRefusal = error;
+  }
+  assertEqual(armRefusal instanceof Refusal, true, 'an undeclared arm difference is refused');
+  assertEqual(
+    /arm differs in 1 field\(s\): resolution "layered" against "raw"/.test(armRefusal.message),
+    true,
+    'and the refusal names the field and both values',
+  );
+  assertEqual(
+    /--allow-arm-drift/.test(armRefusal.message),
+    true,
+    'and says how to declare it, because a refusal with no path forward is a wall',
+  );
+  const declaredPair = index(
+    { dataset: 'fixture', questionCount: 7, memoryArmConfig: arm(), questions: control.records },
+    'control',
+    undefined,
+    new Set(['ask']),
+  );
+  const declaredOther = index(
+    {
+      dataset: 'fixture',
+      questionCount: 7,
+      memoryArmConfig: arm({ ask: 'verbatim-clock' }),
+      questions: control.records,
+    },
+    'treatment',
+    undefined,
+    new Set(['ask']),
+  );
+  assertEqual(pair(declaredPair, declaredOther).length, 7, 'a declared difference pairs');
+  assertEqual(
+    declaredDrift(declaredPair, declaredOther)[0].field,
+    'ask',
+    'and the declaration is what the table prints',
+  );
+  assertEqual(
+    /"verbatim-acts" -> "verbatim-clock"/.test(
+      declaredDrift(declaredPair, declaredOther)
+        .map((entry) => `${entry.control} -> ${entry.treatment}`)
+        .join(),
+    ),
+    true,
+    'with both values, so the reading cannot be quoted without them',
+  );
+  const noArm = index({ dataset: 'fixture', questionCount: 7, questions: control.records }, 'old');
+  assertEqual(
+    armDrift(noArm, withArm({ resolution: 'raw' })).compared,
+    false,
+    'an artifact with no memoryArmConfig is not compared rather than assumed equal',
+  );
+  assertEqual(pair(noArm, withArm({ resolution: 'raw' })).length, 7, 'and it still pairs');
+
+  // -- the baseline side -----------------------------------------------------------------------------------
+  //
+  // A paired artifact stores the control side's verdicts only. Reading it used to be a throwaway script, which is
+  // how the reading in `PREREG-CLOCK-AXIS.md` §6 was taken and why it could not be re-derived. The vector is
+  // positional, so both its content and its length are asserted here.
+  const pairedReport = {
+    dataset: 'fixture',
+    questionCount: 7,
+    memoryArmConfig: arm(),
+    questions: control.records,
+    // Deliberately the INVERSE of the fixture's own `correct` flags on q1 and q2, so a reader that kept them
+    // instead of reading the vector would pass a `true` where the vector says `false`.
+    ablation: { baselineCorrectByRun: ['0100000', '0100000'] },
+  };
+  const fromBaseline = index(pairedReport, 'control', undefined, undefined, 'baseline');
+  assertEqual(fromBaseline.records[0].correct, false, 'the vector decides the baseline verdict');
+  assertEqual(fromBaseline.records[1].correct, true, 'and it is read by position, not by luck');
+  assertEqual(fromBaseline.records[0].rawOutput, null, 'the control side stores no replies');
+  assertEqual(fromBaseline.records.length, 7, 'and every question is carried');
+  let vectorRefusal = null;
+  try {
+    index(
+      { ...pairedReport, ablation: { baselineCorrectByRun: ['100000'] } },
+      'control',
+      undefined,
+      undefined,
+      'baseline',
+    );
+  } catch (error) {
+    vectorRefusal = error;
+  }
+  assertEqual(vectorRefusal instanceof Refusal, true, 'a short vector is refused');
+  assertEqual(
+    /positional/.test(vectorRefusal.message),
+    true,
+    'and the refusal says why a length matters',
+  );
+  let noVectorRefusal = null;
+  try {
+    index(
+      { dataset: 'fixture', questionCount: 7, questions: control.records },
+      'control',
+      undefined,
+      undefined,
+      'baseline',
+    );
+  } catch (error) {
+    noVectorRefusal = error;
+  }
+  assertEqual(noVectorRefusal instanceof Refusal, true, 'an artifact with no vector is refused');
+  // The scoped read: the vector stays positional over the whole artifact while the records are narrowed.
+  const scopedBaseline = index(pairedReport, 'control', 'MR', undefined, 'baseline');
+  assertEqual(scopedBaseline.records.length, 2, 'the capability narrows the baseline side too');
+  assertEqual(
+    scopedBaseline.records[0].correct,
+    false,
+    'and the verdict still comes from the question own position',
+  );
+  assertEqual(
+    scopedBaseline.records[1].correct,
+    true,
+    'including for the second scoped record, whose position is one further down the vector',
   );
 
   process.stdout.write('paired-delta-census: self-test ok\n');

@@ -287,3 +287,177 @@ describe('every gate is attached to the event it is supposed to guard', () => {
     expect(text).toMatch(/if:\s*always\(\)/);
   });
 });
+
+/**
+ * An arm variable the harness can read and no dispatch can set is an axis nobody can price.
+ *
+ * The defect this block exists for was measured. `45636994046` dispatched the ask axis through
+ * `benchmark-cortex-memory.yml`, which wires `CORTEX_MEMORY_RESOLUTION` to a **repository setting** with a
+ * `'raw'` fallback, because the workflow sits at 24 of GitHub's 25 dispatch inputs and this suite forbids the
+ * ceiling. The run therefore rendered the control arm; the comparison against the archived arm charged the ask
+ * with the rendering; and the table read `-4.96` points on `MR` for a change worth `+0.83`.
+ *
+ * The coupling, the fallback and the absence of an input were each visible in a file. Nothing compared them, and
+ * the count is the finding: **twelve of the arm's twenty-nine variables cannot be moved by a dispatch payload**
+ * -- ten ride repository settings and two ride a pairing -- so a dispatch that believes it moved one field is
+ * also moving whatever nine settings happen to say. That is not a documentation gap; it is the mechanism by
+ * which a run measures an arm it did not name.
+ *
+ * So the classification is derived from the workflows rather than written down here, and the table below has to
+ * agree with it in both directions: an axis that cannot be named needs a written reason, and a row whose axis
+ * becomes nameable is red until the row is deleted.
+ */
+describe('an arm variable is nameable from a dispatch or its gap is written down', () => {
+  const WORKFLOWS = ['benchmark-cortex-memory.yml', 'semantic-carry.yml'];
+
+  /** The variables `bench-memory-arm.ts` reads, from the source rather than from a copy of the list. */
+  function armVariables(): string[] {
+    const source = readFileSync(
+      resolve(REPO_ROOT, 'packages/cortex-eval/src/bench-memory-arm.ts'),
+      'utf8',
+    );
+    return [...source.matchAll(/const [A-Z_]+_VARIABLE = '(CORTEX_MEMORY_[A-Z_]+)';/g)].map(
+      (match) => match[1] as string,
+    );
+  }
+
+  /** Every `env:` line setting this variable, as `{ file, value }`, across the arm workflows. */
+  function wiring(variable: string): { file: string; value: string }[] {
+    const rows: { file: string; value: string }[] = [];
+    for (const file of WORKFLOWS) {
+      const text = readFileSync(resolve(REPO_ROOT, '.github/workflows', file), 'utf8');
+      for (const line of text.split('\n')) {
+        if (!new RegExp(`^\\s*${variable}:`).test(line)) continue;
+        rows.push({ file, value: line.replace(new RegExp(`^\\s*${variable}:\\s*`), '').trim() });
+      }
+    }
+    return rows;
+  }
+
+  /**
+   * How each variable reaches the harness, read off the files.
+   *
+   * Five classes rather than two, because they are five different claims:
+   *
+   * - `input` — a dispatch payload carries it. The only class a new experiment can move freely.
+   * - `setting` — a `vars.` lookup, i.e. a repository setting with a fallback baked into the workflow. Movable
+   *   without a code change and **not movable by a dispatch**, so it cannot appear in a dispatch's record of what
+   *   it changed.
+   * - `pairing` — an expression over `inputs.pairing`, so the two sides of one paired dispatch differ. A real
+   *   mechanism and still not a knob: it renders `layered` only *against* `raw`.
+   * - `literal` — the same constant in every workflow, so the file decides it and no run has ever varied it.
+   * - `unreachable` — none of the above, which is the state this test exists to refuse.
+   */
+  function classify(variable: string): { kind: string; where: string[] } {
+    const rows = wiring(variable);
+    if (rows.length === 0) return { kind: 'unreachable', where: [] };
+    const free = rows.filter((row) =>
+      /^\$\{\{\s*(?:github\.event\.inputs|inputs)\.[a-z0-9_]+\s*\}\}$/.test(row.value),
+    );
+    if (free.length > 0) return { kind: 'input', where: free.map((row) => row.file) };
+    const setting = rows.filter((row) => row.value.includes('vars.CORTEX_MEMORY'));
+    if (setting.length > 0) return { kind: 'setting', where: setting.map((row) => row.file) };
+    const pairing = rows.filter((row) => row.value.includes('inputs.pairing'));
+    if (pairing.length > 0) return { kind: 'pairing', where: pairing.map((row) => row.file) };
+    return { kind: 'literal', where: rows.map((row) => row.file) };
+  }
+
+  it('finds the variables the harness reads', () => {
+    // The regex is this block's only assumption about the source. A refactor to another declaration shape would
+    // empty the set, and an empty set passes every assertion below.
+    expect(armVariables().length).toBeGreaterThanOrEqual(25);
+    expect(armVariables()).toContain('CORTEX_MEMORY_ASK');
+    expect(armVariables()).toContain('CORTEX_MEMORY_RESOLUTION');
+  });
+
+  /**
+   * The twelve axes a dispatch payload cannot move, each with the reason it cannot.
+   *
+   * Ten are the price of the input ceiling: the workflow keeps `vars.` lookups so the value is still settable
+   * without editing YAML, which is the right trade and an incomplete record -- a run whose artifact says
+   * `conflicts=false` is reporting a repository setting as if it were a decision. Two are pairing axes, which is
+   * the design of `semantic-carry.yml` rather than a shortfall.
+   */
+  const HELD: Record<string, string> = {
+    CORTEX_MEMORY_THRESHOLD: 'settings; the admission floor rides `vars.` with a `0` fallback',
+    CORTEX_MEMORY_CONFIDENCE: 'settings; the value gate rides `vars.` with a `none` fallback',
+    CORTEX_MEMORY_ORACLE: 'settings; oracle evidence rides `vars.` with a `0` fallback',
+    CORTEX_MEMORY_REPLY_REPAIR: 'settings; the repair pass rides `vars.` with an `off` fallback',
+    CORTEX_MEMORY_CONFLICTS:
+      'settings; the KU conflict block rides `vars.` with no fallback at all',
+    CORTEX_MEMORY_SUPERSEDED:
+      'settings; the superseded rendering rides `vars.` with an `off` fallback',
+    CORTEX_MEMORY_INDEX_EMBEDDING:
+      'settings; the index embedding rides `vars.` with an `injected` fallback',
+    CORTEX_MEMORY_LEXICAL_WEIGHTING:
+      'settings; lexical weighting rides `vars.` with a `flat` fallback',
+    CORTEX_MEMORY_SESSION_CLOCK:
+      'settings and pairing; `vars.` in the A/B workflow, `pairing == clock` in carry',
+    CORTEX_MEMORY_RESOLUTION:
+      'settings and pairing; `vars.` with a `raw` fallback in the A/B workflow, `pairing == resolution` in ' +
+      'carry -- and `raw` is the control rendering, which is how a dispatch came to measure an arm it did not name',
+    CORTEX_MEMORY_SEMANTIC_CARRY: 'pairing; `pairing == carry` in the carry workflow',
+    CORTEX_MEMORY_EVIDENCE_TURNS: 'literal; `256` in all four workflows that set it',
+  };
+
+  it('has a written reason for every axis a dispatch cannot name', () => {
+    const held = armVariables()
+      .filter((variable) => classify(variable).kind !== 'input')
+      .sort();
+    expect(held).toEqual(Object.keys(HELD).sort());
+  });
+
+  it('drops a row as soon as its axis becomes nameable', () => {
+    // The other direction, and the one a table like this usually lacks: a stale exemption is a claim that a
+    // capability does not exist, and it survives exactly as long as nobody re-reads it.
+    const freed = armVariables().filter(
+      (variable) => classify(variable).kind === 'input' && Object.hasOwn(HELD, variable),
+    );
+    expect(freed).toEqual([]);
+  });
+
+  it('passes an input the workflow actually declares', () => {
+    // A passthrough naming an input the `on:` block does not declare renders as an empty string, which the
+    // harness reads as "not named" -- i.e. the control, silently, which is the same failure one level up.
+    const declared = (file: string): string[] => {
+      const text = readFileSync(resolve(REPO_ROOT, '.github/workflows', file), 'utf8');
+      const start = text.indexOf('\n    inputs:');
+      if (start === -1) return [];
+      return [...text.slice(start).matchAll(/\n {6}([a-z0-9_]+):\n/g)].map(
+        (match) => match[1] as string,
+      );
+    };
+    const missing: string[] = [];
+    for (const file of WORKFLOWS) {
+      for (const variable of armVariables()) {
+        for (const row of wiring(variable).filter((entry) => entry.file === file)) {
+          const match = /^\$\{\{\s*(?:github\.event\.inputs|inputs)\.([a-z0-9_]+)\s*\}\}$/.exec(
+            row.value,
+          );
+          if (match === null) continue;
+          if (!declared(file).includes(match[1] as string)) missing.push(`${file}:${variable}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it('records that no workflow prices an ask at the rendering that ships', () => {
+    // THE GAP THIS ROUND MEASURED. The arm that ships is `resolution=layered` with `ask=verbatim-acts`; the
+    // workflow that can move the ask falls back to `raw`, and the workflow that renders `layered` hardcodes
+    // `CORTEX_MEMORY_ASK: verbatim-acts` on one line. So every ask reading in the register is a reading of a
+    // configuration the product does not ship, and closing it needs an input the ceiling does not allow.
+    // Asserted as an ABSENCE on purpose: when the input exists this test is red, and the sentence above has to
+    // be rewritten rather than left standing.
+    const both = WORKFLOWS.filter(
+      (file) =>
+        wiring('CORTEX_MEMORY_ASK').some(
+          (row) =>
+            row.file === file &&
+            /^\$\{\{\s*(?:github\.event\.inputs|inputs)\.[a-z0-9_]+\s*\}\}$/.test(row.value),
+        ) && classify('CORTEX_MEMORY_RESOLUTION').kind === 'input',
+    );
+    expect(both).toEqual([]);
+    expect(wiring('CORTEX_MEMORY_ASK').map((row) => row.value)).toContain('verbatim-acts');
+  });
+});

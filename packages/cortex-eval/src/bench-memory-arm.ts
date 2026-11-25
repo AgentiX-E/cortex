@@ -1031,6 +1031,18 @@ const RESOLUTIONS: readonly string[] = ['raw', 'layered'];
  * It is also why the value is always projected rather than spread conditionally: `raw` is a state this
  * campaign dispatches as its control, so a run that spelled it and a run that predates the field must not be
  * the same bytes.
+ *
+ * ## What this constant cost, and why the refusal lives in the pairing tool
+ *
+ * `45636994046` dispatched the clock-axis ask through `benchmark-cortex-memory.yml`, named no resolution, and
+ * rendered this constant. Its artifact says `resolution=raw`, which is true; the archived arm it was compared
+ * against renders `layered`, which that artifact also says. Both files were honest and the **comparison** was
+ * not: it charged the ask with a rendering worth `+7` `MR` questions and recorded `-4.96` points for a change
+ * worth `+0.83`. This is exactly the case the paragraph above describes -- *"that run measures the control, and
+ * its artifact says `resolution=raw`, which is true"* -- and describing it was not enough, because the sentence a
+ * reading needs is not about one artifact but about the pair. `tools/paired-delta-census.mjs` now compares
+ * `memoryArmConfig` across two artifacts and refuses to print a table while they differ outside a declared axis,
+ * which is the one check a single run cannot perform on itself.
  */
 const DEFAULT_RESOLUTION = 'raw';
 

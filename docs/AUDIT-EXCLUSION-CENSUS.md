@@ -13,18 +13,18 @@ short by one to five — and the decision is narrow enough to name, price and re
 
 §193 read a reader-axis pair, found that a reply which copies the contract's generic `Step 1` heading is wrong
 twice as often as one that instantiates it, and recommended changing the heading. That reading was taken on
-`enumerated`, whose `Step 1` is the sentence *"list every item in the evidence that matches the question"* — a
+`enumerated`, whose `Step 1` is the sentence _"list every item in the evidence that matches the question"_ — a
 predicate over the answer that a reader can paste back.
 
 `enumerated` is **not** what the adopted arm reads. `45543010618` carries `ask: verbatim-acts`, whose multi-session
-`Step 1` is *"Enumerate every item matching the question's EXACT action, one per line"*. Over the 63 replies of
+`Step 1` is _"Enumerate every item matching the question's EXACT action, one per line"_. Over the 63 replies of
 shard 0:
 
 | literal from the instruction | replies containing it |
-| --- | ---: |
-| `EXACT action` | **0** |
-| `Enumerate every item` | **0** |
-| `substitute or infer` | **0** |
+| ---------------------------- | --------------------: |
+| `EXACT action`               |                 **0** |
+| `Enumerate every item`       |                 **0** |
+| `substitute or infer`        |                 **0** |
 
 and the headings readers actually write are `Step 1:` bare (7) or their own (`Step 1 — candidate feed purchases`,
 5), with 51 replies writing no `Step 1` line at all because four of the five other routes never receive that block.
@@ -59,14 +59,14 @@ because those artifacts predate `memoryArmConfig.censusKeys`.
 
 Per capability on the feature side, merged, first repetition (the mean over two repetitions is the 93.50 above):
 
-| capability | n | correct | accuracy | wrong | failures carrying **every** gold turn | gold turns carried by the failures |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `MR` | 121 | 108 | 89.26% | 13 | **9** | 249 / 258 (97%) |
-| `TR` | 127 | 122 | 96.06% | 5 | **0** | 59 / 77 (77%) |
-| `IE` | 150 | 141 | 94.00% | 9 | **0** | 53 / 110 (48%) |
-| `KU` | 72 | 65 | 90.28% | 7 | **0** | 83 / 162 (51%) |
-| `ABS` | 30 | 30 | 100.00% | 0 | — | — |
-| all | 500 | 466 | 93.20% | 34 | **9** | 444 / 607 (73%) |
+| capability |   n | correct | accuracy | wrong | failures carrying **every** gold turn | gold turns carried by the failures |
+| ---------- | --: | ------: | -------: | ----: | ------------------------------------: | ---------------------------------: |
+| `MR`       | 121 |     108 |   89.26% |    13 |                                 **9** |                    249 / 258 (97%) |
+| `TR`       | 127 |     122 |   96.06% |     5 |                                 **0** |                      59 / 77 (77%) |
+| `IE`       | 150 |     141 |   94.00% |     9 |                                 **0** |                     53 / 110 (48%) |
+| `KU`       |  72 |      65 |   90.28% |     7 |                                 **0** |                     83 / 162 (51%) |
+| `ABS`      |  30 |      30 |  100.00% |     0 |                                     — |                                  — |
+| all        | 500 |     466 |   93.20% |    34 |                                 **9** |                    444 / 607 (73%) |
 
 `goldOverlap.carried` against `goldOverlap.total` is the column that decides what kind of mechanism can pay, and it
 splits the five capabilities into two regimes that no single change can address:
@@ -123,8 +123,8 @@ Three readings, and the third is the one that decides:
   "last month," which points to the prior calendar month rather than the recent 30-day period
 ```
 
-The evidence line is *"my snake plant, which I got from my sister last month"*, and the question asks for *"the last
-month"*. The reply resolved the question's relative period against the session dates, landed on April, and dropped
+The evidence line is _"my snake plant, which I got from my sister last month"_, and the question asks for _"the last
+month"_. The reply resolved the question's relative period against the session dates, landed on April, and dropped
 the one item whose own words are the period the question names. The gold counts it.
 
 ### 3.2 `gpt4_731e37d7` — "How much total money did I spend on attending workshops in the last four months?" (gold `$720`, answered `$220`)
@@ -134,7 +134,7 @@ the one item whose own words are the period the question names. The gold counts 
 - Workshop with Jane (Mar 22) | ... | 2023/02/26 — outside last four months; no cost stated.
 ```
 
-*"Mar 15–16"* is a date the **evidence** states, in a session dated `2023/02/26` — before it. The reply applied the
+_"Mar 15–16"_ is a date the **evidence** states, in a session dated `2023/02/26` — before it. The reply applied the
 question's window to the session date, called a future-dated mention "outside", and lost the `$500` the mention
 names. `$200 + $20 + $500 = $720` closes on the gold exactly.
 
@@ -152,7 +152,7 @@ answer down and then declined because the session dates did not match the questi
 
 Every one is a **date** exclusion of an item the gold counts, and in every one the exclusion is settled by the
 **session's** date rather than by the mention's words. That is the axis `verbatim-scope` moved in the other
-direction: §13.291 added *"the act must fall inside the period the question names"*, `S17` read 98 of 121 against
+direction: §13.291 added _"the act must fall inside the period the question names"_, `S17` read 98 of 121 against
 the control's 102 (two conversions, six regressions, exact McNemar p = 0.070), and one of the six regressions is
 `3a704032` — the first reply above. The axis has a measured price at one end, which is why the other end is worth a
 dispatch.
@@ -160,7 +160,7 @@ dispatch.
 ## 4. What this does not say
 
 - **Not** that the four over-counting failures are dated. `gpt4_2f8be40d` counts one cousin's wedding twice,
-  `gpt4_7fce9456` counts *"fell in love with"* as a viewing, and `d851d5ba` sums *"the event raised over $5,000"*
+  `gpt4_7fce9456` counts _"fell in love with"_ as a viewing, and `d851d5ba` sums _"the event raised over $5,000"_
   into a total the gold bounds to the speaker. None of the three invokes a turn date, so a line about the clock
   cannot make them worse and is not expected to make them better.
 - **Not** that `TR`, `IE` and `KU` are close. Their twenty-one failures carry 77%, 48% and 51% of their gold
@@ -188,3 +188,21 @@ in CI, which is the same arrangement `guard:paired-delta` has.
 thing happened — at **¥5.87** (`MR` × 2 at the measured `0.0243 CNY` per question-run), with `C1`–`C4` and `R1`/`R3`
 stated before the dispatch and `C3`-passing-with-`R1`-failing written as the negative that closes the axis in both
 directions.
+
+## 7. The census above is a census of one arm, and the round that used it compared two
+
+Run `45636994046` was dispatched to move the `period` row and read, against the arm `45543010618` left on record,
+`period` **50 -> 53** replies (119 -> 135 lines) and the route's failures **13 -> 19**, of which `period` accounts
+for **8 -> 10**. That movement is not the line's: the dispatch ran `resolution=raw` and the archived arm renders
+`layered`, so every number in the comparison carries the rendering as well as the instruction. See
+`PREREG-CLOCK-AXIS.md` §6 for the like-for-like reading and `RETRACTIONS.md` §28 for the withdrawn conclusion.
+
+Two consequences for this instrument, and neither is a defect in it:
+
+- **§2's table is still valid** — it is a census of `45543010618`'s feature side, one arm, 500 answers, and
+  nothing in this round re-reads it.
+- **`C3` cannot be read like-for-like from an archived pair.** `tools/exclusion-census.mjs` reads `rawOutput`, and
+  an ablation artifact stores replies for its **feature** side only; the paired baseline side carries verdicts
+  (`baselineCorrectByRun`) and prompt lengths, not text. A census-based criterion therefore needs a second
+  dispatch of the control arm rather than the baseline half of a pairing — which is a price the criterion should
+  state when it is registered, not discover when it is read.

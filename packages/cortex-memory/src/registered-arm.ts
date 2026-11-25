@@ -26,16 +26,22 @@
  * ## What is here and what is deliberately not
  *
  * {@link REGISTERED_ARM} holds the fields the **product** decides: an option, a default, or a
- * rendering the published entry chooses. {@link REGISTERED_ARM_ELSEWHERE} holds the other fourteen
- * with the class each belongs to and why it cannot be compared — the partition `arm-config-record.py`
- * already imposes on the artifact side, applied here so that a field added to the artifact without a
- * decision is a **red build** rather than a silently uncompared row.
+ * rendering the published entry chooses. It once sat beside a second table holding the other
+ * fourteen fields with the class each belonged to and why it could not be compared — the partition
+ * `arm-config-record.py` already imposes on the artifact side, applied here so that a field added to
+ * the artifact without a decision is a **red build** rather than a silently uncompared row. That table
+ * is now empty and has been deleted: `assemble.ts` resolves every field the artifact records, so there
+ * is no uncompared row left to explain.
  *
- * The four classes are that tool's, not new vocabulary: `derived` (a function of a projected field,
- * so comparing it would report a second violation for one defect), `census` (counted after the
- * questions were answered, so two runs of one configuration disagree there by design), `identity`
- * (resolved at run time from an environment the artifact cannot see), and `constant` (fixed by the
- * workflow or a module default, so there is no second copy to disagree with).
+ * The four classes it used are still the tool's vocabulary, not new ones: `derived` (a function of a
+ * projected field, so comparing it would report a second violation for one defect), `census` (counted
+ * after the questions were answered, so two runs of one configuration disagree there by design),
+ * `identity` (resolved at run time from an environment the artifact cannot see), and `constant` (fixed
+ * by the workflow or a module default, so there is no second copy to disagree with).
+ *
+ * The first two are now the exemptions in `tools/paired-delta-census.mjs`, which is where a *pair* is
+ * compared rather than a single artifact: `45636994046` measured an ask against an arm whose rendering
+ * differed, and no artifact-level gate could have seen it.
  *
  * ## Why a constant in the product rather than a file it reads
  *
@@ -62,9 +68,8 @@ import { REGISTERED_ROOMS } from './rooms.js';
  *
  * Names are the artifact's, not the option's, and that is deliberate: the gate compares this object
  * against `memoryArmConfig` key by key, so a rename on either side is a compile-or-test failure
- * rather than a comparison that silently stops running. Where the product's spelling differs the
- * difference is stated in {@link REGISTERED_ARM_ELSEWHERE} or in {@link PROJECTED_ARM_FIELDS}, and
- * never absorbed by a synonym.
+ * rather than a comparison that silently stops running. Where the product's spelling differs from the
+ * artifact's, the difference is stated on the field it belongs to and never absorbed by a synonym.
  */
 export const REGISTERED_ARM = {
   /** §13.291/§13.318. `verbatim-acts` reaches `multi-session`, `flat`, `temporal` and `abstention`. */
