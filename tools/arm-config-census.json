@@ -1,0 +1,15 @@
+{
+  "why": "Fields `memoryArmConfig` can carry that are readings rather than configuration, for the two tools that compare one artifact's block against another's: `tools/merge-ablation.mjs` (do the shards of one dispatch agree?) and `tools/restore-classify.py` (did the configuration move between a source run and its counterfactual?). Both questions are about the configuration, and a field counted after the questions were answered answers a different one.",
+  "fold": [
+    "goldAccount",
+    "queryExpansionCounts",
+    "selfIndex",
+    "voteCounts"
+  ],
+  "drop": [
+    "admission"
+  ],
+  "foldMeans": "Every leaf is a count, a flag or an identity, so the values can be combined: numbers add, booleans AND, and anything two parts disagree on is recorded rather than resolved. `goldAccount` is folded although it is a string, because two shards of one dispatch can report different pools and the merged document has to say so instead of taking the first shard's word.",
+  "dropMeans": "Carries `min`/`max`/`mean`/`distinct`, which are not counts, so a sum of them is not a total of anything. Excluded from comparison and never combined; a tool that keeps a `notRecomputed` list should name it there so its absence is visible.",
+  "note": "This file exists because the list lived in three places and only one was edited. Run `45543010618` lost eight shards to `selfIndex` being a census in the arm and absent from `merge-ablation.mjs`'s map, and `restore-classify.py` would have refused to classify the same run as a counterfactual for the same reason. Artifacts written since that round also carry `memoryArmConfig.censusKeys`, which is the per-artifact statement of the same fact; the lists here are what the tools fall back to for archived artifacts, which cannot be re-serialised. `tools/__tests__/test_arm_config_baseline.py` asserts that every name in `fold` and `drop` is classified as a reading by `tools/arm-config-record.py`, the table that decides whether a field is a dispatch input at all."
+}

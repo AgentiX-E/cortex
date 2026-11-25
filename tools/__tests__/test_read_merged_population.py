@@ -724,7 +724,9 @@ def test_the_json_block_and_the_printed_block_are_one_verdict(tmp_path):
     """
     result = run(tmp_path, criteria_fixture(tokens=0.18), '--pairing', 'resolution', '--criteria-json', '1')
     assert result.returncode == 0, result.stderr
-    start = result.stdout.index('{\n "criteria"')
+    # The block's first key is `bill` since the replication's criteria joined it, so it is located as the
+    # first line that opens an object rather than by the name that happened to sort first.
+    start = result.stdout.rindex('\n{\n') + 1
     payload = json.loads(result.stdout[start:])
     report = payload['criteria']
     assert sorted(report) == ['G1', 'G2', 'G3', 'G4', 'G5']
@@ -750,3 +752,204 @@ def test_the_json_block_and_the_printed_block_are_one_verdict(tmp_path):
         'reason': 'the paired bill rose 0.18%; the absolute threshold belongs to the reference arm',
     }
     assert report['G3']['verdict'] == 'fail'
+
+
+# ---------------------------------------------------------------------------------------------------
+# `R1`-`R4`: the criteria the third replication was dispatched against, decided by the same script
+# ---------------------------------------------------------------------------------------------------
+
+def replication_fixture(
+    *,
+    mr=(5, 13),
+    other=(4, 6),
+    tokens=None,
+    usage=None,
+    capability='MR',
+    capabilities=('MR', 'TR'),
+):
+    """A population whose `resolution` criteria can each be checked by hand.
+
+    `mr` and `other` are `(b, c)` pairs -- questions the baseline got right and the feature did not,
+    and the reverse -- and the per-question means are built so that every discordant question lands
+    strictly on one side. The census is written in the shape `merge-ablation.mjs` emits: sums, with
+    `answerChars` ignored by the reader.
+    """
+    ids, rows = [], []
+    baseline_bits, feature_bits = [], []
+    for label, (down, up) in zip(capabilities, (mr, other)):
+        for side, count in (('down', down), ('up', up)):
+            for index in range(count):
+                ids.append(f'{label}-{side}-{index}#w2')
+                rows.append(
+                    {
+                        'questionId': ids[-1],
+                        'capability': label,
+                        'roleCensus': {'counts': {'user': 15}, 'unclassified': 0, 'total': 15},
+                        'promptChars': 38000,
+                        # The form split `G1` and `G4` read. Every question is a record here, so `G4`
+                        # has a population share to divide the gainers' by.
+                        'turnWindowCensus': census(record=15, excerpt=0, raw=0),
+                    }
+                )
+                baseline_bits.append('0' if side == 'up' else '1')
+                feature_bits.append('1' if side == 'up' else '0')
+    payload = {
+        'questionCount': len(ids),
+        'runs': 1,
+        'population': {'corpora': len(ids), 'windows': 1, 'marker': '#w'},
+        # The reader names the shard count on its first line, because a merged population and an
+        # unsharded artifact are different objects and a delta over 500 questions split eight ways is
+        # not a delta over a run that answered them in one process.
+        'merged': {'shards': 8},
+        'questions': rows,
+        'featureConfig': {'resolutionPair': True},
+        'ablation': {
+            'baselineCorrectByRun': [''.join(baseline_bits)],
+            'featureCorrectByRun': [''.join(feature_bits)],
+            # `F3`'s two medians, as the merge carries them: a per-question vector of role censuses and
+            # one of prompt sizes, both aligned with the roster.
+            'baselineRoleCensuses': [
+                {'counts': {'user': 10}, 'unclassified': 0, 'total': 10} for _ in ids
+            ],
+            'baselinePromptChars': [40000 for _ in ids],
+        },
+    }
+    if tokens is not None:
+        payload['tokens'] = {'prompt_per_answer': {'delta_pct': tokens}}
+    if usage is not None:
+        payload['usageBySide'] = usage
+    return payload
+
+
+def usage_census(calls=100, prompt=100000, hit=90000, completion=10000):
+    """One side's usage census, in the shape the artifact writes it.
+
+    Named `usage_census` rather than `census` because this file already has one of those, for the
+    turn-window split, and the second definition silently shadowed the first -- eight `G` tests went
+    red with `census() got an unexpected keyword argument 'record'`, which is what a name collision
+    looks like when both functions take keyword arguments.
+    """
+    return {
+        'calls': calls,
+        'unpricedCalls': 0,
+        'promptTokens': prompt,
+        'completionTokens': completion,
+        'cacheHitPromptTokens': hit,
+        'answerChars': 1000,
+        'truncatedCalls': 0,
+    }
+
+
+def test_r1_reads_the_capability_rather_than_the_population(tmp_path):
+    """`R1` is the sign on `MR`, and the whole-population sign is allowed to disagree with it.
+
+    The third replication's population moved `+10` up-down while `KU` moved `-2`: a script that read
+    `R1` off the population would call a mechanism that helps one capability and hurts another a
+    clean replication, and the retirement rule (three misses and the axis goes) would never fire.
+    """
+    result = run(tmp_path, replication_fixture(mr=(5, 13), other=(9, 1)), '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert 'R1 pass  the MR up-down is +8 (b=5 c=13)' in result.stdout
+
+    flipped = run(tmp_path, replication_fixture(mr=(13, 5), other=(1, 9)), '--pairing', 'resolution')
+    assert flipped.returncode == 0, flipped.stderr
+    assert 'R1 fail: the MR up-down is -8 (b=13 c=5)' in flipped.stdout
+    assert 'the axis retires' in flipped.stdout
+
+
+def test_r2_refuses_to_combine_with_a_dispatch_nobody_named(tmp_path):
+    """`unread` rather than a p-value, because the combination's provenance is the claim.
+
+    The fixture below is the third replication's arithmetic: `b=9 c=19` gives `p=0.0872` alone, which
+    does not clear 0.05; with `44915923906`'s `15/27` (`p=0.0884`) Fisher's method gives `0.0452`.
+    """
+    result = run(tmp_path, replication_fixture(), '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert 'R2 unread: this population alone gives p=' in result.stdout
+    assert 'R4 unread: R4 is `R2` and `R3`' in result.stdout
+
+    combined = run(
+        tmp_path,
+        replication_fixture(),
+        '--pairing',
+        'resolution',
+        '--prior-discordant',
+        '15,27',
+        '--prior-name',
+        '44915923906',
+    )
+    assert combined.returncode == 0, combined.stderr
+    assert 'R2 pass  Fisher with 44915923906: p=0.0452' in combined.stdout, (
+        'the combined p-value is the number the adoption decision quotes, so the arithmetic is pinned: '
+        'two tests at 0.0872 and 0.0884 combine to 0.0452 on four degrees of freedom'
+    )
+    assert 'independence assumption' in combined.stdout
+
+
+def test_a_prior_pair_that_is_not_two_numbers_is_refused(tmp_path):
+    result = run(
+        tmp_path, replication_fixture(), '--pairing', 'resolution', '--prior-discordant', '15;27'
+    )
+    assert result.returncode != 0
+    assert 'is not two whole numbers' in result.stderr
+
+
+def test_r3_reads_the_census_when_the_arm_wrote_no_ratio(tmp_path):
+    """The bill clause has to be readable on a sharded dispatch, which is every real dispatch.
+
+    `G5` says `unread` for all of them, correctly: the merge does not recompute `tokens`, and `S12`'s
+    shape is 500 questions split across jobs. `R3` reads the same clause off `usageBySide`, which the
+    merge *does* sum, and prints which of the two it used.
+    """
+    flat = {'baseline': usage_census(), 'feature': usage_census()}
+    result = run(tmp_path, replication_fixture(usage=flat), '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert 'R3 pass  the paired prompt bill moved +0.00% of +1.00% allowed [usageBySide]' in result.stdout
+    # `G5` still says it cannot read the arm's own field, and the two statements are about different
+    # sources rather than about different arithmetic.
+    assert 'G5 unread' in result.stdout
+
+    dearer = {
+        'baseline': usage_census(),
+        'feature': usage_census(calls=100, prompt=140000, hit=90000, completion=10000),
+    }
+    result = run(tmp_path, replication_fixture(usage=dearer), '--pairing', 'resolution')
+    assert result.returncode == 0, result.stderr
+    assert 'R3 fail: the paired prompt bill moved +40.00% of +1.00% allowed' in result.stdout
+    assert 'R4 not-taken' in result.stdout
+
+
+def test_r4_says_the_price_is_not_the_clause_it_cleared(tmp_path):
+    """The finding this round: a token ratio that stays flat while the cache empties.
+
+    The feature side below embeds the same number of prompt tokens and puts 2,148,498 of them outside
+    the provider's cache against the baseline's 228,105. `R3`'s registered clause is a token ratio and
+    passes; the price index is 1.55x. A script that printed only `R4 fired` would let the next round
+    quote this mechanism as free.
+    """
+    thrash = {
+        'baseline': usage_census(calls=1020, prompt=7362839, hit=7134734, completion=1158539),
+        'feature': usage_census(calls=1018, prompt=7353298, hit=5204800, completion=987930),
+    }
+    result = run(
+        tmp_path,
+        replication_fixture(mr=(5, 13), usage=thrash),
+        '--pairing',
+        'resolution',
+        '--prior-discordant',
+        '15,27',
+    )
+    assert result.returncode == 0, result.stderr
+    assert 'R3 pass  the paired prompt bill moved +0.07%' in result.stdout
+    assert 'the cache-adjusted price is 1.55x the baseline' in result.stdout
+    assert 'does not see' in result.stdout
+
+
+def test_a_capability_the_population_does_not_have_is_refused(tmp_path):
+    # An up-down of zero is what a mechanism that moved nothing and a flag that names nothing look
+    # like, and `R1` would read the second as the first.
+    result = run(
+        tmp_path, replication_fixture(capabilities=('TR',)), '--pairing', 'resolution', '--capability', 'MR'
+    )
+    assert result.returncode != 0
+    assert 'matches no question' in result.stderr

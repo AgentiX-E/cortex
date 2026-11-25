@@ -367,5 +367,49 @@ class TestTheConditionsAreClassifiedByTheTableThatComparesThem(unittest.TestCase
         self.assertEqual(tool.unclassified({"aValueNobodyDecided": 1}), ["aValueNobodyDecided"])
 
 
+class TestTheCensusListAnswersToOneTable(unittest.TestCase):
+    """`tools/arm-config-census.json` is read by two tools, and it is not allowed its own opinions.
+
+    `merge-ablation.mjs` and `restore-classify.py` both have to know which fields of a configuration
+    block are readings. They had separate answers -- a map in the JavaScript and no answer at all in
+    the Python -- and run `45543010618` lost eight shards to the difference. The list now lives in one
+    file, and this class binds it to the table that already decides whether a field is a dispatch
+    input: a census here is a field `arm-config-record.py` calls a reading.
+    """
+
+    def census(self) -> dict:
+        return json.loads((ROOT / "tools" / "arm-config-census.json").read_text(encoding="utf-8"))
+
+    def test_every_name_is_a_reading_in_the_classification_table(self) -> None:
+        census = self.census()
+        names = census["fold"] + census["drop"]
+        self.assertGreater(len(names), 3, "the list is empty, which would make this test vacuous")
+        for name in names:
+            self.assertIn(
+                tool.classification(name),
+                {"census", "derived"},
+                f"`{name}` is named as a reading by arm-config-census.json and classified "
+                f"`{tool.classification(name)}` by arm-config-record.py, so the two files disagree "
+                "about whether it is a dispatch input",
+            )
+
+    def test_no_field_is_both_folded_and_dropped(self) -> None:
+        # The two tools act on these lists differently -- one adds, one excludes -- so a name in both
+        # would be a field whose treatment depended on which tool read it.
+        census = self.census()
+        self.assertEqual(
+            sorted(set(census["fold"]) & set(census["drop"])),
+            [],
+            "a field is both folded and dropped",
+        )
+
+    def test_every_name_is_a_field_the_config_type_has(self) -> None:
+        # An entry for a field that no longer exists is an exemption the next field of that name would
+        # inherit without anybody deciding it -- the rule the classification table follows too.
+        fields = set(config_type_fields())
+        for name in self.census()["fold"] + self.census()["drop"]:
+            self.assertIn(name, fields, f"`{name}` is not a field of `MemoryArmConfig`")
+
+
 if __name__ == "__main__":
     unittest.main()

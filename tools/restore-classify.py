@@ -71,6 +71,11 @@ GATE_UNASKED_MAX = 0
 GATE_UNMATCHED_MAX = 0
 GATE_GROWTH_VIOLATIONS_MAX = 0
 
+# The archived names, from the file both tools read. `memoryArmConfig.censusKeys` supersedes it on
+# artifacts new enough to carry one; a source artifact of a counterfactual usually is not.
+CENSUS_REGISTRY = json.loads((Path(__file__).resolve().parent / 'arm-config-census.json').read_text())
+CENSUS_FALLBACK = tuple(CENSUS_REGISTRY['fold']) + tuple(CENSUS_REGISTRY['drop'])
+
 REQUIRED_SOURCE_FIELDS = ('memoryArmConfig', 'questions', 'ablation')
 
 
@@ -123,24 +128,59 @@ def per_question_majority(runs: list[str]) -> list[bool]:
     return [majority(''.join(run[index] for run in runs)) for index in range(width)]
 
 
-def config_drift(source: dict, restore: dict) -> list[tuple[str, object, object]]:
+def censuses_named(artifacts: list[dict]) -> set[str]:
+    """Fields these artifacts say are readings, plus the archived names from the shared list.
+
+    `memoryArmConfig.censusKeys` is the artifact's own statement and `tools/arm-config-census.json`
+    is the fallback for artifacts written before it existed -- the source artifact of a counterfactual
+    is usually one of those, which is why both are read rather than only the newer one.
+
+    A source artifact that was written before the field and is *newer* than the list, carrying a
+    census nobody named, cannot be detected here: the list is the only thing that knows what a
+    reading looks like when the artifact does not say. That is why the list has a test binding it to
+    `arm-config-record.py`'s classification rather than being maintained by memory.
+    """
+    names = set(CENSUS_FALLBACK)
+    for artifact in artifacts:
+        declared = (artifact.get('memoryArmConfig') or {}).get('censusKeys') or []
+        names.update(name for name in declared if isinstance(name, str))
+    return names
+
+
+def config_drift(
+    source: dict, restore: dict, censuses: set[str] | None = None
+) -> tuple[list[tuple[str, object, object]], list[str]]:
     """Fields whose value moved between the source run and this one, by name.
 
     Compared on the union of both keys. A field that this run added is a departure; a field it
     dropped is a departure; a field whose value changed is a departure. The reverse rule -- comparing
     only the keys the source named -- would let the restore run introduce a treatment the source never
     had and still pass.
+
+    Censuses are compared by neither rule, and returned separately. A counterfactual asks whether the
+    *configuration* moved, and `selfIndex.embedTexts` on 22 questions cannot equal the same field on
+    500 however faithful the restore is: gate 6 is `<= 0`, so counting them would refuse every
+    counterfactual of a run that indexed anything. Naming them keeps the exemption visible -- run
+    `45543010618` is the round that found this, and the same list now serves `merge-ablation.mjs`.
     """
+    skipped = set() if censuses is None else censuses
     left = source.get('memoryArmConfig') or {}
     right = restore.get('memoryArmConfig') or {}
     drift: list[tuple[str, object, object]] = []
+    not_compared: list[str] = []
     for key in sorted(set(left) | set(right)):
+        if key == 'censusKeys' or key in skipped:
+            not_compared.append(key)
+            continue
         if left.get(key) != right.get(key):
             drift.append((key, left.get(key), right.get(key)))
-    return drift
+    return drift, not_compared
 
 
 def classify(restore: dict, source: dict, plan: dict, ledger: dict) -> dict:
+    drift, not_compared = config_drift(
+        source, restore, censuses_named([source, restore])
+    )
     restore_passes = passes(restore)
     source_passes = passes(source)
     source_index = {row.get('questionId'): index for index, row in enumerate(source_passes['questions'])}
@@ -208,7 +248,10 @@ def classify(restore: dict, source: dict, plan: dict, ledger: dict) -> dict:
         'recordedDisagreements': disagreement,
         'unasked': unasked,
         'growthViolations': growth_violations,
-        'configDrift': config_drift(source, restore),
+        'configDrift': drift,
+        # Named rather than silently skipped: gate 6 reads `<= 0`, and a reader is entitled to know
+        # which fields the comparison was not over.
+        'configNotCompared': not_compared,
         'calls': ledger.get('calls'),
         'unmatchedCalls': ledger.get('unmatchedCalls'),
         'recoveredShare': (len(recovered) / len(failures) if failures else None),
@@ -298,6 +341,16 @@ def render(
             f'| {number} | {name} | {reading} | {threshold} | **{"PASS" if passed else "FAIL"}** |'
         )
     lines.append('')
+    if result.get('configNotCompared'):
+        # Row 6 is `<= 0`, and an exclusion a reader cannot see is an exclusion they will assume did
+        # not happen: the fields below were counted after the questions were answered, so a faithful
+        # counterfactual cannot reproduce them and comparing them would fail every run that indexed.
+        lines.append(
+            'Row 6 is over the configuration only. Not compared, because these are readings: '
+            + ', '.join(f'`{name}`' for name in result['configNotCompared'])
+            + '.'
+        )
+        lines.append('')
     lines.append('## Per question')
     lines.append('')
     lines.append('| question | recorded | observed (4 passes) | restored | calls | chars |')

@@ -1251,6 +1251,11 @@ describe('runCortexMemoryArm', () => {
       // `toMemoryArmConfig` is asserted in the same breath above -- the field is a count of what the
       // records held, so a configuration built before the pass cannot state it.
       goldAccount: 'none',
+      // The block's own statement of which of its fields were written after the pass, so
+      // `tools/merge-ablation.mjs` can tell a reading from a configuration. Present on every artifact
+      // this build writes; absent means the artifact predates the field and the merge falls back to
+      // its own list. `goldAccount` is the only one this fixture measured.
+      censusKeys: ['goldAccount'],
     });
   });
 
@@ -1905,6 +1910,11 @@ describe('the retrieval threshold', () => {
       reviewBareDecline: false,
       // Written after the pass, from the records, for the reason `gold-account.test.ts` states.
       goldAccount: 'none',
+      // The block's own statement of which of its fields were written after the pass, so
+      // `tools/merge-ablation.mjs` can tell a reading from a configuration. Present on every artifact
+      // this build writes; absent means the artifact predates the field and the merge falls back to
+      // its own list. `goldAccount` is the only one this fixture measured.
+      censusKeys: ['goldAccount'],
     });
   });
 });

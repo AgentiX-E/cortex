@@ -49,6 +49,7 @@ and only the first was a vocabulary:
 from __future__ import annotations
 
 import json
+import math
 import sys
 from math import comb
 
@@ -106,6 +107,22 @@ G4_RECORD_RATIO = 1.5
 # delta line and stopped. Two criteria were reproducible and two were testimony, inside one table.
 G3_POINT_FLOOR = 1.5
 G3_UP_DOWN_FLOOR = 5
+
+# The third `resolution` replication's own criteria, registered in
+# `docs/PREREGISTRATION-RESOLUTION-REPLICATION.md` **before** that dispatch ran. They are here rather
+# than in the document because the document is where they were argued and this is where they are
+# evaluated: a criterion a human evaluates is a criterion that can be reported as passed by whoever
+# wants it passed, which is the defect `G3` and `G5` were fixed for one round ago.
+R3_BILL_CEILING_PCT = 1.0
+
+# The price weights that turn a usage census into a ratio, as `(cache-miss input, cache-hit input,
+# output)` in units of the cheapest term. DeepSeek's published schedule is 10:1:15 for
+# `deepseek-chat`, and writing the *ratio* rather than the prices means this instrument cannot go
+# stale when the schedule is repriced -- but it does mean the number it prints is a price index rather
+# than a bill. The distinction is load-bearing: `R3`'s clause is a **token** ratio, and a mechanism
+# that keeps the token count flat while moving prompt text out of the cache passes it while costing
+# 1.55x. That is exactly what this dispatch did, which is why both readings print.
+PRICE_UNITS = (10, 1, 15)
 
 
 def _median(values: list[float]) -> float:
@@ -668,6 +685,243 @@ def criterion_report(
     return report
 
 
+def bill_readings(document: dict) -> dict | None:
+    """The paired bill, as a token ratio and as a price index, or `None` when neither is readable.
+
+    ## Why two numbers and not one
+
+    `R3`'s clause -- registered before the dispatch -- is `prompt_per_answer.delta_pct <= +1.0`, a
+    **token** ratio. Run `45543010618` passed it at `+0.08%` and would have cost **1.55x** in money:
+    the mechanism moves prompt text out of the provider's prefix cache, so the token count stays flat
+    while the share billed at the cache-miss rate goes from 3% to 29%. An instrument that prints only
+    the ratio it was asked for would have reported this mechanism as free.
+
+    So both are computed from the same census and printed together. The price index uses
+    `PRICE_UNITS`, a ratio rather than a schedule, so a repricing does not make this file wrong; what
+    it does mean is that the index is a proportion and the token ratio is still the registered clause.
+
+    ## Where the census comes from
+
+    `usageBySide` is on every artifact, single-dispatch or merged -- `tools/merge-ablation.mjs` sums
+    it, because a sum of tokens is a sum of tokens. `tokens.prompt_per_answer` is only written by the
+    unsharded arm, which is why `G5` reads `unread` on every real dispatch: `S12`'s registered shape
+    is 500 questions split across jobs, and the merge deliberately does not recompute a field it
+    cannot recompute honestly. Falling back to the census is not a second statistic -- a ratio of two
+    sums over the same number of answers is one division -- and the provenance is printed so a reader
+    knows which of the two they are holding.
+    """
+    usage = document.get('usageBySide') or {}
+    baseline = usage.get('baseline') or {}
+    feature = usage.get('feature') or {}
+    recorded = ((document.get('tokens') or {}).get('prompt_per_answer') or {}).get('delta_pct')
+    if baseline.get('calls') and feature.get('calls'):
+        per_answer = (feature.get('promptTokens', 0) / feature['calls']) / (
+            baseline.get('promptTokens', 0) / baseline['calls']
+        )
+        miss = (max(0, baseline.get('promptTokens', 0) - baseline.get('cacheHitPromptTokens', 0)),
+                max(0, feature.get('promptTokens', 0) - feature.get('cacheHitPromptTokens', 0)))
+        hit = (baseline.get('cacheHitPromptTokens', 0), feature.get('cacheHitPromptTokens', 0))
+        out = (baseline.get('completionTokens', 0), feature.get('completionTokens', 0))
+        weights = PRICE_UNITS
+        priced = [
+            miss[side] * weights[0] + hit[side] * weights[1] + out[side] * weights[2]
+            for side in (0, 1)
+        ]
+        return {
+            'source': 'usageBySide',
+            'perAnswerPct': (per_answer - 1) * 100,
+            'priceRatio': (priced[1] / priced[0]) if priced[0] else None,
+            'miss': miss,
+            'hit': hit,
+            'out': out,
+            'recordedPct': recorded,
+        }
+    if recorded is not None:
+        # A single-dispatch artifact states the ratio itself; the census may still be there for the
+        # price index, and when it is not, only the ratio is readable.
+        return {'source': 'tokens.prompt_per_answer', 'perAnswerPct': recorded, 'priceRatio': None}
+    return None
+
+
+def fisher_combine(first: float, second: float) -> float:
+    """Two independent p-values as one, by Fisher's method, with the df-4 closed form.
+
+    `chi2 = -2 (ln p1 + ln p2)` on four degrees of freedom, and `P(X > x) = e^(-x/2) (1 + x/2)` for
+    that df -- exact, so no gamma function and no dependency for one formula.
+
+    ## What this assumes, said out loud
+
+    Fisher's method assumes the two tests are independent. These two are not: they are the same 500
+    questions answered twice. Under a true null two positively correlated p-values combine to
+    something the method *undercounts*, so the number below is optimistic and the honest reading of a
+    combined `0.0452` is "clears the registered rule", not "the effect is established". The
+    preregistration chose the combination before the data existed, and the caveat is printed with the
+    verdict rather than filed here.
+    """
+    floor = 1e-12
+    values = [max(floor, value) for value in (first, second)]
+    chi2 = -2 * sum(math.log(value) for value in values)
+    return math.exp(-chi2 / 2) * (1 + chi2 / 2)
+
+
+def print_resolution_criteria(
+    document: dict,
+    discordant: tuple[int, int],
+    capability: str,
+    capability_discordant: tuple[int, int] | None,
+    prior: tuple[int, int] | None,
+    prior_name: str | None,
+) -> list[dict[str, str]]:
+    """`R1`-`R4`, the four criteria registered before the third replication was dispatched.
+
+    Printed for a `resolution` dispatch and only for one: `G1`-`G5` belong to `C8` (the carry arm) and
+    are what the resolution arm's rendering hypothesis is tested *with*, not what it is accepted by.
+    Putting the two blocks in one output is deliberate -- they answer different questions about one
+    population, and a reader who sees `G4 fail` beside `R4 fired` is seeing the truth rather than a
+    contradiction: the mechanism works, and not through the record share `C8` predicted.
+
+    `R2` needs the earlier dispatch's discordant pair, which this file cannot know; it is passed on
+    the command line so the provenance of the combination is in the log that quotes the result
+    (`--prior-discordant 15,27 --prior-name 44915923906`). `R2` prints `unread` when it is absent,
+    because a combination nobody named is a number attributed to a run it did not come from.
+    """
+    down, up = discordant
+    verdicts: list[dict[str, str]] = []
+
+    if capability_discordant is None:
+        # An artifact whose question rows carry no capability cannot answer `R1`, and an up-down of
+        # zero computed over an empty subset is the reading a mechanism that moved nothing produces.
+        # `unread` is the third state, and it is the honest one.
+        verdicts.append(
+            {
+                'ident': 'R1',
+                'verdict': 'unread',
+                'text': (
+                    f'the population carries no capability on its question rows, so the {capability} '
+                    'up-down has no reading; --capability names the arm whose replication this is, '
+                    'and an untagged population cannot say whether it moved'
+                ),
+            }
+        )
+    else:
+        cap_down, cap_up = capability_discordant
+        verdicts.append(
+            {
+                'ident': 'R1',
+                'verdict': 'pass' if cap_up - cap_down > 0 else 'fail',
+                'text': (
+                    f'the {capability} up-down is {cap_up - cap_down:+d} (b={cap_down} c={cap_up}), so '
+                    'the sign replicated'
+                    if cap_up - cap_down > 0
+                    else f'the {capability} up-down is {cap_up - cap_down:+d} (b={cap_down} '
+                    f'c={cap_up}), so this replication points the other way and the axis retires'
+                ),
+            }
+        )
+
+    own = mcnemar_exact(down, up)
+    if prior is None:
+        verdicts.append(
+            {
+                'ident': 'R2',
+                'verdict': 'unread',
+                'text': (
+                    f'this population alone gives p={own:.4f}, and `R2` is a combination with an '
+                    'earlier dispatch that was not named on the command line (--prior-discordant '
+                    'b,c), so the clause has no reading'
+                ),
+            }
+        )
+        combined = None
+    else:
+        earlier = mcnemar_exact(prior[0], prior[1])
+        combined = fisher_combine(own, earlier)
+        verdicts.append(
+            {
+                'ident': 'R2',
+                'verdict': 'pass' if combined < 0.05 else 'fail',
+                'text': (
+                    f'Fisher with {prior_name or "the earlier dispatch"}: p={combined:.4f} from '
+                    f'{own:.4f} and {earlier:.4f}, on the independence assumption this method makes '
+                    'and two overlapping question sets do not'
+                ),
+            }
+        )
+
+    bill = bill_readings(document)
+    if bill is None:
+        verdicts.append(
+            {
+                'ident': 'R3',
+                'verdict': 'unread',
+                'text': (
+                    'the artifact carries neither a `tokens.prompt_per_answer` block nor a '
+                    '`usageBySide` census, so the bill half of the clause has no reading'
+                ),
+            }
+        )
+        bill_ok = None
+    else:
+        bill_ok = bill['perAnswerPct'] <= R3_BILL_CEILING_PCT
+        verdicts.append(
+            {
+                'ident': 'R3',
+                'verdict': 'pass' if bill_ok else 'fail',
+                'text': (
+                    f'the paired prompt bill moved {bill["perAnswerPct"]:+.2f}% of '
+                    f'{R3_BILL_CEILING_PCT:+.2f}% allowed [{bill["source"]}]'
+                ),
+            }
+        )
+
+    # A conjunction with one false conjunct is false, whether or not the other has been read. Reporting
+    # `unread` for a clause that `R3` has already refused would send the next round after the missing
+    # number instead of after the mechanism, which is the wrong absence named -- the defect `G4`'s two
+    # empty states were split for.
+    if (combined is not None and combined >= 0.05) or bill_ok is False:
+        verdicts.append(
+            {
+                'ident': 'R4',
+                'verdict': 'not-taken',
+                'text': '`R2` or `R3` did not clear, so the mechanism is recorded as tested and not adopted',
+            }
+        )
+    elif combined is None or bill_ok is None:
+        verdicts.append(
+            {
+                'ident': 'R4',
+                'verdict': 'unread',
+                'text': 'R4 is `R2` and `R3`, and one of them has no reading',
+            }
+        )
+    else:
+        extra = ''
+        if bill and bill.get('priceRatio') and bill['priceRatio'] > 1.1:
+            # The registered clause does not cover this, and saying so is the point: a rule that was
+            # written before the data does not get to be quietly widened after it, and it also does
+            # not get to be quoted as "free".
+            extra = (
+                f' -- but the cache-adjusted price is {bill["priceRatio"]:.2f}x the baseline '
+                f'(miss {bill["miss"][1]:,} against {bill["miss"][0]:,} tokens), which the registered '
+                'clause is a token ratio and does not see'
+            )
+        verdicts.append(
+            {
+                'ident': 'R4',
+                'verdict': 'fired',
+                'text': '`R2` and `R3` both cleared, so the registered rule accepts the mechanism' + extra,
+            }
+        )
+    for entry in verdicts:
+        separator = '  ' if entry['verdict'] in ('pass', 'fired') else ': '
+        print(f'{entry["ident"]} {entry["verdict"]}{separator}{entry["text"]}')
+    # Returned as well as printed, so the evidence file a round archives is this function's output
+    # rather than a transcription of it. The `G` block has worked that way since `criterion_report`;
+    # the replication's four criteria are the ones a decision is actually argued from, so they are the
+    # ones that most need to be reproducible.
+    return verdicts
+
+
 def mcnemar_exact(b: int, c: int) -> float:
     """Two-sided exact McNemar p, the same formula the analysis scripts use."""
     n = b + c
@@ -694,7 +948,14 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     path = argv[0]
-    options = {'--windows': None, '--pairing': 'reference', '--criteria-json': '0'}
+    options = {
+        '--windows': None,
+        '--pairing': 'reference',
+        '--criteria-json': '0',
+        '--prior-discordant': None,
+        '--prior-name': None,
+        '--capability': 'MR',
+    }
     index = 1
     while index < len(argv):
         flag = argv[index]
@@ -707,6 +968,16 @@ def main(argv: list[str]) -> int:
         index += 2
     windows_input = options['--windows']
     pairing = options['--pairing']
+    prior: tuple[int, int] | None = None
+    if options['--prior-discordant'] is not None:
+        raw_prior = options['--prior-discordant'].split(',')
+        if len(raw_prior) != 2 or not all(part.strip().isdigit() for part in raw_prior):
+            raise SystemExit(
+                f'refusing: --prior-discordant {options["--prior-discordant"]!r} is not two whole '
+                'numbers `b,c`. A combination against a pair this reader cannot parse is a p-value '
+                'attributed to a run it did not come from.'
+            )
+        prior = (int(raw_prior[0]), int(raw_prior[1]))
     if pairing not in PAIRINGS:
         raise SystemExit(
             f'refusing: --pairing {pairing!r} is not one of {", ".join(PAIRINGS)}. `reference` is the '
@@ -840,6 +1111,31 @@ def main(argv: list[str]) -> int:
         # finding that the mechanism reallocates rather than densifies.
         print_density(document)
         print_forms(document, control, treated, delta, len(scope), (b, c))
+        # The replication's own criteria, after `C8`'s. Different question about one population: `G1`-`G5`
+        # say whether the mechanism worked the way `C8` predicted, `R1`-`R4` say whether it is adopted.
+        capability = options['--capability']
+        rows = document['questions']
+        tagged = any('capability' in row for row in rows)
+        cap_scope = [at for at in scope if rows[at].get('capability') == capability]
+        if tagged and not cap_scope:
+            raise SystemExit(
+                f'refusing: --capability {capability!r} matches no question in this population, so '
+                '`R1` would be read off an empty subset and printed as an up-down of zero -- which is '
+                'what a mechanism that moved nothing and a flag that names nothing look like.'
+            )
+        replication = print_resolution_criteria(
+            document,
+            (b, c),
+            capability,
+            None
+            if not tagged
+            else (
+                sum(1 for at in cap_scope if control[at] > treated[at]),
+                sum(1 for at in cap_scope if treated[at] > control[at]),
+            ),
+            prior,
+            options['--prior-name'],
+        )
         # The same five verdicts as data, for a caller that writes the evidence file rather than reading
         # the log. `1` rather than a flag with no value because this parser's whole contract is
         # `--name value`, and a second parsing style for one option is the shape that made `--alpha` in
@@ -847,7 +1143,13 @@ def main(argv: list[str]) -> int:
         if options['--criteria-json'] == '1':
             print(
                 json.dumps(
-                    {'criteria': criterion_report(document, control, treated, delta, len(scope), (b, c))},
+                    {
+                        'criteria': criterion_report(
+                            document, control, treated, delta, len(scope), (b, c)
+                        ),
+                        'replication': {entry['ident']: entry for entry in replication},
+                        'bill': bill_readings(document),
+                    },
                     indent=1,
                     sort_keys=True,
                 )

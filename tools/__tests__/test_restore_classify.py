@@ -285,5 +285,45 @@ class RefusalTest(Harness):
         self.assertIn('c3', result.stderr)
 
 
+    def test_gate_six_does_not_fire_on_a_census_the_run_measured_afresh(self) -> None:
+        # A counterfactual asks whether the *configuration* moved. `selfIndex` is the product's own
+        # bill: on 22 questions it cannot equal the source run's 500 however faithful the restore is,
+        # and gate 6 is `<= 0`, so counting it would refuse every counterfactual of a run that indexed
+        # anything. The same list serves `merge-ablation.mjs`, which lost eight shards to it.
+        drifted = dict(CONFIG)
+        drifted['selfIndex'] = {'indexes': 7, 'embedTexts': 900}
+        drifted['admission'] = {'candidates': 22, 'admitted': 22, 'mean': 0.5}
+        result = self.run_tool(*self.baseline(config=drifted))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('`selfIndex`', result.stdout)
+        # Named, so the exemption is visible rather than the field having vanished from the comparison
+        # without a reader being able to tell it was excluded.
+        self.assertIn('not compared', result.stdout.lower())
+
+    def test_gate_six_still_fires_on_a_configuration_field_beside_them(self) -> None:
+        # The control for the exclusion: a run that re-measured its bill *and* changed its reader is
+        # still a counterfactual of a different configuration.
+        drifted = dict(CONFIG)
+        drifted['selfIndex'] = {'indexes': 7, 'embedTexts': 900}
+        drifted['relevanceTopK'] = 256
+        result = self.run_tool(*self.baseline(config=drifted))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('GATES FAILED: 6', result.stdout)
+        self.assertIn('`relevanceTopK`', result.stdout)
+
+    def test_an_artifact_that_declares_its_own_census_is_obeyed(self) -> None:
+        # `censusKeys` is the artifact's statement and supersedes the shared list for anything new:
+        # a mechanism added next round can write its own count without a tool being edited first.
+        source, restore, plan, ledger = self.baseline()
+        declared = dict(CONFIG)
+        declared['censusKeys'] = ['selfInflictedRetries']
+        declared['selfInflictedRetries'] = {'fired': 4}
+        source['memoryArmConfig'] = declared
+        restore['memoryArmConfig'] = {**declared, 'selfInflictedRetries': {'fired': 0}}
+        result = self.run_tool(source, restore, plan, ledger)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('`selfInflictedRetries`', result.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

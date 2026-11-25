@@ -1110,6 +1110,35 @@ export type MemoryArmConfig = {
    */
   readonly goldAccount?: string | undefined;
   /**
+   * Which of this block's own fields are **readings** rather than configuration.
+   *
+   * ## The dispatch that produced this field
+   *
+   * `memoryArmConfig` answers two questions for two readers: what `--registration` compares field for
+   * field, and what `tools/merge-ablation.mjs` requires to be equal across the shards of one dispatch.
+   * Both answers are only true while the block is a function of the configuration. Run `45543010618`
+   * established that it was not: 500 questions across 8 shards, every job succeeded, and the merge
+   * exited 1 on `shard 1 differs from shard 0 in memoryArmConfig` -- `selfIndex` differs between two
+   * jobs that read different corpora, which is what a bill does. The 8 artifacts were unreadable.
+   *
+   * The merge tool already excluded one such field (`admission`, from run `43622841638`) via a list in
+   * its own file. That list cannot track a writer in this file, which is why the block now describes
+   * itself: the keys below are written by the same object that folds the readings in, so the
+   * declaration cannot disagree with the fields it describes.
+   *
+   * ## What it does not license
+   *
+   * Declaring a field here does not remove it from the comparison on the artifact's authority alone:
+   * `tools/arm-config-baseline.json` is the registry, and a census that names a registered
+   * configuration field fails a test rather than passing quietly. A declaration is a statement about
+   * what a field is, not a permission to stop checking it.
+   *
+   * Absent on every artifact written before this field existed, which is why
+   * `tools/merge-ablation.mjs` keeps its own list as the fallback -- those artifacts are archived and
+   * cannot be re-serialised.
+   */
+  readonly censusKeys?: readonly string[] | undefined;
+  /**
    * How many turns per question the relevance index scored.
    *
    * Recorded beside the signal because it is the same claim's second half: a

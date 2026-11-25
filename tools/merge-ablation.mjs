@@ -82,30 +82,216 @@ const LAYER_KEYS = [
 ];
 
 /**
- * Keys **inside** `memoryArmConfig` that are censuses rather than configuration.
+ * Keys **inside** `memoryArmConfig` that are readings rather than configuration, and what to do with
+ * each when two shards disagree.
  *
- * The arm folds per-run readings into the configuration block: `admission` carries
- * `candidates`/`admitted`/`rejected` for the questions this job graded, which differ between two
- * shards of one dispatch for the only reason they should -- they read different corpora. Comparing
- * the block whole therefore refuses every real sharded dispatch, which is what run `43622841638`'s
- * merge job did: `shard 1 differs from shard 0 in memoryArmConfig`, with `candidates` 10020 against
- * 9428 and every configured field identical.
+ * The arm folds per-run measurements into the configuration block after the questions have been
+ * answered: `admission` counts the candidates the write gate saw, `selfIndex` is the product's own
+ * embedding bill, `voteCounts` counts a vote, `goldAccount` is a verdict about the pools the run
+ * produced. All of them differ between two shards of one dispatch for the only reason they should --
+ * they read different corpora -- so comparing the block whole refuses every real sharded dispatch.
  *
- * A list rather than a rule ("skip keys that contain counts") because the direction of the mistake
- * matters: a new **configuration** field must join the comparison by default, and a new census has
- * to be named here deliberately. The reverse default would let two genuinely different dispatches
- * merge whenever the differing field happened to look numeric.
+ * Two dispatches have now paid for this. Run `43622841638` refused on `admission` (`candidates`
+ * 10020 against 9428, every configured field identical), which is what the original list in this file
+ * was written for. Run `45543010618` refused on `selfIndex`, folded into the block a round later and
+ * never named here: eight shards answered their whole population, every job succeeded, and the
+ * reading was lost in the merge job. The lesson is not "add `selfIndex`". It is that a list in this
+ * file cannot be kept in step with a writer in another file -- and that `restore-classify.py` needed
+ * the same list and never got it.
+ *
+ * So the names live in `tools/arm-config-census.json`, beside a test that binds them to the
+ * classification table, and **the arm declares its censuses on the artifact**
+ * (`memoryArmConfig.censusKeys`). This map is the fallback for artifacts written before the
+ * declaration -- which is every archived one, since they cannot be re-serialised.
+ *
+ * Two dispositions, because the shapes are not one:
+ *
+ *  - `fold` -- every leaf is a count, a flag or an identity, so the shards' values can be combined
+ *    into the dispatch's. Numbers add, booleans AND (a `false` anywhere is the shard that admits the
+ *    total is incomparable, and `true` would have this tool vouch for a store one job did not have),
+ *    and disagreements are recorded rather than resolved.
+ *  - `drop` -- the object carries `min`/`max`/`mean`/`distinct`, which are not counts, so a sum of
+ *    them is not a total of anything. Excluded from the comparison, not carried, and named in
+ *    `merged.notRecomputed` so its absence is visible.
+ *
+ * A key that is declared by the artifact and `drop` here is dropped rather than folded, and named in
+ * `merged.droppedCensusKeys`: folding `admission` would add four means and call the result a reading,
+ * and folding is the default for anything this file has not seen. That asymmetry is deliberate -- a
+ * new census is a count until proven otherwise, and a wrong sum is visible in the artifact while a
+ * silently inherited shard-0 value is not.
  */
-const CENSUS_IN_CONFIG = new Set(['admission']);
+const CENSUS_IN_CONFIG = (() => {
+  const declared = JSON.parse(
+    readFileSync(new URL('./arm-config-census.json', import.meta.url), 'utf8'),
+  );
+  const entries = [
+    ...declared.fold.map((key) => [key, 'fold']),
+    ...declared.drop.map((key) => [key, 'drop']),
+  ];
+  return new Map(entries);
+})();
 
-/** `memoryArmConfig` with its censuses removed, for the layer comparison only. */
-function configurationOnly(config) {
+/** Keys one artifact declared as censuses, or an empty set for an artifact written before the field. */
+function declaredCensuses(config) {
+  if (config === null || typeof config !== 'object') return new Set();
+  const declared = config.censusKeys;
+  if (declared === undefined) return new Set();
+  if (!Array.isArray(declared) || declared.some((key) => typeof key !== 'string')) {
+    throw new Error(
+      'memoryArmConfig.censusKeys is not an array of strings, so the artifact does not say which of ' +
+        'its own fields are readings. Refusing rather than guessing, because the guess decides ' +
+        'whether two dispatches are compared as one.',
+    );
+  }
+  return new Set(declared);
+}
+
+/**
+ * Every census key the parts declare, and the ones this file will not fold.
+ *
+ * The union rather than shard 0's list: a census present in one shard and absent in another is still
+ * a census in that shard, and taking the first part's list would fold it in one direction only.
+ *
+ * A declared key this file knows cannot be added (`admission`'s `min`/`max`/`mean`) is returned
+ * separately rather than folded: the arm declares everything it folded into the block, which is the
+ * whole point of the declaration, and this file is where the knowledge that four means cannot be
+ * summed lives. Returning it lets the merged document say it was dropped instead of quietly doing
+ * arithmetic with it.
+ */
+function censusKeysOf(parts) {
+  const foldable = new Set();
+  const dropped = new Set();
+  for (const part of parts) {
+    const config = part.document.memoryArmConfig;
+    for (const key of declaredCensuses(config)) {
+      if (CENSUS_IN_CONFIG.get(key) === 'drop') dropped.add(key);
+      else foldable.add(key);
+    }
+  }
+  return { foldable, dropped };
+}
+
+/**
+ * `memoryArmConfig` with its censuses removed, for the layer comparison only.
+ *
+ * `declared` comes from the artifacts and `CENSUS_IN_CONFIG` from this file; the union is what a
+ * legacy artifact needs and what a declaring one does not.
+ */
+function configurationOnly(config, declared = new Set()) {
   if (config === null || typeof config !== 'object') return config;
   const kept = {};
   for (const [key, value] of Object.entries(config)) {
-    if (!CENSUS_IN_CONFIG.has(key)) kept[key] = value;
+    if (key === 'censusKeys') continue;
+    if (declared.has(key) || CENSUS_IN_CONFIG.has(key)) continue;
+    kept[key] = value;
   }
   return kept;
+}
+
+/**
+ * The paths at which two configurations differ, with both values.
+ *
+ * The refusal used to say `differs in memoryArmConfig` and stop. Finding out that the field was
+ * `selfIndex` cost this round an 8 MB artifact download and a diff, and the tool held both values at
+ * the moment it decided not to print them. A guard whose message does not say what it saw makes the
+ * next reader repeat the work the guard already did.
+ */
+function differences(left, right, path = 'memoryArmConfig', out = []) {
+  const shape = (value) =>
+    value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+  if (shape(left) !== shape(right)) {
+    out.push({ path, left, right });
+    return out;
+  }
+  if (shape(left) === 'object') {
+    for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+      differences(left[key], right[key], `${path}.${key}`, out);
+    }
+    return out;
+  }
+  if (canonical(left) !== canonical(right)) out.push({ path, left, right });
+  return out;
+}
+
+/** One difference, as one line a log can be read for. */
+function describe(difference) {
+  const value = (input) => {
+    if (input === undefined) return 'absent';
+    const text = JSON.stringify(input);
+    return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+  };
+  return `${difference.path} ${value(difference.left)} against ${value(difference.right)}`;
+}
+
+/**
+ * Combine one census across the shards, recording every leaf the shards disagree on.
+ *
+ * Returns the folded value and the disagreements, rather than throwing on a disagreement: a flag
+ * that is `true` in seven jobs and `false` in one is a fact about the dispatch (a store one job did
+ * not have), not a reason to discard eight shards of answers. It is recorded so that the number is
+ * not quoted without it.
+ */
+function foldCensus(key, parts) {
+  const disagreements = [];
+  const walk = (values, path) => {
+    const present = values.filter((value) => value !== undefined);
+    if (present.length !== values.length) {
+      disagreements.push({
+        path,
+        perShard: Object.fromEntries(
+          parts.map((part, at) =>
+            values[at] === undefined
+              ? [String(part.shard.index), 'absent']
+              : [String(part.shard.index), values[at]],
+          ),
+        ),
+      });
+    }
+    if (present.length === 0) return undefined;
+    const first = present[0];
+    if (typeof first === 'number') return present.reduce((sum, value) => sum + value, 0);
+    if (typeof first === 'boolean') {
+      const folded = present.every(Boolean);
+      if (present.some((value) => value !== folded)) {
+        disagreements.push({
+          path,
+          perShard: Object.fromEntries(
+            parts.map((part, at) => [String(part.shard.index), values[at]]),
+          ),
+        });
+      }
+      return folded;
+    }
+    if (Array.isArray(first)) return present.flat();
+    if (first !== null && typeof first === 'object') {
+      const keys = new Set(present.flatMap((value) => Object.keys(value)));
+      const folded = {};
+      for (const child of [...keys].sort()) {
+        folded[child] = walk(
+          values.map((value) => (value === undefined ? undefined : value[child])),
+          `${path}.${child}`,
+        );
+      }
+      return folded;
+    }
+    if (present.some((value) => value !== first)) {
+      disagreements.push({
+        path,
+        perShard: Object.fromEntries(
+          parts.map((part, at) => [String(part.shard.index), values[at]]),
+        ),
+      });
+    }
+    return first;
+  };
+  return {
+    key,
+    value: walk(
+      parts.map((part) => part.document.memoryArmConfig?.[key]),
+      `memoryArmConfig.${key}`,
+    ),
+    disagreements,
+  };
 }
 
 /**
@@ -213,24 +399,34 @@ function merge(dir, shards) {
     );
   }
   const parts = paths.map(readReport);
+  // Before the comparison, because the declaration decides what the comparison is over.
+  const { foldable: declaredCensuses_, dropped: declaredDropped } = censusKeysOf(parts);
+  const censuses = new Set([...declaredCensuses_, ...declaredDropped]);
 
   // 1. One layer.
   const reference = parts[0];
   for (const part of parts.slice(1)) {
     for (const key of LAYER_KEYS) {
-      const left = canonical(
+      const left =
         key === 'memoryArmConfig'
-          ? configurationOnly(reference.document[key])
-          : reference.document[key],
-      );
-      const right = canonical(
-        key === 'memoryArmConfig' ? configurationOnly(part.document[key]) : part.document[key],
-      );
-      if (left !== right) {
+          ? configurationOnly(reference.document[key], censuses)
+          : reference.document[key];
+      const right =
+        key === 'memoryArmConfig'
+          ? configurationOnly(part.document[key], censuses)
+          : part.document[key];
+      if (canonical(left) !== canonical(right)) {
+        const named =
+          key === 'memoryArmConfig'
+            ? differences(left, right).map(describe).join('; ')
+            : describe({ path: key, left, right });
         throw new Error(
           `shard ${part.shard.index} (${part.path}) differs from shard ${reference.shard.index} ` +
-            `in \`${key}\`, so the artifacts are not parts of one dispatch. Two configurations ` +
-            'merged would produce a population nobody ran; re-dispatch rather than merging.',
+            `in \`${key}\`: ${named}. The artifacts are not parts of one dispatch, and two ` +
+            'configurations merged would produce a population nobody ran; re-dispatch rather than ' +
+            'merging. (A field that changes because the shards answered different questions is a ' +
+            'census; the arm declares those in `memoryArmConfig.censusKeys` and this tool folds ' +
+            'them instead of comparing them.)',
         );
       }
     }
@@ -443,6 +639,28 @@ function merge(dir, shards) {
   const written = new Set(ordered.flatMap((part) => Object.keys(part.document.ablation ?? {})));
   const carried = new Set(Object.keys(ablation));
   const notCarried = [...written].filter((key) => !carried.has(key)).sort();
+
+  // The configuration block, with its readings folded rather than inherited from shard 0.
+  //
+  // `selfIndex.indexes` for a 500-question dispatch is the sum of eight jobs' 126, and taking the
+  // first part's number would put a shard's bill on a population eight times its size. The declared
+  // keys come from the artifacts; the `fold` keys of `CENSUS_IN_CONFIG` are the same treatment for
+  // artifacts written before the declaration existed. `drop` keys are not in either set, so they stay
+  // as the reference shard wrote them and `notRecomputed` says so.
+  const foldable = [
+    ...new Set([
+      ...declaredCensuses_,
+      ...[...CENSUS_IN_CONFIG].filter(([, how]) => how === 'fold').map(([key]) => key),
+    ]),
+  ].sort();
+  const censusFold = foldable
+    .map((key) => foldCensus(key, ordered))
+    .filter((folded) => folded.value !== undefined);
+  const memoryArmConfig = { ...(reference.document.memoryArmConfig ?? {}) };
+  for (const folded of censusFold) memoryArmConfig[folded.key] = folded.value;
+  const foldedCensusKeys = censusFold.map((folded) => folded.key).sort();
+  const censusDisagreements = censusFold.flatMap((folded) => folded.disagreements);
+
   const document = {
     kind: 'merged-ablation',
     dataset: reference.document.dataset,
@@ -460,7 +678,7 @@ function merge(dir, shards) {
         ? {}
         : { merged: { shards, parts: shards } }),
     },
-    memoryArmConfig: reference.document.memoryArmConfig,
+    memoryArmConfig,
     featureConfig: reference.document.featureConfig,
     passShape: reference.document.passShape,
     datasetFingerprint: reference.document.datasetFingerprint,
@@ -472,6 +690,18 @@ function merge(dir, shards) {
       // carried list above is code, and code can lose a field the way prose lost `turnWindow` for a
       // round -- but here the loss is named in the artifact instead of waiting for a reader holding both.
       notCarried,
+      // Which numbers in `memoryArmConfig` were added rather than taken from one shard. A reader
+      // cannot tell `embedTexts: 39912` from a dispatch's 39912 without this line, and the next
+      // census the arm declares will not need a reader to know it was declared.
+      ...(foldedCensusKeys.length === 0 ? {} : { foldedCensusKeys }),
+      // Every leaf the shards disagreed on, with each shard's value. Not an error: a store that was
+      // missing in one job is a fact about the dispatch, and the number it makes incomparable is
+      // reported beside it instead of being discarded.
+      ...(censusDisagreements.length === 0 ? {} : { censusDisagreements }),
+      // Declared readings that were excluded instead of added, because their leaves are not counts.
+      // Named rather than silently honoured: a reader who sees `admission` absent from the block has
+      // to be able to find out that it was dropped on purpose.
+      ...(declaredDropped.size === 0 ? {} : { droppedCensusKeys: [...declaredDropped].sort() }),
       parts: ordered.map((part) => ({
         index: part.shard.index,
         questions: part.document.questions.length,

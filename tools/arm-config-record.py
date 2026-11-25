@@ -222,9 +222,18 @@ UNPROJECTED: dict[str, tuple[str, str]] = {
     "queryExpansionCounts": (
         "census",
         "what §13.97's model produced -- questions asked, phrases kept, responses refused -- which only "
-        "the process that made the calls can say. It is NOT the reach: §13.377.3 reads `selfIndex.queries` "
+        "the process made the calls can say. It is NOT the reach: §13.377.3 reads `selfIndex.queries` "
         "against `selfIndex.indexes` for that, because a run can produce phrases the ranking never "
         "receives and every field of this block would still be truthful",
+    ),
+    "censusKeys": (
+        "derived",
+        "the artifact's own statement of which fields above were written after the questions were "
+        "answered, filtered to the ones this run actually measured. Derived from the block it sits in, "
+        "so comparing it is comparing the censuses a second time -- and it exists because "
+        "`tools/merge-ablation.mjs` had to know which of them could be compared across the shards of one "
+        "dispatch, and kept that list in its own file until run `45543010618` lost eight shards to the "
+        "divergence",
     ),
     "threshold": (
         "constant",

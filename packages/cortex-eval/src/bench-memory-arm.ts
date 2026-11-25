@@ -4615,7 +4615,58 @@ export async function runCortexMemoryArm(
   // rather than what it was configured with, so it can only be taken after the questions were
   // answered. §14.146 records why the counts are over candidates -- a census of admitted turns
   // reports `rejected: 0` for every configuration that has ever run.
+  /**
+   * Every field of `memoryArmConfig` that a writer in this file fills in **after** the questions were
+   * answered.
+   *
+   * The block has two readers that both require it to be a function of the configuration: `--registration`
+   * compares it field for field, and `tools/merge-ablation.mjs` requires the shards of one dispatch to
+   * agree on it. Run `45543010618` broke the second by writing `selfIndex` into it -- 8 shards, 500
+   * questions, every job green, and the merge refused the population over a bill that differs between
+   * two jobs because they read different corpora.
+   *
+   * The list is here rather than in the merge tool because the writers are here: three of the five are
+   * spread into the block a hundred lines below and the fourth is written by `readQueryExpansion`.
+   * `arm-census-declaration.test.ts` asserts the declaration equals the keys the block carries that the
+   * option object did not, so a new census fails there instead of in a merge job eight shards later.
+   */
+  const CENSUS_FIELDS = [
+    'admission',
+    'goldAccount',
+    'queryExpansionCounts',
+    'selfIndex',
+    'voteCounts',
+  ] as const;
+
   const admission = admissionCensusAcross(censusSystems);
+  /**
+   * The readings this run folded into `memoryArmConfig`, and the record of having done it.
+   *
+   * `memoryArmConfig` is two things to two readers: the block `--registration` compares field for
+   * field, and the block `tools/merge-ablation.mjs` requires to be equal across the shards of one
+   * dispatch. Both are only sound while it is a function of the configuration, and run `45543010618`
+   * paid for the lesson: eight shards answered 500 questions, every job succeeded, and the merge
+   * refused because `selfIndex` -- the product's bill, written here, after the questions -- differed
+   * between two jobs that read different corpora. Twelve yuan of answers went unread.
+   *
+   * The merge tool had a list of such fields and could not have had this one: the list is in
+   * `tools/` and the fold is here. So the block declares its own readings, from the same object that
+   * does the folding, and `censusKeys` cannot describe a set of fields other than the one below.
+   *
+   * `admission` is declared too even though the merge cannot add it (`min`/`max`/`mean` are not
+   * counts): a declaration is a statement about what a field *is*, and the tool is where the
+   * knowledge of how to combine it lives.
+   */
+  const foldedCensuses: Record<string, unknown> = {
+    goldAccount: goldAccountOf(report.memoryArmConfig!.relevanceSignal, reportedPools),
+    ...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),
+    ...(indexCost.selfIndex === undefined ? {} : { selfIndex: indexCost.selfIndex }),
+    ...(admission.admission === undefined ? {} : { admission: admission.admission }),
+  };
+  const declaredBlock: MemoryArmConfig & Record<string, unknown> = {
+    ...report.memoryArmConfig!,
+    ...foldedCensuses,
+  };
   const reported: AblationReport = {
     ...report,
     // The evidence is carried twice, and the registered bound has to reach both
@@ -4682,11 +4733,14 @@ export async function runCortexMemoryArm(
     // only when a census produced something, because `goldAccount` is defined for every arm -- on `none` it
     // says the budget spent arrival order and no ranking existed to be missed.
     memoryArmConfig: {
-      ...report.memoryArmConfig!,
-      goldAccount: goldAccountOf(report.memoryArmConfig!.relevanceSignal, reportedPools),
-      ...(vote.voteCounts === undefined ? {} : { voteCounts: vote.voteCounts }),
-      ...(indexCost.selfIndex === undefined ? {} : { selfIndex: indexCost.selfIndex }),
-      ...(admission.admission === undefined ? {} : { admission: admission.admission }),
+      ...declaredBlock,
+      // Filtered by what is actually in the block, so a field that this run did not measure is not
+      // declared: `censusKeys` describes this artifact, not the arm's repertoire. `CENSUS_FIELDS`
+      // names every reading any writer in this file folds in -- including
+      // `queryExpansionCounts`, which is written by `readQueryExpansion` above and never passes
+      // through `foldedCensuses` -- and the test beside this file asserts that the declaration and
+      // the block agree, in both directions, on a run that carries all of them.
+      censusKeys: CENSUS_FIELDS.filter((key) => key in declaredBlock),
     },
     questions,
     ...(evidenceReduction === null ? {} : { evidenceReduction }),

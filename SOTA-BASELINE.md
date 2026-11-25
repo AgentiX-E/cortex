@@ -51,11 +51,19 @@ Two measurements sit on top of 91.20 and neither is in this number:
 | mechanism | reading | why it is not added here |
 | --- | --- | --- |
 | `single-session preference` route | **+7 of 10** treated questions converted, twice, the same seven both draws (§`PREREGISTRATION-PREFERENCE-ROUTE.md` §9) | measured on `IE`'s 150 questions only; the other 350 were not re-run, so the roster projection (+0.9 points) is not a measurement |
-| `resolution: layered` | `MR` **+7.85** points replicated (`44915923906`, `44905275457`) | the default is still `raw`; `§14.150` declined to change it on a `p = 0.0884` reading |
+| `resolution: layered` | `MR` **+6.20 points** on the third replication (`45543010618`, 500 questions, `R1`-`R4` all cleared: `MR` up-down `+8`, combined `p = 0.0452`, prompt bill `+0.07%`) | the default is still `raw`, and now for a **cost** reason rather than a significance one: the same run's cache-adjusted price is **1.55×** the baseline (`usageBySide` sums: 2,148,498 uncached prompt tokens against 228,105), which `R3`'s registered clause — a token ratio — cannot see |
 
 Both are **reachable from the product today** — the first by default, the second as an option — and the
 difference between them is that the first is what the shipped arm reads and the second is a configuration
 nobody has dispatched at 500 questions since it was measured.
+
+The third replication is also the round that made the second row's caveat precise. Its eight shards
+answered the whole population and were refused by `tools/merge-ablation.mjs`, because `selfIndex` — the
+product's own embedding bill, counted after the questions — was being compared across shards as if it
+were configuration. The reading was recovered from the archived artifacts rather than re-bought, the
+artifact now declares which of its fields are readings (`memoryArmConfig.censusKeys`), and the bill's
+two readings print together: **+0.07% in tokens and 1.55× in price**. A mechanism is not free because
+the instrument it was registered against counts the wrong quantity.
 
 ### 0.1 Where that sits, corrected against the published field
 

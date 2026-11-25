@@ -507,3 +507,142 @@ class TestWhatTheMergeCarries:
             "the list must be derived from what the parts wrote against what the merge produced, so a "
             "carried field cannot appear in it"
         )
+
+
+class TestTheConfigurationBlockIsNotAFunctionOfTheAnswers:
+    """One dispatch refused itself, after paying for eight shards, over a field that is a census.
+
+    Run `45543010618` answered 500 questions across 8 shards, every job succeeded, and `merge the
+    shards` exited 1: `shard 1 differs from shard 0 in memoryArmConfig`. The two blocks differed in
+    `selfIndex` -- the product's own bill, folded into the configuration block after the questions
+    were answered -- which differs between two shards for the only reason it should: they read
+    different corpora.
+
+    `CENSUS_IN_CONFIG` already existed for exactly this shape (`admission`, run `43622841638`), and
+    `selfIndex` was folded into the block a round later without being named in it. So the tests below
+    are about the *list* as much as the field: the arm now declares its censuses on the artifact, and
+    the static list survives only for artifacts written before that.
+    """
+
+    def test_a_shard_whose_own_bill_differs_still_merges_and_the_bill_is_summed(self, tmp_path):
+        first = artifact(0, 2, ["c0", "c1"])
+        second = artifact(1, 2, ["c2", "c3"])
+        first["memoryArmConfig"]["selfIndex"] = {
+            "indexes": 126,
+            "turns": 47394,
+            "embedCalls": 780,
+            "embedTexts": 39912,
+            "memoHits": 7480,
+            "reuse": True,
+            "rerankCalls": 0,
+            "rerankDegraded": 0,
+            "embedDegraded": 0,
+            "queries": 126,
+        }
+        second["memoryArmConfig"]["selfIndex"] = {
+            **first["memoryArmConfig"]["selfIndex"],
+            "indexes": 120,
+            "turns": 45000,
+            "queries": 118,
+        }
+        result, out = merged(tmp_path, 2, [first, second])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert document["memoryArmConfig"]["selfIndex"]["indexes"] == 246, (
+            "a merged population must carry the dispatch's bill. Shard 0's 126 over a roster of 500 "
+            "questions is a number a reader would quote as the run's."
+        )
+        assert document["memoryArmConfig"]["selfIndex"]["turns"] == 92394
+        assert document["memoryArmConfig"]["selfIndex"]["reuse"] is True
+        # Config that is not a census still compares, or the exclusion has eaten the field that
+        # tells two dispatches apart.
+        assert document["memoryArmConfig"]["reader"] == {"model": "deepseek-chat"}
+
+    def test_the_refusal_names_the_field_and_both_values(self, tmp_path):
+        first = artifact(0, 2, ["c0"])
+        second = artifact(1, 2, ["c1"])
+        second["memoryArmConfig"]["reader"] = {"model": "deepseek-reasoner"}
+        result, out = merged(tmp_path, 2, [first, second])
+        assert result.returncode != 0
+        message = result.stderr
+        assert "memoryArmConfig.reader.model" in message, (
+            "the refusal said `differs in memoryArmConfig` and stopped. Finding which field it was "
+            "cost this round an artifact download and a diff -- and the tool knew both values when it "
+            "decided not to print them."
+        )
+        assert "deepseek-reasoner" in message and "deepseek-chat" in message
+
+    def test_a_census_declared_on_the_artifact_is_folded_without_being_listed_in_this_file(
+        self, tmp_path
+    ):
+        # The declaration is how the arm stops this file from having to be edited one round later.
+        first = artifact(0, 2, ["c0"])
+        second = artifact(1, 2, ["c1"])
+        for document, count in ((first, 3), (second, 4)):
+            document["memoryArmConfig"]["replyRepairFirings"] = {"attempted": count, "repaired": count}
+            document["memoryArmConfig"]["censusKeys"] = ["replyRepairFirings"]
+        result, out = merged(tmp_path, 2, [first, second])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert document["memoryArmConfig"]["replyRepairFirings"] == {"attempted": 7, "repaired": 7}
+        assert document["merged"]["foldedCensusKeys"] == ["replyRepairFirings"], (
+            "the merged document has to say which numbers in the configuration block were added, "
+            "because a reader cannot tell `attempted: 7` from one shard's 7"
+        )
+
+    def test_a_declared_census_that_cannot_be_summed_is_dropped_and_named(self, tmp_path):
+        # `admission` cannot be summed (`min`/`max`/`mean` are not counts), so a declaration of it is
+        # honoured as an exclusion and refused as arithmetic. Named in the merged document, because a
+        # reader who cannot find `admission` in the block has to be able to find out why.
+        first = artifact(0, 1, ["c0"])
+        first["memoryArmConfig"]["admission"] = {"candidates": 10, "admitted": 3, "mean": 0.3}
+        first["memoryArmConfig"]["censusKeys"] = ["admission"]
+        result, out = merged(tmp_path, 1, [first])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert document["merged"]["droppedCensusKeys"] == ["admission"]
+        assert "foldedCensusKeys" not in document["merged"], (
+            "four means were folded into the configuration block and the document called it a "
+            "reading: this is the arithmetic the disposition exists to prevent"
+        )
+        assert document["memoryArmConfig"]["admission"] == {
+            "candidates": 10,
+            "admitted": 3,
+            "mean": 0.3,
+        }
+
+    def test_a_census_that_disagrees_on_a_flag_is_recorded_not_averaged(self, tmp_path):
+        first = artifact(0, 2, ["c0"])
+        second = artifact(1, 2, ["c1"])
+        for document, reuse in ((first, True), (second, False)):
+            document["memoryArmConfig"]["selfIndex"] = {
+                "indexes": 2,
+                "embedTexts": 10,
+                "reuse": reuse,
+            }
+        result, out = merged(tmp_path, 2, [first, second])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        # `false` wins, because it is the shard that admits the total is incomparable: `true` here
+        # would be the merge vouching for a store one job did not have.
+        assert document["memoryArmConfig"]["selfIndex"]["reuse"] is False
+        assert document["memoryArmConfig"]["selfIndex"]["embedTexts"] == 20
+        assert document["merged"]["censusDisagreements"] == [
+            {"path": "memoryArmConfig.selfIndex.reuse", "perShard": {"0": True, "1": False}}
+        ]
+
+    def test_an_artifact_written_before_the_declaration_still_merges(self, tmp_path):
+        # The archived artifacts of run `45543010618` carry no `censusKeys` and cannot be rewritten.
+        # The static list is the fallback that lets their reading be taken.
+        first = artifact(0, 2, ["c0"])
+        second = artifact(1, 2, ["c1"])
+        first["memoryArmConfig"]["admission"] = {"candidates": 10020, "admitted": 8000}
+        second["memoryArmConfig"]["admission"] = {"candidates": 9428, "admitted": 7500}
+        assert "censusKeys" not in first["memoryArmConfig"]
+        result, out = merged(tmp_path, 2, [first, second])
+        assert result.returncode == 0, result.stderr
+        document = json.loads(out.read_text())
+        assert "admission" in " ".join(document["merged"]["notRecomputed"]), (
+            "`admission` is excluded from the comparison and cannot be summed, so the merged document "
+            "has to name it among what it did not recompute"
+        )
